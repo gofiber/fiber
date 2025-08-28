@@ -4,17 +4,18 @@ id: cache
 
 # Cache
 
-Cache middleware for [Fiber](https://github.com/gofiber/fiber) designed to intercept responses and cache them. This middleware caches the `Body`, `Content-Type`, and `StatusCode` using a key built from the request path and method. Special thanks to [@codemicro](https://github.com/codemicro/fiber-cache) for creating this middleware for Fiber core!
+Cache middleware for [Fiber](https://github.com/gofiber/fiber) that intercepts responses and stores the body, `Content-Type`, and status code under a key derived from the request path and method. Special thanks to [@codemicro](https://github.com/codemicro/fiber-cache) for contributing this middleware to Fiber core.
 
-Request Directives<br />
-`Cache-Control: no-cache` will return the up-to-date response but still caches it. You will always get a `miss` cache status.<br />
-`Cache-Control: no-store` will refrain from caching. You will always get the up-to-date response.
+Request directives
 
-If the server response contains a `Cache-Control: max-age` directive, its value is used as the expiration time for the cache entry.
+- `Cache-Control: no-cache` returns the latest response while still caching it, so the status is always `miss`.
+- `Cache-Control: no-store` skips caching and always forwards a fresh response.
 
-Cacheable Status Codes<br />
+If the response includes a `Cache-Control: max-age` directive, its value sets the cache entry's expiration.
 
-This middleware caches responses with the following status codes according to RFC7231:
+Cacheable status codes
+
+The middleware caches these RFC 7231 status codes:
 
 - `200: OK`
 - `203: Non-Authoritative Information`
@@ -28,9 +29,9 @@ This middleware caches responses with the following status codes according to RF
 - `414: URI Too Long`
 - `501: Not Implemented`
 
-If the status code is other than these, you will always get an `unreachable` cache status.
+Responses with other status codes result in an `unreachable` cache status.
 
-For more information about cacheable status codes or RFC7231, please refer to the following resources:
+For more about cacheable status codes and RFC 7231, see:
 
 - [Cacheable - MDN Web Docs](https://developer.mozilla.org/en-US/docs/Glossary/Cacheable)
 
@@ -44,7 +45,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package:
 
 ```go
 import (
@@ -54,13 +55,13 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Once your Fiber app is initialized, register the middleware:
 
 ```go
 // Initialize default config
 app.Use(cache.New())
 
-// Or extend your config for customization
+// Or extend the config for customization
 app.Use(cache.New(cache.Config{
     Next: func(c fiber.Ctx) bool {
         return fiber.Query[bool](c, "noCache")
@@ -70,7 +71,7 @@ app.Use(cache.New(cache.Config{
 }))
 ```
 
-Or you can customize the key and expiration time like this (the HTTP method is automatically appended to the key):
+Customize the cache key and expiration; the HTTP method is appended automatically:
 
 ```go
 app.Use(cache.New(cache.Config{
@@ -89,7 +90,7 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-You can also invalidate the cache by using the `CacheInvalidator` function as shown below:
+Use `CacheInvalidator` to invalidate entries programmatically:
 
 ```go
 app.Use(cache.New(cache.Config{
@@ -99,7 +100,7 @@ app.Use(cache.New(cache.Config{
 }))
 ```
 
-The `CacheInvalidator` function allows you to define custom conditions for cache invalidation. Return true if conditions such as specific query parameters or headers are met, which require the cache to be invalidated. For example, in this code, the cache is invalidated when the query parameter invalidateCache is set to true.
+`CacheInvalidator` defines custom invalidation rules. Return `true` to bypass the cache. In the example above, setting the `invalidateCache` query parameter to `true` invalidates the entry.
 
 ## Config
 

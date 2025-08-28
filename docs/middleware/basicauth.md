@@ -4,7 +4,7 @@ id: basicauth
 
 # BasicAuth
 
-Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) that provides an HTTP basic authentication. It calls the next handler for valid credentials and [401 Unauthorized](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401) or a custom response for missing or invalid credentials.
+Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) that provides HTTP basic auth. It calls the next handler for valid credentials and returns [`401 Unauthorized`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401) or a custom response for missing or invalid credentials.
 
 The default unauthorized response includes the header `WWW-Authenticate: Basic realm="Restricted", charset="UTF-8"`, sets `Cache-Control: no-store`, and adds a `Vary: Authorization` header.
 
@@ -17,7 +17,7 @@ func UsernameFromContext(c fiber.Ctx) string
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package:
 
 ```go
 import (
@@ -26,7 +26,7 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Once your Fiber app is initialized, choose one of the following approaches:
 
 ```go
 // Provide a minimal config
@@ -58,24 +58,44 @@ app.Use(basicauth.New(basicauth.Config{
 }))
 ```
 
-Getting the username and password
-
 ### Password hashes
 
 Passwords must be supplied in pre-hashed form. The middleware detects the
 hashing algorithm from a prefix:
 
-- `"{SHA512}"` or `"{SHA256}"` followed by a base64 encoded digest
+- `"{SHA512}"` or `"{SHA256}"` followed by a base64-encoded digest
 - standard bcrypt strings beginning with `$2`
 
-If no prefix is present the value is interpreted as a SHA-256 digest encoded in
+If no prefix is present, the value is interpreted as a SHA-256 digest encoded in
 hex or base64. Plaintext passwords are rejected.
+
+#### Generating SHA-256 and SHA-512 passwords
+
+Create a digest, encode it in base64, and prefix it with `{SHA256}` or
+`{SHA512}` before adding it to `Users`:
+
+```bash
+# SHA-256
+printf 'secret' | openssl dgst -binary -sha256 | base64
+
+# SHA-512
+printf 'secret' | openssl dgst -binary -sha512 | base64
+```
+
+Include the prefix in your config:
+
+```go
+Users: map[string]string{
+    "john": "{SHA256}47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+    "admin": "{SHA512}z4PhNX7vuL3xVCHD/iXW0vH0J3ltYnYwC2R8H0a7ef6vQfhzW1gP6ZVxK5vNFR7wRTPRDUeIoWzY4xXHzsmo7w==",
+}
+```
 
 ## Config
 
 | Property        | Type                        | Description                                                                                                                                                           | Default               |
 |:----------------|:----------------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------------|
-| Next            | `func(fiber.Ctx) bool`     | Next defines a function to skip this middleware when returned true.                                                                                                   | `nil`                 |
+| Next            | `func(fiber.Ctx) bool`     | Next defines a function to skip this middleware when it returns true.                                                                                                   | `nil`                 |
 | Users           | `map[string]string`         | Users maps usernames to **hashed** passwords (e.g. bcrypt, `{SHA256}`). | `map[string]string{}` |
 | Realm           | `string`                    | Realm is a string to define the realm attribute of BasicAuth. The realm identifies the system to authenticate against and can be used by clients to save credentials. | `"Restricted"`        |
 | Charset         | `string`                    | Charset sent in the `WWW-Authenticate` header, so clients know how credentials are encoded. | `"UTF-8"` |

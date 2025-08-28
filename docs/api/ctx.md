@@ -24,10 +24,9 @@ app.Get("/stack", func(c fiber.Ctx) error {
 
 ### Bind
 
-Bind is a method that supports bindings for the request/response body, query parameters, URL parameters, cookies, and much more.
-It returns a pointer to the [Bind](./bind.md) struct which contains all the methods to bind the request/response data.
+Bind returns a helper for decoding the request body, query string, headers, cookies, and more.
 
-For detailed information, check the [Bind](./bind.md) documentation.
+For full details, see the [Bind](./bind.md) documentation.
 
 ```go title="Signature"
 func (c fiber.Ctx) Bind() *Bind
@@ -97,14 +96,14 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### GetReqHeaders
 
-Returns the HTTP request headers as a map. Since a header can be set multiple times in a single request, the values of the map are slices of strings containing all the different values of the header.
+Returns the HTTP request headers as a map. Because a header can appear multiple times in a request, each key maps to a slice with all values for that header.
 
 ```go title="Signature"
 func (c fiber.Ctx) GetReqHeaders() map[string][]string
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -130,7 +129,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -143,7 +142,7 @@ func (c fiber.Ctx) GetRespHeaders() map[string][]string
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -174,7 +173,7 @@ app.Get("/test", func(c fiber.Ctx) error {
 
 ### Locals
 
-A method that stores variables scoped to the request and, therefore, are available only to the routes that match the request. The stored variables are removed after the request is handled. If any of the stored data implements the `io.Closer` interface, its `Close` method will be called before it's removed.
+Stores variables scoped to the request, making them available only to matching routes. The variables are removed after the request completes. If a stored value implements `io.Closer`, Fiber calls its `Close` method before removal.
 
 :::tip
 This is useful if you want to pass some **specific** data to the next middleware. Remember to perform type assertions when retrieving the data to ensure it is of the expected type. You can also use a non-exported type as a key to avoid collisions.
@@ -565,7 +564,7 @@ app.Post("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -587,14 +586,14 @@ app.Post("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### ClientHelloInfo
 
-`ClientHelloInfo` contains information from a ClientHello message in order to guide application logic in the `GetCertificate` and `GetConfigForClient` callbacks.
-You can refer to the [ClientHelloInfo](https://golang.org/pkg/crypto/tls/#ClientHelloInfo) struct documentation for more information on the returned struct.
+`ClientHelloInfo` contains information from a ClientHello message to guide application logic in the `GetCertificate` and `GetConfigForClient` callbacks.
+Refer to the [ClientHelloInfo](https://golang.org/pkg/crypto/tls/#ClientHelloInfo) struct documentation for details on the returned struct.
 
 ```go title="Signature"
 func (c fiber.Ctx) ClientHelloInfo() *tls.ClientHelloInfo
@@ -626,7 +625,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.
+The returned value is valid only within the handler. Do not store references.
 Use [`App.GetString`](./app.md#getstring) or [`App.GetBytes`](./app.md#getbytes) when immutability is enabled, or manually copy values (for example with [`utils.CopyString`](https://github.com/gofiber/utils) / `utils.CopyBytes`) when it's disabled. [Read more...](../#zero-allocation)
 :::
 
@@ -668,7 +667,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 :::info
 
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -707,7 +706,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -733,7 +732,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -756,7 +755,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -954,7 +953,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -1005,7 +1004,7 @@ app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -1182,7 +1181,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
+The returned value is valid only within the handler. Do not store references.  
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 

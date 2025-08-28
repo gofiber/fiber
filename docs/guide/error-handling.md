@@ -2,9 +2,8 @@
 id: error-handling
 title: 🐛 Error Handling
 description: >-
-  Fiber supports centralized error handling by returning an error to the handler
-  which allows you to log errors to external services or send a customized HTTP
-  response to the client.
+  Fiber supports centralized error handling: handlers return errors so you can
+  log them or send a custom HTTP response to the client.
 sidebar_position: 4
 ---
 
@@ -13,7 +12,7 @@ import TabItem from '@theme/TabItem';
 
 ## Catching Errors
 
-Ensure that Fiber catches all errors from route handlers and middleware by returning them to the handler function for processing.
+Return errors from route handlers and middleware so Fiber can handle them centrally.
 
 <Tabs>
 <TabItem value="example" label="Example">
@@ -28,7 +27,7 @@ app.Get("/", func(c fiber.Ctx) error {
 </TabItem>
 </Tabs>
 
-Fiber does not handle [panics](https://go.dev/blog/defer-panic-and-recover) by default. To recover from a panic thrown by any handler in the stack, you need to include the `Recover` middleware below:
+Fiber does not recover from [panics](https://go.dev/blog/defer-panic-and-recover) by default. Add the `Recover` middleware to catch panics in any handler:
 
 ```go title="Example"
 package main
@@ -53,7 +52,7 @@ func main() {
 }
 ```
 
-Use Fiber's custom error struct to pass a status code with `fiber.NewError()`. The message parameter is optional; if omitted, it defaults to the standard status text (for example, `404` becomes `Not Found`).
+Use `fiber.NewError()` to create an error with a status code. If you omit the message, Fiber uses the standard status text (for example, `404` becomes `Not Found`).
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
@@ -67,7 +66,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## Default Error Handler
 
-Fiber provides an error handler by default. For a standard error, the response is sent as **500 Internal Server Error**. If the error is of type [fiber.Error](https://godoc.org/github.com/gofiber/fiber#Error), the response is sent with the provided status code and message.
+Fiber ships with a default error handler that sends **500 Internal Server Error** for generic errors. If the error is a [fiber.Error](https://godoc.org/github.com/gofiber/fiber#Error), the response uses the embedded status code and message.
 
 ```go title="Example"
 // Default error handler
@@ -91,9 +90,9 @@ var DefaultErrorHandler = func(c fiber.Ctx, err error) error {
 
 ## Custom Error Handler
 
-A custom error handler can be set using a [Config](../api/fiber.md#errorhandler) when initializing a [Fiber instance](../api/fiber.md#new).
+Set a custom error handler in [`fiber.Config`](../api/fiber.md#errorhandler) when creating a new app.
 
-In most cases, the default error handler is sufficient. However, a custom handler is useful when you need to capture different error types and respond accordingly—for example, sending notification emails or logging to a centralized system. You can also send custom responses to the client, such as an error page or a JSON message.
+The default handler covers most cases, but a custom handler lets you react to specific error types—for example, by logging to a service or sending a tailored JSON or HTML response.
 
 The following example shows how to display error pages for different types of errors.
 
@@ -126,4 +125,4 @@ app := fiber.New(fiber.Config{
 // ...
 ```
 
-> Special thanks to the [Echo](https://echo.labstack.com/) & [Express](https://expressjs.com/) framework for inspiration regarding error handling.
+> Special thanks to the [Echo](https://echo.labstack.com/) and [Express](https://expressjs.com/) frameworks for inspiring parts of this error-handling approach.

@@ -4,15 +4,13 @@ id: retry
 
 # Retry Addon
 
-Retry addon for [Fiber](https://github.com/gofiber/fiber) designed to apply retry mechanism for unsuccessful network
-operations. This addon uses an exponential backoff algorithm with jitter. It calls the function multiple times and tries
-to make it successful. If all calls are failed, then, it returns an error. It adds a jitter at each retry step because adding
-a jitter is a way to break synchronization across the client and avoid collision.
+The Retry addon for [Fiber](https://github.com/gofiber/fiber) retries failed network operations using exponential
+backoff with jitter. It repeatedly invokes a function until it succeeds or the maximum number of attempts is
+exhausted. Jitter at each step breaks client synchronization and helps avoid collisions. If all attempts fail, the
+addon returns an error.
 
 ## Table of Contents
 
-- [Retry Addon](#retry-addon)
-- [Table of Contents](#table-of-contents)
 - [Signatures](#signatures)
 - [Examples](#examples)
 - [Default Config](#default-config)
@@ -41,11 +39,11 @@ import (
 func main() {
     expBackoff := retry.NewExponentialBackoff(retry.Config{})
 
-    // Local variables that will be used inside of Retry
+    // Local variables used inside Retry
     var resp *client.Response
     var err error
 
-    // Retry a network request and return an error to signify to try again
+    // Retry a network request and return an error to signal another attempt
     err = expBackoff.Retry(func() error {
         client := client.New()
         resp, err = client.Get("https://gofiber.io")
@@ -53,7 +51,7 @@ func main() {
             return fmt.Errorf("GET gofiber.io failed: %w", err)
         }
         if resp.StatusCode() != 200 {
-            return fmt.Errorf("GET gofiber.io did not return OK 200")
+            return fmt.Errorf("GET gofiber.io did not return 200 OK")
         }
         return nil
     })

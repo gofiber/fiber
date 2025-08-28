@@ -8,7 +8,7 @@ Welcome to Fiber's online API documentation, complete with examples to help you 
 
 **Fiber** is an [Express](https://github.com/expressjs/express)-inspired **web framework** built on top of [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for [Go](https://go.dev/doc/). It is designed to facilitate rapid development with **zero memory allocations** and a strong focus on **performance**.
 
-These docs are for **Fiber v3**, which was released on **Month xx, 202x**.
+These docs cover **Fiber v3**.
 
 Looking to practice Fiber concepts hands-on? Check out our [Learning Resources](./extra/learning-resources) for interactive challenges and tutorials.
 
@@ -35,7 +35,7 @@ func handler(c fiber.Ctx) error {
 }
 ```
 
-If you need to persist such values outside the handler, make copies of their **underlying buffer** using the [copy](https://pkg.go.dev/builtin/#copy) builtin. Here is an example for persisting a string:
+If you need to persist such values outside the handler, make copies of their **underlying buffer** using the [copy](https://pkg.go.dev/builtin/#copy) builtin. Here is an example of persisting a string:
 
 ```go
 func handler(c fiber.Ctx) error {
@@ -52,7 +52,7 @@ func handler(c fiber.Ctx) error {
 }
 ```
 
-Fiber provides `GetString` and `GetBytes` methods on the app that detach values when `Immutable` is enabled and the data isn't already read-only. When it's disabled, use `utils.CopyString` and `utils.CopyBytes` to allocate only when needed.
+Fiber provides `GetString` and `GetBytes` methods on the app that detach values when `Immutable` is enabled and the data isn't already read-only. If it's disabled, use `utils.CopyString` and `utils.CopyBytes` to allocate only when necessary.
 
 ```go
 app.Get("/:foo", func(c fiber.Ctx) error {

@@ -4,16 +4,16 @@ id: idempotency
 
 # Idempotency
 
-Idempotency middleware for [Fiber](https://github.com/gofiber/fiber) allows for fault-tolerant APIs where duplicate requests—for example due to networking issues on the client-side — do not erroneously cause the same action to be performed multiple times on the server-side.
+The Idempotency middleware helps build fault-tolerant APIs. Duplicate requests—such as retries after network issues—won't trigger the same action twice on the server.
 
 Refer to [IETF RFC 7231 §4.2.2](https://tools.ietf.org/html/rfc7231#section-4.2.2) for definitions of safe and idempotent HTTP methods.
 
 ## HTTP Method Categories
 
-* **Safe Methods** (do not modify server state): `GET`, `HEAD`, `OPTIONS`, `TRACE`.
-* **Idempotent Methods** (multiple identical requests have the same effect as a single one): all safe methods **plus** `PUT` and `DELETE`.
+* **Safe Methods** (do not modify server state): `GET`, `HEAD`, `OPTIONS`, `TRACE`
+* **Idempotent Methods** (identical requests have the same effect as a single one): all safe methods **plus** `PUT` and `DELETE`
 
-> According to the RFC, safe methods are guaranteed not to change server state, while idempotent methods may change state but make identical requests safe to repeat.
+> According to the RFC, safe methods never change server state, while idempotent methods may change state but remain safe to repeat.
 
 ## Signatures
 
@@ -25,7 +25,7 @@ func WasPutToCache(c fiber.Ctx) bool
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package:
 
 ```go
 import (
@@ -34,7 +34,7 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can configure the middleware:
+Once your Fiber app is initialized, configure the middleware:
 
 ### Default Config (Skip **Safe** Methods)
 
@@ -46,7 +46,7 @@ app.Use(idempotency.New())
 
 ### Skip **Idempotent** Methods Instead
 
-If you prefer to skip middleware on all idempotent methods (including `PUT`, `DELETE`), override `Next`:
+Skip all idempotent methods (including `PUT` and `DELETE`) by overriding `Next`:
 
 ```go
 app.Use(idempotency.New(idempotency.Config{
@@ -70,7 +70,7 @@ app.Use(idempotency.New(idempotency.Config{
 
 | Property            | Type                   | Description                                                                                                                             | Default                                                            |
 |:--------------------|:-----------------------|:----------------------------------------------------------------------------------------------------------------------------------------|:-------------------------------------------------------------------|
-| Next                | `func(fiber.Ctx) bool` | Function to skip this middleware when returning `true`. Choose between `IsMethodSafe` or `IsMethodIdempotent` based on RFC definitions. | `func(c fiber.Ctx) bool { return fiber.IsMethodSafe(c.Method()) }` |
+| Next                | `func(fiber.Ctx) bool` | Function to skip this middleware when it returns `true`; use `IsMethodSafe` or `IsMethodIdempotent`. | `func(c fiber.Ctx) bool { return fiber.IsMethodSafe(c.Method()) }` |
 | Lifetime            | `time.Duration`        | Maximum lifetime of an idempotency key.                                                                                                 | `30 * time.Minute`                                                 |
 | KeyHeader           | `string`               | Header name containing the idempotency key.                                                                                             | `"X-Idempotency-Key"`                                              |
 | KeyHeaderValidate   | `func(string) error`   | Function to validate idempotency header syntax (e.g., UUID).                                                                            | UUID length check (`36` characters)                                |

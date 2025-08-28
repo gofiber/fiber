@@ -2,23 +2,23 @@
 id: rest
 title: 🖥️ REST
 description: >-
-  HTTP client for Gofiber.
+  HTTP client for Fiber.
 sidebar_position: 1
 toc_max_heading_level: 5
 ---
 
-The Fiber Client for Fiber v3 is a powerful HTTP client optimized for high performance and ease of use in server-side applications. Built atop the FastHTTP library, it inherits FastHTTP's high-speed HTTP protocol implementation. The client is designed for making both internal requests (within a microservices architecture) and external requests to other web services.
+The Fiber Client is a high-performance HTTP client built on FastHTTP. It handles both internal service calls and external requests with minimal overhead.
 
 ## Features
 
-- **Lightweight & Fast**: Due to its FastHTTP foundation, the Fiber Client is both lightweight and extremely performant.
-- **Flexible Configuration**: Set client-level configurations (e.g., timeouts, headers) that apply to all requests, while still allowing overrides at the individual request level.
-- **Connection Pooling**: Maintains a pool of persistent connections, minimizing the overhead of establishing new connections for each request.
-- **Timeouts & Retries**: Supports request-level timeouts and configurable retries to handle transient errors gracefully.
+- **Lightweight and fast**: built on FastHTTP for minimal overhead.
+- **Flexible configuration**: set global defaults like timeouts or headers and override them per request.
+- **Connection pooling**: reuses persistent connections instead of opening new ones.
+- **Timeouts and retries**: supports per-request deadlines and retry policies for transient errors.
 
 ## Usage
 
-Instantiate the Fiber Client with your desired configurations, then send requests:
+Create a client with any required configuration, then send requests:
 
 ```go
 package main
@@ -45,7 +45,7 @@ func main() {
 }
 ```
 
-Check out [examples](examples.md) for more detailed usage examples.
+See [examples](examples.md) for more detailed usage.
 
 ```go
 type Client struct {
@@ -115,11 +115,11 @@ func NewWithClient(c *fasthttp.Client) *Client
 
 ## REST Methods
 
-The following methods send HTTP requests using the configured client:
+These helpers mirror axios-style method names and send HTTP requests using the configured client:
 
 ### Get
 
-Sends a GET request, similar to axios.
+Sends a GET request.
 
 ```go title="Signature"
 func (c *Client) Get(url string, cfg ...Config) (*Response, error)
@@ -127,7 +127,7 @@ func (c *Client) Get(url string, cfg ...Config) (*Response, error)
 
 ### Post
 
-Sends a POST request, similar to axios.
+Sends a POST request.
 
 ```go title="Signature"
 func (c *Client) Post(url string, cfg ...Config) (*Response, error)
@@ -135,7 +135,7 @@ func (c *Client) Post(url string, cfg ...Config) (*Response, error)
 
 ### Put
 
-Sends a PUT request, similar to axios.
+Sends a PUT request.
 
 ```go title="Signature"
 func (c *Client) Put(url string, cfg ...Config) (*Response, error)
@@ -143,7 +143,7 @@ func (c *Client) Put(url string, cfg ...Config) (*Response, error)
 
 ### Patch
 
-Sends a PATCH request, similar to axios.
+Sends a PATCH request.
 
 ```go title="Signature"
 func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
@@ -151,7 +151,7 @@ func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
 
 ### Delete
 
-Sends a DELETE request, similar to axios.
+Sends a DELETE request.
 
 ```go title="Signature"
 func (c *Client) Delete(url string, cfg ...Config) (*Response, error)
@@ -159,7 +159,7 @@ func (c *Client) Delete(url string, cfg ...Config) (*Response, error)
 
 ### Head
 
-Sends a HEAD request, similar to axios.
+Sends a HEAD request.
 
 ```go title="Signature"
 func (c *Client) Head(url string, cfg ...Config) (*Response, error)
@@ -167,7 +167,7 @@ func (c *Client) Head(url string, cfg ...Config) (*Response, error)
 
 ### Options
 
-Sends an OPTIONS request, similar to axios.
+Sends an OPTIONS request.
 
 ```go title="Signature"
 func (c *Client) Options(url string, cfg ...Config) (*Response, error)
@@ -175,7 +175,7 @@ func (c *Client) Options(url string, cfg ...Config) (*Response, error)
 
 ### Custom
 
-Sends a custom HTTP request, similar to axios, allowing you to specify any method.
+Sends a request with any HTTP method.
 
 ```go title="Signature"
 func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error)
@@ -183,7 +183,7 @@ func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error)
 
 ## Request Configuration
 
-The `Config` type helps configure request parameters. When setting the request body, JSON is used as the default serialization. The priority of the body sources is:
+The `Config` type holds per-request parameters. JSON is used to serialize the body by default. If multiple body sources are set, precedence is:
 
 1. Body
 2. FormData
@@ -211,7 +211,7 @@ type Config struct {
 
 ## R
 
-**R** creates a new `Request` object from the client's request pool. Use `ReleaseRequest()` to return it to the pool when done.
+**R** gets a `Request` object from the pool. Call `ReleaseRequest` when finished.
 
 ```go title="Signature"
 func (c *Client) R() *Request
@@ -265,7 +265,7 @@ func (c *Client) JSONMarshal() utils.JSONMarshal
 
 ### JSONUnmarshal
 
-Returns the JSON unmarshaller function used by the client.
+Returns the JSON unmarshaler function used by the client.
 
 ```go title="Signature"
 func (c *Client) JSONUnmarshal() utils.JSONUnmarshal
@@ -281,7 +281,7 @@ func (c *Client) SetJSONMarshal(f utils.JSONMarshal) *Client
 
 ### SetJSONUnmarshal
 
-Sets a custom JSON unmarshaller.
+Sets a custom JSON unmarshaler.
 
 ```go title="Signature"
 func (c *Client) SetJSONUnmarshal(f utils.JSONUnmarshal) *Client
@@ -299,7 +299,7 @@ func (c *Client) XMLMarshal() utils.XMLMarshal
 
 ### XMLUnmarshal
 
-Returns the XML unmarshaller function used by the client.
+Returns the XML unmarshaler function used by the client.
 
 ```go title="Signature"
 func (c *Client) XMLUnmarshal() utils.XMLUnmarshal
@@ -315,7 +315,7 @@ func (c *Client) SetXMLMarshal(f utils.XMLMarshal) *Client
 
 ### SetXMLUnmarshal
 
-Sets a custom XML unmarshaller.
+Sets a custom XML unmarshaler.
 
 ```go title="Signature"
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client
@@ -333,7 +333,7 @@ func (c *Client) CBORMarshal() utils.CBORMarshal
 
 ### CBORUnmarshal
 
-Returns the CBOR unmarshaller function used by the client.
+Returns the CBOR unmarshaler function used by the client.
 
 ```go title="Signature"
 func (c *Client) CBORUnmarshal() utils.CBORUnmarshal
@@ -349,7 +349,7 @@ func (c *Client) SetCBORMarshal(f utils.CBORMarshal) *Client
 
 ### SetCBORUnmarshal
 
-Sets a custom CBOR unmarshaller.
+Sets a custom CBOR unmarshaler.
 
 ```go title="Signature"
 func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client

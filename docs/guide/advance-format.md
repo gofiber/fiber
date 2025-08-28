@@ -8,10 +8,10 @@ sidebar_position: 9
 
 ## MsgPack
 
-Fiber enables efficient binary serialization using MessagePack (MsgPack). You can leverage popular Go libraries to encode and decode MsgPack data within your route handlers.
+Fiber lets you use MessagePack for efficient binary serialization. Use one of the popular Go libraries below to encode and decode data in handlers.
 
-- Fiber supports binding requests with the `application/vnd.msgpack` content type by default. For more details, see the [Binding documentation](../api/bind.md#msgpack).
-- Use `Bind().MsgPack()` to bind MsgPack data directly to structs, similar to how you would use JSON binding. Alternatively, use `Ctx.AutoFormat()` to send the response as MsgPack when the `Accept` HTTP header is `application/vnd.msgpack`. For more details, see the [AutoFormat documentation](../api/ctx.md#autoformat).
+- Fiber can bind requests with the `application/vnd.msgpack` content type out of the box. See the [Binding documentation](../api/bind.md#msgpack) for details.
+- Use `Bind().MsgPack()` to bind data to structs, similar to JSON. `Ctx.AutoFormat()` responds with MsgPack when the `Accept` header is `application/vnd.msgpack`. See the [AutoFormat documentation](../api/ctx.md#autoformat) for more.
 
 ### Recommended Libraries
 
@@ -28,7 +28,7 @@ go get github.com/vmihailenco/msgpack
 go get github.com/shamaton/msgpack/v2
 ```
 
-> **Note:** Fiber does **not** register MsgPack by default because it is not part of the Go standard library. You can choose from several popular MsgPack libraries in the Go ecosystem. The two recommended packages below are widely used and compatible with Go.
+> **Note:** Fiber doesn't bundle a MsgPack implementation because it's outside the Go standard library. Pick one of the popular libraries in the ecosystem; the two below are widely used and well maintained.
 
 ### Example: Using `shamaton/msgpack/v2`
 
@@ -65,9 +65,9 @@ func main() {
 
 ## CBOR
 
-Fiber doesn't include a CBOR implementation by default. To enable CBOR encoding and decoding, choose a library such as [fxamacker/cbor](https://github.com/fxamacker/cbor).
+Fiber doesn't ship with a CBOR implementation. Use a library such as [fxamacker/cbor](https://github.com/fxamacker/cbor) to add encoding and decoding.
 
-- Use `Bind().CBOR()` to bind CBOR data directly to structs, similar to how you would use JSON binding. Alternatively, use `Ctx.AutoFormat()` to send the response as CBOR when the `Accept` HTTP header is `application/cbor`. For more details, see the [AutoFormat documentation](../api/ctx.md#autoformat).
+- Use `Bind().CBOR()` to bind CBOR to structs. `Ctx.AutoFormat()` replies with CBOR when the `Accept` header is `application/cbor`. See the [AutoFormat documentation](../api/ctx.md#autoformat) for details.
 
 ```bash
 go get github.com/fxamacker/cbor/v2

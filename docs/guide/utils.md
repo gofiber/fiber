@@ -9,8 +9,8 @@ toc_max_heading_level: 4
 
 ### Convert
 
-Converts a string value to a specified type, handling errors and optional default values.
-This function simplifies the conversion process by encapsulating error handling and the management of default values, making your code cleaner and more consistent.
+Converts a string to a specific type while handling errors and optional defaults.
+It wraps conversion and fallback logic to keep your code clean and consistent.
 
 ```go title="Signature"
 func Convert[T any](value string, converter func(string) (T, error), defaultValue ...T) (T, error)
@@ -35,8 +35,7 @@ app.Get("/search", func(c fiber.Ctx) error {
 
 ### GetReqHeader
 
-GetReqHeader function utilizing Go's generics feature.
-This function allows for retrieving HTTP request headers with a more specific data type.
+Retrieves an HTTP request header as a specific type using generics.
 
 ```go title="Signature"
 func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V
@@ -54,16 +53,13 @@ app.Get("/search", func(c fiber.Ctx) error {
 
 ### Locals
 
-Locals function utilizing Go's generics feature.
-This function allows for manipulating and retrieving local values within a request context with a more specific data type.
+Reads or writes local values in the request context using generics.
 
 ```go title="Signature"
+// Set a value
 func Locals[V any](c Ctx, key any, value ...V) V
-
-// get local value
+// Get a value
 func Locals[V any](c Ctx, key any) V
-// set local value
-func Locals[V any](c Ctx, key any, value ...V) V
 ```
 
 ```go title="Example"
@@ -87,8 +83,7 @@ app.Get("/user/*", func(c fiber.Ctx) error {
 
 ### Params
 
-Params function utilizing Go's generics feature.
-This function allows for retrieving route parameters with a more specific data type.
+Retrieves route parameters as a specific type.
 
 ```go title="Signature"
 func Params[V GenericType](c Ctx, key string, defaultValue ...V) V
@@ -106,8 +101,7 @@ app.Get("/user/:user/:id", func(c fiber.Ctx) error {
 
 ### Query
 
-Query function utilizing Go's generics feature.
-This function allows for retrieving query parameters with a more specific data type.
+Retrieves query parameters as a specific type.
 
 ```go title="Signature"
 func Query[V GenericType](c Ctx, key string, defaultValue ...V) V

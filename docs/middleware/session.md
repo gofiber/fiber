@@ -4,7 +4,7 @@ id: session
 
 # Session
 
-The Session middleware provides robust session management for Fiber applications, utilizing the [Storage](https://github.com/gofiber/storage) package for multi-database support via a unified interface. By default, session data is stored in memory, but custom storage options are easily configurable.
+The Session middleware adds session management to Fiber apps through the [Storage](https://github.com/gofiber/storage) package, which offers a unified interface for multiple databases. By default, sessions live in memory, but you can plug in any storage backend.
 
 ## Table of Contents
 
@@ -74,7 +74,7 @@ app.Use(session.New(session.Config{
 
 ### Middleware Pattern (Recommended)
 
-The middleware pattern automatically manages session lifecycle and is the recommended approach for most applications.
+This pattern automatically manages the session lifecycle and is recommended for most applications.
 
 ```go
 // Setup middleware
@@ -101,7 +101,7 @@ app.Post("/login", func(c fiber.Ctx) error {
 
 ### Store Pattern (Advanced)
 
-Use the store pattern for background tasks or when you need direct session access.
+Use the store pattern for background tasks or when you need direct access to sessions.
 
 ```go
 import (
@@ -153,7 +153,7 @@ app.Post("/login", func(c fiber.Ctx) error {
     
     // Simple credential validation (use proper authentication in production)
     if email == "admin@example.com" && password == "secret" {
-        // CRITICAL: Regenerate session ID to prevent session fixation
+        // Important: Regenerate the session ID to prevent fixation
         // This changes the session ID while preserving existing data
         if err := sess.Regenerate(); err != nil {
             return c.Status(500).SendString("Session error")
@@ -194,7 +194,7 @@ app.Post("/login", func(c fiber.Ctx) error {
         return c.Status(401).JSON(fiber.Map{"error": "Invalid credentials"})
     }
     
-    // CRITICAL: Regenerate session ID to prevent session fixation
+    // Important: Regenerate the session ID to prevent fixation
     // This changes the session ID while preserving existing data
     if err := sess.Regenerate(); err != nil {
         return c.Status(500).JSON(fiber.Map{"error": "Session error"})

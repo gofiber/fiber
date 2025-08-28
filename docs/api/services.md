@@ -4,18 +4,17 @@ title: 🥡 Services
 sidebar_position: 9
 ---
 
-Services provide external services needed to run the application, stored as dependencies in the application's State Management. They are supposed to be used while developing and testing the application, being started and stopped automatically by the application.
+Services wrap external dependencies. Register them in the application's state, and Fiber starts and stops them automatically—useful during development and testing.
 
-Once you add a service to the configuration of the GoFiber application, it is automatically started when the application starts and stopped when the application shuts down. You can retrieve the service from the application's State using the `GetService` or `MustGetService` functions (see [State Management](../api/state)).
+After adding a service to the app configuration, Fiber starts it on launch and stops it during shutdown. Retrieve a service from state with `GetService` or `MustGetService` (see [State Management](./state)).
 
 ## Service Interface
 
-`Service` is an interface that defines the methods for a service.
+The `Service` interface defines the methods a service must implement.
 
 ### Definition
 
 ```go
-// Service is an interface that defines the methods for a service.
 type Service interface {
     // Start starts the service, returning an error if it fails.
     Start(ctx context.Context) error
@@ -32,11 +31,11 @@ type Service interface {
 }
 ```
 
-## Methods on the Service
+## Service Methods
 
 ### Start
 
-Starts the service, returning an error if it fails. This method is automatically called when the application starts.
+Starts the service. Fiber calls this when the application starts.
 
 ```go
 func (s *SomeService) Start(ctx context.Context) error
@@ -52,7 +51,7 @@ func (s *SomeService) String() string
 
 ### State
 
-Returns the current state of the service, used to print the service in the startup message.
+Reports the current state of the service for the startup message.
 
 ```go
 func (s *SomeService) State(ctx context.Context) (string, error)
@@ -60,7 +59,7 @@ func (s *SomeService) State(ctx context.Context) (string, error)
 
 ### Terminate
 
-Terminate terminates the service after the application shuts down using a post shutdown hook, returning an error if it fails.
+Stops the service after the application shuts down using a post-shutdown hook.
 
 ```go
 func (s *SomeService) Terminate(ctx context.Context) error
@@ -68,7 +67,7 @@ func (s *SomeService) Terminate(ctx context.Context) error
 
 ## Comprehensive Examples
 
-### Example: Adding a service
+### Example: Adding a Service
 
 This example demonstrates how to add a Redis store as a service to the application, backed by the Testcontainers Redis Go module.
 
@@ -190,9 +189,9 @@ func main() {
 
 ```
 
-### Example: Adding a service with a Store Middleware
+### Example: Add a service with the Store middleware
 
-This example demonstrates how to use Services with the Store Middleware for dependency injection in a Fiber application. It uses a Redis store, backed by the Testcontainers Redis Go module.
+This example shows how to use services with the Store middleware for dependency injection. It uses a Redis store backed by the Testcontainers Redis module.
 
 ```go
 package main

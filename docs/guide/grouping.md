@@ -5,7 +5,7 @@ sidebar_position: 2
 ---
 
 :::info
-In general, group functionality in Fiber behaves like Express.js. Groups are declared virtually, and all routes defined within a group are flattened into a single list with a prefix and processed in the order declared. This makes group behavior in Fiber identical to Express.js.
+Grouping works like Express.js. Groups are virtual; routes are flattened with the group's prefix and executed in declaration order, mirroring Express.js.
 :::
 
 ## Paths
@@ -30,7 +30,7 @@ func main() {
 }
 ```
 
-A group of paths can include an optional handler.
+Groups can also include an optional handler.
 
 ```go
 func main() {
@@ -51,12 +51,12 @@ func main() {
 ```
 
 :::caution
-Accessing `/api`, `/v1`, or `/v2` directly results in a **404** error, so configure appropriate error handlers.
+Accessing `/api`, `/v1`, or `/v2` directly returns a **404**, so add error handlers as needed.
 :::
 
 ## Group Handlers
 
-Group handlers can also act as routing paths, but they must call `Next` to continue the flow.
+Group handlers can act as routing paths but must call `Next` to continue the flow.
 
 ```go
 func main() {
