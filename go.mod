@@ -9,8 +9,8 @@ require (
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-isatty v0.0.20
 	github.com/shamaton/msgpack/v2 v2.3.0
-	github.com/stretchr/testify v1.11.0
-	github.com/tinylib/msgp v1.3.0
+	github.com/stretchr/testify v1.11.1
+	github.com/tinylib/msgp v1.4.0
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.65.0
 	golang.org/x/crypto v0.41.0
