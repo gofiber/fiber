@@ -86,8 +86,8 @@ Include the prefix in your config:
 
 ```go
 Users: map[string]string{
-    "john": "{SHA256}47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
-    "admin": "{SHA512}z4PhNX7vuL3xVCHD/iXW0vH0J3ltYnYwC2R8H0a7ef6vQfhzW1gP6ZVxK5vNFR7wRTPRDUeIoWzY4xXHzsmo7w==",
+    "john":  "{SHA256}K7gNU3sdo+OL0wNhqoVWhr3g6s1xYv72ol/pe/Unols=",
+    "admin": "{SHA512}vSsar3708Jvp9Szi2NWZZ02Bqp1qRCFpbcTZPdBhnWgs5WtNZKnvCXdhztmeD2cmW192CF5bDufKRpayrW/isg==",
 }
 ```
 
