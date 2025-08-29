@@ -25,9 +25,9 @@ However, `fasthttp` doesn't support cancellation yet, so
 The `fiber.Ctx` instance is only valid within the lifetime of the handler.
 It is reused for subsequent requests, so avoid storing `c` or using it in
 goroutines that outlive the handler. For asynchronous work, call
-`c.Context()` inside the handler to obtain a `context.Context` that copies
-`Locals` and any values set via `SetContext` and can safely be used after
-the handler returns.
+`c.Context()` inside the handler to obtain a `context.Context` that can safely
+be used after the handler returns. By default, this returns `context.Background()`
+unless a custom context was provided with `c.SetContext`.
 :::
 
 ```go title="Example"

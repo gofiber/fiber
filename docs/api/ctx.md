@@ -75,9 +75,9 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Context()
 
-Returns a `context.Context` populated with all `Locals` and values supplied via
-[`SetContext`](#setcontext). Unlike `fiber.Ctx` itself, the returned context is
-safe to use after the handler completes.
+Returns a `context.Context` that was previously set with [`SetContext`](#setcontext).
+If no context was set, it returns `context.Background()`. Unlike `fiber.Ctx` itself,
+the returned context is safe to use after the handler completes.
 
 ```go title="Signature"
 func (c fiber.Ctx) Context() context.Context
@@ -85,7 +85,6 @@ func (c fiber.Ctx) Context() context.Context
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
-  c.Locals("requestID", "123")
   ctx := c.Context()
   go doWork(ctx)
   return nil
@@ -98,7 +97,7 @@ Sets the base `context.Context` used by [`Context()`](#context-1). Use this to
 propagate deadlines, cancelation signals, or values to asynchronous operations.
 
 ```go title="Signature"
-func (c fiber.Ctx) SetContext(ctx context.Context) fiber.Ctx
+func (c fiber.Ctx) SetContext(ctx context.Context)
 ```
 
 ```go title="Example"

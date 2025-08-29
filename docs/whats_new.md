@@ -482,7 +482,7 @@ testConfig := fiber.TestConfig{
 - **SendString**: Similar to Express.js, sends a string as the response.
 - **String**: Similar to Express.js, converts a value to a string.
 - **Value**: For implementing `context.Context`. Returns request-scoped value from Locals.
-- **Context()**: Returns a `context.Context` derived from the request that can be used outside the handler.
+- **Context()**: Returns a `context.Context` that can be used outside the handler.
 - **SetContext**: Sets the base `context.Context` returned by `Context()` for propagating deadlines or values.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.

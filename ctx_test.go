@@ -2850,18 +2850,21 @@ func Test_Ctx_Value(t *testing.T) {
 func Test_Ctx_Context(t *testing.T) {
 	t.Parallel()
 	app := New()
-	var asyncCtx context.Context
-	app.Get("/test", func(c Ctx) error {
-		c.Locals("foo", "bar")
-		c.SetContext(context.WithValue(context.Background(), "user", "x"))
-		asyncCtx = c.Context()
-		return nil
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Run("Nil_Context", func(t *testing.T) {
+		t.Parallel()
+		ctx := c.Context()
+		require.Equal(t, ctx, context.Background())
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Equal(t, "bar", asyncCtx.Value("foo"))
-	require.Equal(t, "x", asyncCtx.Value("user"))
+
+	t.Run("ValueContext", func(t *testing.T) {
+		t.Parallel()
+		testKey := struct{}{}
+		testValue := "Test Value"
+		ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
+		require.Equal(t, testValue, ctx.Value(testKey))
+	})
 }
 
 func Test_Ctx_AccessAfterHandlerPanics(t *testing.T) {
@@ -2896,35 +2899,54 @@ func Test_Ctx_Context_AfterHandlerPanics(t *testing.T) {
 	})
 }
 
-func Test_Ctx_Context_LocalsOnly(t *testing.T) {
+// go test -run Test_Ctx_SetContext
+func Test_Ctx_SetContext(t *testing.T) {
 	t.Parallel()
 	app := New()
-	var asyncCtx context.Context
-	app.Get("/test", func(c Ctx) error {
-		c.Locals("foo", "bar")
-		asyncCtx = c.Context()
-		return nil
-	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Equal(t, "bar", asyncCtx.Value("foo"))
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	testKey := struct{}{}
+	testValue := "Test Value"
+	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
+	c.SetContext(ctx)
+	require.Equal(t, testValue, c.Context().Value(testKey))
 }
 
-func Test_Ctx_Context_UserContextOnly(t *testing.T) {
+// go test -run Test_Ctx_Context_Multiple_Requests
+func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 	t.Parallel()
+	testKey := struct{}{}
+	testValue := "foobar-value"
+
 	app := New()
-	var asyncCtx context.Context
-	app.Get("/test", func(c Ctx) error {
-		c.SetContext(context.WithValue(context.Background(), "user", "x"))
-		asyncCtx = c.Context()
-		return nil
+	app.Get("/", func(c Ctx) error {
+		ctx := c.Context()
+
+		if ctx.Value(testKey) != nil {
+			return c.SendStatus(StatusInternalServerError)
+		}
+
+		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint:staticcheck // not needed for tests
+		c.SetContext(ctx)
+
+		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Equal(t, "x", asyncCtx.Value("user"))
-	require.Nil(t, asyncCtx.Value("foo"))
+
+	// Consecutive Requests
+	for i := 1; i <= 10; i++ {
+		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
+			t.Parallel()
+			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
+
+			require.NoError(t, err, "Unexpected error from response")
+			require.Equal(t, StatusOK, resp.StatusCode, "context.Context returned from c.Context() is reused")
+
+			b, err := io.ReadAll(resp.Body)
+			require.NoError(t, err, "Unexpected error from reading response body")
+			require.Equal(t, fmt.Sprintf("resp_%d_returned", i), string(b), "response text incorrect")
+		})
+	}
 }
 
 // go test -run Test_Ctx_Locals_Generic
