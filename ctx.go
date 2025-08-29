@@ -45,6 +45,7 @@ type contextKey int //nolint:unused // need for future (nolintlint)
 //
 //go:generate ifacemaker --file ctx.go --file req.go --file res.go --struct DefaultCtx --iface Ctx --pkg fiber --promoted --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
+	userContext   context.Context      // User provided context
 	DefaultReq                         // Default request api
 	DefaultRes                         // Default response api
 	app           *App                 // Reference to *App
@@ -105,6 +106,28 @@ func (c *DefaultCtx) BaseURL() string {
 // a cancellation signal, and other values across API boundaries.
 func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 	return c.fasthttp
+}
+
+// Context returns a standard context.Context containing all values stored in Locals
+// and any user-provided context set via SetContext. The returned context is safe
+// for use outside of the handler since it does not depend on the recycled Fiber Ctx.
+func (c *DefaultCtx) Context() context.Context {
+	ctx := c.userContext
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	c.fasthttp.VisitUserValuesAll(func(key, val any) {
+		ctx = context.WithValue(ctx, key, val)
+	})
+	return ctx
+}
+
+// SetContext sets a custom context.Context that will be returned by Context().
+// This can be used to propagate deadlines, cancelation signals, or values to
+// asynchronous operations started from the handler.
+func (c *DefaultCtx) SetContext(ctx context.Context) Ctx {
+	c.userContext = ctx
+	return c
 }
 
 // Deadline returns the time when work done on behalf of this context
@@ -439,6 +462,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 	c.DefaultReq.c = c
 	c.DefaultRes.c = c
+	c.userContext = nil
 }
 
 // Release is a method to reset context fields when to use ReleaseCtx()
@@ -455,6 +479,7 @@ func (c *DefaultCtx) release() {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
 	}
+	c.userContext = nil
 	c.DefaultReq.release()
 	c.DefaultRes.release()
 }

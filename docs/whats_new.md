@@ -482,6 +482,8 @@ testConfig := fiber.TestConfig{
 - **SendString**: Similar to Express.js, sends a string as the response.
 - **String**: Similar to Express.js, converts a value to a string.
 - **Value**: For implementing `context.Context`. Returns request-scoped value from Locals.
+- **Context()**: Returns a `context.Context` derived from the request that can be used outside the handler.
+- **SetContext**: Sets the base `context.Context` returned by `Context()` for propagating deadlines or values.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
 - **MsgPack**: Introducing [MsgPack](https://msgpack.org/) binary encoding format for both request & response body. MsgPack is a binary serialization format that is more efficient than JSON, making it ideal for high-performance applications.
@@ -503,7 +505,7 @@ testConfig := fiber.TestConfig{
 - **RedirectBack**: Use `c.Redirect().Back()` instead.
 - **ReqHeaderParser**: Use `c.Bind().Header()` instead.
 - **UserContext**: Removed. `Ctx` itself now satisfies `context.Context`; pass `c` directly where a `context.Context` is required.
-- **SetUserContext**: Removed. Use `context.WithValue` on `c` or `c.Locals` to store additional request-scoped values.
+- **SetUserContext**: Removed. Use `SetContext` and `Context()` or `context.WithValue` on `c` to store additional request-scoped values.
 
 ### Changed Methods
 

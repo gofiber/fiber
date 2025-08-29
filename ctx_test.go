@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"context"
 	"crypto/tls"
 	"embed"
 	"encoding/hex"
@@ -2843,6 +2844,87 @@ func Test_Ctx_Value(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_Context
+func Test_Ctx_Context(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var asyncCtx context.Context
+	app.Get("/test", func(c Ctx) error {
+		c.Locals("foo", "bar")
+		c.SetContext(context.WithValue(context.Background(), "user", "x"))
+		asyncCtx = c.Context()
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, "bar", asyncCtx.Value("foo"))
+	require.Equal(t, "x", asyncCtx.Value("user"))
+}
+
+func Test_Ctx_AccessAfterHandlerPanics(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Panics(t, func() {
+		ctx.Locals("foo")
+	})
+}
+
+func Test_Ctx_Context_AfterHandlerPanics(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Panics(t, func() {
+		_ = ctx.Context()
+	})
+}
+
+func Test_Ctx_Context_LocalsOnly(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var asyncCtx context.Context
+	app.Get("/test", func(c Ctx) error {
+		c.Locals("foo", "bar")
+		asyncCtx = c.Context()
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, "bar", asyncCtx.Value("foo"))
+}
+
+func Test_Ctx_Context_UserContextOnly(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var asyncCtx context.Context
+	app.Get("/test", func(c Ctx) error {
+		c.SetContext(context.WithValue(context.Background(), "user", "x"))
+		asyncCtx = c.Context()
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, "x", asyncCtx.Value("user"))
+	require.Nil(t, asyncCtx.Value("foo"))
 }
 
 // go test -run Test_Ctx_Locals_Generic

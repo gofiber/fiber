@@ -4,6 +4,7 @@ package fiber
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"io"
 	"mime/multipart"
@@ -22,6 +23,14 @@ type Ctx interface {
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
 	RequestCtx() *fasthttp.RequestCtx
+	// Context returns a standard context.Context containing all values stored in Locals
+	// and any user-provided context set via SetContext. The returned context is safe
+	// for use outside of the handler since it does not depend on the recycled Fiber Ctx.
+	Context() context.Context
+	// SetContext sets a custom context.Context that will be returned by Context().
+	// This can be used to propagate deadlines, cancelation signals, or values to
+	// asynchronous operations started from the handler.
+	SetContext(ctx context.Context) Ctx
 	// Deadline returns the time when work done on behalf of this context
 	// should be canceled. Deadline returns ok==false when no deadline is
 	// set. Successive calls to Deadline return the same results.
