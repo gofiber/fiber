@@ -4,7 +4,7 @@ id: helmet
 
 # Helmet
 
-Helmet middleware helps secure your apps by setting various HTTP headers.
+Helmet secures your app by adding common security headers.
 
 ## Signatures
 
@@ -13,6 +13,8 @@ func New(config ...Config) fiber.Handler
 ```
 
 ## Examples
+
+Once your Fiber app is initialized, add the middleware:
 
 ```go
 package main
@@ -45,24 +47,24 @@ curl -I http://localhost:3000
 
 | Property                  | Type                    | Description                                 | Default          |
 |:--------------------------|:------------------------|:--------------------------------------------|:-----------------|
-| Next                      | `func(fiber.Ctx) bool` | Next defines a function to skip middleware. | `nil`            |
-| XSSProtection             | `string`                | XSSProtection                               | "0"              |
-| ContentTypeNosniff        | `string`                | ContentTypeNosniff                          | "nosniff"        |
-| XFrameOptions             | `string`                | XFrameOptions                               | "SAMEORIGIN"     |
-| HSTSMaxAge                | `int`                   | HSTSMaxAge                                  | 0                |
-| HSTSExcludeSubdomains     | `bool`                  | HSTSExcludeSubdomains                       | false            |
-| ContentSecurityPolicy     | `string`                | ContentSecurityPolicy                       | ""               |
-| CSPReportOnly             | `bool`                  | CSPReportOnly                               | false            |
-| HSTSPreloadEnabled        | `bool`                  | HSTSPreloadEnabled                          | false            |
-| ReferrerPolicy            | `string`                | ReferrerPolicy                              | "no-referrer" |
-| PermissionPolicy          | `string`                | Permissions-Policy                          | ""               |
-| CrossOriginEmbedderPolicy | `string`                | Cross-Origin-Embedder-Policy                | "require-corp"   |
-| CrossOriginOpenerPolicy   | `string`                | Cross-Origin-Opener-Policy                  | "same-origin"    |
-| CrossOriginResourcePolicy | `string`                | Cross-Origin-Resource-Policy                | "same-origin"    |
-| OriginAgentCluster        | `string`                | Origin-Agent-Cluster                        | "?1"             |
-| XDNSPrefetchControl       | `string`                | X-DNS-Prefetch-Control                      | "off"            |
-| XDownloadOptions          | `string`                | X-Download-Options                          | "noopen"         |
-| XPermittedCrossDomain     | `string`                | X-Permitted-Cross-Domain-Policies           | "none"           |
+| Next                      | `func(fiber.Ctx) bool` | Skips the middleware when the function returns `true`. | `nil`            |
+| XSSProtection             | `string`                | Value for the `X-XSS-Protection` header.               | "0"              |
+| ContentTypeNosniff        | `string`                | Value for the `X-Content-Type-Options` header.         | "nosniff"        |
+| XFrameOptions             | `string`                | Value for the `X-Frame-Options` header.                | "SAMEORIGIN"     |
+| HSTSMaxAge                | `int`                   | `max-age` value for `Strict-Transport-Security`.       | 0                |
+| HSTSExcludeSubdomains     | `bool`                  | Disables HSTS on subdomains when `true`.               | false            |
+| ContentSecurityPolicy     | `string`                | Value for the `Content-Security-Policy` header.        | ""               |
+| CSPReportOnly             | `bool`                  | Enables report-only mode for CSP.                      | false            |
+| HSTSPreloadEnabled        | `bool`                  | Adds the `preload` directive to HSTS.                  | false            |
+| ReferrerPolicy            | `string`                | Value for the `Referrer-Policy` header.                | "no-referrer" |
+| PermissionPolicy          | `string`                | Value for the `Permissions-Policy` header.             | ""               |
+| CrossOriginEmbedderPolicy | `string`                | Value for the `Cross-Origin-Embedder-Policy` header.   | "require-corp"   |
+| CrossOriginOpenerPolicy   | `string`                | Value for the `Cross-Origin-Opener-Policy` header.     | "same-origin"    |
+| CrossOriginResourcePolicy | `string`                | Value for the `Cross-Origin-Resource-Policy` header.   | "same-origin"    |
+| OriginAgentCluster        | `string`                | Value for the `Origin-Agent-Cluster` header.           | "?1"             |
+| XDNSPrefetchControl       | `string`                | Value for the `X-DNS-Prefetch-Control` header.         | "off"            |
+| XDownloadOptions          | `string`                | Value for the `X-Download-Options` header.             | "noopen"         |
+| XPermittedCrossDomain     | `string`                | Value for the `X-Permitted-Cross-Domain-Policies` header. | "none"        |
 
 ## Default Config
 

@@ -14,12 +14,12 @@ import TabItem from '@theme/TabItem';
 
 ## Fiber Context as `context.Context`
 
-Fiber's [`Ctx`](../api/ctx.md) now implements Go's
+Fiber's [`Ctx`](../api/ctx.md) implements Go's
 [`context.Context`](https://pkg.go.dev/context#Context) interface.
-This means you can pass the context directly to functions that expect
-`context.Context` without any adapters.
-However, due to current limitations in `fasthttp`, the
-`Deadline`, `Done`, and `Err` methods are implemented as no-ops.
+You can pass `c` directly to functions that expect a `context.Context`
+without adapters.
+However, `fasthttp` doesn't support cancellation yet, so
+`Deadline`, `Done`, and `Err` are no-ops.
 
 ```go title="Example"
 func doSomething(ctx context.Context) {
@@ -34,9 +34,9 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Retrieving Values
 
-`Ctx.Value` is backed by [Locals](../api/ctx.md#locals). Values stored
-with `c.Locals` can be read back via the `Value` method or through
-`context.WithValue` helpers.
+`Ctx.Value` is backed by [Locals](../api/ctx.md#locals).
+Values stored with `c.Locals` are accessible through `Value` or
+standard `context.WithValue` helpers.
 
 ```go title="Locals and Value"
 app.Get("/", func(c fiber.Ctx) error {
@@ -50,8 +50,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 The underlying [`fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx)
 can be accessed via `c.RequestCtx()`.
-This exposes low level APIs and the context support provided by the
-`fasthttpctx` layer.
+This exposes low-level APIs and the extra context support provided by
+`fasthttpctx`.
 
 ```go title="Accessing RequestCtx"
 app.Get("/raw", func(c fiber.Ctx) error {
@@ -128,10 +128,15 @@ app.Get("/", func(c fiber.Ctx) error {
 ### Basic Authentication
 
 After successful authentication, the username is available with
-`basicauth.UsernameFromContext`.
+`basicauth.UsernameFromContext`. Passwords in `Users` must be pre-hashed.
 
 ```go
-app.Use(basicauth.New(basicauth.Config{Users: map[string]string{"admin": "secret"}}))
+app.Use(basicauth.New(basicauth.Config{
+    Users: map[string]string{
+        // "secret" hashed using SHA-256
+        "admin": "{SHA256}K7gNU3sdo+OL0wNhqoVWhr3g6s1xYv72ol/pe/Unols=",
+    },
+}))
 app.Get("/", func(c fiber.Ctx) error {
     user := basicauth.UsernameFromContext(c)
     return c.SendString(user)
@@ -170,11 +175,10 @@ app.Get("/job", func(c fiber.Ctx) error {
 })
 ```
 
-Even though the base `fiber.Ctx` never cancels on its own, wrapping it with
-helpers like `context.WithTimeout` creates a derived context that honors
-deadlines and cancellation for any operations you launch from the handler. This
-common pattern lets you coordinate work with external APIs or databases while
-keeping a familiar API.
+The base `fiber.Ctx` never cancels on its own. Wrapping it with helpers
+like `context.WithTimeout` yields a derived context that honors deadlines
+and cancellation for operations started from the handler. This pattern lets
+you coordinate work with external APIs or databases while using Fiber's API.
 
 ## Summary
 

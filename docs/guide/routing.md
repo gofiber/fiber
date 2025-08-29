@@ -18,7 +18,7 @@ import RoutingHandler from './../partials/routing/handler.md';
 
 ## Paths
 
-Route paths, combined with a request method, define the endpoints at which requests can be made. Route paths can be **strings** or **string patterns**.
+A route path paired with an HTTP method defines an endpoint. It can be a plain **string** or a **pattern**.
 
 ### Examples of route paths based on strings
 
@@ -39,22 +39,22 @@ app.Get("/random.txt", func(c fiber.Ctx) error {
 })
 ```
 
-As with the expressJs framework, the order of the route declaration plays a role.
-When a request is received, the routes are checked in the order in which they are declared.
+As with the Express.js framework, the order in which routes are declared matters.
+Routes are evaluated sequentially, so more specific paths should appear before those with variables.
 
 :::info
-So please be careful to write routes with variable parameters after the routes that contain fixed parts, so that these variable parts do not match instead and unexpected behavior occurs.
+Place routes with variable parameters after fixed paths to avoid unintended matches.
 :::
 
 ## Parameters
 
-Route parameters are dynamic elements in the route, which are **named** or **not named segments**. These segments are used to capture the values specified at their position in the URL. The obtained values can be retrieved using the [Params](https://fiber.wiki/context#params) function, with the name of the route parameter specified in the path as their respective keys or, for unnamed parameters, the character\(\*, +\) and the counter of this.
+Route parameters are dynamic segments in a path, either named or unnamed, used to capture values from the URL. Retrieve them with the [Params](https://fiber.wiki/context#params) function using the parameter name or, for unnamed parameters, the wildcard (`*`) or plus (`+`) symbol with an index.
 
-The characters :, +, and \* are characters that introduce a parameter.
+The characters `:`, `+`, and `*` introduce parameters.
 
-Greedy parameters are indicated by wildcard\(\*\) or plus\(+\) signs.
+Use `*` or `+` to capture segments greedily.
 
-The routing also offers the possibility to use optional parameters, for the named parameters these are marked with a final "?", unlike the plus sign which is not optional, you can use the wildcard character for a parameter range which is optional and greedy.
+You can define optional parameters by appending `?` to a named segment. The `+` sign is greedy and required, while `*` acts as an optional greedy wildcard.
 
 ### Example of defining routes with route parameters
 
@@ -87,11 +87,11 @@ app.Get(`/v1/some/resource/name\:customVerb`, func(c fiber.Ctx) error {
 ```
 
 :::info
-Since the hyphen \(`-`\) and the dot \(`.`\) are interpreted literally, they can be used along with route parameters for useful purposes.
+The hyphen \(`-`\) and dot \(`.`\) are treated literally, so you can combine them with route parameters.
 :::
 
 :::info
-All special parameter characters can also be escaped with `"\\"` and lose their value, so you can use them in the route if you want, like in the custom methods of the [google api design guide](https://cloud.google.com/apis/design/custom_methods). It's recommended to use backticks `` ` `` because in go's regex documentation, they always use backticks to make sure it is unambiguous and the escape character doesn't interfere with regex patterns in an unexpected way.
+Escape special parameter characters with `\\` to treat them literally. This technique is useful for custom methods like those in the [Google API Design Guide](https://cloud.google.com/apis/design/custom_methods). Wrap routes in backticks to keep escape sequences clear.
 :::
 
 ```go
@@ -110,7 +110,7 @@ app.Get("/flights/:from-:to", func(c fiber.Ctx) error {
 })
 ```
 
-Our intelligent router recognizes that the introductory parameter characters should be part of the request route in this case and can process them as such.
+Fiber's router detects when these characters belong to the literal path and handles them accordingly.
 
 ```go
 // http://localhost:3000/shop/product/color:blue/size:xs
@@ -120,7 +120,7 @@ app.Get("/shop/product/color::color/size::size", func(c fiber.Ctx) error {
 })
 ```
 
-In addition, several parameters in a row and several unnamed parameter characters in the route, such as the wildcard or plus character, are possible, which greatly expands the possibilities of the router for the user.
+You can chain multiple named or unnamed parameters—including wildcard and plus segments—giving the router greater flexibility.
 
 ```go
 // GET /@v1
@@ -140,7 +140,7 @@ app.Get("/*v1*/proxy", handler)
 app.Get("/v1/*/shop/*", handler)
 ```
 
-We have adapted the routing strongly to the express routing, but currently without the possibility of the regular expressions, because they are quite slow. The possibilities can be tested with version 0.1.7 \(express 4\) in the online [Express route tester](http://forbeslindesay.github.io/express-route-tester/).
+Fiber's routing is inspired by Express but intentionally omits regular expression routes due to their performance cost. You can try similar patterns using the Express route tester (v0.1.7).
 
 ### Constraints
 
@@ -206,7 +206,7 @@ app.Get("/:test<min(100);maxLen(5)>", func(c fiber.Ctx) error {
 </TabItem>
 <TabItem value="regex-constraint" label="Regex Constraint">
 
-Fiber precompiles regex query when to register routes. So there're no performance overhead for regex constraint.
+Fiber precompiles the regex when registering routes, so regex constraints add no runtime overhead.
 
 ```go
 app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})>`, func(c fiber.Ctx) error {
@@ -227,7 +227,7 @@ app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})>`, func(c fiber.Ctx) error {
 </Tabs>
 
 :::caution
-You should use `\\` before routing-specific characters when to use datetime constraint (`*`, `+`, `?`, `:`, `/`, `<`, `>`, `;`, `(`, `)`), to avoid wrong parsing.
+Prefix routing characters with `\\` when using the datetime constraint (`*`, `+`, `?`, `:`, `/`, `<`, `>`, `;`, `(`, `)`), to avoid misparsing.
 :::
 
 #### Optional Parameter Example
@@ -254,8 +254,7 @@ Custom constraints can be added to Fiber using the `app.RegisterCustomConstraint
 Attention, custom constraints can now override built-in constraints. If a custom constraint has the same name as a built-in constraint, the custom constraint will be used instead. This allows for more flexibility in defining route parameter constraints.
 :::
 
-It is a good idea to add external constraints to your project once you want to add more specific rules to your routes.
-For example, you can add a constraint to check if a parameter is a valid ULID.
+Add external constraints when you need stricter rules, such as verifying that a parameter is a valid ULID.
 
 ```go
 // CustomConstraint is an interface for custom constraints

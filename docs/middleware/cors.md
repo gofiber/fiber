@@ -4,15 +4,15 @@ id: cors
 
 # CORS
 
-CORS (Cross-Origin Resource Sharing) is a middleware for [Fiber](https://github.com/gofiber/fiber) that allows servers to specify who can access its resources and how. It's not a security feature, but a way to relax the security model of web browsers for cross-origin requests. You can learn more about CORS on [Mozilla Developer Network](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS).
+CORS (Cross-Origin Resource Sharing) middleware for [Fiber](https://github.com/gofiber/fiber) lets servers control who can access resources and how. It isn't a security feature; it merely relaxes the browser's same-origin policy so cross-origin requests can succeed. Learn more on [MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS).
 
-This middleware works by adding CORS headers to responses from your Fiber application. These headers specify which origins, methods, and headers are allowed for cross-origin requests. It also handles preflight requests, which are a CORS mechanism to check if the actual request is safe to send.
+It adds CORS headers to responses, listing allowed origins, methods, and headers, and handles preflight checks.
 
-The middleware uses the `AllowOrigins` option to control which origins can make cross-origin requests. It supports single origin, multiple origins, subdomain matching, and wildcard origin. It also allows programmatic origin validation with the `AllowOriginsFunc` option.
+Use the `AllowOrigins` option to define which origins may send cross-origin requests. It accepts single origins, lists, subdomain patterns, wildcards, and supports dynamic validation with `AllowOriginsFunc`.
 
-To ensure that the provided `AllowOrigins` origins are correctly formatted, this middleware validates and normalizes them. It checks for valid schemes, i.e., HTTP or HTTPS, and it will automatically remove trailing slashes. If the provided origin is invalid, the middleware will panic.
+The middleware normalizes `AllowOrigins`, verifies HTTP/HTTPS schemes, and strips trailing slashes. Invalid origins cause a panic.
 
-When configuring CORS, it's important to avoid [common pitfalls](#common-pitfalls) like using a wildcard origin with credentials, being overly permissive with origins, and inadequate validation with `AllowOriginsFunc`. Misconfiguration can expose your application to various security risks.
+Avoid [common pitfalls](#common-pitfalls) such as using wildcard origins with credentials, overly permissive origin lists, or skipping validation with `AllowOriginsFunc`, as misconfiguration can create security risks.
 
 ## Signatures
 
@@ -22,7 +22,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package:
 
 ```go
 import (
@@ -31,7 +31,7 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Once your Fiber app is initialized, apply the middleware in one of the following ways:
 
 ### Basic usage
 
@@ -120,7 +120,7 @@ panic: [CORS] Configuration error: When 'AllowCredentials' is set to true, 'Allo
 | AllowPrivateNetwork  | `bool`                      | Indicates whether the `Access-Control-Allow-Private-Network` response header should be set to `true`, allowing requests from private networks. This aligns with modern security practices for web applications interacting with private networks.                                                                                                                    | `false`                                 |
 | ExposeHeaders        | `[]string`                    | ExposeHeaders defines an allowlist of headers that clients are allowed to access.                                                                                                                                                                                                                                                                                    | `[]`                                    |
 | MaxAge               | `int`                       | MaxAge indicates how long (in seconds) the results of a preflight request can be cached. If you pass MaxAge 0, the Access-Control-Max-Age header will not be added and the browser will use 5 seconds by default. To disable caching completely, pass MaxAge value negative. It will set the Access-Control-Max-Age header to 0.                                     | `0`                                     |
-| Next                 | `func(fiber.Ctx) bool`      | Next defines a function to skip this middleware when returned true.                                                                                                                                                                                                                                                                                                  | `nil`                                   |
+| Next                 | `func(fiber.Ctx) bool`      | Next defines a function to skip this middleware when it returns true.                                                                                                                                                                                                                                                                                                  | `nil`                                   |
 
 :::note
 If AllowOrigins is a zero value `[]string{}`, and AllowOriginsFunc is provided, the middleware will not default to allowing all origins with the wildcard value "*". Instead, it will rely on the AllowOriginsFunc to dynamically determine whether to allow a request based on its origin. This provides more flexibility and control over which origins are allowed.
@@ -167,7 +167,7 @@ app.Use(cors.New(cors.Config{
 
 The CORS middleware works by adding the necessary CORS headers to responses from your Fiber application. These headers tell browsers what origins, methods, and headers are allowed for cross-origin requests.
 
-When a request comes in, the middleware first checks if it's a preflight request, which is a CORS mechanism to determine whether the actual request is safe to send. Preflight requests are HTTP OPTIONS requests with specific CORS headers. If it's a preflight request, the middleware responds with the appropriate CORS headers and ends the request.
+When a request arrives, the middleware first checks whether it is a preflight request—a CORS mechanism that determines if the actual request is safe to send. Preflight requests are HTTP OPTIONS requests with specific CORS headers. If the request is preflight, the middleware responds with the appropriate CORS headers and ends the request.
 
 :::note
 Preflight requests are typically sent by browsers before making actual cross-origin requests, especially for methods other than GET or POST, or when custom headers are used.
@@ -175,7 +175,7 @@ Preflight requests are typically sent by browsers before making actual cross-ori
 A preflight request is an HTTP OPTIONS request that includes the `Origin`, `Access-Control-Request-Method`, and optionally `Access-Control-Request-Headers` headers. The browser sends this request to check if the server allows the actual request method and headers.
 :::
 
-If it's not a preflight request, the middleware adds the CORS headers to the response and passes the request to the next handler. The actual CORS headers added depend on the configuration of the middleware.
+If the request is not preflight, the middleware adds the CORS headers to the response and passes the request to the next handler. The actual CORS headers added depend on the configuration of the middleware.
 
 The `AllowOrigins` option controls which origins can make cross-origin requests. The middleware handles different `AllowOrigins` configurations as follows:
 
@@ -209,7 +209,7 @@ When deploying Fiber applications behind infrastructure components like CDNs, AP
 
 ### Option 1: Use Infrastructure-Level CORS (Recommended)
 
-**For most production deployments, it's often preferable to handle CORS at the infrastructure level** rather than in your Fiber application. This approach offers several advantages:
+**For most production deployments, it is often preferable to handle CORS at the infrastructure level** rather than in your Fiber application. This approach offers several advantages:
 
 - **Better Performance**: CORS headers are added at the edge, closer to the client
 - **Reduced Server Load**: Preflight requests are handled without reaching your application

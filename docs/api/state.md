@@ -4,7 +4,7 @@ title: 🗂️ State Management
 sidebar_position: 8
 ---
 
-The State Management provides a global key–value store for managing application dependencies and runtime data. This store is shared across the entire application and remains consistent between requests, and it's used to store [Services](../api/services). You can retrieve those Services from the global state using the `GetService` or `MustGetService` functions.
+State management provides a global key–value store for application dependencies and runtime data. The store is shared across the entire application and persists between requests. It's commonly used to store [Services](../api/services), which you can retrieve with the `GetService` or `MustGetService` functions.
 
 ## State Type
 
@@ -73,7 +73,7 @@ fmt.Println("App Name:", appName)
 
 Has checks if a key exists in the State.
 
-```go title="Signature"s
+```go title="Signature"
 func (s *State) Has(key string) bool
 ```
 
@@ -632,7 +632,7 @@ func main() {
             return c.Status(fiber.StatusBadRequest).SendString(err.Error())
         }
 
-        // Save the user to the database.
+        // Retrieve the Redis client from the global state.
         rdb, ok := fiber.GetState[*redis.Client](c.App().State(), "redis")
         if !ok {
             return c.Status(fiber.StatusInternalServerError).SendString("Redis client not found")

@@ -1,7 +1,7 @@
 ---
 id: app
 title: 🚀 App
-description: The app instance conventionally denotes the Fiber application.
+description: The `App` type represents your Fiber application.
 sidebar_position: 2
 ---
 
@@ -35,7 +35,7 @@ import RoutingHandler from './../partials/routing/handler.md';
 
 ### Mounting
 
-You can mount a Fiber instance using the [`app.Use`](./app.md#use) method, similar to [`Express`](https://expressjs.com/en/api.html#router.use).
+Mount another Fiber instance with [`app.Use`](./app.md#use), similar to Express's [`router.use`](https://expressjs.com/en/api.html#router.use).
 
 ```go title="Example"
 package main
@@ -219,7 +219,7 @@ func main() {
 
 ### HandlersCount
 
-This method returns the number of registered handlers.
+Returns the number of registered handlers.
 
 ```go title="Signature"
 func (app *App) HandlersCount() uint32
@@ -227,7 +227,7 @@ func (app *App) HandlersCount() uint32
 
 ### Stack
 
-This method returns the original router stack.
+Returns the underlying router stack.
 
 ```go title="Signature"
 func (app *App) Stack() [][]*Route

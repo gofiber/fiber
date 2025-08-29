@@ -11,6 +11,9 @@ import TabItem from '@theme/TabItem';
 
 ## Basic Auth
 
+Clients send credentials via the `Authorization` header, while the server
+stores hashed passwords as shown in the middleware example.
+
 <Tabs>
 <TabItem value="client" label="Client">
 
@@ -57,7 +60,8 @@ func main() {
     app.Use(
         basicauth.New(basicauth.Config{
             Users: map[string]string{
-                "john": "doe",
+                // "doe" hashed using SHA-256
+                "john": "{SHA256}eZ75KhGvkY4/t0HfQpNPO1aO0tk6wd908bjUGieTKm8=",
             },
         }),
     )
@@ -147,7 +151,9 @@ func main() {
 </TabItem>
 </Tabs>
 
-## Cookiejar
+## Cookie jar
+
+The client can store and reuse cookies between requests by attaching a cookie jar.
 
 ### Request
 
@@ -185,6 +191,8 @@ func main() {
 
 ### Response
 
+Read cookies set by the server directly from the jar.
+
 ```go
 func main() {
     jar := client.AcquireCookieJar()
@@ -216,7 +224,7 @@ func main() {
 
 </details>
 
-### Response 2
+### Response (follow-up request)
 
 ```go
 func main() {

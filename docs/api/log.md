@@ -5,9 +5,9 @@ description: Fiber's built-in log package
 sidebar_position: 6
 ---
 
-Logs serve as an essential tool for observing program behavior, diagnosing issues, and setting up corresponding alerts. Well-structured logs can significantly enhance search efficiency and streamline the troubleshooting process.
+Logs help you observe program behavior, diagnose issues, and trigger alerts. Structured logs improve searchability and speed up troubleshooting.
 
-Fiber offers a default mechanism for logging to standard output. Additionally, it provides several global functions, including `log.Info`, `log.Errorf`, `log.Warnw`, among others, to facilitate comprehensive logging capabilities.
+Fiber logs to standard output by default and exposes global helpers such as `log.Info`, `log.Errorf`, and `log.Warnw`.
 
 ## Log Levels
 
@@ -58,7 +58,7 @@ type AllLogger[T any] interface {
 
 ### Basic Logging
 
-Logs of different levels can be directly printed. These logs will be entered into `messageKey`, with the default key being `msg`.
+Call level-specific methods directly; entries use the `messageKey` (default `msg`).
 
 ```go
 log.Info("Hello, World!")
@@ -72,7 +72,7 @@ log.Panic("The system is down.")
 
 ### Formatted Logging
 
-Logs of different levels can be formatted before printing. All such methods end with an `f`.
+Append `f` to format the message.
 
 ```go
 log.Debugf("Hello %s", "boy")
@@ -84,7 +84,7 @@ log.Fatalf("So Long, and Thanks for All the %s.", "fish")
 
 ### Key-Value Logging
 
-Print a message with key-value pairs. If the key and value are not paired correctly, the log will output `KEYVALS UNPAIRED`.
+Key-value helpers log structured fields; mismatched pairs emit `KEYVALS UNPAIRED`.
 
 ```go
 log.Debugw("", "greeting", "Hello", "target", "boy")
@@ -96,7 +96,7 @@ log.Fatalw("", "fruit", "fish")
 
 ## Global Log
 
-For projects that require a simple, global logging function to print messages at any time, Fiber provides a global log.
+Fiber also exposes a global logger for quick messages.
 
 ```go
 import "github.com/gofiber/fiber/v3/log"
@@ -105,9 +105,7 @@ log.Info("info")
 log.Warn("warn")
 ```
 
-These global log functions allow you to log messages conveniently throughout your project.
-
-The above example uses the default `log.DefaultLogger` for standard output. You can also find various pre-implemented adapters under the [contrib](https://github.com/gofiber/contrib) package such as `fiberzap` and `fiberzerolog`, or you can implement your own logger and set it as the global logger using `log.SetLogger`. This flexibility allows you to tailor the logging behavior to suit your project's needs.
+The example uses `log.DefaultLogger`, which writes to stdout. The [contrib](https://github.com/gofiber/contrib) repo offers adapters like `fiberzap` and `fiberzerolog`, or you can register your own with `log.SetLogger`.
 
 Here's an example using a custom logger:
 
@@ -137,9 +135,9 @@ std.Println("custom logging")
 
 ## Set Level
 
-`log.SetLevel` sets the minimum level of logs that will be output. The default log level is `LevelTrace`.
+`log.SetLevel` sets the minimum level that will be output. The default is `LevelTrace`.
 
-**Note:** This method is not **concurrent-safe**.
+**Note:** This method is not concurrent safe.
 
 ```go
 import "github.com/gofiber/fiber/v3/log"
@@ -151,7 +149,7 @@ Setting the log level allows you to control the verbosity of the logs, filtering
 
 ## Set Output
 
-`log.SetOutput` sets the output destination of the logger. By default, the logger outputs logs to the console.
+`log.SetOutput` sets where logs are written. By default, they go to the console.
 
 ### Writing Logs to Stderr
 
@@ -162,11 +160,11 @@ var logger fiberlog.AllLogger[*log.Logger] = &defaultLogger{
 }
 ```
 
-This allows you to customize where the logs are written, such as to a file, an external logging service, or any other desired destination.
+This lets you route logs to a file, service, or any destination.
 
 ### Writing Logs to a File
 
-Set the output destination to a file, in this case `test.log`:
+To write to a file such as `test.log`:
 
 ```go
 // Output to ./test.log file
@@ -179,7 +177,7 @@ log.SetOutput(f)
 
 ### Writing Logs to Both Console and File
 
-The following example will write the logs to both `test.log` and `stdout`:
+Write to both `test.log` and `stdout`:
 
 ```go
 // Output to ./test.log file
@@ -193,19 +191,18 @@ log.SetOutput(iw)
 
 ## Bind Context
 
-To bind a logger to a specific context, use the following method. This will return a `CommonLogger` instance that is bound to the specified context.
+Bind a logger to a context with `log.WithContext`, which returns a `CommonLogger` tied to that context.
 
 ```go
 commonLogger := log.WithContext(ctx)
 commonLogger.Info("info")
 ```
 
-Binding the logger to a context allows you to include context-specific information in your logs, improving traceability and debugging.
+Context binding adds request-specific data for easier tracing.
 
 ## Logger
 
-You can use Logger to retrieve the logger instance. It is useful when you need to access underlying methods of the logger.
-To retrieve the Logger instance, use the following method:
+Use `Logger` to access the underlying logger and call its native methods:
 
 ```go
 logger := fiberlog.DefaultLogger[*log.Logger]() // Get the default logger instance

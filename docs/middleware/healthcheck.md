@@ -4,7 +4,7 @@ id: healthcheck
 
 # Health Check
 
-Middleware to implement liveness, readiness, and startup probes for [Fiber](https://github.com/gofiber/fiber) applications. It exposes a generic probe handler; you decide which endpoints to register. Convenience constants are available for the conventional endpoints (`/livez`, `/readyz`, and `/startupz`).
+Middleware that adds liveness, readiness, and startup probes to [Fiber](https://github.com/gofiber/fiber) apps. It provides a generic handler you can mount on any route, with constants for the conventional `/livez`, `/readyz`, and `/startupz` endpoints.
 
 ## Overview
 
@@ -16,7 +16,7 @@ app.Get(healthcheck.ReadinessEndpoint, healthcheck.New())
 app.Get(healthcheck.StartupEndpoint, healthcheck.New())
 ```
 
-By default, the probe returns `true`, so each registered endpoint responds with `200 OK`. When the probe returns `false`, the middleware responds with `503 Service Unavailable`.
+By default the probe returns `true`, so each endpoint responds with `200 OK`; returning `false` yields `503 Service Unavailable`.
 
 - **Liveness**: Checks if the server is running.
 - **Readiness**: Checks if the application is ready to handle requests.
@@ -30,16 +30,16 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the [Fiber](https://github.com/gofiber/fiber) web framework
+Import the middleware package:
 
 ```go
-import(
+import (
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/healthcheck"
 )
 ```
 
-After you initiate your [Fiber](https://github.com/gofiber/fiber) app, register the middleware on the endpoints you need:
+After your app is initialized, register the middleware on the endpoints you want to expose:
 
 ```go
 // Use the default probe on the conventional endpoints
@@ -55,7 +55,7 @@ app.Get(healthcheck.StartupEndpoint, healthcheck.New())
 app.Get("/healthz", healthcheck.New())
 ```
 
-The middleware only responds to GET requests. To register a probe on all methods, use `app.All`. Non-GET methods fall through to the next handler:
+The middleware responds only to GET. Use `app.All` to expose a probe on every method; other methods fall through to the next handler:
 
 ```go
 app.All("/healthz", healthcheck.New())
@@ -65,7 +65,7 @@ app.All("/healthz", healthcheck.New())
 
 ```go
 type Config struct {
-    // Next defines a function to skip this middleware when returned true. If this function returns true
+    // Next defines a function to skip this middleware when it returns true. If this function returns true
     // and no other handlers are defined for the route, Fiber will return a status 404 Not Found, since
     // no other handlers were defined to return a different status.
     //

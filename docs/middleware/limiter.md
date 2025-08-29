@@ -4,7 +4,7 @@ id: limiter
 
 # Limiter
 
-Limiter middleware for [Fiber](https://github.com/gofiber/fiber) that is used to limit repeat requests to public APIs and/or endpoints such as password reset. It is also useful for API clients, web crawling, or other tasks that need to be throttled.
+The Limiter middleware for [Fiber](https://github.com/gofiber/fiber) throttles repeated requests to public APIs or endpoints such as password resets. It's also useful for API clients, web crawlers, or other tasks that need rate limiting.
 
 :::note
 This middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for this middleware saves data to memory, see the examples below for other databases.
@@ -22,7 +22,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package:
 
 ```go
 import (
@@ -31,7 +31,7 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Once your Fiber app is initialized, use the middleware like this:
 
 ```go
 // Initialize default config
@@ -61,7 +61,7 @@ app.Use(limiter.New(limiter.Config{
 
 Instead of using the standard fixed window algorithm, you can enable the [sliding window](https://en.wikipedia.org/wiki/Sliding_window_protocol) algorithm.
 
-A example of such configuration is:
+An example configuration is:
 
 ```go
 app.Use(limiter.New(limiter.Config{
@@ -71,16 +71,16 @@ app.Use(limiter.New(limiter.Config{
 }))
 ```
 
-This means that every window will consider the previous window (if there was any). The given formula for the rate is:
+Each new window also considers the previous one (if any). The rate is calculated as:
 
 ```text
-weightOfPreviousWindow = previous window's amount request * (whenNewWindow / Expiration)
-rate = weightOfPreviousWindow + current window's amount request.
+weightOfPreviousWindow = previousWindowRequests * (elapsedInCurrentWindow / Expiration)
+rate = weightOfPreviousWindow + currentWindowRequests
 ```
 
 ## Dynamic limit
 
-You can also calculate the limit dynamically using the MaxFunc parameter. It's a function that receives the request's context as a parameter and allow you to calculate a different limit for each request separately.
+You can also calculate the limit dynamically using the `MaxFunc` parameter. It receives the request context and allows you to compute a different limit for each request.
 
 Example:
 
@@ -97,17 +97,17 @@ app.Use(limiter.New(limiter.Config{
 
 | Property               | Type                      | Description                                                                                 | Default                                  |
 |:-----------------------|:--------------------------|:--------------------------------------------------------------------------------------------|:-----------------------------------------|
-| Next                   | `func(fiber.Ctx) bool`   | Next defines a function to skip this middleware when returned true.                         | `nil`                                    |
-| Max                    | `int`                     | Max number of recent connections during `Expiration` seconds before sending a 429 response. | 5                                        |
-| MaxFunc                | `func(fiber.Ctx) int`     | A function to calculate the max number of recent connections during `Expiration` seconds before sending a 429 response. | A function which returns the cfg.Max    |
-| KeyGenerator           | `func(fiber.Ctx) string` | KeyGenerator allows you to generate custom keys, by default c.IP() is used.                 | A function using c.IP() as the default   |
-| Expiration             | `time.Duration`           | Expiration is the time on how long to keep records of requests in memory.                   | 1 * time.Minute                          |
-| LimitReached           | `fiber.Handler`           | LimitReached is called when a request hits the limit.                                       | A function sending 429 response          |
-| SkipFailedRequests     | `bool`                    | When set to true, requests with StatusCode >= 400 won't be counted.                         | false                                    |
-| SkipSuccessfulRequests | `bool`                    | When set to true, requests with StatusCode < 400 won't be counted.                          | false                                    |
-| DisableHeaders         | `bool`                    | When set to true, the middleware will not include the rate limit headers (`X-RateLimit-*` and `Retry-After`) in the response. | false                                    |
-| Storage                | `fiber.Storage`           | Store is used to store the state of the middleware.                                         | An in-memory store for this process only |
-| LimiterMiddleware      | `LimiterHandler`          | LimiterMiddleware is the struct that implements a limiter middleware.                       | A new Fixed Window Rate Limiter          |
+| Next                   | `func(fiber.Ctx) bool`   | Next defines a function to skip this middleware when it returns true.                         | `nil`                                    |
+| Max                    | `int`                     | Maximum number of recent connections within `Expiration` seconds before sending a 429 response. | 5                                        |
+| MaxFunc                | `func(fiber.Ctx) int`     | Function that calculates the maximum number of recent connections within `Expiration` seconds before sending a 429 response. | A function that returns `cfg.Max`    |
+| KeyGenerator           | `func(fiber.Ctx) string` | Function to generate custom keys; uses `c.IP()` by default.                 | A function using `c.IP()` as the default   |
+| Expiration             | `time.Duration`           | Duration to keep request records in memory.                   | 1 * time.Minute                          |
+| LimitReached           | `fiber.Handler`           | Called when a request exceeds the limit.                                       | A function sending a 429 response          |
+| SkipFailedRequests     | `bool`                    | When set to `true`, requests with status code ≥ 400 aren't counted.                         | false                                    |
+| SkipSuccessfulRequests | `bool`                    | When set to `true`, requests with status code < 400 aren't counted.                          | false                                    |
+| DisableHeaders         | `bool`                    | When set to `true`, the middleware omits rate limit headers (`X-RateLimit-*` and `Retry-After`). | false                                    |
+| Storage                | `fiber.Storage`           | Persists middleware state.                                         | An in-memory store for this process only |
+| LimiterMiddleware      | `LimiterHandler`          | Selects the algorithm implementation.                       | A new Fixed Window Rate Limiter          |
 
 :::note
 A custom store can be used if it implements the `Storage` interface - more details and an example can be found in `store.go`.
