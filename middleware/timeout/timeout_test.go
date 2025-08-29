@@ -42,7 +42,7 @@ func TestTimeout_Success(t *testing.T) {
 	// Our middleware wraps a handler that sleeps for 10ms, well under the 50ms limit.
 	app.Get("/fast", New(func(c fiber.Ctx) error {
 		// Simulate some work
-		if err := sleepWithContext(c, 10*time.Millisecond, context.DeadlineExceeded); err != nil {
+		if err := sleepWithContext(c.Context(), 10*time.Millisecond, context.DeadlineExceeded); err != nil {
 			return err
 		}
 		return c.SendString("OK")
@@ -61,16 +61,19 @@ func TestTimeout_Exceeded(t *testing.T) {
 
 	// This handler sleeps 200ms, exceeding the 100ms limit.
 	app.Get("/slow", New(func(c fiber.Ctx) error {
-		if err := sleepWithContext(c, 200*time.Millisecond, context.DeadlineExceeded); err != nil {
+		if err := sleepWithContext(c.Context(), 200*time.Millisecond, context.DeadlineExceeded); err != nil {
 			return err
 		}
 		return c.SendString("Should never get here")
 	}, Config{Timeout: 100 * time.Millisecond}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/slow", nil)
+	start := time.Now()
 	resp, err := app.Test(req)
+	elapsed := time.Since(start)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Expected 408 Request Timeout")
+	require.Less(t, elapsed, 150*time.Millisecond, "context did not cancel within timeout")
 }
 
 // TestTimeout_CustomError tests that returning a user-defined error is also treated as a timeout.
@@ -82,7 +85,7 @@ func TestTimeout_CustomError(t *testing.T) {
 	app.Get("/custom", New(func(c fiber.Ctx) error {
 		// Sleep might time out, or might return early. If the context is canceled,
 		// we treat errCustomTimeout as a 'timeout-like' condition.
-		if err := sleepWithContext(c, 200*time.Millisecond, errCustomTimeout); err != nil {
+		if err := sleepWithContext(c.Context(), 200*time.Millisecond, errCustomTimeout); err != nil {
 			return fmt.Errorf("wrapped: %w", err)
 		}
 		return c.SendString("Should never get here")
@@ -152,7 +155,7 @@ func TestTimeout_CustomHandler(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/custom-handler", New(func(c fiber.Ctx) error {
-		if err := sleepWithContext(c, 100*time.Millisecond, context.DeadlineExceeded); err != nil {
+		if err := sleepWithContext(c.Context(), 100*time.Millisecond, context.DeadlineExceeded); err != nil {
 			return err
 		}
 		return c.SendString("should not reach")

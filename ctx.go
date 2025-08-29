@@ -107,6 +107,25 @@ func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 	return c.fasthttp
 }
 
+const userContextKey = "__fiber_context"
+
+// Context returns a context implementation that was set by
+// user earlier or returns a non-nil, empty context, if it was not set earlier.
+func (c *DefaultCtx) Context() context.Context {
+	ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context)
+	if !ok {
+		ctx = context.Background()
+		c.SetContext(ctx)
+	}
+
+	return ctx
+}
+
+// SetContext sets a context implementation by user.
+func (c *DefaultCtx) SetContext(ctx context.Context) {
+	c.fasthttp.SetUserValue(userContextKey, ctx)
+}
+
 // Deadline returns the time when work done on behalf of this context
 // should be canceled. Deadline returns ok==false when no deadline is
 // set. Successive calls to Deadline return the same results.
@@ -439,6 +458,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 	c.DefaultReq.c = c
 	c.DefaultRes.c = c
+	c.fasthttp.SetUserValue(userContextKey, nil)
 }
 
 // Release is a method to reset context fields when to use ReleaseCtx()

@@ -42,7 +42,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 ### Context
 
-`Context` implements `context.Context`. However due to [current limitations in how fasthttp](https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945) works, `Deadline()`, `Done()` and `Err()` operate as a nop.
+`Context` implements `context.Context`. However due to [current limitations in how fasthttp](https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945) works, `Deadline()`, `Done()` and `Err()` operate as a nop. The `fiber.Ctx` instance is reused after the handler returns and must not be used for asynchronous operations once the handler has completed. Call [`Context()`](#context-1) within the handler to obtain a `context.Context` that can be used outside the handler.
 
 ```go title="Signature"
 func (c fiber.Ctx) Deadline() (deadline time.Time, ok bool)
@@ -70,6 +70,42 @@ Value can be used to retrieve [**`Locals`**](#locals).
 app.Get("/", func(c fiber.Ctx) error {
   c.Locals(userKey, "admin")
   user := c.Value(userKey) // returns "admin"
+})
+```
+
+### Context()
+
+Returns a `context.Context` that was previously set with [`SetContext`](#setcontext).
+If no context was set, it returns `context.Background()`. Unlike `fiber.Ctx` itself,
+the returned context is safe to use after the handler completes.
+
+```go title="Signature"
+func (c fiber.Ctx) Context() context.Context
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  ctx := c.Context()
+  go doWork(ctx)
+  return nil
+})
+```
+
+### SetContext
+
+Sets the base `context.Context` used by [`Context()`](#context-1). Use this to
+propagate deadlines, cancelation signals, or values to asynchronous operations.
+
+```go title="Signature"
+func (c fiber.Ctx) SetContext(ctx context.Context)
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.SetContext(context.WithValue(context.Background(), "user", "alice"))
+  ctx := c.Context()
+  go doWork(ctx)
+  return nil
 })
 ```
 
