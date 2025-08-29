@@ -6,7 +6,7 @@ sidebar_position: 7
 
 ## Custom JSON Encoder/Decoder
 
-Fiber v2.32.0 switched to the standard `encoding/json` for stability and reliability. If you need more speed, try one of these third-party libraries:
+Fiber defaults to the standard `encoding/json` for stability and reliability. If you need more speed, consider these libraries:
 
 - [goccy/go-json](https://github.com/goccy/go-json)
 - [bytedance/sonic](https://github.com/bytedance/sonic)
