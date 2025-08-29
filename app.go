@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -732,6 +733,64 @@ func (app *App) Name(name string) Router {
 		panic(err)
 	}
 
+	return app
+}
+
+// Summary assigns a short summary to the most recently added route.
+func (app *App) Summary(sum string) Router {
+	app.mutex.Lock()
+	app.latestRoute.Summary = sum
+	app.mutex.Unlock()
+	return app
+}
+
+// Description assigns a description to the most recently added route.
+func (app *App) Description(desc string) Router {
+	app.mutex.Lock()
+	app.latestRoute.Description = desc
+	app.mutex.Unlock()
+	return app
+}
+
+// Consumes assigns a request media type to the most recently added route.
+func (app *App) Consumes(typ string) Router {
+	if typ != "" {
+		if _, _, err := mime.ParseMediaType(typ); err != nil || !strings.Contains(typ, "/") {
+			panic("invalid media type: " + typ)
+		}
+	}
+	app.mutex.Lock()
+	app.latestRoute.Consumes = typ
+	app.mutex.Unlock()
+	return app
+}
+
+// Produces assigns a response media type to the most recently added route.
+func (app *App) Produces(typ string) Router {
+	if typ != "" {
+		if _, _, err := mime.ParseMediaType(typ); err != nil || !strings.Contains(typ, "/") {
+			panic("invalid media type: " + typ)
+		}
+	}
+	app.mutex.Lock()
+	app.latestRoute.Produces = typ
+	app.mutex.Unlock()
+	return app
+}
+
+// Tags assigns tags to the most recently added route.
+func (app *App) Tags(tags ...string) Router {
+	app.mutex.Lock()
+	app.latestRoute.Tags = tags
+	app.mutex.Unlock()
+	return app
+}
+
+// Deprecated marks the most recently added route as deprecated.
+func (app *App) Deprecated() Router {
+	app.mutex.Lock()
+	app.latestRoute.Deprecated = true
+	app.mutex.Unlock()
 	return app
 }
 
