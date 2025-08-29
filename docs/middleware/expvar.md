@@ -4,7 +4,7 @@ id: expvar
 
 # ExpVar
 
-The ExpVar middleware exposes runtime variables over HTTP in JSON. Importing it registers handlers on `/debug/vars`.
+The ExpVar middleware exposes runtime variables over HTTP in JSON. Using it (e.g., `app.Use(expvarmw.New())`) registers handlers on `/debug/vars`.
 
 ## Signatures
 
