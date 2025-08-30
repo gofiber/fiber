@@ -55,9 +55,10 @@ type Client struct {
 	userResponseHooks    []ResponseHook
 	builtinResponseHooks []ResponseHook
 
-	timeout time.Duration
-	mu      sync.RWMutex
-	debug   bool
+	timeout            time.Duration
+	mu                 sync.RWMutex
+	debug              bool
+	streamResponseBody bool
 }
 
 // R creates a new Request associated with the client.
@@ -432,6 +433,20 @@ func (c *Client) Debug() *Client {
 // DisableDebug disables debug-level logging output.
 func (c *Client) DisableDebug() *Client {
 	c.debug = false
+	return c
+}
+
+// StreamResponseBody returns the current StreamResponseBody setting.
+func (c *Client) StreamResponseBody() bool {
+	return c.streamResponseBody
+}
+
+// SetStreamResponseBody enables or disables response body streaming.
+// When enabled, the response body can be read as a stream using BodyStream()
+// instead of being fully loaded into memory. This is useful for large responses
+// or server-sent events.
+func (c *Client) SetStreamResponseBody(enable bool) *Client {
+	c.streamResponseBody = enable
 	return c
 }
 
