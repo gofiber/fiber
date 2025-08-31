@@ -114,7 +114,19 @@ var (
 	parameterConstraintDataSeparatorChars = []byte{paramConstraintDataSeparator}
 )
 
-// RoutePatternMatch checks if a given path matches a Fiber route pattern.
+// RoutePatternMatch reports whether the given request path would match the
+// provided Fiber route pattern using the same rules as the router. This can be
+// handy in tests or tooling where you need to verify patterns without
+// registering them on an App instance.
+//
+// An optional Config may be passed to control matching behaviour such as
+// case-sensitivity or strict routing. When no configuration is supplied the
+// default Config is used.
+//
+// Example:
+//
+//	match := fiber.RoutePatternMatch("/api/v1/users", "/api/:version/*")
+//	// match == true
 func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	// See logic in (*Route).match and (*App).register
 	var ctxParams [maxParams]string

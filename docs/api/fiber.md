@@ -118,3 +118,18 @@ if !fiber.IsChild() {
 
 // ...
 ```
+
+## RoutePatternMatch
+
+RoutePatternMatch reports whether the given request path would match the provided Fiber route pattern using the same rules as the router. This can be handy in tests or tooling where you need to verify patterns without registering them on an App instance.
+
+An optional Config may be passed to control matching behaviour such as case-sensitivity or strict routing. When no configuration is supplied the default Config is used.
+
+```go title="Signature"
+func RoutePatternMatch(path, pattern string, cfg ...Config) bool
+```
+
+```go title="Example"
+match := fiber.RoutePatternMatch("/api/v1/users", "/api/:version/*")
+// match == true
+```
