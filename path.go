@@ -119,7 +119,7 @@ var (
 // handy in tests or tooling where you need to verify patterns without
 // registering them on an App instance.
 //
-// An optional Config may be passed to control matching behaviour such as
+// An optional Config may be passed to control matching behavior such as
 // case-sensitivity or strict routing. When no configuration is supplied the
 // default Config is used.
 //
