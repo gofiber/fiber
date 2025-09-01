@@ -29,7 +29,7 @@ go get github.com/gofiber/fiber/v3/extractors
 ### Shared Extractor Types
 
 - `Extractor`: Core extraction function with metadata (source type, key, auth scheme)
-- `Source`: Enumeration of extraction sources (Header, Query, Form, Param, Cookie, Custom, etc.)
+- `Source`: Enumeration of extraction sources (Header, AuthHeader, Query, Form, Param, Cookie, Custom)
 - `ErrNotFound`: Standardized error for missing values
 
 ### Available Extractors

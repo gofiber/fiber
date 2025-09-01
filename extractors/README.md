@@ -34,16 +34,24 @@ type Extractor struct {
 
 ### Source Inspection
 
-The `Source` field enables security-aware extraction:
+The `Source` field enables security-aware extraction by identifying the origin of extracted values:
 
 ```go
 switch extractor.Source {
-case SourceQuery:
-    // Query parameters - potential security risk
-case SourceCookie:
-    // Cookies - generally secure
+case SourceAuthHeader:
+    // Authorization header - commonly used for authentication tokens
 case SourceHeader:
-    // Headers - secure
+    // Custom HTTP headers - application-specific data
+case SourceCookie:
+    // HTTP cookies - client-side stored data
+case SourceQuery:
+    // URL query parameters - visible in URLs and logs (security consideration)
+case SourceForm:
+    // Form data - POST body data
+case SourceParam:
+    // URL path parameters - route-based data
+case SourceCustom:
+    // Custom extraction logic
 }
 ```
 

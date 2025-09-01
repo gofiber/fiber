@@ -69,9 +69,11 @@ func FromAuthHeader(authScheme string) Extractor {
 			}
 
 			if authScheme != "" {
-				parts := strings.Fields(authHeader)
-				if len(parts) >= 2 && strings.EqualFold(parts[0], authScheme) {
-					return parts[1], nil
+				// Find the first space after the scheme to handle tokens that contain whitespace
+				schemePrefix := authScheme + " "
+				if len(authHeader) > len(schemePrefix) &&
+					strings.EqualFold(authHeader[:len(schemePrefix)], schemePrefix) {
+					return strings.TrimSpace(authHeader[len(schemePrefix):]), nil
 				}
 				return "", ErrNotFound
 			}
@@ -248,16 +250,16 @@ func Chain(extractors ...Extractor) Extractor {
 
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			var lastErr error
+			var lastErr error // last error encountered (including ErrNotFound)
 
 			for _, extractor := range extractors {
-				value, err := extractor.Extract(c)
-
-				if err == nil && value != "" {
-					return value, nil
+				if extractor.Extract == nil {
+					continue
 				}
-
-				// Only update lastErr if we got an actual error
+				v, err := extractor.Extract(c)
+				if err == nil && v != "" {
+					return v, nil
+				}
 				if err != nil {
 					lastErr = err
 				}
