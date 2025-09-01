@@ -31,6 +31,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🗺️ Router](#-router)
 - [🧠 Context](#-context)
 - [📎 Binding](#-binding)
+- [🔎 Extractors Package](#-extractors-package)
 - [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
@@ -637,11 +638,6 @@ app.Get("/hello", func (c fiber.Ctx) error {
 
 ---
 
-## 🌎 Client package
-
-The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
-You can take a look to [client docs](./client/rest.md) to see what's new with the client.
-
 ## 📎 Binding
 
 Fiber v3 introduces a new binding mechanism that simplifies the process of binding request data to structs. The new binding system supports binding from various sources such as URL parameters, query parameters, headers, and request bodies. This unified approach makes it easier to handle different types of request data in a consistent manner.
@@ -678,6 +674,59 @@ In this example, the `Bind` method is used to bind the request body to the `User
 
 </details>
 
+## 🔎 Extractors Package
+
+Fiber v3 introduces a new shared `extractors` package that consolidates value extraction utilities previously duplicated across middleware packages. This package provides a unified API for extracting values from headers, cookies, query parameters, form data, and URL parameters with built-in chain/fallback logic and security considerations.
+
+### Key Features
+
+- **Unified API**: Single package for extracting values from headers, cookies, query parameters, form data, and URL parameters
+- **Chain Logic**: Built-in fallback mechanism to try multiple extraction sources in order
+- **Source Awareness**: Source inspection capabilities for security-sensitive operations
+- **Type Safety**: Strongly typed extraction with proper error handling
+- **Performance**: Optimized extraction functions with minimal overhead
+
+### Available Extractors
+
+- `FromAuthHeader(authScheme string)`: Extract from Authorization header with scheme support
+- `FromCookie(key string)`: Extract from HTTP cookies
+- `FromParam(param string)`: Extract from URL path parameters
+- `FromForm(param string)`: Extract from form data
+- `FromHeader(header string)`: Extract from custom HTTP headers
+- `FromQuery(param string)`: Extract from URL query parameters
+- `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback logic
+
+### Usage Example
+
+```go
+import "github.com/gofiber/fiber/v3/extractors"
+
+// Extract API key from multiple sources with fallback
+apiKeyExtractor := extractors.Chain(
+    extractors.FromHeader("X-API-Key"),
+    extractors.FromQuery("api_key"),
+    extractors.FromCookie("api_key"),
+)
+
+app.Use(func(c fiber.Ctx) error {
+    apiKey, err := apiKeyExtractor.Extract(c)
+    if err != nil {
+        return c.Status(401).SendString("API key required")
+    }
+    // Use apiKey for authentication
+    return c.Next()
+})
+```
+
+### Migration from Middleware-Specific Extractors
+
+Middleware packages in Fiber v3 now use the shared extractors package instead of maintaining their own extraction logic. This provides:
+
+- **Code Deduplication**: Eliminates ~500+ lines of duplicated extraction code
+- **Consistency**: Standardized extraction behavior across all middleware
+- **Maintainability**: Single source of truth for extraction logic
+- **Security**: Unified security considerations and warnings
+
 ## 🔄 Redirect
 
 Fiber v3 enhances the redirect functionality by introducing new methods and improving existing ones. The new redirect methods provide more flexibility and control over the redirection process.
@@ -710,6 +759,11 @@ app.Get("/new", func(c fiber.Ctx) error {
 The default redirect status code has been updated from `302 Found` to `303 See Other` to ensure more consistent behavior across different browsers.
 
 :::
+
+## 🌎 Client package
+
+The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
+You can take a look to [client docs](./client/rest.md) to see what's new with the client.
 
 ## 🧰 Generic functions
 
