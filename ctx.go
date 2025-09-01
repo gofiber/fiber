@@ -37,7 +37,10 @@ var (
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
 // other packages.
-type contextKey int //nolint:unused // need for future (nolintlint)
+type contextKey int
+
+// userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
+const userContextKey contextKey = 0 // __local_user_context__
 
 // DefaultCtx is the default implementation of the Ctx interface
 // generation tool `go install github.com/vburenin/ifacemaker@f30b6f9bdbed4b5c4804ec9ba4a04a999525c202`
@@ -106,8 +109,6 @@ func (c *DefaultCtx) BaseURL() string {
 func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 	return c.fasthttp
 }
-
-const userContextKey = "__fiber_context"
 
 // Context returns a context implementation that was set by
 // user earlier or returns a non-nil, empty context, if it was not set earlier.
