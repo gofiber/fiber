@@ -116,3 +116,24 @@ app.Get("/search", func(c fiber.Ctx) error {
     // ...
 })
 ```
+
+### RoutePatternMatch
+
+Checks whether a given path matches a Fiber route pattern. Useful for testing
+patterns without registering them. Patterns may contain parameters, wildcards
+and optional segments. An optional `Config` allows control over case sensitivity
+and strict routing.
+
+```go title="Signature"
+func RoutePatternMatch(path, pattern string, cfg ...Config) bool
+```
+
+```go title="Example"
+fiber.RoutePatternMatch("/user/john", "/user/:name") // true
+
+fiber.RoutePatternMatch(
+    "/User/john",
+    "/user/:name",
+    fiber.Config{CaseSensitive: true},
+) // false
+```
