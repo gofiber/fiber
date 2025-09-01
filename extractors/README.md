@@ -50,6 +50,7 @@ case SourceHeader:
 ### Chain Behavior
 
 The `Chain` function implements fallback logic:
+
 - Returns first successful extraction (non-empty value, no error)
 - If all fail, returns last error or `ErrNotFound`
 - Preserves metadata from first extractor
@@ -64,6 +65,7 @@ go test -v ./extractors
 ```
 
 Tests cover:
+
 - Individual extractor functionality
 - Error handling and edge cases
 - Chained extractor behavior
@@ -83,6 +85,7 @@ Tests cover:
 ## Future Extensions
 
 Potential enhancements:
+
 - Additional extraction sources (body fields, custom parsers)
 - Configurable options (case sensitivity, trimming, validation)
 - Performance optimizations for high-throughput scenarios

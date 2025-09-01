@@ -45,6 +45,7 @@ go get github.com/gofiber/fiber/v3/extractors
 ### Extractor Structure
 
 Each `Extractor` contains:
+
 - `Extract`: Function that performs the actual extraction from a Fiber context
 - `Key`: The parameter/header name used for extraction
 - `Source`: The type of source being extracted from (can be inspected for security restrictions)
@@ -54,6 +55,7 @@ Each `Extractor` contains:
 ### Chain Behavior
 
 The `Chain` function creates extractors that try multiple sources in order:
+
 - Returns the first successful extraction (non-empty value with no error)
 - If all extractors fail, returns the last error encountered or `ErrNotFound`
 - Preserves the source and key from the first extractor for metadata
