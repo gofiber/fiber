@@ -130,7 +130,7 @@ var (
 // Patterns use the same syntax as routes registered on an App, including
 // parameters (for example `:id`), wildcards (`*`, `+`), and optional segments.
 // The optional Config argument can be used to control case sensitivity and
-// strict routing behaviour. This helper allows checking potential matches
+// strict routing behavior. This helper allows checking potential matches
 // without registering a route.
 func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	// See logic in (*Route).match and (*App).register
