@@ -21,6 +21,15 @@ without adapters.
 However, `fasthttp` doesn't support cancellation yet, so
 `Deadline`, `Done`, and `Err` are no-ops.
 
+:::caution
+The `fiber.Ctx` instance is only valid within the lifetime of the handler.
+It is reused for subsequent requests, so avoid storing `c` or using it in
+goroutines that outlive the handler. For asynchronous work, call
+`c.Context()` inside the handler to obtain a `context.Context` that can safely
+be used after the handler returns. By default, this returns `context.Background()`
+unless a custom context was provided with `c.SetContext`.
+:::
+
 ```go title="Example"
 func doSomething(ctx context.Context) {
     // ... your logic here
@@ -28,6 +37,32 @@ func doSomething(ctx context.Context) {
 
 app.Get("/", func(c fiber.Ctx) error {
     doSomething(c) // c satisfies context.Context
+    return nil
+})
+```
+
+### Using context outside the handler
+
+`fiber.Ctx` is recycled after each request. If you need a context that lives
+longer—for example, for work performed in a new goroutine—obtain it with
+`c.Context()` before returning from the handler.
+
+```go title="Async work"
+app.Get("/job", func(c fiber.Ctx) error {
+    ctx := c.Context()
+    go performAsync(ctx)
+    return c.SendStatus(fiber.StatusAccepted)
+})
+```
+
+You can customize the base context by calling `c.SetContext` before
+requesting it:
+
+```go
+app.Get("/job", func(c fiber.Ctx) error {
+    c.SetContext(context.WithValue(context.Background(), "requestID", "123"))
+    ctx := c.Context()
+    go performAsync(ctx)
     return nil
 })
 ```
@@ -190,6 +225,8 @@ you coordinate work with external APIs or databases while using Fiber's API.
   make it easy to retrieve request-scoped data.
 - Standard helpers such as `context.WithTimeout` can wrap `fiber.Ctx` to create
   fully featured derived contexts inside handlers.
+- Use `c.Context()` to obtain a `context.Context` that can outlive the handler,
+  and `c.SetContext()` to customize it with additional values or deadlines.
 
 With these tools, you can seamlessly integrate Fiber applications with
 Go's context-based APIs and manage request-scoped data effectively.

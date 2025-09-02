@@ -37,7 +37,10 @@ var (
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
 // other packages.
-type contextKey int //nolint:unused // need for future (nolintlint)
+type contextKey int
+
+// userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
+const userContextKey contextKey = 0 // __local_user_context__
 
 // DefaultCtx is the default implementation of the Ctx interface
 // generation tool `go install github.com/vburenin/ifacemaker@f30b6f9bdbed4b5c4804ec9ba4a04a999525c202`
@@ -105,6 +108,22 @@ func (c *DefaultCtx) BaseURL() string {
 // a cancellation signal, and other values across API boundaries.
 func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 	return c.fasthttp
+}
+
+// Context returns a context implementation that was set by
+// user earlier or returns a non-nil, empty context, if it was not set earlier.
+func (c *DefaultCtx) Context() context.Context {
+	if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
+		return ctx
+	}
+	ctx := context.Background()
+	c.SetContext(ctx)
+	return ctx
+}
+
+// SetContext sets a context implementation by user.
+func (c *DefaultCtx) SetContext(ctx context.Context) {
+	c.fasthttp.SetUserValue(userContextKey, ctx)
 }
 
 // Deadline returns the time when work done on behalf of this context
@@ -439,6 +458,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 	c.DefaultReq.c = c
 	c.DefaultRes.c = c
+	c.fasthttp.SetUserValue(userContextKey, nil)
 }
 
 // Release is a method to reset context fields when to use ReleaseCtx()
