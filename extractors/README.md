@@ -24,7 +24,7 @@ type Extractor struct {
 
 ### Available Functions
 
-- `FromAuthHeader(authScheme string)`: Extract from Authorization header
+- `FromAuthHeader(authScheme string)`: Extract from Authorization header with optional scheme
 - `FromCookie(key string)`: Extract from HTTP cookies
 - `FromParam(param string)`: Extract from URL path parameters
 - `FromForm(param string)`: Extract from form data
@@ -61,9 +61,10 @@ case SourceCustom:
 The `Chain` function implements fallback logic:
 
 - Returns first successful extraction (non-empty value, no error)
-- If all fail, returns last error or `ErrNotFound`
-- Preserves metadata from first extractor
-- Stores defensive copy for introspection
+- If all extractors fail, returns the last error encountered or `ErrNotFound`
+- **Skips extractors with `nil` Extract functions** (graceful error handling)
+- Preserves metadata from first extractor for introspection
+- Stores defensive copy for runtime inspection via the `Chain` field
 
 ## Security Considerations
 
@@ -87,12 +88,13 @@ go test -v ./extractors
 
 Tests cover:
 
-- Individual extractor functionality
-- Error handling and edge cases
-- Chained extractor behavior
-- Custom extractor support
-- Error propagation in chains
-- Metadata and introspection
+- Individual extractor functionality across all source types
+- Error handling and edge cases (whitespace, empty values, malformed headers)
+- Chained extractor behavior and error propagation
+- Custom extractor support including nil function handling
+- RFC 7235 compliance for Authorization header parsing
+- Metadata validation and source introspection
+- Chain ordering and fallback logic (17 comprehensive test functions)
 
 ## Maintenance Notes
 

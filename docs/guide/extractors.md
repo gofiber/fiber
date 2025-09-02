@@ -65,6 +65,7 @@ The `Chain` function creates extractors that try multiple sources in order:
 
 - Returns the first successful extraction (non-empty value with no error)
 - If all extractors fail, returns the last error encountered or `ErrNotFound`
+- **Robust error handling**: Skips extractors with `nil` Extract functions
 - Preserves the source and key from the first extractor for metadata
 - Stores a defensive copy of all chained extractors for introspection via the `Chain` field
 
@@ -277,6 +278,25 @@ app.Use(csrf.New(csrf.Config{
 
 Choose extractors based on your specific use case and security needs, not blanket "secure" vs "insecure" labels.
 
+## Standards Compliance
+
+### RFC 7235 Authorization Header Support
+
+The `FromAuthHeader` extractor is fully compliant with RFC 7235 HTTP Authentication:
+
+- **Case-insensitive scheme matching**: `Bearer`, `bearer`, `BEARER` all work
+- **Flexible whitespace handling**: Supports spaces and tabs after scheme
+- **Proper error handling**: Validates header format and content
+- **Security-conscious**: Prevents common parsing vulnerabilities
+
+```go
+// All of these work correctly:
+extractors.FromAuthHeader("Bearer")  // Standard case
+extractors.FromAuthHeader("bearer")  // Lowercase
+extractors.FromAuthHeader("BEARER")  // Uppercase
+extractors.FromAuthHeader("")        // No scheme, returns trimmed header
+```
+
 ## Troubleshooting
 
 ### Extraction Fails
@@ -353,6 +373,7 @@ customExtractor := extractors.FromCustom("my-source", func(c fiber.Ctx) (string,
 - You're confident in the security of your custom extraction logic
 - You understand that middleware cannot provide source-aware security guidance
 
+**Note:** If you pass `nil` as the function parameter, `FromCustom` will return an extractor that always fails with `ErrNotFound`.
 :::
 
 ### Multiple Middleware Coordination

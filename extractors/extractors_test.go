@@ -290,7 +290,7 @@ func Test_Extractor_FromCustom(t *testing.T) {
 
 	token, err = nilExtractor.Extract(ctx3)
 	require.Empty(t, token)
-	require.NoError(t, err) // Should return empty string with no error
+	require.ErrorIs(t, err, ErrNotFound) // Should return ErrNotFound for nil function
 }
 
 // go test -run Test_Extractor_Chain_Error_Propagation
