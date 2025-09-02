@@ -5024,6 +5024,12 @@ func Test_Ctx_HasBody(t *testing.T) {
 	ctxWithBody.Request().SetBody([]byte("test"))
 	require.True(t, ctxWithBody.HasBody())
 
+	ctxWithHeader := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.NotNil(t, ctxWithHeader)
+	t.Cleanup(func() { app.ReleaseCtx(ctxWithHeader) })
+	ctxWithHeader.Request().Header.SetContentLength(4)
+	require.True(t, ctxWithHeader.HasBody())
+
 	ctxWithoutBody := app.AcquireCtx(&fasthttp.RequestCtx{})
 	require.NotNil(t, ctxWithoutBody)
 	t.Cleanup(func() { app.ReleaseCtx(ctxWithoutBody) })
