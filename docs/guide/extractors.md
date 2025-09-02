@@ -83,8 +83,8 @@ Middleware needs to extract values from requests for authentication, authorizati
 ### Basic Usage
 
 ```go
-// Middleware extracts key from header
-app.Use(middleware.New(middleware.Config{
+// KeyAuth middleware extracts key from header
+app.Use(keyauth.New(keyauth.Config{
     Extractor: extractors.FromHeader("Middleware-Key"),
 }))
 ```
@@ -99,7 +99,7 @@ tokenExtractor := extractors.Chain(
     extractors.FromQuery("middleware_key"),   // Finally query param
 )
 
-app.Use(middleware.New(middleware.Config{
+app.Use(keyauth.New(keyauth.Config{
     Extractor: tokenExtractor,
 }))
 ```
