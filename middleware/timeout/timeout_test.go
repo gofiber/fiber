@@ -153,6 +153,7 @@ func TestTimeout_NegativeDuration(t *testing.T) {
 func TestTimeout_CustomHandler(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
+	called := 0
 
 	app.Get("/custom-handler", New(func(c fiber.Ctx) error {
 		if err := sleepWithContext(c.Context(), 100*time.Millisecond, context.DeadlineExceeded); err != nil {
@@ -162,6 +163,7 @@ func TestTimeout_CustomHandler(t *testing.T) {
 	}, Config{
 		Timeout: 20 * time.Millisecond,
 		OnTimeout: func(c fiber.Ctx) error {
+			called++
 			return c.Status(408).JSON(fiber.Map{"error": "timeout"})
 		},
 	}))
@@ -170,6 +172,7 @@ func TestTimeout_CustomHandler(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	require.Equal(t, 1, called)
 }
 
 // TestRunHandler_DefaultOnTimeout ensures context.DeadlineExceeded triggers ErrRequestTimeout.

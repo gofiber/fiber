@@ -113,13 +113,10 @@ func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 // Context returns a context implementation that was set by
 // user earlier or returns a non-nil, empty context, if it was not set earlier.
 func (c *DefaultCtx) Context() context.Context {
-	ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context)
-	if !ok {
-		ctx = context.Background()
-		c.SetContext(ctx)
+	if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
+		return ctx
 	}
-
-	return ctx
+	return context.Background()
 }
 
 // SetContext sets a context implementation by user.
