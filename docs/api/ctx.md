@@ -393,11 +393,11 @@ func (c fiber.Ctx) IsFound() bool
 ```
 
 ```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
+app.Use(func(c fiber.Ctx) error {
   if c.IsFound() {
-    return c.SendStatus(fiber.StatusOK)
+    return c.Next()
   }
-  return nil
+  return c.Status(fiber.StatusNotFound).SendString("Not Found")
 })
 ```
 
@@ -410,13 +410,11 @@ func (c fiber.Ctx) IsNotFound() bool
 ```
 
 ```go title="Example"
-app := fiber.New(fiber.Config{
-  ErrorHandler: func(c fiber.Ctx, err error) error {
-    if c.IsNotFound() {
-      return c.Status(fiber.StatusNotFound).SendString("Not Found")
-    }
-    return err
-  },
+app.Use(func(c fiber.Ctx) error {
+  if c.IsNotFound() {
+    return c.Status(fiber.StatusNotFound).SendString("Not Found")
+  }
+  return c.Next()
 })
 ```
 
