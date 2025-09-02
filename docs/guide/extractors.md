@@ -264,8 +264,6 @@ app.Use(csrf.New(csrf.Config{
 }))
 ```
 
-### ```
-
 ### Understanding Trade-offs
 
 **No extractor is universally "secure" - security depends on:**
