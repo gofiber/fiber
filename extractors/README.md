@@ -7,7 +7,7 @@ Package providing shared value extraction utilities for Fiber middleware package
 ### Core Types
 
 - `Extractor`: Core extraction function with metadata
-- `Source`: Enumeration of extraction sources (Header, Query, Form, Param, Cookie, Custom)
+- `Source`: Enumeration of extraction sources (Header, AuthHeader, Query, Form, Param, Cookie, Custom)
 - `ErrNotFound`: Standardized error for missing values
 
 ### Extractor Structure
@@ -30,6 +30,7 @@ type Extractor struct {
 - `FromForm(param string)`: Extract from form data
 - `FromHeader(header string)`: Extract from custom HTTP headers
 - `FromQuery(param string)`: Extract from URL query parameters
+- `FromCustom(key string, fn func(fiber.Ctx) (string, error))`: Define custom extraction logic with metadata
 - `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback
 
 ### Source Inspection
@@ -64,6 +65,18 @@ The `Chain` function implements fallback logic:
 - Preserves metadata from first extractor
 - Stores defensive copy for introspection
 
+## Security Considerations
+
+### Source Awareness and Custom Extractors
+
+The `Source` field enables security-aware extraction by identifying the origin of extracted values. However, when using `FromCustom`, middleware cannot determine the source of the extracted value, which can compromise security:
+
+- **CSRF Protection**: The double-submit-cookie pattern requires tokens to come from cookies. Custom extractors may read from insecure sources without middleware being able to detect or prevent this
+- **Authentication**: Security middleware may not be able to enforce source-specific security policies
+- **Audit Trails**: Source information is lost, making security analysis more difficult
+
+Documentation and examples should clearly warn about these risks when using custom extractors.
+
 ## Testing
 
 Run the comprehensive test suite:
@@ -77,7 +90,6 @@ Tests cover:
 - Individual extractor functionality
 - Error handling and edge cases
 - Chained extractor behavior
-- Security warning propagation
 - Custom extractor support
 - Error propagation in chains
 - Metadata and introspection
@@ -86,7 +98,7 @@ Tests cover:
 
 - **Single Source of Truth**: All extraction logic lives here
 - **Direct Usage**: Middleware imports and uses extractors directly
-- **Security Consistency**: Security warnings must be kept in sync
+- **Security Consistency**: Security warnings and source awareness must be kept in sync across all extractors
 - **Breaking Changes**: Require coordinated updates across dependent packages
 - **Performance**: Shared functions reduce overhead across middleware
 

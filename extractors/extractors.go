@@ -1,7 +1,7 @@
 package extractors
 
 // Package extractors provides shared value extraction utilities for Fiber middleware.
-// This internal package helps reduce code duplication across middleware packages
+// This package helps reduce code duplication across middleware packages
 // while allowing selective inclusion of extractors based on middleware needs.
 // It can extract any string value from various HTTP request sources.
 
@@ -68,17 +68,44 @@ func FromAuthHeader(authScheme string) Extractor {
 				return "", ErrNotFound
 			}
 
-			if authScheme != "" {
-				// Find the first space after the scheme to handle tokens that contain whitespace
-				schemePrefix := authScheme + " "
-				if len(authHeader) > len(schemePrefix) &&
-					strings.EqualFold(authHeader[:len(schemePrefix)], schemePrefix) {
-					return strings.TrimSpace(authHeader[len(schemePrefix):]), nil
-				}
+			// Check if the header starts with the specified auth scheme
+			if authScheme == "" {
+				return strings.TrimSpace(authHeader), nil
+			}
+
+			// Early return if header is too short for scheme + space + token
+			if len(authHeader) < len(authScheme)+2 {
 				return "", ErrNotFound
 			}
 
-			return strings.TrimSpace(authHeader), nil
+			// Check if header starts with auth scheme (case-insensitive)
+			if !strings.EqualFold(authHeader[:len(authScheme)], authScheme) {
+				return "", ErrNotFound
+			}
+
+			// RFC 7235 requires at least one whitespace character (SP/HTAB) after the auth scheme
+			// While RFC 7235 technically specifies 1*SP, HTTP implementations are generally lenient with whitespace
+			if authHeader[len(authScheme)] != ' ' && authHeader[len(authScheme)] != '\t' {
+				return "", ErrNotFound
+			}
+
+			// Get the part after the scheme and required space
+			rest := authHeader[len(authScheme)+1:]
+
+			// Skip any additional whitespace (SP/HTAB allowed per RFC 7230)
+			i := 0
+			for i < len(rest) && (rest[i] == ' ' || rest[i] == '\t') {
+				i++
+			}
+
+			// Must have some content after whitespace
+			if i == len(rest) {
+				return "", ErrNotFound
+			}
+
+			// Extract and trim the token
+			token := rest[i:]
+			return strings.TrimSpace(token), nil
 		},
 		Key:        fiber.HeaderAuthorization,
 		Source:     SourceAuthHeader,
@@ -219,6 +246,24 @@ func FromQuery(param string) Extractor {
 		},
 		Key:    param,
 		Source: SourceQuery,
+	}
+}
+
+// FromCustom creates an Extractor using a provided function.
+//
+// Parameters:
+//   - key: A descriptive identifier for the custom extractor (e.g., header name, source description).
+//     Used for debugging, logging, and Chain metadata. Should be meaningful for introspection.
+//   - fn: The custom function to extract the value from the fiber.Ctx.
+//
+// Returns:
+//
+//	An Extractor that uses the provided function for extraction.
+func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
+	return Extractor{
+		Extract: fn,
+		Key:     key,
+		Source:  SourceCustom,
 	}
 }
 
