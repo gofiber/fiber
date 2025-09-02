@@ -116,7 +116,9 @@ func (c *DefaultCtx) Context() context.Context {
 	if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
 		return ctx
 	}
-	return context.Background()
+	ctx := context.Background()
+	c.SetContext(ctx)
+	return ctx
 }
 
 // SetContext sets a context implementation by user.
