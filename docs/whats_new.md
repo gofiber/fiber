@@ -676,7 +676,7 @@ In this example, the `Bind` method is used to bind the request body to the `User
 
 </details>
 
-## 🛠️ Extractors Package
+## 🔬 Extractors Package
 
 Fiber v3 introduces a new shared `extractors` package that consolidates value extraction utilities previously duplicated across middleware packages. This package provides a unified API for extracting values from headers, cookies, query parameters, form data, and URL parameters with built-in chain/fallback logic and security considerations.
 
