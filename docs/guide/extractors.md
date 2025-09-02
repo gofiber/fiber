@@ -1,6 +1,6 @@
 ---
 id: extractors
-title: 🔍 Extractors
+title: 🔬 Extractors
 description: Understanding how middleware extracts values from HTTP requests
 sidebar_position: 8.5
 toc_max_heading_level: 4
