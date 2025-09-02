@@ -4928,7 +4928,7 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	})
 }
 
-func Test_Ctx_IsNotFound(t *testing.T) {
+func Test_Ctx_Matched_NotFound(t *testing.T) {
 	t.Parallel()
 	app := New()
 
@@ -4941,7 +4941,7 @@ func Test_Ctx_IsNotFound(t *testing.T) {
 	})
 
 	app.Use(func(c Ctx) error {
-		require.True(t, c.IsNotFound())
+		require.False(t, c.Matched())
 		return c.Status(StatusNotFound).SendString("not found")
 	})
 
@@ -4954,11 +4954,11 @@ func Test_Ctx_IsNotFound(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
-func Test_Ctx_IsNotFound_RouteError(t *testing.T) {
+func Test_Ctx_Matched_RouteError(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
 		ErrorHandler: func(c Ctx, err error) error {
-			require.False(t, c.IsNotFound())
+			require.True(t, c.Matched())
 			return c.Status(StatusNotFound).SendString(err.Error())
 		},
 	})
@@ -4972,17 +4972,17 @@ func Test_Ctx_IsNotFound_RouteError(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
-func Test_Ctx_IsFound(t *testing.T) {
+func Test_Ctx_Matched(t *testing.T) {
 	t.Parallel()
 	app := New()
 
 	app.Get("/", func(c Ctx) error {
-		require.True(t, c.IsFound())
+		require.True(t, c.Matched())
 		return c.SendStatus(StatusOK)
 	})
 
 	app.Use(func(c Ctx) error {
-		require.False(t, c.IsFound())
+		require.False(t, c.Matched())
 		return c.SendStatus(StatusNotFound)
 	})
 

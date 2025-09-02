@@ -108,10 +108,8 @@ type Ctx interface {
 	ViewBind(vars Map) error
 	// Route returns the matched Route struct.
 	Route() *Route
-	// IsFound returns true if the current request path was matched by the router.
-	IsFound() bool
-	// IsNotFound returns true if the current request path was not matched by the router.
-	IsNotFound() bool
+	// Matched returns true if the current request path was matched by the router.
+	Matched() bool
 	// IsMiddleware returns true if the current request handler was registered as middleware.
 	IsMiddleware() bool
 	// HasBody returns true if the request has a body or a Content-Length header greater than zero.

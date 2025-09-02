@@ -384,37 +384,20 @@ func MyMiddleware() fiber.Handler {
 }
 ```
 
-### IsFound
+### Matched
 
 Returns `true` if the current request path was matched by the router.
 
 ```go title="Signature"
-func (c fiber.Ctx) IsFound() bool
+func (c fiber.Ctx) Matched() bool
 ```
 
 ```go title="Example"
 app.Use(func(c fiber.Ctx) error {
-  if c.IsFound() {
+  if c.Matched() {
     return c.Next()
   }
   return c.Status(fiber.StatusNotFound).SendString("Not Found")
-})
-```
-
-### IsNotFound
-
-Returns `true` if the current request path was not matched by the router.
-
-```go title="Signature"
-func (c fiber.Ctx) IsNotFound() bool
-```
-
-```go title="Example"
-app.Use(func(c fiber.Ctx) error {
-  if c.IsNotFound() {
-    return c.Status(fiber.StatusNotFound).SendString("Not Found")
-  }
-  return c.Next()
 })
 ```
 

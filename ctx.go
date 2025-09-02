@@ -301,14 +301,9 @@ func (c *DefaultCtx) Route() *Route {
 	return c.route
 }
 
-// IsFound returns true if the current request path was matched by the router.
-func (c *DefaultCtx) IsFound() bool {
+// Matched returns true if the current request path was matched by the router.
+func (c *DefaultCtx) Matched() bool {
 	return c.matched
-}
-
-// IsNotFound returns true if the current request path was not matched by the router.
-func (c *DefaultCtx) IsNotFound() bool {
-	return !c.matched
 }
 
 // IsMiddleware returns true if the current request handler was registered as middleware.
