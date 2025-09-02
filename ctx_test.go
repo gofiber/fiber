@@ -4928,6 +4928,145 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	})
 }
 
+func Test_Ctx_IsNotFound(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Get("/one", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	app.Get("/two", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	app.Use(func(c Ctx) error {
+		require.True(t, c.IsNotFound())
+		return c.Status(StatusNotFound).SendString("not found")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/one", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/missing", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+func Test_Ctx_IsNotFound_RouteError(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		ErrorHandler: func(c Ctx, err error) error {
+			require.False(t, c.IsNotFound())
+			return c.Status(StatusNotFound).SendString(err.Error())
+		},
+	})
+
+	app.Get("/", func(c Ctx) error {
+		return ErrNotFound
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+func Test_Ctx_IsFound(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Get("/", func(c Ctx) error {
+		require.True(t, c.IsFound())
+		return c.SendStatus(StatusOK)
+	})
+
+	app.Use(func(c Ctx) error {
+		require.False(t, c.IsFound())
+		return c.SendStatus(StatusNotFound)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/missing", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+func Test_Ctx_IsMiddleware(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Use(func(c Ctx) error {
+		require.True(t, c.IsMiddleware())
+		return c.Next()
+	})
+
+	app.Get("/", func(c Ctx) error {
+		require.False(t, c.IsMiddleware())
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+func Test_Ctx_HasBody(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	ctxWithBody := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.NotNil(t, ctxWithBody)
+	t.Cleanup(func() { app.ReleaseCtx(ctxWithBody) })
+	ctxWithBody.Request().SetBody([]byte("test"))
+	require.True(t, ctxWithBody.HasBody())
+
+	ctxWithoutBody := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.NotNil(t, ctxWithoutBody)
+	t.Cleanup(func() { app.ReleaseCtx(ctxWithoutBody) })
+	require.False(t, ctxWithoutBody.HasBody())
+}
+
+func Test_Ctx_IsWebSocket(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	ws := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.NotNil(t, ws)
+	t.Cleanup(func() { app.ReleaseCtx(ws) })
+	ws.Request().Header.Set(HeaderConnection, "Upgrade")
+	ws.Request().Header.Set(HeaderUpgrade, "websocket")
+	require.True(t, ws.IsWebSocket())
+
+	non := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.NotNil(t, non)
+	t.Cleanup(func() { app.ReleaseCtx(non) })
+	require.False(t, non.IsWebSocket())
+}
+
+func Test_Ctx_IsPreflight(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	preCtx := &fasthttp.RequestCtx{}
+	preCtx.Request.Header.SetMethod(MethodOptions)
+	preCtx.Request.Header.Set(HeaderAccessControlRequestMethod, MethodGet)
+	pre := app.AcquireCtx(preCtx)
+	require.NotNil(t, pre)
+	t.Cleanup(func() { app.ReleaseCtx(pre) })
+	require.True(t, pre.IsPreflight())
+
+	optCtx := &fasthttp.RequestCtx{}
+	optCtx.Request.Header.SetMethod(MethodOptions)
+	opt := app.AcquireCtx(optCtx)
+	require.NotNil(t, opt)
+	t.Cleanup(func() { app.ReleaseCtx(opt) })
+	require.False(t, opt.IsPreflight())
+}
+
 func Test_Ctx_RenderWithViewBind(t *testing.T) {
 	t.Parallel()
 

@@ -384,6 +384,108 @@ func MyMiddleware() fiber.Handler {
 }
 ```
 
+### IsFound
+
+Returns `true` if the current request path was matched by the router.
+
+```go title="Signature"
+func (c fiber.Ctx) IsFound() bool
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  if c.IsFound() {
+    return c.SendStatus(fiber.StatusOK)
+  }
+  return nil
+})
+```
+
+### IsNotFound
+
+Returns `true` if the current request path was not matched by the router.
+
+```go title="Signature"
+func (c fiber.Ctx) IsNotFound() bool
+```
+
+```go title="Example"
+app := fiber.New(fiber.Config{
+  ErrorHandler: func(c fiber.Ctx, err error) error {
+    if c.IsNotFound() {
+      return c.Status(fiber.StatusNotFound).SendString("Not Found")
+    }
+    return err
+  },
+})
+```
+
+### IsMiddleware
+
+Returns `true` if the current request handler was registered as middleware.
+
+```go title="Signature"
+func (c fiber.Ctx) IsMiddleware() bool
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  fmt.Println(c.IsMiddleware()) // true
+  return c.Next()
+})
+```
+
+### HasBody
+
+Returns `true` if the incoming request contains a body or a `Content-Length` header greater than zero.
+
+```go title="Signature"
+func (c fiber.Ctx) HasBody() bool
+```
+
+```go title="Example"
+app.Post("/", func(c fiber.Ctx) error {
+  if !c.HasBody() {
+    return c.SendStatus(fiber.StatusBadRequest)
+  }
+  return c.SendString("OK")
+})
+```
+
+### IsWebSocket
+
+Returns `true` if the request includes a WebSocket upgrade handshake.
+
+```go title="Signature"
+func (c fiber.Ctx) IsWebSocket() bool
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  if c.IsWebSocket() {
+    // handle websocket
+  }
+  return c.Next()
+})
+```
+
+### IsPreflight
+
+Returns `true` if the request is a CORS preflight (`OPTIONS` + `Access-Control-Request-Method`).
+
+```go title="Signature"
+func (c fiber.Ctx) IsPreflight() bool
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if c.IsPreflight() {
+    return c.SendStatus(fiber.StatusNoContent)
+  }
+  return c.Next()
+})
+```
+
 ### String
 
 Returns a unique string representation of the context.

@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -298,6 +299,43 @@ func (c *DefaultCtx) Route() *Route {
 		}
 	}
 	return c.route
+}
+
+// IsFound returns true if the current request path was matched by the router.
+func (c *DefaultCtx) IsFound() bool {
+	return c.matched
+}
+
+// IsNotFound returns true if the current request path was not matched by the router.
+func (c *DefaultCtx) IsNotFound() bool {
+	return !c.matched
+}
+
+// IsMiddleware returns true if the current request handler was registered as middleware.
+func (c *DefaultCtx) IsMiddleware() bool {
+	return c.route != nil && c.route.use
+}
+
+// HasBody returns true if the request has a body or a Content-Length header greater than zero.
+func (c *DefaultCtx) HasBody() bool {
+	if c.fasthttp.Request.Header.ContentLength() > 0 {
+		return true
+	}
+	return len(c.fasthttp.Request.Body()) > 0
+}
+
+// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
+func (c *DefaultCtx) IsWebSocket() bool {
+	conn := c.fasthttp.Request.Header.Peek(HeaderConnection)
+	if !bytes.Contains(utils.ToLowerBytes(conn), []byte("upgrade")) {
+		return false
+	}
+	return bytes.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), []byte("websocket"))
+}
+
+// IsPreflight returns true if the request is a CORS preflight.
+func (c *DefaultCtx) IsPreflight() bool {
+	return c.Method() == MethodOptions && len(c.fasthttp.Request.Header.Peek(HeaderAccessControlRequestMethod)) > 0
 }
 
 // SaveFile saves any multipart file to disk.
