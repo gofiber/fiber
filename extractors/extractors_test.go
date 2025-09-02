@@ -264,7 +264,7 @@ func Test_Extractor_FromCustom(t *testing.T) {
 	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx2)
 
-	errorExtractor := FromCustom("test", func(c fiber.Ctx) (string, error) {
+	errorExtractor := FromCustom("test", func(_ fiber.Ctx) (string, error) {
 		return "", fiber.NewError(fiber.StatusBadRequest, "Custom error")
 	})
 
@@ -277,11 +277,18 @@ func Test_Extractor_FromCustom(t *testing.T) {
 	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx3)
 
-	emptyExtractor := FromCustom("empty", func(c fiber.Ctx) (string, error) {
+	emptyExtractor := FromCustom("empty", func(_ fiber.Ctx) (string, error) {
 		return "", nil
 	})
 
 	token, err = emptyExtractor.Extract(ctx3)
+	require.Empty(t, token)
+	require.NoError(t, err) // Should return empty string with no error
+
+	// Test FromCustom with nil function
+	nilExtractor := FromCustom("nil", nil)
+
+	token, err = nilExtractor.Extract(ctx3)
 	require.Empty(t, token)
 	require.NoError(t, err) // Should return empty string with no error
 }
@@ -543,7 +550,7 @@ func Test_Extractor_Chain_NilFunctions(t *testing.T) {
 	}
 
 	validExtractor := Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
+		Extract: func(_ fiber.Ctx) (string, error) {
 			return "valid-token", nil
 		},
 		Key:    "valid",
@@ -568,7 +575,7 @@ func Test_Extractor_Chain_AllErrors(t *testing.T) {
 
 	// Test chain where all extractors return errors
 	errorExtractor1 := Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
+		Extract: func(_ fiber.Ctx) (string, error) {
 			return "", fiber.NewError(fiber.StatusUnauthorized, "First auth error")
 		},
 		Key:    "error1",
@@ -576,7 +583,7 @@ func Test_Extractor_Chain_AllErrors(t *testing.T) {
 	}
 
 	errorExtractor2 := Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
+		Extract: func(_ fiber.Ctx) (string, error) {
 			return "", fiber.NewError(fiber.StatusForbidden, "Second auth error")
 		},
 		Key:    "error2",
@@ -606,7 +613,7 @@ func Test_Extractor_Chain_MixedScenarios(t *testing.T) {
 
 	// Test chain with mixed success/error scenarios
 	failingExtractor := Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
+		Extract: func(_ fiber.Ctx) (string, error) {
 			return "", ErrNotFound
 		},
 		Key:    "fail",
@@ -614,7 +621,7 @@ func Test_Extractor_Chain_MixedScenarios(t *testing.T) {
 	}
 
 	errorExtractor := Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
+		Extract: func(_ fiber.Ctx) (string, error) {
 			return "", fiber.NewError(fiber.StatusBadRequest, "Bad request")
 		},
 		Key:    "error",
@@ -622,7 +629,7 @@ func Test_Extractor_Chain_MixedScenarios(t *testing.T) {
 	}
 
 	successExtractor := Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
+		Extract: func(_ fiber.Ctx) (string, error) {
 			return "success", nil
 		},
 		Key:    "success",
@@ -670,7 +677,7 @@ func Test_Extractor_SourceTypes(t *testing.T) {
 	require.Equal(t, SourceQuery, FromQuery("test").Source)
 	require.Equal(t, SourceParam, FromParam("test").Source)
 	require.Equal(t, SourceCookie, FromCookie("test").Source)
-	require.Equal(t, SourceCustom, FromCustom("test", func(c fiber.Ctx) (string, error) { return "test", nil }).Source)
+	require.Equal(t, SourceCustom, FromCustom("test", func(_ fiber.Ctx) (string, error) { return "test", nil }).Source)
 
 	// Test chain source (should use first extractor's source)
 	chain := Chain(FromHeader("X-Test"), FromQuery("test"))

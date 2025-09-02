@@ -260,6 +260,9 @@ func FromQuery(param string) Extractor {
 //
 //	An Extractor that uses the provided function for extraction.
 func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
+	if fn == nil {
+		fn = func(fiber.Ctx) (string, error) { return "", ErrNotFound }
+	}
 	return Extractor{
 		Extract: fn,
 		Key:     key,

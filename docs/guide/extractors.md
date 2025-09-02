@@ -36,6 +36,7 @@ Extractors are utilities that middleware uses to get values from different parts
 - `FromForm(param string)`: Extract from form data
 - `FromHeader(header string)`: Extract from custom HTTP headers
 - `FromQuery(param string)`: Extract from URL query parameters
+- `FromCustom(key string, fn func(fiber.Ctx) (string, error))`: Define custom extraction logic with metadata
 - `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback logic
 
 ### Extractor Structure
@@ -325,7 +326,7 @@ app.Use(func(c fiber.Ctx) error {
 
 ### Custom Extraction Logic
 
-Extractors supports custom extractors for complex scenarios:
+Extractors support custom extractors for complex scenarios:
 
 ```go
 // Extract from custom logic (rarely needed)
