@@ -4963,7 +4963,7 @@ func Test_Ctx_Matched_RouteError(t *testing.T) {
 		},
 	})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(_ Ctx) error {
 		return ErrNotFound
 	})
 
