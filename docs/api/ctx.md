@@ -410,9 +410,12 @@ func (c fiber.Ctx) IsMiddleware() bool
 ```
 
 ```go title="Example"
-app.Use(func(c fiber.Ctx) error {
+app.Get("/route", func(c fiber.Ctx) error {
   fmt.Println(c.IsMiddleware()) // true
   return c.Next()
+}, func(c fiber.Ctx) error {
+  fmt.Println(c.IsMiddleware()) // false
+  return c.SendStatus(fiber.StatusOK)
 })
 ```
 
@@ -452,7 +455,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### IsPreflight
 
-Returns `true` if the request is a CORS preflight (`OPTIONS` + `Access-Control-Request-Method`).
+Returns `true` if the request is a CORS preflight (`OPTIONS` + `Access-Control-Request-Method` + `Origin`).
 
 ```go title="Signature"
 func (c fiber.Ctx) IsPreflight() bool

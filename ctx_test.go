@@ -4928,21 +4928,23 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	})
 }
 
-func Test_Ctx_Matched_NotFound(t *testing.T) {
+func Test_Ctx_Matched_AfterNext(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Get("/one", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
-	app.Get("/two", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
 	app.Use(func(c Ctx) error {
 		require.False(t, c.Matched())
-		return c.Status(StatusNotFound).SendString("not found")
+		err := c.Next()
+		if c.Path() == "/one" {
+			require.True(t, c.Matched())
+		} else {
+			require.False(t, c.Matched())
+		}
+		return err
+	})
+
+	app.Get("/one", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/one", nil))
@@ -4972,29 +4974,6 @@ func Test_Ctx_Matched_RouteError(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
-func Test_Ctx_Matched(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Get("/", func(c Ctx) error {
-		require.True(t, c.Matched())
-		return c.SendStatus(StatusOK)
-	})
-
-	app.Use(func(c Ctx) error {
-		require.False(t, c.Matched())
-		return c.SendStatus(StatusNotFound)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/missing", nil))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-}
-
 func Test_Ctx_IsMiddleware(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -5009,7 +4988,19 @@ func Test_Ctx_IsMiddleware(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
+	app.Get("/route", func(c Ctx) error {
+		require.True(t, c.IsMiddleware())
+		return c.Next()
+	}, func(c Ctx) error {
+		require.False(t, c.IsMiddleware())
+		return c.SendStatus(StatusOK)
+	})
+
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/route", nil))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
@@ -5043,13 +5034,15 @@ func Test_Ctx_IsWebSocket(t *testing.T) {
 	ws := app.AcquireCtx(&fasthttp.RequestCtx{})
 	require.NotNil(t, ws)
 	t.Cleanup(func() { app.ReleaseCtx(ws) })
-	ws.Request().Header.Set(HeaderConnection, "Upgrade")
+	ws.Request().Header.Set(HeaderConnection, "keep-alive, Upgrade")
 	ws.Request().Header.Set(HeaderUpgrade, "websocket")
 	require.True(t, ws.IsWebSocket())
 
 	non := app.AcquireCtx(&fasthttp.RequestCtx{})
 	require.NotNil(t, non)
 	t.Cleanup(func() { app.ReleaseCtx(non) })
+	non.Request().Header.Set(HeaderConnection, "not-an-upgrade")
+	non.Request().Header.Set(HeaderUpgrade, "websocket")
 	require.False(t, non.IsWebSocket())
 }
 
@@ -5060,13 +5053,23 @@ func Test_Ctx_IsPreflight(t *testing.T) {
 	preCtx := &fasthttp.RequestCtx{}
 	preCtx.Request.Header.SetMethod(MethodOptions)
 	preCtx.Request.Header.Set(HeaderAccessControlRequestMethod, MethodGet)
+	preCtx.Request.Header.Set(HeaderOrigin, "https://example.com")
 	pre := app.AcquireCtx(preCtx)
 	require.NotNil(t, pre)
 	t.Cleanup(func() { app.ReleaseCtx(pre) })
 	require.True(t, pre.IsPreflight())
 
+	noOriginCtx := &fasthttp.RequestCtx{}
+	noOriginCtx.Request.Header.SetMethod(MethodOptions)
+	noOriginCtx.Request.Header.Set(HeaderAccessControlRequestMethod, MethodGet)
+	noOrigin := app.AcquireCtx(noOriginCtx)
+	require.NotNil(t, noOrigin)
+	t.Cleanup(func() { app.ReleaseCtx(noOrigin) })
+	require.False(t, noOrigin.IsPreflight())
+
 	optCtx := &fasthttp.RequestCtx{}
 	optCtx.Request.Header.SetMethod(MethodOptions)
+	optCtx.Request.Header.Set(HeaderOrigin, "https://example.com")
 	opt := app.AcquireCtx(optCtx)
 	require.NotNil(t, opt)
 	t.Cleanup(func() { app.ReleaseCtx(opt) })
