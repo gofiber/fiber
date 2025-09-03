@@ -114,6 +114,16 @@ type Ctx interface {
 	ViewBind(vars Map) error
 	// Route returns the matched Route struct.
 	Route() *Route
+	// Matched returns true if the current request path was matched by the router.
+	Matched() bool
+	// IsMiddleware returns true if the current request handler was registered as middleware.
+	IsMiddleware() bool
+	// HasBody returns true if the request has a body or a Content-Length header greater than zero.
+	HasBody() bool
+	// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
+	IsWebSocket() bool
+	// IsPreflight returns true if the request is a CORS preflight.
+	IsPreflight() bool
 	// SaveFile saves any multipart file to disk.
 	SaveFile(fileheader *multipart.FileHeader, path string) error
 	// SaveFileToStorage saves any multipart file to an external storage system.
