@@ -5,13 +5,13 @@
 package fiber
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -330,8 +330,8 @@ func (c *DefaultCtx) HasBody() bool {
 func (c *DefaultCtx) IsWebSocket() bool {
 	conn := c.fasthttp.Request.Header.Peek(HeaderConnection)
 	var isUpgrade bool
-	for _, v := range bytes.Split(conn, []byte{','}) {
-		if bytes.EqualFold(bytes.TrimSpace(v), []byte("upgrade")) {
+	for v := range strings.SplitSeq(utils.UnsafeString(conn), ",") {
+		if utils.EqualFold(utils.Trim(v, ' '), "upgrade") {
 			isUpgrade = true
 			break
 		}
@@ -339,7 +339,7 @@ func (c *DefaultCtx) IsWebSocket() bool {
 	if !isUpgrade {
 		return false
 	}
-	return bytes.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), []byte("websocket"))
+	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), []byte("websocket"))
 }
 
 // IsPreflight returns true if the request is a CORS preflight.
