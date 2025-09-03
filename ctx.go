@@ -303,7 +303,7 @@ func (c *DefaultCtx) Route() *Route {
 
 // Matched returns true if the current request path was matched by the router.
 func (c *DefaultCtx) Matched() bool {
-	return c.matched
+	return c.getMatched()
 }
 
 // IsMiddleware returns true if the current request handler was registered as middleware.
