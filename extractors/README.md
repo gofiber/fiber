@@ -2,6 +2,10 @@
 
 Package providing shared value extraction utilities for Fiber middleware packages.
 
+## Audience
+
+**This README is targeted at middleware developers and contributors.** If you are a Fiber framework user looking to use extractors in your application, please refer to the [Extractors Guide](https://docs.gofiber.io/guide/extractors) instead.
+
 ## Architecture
 
 ### Core Types
