@@ -8,6 +8,39 @@ description: >-
 sidebar_position: 3
 ---
 
+### context.Context
+
+`Ctx` implements `context.Context`. However due to [current limitations in how fasthttp](https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945) works, `Deadline()`, `Done()` and `Err()` operate as a nop. The `fiber.Ctx` instance is reused after the handler returns and must not be used for asynchronous operations once the handler has completed. Call [`Context`](#context) within the handler to obtain a `context.Context` that can be used outside the handler.
+
+```go title="Signature"
+func (c fiber.Ctx) Deadline() (deadline time.Time, ok bool)
+func (c fiber.Ctx) Done() <-chan struct{}
+func (c fiber.Ctx) Err() error
+func (c fiber.Ctx) Value(key any) any
+```
+
+```go title="Example"
+
+func doSomething(ctx context.Context) {
+  // ...
+}
+
+app.Get("/", func(c fiber.Ctx) error {
+  doSomething(c)
+})
+```
+
+#### Value
+
+Value can be used to retrieve [**`Locals`**](#locals).
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.Locals(userKey, "admin")
+  user := c.Value(userKey) // returns "admin"
+})
+```
+
 ### App
 
 Returns the [\*App](app.md) reference so you can easily access all application settings.
@@ -42,39 +75,6 @@ app.Post("/", func(c fiber.Ctx) error {
 
 ### Context
 
-`Context` implements `context.Context`. However due to [current limitations in how fasthttp](https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945) works, `Deadline()`, `Done()` and `Err()` operate as a nop. The `fiber.Ctx` instance is reused after the handler returns and must not be used for asynchronous operations once the handler has completed. Call [`Context()`](#context-1) within the handler to obtain a `context.Context` that can be used outside the handler.
-
-```go title="Signature"
-func (c fiber.Ctx) Deadline() (deadline time.Time, ok bool)
-func (c fiber.Ctx) Done() <-chan struct{}
-func (c fiber.Ctx) Err() error
-func (c fiber.Ctx) Value(key any) any
-```
-
-```go title="Example"
-
-func doSomething(ctx context.Context) {
-  // ...
-}
-
-app.Get("/", func(c fiber.Ctx) error {
-  doSomething(c)
-})
-```
-
-#### Value
-
-Value can be used to retrieve [**`Locals`**](#locals).
-
-```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  c.Locals(userKey, "admin")
-  user := c.Value(userKey) // returns "admin"
-})
-```
-
-### Context()
-
 Returns a `context.Context` that was previously set with [`SetContext`](#setcontext).
 If no context was set, it returns `context.Background()`. Unlike `fiber.Ctx` itself,
 the returned context is safe to use after the handler completes.
@@ -93,7 +93,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### SetContext
 
-Sets the base `context.Context` used by [`Context()`](#context-1). Use this to
+Sets the base `context.Context` used by [`Context`](#context). Use this to
 propagate deadlines, cancelation signals, or values to asynchronous operations.
 
 ```go title="Signature"
