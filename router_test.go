@@ -1436,3 +1436,19 @@ func Test_Route_InvalidMediaType(t *testing.T) {
 		})
 	})
 }
+
+func Test_App_Produces(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).Produces(MIMEApplicationJSON)
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
+}
+
+func Test_App_Deprecated(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).Deprecated()
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.True(t, route.Deprecated)
+}
