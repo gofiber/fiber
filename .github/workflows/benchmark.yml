@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           # NOTE: Keep this in sync with the version from go.mod
           go-version: "1.25.x"
