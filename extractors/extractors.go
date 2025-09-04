@@ -37,6 +37,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	utils "github.com/gofiber/utils/v2"
 )
 
 // Source represents the type of source from which a value is extracted.
@@ -73,9 +74,9 @@ var ErrNotFound = errors.New("value not found")
 type Extractor struct {
 	Extract    func(fiber.Ctx) (string, error)
 	Key        string      // The parameter/header name used for extraction
-	Source     Source      // The type of source being extracted from
 	AuthScheme string      // The auth scheme used, e.g., "Bearer"
 	Chain      []Extractor // For chained extractors, stores all extractors in the chain
+	Source     Source      // The type of source being extracted from
 }
 
 // FromAuthHeader extracts a value from the Authorization header with an optional prefix.
@@ -115,7 +116,7 @@ func FromAuthHeader(authScheme string) Extractor {
 
 			// Check if the header starts with the specified auth scheme
 			if authScheme == "" {
-				return strings.TrimSpace(authHeader), nil
+				return strings.Trim(authHeader, " \t"), nil
 			}
 
 			// Early return if header is too short for scheme + space + token
@@ -124,7 +125,7 @@ func FromAuthHeader(authScheme string) Extractor {
 			}
 
 			// Check if header starts with auth scheme (case-insensitive)
-			if !strings.EqualFold(authHeader[:len(authScheme)], authScheme) {
+			if !utils.EqualFold(authHeader[:len(authScheme)], authScheme) {
 				return "", ErrNotFound
 			}
 
@@ -150,7 +151,7 @@ func FromAuthHeader(authScheme string) Extractor {
 
 			// Extract and trim the token
 			token := rest[i:]
-			return strings.TrimSpace(token), nil
+			return strings.TrimRight(token, " \t"), nil
 		},
 		Key:        fiber.HeaderAuthorization,
 		Source:     SourceAuthHeader,
@@ -187,7 +188,7 @@ func FromAuthHeader(authScheme string) Extractor {
 func FromCookie(key string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := strings.TrimSpace(c.Cookies(key))
+			value := strings.Trim(c.Cookies(key), " \t")
 			if value == "" {
 				return "", ErrNotFound
 			}
@@ -227,7 +228,7 @@ func FromCookie(key string) Extractor {
 func FromParam(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := strings.TrimSpace(c.Params(param))
+			value := strings.Trim(c.Params(param), " \t")
 			if value == "" {
 				return "", ErrNotFound
 			}
@@ -266,7 +267,7 @@ func FromParam(param string) Extractor {
 func FromForm(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := strings.TrimSpace(c.FormValue(param))
+			value := strings.Trim(c.FormValue(param), " \t")
 			if value == "" {
 				return "", ErrNotFound
 			}
@@ -306,7 +307,7 @@ func FromForm(param string) Extractor {
 func FromHeader(header string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := strings.TrimSpace(c.Get(header))
+			value := strings.Trim(c.Get(header), " \t")
 			if value == "" {
 				return "", ErrNotFound
 			}
@@ -347,7 +348,7 @@ func FromHeader(header string) Extractor {
 func FromQuery(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := strings.TrimSpace(c.Query(param))
+			value := strings.Trim(c.Query(param), " \t")
 			if value == "" {
 				return "", ErrNotFound
 			}

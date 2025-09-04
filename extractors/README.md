@@ -107,12 +107,4 @@ Tests cover:
 - **Security Consistency**: Security warnings and source awareness must be kept in sync across all extractors
 - **Breaking Changes**: Require coordinated updates across dependent packages
 - **Performance**: Shared functions reduce overhead across middleware
-
-## Future Extensions
-
-Potential enhancements:
-
-- Additional extraction sources (body fields, custom parsers)
-- Configurable options (case sensitivity, trimming, validation)
-- Performance optimizations for high-throughput scenarios
-- Enhanced security features (value validation, rate limiting)
+- **Documentation**: Ensure examples and warnings are clear and up-to-date
