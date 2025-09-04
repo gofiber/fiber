@@ -397,5 +397,3 @@ app.Use(session.New(session.Config{
     Extractor: extractors.FromCookie("token"), // Session - CONFLICT!
 }))
 ```
-
-<parameter name="filePath">/Users/sixcolors/Documents/GitHub/fiber/docs/guide/extractors.md
