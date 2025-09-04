@@ -490,6 +490,24 @@ func Test_Extractor_FromAuthHeader_NoScheme(t *testing.T) {
 	require.Equal(t, SourceAuthHeader, extractor.Source)
 	require.Equal(t, fiber.HeaderAuthorization, extractor.Key)
 	require.Equal(t, "", extractor.AuthScheme)
+
+	// Test with no auth scheme and empty header (should return ErrNotFound)
+	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx2)
+	// No Authorization header set
+
+	token, err = extractor.Extract(ctx2)
+	require.Empty(t, token)
+	require.Equal(t, ErrNotFound, err)
+
+	// Test with no auth scheme and whitespace-only header (should return ErrNotFound)
+	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx3)
+	ctx3.Request().Header.Set(fiber.HeaderAuthorization, "   \t   ") // Only whitespace
+
+	token, err = extractor.Extract(ctx3)
+	require.Empty(t, token)
+	require.Equal(t, ErrNotFound, err)
 }
 
 // go test -run Test_Extractor_EdgeCases

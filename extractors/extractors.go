@@ -116,7 +116,11 @@ func FromAuthHeader(authScheme string) Extractor {
 
 			// Check if the header starts with the specified auth scheme
 			if authScheme == "" {
-				return strings.Trim(authHeader, " \t"), nil
+				v := strings.Trim(authHeader, " \t")
+				if v == "" {
+					return "", ErrNotFound
+				}
+				return v, nil
 			}
 
 			// Early return if header is too short for scheme + space + token
