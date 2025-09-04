@@ -391,3 +391,125 @@ func Test_OpenAPI_GroupMiddleware(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 	require.Contains(t, spec.Paths, "/api/v2/users")
 }
+
+func Test_OpenAPI_ConfigValues(t *testing.T) {
+	app := fiber.New()
+
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	cfg := Config{
+		Title:       "Custom API",
+		Version:     "2.1.0",
+		Description: "My description",
+		ServerURL:   "https://example.com",
+		Path:        "/spec.json",
+	}
+	app.Use(New(cfg))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/spec.json", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Equal(t, cfg.Title, spec.Info.Title)
+	require.Equal(t, cfg.Version, spec.Info.Version)
+	require.Equal(t, cfg.Description, spec.Info.Description)
+	require.Len(t, spec.Servers, 1)
+	require.Equal(t, cfg.ServerURL, spec.Servers[0].URL)
+}
+
+func Test_OpenAPI_Next(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{Next: func(fiber.Ctx) bool { return true }}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+func Test_OpenAPI_ConnectIgnored(t *testing.T) {
+	app := fiber.New()
+
+	app.Connect("/conn", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+	require.NotContains(t, paths, "/conn")
+}
+
+func Test_OpenAPI_MultipleParams(t *testing.T) {
+	app := fiber.New()
+
+	app.Get("/users/:uid/books/:bid", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+	require.Contains(t, paths, "/users/{uid}/books/{bid}")
+	op := paths["/users/{uid}/books/{bid}"]["get"].(map[string]any)
+	params := op["parameters"].([]any)
+	require.Len(t, params, 2)
+	p0 := params[0].(map[string]any)
+	p1 := params[1].(map[string]any)
+	require.Equal(t, "uid", p0["name"])
+	require.Equal(t, "path", p0["in"])
+	require.Equal(t, "bid", p1["name"])
+	require.Equal(t, "path", p1["in"])
+}
+
+func Test_OpenAPI_ConsumesProduces(t *testing.T) {
+	app := fiber.New()
+
+	app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
+		Consumes(fiber.MIMEApplicationJSON).
+		Produces(fiber.MIMEApplicationXML)
+
+	paths := getPaths(t, app)
+
+	op := paths["/users"]["post"].(map[string]any)
+	rb := op["requestBody"].(map[string]any)
+	reqContent := rb["content"].(map[string]any)
+	require.Contains(t, reqContent, fiber.MIMEApplicationJSON)
+
+	resp := op["responses"].(map[string]any)["200"].(map[string]any)
+	cont := resp["content"].(map[string]any)
+	require.Contains(t, cont, fiber.MIMEApplicationXML)
+}
+
+func Test_OpenAPI_NoRequestBodyForGET(t *testing.T) {
+	app := fiber.New()
+
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+	op := paths["/users"]["get"].(map[string]any)
+	require.NotContains(t, op, "requestBody")
+}
+
+func Test_OpenAPI_Cache(t *testing.T) {
+	app := fiber.New()
+
+	app.Get("/first", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	app.Use(New())
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Contains(t, spec.Paths, "/first")
+
+	app.Get("/second", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	req = httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.NotContains(t, spec.Paths, "/second")
+}
