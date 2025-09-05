@@ -306,7 +306,7 @@ extractors.FromAuthHeader("")        // No scheme, returns header (or ErrNotFoun
 **Solutions**:
 
 1. Check if the expected header/cookie/query parameter is present
-2. Verify the parameter name matches exactly (case-sensitive)
+2. Verify the key name matches exactly (headers are case-insensitive; params/cookies/query keys are case-sensitive)
 3. Ensure the request uses the correct HTTP method (GET vs POST)
 4. Check if middleware is configured with the right extractor
 
