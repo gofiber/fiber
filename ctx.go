@@ -11,6 +11,7 @@ import (
 	"io"
 	"mime/multipart"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -317,6 +318,59 @@ func (c *DefaultCtx) Route() *Route {
 		}
 	}
 	return c.route
+}
+
+// Matched returns true if the current request path was matched by the router.
+func (c *DefaultCtx) Matched() bool {
+	return c.getMatched()
+}
+
+// IsMiddleware returns true if the current request handler was registered as middleware.
+func (c *DefaultCtx) IsMiddleware() bool {
+	if c.route == nil {
+		return false
+	}
+	if c.route.use {
+		return true
+	}
+	// For route-level middleware, there will be a next handler in the chain
+	return c.indexHandler+1 < len(c.route.Handlers)
+}
+
+// HasBody returns true if the request has a body or a Content-Length header greater than zero.
+func (c *DefaultCtx) HasBody() bool {
+	if c.fasthttp.Request.Header.ContentLength() > 0 {
+		return true
+	}
+	return len(c.fasthttp.Request.Body()) > 0
+}
+
+// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
+func (c *DefaultCtx) IsWebSocket() bool {
+	conn := c.fasthttp.Request.Header.Peek(HeaderConnection)
+	var isUpgrade bool
+	for v := range strings.SplitSeq(utils.UnsafeString(conn), ",") {
+		if utils.EqualFold(utils.Trim(v, ' '), "upgrade") {
+			isUpgrade = true
+			break
+		}
+	}
+	if !isUpgrade {
+		return false
+	}
+	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), []byte("websocket"))
+}
+
+// IsPreflight returns true if the request is a CORS preflight.
+func (c *DefaultCtx) IsPreflight() bool {
+	if c.Method() != MethodOptions {
+		return false
+	}
+	hdr := &c.fasthttp.Request.Header
+	if len(hdr.Peek(HeaderAccessControlRequestMethod)) == 0 {
+		return false
+	}
+	return len(hdr.Peek(HeaderOrigin)) > 0
 }
 
 // SaveFile saves any multipart file to disk.
