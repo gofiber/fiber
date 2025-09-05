@@ -93,7 +93,7 @@ go test -v ./extractors
 Tests cover:
 
 - Individual extractor functionality across all source types
-- Error handling and edge cases (whitespace, empty values, malformed headers)
+- Error handling and edge cases (empty values, malformed headers)
 - Chained extractor behavior and error propagation
 - Custom extractor support including nil function handling
 - RFC 7235 compliance for Authorization header parsing
