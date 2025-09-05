@@ -84,7 +84,6 @@ type Extractor struct {
 //
 // The function supports:
 //   - Case-insensitive auth scheme matching
-//   - Flexible whitespace handling (SP/HTAB characters)
 //   - Empty auth scheme for raw header extraction
 //
 // Parameters:
@@ -132,8 +131,7 @@ func FromAuthHeader(authScheme string) Extractor {
 				return "", ErrNotFound
 			}
 
-			// RFC 7235 requires at least one whitespace character (SP/HTAB) after the auth scheme
-			// While RFC 7235 technically specifies 1*SP, HTTP implementations are generally lenient with whitespace
+			// While RFC 7235 technically specifies 1*SP, HTTP implementations are generally lenient with whitespace (SP/HTAB)
 			if authHeader[len(authScheme)] != ' ' && authHeader[len(authScheme)] != '\t' {
 				return "", ErrNotFound
 			}
@@ -166,7 +164,7 @@ func FromAuthHeader(authScheme string) Extractor {
 //
 // The function:
 //   - Retrieves the cookie value using the specified name
-//   - Returns ErrNotFound if the cookie is missing or contains only whitespace
+//   - Returns ErrNotFound if the cookie is missing
 //
 // Parameters:
 //   - key: The name of the cookie from which to extract the value.
@@ -174,7 +172,7 @@ func FromAuthHeader(authScheme string) Extractor {
 // Returns:
 //
 //	An Extractor that attempts to retrieve the value from the specified cookie.
-//	Returns ErrNotFound if the cookie is not present or contains only whitespace.
+//	Returns ErrNotFound if the cookie is not present.
 //
 // Security Note:
 //
@@ -219,7 +217,7 @@ func FromCookie(key string) Extractor {
 // Returns:
 //
 //	An Extractor that attempts to retrieve the value from the specified URL parameter.
-//	Returns ErrNotFound if the parameter is not present or contains only whitespace.
+//	Returns ErrNotFound if the parameter is not present.
 //
 // Example:
 //
@@ -263,7 +261,7 @@ func FromParam(param string) Extractor {
 // Returns:
 //
 //	An Extractor that attempts to retrieve the value from the specified form field.
-//	Returns ErrNotFound if the field is not present or contains only whitespace.
+//	Returns ErrNotFound if the field is not present.
 //
 // Example:
 //
@@ -289,7 +287,7 @@ func FromForm(param string) Extractor {
 //
 // The function:
 //   - Retrieves the header value using the specified name
-//   - Returns ErrNotFound if the header is missing or contains only whitespace
+//   - Returns ErrNotFound if the header is missing
 //
 // Parameters:
 //   - header: The name of the HTTP header from which to extract the value.
@@ -297,7 +295,7 @@ func FromForm(param string) Extractor {
 // Returns:
 //
 //	An Extractor that attempts to retrieve the value from the specified HTTP header.
-//	Returns ErrNotFound if the header is not present or contains only whitespace.
+//	Returns ErrNotFound if the header is not present.
 //
 // Security Note:
 //
@@ -343,7 +341,7 @@ func FromHeader(header string) Extractor {
 // Returns:
 //
 //	An Extractor that attempts to retrieve the value from the specified query parameter.
-//	Returns ErrNotFound if the parameter is not present or contains only whitespace.
+//	Returns ErrNotFound if the parameter is not present.
 //
 // Example:
 //
