@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           # NOTE: Keep this in sync with the version from go.mod
           go-version: "1.25.x"
@@ -86,7 +86,7 @@ jobs:
 
       # This will only run if we have Benchmark Results from main branch
       - name: Compare PR Benchmark Results with main branch
-        uses: benchmark-action/github-action-benchmark@v1.20.4
+        uses: benchmark-action/github-action-benchmark@v1.20.5
         if: steps.cache.outputs.cache-hit == 'true'
         with:
           tool: 'go'
@@ -102,7 +102,7 @@ jobs:
           alert-threshold: "150%"
 
       - name: Store Benchmark Results for main branch
-        uses: benchmark-action/github-action-benchmark@v1.20.4
+        uses: benchmark-action/github-action-benchmark@v1.20.5
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'
@@ -116,7 +116,7 @@ jobs:
           alert-threshold: "150%"
 
       - name: Publish Benchmark Results to GitHub Pages
-        uses: benchmark-action/github-action-benchmark@v1.20.4
+        uses: benchmark-action/github-action-benchmark@v1.20.5
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'

@@ -491,6 +491,11 @@ testConfig := fiber.TestConfig{
 - **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
 - **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 - **AcceptsLanguagesExtended**: Matches language ranges using RFC 4647 Extended Filtering with wildcard subtags.
+- **Matched**: Detects when the current request path matched a registered route.
+- **IsMiddleware**: Indicates if the current handler was registered as middleware.
+- **HasBody**: Quickly checks whether the request includes a body.
+- **IsWebSocket**: Reports if the request attempts a WebSocket upgrade.
+- **IsPreflight**: Identifies CORS preflight requests before handlers run.
 
 ### Removed Methods
 
