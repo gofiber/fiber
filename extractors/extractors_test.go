@@ -649,3 +649,47 @@ func Test_Extractor_SourceTypes(t *testing.T) {
 	require.Equal(t, SourceHeader, chain.Source)
 	require.Equal(t, "X-Test", chain.Key)
 }
+
+// go test -run Test_Extractor_URL_Encoded
+func Test_Extractor_URL_Encoded(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	// FromQuery with URL-encoded value
+	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx1)
+	ctx1.Request().SetRequestURI("/?token=token%20with%20spaces")
+	token, err := FromQuery("token").Extract(ctx1)
+	require.NoError(t, err)
+	require.Equal(t, "token with spaces", token) // Should be URL-decoded automatically by fasthttp
+
+	// FromForm with URL-encoded value
+	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx2)
+	ctx2.Request().Header.SetContentType(fiber.MIMEApplicationForm)
+	ctx2.Request().Header.SetMethod(fiber.MethodPost)
+	ctx2.Request().SetBodyString("token=token%2Bwith%2Bplus")
+	token, err = FromForm("token").Extract(ctx2)
+	require.NoError(t, err)
+	require.Equal(t, "token+with+plus", token) // URL-decoded
+
+	// FromQuery with base64 encoded value that's URL-encoded
+	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx3)
+	base64Value := "cGFzc3dvcmQ%3D" // URL-encoded base64 "cGFzc3dvcmQ="
+	ctx3.Request().SetRequestURI("/?token=" + base64Value)
+	token, err = FromQuery("token").Extract(ctx3)
+	require.NoError(t, err)
+	require.Equal(t, "cGFzc3dvcmQ=", token) // Should be URL-decoded
+
+	// FromParam with URL-encoded value
+	app.Get("/test/:token", func(c fiber.Ctx) error {
+		token, extractErr := FromParam("token").Extract(c)
+		require.NoError(t, extractErr)
+		require.Equal(t, "token/with/slashes", token)
+		return nil
+	})
+	_, err = app.Test(newRequest(fiber.MethodGet, "/test/token%2Fwith%2Fslashes"))
+	require.NoError(t, err)
+}
