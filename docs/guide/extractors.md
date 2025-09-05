@@ -183,14 +183,14 @@ Different extraction sources have different security properties and use cases:
 
 #### Query Parameters (Use Sparingly)
 
-- **URL Parameters**: Convenient for simple APIs and debugging
+- **Query parameters**: Convenient for simple APIs and debugging
 - **Considerations**: Always visible in URLs, logged by servers/proxies, stored in browser history
 - **Best for**: Non-sensitive parameters, public identifiers
 
 #### Form Data (Context Dependent)
 
 - **POST Bodies**: Suitable for form submissions and API requests
-- **Considerations**: May leak in server logs for GET requests, requires proper content-type
+- **Considerations**: Avoid putting sensitive data in query strings; ensure request bodies aren’t logged and use the correct content type
 - **Best for**: User-generated content, file uploads
 
 ### Security Best Practices
@@ -313,11 +313,13 @@ extractors.FromAuthHeader("")        // No scheme, returns trimmed header (or Er
 **Debug Example**:
 
 ```go
-// Add debug logging
+// Add simple debug logging (avoid logging secrets in production)
 app.Use(func(c fiber.Ctx) error {
-    // Log what the middleware is looking for
-    c.Locals("debug_headers", c.Get("X-API-Key"))
-    c.Locals("debug_cookies", c.Cookies("session_id"))
+    hdr := c.Get("X-API-Key")
+    cookie := c.Cookies("session_id")
+    if hdr != "" || cookie != "" {
+        log.Printf("debug: X-API-Key present=%t, session_id present=%t", hdr != "", cookie != "")
+    }
     return c.Next()
 })
 ```
