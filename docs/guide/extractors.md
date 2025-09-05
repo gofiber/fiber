@@ -294,7 +294,7 @@ The `FromAuthHeader` extractor is fully compliant with RFC 7235 HTTP Authenticat
 extractors.FromAuthHeader("Bearer")  // Standard case
 extractors.FromAuthHeader("bearer")  // Lowercase
 extractors.FromAuthHeader("BEARER")  // Uppercase
-extractors.FromAuthHeader("")        // No scheme, returns trimmed header (or ErrNotFound if empty)
+extractors.FromAuthHeader("")        // No scheme, returns header (or ErrNotFound if empty)
 ```
 
 ## Troubleshooting

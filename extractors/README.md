@@ -98,7 +98,7 @@ Tests cover:
 - Custom extractor support including nil function handling
 - RFC 7235 compliance for Authorization header parsing
 - Metadata validation and source introspection
-- Chain ordering and fallback logic (17 comprehensive test functions)
+- Chain ordering and fallback logic (comprehensive test functions)
 
 ## Maintenance Notes
 

@@ -476,10 +476,10 @@ func Test_Extractor_FromAuthHeader_NoScheme(t *testing.T) {
 
 	app := fiber.New()
 
-	// Test with no auth scheme (empty string) - should return trimmed header value
+	// Test with no auth scheme (empty string) - should return header value
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	ctx.Request().Header.Set(fiber.HeaderAuthorization, "  some-token-value  ")
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "some-token-value")
 
 	extractor := FromAuthHeader("") // No scheme
 	token, err := extractor.Extract(ctx)
@@ -497,59 +497,6 @@ func Test_Extractor_FromAuthHeader_NoScheme(t *testing.T) {
 	// No Authorization header set
 
 	token, err = extractor.Extract(ctx2)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
-
-	// Test with no auth scheme and whitespace-only header (should return ErrNotFound)
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx3)
-	ctx3.Request().Header.Set(fiber.HeaderAuthorization, "   \t   ") // Only whitespace
-
-	token, err = extractor.Extract(ctx3)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
-}
-
-// go test -run Test_Extractor_EdgeCases
-func Test_Extractor_EdgeCases(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-
-	// Test empty/whitespace-only values
-	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx1)
-	ctx1.Request().Header.Set("X-Empty", "   \t   ") // Only whitespace
-
-	token, err := FromHeader("X-Empty").Extract(ctx1)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
-
-	// Test cookie with only whitespace
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx2)
-	ctx2.Request().Header.SetCookie("empty", "   ")
-
-	token, err = FromCookie("empty").Extract(ctx2)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
-
-	// Test query param with only whitespace
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx3)
-	ctx3.Request().SetRequestURI("/?param=%20%20%20") // URL-encoded spaces
-
-	token, err = FromQuery("param").Extract(ctx3)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
-
-	// Test form field with only whitespace
-	ctx4 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx4)
-	ctx4.Request().Header.SetContentType(fiber.MIMEApplicationForm)
-	ctx4.Request().SetBodyString("field=%20%20%20")
-
-	token, err = FromForm("field").Extract(ctx4)
 	require.Empty(t, token)
 	require.Equal(t, ErrNotFound, err)
 }

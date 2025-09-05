@@ -34,7 +34,7 @@ package extractors
 
 import (
 	"errors"
-	"strings"
+	"net/url"
 
 	"github.com/gofiber/fiber/v3"
 	utils "github.com/gofiber/utils/v2"
@@ -89,7 +89,7 @@ type Extractor struct {
 //
 // Parameters:
 //   - authScheme: The auth scheme to strip from the header value (e.g., "Bearer", "Basic").
-//     If empty, the entire trimmed header value is returned without modification.
+//     If empty, the entire header value is returned without modification.
 //
 // Returns:
 //
@@ -116,11 +116,10 @@ func FromAuthHeader(authScheme string) Extractor {
 
 			// Check if the header starts with the specified auth scheme
 			if authScheme == "" {
-				v := strings.Trim(authHeader, " \t")
-				if v == "" {
+				if authHeader == "" {
 					return "", ErrNotFound
 				}
-				return v, nil
+				return authHeader, nil
 			}
 
 			// Early return if header is too short for scheme + space + token
@@ -153,9 +152,9 @@ func FromAuthHeader(authScheme string) Extractor {
 				return "", ErrNotFound
 			}
 
-			// Extract and trim the token
+			// Extract the token
 			token := rest[i:]
-			return strings.TrimRight(token, " \t"), nil
+			return token, nil
 		},
 		Key:        fiber.HeaderAuthorization,
 		Source:     SourceAuthHeader,
@@ -167,7 +166,6 @@ func FromAuthHeader(authScheme string) Extractor {
 //
 // The function:
 //   - Retrieves the cookie value using the specified name
-//   - Trims whitespace from the value
 //   - Returns ErrNotFound if the cookie is missing or contains only whitespace
 //
 // Parameters:
@@ -192,7 +190,7 @@ func FromAuthHeader(authScheme string) Extractor {
 func FromCookie(key string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := strings.Trim(c.Cookies(key), " \t")
+			value := c.Cookies(key)
 			if value == "" {
 				return "", ErrNotFound
 			}
@@ -232,11 +230,15 @@ func FromCookie(key string) Extractor {
 func FromParam(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := strings.Trim(c.Params(param), " \t")
+			value := c.Params(param)
 			if value == "" {
 				return "", ErrNotFound
 			}
-			return value, nil
+			unescapedValue, err := url.PathUnescape(value)
+			if err != nil {
+				return "", ErrNotFound
+			}
+			return unescapedValue, nil
 		},
 		Key:    param,
 		Source: SourceParam,
@@ -271,7 +273,7 @@ func FromParam(param string) Extractor {
 func FromForm(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := strings.Trim(c.FormValue(param), " \t")
+			value := c.FormValue(param)
 			if value == "" {
 				return "", ErrNotFound
 			}
@@ -287,7 +289,6 @@ func FromForm(param string) Extractor {
 //
 // The function:
 //   - Retrieves the header value using the specified name
-//   - Trims whitespace from the value
 //   - Returns ErrNotFound if the header is missing or contains only whitespace
 //
 // Parameters:
@@ -311,7 +312,7 @@ func FromForm(param string) Extractor {
 func FromHeader(header string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := strings.Trim(c.Get(header), " \t")
+			value := c.Get(header)
 			if value == "" {
 				return "", ErrNotFound
 			}
@@ -352,7 +353,7 @@ func FromHeader(header string) Extractor {
 func FromQuery(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := strings.Trim(c.Query(param), " \t")
+			value := c.Query(param)
 			if value == "" {
 				return "", ErrNotFound
 			}
