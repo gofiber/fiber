@@ -1421,3 +1421,34 @@ func Test_AddRoute_MergeHandlers(t *testing.T) {
 	require.Len(t, app.stack[app.methodInt(MethodGet)], 1)
 	require.Len(t, app.stack[app.methodInt(MethodGet)][0].Handlers, 2)
 }
+
+func Test_Route_InvalidMediaType(t *testing.T) {
+	t.Run("produces", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Produces("invalid")
+		})
+	})
+	t.Run("consumes", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Consumes("invalid")
+		})
+	})
+}
+
+func Test_App_Produces(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).Produces(MIMEApplicationJSON)
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
+}
+
+func Test_App_Deprecated(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).Deprecated()
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.True(t, route.Deprecated)
+}
