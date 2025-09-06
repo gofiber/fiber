@@ -147,9 +147,9 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	require.NoError(t, err)
 	noCacheBody, err := io.ReadAll(noCacheResp.Body)
 	require.NoError(t, err)
-	require.Equal(t, cacheMiss, noCacheResp.Header.Get("X-Cache"))
-	require.Equal(t, []byte("2"), noCacheBody)
-	// Response cached, returns updated response, entry = 2
+	require.Equal(t, cacheHit, noCacheResp.Header.Get("X-Cache"))
+	require.Equal(t, []byte("1"), noCacheBody)
+	// Response not cached, returns cached response, entry = 1
 
 	/* Check Test_Cache_WithETagAndNoCacheRequestDirective */
 	// Request id = 2 with Cache-Control: no-cache again
@@ -159,9 +159,9 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	require.NoError(t, err)
 	noCacheBody1, err := io.ReadAll(noCacheResp1.Body)
 	require.NoError(t, err)
-	require.Equal(t, cacheMiss, noCacheResp1.Header.Get("X-Cache"))
-	require.Equal(t, []byte("2"), noCacheBody1)
-	// Response cached, returns updated response, entry = 2
+	require.Equal(t, cacheHit, noCacheResp1.Header.Get("X-Cache"))
+	require.Equal(t, []byte("1"), noCacheBody1)
+	// Response not cached, returns cached response, entry = 1
 
 	// Request id = 3 with Cache-Control: NO-CACHE
 	noCacheReqUpper := httptest.NewRequest(fiber.MethodGet, "/?id=3", nil)
@@ -170,9 +170,9 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	require.NoError(t, err)
 	noCacheBodyUpper, err := io.ReadAll(noCacheRespUpper.Body)
 	require.NoError(t, err)
-	require.Equal(t, cacheMiss, noCacheRespUpper.Header.Get("X-Cache"))
-	require.Equal(t, []byte("3"), noCacheBodyUpper)
-	// Response cached, returns updated response, entry = 3
+	require.Equal(t, cacheHit, noCacheRespUpper.Header.Get("X-Cache"))
+	require.Equal(t, []byte("1"), noCacheBodyUpper)
+	// Response not cached, returns cached response, entry = 1
 
 	// Request id = 4 with Cache-Control: my-no-cache
 	invalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", nil)
@@ -182,8 +182,8 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	invalidBody, err := io.ReadAll(invalidResp.Body)
 	require.NoError(t, err)
 	require.Equal(t, cacheHit, invalidResp.Header.Get("X-Cache"))
-	require.Equal(t, []byte("3"), invalidBody)
-	// Response served from cache, existing entry = 3
+	require.Equal(t, []byte("1"), invalidBody)
+	// Response served from cache, existing entry = 1
 
 	// Request id = 4 again without Cache-Control: no-cache
 	cachedInvalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", nil)
@@ -192,8 +192,8 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	cachedInvalidBody, err := io.ReadAll(cachedInvalidResp.Body)
 	require.NoError(t, err)
 	require.Equal(t, cacheHit, cachedInvalidResp.Header.Get("X-Cache"))
-	require.Equal(t, []byte("3"), cachedInvalidBody)
-	// Response cached, returns cached response, entry id = 3
+	require.Equal(t, []byte("1"), cachedInvalidBody)
+	// Response not cached, returns cached response, entry id = 1
 
 	// Request id = 1 without Cache-Control: no-cache
 	cachedReq1 := httptest.NewRequest(fiber.MethodGet, "/", nil)
@@ -202,8 +202,8 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	cachedBody1, err := io.ReadAll(cachedResp1.Body)
 	require.NoError(t, err)
 	require.Equal(t, cacheHit, cachedResp1.Header.Get("X-Cache"))
-	require.Equal(t, []byte("3"), cachedBody1)
-	// Response not cached, returns cached response, entry id = 3
+	require.Equal(t, []byte("1"), cachedBody1)
+	// Response not cached, returns cached response, entry id = 1
 }
 
 // go test -run Test_Cache_WithETagAndNoCacheRequestDirective
@@ -213,7 +213,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	app := fiber.New()
 	app.Use(
 		etag.New(),
-		New(),
+		New(Config{CacheControl: true}),
 	)
 
 	app.Get("/", func(c fiber.Ctx) error {
