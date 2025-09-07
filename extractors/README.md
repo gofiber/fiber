@@ -18,11 +18,11 @@ Package providing shared value extraction utilities for Fiber middleware package
 
 ```go
 type Extractor struct {
-    Extract    func(fiber.Ctx) (string, error)  // Extraction function
-    Key        string                           // Parameter/header name
-    Source     Source                           // Source type for inspection
-    AuthScheme string                           // Auth scheme (FromAuthHeader)
-    Chain      []Extractor                      // Chained extractors
+	Extract    func(fiber.Ctx) (string, error)
+	Key        string      // The parameter/header name used for extraction
+	AuthScheme string      // The auth scheme used, e.g., "Bearer"
+	Chain      []Extractor // For chained extractors, stores all extractors in the chain
+	Source     Source      // The type of source being extracted from
 }
 ```
 
