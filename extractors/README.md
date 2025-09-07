@@ -39,7 +39,7 @@ type Extractor struct {
 
 ### Source Inspection
 
-The `Source` field enables security-aware extraction by identifying the origin of extracted values:
+The `Source` field provides **security-aware extraction** by explicitly identifying the origin of extracted values. This enables middleware to enforce security policies based on data source:
 
 ```go
 switch extractor.Source {
@@ -74,37 +74,16 @@ The `Chain` function implements fallback logic:
 
 ### Source Awareness and Custom Extractors
 
-The `Source` field enables security-aware extraction by identifying the origin of extracted values. However, when using `FromCustom`, middleware cannot determine the source of the extracted value, which can compromise security:
+As described in the [Source Inspection](#source-inspection) section, the `Source` field enables middleware to enforce security policies based on data source:
+
+- **CSRF Protection**: The double-submit-cookie pattern requires tokens to come from cookies. Source awareness allows CSRF middleware to verify tokens originate from the expected secure source
+- **Authentication**: Security middleware can enforce source-specific policies (e.g., auth tokens from headers, not query parameters)
+- **Audit Trails**: Source information enables security analysis and compliance reporting
+
+However, when using `FromCustom`, middleware cannot determine the source of the extracted value, which can compromise security:
 
 - **CSRF Protection**: The double-submit-cookie pattern requires tokens to come from cookies. Custom extractors may read from insecure sources without middleware being able to detect or prevent this
 - **Authentication**: Security middleware may not be able to enforce source-specific security policies
 - **Audit Trails**: Source information is lost, making security analysis more difficult
 
 Documentation and examples should clearly warn about these risks when using custom extractors.
-
-## Testing
-
-Run the comprehensive test suite:
-
-```bash
-go test -v ./extractors
-```
-
-Tests cover:
-
-- Individual extractor functionality across all source types
-- Error handling and edge cases (empty values, malformed headers)
-- Chained extractor behavior and error propagation
-- Custom extractor support including nil function handling
-- RFC 7235 compliance for Authorization header parsing
-- Metadata validation and source introspection
-- Chain ordering and fallback logic (comprehensive test functions)
-
-## Maintenance Notes
-
-- **Single Source of Truth**: All extraction logic lives here
-- **Direct Usage**: Middleware imports and uses extractors directly
-- **Security Consistency**: Security warnings and source awareness must be kept in sync across all extractors
-- **Breaking Changes**: Require coordinated updates across dependent packages
-- **Performance**: Shared functions reduce overhead across middleware
-- **Documentation**: Ensure examples and warnings are clear and up-to-date
