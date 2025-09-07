@@ -6,13 +6,6 @@ package extractors
 // It can extract string values from various HTTP request sources including
 // headers, cookies, query parameters, form data, and URL parameters.
 //
-// Key features:
-//   - Security-aware extraction with source tracking
-//   - RFC 9110 compliant Authorization header parsing
-//   - Robust error handling and nil-safe operations
-//   - Chain/fallback logic for multiple extraction sources
-//   - Comprehensive test coverage with 17 test functions
-//
 // Example usage:
 //
 //	import "github.com/gofiber/fiber/v3/extractors"
