@@ -1,7 +1,7 @@
 ---
 id: extractors
 title: 🔬 Extractors
-description: Understanding how middleware extracts values from HTTP requests
+description: Learn how to use extractors in Fiber middleware
 sidebar_position: 8.5
 toc_max_heading_level: 4
 ---
@@ -10,19 +10,13 @@ The extractors package provides shared value extraction utilities for Fiber midd
 
 ## Overview
 
-The `github.com/gofiber/fiber/v3/extractors` package serves as a centralized location for value extraction logic that is common across multiple middleware packages. This approach:
+The `github.com/gofiber/fiber/v3/extractors` module provides standardized value extraction utilities integrated into Fiber's middleware ecosystem. This approach:
 
 - **Reduces Code Duplication**: Eliminates redundant extractor implementations across middleware packages
 - **Ensures Consistency**: Maintains identical behavior and security practices across all extractors
 - **Simplifies Maintenance**: Changes to extraction logic only need to be made in one place
 - **Enables Direct Usage**: Middleware can import and use extractors directly
 - **Improves Performance**: Shared, optimized extraction functions reduce overhead
-
-## Installation
-
-```bash
-go get github.com/gofiber/fiber/v3/extractors
-```
 
 ## What Are Extractors?
 
@@ -280,12 +274,12 @@ Choose extractors based on your specific use case and security needs, not blanke
 
 ## Standards Compliance
 
-### RFC 7235 Authorization Header Support
+### Authorization header compliance (RFC 9110; previously RFC 7235)
 
-The `FromAuthHeader` extractor is fully compliant with RFC 7235 HTTP Authentication:
+The `FromAuthHeader` extractor aligns with HTTP authentication semantics:
 
 - **Case-insensitive scheme matching**: `Bearer`, `bearer`, `BEARER` all work
-- **Flexible whitespace handling**: Supports spaces and tabs after scheme
+- **OWS handling**: Supports SP/HTAB around the scheme/value per RFC 9110
 - **Proper error handling**: Validates header format and content
 - **Security-conscious**: Prevents common parsing vulnerabilities
 

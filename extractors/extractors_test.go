@@ -413,7 +413,7 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 
 	app := fiber.New()
 
-	// Test RFC 7235: Tab character after scheme (should be accepted)
+	// Test RFC 9110: Tab character after scheme (should be accepted)
 	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx1)
 	ctx1.Request().Header.Set(fiber.HeaderAuthorization, "Bearer\ttoken") // Tab after Bearer
@@ -421,7 +421,7 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "token", token)
 
-	// Test RFC 7235: Multiple spaces after scheme
+	// Test RFC 9110: Multiple spaces after scheme
 	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx2)
 	ctx2.Request().Header.Set(fiber.HeaderAuthorization, "Bearer  token") // Multiple spaces
@@ -429,7 +429,7 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "token", token)
 
-	// Test RFC 7235: Mixed whitespace after scheme
+	// Test RFC 9110: Mixed whitespace after scheme
 	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx3)
 	ctx3.Request().Header.Set(fiber.HeaderAuthorization, "Bearer \t \ttoken") // Space + tabs
@@ -437,7 +437,7 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "token", token)
 
-	// Test RFC 7235: No whitespace after scheme (should fail)
+	// Test RFC 9110: No whitespace after scheme (should fail)
 	ctx4 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx4)
 	ctx4.Request().Header.Set(fiber.HeaderAuthorization, "Bearertoken") // No space
@@ -445,7 +445,7 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	require.Empty(t, token)
 	require.Equal(t, ErrNotFound, err)
 
-	// Test RFC 7235: Header too short for scheme + space + token
+	// Test RFC 9110: Header too short for scheme + space + token
 	ctx5 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx5)
 	ctx5.Request().Header.Set(fiber.HeaderAuthorization, "Bearer") // Just scheme, no space or token
@@ -453,7 +453,7 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	require.Empty(t, token)
 	require.Equal(t, ErrNotFound, err)
 
-	// Test RFC 7235: Only whitespace after scheme (should fail)
+	// Test RFC 9110: Only whitespace after scheme (should fail)
 	ctx6 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx6)
 	ctx6.Request().Header.Set(fiber.HeaderAuthorization, "Bearer   \t  ") // Only whitespace
@@ -461,7 +461,7 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	require.Empty(t, token)
 	require.Equal(t, ErrNotFound, err)
 
-	// Test RFC 7235: Case-insensitive scheme matching
+	// Test RFC 9110: Case-insensitive scheme matching
 	ctx7 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx7)
 	ctx7.Request().Header.Set(fiber.HeaderAuthorization, "BEARER token") // Uppercase

@@ -8,7 +8,7 @@ package extractors
 //
 // Key features:
 //   - Security-aware extraction with source tracking
-//   - RFC 7235 compliant Authorization header parsing
+//   - RFC 9110 compliant Authorization header parsing
 //   - Robust error handling and nil-safe operations
 //   - Chain/fallback logic for multiple extraction sources
 //   - Comprehensive test coverage with 17 test functions
@@ -80,7 +80,7 @@ type Extractor struct {
 }
 
 // FromAuthHeader extracts a value from the Authorization header with an optional prefix.
-// This function implements RFC 7235 compliant Authorization header parsing.
+// This function implements RFC 9110 compliant Authorization header parsing.
 //
 // The function supports:
 //   - Case-insensitive auth scheme matching
@@ -131,7 +131,7 @@ func FromAuthHeader(authScheme string) Extractor {
 				return "", ErrNotFound
 			}
 
-			// While RFC 7235 technically specifies 1*SP, HTTP implementations are generally lenient with whitespace (SP/HTAB)
+			// While RFC 9110 technically specifies 1*SP, HTTP implementations are generally lenient with whitespace (SP/HTAB)
 			if authHeader[len(authScheme)] != ' ' && authHeader[len(authScheme)] != '\t' {
 				return "", ErrNotFound
 			}
@@ -139,7 +139,7 @@ func FromAuthHeader(authScheme string) Extractor {
 			// Get the part after the scheme and required space
 			rest := authHeader[len(authScheme)+1:]
 
-			// Skip any additional whitespace (SP/HTAB allowed per RFC 7230)
+			// Skip any additional whitespace (SP/HTAB allowed per RFC 9110)
 			i := 0
 			for i < len(rest) && (rest[i] == ' ' || rest[i] == '\t') {
 				i++
