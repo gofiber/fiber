@@ -59,7 +59,7 @@ type Config struct {
 	// entries with the nearest expiration are deleted to make room for new.
 	// 0 means no limit
 	//
-	// Optional. Default: 64 * 1024 * 1024
+	// Optional. Default: 1 * 1024 * 1024
 	MaxBytes uint
 
 	// CacheControl enables client side caching if set to true
@@ -87,7 +87,7 @@ var ConfigDefault = Config{
 	ExpirationGenerator:  nil,
 	StoreResponseHeaders: false,
 	Storage:              nil,
-	MaxBytes:             64 * 1024 * 1024,
+	MaxBytes:             1 * 1024 * 1024,
 	Methods:              []string{fiber.MethodGet, fiber.MethodHead},
 }
 
