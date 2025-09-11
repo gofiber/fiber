@@ -59,7 +59,7 @@ func New(config Config) fiber.Handler {
 			return cfg.BadRequest(c)
 		}
 		rest = rest[1:]
-		if rest == "" || strings.ContainsAny(rest, " \t\r\n") {
+		if rest == "" || strings.IndexFunc(rest, unicode.IsSpace) != -1 {
 			return cfg.BadRequest(c)
 		}
 
