@@ -164,8 +164,8 @@ func New(config ...Config) fiber.Handler {
 				for k, v := range e.headers {
 					c.Response().Header.SetBytesV(k, v)
 				}
-				// Set Cache-Control header if enabled and not already set
-				if cfg.CacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
+				// Set Cache-Control header if not disabled and not already set
+				if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
 					maxAge := strconv.FormatUint(e.exp-ts, 10)
 					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 				}

@@ -69,7 +69,7 @@ app.Use(cache.New(cache.Config{
         return fiber.Query[bool](c, "noCache")
     },
     Expiration: 30 * time.Minute,
-    CacheControl: true,
+    DisableCacheControl: true,
 }))
 ```
 
@@ -111,7 +111,7 @@ app.Use(cache.New(cache.Config{
 | Next                 | `func(fiber.Ctx) bool`                         | Next defines a function that is executed before creating the cache entry and can be used to execute the request without cache creation. If an entry already exists, it will be used. If you want to completely bypass the cache functionality in certain cases, you should use the [skip middleware](skip.md). | `nil`                                                            |
 | Expiration           | `time.Duration`                                | Expiration is the time that a cached response will live. | `5 * time.Minute`                                                |
 | CacheHeader          | `string`                                       | CacheHeader is the header on the response header that indicates the cache status, with the possible return values "hit," "miss," or "unreachable."                                                                                                                                                             | `X-Cache`                                                        |
-| CacheControl         | `bool`                                          | CacheControl enables client-side caching if set to true. Set to `false` to omit the `Cache-Control` header. | `true`                                                          |
+| DisableCacheControl  | `bool`                                          | DisableCacheControl omits the `Cache-Control` header when set to `true`. | `false`                                                         |
 | CacheInvalidator     | `func(fiber.Ctx) bool`                         | CacheInvalidator defines a function that is executed before checking the cache entry. It can be used to invalidate the existing cache manually by returning true. | `nil`                                                            |
 | KeyGenerator         | `func(fiber.Ctx) string`                       | KeyGenerator allows you to generate custom keys. The HTTP method is appended automatically. | `func(c fiber.Ctx) string { return utils.CopyString(c.Path()) }` |
 | ExpirationGenerator  | `func(fiber.Ctx, *cache.Config) time.Duration` | ExpirationGenerator allows you to generate custom expiration keys based on the request.                                                                                                                                                                                                                        | `nil`                                                            |
@@ -127,7 +127,7 @@ var ConfigDefault = Config{
     Next:         nil,
     Expiration:   5 * time.Minute,
     CacheHeader:  "X-Cache",
-    CacheControl: true,
+    DisableCacheControl: false,
     CacheInvalidator: nil,
     KeyGenerator: func(c fiber.Ctx) string {
         return utils.CopyString(c.Path())
