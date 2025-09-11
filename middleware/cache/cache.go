@@ -90,9 +90,10 @@ func New(config ...Config) fiber.Handler {
 
 	// Update timestamp in the configured interval
 	go func() {
-		for {
+		ticker := time.NewTicker(timestampUpdatePeriod)
+		defer ticker.Stop()
+		for range ticker.C {
 			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix())) //nolint:gosec //Not a concern
-			time.Sleep(timestampUpdatePeriod)
 		}
 	}()
 
