@@ -43,6 +43,12 @@ type Config struct {
 	// Optional. Default: nil
 	Unauthorized fiber.Handler
 
+	// BadRequest defines the response body for malformed Authorization headers.
+	// By default it will return with a 400 Bad Request without the WWW-Authenticate header.
+	//
+	// Optional. Default: nil
+	BadRequest fiber.Handler
+
 	// Realm is a string to define realm attribute of BasicAuth.
 	// the realm identifies the system to authenticate against
 	// and can be used by clients to save credentials
@@ -52,7 +58,8 @@ type Config struct {
 
 	// Charset defines the value for the charset parameter in the
 	// WWW-Authenticate header. According to RFC 7617 clients can use
-	// this value to interpret credentials correctly.
+	// this value to interpret credentials correctly. Only the value
+	// "UTF-8" is allowed; any other value will panic.
 	//
 	// Optional. Default: "UTF-8".
 	Charset string
@@ -74,6 +81,7 @@ var ConfigDefault = Config{
 	HeaderLimit:  8192,
 	Authorizer:   nil,
 	Unauthorized: nil,
+	BadRequest:   nil,
 }
 
 // Helper function to set default values
@@ -98,6 +106,10 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Charset == "" {
 		cfg.Charset = ConfigDefault.Charset
+	} else if strings.EqualFold(cfg.Charset, "UTF-8") {
+		cfg.Charset = "UTF-8"
+	} else {
+		panic("basicauth: charset must be UTF-8")
 	}
 	if cfg.HeaderLimit <= 0 {
 		cfg.HeaderLimit = ConfigDefault.HeaderLimit
@@ -126,6 +138,11 @@ func configDefault(config ...Config) Config {
 			c.Set(fiber.HeaderCacheControl, "no-store")
 			c.Set(fiber.HeaderVary, fiber.HeaderAuthorization)
 			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+	}
+	if cfg.BadRequest == nil {
+		cfg.BadRequest = func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusBadRequest)
 		}
 	}
 	return cfg
