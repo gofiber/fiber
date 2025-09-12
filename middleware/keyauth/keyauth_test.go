@@ -945,7 +945,7 @@ func Test_BearerInsufficientScope(t *testing.T) {
 		Validator: func(_ fiber.Ctx, _ string) (bool, error) {
 			return false, errors.New("invalid")
 		},
-		Error: "insufficient_scope",
+		Error: ErrorInsufficientScope,
 		Scope: "read",
 	}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
@@ -969,14 +969,14 @@ func Test_ScopeValidation(t *testing.T) {
 	require.PanicsWithValue(t, "fiber: keyauth insufficient_scope requires scope", func() {
 		New(Config{
 			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return true, nil },
-			Error:     "insufficient_scope",
+			Error:     ErrorInsufficientScope,
 		})
 	})
 
 	require.PanicsWithValue(t, "fiber: keyauth scope contains invalid token", func() {
 		New(Config{
 			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return true, nil },
-			Error:     "insufficient_scope",
+			Error:     ErrorInsufficientScope,
 			Scope:     "read \"write\"",
 		})
 	})
@@ -984,7 +984,7 @@ func Test_ScopeValidation(t *testing.T) {
 	require.NotPanics(t, func() {
 		New(Config{
 			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return true, nil },
-			Error:     "insufficient_scope",
+			Error:     ErrorInsufficientScope,
 			Scope:     "read write:all",
 		})
 	})

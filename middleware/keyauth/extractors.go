@@ -74,7 +74,7 @@ func FromAuthHeader(header, authScheme string) Extractor {
 					return "", ErrMissingOrMalformedAPIKey
 				}
 				token := rest[i:]
-				if token == "" || strings.IndexAny(token, " \t") >= 0 {
+				if token == "" || strings.ContainsAny(token, " \t") {
 					return "", ErrMissingOrMalformedAPIKey
 				}
 				seenEq := false

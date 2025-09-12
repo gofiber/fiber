@@ -58,22 +58,23 @@ func New(config ...Config) fiber.Handler {
 			if len(authSchemes) > 0 {
 				challenges := make([]string, 0, len(authSchemes))
 				for _, scheme := range authSchemes {
-					challenge := fmt.Sprintf("%s realm=%q", scheme, cfg.Realm)
+					var b strings.Builder
+					fmt.Fprintf(&b, "%s realm=%q", scheme, cfg.Realm)
 					if strings.EqualFold(scheme, "Bearer") {
 						if cfg.Error != "" {
-							challenge += fmt.Sprintf(", error=%q", cfg.Error)
+							fmt.Fprintf(&b, ", error=%q", cfg.Error)
 							if cfg.ErrorDescription != "" {
-								challenge += fmt.Sprintf(", error_description=%q", cfg.ErrorDescription)
+								fmt.Fprintf(&b, ", error_description=%q", cfg.ErrorDescription)
 							}
 							if cfg.ErrorURI != "" {
-								challenge += fmt.Sprintf(", error_uri=%q", cfg.ErrorURI)
+								fmt.Fprintf(&b, ", error_uri=%q", cfg.ErrorURI)
 							}
-							if cfg.Error == "insufficient_scope" {
-								challenge += fmt.Sprintf(", scope=%q", cfg.Scope)
+							if cfg.Error == ErrorInsufficientScope {
+								fmt.Fprintf(&b, ", scope=%q", cfg.Scope)
 							}
 						}
 					}
-					challenges = append(challenges, challenge)
+					challenges = append(challenges, b.String())
 				}
 				c.Set(header, strings.Join(challenges, ", "))
 			} else if cfg.Challenge != "" {

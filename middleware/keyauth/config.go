@@ -8,6 +8,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+const (
+	ErrorInvalidRequest    = "invalid_request"
+	ErrorInvalidToken      = "invalid_token"
+	ErrorInsufficientScope = "insufficient_scope"
+)
+
 // Config defines the config for middleware.
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
@@ -124,7 +130,7 @@ func configDefault(config ...Config) Config {
 
 	if cfg.Error != "" {
 		switch cfg.Error {
-		case "invalid_request", "invalid_token", "insufficient_scope":
+		case ErrorInvalidRequest, ErrorInvalidToken, ErrorInsufficientScope:
 		default:
 			panic("fiber: keyauth unsupported error token")
 		}
@@ -140,7 +146,7 @@ func configDefault(config ...Config) Config {
 			panic("fiber: keyauth error_uri must be absolute")
 		}
 	}
-	if cfg.Error == "insufficient_scope" {
+	if cfg.Error == ErrorInsufficientScope {
 		if cfg.Scope == "" {
 			panic("fiber: keyauth insufficient_scope requires scope")
 		}

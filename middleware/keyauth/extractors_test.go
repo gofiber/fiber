@@ -253,6 +253,13 @@ func Test_FromAuthHeader_TokenChars(t *testing.T) {
 	app.ReleaseCtx(ctx)
 
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer =abcd")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer ab=cd")
 	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
 	require.Empty(t, token)
