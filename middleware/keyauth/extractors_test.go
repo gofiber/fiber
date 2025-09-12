@@ -173,3 +173,110 @@ func Test_Extractor_Chain(t *testing.T) {
 	require.Empty(t, token)
 	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
 }
+
+func Test_FromAuthHeader_LeadingWhitespace(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "   Bearer token")
+	token, err := FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "token", token)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "\tBearer token2")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "token2", token)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "\t Bearer token3")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "token3", token)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token4 \t ")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "token4", token)
+	app.ReleaseCtx(ctx)
+}
+
+func Test_FromAuthHeader_TabBetweenSchemeAndToken(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer \t token")
+	token, err := FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+}
+
+func Test_FromAuthHeader_TokenWhitespace(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token value")
+	token, err := FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token\tvalue")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+}
+
+func Test_FromAuthHeader_TokenChars(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer a-._~+/123=")
+	token, err := FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "a-._~+/123=", token)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer ab=cd")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer abcd==")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "abcd==", token)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token,value")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token;value")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+}

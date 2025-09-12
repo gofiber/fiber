@@ -51,7 +51,7 @@ type Extractor struct {
 func FromAuthHeader(header, authScheme string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			authHeader := c.Get(header)
+			authHeader := strings.Trim(c.Get(header), " \t")
 			if authHeader == "" {
 				return "", ErrMissingOrMalformedAPIKey
 			}
@@ -59,13 +59,43 @@ func FromAuthHeader(header, authScheme string) Extractor {
 			// Check if the header starts with the specified auth scheme
 			if authScheme != "" {
 				schemeLen := len(authScheme)
-				if len(authHeader) > schemeLen+1 && strings.EqualFold(authHeader[:schemeLen], authScheme) && authHeader[schemeLen] == ' ' {
-					return strings.TrimSpace(authHeader[schemeLen+1:]), nil
+				if len(authHeader) <= schemeLen || !strings.EqualFold(authHeader[:schemeLen], authScheme) {
+					return "", ErrMissingOrMalformedAPIKey
 				}
-				return "", ErrMissingOrMalformedAPIKey
+				rest := authHeader[schemeLen:]
+				if len(rest) == 0 || rest[0] != ' ' {
+					return "", ErrMissingOrMalformedAPIKey
+				}
+				i := 1
+				for i < len(rest) && rest[i] == ' ' {
+					i++
+				}
+				if i < len(rest) && rest[i] == '\t' {
+					return "", ErrMissingOrMalformedAPIKey
+				}
+				token := rest[i:]
+				if token == "" || strings.IndexAny(token, " \t") >= 0 {
+					return "", ErrMissingOrMalformedAPIKey
+				}
+				seenEq := false
+				for j := 0; j < len(token); j++ {
+					c := token[j]
+					if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~' || c == '+' || c == '/' || c == '=') {
+						return "", ErrMissingOrMalformedAPIKey
+					}
+					if c == '=' {
+						if j == 0 {
+							return "", ErrMissingOrMalformedAPIKey
+						}
+						seenEq = true
+					} else if seenEq {
+						return "", ErrMissingOrMalformedAPIKey
+					}
+				}
+				return token, nil
 			}
 
-			return strings.TrimSpace(authHeader), nil
+			return authHeader, nil
 		},
 		Key:        header,
 		Source:     SourceAuthHeader,

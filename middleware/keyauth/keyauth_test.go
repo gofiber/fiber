@@ -16,7 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-const CorrectKey = "specials: !$%,.#\"!?~`<>@$^*(){}[]|/\\123"
+const CorrectKey = "correct-token_123./~+"
 
 var testConfig = fiber.TestConfig{
 	Timeout: 0,
@@ -814,14 +814,14 @@ func Test_WWWAuthenticateHeader(t *testing.T) {
 			expectedStatusCode: fiber.StatusUnauthorized,
 		},
 		{
-			name: "no header for non-auth-header extractor",
+			name: "default header for non-auth-header extractor",
 			config: Config{
 				Validator: func(_ fiber.Ctx, _ string) (bool, error) {
 					return false, errors.New("validation failed")
 				},
 				Extractor: FromQuery("api_key"),
 			},
-			expectedHeader:     "",
+			expectedHeader:     `ApiKey realm="Restricted"`,
 			expectedStatusCode: fiber.StatusUnauthorized,
 		},
 		{
@@ -853,7 +853,7 @@ func Test_WWWAuthenticateHeader(t *testing.T) {
 				},
 				Extractor: Chain(FromQuery("q"), FromCookie("c")),
 			},
-			expectedHeader:     "",
+			expectedHeader:     `ApiKey realm="Restricted"`,
 			expectedStatusCode: fiber.StatusUnauthorized,
 		},
 	}
@@ -880,4 +880,219 @@ func Test_WWWAuthenticateHeader(t *testing.T) {
 			assert.Equal(t, tt.expectedHeader, resp.Header.Get(fiber.HeaderWWWAuthenticate))
 		})
 	}
+}
+
+func Test_CustomChallenge(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Extractor: FromQuery("api_key"),
+		Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+			return false, errors.New("invalid")
+		},
+		Challenge: `ApiKey realm="Restricted"`,
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	res, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	require.Equal(t, `ApiKey realm="Restricted"`, res.Header.Get("WWW-Authenticate"))
+}
+
+func Test_BearerErrorFields(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+			return false, errors.New("invalid")
+		},
+		Error:            "invalid_token",
+		ErrorDescription: "token expired",
+		ErrorURI:         "https://example.com",
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Add("Authorization", "Bearer something")
+	res, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	require.Equal(t, `Bearer realm="Restricted", error="invalid_token", error_description="token expired", error_uri="https://example.com"`, res.Header.Get("WWW-Authenticate"))
+}
+
+func Test_BearerErrorURIOnly(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+			return false, errors.New("invalid")
+		},
+		Error:    "invalid_token",
+		ErrorURI: "https://example.com/docs",
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Add("Authorization", "Bearer something")
+	res, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	require.Equal(t, `Bearer realm="Restricted", error="invalid_token", error_uri="https://example.com/docs"`, res.Header.Get("WWW-Authenticate"))
+}
+
+func Test_BearerInsufficientScope(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+			return false, errors.New("invalid")
+		},
+		Error: "insufficient_scope",
+		Scope: "read",
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Add("Authorization", "Bearer something")
+	res, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	require.Equal(t, `Bearer realm="Restricted", error="insufficient_scope", scope="read"`, res.Header.Get("WWW-Authenticate"))
+}
+
+func Test_ScopeValidation(t *testing.T) {
+	require.PanicsWithValue(t, "fiber: keyauth scope requires insufficient_scope error", func() {
+		New(Config{
+			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return true, nil },
+			Scope:     "foo",
+		})
+	})
+
+	require.PanicsWithValue(t, "fiber: keyauth insufficient_scope requires scope", func() {
+		New(Config{
+			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return true, nil },
+			Error:     "insufficient_scope",
+		})
+	})
+
+	require.PanicsWithValue(t, "fiber: keyauth scope contains invalid token", func() {
+		New(Config{
+			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return true, nil },
+			Error:     "insufficient_scope",
+			Scope:     "read \"write\"",
+		})
+	})
+
+	require.NotPanics(t, func() {
+		New(Config{
+			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return true, nil },
+			Error:     "insufficient_scope",
+			Scope:     "read write:all",
+		})
+	})
+}
+
+func Test_WWWAuthenticateOnlyOn401(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+			return false, errors.New("invalid")
+		},
+		ErrorHandler: func(c fiber.Ctx, _ error) error {
+			return c.Status(fiber.StatusForbidden).SendString("forbidden")
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Add("Authorization", "Bearer bad")
+	res, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusForbidden, res.StatusCode)
+	require.Equal(t, "", res.Header.Get("WWW-Authenticate"))
+}
+
+func Test_DefaultChallengeForNonAuthExtractor(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Extractor: FromQuery("api_key"),
+		Validator: func(_ fiber.Ctx, _ string) (bool, error) { return false, ErrMissingOrMalformedAPIKey },
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	require.Equal(t, `ApiKey realm="Restricted"`, res.Header.Get(fiber.HeaderWWWAuthenticate))
+}
+
+func Test_MultipleWWWAuthenticateChallenges(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Extractor: Chain(
+			FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
+			FromAuthHeader(fiber.HeaderAuthorization, "ApiKey"),
+		),
+		Validator: func(_ fiber.Ctx, _ string) (bool, error) { return false, errors.New("invalid") },
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	require.Equal(t, `Bearer realm="Restricted", ApiKey realm="Restricted"`, res.Header.Get(fiber.HeaderWWWAuthenticate))
+}
+
+func Test_ProxyAuthenticateHeader(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Validator: func(_ fiber.Ctx, _ string) (bool, error) { return false, errors.New("invalid") },
+		ErrorHandler: func(c fiber.Ctx, _ error) error {
+			return c.Status(fiber.StatusProxyAuthRequired).SendString("proxy auth")
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Add("Authorization", "Bearer bad")
+	res, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusProxyAuthRequired, res.StatusCode)
+	require.Equal(t, `Bearer realm="Restricted"`, res.Header.Get(fiber.HeaderProxyAuthenticate))
+	require.Empty(t, res.Header.Get(fiber.HeaderWWWAuthenticate))
+}
+
+func Test_New_InvalidErrorToken(t *testing.T) {
+	assert.Panics(t, func() {
+		New(Config{
+			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return true, nil },
+			Error:     "unsupported",
+		})
+	})
+}
+
+func Test_New_ErrorDescriptionRequiresError(t *testing.T) {
+	assert.Panics(t, func() {
+		New(Config{
+			Validator:        func(_ fiber.Ctx, _ string) (bool, error) { return true, nil },
+			ErrorDescription: "desc",
+		})
+	})
+}
+
+func Test_New_ErrorURIRequiresError(t *testing.T) {
+	assert.PanicsWithValue(t, "fiber: keyauth error_uri requires error", func() {
+		New(Config{
+			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return true, nil },
+			ErrorURI:  "https://example.com/docs",
+		})
+	})
+}
+
+func Test_New_ErrorURIAbsolute(t *testing.T) {
+	assert.PanicsWithValue(t, "fiber: keyauth error_uri must be absolute", func() {
+		New(Config{
+			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return true, nil },
+			Error:     "invalid_token",
+			ErrorURI:  "/docs",
+		})
+	})
 }
