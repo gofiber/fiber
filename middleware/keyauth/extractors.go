@@ -86,11 +86,11 @@ func FromAuthHeader(header, authScheme string) Extractor {
 				}
 				seenEq := false
 				for j := 0; j < len(token); j++ {
-					c := token[j]
-					if !isToken68Char(c) {
+					currChar := token[j]
+					if !isToken68Char(currChar) {
 						return "", ErrMissingOrMalformedAPIKey
 					}
-					if c == '=' {
+					if currChar == '=' {
 						if j == 0 {
 							return "", ErrMissingOrMalformedAPIKey
 						}
