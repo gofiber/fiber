@@ -6,6 +6,13 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+func isToken68Char(c byte) bool {
+	return (c >= 'A' && c <= 'Z') ||
+		(c >= 'a' && c <= 'z') ||
+		(c >= '0' && c <= '9') ||
+		c == '-' || c == '.' || c == '_' || c == '~' || c == '+' || c == '/' || c == '='
+}
+
 // Source represents the type of source from which an API key is extracted.
 // This is informational metadata that helps developers understand the extractor behavior.
 type Source int
@@ -80,7 +87,7 @@ func FromAuthHeader(header, authScheme string) Extractor {
 				seenEq := false
 				for j := 0; j < len(token); j++ {
 					c := token[j]
-					if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~' || c == '+' || c == '/' || c == '=') {
+					if !isToken68Char(c) {
 						return "", ErrMissingOrMalformedAPIKey
 					}
 					if c == '=' {
