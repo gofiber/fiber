@@ -26,10 +26,7 @@ func Test_Cache_CacheControl(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(New(Config{
-		CacheControl: true,
-		Expiration:   10 * time.Second,
-	}))
+	app.Use(New(Config{Expiration: 10 * time.Second}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
@@ -41,6 +38,28 @@ func Test_Cache_CacheControl(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, "public, max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
+}
+
+func Test_Cache_CacheControl_Disabled(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Expiration:          10 * time.Second,
+		DisableCacheControl: true,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl))
 }
 
 func Test_Cache_Expired(t *testing.T) {
@@ -341,8 +360,7 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		CacheControl: true,
-		Expiration:   10 * time.Second,
+		Expiration: 10 * time.Second,
 	}))
 
 	app.Get("/:id", func(c fiber.Ctx) error {
@@ -522,7 +540,6 @@ func Test_Cache_CustomNext(t *testing.T) {
 		Next: func(c fiber.Ctx) bool {
 			return c.Response().StatusCode() != fiber.StatusOK
 		},
-		CacheControl: true,
 	}))
 
 	count := 0
@@ -792,7 +809,6 @@ func Test_CacheInvalidation(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		CacheControl: true,
 		CacheInvalidator: func(c fiber.Ctx) bool {
 			return fiber.Query[bool](c, "invalidate")
 		},
@@ -830,7 +846,6 @@ func Test_CacheInvalidation_noCacheEntry(t *testing.T) {
 		app := fiber.New()
 		cacheInvalidatorExecuted := false
 		app.Use(New(Config{
-			CacheControl: true,
 			CacheInvalidator: func(c fiber.Ctx) bool {
 				cacheInvalidatorExecuted = true
 				return fiber.Query[bool](c, "invalidate")
@@ -849,7 +864,6 @@ func Test_CacheInvalidation_removeFromHeap(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
 		app.Use(New(Config{
-			CacheControl: true,
 			CacheInvalidator: func(c fiber.Ctx) bool {
 				return fiber.Query[bool](c, "invalidate")
 			},
@@ -886,9 +900,8 @@ func Test_CacheStorage_CustomHeaders(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		CacheControl: true,
-		Storage:      memory.New(),
-		MaxBytes:     10 * 1024 * 1024,
+		Storage:  memory.New(),
+		MaxBytes: 10 * 1024 * 1024,
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -1137,7 +1150,7 @@ func Test_CacheNoStoreDirective(t *testing.T) {
 func Test_CacheControlNotOverwritten(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Use(New(Config{CacheControl: true, Expiration: 10 * time.Second, StoreResponseHeaders: true}))
+	app.Use(New(Config{Expiration: 10 * time.Second, StoreResponseHeaders: true}))
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderCacheControl, "private")
 		return c.SendString("ok")
