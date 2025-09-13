@@ -31,7 +31,7 @@ app.Use(session.New())
 
 app.Get("/", func(c fiber.Ctx) error {
     sess := session.FromContext(c)
-    
+
     // Get and update visits count
     var visits int
     if v := sess.Get("visits"); v != nil {
@@ -51,6 +51,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```go
 import (
     "time"
+    "github.com/gofiber/fiber/v3/extractors"
     "github.com/gofiber/storage/redis"
 )
 
@@ -66,7 +67,7 @@ app.Use(session.New(session.Config{
     CookieSameSite:    "Lax",             // CSRF protection
     IdleTimeout:       30 * time.Minute,  // Session timeout
     AbsoluteTimeout:   24 * time.Hour,    // Maximum session life
-    Extractor:         session.FromCookie("__Host-session_id"),
+    Extractor:         extractors.FromCookie("__Host-session_id"),
 }))
 ```
 
@@ -83,11 +84,11 @@ app.Use(session.New())
 // Use in handlers
 app.Post("/login", func(c fiber.Ctx) error {
     sess := session.FromContext(c)
-    
+
     // Session is automatically saved when handler returns
     sess.Set("user_id", 123)
     sess.Set("authenticated", true)
-    
+
     return c.Redirect("/dashboard")
 })
 ```
@@ -119,10 +120,10 @@ func backgroundTask(sessionID string) {
         return
     }
     defer sess.Release() // Important: Manual cleanup required
-    
+
     // Modify session
     sess.Set("last_task", time.Now())
-    
+
     // Manual save required
     if err := sess.Save(); err != nil {
         log.Printf("Failed to save session: %v", err)
@@ -147,10 +148,10 @@ Understanding session lifecycle during authentication is crucial for security.
 ```go
 app.Post("/login", func(c fiber.Ctx) error {
     sess := session.FromContext(c)
-    
+
     email := c.FormValue("email")
     password := c.FormValue("password")
-    
+
     // Simple credential validation (use proper authentication in production)
     if email == "admin@example.com" && password == "secret" {
         // Important: Regenerate the session ID to prevent fixation
@@ -158,25 +159,25 @@ app.Post("/login", func(c fiber.Ctx) error {
         if err := sess.Regenerate(); err != nil {
             return c.Status(500).SendString("Session error")
         }
-        
+
         // Add authentication data to existing session
         sess.Set("user_id", 1)
         sess.Set("authenticated", true)
-        
+
         return c.Redirect("/dashboard")
     }
-    
+
     return c.Status(401).SendString("Invalid credentials")
 })
 
 app.Post("/logout", func(c fiber.Ctx) error {
     sess := session.FromContext(c)
-    
+
     // Complete session reset (clears all data + new session ID)
     if err := sess.Reset(); err != nil {
         return c.Status(500).SendString("Session error")
     }
-    
+
     return c.Redirect("/")
 })
 ```
@@ -186,25 +187,25 @@ app.Post("/logout", func(c fiber.Ctx) error {
 ```go
 app.Post("/login", func(c fiber.Ctx) error {
     sess := session.FromContext(c)
-    
+
     // Validate credentials (implement your own validation)
     email := c.FormValue("email")
     password := c.FormValue("password")
     if !isValidUser(email, password) {
         return c.Status(401).JSON(fiber.Map{"error": "Invalid credentials"})
     }
-    
+
     // Important: Regenerate the session ID to prevent fixation
     // This changes the session ID while preserving existing data
     if err := sess.Regenerate(); err != nil {
         return c.Status(500).JSON(fiber.Map{"error": "Session error"})
     }
-    
+
     // Add authentication data to existing session
     sess.Set("user_id", getUserID(email))
     sess.Set("authenticated", true)
     sess.Set("login_time", time.Now())
-    
+
     return c.JSON(fiber.Map{"status": "logged in"})
 })
 ```
@@ -257,12 +258,12 @@ func RequireAuth(c fiber.Ctx) error {
     if sess == nil {
         return c.Redirect("/login")
     }
-    
+
     // Check if user is authenticated
     if sess.Get("authenticated") != true {
         return c.Redirect("/login")
     }
-    
+
     return c.Next()
 }
 
@@ -292,23 +293,26 @@ app.Use(session.New(session.Config{
 
 ## Session ID Extractors
 
+This middleware uses the shared extractors module for session ID extraction. See the Extractors Guide:
+- https://docs.gofiber.io/guide/extractors
+
 ### Built-in Extractors
 
 ```go
 // Cookie-based (recommended for web apps)
-session.FromCookie("session_id")
+extractors.FromCookie("session_id")
 
-// Header-based (recommended for APIs)  
-session.FromHeader("X-Session-ID")
+// Header-based (recommended for APIs)
+extractors.FromHeader("X-Session-ID")
 
 // Form data
-session.FromForm("session_id")
+extractors.FromForm("session_id")
 
 // URL query parameter
-session.FromQuery("session_id")
+extractors.FromQuery("session_id")
 
 // URL path parameter
-session.FromParam("id")
+extractors.FromParam("id")
 ```
 
 **Response Behavior with Extractors:**
@@ -321,10 +325,10 @@ session.FromParam("id")
 
 ```go
 app.Use(session.New(session.Config{
-    Extractor: session.Chain(
-        session.FromCookie("session_id"),    // Try cookie first
-        session.FromHeader("X-Session-ID"),  // Then header
-        session.FromQuery("session_id"),     // Finally query
+    Extractor: extractors.Chain(
+        extractors.FromCookie("session_id"),    // Try cookie first
+        extractors.FromHeader("X-Session-ID"),  // Then header
+        extractors.FromQuery("session_id"),     // Finally query
     ),
 }))
 ```
@@ -341,38 +345,38 @@ The session middleware intelligently sets response values based on the extractor
 
 ```go
 // This will set both cookie and header in response
-session.Chain(
-    session.FromCookie("session_id"), 
-    session.FromHeader("X-Session-ID")
+extractors.Chain(
+    extractors.FromCookie("session_id"),
+    extractors.FromHeader("X-Session-ID")
 )
 
 // This will set only cookie in response
-session.Chain(
-    session.FromCookie("session_id"), 
-    session.FromQuery("session_id")   // Ignored for response
+extractors.Chain(
+    extractors.FromCookie("session_id"),
+    extractors.FromQuery("session_id")   // Ignored for response
 )
 
 // This will set nothing in response (read-only mode)
-session.Chain(
-    session.FromQuery("session_id"), 
-    session.FromForm("session_id")
+extractors.Chain(
+    extractors.FromQuery("session_id"),
+    extractors.FromForm("session_id")
 )
 ```
 
 ### Custom Extractor
 
-You can create custom extractors by returning a `session.Extractor` struct that defines how to extract the session ID from the request and how the middleware should handle responses.
+You can create custom extractors by returning an `extractors.Extractor` that defines how to extract the session ID from the request and how the middleware should handle responses.
 
-The `Source` field is crucial as it controls whether the middleware sets response values:
+The `Source` field on extractors controls whether the middleware sets response values:
 
 - `SourceCookie`: Sets cookies in the response
 - `SourceHeader`: Sets headers in the response
-- `SourceOther`: Read-only, no response values set
+- Others (Query/Form/Param/Custom): Read-only, no response values set
 
 ```go
 // Custom extractor for Authorization Bearer tokens
-func FromAuthorization() session.Extractor {
-    return session.Extractor{
+func FromAuthorization() extractors.Extractor {
+    return extractors.Extractor{
         Extract: func(c fiber.Ctx) (string, error) {
             auth := c.Get("Authorization")
             if strings.HasPrefix(auth, "Bearer ") {
@@ -381,9 +385,9 @@ func FromAuthorization() session.Extractor {
                     return sessionID, nil
                 }
             }
-            return "", session.ErrMissingSessionIDInHeader
+            return "", extractors.ErrNotFound
         },
-        Source: session.SourceHeader, // This will set response headers
+        Source: extractors.SourceHeader, // This will set response headers
         Key:    "Authorization",
     }
 }
@@ -395,16 +399,16 @@ app.Use(session.New(session.Config{
 
 ```go
 // Custom read-only extractor (no response setting)
-func FromCustomParam() session.Extractor {
-    return session.Extractor{
+func FromCustomParam() extractors.Extractor {
+    return extractors.Extractor{
         Extract: func(c fiber.Ctx) (string, error) {
             sessionID := c.Get("X-Custom-Session")
             if sessionID == "" {
-                return "", session.ErrMissingSessionIDInHeader
+                return "", extractors.ErrNotFound
             }
             return sessionID, nil
         },
-        Source: session.SourceOther, // Read-only, won't set responses
+        // Read-only, won't set responses (non-header/cookie source)
         Key:    "X-Custom-Session",
     }
 }
@@ -453,30 +457,31 @@ import (
     "log"
     "time"
     "github.com/gofiber/utils/v2"
+    "github.com/gofiber/fiber/v3/extractors"
 )
 
 app.Use(session.New(session.Config{
     // Storage
     Storage: redisStorage,
-    
+
     // Security
     CookieSecure:      true,    // HTTPS only (required in production)
     CookieHTTPOnly:    true,    // No JavaScript access (prevents XSS)
     CookieSameSite:    "Lax",   // CSRF protection
-    
+
     // Session Management
     IdleTimeout:       30 * time.Minute,  // Inactivity timeout
     AbsoluteTimeout:   24 * time.Hour,    // Maximum session duration
-    
+
     // Cookie Settings
     CookiePath:        "/",
     CookieDomain:      "example.com",
     CookieSessionOnly: false,   // Persist across browser restarts
-    
+
     // Session ID
-    Extractor:         session.FromCookie("__Host-session_id"),
+    Extractor:         extractors.FromCookie("__Host-session_id"),
     KeyGenerator:      utils.UUIDv4,
-    
+
     // Error Handling
     ErrorHandler: func(c fiber.Ctx, err error) {
         log.Printf("Session error: %v", err)
@@ -508,25 +513,25 @@ type User struct {
 // Method 1: Using NewWithStore
 func main() {
     app := fiber.New()
-    
+
     sessionMiddleware, store := session.NewWithStore()
     store.RegisterType(User{}) // Register custom type
-    
+
     app.Use(sessionMiddleware)
-    
+
     app.Get("/", func(c fiber.Ctx) error {
         sess := session.FromContext(c)
-        
+
         // Use custom type
         sess.Set("user", User{ID: 123, Name: "John", Role: "admin"})
-        
+
         user, ok := sess.Get("user").(User)
         if ok {
             return c.JSON(fiber.Map{"user": user.Name, "role": user.Role})
         }
         return c.SendString("No user found")
     })
-    
+
     app.Listen(":3000")
 }
 ```
@@ -588,7 +593,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ```go
 app.Use(session.New(session.Config{
-    Extractor: session.FromCookie("session_id"),
+    Extractor: extractors.FromCookie("session_id"),
 }))
 
 app.Get("/", func(c fiber.Ctx) error {
@@ -603,7 +608,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ```go
 store := session.NewStore(session.Config{
-    Extractor: session.FromCookie("session_id"),
+    Extractor: extractors.FromCookie("session_id"),
 })
 
 app.Get("/", func(c fiber.Ctx) error {
@@ -612,7 +617,7 @@ app.Get("/", func(c fiber.Ctx) error {
         return err
     }
     defer sess.Release() // Manual cleanup required
-    
+
     sess.Set("key", "value")
     return sess.Save() // Manual save required
 })
@@ -620,13 +625,13 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### KeyLookup to Extractor Migration
 
-| v2 KeyLookup                    | v3 Extractor                                                            |
-|---------------------------------|-------------------------------------------------------------------------|
-| `"cookie:session_id"`           | `session.FromCookie("session_id")`                                      |
-| `"header:X-Session-ID"`         | `session.FromHeader("X-Session-ID")`                                    |
-| `"query:session_id"`            | `session.FromQuery("session_id")`                                       |
-| `"form:session_id"`             | `session.FromForm("session_id")`                                        |
-| `"cookie:sid,header:X-Sid"`     | `session.Chain(session.FromCookie("sid"), session.FromHeader("X-Sid"))` |
+| v2 KeyLookup                    | v3 Extractor                                                                       |
+|---------------------------------|------------------------------------------------------------------------------------|
+| `"cookie:session_id"`           | `extractors.FromCookie("session_id")`                                             |
+| `"header:X-Session-ID"`         | `extractors.FromHeader("X-Session-ID")`                                           |
+| `"query:session_id"`            | `extractors.FromQuery("session_id")`                                              |
+| `"form:session_id"`             | `extractors.FromForm("session_id")`                                               |
+| `"cookie:sid,header:X-Sid"`     | `extractors.Chain(extractors.FromCookie("sid"), extractors.FromHeader("X-Sid"))` |
 
 ## API Reference
 
@@ -682,33 +687,33 @@ sess.Release()                 // Manual cleanup required
 ### Extractor Functions
 
 ```go
-// Built-in extractors
-session.FromCookie(key string) session.Extractor
-session.FromHeader(key string) session.Extractor
-session.FromQuery(key string) session.Extractor
-session.FromForm(key string) session.Extractor
-session.FromParam(key string) session.Extractor
+// Built-in extractors (import "github.com/gofiber/fiber/v3/extractors")
+extractors.FromCookie(key string) extractors.Extractor
+extractors.FromHeader(key string) extractors.Extractor
+extractors.FromQuery(key string) extractors.Extractor
+extractors.FromForm(key string) extractors.Extractor
+extractors.FromParam(key string) extractors.Extractor
 
 // Chaining
-session.Chain(extractors ...session.Extractor) session.Extractor
+extractors.Chain(extractors ...extractors.Extractor) extractors.Extractor
 ```
 
 ### Config Properties
 
-| Property            | Type                        | Description                 | Default                   |
-|---------------------|-----------------------------|-----------------------------|---------------------------|
-| `Storage`           | `fiber.Storage`             | Session storage backend     | `memory.New()`            |
-| `Extractor`         | `session.Extractor`         | Session ID extraction       | `FromCookie("session_id")`|
-| `KeyGenerator`      | `func() string`             | Session ID generator        | `utils.UUIDv4`            |
-| `IdleTimeout`       | `time.Duration`             | Inactivity timeout          | `30 * time.Minute`        |
-| `AbsoluteTimeout`   | `time.Duration`             | Maximum session duration    | `0` (unlimited)           |
-| `CookieSecure`      | `bool`                      | HTTPS only                  | `false`                   |
-| `CookieHTTPOnly`    | `bool`                      | No JavaScript access        | `false`                   |
-| `CookieSameSite`    | `string`                    | SameSite attribute          | `"Lax"`                   |
-| `CookiePath`        | `string`                    | Cookie path                 | `""`                      |
-| `CookieDomain`      | `string`                    | Cookie domain               | `""`                      |
-| `CookieSessionOnly` | `bool`                      | Session cookie              | `false`                   |
-| `ErrorHandler`      | `func(fiber.Ctx, error)`    | Error callback              | `DefaultErrorHandler`     |
+| Property            | Type                        | Description                 | Default                                    |
+|---------------------|-----------------------------|-----------------------------|--------------------------------------------|
+| `Storage`           | `fiber.Storage`             | Session storage backend     | `memory.New()`                             |
+| `Extractor`         | `extractors.Extractor`      | Session ID extraction       | `extractors.FromCookie("session_id")`     |
+| `KeyGenerator`      | `func() string`             | Session ID generator        | `utils.UUIDv4`                             |
+| `IdleTimeout`       | `time.Duration`             | Inactivity timeout          | `30 * time.Minute`                         |
+| `AbsoluteTimeout`   | `time.Duration`             | Maximum session duration    | `0` (unlimited)                            |
+| `CookieSecure`      | `bool`                      | HTTPS only                  | `false`                                    |
+| `CookieHTTPOnly`    | `bool`                      | No JavaScript access        | `false`                                    |
+| `CookieSameSite`    | `string`                    | SameSite attribute          | `"Lax"`                                    |
+| `CookiePath`        | `string`                    | Cookie path                 | `""`                                       |
+| `CookieDomain`      | `string`                    | Cookie domain               | `""`                                       |
+| `CookieSessionOnly` | `bool`                      | Session cookie              | `false`                                    |
+| `ErrorHandler`      | `func(fiber.Ctx, error)`    | Error callback              | `DefaultErrorHandler`                      |
 
 ## Examples
 
@@ -719,12 +724,13 @@ import (
     "time"
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/session"
+    "github.com/gofiber/fiber/v3/extractors"
     "github.com/gofiber/storage/redis"
 )
 
 func main() {
     app := fiber.New()
-    
+
     // Session middleware
     app.Use(session.New(session.Config{
         Storage:           redis.New(),
@@ -733,55 +739,55 @@ func main() {
         CookieSameSite:    "Lax",
         IdleTimeout:       30 * time.Minute,
         AbsoluteTimeout:   24 * time.Hour,
-        Extractor:         session.FromCookie("__Host-cart_session"),
+        Extractor:         extractors.FromCookie("__Host-cart_session"),
     }))
-    
+
     // Add to cart (anonymous user)
     app.Post("/cart/add", func(c fiber.Ctx) error {
         sess := session.FromContext(c)
-        
+
         cart, _ := sess.Get("cart").([]string)
         cart = append(cart, c.FormValue("item_id"))
         sess.Set("cart", cart)
-        
+
         return c.JSON(fiber.Map{"items": len(cart)})
     })
-    
+
     // Login (preserve session data)
     app.Post("/login", func(c fiber.Ctx) error {
         sess := session.FromContext(c)
-        
+
         // Simple validation (implement proper authentication)
         email := c.FormValue("email")
         password := c.FormValue("password")
         if email != "user@example.com" || password != "password" {
             return c.Status(401).JSON(fiber.Map{"error": "Invalid credentials"})
         }
-        
+
         // Regenerate session ID for security
         // This changes the session ID while preserving existing data
         if err := sess.Regenerate(); err != nil {
             return c.Status(500).JSON(fiber.Map{"error": "Session error"})
         }
-        
+
         sess.Set("user_id", 1)
         sess.Set("authenticated", true)
-        
+
         return c.JSON(fiber.Map{"status": "logged in"})
     })
-    
+
     // Logout (clear everything)
     app.Post("/logout", func(c fiber.Ctx) error {
         sess := session.FromContext(c)
-        
+
         // Reset clears all data and generates new session ID
         if err := sess.Reset(); err != nil {
             return c.Status(500).JSON(fiber.Map{"error": "Session error"})
         }
-        
+
         return c.JSON(fiber.Map{"status": "logged out"})
     })
-    
+
     app.Listen(":3000")
 }
 
@@ -802,35 +808,36 @@ import (
     "time"
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/session"
+    "github.com/gofiber/fiber/v3/extractors"
     "github.com/gofiber/storage/redis"
 )
 
 func main() {
     app := fiber.New()
-    
+
     // API session middleware with header extraction
     app.Use(session.New(session.Config{
-        Storage:   redis.New(),
-        Extractor: session.FromHeader("X-Session-Token"),
+        Storage:     redis.New(),
+        Extractor:   extractors.FromHeader("X-Session-Token"),
         IdleTimeout: time.Hour,
     }))
-    
+
     // API endpoint
     app.Post("/api/data", func(c fiber.Ctx) error {
         sess := session.FromContext(c)
-        
+
         // Track API usage
         count, _ := sess.Get("api_calls").(int)
         count++
         sess.Set("api_calls", count)
         sess.Set("last_call", time.Now())
-        
+
         return c.JSON(fiber.Map{
-            "data": "some data",
+            "data":  "some data",
             "calls": count,
         })
     })
-    
+
     app.Listen(":3000")
 }
 ```
@@ -841,30 +848,31 @@ func main() {
 import (
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/session"
+    "github.com/gofiber/fiber/v3/extractors"
 )
 
 func main() {
     app := fiber.New()
-    
+
     // Support multiple sources with priority
     app.Use(session.New(session.Config{
-        Extractor: session.Chain(
-            session.FromCookie("session_id"),    // 1st: Cookie (web)
-            session.FromHeader("X-Session-ID"),  // 2nd: Header (API)
-            session.FromQuery("session_id"),     // 3rd: Query (fallback)
+        Extractor: extractors.Chain(
+            extractors.FromCookie("session_id"),    // 1st: Cookie (web)
+            extractors.FromHeader("X-Session-ID"),  // 2nd: Header (API)
+            extractors.FromQuery("session_id"),     // 3rd: Query (fallback)
         ),
     }))
-    
+
     app.Get("/", func(c fiber.Ctx) error {
         sess := session.FromContext(c)
-        
+
         // Works with any of the above methods
         return c.JSON(fiber.Map{
             "session_id": sess.ID(),
-            "source": "multi-source",
+            "source":     "multi-source",
         })
     })
-    
+
     app.Listen(":3000")
 }
 ```

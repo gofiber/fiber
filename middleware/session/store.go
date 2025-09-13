@@ -185,6 +185,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 }
 
 // getSessionID returns the session ID using the configured extractor.
+// The extractor is provided by the shared extractors package.
 //
 // Parameters:
 //   - c: The Fiber context.

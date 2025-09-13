@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -369,28 +370,28 @@ func (s *Session) SetIdleTimeout(idleTimeout time.Duration) {
 }
 
 // getExtractorInfo returns all cookie and header extractors from the chain
-func (s *Session) getExtractorInfo() []Extractor {
+func (s *Session) getExtractorInfo() []extractors.Extractor {
 	if s.config == nil {
-		return []Extractor{{Source: SourceCookie, Key: "session_id"}} // Safe default
+		return []extractors.Extractor{{Source: extractors.SourceCookie, Key: "session_id"}} // Safe default
 	}
 
 	extractor := s.config.Extractor
-	var relevantExtractors []Extractor
+	var relevantExtractors []extractors.Extractor
 
 	// If it's a chained extractor, collect all cookie/header extractors
 	if len(extractor.Chain) > 0 {
 		for _, chainExtractor := range extractor.Chain {
-			if chainExtractor.Source == SourceCookie || chainExtractor.Source == SourceHeader {
+			if chainExtractor.Source == extractors.SourceCookie || chainExtractor.Source == extractors.SourceHeader {
 				relevantExtractors = append(relevantExtractors, chainExtractor)
 			}
 		}
-	} else if extractor.Source == SourceCookie || extractor.Source == SourceHeader {
+	} else if extractor.Source == extractors.SourceCookie || extractor.Source == extractors.SourceHeader {
 		// Single extractor - only include if it's cookie or header
 		relevantExtractors = append(relevantExtractors, extractor)
 	}
 
 	// If no cookie/header extractors found and the config has a store but no explicit cookie/header extractors,
-	// we should not default to cookie. This allows for SourceOther-only configurations.
+	// we should not default to cookie. This allows for read-only configurations (e.g., query/param/form/custom).
 	// Only add default cookie extractor if we have no extractors at all (nil config case is handled above)
 
 	return relevantExtractors
@@ -402,14 +403,14 @@ func (s *Session) setSession() {
 	}
 
 	// Get all relevant extractors
-	extractors := s.getExtractorInfo()
+	exts := s.getExtractorInfo()
 
 	// Set session ID for each extractor type
-	for _, ext := range extractors {
+	for _, ext := range exts {
 		switch ext.Source {
-		case SourceHeader:
+		case extractors.SourceHeader, extractors.SourceAuthHeader:
 			s.ctx.Response().Header.SetBytesV(ext.Key, []byte(s.id))
-		case SourceCookie:
+		case extractors.SourceCookie:
 			fcookie := fasthttp.AcquireCookie()
 
 			fcookie.SetKey(ext.Key)
@@ -426,8 +427,8 @@ func (s *Session) setSession() {
 			s.setCookieAttributes(fcookie)
 			s.ctx.Response().Header.SetCookie(fcookie)
 			fasthttp.ReleaseCookie(fcookie)
-		case SourceOther:
-			// No action required for SourceOther
+		default:
+			// For non-cookie/header sources, do nothing (read-only)
 		}
 	}
 }
@@ -438,15 +439,15 @@ func (s *Session) delSession() {
 	}
 
 	// Get all relevant extractors
-	extractors := s.getExtractorInfo()
+	exts := s.getExtractorInfo()
 
 	// Delete session ID for each extractor type
-	for _, ext := range extractors {
+	for _, ext := range exts {
 		switch ext.Source {
-		case SourceHeader:
+		case extractors.SourceHeader:
 			s.ctx.Request().Header.Del(ext.Key)
 			s.ctx.Response().Header.Del(ext.Key)
-		case SourceCookie:
+		case extractors.SourceCookie:
 			s.ctx.Request().Header.DelCookie(ext.Key)
 			s.ctx.Response().Header.DelCookie(ext.Key)
 
@@ -461,8 +462,8 @@ func (s *Session) delSession() {
 			s.setCookieAttributes(fcookie)
 			s.ctx.Response().Header.SetCookie(fcookie)
 			fasthttp.ReleaseCookie(fcookie)
-		case SourceOther:
-			// No action required for SourceOther
+		default:
+			// For non-cookie/header sources, do nothing (read-only)
 		}
 	}
 }
