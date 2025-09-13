@@ -403,10 +403,10 @@ func (s *Session) setSession() {
 	}
 
 	// Get all relevant extractors
-	exts := s.getExtractorInfo()
+	relevantExtractors := s.getExtractorInfo()
 
 	// Set session ID for each extractor type
-	for _, ext := range exts {
+	for _, ext := range relevantExtractors {
 		switch ext.Source {
 		case extractors.SourceHeader, extractors.SourceAuthHeader:
 			s.ctx.Response().Header.SetBytesV(ext.Key, []byte(s.id))
@@ -439,12 +439,12 @@ func (s *Session) delSession() {
 	}
 
 	// Get all relevant extractors
-	exts := s.getExtractorInfo()
+	relevantExtractors := s.getExtractorInfo()
 
 	// Delete session ID for each extractor type
-	for _, ext := range exts {
+	for _, ext := range relevantExtractors {
 		switch ext.Source {
-		case extractors.SourceHeader:
+		case extractors.SourceHeader, extractors.SourceAuthHeader:
 			s.ctx.Request().Header.Del(ext.Key)
 			s.ctx.Response().Header.Del(ext.Key)
 		case extractors.SourceCookie:
