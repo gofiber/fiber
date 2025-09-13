@@ -42,9 +42,7 @@ func New(config Config) fiber.Handler {
 		if len(rawAuth) > cfg.HeaderLimit {
 			return c.SendStatus(fiber.StatusRequestHeaderFieldsTooLarge)
 		}
-		if strings.IndexFunc(rawAuth, func(r rune) bool {
-			return (r < 0x20 && r != '\t') || r == 0x7F || r >= 0x80
-		}) != -1 {
+		if containsInvalidHeaderChars(rawAuth) {
 			return cfg.BadRequest(c)
 		}
 		auth := strings.Trim(rawAuth, " \t")
@@ -58,11 +56,7 @@ func New(config Config) fiber.Handler {
 		if rest == "" || rest[0] != ' ' {
 			return cfg.BadRequest(c)
 		}
-		i := 0
-		for i < len(rest) && rest[i] == ' ' {
-			i++
-		}
-		rest = rest[i:]
+		rest = strings.TrimLeft(rest, " ")
 		if rest == "" || strings.IndexAny(rest, " \t") != -1 {
 			return cfg.BadRequest(c)
 		}
@@ -118,12 +112,13 @@ func New(config Config) fiber.Handler {
 }
 
 func containsCTL(s string) bool {
-	for _, r := range s {
-		if unicode.IsControl(r) {
-			return true
-		}
-	}
-	return false
+	return strings.IndexFunc(s, unicode.IsControl) != -1
+}
+
+func containsInvalidHeaderChars(s string) bool {
+	return strings.IndexFunc(s, func(r rune) bool {
+		return (r < 0x20 && r != '\t') || r == 0x7F || r >= 0x80
+	}) != -1
 }
 
 // UsernameFromContext returns the username found in the context
