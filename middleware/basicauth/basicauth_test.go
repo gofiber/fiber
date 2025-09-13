@@ -240,7 +240,8 @@ func Test_BasicAuth_HeaderWhitespace(t *testing.T) {
 	}{
 		{"Basic " + creds, fiber.StatusTeapot},
 		{" Basic " + creds, fiber.StatusTeapot},
-		{"Basic  " + creds, fiber.StatusTeapot},
+		{"Basic  " + creds, fiber.StatusBadRequest},
+		{"Basic   " + creds, fiber.StatusBadRequest},
 		{"Basic\t" + creds, fiber.StatusBadRequest},
 		{"Basic \t" + creds, fiber.StatusBadRequest},
 		{"Basic\u00A0" + creds, fiber.StatusBadRequest},

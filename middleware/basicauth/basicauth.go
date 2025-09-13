@@ -53,11 +53,11 @@ func New(config Config) fiber.Handler {
 			return cfg.Unauthorized(c)
 		}
 		rest := auth[len(basicScheme):]
-		if rest == "" || rest[0] != ' ' {
+		if len(rest) < 2 || rest[0] != ' ' || rest[1] == ' ' {
 			return cfg.BadRequest(c)
 		}
-		rest = strings.TrimLeft(rest, " ")
-		if rest == "" || strings.IndexAny(rest, " \t") != -1 {
+		rest = rest[1:]
+		if strings.IndexFunc(rest, unicode.IsSpace) != -1 {
 			return cfg.BadRequest(c)
 		}
 
