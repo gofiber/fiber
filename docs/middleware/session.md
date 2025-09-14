@@ -69,6 +69,11 @@ app.Use(session.New(session.Config{
     AbsoluteTimeout:   24 * time.Hour,    // Maximum session life
     Extractor:         extractors.FromCookie("__Host-session_id"),
 }))
+
+Notes:
+
+- AbsoluteTimeout must be greater than or equal to IdleTimeout; otherwise, the middleware panics during configuration.
+- If CookieSameSite is set to "None", the middleware automatically forces CookieSecure=true when setting the cookie.
 ```
 
 ## Usage Patterns
@@ -304,6 +309,9 @@ extractors.FromCookie("session_id")
 // Header-based (recommended for APIs)
 extractors.FromHeader("X-Session-ID")
 
+// Authorization header (read-only)
+extractors.FromAuthHeader("Bearer")
+
 // Form data
 extractors.FromForm("session_id")
 
@@ -314,11 +322,11 @@ extractors.FromQuery("session_id")
 extractors.FromParam("id")
 ```
 
-**Response Behavior with Extractors:**
+**Session Response Behavior:**
 
-- **Cookie extractors**: Set cookie in response
-- **Header extractors**: Set header in response
-- **Query/Form/Param extractors**: Read-only, do not set response values
+- Cookie extractors: set cookie in the response
+- Header extractors (non-Authorization): set header in the response
+- Authorization header, Query, Form, Param, Custom: read-only (no response values are set)
 
 ### Multiple Sources with Fallback
 
@@ -334,13 +342,12 @@ app.Use(session.New(session.Config{
 
 **Response Behavior with Chained Extractors:**
 
-The session middleware intelligently sets response values based on the extractors in your chain:
+Only cookie and non-Authorization header extractors contribute to response setting. Others are read-only.
 
-- **Cookie + Header extractors**: Both cookie and header are set in the response
-- **Only Cookie extractors**: Only cookie is set in the response
-- **Only Header extractors**: Only header is set in the response
-- **Only Query/Form/Param extractors**: No response values are set (read-only)
-- **Mixed extractors**: Only cookie and header extractors set response values
+- Cookie + Header (non-Auth) extractors: both cookie and header are set
+- Only Cookie extractors: only cookie is set
+- Only Header (non-Auth) extractors: only header is set
+- Any mix that includes Authorization/Query/Form/Param/Custom: those sources are read-only
 
 ```go
 // This will set both cookie and header in response
@@ -362,58 +369,26 @@ extractors.Chain(
 )
 ```
 
-### Custom Extractor
+### Custom Extractors (Session-specific)
 
-You can create custom extractors by returning an `extractors.Extractor` that defines how to extract the session ID from the request and how the middleware should handle responses.
-
-The `Source` field on extractors controls whether the middleware sets response values:
-
-- `SourceCookie`: Sets cookies in the response
-- `SourceHeader`: Sets headers in the response
-- Others (Query/Form/Param/Custom): Read-only, no response values set
+Prefer the helper constructors from the extractors module. See the Extractors Guide for the full API; below are session-specific examples and notes.
 
 ```go
-// Custom extractor for Authorization Bearer tokens
-func FromAuthorization() extractors.Extractor {
-    return extractors.Extractor{
-        Extract: func(c fiber.Ctx) (string, error) {
-            auth := c.Get("Authorization")
-            if strings.HasPrefix(auth, "Bearer ") {
-                sessionID := strings.TrimPrefix(auth, "Bearer ")
-                if sessionID != "" {
-                    return sessionID, nil
-                }
-            }
-            return "", extractors.ErrNotFound
-        },
-        Source: extractors.SourceHeader, // This will set response headers
-        Key:    "Authorization",
-    }
-}
-
+// Authorization Bearer tokens (read-only for sessions)
+// The session middleware will NOT set Authorization back in the response.
 app.Use(session.New(session.Config{
-    Extractor: FromAuthorization(), // Will set Authorization header in response
+    Extractor: extractors.FromAuthHeader("Bearer"),
 }))
 ```
 
 ```go
-// Custom read-only extractor (no response setting)
-func FromCustomParam() extractors.Extractor {
-    return extractors.Extractor{
-        Extract: func(c fiber.Ctx) (string, error) {
-            sessionID := c.Get("X-Custom-Session")
-            if sessionID == "" {
-                return "", extractors.ErrNotFound
-            }
-            return sessionID, nil
-        },
-        // Read-only, won't set responses (non-header/cookie source)
-        Key:    "X-Custom-Session",
-    }
-}
-
+// Custom read-only header via FromCustom (read-only for sessions)
 app.Use(session.New(session.Config{
-    Extractor: FromCustomParam(), // Will not set any response values
+    Extractor: extractors.FromCustom("X-Custom-Session", func(c fiber.Ctx) (string, error) {
+        v := c.Get("X-Custom-Session")
+        if v == "" { return "", extractors.ErrNotFound }
+        return v, nil
+    }),
 }))
 ```
 
@@ -664,8 +639,8 @@ store := session.NewStore()
 // Store operations
 store.Get(c fiber.Ctx) (*session.Session, error)
 store.GetByID(ctx context.Context, sessionID string) (*session.Session, error)
-store.Reset(c fiber.Ctx) error
-store.Delete(sessionID string) error
+store.Reset(ctx context.Context) error
+store.Delete(ctx context.Context, sessionID string) error
 
 // Type registration
 store.RegisterType(interface{})
@@ -701,7 +676,8 @@ extractors.Chain(extractors ...extractors.Extractor) extractors.Extractor
 
 | Property            | Type                        | Description                 | Default                                    |
 |---------------------|-----------------------------|-----------------------------|--------------------------------------------|
-| `Storage`           | `fiber.Storage`             | Session storage backend     | `memory.New()`                             |
+| `Store`             | `*session.Store`            | Pre-built session store (use when you need to share/register types) | `nil` (auto-created)                       |
+| `Storage`           | `fiber.Storage`             | Session storage backend (used when creating a store if `Store` is nil) | `memory.New()`                             |
 | `Extractor`         | `extractors.Extractor`      | Session ID extraction       | `extractors.FromCookie("session_id")`     |
 | `KeyGenerator`      | `func() string`             | Session ID generator        | `utils.UUIDv4`                             |
 | `IdleTimeout`       | `time.Duration`             | Inactivity timeout          | `30 * time.Minute`                         |
@@ -712,6 +688,7 @@ extractors.Chain(extractors ...extractors.Extractor) extractors.Extractor
 | `CookiePath`        | `string`                    | Cookie path                 | `""`                                       |
 | `CookieDomain`      | `string`                    | Cookie domain               | `""`                                       |
 | `CookieSessionOnly` | `bool`                      | Session cookie              | `false`                                    |
+| `Next`              | `func(fiber.Ctx) bool`      | Skip middleware when returns true | `nil`                                  |
 | `ErrorHandler`      | `func(fiber.Ctx, error)`    | Error callback              | `DefaultErrorHandler`                      |
 
 ## Examples

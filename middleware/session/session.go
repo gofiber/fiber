@@ -408,7 +408,7 @@ func (s *Session) setSession() {
 	// Set session ID for each extractor type
 	for _, ext := range relevantExtractors {
 		switch ext.Source {
-		case extractors.SourceHeader, extractors.SourceAuthHeader:
+		case extractors.SourceHeader:
 			s.ctx.Response().Header.SetBytesV(ext.Key, []byte(s.id))
 		case extractors.SourceCookie:
 			fcookie := fasthttp.AcquireCookie()
@@ -444,7 +444,7 @@ func (s *Session) delSession() {
 	// Delete session ID for each extractor type
 	for _, ext := range relevantExtractors {
 		switch ext.Source {
-		case extractors.SourceHeader, extractors.SourceAuthHeader:
+		case extractors.SourceHeader:
 			s.ctx.Request().Header.Del(ext.Key)
 			s.ctx.Response().Header.Del(ext.Key)
 		case extractors.SourceCookie:
