@@ -226,6 +226,25 @@ func Test_Compress_Vary_Star(t *testing.T) {
 	require.Equal(t, "*", resp.Header.Get(fiber.HeaderVary))
 }
 
+func Test_Compress_Vary_List_Star(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderVary, "User-Agent, *")
+		return c.SendString("hello")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "User-Agent, *", resp.Header.Get(fiber.HeaderVary))
+}
+
 func Test_Compress_Vary_Similar_Substring(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -288,6 +307,26 @@ func Test_Compress_Skip_When_Content_Encoding_Set_Vary_Star(t *testing.T) {
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "*", resp.Header.Get(fiber.HeaderVary))
+}
+
+func Test_Compress_Skip_When_Content_Encoding_Set_Vary_List_Star(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentEncoding, "gzip")
+		c.Set(fiber.HeaderVary, "User-Agent, *")
+		return c.SendString("hello")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "User-Agent, *", resp.Header.Get(fiber.HeaderVary))
 }
 
 func Test_Compress_Skip_When_Content_Encoding_Set_Vary_Similar_Substring(t *testing.T) {

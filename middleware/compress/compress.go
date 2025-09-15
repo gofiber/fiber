@@ -36,18 +36,14 @@ func shouldSkip(c fiber.Ctx) bool {
 
 func appendVaryAcceptEncoding(c fiber.Ctx) {
 	vary := c.GetRespHeader(fiber.HeaderVary)
-	switch {
-	case vary == "":
+	if vary == "" {
 		c.Set(fiber.HeaderVary, fiber.HeaderAcceptEncoding)
-	case vary == "*":
-		// do not append anything to Vary: *
-	case utils.Trim(vary, ' ') == "*":
-		// do not append anything to Vary: *
-	default:
-		if !hasToken(vary, fiber.HeaderAcceptEncoding) {
-			c.Set(fiber.HeaderVary, vary+", "+fiber.HeaderAcceptEncoding)
-		}
+		return
 	}
+	if hasToken(vary, "*") || hasToken(vary, fiber.HeaderAcceptEncoding) {
+		return
+	}
+	c.Set(fiber.HeaderVary, vary+", "+fiber.HeaderAcceptEncoding)
 }
 
 // New creates a new middleware handler

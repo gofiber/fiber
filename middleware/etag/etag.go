@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/valyala/bytebufferpool"
 )
 
 var (
@@ -18,14 +19,16 @@ func Generate(body []byte) []byte {
 	if len(body) > math.MaxUint32 {
 		return nil
 	}
-
-	b := make([]byte, 0, 1+20+1+20+1)
+	bb := bytebufferpool.Get()
+	b := bb.B[:0]
 	b = append(b, '"')
 	b = appendUint(b, uint32(len(body))) // #nosec G115 -- length checked above
 	b = append(b, '-')
 	b = appendUint(b, crc32.Checksum(body, crc32q))
 	b = append(b, '"')
-	return b
+	etag := append([]byte(nil), b...)
+	bytebufferpool.Put(bb)
+	return etag
 }
 
 // GenerateWeak returns a weak ETag for body.
