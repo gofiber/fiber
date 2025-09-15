@@ -1215,7 +1215,7 @@ func Test_CSRF_ErrorHandler_EmptyToken(t *testing.T) {
 	app := fiber.New()
 
 	errHandler := func(ctx fiber.Ctx, err error) error {
-		require.Equal(t, extractors.ErrNotFound, err)
+		require.Equal(t, ErrTokenNotFound, err)
 		return ctx.Status(419).Send([]byte("empty CSRF token"))
 	}
 

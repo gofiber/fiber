@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	utils "github.com/gofiber/utils/v2"
 )
 
@@ -134,6 +135,10 @@ func New(config ...Config) fiber.Handler {
 			// Extract token from client request i.e. header, query, param, form
 			extractedToken, err := cfg.Extractor.Extract(c)
 			if err != nil {
+				if errors.Is(err, extractors.ErrNotFound) {
+					return cfg.ErrorHandler(c, ErrTokenNotFound)
+				}
+				// If there's an error during extraction (other than not found), handle it.
 				return cfg.ErrorHandler(c, err)
 			}
 

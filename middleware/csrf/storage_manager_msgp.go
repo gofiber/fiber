@@ -32,7 +32,7 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 			}
 		}
 	}
-	return err
+	return
 }
 
 // EncodeMsg implements msgp.Encodable
@@ -43,7 +43,7 @@ func (z item) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return err
 	}
-	return err
+	return
 }
 
 // MarshalMsg implements msgp.Marshaler
@@ -117,7 +117,7 @@ func (z *storageManager) DecodeMsg(dc *msgp.Reader) (err error) {
 			}
 		}
 	}
-	return err
+	return
 }
 
 // EncodeMsg implements msgp.Encodable
@@ -128,7 +128,7 @@ func (z storageManager) EncodeMsg(en *msgp.Writer) (err error) {
 	if err != nil {
 		return err
 	}
-	return err
+	return
 }
 
 // MarshalMsg implements msgp.Marshaler
