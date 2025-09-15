@@ -20,15 +20,14 @@ func Generate(body []byte) []byte {
 		return nil
 	}
 	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
 	b := bb.B[:0]
 	b = append(b, '"')
 	b = appendUint(b, uint32(len(body))) // #nosec G115 -- length checked above
 	b = append(b, '-')
 	b = appendUint(b, crc32.Checksum(body, crc32q))
 	b = append(b, '"')
-	etag := append([]byte(nil), b...)
-	bytebufferpool.Put(bb)
-	return etag
+	return append([]byte(nil), b...)
 }
 
 // GenerateWeak returns a weak ETag for body.
