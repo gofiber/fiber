@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -389,7 +390,7 @@ func Test_Session_WithConfig(t *testing.T) {
 			return c.Get("key") == "value"
 		},
 		IdleTimeout: 1 * time.Second,
-		Extractor:   FromCookie("session_id_test"),
+		Extractor:   extractors.FromCookie("session_id_test"),
 		KeyGenerator: func() string {
 			return "test"
 		},

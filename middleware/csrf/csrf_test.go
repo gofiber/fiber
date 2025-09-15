@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	utils "github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -76,7 +77,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 
 	// session store
 	store := session.NewStore(session.Config{
-		Extractor: session.FromCookie("_session"),
+		Extractor: extractors.FromCookie("_session"),
 	})
 
 	// fiber instance
@@ -274,7 +275,7 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 
 	// session store
 	store := session.NewStore(session.Config{
-		Extractor: session.FromCookie("_session"),
+		Extractor: extractors.FromCookie("_session"),
 	})
 
 	// fiber instance
@@ -1112,7 +1113,7 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 
 	// session store
 	store := session.NewStore(session.Config{
-		Extractor: session.FromCookie("_session"),
+		Extractor: extractors.FromCookie("_session"),
 	})
 
 	// fiber instance

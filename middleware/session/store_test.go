@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -36,7 +37,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			Extractor: FromHeader("session_id"),
+			Extractor: extractors.FromHeader("session_id"),
 		})
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -52,7 +53,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			Extractor: FromQuery("session_id"),
+			Extractor: extractors.FromQuery("session_id"),
 		})
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})

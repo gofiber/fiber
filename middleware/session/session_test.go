@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -533,7 +534,7 @@ func Test_Session_Save(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			Extractor: FromHeader("session_id"),
+			Extractor: extractors.FromHeader("session_id"),
 		})
 		// fiber instance
 		app := fiber.New()
@@ -563,7 +564,7 @@ func Test_Session_ChainedExtractors(t *testing.T) {
 		t.Parallel()
 		// session store with chained extractors
 		store := NewStore(Config{
-			Extractor: Chain(FromCookie("session_id"), FromHeader("x-session-id")),
+			Extractor: extractors.Chain(extractors.FromCookie("session_id"), extractors.FromHeader("x-session-id")),
 		})
 		// fiber instance
 		app := fiber.New()
@@ -596,7 +597,7 @@ func Test_Session_ChainedExtractors(t *testing.T) {
 		t.Parallel()
 		// session store with chained extractors (different order)
 		store := NewStore(Config{
-			Extractor: Chain(FromHeader("x-session-id"), FromCookie("session_id")),
+			Extractor: extractors.Chain(extractors.FromHeader("x-session-id"), extractors.FromCookie("session_id")),
 		})
 		// fiber instance
 		app := fiber.New()
@@ -629,7 +630,7 @@ func Test_Session_ChainedExtractors(t *testing.T) {
 		t.Parallel()
 		// session store with only query/form extractors
 		store := NewStore(Config{
-			Extractor: Chain(FromQuery("session_id"), FromForm("session_id")),
+			Extractor: extractors.Chain(extractors.FromQuery("session_id"), extractors.FromForm("session_id")),
 		})
 		// fiber instance
 		app := fiber.New()
@@ -661,7 +662,7 @@ func Test_Session_ChainedExtractors(t *testing.T) {
 		t.Parallel()
 		// session store with mixed extractors including SourceOther
 		store := NewStore(Config{
-			Extractor: Chain(FromCookie("session_id"), FromQuery("session_id"), FromHeader("x-session-id")),
+			Extractor: extractors.Chain(extractors.FromCookie("session_id"), extractors.FromQuery("session_id"), extractors.FromHeader("x-session-id")),
 		})
 		// fiber instance
 		app := fiber.New()
@@ -864,7 +865,7 @@ func Test_Session_Destroy(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			Extractor: FromHeader("session_id"),
+			Extractor: extractors.FromHeader("session_id"),
 		})
 		// fiber instance
 		app := fiber.New()
