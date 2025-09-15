@@ -213,7 +213,6 @@ As a crucial second layer of defense, the middleware **always** performs `Origin
 - The request's `Origin` (for cross-origin requests) or `Referer` (for same-origin requests) header **must** match the application's `Host` header or be explicitly allowed in the `TrustedOrigins` list.
 - This check is performed *in addition* to token validation and provides strong protection because these headers are reliably set by browsers and cannot be programmatically controlled by an attacker from a malicious site.
 
-
 ## Token Extractors
 
 This middleware uses the shared `extractors` package for token extraction. For full details on extractor types, chaining, security, and advanced usage, see the [Extractors Guide](https://docs.gofiber.io/guide/extractors).
@@ -263,7 +262,6 @@ forms.Use(csrf.New(csrf.Config{
 }))
 ```
 
-
 ### Custom CSRF Extractors
 
 For specialized CSRF token extraction needs, you can create custom extractors. See the [Extractors Guide](https://docs.gofiber.io/guide/extractors#custom-extractors) for advanced patterns and security notes.
@@ -291,11 +289,9 @@ app.Use(csrf.New(csrf.Config{
 The middleware uses the **Double Submit Cookie** pattern – it compares the extracted token against the cookie value. If you configure an extractor that reads from the same cookie, it will panic because they will always match and provide zero CSRF protection.
 :::
 
-
 #### Bearer Token Embedding & Custom Extractors
 
 You can create advanced extractors for use cases like JWT embedding or JSON body parsing. See the [Extractors Guide](https://docs.gofiber.io/guide/extractors#custom-extractors) for secure implementation patterns and more examples.
-
 
 ### Fallback Extraction
 
@@ -358,7 +354,6 @@ app.Use(csrf.New(csrf.Config{
     Storage: storage,
 }))
 ```
-
 
 ### Token Management
 
@@ -426,7 +421,6 @@ var (
     ErrOriginNoMatch   = errors.New("csrf: origin does not match host or trusted origins")
 )
 ```
-
 
 ## Constants
 
