@@ -13,18 +13,28 @@ var (
 	crc32q     = crc32.MakeTable(0xD5828281)
 )
 
-// Generate returns a strong or weak ETag for body.
-func Generate(body []byte, weak bool) []byte {
-	b := make([]byte, 0, 2+1+20+1+20+1)
-	if weak {
-		b = append(b, weakPrefix...)
+// Generate returns a strong ETag for body.
+func Generate(body []byte) []byte {
+	if len(body) > math.MaxUint32 {
+		return nil
 	}
+
+	b := make([]byte, 0, 1+20+1+20+1)
 	b = append(b, '"')
-	b = appendUint(b, uint32(len(body)))
+	b = appendUint(b, uint32(len(body))) // #nosec G115 -- length checked above
 	b = append(b, '-')
 	b = appendUint(b, crc32.Checksum(body, crc32q))
 	b = append(b, '"')
 	return b
+}
+
+// GenerateWeak returns a weak ETag for body.
+func GenerateWeak(body []byte) []byte {
+	tag := Generate(body)
+	if tag == nil {
+		return nil
+	}
+	return append(weakPrefix, tag...)
 }
 
 // New creates a new middleware handler
@@ -65,7 +75,12 @@ func New(config ...Config) fiber.Handler {
 			return c.SendStatus(fiber.StatusRequestEntityTooLarge)
 		}
 
-		etag := Generate(body, cfg.Weak)
+		var etag []byte
+		if cfg.Weak {
+			etag = GenerateWeak(body)
+		} else {
+			etag = Generate(body)
+		}
 
 		// Get ETag header from request
 		clientEtag := c.Request().Header.Peek(fiber.HeaderIfNoneMatch)

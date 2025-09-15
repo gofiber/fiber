@@ -113,7 +113,7 @@ func New(config ...Config) fiber.Handler {
 		compressor(c.RequestCtx())
 
 		if tag := c.GetRespHeader(fiber.HeaderETag); tag != "" && !strings.HasPrefix(tag, "W/") {
-			c.Set(fiber.HeaderETag, string(etag.Generate(c.Response().Body(), false)))
+			c.Set(fiber.HeaderETag, string(etag.Generate(c.Response().Body())))
 		}
 
 		appendVaryAcceptEncoding(c)

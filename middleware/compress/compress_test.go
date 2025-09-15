@@ -330,7 +330,7 @@ func Test_Compress_Strong_ETag_Recalculated(t *testing.T) {
 	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	expected := string(etag.Generate(body, false))
+	expected := string(etag.Generate(body))
 	require.Equal(t, expected, resp.Header.Get(fiber.HeaderETag))
 }
 
@@ -386,7 +386,7 @@ func Test_Compress_Head_Metadata(t *testing.T) {
 	require.NoError(t, err, "app.Test(headReq)")
 	headBody, err := io.ReadAll(headResp.Body)
 	require.NoError(t, err)
-	require.Len(t, headBody, 0)
+	require.Empty(t, headBody)
 
 	require.Equal(t, getResp.Header.Get(fiber.HeaderContentEncoding), headResp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, getResp.Header.Get(fiber.HeaderVary), headResp.Header.Get(fiber.HeaderVary))
@@ -549,7 +549,6 @@ func Test_Compress_Skip_NoTransform(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
