@@ -10,6 +10,12 @@ Compression middleware for [Fiber](https://github.com/gofiber/fiber) that automa
 Bodies smaller than 200 bytes remain uncompressed because compression would likely increase their size and waste CPU cycles. [See the fasthttp source](https://github.com/valyala/fasthttp/blob/497922a21ef4b314f393887e9c6147b8c3e3eda4/http.go#L1713-L1715).
 :::
 
+## Behavior
+
+- Skips compression for responses that already define `Content-Encoding`, for range requests, `206` responses, status codes without bodies, or when either side sends `Cache-Control: no-transform`.
+- `HEAD` requests negotiate compression so `Content-Encoding`, `Content-Length`, `ETag`, and `Vary` reflect the encoded representation, but the body is removed before sending.
+- When compression runs, strong `ETag` values are recomputed from the compressed bytes; when skipped, `Accept-Encoding` is still merged into `Vary` unless the header is `*` or already present.
+
 ## Signatures
 
 ```go

@@ -6,21 +6,33 @@ import (
 	"math"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/valyala/bytebufferpool"
 )
+
+var (
+	weakPrefix = []byte("W/")
+	crc32q     = crc32.MakeTable(0xD5828281)
+)
+
+// Generate returns a strong or weak ETag for body.
+func Generate(body []byte, weak bool) []byte {
+	b := make([]byte, 0, 2+1+20+1+20+1)
+	if weak {
+		b = append(b, weakPrefix...)
+	}
+	b = append(b, '"')
+	b = appendUint(b, uint32(len(body)))
+	b = append(b, '-')
+	b = appendUint(b, crc32.Checksum(body, crc32q))
+	b = append(b, '"')
+	return b
+}
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
-	var (
-		normalizedHeaderETag = []byte("Etag")
-		weakPrefix           = []byte("W/")
-	)
-
-	const crcPol = 0xD5828281
-	crc32q := crc32.MakeTable(crcPol)
+	normalizedHeaderETag := []byte("Etag")
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
@@ -48,29 +60,12 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		// Generate ETag for response
-		bb := bytebufferpool.Get()
-		defer bytebufferpool.Put(bb)
-
-		// Enable weak tag
-		if cfg.Weak {
-			bb.Write(weakPrefix)
-		}
-
-		// Write ETag
-		bb.WriteByte('"')
-
 		bodyLength := len(body)
 		if bodyLength > math.MaxUint32 {
 			return c.SendStatus(fiber.StatusRequestEntityTooLarge)
 		}
 
-		bb.B = appendUint(bb.Bytes(), uint32(bodyLength))
-		bb.WriteByte('-')
-		bb.B = appendUint(bb.Bytes(), crc32.Checksum(body, crc32q))
-		bb.WriteByte('"')
-
-		etag := bb.Bytes()
+		etag := Generate(body, cfg.Weak)
 
 		// Get ETag header from request
 		clientEtag := c.Request().Header.Peek(fiber.HeaderIfNoneMatch)
