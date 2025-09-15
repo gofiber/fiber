@@ -10,7 +10,7 @@ import (
 )
 
 func hasToken(header, token string) bool {
-	for _, part := range strings.Split(header, ",") {
+	for part := range strings.SplitSeq(header, ",") {
 		if strings.EqualFold(utils.Trim(part, ' '), token) {
 			return true
 		}
