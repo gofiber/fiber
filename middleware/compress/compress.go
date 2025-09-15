@@ -10,7 +10,7 @@ import (
 )
 
 func hasToken(header, token string) bool {
-	for part := range strings.SplitSeq(header, ",") {
+	for _, part := range strings.Split(header, ",") {
 		if strings.EqualFold(utils.Trim(part, ' '), token) {
 			return true
 		}
@@ -96,6 +96,14 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
+		if c.Method() == fiber.MethodHead {
+			defer func() {
+				clen := len(c.Response().Body())
+				c.RequestCtx().ResetBody()
+				c.Response().Header.SetContentLength(clen)
+			}()
+		}
+
 		if shouldSkip(c) {
 			appendVaryAcceptEncoding(c)
 			return nil
@@ -109,16 +117,12 @@ func New(config ...Config) fiber.Handler {
 		compressor(c.RequestCtx())
 
 		if tag := c.GetRespHeader(fiber.HeaderETag); tag != "" && !strings.HasPrefix(tag, "W/") {
-			c.Set(fiber.HeaderETag, string(etag.Generate(c.Response().Body())))
+			if c.GetRespHeader(fiber.HeaderContentEncoding) != "" {
+				c.Set(fiber.HeaderETag, string(etag.Generate(c.Response().Body())))
+			}
 		}
 
 		appendVaryAcceptEncoding(c)
-
-		if c.Method() == fiber.MethodHead {
-			clen := len(c.Response().Body())
-			c.RequestCtx().ResetBody()
-			c.Response().Header.SetContentLength(clen)
-		}
 
 		return nil
 	}

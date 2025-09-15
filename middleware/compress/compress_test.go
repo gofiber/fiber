@@ -394,6 +394,27 @@ func Test_Compress_Weak_ETag_Unchanged(t *testing.T) {
 	require.Equal(t, "W/\"abc\"", resp.Header.Get(fiber.HeaderETag))
 }
 
+func Test_Compress_Strong_ETag_Unchanged_When_Not_Compressed(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderETag, "\"abc\"")
+		return c.SendString("tiny")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Equal(t, "\"abc\"", resp.Header.Get(fiber.HeaderETag))
+	require.Equal(t, "Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
+}
+
 func Test_Compress_Head_Metadata(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
