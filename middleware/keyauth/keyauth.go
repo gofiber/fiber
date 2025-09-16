@@ -41,17 +41,8 @@ func New(config ...Config) fiber.Handler {
 		key, err := cfg.Extractor.Extract(c)
 		if err == nil {
 			// Strict token68 validation for AuthHeader extractors
-			if cfg.Extractor.Source == extractors.SourceAuthHeader && cfg.Extractor.AuthScheme != "" {
-				if !isValidToken68(key) {
-					err = ErrMissingOrMalformedAPIKey
-				} else {
-					var valid bool
-					valid, err = cfg.Validator(c, key)
-					if err == nil && valid {
-						c.Locals(tokenKey, key)
-						return cfg.SuccessHandler(c)
-					}
-				}
+			if cfg.Extractor.Source == extractors.SourceAuthHeader && cfg.Extractor.AuthScheme != "" && !isValidToken68(key) {
+				err = ErrMissingOrMalformedAPIKey
 			} else {
 				var valid bool
 				valid, err = cfg.Validator(c, key)
@@ -107,29 +98,24 @@ func isValidToken68(token string) bool {
 	if token == "" {
 		return false
 	}
-	eqIdx := -1
-	for i := 0; i < len(token); i++ {
-		c := token[i]
-		if !((c >= 'A' && c <= 'Z') ||
+	paddingStarted := false
+	for i, c := range []byte(token) {
+		switch {
+		case (c >= 'A' && c <= 'Z') ||
 			(c >= 'a' && c <= 'z') ||
 			(c >= '0' && c <= '9') ||
-			c == '-' || c == '.' || c == '_' || c == '~' || c == '+' || c == '/' || c == '=') {
-			return false
-		}
-		if c == '=' {
+			c == '-' || c == '.' || c == '_' || c == '~' || c == '+' || c == '/':
+			if paddingStarted {
+				return false // No characters allowed after padding starts
+			}
+		case c == '=':
 			if i == 0 {
-				return false
+				return false // Cannot start with padding
 			}
-			if eqIdx != -1 {
-				// Multiple equals
-				return false
-			}
-			eqIdx = i
+			paddingStarted = true
+		default:
+			return false // Invalid character
 		}
-	}
-	if eqIdx != -1 && eqIdx != len(token)-1 {
-		// Equals not at end
-		return false
 	}
 	return true
 }
