@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 )
 
 const (
@@ -81,8 +82,8 @@ type Config struct {
 
 	// Extractor is a function to extract the key from the request.
 	//
-	// Optional. Default: FromAuthHeader("Authorization", "Bearer")
-	Extractor Extractor
+	// Optional. Default: extractors.FromAuthHeader("Bearer")
+	Extractor extractors.Extractor
 }
 
 // ConfigDefault is the default config
@@ -94,7 +95,7 @@ var ConfigDefault = Config{
 		return c.Status(fiber.StatusUnauthorized).SendString(ErrMissingOrMalformedAPIKey.Error())
 	},
 	Realm:     "Restricted",
-	Extractor: FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
+	Extractor: extractors.FromAuthHeader("Bearer"),
 }
 
 // configDefault is a helper function to set default values

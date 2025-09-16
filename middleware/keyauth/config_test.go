@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,7 +50,7 @@ func Test_KeyAuth_ConfigDefault_CustomConfig(t *testing.T) {
 	successHandler := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }
 	errorHandler := func(c fiber.Ctx, _ error) error { return c.SendStatus(fiber.StatusForbidden) }
 	validator := func(_ fiber.Ctx, _ string) (bool, error) { return true, nil }
-	extractor := FromHeader("X-API-Key")
+	extractor := extractors.FromHeader("X-API-Key")
 
 	cfg := configDefault(Config{
 		Next:           nextFunc,

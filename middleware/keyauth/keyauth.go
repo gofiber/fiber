@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	utils "github.com/gofiber/utils/v2"
 )
 
@@ -39,11 +40,25 @@ func New(config ...Config) fiber.Handler {
 		// Extract and verify key
 		key, err := cfg.Extractor.Extract(c)
 		if err == nil {
-			var valid bool
-			valid, err = cfg.Validator(c, key)
-			if err == nil && valid {
-				c.Locals(tokenKey, key)
-				return cfg.SuccessHandler(c)
+			// Strict token68 validation for AuthHeader extractors
+			if cfg.Extractor.Source == extractors.SourceAuthHeader && cfg.Extractor.AuthScheme != "" {
+				if !isValidToken68(key) {
+					err = ErrMissingOrMalformedAPIKey
+				} else {
+					var valid bool
+					valid, err = cfg.Validator(c, key)
+					if err == nil && valid {
+						c.Locals(tokenKey, key)
+						return cfg.SuccessHandler(c)
+					}
+				}
+			} else {
+				var valid bool
+				valid, err = cfg.Validator(c, key)
+				if err == nil && valid {
+					c.Locals(tokenKey, key)
+					return cfg.SuccessHandler(c)
+				}
 			}
 		}
 
@@ -87,6 +102,38 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
+// isValidToken68 checks if a string is a valid token68 per RFC 7235/9110.
+func isValidToken68(token string) bool {
+	if token == "" {
+		return false
+	}
+	eqIdx := -1
+	for i := 0; i < len(token); i++ {
+		c := token[i]
+		if !((c >= 'A' && c <= 'Z') ||
+			(c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') ||
+			c == '-' || c == '.' || c == '_' || c == '~' || c == '+' || c == '/' || c == '=') {
+			return false
+		}
+		if c == '=' {
+			if i == 0 {
+				return false
+			}
+			if eqIdx != -1 {
+				// Multiple equals
+				return false
+			}
+			eqIdx = i
+		}
+	}
+	if eqIdx != -1 && eqIdx != len(token)-1 {
+		// Equals not at end
+		return false
+	}
+	return true
+}
+
 // TokenFromContext returns the bearer token from the request context.
 // returns an empty string if the token does not exist
 func TokenFromContext(c fiber.Ctx) string {
@@ -100,9 +147,9 @@ func TokenFromContext(c fiber.Ctx) string {
 // getAuthSchemes inspects an extractor and its chain to find all auth schemes
 // used by FromAuthHeader. It returns a slice of schemes, or an empty slice if
 // none are found.
-func getAuthSchemes(e Extractor) []string {
+func getAuthSchemes(e extractors.Extractor) []string {
 	var schemes []string
-	if e.Source == SourceAuthHeader && e.AuthScheme != "" {
+	if e.Source == extractors.SourceAuthHeader && e.AuthScheme != "" {
 		schemes = append(schemes, e.AuthScheme)
 	}
 	for _, ex := range e.Chain {
