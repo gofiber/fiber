@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	utils "github.com/gofiber/utils/v2"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -60,7 +61,7 @@ func New(config ...Config) fiber.Handler {
 				for _, scheme := range authSchemes {
 					var b strings.Builder
 					fmt.Fprintf(&b, "%s realm=%q", scheme, cfg.Realm)
-					if strings.EqualFold(scheme, "Bearer") {
+					if utils.EqualFold(scheme, "Bearer") {
 						if cfg.Error != "" {
 							fmt.Fprintf(&b, ", error=%q", cfg.Error)
 							if cfg.ErrorDescription != "" {

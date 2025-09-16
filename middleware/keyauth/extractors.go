@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	utils "github.com/gofiber/utils/v2"
 )
 
 func isToken68Char(c byte) bool {
@@ -66,7 +67,7 @@ func FromAuthHeader(header, authScheme string) Extractor {
 			// Check if the header starts with the specified auth scheme
 			if authScheme != "" {
 				schemeLen := len(authScheme)
-				if len(authHeader) <= schemeLen || !strings.EqualFold(authHeader[:schemeLen], authScheme) {
+				if len(authHeader) <= schemeLen || !utils.EqualFold(authHeader[:schemeLen], authScheme) {
 					return "", ErrMissingOrMalformedAPIKey
 				}
 				rest := authHeader[schemeLen:]
