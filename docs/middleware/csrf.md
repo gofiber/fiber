@@ -291,7 +291,7 @@ The middleware uses the **Double Submit Cookie** pattern – it compares the ext
 
 #### Bearer Token Embedding & Custom Extractors
 
-You can create advanced extractors for use cases like JWT embedding or JSON body parsing. See the [Extractors Guide](https://docs.gofiber.io/guide/extractors#custom-extractors) for secure implementation patterns and more examples.
+You can create advanced extractors for use cases like JWT embedding or JSON body parsing. See the [Extractors Guide](../guide/extractors#custom-extractors) for secure implementation patterns and more examples.
 
 ### Fallback Extraction
 
