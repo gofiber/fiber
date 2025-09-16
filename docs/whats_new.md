@@ -1182,7 +1182,11 @@ We've updated several fields from a single string (containing comma-separated va
 
 ### Compression
 
-We've added support for `zstd` compression on top of `gzip`, `deflate`, and `brotli`.
+- Added support for `zstd` compression alongside `gzip`, `deflate`, and `brotli`.
+- Strong `ETag` values are now recomputed for compressed payloads so validators remain accurate.
+- Compression is bypassed for responses that already specify `Content-Encoding`, for range requests or `206` statuses, and when either side sends `Cache-Control: no-transform`.
+- `HEAD` requests still negotiate compression so `Content-Encoding`, `Content-Length`, `ETag`, and `Vary` match a corresponding `GET`, but the body is omitted.
+- `Vary: Accept-Encoding` is merged into responses even when compression is skipped, preventing caches from mixing encoded and unencoded variants.
 
 ### CSRF
 
