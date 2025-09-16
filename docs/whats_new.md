@@ -1215,6 +1215,7 @@ Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.m
 
 The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
 The old string-based `KeyLookup` configuration has been replaced with an `Extractor` field. Use helper functions like `keyauth.FromHeader`, `keyauth.FromAuthHeader`, or `keyauth.FromCookie` to define where the key should be retrieved from. Multiple sources can be combined with `keyauth.Chain`. See the migration guide below.
+New `Challenge`, `Error`, `ErrorDescription`, `ErrorURI`, and `Scope` fields allow customizing the `WWW-Authenticate` header, returning Bearer error details, and specifying required scopes. `ErrorURI` values are validated as absolute, a default `ApiKey` challenge is emitted when using non-Authorization extractors, Bearer `error` values are validated, credentials must conform to RFC 7235 `token68` syntax, and `scope` values are checked against RFC 6750's `scope-token` format. The header is also emitted only after the status code is finalized.
 
 ### Logger
 
@@ -2144,6 +2145,7 @@ options to further control authentication behavior.
 
 The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
 The old string-based `KeyLookup` configuration has been replaced with an `Extractor` field, and the `AuthScheme` field has been removed. The auth scheme is now inferred from the extractor used (e.g., `keyauth.FromAuthHeader`). Use helper functions like `keyauth.FromHeader`, `keyauth.FromAuthHeader`, or `keyauth.FromCookie` to define where the key should be retrieved from. Multiple sources can be combined with `keyauth.Chain`.
+New `Challenge`, `Error`, `ErrorDescription`, `ErrorURI`, and `Scope` options let you customize challenge responses, include Bearer error parameters, and specify required scopes. `ErrorURI` values are validated as absolute, credentials containing whitespace are rejected, and when multiple authorization extractors are chained, all schemes are advertised in the `WWW-Authenticate` header. The middleware defers emitting `WWW-Authenticate` until a 401 status is final, and `FromAuthHeader` now trims surrounding whitespace.
 
 ```go
 // Before

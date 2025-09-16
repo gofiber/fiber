@@ -4,7 +4,15 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	utils "github.com/gofiber/utils/v2"
 )
+
+func isToken68Char(c byte) bool {
+	return (c >= 'A' && c <= 'Z') ||
+		(c >= 'a' && c <= 'z') ||
+		(c >= '0' && c <= '9') ||
+		c == '-' || c == '.' || c == '_' || c == '~' || c == '+' || c == '/' || c == '='
+}
 
 // Source represents the type of source from which an API key is extracted.
 // This is informational metadata that helps developers understand the extractor behavior.
@@ -51,7 +59,7 @@ type Extractor struct {
 func FromAuthHeader(header, authScheme string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			authHeader := c.Get(header)
+			authHeader := strings.Trim(c.Get(header), " \t")
 			if authHeader == "" {
 				return "", ErrMissingOrMalformedAPIKey
 			}
@@ -59,13 +67,43 @@ func FromAuthHeader(header, authScheme string) Extractor {
 			// Check if the header starts with the specified auth scheme
 			if authScheme != "" {
 				schemeLen := len(authScheme)
-				if len(authHeader) > schemeLen+1 && strings.EqualFold(authHeader[:schemeLen], authScheme) && authHeader[schemeLen] == ' ' {
-					return strings.TrimSpace(authHeader[schemeLen+1:]), nil
+				if len(authHeader) <= schemeLen || !utils.EqualFold(authHeader[:schemeLen], authScheme) {
+					return "", ErrMissingOrMalformedAPIKey
 				}
-				return "", ErrMissingOrMalformedAPIKey
+				rest := authHeader[schemeLen:]
+				if len(rest) == 0 || rest[0] != ' ' {
+					return "", ErrMissingOrMalformedAPIKey
+				}
+				i := 1
+				for i < len(rest) && rest[i] == ' ' {
+					i++
+				}
+				if i < len(rest) && rest[i] == '\t' {
+					return "", ErrMissingOrMalformedAPIKey
+				}
+				token := rest[i:]
+				if token == "" || strings.ContainsAny(token, " \t") {
+					return "", ErrMissingOrMalformedAPIKey
+				}
+				seenEq := false
+				for j := 0; j < len(token); j++ {
+					currChar := token[j]
+					if !isToken68Char(currChar) {
+						return "", ErrMissingOrMalformedAPIKey
+					}
+					if currChar == '=' {
+						if j == 0 {
+							return "", ErrMissingOrMalformedAPIKey
+						}
+						seenEq = true
+					} else if seenEq {
+						return "", ErrMissingOrMalformedAPIKey
+					}
+				}
+				return token, nil
 			}
 
-			return strings.TrimSpace(authHeader), nil
+			return authHeader, nil
 		},
 		Key:        header,
 		Source:     SourceAuthHeader,
