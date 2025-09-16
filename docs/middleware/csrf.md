@@ -264,7 +264,7 @@ forms.Use(csrf.New(csrf.Config{
 
 ### Custom CSRF Extractors
 
-For specialized CSRF token extraction needs, you can create custom extractors. See the [Extractors Guide](https://docs.gofiber.io/guide/extractors#custom-extractors) for advanced patterns and security notes.
+For specialized CSRF token extraction needs, you can create custom extractors. See the [Extractors Guide](../guide/extractors#custom-extractors) for advanced patterns and security notes.
 
 :::danger Never Extract from Cookies
 **NEVER create custom extractors that read from cookies using the same `CookieName` as your CSRF configuration.** This completely defeats CSRF protection by making the extracted token always match the cookie value, allowing any CSRF attack to succeed.
