@@ -241,7 +241,7 @@ In rare cases, you may securely extract a CSRF token from a cookie if:
 If you do this, set the extractor’s `Source` to `SourceCookie` and allow the middleware to check that the cookie name is different from your CSRF cookie. It will panic if this is the case.
 
 **Warning:**
-Cookie-based extraction is strongly discouraged, as it is easy to misconfigure and creates security risks. Prefer extracting tokens from headers or form fields for robust CSRF protection. See the [Extractors Guide](https://docs.gofiber.io/guide/extractors#security-considerations) for more details.
+Cookie-based extraction is strongly discouraged, as it is easy to misconfigure and creates security risks. Prefer extracting tokens from headers or form fields for robust CSRF protection. See the [Extractors Guide](../guide/extractors#security-considerations) for more details.
 :::
 
 ### Route-Specific Configuration
