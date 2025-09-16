@@ -19,6 +19,10 @@ func hasToken(header, token string) bool {
 }
 
 func shouldSkip(c fiber.Ctx) bool {
+	if c.Method() == fiber.MethodHead {
+		return true
+	}
+
 	status := c.Response().StatusCode()
 	if status < 200 ||
 		status == fiber.StatusNoContent ||
@@ -94,14 +98,6 @@ func New(config ...Config) fiber.Handler {
 		// Continue stack
 		if err := c.Next(); err != nil {
 			return err
-		}
-
-		if c.Method() == fiber.MethodHead {
-			defer func() {
-				clen := len(c.Response().Body())
-				c.RequestCtx().ResetBody()
-				c.Response().Header.SetContentLength(clen)
-			}()
 		}
 
 		if shouldSkip(c) {

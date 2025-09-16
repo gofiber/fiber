@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http/httptest"
 	"os"
-	"strconv"
 	"testing"
 	"time"
 
@@ -415,7 +414,7 @@ func Test_Compress_Strong_ETag_Unchanged_When_Not_Compressed(t *testing.T) {
 	require.Equal(t, "Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
 }
 
-func Test_Compress_Head_Metadata(t *testing.T) {
+func Test_Compress_Skip_Head(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -423,7 +422,7 @@ func Test_Compress_Head_Metadata(t *testing.T) {
 
 	handler := func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderETag, "\"abc\"")
-		return c.SendString("hello")
+		return c.Send(filedata)
 	}
 	app.Get("/", handler)
 	app.Head("/", handler)
@@ -436,8 +435,7 @@ func Test_Compress_Head_Metadata(t *testing.T) {
 	getBody, err := io.ReadAll(getResp.Body)
 	require.NoError(t, err)
 	require.NotEmpty(t, getBody)
-	expectedCL := strconv.Itoa(len(getBody))
-	require.Equal(t, expectedCL, getResp.Header.Get(fiber.HeaderContentLength))
+	require.Equal(t, "gzip", getResp.Header.Get(fiber.HeaderContentEncoding))
 
 	headReq := httptest.NewRequest(fiber.MethodHead, "/", nil)
 	headReq.Header.Set("Accept-Encoding", "gzip")
@@ -448,10 +446,9 @@ func Test_Compress_Head_Metadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, headBody)
 
-	require.Equal(t, getResp.Header.Get(fiber.HeaderContentEncoding), headResp.Header.Get(fiber.HeaderContentEncoding))
-	require.Equal(t, getResp.Header.Get(fiber.HeaderVary), headResp.Header.Get(fiber.HeaderVary))
-	require.Equal(t, getResp.Header.Get(fiber.HeaderETag), headResp.Header.Get(fiber.HeaderETag))
-	require.Equal(t, expectedCL, headResp.Header.Get(fiber.HeaderContentLength))
+	require.Equal(t, "", headResp.Header.Get(fiber.HeaderContentEncoding))
+	require.Equal(t, "Accept-Encoding", headResp.Header.Get(fiber.HeaderVary))
+	require.Equal(t, "\"abc\"", headResp.Header.Get(fiber.HeaderETag))
 }
 
 func Test_Compress_Skip_Status_NoContent(t *testing.T) {
