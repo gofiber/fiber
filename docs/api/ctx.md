@@ -139,7 +139,7 @@ func (c fiber.Ctx) GetReqHeaders() map[string][]string
 ```
 
 :::info
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -165,7 +165,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -178,7 +178,7 @@ func (c fiber.Ctx) GetRespHeaders() map[string][]string
 ```
 
 :::info
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -270,7 +270,7 @@ Make sure to understand and correctly implement the `Locals` method in both its 
 
 ### Next
 
-When **Next** is called, it executes the next method in the stack that matches the current route. You can pass an error struct within the method that will end the chaining and call the [error handler](https://docs.gofiber.io/guide/error-handling).
+When **Next** is called, it executes the next method in the stack that matches the current route. You can pass an error struct within the method that will end the chaining and call the [error handler](../guide/error-handling).
 
 ```go title="Signature"
 func (c fiber.Ctx) Next() error
@@ -600,7 +600,7 @@ Media-Type parameters are supported.
 app.Get("/", func(c fiber.Ctx) error {
   // Extra parameters in the accept are ignored
   c.Accepts("text/plain;format=flowed") // "text/plain;format=flowed"
-  
+
   // An offer must contain all parameters present in the Accept type
   c.Accepts("application/json") // ""
 
@@ -686,7 +686,7 @@ app.Post("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -708,7 +708,7 @@ app.Post("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -789,7 +789,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 :::info
 
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -828,7 +828,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -854,7 +854,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -877,7 +877,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -1075,7 +1075,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -1126,7 +1126,7 @@ app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
 ```
 
 :::info
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -1303,7 +1303,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-The returned value is valid only within the handler. Do not store references.  
+The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
@@ -1485,7 +1485,7 @@ func (c fiber.Ctx) Stale() bool
 
 Returns a slice with the host’s sub-domain labels. The dot-separated parts that precede the registrable domain (`example`) and the top-level domain (ex: `com`).
 
-The `subdomain offset` (default `2`) tells Fiber how many labels, counting from the right-hand side, are always discarded.  
+The `subdomain offset` (default `2`) tells Fiber how many labels, counting from the right-hand side, are always discarded.
 Passing an `offset` argument lets you override that value for a single call.
 
 ```go
@@ -1821,7 +1821,7 @@ when they regain control after calling `c.Next()`.
 // Error Logging/Responding middleware
 app.Use(func(c fiber.Ctx) error {
     err := c.Next()
-  
+
     // Log errors & write the error to the response
     if err != nil {
         log.Printf("Got error in middleware: %v", err)

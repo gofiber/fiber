@@ -263,6 +263,11 @@ app.Use(keyauth.New(keyauth.Config{
 | Validator       | `func(fiber.Ctx, string) (bool, error)`  | **Required.** Validator is a function to validate the key.                                                           | `nil` (panic) |
 | Extractor       | `keyauth.Extractor`                    | Extractor defines how to retrieve the key from the request. Use helper functions like `keyauth.FromAuthHeader` or `keyauth.FromCookie`. | `keyauth.FromAuthHeader("Authorization", "Bearer")` |
 | Realm           | `string`                                 | Realm specifies the protected area name used in the `WWW-Authenticate` header. | `"Restricted"` |
+| Challenge       | `string`                                 | Value of the `WWW-Authenticate` header when no `Authorization` scheme is present. | `ApiKey realm="Restricted"` |
+| Error           | `string`                                 | Error code appended as the `error` parameter in Bearer challenges. Must be `invalid_request`, `invalid_token`, or `insufficient_scope`. | `""` |
+| ErrorDescription| `string`                                 | Human-readable text for the `error_description` parameter in Bearer challenges. Requires `Error`. | `""` |
+| ErrorURI        | `string`                                 | URI identifying a human-readable web page with information about the `error` in Bearer challenges. Requires `Error` and must be an absolute URI. | `""` |
+| Scope           | `string`                                 | Space-delimited list of scopes for the `scope` parameter in Bearer challenges. Each token must conform to the RFC 6750 `scope-token` syntax and requires `Error` set to `insufficient_scope`. | `""` |
 
 ## Default Config
 

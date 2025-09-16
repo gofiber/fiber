@@ -4,7 +4,7 @@ id: recover
 
 # Recover
 
-The Recover middleware for [Fiber](https://github.com/gofiber/fiber) intercepts panics and forwards them to the central [ErrorHandler](https://docs.gofiber.io/guide/error-handling).
+The Recover middleware for [Fiber](https://github.com/gofiber/fiber) intercepts panics and forwards them to the central [ErrorHandler](../guide/error-handling).
 
 ## Signatures
 
