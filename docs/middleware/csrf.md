@@ -215,7 +215,7 @@ As a crucial second layer of defense, the middleware **always** performs `Origin
 
 ## Token Extractors
 
-This middleware uses the shared `extractors` package for token extraction. For full details on extractor types, chaining, security, and advanced usage, see the [Extractors Guide](https://docs.gofiber.io/guide/extractors).
+This middleware uses the shared `extractors` package for token extraction. For full details on extractor types, chaining, security, and advanced usage, see the [Extractors Guide](../guide/extractors).
 
 **Extractor Source Constants:**
 Extractor source constants (such as `SourceHeader`, `SourceForm`, etc.) are defined in the shared extractors package, not in the CSRF middleware itself. Refer to the Extractors Guide for their definitions and usage.
