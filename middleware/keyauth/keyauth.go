@@ -39,6 +39,11 @@ func New(config ...Config) fiber.Handler {
 
 		// Extract and verify key
 		key, err := cfg.Extractor.Extract(c)
+		if errors.Is(err, extractors.ErrNotFound) {
+			// Replace shared extractor not found error with a keyauth specific error
+			err = ErrMissingOrMalformedAPIKey
+		}
+		// If there was no error extracting the key, validate it
 		if err == nil {
 			// Strict token68 validation for AuthHeader extractors
 			if cfg.Extractor.Source == extractors.SourceAuthHeader && cfg.Extractor.AuthScheme != "" && !isValidToken68(key) {
