@@ -308,7 +308,7 @@ app.Use(csrf.New(csrf.Config{
 ```
 
 :::warning
-Chaining extractors increases complexity. Use only when you need to support multiple client types. See the [Extractors Guide](https://docs.gofiber.io/guide/extractors#chaining-extractors) for details and security notes.
+Chaining extractors increases complexity. Use only when you need to support multiple client types. See the [Extractors Guide](../guide/extractors#chaining-extractors) for details and security notes.
 :::
 
 ## Advanced Configuration
