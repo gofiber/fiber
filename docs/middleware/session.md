@@ -298,7 +298,7 @@ app.Use(session.New(session.Config{
 
 ## Session ID Extractors
 
-This middleware uses the shared extractors module for session ID extraction. See the [Extractors Guide](https://docs.gofiber.io/guide/extractors) for more details.
+This middleware uses the shared extractors module for session ID extraction. See the [Extractors Guide](../guide/extractors) for more details.
 
 ### Built-in Extractors
 

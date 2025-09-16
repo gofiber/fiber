@@ -29,7 +29,7 @@ Fiber is optimized for **high performance**, meaning values returned from **fibe
 ```go
 func handler(c fiber.Ctx) error {
     // Variable is only valid within this handler
-    result := c.Params("foo") 
+    result := c.Params("foo")
 
     // ...
 }
@@ -45,7 +45,7 @@ func handler(c fiber.Ctx) error {
     // Make a copy
     buffer := make([]byte, len(result))
     copy(buffer, result)
-    resultCopy := string(buffer) 
+    resultCopy := string(buffer)
     // Variable is now valid indefinitely
 
     // ...
@@ -113,9 +113,9 @@ app.Method(path string, ...func(fiber.Ctx) error)
 ```
 
 - `app` is an instance of **Fiber**
-- `Method` is an [HTTP request method](https://docs.gofiber.io/api/app#route-handlers): `GET`, `PUT`, `POST`, etc.
+- `Method` is an [HTTP request method](./api/app#route-handlers): `GET`, `PUT`, `POST`, etc.
 - `path` is a virtual path on the server
-- `func(fiber.Ctx) error` is a callback function containing the [Context](https://docs.gofiber.io/api/ctx) executed when the route is matched
+- `func(fiber.Ctx) error` is a callback function containing the [Context](./api/ctx) executed when the route is matched
 
 #### Simple Route
 
