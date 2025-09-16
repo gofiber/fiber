@@ -221,8 +221,6 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 #> Successfully authenticated!
 ```
 
-
-
 ## Key Extractors
 
 KeyAuth uses an `Extractor` from the shared [extractors](../guide/extractors) package to retrieve the API key from the request. You can specify one or more extractors in the configuration. For a full list of extractors, chaining, and advanced usage, see the [Extractors Guide](../guide/extractors).
@@ -286,7 +284,6 @@ Refer to the [Extractors Guide](../guide/extractors) for details, security notes
 | ErrorDescription| `string`                                 | Human-readable text for the `error_description` parameter in Bearer challenges. Requires `Error`. | `""` |
 | ErrorURI        | `string`                                 | URI identifying a human-readable web page with information about the `error` in Bearer challenges. Requires `Error` and must be an absolute URI. | `""` |
 | Scope           | `string`                                 | Space-delimited list of scopes for the `scope` parameter in Bearer challenges. Each token must conform to the RFC 6750 `scope-token` syntax and requires `Error` set to `insufficient_scope`. | `""` |
-
 
 ## Default Config
 
