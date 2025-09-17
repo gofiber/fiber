@@ -20,7 +20,7 @@ func Test_Extractors_Missing(t *testing.T) {
 	app.Get("/test", func(c fiber.Ctx) error {
 		token, err := FromParam("token").Extract(c)
 		require.Empty(t, token)
-		require.Equal(t, ErrNotFound, err)
+		require.ErrorIs(t, err, ErrNotFound)
 		return nil
 	})
 	_, err := app.Test(newRequest(fiber.MethodGet, "/test"))
@@ -32,27 +32,27 @@ func Test_Extractors_Missing(t *testing.T) {
 	// Missing form
 	token, err := FromForm("token").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	require.ErrorIs(t, err, ErrNotFound)
 
 	// Missing query
 	token, err = FromQuery("token").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	require.ErrorIs(t, err, ErrNotFound)
 
 	// Missing header
 	token, err = FromHeader("X-Token").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	require.ErrorIs(t, err, ErrNotFound)
 
 	// Missing Auth header
 	token, err = FromAuthHeader("Bearer").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	require.ErrorIs(t, err, ErrNotFound)
 
 	// Missing cookie
 	token, err = FromCookie("token").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	require.ErrorIs(t, err, ErrNotFound)
 }
 
 // newRequest creates a new *http.Request for Fiber's app.Test
@@ -157,7 +157,7 @@ func Test_Extractor_Chain(t *testing.T) {
 		t.Cleanup(func() { app.ReleaseCtx(ctx) })
 		token, err := Chain().Extract(ctx)
 		require.Empty(t, token)
-		require.Equal(t, ErrNotFound, err)
+		require.ErrorIs(t, err, ErrNotFound)
 	})
 
 	t.Run("first_extractor_succeeds", func(t *testing.T) {
@@ -193,7 +193,7 @@ func Test_Extractor_Chain(t *testing.T) {
 		t.Cleanup(func() { app.ReleaseCtx(ctx) })
 		token, err := Chain(FromHeader("X-Token"), FromQuery("token")).Extract(ctx)
 		require.Empty(t, token)
-		require.Equal(t, ErrNotFound, err)
+		require.ErrorIs(t, err, ErrNotFound)
 	})
 
 	t.Run("empty_extractor_returns_not_found", func(t *testing.T) {
@@ -212,7 +212,7 @@ func Test_Extractor_Chain(t *testing.T) {
 		}
 		token, err := Chain(dummyExtractor).Extract(ctx)
 		require.Empty(t, token)
-		require.Equal(t, ErrNotFound, err)
+		require.ErrorIs(t, err, ErrNotFound)
 	})
 }
 
@@ -229,7 +229,7 @@ func Test_Extractor_FromAuthHeader_EdgeCases(t *testing.T) {
 		ctx.Request().Header.Set(fiber.HeaderAuthorization, "Basic dXNlcjpwYXNz") // Basic auth instead of Bearer
 		token, err := FromAuthHeader("Bearer").Extract(ctx)
 		require.Empty(t, token)
-		require.Equal(t, ErrNotFound, err)
+		require.ErrorIs(t, err, ErrNotFound)
 	})
 
 	t.Run("missing_space_after_scheme", func(t *testing.T) {
@@ -241,7 +241,7 @@ func Test_Extractor_FromAuthHeader_EdgeCases(t *testing.T) {
 		ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearertoken") // Missing space after Bearer
 		token, err := FromAuthHeader("Bearer").Extract(ctx)
 		require.Empty(t, token)
-		require.Equal(t, ErrNotFound, err)
+		require.ErrorIs(t, err, ErrNotFound)
 	})
 
 	t.Run("case_insensitive_scheme_matching", func(t *testing.T) {
@@ -466,7 +466,7 @@ func Test_Extractor_FromAuthHeader_WhitespaceToken(t *testing.T) {
 	extractor := FromAuthHeader("Bearer")
 	token, err := extractor.Extract(ctx)
 	require.Error(t, err)
-	require.Equal(t, ErrNotFound, err)
+	require.ErrorIs(t, err, ErrNotFound)
 	require.Empty(t, token)
 
 	// Verify metadata
@@ -551,7 +551,7 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 
 			if tc.shouldFail {
 				require.Error(t, err, "Expected error for %s", tc.description)
-				require.Equal(t, ErrNotFound, err)
+				require.ErrorIs(t, err, ErrNotFound)
 				require.Empty(t, token)
 			} else {
 				require.NoError(t, err, "Expected no error for %s", tc.description)
@@ -626,7 +626,7 @@ func Test_Extractor_FromAuthHeader_Token68_Validation(t *testing.T) {
 
 			if tc.shouldFail {
 				require.Error(t, err, "Expected error for %s", tc.description)
-				require.Equal(t, ErrNotFound, err)
+				require.ErrorIs(t, err, ErrNotFound)
 				require.Empty(t, token)
 			} else {
 				require.NoError(t, err, "Expected no error for %s", tc.description)
@@ -670,7 +670,7 @@ func Test_Extractor_FromAuthHeader_NoScheme(t *testing.T) {
 		extractor := FromAuthHeader("") // No scheme
 		token, err := extractor.Extract(ctx)
 		require.Empty(t, token)
-		require.Equal(t, ErrNotFound, err)
+		require.ErrorIs(t, err, ErrNotFound)
 	})
 }
 
