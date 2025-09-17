@@ -363,14 +363,13 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 	if len(teBytes) > 0 {
 		te = utils.UnsafeString(teBytes)
 	} else {
-		hdr.VisitAll(func(key, value []byte) {
-			if te != "" {
-				return
+		for key, value := range hdr.All() {
+			if !strings.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
+				continue
 			}
-			if strings.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
-				te = string(value)
-			}
-		})
+			te = utils.UnsafeString(value)
+			break
+		}
 	}
 
 	if te == "" {
