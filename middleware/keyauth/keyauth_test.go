@@ -707,8 +707,8 @@ func Test_HeaderSchemeMultipleSpaces(t *testing.T) {
 	require.NoError(t, err)
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, res.StatusCode)
-	require.Equal(t, "OK", string(body))
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(body))
 }
 
 func Test_HeaderSchemeMissingSpace(t *testing.T) {
