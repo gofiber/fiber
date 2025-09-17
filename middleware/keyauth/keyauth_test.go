@@ -1097,39 +1097,3 @@ func Test_New_ErrorURIAbsolute(t *testing.T) {
 		})
 	})
 }
-
-func Test_isValidToken68(t *testing.T) {
-	cases := []struct {
-		name  string
-		token string
-		want  bool
-	}{
-		{token: "", want: false, name: "empty string"},
-		{token: "A", want: true, name: "single uppercase"},
-		{token: "a", want: true, name: "single lowercase"},
-		{token: "0", want: true, name: "single digit"},
-		{token: "-._~+/", want: true, name: "all allowed symbols except ="},
-		{token: "token68", want: true, name: "letters and digits"},
-		{token: "token=", want: true, name: "equals at end"},
-		{token: "token==", want: true, name: "multiple equals"},
-		{token: "=token", want: false, name: "equals at start"},
-		{token: "tok=en", want: false, name: "equals in middle"},
-		{token: "token=extra", want: false, name: "equals not at end with other chars"},
-		{token: "token space", want: false, name: "space in token"},
-		{token: "token\ttab", want: false, name: "tab character in token"},
-		{token: "token@", want: false, name: "invalid symbol"},
-		{token: "token68", want: true, name: "valid token68"},
-		{token: "token68=", want: true, name: "valid token68 with equals at end"},
-		{token: "token68==", want: true, name: "multiple equals at end"},
-		{token: "token68=extra", want: false, name: "equals followed by extra chars"},
-		{token: "T0ken-._~+/=", want: true, name: "all allowed chars with equals at end"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := isValidToken68(tc.token)
-			if got != tc.want {
-				t.Errorf("isValidToken68(%q) = %v, want %v", tc.token, got, tc.want)
-			}
-		})
-	}
-}

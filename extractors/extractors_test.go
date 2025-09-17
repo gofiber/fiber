@@ -391,15 +391,16 @@ func Test_Extractor_FromAuthHeader_WhitespaceToken(t *testing.T) {
 
 	app := fiber.New()
 
-	// Test with token containing whitespace (should be preserved)
+	// Test with token containing whitespace (should be rejected per RFC 7235 token68 spec)
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token with spaces and\ttabs")
 
 	extractor := FromAuthHeader("Bearer")
 	token, err := extractor.Extract(ctx)
-	require.NoError(t, err)
-	require.Equal(t, "token with spaces and\ttabs", token)
+	require.Error(t, err)
+	require.Equal(t, ErrNotFound, err)
+	require.Empty(t, token)
 
 	// Verify metadata
 	require.Equal(t, SourceAuthHeader, extractor.Source)
@@ -413,61 +414,133 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 
 	app := fiber.New()
 
-	// Test RFC 9110: Tab character after scheme (should be accepted)
+	// Test RFC 9110: Tab character after scheme (should be rejected - RFC specifies 1*SP, not tabs)
 	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx1)
 	ctx1.Request().Header.Set(fiber.HeaderAuthorization, "Bearer\ttoken") // Tab after Bearer
 	token, err := FromAuthHeader("Bearer").Extract(ctx1)
-	require.NoError(t, err)
-	require.Equal(t, "token", token)
+	require.Error(t, err)
+	require.Equal(t, ErrNotFound, err)
+	require.Empty(t, token)
 
-	// Test RFC 9110: Multiple spaces after scheme
+	// Test RFC 9110: Single space after scheme (should be accepted - standard format)
 	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx2)
-	ctx2.Request().Header.Set(fiber.HeaderAuthorization, "Bearer  token") // Multiple spaces
+	ctx2.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token") // Single space
 	token, err = FromAuthHeader("Bearer").Extract(ctx2)
 	require.NoError(t, err)
 	require.Equal(t, "token", token)
 
-	// Test RFC 9110: Mixed whitespace after scheme
+	// Test RFC 9110: Multiple spaces after scheme (rejected for simplicity - single space is standard)
 	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx3)
-	ctx3.Request().Header.Set(fiber.HeaderAuthorization, "Bearer \t \ttoken") // Space + tabs
+	ctx3.Request().Header.Set(fiber.HeaderAuthorization, "Bearer  token") // Multiple spaces
 	token, err = FromAuthHeader("Bearer").Extract(ctx3)
-	require.NoError(t, err)
-	require.Equal(t, "token", token)
+	require.Error(t, err)
+	require.Equal(t, ErrNotFound, err)
+	require.Empty(t, token)
 
-	// Test RFC 9110: No whitespace after scheme (should fail)
+	// Test RFC 9110: Mixed whitespace after scheme (should be rejected - RFC specifies 1*SP, not tabs)
 	ctx4 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx4)
-	ctx4.Request().Header.Set(fiber.HeaderAuthorization, "Bearertoken") // No space
+	ctx4.Request().Header.Set(fiber.HeaderAuthorization, "Bearer \t \ttoken") // Space + tabs
 	token, err = FromAuthHeader("Bearer").Extract(ctx4)
-	require.Empty(t, token)
+	require.Error(t, err)
 	require.Equal(t, ErrNotFound, err)
+	require.Empty(t, token)
 
-	// Test RFC 9110: Header too short for scheme + space + token
+	// Test RFC 9110: No whitespace after scheme (should fail)
 	ctx5 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx5)
-	ctx5.Request().Header.Set(fiber.HeaderAuthorization, "Bearer") // Just scheme, no space or token
+	ctx5.Request().Header.Set(fiber.HeaderAuthorization, "Bearertoken") // No space
 	token, err = FromAuthHeader("Bearer").Extract(ctx5)
 	require.Empty(t, token)
 	require.Equal(t, ErrNotFound, err)
 
-	// Test RFC 9110: Only whitespace after scheme (should fail)
+	// Test RFC 9110: Header too short for scheme + space + token
 	ctx6 := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx6)
+	ctx6.Request().Header.Set(fiber.HeaderAuthorization, "Bearer") // Just scheme, no space or token
+	token, err = FromAuthHeader("Bearer").Extract(ctx6)
+	require.Empty(t, token)
+	require.Equal(t, ErrNotFound, err)
+
+	// Test RFC 9110: Only whitespace after scheme (should fail)
+	ctx7 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx7)
 	ctx6.Request().Header.Set(fiber.HeaderAuthorization, "Bearer   \t  ") // Only whitespace
 	token, err = FromAuthHeader("Bearer").Extract(ctx6)
 	require.Empty(t, token)
 	require.Equal(t, ErrNotFound, err)
 
 	// Test RFC 9110: Case-insensitive scheme matching
-	ctx7 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx7)
-	ctx7.Request().Header.Set(fiber.HeaderAuthorization, "BEARER token") // Uppercase
-	token, err = FromAuthHeader("bearer").Extract(ctx7)
+	ctx8 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx8)
+	ctx8.Request().Header.Set(fiber.HeaderAuthorization, "BEARER token") // Uppercase
+	token, err = FromAuthHeader("bearer").Extract(ctx8)
 	require.NoError(t, err)
 	require.Equal(t, "token", token)
+}
+
+// go test -run Test_Extractor_FromAuthHeader_Token68_Validation
+func Test_Extractor_FromAuthHeader_Token68_Validation(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	// Test valid token68 characters (should pass)
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/=")
+	token, err := FromAuthHeader("Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/=", token)
+
+	// Test tokens with spaces (should fail)
+	testCases := []struct {
+		name        string
+		header      string
+		description string
+		shouldFail  bool
+	}{
+		{name: "space_in_token", header: "Bearer abc def", shouldFail: true, description: "space in token"},
+		{name: "space_after_scheme", header: "Bearer  abc", shouldFail: true, description: "multiple spaces after scheme"},
+		{name: "no_space_after_scheme", header: "Bearertoken", shouldFail: true, description: "no space after scheme"},
+		{name: "only_scheme", header: "Bearer", shouldFail: true, description: "only scheme, no token"},
+		{name: "tab_after_scheme", header: "Bearer\ttoken", shouldFail: true, description: "tab after scheme"},
+		{name: "tab_in_token", header: "Bearer abc\tdef", shouldFail: true, description: "tab in token"},
+		{name: "newline_in_token", header: "Bearer abc\ndef", shouldFail: true, description: "newline in token"},
+		{name: "leading_space_in_token", header: "Bearer  abc", shouldFail: true, description: "leading space in token after scheme space"},
+		{name: "trailing_space_in_token", header: "Bearer abc ", shouldFail: true, description: "trailing space in token"},
+		{name: "comma_in_token", header: "Bearer abc,def", shouldFail: true, description: "comma in token"},
+		{name: "semicolon_in_token", header: "Bearer abc;def", shouldFail: true, description: "semicolon in token"},
+		{name: "quote_in_token", header: "Bearer abc\"def", shouldFail: true, description: "quote in token"},
+		{name: "bracket_in_token", header: "Bearer abc[def", shouldFail: true, description: "bracket in token"},
+		{name: "equals_at_start", header: "Bearer =abc", shouldFail: true, description: "equals at start of token"},
+		{name: "equals_in_middle", header: "Bearer ab=cd", shouldFail: true, description: "equals in middle of token"},
+		{name: "valid_equals_at_end", header: "Bearer abc=", shouldFail: false, description: "valid equals at end"},
+		{name: "valid_double_equals", header: "Bearer abc==", shouldFail: false, description: "valid double equals at end"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(ctx)
+			ctx.Request().Header.Set(fiber.HeaderAuthorization, tc.header)
+
+			token, err := FromAuthHeader("Bearer").Extract(ctx)
+
+			if tc.shouldFail {
+				require.Error(t, err, "Expected error for %s", tc.description)
+				require.Equal(t, ErrNotFound, err)
+				require.Empty(t, token)
+			} else {
+				require.NoError(t, err, "Expected no error for %s", tc.description)
+				require.NotEmpty(t, token)
+			}
+		})
+	}
 }
 
 // go test -run Test_Extractor_FromAuthHeader_NoScheme
@@ -692,4 +765,40 @@ func Test_Extractor_URL_Encoded(t *testing.T) {
 	})
 	_, err = app.Test(newRequest(fiber.MethodGet, "/test/token%2Fwith%2Fslashes"))
 	require.NoError(t, err)
+}
+
+func Test_isValidToken68(t *testing.T) {
+	cases := []struct {
+		name  string
+		token string
+		want  bool
+	}{
+		{name: "empty string", token: "", want: false},
+		{name: "single uppercase", token: "A", want: true},
+		{name: "single lowercase", token: "a", want: true},
+		{name: "single digit", token: "0", want: true},
+		{name: "all allowed symbols except =", token: "-._~+/", want: true},
+		{name: "letters and digits", token: "token68", want: true},
+		{name: "equals at end", token: "token=", want: true},
+		{name: "multiple equals", token: "token==", want: true},
+		{name: "equals at start", token: "=token", want: false},
+		{name: "equals in middle", token: "tok=en", want: false},
+		{name: "equals not at end with other chars", token: "token=extra", want: false},
+		{name: "space in token", token: "token space", want: false},
+		{name: "tab character in token", token: "token\ttab", want: false},
+		{name: "invalid symbol", token: "token@", want: false},
+		{name: "valid token68", token: "token68", want: true},
+		{token: "token68=", want: true, name: "valid token68 with equals at end"},
+		{token: "token68==", want: true, name: "multiple equals at end"},
+		{token: "token68=extra", want: false, name: "equals followed by extra chars"},
+		{token: "T0ken-._~+/=", want: true, name: "all allowed chars with equals at end"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isValidToken68(tc.token)
+			if got != tc.want {
+				t.Errorf("isValidToken68(%q) = %v, want %v", tc.token, got, tc.want)
+			}
+		})
+	}
 }

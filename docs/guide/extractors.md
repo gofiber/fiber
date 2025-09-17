@@ -274,22 +274,64 @@ Choose extractors based on your specific use case and security needs, not blanke
 
 ## Standards Compliance
 
-### Authorization header compliance (RFC 9110; previously RFC 7235)
+### Authorization Header (RFC 9110 & RFC 7235)
 
-The `FromAuthHeader` extractor aligns with HTTP authentication semantics:
+The `FromAuthHeader` extractor provides comprehensive RFC compliance with strict security validation:
 
-- **Case-insensitive scheme matching**: `Bearer`, `bearer`, `BEARER` all work
-- **OWS handling**: Supports SP/HTAB around the scheme/value per RFC 9110
-- **Proper error handling**: Validates header format and content
-- **Security-conscious**: Prevents common parsing vulnerabilities
+#### RFC 9110 Compliance (Authorization Header Format)
+
+- **Section 11.6.2 Format**: Enforces `credentials = auth-scheme 1*SP token68` structure
+- **1*SP Requirement**: Validates exactly one or more spaces between auth-scheme and token
+- **Case-insensitive scheme matching**: `Bearer`, `bearer`, `BEARER` all work correctly
+- **Proper whitespace handling**: Rejects tabs between scheme and token (only spaces allowed)
+
+#### RFC 7235 Token68 Validation
+
+The extractor implements strict token68 character validation per RFC 7235:
+
+- **Allowed characters**: `A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`, `+`, `/`, `=`
+- **Padding rules**: `=` characters only allowed at the end of tokens
+- **Security validation**: Prevents tokens starting with `=` or having non-padding characters after `=`
+- **Whitespace rejection**: Rejects tokens containing spaces, tabs, or any other whitespace
+
+#### Security Features
+
+- **Header injection prevention**: Strict parsing prevents malformed authorization headers from bypassing authentication
+- **Token validation**: Ensures extracted tokens conform to standards, preventing authentication bypass
+- **Consistent error handling**: Returns `ErrNotFound` for all invalid cases
+
+#### Examples
 
 ```go
-// All of these work correctly:
-extractors.FromAuthHeader("Bearer")  // Standard case
-extractors.FromAuthHeader("bearer")  // Lowercase
-extractors.FromAuthHeader("BEARER")  // Uppercase
-extractors.FromAuthHeader("")        // No scheme, returns header (or ErrNotFound if empty)
+// Standard usage - strict validation
+extractor := extractors.FromAuthHeader("Bearer")
+
+// ✅ Valid cases:
+// "Bearer abc123" -> "abc123"
+// "bearer ABC123" -> "ABC123" (case-insensitive scheme)
+// "Bearer token123=" -> "token123=" (valid padding)
+// "Bearer token==" -> "token==" (valid multiple padding)
+
+// ❌ Invalid cases (all return ErrNotFound):
+// "Bearer abc def" -> rejected (space in token)
+// "Bearer abc\tdef" -> rejected (tab in token)
+// "Bearer =abc" -> rejected (padding at start)
+// "Bearer ab=cd" -> rejected (padding in middle)
+// "Bearer  token" -> rejected (multiple spaces after scheme)
+// "Bearer\ttoken" -> rejected (tab after scheme)
+// "Bearertoken" -> rejected (no space after scheme)
+
+// Raw header extraction (no validation)
+rawExtractor := extractors.FromAuthHeader("")
+// "CustomAuth anything goes here" -> "CustomAuth anything goes here"
 ```
+
+#### Benefits
+
+- **Standards Compliance**: Full adherence to HTTP authentication RFCs
+- **Security Hardening**: Prevents common authentication bypass vulnerabilities
+- **Consistent Behavior**: Reliable parsing across different client implementations
+- **Developer Confidence**: Clear validation rules reduce authentication bugs
 
 ## Troubleshooting
 
