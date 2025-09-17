@@ -337,31 +337,65 @@ func (c *DefaultCtx) IsMiddleware() bool {
 	return c.indexHandler+1 < len(c.route.Handlers)
 }
 
-// HasBody returns true if the request has a body or a Content-Length header greater than zero.
+// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
 func (c *DefaultCtx) HasBody() bool {
-	cl := c.fasthttp.Request.Header.ContentLength()
+	hdr := &c.fasthttp.Request.Header
 
-	switch {
+	switch cl := hdr.ContentLength(); {
 	case cl > 0:
 		return true
 	case cl == -1:
 		// fasthttp reports -1 for Transfer-Encoding: chunked bodies.
 		return true
 	case cl == 0:
-		if te := c.fasthttp.Request.Header.Peek(HeaderTransferEncoding); len(te) > 0 {
-			for v := range strings.SplitSeq(utils.UnsafeString(te), ",") {
-				token := utils.Trim(v, ' ')
-				if len(token) == 0 {
-					continue
-				}
-				if !utils.EqualFold(token, "identity") {
-					return true
-				}
-			}
+		if hasTransferEncodingBody(hdr) {
+			return true
 		}
 	}
 
 	return len(c.fasthttp.Request.Body()) > 0
+}
+
+func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
+	teBytes := hdr.Peek(HeaderTransferEncoding)
+	var te string
+
+	if len(teBytes) > 0 {
+		te = utils.UnsafeString(teBytes)
+	} else {
+		hdr.VisitAll(func(key, value []byte) {
+			if te != "" {
+				return
+			}
+			if strings.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
+				te = string(value)
+			}
+		})
+	}
+
+	if te == "" {
+		return false
+	}
+
+	hasEncoding := false
+	for raw := range strings.SplitSeq(te, ",") {
+		token := strings.TrimSpace(raw)
+		if len(token) == 0 {
+			continue
+		}
+		if idx := strings.IndexByte(token, ';'); idx >= 0 {
+			token = strings.TrimSpace(token[:idx])
+		}
+		if token == "" {
+			continue
+		}
+		if strings.EqualFold(token, "identity") {
+			continue
+		}
+		hasEncoding = true
+	}
+
+	return hasEncoding
 }
 
 // IsWebSocket returns true if the request includes a WebSocket upgrade handshake.

@@ -5113,43 +5113,84 @@ func Test_Ctx_HasBody(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	ctxWithBody := app.AcquireCtx(&fasthttp.RequestCtx{})
-	require.NotNil(t, ctxWithBody)
-	t.Cleanup(func() { app.ReleaseCtx(ctxWithBody) })
-	ctxWithBody.Request().SetBody([]byte("test"))
-	require.True(t, ctxWithBody.HasBody())
+	acquire := func(t *testing.T) CustomCtx {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		require.NotNil(t, ctx)
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		return ctx
+	}
 
-	ctxWithHeader := app.AcquireCtx(&fasthttp.RequestCtx{})
-	require.NotNil(t, ctxWithHeader)
-	t.Cleanup(func() { app.ReleaseCtx(ctxWithHeader) })
-	ctxWithHeader.Request().Header.SetContentLength(4)
-	require.True(t, ctxWithHeader.HasBody())
+	setTransferEncoding := func(t *testing.T, ctx Ctx, value string) {
+		t.Helper()
+		hdr := &ctx.Request().Header
+		hdr.DisableSpecialHeader()
+		hdr.Set(HeaderTransferEncoding, value)
+		hdr.Set(HeaderContentLength, "0")
+		hdr.EnableSpecialHeader()
+		require.Zero(t, hdr.ContentLength())
+		require.Empty(t, ctx.Request().Body())
+	}
 
-	ctxWithChunked := app.AcquireCtx(&fasthttp.RequestCtx{})
-	require.NotNil(t, ctxWithChunked)
-	t.Cleanup(func() { app.ReleaseCtx(ctxWithChunked) })
+	t.Run("body bytes", func(t *testing.T) {
+		ctx := acquire(t)
+		ctx.Request().SetBody([]byte("test"))
+		require.True(t, ctx.HasBody())
+	})
 
-	ctxWithChunked.Request().Header.SetContentLength(-1)
-	require.Equal(t, -1, ctxWithChunked.Request().Header.ContentLength())
-	require.Empty(t, ctxWithChunked.Request().Body())
-	require.True(t, ctxWithChunked.HasBody())
+	t.Run("content length header", func(t *testing.T) {
+		ctx := acquire(t)
+		ctx.Request().Header.SetContentLength(4)
+		require.True(t, ctx.HasBody())
+	})
 
-	ctxWithTransferEncoding := app.AcquireCtx(&fasthttp.RequestCtx{})
-	require.NotNil(t, ctxWithTransferEncoding)
-	t.Cleanup(func() { app.ReleaseCtx(ctxWithTransferEncoding) })
+	t.Run("chunked sentinel", func(t *testing.T) {
+		ctx := acquire(t)
+		ctx.Request().Header.SetContentLength(-1)
+		require.Equal(t, -1, ctx.Request().Header.ContentLength())
+		require.Empty(t, ctx.Request().Body())
+		require.True(t, ctx.HasBody())
+	})
 
-	ctxWithTransferEncoding.Request().Header.DisableSpecialHeader()
-	ctxWithTransferEncoding.Request().Header.Set(HeaderTransferEncoding, "chunked")
-	ctxWithTransferEncoding.Request().Header.Set(HeaderContentLength, "0")
-	ctxWithTransferEncoding.Request().Header.EnableSpecialHeader()
-	require.Zero(t, ctxWithTransferEncoding.Request().Header.ContentLength())
-	require.Empty(t, ctxWithTransferEncoding.Request().Body())
-	require.True(t, ctxWithTransferEncoding.HasBody())
+	t.Run("transfer encoding chunked", func(t *testing.T) {
+		ctx := acquire(t)
+		setTransferEncoding(t, ctx, "chunked")
+		require.True(t, ctx.HasBody())
+	})
 
-	ctxWithoutBody := app.AcquireCtx(&fasthttp.RequestCtx{})
-	require.NotNil(t, ctxWithoutBody)
-	t.Cleanup(func() { app.ReleaseCtx(ctxWithoutBody) })
-	require.False(t, ctxWithoutBody.HasBody())
+	t.Run("transfer encoding whitespace", func(t *testing.T) {
+		ctx := acquire(t)
+		setTransferEncoding(t, ctx, "  ChUnKeD  ")
+		require.True(t, ctx.HasBody())
+	})
+
+	t.Run("transfer encoding parameters", func(t *testing.T) {
+		ctx := acquire(t)
+		setTransferEncoding(t, ctx, "chunked; q=1")
+		require.True(t, ctx.HasBody())
+	})
+
+	t.Run("transfer encoding multiple values", func(t *testing.T) {
+		ctx := acquire(t)
+		setTransferEncoding(t, ctx, "gzip, chunked")
+		require.True(t, ctx.HasBody())
+	})
+
+	t.Run("transfer encoding identity", func(t *testing.T) {
+		ctx := acquire(t)
+		setTransferEncoding(t, ctx, "identity")
+		require.False(t, ctx.HasBody())
+	})
+
+	t.Run("transfer encoding identity then chunked", func(t *testing.T) {
+		ctx := acquire(t)
+		setTransferEncoding(t, ctx, "identity, chunked")
+		require.True(t, ctx.HasBody())
+	})
+
+	t.Run("no body", func(t *testing.T) {
+		ctx := acquire(t)
+		require.False(t, ctx.HasBody())
+	})
 }
 
 func Test_Ctx_IsWebSocket(t *testing.T) {

@@ -118,7 +118,7 @@ type Ctx interface {
 	Matched() bool
 	// IsMiddleware returns true if the current request handler was registered as middleware.
 	IsMiddleware() bool
-	// HasBody returns true if the request has a body or a Content-Length header greater than zero.
+	// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
 	HasBody() bool
 	// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
 	IsWebSocket() bool

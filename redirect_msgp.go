@@ -14,49 +14,49 @@ func (z *redirectionMsg) DecodeMsg(dc *msgp.Reader) (err error) {
 	zb0001, err = dc.ReadMapHeader()
 	if err != nil {
 		err = msgp.WrapError(err)
-		return
+		return err
 	}
 	for zb0001 > 0 {
 		zb0001--
 		field, err = dc.ReadMapKeyPtr()
 		if err != nil {
 			err = msgp.WrapError(err)
-			return
+			return err
 		}
 		switch msgp.UnsafeString(field) {
 		case "key":
 			z.key, err = dc.ReadString()
 			if err != nil {
 				err = msgp.WrapError(err, "key")
-				return
+				return err
 			}
 		case "value":
 			z.value, err = dc.ReadString()
 			if err != nil {
 				err = msgp.WrapError(err, "value")
-				return
+				return err
 			}
 		case "level":
 			z.level, err = dc.ReadUint8()
 			if err != nil {
 				err = msgp.WrapError(err, "level")
-				return
+				return err
 			}
 		case "isOldInput":
 			z.isOldInput, err = dc.ReadBool()
 			if err != nil {
 				err = msgp.WrapError(err, "isOldInput")
-				return
+				return err
 			}
 		default:
 			err = dc.Skip()
 			if err != nil {
 				err = msgp.WrapError(err)
-				return
+				return err
 			}
 		}
 	}
-	return
+	return err
 }
 
 // EncodeMsg implements msgp.Encodable
@@ -65,44 +65,44 @@ func (z *redirectionMsg) EncodeMsg(en *msgp.Writer) (err error) {
 	// write "key"
 	err = en.Append(0x84, 0xa3, 0x6b, 0x65, 0x79)
 	if err != nil {
-		return
+		return err
 	}
 	err = en.WriteString(z.key)
 	if err != nil {
 		err = msgp.WrapError(err, "key")
-		return
+		return err
 	}
 	// write "value"
 	err = en.Append(0xa5, 0x76, 0x61, 0x6c, 0x75, 0x65)
 	if err != nil {
-		return
+		return err
 	}
 	err = en.WriteString(z.value)
 	if err != nil {
 		err = msgp.WrapError(err, "value")
-		return
+		return err
 	}
 	// write "level"
 	err = en.Append(0xa5, 0x6c, 0x65, 0x76, 0x65, 0x6c)
 	if err != nil {
-		return
+		return err
 	}
 	err = en.WriteUint8(z.level)
 	if err != nil {
 		err = msgp.WrapError(err, "level")
-		return
+		return err
 	}
 	// write "isOldInput"
 	err = en.Append(0xaa, 0x69, 0x73, 0x4f, 0x6c, 0x64, 0x49, 0x6e, 0x70, 0x75, 0x74)
 	if err != nil {
-		return
+		return err
 	}
 	err = en.WriteBool(z.isOldInput)
 	if err != nil {
 		err = msgp.WrapError(err, "isOldInput")
-		return
+		return err
 	}
-	return
+	return err
 }
 
 // MarshalMsg implements msgp.Marshaler
@@ -121,7 +121,7 @@ func (z *redirectionMsg) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "isOldInput"
 	o = append(o, 0xaa, 0x69, 0x73, 0x4f, 0x6c, 0x64, 0x49, 0x6e, 0x70, 0x75, 0x74)
 	o = msgp.AppendBool(o, z.isOldInput)
-	return
+	return o, err
 }
 
 // UnmarshalMsg implements msgp.Unmarshaler
@@ -132,56 +132,56 @@ func (z *redirectionMsg) UnmarshalMsg(bts []byte) (o []byte, err error) {
 	zb0001, bts, err = msgp.ReadMapHeaderBytes(bts)
 	if err != nil {
 		err = msgp.WrapError(err)
-		return
+		return o, err
 	}
 	for zb0001 > 0 {
 		zb0001--
 		field, bts, err = msgp.ReadMapKeyZC(bts)
 		if err != nil {
 			err = msgp.WrapError(err)
-			return
+			return o, err
 		}
 		switch msgp.UnsafeString(field) {
 		case "key":
 			z.key, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "key")
-				return
+				return o, err
 			}
 		case "value":
 			z.value, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "value")
-				return
+				return o, err
 			}
 		case "level":
 			z.level, bts, err = msgp.ReadUint8Bytes(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "level")
-				return
+				return o, err
 			}
 		case "isOldInput":
 			z.isOldInput, bts, err = msgp.ReadBoolBytes(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "isOldInput")
-				return
+				return o, err
 			}
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
 				err = msgp.WrapError(err)
-				return
+				return o, err
 			}
 		}
 	}
 	o = bts
-	return
+	return o, err
 }
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
 func (z *redirectionMsg) Msgsize() (s int) {
 	s = 1 + 4 + msgp.StringPrefixSize + len(z.key) + 6 + msgp.StringPrefixSize + len(z.value) + 6 + msgp.Uint8Size + 11 + msgp.BoolSize
-	return
+	return s
 }
 
 // DecodeMsg implements msgp.Decodable
@@ -190,7 +190,7 @@ func (z *redirectionMsgs) DecodeMsg(dc *msgp.Reader) (err error) {
 	zb0002, err = dc.ReadArrayHeader()
 	if err != nil {
 		err = msgp.WrapError(err)
-		return
+		return err
 	}
 	if cap((*z)) >= int(zb0002) {
 		(*z) = (*z)[:zb0002]
@@ -201,10 +201,10 @@ func (z *redirectionMsgs) DecodeMsg(dc *msgp.Reader) (err error) {
 		err = (*z)[zb0001].DecodeMsg(dc)
 		if err != nil {
 			err = msgp.WrapError(err, zb0001)
-			return
+			return err
 		}
 	}
-	return
+	return err
 }
 
 // EncodeMsg implements msgp.Encodable
@@ -212,16 +212,16 @@ func (z redirectionMsgs) EncodeMsg(en *msgp.Writer) (err error) {
 	err = en.WriteArrayHeader(uint32(len(z)))
 	if err != nil {
 		err = msgp.WrapError(err)
-		return
+		return err
 	}
 	for zb0003 := range z {
 		err = z[zb0003].EncodeMsg(en)
 		if err != nil {
 			err = msgp.WrapError(err, zb0003)
-			return
+			return err
 		}
 	}
-	return
+	return err
 }
 
 // MarshalMsg implements msgp.Marshaler
@@ -232,10 +232,10 @@ func (z redirectionMsgs) MarshalMsg(b []byte) (o []byte, err error) {
 		o, err = z[zb0003].MarshalMsg(o)
 		if err != nil {
 			err = msgp.WrapError(err, zb0003)
-			return
+			return o, err
 		}
 	}
-	return
+	return o, err
 }
 
 // UnmarshalMsg implements msgp.Unmarshaler
@@ -244,7 +244,7 @@ func (z *redirectionMsgs) UnmarshalMsg(bts []byte) (o []byte, err error) {
 	zb0002, bts, err = msgp.ReadArrayHeaderBytes(bts)
 	if err != nil {
 		err = msgp.WrapError(err)
-		return
+		return o, err
 	}
 	if cap((*z)) >= int(zb0002) {
 		(*z) = (*z)[:zb0002]
@@ -255,11 +255,11 @@ func (z *redirectionMsgs) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		bts, err = (*z)[zb0001].UnmarshalMsg(bts)
 		if err != nil {
 			err = msgp.WrapError(err, zb0001)
-			return
+			return o, err
 		}
 	}
 	o = bts
-	return
+	return o, err
 }
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
@@ -268,5 +268,5 @@ func (z redirectionMsgs) Msgsize() (s int) {
 	for zb0003 := range z {
 		s += z[zb0003].Msgsize()
 	}
-	return
+	return s
 }
