@@ -5125,6 +5125,27 @@ func Test_Ctx_HasBody(t *testing.T) {
 	ctxWithHeader.Request().Header.SetContentLength(4)
 	require.True(t, ctxWithHeader.HasBody())
 
+	ctxWithChunked := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.NotNil(t, ctxWithChunked)
+	t.Cleanup(func() { app.ReleaseCtx(ctxWithChunked) })
+
+	ctxWithChunked.Request().Header.SetContentLength(-1)
+	require.Equal(t, -1, ctxWithChunked.Request().Header.ContentLength())
+	require.Empty(t, ctxWithChunked.Request().Body())
+	require.True(t, ctxWithChunked.HasBody())
+
+	ctxWithTransferEncoding := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.NotNil(t, ctxWithTransferEncoding)
+	t.Cleanup(func() { app.ReleaseCtx(ctxWithTransferEncoding) })
+
+	ctxWithTransferEncoding.Request().Header.DisableSpecialHeader()
+	ctxWithTransferEncoding.Request().Header.Set(HeaderTransferEncoding, "chunked")
+	ctxWithTransferEncoding.Request().Header.Set(HeaderContentLength, "0")
+	ctxWithTransferEncoding.Request().Header.EnableSpecialHeader()
+	require.Zero(t, ctxWithTransferEncoding.Request().Header.ContentLength())
+	require.Empty(t, ctxWithTransferEncoding.Request().Body())
+	require.True(t, ctxWithTransferEncoding.HasBody())
+
 	ctxWithoutBody := app.AcquireCtx(&fasthttp.RequestCtx{})
 	require.NotNil(t, ctxWithoutBody)
 	t.Cleanup(func() { app.ReleaseCtx(ctxWithoutBody) })

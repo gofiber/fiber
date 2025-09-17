@@ -339,9 +339,28 @@ func (c *DefaultCtx) IsMiddleware() bool {
 
 // HasBody returns true if the request has a body or a Content-Length header greater than zero.
 func (c *DefaultCtx) HasBody() bool {
-	if c.fasthttp.Request.Header.ContentLength() > 0 {
+	cl := c.fasthttp.Request.Header.ContentLength()
+
+	switch {
+	case cl > 0:
 		return true
+	case cl == -1:
+		// fasthttp reports -1 for Transfer-Encoding: chunked bodies.
+		return true
+	case cl == 0:
+		if te := c.fasthttp.Request.Header.Peek(HeaderTransferEncoding); len(te) > 0 {
+			for v := range strings.SplitSeq(utils.UnsafeString(te), ",") {
+				token := utils.Trim(v, ' ')
+				if len(token) == 0 {
+					continue
+				}
+				if !utils.EqualFold(token, "identity") {
+					return true
+				}
+			}
+		}
 	}
+
 	return len(c.fasthttp.Request.Body()) > 0
 }
 
