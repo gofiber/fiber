@@ -31,8 +31,6 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			cancel()
 			ctx.SetContext(parent)
 		}()
-		tCtx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
 		done := make(chan error, 1)
 		panicChan := make(chan any, 1)
 
@@ -45,14 +43,6 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			done <- runHandler(ctx, h, cfg)
 		}()
 
-		if errors.Is(tCtx.Err(), context.DeadlineExceeded) && err == nil {
-			if cfg.OnTimeout != nil {
-				return cfg.OnTimeout(ctx)
-			}
-			return fiber.ErrRequestTimeout
-		}
-		return err
-	}
 		err := safeCall(func() error {
 			select {
 			case err := <-done:
