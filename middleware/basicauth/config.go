@@ -98,22 +98,28 @@ func configDefault(config ...Config) Config {
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
 	}
+
 	if cfg.Users == nil {
 		cfg.Users = ConfigDefault.Users
 	}
+
 	if cfg.Realm == "" {
 		cfg.Realm = ConfigDefault.Realm
 	}
-	if cfg.Charset == "" {
+
+	switch {
+	case cfg.Charset == "":
 		cfg.Charset = ConfigDefault.Charset
-	} else if strings.EqualFold(cfg.Charset, "UTF-8") {
+	case strings.EqualFold(cfg.Charset, "UTF-8"):
 		cfg.Charset = "UTF-8"
-	} else {
+	default:
 		panic("basicauth: charset must be UTF-8")
 	}
+
 	if cfg.HeaderLimit <= 0 {
 		cfg.HeaderLimit = ConfigDefault.HeaderLimit
 	}
+
 	if cfg.Authorizer == nil {
 		verifiers := make(map[string]func(string) bool, len(cfg.Users))
 		for u, hpw := range cfg.Users {
@@ -128,6 +134,7 @@ func configDefault(config ...Config) Config {
 			return ok && verify(pass)
 		}
 	}
+
 	if cfg.Unauthorized == nil {
 		cfg.Unauthorized = func(c fiber.Ctx) error {
 			header := "Basic realm=" + strconv.Quote(cfg.Realm)
@@ -140,6 +147,7 @@ func configDefault(config ...Config) Config {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 	}
+
 	if cfg.BadRequest == nil {
 		cfg.BadRequest = func(c fiber.Ctx) error {
 			return c.SendStatus(fiber.StatusBadRequest)

@@ -2,6 +2,7 @@ package basicauth
 
 import (
 	"encoding/base64"
+	"errors"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -26,6 +27,8 @@ const basicScheme = "Basic"
 func New(config Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config)
+
+	var cerr base64.CorruptInputError
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
@@ -64,7 +67,7 @@ func New(config Config) fiber.Handler {
 		// Decode the header contents
 		raw, err := base64.StdEncoding.DecodeString(rest)
 		if err != nil {
-			if _, ok := err.(base64.CorruptInputError); ok {
+			if errors.As(err, &cerr) {
 				raw, err = base64.RawStdEncoding.DecodeString(rest)
 			}
 			if err != nil {

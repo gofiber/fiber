@@ -264,7 +264,7 @@ func Test_BasicAuth_ControlChars(t *testing.T) {
 	called := false
 	app := fiber.New()
 	app.Use(New(Config{
-		Authorizer: func(u, p string, _ fiber.Ctx) bool {
+		Authorizer: func(_, p string, _ fiber.Ctx) bool {
 			called = true
 			return true
 		},
@@ -328,7 +328,7 @@ func Test_BasicAuth_InvalidUTF8(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		Charset: "UTF-8",
-		Authorizer: func(u, p string, _ fiber.Ctx) bool {
+		Authorizer: func(_, p string, _ fiber.Ctx) bool {
 			called = true
 			return true
 		},
