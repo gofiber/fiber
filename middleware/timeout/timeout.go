@@ -3,6 +3,7 @@ package timeout
 import (
 	"context"
 	"errors"
+
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -34,27 +35,34 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			done <- runHandler(ctx, h, cfg)
 		}()
 
-		select {
-		case err := <-done:
-			return err
-		case p := <-panicChan:
-			panic(p)
-		case <-tCtx.Done():
-			if cfg.OnTimeout != nil {
-				return callOnTimeoutSafe(ctx, cfg)
+		err := safeCall(func() error {
+			select {
+			case err := <-done:
+				return err
+			case <-panicChan:
+				return fiber.ErrRequestTimeout
+			case <-tCtx.Done():
+				if cfg.OnTimeout != nil {
+					return cfg.OnTimeout(ctx)
+				}
+				return fiber.ErrRequestTimeout
 			}
-			return fiber.ErrRequestTimeout
-		}
+		})
+		return err
 	}
 }
 
-func callOnTimeoutSafe(ctx fiber.Ctx, cfg Config) (err error) {
-	defer func() {
-		if p := recover(); p != nil {
-			err = fiber.ErrRequestTimeout
-		}
+func safeCall(fn func() error) error {
+	err := error(nil)
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fiber.ErrRequestTimeout
+			}
+		}()
+		err = fn()
 	}()
-	return cfg.OnTimeout(ctx)
+	return err
 }
 
 // runHandler executes the handler and returns fiber.ErrRequestTimeout if it
@@ -63,7 +71,7 @@ func runHandler(c fiber.Ctx, h fiber.Handler, cfg Config) error {
 	err := h(c)
 	if err != nil && (errors.Is(err, context.DeadlineExceeded) || (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors))) {
 		if cfg.OnTimeout != nil {
-			return callOnTimeoutSafe(c, cfg)
+			return cfg.OnTimeout(c)
 		}
 		return fiber.ErrRequestTimeout
 	}
