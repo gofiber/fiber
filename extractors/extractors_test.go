@@ -539,7 +539,6 @@ func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -617,7 +616,6 @@ func Test_Extractor_FromAuthHeader_Token68_Validation(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -930,7 +928,6 @@ func Test_isValidToken68(t *testing.T) {
 		{token: "T0ken-._~+/=", want: true, name: "all allowed chars with equals at end"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := isValidToken68(tc.token)
