@@ -213,6 +213,7 @@ func TestRunHandler_CustomOnTimeout(t *testing.T) {
 
 // TestTimeout_Issue_3671 tests various edge cases for the timeout middleware.
 func TestTimeout_Issue_3671(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	testCases := []struct {
 		name       string
@@ -274,6 +275,23 @@ func TestTimeout_Issue_3671(t *testing.T) {
 			},
 			expectCode: fiber.StatusRequestTimeout,
 		},
+		{
+			name: "Custom OnTimeout",
+			path: "/panic-ontimeout",
+			handler: func(c fiber.Ctx) error {
+				if err := sleepWithContext(c.Context(), 100*time.Millisecond, context.DeadlineExceeded); err != nil {
+					return err
+				}
+				return c.SendString("should not reach")
+			},
+			config: Config{
+				Timeout: 20 * time.Millisecond,
+				OnTimeout: func(c fiber.Ctx) error {
+					return c.Status(408).JSON(fiber.Map{"error": "timeout"})
+				},
+			},
+			expectCode: fiber.StatusRequestTimeout,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -290,4 +308,13 @@ func TestTimeout_Issue_3671(t *testing.T) {
 			require.Equal(t, tc.expectCode, resp.StatusCode)
 		})
 	}
+}
+
+func TestSafeCall_Panic(t *testing.T) {
+	t.Parallel()
+	err := safeCall(func() error {
+		panic("test panic")
+	})
+
+	require.Equal(t, fiber.ErrRequestTimeout, err)
 }
