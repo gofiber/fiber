@@ -4,10 +4,9 @@ id: timeout
 
 # Timeout
 
-The timeout middleware limits how long a handler can take to complete. When the
-deadline is exceeded, Fiber responds with `408 Request Timeout`. The middleware
-uses `context.WithTimeout` and makes the context available through
-`c.Context()` so that your code can listen for cancellation.
+The timeout middleware aborts handlers that run too long. It wraps them with
+`context.WithTimeout`, exposes the derived context through `c.Context()`, and
+returns `408 Request Timeout` when the deadline is exceeded.
 
 :::caution
 `timeout.New` wraps your final handler and can't be added with `app.Use` or
@@ -27,7 +26,7 @@ func New(handler fiber.Handler, config ...timeout.Config) fiber.Handler
 
 The following program times out any request that takes longer than two seconds.
 The handler simulates work with `sleepWithContext`, which stops when the
-request's context is canceled:
+context is canceled:
 
 ```go
 package main
@@ -70,7 +69,7 @@ func main() {
 }
 ```
 
-Test it with curl:
+Use these requests to see the middleware in action:
 
 ```bash
 curl -i http://localhost:3000/sleep/1000   # finishes within the timeout
@@ -81,12 +80,12 @@ curl -i http://localhost:3000/sleep/3000   # returns 408 Request Timeout
 
 | Property  | Type               | Description                                                          | Default |
 |:----------|:-------------------|:---------------------------------------------------------------------|:-------|
-| Next      | `func(fiber.Ctx) bool` | Function to skip the middleware.                                   | `nil`  |
+| Next      | `func(fiber.Ctx) bool` | Function to skip this middleware when it returns `true`.            | `nil`  |
 | Timeout   | `time.Duration`    | Timeout duration for requests. `0` or a negative value disables the timeout. | `0`    |
 | OnTimeout | `fiber.Handler`    | Handler executed when a timeout occurs. Defaults to returning `fiber.ErrRequestTimeout`. | `nil`  |
 | Errors    | `[]error`          | Custom errors treated as timeout errors.                            | `nil`  |
 
-### Use with custom error
+### Use with a custom error
 
 ```go
 var ErrFooTimeOut = errors.New("foo context canceled")

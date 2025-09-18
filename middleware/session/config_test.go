@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -23,7 +24,7 @@ func TestConfigDefaultWithCustomConfig(t *testing.T) {
 	// Test custom config
 	customConfig := Config{
 		IdleTimeout:  48 * time.Hour,
-		Extractor:    FromHeader("X-Custom-Session"),
+		Extractor:    extractors.FromHeader("X-Custom-Session"),
 		KeyGenerator: func() string { return "custom_key" },
 	}
 	cfg := configDefault(customConfig)

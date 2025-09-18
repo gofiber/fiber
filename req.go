@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
 )
@@ -32,39 +32,39 @@ type DefaultReq struct {
 
 // Accepts checks if the specified extensions or content types are acceptable.
 func (r *DefaultReq) Accepts(offers ...string) string {
-	header := joinHeaderValues(r.Request().Header.PeekAll(HeaderAccept))
+	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAccept))
 	return getOffer(header, acceptsOfferType, offers...)
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
 func (r *DefaultReq) AcceptsCharsets(offers ...string) string {
-	header := joinHeaderValues(r.Request().Header.PeekAll(HeaderAcceptCharset))
+	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptCharset))
 	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
 func (r *DefaultReq) AcceptsEncodings(offers ...string) string {
-	header := joinHeaderValues(r.Request().Header.PeekAll(HeaderAcceptEncoding))
+	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding))
 	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable using
 // RFC 4647 Basic Filtering.
 func (r *DefaultReq) AcceptsLanguages(offers ...string) string {
-	header := joinHeaderValues(r.Request().Header.PeekAll(HeaderAcceptLanguage))
+	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
 	return getOffer(header, acceptsLanguageOfferBasic, offers...)
 }
 
 // AcceptsLanguagesExtended checks if the specified language is acceptable using
 // RFC 4647 Extended Filtering.
 func (r *DefaultReq) AcceptsLanguagesExtended(offers ...string) string {
-	header := joinHeaderValues(r.Request().Header.PeekAll(HeaderAcceptLanguage))
+	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
 	return getOffer(header, acceptsLanguageOfferExtended, offers...)
 }
 
 // App returns the *App reference to the instance of the Fiber application
 func (r *DefaultReq) App() *App {
-	return r.c.App()
+	return r.c.app
 }
 
 // BaseURL returns (protocol + host + base path).
@@ -89,7 +89,7 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 		decodesRealized uint8
 	)
 
-	request := r.Request()
+	request := &r.c.fasthttp.Request
 	for idx := range encodings {
 		i := len(encodings) - 1 - idx
 		encoding := encodings[i]
@@ -141,7 +141,7 @@ func (r *DefaultReq) Body() []byte {
 		encodingOrder      = []string{"", "", ""}
 	)
 
-	request := r.Request()
+	request := &r.c.fasthttp.Request
 
 	// Get Content-Encoding header
 	headerEncoding = utils.ToLower(utils.UnsafeString(request.Header.ContentEncoding()))
@@ -171,23 +171,20 @@ func (r *DefaultReq) Body() []byte {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUnsupportedMediaType):
-			_ = r.c.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck // It is fine to ignore the error
+			_ = r.c.DefaultRes.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck // It is fine to ignore the error
 		case errors.Is(err, ErrNotImplemented):
-			_ = r.c.SendStatus(StatusNotImplemented) //nolint:errcheck // It is fine to ignore the error
+			_ = r.c.DefaultRes.SendStatus(StatusNotImplemented) //nolint:errcheck // It is fine to ignore the error
 		}
 		return []byte(err.Error())
 	}
 
-	if r.App().config.Immutable {
-		return utils.CopyBytes(body)
-	}
-	return body
+	return r.c.app.GetBytes(body)
 }
 
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 // a cancellation signal, and other values across API boundaries.
 func (r *DefaultReq) RequestCtx() *fasthttp.RequestCtx {
-	return r.c.RequestCtx()
+	return r.c.fasthttp
 }
 
 // Cookies are used for getting a cookie value by key.
@@ -196,19 +193,19 @@ func (r *DefaultReq) RequestCtx() *fasthttp.RequestCtx {
 // The returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *DefaultReq) Cookies(key string, defaultValue ...string) string {
-	return defaultString(r.App().getString(r.Request().Header.Cookie(key)), defaultValue)
+	return defaultString(r.c.app.toString(r.c.fasthttp.Request.Header.Cookie(key)), defaultValue)
 }
 
 // Request return the *fasthttp.Request object
 // This allows you to use all fasthttp request methods
 // https://godoc.org/github.com/valyala/fasthttp#Request
 func (r *DefaultReq) Request() *fasthttp.Request {
-	return r.c.Request()
+	return &r.c.fasthttp.Request
 }
 
 // FormFile returns the first file by key from a MultipartForm.
 func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
-	return r.RequestCtx().FormFile(key)
+	return r.c.fasthttp.FormFile(key)
 }
 
 // FormValue returns the first value by key from a MultipartForm.
@@ -218,7 +215,7 @@ func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
-	return defaultString(r.App().getString(r.RequestCtx().FormValue(key)), defaultValue)
+	return defaultString(r.c.app.toString(r.c.fasthttp.FormValue(key)), defaultValue)
 }
 
 // Fresh returns true when the response is still “fresh” in the client's cache,
@@ -228,7 +225,7 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 // reload request, this module will return false to make handling these requests transparent.
 // https://github.com/jshttp/fresh/blob/master/index.js#L33
 func (r *DefaultReq) Fresh() bool {
-	header := &r.c.Request().Header
+	header := &r.c.fasthttp.Request.Header
 
 	// fields
 	modifiedSince := header.Peek(HeaderIfModifiedSince)
@@ -249,9 +246,9 @@ func (r *DefaultReq) Fresh() bool {
 
 	// if-none-match
 	if len(noneMatch) > 0 && (len(noneMatch) != 1 || noneMatch[0] != '*') {
-		app := r.App()
-		response := r.c.Response()
-		etag := app.getString(response.Header.Peek(HeaderETag))
+		app := r.c.app
+		response := &r.c.fasthttp.Response
+		etag := app.toString(response.Header.Peek(HeaderETag))
 		if etag == "" {
 			return false
 		}
@@ -290,7 +287,7 @@ func (r *DefaultReq) Get(key string, defaultValue ...string) string {
 // If the generic type cannot be matched to a supported type, the function
 // returns the default value (if provided) or the zero value of type V.
 func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	v, err := genericParseType[V](c.App().getString(c.Request().Header.Peek(key)))
+	v, err := genericParseType[V](c.App().toString(c.Request().Header.Peek(key)))
 	if err != nil && len(defaultValue) > 0 {
 		return defaultValue[0]
 	}
@@ -301,11 +298,11 @@ func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultReq) GetHeaders() map[string][]string {
-	app := r.App()
+	app := r.c.app
 	headers := make(map[string][]string)
-	for k, v := range r.Request().Header.All() {
-		key := app.getString(k)
-		headers[key] = append(headers[key], app.getString(v))
+	for k, v := range r.c.fasthttp.Request.Header.All() {
+		key := app.toString(k)
+		headers[key] = append(headers[key], app.toString(v))
 	}
 	return headers
 }
@@ -327,7 +324,7 @@ func (r *DefaultReq) Host() string {
 			return host
 		}
 	}
-	return r.App().getString(r.Request().URI().Host())
+	return r.c.app.toString(r.c.fasthttp.Request.URI().Host())
 }
 
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
@@ -343,7 +340,7 @@ func (r *DefaultReq) Hostname() string {
 
 // Port returns the remote port of the request.
 func (r *DefaultReq) Port() string {
-	tcpaddr, ok := r.RequestCtx().RemoteAddr().(*net.TCPAddr)
+	tcpaddr, ok := r.c.fasthttp.RemoteAddr().(*net.TCPAddr)
 	if !ok {
 		panic(errors.New("failed to type-assert to *net.TCPAddr"))
 	}
@@ -354,12 +351,12 @@ func (r *DefaultReq) Port() string {
 // If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
 // Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (r *DefaultReq) IP() string {
-	app := r.App()
+	app := r.c.app
 	if r.IsProxyTrusted() && len(app.config.ProxyHeader) > 0 {
 		return r.extractIPFromHeader(app.config.ProxyHeader)
 	}
 
-	return r.RequestCtx().RemoteIP().String()
+	return r.c.fasthttp.RemoteIP().String()
 }
 
 // extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
@@ -408,7 +405,7 @@ iploop:
 
 		s := utils.TrimRight(headerValue[i:j], ' ')
 
-		if r.App().config.EnableIPValidation {
+		if r.c.app.config.EnableIPValidation {
 			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
 			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
 				continue iploop
@@ -426,7 +423,7 @@ iploop:
 // when IP validation is disabled, it will simply return the value of the header without any inspection.
 // Implementation is almost the same as in extractIPsFromHeader, but without allocation of []string.
 func (r *DefaultReq) extractIPFromHeader(header string) string {
-	app := r.App()
+	app := r.c.app
 	if app.config.EnableIPValidation {
 		headerValue := r.Get(header)
 
@@ -469,7 +466,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 			return s
 		}
 
-		return r.RequestCtx().RemoteIP().String()
+		return r.c.fasthttp.RemoteIP().String()
 	}
 
 	// default behavior if IP validation is not enabled is just to return whatever value is
@@ -491,7 +488,7 @@ func (r *DefaultReq) Is(extension string) bool {
 		return false
 	}
 
-	ct := r.App().getString(r.Request().Header.ContentType())
+	ct := r.c.app.toString(r.c.fasthttp.Request.Header.ContentType())
 	if i := strings.IndexByte(ct, ';'); i != -1 {
 		ct = ct[:i]
 	}
@@ -507,9 +504,9 @@ func (r *DefaultReq) Is(extension string) bool {
 // implementing io.Closer before removing the value from ctx.
 func (r *DefaultReq) Locals(key any, value ...any) any {
 	if len(value) == 0 {
-		return r.RequestCtx().UserValue(key)
+		return r.c.fasthttp.UserValue(key)
 	}
-	r.RequestCtx().SetUserValue(key, value[0])
+	r.c.fasthttp.SetUserValue(key, value[0])
 	return value[0]
 }
 
@@ -538,33 +535,33 @@ func Locals[V any](c Ctx, key any, value ...V) V {
 // If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
 // Otherwise, it updates the context's method and returns the overridden method as a string.
 func (r *DefaultReq) Method(override ...string) string {
-	app := r.App()
+	app := r.c.app
 	if len(override) == 0 {
 		// Nothing to override, just return current method from context
-		return app.method(r.c.getMethodInt())
+		return app.method(r.c.methodInt)
 	}
 
 	method := utils.ToUpper(override[0])
 	methodInt := app.methodInt(method)
 	if methodInt == -1 {
 		// Provided override does not valid HTTP method, no override, return current method
-		return app.method(r.c.getMethodInt())
+		return app.method(r.c.methodInt)
 	}
-	r.c.setMethodInt(methodInt)
+	r.c.methodInt = methodInt
 	return method
 }
 
 // MultipartForm parse form entries from binary.
 // This returns a map[string][]string, so given a key the value will be a string slice.
 func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
-	return r.RequestCtx().MultipartForm()
+	return r.c.fasthttp.MultipartForm()
 }
 
 // OriginalURL contains the original request URL.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *DefaultReq) OriginalURL() string {
-	return r.App().getString(r.Request().Header.RequestURI())
+	return r.c.app.toString(r.c.fasthttp.Request.Header.RequestURI())
 }
 
 // Params is used to get the route parameters.
@@ -577,9 +574,9 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 		key += "1"
 	}
 
-	app := r.App()
-	route := r.Route()
-	values := r.c.getValues()
+	app := r.c.app
+	route := r.c.Route()
+	values := &r.c.values
 	for i := range route.Params {
 		if len(key) != len(route.Params[i]) {
 			continue
@@ -590,10 +587,7 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 				break
 			}
 			val := values[i]
-			if r.App().config.Immutable {
-				return utils.CopyString(val)
-			}
-			return val
+			return r.c.app.GetString(val)
 		}
 	}
 	return defaultString("", defaultValue)
@@ -625,7 +619,7 @@ func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
 // Scheme contains the request protocol string: http or https for TLS requests.
 // Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (r *DefaultReq) Scheme() string {
-	ctx := r.RequestCtx()
+	ctx := r.c.fasthttp
 	if ctx.IsTLS() {
 		return schemeHTTPS
 	}
@@ -633,7 +627,7 @@ func (r *DefaultReq) Scheme() string {
 		return schemeHTTP
 	}
 
-	app := r.App()
+	app := r.c.app
 	scheme := schemeHTTP
 	const lenXHeaderName = 12
 	for key, val := range ctx.Request.Header.All() {
@@ -644,7 +638,7 @@ func (r *DefaultReq) Scheme() string {
 		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
 			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
 				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
-				v := app.getString(val)
+				v := app.toString(val)
 				commaPos := strings.Index(v, ",")
 				if commaPos != -1 {
 					scheme = v[:commaPos]
@@ -656,7 +650,7 @@ func (r *DefaultReq) Scheme() string {
 			}
 
 		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
-			scheme = app.getString(val)
+			scheme = app.toString(val)
 		}
 	}
 	return scheme
@@ -664,7 +658,7 @@ func (r *DefaultReq) Scheme() string {
 
 // Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 func (r *DefaultReq) Protocol() string {
-	return r.App().getString(r.Request().Header.Protocol())
+	return r.c.app.toString(r.c.fasthttp.Request.Header.Protocol())
 }
 
 // Query returns the query string parameter in the url.
@@ -698,12 +692,12 @@ func (r *DefaultReq) Query(key string, defaultValue ...string) string {
 // Queries()["filters[customer][name]"] == "Alice"
 // Queries()["filters[status]"] == "pending"
 func (r *DefaultReq) Queries() map[string]string {
-	app := r.App()
-	queryArgs := r.RequestCtx().QueryArgs()
+	app := r.c.app
+	queryArgs := r.c.fasthttp.QueryArgs()
 
 	m := make(map[string]string, queryArgs.Len())
 	for key, value := range queryArgs.All() {
-		m[app.getString(key)] = app.getString(value)
+		m[app.toString(key)] = app.toString(value)
 	}
 	return m
 }
@@ -730,7 +724,7 @@ func (r *DefaultReq) Queries() map[string]string {
 //	age := Query[int](c, "age") // Returns 8
 //	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
 func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	q := c.App().getString(c.RequestCtx().QueryArgs().Peek(key))
+	q := c.App().toString(c.RequestCtx().QueryArgs().Peek(key))
 	v, err := genericParseType[V](q)
 	if err != nil && len(defaultValue) > 0 {
 		return defaultValue[0]
@@ -804,8 +798,8 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
-		r.c.Status(StatusRequestedRangeNotSatisfiable)
-		r.c.Set(HeaderContentRange, "bytes */"+strconv.Itoa(size))
+		r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
+		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+strconv.Itoa(size))
 		return rangeData, ErrRequestedRangeNotSatisfiable
 	}
 
@@ -879,12 +873,12 @@ func (r *DefaultReq) Stale() bool {
 // If Config.TrustProxy false, it returns true
 // IsProxyTrusted can check remote ip by proxy ranges and ip map.
 func (r *DefaultReq) IsProxyTrusted() bool {
-	config := r.App().config
+	config := r.c.app.config
 	if !config.TrustProxy {
 		return true
 	}
 
-	ip := r.RequestCtx().RemoteIP()
+	ip := r.c.fasthttp.RemoteIP()
 
 	if (config.TrustProxyConfig.Loopback && ip.IsLoopback()) ||
 		(config.TrustProxyConfig.Private && ip.IsPrivate()) ||
@@ -907,7 +901,7 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 
 // IsFromLocal will return true if request came from local.
 func (r *DefaultReq) IsFromLocal() bool {
-	return r.RequestCtx().RemoteIP().IsLoopback()
+	return r.c.fasthttp.RemoteIP().IsLoopback()
 }
 
 // Release is a method to reset Req fields when to use ReleaseCtx()
@@ -916,9 +910,5 @@ func (r *DefaultReq) release() {
 }
 
 func (r *DefaultReq) getBody() []byte {
-	if r.App().config.Immutable {
-		return utils.CopyBytes(r.Request().Body())
-	}
-
-	return r.Request().Body()
+	return r.c.app.GetBytes(r.c.fasthttp.Request.Body())
 }

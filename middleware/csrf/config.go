@@ -6,9 +6,10 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/session"
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 )
 
 // Config defines the config for CSRF middleware.
@@ -75,18 +76,21 @@ type Config struct {
 
 	// Extractor returns the CSRF token from the request.
 	//
-	// Optional. Default: FromHeader("X-Csrf-Token")
+	// Optional. Default: extractors.FromHeader("X-Csrf-Token")
 	//
-	// Available extractors:
-	//   - FromHeader: Most secure, recommended for APIs
-	//   - FromForm: Secure, recommended for form submissions
-	//   - FromQuery: Less secure, URLs may be logged
-	//   - FromParam: Less secure, URLs may be logged
-	//   - Chain: Advanced chaining of multiple extractors
+	// Available extractors from github.com/gofiber/fiber/v3/extractors:
+	//   - extractors.FromHeader("X-Csrf-Token"): Most secure, recommended for APIs
+	//   - extractors.FromForm("_csrf"): Secure, recommended for form submissions
+	//   - extractors.FromQuery("csrf_token"): Less secure, URLs may be logged
+	//   - extractors.FromParam("csrf"): Less secure, URLs may be logged
+	//   - extractors.Chain(...): Advanced chaining of multiple extractors
+	//
+	// See the Extractors Guide for complete documentation:
+	// https://docs.gofiber.io/guide/extractors
 	//
 	// WARNING: Never create custom extractors that read from cookies with the same
 	// CookieName as this defeats CSRF protection entirely.
-	Extractor Extractor
+	Extractor extractors.Extractor
 
 	// IdleTimeout is the duration of time the CSRF token is valid.
 	//
@@ -126,7 +130,7 @@ var ConfigDefault = Config{
 	IdleTimeout:    30 * time.Minute,
 	KeyGenerator:   utils.UUIDv4,
 	ErrorHandler:   defaultErrorHandler,
-	Extractor:      FromHeader(HeaderName),
+	Extractor:      extractors.FromHeader(HeaderName),
 }
 
 // defaultErrorHandler is the default error handler that processes errors from fiber.Handler.
@@ -187,14 +191,14 @@ func validateExtractorSecurity(cfg Config) {
 	}
 
 	// Additional security warnings (non-fatal)
-	if cfg.Extractor.Source == SourceQuery || cfg.Extractor.Source == SourceParam {
+	if cfg.Extractor.Source == extractors.SourceQuery || cfg.Extractor.Source == extractors.SourceParam {
 		log.Warnf("[CSRF WARNING] Using %v extractor - URLs may be logged", cfg.Extractor.Source)
 	}
 }
 
 // isInsecureCookieExtractor checks if an extractor unsafely reads from the CSRF cookie
-func isInsecureCookieExtractor(extractor Extractor, cookieName string) bool {
-	if extractor.Source == SourceCookie {
+func isInsecureCookieExtractor(extractor extractors.Extractor, cookieName string) bool {
+	if extractor.Source == extractors.SourceCookie {
 		// Exact match - definitely insecure
 		if extractor.Key == cookieName {
 			return true

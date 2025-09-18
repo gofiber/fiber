@@ -4,10 +4,10 @@ id: static
 
 # Static
 
-Static middleware for Fiber that serves static files such as **images**, **CSS,** and **JavaScript**.
+The Static middleware serves assets such as **images**, **CSS**, and **JavaScript**.
 
 :::info
-By default, **Static** will serve `index.html` files in response to a request on a directory. You can change this using [Config](#config).
+By default, it serves `index.html` when a directory is requested. Customize this behavior in the [Config](#config) options.
 :::
 
 ## Signatures
@@ -18,7 +18,7 @@ func New(root string, cfg ...Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the [Fiber](https://github.com/gofiber/fiber) web framework
+Import the package:
 
 ```go
 import(
@@ -43,7 +43,7 @@ curl http://localhost:3000/css/style.css
 
 </details>
 
-### Serving files from a directory with Use
+### Serving files from a directory with `Use`
 
 ```go
 app.Use("/", static.New("./public"))
@@ -59,7 +59,7 @@ curl http://localhost:3000/css/style.css
 
 </details>
 
-### Serving a file
+### Serving a single file
 
 ```go
 app.Use("/static", static.New("./public/hello.html"))
@@ -70,7 +70,7 @@ app.Use("/static", static.New("./public/hello.html"))
 
 ```sh
 curl http://localhost:3000/static # will show hello.html
-curl http://localhost:3000/static/john/doee # will show hello.html
+curl http://localhost:3000/static/john/doe # will show hello.html
 ```
 
 </details>
@@ -147,7 +147,7 @@ To define static routes using `Get`, append the wildcard (`*`) operator at the e
 
 | Property   | Type                    | Description                                                                                                                | Default                |
 |:-----------|:------------------------|:---------------------------------------------------------------------------------------------------------------------------|:-----------------------|
-| Next       | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                                                                              | `nil`                  |
+| Next       | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when it returns true.                                                                              | `nil`                  |
 | FS       | `fs.FS` | FS is the file system to serve the static files from.<br /><br />You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.                                                 | `nil`                  |
 | Compress       | `bool` | When set to true, the server tries minimizing CPU usage by caching compressed files. The middleware will compress the response using `gzip`, `brotli`, or `zstd` compression depending on the [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header. <br /><br />This works differently than the github.com/gofiber/compression middleware.                                                                              | `false`                  |
 | ByteRange       | `bool` | When set to true, enables byte range requests.                                                                             | `false`                  |

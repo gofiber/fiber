@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/middleware/session"
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -76,7 +77,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 
 	// session store
 	store := session.NewStore(session.Config{
-		Extractor: session.FromCookie("_session"),
+		Extractor: extractors.FromCookie("_session"),
 	})
 
 	// fiber instance
@@ -274,7 +275,7 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 
 	// session store
 	store := session.NewStore(session.Config{
-		Extractor: session.FromCookie("_session"),
+		Extractor: extractors.FromCookie("_session"),
 	})
 
 	// fiber instance
@@ -352,7 +353,7 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Extractor: FromHeader("X-Csrf-Token"),
+		Extractor: extractors.FromHeader("X-Csrf-Token"),
 	}))
 
 	app.Post("/", func(c fiber.Ctx) error {
@@ -455,7 +456,7 @@ func Test_CSRF_From_Form(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{Extractor: FromForm("_csrf")}))
+	app.Use(New(Config{Extractor: extractors.FromForm("_csrf")}))
 
 	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -492,7 +493,7 @@ func Test_CSRF_From_Query(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{Extractor: FromQuery("_csrf")}))
+	app.Use(New(Config{Extractor: extractors.FromQuery("_csrf")}))
 
 	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -530,7 +531,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	csrfGroup := app.Group("/:csrf", New(Config{Extractor: FromParam("csrf")}))
+	csrfGroup := app.Group("/:csrf", New(Config{Extractor: extractors.FromParam("csrf")}))
 
 	csrfGroup.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -568,18 +569,18 @@ func Test_CSRF_From_Custom(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	extractor := Extractor{
+	extractor := extractors.Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
 			body := string(c.Body())
 			// Generate the correct extractor to get the token from the correct location
 			selectors := strings.Split(body, "=")
 
 			if len(selectors) != 2 || selectors[1] == "" {
-				return "", ErrMissingParam
+				return "", extractors.ErrNotFound
 			}
 			return selectors[1], nil
 		},
-		Source: SourceCustom,
+		Source: extractors.SourceCustom,
 		Key:    "_csrf",
 	}
 
@@ -620,11 +621,11 @@ func Test_CSRF_Extractor_EmptyString(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	extractor := Extractor{
+	extractor := extractors.Extractor{
 		Extract: func(_ fiber.Ctx) (string, error) {
 			return "", nil
 		},
-		Source: SourceCustom,
+		Source: extractors.SourceCustom,
 		Key:    "_csrf",
 	}
 
@@ -845,6 +846,20 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	ctx.Request.Header.SetProtocol("http")
 	ctx.Request.Header.SetHost("domain-1.com")
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://evildomain-1.com")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 403, ctx.Response.StatusCode())
+
+	// Test Trusted Origin malformed subdomain
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.URI().SetScheme("http")
+	ctx.Request.URI().SetHost("domain-1.com")
+	ctx.Request.Header.SetProtocol("http")
+	ctx.Request.Header.SetHost("domain-1.com")
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://evil.comdomain-1.com")
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
@@ -1098,7 +1113,7 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 
 	// session store
 	store := session.NewStore(session.Config{
-		Extractor: session.FromCookie("_session"),
+		Extractor: extractors.FromCookie("_session"),
 	})
 
 	// fiber instance
@@ -1200,7 +1215,7 @@ func Test_CSRF_ErrorHandler_EmptyToken(t *testing.T) {
 	app := fiber.New()
 
 	errHandler := func(ctx fiber.Ctx, err error) error {
-		require.Equal(t, ErrMissingHeader, err)
+		require.Equal(t, ErrTokenNotFound, err)
 		return ctx.Status(419).Send([]byte("empty CSRF token"))
 	}
 
@@ -1577,9 +1592,9 @@ func Test_CSRF_Chain_Extractor(t *testing.T) {
 	app := fiber.New()
 
 	// Chain extractor: try header first, fallback to form
-	chainExtractor := Chain(
-		FromHeader("X-Csrf-Token"),
-		FromForm("_csrf"),
+	chainExtractor := extractors.Chain(
+		extractors.FromHeader("X-Csrf-Token"),
+		extractors.FromForm("_csrf"),
 	)
 
 	app.Use(New(Config{Extractor: chainExtractor}))
@@ -1652,7 +1667,7 @@ func Test_CSRF_Chain_Extractor_Empty(t *testing.T) {
 	app := fiber.New()
 
 	// Empty chain extractor
-	emptyChain := Chain()
+	emptyChain := extractors.Chain()
 
 	app.Use(New(Config{Extractor: emptyChain}))
 
@@ -1684,7 +1699,7 @@ func Test_CSRF_Chain_Extractor_SingleExtractor(t *testing.T) {
 	app := fiber.New()
 
 	// Chain with single extractor (should behave like the single extractor)
-	singleChain := Chain(FromHeader("X-Csrf-Token"))
+	singleChain := extractors.Chain(extractors.FromHeader("X-Csrf-Token"))
 
 	app.Use(New(Config{Extractor: singleChain}))
 
@@ -1725,12 +1740,12 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 	testCases := []struct {
 		setupRequest func(ctx *fasthttp.RequestCtx, token string)
 		name         string
-		extractor    Extractor
+		extractor    extractors.Extractor
 		expectStatus int
 	}{
 		{
 			name:      "FromHeader",
-			extractor: FromHeader("X-Csrf-Token"),
+			extractor: extractors.FromHeader("X-Csrf-Token"),
 			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.Header.Set("X-Csrf-Token", token)
@@ -1740,7 +1755,7 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 		},
 		{
 			name:      "FromHeader_Missing",
-			extractor: FromHeader("X-Csrf-Token"),
+			extractor: extractors.FromHeader("X-Csrf-Token"),
 			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
@@ -1749,7 +1764,7 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 		},
 		{
 			name:      "FromForm",
-			extractor: FromForm("_csrf"),
+			extractor: extractors.FromForm("_csrf"),
 			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
@@ -1760,7 +1775,7 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 		},
 		{
 			name:      "FromForm_Missing",
-			extractor: FromForm("_csrf"),
+			extractor: extractors.FromForm("_csrf"),
 			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
@@ -1770,7 +1785,7 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 		},
 		{
 			name:      "FromQuery",
-			extractor: FromQuery("csrf_token"),
+			extractor: extractors.FromQuery("csrf_token"),
 			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.SetRequestURI("/?csrf_token=" + token)
@@ -1780,7 +1795,7 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 		},
 		{
 			name:      "FromQuery_Missing",
-			extractor: FromQuery("csrf_token"),
+			extractor: extractors.FromQuery("csrf_token"),
 			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.SetRequestURI("/")
@@ -1855,7 +1870,7 @@ func Test_CSRF_Param_Extractor(t *testing.T) {
 			app := fiber.New()
 
 			// Only use param-based routing for param extractor tests
-			csrfGroup := app.Group("/:csrf", New(Config{Extractor: FromParam("csrf")}))
+			csrfGroup := app.Group("/:csrf", New(Config{Extractor: extractors.FromParam("csrf")}))
 			csrfGroup.Post("/", func(c fiber.Ctx) error {
 				return c.SendStatus(fiber.StatusOK)
 			})
@@ -1888,7 +1903,7 @@ func Test_CSRF_Param_Extractor_Missing(t *testing.T) {
 	app := fiber.New()
 
 	// Add a catch-all route with CSRF middleware for missing param case
-	app.Use(New(Config{Extractor: FromParam("csrf")}))
+	app.Use(New(Config{Extractor: extractors.FromParam("csrf")}))
 	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
@@ -1921,32 +1936,32 @@ func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 		expected  error
 		setupCtx  func(ctx *fasthttp.RequestCtx) // Add setup function
 		name      string
-		extractor Extractor
+		extractor extractors.Extractor
 	}{
 		{
 			name:      "Missing header",
-			extractor: FromHeader("X-Missing-Header"),
-			expected:  ErrMissingHeader,
+			extractor: extractors.FromHeader("X-Missing-Header"),
+			expected:  extractors.ErrNotFound,
 			setupCtx:  func(_ *fasthttp.RequestCtx) {}, // No setup needed for headers
 		},
 		{
 			name:      "Missing query",
-			extractor: FromQuery("missing_param"),
-			expected:  ErrMissingQuery,
+			extractor: extractors.FromQuery("missing_param"),
+			expected:  extractors.ErrNotFound,
 			setupCtx: func(ctx *fasthttp.RequestCtx) {
 				ctx.Request.SetRequestURI("/") // Set URI for query parsing
 			},
 		},
 		{
 			name:      "Missing param",
-			extractor: FromParam("missing_param"),
-			expected:  ErrMissingParam,
+			extractor: extractors.FromParam("missing_param"),
+			expected:  extractors.ErrNotFound,
 			setupCtx:  func(_ *fasthttp.RequestCtx) {}, // Params are handled by router
 		},
 		{
 			name:      "Missing form",
-			extractor: FromForm("missing_field"),
-			expected:  ErrMissingForm,
+			extractor: extractors.FromForm("missing_field"),
+			expected:  extractors.ErrNotFound,
 			setupCtx: func(ctx *fasthttp.RequestCtx) {
 				// Properly initialize request for form parsing
 				ctx.Request.Header.SetMethod(fiber.MethodPost)

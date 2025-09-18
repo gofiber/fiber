@@ -4,11 +4,17 @@ id: compress
 
 # Compress
 
-Compression middleware for [Fiber](https://github.com/gofiber/fiber) that will compress the response using `gzip`, `deflate`, `brotli`, and `zstd` compression depending on the [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header.
+Compression middleware for [Fiber](https://github.com/gofiber/fiber) that automatically compresses responses with `gzip`, `deflate`, `brotli`, or `zstd` based on the client's [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header.
 
 :::note
-The compression middleware refrains from compressing bodies that are smaller than 200 bytes. This decision is based on the observation that, for small bodies, the compressed size is likely to exceed the original size, making compression inefficient and consuming unnecessary CPU time. [More details in fasthttp source](https://github.com/valyala/fasthttp/blob/497922a21ef4b314f393887e9c6147b8c3e3eda4/http.go#L1713-L1715).
+Bodies smaller than 200 bytes remain uncompressed because compression would likely increase their size and waste CPU cycles. [See the fasthttp source](https://github.com/valyala/fasthttp/blob/497922a21ef4b314f393887e9c6147b8c3e3eda4/http.go#L1713-L1715).
 :::
+
+## Behavior
+
+- Skips compression for responses that already define `Content-Encoding`, for range requests, `206` responses, status codes without bodies, or when either side sends `Cache-Control: no-transform`.
+- `HEAD` requests negotiate compression so `Content-Encoding`, `Content-Length`, `ETag`, and `Vary` reflect the encoded representation, but the body is removed before sending.
+- When compression runs, strong `ETag` values are recomputed from the compressed bytes; when skipped, `Accept-Encoding` is still merged into `Vary` unless the header is `*` or already present.
 
 ## Signatures
 
@@ -18,7 +24,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package:
 
 ```go
 import (
@@ -27,7 +33,7 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Once your Fiber app is initialized, use the middleware like this:
 
 ```go
 // Initialize default config
@@ -49,12 +55,10 @@ app.Use(compress.New(compress.Config{
 
 ## Config
 
-### Config
-
-| Property | Type                    | Description                                                         | Default            |
-|:---------|:------------------------|:--------------------------------------------------------------------|:-------------------|
-| Next     | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`              |
-| Level    | `Level`                 | Level sets the compression level used.                         | `LevelDefault (0)` |
+| Property | Type                   | Description                                                 | Default            |
+|:-------- |:-----------------------|:------------------------------------------------------------|:-------------------|
+| Next     | `func(fiber.Ctx) bool` | Skips this middleware when the function returns `true`.     | `nil`              |
+| Level    | `Level`                | Compression level to use.                                   | `LevelDefault (0)` |
 
 Possible values for the "Level" field are:
 

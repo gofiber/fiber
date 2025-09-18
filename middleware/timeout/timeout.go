@@ -7,8 +7,10 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// New enforces a timeout for each incoming request. If the timeout expires or
-// any of the specified errors occur, fiber.ErrRequestTimeout is returned.
+// New enforces a timeout for each incoming request. It replaces the request's
+// context with one that has the configured deadline, which is exposed through
+// c.Context(). If the timeout expires or any of the specified errors occur,
+// fiber.ErrRequestTimeout is returned.
 func New(h fiber.Handler, config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
@@ -21,6 +23,14 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		if timeout <= 0 {
 			return runHandler(ctx, h, cfg)
 		}
+
+		parent := ctx.Context()
+		tCtx, cancel := context.WithTimeout(parent, timeout)
+		ctx.SetContext(tCtx)
+		defer func() {
+			cancel()
+			ctx.SetContext(parent)
+		}()
 		tCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		done := make(chan error, 1)
@@ -35,6 +45,14 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			done <- runHandler(ctx, h, cfg)
 		}()
 
+		if errors.Is(tCtx.Err(), context.DeadlineExceeded) && err == nil {
+			if cfg.OnTimeout != nil {
+				return cfg.OnTimeout(ctx)
+			}
+			return fiber.ErrRequestTimeout
+		}
+		return err
+	}
 		err := safeCall(func() error {
 			select {
 			case err := <-done:
@@ -71,7 +89,9 @@ func runHandler(c fiber.Ctx, h fiber.Handler, cfg Config) error {
 	err := h(c)
 	if err != nil && (errors.Is(err, context.DeadlineExceeded) || (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors))) {
 		if cfg.OnTimeout != nil {
-			return cfg.OnTimeout(c)
+			if toErr := cfg.OnTimeout(c); toErr != nil {
+				return toErr
+			}
 		}
 		return fiber.ErrRequestTimeout
 	}

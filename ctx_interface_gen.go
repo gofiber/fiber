@@ -4,6 +4,7 @@ package fiber
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"io"
 	"mime/multipart"
@@ -22,6 +23,11 @@ type Ctx interface {
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
 	RequestCtx() *fasthttp.RequestCtx
+	// Context returns a context implementation that was set by
+	// user earlier or returns a non-nil, empty context, if it was not set earlier.
+	Context() context.Context
+	// SetContext sets a context implementation by user.
+	SetContext(ctx context.Context)
 	// Deadline returns the time when work done on behalf of this context
 	// should be canceled. Deadline returns ok==false when no deadline is
 	// set. Successive calls to Deadline return the same results.
@@ -108,6 +114,16 @@ type Ctx interface {
 	ViewBind(vars Map) error
 	// Route returns the matched Route struct.
 	Route() *Route
+	// Matched returns true if the current request path was matched by the router.
+	Matched() bool
+	// IsMiddleware returns true if the current request handler was registered as middleware.
+	IsMiddleware() bool
+	// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
+	HasBody() bool
+	// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
+	IsWebSocket() bool
+	// IsPreflight returns true if the request is a CORS preflight.
+	IsPreflight() bool
 	// SaveFile saves any multipart file to disk.
 	SaveFile(fileheader *multipart.FileHeader, path string) error
 	// SaveFileToStorage saves any multipart file to an external storage system.
@@ -141,7 +157,6 @@ type Ctx interface {
 	Bind() *Bind
 	// Methods to use with next stack.
 	getMethodInt() int
-	setMethodInt(methodInt int)
 	getIndexRoute() int
 	getTreePathHash() int
 	getDetectionPath() string
@@ -151,7 +166,6 @@ type Ctx interface {
 	setIndexRoute(route int)
 	setMatched(matched bool)
 	setRoute(route *Route)
-	keepOriginalPath()
 	getPathOriginal() string
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
@@ -367,6 +381,17 @@ type Ctx interface {
 	// Send sets the HTTP response body without copying it.
 	// From this point onward the body argument must not be changed.
 	Send(body []byte) error
+	// SendEarlyHints allows the server to hint to the browser what resources a page would need
+	// so the browser can preload them while waiting for the server's full response. Only Link
+	// headers already written to the response will be transmitted as Early Hints.
+	//
+	// This is a HTTP/2+ feature but all browsers will either understand it or safely ignore it.
+	//
+	// NOTE: Older HTTP/1.1 non-browser clients may face compatibility issues.
+	//
+	// See: https://developer.chrome.com/docs/web-platform/early-hints and
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Link#syntax
+	SendEarlyHints(hints []string) error
 	// SendFile transfers the file from the specified path.
 	// By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
 	// The Content-Type response HTTP header field is set based on the file's extension.

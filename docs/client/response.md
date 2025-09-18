@@ -6,14 +6,14 @@ description: >-
 sidebar_position: 3
 ---
 
-The `Response` structure in Gofiber's HTTP client represents the server's response to an HTTP request. It includes:
+The `Response` struct in Fiber's HTTP client represents the server's reply and exposes:
 
 - **Status Code**: The HTTP status code returned by the server (e.g., `200 OK`, `404 Not Found`).
 - **Headers**: All HTTP headers returned by the server, providing additional response-related information.
 - **Body**: The response body content, which can be JSON, XML, plain text, or other formats.
 - **Cookies**: Any cookies the server sent along with the response.
 
-This structure makes it easy to inspect and handle the data sent back by the server.
+It makes it easy to inspect and handle data returned by the server.
 
 ```go
 type Response struct {
@@ -26,7 +26,7 @@ type Response struct {
 
 ## AcquireResponse
 
-**AcquireResponse** returns a new (pooled) `Response` object. When finished, release it using `ReleaseResponse` to reduce GC overhead.
+**AcquireResponse** returns a new pooled `Response`. Call `ReleaseResponse` when you're done to return it to the pool and limit allocations.
 
 ```go title="Signature"
 func AcquireResponse() *Response
@@ -34,7 +34,7 @@ func AcquireResponse() *Response
 
 ## ReleaseResponse
 
-**ReleaseResponse** returns the `Response` object to the pool. Avoid using the response after releasing it to prevent data races.
+**ReleaseResponse** puts the `Response` back into the pool. Do not use it after releasing; doing so can trigger data races.
 
 ```go title="Signature"
 func ReleaseResponse(resp *Response)

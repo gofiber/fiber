@@ -6,6 +6,7 @@
 package fiber
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -25,8 +26,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -588,7 +590,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
 	// check the param result
-	require.Equal(t, "اختبار", app.getString(body))
+	require.Equal(t, "اختبار", app.toString(body))
 
 	// with lowercase letters
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", nil))
@@ -624,7 +626,7 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
 	// check the detected path result
-	require.Equal(t, "/AbC", app.getString(body))
+	require.Equal(t, "/AbC", app.toString(body))
 }
 
 func Test_App_Not_Use_StrictRouting(t *testing.T) {
@@ -978,6 +980,56 @@ func Test_App_Config(t *testing.T) {
 		StrictRouting: true,
 	})
 	require.True(t, app.Config().StrictRouting)
+}
+
+func Test_App_GetString(t *testing.T) {
+	t.Parallel()
+
+	heap := string([]byte("fiber"))
+	appMutable := New()
+	same := appMutable.GetString(heap)
+	if unsafe.StringData(same) != unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
+		t.Errorf("expected original string when immutable is disabled")
+	}
+
+	appImmutable := New(Config{Immutable: true})
+	copied := appImmutable.GetString(heap)
+	if unsafe.StringData(copied) == unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
+		t.Errorf("expected a copy for heap-backed string when immutable is enabled")
+	}
+
+	literal := "fiber"
+	sameLit := appImmutable.GetString(literal)
+	if unsafe.StringData(sameLit) != unsafe.StringData(literal) { //nolint:gosec // compare pointer addresses
+		t.Errorf("expected original literal when immutable is enabled")
+	}
+}
+
+func Test_App_GetBytes(t *testing.T) {
+	t.Parallel()
+
+	b := []byte("fiber")
+	appMutable := New()
+	same := appMutable.GetBytes(b)
+	if unsafe.SliceData(same) != unsafe.SliceData(b) { //nolint:gosec // compare pointer addresses
+		t.Errorf("expected original slice when immutable is disabled")
+	}
+
+	alias := make([]byte, 10)
+	copy(alias, b)
+	sub := alias[:5]
+	appImmutable := New(Config{Immutable: true})
+	copied := appImmutable.GetBytes(sub)
+	if unsafe.SliceData(copied) == unsafe.SliceData(sub) { //nolint:gosec // compare pointer addresses
+		t.Errorf("expected a copy for aliased slice when immutable is enabled")
+	}
+
+	full := make([]byte, 5)
+	copy(full, b)
+	detached := appImmutable.GetBytes(full)
+	if unsafe.SliceData(detached) == unsafe.SliceData(full) { //nolint:gosec // compare pointer addresses
+		t.Errorf("expected a copy even when cap==len")
+	}
 }
 
 func Test_App_Shutdown(t *testing.T) {
@@ -1849,6 +1901,133 @@ func Test_App_Test_drop_empty_response(t *testing.T) {
 		FailOnTimeout: false,
 	})
 	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
+}
+
+func Test_App_Test_response_error(t *testing.T) {
+	// Note: Test cannot run in parallel due to
+	// overriding the httpReadResponse global variable.
+	// t.Parallel()
+
+	// Override httpReadResponse temporarily
+	oldHTTPReadResponse := httpReadResponse
+	defer func() {
+		httpReadResponse = oldHTTPReadResponse
+	}()
+	httpReadResponse = func(_ *bufio.Reader, _ *http.Request) (*http.Response, error) {
+		return nil, errErrorReader
+	}
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+		Timeout:       0,
+		FailOnTimeout: false,
+	})
+	require.ErrorIs(t, err, errErrorReader)
+}
+
+type errorReadCloser int
+
+var errInvalidReadOnBody = errors.New("test: invalid Read on body")
+
+func (errorReadCloser) Read(_ []byte) (int, error) {
+	return 0, errInvalidReadOnBody
+}
+
+func (errorReadCloser) Close() error {
+	return nil
+}
+
+func Test_App_Test_ReadFail(t *testing.T) {
+	// Note: Test cannot run in parallel due to
+	// overriding the httpReadResponse global variable.
+	// t.Parallel()
+
+	// Override httpReadResponse temporarily
+	oldHTTPReadResponse := httpReadResponse
+	defer func() {
+		httpReadResponse = oldHTTPReadResponse
+	}()
+
+	httpReadResponse = func(r *bufio.Reader, req *http.Request) (*http.Response, error) {
+		resp, err := http.ReadResponse(r, req)
+		require.NoError(t, resp.Body.Close())
+		resp.Body = errorReadCloser(0)
+		return resp, err //nolint:wrapcheck // unnecessary to wrap it
+	}
+
+	app := New()
+	hints := []string{"<https://cdn.com>; rel=preload; as=script"}
+	app.Get("/early", func(c Ctx) error {
+		err := c.SendEarlyHints(hints)
+		require.NoError(t, err)
+		return c.SendStatus(StatusOK)
+	})
+
+	req := httptest.NewRequest(MethodGet, "/early", nil)
+	_, err := app.Test(req)
+
+	require.ErrorIs(t, err, errInvalidReadOnBody)
+}
+
+var errDoubleClose = errors.New("test: double close")
+
+type doubleCloseBody struct {
+	isClosed bool
+}
+
+func (b *doubleCloseBody) Read(_ []byte) (int, error) {
+	if b.isClosed {
+		return 0, errInvalidReadOnBody
+	}
+
+	// Close after reading EOF
+	_ = b.Close() //nolint:errcheck // It is fine to ignore the error here
+	return 0, io.EOF
+}
+
+func (b *doubleCloseBody) Close() error {
+	if b.isClosed {
+		return errDoubleClose
+	}
+
+	b.isClosed = true
+	return nil
+}
+
+func Test_App_Test_CloseFail(t *testing.T) {
+	// Note: Test cannot run in parallel due to
+	// overriding the httpReadResponse global variable.
+	// t.Parallel()
+
+	// Override httpReadResponse temporarily
+	oldHTTPReadResponse := httpReadResponse
+	defer func() {
+		httpReadResponse = oldHTTPReadResponse
+	}()
+
+	httpReadResponse = func(r *bufio.Reader, req *http.Request) (*http.Response, error) {
+		resp, err := http.ReadResponse(r, req)
+		_ = resp.Body.Close() //nolint:errcheck // It is fine to ignore the error here
+		resp.Body = &doubleCloseBody{}
+		return resp, err //nolint:wrapcheck // unnecessary to wrap it
+	}
+
+	app := New()
+	hints := []string{"<https://cdn.com>; rel=preload; as=script"}
+	app.Get("/early", func(c Ctx) error {
+		err := c.SendEarlyHints(hints)
+		require.NoError(t, err)
+		return c.Status(StatusOK).SendString("done")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/early", nil)
+	_, err := app.Test(req)
+
+	require.ErrorIs(t, err, errDoubleClose)
 }
 
 func Test_App_SetTLSHandler(t *testing.T) {

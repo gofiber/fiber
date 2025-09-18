@@ -1,7 +1,7 @@
 package binder
 
 import (
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -18,18 +18,12 @@ func (*HeaderBinding) Name() string {
 // Bind parses the request header and returns the result.
 func (b *HeaderBinding) Bind(req *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
-	var err error
 	for key, val := range req.Header.All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		err = formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, false)
-		if err != nil {
-			break
+		if err := formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, false); err != nil {
+			return err
 		}
-	}
-
-	if err != nil {
-		return err
 	}
 
 	return parse(b.Name(), out, data)

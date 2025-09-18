@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -90,9 +90,10 @@ func New(config ...Config) fiber.Handler {
 
 	// Update timestamp in the configured interval
 	go func() {
-		for {
+		ticker := time.NewTicker(timestampUpdatePeriod)
+		defer ticker.Stop()
+		for range ticker.C {
 			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix())) //nolint:gosec //Not a concern
-			time.Sleep(timestampUpdatePeriod)
 		}
 	}()
 
@@ -163,8 +164,8 @@ func New(config ...Config) fiber.Handler {
 				for k, v := range e.headers {
 					c.Response().Header.SetBytesV(k, v)
 				}
-				// Set Cache-Control header if enabled and not already set
-				if cfg.CacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
+				// Set Cache-Control header if not disabled and not already set
+				if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
 					maxAge := strconv.FormatUint(e.exp-ts, 10)
 					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 				}

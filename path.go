@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/google/uuid"
 )
 
@@ -125,7 +125,13 @@ var (
 	parameterEndChars = append([]byte{optionalParam}, parameterDelimiterChars...)
 )
 
-// RoutePatternMatch checks if a given path matches a Fiber route pattern.
+// RoutePatternMatch reports whether path matches the provided Fiber route pattern.
+//
+// Patterns use the same syntax as routes registered on an App, including
+// parameters (for example `:id`), wildcards (`*`, `+`), and optional segments.
+// The optional Config argument can be used to control case sensitivity and
+// strict routing behavior. This helper allows checking potential matches
+// without registering a route.
 func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	// See logic in (*Route).match and (*App).register
 	var ctxParams [maxParams]string

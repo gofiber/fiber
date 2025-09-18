@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/fiber/v3/extractors"
+	utils "github.com/gofiber/utils/v2"
 )
 
 var (
@@ -60,16 +61,17 @@ func New(config ...Config) fiber.Handler {
 	trustedSubOrigins := []subdomain{}
 
 	for _, origin := range cfg.TrustedOrigins {
-		if i := strings.Index(origin, "://*."); i != -1 {
-			trimmedOrigin := utils.Trim(origin[:i+3]+origin[i+4:], ' ')
-			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
+		trimmedOrigin := utils.Trim(origin, ' ')
+		if i := strings.Index(trimmedOrigin, "://*."); i != -1 {
+			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
+			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
 			if !isValid {
 				panic("[CSRF] Invalid origin format in configuration:" + origin)
 			}
-			sd := subdomain{prefix: normalizedOrigin[:i+3], suffix: normalizedOrigin[i+3:]}
+			schemeSep := strings.Index(normalizedOrigin, "://") + len("://")
+			sd := subdomain{prefix: normalizedOrigin[:schemeSep], suffix: normalizedOrigin[schemeSep:]}
 			trustedSubOrigins = append(trustedSubOrigins, sd)
 		} else {
-			trimmedOrigin := utils.Trim(origin, ' ')
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
 				panic("[CSRF] Invalid origin format in configuration:" + origin)
@@ -133,6 +135,10 @@ func New(config ...Config) fiber.Handler {
 			// Extract token from client request i.e. header, query, param, form
 			extractedToken, err := cfg.Extractor.Extract(c)
 			if err != nil {
+				if errors.Is(err, extractors.ErrNotFound) {
+					return cfg.ErrorHandler(c, ErrTokenNotFound)
+				}
+				// If there's an error during extraction (other than not found), handle it.
 				return cfg.ErrorHandler(c, err)
 			}
 

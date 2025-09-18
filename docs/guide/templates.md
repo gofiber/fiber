@@ -8,18 +8,18 @@ sidebar_position: 3
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-Templates are a great tool to render dynamic content without using a separate frontend framework.
+Templates render dynamic content without requiring a separate frontend framework.
 
 ## Template Engines
 
-Fiber allows you to provide a custom template engine at app initialization.
+Fiber accepts a custom template engine during app initialization.
 
 ```go
 app := fiber.New(fiber.Config{
-    // Pass in Views Template Engine
+    // Provide a template engine
     Views: engine,
 
-    // Default global path to search for views (can be overridden when calling Render())
+    // Default path for views, overridden when calling Render()
     ViewsLayout: "layouts/main",
 
     // Enables/Disables access to `ctx.Locals()` entries in rendered views
@@ -30,7 +30,7 @@ app := fiber.New(fiber.Config{
 
 ### Supported Engines
 
-The Fiber team maintains a [templates](https://docs.gofiber.io/template) package that provides wrappers for multiple template engines:
+Fiber maintains a [templates](https://docs.gofiber.io/template) package that wraps several engines:
 
 * [ace](https://docs.gofiber.io/template/ace/)
 * [amber](https://docs.gofiber.io/template/amber/)
@@ -43,7 +43,7 @@ The Fiber team maintains a [templates](https://docs.gofiber.io/template) package
 * [slim](https://docs.gofiber.io/template/slim)
 
 :::info
-Custom template engines can implement the `Views` interface to be supported in Fiber.
+Custom engines implement the `Views` interface to work with Fiber.
 :::
 
 ```go title="Views interface"
@@ -52,25 +52,25 @@ type Views interface {
     Load() error
 
     // Outputs a template to the provided buffer using the provided template,
-    // template name, and binded data
+    // template name, and bound data
     Render(io.Writer, string, interface{}, ...string) error
 }
 ```
 
 :::note
-The `Render` method is linked to the [**ctx.Render\(\)**](../api/ctx.md#render) function that accepts a template name and binding data.
+The `Render` method powers [**ctx.Render\(\)**](../api/ctx.md#render), which accepts a template name and data to bind.
 :::
 
 ## Rendering Templates
 
-Once an engine is set up, a route handler can call the [**ctx.Render\(\)**](../api/ctx.md#render) function with a template name and binded data to send the rendered template.
+After configuring an engine, handlers call [**ctx.Render\(\)**](../api/ctx.md#render) with a template name and data to send the rendered output.
 
 ```go title="Signature"
 func (c Ctx) Render(name string, bind Map, layouts ...string) error
 ```
 
 :::info
-By default, [**ctx.Render\(\)**](../api/ctx.md#render) searches for the template name in the `ViewsLayout` path. To override this setting, provide the path(s) in the `layouts` argument.
+By default, [**ctx.Render\(\)**](../api/ctx.md#render) searches for the template in the `ViewsLayout` path. Pass alternate paths in the `layouts` argument to override this behavior.
 :::
 
 <Tabs>
@@ -103,7 +103,7 @@ app.Get("/", func(c fiber.Ctx) error {
 </Tabs>
 
 :::caution
-If the Fiber config option `PassLocalsToViews` is enabled, then all locals set using `ctx.Locals(key, value)` will be passed to the template. It is important to avoid clashing keys when using this setting.
+When `PassLocalsToViews` is enabled, all values set using `ctx.Locals(key, value)` are passed to the template. Use unique keys to avoid collisions.
 :::
 
 ## Advanced Templating

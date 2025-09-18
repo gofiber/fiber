@@ -4,7 +4,7 @@ id: skip
 
 # Skip
 
-Skip middleware for [Fiber](https://github.com/gofiber/fiber) that skips a wrapped handler when a predicate evaluates to `true` for the current request.
+The Skip middleware wraps a handler and bypasses it when the predicate returns `true` for the current request.
 
 ## Signatures
 
@@ -14,7 +14,7 @@ func New(handler fiber.Handler, exclude func(c fiber.Ctx) bool) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the package:
 
 ```go
 import (
@@ -23,11 +23,11 @@ import (
 )
 ```
 
-`skip.New` expects the handler to wrap and a predicate function. The predicate
-is called for every request, and returning `true` will bypass the wrapped
-handler and execute the next middleware in the chain.
+`skip.New` accepts the handler to wrap and a predicate function. The predicate
+runs for every request, and returning `true` skips the wrapped handler and
+executes the next middleware in the chain.
 
-After you initialize your Fiber app, you can use `skip.New` like this:
+After you initialize your Fiber app, use `skip.New` like this:
 
 ```go
 func main() {
@@ -50,5 +50,5 @@ func BasicHandler(ctx fiber.Ctx) error {
 ```
 
 :::tip
-app.Use will handle requests from any route, and any method. In the example above, it will only skip if the method is GET.
+`app.Use` processes requests on any route and method. In the example above, the handler is skipped only for `GET`.
 :::

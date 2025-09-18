@@ -6,7 +6,7 @@ sidebar_position: 5
 
 ## Validator package
 
-Fiber provides the [Bind](../api/bind.md#validation) function to validate and bind [request data](../api/bind.md#binders) to a struct.
+Fiber's [Bind](../api/bind.md#validation) function binds request data to a struct and validates it.
 
 ```go title="Basic Example"
 import "github.com/go-playground/validator/v10"
@@ -20,7 +20,7 @@ func (v *structValidator) Validate(out any) error {
     return v.validate.Struct(out)
 }
 
-// Setup your validator in the config
+// Set up your validator in the config
 app := fiber.New(fiber.Config{
     StructValidator: &structValidator{validate: validator.New()},
 })
@@ -33,9 +33,9 @@ type User struct {
 app.Post("/", func(c fiber.Ctx) error {
     user := new(User)
     
-    // Works with all bind methods - Body, Query, Form, ...
-    if err := c.Bind().Body(user); err != nil { // <- here you receive the validation errors
-      return err
+    // Works with all bind methods—Body, Query, Form, etc.
+    if err := c.Bind().Body(user); err != nil { // validation errors are returned here
+        return err
     }
     
     return c.JSON(user)

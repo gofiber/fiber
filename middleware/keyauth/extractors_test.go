@@ -19,7 +19,7 @@ func Test_Extractors_Missing(t *testing.T) {
 	app.Get("/test", func(c fiber.Ctx) error {
 		token, err := FromParam("api_key").Extract(c)
 		require.Empty(t, token)
-		require.Equal(t, ErrMissingAPIKeyInParam, err)
+		require.Equal(t, ErrMissingOrMalformedAPIKey, err)
 		return nil
 	})
 	_, err := app.Test(newRequest(fiber.MethodGet, "/test"))
@@ -31,27 +31,27 @@ func Test_Extractors_Missing(t *testing.T) {
 	// Missing form
 	token, err := FromForm("api_key").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrMissingAPIKeyInForm, err)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
 
 	// Missing query
 	token, err = FromQuery("api_key").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrMissingAPIKeyInQuery, err)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
 
 	// Missing header
 	token, err = FromHeader("X-Api-Key").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrMissingAPIKeyInHeader, err)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
 
 	// Missing Auth header
 	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrMissingAPIKeyInHeader, err)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
 
 	// Missing cookie
 	token, err = FromCookie("api_key").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrMissingAPIKeyInCookie, err)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
 }
 
 // newRequest creates a new *http.Request for Fiber's app.Test
@@ -132,7 +132,7 @@ func Test_Extractor_Chain(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	token, err := Chain().Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrMissingAPIKey, err)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
 
 	// First extractor succeeds
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -156,9 +156,9 @@ func Test_Extractor_Chain(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	token, err = Chain(FromHeader("X-Api-Key"), FromQuery("api_key")).Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrMissingAPIKeyInQuery, err)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
 
-	// All extractors find nothing (return empty string and nil error), should return ErrMissingAPIKey
+	// All extractors find nothing (return empty string and nil error), should return ErrMissingOrMalformedAPIKey
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 	// This extractor will return "", nil
@@ -171,5 +171,119 @@ func Test_Extractor_Chain(t *testing.T) {
 	}
 	token, err = Chain(dummyExtractor).Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrMissingAPIKey, err)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+}
+
+func Test_FromAuthHeader_LeadingWhitespace(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "   Bearer token")
+	token, err := FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "token", token)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "\tBearer token2")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "token2", token)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "\t Bearer token3")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "token3", token)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token4 \t ")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "token4", token)
+	app.ReleaseCtx(ctx)
+}
+
+func Test_FromAuthHeader_TabBetweenSchemeAndToken(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer \t token")
+	token, err := FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+}
+
+func Test_FromAuthHeader_TokenWhitespace(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token value")
+	token, err := FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token\tvalue")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+}
+
+func Test_FromAuthHeader_TokenChars(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer a-._~+/123=")
+	token, err := FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "a-._~+/123=", token)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer =abcd")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer ab=cd")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer abcd==")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "abcd==", token)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token,value")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
+
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token;value")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingOrMalformedAPIKey, err)
+	app.ReleaseCtx(ctx)
 }

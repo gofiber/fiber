@@ -2,10 +2,14 @@ package basicauth
 
 import (
 	"encoding/base64"
+	"errors"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
+	"golang.org/x/text/unicode/norm"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -24,6 +28,8 @@ func New(config Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config)
 
+	var cerr base64.CorruptInputError
+
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
@@ -32,20 +38,47 @@ func New(config Config) fiber.Handler {
 		}
 
 		// Get authorization header and ensure it matches the Basic scheme
-		auth := utils.Trim(c.Get(fiber.HeaderAuthorization), ' ')
-		if auth == "" || len(auth) > cfg.HeaderLimit {
+		rawAuth := c.Get(fiber.HeaderAuthorization)
+		if rawAuth == "" {
 			return cfg.Unauthorized(c)
 		}
-
-		parts := strings.Fields(auth)
-		if len(parts) != 2 || !utils.EqualFold(parts[0], basicScheme) {
+		if len(rawAuth) > cfg.HeaderLimit {
+			return c.SendStatus(fiber.StatusRequestHeaderFieldsTooLarge)
+		}
+		if containsInvalidHeaderChars(rawAuth) {
+			return cfg.BadRequest(c)
+		}
+		auth := strings.Trim(rawAuth, " \t")
+		if auth == "" {
 			return cfg.Unauthorized(c)
+		}
+		if len(auth) < len(basicScheme) || !utils.EqualFold(auth[:len(basicScheme)], basicScheme) {
+			return cfg.Unauthorized(c)
+		}
+		rest := auth[len(basicScheme):]
+		if len(rest) < 2 || rest[0] != ' ' || rest[1] == ' ' {
+			return cfg.BadRequest(c)
+		}
+		rest = rest[1:]
+		if strings.IndexFunc(rest, unicode.IsSpace) != -1 {
+			return cfg.BadRequest(c)
 		}
 
 		// Decode the header contents
-		raw, err := base64.StdEncoding.DecodeString(parts[1])
+		raw, err := base64.StdEncoding.DecodeString(rest)
 		if err != nil {
-			return cfg.Unauthorized(c)
+			if errors.As(err, &cerr) {
+				raw, err = base64.RawStdEncoding.DecodeString(rest)
+			}
+			if err != nil {
+				return cfg.BadRequest(c)
+			}
+		}
+		if !utf8.Valid(raw) {
+			return cfg.BadRequest(c)
+		}
+		if !norm.NFC.IsNormal(raw) {
+			raw = norm.NFC.Bytes(raw)
 		}
 
 		// Get the credentials
@@ -60,12 +93,16 @@ func New(config Config) fiber.Handler {
 		// which is "username:password".
 		index := strings.Index(creds, ":")
 		if index == -1 {
-			return cfg.Unauthorized(c)
+			return cfg.BadRequest(c)
 		}
 
 		// Get the username and password
 		username := creds[:index]
 		password := creds[index+1:]
+
+		if containsCTL(username) || containsCTL(password) {
+			return cfg.BadRequest(c)
+		}
 
 		if cfg.Authorizer(username, password, c) {
 			c.Locals(usernameKey, username)
@@ -75,6 +112,16 @@ func New(config Config) fiber.Handler {
 		// Authentication failed
 		return cfg.Unauthorized(c)
 	}
+}
+
+func containsCTL(s string) bool {
+	return strings.IndexFunc(s, unicode.IsControl) != -1
+}
+
+func containsInvalidHeaderChars(s string) bool {
+	return strings.IndexFunc(s, func(r rune) bool {
+		return (r < 0x20 && r != '\t') || r == 0x7F || r >= 0x80
+	}) != -1
 }
 
 // UsernameFromContext returns the username found in the context

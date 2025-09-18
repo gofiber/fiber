@@ -4,7 +4,7 @@ id: recover
 
 # Recover
 
-Recover middleware for [Fiber](https://github.com/gofiber/fiber) that recovers from panics anywhere in the stack chain and handles the control to the centralized [ErrorHandler](https://docs.gofiber.io/guide/error-handling).
+The Recover middleware for [Fiber](https://github.com/gofiber/fiber) intercepts panics and forwards them to the central [ErrorHandler](../guide/error-handling).
 
 ## Signatures
 
@@ -14,7 +14,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package:
 
 ```go
 import (
@@ -23,13 +23,13 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Once your Fiber app is initialized, use the middleware like this:
 
 ```go
 // Initialize default config
 app.Use(recoverer.New())
 
-// This panic will be caught by the middleware
+// Panics in subsequent handlers are caught by the middleware
 app.Get("/", func(c fiber.Ctx) error {
     panic("I'm an error")
 })
@@ -37,11 +37,11 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## Config
 
-| Property          | Type                            | Description                                                         | Default                  |
-|:------------------|:--------------------------------|:--------------------------------------------------------------------|:-------------------------|
-| Next              | `func(fiber.Ctx) bool`         | Next defines a function to skip this middleware when returned true. | `nil`                    |
-| EnableStackTrace  | `bool`                          | EnableStackTrace enables handling stack trace.                      | `false`                  |
-| StackTraceHandler | `func(fiber.Ctx, any)` | StackTraceHandler defines a function to handle stack trace.         | defaultStackTraceHandler |
+| Property          | Type                   | Description                                               | Default                  |
+|:------------------|:-----------------------|:----------------------------------------------------------|:-------------------------|
+| Next              | `func(fiber.Ctx) bool` | Skip when the function returns `true`.                    | `nil`                    |
+| EnableStackTrace  | `bool`                 | Capture and include a stack trace in error responses.     | `false`                  |
+| StackTraceHandler | `func(fiber.Ctx, any)` | Handle the captured stack trace when enabled.             | defaultStackTraceHandler |
 
 ## Default Config
 

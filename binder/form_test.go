@@ -54,6 +54,20 @@ func Test_FormBinder_Bind(t *testing.T) {
 	require.False(t, b.EnableSplitting)
 }
 
+func Test_FormBinder_Bind_ParseError(t *testing.T) {
+	b := &FormBinding{}
+	type User struct {
+		Age int `form:"age"`
+	}
+	var user User
+	req := fasthttp.AcquireRequest()
+	req.SetBodyString("age=invalid")
+	req.Header.SetContentType("application/x-www-form-urlencoded")
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	err := b.Bind(req, &user)
+	require.Error(t, err)
+}
+
 func Benchmark_FormBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
 
@@ -189,6 +203,39 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	content, err = io.ReadAll(file)
 	require.NoError(t, err)
 	require.Equal(t, "avatar2", string(content))
+}
+
+func Test_FormBinder_BindMultipart_ValueError(t *testing.T) {
+	b := &FormBinding{}
+	req := fasthttp.AcquireRequest()
+	buf := &bytes.Buffer{}
+	mw := multipart.NewWriter(buf)
+	require.NoError(t, mw.WriteField("invalid[", "val"))
+	require.NoError(t, mw.Close())
+	req.Header.SetContentType(mw.FormDataContentType())
+	req.SetBody(buf.Bytes())
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	err := b.Bind(req, &struct{}{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unmatched brackets")
+}
+
+func Test_FormBinder_BindMultipart_FileError(t *testing.T) {
+	b := &FormBinding{}
+	req := fasthttp.AcquireRequest()
+	buf := &bytes.Buffer{}
+	mw := multipart.NewWriter(buf)
+	writer, err := mw.CreateFormFile("invalid[", "file.txt")
+	require.NoError(t, err)
+	_, err = writer.Write([]byte("content"))
+	require.NoError(t, err)
+	require.NoError(t, mw.Close())
+	req.Header.SetContentType(mw.FormDataContentType())
+	req.SetBody(buf.Bytes())
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	err = b.Bind(req, &struct{}{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unmatched brackets")
 }
 
 func Benchmark_FormBinder_BindMultipart(b *testing.B) {

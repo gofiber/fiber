@@ -7,7 +7,7 @@ sidebar_position: 7
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-With Fiber you can execute custom user functions at specific method execution points. Here is a list of these hooks:
+Fiber lets you run custom callbacks at specific points in the routing lifecycle. Available hooks include:
 
 - [OnRoute](#onroute)
 - [OnName](#onname)
@@ -36,7 +36,7 @@ type OnMountHandler = func(*App) error
 
 ## OnRoute
 
-`OnRoute` is a hook to execute user functions on each route registration. You can access route properties via the **route** parameter.
+Runs after each route is registered. The callback receives the route so you can inspect its properties.
 
 ```go title="Signature"
 func (h *Hooks) OnRoute(handler ...OnRouteHandler)
@@ -44,7 +44,7 @@ func (h *Hooks) OnRoute(handler ...OnRouteHandler)
 
 ## OnName
 
-`OnName` is a hook to execute user functions on each route naming. You can access route properties via the **route** parameter.
+Runs when a route is named. The callback receives the route.
 
 :::caution
 `OnName` only works with named routes, not groups.
@@ -104,7 +104,7 @@ func main() {
 
 ## OnGroup
 
-`OnGroup` is a hook to execute user functions on each group registration. You can access group properties via the **group** parameter.
+Runs after each group is registered. The callback receives the group.
 
 ```go title="Signature"
 func (h *Hooks) OnGroup(handler ...OnGroupHandler)
@@ -112,7 +112,7 @@ func (h *Hooks) OnGroup(handler ...OnGroupHandler)
 
 ## OnGroupName
 
-`OnGroupName` is a hook to execute user functions on each group naming. You can access group properties via the **group** parameter.
+Runs when a group is named. The callback receives the group.
 
 :::caution
 `OnGroupName` only works with named groups, not routes.
@@ -124,7 +124,7 @@ func (h *Hooks) OnGroupName(handler ...OnGroupNameHandler)
 
 ## OnListen
 
-`OnListen` is a hook to execute user functions on `Listen`, `ListenTLS`, and `Listener`.
+Runs when the app starts listening via `Listen`, `ListenTLS`, or `Listener`.
 
 ```go title="Signature"
 func (h *Hooks) OnListen(handler ...OnListenHandler)
@@ -170,7 +170,7 @@ func main() {
 
 ## OnFork
 
-`OnFork` is a hook to execute user functions on fork.
+Runs in the child process after a fork.
 
 ```go title="Signature"
 func (h *Hooks) OnFork(handler ...OnForkHandler)
@@ -178,7 +178,7 @@ func (h *Hooks) OnFork(handler ...OnForkHandler)
 
 ## OnPreShutdown
 
-`OnPreShutdown` is a hook to execute user functions before shutdown.
+Runs before the server shuts down.
 
 ```go title="Signature"
 func (h *Hooks) OnPreShutdown(handler ...OnPreShutdownHandler)
@@ -186,7 +186,7 @@ func (h *Hooks) OnPreShutdown(handler ...OnPreShutdownHandler)
 
 ## OnPostShutdown
 
-`OnPostShutdown` is a hook to execute user functions after shutdown.
+Runs after the server shuts down.
 
 ```go title="Signature"
 func (h *Hooks) OnPostShutdown(handler ...OnPostShutdownHandler)
@@ -194,7 +194,7 @@ func (h *Hooks) OnPostShutdown(handler ...OnPostShutdownHandler)
 
 ## OnMount
 
-`OnMount` is a hook to execute user functions after the mounting process. The mount event is fired when a sub-app is mounted on a parent app. The parent app is passed as a parameter. It works for both app and group mounting.
+Fires after a sub-app is mounted on a parent. The parent app is passed to the callback and it works for both app and group mounts.
 
 ```go title="Signature"
 func (h *Hooks) OnMount(handler ...OnMountHandler)
@@ -240,4 +240,5 @@ func testSimpleHandler(c fiber.Ctx) error {
 </Tabs>
 
 :::caution
-OnName/OnRoute/OnGroup/OnGroupName hooks are mount-sensitive. If you use one of these routes on sub app, and you mount it; paths of routes and groups will start with mount prefix.
+OnName, OnRoute, OnGroup, and OnGroupName are mount-sensitive. When you mount a sub-app that registers these hooks, route and group paths include the mount prefix.
+:::

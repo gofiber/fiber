@@ -9,9 +9,9 @@ sidebar_position: 2
 
 ## TechEmpower
 
-[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r23) provides a performance comparison of many web application frameworks executing fundamental tasks such as JSON serialization, database access, and server-side template composition.
+[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r23) provides a performance comparison of many web application frameworks that execute fundamental tasks such as JSON serialization, database access, and server-side template rendering.
 
-Each framework is operating in a realistic production configuration. Results are captured on cloud instances and on physical hardware. The test implementations are largely community-contributed and all source is available at the [GitHub repository](https://github.com/TechEmpower/FrameworkBenchmarks).
+Each framework runs under a realistic production configuration. Results are recorded on both cloud instances and physical hardware. The test implementations are community contributed and live in the [FrameworkBenchmarks repository](https://github.com/TechEmpower/FrameworkBenchmarks).
 
 * Fiber `v2.52.5`
 * 56 Cores Intel(R) Xeon(R) Gold 6330 CPU @ 2.00GHz (Three homogeneous ProLiant DL360 Gen10 Plus)
@@ -22,9 +22,9 @@ Each framework is operating in a realistic production configuration. Results are
 
 ### Plaintext
 
-The Plaintext test is an exercise of the request-routing fundamentals only, designed to demonstrate the capacity of high-performance platforms in particular. Requests will be sent using HTTP pipelining. The response payload is still small, meaning good performance is still necessary in order to saturate the gigabit Ethernet of the test environment.
+The Plaintext test measures basic request routing and demonstrates the capacity of high-performance platforms. Requests are pipelined, and the tiny response body demands high throughput to saturate the benchmark's gigabit Ethernet.
 
-See [Plaintext requirements](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview#single-database-query)
+See [Plaintext requirements](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview#plaintext)
 
 **Fiber** - **13,509,592** responses per second with an average latency of **0.9** ms.  
 **Express** - **279,922** responses per second with an average latency of **551.3** ms.

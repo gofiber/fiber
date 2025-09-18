@@ -2,9 +2,9 @@
 id: keyauth
 ---
 
-# Keyauth
+# KeyAuth
 
-Key auth middleware provides a key based authentication.
+The KeyAuth middleware implements API key authentication.
 
 ## Signatures
 
@@ -15,9 +15,9 @@ func TokenFromContext(c fiber.Ctx) string
 
 ## Examples
 
-### Basic Example
+### Basic example
 
-This example shows how to use the KeyAuth middleware with an API key passed in a cookie.
+This example registers KeyAuth with an API key stored in a cookie.
 
 ```go
 package main
@@ -46,7 +46,7 @@ func validateAPIKey(c fiber.Ctx, key string) (bool, error) {
 func main() {
     app := fiber.New()
 
-    // note that the keyauth middleware needs to be defined before the routes are defined!
+    // Register middleware before the routes that need it
     app.Use(keyauth.New(keyauth.Config{
         Extractor:  keyauth.FromCookie("access_token"),
         Validator:  validateAPIKey,
@@ -63,24 +63,24 @@ func main() {
 **Test:**
 
 ```bash
-# No api-key specified -> 401 missing api key in cookie
+# No API key specified -> 401 Missing or invalid API Key
 curl http://localhost:3000
-#> missing api key in cookie
+#> Missing or invalid API Key
 
 # Correct API key -> 200 OK
 curl --cookie "access_token=correct horse battery staple" http://localhost:3000
 #> Successfully authenticated!
 
-# Incorrect API key -> 401 Invalid or expired API Key
+# Incorrect API key -> 401 Missing or invalid API Key
 curl --cookie "access_token=Clearly A Wrong Key" http://localhost:3000
-#> Invalid or expired API Key
+#> Missing or invalid API Key
 ```
 
-For a more detailed example, see also the [`github.com/gofiber/recipes`](https://github.com/gofiber/recipes) repository and specifically the `fiber-envoy-extauthz` repository and the [`keyauth example`](https://github.com/gofiber/recipes/blob/master/fiber-envoy-extauthz/authz/main.go) code.
+For a more detailed example, see the [`fiber-envoy-extauthz`](https://github.com/gofiber/recipes/tree/master/fiber-envoy-extauthz) recipe in the `gofiber/recipes` repository.
 
 ### Authenticate only certain endpoints
 
-If you want to authenticate only certain endpoints, you can use the `Next` function in the config to skip the middleware for specific routes.
+Use the `Next` function to run KeyAuth only on selected routes.
 
 ```go
 package main
@@ -151,20 +151,20 @@ func main() {
 **Test:**
 
 ```bash
-# / does not need to be authenticated
+# / doesn't require authentication
 curl http://localhost:3000
 #> Welcome
 
-# /authenticated needs to be authenticated
+# /authenticated requires authentication
 curl --cookie "access_token=correct horse battery staple" http://localhost:3000/authenticated
 #> Successfully authenticated!
 
-# /auth2 needs to be authenticated too
+# /auth2 requires authentication too
 curl --cookie "access_token=correct horse battery staple" http://localhost:3000/auth2
 #> Successfully authenticated 2!
 ```
 
-### Specifying middleware in the handler
+### Apply middleware in the handler
 
 You can apply the middleware to specific routes or groups instead of globally. This example uses the default extractor (`FromAuthHeader`).
 
@@ -212,11 +212,11 @@ func main() {
 **Test:**
 
 ```bash
-# / does not need to be authenticated
+# / doesn't require authentication
 curl http://localhost:3000
 #> Welcome
 
-# /allowed needs to be authenticated
+# /allowed requires authentication
 curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000/allowed
 #> Successfully authenticated!
 ```
@@ -238,7 +238,7 @@ The following extractors are available:
 
 ### Chaining Extractors
 
-You can use `keyauth.Chain` to try multiple extractors in order until one succeeds. The first successful extraction will be used.
+You can use `keyauth.Chain` to try multiple extractors until one succeeds. The first successful extraction is used.
 
 ```go
 // This will try to extract the key from:
@@ -257,12 +257,17 @@ app.Use(keyauth.New(keyauth.Config{
 
 | Property        | Type                                     | Description                                                                                            | Default                       |
 |:----------------|:-----------------------------------------|:-------------------------------------------------------------------------------------------------------|:------------------------------|
-| Next            | `func(fiber.Ctx) bool`                   | Next defines a function to skip this middleware when returned true.                                    | `nil`                         |
+| Next            | `func(fiber.Ctx) bool`                   | Next defines a function to skip this middleware when it returns true.                                    | `nil`                         |
 | SuccessHandler  | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `c.Next()`                         |
 | ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. | Default error handler  |
 | Validator       | `func(fiber.Ctx, string) (bool, error)`  | **Required.** Validator is a function to validate the key.                                                           | `nil` (panic) |
 | Extractor       | `keyauth.Extractor`                    | Extractor defines how to retrieve the key from the request. Use helper functions like `keyauth.FromAuthHeader` or `keyauth.FromCookie`. | `keyauth.FromAuthHeader("Authorization", "Bearer")` |
 | Realm           | `string`                                 | Realm specifies the protected area name used in the `WWW-Authenticate` header. | `"Restricted"` |
+| Challenge       | `string`                                 | Value of the `WWW-Authenticate` header when no `Authorization` scheme is present. | `ApiKey realm="Restricted"` |
+| Error           | `string`                                 | Error code appended as the `error` parameter in Bearer challenges. Must be `invalid_request`, `invalid_token`, or `insufficient_scope`. | `""` |
+| ErrorDescription| `string`                                 | Human-readable text for the `error_description` parameter in Bearer challenges. Requires `Error`. | `""` |
+| ErrorURI        | `string`                                 | URI identifying a human-readable web page with information about the `error` in Bearer challenges. Requires `Error` and must be an absolute URI. | `""` |
+| Scope           | `string`                                 | Space-delimited list of scopes for the `scope` parameter in Bearer challenges. Each token must conform to the RFC 6750 `scope-token` syntax and requires `Error` set to `insufficient_scope`. | `""` |
 
 ## Default Config
 
@@ -271,18 +276,8 @@ var ConfigDefault = Config{
     SuccessHandler: func(c fiber.Ctx) error {
         return c.Next()
     },
-    ErrorHandler: func(c fiber.Ctx, err error) error {
-        switch {
-        case errors.Is(err, ErrMissingOrMalformedAPIKey),
-            errors.Is(err, ErrMissingAPIKey),
-            errors.Is(err, ErrMissingAPIKeyInHeader),
-            errors.Is(err, ErrMissingAPIKeyInQuery),
-            errors.Is(err, ErrMissingAPIKeyInParam),
-            errors.Is(err, ErrMissingAPIKeyInForm),
-            errors.Is(err, ErrMissingAPIKeyInCookie):
-            return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
-        }
-        return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
+    ErrorHandler: func(c fiber.Ctx, _ error) error {
+        return c.Status(fiber.StatusUnauthorized).SendString(ErrMissingOrMalformedAPIKey.Error())
     },
     Realm:     "Restricted",
     Extractor: FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),

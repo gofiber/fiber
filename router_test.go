@@ -18,7 +18,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -83,7 +83,7 @@ func Test_Route_Match_SameLength(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, ":param", app.getString(body))
+	require.Equal(t, ":param", app.toString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
@@ -92,7 +92,7 @@ func Test_Route_Match_SameLength(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "test", app.getString(body))
+	require.Equal(t, "test", app.toString(body))
 }
 
 func Test_Route_Match_Star(t *testing.T) {
@@ -110,7 +110,7 @@ func Test_Route_Match_Star(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "*", app.getString(body))
+	require.Equal(t, "*", app.toString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
@@ -119,7 +119,7 @@ func Test_Route_Match_Star(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "test", app.getString(body))
+	require.Equal(t, "test", app.toString(body))
 
 	// without parameter
 	route := Route{
@@ -158,7 +158,7 @@ func Test_Route_Match_Root(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "root", app.getString(body))
+	require.Equal(t, "root", app.toString(body))
 }
 
 func Test_Route_Match_Parser(t *testing.T) {
@@ -178,7 +178,7 @@ func Test_Route_Match_Parser(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "bar", app.getString(body))
+	require.Equal(t, "bar", app.toString(body))
 
 	// with star
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/Foobar/test", nil))
@@ -187,7 +187,7 @@ func Test_Route_Match_Parser(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "test", app.getString(body))
+	require.Equal(t, "test", app.toString(body))
 }
 
 func Test_Route_Match_Middleware(t *testing.T) {
@@ -205,7 +205,7 @@ func Test_Route_Match_Middleware(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "*", app.getString(body))
+	require.Equal(t, "*", app.toString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/bar/fasel", nil))
@@ -214,7 +214,7 @@ func Test_Route_Match_Middleware(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "bar/fasel", app.getString(body))
+	require.Equal(t, "bar/fasel", app.toString(body))
 }
 
 func Test_Route_Match_UnescapedPath(t *testing.T) {
@@ -232,7 +232,7 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "test", app.getString(body))
+	require.Equal(t, "test", app.toString(body))
 	// without special chars
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/créer", nil))
 	require.NoError(t, err, "app.Test(req)")
@@ -270,7 +270,7 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "static", app.getString(body))
+	require.Equal(t, "static", app.toString(body))
 
 	// check group route
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v2/:firstVerb/:customVerb", nil))
@@ -279,7 +279,7 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "group", app.getString(body))
+	require.Equal(t, "group", app.toString(body))
 
 	// check param route
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v3/awesome/name:customVerb", nil))
@@ -288,7 +288,7 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "awesome", app.getString(body))
+	require.Equal(t, "awesome", app.toString(body))
 }
 
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
@@ -306,7 +306,7 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "middleware", app.getString(body))
+	require.Equal(t, "middleware", app.toString(body))
 }
 
 func Test_Route_Match_Middleware_Root(t *testing.T) {
@@ -324,7 +324,7 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "middleware", app.getString(body))
+	require.Equal(t, "middleware", app.toString(body))
 }
 
 func Test_Router_Register_Missing_Handler(t *testing.T) {
@@ -395,7 +395,7 @@ func Test_Router_NotFound(t *testing.T) {
 	appHandler(c)
 
 	require.Equal(t, 404, c.Response.StatusCode())
-	require.Equal(t, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
+	require.Equal(t, "Not Found", string(c.Response.Body()))
 }
 
 func Test_Router_NotFound_HTML_Inject(t *testing.T) {
@@ -413,7 +413,7 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 	appHandler(c)
 
 	require.Equal(t, 404, c.Response.StatusCode())
-	require.Equal(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
+	require.Equal(t, "Not Found", string(c.Response.Body()))
 }
 
 func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
@@ -911,6 +911,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4
 func Benchmark_Router_NotFound(b *testing.B) {
+	b.ReportAllocs()
 	app := New()
 	app.Use(func(c Ctx) error {
 		return c.Next()
@@ -926,7 +927,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 		appHandler(c)
 	}
 	require.Equal(b, 404, c.Response.StatusCode())
-	require.Equal(b, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
+	require.Equal(b, "Not Found", string(c.Response.Body()))
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=4

@@ -5,13 +5,23 @@ sidebar_position: 2
 toc_max_heading_level: 4
 ---
 
-[//]: # (https://github.com/gofiber/fiber/releases/tag/v3.0.0-beta.2)
-
 ## 🎉 Welcome
 
 We are excited to announce the release of Fiber v3! 🚀
 
 In this guide, we'll walk you through the most important changes in Fiber `v3` and show you how to migrate your existing Fiber `v2` applications to Fiber `v3`.
+
+### 🛠️ Migration tool
+
+Fiber v3 introduces a CLI-powered migration helper. Install the CLI and let
+it update your project automatically:
+
+```bash
+go install github.com/gofiber/cli/fiber@latest
+fiber migrate --to v3.0.0-rc.1
+```
+
+See the [migration guide](#-migration-guide) for more details and options.
 
 Here's a quick overview of the changes in Fiber `v3`:
 
@@ -21,9 +31,11 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🗺️ Router](#-router)
 - [🧠 Context](#-context)
 - [📎 Binding](#-binding)
+- [🔬 Extractors Package](#-extractors-package)
 - [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
+- [🛠️ Utils](#utils)
 - [🥡 Services](#-services)
 - [📃 Log](#-log)
 - [📦 Storage Interface](#-storage-interface)
@@ -71,6 +83,7 @@ We have made several changes to the Fiber app, including:
 - **NewWithCustomCtx**: Initialize an app with a custom context in one step.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
+- **GetBytes / GetString**: Helpers that detach values only when `Immutable` is enabled and the data still references request or response buffers. Access via `c.App().GetString` and `c.App().GetBytes`.
 
 #### Custom Route Constraints
 
@@ -464,17 +477,25 @@ testConfig := fiber.TestConfig{
 - **IsProxyTrusted**: Checks the trustworthiness of the remote IP.
 - **Reset**: Resets context fields for server handlers.
 - **Schema**: Similar to Express.js, returns the schema (HTTP or HTTPS) of the request.
+- **SendEarlyHints**: Sends `HTTP 103 Early Hints` status code with `Link` headers so browsers can preload resources while the final response is being prepared.
 - **SendStream**: Similar to Express.js, sends a stream as the response.
 - **SendStreamWriter**: Sends a stream using a writer function.
 - **SendString**: Similar to Express.js, sends a string as the response.
 - **String**: Similar to Express.js, converts a value to a string.
 - **Value**: For implementing `context.Context`. Returns request-scoped value from Locals.
+- **Context()**: Returns a `context.Context` that can be used outside the handler.
+- **SetContext**: Sets the base `context.Context` returned by `Context()` for propagating deadlines or values.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
 - **MsgPack**: Introducing [MsgPack](https://msgpack.org/) binary encoding format for both request & response body. MsgPack is a binary serialization format that is more efficient than JSON, making it ideal for high-performance applications.
 - **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
 - **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 - **AcceptsLanguagesExtended**: Matches language ranges using RFC 4647 Extended Filtering with wildcard subtags.
+- **Matched**: Detects when the current request path matched a registered route.
+- **IsMiddleware**: Indicates if the current handler was registered as middleware.
+- **HasBody**: Quickly checks whether the request includes a body.
+- **IsWebSocket**: Reports if the request attempts a WebSocket upgrade.
+- **IsPreflight**: Identifies CORS preflight requests before handlers run.
 
 ### Removed Methods
 
@@ -490,7 +511,7 @@ testConfig := fiber.TestConfig{
 - **RedirectBack**: Use `c.Redirect().Back()` instead.
 - **ReqHeaderParser**: Use `c.Bind().Header()` instead.
 - **UserContext**: Removed. `Ctx` itself now satisfies `context.Context`; pass `c` directly where a `context.Context` is required.
-- **SetUserContext**: Removed. Use `context.WithValue` on `c` or `c.Locals` to store additional request-scoped values.
+- **SetUserContext**: Removed. Use `SetContext` and `Context()` or `context.WithValue` on `c` to store additional request-scoped values.
 
 ### Changed Methods
 
@@ -502,6 +523,22 @@ testConfig := fiber.TestConfig{
   specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
   [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
+
+### SendEarlyHints
+
+`SendEarlyHints` sends an informational [`103 Early Hints`](https://developer.chrome.com/docs/web-platform/early-hints) response with `Link` headers based on the provided `hints` argument. This allows a browser to start preloading assets while the server is still preparing the final response.
+
+```go
+hints := []string{"<https://cdn.com/app.js>; rel=preload; as=script"}
+app.Get("/early", func(c fiber.Ctx) error {
+    if err := c.SendEarlyHints(hints); err != nil {
+        return err
+    }
+    return c.SendString("done")
+})
+```
+
+Older HTTP/1.1 clients may ignore these interim responses or handle them inconsistently.
 
 ### SendStreamWriter
 
@@ -608,11 +645,6 @@ app.Get("/hello", func (c fiber.Ctx) error {
 
 ---
 
-## 🌎 Client package
-
-The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
-You can take a look to [client docs](./client/rest.md) to see what's new with the client.
-
 ## 📎 Binding
 
 Fiber v3 introduces a new binding mechanism that simplifies the process of binding request data to structs. The new binding system supports binding from various sources such as URL parameters, query parameters, headers, and request bodies. This unified approach makes it easier to handle different types of request data in a consistent manner.
@@ -649,6 +681,60 @@ In this example, the `Bind` method is used to bind the request body to the `User
 
 </details>
 
+## 🔬 Extractors Package
+
+Fiber v3 introduces a new shared `extractors` package that consolidates value extraction utilities previously duplicated across middleware packages. This package provides a unified API for extracting values from headers, cookies, query parameters, form data, and URL parameters with built-in chain/fallback logic and security considerations.
+
+### Key Features
+
+- **Unified API**: Single package for extracting values from headers, cookies, query parameters, form data, and URL parameters
+- **Chain Logic**: Built-in fallback mechanism to try multiple extraction sources in order
+- **Source Awareness**: Source inspection capabilities for security-sensitive operations
+- **Type Safety**: Strongly typed extraction with proper error handling
+- **Performance**: Optimized extraction functions with minimal overhead
+
+### Available Extractors
+
+- `FromAuthHeader(authScheme string)`: Extract from Authorization header with scheme support
+- `FromCookie(key string)`: Extract from HTTP cookies
+- `FromParam(param string)`: Extract from URL path parameters
+- `FromForm(param string)`: Extract from form data
+- `FromHeader(header string)`: Extract from custom HTTP headers
+- `FromQuery(param string)`: Extract from URL query parameters
+- `FromCustom(key string, extractor func(c fiber.Ctx) (string, error))`: Define custom extraction logic with metadata
+- `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback logic
+
+### Usage Example
+
+```go
+import "github.com/gofiber/fiber/v3/extractors"
+
+// Extract API key from multiple sources with fallback
+apiKeyExtractor := extractors.Chain(
+    extractors.FromHeader("X-API-Key"),
+    extractors.FromQuery("api_key"),
+    extractors.FromCookie("api_key"),
+)
+
+app.Use(func(c fiber.Ctx) error {
+    apiKey, err := apiKeyExtractor.Extract(c)
+    if err != nil {
+        return c.Status(401).SendString("API key required")
+    }
+    // Use apiKey for authentication
+    return c.Next()
+})
+```
+
+### Migration from Middleware-Specific Extractors
+
+Middleware packages in Fiber v3 now use the shared extractors package instead of maintaining their own extraction logic. This provides:
+
+- **Code Deduplication**: Eliminates ~500+ lines of duplicated extraction code
+- **Consistency**: Standardized extraction behavior across all middleware
+- **Maintainability**: Single source of truth for extraction logic
+- **Security**: Unified security considerations and warnings
+
 ## 🔄 Redirect
 
 Fiber v3 enhances the redirect functionality by introducing new methods and improving existing ones. The new redirect methods provide more flexibility and control over the redirection process.
@@ -681,6 +767,11 @@ app.Get("/new", func(c fiber.Ctx) error {
 The default redirect status code has been updated from `302 Found` to `303 See Other` to ensure more consistent behavior across different browsers.
 
 :::
+
+## 🌎 Client package
+
+The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
+You can take a look to [client docs](./client/rest.md) to see what's new with the client.
 
 ## 🧰 Generic functions
 
@@ -872,6 +963,12 @@ curl "http://localhost:3000/header"
 
 </details>
 
+## 🛠️ Utils {#utils}
+
+Fiber v3 removes the built-in `utils` directory and now imports utility helpers from the separate [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module. See the [migration guide](#utils-migration) for detailed replacement steps and examples.
+
+The `github.com/gofiber/utils` module also introduces new helpers like `ParseInt`, `ParseUint`, `Walk`, `ReadFile`, and `Timestamp`.
+
 ## 🥡 Services
 
 Fiber v3 introduces a new feature called Services. This feature allows developers to quickly start services that the application depends on, removing the need to manually provision things like database servers, caches, or message brokers, to name a few.
@@ -959,7 +1056,7 @@ INFO Total process count:       1
 
 ## 📃 Log
 
-`fiber.AllLogger` interface now has a new method called `Logger`. This method can be used to get the underlying logger instance from the Fiber logger middleware. This is useful when you want to configure the logger middleware with a custom logger and still want to access the underlying logger instance.
+`fiber.AllLogger[T]` interface now has a new generic type parameter `T` and a method called `Logger`. This method can be used to get the underlying logger instance from the Fiber logger middleware. This is useful when you want to configure the logger middleware with a custom logger and still want to access the underlying logger instance with the appropriate type.
 
 You can find more details about this feature in [/docs/api/log.md](./api/log.md#logger).
 
@@ -1085,7 +1182,11 @@ We've updated several fields from a single string (containing comma-separated va
 
 ### Compression
 
-We've added support for `zstd` compression on top of `gzip`, `deflate`, and `brotli`.
+- Added support for `zstd` compression alongside `gzip`, `deflate`, and `brotli`.
+- Strong `ETag` values are now recomputed for compressed payloads so validators remain accurate.
+- Compression is bypassed for responses that already specify `Content-Encoding`, for range requests or `206` statuses, and when either side sends `Cache-Control: no-transform`.
+- `HEAD` requests still negotiate compression so `Content-Encoding`, `Content-Length`, `ETag`, and `Vary` match a corresponding `GET`, but the body is omitted.
+- `Vary: Accept-Encoding` is merged into responses even when compression is skipped, preventing caches from mixing encoded and unencoded variants.
 
 ### CSRF
 
@@ -1114,6 +1215,7 @@ Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.m
 
 The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
 The old string-based `KeyLookup` configuration has been replaced with an `Extractor` field. Use helper functions like `keyauth.FromHeader`, `keyauth.FromAuthHeader`, or `keyauth.FromCookie` to define where the key should be retrieved from. Multiple sources can be combined with `keyauth.Chain`. See the migration guide below.
+New `Challenge`, `Error`, `ErrorDescription`, `ErrorURI`, and `Scope` fields allow customizing the `WWW-Authenticate` header, returning Bearer error details, and specifying required scopes. `ErrorURI` values are validated as absolute, a default `ApiKey` challenge is emitted when using non-Authorization extractors, Bearer `error` values are validated, credentials must conform to RFC 7235 `token68` syntax, and `scope` values are checked against RFC 6750's `scope-token` format. The header is also emitted only after the status code is finalized.
 
 ### Logger
 
@@ -1379,6 +1481,22 @@ func main() {
 
 ## 📋 Migration guide
 
+To streamline upgrades between Fiber versions, the Fiber CLI ships with a
+`migrate` command:
+
+```bash
+go install github.com/gofiber/cli/fiber@latest
+fiber migrate --to v3.0.0-rc.1
+```
+
+### Options
+
+- `-t, --to string` migrate to a specific version, e.g. `v3.0.0`
+- `-f, --force` force migration even if already on that version
+- `-s, --skip_go_mod` skip running `go mod tidy`, `go mod download`, and `go mod vendor`
+
+### Changes Overview
+
 - [🚀 App](#-app-1)
 - [🎣 Hooks](#-hooks-1)
 - [🚀 Listen](#-listen-1)
@@ -1386,7 +1504,9 @@ func main() {
 - [🧠 Context](#-context-1)
 - [📎 Binding (was Parser)](#-parser)
 - [🔄 Redirect](#-redirect-1)
+- [🧾 Log](#-log-1)
 - [🌎 Client package](#-client-package-1)
+- [🛠️ Utils](#utils-migration)
 - [🧬 Middlewares](#-middlewares-1)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [BasicAuth](#basicauth-1)
@@ -1852,6 +1972,10 @@ Fiber v3 enhances the redirect functionality by introducing new methods and impr
 
     </details>
 
+#### 🧾 Log
+
+The `ConfigurableLogger` and `AllLogger` interfaces now use generics. You can specify the underlying logger type when implementing these interfaces. While `any` can be used for maximum flexibility in some contexts, when retrieving the concrete logger via `log.DefaultLogger`, you must specify the exact underlying logger type, for example `log.DefaultLogger[*MyLogger]().Logger()`.
+
 ### 🌎 Client package
 
 Fiber v3 introduces a completely rebuilt client package with numerous new features such as Cookiejar, request/response hooks, and more. Here is a guide to help you migrate from Fiber v2 to Fiber v3.
@@ -1886,6 +2010,84 @@ import "github.com/gofiber/fiber/v3/client"
 
 </details>
 
+### 🛠️ Utils {#utils-migration}
+
+Fiber v3 removes the in-repo `utils` package in favor of the external [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module.
+
+1. Replace imports:
+
+```go
+- import "github.com/gofiber/fiber/v2/utils"
++ import "github.com/gofiber/utils/v2"
+```
+
+1. Review function changes:
+
+| v2 function | v3 replacement |
+| --- | --- |
+| `AssertEqual` | removed; use testing libraries like [`github.com/stretchr/testify/assert`](https://pkg.go.dev/github.com/stretchr/testify/assert) |
+| `ToLowerBytes` | `utils.ToLowerBytes` |
+| `ToUpperBytes` | `utils.ToUpperBytes` |
+| `TrimRightBytes` | `utils.TrimRight` |
+| `TrimLeftBytes` | `utils.TrimLeft` |
+| `TrimBytes` | `utils.Trim` |
+| `EqualFoldBytes` | `utils.EqualFold` |
+| `UUID` | `utils.UUID` |
+| `UUIDv4` | `utils.UUIDv4` |
+| `FunctionName` | `utils.FunctionName` |
+| `GetArgument` | `utils.GetArgument` |
+| `IncrementIPRange` | `utils.IncrementIPRange` |
+| `ConvertToBytes` | `utils.ConvertToBytes` |
+| `CopyString` | `utils.CopyString` |
+| `CopyBytes` | `utils.CopyBytes` |
+| `ByteSize` | `utils.ByteSize` |
+| `ToString` | `utils.ToString` |
+| `UnsafeString` | `utils.UnsafeString` |
+| `UnsafeBytes` | `utils.UnsafeBytes` |
+| `GetString` | removed; use `utils.ToString` or the standard library |
+| `GetBytes` | removed; use `utils.CopyBytes` or `[]byte(s)` |
+| `ImmutableString` | removed; strings are already immutable |
+| `GetMIME` | `utils.GetMIME` |
+| `ParseVendorSpecificContentType` | `utils.ParseVendorSpecificContentType` |
+| `StatusMessage` | `utils.StatusMessage` |
+| `IsIPv4` | `utils.IsIPv4` |
+| `IsIPv6` | `utils.IsIPv6` |
+| `ToLower` | `utils.ToLower` |
+| `ToUpper` | `utils.ToUpper` |
+| `TrimLeft` | `strings.TrimLeft` |
+| `Trim` | `strings.Trim` |
+| `TrimRight` | `strings.TrimRight` |
+| `EqualFold` | `strings.EqualFold` |
+| `StartTimeStampUpdater` | `utils.StartTimeStampUpdater` (new `utils.Timestamp` provides the current value) |
+
+1. Update your code. For example:
+
+```go
+// v2
+import oldutils "github.com/gofiber/fiber/v2/utils"
+
+func demo() {
+    b := oldutils.TrimBytes([]byte(" fiber "))
+    id := oldutils.UUIDv4()
+    s := oldutils.GetString([]byte("foo"))
+}
+
+// v3
+import (
+    "github.com/gofiber/utils/v2"
+    "strings"
+)
+
+func demo() {
+    b := utils.Trim([]byte(" fiber "))
+    id := utils.UUIDv4()
+    s := utils.ToString([]byte("foo"))
+    t := strings.TrimRight("bar  ", " ")
+}
+```
+
+The `github.com/gofiber/utils/v2` module also introduces new helpers like `ParseInt`, `ParseUint`, `Walk`, `ReadFile`, and `Timestamp`.
+
 ### 🧬 Middlewares
 
 #### Important Change for Accessing Middleware Data
@@ -1895,7 +2097,7 @@ import "github.com/gofiber/fiber/v3/client"
 **Impact:** Directly accessing these middleware-provided values via `c.Locals("some_string_key")` will no longer work.
 
 **Migration Action:**
-You must update your code to use the dedicated exported functions provided by each affected middleware to retrieve its data from the context.
+The `ContextKey` configuration option has been removed from all middlewares. Values are no longer stored under user-defined keys. You must update your code to use the dedicated exported functions provided by each affected middleware to retrieve its data from the context.
 
 **Examples of new helper functions to use:**
 
@@ -1943,6 +2145,7 @@ options to further control authentication behavior.
 
 The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
 The old string-based `KeyLookup` configuration has been replaced with an `Extractor` field, and the `AuthScheme` field has been removed. The auth scheme is now inferred from the extractor used (e.g., `keyauth.FromAuthHeader`). Use helper functions like `keyauth.FromHeader`, `keyauth.FromAuthHeader`, or `keyauth.FromCookie` to define where the key should be retrieved from. Multiple sources can be combined with `keyauth.Chain`.
+New `Challenge`, `Error`, `ErrorDescription`, `ErrorURI`, and `Scope` options let you customize challenge responses, include Bearer error parameters, and specify required scopes. `ErrorURI` values are validated as absolute, credentials containing whitespace are rejected, and when multiple authorization extractors are chained, all schemes are advertised in the `WWW-Authenticate` header. The middleware defers emitting `WWW-Authenticate` until a 401 status is final, and `FromAuthHeader` now trims surrounding whitespace.
 
 ```go
 // Before

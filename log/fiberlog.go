@@ -123,8 +123,8 @@ func WithContext(ctx context.Context) CommonLogger {
 
 // SetLogger sets the default logger and the system logger.
 // Note that this method is not concurrent-safe and must not be called
-// after the use of DefaultLogger and global functions privateLog this package.
-func SetLogger(v AllLogger) {
+// after the use of DefaultLogger and global functions from this package.
+func SetLogger[T any](v AllLogger[T]) {
 	logger = v
 }
 
