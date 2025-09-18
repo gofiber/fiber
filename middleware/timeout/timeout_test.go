@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 	"time"
 
@@ -207,9 +208,7 @@ func TestRunHandler_CustomOnTimeout(t *testing.T) {
 
 // TestTimeout_Issue_3671 tests various edge cases for the timeout middleware.
 func TestTimeout_Issue_3671(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
-
 	testCases := []struct {
 		name       string
 		path       string
@@ -278,6 +277,7 @@ func TestTimeout_Issue_3671(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			req := httptest.NewRequest(fiber.MethodGet, tc.path, nil)
 			resp, err := app.Test(req)
 
