@@ -31,41 +31,61 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			cancel()
 			ctx.SetContext(parent)
 		}()
-		done := make(chan error, 1)
-		panicChan := make(chan any, 1)
 
-		go func() {
-			defer func() {
-				if p := recover(); p != nil {
-					panicChan <- p
-				}
-			}()
-			done <- runHandler(ctx, h, cfg)
-		}()
-
-		select {
-		case err := <-done:
-			return err
-		case <-panicChan:
-			return fiber.ErrRequestTimeout
-		case <-tCtx.Done():
-			return fiber.ErrRequestTimeout
-		}
+		return runHandler(ctx, h, cfg)
 	}
+}
+
+func safeCall(fn func() error) error {
+	err := error(nil)
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fiber.ErrRequestTimeout
+			}
+		}()
+		err = fn()
+	}()
+	return err
 }
 
 // runHandler executes the handler and returns fiber.ErrRequestTimeout if it
 // sees a deadline exceeded error or one of the custom "timeout-like" errors.
 func runHandler(c fiber.Ctx, h fiber.Handler, cfg Config) error {
-	err := h(c)
-	if err != nil && (errors.Is(err, context.DeadlineExceeded) || (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors))) {
-		if cfg.OnTimeout != nil {
-			if toErr := cfg.OnTimeout(c); toErr != nil {
-				return toErr
+	done := make(chan error, 1)
+	panicChan := make(chan any, 1)
+
+	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				panicChan <- p
 			}
+		}()
+		done <- h(c)
+	}()
+
+	err := safeCall(func() error {
+		select {
+		case err := <-done:
+			if err != nil && (errors.Is(err, context.DeadlineExceeded) || (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors))) {
+				if cfg.OnTimeout != nil {
+					if toErr := cfg.OnTimeout(c); toErr != nil {
+						return toErr
+					}
+				}
+				return fiber.ErrRequestTimeout
+			}
+			return err
+		case <-panicChan:
+			return fiber.ErrRequestTimeout
+		case <-c.Context().Done():
+			if cfg.OnTimeout != nil {
+				return cfg.OnTimeout(c)
+			}
+			return fiber.ErrRequestTimeout
 		}
-		return fiber.ErrRequestTimeout
-	}
+	})
+
 	return err
 }
 
