@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http/httptest"
-	"runtime"
 	"testing"
 	"time"
 
