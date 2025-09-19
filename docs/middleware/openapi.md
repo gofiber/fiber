@@ -49,12 +49,14 @@ app.Use(openapi.New(openapi.Config{
 }))
 
 // Routes may optionally document themselves using Summary, Description,
-// Tags, Deprecated, Produces and Consumes
-app.Get("/users", listUsers).
-    Summary("List users").
-    Description("List all users").
+// RequestBody, Parameter, Response, Tags, Deprecated, Produces and Consumes.
+app.Post("/users", createUser).
+    Summary("Create user").
+    Description("Creates a new user").
+    RequestBody("User payload", true, fiber.MIMEApplicationJSON).
+    Parameter("trace-id", "header", true, nil, "Tracing identifier").
+    Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON).
     Tags("users", "admin").
-    Deprecated().
     Produces(fiber.MIMEApplicationJSON)
 
 // If not specified, routes default to an empty summary and description, no tags,
@@ -62,7 +64,7 @@ app.Get("/users", listUsers).
 // Consumes and Produces will panic if provided an invalid media type.
 ```
 
-Each documented route automatically includes a `200` response with the description `OK` to satisfy the minimum OpenAPI requirements.
+Each documented route automatically includes a `200` response with the description `OK` to satisfy the minimum OpenAPI requirements. Additional responses can be declared via the `Response` helper or the middleware configuration.
 
 `CONNECT` routes are ignored because the OpenAPI specification does not define a `connect` operation.
 
@@ -103,6 +105,32 @@ type Operation struct {
     Deprecated  bool
     Consumes    string
     Produces    string
+    Parameters  []Parameter
+    RequestBody *RequestBody
+    Responses   map[string]Response
+}
+
+type Parameter struct {
+    Name        string
+    In          string
+    Description string
+    Required    bool
+    Schema      map[string]any
+}
+
+type Media struct {
+    Schema map[string]any
+}
+
+type Response struct {
+    Description string
+    Content     map[string]Media
+}
+
+type RequestBody struct {
+    Description string
+    Required    bool
+    Content     map[string]Media
 }
 ```
 

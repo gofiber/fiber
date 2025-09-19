@@ -69,6 +69,24 @@ func (grp *Group) Produces(typ string) Router {
 	return grp
 }
 
+// RequestBody documents the request payload for the most recently added route in the group.
+func (grp *Group) RequestBody(description string, required bool, mediaTypes ...string) Router {
+	grp.app.RequestBody(description, required, mediaTypes...)
+	return grp
+}
+
+// Parameter documents an input parameter for the most recently added route in the group.
+func (grp *Group) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+	grp.app.Parameter(name, in, required, schema, description)
+	return grp
+}
+
+// Response documents an HTTP response for the most recently added route in the group.
+func (grp *Group) Response(status int, description string, mediaTypes ...string) Router {
+	grp.app.Response(status, description, mediaTypes...)
+	return grp
+}
+
 // Tags assigns tags to the most recently added route in the group.
 func (grp *Group) Tags(tags ...string) Router {
 	grp.app.Tags(tags...)

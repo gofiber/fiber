@@ -97,4 +97,37 @@ type Operation struct {
 	Consumes string
 	// Produces defines the response media type.
 	Produces string
+	// Parameters augments the generated parameter list.
+	Parameters []Parameter
+	// RequestBody overrides or augments the generated request body.
+	RequestBody *RequestBody
+	// Responses augments the generated responses by status code (e.g. "201").
+	Responses map[string]Response
+}
+
+// Parameter describes a single OpenAPI parameter.
+type Parameter struct {
+	Name        string
+	In          string
+	Description string
+	Required    bool
+	Schema      map[string]any
+}
+
+// Media describes the schema payload for a request or response media type.
+type Media struct {
+	Schema map[string]any
+}
+
+// Response describes an OpenAPI response object.
+type Response struct {
+	Description string
+	Content     map[string]Media
+}
+
+// RequestBody describes the request body configuration for an operation.
+type RequestBody struct {
+	Description string
+	Required    bool
+	Content     map[string]Media
 }

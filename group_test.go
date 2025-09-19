@@ -45,6 +45,38 @@ func Test_Group_OpenAPI_Helpers(t *testing.T) {
 		require.Equal(t, MIMEApplicationXML, route.Produces)
 	})
 
+	t.Run("RequestBody", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		grp := app.Group("/api")
+		grp.Post("/users", testEmptyHandler).RequestBody("User", true, MIMEApplicationJSON)
+		route := app.stack[app.methodInt(MethodPost)][0]
+		require.NotNil(t, route.RequestBody)
+		require.Equal(t, []string{MIMEApplicationJSON}, route.RequestBody.MediaTypes)
+	})
+
+	t.Run("Parameter", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		grp := app.Group("/api")
+		grp.Get("/users/:id", testEmptyHandler).Parameter("id", "path", false, map[string]any{"type": "integer"}, "identifier")
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Len(t, route.Parameters, 1)
+		require.Equal(t, "id", route.Parameters[0].Name)
+		require.True(t, route.Parameters[0].Required)
+		require.Equal(t, "integer", route.Parameters[0].Schema["type"])
+	})
+
+	t.Run("Response", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		grp := app.Group("/api")
+		grp.Get("/users", testEmptyHandler).Response(StatusCreated, "Created", MIMEApplicationJSON)
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Contains(t, route.Responses, "201")
+		require.Equal(t, []string{MIMEApplicationJSON}, route.Responses["201"].MediaTypes)
+	})
+
 	t.Run("Tags", func(t *testing.T) {
 		t.Parallel()
 		app := New()

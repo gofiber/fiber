@@ -1435,6 +1435,30 @@ func Test_Route_InvalidMediaType(t *testing.T) {
 			app.Get("/", testEmptyHandler).Consumes("invalid")
 		})
 	})
+	t.Run("request body", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Post("/", testEmptyHandler).RequestBody("payload", true, "invalid")
+		})
+	})
+	t.Run("request body missing type", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Post("/", testEmptyHandler).RequestBody("payload", true)
+		})
+	})
+	t.Run("response", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Response(StatusOK, "", "invalid")
+		})
+	})
+	t.Run("parameter", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Parameter("foo", "body", true, nil, "")
+		})
+	})
 }
 
 func Test_App_Produces(t *testing.T) {
@@ -1443,6 +1467,79 @@ func Test_App_Produces(t *testing.T) {
 	app.Get("/", testEmptyHandler).Produces(MIMEApplicationJSON)
 	route := app.stack[app.methodInt(MethodGet)][0]
 	require.Equal(t, MIMEApplicationJSON, route.Produces)
+}
+
+func Test_App_RequestBody(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Post("/users", testEmptyHandler).
+		RequestBody("User payload", true, MIMEApplicationJSON, MIMEApplicationXML)
+
+	route := app.stack[app.methodInt(MethodPost)][0]
+	require.NotNil(t, route.RequestBody)
+	require.Equal(t, "User payload", route.RequestBody.Description)
+	require.True(t, route.RequestBody.Required)
+	require.Equal(t, []string{MIMEApplicationJSON, MIMEApplicationXML}, route.RequestBody.MediaTypes)
+	require.Equal(t, MIMEApplicationJSON, route.Consumes)
+}
+
+func Test_App_Parameter(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/:id", testEmptyHandler).
+		Parameter("id", "path", false, map[string]any{"type": "integer"}, "identifier").
+		Parameter("filter", "query", true, nil, "Filter results")
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.Len(t, route.Parameters, 2)
+
+	pathParam := route.Parameters[0]
+	require.Equal(t, "id", pathParam.Name)
+	require.Equal(t, "path", pathParam.In)
+	require.True(t, pathParam.Required)
+	require.Equal(t, "integer", pathParam.Schema["type"])
+	require.Equal(t, "identifier", pathParam.Description)
+
+	queryParam := route.Parameters[1]
+	require.Equal(t, "filter", queryParam.Name)
+	require.Equal(t, "query", queryParam.In)
+	require.True(t, queryParam.Required)
+	require.Equal(t, "string", queryParam.Schema["type"])
+	require.Equal(t, "Filter results", queryParam.Description)
+}
+
+func Test_App_Response(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).
+		Response(StatusOK, "OK", MIMEApplicationJSON).
+		Response(StatusCreated, "Created", MIMEApplicationJSON).
+		Response(0, "Default fallback")
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
+	require.Len(t, route.Responses, 3)
+
+	okResp, ok := route.Responses["200"]
+	require.True(t, ok)
+	require.Equal(t, "OK", okResp.Description)
+	require.Equal(t, []string{MIMEApplicationJSON}, okResp.MediaTypes)
+
+	created, ok := route.Responses["201"]
+	require.True(t, ok)
+	require.Equal(t, "Created", created.Description)
+
+	defResp, ok := route.Responses["default"]
+	require.True(t, ok)
+	require.Equal(t, "Default fallback", defResp.Description)
+}
+
+func Test_App_Response_InvalidStatus(t *testing.T) {
+	t.Parallel()
+	app := New()
+	require.Panics(t, func() {
+		app.Get("/", testEmptyHandler).Response(42, "invalid")
+	})
 }
 
 func Test_App_Deprecated(t *testing.T) {

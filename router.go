@@ -47,6 +47,15 @@ type Router interface {
 	// Produces sets the response media type for the most recently
 	// registered route.
 	Produces(typ string) Router
+	// RequestBody documents the request body for the most recently
+	// registered route.
+	RequestBody(description string, required bool, mediaTypes ...string) Router
+	// Parameter documents an input parameter for the most recently
+	// registered route.
+	Parameter(name, in string, required bool, schema map[string]any, description string) Router
+	// Response documents an HTTP response for the most recently
+	// registered route.
+	Response(status int, description string, mediaTypes ...string) Router
 	// Tags sets the tags for the most recently registered route.
 	Tags(tags ...string) Router
 	// Deprecated marks the most recently registered route as deprecated.
@@ -64,21 +73,46 @@ type Route struct {
 	Method string `json:"method"` // HTTP method
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
-	Path        string      `json:"path"`   // Original registered route path
-	Params      []string    `json:"params"` // Case-sensitive param keys
-	Handlers    []Handler   `json:"-"`      // Ctx handlers
-	Summary     string      `json:"summary"`
-	Description string      `json:"description"`
-	Consumes    string      `json:"consumes"`
-	Produces    string      `json:"produces"`
-	Tags        []string    `json:"tags"`
-	Deprecated  bool        `json:"deprecated"`
-	routeParser routeParser // Parameter parser
+	Path        string                   `json:"path"`   // Original registered route path
+	Params      []string                 `json:"params"` // Case-sensitive param keys
+	Handlers    []Handler                `json:"-"`      // Ctx handlers
+	Summary     string                   `json:"summary"`
+	Description string                   `json:"description"`
+	Consumes    string                   `json:"consumes"`
+	Produces    string                   `json:"produces"`
+	RequestBody *RouteRequestBody        `json:"requestBody"`
+	Parameters  []RouteParameter         `json:"parameters"`
+	Responses   map[string]RouteResponse `json:"responses"`
+	Tags        []string                 `json:"tags"`
+	Deprecated  bool                     `json:"deprecated"`
+	routeParser routeParser              // Parameter parser
 	// Data for routing
 	use   bool // USE matches path prefixes
 	mount bool // Indicated a mounted app on a specific route
 	star  bool // Path equals '*'
 	root  bool // Path equals '/'
+}
+
+// RouteParameter describes an input captured by a route.
+type RouteParameter struct {
+	Name        string         `json:"name"`
+	In          string         `json:"in"`
+	Required    bool           `json:"required"`
+	Description string         `json:"description"`
+	Schema      map[string]any `json:"schema"`
+}
+
+// RouteResponse describes a response emitted by a route.
+type RouteResponse struct {
+	Description string   `json:"description"`
+	MediaTypes  []string `json:"mediaTypes"`
+}
+
+// RouteRequestBody describes the request payload accepted by a route.
+type RouteRequestBody struct {
+	Description string   `json:"description"`
+	Required    bool     `json:"required"`
+	MediaTypes  []string `json:"mediaTypes"`
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
@@ -403,9 +437,64 @@ func (*App) copyRoute(route *Route) *Route {
 		Description: route.Description,
 		Consumes:    route.Consumes,
 		Produces:    route.Produces,
+		RequestBody: cloneRouteRequestBody(route.RequestBody),
+		Parameters:  cloneRouteParameters(route.Parameters),
+		Responses:   cloneRouteResponses(route.Responses),
 		Tags:        route.Tags,
 		Deprecated:  route.Deprecated,
 	}
+}
+
+func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {
+	if body == nil {
+		return nil
+	}
+	clone := &RouteRequestBody{
+		Description: body.Description,
+		Required:    body.Required,
+	}
+	if len(body.MediaTypes) > 0 {
+		clone.MediaTypes = append([]string(nil), body.MediaTypes...)
+	}
+	return clone
+}
+
+func cloneRouteParameters(params []RouteParameter) []RouteParameter {
+	if len(params) == 0 {
+		return nil
+	}
+	cloned := make([]RouteParameter, len(params))
+	for i, p := range params {
+		cloned[i] = RouteParameter{
+			Name:        p.Name,
+			In:          p.In,
+			Required:    p.Required,
+			Description: p.Description,
+		}
+		if len(p.Schema) > 0 {
+			schemaCopy := make(map[string]any, len(p.Schema))
+			for k, v := range p.Schema {
+				schemaCopy[k] = v
+			}
+			cloned[i].Schema = schemaCopy
+		}
+	}
+	return cloned
+}
+
+func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteResponse {
+	if len(responses) == 0 {
+		return nil
+	}
+	cloned := make(map[string]RouteResponse, len(responses))
+	for code, resp := range responses {
+		copyResp := RouteResponse{Description: resp.Description}
+		if len(resp.MediaTypes) > 0 {
+			copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
+		}
+		cloned[code] = copyResp
+	}
+	return cloned
 }
 
 func (app *App) normalizePath(path string) string {

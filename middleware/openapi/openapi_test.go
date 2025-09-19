@@ -193,6 +193,25 @@ func Test_OpenAPI_OperationConfig(t *testing.T) {
 				Deprecated:  true,
 				Consumes:    fiber.MIMEApplicationJSON,
 				Produces:    fiber.MIMEApplicationJSON,
+				Parameters: []Parameter{{
+					Name:        "limit",
+					In:          "query",
+					Required:    true,
+					Description: "Maximum items",
+					Schema:      map[string]any{"type": "integer"},
+				}},
+				RequestBody: &RequestBody{
+					Description: "Custom payload",
+					Required:    true,
+					Content: map[string]Media{
+						fiber.MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
+					},
+				},
+				Responses: map[string]Response{
+					"201": {Description: "Created", Content: map[string]Media{
+						fiber.MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
+					}},
+				},
 			},
 		},
 	}))
@@ -212,14 +231,22 @@ func Test_OpenAPI_OperationConfig(t *testing.T) {
 	require.ElementsMatch(t, []string{"users"}, op.Tags)
 	require.True(t, op.Deprecated)
 	require.Contains(t, op.Responses["200"].Content, fiber.MIMEApplicationJSON)
+	require.Contains(t, op.Responses, "201")
+	require.Contains(t, op.Responses["201"].Content, fiber.MIMEApplicationJSON)
 	require.NotNil(t, op.RequestBody)
+	require.Equal(t, "Custom payload", op.RequestBody.Description)
 	require.Contains(t, op.RequestBody.Content, fiber.MIMEApplicationJSON)
+	require.True(t, op.RequestBody.Required)
+	require.Len(t, op.Parameters, 1)
+	require.Equal(t, "limit", op.Parameters[0].Name)
+	require.Equal(t, "integer", op.Parameters[0].Schema["type"])
 }
 
 func Test_OpenAPI_RouteMetadata(t *testing.T) {
 	app := fiber.New()
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		Summary("List users").Description("User list").Produces(fiber.MIMEApplicationJSON).
+		Parameter("trace-id", "header", true, nil, "Tracing identifier").
 		Tags("users", "read").Deprecated()
 
 	app.Use(New())
@@ -238,6 +265,39 @@ func Test_OpenAPI_RouteMetadata(t *testing.T) {
 	require.Contains(t, op.Responses["200"].Content, fiber.MIMEApplicationJSON)
 	require.ElementsMatch(t, []string{"users", "read"}, op.Tags)
 	require.True(t, op.Deprecated)
+	require.Len(t, op.Parameters, 1)
+	require.Equal(t, "trace-id", op.Parameters[0].Name)
+	require.Equal(t, "header", op.Parameters[0].In)
+	require.Equal(t, "Tracing identifier", op.Parameters[0].Description)
+}
+
+func Test_OpenAPI_RouteRequestBodyAndResponses(t *testing.T) {
+	app := fiber.New()
+
+	app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
+		RequestBody("Create user", true, fiber.MIMEApplicationJSON).
+		Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON)
+
+	app.Use(New())
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+
+	op := spec.Paths["/users"]["post"]
+	require.NotNil(t, op.RequestBody)
+	require.Equal(t, "Create user", op.RequestBody.Description)
+	require.True(t, op.RequestBody.Required)
+	require.Contains(t, op.RequestBody.Content, fiber.MIMEApplicationJSON)
+	require.Contains(t, op.Responses, "201")
+	require.Equal(t, "Created", op.Responses["201"].Description)
+	require.Contains(t, op.Responses["201"].Content, fiber.MIMEApplicationJSON)
+	require.Contains(t, op.Responses, "200")
+	require.Equal(t, "OK", op.Responses["200"].Description)
 }
 
 // getPaths is a helper that mounts the middleware, performs the request and
@@ -306,7 +366,8 @@ func Test_OpenAPI_DifferentHandlers(t *testing.T) {
 func Test_OpenAPI_Params(t *testing.T) {
 	app := fiber.New()
 
-	app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendString(c.Params("id")) })
+	app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendString(c.Params("id")) }).
+		Parameter("id", "path", true, map[string]any{"type": "integer"}, "identifier")
 
 	paths := getPaths(t, app)
 	require.Contains(t, paths, "/users/{id}")
@@ -317,6 +378,9 @@ func Test_OpenAPI_Params(t *testing.T) {
 	p0 := params[0].(map[string]any)
 	require.Equal(t, "id", p0["name"])
 	require.Equal(t, "path", p0["in"])
+	require.Equal(t, "identifier", p0["description"])
+	schema := p0["schema"].(map[string]any)
+	require.Equal(t, "integer", schema["type"])
 }
 
 func Test_OpenAPI_Groups(t *testing.T) {
