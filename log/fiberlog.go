@@ -117,6 +117,8 @@ func Panicw(msg string, keysAndValues ...any) {
 	logger.Panicw(msg, keysAndValues...)
 }
 
+// WithContext binds the default logger to the provided context and returns the
+// contextualized logger.
 func WithContext(ctx context.Context) CommonLogger {
 	return logger.WithContext(ctx)
 }

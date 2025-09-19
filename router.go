@@ -572,7 +572,7 @@ func (app *App) addRoute(method string, route *Route) {
 	}
 }
 
-// BuildTree rebuilds the prefix tree from the previously registered routes.
+// RebuildTree rebuilds the prefix tree from the previously registered routes.
 // This method is useful when you want to register routes dynamically after the app has started.
 // It is not recommended to use this method on production environments because rebuilding
 // the tree is performance-intensive and not thread-safe in runtime. Since building the tree

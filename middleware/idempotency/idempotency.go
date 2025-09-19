@@ -21,14 +21,20 @@ const (
 	localsKeyWasPutToCache
 )
 
+// IsFromCache reports whether the middleware served the response from the
+// cache for the current request.
 func IsFromCache(c fiber.Ctx) bool {
 	return c.Locals(localsKeyIsFromCache) != nil
 }
 
+// WasPutToCache reports whether the middleware stored the response produced by
+// the current request in the cache.
 func WasPutToCache(c fiber.Ctx) bool {
 	return c.Locals(localsKeyWasPutToCache) != nil
 }
 
+// New creates idempotency middleware that caches responses keyed by the
+// configured idempotency header.
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)

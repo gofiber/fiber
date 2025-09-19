@@ -24,10 +24,14 @@ func (b *MsgPackBinding) Reset() {
 	b.MsgPackDecoder = nil
 }
 
+// UnimplementedMsgpackMarshal panics to signal that a Msgpack marshaler must
+// be configured before MsgPack support can be used.
 func UnimplementedMsgpackMarshal(_ any) ([]byte, error) {
 	panic("Must explicit setup Msgpack, please check docs: https://docs.gofiber.io/next/guide/advance-format#msgpack")
 }
 
+// UnimplementedMsgpackUnmarshal panics to signal that a Msgpack unmarshaler
+// must be configured before MsgPack support can be used.
 func UnimplementedMsgpackUnmarshal(_ []byte, _ any) error {
 	panic("Must explicit setup Msgpack, please check docs: https://docs.gofiber.io/next/guide/advance-format#msgpack")
 }

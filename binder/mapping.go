@@ -288,7 +288,7 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	return false
 }
 
-// Get content type from content type header
+// FilterFlags returns the media type value by trimming any parameters from a Content-Type header.
 func FilterFlags(content string) string {
 	for i, char := range content {
 		if char == ' ' || char == ';' {

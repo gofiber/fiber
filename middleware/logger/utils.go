@@ -47,6 +47,7 @@ type customLoggerWriter[T any] struct {
 	level          fiberlog.Level
 }
 
+// Write implements io.Writer and forwards the payload to the configured logger.
 func (cl *customLoggerWriter[T]) Write(p []byte) (int, error) {
 	switch cl.level {
 	case fiberlog.LevelTrace:

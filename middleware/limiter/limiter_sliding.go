@@ -9,6 +9,7 @@ import (
 	utils "github.com/gofiber/utils/v2"
 )
 
+// SlidingWindow implements the sliding-window rate limiting strategy.
 type SlidingWindow struct{}
 
 // New creates a new sliding window middleware handler

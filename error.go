@@ -54,23 +54,24 @@ type (
 
 // encoding/json errors
 type (
-	// An InvalidUnmarshalError describes an invalid argument passed to Unmarshal.
+	// InvalidUnmarshalError describes an invalid argument passed to Unmarshal.
 	// (The argument to Unmarshal must be a non-nil pointer.)
 	InvalidUnmarshalError = json.InvalidUnmarshalError
 
-	// A MarshalerError represents an error from calling a MarshalJSON or MarshalText method.
+	// MarshalerError represents an error from calling a MarshalJSON or MarshalText method.
 	MarshalerError = json.MarshalerError
 
-	// A SyntaxError is a description of a JSON syntax error.
+	// SyntaxError is a description of a JSON syntax error.
 	SyntaxError = json.SyntaxError
 
-	// An UnmarshalTypeError describes a JSON value that was
+	// UnmarshalTypeError describes a JSON value that was
 	// not appropriate for a value of a specific Go type.
 	UnmarshalTypeError = json.UnmarshalTypeError
 
-	// An UnsupportedTypeError is returned by Marshal when attempting
+	// UnsupportedTypeError is returned by Marshal when attempting
 	// to encode an unsupported value type.
 	UnsupportedTypeError = json.UnsupportedTypeError
 
+	// UnsupportedValueError exposes json.UnsupportedValueError to describe unsupported values encountered during encoding.
 	UnsupportedValueError = json.UnsupportedValueError
 )

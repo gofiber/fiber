@@ -1,6 +1,6 @@
 package binder
 
-// uriBinding is the URI binder for URI parameters.
+// URIBinding is the binder implementation for populating values from route parameters.
 type URIBinding struct{}
 
 // Name returns the binding name.

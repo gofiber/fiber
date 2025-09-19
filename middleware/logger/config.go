@@ -104,6 +104,7 @@ const (
 	paramSeparator = ":"
 )
 
+// Buffer abstracts the buffer operations used when rendering log entries.
 type Buffer interface {
 	Len() int
 	ReadFrom(r io.Reader) (int64, error)
@@ -117,6 +118,7 @@ type Buffer interface {
 	String() string
 }
 
+// LogFunc formats logging output using the provided buffer and request data.
 type LogFunc func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error)
 
 // ConfigDefault is the default config

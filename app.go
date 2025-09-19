@@ -1176,6 +1176,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 
 type disableLogger struct{}
 
+// Printf implements the fasthttp Logger interface and discards log output.
 func (*disableLogger) Printf(string, ...any) {
 }
 

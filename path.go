@@ -72,6 +72,8 @@ const (
 // TypeConstraint parameter constraint types
 type TypeConstraint int16
 
+// Constraint describes the validation rules that apply to a dynamic route
+// segment when matching incoming requests.
 type Constraint struct {
 	RegexCompiler     *regexp.Regexp
 	Name              string

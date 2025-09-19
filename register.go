@@ -24,7 +24,8 @@ type Register interface {
 
 var _ (Register) = (*Registering)(nil)
 
-// Registering struct
+// Registering provides route registration helpers for a specific path on the
+// application instance.
 type Registering struct {
 	app *App
 

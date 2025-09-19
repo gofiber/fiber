@@ -4,17 +4,25 @@ import (
 	"github.com/gofiber/fiber/v3/log"
 )
 
-// OnRouteHandler Handlers define a function to create hooks for Fiber.
 type (
-	OnRouteHandler        = func(Route) error
-	OnNameHandler         = OnRouteHandler
-	OnGroupHandler        = func(Group) error
-	OnGroupNameHandler    = OnGroupHandler
-	OnListenHandler       = func(ListenData) error
-	OnPreShutdownHandler  = func() error
+	// OnRouteHandler defines the hook signature invoked whenever a route is registered.
+	OnRouteHandler = func(Route) error
+	// OnNameHandler shares the OnRouteHandler signature for route naming callbacks.
+	OnNameHandler = OnRouteHandler
+	// OnGroupHandler defines the hook signature invoked whenever a group is registered.
+	OnGroupHandler = func(Group) error
+	// OnGroupNameHandler shares the OnGroupHandler signature for group naming callbacks.
+	OnGroupNameHandler = OnGroupHandler
+	// OnListenHandler runs when the application begins listening and receives the listener details.
+	OnListenHandler = func(ListenData) error
+	// OnPreShutdownHandler runs before the application shuts down.
+	OnPreShutdownHandler = func() error
+	// OnPostShutdownHandler runs after shutdown and receives the shutdown result.
 	OnPostShutdownHandler = func(error) error
-	OnForkHandler         = func(int) error
-	OnMountHandler        = func(*App) error
+	// OnForkHandler runs inside a forked worker process and receives the worker ID.
+	OnForkHandler = func(int) error
+	// OnMountHandler runs after a sub-application mounts to a parent and receives the parent app reference.
+	OnMountHandler = func(*App) error
 )
 
 // Hooks is a struct to use it with App.

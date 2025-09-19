@@ -750,6 +750,7 @@ type testConn struct {
 	sync.Mutex
 }
 
+// Read implements net.Conn by reading from the buffered input.
 func (c *testConn) Read(b []byte) (int, error) {
 	c.Lock()
 	defer c.Unlock()
@@ -757,6 +758,7 @@ func (c *testConn) Read(b []byte) (int, error) {
 	return c.r.Read(b) //nolint:wrapcheck // This must not be wrapped
 }
 
+// Write implements net.Conn by appending to the buffered output.
 func (c *testConn) Write(b []byte) (int, error) {
 	c.Lock()
 	defer c.Unlock()
@@ -767,6 +769,7 @@ func (c *testConn) Write(b []byte) (int, error) {
 	return c.w.Write(b) //nolint:wrapcheck // This must not be wrapped
 }
 
+// Close marks the connection as closed and prevents further writes.
 func (c *testConn) Close() error {
 	c.Lock()
 	defer c.Unlock()
@@ -775,10 +778,19 @@ func (c *testConn) Close() error {
 	return nil
 }
 
-func (*testConn) LocalAddr() net.Addr                { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
-func (*testConn) RemoteAddr() net.Addr               { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
-func (*testConn) SetDeadline(_ time.Time) error      { return nil }
-func (*testConn) SetReadDeadline(_ time.Time) error  { return nil }
+// LocalAddr implements net.Conn and returns a placeholder address.
+func (*testConn) LocalAddr() net.Addr { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
+
+// RemoteAddr implements net.Conn and returns a placeholder address.
+func (*testConn) RemoteAddr() net.Addr { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
+
+// SetDeadline implements net.Conn but is a no-op for the in-memory connection.
+func (*testConn) SetDeadline(_ time.Time) error { return nil }
+
+// SetReadDeadline implements net.Conn but is a no-op for the in-memory connection.
+func (*testConn) SetReadDeadline(_ time.Time) error { return nil }
+
+// SetWriteDeadline implements net.Conn but is a no-op for the in-memory connection.
 func (*testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
 func toStringImmutable(b []byte) string {
@@ -969,22 +981,28 @@ func genericParseType[V GenericType](str string) (V, error) {
 	}
 }
 
+// GenericType enumerates the values that can be parsed from strings by the
+// generic helper functions.
 type GenericType interface {
 	GenericTypeInteger | GenericTypeFloat | bool | string | []byte
 }
 
+// GenericTypeInteger is the union of all supported integer types.
 type GenericTypeInteger interface {
 	GenericTypeIntegerSigned | GenericTypeIntegerUnsigned
 }
 
+// GenericTypeIntegerSigned is the union of supported signed integer types.
 type GenericTypeIntegerSigned interface {
 	int | int8 | int16 | int32 | int64
 }
 
+// GenericTypeIntegerUnsigned is the union of supported unsigned integer types.
 type GenericTypeIntegerUnsigned interface {
 	uint | uint8 | uint16 | uint32 | uint64
 }
 
+// GenericTypeFloat is the union of supported floating-point types.
 type GenericTypeFloat interface {
 	float32 | float64
 }
