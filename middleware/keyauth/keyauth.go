@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	utils "github.com/gofiber/utils/v2"
 )
 
@@ -38,6 +39,11 @@ func New(config ...Config) fiber.Handler {
 
 		// Extract and verify key
 		key, err := cfg.Extractor.Extract(c)
+		if errors.Is(err, extractors.ErrNotFound) {
+			// Replace shared extractor not found error with a keyauth specific error
+			err = ErrMissingOrMalformedAPIKey
+		}
+		// If there was no error extracting the key, validate it
 		if err == nil {
 			var valid bool
 			valid, err = cfg.Validator(c, key)
@@ -100,9 +106,9 @@ func TokenFromContext(c fiber.Ctx) string {
 // getAuthSchemes inspects an extractor and its chain to find all auth schemes
 // used by FromAuthHeader. It returns a slice of schemes, or an empty slice if
 // none are found.
-func getAuthSchemes(e Extractor) []string {
+func getAuthSchemes(e extractors.Extractor) []string {
 	var schemes []string
-	if e.Source == SourceAuthHeader && e.AuthScheme != "" {
+	if e.Source == extractors.SourceAuthHeader && e.AuthScheme != "" {
 		schemes = append(schemes, e.AuthScheme)
 	}
 	for _, ex := range e.Chain {

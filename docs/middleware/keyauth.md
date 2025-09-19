@@ -223,35 +223,51 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 
 ## Key Extractors
 
-The middleware extracts the API key from the request using an `Extractor`. You can specify one or more extractors in the configuration.
+KeyAuth uses an `Extractor` from the shared [extractors](../guide/extractors) package to retrieve the API key from the request. You can specify one or more extractors in the configuration. For a full list of extractors, chaining, and advanced usage, see the [Extractors Guide](../guide/extractors).
 
-### Built-in Extractors
+### Typical Usage
 
-The following extractors are available:
-
-- `keyauth.FromHeader(header string)`: Extracts the key from the specified header.
-- `keyauth.FromAuthHeader(header, authScheme string)`: Extracts the key from an authorization header (e.g., `Authorization: Bearer <key>`).
-- `keyauth.FromQuery(param string)`: Extracts the key from a URL query parameter.
-- `keyauth.FromParam(param string)`: Extracts the key from a URL path parameter.
-- `keyauth.FromCookie(name string)`: Extracts the key from a cookie.
-- `keyauth.FromForm(name string)`: Extracts the key from a form field.
-
-### Chaining Extractors
-
-You can use `keyauth.Chain` to try multiple extractors until one succeeds. The first successful extraction is used.
+Specify the extractor in the config. For example, to extract from a cookie:
 
 ```go
-// This will try to extract the key from:
-// 1. The "X-API-Key" header
-// 2. The "api_key" query parameter
 app.Use(keyauth.New(keyauth.Config{
-    Extractor: keyauth.Chain(
-        keyauth.FromHeader("X-API-Key"),
-        keyauth.FromQuery("api_key"),
+    Extractor: extractors.FromCookie("access_token"),
+    Validator: validateAPIKey,
+}))
+```
+
+To use the default (Authorization header with Bearer scheme):
+
+```go
+app.Use(keyauth.New(keyauth.Config{
+    Validator: validateAPIKey, // Extractor defaults to FromAuthHeader("Bearer")
+}))
+```
+
+To try multiple sources (header, then query):
+
+```go
+app.Use(keyauth.New(keyauth.Config{
+    Extractor: extractors.Chain(
+        extractors.FromHeader("X-API-Key"),
+        extractors.FromQuery("api_key"),
     ),
     Validator: validateAPIKey,
 }))
 ```
+
+For custom logic, use `extractors.FromCustom`:
+
+```go
+app.Use(keyauth.New(keyauth.Config{
+    Extractor: extractors.FromCustom(func(c fiber.Ctx) (string, error) {
+        return c.Get("X-My-API-Key"), nil
+    }),
+    Validator: validateAPIKey,
+}))
+```
+
+Refer to the [Extractors Guide](../guide/extractors) for details, security notes, and advanced configuration.
 
 ## Config
 
@@ -261,7 +277,7 @@ app.Use(keyauth.New(keyauth.Config{
 | SuccessHandler  | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `c.Next()`                         |
 | ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. | Default error handler  |
 | Validator       | `func(fiber.Ctx, string) (bool, error)`  | **Required.** Validator is a function to validate the key.                                                           | `nil` (panic) |
-| Extractor       | `keyauth.Extractor`                    | Extractor defines how to retrieve the key from the request. Use helper functions like `keyauth.FromAuthHeader` or `keyauth.FromCookie`. | `keyauth.FromAuthHeader("Authorization", "Bearer")` |
+| Extractor       | `extractors.Extractor`                 | Extractor defines how to retrieve the key from the request. Use helper functions from the shared extractors package, e.g. `extractors.FromAuthHeader("Bearer")` or `extractors.FromCookie("access_token")`. | `extractors.FromAuthHeader("Bearer")` |
 | Realm           | `string`                                 | Realm specifies the protected area name used in the `WWW-Authenticate` header. | `"Restricted"` |
 | Challenge       | `string`                                 | Value of the `WWW-Authenticate` header when no `Authorization` scheme is present. | `ApiKey realm="Restricted"` |
 | Error           | `string`                                 | Error code appended as the `error` parameter in Bearer challenges. Must be `invalid_request`, `invalid_token`, or `insufficient_scope`. | `""` |
@@ -280,6 +296,6 @@ var ConfigDefault = Config{
         return c.Status(fiber.StatusUnauthorized).SendString(ErrMissingOrMalformedAPIKey.Error())
     },
     Realm:     "Restricted",
-    Extractor: FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
+    Extractor: extractors.FromAuthHeader("Bearer"),
 }
 ```

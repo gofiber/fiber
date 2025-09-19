@@ -20,39 +20,39 @@ func Test_Extractors_Missing(t *testing.T) {
 	app.Get("/test", func(c fiber.Ctx) error {
 		token, err := FromParam("token").Extract(c)
 		require.Empty(t, token)
-		require.Equal(t, ErrNotFound, err)
+		require.ErrorIs(t, err, ErrNotFound)
 		return nil
 	})
 	_, err := app.Test(newRequest(fiber.MethodGet, "/test"))
 	require.NoError(t, err)
 
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
 	// Missing form
 	token, err := FromForm("token").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	require.ErrorIs(t, err, ErrNotFound)
 
 	// Missing query
 	token, err = FromQuery("token").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	require.ErrorIs(t, err, ErrNotFound)
 
 	// Missing header
 	token, err = FromHeader("X-Token").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	require.ErrorIs(t, err, ErrNotFound)
 
 	// Missing Auth header
 	token, err = FromAuthHeader("Bearer").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	require.ErrorIs(t, err, ErrNotFound)
 
 	// Missing cookie
 	token, err = FromCookie("token").Extract(ctx)
 	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	require.ErrorIs(t, err, ErrNotFound)
 }
 
 // newRequest creates a new *http.Request for Fiber's app.Test
@@ -68,143 +68,193 @@ func newRequest(method, target string) *http.Request {
 func Test_Extractors(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	t.Run("FromParam", func(t *testing.T) {
+		t.Parallel()
 
-	// FromParam
-	app.Get("/test/:token", func(c fiber.Ctx) error {
-		token, err := FromParam("token").Extract(c)
+		app := fiber.New()
+		app.Get("/test/:token", func(c fiber.Ctx) error {
+			token, err := FromParam("token").Extract(c)
+			require.NoError(t, err)
+			require.Equal(t, "token_from_param", token)
+			return nil
+		})
+		_, err := app.Test(newRequest(fiber.MethodGet, "/test/token_from_param"))
 		require.NoError(t, err)
-		require.Equal(t, "token_from_param", token)
-		return nil
 	})
-	_, err := app.Test(newRequest(fiber.MethodGet, "/test/token_from_param"))
-	require.NoError(t, err)
 
-	// FromForm
-	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx1)
-	ctx1.Request().Header.SetContentType(fiber.MIMEApplicationForm)
-	ctx1.Request().Header.SetMethod(fiber.MethodPost)
-	ctx1.Request().SetBodyString("token=token_from_form")
-	token, err := FromForm("token").Extract(ctx1)
-	require.NoError(t, err)
-	require.Equal(t, "token_from_form", token)
+	t.Run("FromForm", func(t *testing.T) {
+		t.Parallel()
 
-	// FromQuery
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx2)
-	ctx2.Request().SetRequestURI("/?token=token_from_query")
-	token, err = FromQuery("token").Extract(ctx2)
-	require.NoError(t, err)
-	require.Equal(t, "token_from_query", token)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetContentType(fiber.MIMEApplicationForm)
+		ctx.Request().Header.SetMethod(fiber.MethodPost)
+		ctx.Request().SetBodyString("token=token_from_form")
+		token, err := FromForm("token").Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "token_from_form", token)
+	})
 
-	// FromHeader
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx3)
-	ctx3.Request().Header.Set("X-Token", "token_from_header")
-	token, err = FromHeader("X-Token").Extract(ctx3)
-	require.NoError(t, err)
-	require.Equal(t, "token_from_header", token)
+	t.Run("FromQuery", func(t *testing.T) {
+		t.Parallel()
 
-	// FromAuthHeader
-	ctx4 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx4)
-	ctx4.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token_from_auth_header")
-	token, err = FromAuthHeader("Bearer").Extract(ctx4)
-	require.NoError(t, err)
-	require.Equal(t, "token_from_auth_header", token)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=token_from_query")
+		token, err := FromQuery("token").Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "token_from_query", token)
+	})
 
-	// FromCookie
-	ctx5 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx5)
-	ctx5.Request().Header.SetCookie("token", "token_from_cookie")
-	token, err = FromCookie("token").Extract(ctx5)
-	require.NoError(t, err)
-	require.Equal(t, "token_from_cookie", token)
+	t.Run("FromHeader", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "token_from_header")
+		token, err := FromHeader("X-Token").Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "token_from_header", token)
+	})
+
+	t.Run("FromAuthHeader", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token_from_auth_header")
+		token, err := FromAuthHeader("Bearer").Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "token_from_auth_header", token)
+	})
+
+	t.Run("FromCookie", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetCookie("token", "token_from_cookie")
+		token, err := FromCookie("token").Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "token_from_cookie", token)
+	})
 }
 
 // go test -run Test_Extractor_Chain
 func Test_Extractor_Chain(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	t.Run("no_extractors", func(t *testing.T) {
+		t.Parallel()
 
-	// No extractors
-	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx1)
-	token, err := Chain().Extract(ctx1)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		token, err := Chain().Extract(ctx)
+		require.Empty(t, token)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
 
-	// First extractor succeeds
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx2)
-	ctx2.Request().Header.Set("X-Token", "token_from_header")
-	ctx2.Request().SetRequestURI("/?token=token_from_query")
-	token, err = Chain(FromHeader("X-Token"), FromQuery("token")).Extract(ctx2)
-	require.NoError(t, err)
-	require.Equal(t, "token_from_header", token)
+	t.Run("first_extractor_succeeds", func(t *testing.T) {
+		t.Parallel()
 
-	// Second extractor succeeds
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx3)
-	ctx3.Request().SetRequestURI("/?token=token_from_query")
-	token, err = Chain(FromHeader("X-Token"), FromQuery("token")).Extract(ctx3)
-	require.NoError(t, err)
-	require.Equal(t, "token_from_query", token)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "token_from_header")
+		ctx.Request().SetRequestURI("/?token=token_from_query")
+		token, err := Chain(FromHeader("X-Token"), FromQuery("token")).Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "token_from_header", token)
+	})
 
-	// All extractors fail, should return the last error
-	ctx4 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx4)
-	token, err = Chain(FromHeader("X-Token"), FromQuery("token")).Extract(ctx4)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	t.Run("second_extractor_succeeds", func(t *testing.T) {
+		t.Parallel()
 
-	// All extractors find nothing (return empty string and nil error), should return ErrNotFound
-	ctx5 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx5)
-	// This extractor will return "", nil
-	dummyExtractor := Extractor{
-		Extract: func(_ fiber.Ctx) (string, error) {
-			return "", nil
-		},
-		Source: SourceCustom,
-		Key:    "token",
-	}
-	token, err = Chain(dummyExtractor).Extract(ctx5)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=token_from_query")
+		token, err := Chain(FromHeader("X-Token"), FromQuery("token")).Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "token_from_query", token)
+	})
+
+	t.Run("all_extractors_fail", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		token, err := Chain(FromHeader("X-Token"), FromQuery("token")).Extract(ctx)
+		require.Empty(t, token)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("empty_extractor_returns_not_found", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		// This extractor will return "", nil
+		dummyExtractor := Extractor{
+			Extract: func(_ fiber.Ctx) (string, error) {
+				return "", nil
+			},
+			Source: SourceCustom,
+			Key:    "token",
+		}
+		token, err := Chain(dummyExtractor).Extract(ctx)
+		require.Empty(t, token)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
 }
 
 // go test -run Test_Extractor_FromAuthHeader_EdgeCases
 func Test_Extractor_FromAuthHeader_EdgeCases(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	t.Run("wrong_scheme", func(t *testing.T) {
+		t.Parallel()
 
-	// Test case: Authorization header exists but doesn't match the expected scheme
-	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx1)
-	ctx1.Request().Header.Set(fiber.HeaderAuthorization, "Basic dXNlcjpwYXNz") // Basic auth instead of Bearer
-	token, err := FromAuthHeader("Bearer").Extract(ctx1)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set(fiber.HeaderAuthorization, "Basic dXNlcjpwYXNz") // Basic auth instead of Bearer
+		token, err := FromAuthHeader("Bearer").Extract(ctx)
+		require.Empty(t, token)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
 
-	// Test case: Authorization header exists but has wrong format
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx2)
-	ctx2.Request().Header.Set(fiber.HeaderAuthorization, "Bearertoken") // Missing space after Bearer
-	token, err = FromAuthHeader("Bearer").Extract(ctx2)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+	t.Run("missing_space_after_scheme", func(t *testing.T) {
+		t.Parallel()
 
-	// Test case: Authorization header exists but scheme doesn't match case-insensitively
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx3)
-	ctx3.Request().Header.Set(fiber.HeaderAuthorization, "bearer token") // lowercase bearer
-	token, err = FromAuthHeader("Bearer").Extract(ctx3)
-	require.NoError(t, err)
-	require.Equal(t, "token", token)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearertoken") // Missing space after Bearer
+		token, err := FromAuthHeader("Bearer").Extract(ctx)
+		require.Empty(t, token)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("case_insensitive_scheme_matching", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set(fiber.HeaderAuthorization, "bearer token") // lowercase bearer
+		token, err := FromAuthHeader("Bearer").Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "token", token)
+	})
 }
 
 // go test -run Test_Extractor_Chain_Introspection
@@ -236,61 +286,78 @@ func Test_Extractor_Chain_Introspection(t *testing.T) {
 func Test_Extractor_FromCustom(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	t.Run("successful_extraction", func(t *testing.T) {
+		t.Parallel()
 
-	// Test successful extraction with FromCustom
-	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx1)
-	ctx1.Request().Header.Set("X-Custom", "custom-value")
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Custom", "custom-value")
 
-	customExtractor := FromCustom("X-Custom", func(c fiber.Ctx) (string, error) {
-		value := c.Get("X-Custom")
-		if value == "" {
-			return "", ErrNotFound
-		}
-		return strings.ToUpper(value), nil
+		customExtractor := FromCustom("X-Custom", func(c fiber.Ctx) (string, error) {
+			value := c.Get("X-Custom")
+			if value == "" {
+				return "", ErrNotFound
+			}
+			return strings.ToUpper(value), nil
+		})
+
+		token, err := customExtractor.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "CUSTOM-VALUE", token)
+
+		// Verify metadata
+		require.Equal(t, SourceCustom, customExtractor.Source)
+		require.Equal(t, "X-Custom", customExtractor.Key)
+		require.Equal(t, "", customExtractor.AuthScheme)
 	})
 
-	token, err := customExtractor.Extract(ctx1)
-	require.NoError(t, err)
-	require.Equal(t, "CUSTOM-VALUE", token)
+	t.Run("extraction_with_error", func(t *testing.T) {
+		t.Parallel()
 
-	// Verify metadata
-	require.Equal(t, SourceCustom, customExtractor.Source)
-	require.Equal(t, "X-Custom", customExtractor.Key)
-	require.Equal(t, "", customExtractor.AuthScheme)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
-	// Test FromCustom with error
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx2)
+		errorExtractor := FromCustom("test", func(_ fiber.Ctx) (string, error) {
+			return "", fiber.NewError(fiber.StatusBadRequest, "Custom error")
+		})
 
-	errorExtractor := FromCustom("test", func(_ fiber.Ctx) (string, error) {
-		return "", fiber.NewError(fiber.StatusBadRequest, "Custom error")
+		token, err := errorExtractor.Extract(ctx)
+		require.Empty(t, token)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "Custom error")
 	})
 
-	token, err = errorExtractor.Extract(ctx2)
-	require.Empty(t, token)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "Custom error")
+	t.Run("extraction_returning_empty_string", func(t *testing.T) {
+		t.Parallel()
 
-	// Test FromCustom returning empty string
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx3)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
-	emptyExtractor := FromCustom("empty", func(_ fiber.Ctx) (string, error) {
-		return "", nil
+		emptyExtractor := FromCustom("empty", func(_ fiber.Ctx) (string, error) {
+			return "", nil
+		})
+
+		token, err := emptyExtractor.Extract(ctx)
+		require.Empty(t, token)
+		require.NoError(t, err) // Should return empty string with no error
 	})
 
-	token, err = emptyExtractor.Extract(ctx3)
-	require.Empty(t, token)
-	require.NoError(t, err) // Should return empty string with no error
+	t.Run("nil_function", func(t *testing.T) {
+		t.Parallel()
 
-	// Test FromCustom with nil function
-	nilExtractor := FromCustom("nil", nil)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
-	token, err = nilExtractor.Extract(ctx3)
-	require.Empty(t, token)
-	require.ErrorIs(t, err, ErrNotFound) // Should return ErrNotFound for nil function
+		nilExtractor := FromCustom("nil", nil)
+
+		token, err := nilExtractor.Extract(ctx)
+		require.Empty(t, token)
+		require.ErrorIs(t, err, ErrNotFound) // Should return ErrNotFound for nil function
+	})
 }
 
 // go test -run Test_Extractor_Chain_Error_Propagation
@@ -319,7 +386,7 @@ func Test_Extractor_Chain_Error_Propagation(t *testing.T) {
 	chainExtractor := Chain(errorExtractor1, errorExtractor2)
 
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
 	token, err := chainExtractor.Extract(ctx)
 	require.Empty(t, token)
@@ -356,7 +423,7 @@ func Test_Extractor_Chain_With_Success(t *testing.T) {
 	chainExtractor := Chain(failingExtractor, successExtractor)
 
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
 	token, err := chainExtractor.Extract(ctx)
 	require.NoError(t, err)
@@ -371,7 +438,7 @@ func Test_Extractor_FromAuthHeader_CustomScheme(t *testing.T) {
 
 	// Test with custom auth scheme
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
 	ctx.Request().Header.Set(fiber.HeaderAuthorization, "CustomScheme my-token")
 
 	extractor := FromAuthHeader("CustomScheme")
@@ -391,15 +458,16 @@ func Test_Extractor_FromAuthHeader_WhitespaceToken(t *testing.T) {
 
 	app := fiber.New()
 
-	// Test with token containing whitespace (should be preserved)
+	// Test with token containing whitespace (should be rejected per RFC 7235 token68 spec)
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
 	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token with spaces and\ttabs")
 
 	extractor := FromAuthHeader("Bearer")
 	token, err := extractor.Extract(ctx)
-	require.NoError(t, err)
-	require.Equal(t, "token with spaces and\ttabs", token)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrNotFound)
+	require.Empty(t, token)
 
 	// Verify metadata
 	require.Equal(t, SourceAuthHeader, extractor.Source)
@@ -411,94 +479,199 @@ func Test_Extractor_FromAuthHeader_WhitespaceToken(t *testing.T) {
 func Test_Extractor_FromAuthHeader_RFC_Compliance(t *testing.T) {
 	t.Parallel()
 
+	testCases := []struct {
+		name          string
+		header        string
+		expectedToken string
+		description   string
+		shouldFail    bool
+	}{
+		{
+			name:        "tab_after_scheme",
+			header:      "Bearer\ttoken",
+			shouldFail:  true,
+			description: "tab character after scheme should be rejected - RFC specifies 1*SP, not tabs",
+		},
+		{
+			name:          "single_space_after_scheme",
+			header:        "Bearer token",
+			shouldFail:    false,
+			expectedToken: "token",
+			description:   "single space after scheme should be accepted - standard format",
+		},
+		{
+			name:        "multiple_spaces_after_scheme",
+			header:      "Bearer  token",
+			shouldFail:  true,
+			description: "multiple spaces after scheme rejected for simplicity - single space is standard",
+		},
+		{
+			name:        "mixed_whitespace_after_scheme",
+			header:      "Bearer \t \ttoken",
+			shouldFail:  true,
+			description: "mixed whitespace after scheme should be rejected - RFC specifies 1*SP, not tabs",
+		},
+		{
+			name:        "no_whitespace_after_scheme",
+			header:      "Bearertoken",
+			shouldFail:  true,
+			description: "no whitespace after scheme should fail",
+		},
+		{
+			name:        "header_too_short",
+			header:      "Bearer",
+			shouldFail:  true,
+			description: "header too short for scheme + space + token",
+		},
+		{
+			name:        "only_whitespace_after_scheme",
+			header:      "Bearer   \t  ",
+			shouldFail:  true,
+			description: "only whitespace after scheme should fail",
+		},
+		{
+			name:          "case_insensitive_scheme",
+			header:        "BEARER token",
+			shouldFail:    false,
+			expectedToken: "token",
+			description:   "case-insensitive scheme matching should work",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+			ctx.Request().Header.Set(fiber.HeaderAuthorization, tc.header)
+			token, err := FromAuthHeader("Bearer").Extract(ctx)
+
+			if tc.shouldFail {
+				require.Error(t, err, "Expected error for %s", tc.description)
+				require.ErrorIs(t, err, ErrNotFound)
+				require.Empty(t, token)
+			} else {
+				require.NoError(t, err, "Expected no error for %s", tc.description)
+				require.Equal(t, tc.expectedToken, token)
+			}
+		})
+	}
+
+	// Special case for case-insensitive scheme matching with different extractor scheme
+	t.Run("case_insensitive_extractor_scheme", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		ctx.Request().Header.Set(fiber.HeaderAuthorization, "BEARER token")
+		token, err := FromAuthHeader("bearer").Extract(ctx) // lowercase extractor scheme
+		require.NoError(t, err)
+		require.Equal(t, "token", token)
+	})
+}
+
+// go test -run Test_Extractor_FromAuthHeader_Token68_Validation
+func Test_Extractor_FromAuthHeader_Token68_Validation(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
-	// Test RFC 9110: Tab character after scheme (should be accepted)
-	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx1)
-	ctx1.Request().Header.Set(fiber.HeaderAuthorization, "Bearer\ttoken") // Tab after Bearer
-	token, err := FromAuthHeader("Bearer").Extract(ctx1)
+	// Test valid token68 characters (should pass)
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/=")
+	token, err := FromAuthHeader("Bearer").Extract(ctx)
 	require.NoError(t, err)
-	require.Equal(t, "token", token)
+	require.Equal(t, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/=", token)
 
-	// Test RFC 9110: Multiple spaces after scheme
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx2)
-	ctx2.Request().Header.Set(fiber.HeaderAuthorization, "Bearer  token") // Multiple spaces
-	token, err = FromAuthHeader("Bearer").Extract(ctx2)
-	require.NoError(t, err)
-	require.Equal(t, "token", token)
+	// Test tokens with spaces (should fail)
+	testCases := []struct {
+		name        string
+		header      string
+		description string
+		shouldFail  bool
+	}{
+		{name: "space_in_token", header: "Bearer abc def", shouldFail: true, description: "space in token"},
+		{name: "space_after_scheme", header: "Bearer  abc", shouldFail: true, description: "multiple spaces after scheme"},
+		{name: "no_space_after_scheme", header: "Bearertoken", shouldFail: true, description: "no space after scheme"},
+		{name: "only_scheme", header: "Bearer", shouldFail: true, description: "only scheme, no token"},
+		{name: "tab_after_scheme", header: "Bearer\ttoken", shouldFail: true, description: "tab after scheme"},
+		{name: "tab_in_token", header: "Bearer abc\tdef", shouldFail: true, description: "tab in token"},
+		{name: "newline_in_token", header: "Bearer abc\ndef", shouldFail: true, description: "newline in token"},
+		{name: "leading_space_in_token", header: "Bearer  abc", shouldFail: true, description: "leading space in token after scheme space"},
+		{name: "trailing_space_in_token", header: "Bearer abc ", shouldFail: true, description: "trailing space in token"},
+		{name: "comma_in_token", header: "Bearer abc,def", shouldFail: true, description: "comma in token"},
+		{name: "semicolon_in_token", header: "Bearer abc;def", shouldFail: true, description: "semicolon in token"},
+		{name: "quote_in_token", header: "Bearer abc\"def", shouldFail: true, description: "quote in token"},
+		{name: "bracket_in_token", header: "Bearer abc[def", shouldFail: true, description: "bracket in token"},
+		{name: "equals_at_start", header: "Bearer =abc", shouldFail: true, description: "equals at start of token"},
+		{name: "equals_in_middle", header: "Bearer ab=cd", shouldFail: true, description: "equals in middle of token"},
+		{name: "valid_equals_at_end", header: "Bearer abc=", shouldFail: false, description: "valid equals at end"},
+		{name: "valid_double_equals", header: "Bearer abc==", shouldFail: false, description: "valid double equals at end"},
+	}
 
-	// Test RFC 9110: Mixed whitespace after scheme
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx3)
-	ctx3.Request().Header.Set(fiber.HeaderAuthorization, "Bearer \t \ttoken") // Space + tabs
-	token, err = FromAuthHeader("Bearer").Extract(ctx3)
-	require.NoError(t, err)
-	require.Equal(t, "token", token)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(ctx) })
+			ctx.Request().Header.Set(fiber.HeaderAuthorization, tc.header)
 
-	// Test RFC 9110: No whitespace after scheme (should fail)
-	ctx4 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx4)
-	ctx4.Request().Header.Set(fiber.HeaderAuthorization, "Bearertoken") // No space
-	token, err = FromAuthHeader("Bearer").Extract(ctx4)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+			token, err := FromAuthHeader("Bearer").Extract(ctx)
 
-	// Test RFC 9110: Header too short for scheme + space + token
-	ctx5 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx5)
-	ctx5.Request().Header.Set(fiber.HeaderAuthorization, "Bearer") // Just scheme, no space or token
-	token, err = FromAuthHeader("Bearer").Extract(ctx5)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
-
-	// Test RFC 9110: Only whitespace after scheme (should fail)
-	ctx6 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx6)
-	ctx6.Request().Header.Set(fiber.HeaderAuthorization, "Bearer   \t  ") // Only whitespace
-	token, err = FromAuthHeader("Bearer").Extract(ctx6)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
-
-	// Test RFC 9110: Case-insensitive scheme matching
-	ctx7 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx7)
-	ctx7.Request().Header.Set(fiber.HeaderAuthorization, "BEARER token") // Uppercase
-	token, err = FromAuthHeader("bearer").Extract(ctx7)
-	require.NoError(t, err)
-	require.Equal(t, "token", token)
+			if tc.shouldFail {
+				require.Error(t, err, "Expected error for %s", tc.description)
+				require.ErrorIs(t, err, ErrNotFound)
+				require.Empty(t, token)
+			} else {
+				require.NoError(t, err, "Expected no error for %s", tc.description)
+				require.NotEmpty(t, token)
+			}
+		})
+	}
 }
 
 // go test -run Test_Extractor_FromAuthHeader_NoScheme
 func Test_Extractor_FromAuthHeader_NoScheme(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	t.Run("returns_header_value", func(t *testing.T) {
+		t.Parallel()
 
-	// Test with no auth scheme (empty string) - should return header value
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-	ctx.Request().Header.Set(fiber.HeaderAuthorization, "some-token-value")
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set(fiber.HeaderAuthorization, "some-token-value")
 
-	extractor := FromAuthHeader("") // No scheme
-	token, err := extractor.Extract(ctx)
-	require.NoError(t, err)
-	require.Equal(t, "some-token-value", token)
+		extractor := FromAuthHeader("") // No scheme
+		token, err := extractor.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "some-token-value", token)
 
-	// Verify metadata
-	require.Equal(t, SourceAuthHeader, extractor.Source)
-	require.Equal(t, fiber.HeaderAuthorization, extractor.Key)
-	require.Equal(t, "", extractor.AuthScheme)
+		// Verify metadata
+		require.Equal(t, SourceAuthHeader, extractor.Source)
+		require.Equal(t, fiber.HeaderAuthorization, extractor.Key)
+		require.Equal(t, "", extractor.AuthScheme)
+	})
 
-	// Test with no auth scheme and empty header (should return ErrNotFound)
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx2)
-	// No Authorization header set
+	t.Run("empty_header_returns_not_found", func(t *testing.T) {
+		t.Parallel()
 
-	token, err = extractor.Extract(ctx2)
-	require.Empty(t, token)
-	require.Equal(t, ErrNotFound, err)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		// No Authorization header set
+
+		extractor := FromAuthHeader("") // No scheme
+		token, err := extractor.Extract(ctx)
+		require.Empty(t, token)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
 }
 
 // go test -run Test_Extractor_Chain_NilFunctions
@@ -525,7 +698,7 @@ func Test_Extractor_Chain_NilFunctions(t *testing.T) {
 	chainExtractor := Chain(nilExtractor, validExtractor)
 
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
 	token, err := chainExtractor.Extract(ctx)
 	require.NoError(t, err)
@@ -558,7 +731,7 @@ func Test_Extractor_Chain_AllErrors(t *testing.T) {
 	chainExtractor := Chain(errorExtractor1, errorExtractor2)
 
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
 	token, err := chainExtractor.Extract(ctx)
 	require.Empty(t, token)
@@ -574,9 +747,7 @@ func Test_Extractor_Chain_AllErrors(t *testing.T) {
 func Test_Extractor_Chain_MixedScenarios(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-
-	// Test chain with mixed success/error scenarios
+	// Define reusable extractors
 	failingExtractor := Extractor{
 		Extract: func(_ fiber.Ctx) (string, error) {
 			return "", ErrNotFound
@@ -601,95 +772,168 @@ func Test_Extractor_Chain_MixedScenarios(t *testing.T) {
 		Source: SourceCustom,
 	}
 
-	// Test: error then success (should return success)
-	chain1 := Chain(errorExtractor, successExtractor)
-	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx1)
+	t.Run("error_then_success", func(t *testing.T) {
+		t.Parallel()
 
-	token, err := chain1.Extract(ctx1)
-	require.NoError(t, err)
-	require.Equal(t, "success", token)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
-	// Test: fail then error then success (should return success)
-	chain2 := Chain(failingExtractor, errorExtractor, successExtractor)
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx2)
+		chain := Chain(errorExtractor, successExtractor)
+		token, err := chain.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "success", token)
+	})
 
-	token, err = chain2.Extract(ctx2)
-	require.NoError(t, err)
-	require.Equal(t, "success", token)
+	t.Run("fail_then_error_then_success", func(t *testing.T) {
+		t.Parallel()
 
-	// Test: fail then error (should return last error)
-	chain3 := Chain(failingExtractor, errorExtractor)
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx3)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
-	token, err = chain3.Extract(ctx3)
-	require.Empty(t, token)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "Bad request")
+		chain := Chain(failingExtractor, errorExtractor, successExtractor)
+		token, err := chain.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "success", token)
+	})
+
+	t.Run("fail_then_error", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		chain := Chain(failingExtractor, errorExtractor)
+		token, err := chain.Extract(ctx)
+		require.Empty(t, token)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "Bad request")
+	})
 }
 
 // go test -run Test_Extractor_SourceTypes
 func Test_Extractor_SourceTypes(t *testing.T) {
 	t.Parallel()
 
-	// Test that all source types are properly set
-	require.Equal(t, SourceHeader, FromHeader("test").Source)
-	require.Equal(t, SourceAuthHeader, FromAuthHeader("Bearer").Source)
-	require.Equal(t, SourceAuthHeader, FromAuthHeader("").Source) // Empty scheme should still be SourceAuthHeader
-	require.Equal(t, SourceForm, FromForm("test").Source)
-	require.Equal(t, SourceQuery, FromQuery("test").Source)
-	require.Equal(t, SourceParam, FromParam("test").Source)
-	require.Equal(t, SourceCookie, FromCookie("test").Source)
-	require.Equal(t, SourceCustom, FromCustom("test", func(_ fiber.Ctx) (string, error) { return "test", nil }).Source)
+	t.Run("individual_extractor_sources", func(t *testing.T) {
+		t.Parallel()
 
-	// Test chain source (should use first extractor's source)
-	chain := Chain(FromHeader("X-Test"), FromQuery("test"))
-	require.Equal(t, SourceHeader, chain.Source)
-	require.Equal(t, "X-Test", chain.Key)
+		// Test that all source types are properly set
+		require.Equal(t, SourceHeader, FromHeader("test").Source)
+		require.Equal(t, SourceAuthHeader, FromAuthHeader("Bearer").Source)
+		require.Equal(t, SourceAuthHeader, FromAuthHeader("").Source) // Empty scheme should still be SourceAuthHeader
+		require.Equal(t, SourceForm, FromForm("test").Source)
+		require.Equal(t, SourceQuery, FromQuery("test").Source)
+		require.Equal(t, SourceParam, FromParam("test").Source)
+		require.Equal(t, SourceCookie, FromCookie("test").Source)
+		require.Equal(t, SourceCustom, FromCustom("test", func(_ fiber.Ctx) (string, error) { return "test", nil }).Source)
+	})
+
+	t.Run("chain_source_metadata", func(t *testing.T) {
+		t.Parallel()
+
+		// Test chain source (should use first extractor's source)
+		chain := Chain(FromHeader("X-Test"), FromQuery("test"))
+		require.Equal(t, SourceHeader, chain.Source)
+		require.Equal(t, "X-Test", chain.Key)
+	})
 }
 
 // go test -run Test_Extractor_URL_Encoded
 func Test_Extractor_URL_Encoded(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	t.Run("FromQuery_with_spaces", func(t *testing.T) {
+		t.Parallel()
 
-	// FromQuery with URL-encoded value
-	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx1)
-	ctx1.Request().SetRequestURI("/?token=token%20with%20spaces")
-	token, err := FromQuery("token").Extract(ctx1)
-	require.NoError(t, err)
-	require.Equal(t, "token with spaces", token) // Should be URL-decoded automatically by fasthttp
-
-	// FromForm with URL-encoded value
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx2)
-	ctx2.Request().Header.SetContentType(fiber.MIMEApplicationForm)
-	ctx2.Request().Header.SetMethod(fiber.MethodPost)
-	ctx2.Request().SetBodyString("token=token%2Bwith%2Bplus")
-	token, err = FromForm("token").Extract(ctx2)
-	require.NoError(t, err)
-	require.Equal(t, "token+with+plus", token) // URL-decoded
-
-	// FromQuery with base64 encoded value that's URL-encoded
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx3)
-	base64Value := "cGFzc3dvcmQ%3D" // URL-encoded base64 "cGFzc3dvcmQ="
-	ctx3.Request().SetRequestURI("/?token=" + base64Value)
-	token, err = FromQuery("token").Extract(ctx3)
-	require.NoError(t, err)
-	require.Equal(t, "cGFzc3dvcmQ=", token) // Should be URL-decoded
-
-	// FromParam with URL-encoded value
-	app.Get("/test/:token", func(c fiber.Ctx) error {
-		token, extractErr := FromParam("token").Extract(c)
-		require.NoError(t, extractErr)
-		require.Equal(t, "token/with/slashes", token)
-		return nil
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=token%20with%20spaces")
+		token, err := FromQuery("token").Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "token with spaces", token) // Should be URL-decoded automatically by fasthttp
 	})
-	_, err = app.Test(newRequest(fiber.MethodGet, "/test/token%2Fwith%2Fslashes"))
-	require.NoError(t, err)
+
+	t.Run("FromForm_with_plus", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetContentType(fiber.MIMEApplicationForm)
+		ctx.Request().Header.SetMethod(fiber.MethodPost)
+		ctx.Request().SetBodyString("token=token%2Bwith%2Bplus")
+		token, err := FromForm("token").Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "token+with+plus", token) // URL-decoded
+	})
+
+	t.Run("FromQuery_base64_encoded", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		base64Value := "cGFzc3dvcmQ%3D" // URL-encoded base64 "cGFzc3dvcmQ="
+		ctx.Request().SetRequestURI("/?token=" + base64Value)
+		token, err := FromQuery("token").Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "cGFzc3dvcmQ=", token) // Should be URL-decoded
+	})
+
+	t.Run("FromParam_with_slashes", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Get("/test/:token", func(c fiber.Ctx) error {
+			token, extractErr := FromParam("token").Extract(c)
+			require.NoError(t, extractErr)
+			require.Equal(t, "token/with/slashes", token)
+			return nil
+		})
+		_, err := app.Test(newRequest(fiber.MethodGet, "/test/token%2Fwith%2Fslashes"))
+		require.NoError(t, err)
+	})
+}
+
+func Test_isValidToken68(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		token string
+		want  bool
+	}{
+		{name: "empty string", token: "", want: false},
+		{name: "single uppercase", token: "A", want: true},
+		{name: "single lowercase", token: "a", want: true},
+		{name: "single digit", token: "0", want: true},
+		{name: "all allowed symbols except =", token: "-._~+/", want: true},
+		{name: "letters and digits", token: "token68", want: true},
+		{name: "equals at end", token: "token=", want: true},
+		{name: "multiple equals", token: "token==", want: true},
+		{name: "equals at start", token: "=token", want: false},
+		{name: "equals in middle", token: "tok=en", want: false},
+		{name: "equals not at end with other chars", token: "token=extra", want: false},
+		{name: "space in token", token: "token space", want: false},
+		{name: "tab character in token", token: "token\ttab", want: false},
+		{name: "invalid symbol", token: "token@", want: false},
+		{name: "valid token68", token: "token68", want: true},
+		{token: "token68=", want: true, name: "valid token68 with equals at end"},
+		{token: "token68==", want: true, name: "multiple equals at end"},
+		{token: "token68=extra", want: false, name: "equals followed by extra chars"},
+		{token: "T0ken-._~+/=", want: true, name: "all allowed chars with equals at end"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := isValidToken68(tc.token)
+			if got != tc.want {
+				t.Errorf("isValidToken68(%q) = %v, want %v", tc.token, got, tc.want)
+			}
+		})
+	}
 }
