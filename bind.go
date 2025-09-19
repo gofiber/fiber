@@ -30,7 +30,7 @@ var bindPool = sync.Pool{
 	},
 }
 
-// Bind struct
+// Bind provides helper methods for binding request data to Go values.
 type Bind struct {
 	ctx            Ctx
 	dontHandleErrs bool
@@ -331,6 +331,8 @@ func (b *Bind) Body(out any) error {
 	return ErrUnprocessableEntity
 }
 
+// All binds values from URI params, the request body, the query string,
+// headers, and cookies into the provided struct in precedence order.
 func (b *Bind) All(out any) error {
 	outVal := reflect.ValueOf(out)
 	if outVal.Kind() != reflect.Ptr || outVal.Elem().Kind() != reflect.Struct {

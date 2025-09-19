@@ -110,90 +110,112 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 	}
 }
 
+// Trace logs the given values at trace level.
 func (l *defaultLogger) Trace(v ...any) {
 	l.privateLog(LevelTrace, v)
 }
 
+// Debug logs the given values at debug level.
 func (l *defaultLogger) Debug(v ...any) {
 	l.privateLog(LevelDebug, v)
 }
 
+// Info logs the given values at info level.
 func (l *defaultLogger) Info(v ...any) {
 	l.privateLog(LevelInfo, v)
 }
 
+// Warn logs the given values at warn level.
 func (l *defaultLogger) Warn(v ...any) {
 	l.privateLog(LevelWarn, v)
 }
 
+// Error logs the given values at error level.
 func (l *defaultLogger) Error(v ...any) {
 	l.privateLog(LevelError, v)
 }
 
+// Fatal logs the given values at fatal level and terminates the process.
 func (l *defaultLogger) Fatal(v ...any) {
 	l.privateLog(LevelFatal, v)
 }
 
+// Panic logs the given values at panic level and panics.
 func (l *defaultLogger) Panic(v ...any) {
 	l.privateLog(LevelPanic, v)
 }
 
+// Tracef formats according to a format specifier and logs at trace level.
 func (l *defaultLogger) Tracef(format string, v ...any) {
 	l.privateLogf(LevelTrace, format, v)
 }
 
+// Debugf formats according to a format specifier and logs at debug level.
 func (l *defaultLogger) Debugf(format string, v ...any) {
 	l.privateLogf(LevelDebug, format, v)
 }
 
+// Infof formats according to a format specifier and logs at info level.
 func (l *defaultLogger) Infof(format string, v ...any) {
 	l.privateLogf(LevelInfo, format, v)
 }
 
+// Warnf formats according to a format specifier and logs at warn level.
 func (l *defaultLogger) Warnf(format string, v ...any) {
 	l.privateLogf(LevelWarn, format, v)
 }
 
+// Errorf formats according to a format specifier and logs at error level.
 func (l *defaultLogger) Errorf(format string, v ...any) {
 	l.privateLogf(LevelError, format, v)
 }
 
+// Fatalf formats according to a format specifier, logs at fatal level, and terminates the process.
 func (l *defaultLogger) Fatalf(format string, v ...any) {
 	l.privateLogf(LevelFatal, format, v)
 }
 
+// Panicf formats according to a format specifier, logs at panic level, and panics.
 func (l *defaultLogger) Panicf(format string, v ...any) {
 	l.privateLogf(LevelPanic, format, v)
 }
 
+// Tracew logs at trace level with a message and key/value pairs.
 func (l *defaultLogger) Tracew(msg string, keysAndValues ...any) {
 	l.privateLogw(LevelTrace, msg, keysAndValues)
 }
 
+// Debugw logs at debug level with a message and key/value pairs.
 func (l *defaultLogger) Debugw(msg string, keysAndValues ...any) {
 	l.privateLogw(LevelDebug, msg, keysAndValues)
 }
 
+// Infow logs at info level with a message and key/value pairs.
 func (l *defaultLogger) Infow(msg string, keysAndValues ...any) {
 	l.privateLogw(LevelInfo, msg, keysAndValues)
 }
 
+// Warnw logs at warn level with a message and key/value pairs.
 func (l *defaultLogger) Warnw(msg string, keysAndValues ...any) {
 	l.privateLogw(LevelWarn, msg, keysAndValues)
 }
 
+// Errorw logs at error level with a message and key/value pairs.
 func (l *defaultLogger) Errorw(msg string, keysAndValues ...any) {
 	l.privateLogw(LevelError, msg, keysAndValues)
 }
 
+// Fatalw logs at fatal level with a message and key/value pairs, then terminates the process.
 func (l *defaultLogger) Fatalw(msg string, keysAndValues ...any) {
 	l.privateLogw(LevelFatal, msg, keysAndValues)
 }
 
+// Panicw logs at panic level with a message and key/value pairs, then panics.
 func (l *defaultLogger) Panicw(msg string, keysAndValues ...any) {
 	l.privateLogw(LevelPanic, msg, keysAndValues)
 }
 
+// WithContext returns a logger that shares the underlying output but adjusts the call depth.
 func (l *defaultLogger) WithContext(_ context.Context) CommonLogger {
 	return &defaultLogger{
 		stdlog: l.stdlog,
@@ -202,10 +224,12 @@ func (l *defaultLogger) WithContext(_ context.Context) CommonLogger {
 	}
 }
 
+// SetLevel updates the minimum level that will be emitted by the logger.
 func (l *defaultLogger) SetLevel(level Level) {
 	l.level = level
 }
 
+// SetOutput replaces the underlying writer used by the logger.
 func (l *defaultLogger) SetOutput(writer io.Writer) {
 	l.stdlog.SetOutput(writer)
 }

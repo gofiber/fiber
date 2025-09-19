@@ -97,7 +97,8 @@ func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
 	return true
 }
 
-// Cookie data for c.Cookie
+// Cookie defines the values used when configuring cookies emitted by
+// DefaultRes.Cookie.
 type Cookie struct {
 	Expires     time.Time `json:"expires"`      // The expiration date of the cookie
 	Name        string    `json:"name"`         // The name of the cookie
@@ -118,6 +119,8 @@ type ResFmt struct {
 	MediaType string
 }
 
+// DefaultRes is the default implementation of Res used by DefaultCtx.
+//
 //go:generate ifacemaker --file res.go --struct DefaultRes --iface Res --pkg fiber --output res_interface_gen.go --not-exported true --iface-comment "Res is an interface for response-related Ctx methods."
 type DefaultRes struct {
 	c *DefaultCtx

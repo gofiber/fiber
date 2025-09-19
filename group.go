@@ -9,7 +9,8 @@ import (
 	"reflect"
 )
 
-// Group struct
+// Group represents a collection of routes that share middleware and a common
+// path prefix.
 type Group struct {
 	app         *App
 	parentGroup *Group

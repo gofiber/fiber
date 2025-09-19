@@ -55,6 +55,8 @@ type WithLogger interface {
 	Panicw(msg string, keysAndValues ...any)
 }
 
+// CommonLogger is the set of logging operations available across Fiber's
+// logging implementations.
 type CommonLogger interface {
 	Logger
 	FormatLogger

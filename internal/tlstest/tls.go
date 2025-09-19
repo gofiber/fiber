@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+// GetTLSConfigs generates TLS configurations for a test server and client that
+// trust each other using an in-memory certificate authority.
 func GetTLSConfigs() (serverTLSConf, clientTLSConf *tls.Config, err error) {
 	// set up our CA certificate
 	ca := &x509.Certificate{

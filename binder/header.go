@@ -5,7 +5,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// v is the header binder for header request body.
+// HeaderBinding is the binder implementation used to populate values from HTTP headers.
 type HeaderBinding struct {
 	EnableSplitting bool
 }

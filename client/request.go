@@ -134,15 +134,18 @@ type pair struct {
 	v []string
 }
 
+// Len implements sort.Interface and reports the number of tracked keys.
 func (p *pair) Len() int {
 	return len(p.k)
 }
 
+// Swap implements sort.Interface and swaps the entries at the provided indices.
 func (p *pair) Swap(i, j int) {
 	p.k[i], p.k[j] = p.k[j], p.k[i]
 	p.v[i], p.v[j] = p.v[j], p.v[i]
 }
 
+// Less implements sort.Interface and orders entries lexicographically by key.
 func (p *pair) Less(i, j int) bool {
 	return p.k[i] < p.k[j]
 }

@@ -27,11 +27,12 @@ const (
 	sessionIDContextKey sessionIDKey = iota
 )
 
+// Store manages session data using the configured storage backend.
 type Store struct {
 	Config
 }
 
-// New creates a new session store with the provided configuration.
+// NewStore creates a new session store with the provided configuration.
 //
 // Parameters:
 //   - config: Variadic parameter to override default config.
@@ -41,7 +42,7 @@ type Store struct {
 //
 // Usage:
 //
-//	store := session.New()
+//	store := session.NewStore()
 func NewStore(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)

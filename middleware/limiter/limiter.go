@@ -13,6 +13,8 @@ const (
 	xRateLimitReset     = "X-RateLimit-Reset"
 )
 
+// Handler defines a rate-limiting strategy that can produce a middleware
+// handler using the provided configuration.
 type Handler interface {
 	New(config Config) fiber.Handler
 }

@@ -8,6 +8,7 @@ import (
 	utils "github.com/gofiber/utils/v2"
 )
 
+// FixedWindow implements a fixed-window rate limiting strategy.
 type FixedWindow struct{}
 
 // New creates a new fixed window middleware handler

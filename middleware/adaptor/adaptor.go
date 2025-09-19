@@ -16,6 +16,7 @@ import (
 
 type disableLogger struct{}
 
+// Printf implements the fasthttp Logger interface and discards log output.
 func (*disableLogger) Printf(string, ...any) {
 }
 

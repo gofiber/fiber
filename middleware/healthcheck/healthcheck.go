@@ -4,6 +4,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// New returns a health-check handler that responds based on the provided
+// configuration.
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 

@@ -13,7 +13,7 @@ import (
 	"golang.org/x/net/idna"
 )
 
-// Range data for c.Range
+// Range represents the parsed HTTP Range header extracted by DefaultReq.Range.
 type Range struct {
 	Type   string
 	Ranges []RangeSet
@@ -25,6 +25,8 @@ type RangeSet struct {
 	End   int
 }
 
+// DefaultReq is the default implementation of Req used by DefaultCtx.
+//
 //go:generate ifacemaker --file req.go --struct DefaultReq --iface Req --pkg fiber --output req_interface_gen.go --not-exported true --iface-comment "Req is an interface for request-related Ctx methods."
 type DefaultReq struct {
 	c *DefaultCtx
