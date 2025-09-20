@@ -2,6 +2,7 @@ package csrf
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"slices"
 	"strings"
@@ -105,7 +106,10 @@ func New(config ...Config) fiber.Handler {
 			cookieToken := c.Cookies(cfg.CookieName)
 
 			if cookieToken != "" {
-				raw := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
+				raw, err := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
+				if err != nil {
+					return cfg.ErrorHandler(c, err)
+				}
 
 				if raw != nil {
 					token = cookieToken // Token is valid, safe to set it
@@ -154,7 +158,10 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
 
-			raw := getRawFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+			raw, err := getRawFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+			if err != nil {
+				return cfg.ErrorHandler(c, err)
+			}
 
 			if raw == nil {
 				// If token is not in storage, expire the cookie
@@ -164,7 +171,9 @@ func New(config ...Config) fiber.Handler {
 			}
 			if cfg.SingleUseToken {
 				// If token is single use, delete it from storage
-				deleteTokenFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+				if err := deleteTokenFromStorage(c, extractedToken, cfg, sessionManager, storageManager); err != nil {
+					return cfg.ErrorHandler(c, err)
+				}
 			} else {
 				token = extractedToken // Token is valid, safe to set it
 			}
@@ -177,7 +186,9 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Create or extend the token in the storage
-		createOrExtendTokenInStorage(c, token, cfg, sessionManager, storageManager)
+		if err := createOrExtendTokenInStorage(c, token, cfg, sessionManager, storageManager); err != nil {
+			return cfg.ErrorHandler(c, err)
+		}
 
 		// Update the CSRF cookie
 		updateCSRFCookie(c, cfg, token)
@@ -215,28 +226,38 @@ func HandlerFromContext(c fiber.Ctx) *Handler {
 
 // getRawFromStorage returns the raw value from the storage for the given token
 // returns nil if the token does not exist, is expired or is invalid
-func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) []byte {
+func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) ([]byte, error) {
 	if cfg.Session != nil {
-		return sessionManager.getRaw(c, token, dummyValue)
+		return sessionManager.getRaw(c, token, dummyValue), nil
 	}
-	return storageManager.getRaw(c, token)
+	raw, err := storageManager.getRaw(c, token)
+	if err != nil {
+		return nil, fmt.Errorf("csrf: failed to fetch token from storage: %w", err)
+	}
+	return raw, nil
 }
 
 // createOrExtendTokenInStorage creates or extends the token in the storage
-func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) {
+func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) error {
 	if cfg.Session != nil {
 		sessionManager.setRaw(c, token, dummyValue, cfg.IdleTimeout)
-	} else {
-		storageManager.setRaw(c, token, dummyValue, cfg.IdleTimeout)
+		return nil
 	}
+	if err := storageManager.setRaw(c, token, dummyValue, cfg.IdleTimeout); err != nil {
+		return fmt.Errorf("csrf: failed to store token in storage: %w", err)
+	}
+	return nil
 }
 
-func deleteTokenFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) {
+func deleteTokenFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) error {
 	if cfg.Session != nil {
 		sessionManager.delRaw(c)
-	} else {
-		storageManager.delRaw(c, token)
+		return nil
 	}
+	if err := storageManager.delRaw(c, token); err != nil {
+		return fmt.Errorf("csrf: failed to delete token from storage: %w", err)
+	}
+	return nil
 }
 
 // Update CSRF cookie
@@ -275,7 +296,9 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 		return handler.config.ErrorHandler(c, ErrTokenNotFound)
 	}
 	// Remove the token from storage
-	deleteTokenFromStorage(c, cookieToken, handler.config, handler.sessionManager, handler.storageManager)
+	if err := deleteTokenFromStorage(c, cookieToken, handler.config, handler.sessionManager, handler.storageManager); err != nil {
+		return handler.config.ErrorHandler(c, err)
+	}
 	// Expire the cookie
 	expireCSRFCookie(c, handler.config)
 	return nil

@@ -4,6 +4,8 @@ package cache
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -98,12 +100,17 @@ func New(config ...Config) fiber.Handler {
 	}()
 
 	// Delete key from both manager and storage
-	deleteKey := func(dkey string) {
-		manager.del(context.Background(), dkey)
+	deleteKey := func(dkey string) error {
+		if err := manager.del(context.Background(), dkey); err != nil {
+			return err
+		}
 		// External storage saves body data with different key
 		if cfg.Storage != nil {
-			manager.del(context.Background(), dkey+"_body")
+			if err := manager.del(context.Background(), dkey+"_body"); err != nil {
+				return err
+			}
 		}
+		return nil
 	}
 
 	// Return new handler
@@ -126,7 +133,10 @@ func New(config ...Config) fiber.Handler {
 		key := cfg.KeyGenerator(c) + "_" + requestMethod
 
 		// Get entry from pool
-		e := manager.get(c, key)
+		e, err := manager.get(c, key)
+		if err != nil && !errors.Is(err, errCacheMiss) {
+			return err
+		}
 
 		// Lock entry
 		mux.Lock()
@@ -143,7 +153,13 @@ func New(config ...Config) fiber.Handler {
 
 			// Check if entry is expired
 			if e.exp != 0 && ts >= e.exp {
-				deleteKey(key)
+				if err := deleteKey(key); err != nil {
+					if e != nil {
+						manager.release(e)
+					}
+					mux.Unlock()
+					return fmt.Errorf("cache: failed to delete expired key %q: %w", key, err)
+				}
 				if cfg.MaxBytes > 0 {
 					_, size := heap.remove(e.heapidx)
 					storedBytes -= size
@@ -152,7 +168,13 @@ func New(config ...Config) fiber.Handler {
 				// Separate body value to avoid msgp serialization
 				// We can store raw bytes with Storage 👍
 				if cfg.Storage != nil {
-					e.body = manager.getRaw(c, key+"_body")
+					rawBody, err := manager.getRaw(c, key+"_body")
+					if err != nil {
+						manager.release(e)
+						mux.Unlock()
+						return cacheBodyFetchError(key, err)
+					}
+					e.body = rawBody
 				}
 				// Set response headers from cache
 				c.Response().SetBodyRaw(e.body)
@@ -230,7 +252,9 @@ func New(config ...Config) fiber.Handler {
 		if cfg.MaxBytes > 0 {
 			for storedBytes+bodySize > cfg.MaxBytes {
 				keyToRemove, size := heap.removeFirst()
-				deleteKey(keyToRemove)
+				if err := deleteKey(keyToRemove); err != nil {
+					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", keyToRemove, err)
+				}
 				storedBytes -= size
 			}
 		}
@@ -285,14 +309,22 @@ func New(config ...Config) fiber.Handler {
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			manager.setRaw(c, key+"_body", e.body, expiration)
+			if err := manager.setRaw(c, key+"_body", e.body, expiration); err != nil {
+				manager.release(e)
+				return err
+			}
 			// avoid body msgp encoding
 			e.body = nil
-			manager.set(c, key, e, expiration)
+			if err := manager.set(c, key, e, expiration); err != nil {
+				manager.release(e)
+				return err
+			}
 			manager.release(e)
 		} else {
 			// Store entry in memory
-			manager.set(c, key, e, expiration)
+			if err := manager.set(c, key, e, expiration); err != nil {
+				return err
+			}
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)
@@ -323,6 +355,13 @@ func hasRequestDirective(c fiber.Ctx, directive string) bool {
 	}
 
 	return false
+}
+
+func cacheBodyFetchError(key string, err error) error {
+	if errors.Is(err, errCacheMiss) {
+		return fmt.Errorf("cache: no cached body for key %q: %w", key, err)
+	}
+	return err
 }
 
 // parseMaxAge extracts the max-age directive from a Cache-Control header.
