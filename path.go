@@ -276,7 +276,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 // findNextParamPosition search for the next possible parameter start position
 func findNextParamPosition(pattern string) int {
 	// Find the first parameter position
-	var search = [256]bool{
+	search := [256]bool{
 		wildcardParam:    true,
 		plusParam:        true,
 		paramStarterChar: true,
@@ -295,6 +295,7 @@ func findNextParamPosition(pattern string) int {
 				return i - 1
 			}
 		}
+		next = len(pattern) - 1
 	}
 	return next
 }
