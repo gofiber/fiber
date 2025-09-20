@@ -172,10 +172,7 @@ func New(config ...Config) fiber.Handler {
 					if err != nil {
 						manager.release(e)
 						mux.Unlock()
-						if errors.Is(err, errCacheMiss) {
-							return fmt.Errorf("cache: no cached body for key %q: %w", key, err)
-						}
-						return err
+						return cacheBodyFetchError(key, err)
 					}
 					e.body = rawBody
 				}
@@ -358,6 +355,13 @@ func hasRequestDirective(c fiber.Ctx, directive string) bool {
 	}
 
 	return false
+}
+
+func cacheBodyFetchError(key string, err error) error {
+	if errors.Is(err, errCacheMiss) {
+		return fmt.Errorf("cache: no cached body for key %q: %w", key, err)
+	}
+	return err
 }
 
 // parseMaxAge extracts the max-age directive from a Cache-Control header.
