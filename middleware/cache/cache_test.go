@@ -4,6 +4,8 @@ package cache
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -20,6 +22,152 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+type failingCacheStorage struct {
+	data map[string][]byte
+	errs map[string]error
+}
+
+func newFailingCacheStorage() *failingCacheStorage {
+	return &failingCacheStorage{
+		data: make(map[string][]byte),
+		errs: make(map[string]error),
+	}
+}
+
+func (s *failingCacheStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
+	if err, ok := s.errs["get|"+key]; ok && err != nil {
+		return nil, err
+	}
+	if val, ok := s.data[key]; ok {
+		return append([]byte(nil), val...), nil
+	}
+	return nil, nil
+}
+
+func (s *failingCacheStorage) Get(key string) ([]byte, error) {
+	return s.GetWithContext(context.Background(), key)
+}
+
+func (s *failingCacheStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
+	if err, ok := s.errs["set|"+key]; ok && err != nil {
+		return err
+	}
+	s.data[key] = append([]byte(nil), val...)
+	return nil
+}
+
+func (s *failingCacheStorage) Set(key string, val []byte, exp time.Duration) error {
+	return s.SetWithContext(context.Background(), key, val, exp)
+}
+
+func (s *failingCacheStorage) DeleteWithContext(_ context.Context, key string) error {
+	if err, ok := s.errs["del|"+key]; ok && err != nil {
+		return err
+	}
+	delete(s.data, key)
+	return nil
+}
+
+func (s *failingCacheStorage) Delete(key string) error {
+	return s.DeleteWithContext(context.Background(), key)
+}
+
+func (s *failingCacheStorage) ResetWithContext(context.Context) error {
+	s.data = make(map[string][]byte)
+	s.errs = make(map[string]error)
+	return nil
+}
+
+func (s *failingCacheStorage) Reset() error {
+	return s.ResetWithContext(context.Background())
+}
+
+func (*failingCacheStorage) Close() error { return nil }
+
+func TestCacheStorageGetError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	storage.errs["get|/_GET"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Second}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "cache: failed to get key")
+}
+
+func TestCacheStorageSetError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	storage.errs["set|/_GET_body"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Second}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "cache: failed to store raw key")
+}
+
+func TestCacheStorageDeleteError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	storage.errs["del|/_GET"] = errors.New("boom")
+
+	expired := &item{exp: uint64(time.Now().Add(-time.Minute).Unix())}
+	raw, err := expired.MarshalMsg(nil)
+	require.NoError(t, err)
+
+	storage.data["/_GET"] = raw
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Second}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "cache: failed to delete expired key")
+}
 
 func Test_Cache_CacheControl(t *testing.T) {
 	t.Parallel()
