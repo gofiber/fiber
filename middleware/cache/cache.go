@@ -4,6 +4,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -133,7 +134,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Get entry from pool
 		e, err := manager.get(c, key)
-		if err != nil {
+		if err != nil && !errors.Is(err, errCacheMiss) {
 			return err
 		}
 
@@ -171,6 +172,9 @@ func New(config ...Config) fiber.Handler {
 					if err != nil {
 						manager.release(e)
 						mux.Unlock()
+						if errors.Is(err, errCacheMiss) {
+							return fmt.Errorf("cache: no cached body for key %q: %w", key, err)
+						}
 						return err
 					}
 					e.body = rawBody
