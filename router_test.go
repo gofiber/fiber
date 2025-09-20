@@ -309,6 +309,20 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 	require.Equal(t, "middleware", app.toString(body))
 }
 
+func Test_Route_Match_Middleware_NoBoundary(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	app.Use("/foo", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foobar", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
 func Test_Route_Match_Middleware_Root(t *testing.T) {
 	t.Parallel()
 

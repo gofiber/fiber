@@ -94,7 +94,9 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 				return true
 			}
 		} else if len(detectionPath) >= plen && detectionPath[:plen] == r.path {
-			return true
+			if hasPartialMatchBoundary(detectionPath, plen) {
+				return true
+			}
 		}
 	} else if len(r.path) == len(detectionPath) && detectionPath == r.path {
 		// Check exact match

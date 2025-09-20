@@ -709,6 +709,25 @@ func Test_App_Use_MultiplePrefix(t *testing.T) {
 	require.Equal(t, "/test/doe", string(body))
 }
 
+func Test_Group_Use_NoBoundary(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	grp := app.Group("/api")
+
+	grp.Use("/foo", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/foo/bar", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/api/foobar", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
 func Test_App_Use_StrictRouting(t *testing.T) {
 	t.Parallel()
 	app := New(Config{StrictRouting: true})

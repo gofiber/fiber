@@ -345,6 +345,23 @@ func init() {
 				},
 			},
 			{
+				pattern: "/partialCheck/foo",
+				testCases: []routeTestCase{
+					{url: "/partialCheck/foo", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foo/", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foo/bar", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foobar", params: nil, match: false, partialCheck: true},
+				},
+			},
+			{
+				pattern: "/partialCheck/:param",
+				testCases: []routeTestCase{
+					{url: "/partialCheck/value", params: []string{"value"}, match: true, partialCheck: true},
+					{url: "/partialCheck/value/", params: []string{"value"}, match: true, partialCheck: true},
+					{url: "/partialCheck/value/next", params: []string{"value"}, match: true, partialCheck: true},
+				},
+			},
+			{
 				pattern: "/",
 				testCases: []routeTestCase{
 					{url: "/api", params: nil, match: false},
