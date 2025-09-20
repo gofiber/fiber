@@ -324,6 +324,10 @@ app.Get("/", func(c fiber.Ctx) error {
 
 `Use` method path is a **mount**, or **prefix** path, and limits middleware to only apply to any paths requested that begin with it.
 
+:::note
+Prefix matches must now end at a slash boundary (or be an exact match). For example, `/api` runs for `/api` and `/api/users` but no longer for `/apiv2`. Parameter tokens such as `:name`, `:name?`, `*`, and `+` are still expanded before this boundary check runs.
+:::
+
 ### Constraints on Adding Routes Dynamically
 
 :::caution

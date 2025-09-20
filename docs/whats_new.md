@@ -366,6 +366,8 @@ You can find more information about `app.Route` in the [API documentation](./api
 
 We have aligned our method for middlewares closer to [`Express`](https://expressjs.com/de/api.html#app.use) and now also support the [`Use`](./api/app#use) of multiple prefixes.
 
+Prefix matching is now stricter: partial matches must end at a slash boundary (or be an exact match). This keeps `/api` middleware from running on `/apiv1` while still allowing `/api/:version` style patterns that leverage route parameters, optional segments, or wildcards.
+
 Registering a subapp is now also possible via the [`Use`](./api/app#use) method instead of the old `app.Mount` method.
 
 <details>

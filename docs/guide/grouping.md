@@ -30,6 +30,10 @@ func main() {
 }
 ```
 
+:::note
+Group prefixes follow the same slash-boundary rule as `app.Use`. A prefix must either match the full path or stop at a `/`, so `/api` applies to `/api` and `/api/v1` but not `/apiv1`. Parameter markers (for example `:id`, `:id?`, `*`, and `+`) are processed before checking the boundary.
+:::
+
 Groups can also include an optional handler.
 
 ```go
