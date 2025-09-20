@@ -81,7 +81,7 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 			return nil, fmt.Errorf("cache: failed to get key %q from storage: %w", key, err)
 		}
 		if raw == nil {
-			return nil, nil
+			return nil, nil //nolint:nilnil // nil item indicates a cache miss
 		}
 
 		it := m.acquire()
@@ -101,7 +101,7 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 		return it, nil
 	}
 
-	return nil, nil
+	return nil, nil //nolint:nilnil // nil raw response indicates a cache miss
 }
 
 // get raw data from storage or memory
@@ -122,7 +122,7 @@ func (m *manager) getRaw(ctx context.Context, key string) ([]byte, error) {
 		return raw, nil
 	}
 
-	return nil, nil
+	return nil, nil //nolint:nilnil // nil raw response indicates a cache miss
 }
 
 // set data to storage or memory

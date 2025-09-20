@@ -54,13 +54,13 @@ func (s *failingLimiterStorage) Set(key string, val []byte, exp time.Duration) e
 	return s.SetWithContext(context.Background(), key, val, exp)
 }
 
-func (s *failingLimiterStorage) DeleteWithContext(context.Context, string) error { return nil }
+func (*failingLimiterStorage) DeleteWithContext(context.Context, string) error { return nil }
 
-func (s *failingLimiterStorage) Delete(string) error { return nil }
+func (*failingLimiterStorage) Delete(string) error { return nil }
 
-func (s *failingLimiterStorage) ResetWithContext(context.Context) error { return nil }
+func (*failingLimiterStorage) ResetWithContext(context.Context) error { return nil }
 
-func (s *failingLimiterStorage) Reset() error { return nil }
+func (*failingLimiterStorage) Reset() error { return nil }
 
 func (*failingLimiterStorage) Close() error { return nil }
 

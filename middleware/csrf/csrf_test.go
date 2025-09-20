@@ -90,7 +90,7 @@ func TestCSRFStorageGetError(t *testing.T) {
 
 	app.Use(New(Config{
 		Storage: storage,
-		ErrorHandler: func(c fiber.Ctx, err error) error {
+		ErrorHandler: func(_ fiber.Ctx, err error) error {
 			captured = err
 			return fiber.ErrTeapot
 		},
@@ -124,7 +124,7 @@ func TestCSRFStorageSetError(t *testing.T) {
 		KeyGenerator: func() string {
 			return "token"
 		},
-		ErrorHandler: func(c fiber.Ctx, err error) error {
+		ErrorHandler: func(_ fiber.Ctx, err error) error {
 			captured = err
 			return fiber.ErrTeapot
 		},
@@ -154,7 +154,7 @@ func TestCSRFStorageDeleteError(t *testing.T) {
 	app.Use(New(Config{
 		Storage:        storage,
 		SingleUseToken: true,
-		ErrorHandler: func(c fiber.Ctx, err error) error {
+		ErrorHandler: func(_ fiber.Ctx, err error) error {
 			captured = err
 			return fiber.ErrTeapot
 		},

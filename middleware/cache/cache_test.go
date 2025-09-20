@@ -143,7 +143,8 @@ func TestCacheStorageDeleteError(t *testing.T) {
 	storage := newFailingCacheStorage()
 	storage.errs["del|/_GET"] = errors.New("boom")
 
-	expired := &item{exp: uint64(time.Now().Add(-time.Minute).Unix())}
+	// Use an obviously expired timestamp without relying on time-based conversions
+	expired := &item{exp: 1}
 	raw, err := expired.MarshalMsg(nil)
 	require.NoError(t, err)
 

@@ -70,9 +70,9 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		remaining := maxRequests - e.currHits
 
 		// Update storage
-		if err := manager.set(c, key, e, cfg.Expiration); err != nil {
+		if setErr := manager.set(c, key, e, cfg.Expiration); setErr != nil {
 			mux.Unlock()
-			return fmt.Errorf("limiter: failed to persist state: %w", err)
+			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 		}
 
 		// Unlock entry
@@ -110,9 +110,9 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 			e = entry
 			e.currHits--
 			remaining++
-			if err := manager.set(c, key, e, cfg.Expiration); err != nil {
+			if setErr := manager.set(c, key, e, cfg.Expiration); setErr != nil {
 				mux.Unlock()
-				return fmt.Errorf("limiter: failed to persist state: %w", err)
+				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 			}
 			// Unlock entry
 			mux.Unlock()
