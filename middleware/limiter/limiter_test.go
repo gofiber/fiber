@@ -1,6 +1,8 @@
 package limiter
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http/httptest"
 	"sync"
@@ -13,6 +15,107 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+type failingLimiterStorage struct {
+	data map[string][]byte
+	errs map[string]error
+}
+
+func newFailingLimiterStorage() *failingLimiterStorage {
+	return &failingLimiterStorage{
+		data: make(map[string][]byte),
+		errs: make(map[string]error),
+	}
+}
+
+func (s *failingLimiterStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
+	if err, ok := s.errs["get|"+key]; ok && err != nil {
+		return nil, err
+	}
+	if val, ok := s.data[key]; ok {
+		return append([]byte(nil), val...), nil
+	}
+	return nil, nil
+}
+
+func (s *failingLimiterStorage) Get(key string) ([]byte, error) {
+	return s.GetWithContext(context.Background(), key)
+}
+
+func (s *failingLimiterStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
+	if err, ok := s.errs["set|"+key]; ok && err != nil {
+		return err
+	}
+	s.data[key] = append([]byte(nil), val...)
+	return nil
+}
+
+func (s *failingLimiterStorage) Set(key string, val []byte, exp time.Duration) error {
+	return s.SetWithContext(context.Background(), key, val, exp)
+}
+
+func (*failingLimiterStorage) DeleteWithContext(context.Context, string) error { return nil }
+
+func (*failingLimiterStorage) Delete(string) error { return nil }
+
+func (*failingLimiterStorage) ResetWithContext(context.Context) error { return nil }
+
+func (*failingLimiterStorage) Reset() error { return nil }
+
+func (*failingLimiterStorage) Close() error { return nil }
+
+func TestLimiterFixedStorageGetError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingLimiterStorage()
+	storage.errs["get|client-key"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(New(Config{Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return "client-key" }}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "limiter: failed to get key")
+}
+
+func TestLimiterFixedStorageSetError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingLimiterStorage()
+	storage.errs["set|client-key"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(New(Config{Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return "client-key" }}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "limiter: failed to persist state")
+	require.ErrorContains(t, captured, "limiter: failed to store key")
+}
 
 // go test -run Test_Limiter_With_Max_Func_With_Zero -race -v
 func Test_Limiter_With_Max_Func_With_Zero_And_Limiter_Sliding(t *testing.T) {

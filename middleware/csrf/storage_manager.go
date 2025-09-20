@@ -2,6 +2,7 @@ package csrf
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -42,31 +43,56 @@ func newStorageManager(storage fiber.Storage) *storageManager {
 }
 
 // get raw data from storage or memory
-func (m *storageManager) getRaw(ctx context.Context, key string) []byte {
-	var raw []byte
+func (m *storageManager) getRaw(ctx context.Context, key string) ([]byte, error) {
 	if m.storage != nil {
-		raw, _ = m.storage.GetWithContext(ctx, key) //nolint:errcheck // TODO: Do not ignore error
-	} else {
-		raw, _ = m.memory.Get(key).([]byte) //nolint:errcheck // TODO: Do not ignore error
+		raw, err := m.storage.GetWithContext(ctx, key)
+		if err != nil {
+			return nil, fmt.Errorf("csrf: failed to get key %s from storage: %w", redactToken(key), err)
+		}
+		return raw, nil
 	}
-	return raw
+
+	if value := m.memory.Get(key); value != nil {
+		raw, ok := value.([]byte)
+		if !ok {
+			return nil, fmt.Errorf("csrf: unexpected value type %T for key %s", value, redactToken(key))
+		}
+		return raw, nil
+	}
+
+	return nil, nil
 }
 
 // set data to storage or memory
-func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) {
+func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) error {
 	if m.storage != nil {
-		_ = m.storage.SetWithContext(ctx, key, raw, exp) //nolint:errcheck // TODO: Do not ignore error
-	} else {
-		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
-		m.memory.Set(utils.CopyString(key), raw, exp)
+		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
+			return fmt.Errorf("csrf: failed to store key %s: %w", redactToken(key), err)
+		}
+		return nil
 	}
+
+	// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
+	m.memory.Set(utils.CopyString(key), utils.CopyBytes(raw), exp)
+	return nil
 }
 
 // delete data from storage or memory
-func (m *storageManager) delRaw(ctx context.Context, key string) {
+func (m *storageManager) delRaw(ctx context.Context, key string) error {
 	if m.storage != nil {
-		_ = m.storage.DeleteWithContext(ctx, key) //nolint:errcheck // TODO: Do not ignore error
-	} else {
-		m.memory.Delete(key)
+		if err := m.storage.DeleteWithContext(ctx, key); err != nil {
+			return fmt.Errorf("csrf: failed to delete key %s: %w", redactToken(key), err)
+		}
+		return nil
 	}
+
+	m.memory.Delete(key)
+	return nil
+}
+
+func redactToken(token string) string {
+	if token == "" {
+		return "<redacted>"
+	}
+	return fmt.Sprintf("<redacted:%d>", len(token))
 }
