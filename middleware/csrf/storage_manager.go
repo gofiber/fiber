@@ -16,7 +16,10 @@ import (
 //go:generate msgp -o=storage_manager_msgp.go -tests=true -unexported
 type item struct{}
 
+const redactedKey = "[redacted]"
+
 //msgp:ignore manager
+//msgp:ignore storageManager
 type storageManager struct {
 	pool    sync.Pool       `msg:"-"` //nolint:revive // Ignore unexported type
 	memory  *memory.Storage `msg:"-"` //nolint:revive // Ignore unexported type
@@ -47,7 +50,7 @@ func (m *storageManager) getRaw(ctx context.Context, key string) ([]byte, error)
 	if m.storage != nil {
 		raw, err := m.storage.GetWithContext(ctx, key)
 		if err != nil {
-			return nil, fmt.Errorf("csrf: failed to get key %q from storage: %w", key, err)
+			return nil, fmt.Errorf("csrf: failed to get value from storage: %w", err)
 		}
 		return raw, nil
 	}
@@ -55,7 +58,7 @@ func (m *storageManager) getRaw(ctx context.Context, key string) ([]byte, error)
 	if value := m.memory.Get(key); value != nil {
 		raw, ok := value.([]byte)
 		if !ok {
-			return nil, fmt.Errorf("csrf: unexpected value type %T for key %q", value, key)
+			return nil, fmt.Errorf("csrf: unexpected value type %T in storage", value)
 		}
 		return raw, nil
 	}
@@ -67,13 +70,13 @@ func (m *storageManager) getRaw(ctx context.Context, key string) ([]byte, error)
 func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) error {
 	if m.storage != nil {
 		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
-			return fmt.Errorf("csrf: failed to store key %q: %w", key, err)
+			return fmt.Errorf("csrf: failed to store key %s: %w", redactedKey, err)
 		}
 		return nil
 	}
 
 	// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
-	m.memory.Set(utils.CopyString(key), raw, exp)
+	m.memory.Set(utils.CopyString(key), utils.CopyBytes(raw), exp)
 	return nil
 }
 
@@ -81,7 +84,7 @@ func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp
 func (m *storageManager) delRaw(ctx context.Context, key string) error {
 	if m.storage != nil {
 		if err := m.storage.DeleteWithContext(ctx, key); err != nil {
-			return fmt.Errorf("csrf: failed to delete key %q: %w", key, err)
+			return fmt.Errorf("csrf: failed to delete key %s: %w", redactedKey, err)
 		}
 		return nil
 	}

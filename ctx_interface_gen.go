@@ -44,11 +44,7 @@ type Ctx interface {
 	// Due to current limitations in how fasthttp works, Done operates as a nop.
 	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
 	Done() <-chan struct{}
-	// If Done is not yet closed, Err returns nil.
-	// If Done is closed, Err returns a non-nil error explaining why:
-	// context.DeadlineExceeded if the context's deadline passed,
-	// or context.Canceled if the context was canceled for some other reason.
-	// After Err returns a non-nil error, successive calls to Err return the same error.
+	// Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
 	//
 	// Due to current limitations in how fasthttp works, Err operates as a nop.
 	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945

@@ -160,8 +160,10 @@ func New(config ...Config) fiber.Handler {
 					mux.Unlock()
 					return fmt.Errorf("cache: failed to delete expired key %q: %w", key, err)
 				}
+				idx := e.heapidx
+				manager.release(e)
 				if cfg.MaxBytes > 0 {
-					_, size := heap.remove(e.heapidx)
+					_, size := heap.remove(idx)
 					storedBytes -= size
 				}
 			} else if e.exp != 0 && !hasRequestDirective(c, noCache) {
@@ -302,27 +304,42 @@ func New(config ...Config) fiber.Handler {
 		e.ttl = uint64(expiration.Seconds())
 
 		// Store entry in heap
+		var heapIdx int
 		if cfg.MaxBytes > 0 {
-			e.heapidx = heap.put(key, e.exp, bodySize)
+			heapIdx = heap.put(key, e.exp, bodySize)
+			e.heapidx = heapIdx
 			storedBytes += bodySize
 		}
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
 			if err := manager.setRaw(c, key+"_body", e.body, expiration); err != nil {
+				idx := e.heapidx
 				manager.release(e)
+				if cfg.MaxBytes > 0 {
+					_, size := heap.remove(idx)
+					storedBytes -= size
+				}
 				return err
 			}
 			// avoid body msgp encoding
 			e.body = nil
+			idx := heapIdx
 			if err := manager.set(c, key, e, expiration); err != nil {
-				manager.release(e)
+				if cfg.MaxBytes > 0 {
+					_, size := heap.remove(idx)
+					storedBytes -= size
+				}
 				return err
 			}
-			manager.release(e)
 		} else {
+			idx := heapIdx
 			// Store entry in memory
 			if err := manager.set(c, key, e, expiration); err != nil {
+				if cfg.MaxBytes > 0 {
+					_, size := heap.remove(idx)
+					storedBytes -= size
+				}
 				return err
 			}
 		}
