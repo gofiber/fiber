@@ -618,6 +618,187 @@ func Test_App_Remove_Route_Non_Existing_Route(t *testing.T) {
 	verifyThereAreNoRoutes(t, app)
 }
 
+func Test_App_Use_StrictRoutingBoundary(t *testing.T) {
+	type testCase struct {
+		name           string
+		path           string
+		expectedStatus int
+		strictRouting  bool
+		expectMatched  bool
+	}
+
+	testCases := []testCase{
+		{
+			name:           "Strict exact match",
+			strictRouting:  true,
+			path:           "/api",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Strict trailing slash partial",
+			strictRouting:  true,
+			path:           "/api/",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Strict nested partial",
+			strictRouting:  true,
+			path:           "/api/users",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Strict disallows sibling prefix",
+			strictRouting:  true,
+			path:           "/apiv1",
+			expectMatched:  false,
+			expectedStatus: StatusNotFound,
+		},
+		{
+			name:           "Non-strict exact match",
+			strictRouting:  false,
+			path:           "/api",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Non-strict trailing slash partial",
+			strictRouting:  false,
+			path:           "/api/",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Non-strict nested partial",
+			strictRouting:  false,
+			path:           "/api/users",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Non-strict disallows sibling prefix",
+			strictRouting:  false,
+			path:           "/apiv1",
+			expectMatched:  false,
+			expectedStatus: StatusNotFound,
+		},
+	}
+
+	for _, tt := range testCases {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			app := New(Config{StrictRouting: tt.strictRouting})
+
+			matched := false
+			app.Use("/api", func(c Ctx) error {
+				matched = true
+				return c.SendStatus(StatusOK)
+			})
+
+			resp, err := app.Test(httptest.NewRequest(MethodGet, tt.path, nil))
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedStatus, resp.StatusCode)
+			require.Equal(t, tt.expectMatched, matched)
+		})
+	}
+}
+
+func Test_Group_Use_StrictRoutingBoundary(t *testing.T) {
+	type testCase struct {
+		name           string
+		path           string
+		expectedStatus int
+		strictRouting  bool
+		expectMatched  bool
+	}
+
+	testCases := []testCase{
+		{
+			name:           "Strict group exact match",
+			strictRouting:  true,
+			path:           "/api/v1",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Strict group trailing slash partial",
+			strictRouting:  true,
+			path:           "/api/v1/",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Strict group nested partial",
+			strictRouting:  true,
+			path:           "/api/v1/users",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Strict group disallows sibling prefix",
+			strictRouting:  true,
+			path:           "/api/v1beta",
+			expectMatched:  false,
+			expectedStatus: StatusNotFound,
+		},
+		{
+			name:           "Non-strict group exact match",
+			strictRouting:  false,
+			path:           "/api/v1",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Non-strict group trailing slash partial",
+			strictRouting:  false,
+			path:           "/api/v1/",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Non-strict group nested partial",
+			strictRouting:  false,
+			path:           "/api/v1/users",
+			expectMatched:  true,
+			expectedStatus: StatusOK,
+		},
+		{
+			name:           "Non-strict group disallows sibling prefix",
+			strictRouting:  false,
+			path:           "/api/v1beta",
+			expectMatched:  false,
+			expectedStatus: StatusNotFound,
+		},
+	}
+
+	for _, tt := range testCases {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			app := New(Config{StrictRouting: tt.strictRouting})
+
+			grp := app.Group("/api")
+			matched := false
+			grp.Use("/v1", func(c Ctx) error {
+				matched = true
+				return c.Next()
+			})
+			grp.Get("/v1", func(c Ctx) error {
+				return c.SendStatus(StatusOK)
+			})
+			grp.Get("/v1/*", func(c Ctx) error {
+				return c.SendStatus(StatusOK)
+			})
+
+			resp, err := app.Test(httptest.NewRequest(MethodGet, tt.path, nil))
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedStatus, resp.StatusCode)
+			require.Equal(t, tt.expectMatched, matched)
+		})
+	}
+}
+
 func Test_App_Remove_Route_Concurrent(t *testing.T) {
 	t.Parallel()
 	app := New()
