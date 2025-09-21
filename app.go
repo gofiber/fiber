@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"mime"
 	"net"
 	"net/http"
@@ -785,9 +786,7 @@ func (app *App) Parameter(name, in string, required bool, schema map[string]any,
 	}
 
 	schemaCopy := make(map[string]any, len(schema))
-	for k, v := range schema {
-		schemaCopy[k] = v
-	}
+	maps.Copy(schemaCopy, schema)
 	if _, ok := schemaCopy["type"]; !ok {
 		schemaCopy["type"] = "string"
 	}

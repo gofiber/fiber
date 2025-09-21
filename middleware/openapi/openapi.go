@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"encoding/json"
+	"maps"
 	"strings"
 	"sync"
 
@@ -286,9 +287,7 @@ func copyAnyMap(src map[string]any) map[string]any {
 		return nil
 	}
 	dst := make(map[string]any, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
+	maps.Copy(dst, src)
 	return dst
 }
 
@@ -375,9 +374,7 @@ func buildRequestBody(routeBody *fiber.RouteRequestBody, cfgBody *RequestBody) *
 				if merged.Content == nil {
 					merged.Content = cfgReq.Content
 				} else {
-					for mediaType, entry := range cfgReq.Content {
-						merged.Content[mediaType] = entry
-					}
+					maps.Copy(merged.Content, cfgReq.Content)
 				}
 			}
 		}

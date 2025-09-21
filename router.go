@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"slices"
 	"sync/atomic"
 
@@ -473,9 +474,7 @@ func cloneRouteParameters(params []RouteParameter) []RouteParameter {
 		}
 		if len(p.Schema) > 0 {
 			schemaCopy := make(map[string]any, len(p.Schema))
-			for k, v := range p.Schema {
-				schemaCopy[k] = v
-			}
+			maps.Copy(schemaCopy, p.Schema)
 			cloned[i].Schema = schemaCopy
 		}
 	}
