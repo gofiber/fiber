@@ -335,7 +335,10 @@ func New(config ...Config) fiber.Handler {
 			}
 		} else {
 			// Store entry in memory
-			manager.set(c, key, e, expiration)
+			if err := manager.set(c, key, e, expiration); err != nil {
+				cleanupOnStoreError(true)
+				return err
+			}
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)
