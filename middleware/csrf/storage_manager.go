@@ -75,7 +75,7 @@ func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp
 		return nil
 	}
 
-	// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
+	// The key and value are crucial in csrf and can be references to data that might be reused (e.g., from a pool). To prevent unsafe value retention, copies of both the key and raw value are made here.
 	m.memory.Set(utils.CopyString(key), utils.CopyBytes(raw), exp)
 	return nil
 }
