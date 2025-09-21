@@ -119,8 +119,23 @@ var (
 	routeDelimiter = []byte{slashDelimiter, '-', '.'}
 	// list of greedy parameters
 	greedyParameters = []byte{wildcardParam, plusParam}
+	// list of chars for the parameter recognizing
+	parameterStartChars = [256]bool{
+		wildcardParam:    true,
+		plusParam:        true,
+		paramStarterChar: true,
+	}
 	// list of chars of delimiters and the starting parameter name char
 	parameterDelimiterChars = append([]byte{paramStarterChar, escapeChar}, routeDelimiter...)
+	// list of chars to find the end of a parameter
+	parameterEndChars = [256]bool{
+		optionalParam:    true,
+		paramStarterChar: true,
+		escapeChar:       true,
+		slashDelimiter:   true,
+		'-':              true,
+		'.':              true,
+	}
 )
 
 // RoutePatternMatch reports whether path matches the provided Fiber route pattern.
@@ -276,14 +291,9 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 // findNextParamPosition search for the next possible parameter start position
 func findNextParamPosition(pattern string) int {
 	// Find the first parameter position
-	search := [256]bool{
-		wildcardParam:    true,
-		plusParam:        true,
-		paramStarterChar: true,
-	}
 	next := -1
 	for i := range pattern {
-		if search[pattern[i]] && (i == 0 || pattern[i-1] != escapeChar) {
+		if parameterStartChars[pattern[i]] && (i == 0 || pattern[i-1] != escapeChar) {
 			next = i
 			break
 		}
@@ -291,7 +301,7 @@ func findNextParamPosition(pattern string) int {
 	if next > 0 && pattern[next] != wildcardParam {
 		// checking the found parameterStartChar is a cluster
 		for i := next + 1; i < len(pattern); i++ {
-			if !search[pattern[i]] {
+			if !parameterStartChars[pattern[i]] {
 				return i - 1
 			}
 		}
@@ -326,14 +336,6 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 
 	// handle wildcard end
 	if !isWildCard && !isPlusParam {
-		parameterEndChars := [256]bool{
-			optionalParam:    true,
-			paramStarterChar: true,
-			escapeChar:       true,
-			slashDelimiter:   true,
-			'-':              true,
-			'.':              true,
-		}
 		paramEndPosition = -1
 		search := pattern[1:]
 		for i := range search {
