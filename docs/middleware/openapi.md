@@ -134,3 +134,4 @@ type RequestBody struct {
 }
 ```
 
+Refer to the type definitions above when customizing OpenAPI operations in your configuration.
