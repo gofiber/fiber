@@ -311,7 +311,8 @@ func New(config ...Config) fiber.Handler {
 			storedBytes += bodySize
 		}
 
-		cleanupOnStoreError := func(releaseEntry bool, rawStored bool) {
+		cleanupOnStoreError := func(releaseEntry, rawStored bool) error {
+			var cleanupErr error
 			if cfg.MaxBytes > 0 {
 				_, size := heap.remove(heapIdx)
 				storedBytes -= size
@@ -320,26 +321,36 @@ func New(config ...Config) fiber.Handler {
 				manager.release(e)
 			}
 			if rawStored {
-				_ = manager.del(context.Background(), key+"_body")
+				rawKey := key + "_body"
+				if err := manager.del(context.Background(), rawKey); err != nil {
+					cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cache: failed to delete raw key %q after store error: %w", rawKey, err))
+				}
 			}
+			return cleanupErr
 		}
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
 			if err := manager.setRaw(c, key+"_body", e.body, expiration); err != nil {
-				cleanupOnStoreError(true, false)
+				if cleanupErr := cleanupOnStoreError(true, false); cleanupErr != nil {
+					err = errors.Join(err, cleanupErr)
+				}
 				return err
 			}
 			// avoid body msgp encoding
 			e.body = nil
 			if err := manager.set(c, key, e, expiration); err != nil {
-				cleanupOnStoreError(false, true)
+				if cleanupErr := cleanupOnStoreError(false, true); cleanupErr != nil {
+					err = errors.Join(err, cleanupErr)
+				}
 				return err
 			}
 		} else {
 			// Store entry in memory
 			if err := manager.set(c, key, e, expiration); err != nil {
-				cleanupOnStoreError(true, false)
+				if cleanupErr := cleanupOnStoreError(true, false); cleanupErr != nil {
+					err = errors.Join(err, cleanupErr)
+				}
 				return err
 			}
 		}
