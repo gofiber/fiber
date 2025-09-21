@@ -311,12 +311,12 @@ func New(config ...Config) fiber.Handler {
 			storedBytes += bodySize
 		}
 
-		cleanupOnStoreError := func(release bool) {
+		cleanupOnStoreError := func(entryReleased bool) {
 			if cfg.MaxBytes > 0 {
 				_, size := heap.remove(heapIdx)
 				storedBytes -= size
 			}
-			if release {
+			if !entryReleased {
 				manager.release(e)
 			}
 		}
@@ -324,19 +324,19 @@ func New(config ...Config) fiber.Handler {
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
 			if err := manager.setRaw(c, key+"_body", e.body, expiration); err != nil {
-				cleanupOnStoreError(true)
+				cleanupOnStoreError(false)
 				return err
 			}
 			// avoid body msgp encoding
 			e.body = nil
 			if err := manager.set(c, key, e, expiration); err != nil {
-				cleanupOnStoreError(false)
+				cleanupOnStoreError(true)
 				return err
 			}
 		} else {
 			// Store entry in memory
 			if err := manager.set(c, key, e, expiration); err != nil {
-				cleanupOnStoreError(true)
+				cleanupOnStoreError(false)
 				return err
 			}
 		}
