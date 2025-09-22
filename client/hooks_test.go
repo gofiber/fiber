@@ -732,11 +732,11 @@ func newBenchmarkRequest(formValues map[string]string, fileContents [][]byte) *R
 	}
 
 	for i, content := range fileContents {
-		req.files[i] = &File{
-			name:      fmt.Sprintf("file-%d.bin", i),
-			fieldName: fmt.Sprintf("file%d", i),
-			reader:    io.NopCloser(bytes.NewReader(content)),
-		}
+		req.files[i] = AcquireFile(
+			SetFileName(fmt.Sprintf("file-%d.bin", i)),
+			SetFileFieldName(fmt.Sprintf("file%d", i)),
+			SetFileReader(io.NopCloser(bytes.NewReader(content))),
+		)
 	}
 
 	return req
@@ -745,4 +745,7 @@ func newBenchmarkRequest(formValues map[string]string, fileContents [][]byte) *R
 func releaseBenchmarkRequest(req *Request) {
 	fasthttp.ReleaseRequest(req.RawRequest)
 	fasthttp.ReleaseArgs(req.formData.Args)
+	for _, f := range req.files {
+		ReleaseFile(f)
+	}
 }
