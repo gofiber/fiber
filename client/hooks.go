@@ -261,10 +261,7 @@ func parserRequestBodyFile(req *Request) error {
 		return fmt.Errorf("failed to retrieve buffer from a sync.Pool")
 	}
 
-	defer func() {
-		b := (*fileBuf)[:cap(*fileBuf)] // set len to full cap for reuse in io.CopyBuffer
-		fileBufPool.Put(&b)
-	}()
+	defer fileBufPool.Put(fileBuf)
 
 	for i, v := range req.files {
 		if v.name == "" && v.path == "" {
