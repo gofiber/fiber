@@ -21,6 +21,8 @@ const (
 	localsKeyWasPutToCache
 )
 
+const redactedKey = "[redacted]"
+
 // IsFromCache reports whether the middleware served the response from the
 // cache for the current request.
 func IsFromCache(c fiber.Ctx) bool {
@@ -104,7 +106,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		defer func() {
 			if err := cfg.Lock.Unlock(key); err != nil {
-				log.Errorf("[IDEMPOTENCY] failed to unlock key %q: %v", key, err)
+				log.Errorf("idempotency: failed to unlock key %s: %v", redactedKey, err)
 			}
 		}()
 

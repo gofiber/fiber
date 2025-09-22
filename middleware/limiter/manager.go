@@ -26,6 +26,8 @@ type manager struct {
 	storage fiber.Storage
 }
 
+const redactedKey = "[redacted]"
+
 func newManager(storage fiber.Storage) *manager {
 	// Create new storage handler
 	manager := &manager{
@@ -63,13 +65,13 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 	if m.storage != nil {
 		raw, err := m.storage.GetWithContext(ctx, key)
 		if err != nil {
-			return nil, fmt.Errorf("limiter: failed to get key %q from storage: %w", key, err)
+			return nil, fmt.Errorf("limiter: failed to get key %s from storage: %w", redactedKey, err)
 		}
 		if raw != nil {
 			it := m.acquire()
 			if _, err := it.UnmarshalMsg(raw); err != nil {
 				m.release(it)
-				return nil, fmt.Errorf("limiter: failed to unmarshal key %q: %w", key, err)
+				return nil, fmt.Errorf("limiter: failed to unmarshal key %s: %w", redactedKey, err)
 			}
 			return it, nil
 		}
@@ -83,7 +85,7 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 
 	it, ok := value.(*item)
 	if !ok {
-		return nil, fmt.Errorf("limiter: unexpected entry type %T for key %q", value, key)
+		return nil, fmt.Errorf("limiter: unexpected entry type %T for key %s", value, redactedKey)
 	}
 
 	return it, nil
@@ -95,11 +97,11 @@ func (m *manager) set(ctx context.Context, key string, it *item, exp time.Durati
 		raw, err := it.MarshalMsg(nil)
 		if err != nil {
 			m.release(it)
-			return fmt.Errorf("limiter: failed to marshal key %q: %w", key, err)
+			return fmt.Errorf("limiter: failed to marshal key %s: %w", redactedKey, err)
 		}
 		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
 			m.release(it)
-			return fmt.Errorf("limiter: failed to store key %q: %w", key, err)
+			return fmt.Errorf("limiter: failed to store key %s: %w", redactedKey, err)
 		}
 		m.release(it)
 		return nil

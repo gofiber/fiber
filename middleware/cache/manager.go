@@ -34,6 +34,8 @@ type manager struct {
 	storage fiber.Storage
 }
 
+const redactedKey = "[redacted]"
+
 var errCacheMiss = errors.New("cache: miss")
 
 func newManager(storage fiber.Storage) *manager {
@@ -81,7 +83,7 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 	if m.storage != nil {
 		raw, err := m.storage.GetWithContext(ctx, key)
 		if err != nil {
-			return nil, fmt.Errorf("cache: failed to get key %q from storage: %w", key, err)
+			return nil, fmt.Errorf("cache: failed to get key %s from storage: %w", redactedKey, err)
 		}
 		if raw == nil {
 			return nil, errCacheMiss
@@ -90,7 +92,7 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 		it := m.acquire()
 		if _, err := it.UnmarshalMsg(raw); err != nil {
 			m.release(it)
-			return nil, fmt.Errorf("cache: failed to unmarshal key %q: %w", key, err)
+			return nil, fmt.Errorf("cache: failed to unmarshal key %s: %w", redactedKey, err)
 		}
 
 		return it, nil
@@ -99,7 +101,7 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 	if value := m.memory.Get(key); value != nil {
 		it, ok := value.(*item)
 		if !ok {
-			return nil, fmt.Errorf("cache: unexpected entry type %T for key %q", value, key)
+			return nil, fmt.Errorf("cache: unexpected entry type %T for key %s", value, redactedKey)
 		}
 		return it, nil
 	}
@@ -112,7 +114,7 @@ func (m *manager) getRaw(ctx context.Context, key string) ([]byte, error) {
 	if m.storage != nil {
 		raw, err := m.storage.GetWithContext(ctx, key)
 		if err != nil {
-			return nil, fmt.Errorf("cache: failed to get raw key %q from storage: %w", key, err)
+			return nil, fmt.Errorf("cache: failed to get raw key %s from storage: %w", redactedKey, err)
 		}
 		if raw == nil {
 			return nil, errCacheMiss
@@ -123,7 +125,7 @@ func (m *manager) getRaw(ctx context.Context, key string) ([]byte, error) {
 	if value := m.memory.Get(key); value != nil {
 		raw, ok := value.([]byte)
 		if !ok {
-			return nil, fmt.Errorf("cache: unexpected raw entry type %T for key %q", value, key)
+			return nil, fmt.Errorf("cache: unexpected raw entry type %T for key %s", value, redactedKey)
 		}
 		return raw, nil
 	}
@@ -137,11 +139,11 @@ func (m *manager) set(ctx context.Context, key string, it *item, exp time.Durati
 		raw, err := it.MarshalMsg(nil)
 		if err != nil {
 			m.release(it)
-			return fmt.Errorf("cache: failed to marshal key %q: %w", key, err)
+			return fmt.Errorf("cache: failed to marshal key %s: %w", redactedKey, err)
 		}
 		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
 			m.release(it)
-			return fmt.Errorf("cache: failed to store key %q: %w", key, err)
+			return fmt.Errorf("cache: failed to store key %s: %w", redactedKey, err)
 		}
 		m.release(it)
 		return nil
@@ -155,7 +157,7 @@ func (m *manager) set(ctx context.Context, key string, it *item, exp time.Durati
 func (m *manager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) error {
 	if m.storage != nil {
 		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
-			return fmt.Errorf("cache: failed to store raw key %q: %w", key, err)
+			return fmt.Errorf("cache: failed to store raw key %s: %w", redactedKey, err)
 		}
 		return nil
 	}
@@ -168,7 +170,7 @@ func (m *manager) setRaw(ctx context.Context, key string, raw []byte, exp time.D
 func (m *manager) del(ctx context.Context, key string) error {
 	if m.storage != nil {
 		if err := m.storage.DeleteWithContext(ctx, key); err != nil {
-			return fmt.Errorf("cache: failed to delete key %q: %w", key, err)
+			return fmt.Errorf("cache: failed to delete key %s: %w", redactedKey, err)
 		}
 		return nil
 	}
