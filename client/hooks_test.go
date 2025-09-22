@@ -709,6 +709,11 @@ func Benchmark_Parser_Request_Body_File(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
+		var totalBytes int64
+		for _, c := range fileContents {
+			totalBytes += int64(len(c))
+		}
+		b.SetBytes(totalBytes)
 		req := newBenchmarkRequest(formValues, fileContents)
 		if err := parserRequestBodyFile(req); err != nil {
 			b.Fatalf("parserRequestBodyFile: %v", err)
