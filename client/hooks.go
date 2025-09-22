@@ -10,12 +10,19 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
 var protocolCheck = regexp.MustCompile(`^https?://.*$`)
+
+var fileBufPool = sync.Pool{
+	New: func() any {
+		return make([]byte, 1<<20) // 1MB buffer
+	},
+}
 
 const (
 	headerAccept      = "Accept"
@@ -248,7 +255,9 @@ func parserRequestBodyFile(req *Request) error {
 	}
 
 	// Add files.
-	fileBuf := make([]byte, 1<<20) // 1MB buffer
+	fileBuf := fileBufPool.Get().([]byte)
+	defer fileBufPool.Put(fileBuf[:cap(fileBuf)]) // reslice to full cap for reuse
+
 	for i, v := range req.files {
 		if v.name == "" && v.path == "" {
 			return ErrFileNoName
