@@ -170,6 +170,67 @@ func Test_RoutePatternMatch(t *testing.T) {
 	}
 }
 
+func TestHasPartialMatchBoundary(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name          string
+		path          string
+		matchedLength int
+		expected      bool
+	}{
+		{
+			name:          "negative length",
+			path:          "/demo",
+			matchedLength: -1,
+			expected:      false,
+		},
+		{
+			name:          "greater than length",
+			path:          "/demo",
+			matchedLength: 6,
+			expected:      false,
+		},
+		{
+			name:          "exact match",
+			path:          "/demo",
+			matchedLength: len("/demo"),
+			expected:      true,
+		},
+		{
+			name:          "zero length",
+			path:          "/demo",
+			matchedLength: 0,
+			expected:      false,
+		},
+		{
+			name:          "previous rune slash",
+			path:          "/demo/child",
+			matchedLength: len("/demo/"),
+			expected:      true,
+		},
+		{
+			name:          "next rune slash",
+			path:          "/demo/child",
+			matchedLength: len("/demo"),
+			expected:      true,
+		},
+		{
+			name:          "no boundary",
+			path:          "/demo/child",
+			matchedLength: len("/dem"),
+			expected:      false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, testCase.expected, hasPartialMatchBoundary(testCase.path, testCase.matchedLength))
+		})
+	}
+}
+
 func Test_Utils_GetTrimmedParam(t *testing.T) {
 	t.Parallel()
 	res := GetTrimmedParam("")

@@ -467,8 +467,29 @@ func splitNonEscaped(s string, sep byte) []string {
 	return append(result, s)
 }
 
+func hasPartialMatchBoundary(path string, matchedLength int) bool {
+	if matchedLength < 0 || matchedLength > len(path) {
+		return false
+	}
+	if matchedLength == len(path) {
+		return true
+	}
+	if matchedLength == 0 {
+		return false
+	}
+	if path[matchedLength-1] == slashDelimiter {
+		return true
+	}
+	if matchedLength < len(path) && path[matchedLength] == slashDelimiter {
+		return true
+	}
+
+	return false
+}
+
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
 func (parser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // Accepting a bool param is fine here
+	originalDetectionPath := detectionPath
 	var i, paramsIterator, partLen int
 	for _, segment := range parser.segs {
 		partLen = len(detectionPath)
@@ -508,8 +529,14 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			detectionPath, path = detectionPath[i:], path[i:]
 		}
 	}
-	if detectionPath != "" && !partialCheck {
-		return false
+	if detectionPath != "" {
+		if !partialCheck {
+			return false
+		}
+		consumedLength := len(originalDetectionPath) - len(detectionPath)
+		if !hasPartialMatchBoundary(originalDetectionPath, consumedLength) {
+			return false
+		}
 	}
 
 	return true
