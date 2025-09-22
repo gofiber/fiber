@@ -687,7 +687,6 @@ func Test_App_Use_StrictRoutingBoundary(t *testing.T) {
 	}
 
 	for _, tt := range testCases {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			app := New(Config{StrictRouting: tt.strictRouting})
 
@@ -774,7 +773,6 @@ func Test_Group_Use_StrictRoutingBoundary(t *testing.T) {
 	}
 
 	for _, tt := range testCases {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			app := New(Config{StrictRouting: tt.strictRouting})
 
