@@ -336,6 +336,15 @@ func init() {
 				},
 			},
 			{
+				pattern: "/partialCheck/foo/",
+				testCases: []routeTestCase{
+					{url: "/partialCheck/foo/", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foo/bar", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foo/bar/baz", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foobar", params: nil, match: false, partialCheck: true},
+				},
+			},
+			{
 				pattern: "/partialCheck/foo/bar/:param",
 				testCases: []routeTestCase{
 					{url: "/partialCheck/foo/bar/test", params: []string{"test"}, match: true, partialCheck: true},
