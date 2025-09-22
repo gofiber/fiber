@@ -2,6 +2,7 @@ package client
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -258,7 +259,7 @@ func parserRequestBodyFile(req *Request) error {
 	// Add files.
 	fileBuf, ok := fileBufPool.Get().(*[]byte)
 	if !ok || len(*fileBuf) == 0 {
-		return fmt.Errorf("failed to retrieve buffer from a sync.Pool")
+		return errors.New("failed to retrieve buffer from a sync.Pool")
 	}
 
 	defer fileBufPool.Put(fileBuf)
