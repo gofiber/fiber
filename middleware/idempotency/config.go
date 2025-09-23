@@ -23,10 +23,6 @@ type Config struct {
 	// Optional. Default: an in-memory storage for this process only.
 	Storage fiber.Storage
 
-	// RedactKeys controls whether idempotency keys are redacted in logs and errors.
-	//
-	// Optional. Default: true
-	RedactKeys *bool
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: a function which skips the middleware on safe HTTP request method.
@@ -51,6 +47,11 @@ type Config struct {
 	//
 	// Optional. Default: 30 * time.Minute
 	Lifetime time.Duration
+
+	// RedactKeys controls whether idempotency keys are redacted in logs and errors.
+	//
+	// Optional. Default: true
+	RedactKeys bool
 }
 
 // ConfigDefault is the default config
@@ -75,7 +76,8 @@ var ConfigDefault = Config{
 
 	Lock: nil, // Set in configDefault so we don't allocate data here.
 
-	Storage: nil, // Set in configDefault so we don't allocate data here.
+	Storage:    nil, // Set in configDefault so we don't allocate data here.
+	RedactKeys: true,
 }
 
 // Helper function to set default values

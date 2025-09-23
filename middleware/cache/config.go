@@ -14,11 +14,6 @@ type Config struct {
 	// Default: an in-memory store for this process only
 	Storage fiber.Storage
 
-	// RedactKeys controls whether cache keys are redacted in logs and error messages.
-	//
-	// Optional. Default: true
-	RedactKeys *bool
-
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
@@ -67,6 +62,11 @@ type Config struct {
 	// Optional. Default: 1 * 1024 * 1024
 	MaxBytes uint
 
+	// RedactKeys controls whether cache keys are redacted in logs and error messages.
+	//
+	// Optional. Default: true
+	RedactKeys bool
+
 	// DisableCacheControl disables client side caching if set to true
 	//
 	// Optional. Default: false
@@ -86,6 +86,7 @@ var ConfigDefault = Config{
 	CacheHeader:         "X-Cache",
 	DisableCacheControl: false,
 	CacheInvalidator:    nil,
+	RedactKeys:          true,
 	KeyGenerator: func(c fiber.Ctx) string {
 		return utils.CopyString(c.Path())
 	},

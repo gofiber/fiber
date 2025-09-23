@@ -11,11 +11,6 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// RedactKeys controls whether configuration values and origins are redacted in logs and panics.
-	//
-	// Optional. Default: true
-	RedactKeys *bool
-
 	// AllowOriginsFunc defines a function that will set the 'Access-Control-Allow-Origin'
 	// response header to the 'origin' request header when returned true. This allows for
 	// dynamic evaluation of allowed origins. Note if AllowCredentials is true, wildcard origins
@@ -61,6 +56,11 @@ type Config struct {
 	// Optional. Default value 0.
 	MaxAge int
 
+	// RedactKeys controls whether configuration values and origins are redacted in logs and panics.
+	//
+	// Optional. Default: true
+	RedactKeys bool
+
 	// AllowCredentials indicates whether or not the response to the request
 	// can be exposed when the credentials flag is true. When used as part of
 	// a response to a preflight request, this indicates whether or not the
@@ -83,6 +83,7 @@ var ConfigDefault = Config{
 	Next:             nil,
 	AllowOriginsFunc: nil,
 	AllowOrigins:     []string{"*"},
+	RedactKeys:       true,
 	AllowMethods: []string{
 		fiber.MethodGet,
 		fiber.MethodPost,
