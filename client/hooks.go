@@ -258,7 +258,7 @@ func parserRequestBodyFile(req *Request) error {
 
 	// Add files.
 	fileBuf, ok := fileBufPool.Get().(*[]byte)
-	if !ok || len(*fileBuf) == 0 {
+	if !ok {
 		return errors.New("failed to retrieve buffer from a sync.Pool")
 	}
 
