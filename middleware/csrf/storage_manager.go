@@ -24,7 +24,7 @@ type storageManager struct {
 	pool       sync.Pool       `msg:"-"` //nolint:revive // Ignore unexported type
 	memory     *memory.Storage `msg:"-"` //nolint:revive // Ignore unexported type
 	storage    fiber.Storage   `msg:"-"` //nolint:revive // Ignore unexported type
-	redactKeys bool            `msg:"-"`
+	redactKeys bool
 }
 
 func newStorageManager(storage fiber.Storage, redactKeys bool) *storageManager {
