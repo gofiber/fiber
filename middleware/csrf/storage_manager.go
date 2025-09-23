@@ -72,7 +72,7 @@ func (m *storageManager) getRaw(ctx context.Context, key string) ([]byte, error)
 func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) error {
 	if m.storage != nil {
 		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
-			return fmt.Errorf("csrf: failed to store key %s: %w", m.logKey(key), err)
+			return fmt.Errorf("csrf: failed to store key %q: %w", m.logKey(key), err)
 		}
 		return nil
 	}
@@ -86,7 +86,7 @@ func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp
 func (m *storageManager) delRaw(ctx context.Context, key string) error {
 	if m.storage != nil {
 		if err := m.storage.DeleteWithContext(ctx, key); err != nil {
-			return fmt.Errorf("csrf: failed to delete key %s: %w", m.logKey(key), err)
+			return fmt.Errorf("csrf: failed to delete key %q: %w", m.logKey(key), err)
 		}
 		return nil
 	}

@@ -28,9 +28,6 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	redactValues := !cfg.DisableValueRedaction
-	if len(config) > 0 {
-		redactValues = !config[0].DisableValueRedaction
-	}
 
 	maskValue := func(value string) string {
 		if redactValues {

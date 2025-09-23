@@ -115,7 +115,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		defer func() {
 			if err := cfg.Lock.Unlock(key); err != nil {
-				log.Errorf("idempotency: failed to unlock key %s: %v", maskKey(key), err)
+				log.Errorf("idempotency: failed to unlock key %q: %v", maskKey(key), err)
 			}
 		}()
 
