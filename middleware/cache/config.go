@@ -64,7 +64,7 @@ type Config struct {
 
 	// RedactKeys controls whether cache keys are redacted in logs and error messages.
 	//
-	// Optional. Default: true
+	// Optional. Default: false
 	RedactKeys bool
 
 	// DisableCacheControl disables client side caching if set to true
@@ -86,7 +86,7 @@ var ConfigDefault = Config{
 	CacheHeader:         "X-Cache",
 	DisableCacheControl: false,
 	CacheInvalidator:    nil,
-	RedactKeys:          true,
+	RedactKeys:          false,
 	KeyGenerator: func(c fiber.Ctx) string {
 		return utils.CopyString(c.Path())
 	},

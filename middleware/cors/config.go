@@ -58,7 +58,7 @@ type Config struct {
 
 	// RedactKeys controls whether configuration values and origins are redacted in logs and panics.
 	//
-	// Optional. Default: true
+	// Optional. Default: false
 	RedactKeys bool
 
 	// AllowCredentials indicates whether or not the response to the request
@@ -83,7 +83,7 @@ var ConfigDefault = Config{
 	Next:             nil,
 	AllowOriginsFunc: nil,
 	AllowOrigins:     []string{"*"},
-	RedactKeys:       true,
+	RedactKeys:       false,
 	AllowMethods: []string{
 		fiber.MethodGet,
 		fiber.MethodPost,

@@ -50,7 +50,7 @@ type Config struct {
 
 	// RedactKeys controls whether idempotency keys are redacted in logs and errors.
 	//
-	// Optional. Default: true
+	// Optional. Default: false
 	RedactKeys bool
 }
 
@@ -77,7 +77,7 @@ var ConfigDefault = Config{
 	Lock: nil, // Set in configDefault so we don't allocate data here.
 
 	Storage:    nil, // Set in configDefault so we don't allocate data here.
-	RedactKeys: true,
+	RedactKeys: false,
 }
 
 // Helper function to set default values

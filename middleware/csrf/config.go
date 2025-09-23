@@ -99,7 +99,7 @@ type Config struct {
 
 	// RedactKeys controls whether CSRF tokens and storage keys are redacted in logs and errors.
 	//
-	// Optional. Default: true
+	// Optional. Default: false
 	RedactKeys bool
 
 	// CookieSecure indicates if CSRF cookie is secure.
@@ -136,7 +136,7 @@ var ConfigDefault = Config{
 	KeyGenerator:   utils.UUIDv4,
 	ErrorHandler:   defaultErrorHandler,
 	Extractor:      extractors.FromHeader(HeaderName),
-	RedactKeys:     true,
+	RedactKeys:     false,
 }
 
 // defaultErrorHandler is the default error handler that processes errors from fiber.Handler.

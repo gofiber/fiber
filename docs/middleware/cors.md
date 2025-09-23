@@ -10,7 +10,7 @@ It adds CORS headers to responses, listing allowed origins, methods, and headers
 
 Use the `AllowOrigins` option to define which origins may send cross-origin requests. It accepts single origins, lists, subdomain patterns, wildcards, and supports dynamic validation with `AllowOriginsFunc`.
 
-The middleware normalizes `AllowOrigins`, verifies HTTP/HTTPS schemes, and strips trailing slashes. Invalid origins cause a panic.
+The middleware normalizes `AllowOrigins`, verifies HTTP/HTTPS schemes, and strips trailing slashes. Invalid origins cause a panic. Enable `RedactKeys` to hide misconfigured origins in panic messages and logs when they contain sensitive data.
 
 Avoid [common pitfalls](#common-pitfalls) such as using wildcard origins with credentials, overly permissive origin lists, or skipping validation with `AllowOriginsFunc`, as misconfiguration can create security risks.
 
@@ -118,6 +118,7 @@ panic: [CORS] Configuration error: When 'AllowCredentials' is set to true, 'Allo
 | AllowOrigins         | `[]string`                  | AllowOrigins defines a list of origins that may access the resource. This supports subdomain matching, so you can use a value like "https://*.example.com" to allow any subdomain of example.com to submit requests. If the special wildcard `"*"` is present in the list, all origins will be allowed.                                                              | `["*"]`                                 |
 | AllowOriginsFunc     | `func(origin string) bool`  | `AllowOriginsFunc` is a function that dynamically determines whether to allow a request based on its origin. If this function returns `true`, the 'Access-Control-Allow-Origin' response header will be set to the request's 'origin' header. This function is only used if the request's origin doesn't match any origin in `AllowOrigins`.                         | `nil`                                   |
 | AllowPrivateNetwork  | `bool`                      | Indicates whether the `Access-Control-Allow-Private-Network` response header should be set to `true`, allowing requests from private networks. This aligns with modern security practices for web applications interacting with private networks.                                                                                                                    | `false`                                 |
+| RedactKeys           | `bool`                      | Controls whether middleware panics and logs redact misconfigured origins and settings. | `false`                                 |
 | ExposeHeaders        | `[]string`                    | ExposeHeaders defines an allowlist of headers that clients are allowed to access.                                                                                                                                                                                                                                                                                    | `[]`                                    |
 | MaxAge               | `int`                       | MaxAge indicates how long (in seconds) the results of a preflight request can be cached. If you pass MaxAge 0, the Access-Control-Max-Age header will not be added and the browser will use 5 seconds by default. To disable caching completely, pass MaxAge value negative. It will set the Access-Control-Max-Age header to 0.                                     | `0`                                     |
 | Next                 | `func(fiber.Ctx) bool`      | Next defines a function to skip this middleware when it returns true.                                                                                                                                                                                                                                                                                                  | `nil`                                   |
@@ -133,6 +134,7 @@ var ConfigDefault = Config{
     Next:             nil,
     AllowOriginsFunc: nil,
     AllowOrigins:     []string{"*"},
+    RedactKeys:       false,
     AllowMethods: []string{
         fiber.MethodGet,
         fiber.MethodPost,

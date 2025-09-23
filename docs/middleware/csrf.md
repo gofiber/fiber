@@ -42,6 +42,8 @@ app.Use(csrf.New(csrf.Config{
     CookieSessionOnly: true,
     Extractor:         extractors.FromHeader("X-Csrf-Token"),
     Session:           sessionStore,
+    // Enable when you want to hide tokens or storage keys in logs and error messages.
+    // RedactKeys:     true,
 }))
 ```
 
@@ -403,6 +405,7 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 | KeyGenerator      | `func() string`                    | Token generation function                                                                                                     | `utils.UUIDv4`               |
 | ErrorHandler      | `fiber.ErrorHandler`               | Custom error handler                                                                                                          | `defaultErrorHandler`        |
 | Extractor         | `extractors.Extractor`             | Token extraction method with metadata                                                                                         | `extractors.FromHeader("X-Csrf-Token")` |
+| RedactKeys        | `bool`                             | Redacts tokens and storage keys in logs and error messages. | `false`                      |
 | Session           | `*session.Store`                   | Session store (**recommended for production**)                                                                                | `nil`                        |
 | Storage           | `fiber.Storage`                    | Token storage (overridden by Session)                                                                                         | `nil`                        |
 | TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests                                                                                     | `[]`                         |
