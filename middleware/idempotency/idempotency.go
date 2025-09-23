@@ -41,7 +41,7 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
-	redactKeys := cfg.RedactKeys
+	redactKeys := !cfg.DisableValueRedaction
 
 	maskKey := func(key string) string {
 		if redactKeys {

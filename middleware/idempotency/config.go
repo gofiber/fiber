@@ -48,10 +48,10 @@ type Config struct {
 	// Optional. Default: 30 * time.Minute
 	Lifetime time.Duration
 
-	// RedactKeys controls whether idempotency keys are redacted in logs and errors.
+	// DisableValueRedaction turns off masking idempotency keys in logs and errors when set to true.
 	//
 	// Optional. Default: false
-	RedactKeys bool
+	DisableValueRedaction bool
 }
 
 // ConfigDefault is the default config
@@ -76,8 +76,8 @@ var ConfigDefault = Config{
 
 	Lock: nil, // Set in configDefault so we don't allocate data here.
 
-	Storage:    nil, // Set in configDefault so we don't allocate data here.
-	RedactKeys: false,
+	Storage:               nil, // Set in configDefault so we don't allocate data here.
+	DisableValueRedaction: false,
 }
 
 // Helper function to set default values

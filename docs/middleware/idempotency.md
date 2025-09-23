@@ -68,7 +68,7 @@ app.Use(idempotency.New(idempotency.Config{
 
 ## Config
 
-Enable `RedactKeys` when idempotency keys must be hidden from logs and error messages.
+Idempotency keys are hidden in logs and error messages by default. Set `DisableValueRedaction` to `true` only when you need to expose them for debugging.
 
 | Property            | Type                   | Description                                                                                                                             | Default                                                            |
 |:--------------------|:-----------------------|:----------------------------------------------------------------------------------------------------------------------------------------|:-------------------------------------------------------------------|
@@ -77,7 +77,7 @@ Enable `RedactKeys` when idempotency keys must be hidden from logs and error mes
 | KeyHeader           | `string`               | Header name containing the idempotency key.                                                                                             | `"X-Idempotency-Key"`                                              |
 | KeyHeaderValidate   | `func(string) error`   | Function to validate idempotency header syntax (e.g., UUID).                                                                            | UUID length check (`36` characters)                                |
 | KeepResponseHeaders | `[]string`             | List of headers to preserve from original response.                                                                                     | `nil` (keep all headers)                                           |
-| RedactKeys           | `bool`                 | Redacts idempotency keys in logs and error messages. | `false`                                                          |
+| DisableValueRedaction | `bool`                | Disables idempotency key redaction in logs and error messages. | `false`                                              |
 | Lock                | `Locker`               | Locks an idempotency key to prevent race conditions.                                                                                    | In-memory locker                                                   |
 | Storage             | `fiber.Storage`        | Stores response data by idempotency key.                                                                                                | In-memory storage                                                  |
 
@@ -106,6 +106,6 @@ var ConfigDefault = Config{
     Lock: nil, // Set in configDefault so we don't allocate data here.
 
     Storage: nil, // Set in configDefault so we don't allocate data here.
-    RedactKeys: false,
+    DisableValueRedaction: false,
 }
 ```

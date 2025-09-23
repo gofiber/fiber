@@ -56,10 +56,10 @@ type Config struct {
 	// Optional. Default value 0.
 	MaxAge int
 
-	// RedactKeys controls whether configuration values and origins are redacted in logs and panics.
+	// DisableValueRedaction turns off redaction of configuration values and origins in logs and panics.
 	//
 	// Optional. Default: false
-	RedactKeys bool
+	DisableValueRedaction bool
 
 	// AllowCredentials indicates whether or not the response to the request
 	// can be exposed when the credentials flag is true. When used as part of
@@ -80,10 +80,10 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:             nil,
-	AllowOriginsFunc: nil,
-	AllowOrigins:     []string{"*"},
-	RedactKeys:       false,
+	Next:                  nil,
+	AllowOriginsFunc:      nil,
+	AllowOrigins:          []string{"*"},
+	DisableValueRedaction: false,
 	AllowMethods: []string{
 		fiber.MethodGet,
 		fiber.MethodPost,

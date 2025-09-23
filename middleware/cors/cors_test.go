@@ -319,20 +319,20 @@ func Test_CORS_Invalid_Origins_Panic(t *testing.T) {
 	}
 }
 
-func Test_CORS_RedactKeys(t *testing.T) {
+func Test_CORS_DisableValueRedaction(t *testing.T) {
 	t.Parallel()
 
 	require.PanicsWithValue(t, "[CORS] Invalid origin format in configuration: [redacted]", func() {
 		New(Config{
-			AllowOrigins: []string{"http://"},
-			RedactKeys:   true,
+			AllowOrigins:          []string{"http://"},
+			DisableValueRedaction: false,
 		})
 	})
 
 	require.PanicsWithValue(t, "[CORS] Invalid origin format in configuration: http://", func() {
 		New(Config{
-			AllowOrigins: []string{"http://"},
-			RedactKeys:   false,
+			AllowOrigins:          []string{"http://"},
+			DisableValueRedaction: true,
 		})
 	})
 }
