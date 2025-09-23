@@ -6,7 +6,7 @@ id: limiter
 
 The Limiter middleware for [Fiber](https://github.com/gofiber/fiber) throttles repeated requests to public APIs or endpoints such as password resets. It's also useful for API clients, web crawlers, or other tasks that need rate limiting.
 
-Limiter redacts request keys in error paths by default so storage identifiers and rate-limit keys don't leak into logs. Set `DisableRedactedValues` to `true` when you explicitly need the raw key for troubleshooting.
+Limiter redacts request keys in error paths by default so storage identifiers and rate-limit keys don't leak into logs. Set `DisableValueRedaction` to `true` when you explicitly need the raw key for troubleshooting.
 
 :::note
 This middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for this middleware saves data to memory, see the examples below for other databases.
@@ -108,7 +108,7 @@ app.Use(limiter.New(limiter.Config{
 | SkipFailedRequests     | `bool`                    | When set to `true`, requests with status code ≥ 400 aren't counted.                         | false                                    |
 | SkipSuccessfulRequests | `bool`                    | When set to `true`, requests with status code < 400 aren't counted.                          | false                                    |
 | DisableHeaders         | `bool`                    | When set to `true`, the middleware omits rate limit headers (`X-RateLimit-*` and `Retry-After`). | false                                    |
-| DisableRedactedValues  | `bool`                    | Disables redaction of limiter keys in error messages and logs.                                 | false                                    |
+| DisableValueRedaction  | `bool`                    | Disables redaction of limiter keys in error messages and logs.                                 | false                                    |
 | Storage                | `fiber.Storage`           | Persists middleware state.                                         | An in-memory store for this process only |
 | LimiterMiddleware      | `LimiterHandler`          | Selects the algorithm implementation.                       | A new Fixed Window Rate Limiter          |
 
@@ -134,7 +134,7 @@ var ConfigDefault = Config{
     SkipFailedRequests: false,
     SkipSuccessfulRequests: false,
     DisableHeaders:        false,
-    DisableRedactedValues: false,
+    DisableValueRedaction: false,
     LimiterMiddleware: FixedWindow{},
 }
 ```

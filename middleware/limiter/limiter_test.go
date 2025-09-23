@@ -135,7 +135,7 @@ func TestLimiterFixedStorageGetErrorDisableRedaction(t *testing.T) {
 		},
 	})
 
-	app.Use(New(Config{DisableRedactedValues: true, Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
+	app.Use(New(Config{DisableValueRedaction: true, Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("ok")
 	})
@@ -162,7 +162,7 @@ func TestLimiterFixedStorageSetErrorDisableRedaction(t *testing.T) {
 		},
 	})
 
-	app.Use(New(Config{DisableRedactedValues: true, Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
+	app.Use(New(Config{DisableValueRedaction: true, Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("ok")
 	})

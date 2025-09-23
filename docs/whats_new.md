@@ -1394,7 +1394,7 @@ See more in [Logger](./middleware/logger.md#predefined-formats)
 
 The limiter middleware uses a new Fixed Window Rate Limiter implementation.
 
-Limiter now redacts request keys in error paths by default. A new `DisableRedactedValues` boolean (default `false`) lets you reveal the raw limiter key if diagnostics require it.
+Limiter now redacts request keys in error paths by default. A new `DisableValueRedaction` boolean (default `false`) lets you reveal the raw limiter key if diagnostics require it.
 
 :::note
 Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `Expiration`, `Storage`, and `KeyGenerator` instead.
