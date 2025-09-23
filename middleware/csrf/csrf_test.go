@@ -1732,7 +1732,7 @@ func Test_deleteTokenFromStorage(t *testing.T) {
 
 	store := session.NewStore()
 	sm := newSessionManager(store)
-	stm := newStorageManager(nil)
+	stm := newStorageManager(nil, true)
 
 	sm.setRaw(ctx, token, dummy, time.Minute)
 	require.NoError(t, deleteTokenFromStorage(ctx, token, Config{Session: store}, sm, stm))
@@ -1740,13 +1740,23 @@ func Test_deleteTokenFromStorage(t *testing.T) {
 	require.Nil(t, raw)
 
 	sm2 := newSessionManager(nil)
-	stm2 := newStorageManager(nil)
+	stm2 := newStorageManager(nil, true)
 
 	require.NoError(t, stm2.setRaw(context.Background(), token, dummy, time.Minute))
 	require.NoError(t, deleteTokenFromStorage(ctx, token, Config{}, sm2, stm2))
 	raw, err := stm2.getRaw(context.Background(), token)
 	require.NoError(t, err)
 	require.Nil(t, raw)
+}
+
+func Test_storageManager_logKey(t *testing.T) {
+	t.Parallel()
+
+	redacted := newStorageManager(nil, true)
+	require.Equal(t, redactedKey, redacted.logKey("secret"))
+
+	plain := newStorageManager(nil, false)
+	require.Equal(t, "secret", plain.logKey("secret"))
 }
 
 func Test_CSRF_Chain_Extractor(t *testing.T) {

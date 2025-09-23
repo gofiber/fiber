@@ -21,6 +21,8 @@ type failingLimiterStorage struct {
 	errs map[string]error
 }
 
+const testLimiterClientKey = "client-key"
+
 func newFailingLimiterStorage() *failingLimiterStorage {
 	return &failingLimiterStorage{
 		data: make(map[string][]byte),
@@ -68,7 +70,7 @@ func TestLimiterFixedStorageGetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingLimiterStorage()
-	storage.errs["get|client-key"] = errors.New("boom")
+	storage.errs["get|"+testLimiterClientKey] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -78,7 +80,7 @@ func TestLimiterFixedStorageGetError(t *testing.T) {
 		},
 	})
 
-	app.Use(New(Config{Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return "client-key" }}))
+	app.Use(New(Config{Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("ok")
 	})
@@ -88,13 +90,14 @@ func TestLimiterFixedStorageGetError(t *testing.T) {
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Error(t, captured)
 	require.ErrorContains(t, captured, "limiter: failed to get key")
+	require.ErrorContains(t, captured, "[redacted]")
 }
 
 func TestLimiterFixedStorageSetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingLimiterStorage()
-	storage.errs["set|client-key"] = errors.New("boom")
+	storage.errs["set|"+testLimiterClientKey] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -104,7 +107,7 @@ func TestLimiterFixedStorageSetError(t *testing.T) {
 		},
 	})
 
-	app.Use(New(Config{Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return "client-key" }}))
+	app.Use(New(Config{Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("ok")
 	})
@@ -115,6 +118,61 @@ func TestLimiterFixedStorageSetError(t *testing.T) {
 	require.Error(t, captured)
 	require.ErrorContains(t, captured, "limiter: failed to persist state")
 	require.ErrorContains(t, captured, "limiter: failed to store key")
+	require.ErrorContains(t, captured, "[redacted]")
+}
+
+func TestLimiterFixedStorageGetErrorDisableRedaction(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingLimiterStorage()
+	storage.errs["get|"+testLimiterClientKey] = errors.New("boom")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(New(Config{DisableValueRedaction: true, Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, testLimiterClientKey)
+	require.NotContains(t, captured.Error(), "[redacted]")
+}
+
+func TestLimiterFixedStorageSetErrorDisableRedaction(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingLimiterStorage()
+	storage.errs["set|"+testLimiterClientKey] = errors.New("boom")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(New(Config{DisableValueRedaction: true, Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, testLimiterClientKey)
+	require.NotContains(t, captured.Error(), "[redacted]")
 }
 
 // go test -run Test_Limiter_With_Max_Func_With_Zero -race -v

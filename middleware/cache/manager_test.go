@@ -12,7 +12,7 @@ import (
 
 func Test_manager_get(t *testing.T) {
 	t.Parallel()
-	cacheManager := newManager(nil)
+	cacheManager := newManager(nil, true)
 	t.Run("Item not found in cache", func(t *testing.T) {
 		t.Parallel()
 		it, err := cacheManager.get(context.Background(), utils.UUID())
@@ -29,4 +29,14 @@ func Test_manager_get(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, it)
 	})
+}
+
+func Test_manager_logKey(t *testing.T) {
+	t.Parallel()
+
+	redactedManager := newManager(nil, true)
+	assert.Equal(t, redactedKey, redactedManager.logKey("secret"))
+
+	plainManager := newManager(nil, false)
+	assert.Equal(t, "secret", plainManager.logKey("secret"))
 }
