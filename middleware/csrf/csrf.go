@@ -48,13 +48,25 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
+	redactKeys := true
+	if cfg.RedactKeys != nil {
+		redactKeys = *cfg.RedactKeys
+	}
+
+	maskValue := func(value string) string {
+		if redactKeys {
+			return redactedKey
+		}
+		return value
+	}
+
 	// Create manager to simplify storage operations ( see *_manager.go )
 	var sessionManager *sessionManager
 	var storageManager *storageManager
 	if cfg.Session != nil {
 		sessionManager = newSessionManager(cfg.Session)
 	} else {
-		storageManager = newStorageManager(cfg.Storage)
+		storageManager = newStorageManager(cfg.Storage, redactKeys)
 	}
 
 	// Pre-parse trusted origins
@@ -67,7 +79,7 @@ func New(config ...Config) fiber.Handler {
 			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
 			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
 			if !isValid {
-				panic("[CSRF] Invalid origin format in configuration:" + origin)
+				panic("[CSRF] Invalid origin format in configuration:" + maskValue(origin))
 			}
 			schemeSep := strings.Index(normalizedOrigin, "://") + len("://")
 			sd := subdomain{prefix: normalizedOrigin[:schemeSep], suffix: normalizedOrigin[schemeSep:]}
@@ -75,7 +87,7 @@ func New(config ...Config) fiber.Handler {
 		} else {
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
-				panic("[CSRF] Invalid origin format in configuration:" + origin)
+				panic("[CSRF] Invalid origin format in configuration:" + maskValue(origin))
 			}
 			trustedOrigins = append(trustedOrigins, normalizedOrigin)
 		}

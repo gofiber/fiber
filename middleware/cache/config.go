@@ -14,6 +14,11 @@ type Config struct {
 	// Default: an in-memory store for this process only
 	Storage fiber.Storage
 
+	// RedactKeys controls whether cache keys are redacted in logs and error messages.
+	//
+	// Optional. Default: true
+	RedactKeys *bool
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil

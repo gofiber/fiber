@@ -21,12 +21,13 @@ const redactedKey = "[redacted]"
 //msgp:ignore manager
 //msgp:ignore storageManager
 type storageManager struct {
-	pool    sync.Pool       `msg:"-"` //nolint:revive // Ignore unexported type
-	memory  *memory.Storage `msg:"-"` //nolint:revive // Ignore unexported type
-	storage fiber.Storage   `msg:"-"` //nolint:revive // Ignore unexported type
+	pool       sync.Pool       `msg:"-"` //nolint:revive // Ignore unexported type
+	memory     *memory.Storage `msg:"-"` //nolint:revive // Ignore unexported type
+	storage    fiber.Storage   `msg:"-"` //nolint:revive // Ignore unexported type
+	redactKeys bool            `msg:"-"`
 }
 
-func newStorageManager(storage fiber.Storage) *storageManager {
+func newStorageManager(storage fiber.Storage, redactKeys bool) *storageManager {
 	// Create new storage handler
 	storageManager := &storageManager{
 		pool: sync.Pool{
@@ -34,6 +35,7 @@ func newStorageManager(storage fiber.Storage) *storageManager {
 				return new(item)
 			},
 		},
+		redactKeys: redactKeys,
 	}
 	if storage != nil {
 		// Use provided storage if provided
@@ -70,7 +72,7 @@ func (m *storageManager) getRaw(ctx context.Context, key string) ([]byte, error)
 func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) error {
 	if m.storage != nil {
 		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
-			return fmt.Errorf("csrf: failed to store key %s: %w", redactedKey, err)
+			return fmt.Errorf("csrf: failed to store key %s: %w", m.logKey(key), err)
 		}
 		return nil
 	}
@@ -84,11 +86,18 @@ func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp
 func (m *storageManager) delRaw(ctx context.Context, key string) error {
 	if m.storage != nil {
 		if err := m.storage.DeleteWithContext(ctx, key); err != nil {
-			return fmt.Errorf("csrf: failed to delete key %s: %w", redactedKey, err)
+			return fmt.Errorf("csrf: failed to delete key %s: %w", m.logKey(key), err)
 		}
 		return nil
 	}
 
 	m.memory.Delete(key)
 	return nil
+}
+
+func (m *storageManager) logKey(key string) string {
+	if m.redactKeys {
+		return redactedKey
+	}
+	return key
 }

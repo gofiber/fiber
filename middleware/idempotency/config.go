@@ -22,6 +22,11 @@ type Config struct {
 	//
 	// Optional. Default: an in-memory storage for this process only.
 	Storage fiber.Storage
+
+	// RedactKeys controls whether idempotency keys are redacted in logs and errors.
+	//
+	// Optional. Default: true
+	RedactKeys *bool
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: a function which skips the middleware on safe HTTP request method.

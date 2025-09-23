@@ -20,6 +20,11 @@ type Config struct {
 	// Ignored if Session is set.
 	Storage fiber.Storage
 
+	// RedactKeys controls whether CSRF tokens and storage keys are redacted in logs and errors.
+	//
+	// Optional. Default: true
+	RedactKeys *bool
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil

@@ -11,6 +11,11 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
+	// RedactKeys controls whether configuration values and origins are redacted in logs and panics.
+	//
+	// Optional. Default: true
+	RedactKeys *bool
+
 	// AllowOriginsFunc defines a function that will set the 'Access-Control-Allow-Origin'
 	// response header to the 'origin' request header when returned true. This allows for
 	// dynamic evaluation of allowed origins. Note if AllowCredentials is true, wildcard origins

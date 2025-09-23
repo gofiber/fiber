@@ -41,6 +41,18 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
+	redactKeys := true
+	if cfg.RedactKeys != nil {
+		redactKeys = *cfg.RedactKeys
+	}
+
+	maskKey := func(key string) string {
+		if redactKeys {
+			return redactedKey
+		}
+		return key
+	}
+
 	keepResponseHeadersMap := make(map[string]struct{}, len(cfg.KeepResponseHeaders))
 	for _, h := range cfg.KeepResponseHeaders {
 		keepResponseHeadersMap[strings.ToLower(h)] = struct{}{}
@@ -106,7 +118,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		defer func() {
 			if err := cfg.Lock.Unlock(key); err != nil {
-				log.Errorf("idempotency: failed to unlock key %s: %v", redactedKey, err)
+				log.Errorf("idempotency: failed to unlock key %s: %v", maskKey(key), err)
 			}
 		}()
 

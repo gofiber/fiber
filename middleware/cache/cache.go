@@ -71,6 +71,18 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
+	redactKeys := true
+	if cfg.RedactKeys != nil {
+		redactKeys = *cfg.RedactKeys
+	}
+
+	maskKey := func(key string) string {
+		if redactKeys {
+			return redactedKey
+		}
+		return key
+	}
+
 	// Nothing to cache
 	if int(cfg.Expiration.Seconds()) < 0 {
 		return func(c fiber.Ctx) error {
@@ -84,7 +96,7 @@ func New(config ...Config) fiber.Handler {
 		timestamp = uint64(time.Now().Unix()) //nolint:gosec //Not a concern
 	)
 	// Create manager to simplify storage operations ( see manager.go )
-	manager := newManager(cfg.Storage)
+	manager := newManager(cfg.Storage, redactKeys)
 	// Create indexed heap for tracking expirations ( see heap.go )
 	heap := &indexedHeap{}
 	// count stored bytes (sizes of response bodies)
@@ -158,7 +170,7 @@ func New(config ...Config) fiber.Handler {
 						manager.release(e)
 					}
 					mux.Unlock()
-					return fmt.Errorf("cache: failed to delete expired key %q: %w", key, err)
+					return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
 				}
 				idx := e.heapidx
 				manager.release(e)
@@ -174,7 +186,7 @@ func New(config ...Config) fiber.Handler {
 					if err != nil {
 						manager.release(e)
 						mux.Unlock()
-						return cacheBodyFetchError(key, err)
+						return cacheBodyFetchError(maskKey, key, err)
 					}
 					e.body = rawBody
 				}
@@ -255,7 +267,7 @@ func New(config ...Config) fiber.Handler {
 			for storedBytes+bodySize > cfg.MaxBytes {
 				keyToRemove, size := heap.removeFirst()
 				if err := deleteKey(keyToRemove); err != nil {
-					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", keyToRemove, err)
+					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), err)
 				}
 				storedBytes -= size
 			}
@@ -323,7 +335,7 @@ func New(config ...Config) fiber.Handler {
 			if rawStored {
 				rawKey := key + "_body"
 				if err := manager.del(context.Background(), rawKey); err != nil {
-					cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cache: failed to delete raw key %q after store error: %w", rawKey, err))
+					cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cache: failed to delete raw key %q after store error: %w", maskKey(rawKey), err))
 				}
 			}
 			return cleanupErr
@@ -385,9 +397,9 @@ func hasRequestDirective(c fiber.Ctx, directive string) bool {
 	return false
 }
 
-func cacheBodyFetchError(key string, err error) error {
+func cacheBodyFetchError(mask func(string) string, key string, err error) error {
 	if errors.Is(err, errCacheMiss) {
-		return fmt.Errorf("cache: no cached body for key %q: %w", key, err)
+		return fmt.Errorf("cache: no cached body for key %q: %w", mask(key), err)
 	}
 	return err
 }
