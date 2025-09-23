@@ -916,8 +916,8 @@ func (app *App) RouteChain(path string) Register {
 }
 
 // Route is used to define routes with a common prefix inside the supplied
-// function. It behaves like the Fiber v2 Route helper and reuses the Group
-// method to create a sub-router.
+// function. It mirrors the legacy helper and reuses the Group method to create
+// a sub-router.
 func (app *App) Route(prefix string, fn func(router Router), name ...string) Router {
 	// Create new group
 	group := app.Group(prefix)

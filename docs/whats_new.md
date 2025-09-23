@@ -328,7 +328,7 @@ In `v2` one handler was already mandatory when the route has been registered, bu
 
 ### Route chaining
 
-Fiber v3 introduces a dedicated `RouteChain` helper, inspired by [`Express`](https://expressjs.com/de/api.html#app.route), for declaring a stack of handlers on the same path. The original `Route` helper for prefix encapsulation also remains available.
+Fiber v3 introduces a dedicated `RouteChain` helper, inspired by [`Express`](https://expressjs.com/en/api.html#app.route), for declaring a stack of handlers on the same path. The original `Route` helper for prefix encapsulation also remains available.
 
 ```diff
 -    Route(path string) Register
@@ -364,7 +364,7 @@ You can find more information about `app.RouteChain` and `app.Route` in the API 
 
 ### Middleware registration
 
-We have aligned our method for middlewares closer to [`Express`](https://expressjs.com/de/api.html#app.use) and now also support the [`Use`](./api/app#use) of multiple prefixes.
+We have aligned our method for middlewares closer to [`Express`](https://expressjs.com/en/api.html#app.use) and now also support the [`Use`](./api/app#use) of multiple prefixes.
 
 Prefix matching is now stricter: partial matches must end at a slash boundary (or be an exact match). This keeps `/api` middleware from running on `/apiv1` while still allowing `/api/:version` style patterns that leverage route parameters, optional segments, or wildcards.
 

@@ -142,7 +142,7 @@ func handler(c fiber.Ctx) error {
 
 Returns an instance of a single route, which you can then use to handle HTTP verbs with optional middleware.
 
-Similar to [`Express`](https://expressjs.com/de/api.html#app.route).
+Similar to [`Express`](https://expressjs.com/en/api.html#app.route).
 
 ```go title="Signature"
 func (app *App) RouteChain(path string) Register
@@ -202,8 +202,8 @@ func main() {
     })
 
     // Combine multiple routes
-    app.RouteChain("/v2").RouteChain("/user").Get(func(c fiber.Ctx) error {
-        return c.SendString("GET /v2/user")
+    app.RouteChain("/reports").RouteChain("/daily").Get(func(c fiber.Ctx) error {
+        return c.SendString("GET /reports/daily")
     })
 
     // Use multiple methods
@@ -219,7 +219,7 @@ func main() {
 
 ### Route
 
-Defines routes with a common prefix inside the supplied function, mirroring the Fiber v2 helper. Internally it uses [`Group`](#group) to create a sub-router and accepts an optional name prefix.
+Defines routes with a common prefix inside the supplied function. Internally it uses [`Group`](#group) to create a sub-router and accepts an optional name prefix.
 
 ```go title="Signature"
 func (app *App) Route(prefix string, fn func(router Router), name ...string) Router
