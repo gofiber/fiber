@@ -21,7 +21,8 @@ var protocolCheck = regexp.MustCompile(`^https?://.*$`)
 
 var fileBufPool = sync.Pool{
 	New: func() any {
-		return make([]byte, 1<<20) // 1MB buffer
+		b := make([]byte, 1<<20) // 1MB buffer
+		return &b
 	},
 }
 
@@ -256,8 +257,8 @@ func parserRequestBodyFile(req *Request) error {
 	}
 
 	// Add files.
-	fileBuf, ok := fileBufPool.Get().([]byte)
-	if !ok || len(fileBuf) == 0 {
+	fileBuf, ok := fileBufPool.Get().(*[]byte)
+	if !ok || len(*fileBuf) == 0 {
 		return errors.New("failed to retrieve buffer from a sync.Pool")
 	}
 
@@ -293,7 +294,7 @@ func parserRequestBodyFile(req *Request) error {
 			return fmt.Errorf("create file error: %w", err)
 		}
 
-		if _, err := io.CopyBuffer(w, v.reader, fileBuf); err != nil {
+		if _, err := io.CopyBuffer(w, v.reader, *fileBuf); err != nil {
 			return fmt.Errorf("failed to copy file data: %w", err)
 		}
 
