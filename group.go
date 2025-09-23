@@ -196,11 +196,27 @@ func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 	return newGrp
 }
 
-// Route is used to define routes with a common prefix inside the common function.
-// Uses Group method to define new sub-router.
-func (grp *Group) Route(path string) Register {
+// RouteChain creates a Registering instance scoped to the group's prefix,
+// allowing chained route declarations for the same path.
+func (grp *Group) RouteChain(path string) Register {
 	// Create new group
 	register := &Registering{app: grp.app, path: getGroupPath(grp.Prefix, path)}
 
 	return register
+}
+
+// Route is used to define routes with a common prefix inside the supplied
+// function. It behaves like the Fiber v2 Route helper and reuses the Group
+// method to create a sub-router.
+func (grp *Group) Route(prefix string, fn func(router Router), name ...string) Router {
+	// Create new group
+	group := grp.Group(prefix)
+	if len(name) > 0 {
+		group.Name(name[0])
+	}
+
+	// Define routes
+	fn(group)
+
+	return group
 }
