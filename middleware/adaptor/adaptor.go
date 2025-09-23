@@ -168,10 +168,14 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			r.RemoteAddr = net.JoinHostPort(r.RemoteAddr, "80")
 		}
 
-		remoteAddr, err := net.ResolveTCPAddr("tcp", r.RemoteAddr)
+		// Determine remoteAddr for TCP or fallback for Unix sockets
+		var remoteAddr *net.TCPAddr
+		tcpAddr, err := net.ResolveTCPAddr("tcp", r.RemoteAddr)
 		if err != nil {
-			http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
-			return
+			// Unix socket or invalid address
+			remoteAddr = nil // fasthttp will handle nil correctly
+		} else {
+			remoteAddr = tcpAddr
 		}
 
 		// New fasthttp Ctx from pool

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -663,3 +664,63 @@ func Benchmark_HTTPHandler(b *testing.B) {
 
 	require.NoError(b, err)
 }
+
+func TestUnixSocketAdaptor(t *testing.T) {
+	socketPath := "/tmp/test.sock"
+	defer os.Remove(socketPath)
+
+	// Create Fiber v3 app
+	app := fiber.New()
+	app.Get("/hello", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	// Convert Fiber app to net/http handler
+	handler := FiberApp(app)
+
+	// Create Unix socket listener
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run server in a goroutine
+	done := make(chan struct{})
+	go func() {
+		// http.Serve will return an error when listener is closed, ignore it
+		_ = http.Serve(listener, handler)
+		close(done)
+	}()
+
+	// Connect to Unix socket
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		listener.Close()
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	// Send GET request manually
+	fmt.Fprintf(conn, "GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")
+
+	// Read response
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil {
+		listener.Close()
+		t.Fatal(err)
+	}
+
+	rawResponse := string(buf[:n])
+	fmt.Println("Raw response:\n", rawResponse)
+
+	if !strings.Contains(rawResponse, "ok") {
+		listener.Close()
+		t.Fatal("expected 'ok' in response")
+	}
+
+	// Close listener and wait for server goroutine to finish
+	listener.Close()
+	<-done
+}
+
