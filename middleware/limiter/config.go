@@ -67,6 +67,11 @@ type Config struct {
 	//
 	// Default: false
 	DisableHeaders bool
+
+	// DisableRedactedValues turns off masking limiter keys in logs and error messages when set to true.
+	//
+	// Default: false
+	DisableRedactedValues bool
 }
 
 // ConfigDefault is the default config
@@ -82,6 +87,7 @@ var ConfigDefault = Config{
 	SkipFailedRequests:     false,
 	SkipSuccessfulRequests: false,
 	DisableHeaders:         false,
+	DisableRedactedValues:  false,
 	LimiterMiddleware:      FixedWindow{},
 }
 

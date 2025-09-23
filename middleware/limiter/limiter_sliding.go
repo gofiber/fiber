@@ -22,7 +22,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 	)
 
 	// Create manager to simplify storage operations ( see manager.go )
-	manager := newManager(cfg.Storage)
+	manager := newManager(cfg.Storage, !cfg.DisableRedactedValues)
 
 	// Update timestamp every second
 	utils.StartTimeStampUpdater()

@@ -21,14 +21,15 @@ type item struct {
 
 //msgp:ignore manager
 type manager struct {
-	pool    sync.Pool
-	memory  *memory.Storage
-	storage fiber.Storage
+	pool       sync.Pool
+	memory     *memory.Storage
+	storage    fiber.Storage
+	redactKeys bool
 }
 
 const redactedKey = "[redacted]"
 
-func newManager(storage fiber.Storage) *manager {
+func newManager(storage fiber.Storage, redactKeys bool) *manager {
 	// Create new storage handler
 	manager := &manager{
 		pool: sync.Pool{
@@ -36,6 +37,7 @@ func newManager(storage fiber.Storage) *manager {
 				return new(item)
 			},
 		},
+		redactKeys: redactKeys,
 	}
 	if storage != nil {
 		// Use provided storage if provided
@@ -65,13 +67,13 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 	if m.storage != nil {
 		raw, err := m.storage.GetWithContext(ctx, key)
 		if err != nil {
-			return nil, fmt.Errorf("limiter: failed to get key %s from storage: %w", redactedKey, err)
+			return nil, fmt.Errorf("limiter: failed to get key %q from storage: %w", m.logKey(key), err)
 		}
 		if raw != nil {
 			it := m.acquire()
 			if _, err := it.UnmarshalMsg(raw); err != nil {
 				m.release(it)
-				return nil, fmt.Errorf("limiter: failed to unmarshal key %s: %w", redactedKey, err)
+				return nil, fmt.Errorf("limiter: failed to unmarshal key %q: %w", m.logKey(key), err)
 			}
 			return it, nil
 		}
@@ -85,7 +87,7 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 
 	it, ok := value.(*item)
 	if !ok {
-		return nil, fmt.Errorf("limiter: unexpected entry type %T for key %s", value, redactedKey)
+		return nil, fmt.Errorf("limiter: unexpected entry type %T for key %q", value, m.logKey(key))
 	}
 
 	return it, nil
@@ -97,11 +99,11 @@ func (m *manager) set(ctx context.Context, key string, it *item, exp time.Durati
 		raw, err := it.MarshalMsg(nil)
 		if err != nil {
 			m.release(it)
-			return fmt.Errorf("limiter: failed to marshal key %s: %w", redactedKey, err)
+			return fmt.Errorf("limiter: failed to marshal key %q: %w", m.logKey(key), err)
 		}
 		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
 			m.release(it)
-			return fmt.Errorf("limiter: failed to store key %s: %w", redactedKey, err)
+			return fmt.Errorf("limiter: failed to store key %q: %w", m.logKey(key), err)
 		}
 		m.release(it)
 		return nil
@@ -109,4 +111,11 @@ func (m *manager) set(ctx context.Context, key string, it *item, exp time.Durati
 
 	m.memory.Set(key, it, exp)
 	return nil
+}
+
+func (m *manager) logKey(key string) string {
+	if m.redactKeys {
+		return redactedKey
+	}
+	return key
 }
