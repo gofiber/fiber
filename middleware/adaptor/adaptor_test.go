@@ -11,6 +11,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -666,61 +668,65 @@ func Benchmark_HTTPHandler(b *testing.B) {
 }
 
 func TestUnixSocketAdaptor(t *testing.T) {
-	socketPath := "/tmp/test.sock"
-	defer os.Remove(socketPath)
+    if runtime.GOOS == "windows" {
+        t.Skip("Unix domain sockets are not supported on Windows")
+    }
 
-	// Create Fiber v3 app
-	app := fiber.New()
-	app.Get("/hello", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+    dir := t.TempDir()
+    socketPath := filepath.Join(dir, "test.sock")
+    // ensure no stale socket
+    _ = os.Remove(socketPath)
+    defer os.Remove(socketPath)
 
-	// Convert Fiber app to net/http handler
-	handler := FiberApp(app)
+    app := fiber.New()
+    app.Get("/hello", func(c fiber.Ctx) error {
+        return c.SendString("ok")
+    })
 
-	// Create Unix socket listener
-	listener, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+    handler := FiberApp(app)
 
-	// Run server in a goroutine
-	done := make(chan struct{})
-	go func() {
-		// http.Serve will return an error when listener is closed, ignore it
-		_ = http.Serve(listener, handler)
-		close(done)
-	}()
+    listener, err := net.Listen("unix", socketPath)
+    if err != nil {
+        t.Fatal(err)
+    }
 
-	// Connect to Unix socket
-	conn, err := net.Dial("unix", socketPath)
-	if err != nil {
-		listener.Close()
-		t.Fatal(err)
-	}
-	defer conn.Close()
+    done := make(chan struct{})
+    go func() {
+        _ = http.Serve(listener, handler)
+        close(done)
+    }()
 
-	// Send GET request manually
-	fmt.Fprintf(conn, "GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")
+    conn, err := net.Dial("unix", socketPath)
+    if err != nil {
+        listener.Close()
+        t.Fatal(err)
+    }
+    defer conn.Close()
 
-	// Read response
-	buf := make([]byte, 1024)
-	n, err := conn.Read(buf)
-	if err != nil {
-		listener.Close()
-		t.Fatal(err)
-	}
+    _, err = conn.Write([]byte("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"))
+    if err != nil {
+        listener.Close()
+        t.Fatal(err)
+    }
 
-	rawResponse := string(buf[:n])
-	fmt.Println("Raw response:\n", rawResponse)
+    buf := make([]byte, 1024)
+    n, err := conn.Read(buf)
+    if err != nil {
+        listener.Close()
+        t.Fatal(err)
+    }
 
-	if !strings.Contains(rawResponse, "ok") {
-		listener.Close()
-		t.Fatal("expected 'ok' in response")
-	}
+    raw := string(buf[:n])
+    t.Logf("Raw response:\n%s", raw)
+    if !strings.Contains(raw, "HTTP/1.1 200 OK") {
+        listener.Close()
+        t.Fatalf("unexpected status line, got response: %q", raw)
+    }
+    if !strings.Contains(raw, "ok") {
+        listener.Close()
+        t.Fatalf("expected 'ok' in response body, got: %q", raw)
+    }
 
-	// Close listener and wait for server goroutine to finish
-	listener.Close()
-	<-done
+    listener.Close()
+    <-done
 }
-
