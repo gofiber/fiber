@@ -678,7 +678,11 @@ func TestUnixSocketAdaptor(t *testing.T) {
 	if err := os.Remove(socketPath); err != nil {
 		t.Fatalf("failed to remove socket: %v", err)
 	}
-	defer os.Remove(socketPath)
+	defer func() {
+		if err := os.Remove(socketPath); err != nil {
+			t.Errorf("failed to remove socket: %v", err)
+		}
+	}()
 
 	app := fiber.New()
 	app.Get("/hello", func(c fiber.Ctx) error {
@@ -694,16 +698,24 @@ func TestUnixSocketAdaptor(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = http.Serve(listener, handler)
+		if err := http.Serve(listener, handler); err != nil && err != http.ErrServerClosed {
+			t.Errorf("http.Serve failed: %v", err)
+		}
 		close(done)
 	}()
 
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
-		listener.Close()
+		if err := listener.Close(); err != nil {
+			t.Errorf("listener.Close failed: %v", err)
+		}
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Errorf("conn.Close failed: %v", err)
+		}
+	}()
 
 	_, err = conn.Write([]byte("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"))
 	if err != nil {
