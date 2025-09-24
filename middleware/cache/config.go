@@ -62,6 +62,11 @@ type Config struct {
 	// Optional. Default: 1 * 1024 * 1024
 	MaxBytes uint
 
+	// DisableValueRedaction turns off masking cache keys in logs and error messages when set to true.
+	//
+	// Optional. Default: false
+	DisableValueRedaction bool
+
 	// DisableCacheControl disables client side caching if set to true
 	//
 	// Optional. Default: false
@@ -76,11 +81,12 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:                nil,
-	Expiration:          5 * time.Minute,
-	CacheHeader:         "X-Cache",
-	DisableCacheControl: false,
-	CacheInvalidator:    nil,
+	Next:                  nil,
+	Expiration:            5 * time.Minute,
+	CacheHeader:           "X-Cache",
+	DisableCacheControl:   false,
+	CacheInvalidator:      nil,
+	DisableValueRedaction: false,
 	KeyGenerator: func(c fiber.Ctx) string {
 		return utils.CopyString(c.Path())
 	},

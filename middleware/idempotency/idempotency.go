@@ -21,6 +21,8 @@ const (
 	localsKeyWasPutToCache
 )
 
+const redactedKey = "[redacted]"
+
 // IsFromCache reports whether the middleware served the response from the
 // cache for the current request.
 func IsFromCache(c fiber.Ctx) bool {
@@ -38,6 +40,15 @@ func WasPutToCache(c fiber.Ctx) bool {
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
+
+	redactKeys := !cfg.DisableValueRedaction
+
+	maskKey := func(key string) string {
+		if redactKeys {
+			return redactedKey
+		}
+		return key
+	}
 
 	keepResponseHeadersMap := make(map[string]struct{}, len(cfg.KeepResponseHeaders))
 	for _, h := range cfg.KeepResponseHeaders {
@@ -104,7 +115,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		defer func() {
 			if err := cfg.Lock.Unlock(key); err != nil {
-				log.Errorf("[IDEMPOTENCY] failed to unlock key %q: %v", key, err)
+				log.Errorf("[IDEMPOTENCY] failed to unlock key %q: %v", maskKey(key), err)
 			}
 		}()
 

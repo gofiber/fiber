@@ -104,6 +104,8 @@ app.Use(cache.New(cache.Config{
 
 `CacheInvalidator` defines custom invalidation rules. Return `true` to bypass the cache. In the example above, setting the `invalidateCache` query parameter to `true` invalidates the entry.
 
+Cache keys are masked in logs and error messages by default. Set `DisableValueRedaction` to `true` if you explicitly need the raw key for debugging.
+
 ## Config
 
 | Property             | Type                                           | Description                                                                                                                                                                                                                                                                                                    | Default                                                          |
@@ -113,6 +115,7 @@ app.Use(cache.New(cache.Config{
 | CacheHeader          | `string`                                       | CacheHeader is the header on the response header that indicates the cache status, with the possible return values "hit," "miss," or "unreachable."                                                                                                                                                             | `X-Cache`                                                        |
 | DisableCacheControl  | `bool`                                          | DisableCacheControl omits the `Cache-Control` header when set to `true`. | `false`                                                         |
 | CacheInvalidator     | `func(fiber.Ctx) bool`                         | CacheInvalidator defines a function that is executed before checking the cache entry. It can be used to invalidate the existing cache manually by returning true. | `nil`                                                            |
+| DisableValueRedaction | `bool`                                        | Turns off cache key redaction in logs and error messages when set to `true`. | `false`                                             |
 | KeyGenerator         | `func(fiber.Ctx) string`                       | KeyGenerator allows you to generate custom keys. The HTTP method is appended automatically. | `func(c fiber.Ctx) string { return utils.CopyString(c.Path()) }` |
 | ExpirationGenerator  | `func(fiber.Ctx, *cache.Config) time.Duration` | ExpirationGenerator allows you to generate custom expiration keys based on the request.                                                                                                                                                                                                                        | `nil`                                                            |
 | Storage              | `fiber.Storage`                                | Storage is used to store the state of the middleware.                                                                                                                                                                                                                                                            | In-memory store                                                  |
@@ -129,6 +132,7 @@ var ConfigDefault = Config{
     CacheHeader:  "X-Cache",
     DisableCacheControl: false,
     CacheInvalidator: nil,
+    DisableValueRedaction: false,
     KeyGenerator: func(c fiber.Ctx) string {
         return utils.CopyString(c.Path())
     },
