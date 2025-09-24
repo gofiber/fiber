@@ -97,6 +97,11 @@ type Config struct {
 	// Optional. Default: 30 * time.Minute
 	IdleTimeout time.Duration
 
+	// DisableValueRedaction turns off masking CSRF tokens and storage keys in logs and errors.
+	//
+	// Optional. Default: false
+	DisableValueRedaction bool
+
 	// CookieSecure indicates if CSRF cookie is secure.
 	//
 	// Optional. Default: false
@@ -125,12 +130,13 @@ const HeaderName = "X-Csrf-Token"
 
 // ConfigDefault is the default config for CSRF middleware.
 var ConfigDefault = Config{
-	CookieName:     "csrf_",
-	CookieSameSite: "Lax",
-	IdleTimeout:    30 * time.Minute,
-	KeyGenerator:   utils.UUIDv4,
-	ErrorHandler:   defaultErrorHandler,
-	Extractor:      extractors.FromHeader(HeaderName),
+	CookieName:            "csrf_",
+	CookieSameSite:        "Lax",
+	IdleTimeout:           30 * time.Minute,
+	KeyGenerator:          utils.UUIDv4,
+	ErrorHandler:          defaultErrorHandler,
+	Extractor:             extractors.FromHeader(HeaderName),
+	DisableValueRedaction: false,
 }
 
 // defaultErrorHandler is the default error handler that processes errors from fiber.Handler.

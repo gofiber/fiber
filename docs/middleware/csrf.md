@@ -42,6 +42,8 @@ app.Use(csrf.New(csrf.Config{
     CookieSessionOnly: true,
     Extractor:         extractors.FromHeader("X-Csrf-Token"),
     Session:           sessionStore,
+    // Redaction is enabled by default. Set DisableValueRedaction when you must expose tokens or storage keys in diagnostics.
+    // DisableValueRedaction: true,
 }))
 ```
 
@@ -403,6 +405,7 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 | KeyGenerator      | `func() string`                    | Token generation function                                                                                                     | `utils.UUIDv4`               |
 | ErrorHandler      | `fiber.ErrorHandler`               | Custom error handler                                                                                                          | `defaultErrorHandler`        |
 | Extractor         | `extractors.Extractor`             | Token extraction method with metadata                                                                                         | `extractors.FromHeader("X-Csrf-Token")` |
+| DisableValueRedaction | `bool`                         | Disables redaction of tokens and storage keys in logs and error messages. | `false`                      |
 | Session           | `*session.Store`                   | Session store (**recommended for production**)                                                                                | `nil`                        |
 | Storage           | `fiber.Storage`                    | Token storage (overridden by Session)                                                                                         | `nil`                        |
 | TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests                                                                                     | `[]`                         |

@@ -10,6 +10,8 @@ import (
 	utils "github.com/gofiber/utils/v2"
 )
 
+const redactedValue = "[redacted]"
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -23,6 +25,15 @@ func New(config ...Config) fiber.Handler {
 		if len(cfg.AllowMethods) == 0 {
 			cfg.AllowMethods = ConfigDefault.AllowMethods
 		}
+	}
+
+	redactValues := !cfg.DisableValueRedaction
+
+	maskValue := func(value string) string {
+		if redactValues {
+			return redactedValue
+		}
+		return value
 	}
 
 	// Warning logs if both AllowOrigins and AllowOriginsFunc are set
@@ -51,7 +62,7 @@ func New(config ...Config) fiber.Handler {
 			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
 			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
 			if !isValid {
-				panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)
+				panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
 			}
 			schemeSep := strings.Index(normalizedOrigin, "://") + len("://")
 			sd := subdomain{prefix: normalizedOrigin[:schemeSep], suffix: normalizedOrigin[schemeSep:]}
@@ -59,7 +70,7 @@ func New(config ...Config) fiber.Handler {
 		} else {
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
-				panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)
+				panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
 			}
 			allowOrigins = append(allowOrigins, normalizedOrigin)
 		}
