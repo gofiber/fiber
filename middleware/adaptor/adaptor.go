@@ -169,7 +169,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 
 		// Determine remoteAddr for TCP or fallback for Unix sockets
-		var remoteAddr *net.TCPAddr
+		var remoteAddr net.Addr
 		tcpAddr, err := net.ResolveTCPAddr("tcp", r.RemoteAddr)
 		if err != nil {
 			// Unix socket or invalid address
