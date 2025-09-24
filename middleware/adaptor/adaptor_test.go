@@ -668,65 +668,67 @@ func Benchmark_HTTPHandler(b *testing.B) {
 }
 
 func TestUnixSocketAdaptor(t *testing.T) {
-    if runtime.GOOS == "windows" {
-        t.Skip("Unix domain sockets are not supported on Windows")
-    }
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix domain sockets are not supported on Windows")
+	}
 
-    dir := t.TempDir()
-    socketPath := filepath.Join(dir, "test.sock")
-    // ensure no stale socket
-    _ = os.Remove(socketPath)
-    defer os.Remove(socketPath)
+	dir := t.TempDir()
+	socketPath := filepath.Join(dir, "test.sock")
+	// ensure no stale socket
+	if err := os.Remove(socketPath); err != nil {
+		t.Fatalf("failed to remove socket: %v", err)
+	}
+	defer os.Remove(socketPath)
 
-    app := fiber.New()
-    app.Get("/hello", func(c fiber.Ctx) error {
-        return c.SendString("ok")
-    })
+	app := fiber.New()
+	app.Get("/hello", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
 
-    handler := FiberApp(app)
+	handler := FiberApp(app)
 
-    listener, err := net.Listen("unix", socketPath)
-    if err != nil {
-        t.Fatal(err)
-    }
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-    done := make(chan struct{})
-    go func() {
-        _ = http.Serve(listener, handler)
-        close(done)
-    }()
+	done := make(chan struct{})
+	go func() {
+		_ = http.Serve(listener, handler)
+		close(done)
+	}()
 
-    conn, err := net.Dial("unix", socketPath)
-    if err != nil {
-        listener.Close()
-        t.Fatal(err)
-    }
-    defer conn.Close()
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		listener.Close()
+		t.Fatal(err)
+	}
+	defer conn.Close()
 
-    _, err = conn.Write([]byte("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"))
-    if err != nil {
-        listener.Close()
-        t.Fatal(err)
-    }
+	_, err = conn.Write([]byte("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"))
+	if err != nil {
+		listener.Close()
+		t.Fatal(err)
+	}
 
-    buf := make([]byte, 1024)
-    n, err := conn.Read(buf)
-    if err != nil {
-        listener.Close()
-        t.Fatal(err)
-    }
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil {
+		listener.Close()
+		t.Fatal(err)
+	}
 
-    raw := string(buf[:n])
-    t.Logf("Raw response:\n%s", raw)
-    if !strings.Contains(raw, "HTTP/1.1 200 OK") {
-        listener.Close()
-        t.Fatalf("unexpected status line, got response: %q", raw)
-    }
-    if !strings.Contains(raw, "ok") {
-        listener.Close()
-        t.Fatalf("expected 'ok' in response body, got: %q", raw)
-    }
+	raw := string(buf[:n])
+	t.Logf("Raw response:\n%s", raw)
+	if !strings.Contains(raw, "HTTP/1.1 200 OK") {
+		listener.Close()
+		t.Fatalf("unexpected status line, got response: %q", raw)
+	}
+	if !strings.Contains(raw, "ok") {
+		listener.Close()
+		t.Fatalf("expected 'ok' in response body, got: %q", raw)
+	}
 
-    listener.Close()
-    <-done
+	listener.Close()
+	<-done
 }
