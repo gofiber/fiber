@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -669,17 +668,9 @@ func Benchmark_HTTPHandler(b *testing.B) {
 }
 
 func TestUnixSocketAdaptor(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Unix domain sockets are not supported on Windows")
-	}
-
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "test.sock")
 
-	// ensure no stale socket
-	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
-		t.Fatalf("failed to remove socket: %v", err)
-	}
 	defer func() {
 		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 			t.Errorf("failed to remove socket: %v", err)
@@ -694,8 +685,14 @@ func TestUnixSocketAdaptor(t *testing.T) {
 
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
+		// Skip on platforms where the "unix" network is unsupported
+		if strings.Contains(err.Error(), "unknown network") ||
+			strings.Contains(err.Error(), "address family not supported") {
+			t.Skipf("Unix domain sockets not supported on this platform: %v", err)
+		}
 		t.Fatal(err)
 	}
+
 	defer func() {
 		if closeErr := listener.Close(); closeErr != nil {
 			t.Errorf("listener.Close failed: %v", closeErr)
@@ -715,9 +712,12 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		}
 		close(done)
 	}()
+
 	defer func() {
-		if shutdownErr := srv.Close(); shutdownErr != nil {
-			t.Errorf("srv.Close failed: %v", shutdownErr)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if shutdownErr := srv.Shutdown(ctx); shutdownErr != nil && shutdownErr != http.ErrServerClosed {
+			t.Errorf("srv.Shutdown failed: %v", shutdownErr)
 		}
 	}()
 
@@ -731,7 +731,7 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		}
 	}()
 
-	if _, err := conn.Write([]byte("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")); err != nil {
+	if _, err = conn.Write([]byte("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")); err != nil {
 		t.Fatalf("failed to write request: %v", err)
 	}
 
@@ -751,5 +751,9 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		t.Fatalf("expected 'ok' in response body, got: %q", raw)
 	}
 
-	<-done
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server shutdown timed out")
+	}
 }
