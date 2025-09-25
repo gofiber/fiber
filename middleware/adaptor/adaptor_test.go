@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
@@ -674,12 +675,13 @@ func TestUnixSocketAdaptor(t *testing.T) {
 
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "test.sock")
+
 	// ensure no stale socket
-	if err := os.Remove(socketPath); err != nil {
+	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 		t.Fatalf("failed to remove socket: %v", err)
 	}
 	defer func() {
-		if err := os.Remove(socketPath); err != nil {
+		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 			t.Errorf("failed to remove socket: %v", err)
 		}
 	}()
@@ -688,59 +690,66 @@ func TestUnixSocketAdaptor(t *testing.T) {
 	app.Get("/hello", func(c fiber.Ctx) error {
 		return c.SendString("ok")
 	})
-
 	handler := FiberApp(app)
 
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if closeErr := listener.Close(); closeErr != nil {
+			t.Errorf("listener.Close failed: %v", closeErr)
+		}
+	}()
 
+	// start server with timeouts
+	srv := &http.Server{
+		Handler:      handler,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 	done := make(chan struct{})
 	go func() {
-		if err := http.Serve(listener, handler); err != nil && err != http.ErrServerClosed {
-			t.Errorf("http.Serve failed: %v", err)
+		if serveErr := srv.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
+			t.Errorf("http server failed: %v", serveErr)
 		}
 		close(done)
+	}()
+	defer func() {
+		if shutdownErr := srv.Close(); shutdownErr != nil {
+			t.Errorf("srv.Close failed: %v", shutdownErr)
+		}
 	}()
 
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
-		if err := listener.Close(); err != nil {
-			t.Errorf("listener.Close failed: %v", err)
-		}
-		t.Fatal(err)
+		t.Fatalf("failed to dial socket: %v", err)
 	}
 	defer func() {
-		if err := conn.Close(); err != nil {
-			t.Errorf("conn.Close failed: %v", err)
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Errorf("conn.Close failed: %v", closeErr)
 		}
 	}()
 
-	_, err = conn.Write([]byte("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"))
-	if err != nil {
-		listener.Close()
-		t.Fatal(err)
+	if _, err := conn.Write([]byte("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")); err != nil {
+		t.Fatalf("failed to write request: %v", err)
 	}
 
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
 	if err != nil {
-		listener.Close()
-		t.Fatal(err)
+		t.Fatalf("failed to read response: %v", err)
 	}
 
 	raw := string(buf[:n])
 	t.Logf("Raw response:\n%s", raw)
+
 	if !strings.Contains(raw, "HTTP/1.1 200 OK") {
-		listener.Close()
 		t.Fatalf("unexpected status line, got response: %q", raw)
 	}
 	if !strings.Contains(raw, "ok") {
-		listener.Close()
 		t.Fatalf("expected 'ok' in response body, got: %q", raw)
 	}
 
-	listener.Close()
 	<-done
 }
