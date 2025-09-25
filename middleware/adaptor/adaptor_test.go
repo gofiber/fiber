@@ -670,12 +670,7 @@ func Benchmark_HTTPHandler(b *testing.B) {
 func TestUnixSocketAdaptor(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "test.sock")
-
-	defer func() {
-		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
-			t.Errorf("failed to remove socket: %v", err)
-		}
-	}()
+	defer os.Remove(socketPath) // no need to log error for cleanup in tests
 
 	app := fiber.New()
 	app.Get("/hello", func(c fiber.Ctx) error {
@@ -692,12 +687,7 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
-
-	defer func() {
-		if closeErr := listener.Close(); closeErr != nil {
-			t.Errorf("listener.Close failed: %v", closeErr)
-		}
-	}()
+	defer listener.Close()
 
 	// start server with timeouts
 	srv := &http.Server{
@@ -713,43 +703,34 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		close(done)
 	}()
 
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		if shutdownErr := srv.Shutdown(ctx); shutdownErr != nil && shutdownErr != http.ErrServerClosed {
-			t.Errorf("srv.Shutdown failed: %v", shutdownErr)
-		}
-	}()
-
 	conn, err := net.Dial("unix", socketPath)
-	if err != nil {
-		t.Fatalf("failed to dial socket: %v", err)
-	}
-	defer func() {
-		if closeErr := conn.Close(); closeErr != nil {
-			t.Errorf("conn.Close failed: %v", closeErr)
-		}
-	}()
+	require.NoError(t, err)
+	defer conn.Close()
 
-	if _, err = conn.Write([]byte("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")); err != nil {
-		t.Fatalf("failed to write request: %v", err)
-	}
+	// set deadline for both write + read (2s)
+	require.NoError(t, conn.SetDeadline(time.Now().Add(2*time.Second)))
 
+	// write request
+	_, err = conn.Write([]byte("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"))
+	require.NoError(t, err)
+
+	// read response
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
-	if err != nil {
-		t.Fatalf("failed to read response: %v", err)
-	}
+	require.NoError(t, err)
+
+	// clear deadline to avoid affecting further calls
+	require.NoError(t, conn.SetDeadline(time.Time{}))
 
 	raw := string(buf[:n])
 	t.Logf("Raw response:\n%s", raw)
+	require.Contains(t, raw, "HTTP/1.1 200 OK")
+	require.Contains(t, raw, "ok")
 
-	if !strings.Contains(raw, "HTTP/1.1 200 OK") {
-		t.Fatalf("unexpected status line, got response: %q", raw)
-	}
-	if !strings.Contains(raw, "ok") {
-		t.Fatalf("expected 'ok' in response body, got: %q", raw)
-	}
+	// now shutdown the server explicitly before waiting for done
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	require.NoError(t, srv.Shutdown(ctx))
 
 	select {
 	case <-done:
