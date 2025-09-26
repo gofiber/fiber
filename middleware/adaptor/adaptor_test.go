@@ -692,7 +692,7 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		if closeErr := listener.Close(); err != nil {
+		if closeErr := listener.Close(); closeErr != nil {
 			t.Logf("listener close failed: %v", closeErr)
 		}
 	}()
