@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_Rand_String(t *testing.T) {
@@ -685,4 +686,71 @@ func Test_Client_Logger_DisableDebug(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Empty(t, buf.String())
+}
+
+func Benchmark_Parser_Request_Body_File(b *testing.B) {
+	b.Helper()
+
+	const (
+		fileCount = 3
+		fileSize  = 32 << 10 // 32KB payload per file
+	)
+
+	formValues := map[string]string{
+		"username": "fiber",
+		"api_key":  "d5942ef5",
+	}
+
+	fileContents := make([][]byte, fileCount)
+	for i := range fileContents {
+		fileContents[i] = bytes.Repeat([]byte{byte('a' + i)}, fileSize)
+	}
+
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		var totalBytes int64
+		for _, c := range fileContents {
+			totalBytes += int64(len(c))
+		}
+		b.SetBytes(totalBytes)
+		req := newBenchmarkRequest(formValues, fileContents)
+		if err := parserRequestBodyFile(req); err != nil {
+			b.Fatalf("parserRequestBodyFile: %v", err)
+		}
+		releaseBenchmarkRequest(req)
+	}
+}
+
+func newBenchmarkRequest(formValues map[string]string, fileContents [][]byte) *Request {
+	req := &Request{
+		boundary:   "FiberBenchmarkBoundary",
+		formData:   &FormData{Args: fasthttp.AcquireArgs()},
+		RawRequest: fasthttp.AcquireRequest(),
+		files:      make([]*File, len(fileContents)),
+	}
+
+	req.RawRequest.Header.SetContentType("multipart/form-data; boundary=" + req.boundary)
+
+	for key, value := range formValues {
+		req.formData.Set(key, value)
+	}
+
+	for i, content := range fileContents {
+		req.files[i] = AcquireFile(
+			SetFileName(fmt.Sprintf("file-%d.bin", i)),
+			SetFileFieldName(fmt.Sprintf("file%d", i)),
+			SetFileReader(io.NopCloser(bytes.NewReader(content))),
+		)
+	}
+
+	return req
+}
+
+func releaseBenchmarkRequest(req *Request) {
+	fasthttp.ReleaseRequest(req.RawRequest)
+	fasthttp.ReleaseArgs(req.formData.Args)
+	for _, f := range req.files {
+		ReleaseFile(f)
+	}
 }

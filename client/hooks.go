@@ -2,6 +2,7 @@ package client
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -10,12 +11,20 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
 var protocolCheck = regexp.MustCompile(`^https?://.*$`)
+
+var fileBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 1<<20) // 1MB buffer
+		return &b
+	},
+}
 
 const (
 	headerAccept      = "Accept"
@@ -248,7 +257,13 @@ func parserRequestBodyFile(req *Request) error {
 	}
 
 	// Add files.
-	fileBuf := make([]byte, 1<<20) // 1MB buffer
+	fileBuf, ok := fileBufPool.Get().(*[]byte)
+	if !ok {
+		return errors.New("failed to retrieve buffer from a sync.Pool")
+	}
+
+	defer fileBufPool.Put(fileBuf)
+
 	for i, v := range req.files {
 		if v.name == "" && v.path == "" {
 			return ErrFileNoName
@@ -279,7 +294,7 @@ func parserRequestBodyFile(req *Request) error {
 			return fmt.Errorf("create file error: %w", err)
 		}
 
-		if _, err := io.CopyBuffer(w, v.reader, fileBuf); err != nil {
+		if _, err := io.CopyBuffer(w, v.reader, *fileBuf); err != nil {
 			return fmt.Errorf("failed to copy file data: %w", err)
 		}
 
