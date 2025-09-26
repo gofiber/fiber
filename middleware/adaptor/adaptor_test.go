@@ -714,7 +714,7 @@ func TestUnixSocketAdaptor(t *testing.T) {
 	conn, err := net.Dial("unix", socketPath)
 	require.NoError(t, err)
 	defer func() {
-		if closeErr := conn.Close(); err != nil {
+		if closeErr := conn.Close(); closeErr != nil {
 			t.Logf("conn close failed: %v", closeErr)
 		}
 	}()
