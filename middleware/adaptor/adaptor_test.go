@@ -692,8 +692,8 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := listener.Close(); err != nil {
-			t.Logf("listener close failed: %v", err)
+		if closeErr := listener.Close(); err != nil {
+			t.Logf("listener close failed: %v", closeErr)
 		}
 	}()
 
@@ -714,8 +714,8 @@ func TestUnixSocketAdaptor(t *testing.T) {
 	conn, err := net.Dial("unix", socketPath)
 	require.NoError(t, err)
 	defer func() {
-		if err := conn.Close(); err != nil {
-			t.Logf("conn close failed: %v", err)
+		if closeErr := conn.Close(); err != nil {
+			t.Logf("conn close failed: %v", closeErr)
 		}
 	}()
 
