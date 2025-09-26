@@ -670,7 +670,11 @@ func Benchmark_HTTPHandler(b *testing.B) {
 func TestUnixSocketAdaptor(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "test.sock")
-	defer os.Remove(socketPath) // no need to log error for cleanup in tests
+	defer func() {
+		if err := os.Remove(socketPath); err != nil {
+			t.Logf("cleanup failed: %v", err)
+		}
+	}()
 
 	app := fiber.New()
 	app.Get("/hello", func(c fiber.Ctx) error {
@@ -687,7 +691,11 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() {
+		if err := listener.Close(); err != nil {
+			t.Logf("listener close failed: %v", err)
+		}
+	}()
 
 	// start server with timeouts
 	srv := &http.Server{
@@ -705,7 +713,11 @@ func TestUnixSocketAdaptor(t *testing.T) {
 
 	conn, err := net.Dial("unix", socketPath)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Logf("conn close failed: %v", err)
+		}
+	}()
 
 	// set deadline for both write + read (2s)
 	require.NoError(t, conn.SetDeadline(time.Now().Add(2*time.Second)))
