@@ -919,6 +919,9 @@ func (app *App) RouteChain(path string) Register {
 // function. It mirrors the legacy helper and reuses the Group method to create
 // a sub-router.
 func (app *App) Route(prefix string, fn func(router Router), name ...string) Router {
+	if fn == nil {
+		panic("route handler 'fn' cannot be nil")
+	}
 	// Create new group
 	group := app.Group(prefix)
 	if len(name) > 0 {

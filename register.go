@@ -27,7 +27,8 @@ var _ (Register) = (*Registering)(nil)
 // Registering provides route registration helpers for a specific path on the
 // application instance.
 type Registering struct {
-	app *App
+	app   *App
+	group *Group
 
 	path string
 }
@@ -47,15 +48,14 @@ type Registering struct {
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (r *Registering) All(handler Handler, handlers ...Handler) Register {
-	r.app.register([]string{methodUse}, r.path, nil, append([]Handler{handler}, handlers...)...)
+	r.app.register([]string{methodUse}, r.path, r.group, append([]Handler{handler}, handlers...)...)
 	return r
 }
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (r *Registering) Get(handler Handler, handlers ...Handler) Register {
-	r.app.Add([]string{MethodGet}, r.path, handler, handlers...)
-	return r
+	return r.Add([]string{MethodGet}, handler, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -107,7 +107,7 @@ func (r *Registering) Patch(handler Handler, handlers ...Handler) Register {
 
 // Add allows you to specify multiple HTTP methods to register a route.
 func (r *Registering) Add(methods []string, handler Handler, handlers ...Handler) Register {
-	r.app.register(methods, r.path, nil, append([]Handler{handler}, handlers...)...)
+	r.app.register(methods, r.path, r.group, append([]Handler{handler}, handlers...)...)
 	return r
 }
 
@@ -115,7 +115,7 @@ func (r *Registering) Add(methods []string, handler Handler, handlers ...Handler
 // the path in the current instance as its prefix.
 func (r *Registering) RouteChain(path string) Register {
 	// Create new group
-	route := &Registering{app: r.app, path: getGroupPath(r.path, path)}
+	route := &Registering{app: r.app, group: r.group, path: getGroupPath(r.path, path)}
 
 	return route
 }

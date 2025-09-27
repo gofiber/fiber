@@ -200,7 +200,7 @@ func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 // allowing chained route declarations for the same path.
 func (grp *Group) RouteChain(path string) Register {
 	// Create new group
-	register := &Registering{app: grp.app, path: getGroupPath(grp.Prefix, path)}
+	register := &Registering{app: grp.app, group: grp, path: getGroupPath(grp.Prefix, path)}
 
 	return register
 }
@@ -209,6 +209,9 @@ func (grp *Group) RouteChain(path string) Register {
 // function. It mirrors the legacy helper and reuses the Group method to create
 // a sub-router.
 func (grp *Group) Route(prefix string, fn func(router Router), name ...string) Router {
+	if fn == nil {
+		panic("route handler 'fn' cannot be nil")
+	}
 	// Create new group
 	group := grp.Group(prefix)
 	if len(name) > 0 {
