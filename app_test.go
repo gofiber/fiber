@@ -1431,6 +1431,48 @@ func Test_App_Route(t *testing.T) {
 	require.Equal(t, "/test/bar/", app.GetRoute("test.bar.index").Path)
 }
 
+func Test_App_Route_nilFuncPanics(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	require.PanicsWithValue(t, "route handler 'fn' cannot be nil", func() {
+		app.Route("/panic", nil)
+	})
+}
+
+func Test_Group_Route_nilFuncPanics(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	grp := app.Group("/api")
+
+	require.PanicsWithValue(t, "route handler 'fn' cannot be nil", func() {
+		grp.Route("/panic", nil)
+	})
+}
+
+func Test_Group_RouteChain_All(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	var calls []string
+	grp := app.Group("/api", func(c Ctx) error {
+		calls = append(calls, "group")
+		return c.Next()
+	})
+
+	grp.RouteChain("/users").All(func(c Ctx) error {
+		calls = append(calls, "routechain")
+		return c.SendStatus(http.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/users", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, []string{"group", "routechain"}, calls)
+}
+
 func Test_App_Deep_Group(t *testing.T) {
 	t.Parallel()
 	runThroughCount := 0
