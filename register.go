@@ -4,7 +4,7 @@
 
 package fiber
 
-// Register defines all router handle interface generate by Route().
+// Register defines all router handle interface generate by RouteChain().
 type Register interface {
 	All(handler Handler, handlers ...Handler) Register
 	Get(handler Handler, handlers ...Handler) Register
@@ -19,7 +19,7 @@ type Register interface {
 
 	Add(methods []string, handler Handler, handlers ...Handler) Register
 
-	Route(path string) Register
+	RouteChain(path string) Register
 }
 
 var _ (Register) = (*Registering)(nil)
@@ -35,13 +35,13 @@ type Registering struct {
 // All registers a middleware route that will match requests
 // with the provided path which is stored in register struct.
 //
-//	app.Route("/").All(func(c fiber.Ctx) error {
+//	app.RouteChain("/").All(func(c fiber.Ctx) error {
 //	     return c.Next()
 //	})
-//	app.Route("/api").All(func(c fiber.Ctx) error {
+//	app.RouteChain("/api").All(func(c fiber.Ctx) error {
 //	     return c.Next()
 //	})
-//	app.Route("/api").All(handler, func(c fiber.Ctx) error {
+//	app.RouteChain("/api").All(handler, func(c fiber.Ctx) error {
 //	     return c.Next()
 //	})
 //
@@ -111,9 +111,9 @@ func (r *Registering) Add(methods []string, handler Handler, handlers ...Handler
 	return r
 }
 
-// Route returns a new Register instance whose route path takes
+// RouteChain returns a new Register instance whose route path takes
 // the path in the current instance as its prefix.
-func (r *Registering) Route(path string) Register {
+func (r *Registering) RouteChain(path string) Register {
 	// Create new group
 	route := &Registering{app: r.app, path: getGroupPath(r.path, path)}
 
