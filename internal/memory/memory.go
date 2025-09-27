@@ -86,6 +86,12 @@ func (s *Storage) gc(sleep time.Duration) {
 			}
 		}
 		s.RUnlock()
+
+		if len(expired) == 0 {
+			// avoid locking if nothing to delete
+			continue
+		}
+
 		s.Lock()
 		// Double-checked locking.
 		// We might have replaced the item in the meantime.
