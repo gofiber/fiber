@@ -332,7 +332,6 @@ Fiber v3 introduces a dedicated `RouteChain` helper, inspired by [`Express`](htt
 
 ```diff
 -    Route(path string) Register
-+    RouteChain(path string) Register
 ```
 
 <details>
