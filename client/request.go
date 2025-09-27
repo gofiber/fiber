@@ -218,9 +218,13 @@ func (r *Request) Param(key string) []string {
 func (r *Request) Params() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		vals := r.params.Len()
+		if vals == 0 {
+			return
+		}
+		prealloc := make([]string, 2*vals)
 		p := pair{
-			k: make([]string, 0, vals),
-			v: make([]string, 0, vals),
+			k: prealloc[:0:vals],
+			v: prealloc[vals : vals : 2*vals],
 		}
 		for k, v := range r.params.All() {
 			p.k = append(p.k, utils.UnsafeString(k))
@@ -453,9 +457,13 @@ func (r *Request) FormData(key string) []string {
 func (r *Request) AllFormData() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		vals := r.formData.Len()
+		if vals == 0 {
+			return
+		}
+		prealloc := make([]string, 2*vals)
 		p := pair{
-			k: make([]string, 0, vals),
-			v: make([]string, 0, vals),
+			k: prealloc[:0:vals],
+			v: prealloc[vals : vals : 2*vals],
 		}
 		for k, v := range r.formData.All() {
 			p.k = append(p.k, utils.UnsafeString(k))
