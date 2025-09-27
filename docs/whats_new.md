@@ -330,8 +330,8 @@ In `v2` one handler was already mandatory when the route has been registered, bu
 
 Fiber v3 introduces a dedicated `RouteChain` helper, inspired by [`Express`](https://expressjs.com/en/api.html#app.route), for declaring a stack of handlers on the same path. The original `Route` helper for prefix encapsulation also remains available.
 
-```diff
--    Route(path string) Register
+```go
+RouteChain(path string) Register
 ```
 
 <details>
