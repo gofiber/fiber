@@ -328,7 +328,7 @@ In `v2` one handler was already mandatory when the route has been registered, bu
 
 ### Route chaining
 
-Fiber v3 introduces a dedicated `RouteChain` helper, inspired by [`Express`](https://expressjs.com/en/api.html#app.route), for declaring a stack of handlers on the same path. The original `Route` helper for prefix encapsulation also remains available.
+This release introduces a dedicated `RouteChain` helper, inspired by [`Express`](https://expressjs.com/en/api.html#app.route), for declaring a stack of handlers on the same path. The original `Route` helper for prefix encapsulation also remains available.
 
 ```go
 RouteChain(path string) Register
@@ -1640,7 +1640,7 @@ app.Add([]string{fiber.MethodPost}, "/api", myHandler)
 
 #### Mounting
 
-In Fiber v3, the `Mount` method has been removed. Instead, you can use the `Use` method to achieve similar functionality.
+In this release, the `Mount` method has been removed. Instead, you can use the `Use` method to achieve similar functionality.
 
 ```go
 // Before
