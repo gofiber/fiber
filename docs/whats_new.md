@@ -1634,6 +1634,14 @@ app.Listen(":3000", fiber.ListenConfig{
 
 ### 🗺 Router
 
+#### Direct `net/http` handlers
+
+Route registration helpers now accept native `net/http` handlers. Pass an
+`http.Handler`, `http.HandlerFunc`, or compatible function directly to methods
+such as `app.Get`, `Group`, or `RouteChain` and Fiber will adapt it at
+registration time. Manual wrapping through the adaptor middleware is no longer
+required for these common cases.
+
 #### Middleware Registration
 
 The signatures for [`Add`](#middleware-registration) and [`Route`](#route-chaining) have been changed.

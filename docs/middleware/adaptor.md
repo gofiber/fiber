@@ -6,6 +6,14 @@ id: adaptor
 
 The `adaptor` package converts between Fiber and `net/http`, letting you reuse handlers, middleware, and requests across both frameworks.
 
+:::tip
+Fiber can register plain `net/http` handlers directly—just pass an `http.Handler`,
+`http.HandlerFunc`, or `func(http.ResponseWriter, *http.Request)` to any router
+method and it will be adapted automatically. The adaptor helpers remain valuable
+when you need to convert middleware, swap handler directions, or transform
+requests explicitly.
+:::
+
 ## Features
 
 - Convert `net/http` handlers and middleware to Fiber handlers
@@ -31,7 +39,8 @@ The `adaptor` package converts between Fiber and `net/http`, letting you reuse h
 
 ### 1. Using `net/http` handlers in Fiber
 
-This example shows how to run a standard `net/http` handler within a Fiber app:
+This example shows how to run a standard `net/http` handler within a Fiber app
+without calling the adaptor explicitly:
 
 ```go
 package main
@@ -40,14 +49,13 @@ import (
     "fmt"
     "net/http"
     "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 func main() {
     app := fiber.New()
 
-    // Convert an http.Handler to a Fiber handler
-    app.Get("/", adaptor.HTTPHandler(http.HandlerFunc(helloHandler)))
+    // Fiber adapts net/http handlers for you during registration
+    app.Get("/", http.HandlerFunc(helloHandler))
 
     app.Listen(":3000")
 }
@@ -55,6 +63,14 @@ func main() {
 func helloHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Fprint(w, "Hello from net/http!")
 }
+```
+
+If you prefer to reuse the converted handler in multiple places, you can still
+obtain it manually via `github.com/gofiber/fiber/v3/middleware/adaptor`:
+
+```go
+converted := adaptor.HTTPHandler(http.HandlerFunc(helloHandler))
+app.Get("/cached", converted)
 ```
 
 ### 2. Using `net/http` middleware with Fiber

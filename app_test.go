@@ -198,6 +198,26 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 }
 
+func Test_App_RegisterNetHTTPHandler(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	app.Get("/foo", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Test", "ok")
+		_, _ = w.Write([]byte("hello from net/http"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "hello from net/http", string(body))
+	require.Equal(t, "ok", resp.Header.Get("X-Test"))
+}
+
 func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T) {
 	t.Parallel()
 	app := New()
