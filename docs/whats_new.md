@@ -328,18 +328,17 @@ In `v2` one handler was already mandatory when the route has been registered, bu
 
 ### Route chaining
 
-The route method is now like [`Express`](https://expressjs.com/de/api.html#app.route) which gives you the option of a different notation and allows you to concatenate the route declaration.
+This release introduces a dedicated `RouteChain` helper, inspired by [`Express`](https://expressjs.com/en/api.html#app.route), for declaring a stack of handlers on the same path. The original `Route` helper for prefix encapsulation also remains available.
 
-```diff
--    Route(prefix string, fn func(router Router), name ...string) Router
-+    Route(path string) Register
+```go
+RouteChain(path string) Register
 ```
 
 <details>
 <summary>Example</summary>
 
 ```go
-app.Route("/api").Route("/user/:id?")
+app.RouteChain("/api").RouteChain("/user/:id?")
     .Get(func(c fiber.Ctx) error {
         // Get user
         return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
@@ -360,11 +359,11 @@ app.Route("/api").Route("/user/:id?")
 
 </details>
 
-You can find more information about `app.Route` in the [API documentation](./api/app#route).
+You can find more information about `app.RouteChain` and `app.Route` in the API documentation ([RouteChain](./api/app#routechain), [Route](./api/app#route)).
 
 ### Middleware registration
 
-We have aligned our method for middlewares closer to [`Express`](https://expressjs.com/de/api.html#app.use) and now also support the [`Use`](./api/app#use) of multiple prefixes.
+We have aligned our method for middlewares closer to [`Express`](https://expressjs.com/en/api.html#app.use) and now also support the [`Use`](./api/app#use) of multiple prefixes.
 
 Prefix matching is now stricter: partial matches must end at a slash boundary (or be an exact match). This keeps `/api` middleware from running on `/apiv1` while still allowing `/api/:version` style patterns that leverage route parameters, optional segments, or wildcards.
 
@@ -1653,7 +1652,7 @@ app.Add([]string{fiber.MethodPost}, "/api", myHandler)
 
 #### Mounting
 
-In Fiber v3, the `Mount` method has been removed. Instead, you can use the `Use` method to achieve similar functionality.
+In this release, the `Mount` method has been removed. Instead, you can use the `Use` method to achieve similar functionality.
 
 ```go
 // Before
@@ -1667,7 +1666,7 @@ app.Use("/api", apiApp)
 
 #### Route Chaining
 
-Refer to the [route chaining](#route-chaining) section for details on migrating `Route`.
+Refer to the [route chaining](#route-chaining) section for details on the new `RouteChain` helper. The `Route` function now matches its v2 behavior for prefix encapsulation.
 
 ```go
 // Before
@@ -1687,7 +1686,7 @@ app.Route("/api", func(apiGrp Router) {
 
 ```go
 // After
-app.Route("/api").Route("/user/:id?")
+app.RouteChain("/api").RouteChain("/user/:id?")
     .Get(func(c fiber.Ctx) error {
         // Get user
         return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
