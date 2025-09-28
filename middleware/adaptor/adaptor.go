@@ -2,6 +2,7 @@ package adaptor
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -143,7 +144,6 @@ func isUnixNetwork(network string) bool {
 	return network == "unix" || network == "unixgram" || network == "unixpacket"
 }
 
-
 func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	if addr, ok := localAddr.(net.Addr); ok && isUnixNetwork(addr.Network()) {
 		return addr, nil
@@ -157,10 +157,13 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	var addrErr *net.AddrError
 	if errors.As(err, &addrErr) && addrErr.Err == "missing port in address" {
 		remoteAddr = net.JoinHostPort(remoteAddr, "80")
-		return net.ResolveTCPAddr("tcp", remoteAddr)
+		resolved, err2 := net.ResolveTCPAddr("tcp", remoteAddr)
+		if err2 != nil {
+			return nil, fmt.Errorf("failed to resolve TCP address after adding port: %w", err2)
+		}
+		return resolved, nil
 	}
-	
-	return nil, err
+	return nil, fmt.Errorf("failed to resolve TCP address: %w", err)
 }
 
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
