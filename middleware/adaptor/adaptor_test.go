@@ -760,7 +760,7 @@ func TestHandlerFunc_FallbackRemoteAddr(t *testing.T) {
 	handler := handlerFunc(app)
 
 	// Fake request with bad RemoteAddr
-	req, err := http.NewRequestWithContext(context.Background(), "GET", "/", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	require.NoError(t, err)
 	req.RemoteAddr = "bad-addr"
 
