@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -35,7 +36,7 @@ func TestToFiberHandler_HTTPHandler(t *testing.T) {
 		w.Header().Set("X-HTTP", "ok")
 		w.WriteHeader(http.StatusTeapot)
 		_, err := w.Write([]byte("http"))
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	})
 
 	converted, ok := toFiberHandler(httpHandler)
@@ -100,7 +101,7 @@ func TestCollectHandlers_MixedHandlers(t *testing.T) {
 	}
 	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte("done"))
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	})
 
 	handlers := collectHandlers("test", before, httpHandler, nil)
