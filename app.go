@@ -801,8 +801,6 @@ func (app *App) Use(args ...any) Router {
 			subApp = arg
 		case []string:
 			prefixes = arg
-		case Handler:
-			handlers = append(handlers, arg)
 		default:
 			handler, ok := toFiberHandler(arg)
 			if !ok {
