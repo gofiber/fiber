@@ -31,10 +31,11 @@ func TestToFiberHandler_FiberHandler(t *testing.T) {
 func TestToFiberHandler_HTTPHandler(t *testing.T) {
 	t.Parallel()
 
-	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-HTTP", "ok")
 		w.WriteHeader(http.StatusTeapot)
-		_, _ = w.Write([]byte("http"))
+		_, err := w.Write([]byte("http"))
+		require.NoError(t, err)
 	})
 
 	converted, ok := toFiberHandler(httpHandler)
@@ -57,7 +58,7 @@ func TestToFiberHandler_HTTPHandler(t *testing.T) {
 func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
 	t.Parallel()
 
-	httpFunc := func(w http.ResponseWriter, r *http.Request) {
+	httpFunc := func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}
 
@@ -97,8 +98,9 @@ func TestCollectHandlers_MixedHandlers(t *testing.T) {
 		c.Set("X-Before", "fiber")
 		return nil
 	}
-	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("done"))
+	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte("done"))
+		require.NoError(t, err)
 	})
 
 	handlers := collectHandlers("test", before, httpHandler, nil)

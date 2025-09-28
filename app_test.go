@@ -203,9 +203,10 @@ func Test_App_RegisterNetHTTPHandler(t *testing.T) {
 
 	app := New()
 
-	app.Get("/foo", func(w http.ResponseWriter, r *http.Request) {
+	app.Get("/foo", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-Test", "ok")
-		_, _ = w.Write([]byte("hello from net/http"))
+		_, err := w.Write([]byte("hello from net/http"))
+		require.NoError(t, err)
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo", nil))

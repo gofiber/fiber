@@ -81,10 +81,11 @@ func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {
 		return c.Next()
 	}
 
-	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		order = append(order, "http-final")
 		w.Header().Set("X-HTTP", "true")
-		_, _ = w.Write([]byte("http"))
+		_, err := w.Write([]byte("http"))
+		require.NoError(t, err)
 	})
 
 	fiberAfter := func(c Ctx) error {
@@ -127,9 +128,10 @@ func Test_Route_Group_WithHTTPHandlers(t *testing.T) {
 		return c.Next()
 	})
 
-	grp.Get("/users", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	grp.Get("/users", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		order = append(order, "http-handler")
-		_, _ = w.Write([]byte("users"))
+		_, err := w.Write([]byte("users"))
+		require.NoError(t, err)
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/users", nil))
@@ -155,13 +157,15 @@ func Test_RouteChain_WithHTTPHandlers(t *testing.T) {
 	chain.Get(func(c Ctx) error {
 		c.Set("X-Chain", "fiber")
 		return c.Next()
-	}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("combo"))
+	}, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte("combo"))
+		require.NoError(t, err)
 	}))
 
-	chain.RouteChain("/nested").Get(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	chain.RouteChain("/nested").Get(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-Nested", "true")
-		_, _ = w.Write([]byte("nested"))
+		_, err := w.Write([]byte("nested"))
+		require.NoError(t, err)
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/combo", nil))
