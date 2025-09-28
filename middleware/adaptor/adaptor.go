@@ -1,6 +1,7 @@
 package adaptor
 
 import (
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -138,6 +139,35 @@ func FiberApp(app *fiber.App) http.HandlerFunc {
 	return handlerFunc(app)
 }
 
+func isUnixNetwork(network string) bool {
+	switch network {
+		case "unix", "unixgram", "unixpacket":
+			return true
+		default:
+			return false
+	}
+}
+
+
+func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
+	if addr, ok := localAddr.(net.Addr); ok && isUnixNetwork(addr.Network()) {
+		return net.ResolveUnixAddr("unix", addr.String())
+	}
+
+	resolved, err := net.ResolveTCPAddr("tcp", remoteAddr)
+	if err == nil {
+		return resolved, nil
+	}
+
+	var addrErr *net.AddrError
+	if errors.As(err, &addrErr) && addrErr.Err == "missing port in address" {
+		remoteAddr = net.JoinHostPort(remoteAddr, "80")
+		return net.ResolveTCPAddr("tcp", remoteAddr)
+	}
+	
+	return nil, err
+}
+
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req := fasthttp.AcquireRequest()
@@ -168,14 +198,10 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			r.RemoteAddr = net.JoinHostPort(r.RemoteAddr, "80")
 		}
 
-		// Determine remoteAddr for TCP or fallback for Unix sockets
-		var remoteAddr net.Addr
-		tcpAddr, err := net.ResolveTCPAddr("tcp", r.RemoteAddr)
+		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
 		if err != nil {
-			// Unix socket or invalid address
-			remoteAddr = nil // fasthttp will handle nil correctly
-		} else {
-			remoteAddr = tcpAddr
+			// fallback: fasthttp handles nil remoteAddr
+			remoteAddr = nil
 		}
 
 		// New fasthttp Ctx from pool
