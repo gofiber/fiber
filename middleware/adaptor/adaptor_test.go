@@ -750,3 +750,32 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		t.Fatal("server shutdown timed out")
 	}
 }
+
+func TestHandlerFunc_FallbackRemoteAddr(t *testing.T) {
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	handler := handlerFunc(app)
+
+	// Fake request with bad RemoteAddr
+	req, err := http.NewRequest("GET", "/", nil)
+	require.NoError(t, err)
+	req.RemoteAddr = "bad-addr"
+
+	rr := httptest.NewRecorder()
+	handler(rr, req)
+
+	res := rr.Result()
+	defer func() {
+		closeErr := res.Body.Close()
+		require.NoError(t, closeErr)
+	}()
+
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Contains(t, string(body), "ok")
+}
