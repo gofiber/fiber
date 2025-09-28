@@ -905,13 +905,33 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 	return grp
 }
 
-// Route is used to define routes with a common prefix inside the common function.
-// Uses Group method to define new sub-router.
-func (app *App) Route(path string) Register {
+// RouteChain creates a Registering instance that lets you declare a stack of
+// handlers for the same route. Handlers defined via the returned Register are
+// scoped to the provided path.
+func (app *App) RouteChain(path string) Register {
 	// Create new route
 	route := &Registering{app: app, path: path}
 
 	return route
+}
+
+// Route is used to define routes with a common prefix inside the supplied
+// function. It mirrors the legacy helper and reuses the Group method to create
+// a sub-router.
+func (app *App) Route(prefix string, fn func(router Router), name ...string) Router {
+	if fn == nil {
+		panic("route handler 'fn' cannot be nil")
+	}
+	// Create new group
+	group := app.Group(prefix)
+	if len(name) > 0 {
+		group.Name(name[0])
+	}
+
+	// Define routes
+	fn(group)
+
+	return group
 }
 
 // Error makes it compatible with the `error` interface.

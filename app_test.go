@@ -1366,13 +1366,13 @@ func Test_App_Group(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 }
 
-func Test_App_Route(t *testing.T) {
+func Test_App_RouteChain(t *testing.T) {
 	t.Parallel()
 	dummyHandler := testEmptyHandler
 
 	app := New()
 
-	register := app.Route("/test").
+	register := app.RouteChain("/test").
 		Get(dummyHandler).
 		Head(dummyHandler).
 		Post(dummyHandler).
@@ -1393,7 +1393,7 @@ func Test_App_Route(t *testing.T) {
 	testStatus200(t, app, "/test", MethodTrace)
 	testStatus200(t, app, "/test", MethodPatch)
 
-	register.Route("/v1").Get(dummyHandler).Post(dummyHandler)
+	register.RouteChain("/v1").Get(dummyHandler).Post(dummyHandler)
 
 	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1", nil))
 	require.NoError(t, err, "app.Test(req)")
@@ -1403,7 +1403,7 @@ func Test_App_Route(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	register.Route("/v1").Route("/v2").Route("/v3").Get(dummyHandler).Trace(dummyHandler)
+	register.RouteChain("/v1").RouteChain("/v2").RouteChain("/v3").Get(dummyHandler).Trace(dummyHandler)
 
 	resp, err = app.Test(httptest.NewRequest(MethodTrace, "/test/v1/v2/v3", nil))
 	require.NoError(t, err, "app.Test(req)")
@@ -1412,6 +1412,71 @@ func Test_App_Route(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/v2/v3", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
+}
+
+func Test_App_Route(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	app.Route("/test", func(api Router) {
+		api.Get("/foo", testEmptyHandler).Name("foo")
+
+		api.Route("/bar", func(bar Router) {
+			bar.Get("/", testEmptyHandler).Name("index")
+		}, "bar.")
+	}, "test.")
+
+	testStatus200(t, app, "/test/foo", MethodGet)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/bar/", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+
+	require.Equal(t, "/test/foo", app.GetRoute("test.foo").Path)
+	require.Equal(t, "/test/bar/", app.GetRoute("test.bar.index").Path)
+}
+
+func Test_App_Route_nilFuncPanics(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	require.PanicsWithValue(t, "route handler 'fn' cannot be nil", func() {
+		app.Route("/panic", nil)
+	})
+}
+
+func Test_Group_Route_nilFuncPanics(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	grp := app.Group("/api")
+
+	require.PanicsWithValue(t, "route handler 'fn' cannot be nil", func() {
+		grp.Route("/panic", nil)
+	})
+}
+
+func Test_Group_RouteChain_All(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	var calls []string
+	grp := app.Group("/api", func(c Ctx) error {
+		calls = append(calls, "group")
+		return c.Next()
+	})
+
+	grp.RouteChain("/users").All(func(c Ctx) error {
+		calls = append(calls, "routechain")
+		return c.SendStatus(http.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/users", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, []string{"group", "routechain"}, calls)
 }
 
 func Test_App_Deep_Group(t *testing.T) {

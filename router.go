@@ -35,7 +35,8 @@ type Router interface {
 
 	Group(prefix string, handlers ...Handler) Router
 
-	Route(path string) Register
+	RouteChain(path string) Register
+	Route(prefix string, fn func(router Router), name ...string) Router
 
 	Name(name string) Router
 }

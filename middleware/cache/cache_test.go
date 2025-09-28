@@ -905,7 +905,7 @@ func Test_Cache_WithHead(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	}
 
-	app.Route("/").Get(handler).Head(handler)
+	app.RouteChain("/").Get(handler).Head(handler)
 
 	req := httptest.NewRequest(fiber.MethodHead, "/", nil)
 	resp, err := app.Test(req)
@@ -934,7 +934,7 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
 		return c.SendString(fiber.Query[string](c, "cache"))
 	}
-	app.Route("/").Get(handler).Head(handler)
+	app.RouteChain("/").Get(handler).Head(handler)
 
 	headResp, err := app.Test(httptest.NewRequest(fiber.MethodHead, "/?cache=123", nil))
 	require.NoError(t, err)

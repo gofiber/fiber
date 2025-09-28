@@ -322,19 +322,44 @@ func Test_Request_QueryParam(t *testing.T) {
 func Test_Request_Params(t *testing.T) {
 	t.Parallel()
 
-	req := AcquireRequest()
-	req.AddParams(map[string][]string{
-		"foo": {"bar", "fiber"},
-		"bar": {"foo"},
+	t.Run("empty iterator", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		called := false
+		req.Params()(func(_ string, _ []string) bool {
+			called = true
+			return true
+		})
+
+		require.False(t, called)
 	})
 
-	pathParams := maps.Collect(req.Params())
+	t.Run("populated iterator", func(t *testing.T) {
+		t.Parallel()
 
-	require.Contains(t, pathParams["foo"], "bar")
-	require.Contains(t, pathParams["foo"], "fiber")
-	require.Contains(t, pathParams["bar"], "foo")
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
 
-	require.Len(t, pathParams, 2)
+		req.AddParams(map[string][]string{
+			"foo": {"bar", "fiber"},
+			"bar": {"foo"},
+		})
+
+		pathParams := maps.Collect(req.Params())
+
+		require.Contains(t, pathParams["foo"], "bar")
+		require.Contains(t, pathParams["foo"], "fiber")
+		require.Contains(t, pathParams["bar"], "foo")
+
+		require.Len(t, pathParams, 2)
+	})
 }
 
 func Benchmark_Request_Params(b *testing.B) {
@@ -1399,19 +1424,44 @@ func Test_Request_Body_With_Server(t *testing.T) {
 func Test_Request_AllFormData(t *testing.T) {
 	t.Parallel()
 
-	req := AcquireRequest()
-	req.AddFormDataWithMap(map[string][]string{
-		"foo": {"bar", "fiber"},
-		"bar": {"foo"},
+	t.Run("empty iterator", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		called := false
+		req.AllFormData()(func(_ string, _ []string) bool {
+			called = true
+			return true
+		})
+
+		require.False(t, called)
 	})
 
-	pathParams := maps.Collect(req.AllFormData())
+	t.Run("populated iterator", func(t *testing.T) {
+		t.Parallel()
 
-	require.Contains(t, pathParams["foo"], "bar")
-	require.Contains(t, pathParams["foo"], "fiber")
-	require.Contains(t, pathParams["bar"], "foo")
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
 
-	require.Len(t, pathParams, 2)
+		req.AddFormDataWithMap(map[string][]string{
+			"foo": {"bar", "fiber"},
+			"bar": {"foo"},
+		})
+
+		pathParams := maps.Collect(req.AllFormData())
+
+		require.Contains(t, pathParams["foo"], "bar")
+		require.Contains(t, pathParams["foo"], "fiber")
+		require.Contains(t, pathParams["bar"], "foo")
+
+		require.Len(t, pathParams, 2)
+	})
 }
 
 func Benchmark_Request_AllFormData(b *testing.B) {
