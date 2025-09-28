@@ -738,3 +738,29 @@ func Benchmark_ServicesMemory(b *testing.B) {
 		})
 	})
 }
+
+func TestAcquireReleaseServiceErrorSlice(t *testing.T) {
+	ptr, errs := acquireServiceErrorSlice(0)
+	require.NotNil(t, ptr)
+	require.Len(t, errs, 0)
+	require.GreaterOrEqual(t, cap(errs), serviceErrorSliceDefaultCap)
+
+	errs = append(errs, errors.New("boom"))
+	*ptr = errs
+	releaseServiceErrorSlice(ptr)
+
+	ptr2, errs2 := acquireServiceErrorSlice(0)
+	require.NotNil(t, ptr2)
+	require.Len(t, errs2, 0)
+	require.GreaterOrEqual(t, cap(errs2), serviceErrorSliceDefaultCap)
+
+	oversized := make([]error, 0, serviceErrorSliceMaxCap*2)
+	*ptr2 = oversized
+	releaseServiceErrorSlice(ptr2)
+
+	ptr3, errs3 := acquireServiceErrorSlice(0)
+	require.NotNil(t, ptr3)
+	require.Len(t, errs3, 0)
+	require.LessOrEqual(t, cap(errs3), serviceErrorSliceMaxCap)
+	releaseServiceErrorSlice(ptr3)
+}

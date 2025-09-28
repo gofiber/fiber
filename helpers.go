@@ -33,7 +33,7 @@ import (
 // along with quality, specificity, parameters, and order.
 // Used for sorting accept headers.
 type acceptedType struct {
-	params      headerParams
+	params      *headerParams
 	spec        string
 	quality     float64
 	specificity int
@@ -42,7 +42,132 @@ type acceptedType struct {
 
 const noCacheValue = "no-cache"
 
-type headerParams map[string][]byte
+type headerParams struct {
+	values map[string][]byte
+	pooled []*[]byte
+}
+
+const (
+	routeSetDefaultCap = 16
+	routeSetMaxEntries = 256
+)
+
+var routeSetPool = sync.Pool{
+	New: func() any {
+		return make(map[*Route]struct{}, routeSetDefaultCap)
+	},
+}
+
+func acquireRouteSet() map[*Route]struct{} {
+	m, ok := routeSetPool.Get().(map[*Route]struct{})
+	if !ok {
+		panic(errors.New("failed to type-assert to map[*Route]struct{}"))
+	}
+	if m == nil {
+		return make(map[*Route]struct{}, routeSetDefaultCap)
+	}
+	if len(m) > 0 {
+		clear(m)
+	}
+	return m
+}
+
+func releaseRouteSet(m map[*Route]struct{}) {
+	if m == nil {
+		return
+	}
+	used := len(m)
+	if used > 0 {
+		clear(m)
+	}
+	if used > routeSetMaxEntries {
+		return
+	}
+	routeSetPool.Put(m)
+}
+
+// acceptedTypeSlicePool reuses the scratch slice used when parsing Accept
+// headers so repeated negotiations avoid allocating temporary slices.
+const (
+	acceptedTypeSliceDefaultCap = 8
+	acceptedTypeSliceMaxCap     = 64
+)
+
+var acceptedTypeSlicePool = sync.Pool{
+	New: func() any {
+		slice := make([]acceptedType, 0, acceptedTypeSliceDefaultCap)
+		return &slice
+	},
+}
+
+const (
+	headerValueDefaultCap = 32
+	headerValueMaxCap     = 256
+)
+
+var headerValuePool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 0, headerValueDefaultCap)
+		return &buf
+	},
+}
+
+const (
+	languageTagSliceDefaultCap = 4
+	languageTagSliceMaxCap     = 32
+)
+
+var languageTagSlicePool = sync.Pool{
+	New: func() any {
+		slice := make([]string, 0, languageTagSliceDefaultCap)
+		return &slice
+	},
+}
+
+func splitLanguageTags(s string) (*[]string, []string) {
+	sliceAny := languageTagSlicePool.Get()
+	tagsPtr, ok := sliceAny.(*[]string)
+	if !ok || tagsPtr == nil {
+		slice := make([]string, 0, languageTagSliceDefaultCap)
+		tagsPtr = &slice
+	}
+
+	tags := (*tagsPtr)[:0]
+	if len(s) == 0 {
+		tags = append(tags, "")
+	} else {
+		start := 0
+		for i := 0; i < len(s); i++ {
+			if s[i] == '-' {
+				tags = append(tags, s[start:i])
+				start = i + 1
+			}
+		}
+		tags = append(tags, s[start:])
+	}
+
+	*tagsPtr = tags
+	return tagsPtr, tags
+}
+
+func releaseLanguageTagSlice(tagsPtr *([]string)) {
+	if tagsPtr == nil {
+		return
+	}
+
+	tags := *tagsPtr
+	for i := range tags {
+		tags[i] = ""
+	}
+
+	if cap(tags) > languageTagSliceMaxCap {
+		*tagsPtr = make([]string, 0, languageTagSliceDefaultCap)
+	} else {
+		*tagsPtr = tags[:0]
+	}
+
+	languageTagSlicePool.Put(tagsPtr)
+}
 
 // getTLSConfig returns a net listener's tls config
 func getTLSConfig(ln net.Listener) *tls.Config {
@@ -151,13 +276,16 @@ func (*App) isASCII(s string) bool {
 
 // uniqueRouteStack drop all not unique routes from the slice
 func uniqueRouteStack(stack []*Route) []*Route {
-	var unique []*Route
-	m := make(map[*Route]struct{})
+	routeSet := acquireRouteSet()
+	defer releaseRouteSet(routeSet)
+
+	unique := make([]*Route, 0, len(stack))
 	for _, v := range stack {
-		if _, ok := m[v]; !ok {
-			m[v] = struct{}{}
-			unique = append(unique, v)
+		if _, ok := routeSet[v]; ok {
+			continue
 		}
+		routeSet[v] = struct{}{}
+		unique = append(unique, v)
 	}
 
 	return unique
@@ -186,7 +314,7 @@ func getGroupPath(prefix, path string) string {
 // acceptsOffer determines if an offer matches a given specification.
 // It supports a trailing '*' wildcard and performs case-insensitive exact matching.
 // Returns true if the offer matches the specification, false otherwise.
-func acceptsOffer(spec, offer string, _ headerParams) bool {
+func acceptsOffer(spec, offer string, _ *headerParams) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		return true
 	}
@@ -200,7 +328,7 @@ func acceptsOffer(spec, offer string, _ headerParams) bool {
 // followed by a hyphen. The comparison is case-insensitive. Only a single "*"
 // as the entire range is allowed. Any "*" appearing after a hyphen renders the
 // range invalid and will not match.
-func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
+func acceptsLanguageOfferBasic(spec, offer string, _ *headerParams) bool {
 	if spec == "*" {
 		return true
 	}
@@ -221,7 +349,7 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
 // - '*' matches zero or more subtags (can “slide”)
 // - Unspecified subtags are treated like '*' (so trailing/extraneous tag subtags are fine)
 // - Matching fails if sliding encounters a singleton (incl. 'x')
-func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
+func acceptsLanguageOfferExtended(spec, offer string, _ *headerParams) bool {
 	if spec == "*" {
 		return true
 	}
@@ -229,30 +357,37 @@ func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
 		return false
 	}
 
-	rs := strings.Split(spec, "-")
-	ts := strings.Split(offer, "-")
+	specPtr, specTags := splitLanguageTags(spec)
+	defer releaseLanguageTagSlice(specPtr)
+
+	offerPtr, offerTags := splitLanguageTags(offer)
+	defer releaseLanguageTagSlice(offerPtr)
+
+	if len(specTags) == 0 || len(offerTags) == 0 {
+		return false
+	}
 
 	// Step 2: first subtag must match (or be '*')
-	if !(rs[0] == "*" || utils.EqualFold(rs[0], ts[0])) {
+	if !(specTags[0] == "*" || utils.EqualFold(specTags[0], offerTags[0])) {
 		return false
 	}
 
 	i, j := 1, 1 // i = range index, j = tag index
-	for i < len(rs) {
-		if rs[i] == "*" { // 3.A: '*' matches zero or more subtags
+	for i < len(specTags) {
+		if specTags[i] == "*" { // 3.A: '*' matches zero or more subtags
 			i++
 			continue
 		}
-		if j >= len(ts) { // 3.B: ran out of tag subtags
+		if j >= len(offerTags) { // 3.B: ran out of tag subtags
 			return false
 		}
-		if utils.EqualFold(rs[i], ts[j]) { // 3.C: exact subtag match
+		if utils.EqualFold(specTags[i], offerTags[j]) { // 3.C: exact subtag match
 			i++
 			j++
 			continue
 		}
 		// 3.D: singleton barrier (one letter or digit, incl. 'x')
-		if len(ts[j]) == 1 {
+		if len(offerTags[j]) == 1 {
 			return false
 		}
 		// 3.E: slide forward in the tag and try again
@@ -268,7 +403,7 @@ func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
 // It checks if the offer MIME type matches the specification MIME type or if the specification is of the form <MIME_type>/* and the offer MIME type has the same MIME type.
 // It checks if the offer contains every parameter present in the specification.
 // Returns true if the offer type matches the specification, false otherwise.
-func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
+func acceptsOfferType(spec, offerType string, specParams *headerParams) bool {
 	var offerMime, offerParams string
 
 	if i := strings.IndexByte(offerType, ';'); i == -1 {
@@ -317,23 +452,24 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 // For the sake of simplicity, we forgo this and compare the value as-is. Besides, it would
 // be highly unusual for a client to escape something other than a double quote or backslash.
 // See https://www.rfc-editor.org/rfc/rfc9110#name-parameters
-func paramsMatch(specParamStr headerParams, offerParams string) bool {
-	if len(specParamStr) == 0 {
+func paramsMatch(specParamStr *headerParams, offerParams string) bool {
+	if specParamStr == nil || len(specParamStr.values) == 0 {
 		return true
 	}
 
 	allSpecParamsMatch := true
-	for specParam, specVal := range specParamStr {
+	for specParam, specVal := range specParamStr.values {
 		foundParam := false
 		fasthttp.VisitHeaderParams(utils.UnsafeBytes(offerParams), func(key, value []byte) bool {
 			if utils.EqualFold(specParam, utils.UnsafeString(key)) {
 				foundParam = true
-				unescaped, err := unescapeHeaderValue(value)
+				unescaped, bufPtr, err := unescapeHeaderValue(value)
 				if err != nil {
 					allSpecParamsMatch = false
 					return false
 				}
 				allSpecParamsMatch = utils.EqualFold(specVal, unescaped)
+				releaseHeaderValueBuffer(bufPtr)
 				return false
 			}
 			return true
@@ -353,7 +489,7 @@ func paramsMatch(specParamStr headerParams, offerParams string) bool {
 // If the given slice hasn't enough space, it will allocate more and return.
 func getSplicedStrList(headerValue string, dst []string) []string {
 	if headerValue == "" {
-		return nil
+		return dst[:0]
 	}
 
 	dst = dst[:0]
@@ -376,43 +512,91 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 	return dst
 }
 
-func joinHeaderValues(headers [][]byte) []byte {
+func joinHeaderValues(headers [][]byte) ([]byte, *[]byte) {
 	switch len(headers) {
 	case 0:
-		return nil
+		return nil, nil
 	case 1:
-		return headers[0]
-	default:
-		return bytes.Join(headers, []byte{','})
+		return headers[0], nil
 	}
+
+	bufAny := headerValuePool.Get()
+	bufPtr, ok := bufAny.(*[]byte)
+	if !ok {
+		panic(errors.New("failed to type-assert to *[]byte"))
+	}
+	buf := (*bufPtr)[:0]
+
+	for i, header := range headers {
+		if i > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, header...)
+	}
+
+	*bufPtr = buf
+	return buf, bufPtr
 }
 
-func unescapeHeaderValue(v []byte) ([]byte, error) {
+func unescapeHeaderValue(v []byte) ([]byte, *[]byte, error) {
 	if bytes.IndexByte(v, '\\') == -1 {
-		return v, nil
+		return v, nil, nil
 	}
-	res := make([]byte, 0, len(v))
+
+	bufAny := headerValuePool.Get()
+	bufPtr, ok := bufAny.(*[]byte)
+	if !ok {
+		panic(errors.New("failed to type-assert to *[]byte"))
+	}
+	buf := (*bufPtr)[:0]
+	if cap(buf) < len(v) {
+		*bufPtr = buf[:0]
+		headerValuePool.Put(bufPtr)
+		bufPtr = nil
+		buf = make([]byte, 0, len(v))
+	}
+
 	escaping := false
 	for i, c := range v {
 		if escaping {
-			res = append(res, c)
+			buf = append(buf, c)
 			escaping = false
 			continue
 		}
 		if c == '\\' {
-			// invalid escape at end of string
 			if i == len(v)-1 {
-				return nil, errors.New("invalid escape sequence")
+				if bufPtr != nil {
+					*bufPtr = buf
+					releaseHeaderValueBuffer(bufPtr)
+				}
+				return nil, nil, errors.New("invalid escape sequence")
 			}
 			escaping = true
 			continue
 		}
-		res = append(res, c)
+		buf = append(buf, c)
 	}
 	if escaping {
-		return nil, errors.New("invalid escape sequence")
+		if bufPtr != nil {
+			*bufPtr = buf
+			releaseHeaderValueBuffer(bufPtr)
+		}
+		return nil, nil, errors.New("invalid escape sequence")
 	}
-	return res, nil
+
+	if bufPtr == nil {
+		return buf, nil, nil
+	}
+
+	if cap(buf) > headerValueMaxCap {
+		copied := append([]byte(nil), buf...)
+		*bufPtr = buf
+		releaseHeaderValueBuffer(bufPtr)
+		return copied, nil, nil
+	}
+
+	*bufPtr = buf
+	return buf, bufPtr, nil
 }
 
 // forEachMediaRange parses an Accept or Content-Type header, calling functor
@@ -467,14 +651,93 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 // be cleared before being returned to the pool.
 var headerParamPool = sync.Pool{
 	New: func() any {
-		return make(headerParams)
+		return &headerParams{
+			values: make(map[string][]byte, headerParamsValuesDefaultCap),
+			pooled: make([]*[]byte, 0, headerParamsPooledDefaultCap),
+		}
 	},
+}
+
+const (
+	headerParamsPooledDefaultCap = 4
+	headerParamsPooledMaxCap     = 32
+)
+
+const (
+	headerParamsValuesDefaultCap = 4
+	headerParamsValuesMaxEntries = 32
+)
+
+func acquireHeaderParams() *headerParams {
+	params, ok := headerParamPool.Get().(*headerParams)
+	if !ok || params == nil {
+		return &headerParams{
+			values: make(map[string][]byte, headerParamsValuesDefaultCap),
+			pooled: make([]*[]byte, 0, headerParamsPooledDefaultCap),
+		}
+	}
+	if params.values == nil {
+		params.values = make(map[string][]byte, headerParamsValuesDefaultCap)
+	}
+	return params
+}
+
+func releaseHeaderParams(params *headerParams) {
+	if params == nil {
+		return
+	}
+	pooled := params.pooled
+	for _, bufPtr := range pooled {
+		releaseHeaderValueBuffer(bufPtr)
+	}
+	if cap(pooled) > headerParamsPooledMaxCap {
+		params.pooled = make([]*[]byte, 0, headerParamsPooledDefaultCap)
+	} else {
+		params.pooled = pooled[:0]
+	}
+	if len(params.values) > headerParamsValuesMaxEntries {
+		params.values = make(map[string][]byte, headerParamsValuesDefaultCap)
+	} else {
+		for k := range params.values {
+			delete(params.values, k)
+		}
+	}
+	headerParamPool.Put(params)
+}
+
+func (params *headerParams) set(key string, value []byte, pool *[]byte) {
+	if params == nil {
+		return
+	}
+	if params.values == nil {
+		params.values = make(map[string][]byte)
+	}
+	params.values[key] = value
+	if pool != nil {
+		params.pooled = append(params.pooled, pool)
+	}
+}
+
+func releaseHeaderValueBuffer(bufPtr *[]byte) {
+	if bufPtr == nil {
+		return
+	}
+	buf := *bufPtr
+	for i := range buf {
+		buf[i] = 0
+	}
+	if cap(buf) > headerValueMaxCap {
+		*bufPtr = make([]byte, 0, headerValueDefaultCap)
+	} else {
+		*bufPtr = buf[:0]
+	}
+	headerValuePool.Put(bufPtr)
 }
 
 // getOffer return valid offer for header negotiation.
 // Do not pass header using utils.UnsafeBytes - this can cause a panic due
 // to the use of utils.ToLowerBytes.
-func getOffer(header []byte, isAccepted func(spec, offer string, specParams headerParams) bool, offers ...string) string {
+func getOffer(header []byte, isAccepted func(spec, offer string, specParams *headerParams) bool, offers ...string) string {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -482,7 +745,23 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 		return offers[0]
 	}
 
-	acceptedTypes := make([]acceptedType, 0, 8)
+	acceptedTypesPtr, ok := acceptedTypeSlicePool.Get().(*[]acceptedType)
+	if !ok {
+		panic(errors.New("failed to type-assert to *[]acceptedType"))
+	}
+	acceptedTypes := (*acceptedTypesPtr)[:0]
+	defer func() {
+		for i := range acceptedTypes {
+			acceptedTypes[i] = acceptedType{}
+		}
+		if cap(acceptedTypes) > acceptedTypeSliceMaxCap {
+			*acceptedTypesPtr = make([]acceptedType, 0, acceptedTypeSliceDefaultCap)
+		} else {
+			*acceptedTypesPtr = acceptedTypes[:0]
+		}
+		acceptedTypeSlicePool.Put(acceptedTypesPtr)
+	}()
+
 	order := 0
 
 	// Parse header and get accepted types with their quality and specificity
@@ -490,7 +769,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 	forEachMediaRange(header, func(accept []byte) {
 		order++
 		spec, quality := accept, 1.0
-		var params headerParams
+		var params *headerParams
 
 		if i := bytes.IndexByte(accept, ';'); i != -1 {
 			spec = accept[:i]
@@ -502,10 +781,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 					quality = q
 				}
 			} else {
-				params, _ = headerParamPool.Get().(headerParams) //nolint:errcheck // only contains headerParams
-				for k := range params {
-					delete(params, k)
-				}
+				params = acquireHeaderParams()
 				fasthttp.VisitHeaderParams(accept[i:], func(key, value []byte) bool {
 					if len(key) == 1 && key[0] == 'q' {
 						if q, err := fasthttp.ParseUfloat(value); err == nil {
@@ -514,11 +790,11 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 						return false
 					}
 					lowerKey := utils.UnsafeString(utils.ToLowerBytes(key))
-					val, err := unescapeHeaderValue(value)
+					val, bufPtr, err := unescapeHeaderValue(value)
 					if err != nil {
 						return true
 					}
-					params[lowerKey] = val
+					params.set(lowerKey, val, bufPtr)
 					return true
 				})
 			}
@@ -526,6 +802,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 			// Skip this accept type if quality is 0.0
 			// See: https://www.rfc-editor.org/rfc/rfc9110#quality.values
 			if quality == 0.0 {
+				releaseHeaderParams(params)
 				return
 			}
 		}
@@ -557,6 +834,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 			order:       order,
 			params:      params,
 		})
+		params = nil
 	})
 
 	if len(acceptedTypes) > 1 {
@@ -571,15 +849,11 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 				continue
 			}
 			if isAccepted(acceptedType.spec, offer, acceptedType.params) {
-				if acceptedType.params != nil {
-					headerParamPool.Put(acceptedType.params)
-				}
+				releaseHeaderParams(acceptedType.params)
 				return offer
 			}
 		}
-		if acceptedType.params != nil {
-			headerParamPool.Put(acceptedType.params)
-		}
+		releaseHeaderParams(acceptedType.params)
 	}
 
 	return ""
@@ -590,17 +864,23 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 // e.g., text/html;a=1;b=2 comes before text/html;a=1
 // See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
 func sortAcceptedTypes(at []acceptedType) {
+	paramsLen := func(hp *headerParams) int {
+		if hp == nil {
+			return 0
+		}
+		return len(hp.values)
+	}
 	for i := 1; i < len(at); i++ {
 		lo, hi := 0, i-1
 		for lo <= hi {
 			mid := (lo + hi) / 2
-			if at[i].quality < at[mid].quality ||
-				(at[i].quality == at[mid].quality && at[i].specificity < at[mid].specificity) ||
-				(at[i].quality == at[mid].quality && at[i].specificity == at[mid].specificity && len(at[i].params) < len(at[mid].params)) ||
-				(at[i].quality == at[mid].quality && at[i].specificity == at[mid].specificity && len(at[i].params) == len(at[mid].params) && at[i].order > at[mid].order) {
-				lo = mid + 1
-			} else {
+			if at[i].quality > at[mid].quality ||
+				(at[i].quality == at[mid].quality && at[i].specificity > at[mid].specificity) ||
+				(at[i].quality == at[mid].quality && at[i].specificity == at[mid].specificity && paramsLen(at[i].params) > paramsLen(at[mid].params)) ||
+				(at[i].quality == at[mid].quality && at[i].specificity == at[mid].specificity && paramsLen(at[i].params) == paramsLen(at[mid].params) && at[i].order < at[mid].order) {
 				hi = mid - 1
+			} else {
+				lo = mid + 1
 			}
 		}
 		for j := i; j > lo; j-- {

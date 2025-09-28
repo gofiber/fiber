@@ -9,9 +9,60 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sync"
 )
 
 var ErrInvalidKeyLength = errors.New("encryption key must be 16, 24, or 32 bytes")
+
+const (
+	encryptCookieBufferDefaultCap = 32
+	encryptCookieBufferMaxCap     = 4096
+)
+
+var encryptCookieBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 0, encryptCookieBufferDefaultCap)
+		return &buf
+	},
+}
+
+func acquireEncryptCookieBuffer(requiredCap, nonceSize int) *[]byte {
+	bufAny := encryptCookieBufferPool.Get()
+	bufPtr, ok := bufAny.(*[]byte)
+	if !ok {
+		panic(errors.New("failed to type-assert to *[]byte"))
+	}
+
+	buf := *bufPtr
+	if cap(buf) < requiredCap {
+		buf = make([]byte, 0, requiredCap)
+	}
+
+	buf = buf[:nonceSize]
+	*bufPtr = buf
+
+	return bufPtr
+}
+
+func releaseEncryptCookieBuffer(bufPtr *[]byte) {
+	if bufPtr == nil {
+		return
+	}
+
+	buf := *bufPtr
+	if cap(buf) > encryptCookieBufferMaxCap {
+		*bufPtr = make([]byte, 0, encryptCookieBufferDefaultCap)
+		encryptCookieBufferPool.Put(bufPtr)
+		return
+	}
+
+	for i := range buf {
+		buf[i] = 0
+	}
+
+	*bufPtr = buf[:0]
+	encryptCookieBufferPool.Put(bufPtr)
+}
 
 // decodeKey decodes the provided base64-encoded key and validates its length.
 // It returns the decoded key bytes or an error when invalid.
@@ -52,13 +103,23 @@ func EncryptCookie(value, key string) (string, error) {
 		return "", fmt.Errorf("failed to create GCM mode: %w", err)
 	}
 
-	nonce := make([]byte, gcm.NonceSize())
+	nonceSize := gcm.NonceSize()
+	requiredCap := nonceSize + len(value) + gcm.Overhead()
+	noncePtr := acquireEncryptCookieBuffer(requiredCap, nonceSize)
+	nonce := *noncePtr
+
 	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		releaseEncryptCookieBuffer(noncePtr)
 		return "", fmt.Errorf("failed to read nonce: %w", err)
 	}
 
 	ciphertext := gcm.Seal(nonce, nonce, []byte(value), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	*noncePtr = ciphertext
+
+	encoded := base64.StdEncoding.EncodeToString(ciphertext)
+	releaseEncryptCookieBuffer(noncePtr)
+
+	return encoded, nil
 }
 
 // DecryptCookie Decrypts a cookie value with specific encryption key

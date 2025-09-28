@@ -10,6 +10,7 @@ import (
 
 // Req is an interface for request-related Ctx methods.
 type Req interface {
+	acquireIPSlices(size int) (*[]string, []string)
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
 	// AcceptsCharsets checks if the specified charset is acceptable.

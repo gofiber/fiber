@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -33,10 +34,38 @@ const (
 )
 
 // Session pool for reusing byte buffers.
+const (
+	sessionByteBufferDefaultCap = 256
+	sessionByteBufferMaxCap     = 4096
+)
+
 var byteBufferPool = sync.Pool{
 	New: func() any {
-		return new(bytes.Buffer)
+		buf := bytes.NewBuffer(make([]byte, 0, sessionByteBufferDefaultCap))
+		buf.Reset()
+		return buf
 	},
+}
+
+func acquireByteBuffer() *bytes.Buffer {
+	buf, ok := byteBufferPool.Get().(*bytes.Buffer)
+	if !ok {
+		panic(errors.New("failed to type-assert to *bytes.Buffer"))
+	}
+	buf.Reset()
+	return buf
+}
+
+func releaseByteBuffer(buf *bytes.Buffer) {
+	if buf == nil {
+		return
+	}
+	if buf.Cap() > sessionByteBufferMaxCap {
+		buf = bytes.NewBuffer(make([]byte, 0, sessionByteBufferDefaultCap))
+	} else {
+		buf.Reset()
+	}
+	byteBufferPool.Put(buf)
 }
 
 var sessionPool = sync.Pool{
@@ -54,7 +83,11 @@ var sessionPool = sync.Pool{
 //
 //	s := acquireSession()
 func acquireSession() *Session {
-	s := sessionPool.Get().(*Session) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	sessionAny := sessionPool.Get()
+	s, ok := sessionAny.(*Session)
+	if !ok {
+		panic(errors.New("failed to type-assert to *Session"))
+	}
 	if s.data == nil {
 		s.data = acquireData()
 	}
@@ -502,9 +535,8 @@ func (s *Session) setCookieAttributes(fcookie *fasthttp.Cookie) {
 //
 //	err := s.decodeSessionData(rawData)
 func (s *Session) decodeSessionData(rawData []byte) error {
-	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
-	defer byteBufferPool.Put(byteBuffer)
-	defer byteBuffer.Reset()
+	byteBuffer := acquireByteBuffer()
+	defer releaseByteBuffer(byteBuffer)
 	_, _ = byteBuffer.Write(rawData)
 	decCache := gob.NewDecoder(byteBuffer)
 	if err := decCache.Decode(&s.data.Data); err != nil {
@@ -525,9 +557,8 @@ func (s *Session) decodeSessionData(rawData []byte) error {
 //
 //	err := s.encodeSessionData(rawData)
 func (s *Session) encodeSessionData() ([]byte, error) {
-	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
-	defer byteBufferPool.Put(byteBuffer)
-	defer byteBuffer.Reset()
+	byteBuffer := acquireByteBuffer()
+	defer releaseByteBuffer(byteBuffer)
 	encCache := gob.NewEncoder(byteBuffer)
 	if err := encCache.Encode(&s.data.Data); err != nil {
 		return nil, fmt.Errorf("failed to encode session data: %w", err)

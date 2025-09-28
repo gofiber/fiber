@@ -49,6 +49,27 @@ type core struct {
 	ctx    context.Context //nolint:containedctx // Context is needed here.
 }
 
+var corePool = sync.Pool{
+	New: func() any {
+		return new(core)
+	},
+}
+
+func acquireCore() *core {
+	c, ok := corePool.Get().(*core)
+	if !ok {
+		panic(errors.New("failed to type-assert to *core"))
+	}
+	return c
+}
+
+func releaseCore(c *core) {
+	c.client = nil
+	c.req = nil
+	c.ctx = nil
+	corePool.Put(c)
+}
+
 // getRetryConfig returns a copy of the client's retry configuration.
 func (c *core) getRetryConfig() *RetryConfig {
 	c.client.mu.RLock()
@@ -81,6 +102,9 @@ func (c *core) execFunc() (*Response, error) {
 	c.req.RawRequest.CopyTo(reqv)
 	cfg := c.getRetryConfig()
 
+	client := c.client
+	req := c.req
+
 	var err error
 	go func() {
 		respv := fasthttp.AcquireResponse()
@@ -92,16 +116,16 @@ func (c *core) execFunc() (*Response, error) {
 		if cfg != nil {
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
-				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-					return c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
+				if req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+					return client.fasthttp.DoRedirects(reqv, respv, req.maxRedirects)
 				}
-				return c.client.fasthttp.Do(reqv, respv)
+				return client.fasthttp.Do(reqv, respv)
 			})
 		} else {
-			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-				err = c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
+			if req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+				err = client.fasthttp.DoRedirects(reqv, respv, req.maxRedirects)
 			} else {
-				err = c.client.fasthttp.Do(reqv, respv)
+				err = client.fasthttp.Do(reqv, respv)
 			}
 		}
 
@@ -238,6 +262,10 @@ func acquireErrChan() chan error {
 //
 // Do not use the released channel afterward to avoid data races.
 func releaseErrChan(ch chan error) {
+	select {
+	case <-ch:
+	default:
+	}
 	errChanPool.Put(ch)
 }
 

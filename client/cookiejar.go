@@ -13,9 +13,26 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const (
+	cookieJarHostDefaultCap = 8
+	cookieJarHostMaxEntries = 64
+)
+
+const (
+	cookieJarMatchDefaultCap = 4
+	cookieJarMatchMaxCap     = 128
+)
+
 var cookieJarPool = sync.Pool{
 	New: func() any {
 		return &CookieJar{}
+	},
+}
+
+var cookieJarMatchPool = sync.Pool{
+	New: func() any {
+		slice := make([]*fasthttp.Cookie, 0, cookieJarMatchDefaultCap)
+		return &slice
 	},
 }
 
@@ -71,7 +88,26 @@ func (cj *CookieJar) getByHostAndPath(host, path []byte, secure bool) []*fasthtt
 	if err != nil {
 		hostStr = utils.UnsafeString(host)
 	}
-	return cj.cookiesForRequest(hostStr, path, secure)
+	matches, _ := cj.collectCookiesForRequest(nil, hostStr, path, secure)
+	return matches
+}
+
+func (cj *CookieJar) borrowCookiesByHostAndPath(host, path []byte, secure bool) ([]*fasthttp.Cookie, *[]*fasthttp.Cookie) {
+	if cj.hostCookies == nil {
+		return nil, nil
+	}
+
+	var (
+		err     error
+		hostStr = utils.UnsafeString(host)
+	)
+
+	hostStr, _, err = net.SplitHostPort(hostStr)
+	if err != nil {
+		hostStr = utils.UnsafeString(host)
+	}
+
+	return cj.borrowCookiesForRequest(hostStr, path, secure)
 }
 
 // getCookiesByHost returns cookies stored for a specific host, removing any that have expired.
@@ -99,12 +135,69 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 // cookiesForRequest returns cookies that match the given host, path and security settings.
 //
 //nolint:revive // secure is required to filter Secure cookies based on scheme
+func acquireCookieMatches() *[]*fasthttp.Cookie {
+	sliceAny := cookieJarMatchPool.Get()
+	matchesPtr, ok := sliceAny.(*[]*fasthttp.Cookie)
+	if !ok {
+		panic(errors.New("failed to type-assert to *[]*fasthttp.Cookie"))
+	}
+
+	matches := *matchesPtr
+	if len(matches) > 0 {
+		matches = matches[:0]
+	}
+	*matchesPtr = matches
+
+	return matchesPtr
+}
+
+func releaseCookieMatches(matchesPtr *[]*fasthttp.Cookie) {
+	if matchesPtr == nil {
+		return
+	}
+
+	matches := *matchesPtr
+	for i := range matches {
+		matches[i] = nil
+	}
+
+	if cap(matches) > cookieJarMatchMaxCap {
+		*matchesPtr = make([]*fasthttp.Cookie, 0, cookieJarMatchDefaultCap)
+	} else {
+		*matchesPtr = matches[:0]
+	}
+
+	cookieJarMatchPool.Put(matchesPtr)
+}
+
 func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []*fasthttp.Cookie {
+	matches, _ := cj.collectCookiesForRequest(nil, host, path, secure)
+	return matches
+}
+
+func (cj *CookieJar) borrowCookiesForRequest(host string, path []byte, secure bool) ([]*fasthttp.Cookie, *[]*fasthttp.Cookie) {
+	matchesPtr := acquireCookieMatches()
+	matches, ptr := cj.collectCookiesForRequest(matchesPtr, host, path, secure)
+	return matches, ptr
+}
+
+func (cj *CookieJar) collectCookiesForRequest(
+	matchesPtr *[]*fasthttp.Cookie,
+	host string,
+	path []byte,
+	secure bool,
+) ([]*fasthttp.Cookie, *[]*fasthttp.Cookie) {
 	cj.mu.Lock()
 	defer cj.mu.Unlock()
 
+	var matches []*fasthttp.Cookie
+	if matchesPtr != nil {
+		matches = *matchesPtr
+	}
+
+	matches = matches[:0]
+
 	now := time.Now()
-	var matched []*fasthttp.Cookie
 
 	for domain, cookies := range cj.hostCookies {
 		if !domainMatch(host, domain) {
@@ -127,12 +220,16 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 			}
 			nc := fasthttp.AcquireCookie()
 			nc.CopyTo(c)
-			matched = append(matched, nc)
+			matches = append(matches, nc)
 		}
 		cj.hostCookies[domain] = kept
 	}
 
-	return matched
+	if matchesPtr != nil {
+		*matchesPtr = matches
+	}
+
+	return matches, matchesPtr
 }
 
 // Set stores the given cookies for the specified URI host. If a cookie key already exists,
@@ -214,7 +311,9 @@ func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
 func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 	uri := req.URI()
 	secure := bytes.Equal(uri.Scheme(), []byte("https"))
-	cookies := cj.getByHostAndPath(uri.Host(), uri.Path(), secure)
+	cookies, matchesPtr := cj.borrowCookiesByHostAndPath(uri.Host(), uri.Path(), secure)
+	defer releaseCookieMatches(matchesPtr)
+
 	for _, cookie := range cookies {
 		req.Header.SetCookieBytesKV(cookie.Key(), cookie.Value())
 		fasthttp.ReleaseCookie(cookie)
@@ -278,15 +377,35 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 
 // Release releases all stored cookies. After this, the CookieJar is empty.
 func (cj *CookieJar) Release() {
-	// FOLLOW-UP performance optimization:
-	// Currently, a race condition is found because the reset method modifies a value
-	// that is not a copy but a reference. A solution would be to make a copy.
-	// for _, v := range cj.hostCookies {
-	//	  for _, c := range v {
-	//		fasthttp.ReleaseCookie(c)
-	//	  }
-	// }
-	cj.hostCookies = nil
+	cj.mu.Lock()
+	defer cj.mu.Unlock()
+
+	hostCount := len(cj.hostCookies)
+	if hostCount == 0 {
+		return
+	}
+
+	for _, cookies := range cj.hostCookies {
+		for i, c := range cookies {
+			if c == nil {
+				continue
+			}
+			fasthttp.ReleaseCookie(c)
+			cookies[i] = nil
+		}
+	}
+
+	if hostCount > cookieJarHostMaxEntries {
+		cj.hostCookies = nil
+		return
+	}
+
+	if hostCount > cookieJarHostDefaultCap {
+		cj.hostCookies = make(map[string][]*fasthttp.Cookie, cookieJarHostDefaultCap)
+		return
+	}
+
+	clear(cj.hostCookies)
 }
 
 // searchCookieByKeyAndPath looks up a cookie by its key and path from the provided slice of cookies.

@@ -564,7 +564,9 @@ func TestState_Service(t *testing.T) {
 
 			st := newState()
 			require.Equal(t, 0, st.Len())
-			require.Empty(t, st.serviceKeys())
+			keysPtr, keys := st.serviceKeys()
+			require.Empty(t, keys)
+			releaseServiceKeySlice(keysPtr)
 		})
 
 		t.Run("with-services", func(t *testing.T) {
@@ -602,7 +604,9 @@ func TestState_Service(t *testing.T) {
 			st.Set("key1", "value1")
 			st.Set("key2", "value2")
 
-			require.Empty(t, st.serviceKeys())
+			keysPtr, keys := st.serviceKeys()
+			require.Empty(t, keys)
+			releaseServiceKeySlice(keysPtr)
 		})
 
 		t.Run("with-services", func(t *testing.T) {
@@ -612,10 +616,11 @@ func TestState_Service(t *testing.T) {
 			st.setService(srv1)
 			st.setService(srv2)
 
-			keys := st.serviceKeys()
+			keysPtr, keys := st.serviceKeys()
 			require.Len(t, keys, 2)
 			require.Contains(t, keys, st.serviceKey(srv1.String()))
 			require.Contains(t, keys, st.serviceKey(srv2.String()))
+			releaseServiceKeySlice(keysPtr)
 		})
 
 		t.Run("with-services/with-keys", func(t *testing.T) {
@@ -627,12 +632,13 @@ func TestState_Service(t *testing.T) {
 			st.Set("key1", "value1")
 			st.Set("key2", "value2")
 
-			keys := st.serviceKeys()
+			keysPtr, keys := st.serviceKeys()
 			require.Len(t, keys, 2)
 			require.Contains(t, keys, st.serviceKey(srv1.String()))
 			require.Contains(t, keys, st.serviceKey(srv2.String()))
 			require.NotContains(t, keys, "key1")
 			require.NotContains(t, keys, "key2")
+			releaseServiceKeySlice(keysPtr)
 		})
 	})
 

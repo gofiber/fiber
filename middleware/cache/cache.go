@@ -290,14 +290,20 @@ func New(config ...Config) fiber.Handler {
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
 		if cfg.StoreResponseHeaders {
-			e.headers = make(map[string][]byte)
-			for key, value := range c.Response().Header.All() {
-				// create real copy
-				keyS := string(key)
-				if _, ok := ignoreHeaders[keyS]; !ok {
-					e.headers[keyS] = utils.CopyBytes(value)
-				}
+			if e.headers == nil {
+				e.headers = make(map[string][]byte)
+			} else if len(e.headers) > 0 {
+				clear(e.headers)
 			}
+			c.Response().Header.VisitAll(func(key, value []byte) {
+				keyStr := string(key)
+				if _, ok := ignoreHeaders[keyStr]; ok {
+					return
+				}
+				e.headers[keyStr] = utils.CopyBytes(value)
+			})
+		} else if len(e.headers) > 0 {
+			clear(e.headers)
 		}
 
 		// default cache expiration

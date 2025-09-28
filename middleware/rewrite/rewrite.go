@@ -1,12 +1,67 @@
 package rewrite
 
 import (
+	"errors"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v3"
 )
+
+const (
+	rewriteReplaceDefaultCap = 8
+	rewriteReplaceMaxCap     = 128
+)
+
+var replacerArgPool = sync.Pool{ //nolint:gochecknoglobals // shared argument pool
+	New: func() any {
+		slice := make([]string, 0, rewriteReplaceDefaultCap)
+		return &slice
+	},
+}
+
+func acquireReplacerArgs(pairCount int) *[]string {
+	argsAny := replacerArgPool.Get()
+	argsPtr, ok := argsAny.(*[]string)
+	if !ok {
+		panic(errors.New("failed to type-assert to *[]string"))
+	}
+
+	needed := pairCount * 2
+	args := *argsPtr
+
+	if cap(args) < needed {
+		args = make([]string, needed)
+	} else {
+		args = args[:needed]
+	}
+
+	*argsPtr = args
+
+	return argsPtr
+}
+
+func releaseReplacerArgs(argsPtr *[]string) {
+	if argsPtr == nil {
+		return
+	}
+
+	args := *argsPtr
+	if len(args) > 0 {
+		clear(args)
+	}
+
+	if cap(args) > rewriteReplaceMaxCap {
+		args = make([]string, 0, rewriteReplaceDefaultCap)
+	} else {
+		args = args[:0]
+	}
+
+	*argsPtr = args
+	replacerArgPool.Put(argsPtr)
+}
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -44,11 +99,18 @@ func captureTokens(pattern *regexp.Regexp, input string) *strings.Replacer {
 		return nil
 	}
 	values := groups[0][1:]
-	replace := make([]string, 2*len(values))
+	if len(values) == 0 {
+		return strings.NewReplacer()
+	}
+
+	replacePtr := acquireReplacerArgs(len(values))
+	replace := *replacePtr
 	for i, v := range values {
 		j := 2 * i
 		replace[j] = "$" + strconv.Itoa(i+1)
 		replace[j+1] = v
 	}
-	return strings.NewReplacer(replace...)
+	replacer := strings.NewReplacer(replace...)
+	releaseReplacerArgs(replacePtr)
+	return replacer
 }

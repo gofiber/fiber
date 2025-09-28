@@ -6,7 +6,9 @@ package fiber
 
 import (
 	"math"
+	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -15,6 +17,17 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+func newHeaderParams(entries map[string]string) *headerParams {
+	if entries == nil {
+		return nil
+	}
+	params := &headerParams{values: make(map[string][]byte, len(entries))}
+	for k, v := range entries {
+		params.values[k] = []byte(v)
+	}
+	return params
+}
 
 func Test_Utils_GetOffer(t *testing.T) {
 	t.Parallel()
@@ -95,6 +108,61 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.False(t, acceptsLanguageOfferExtended("de-*-DE", "de-x-DE", nil))
 	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-CH", nil))
 	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-Latn-CH", nil))
+}
+
+func Test_splitLanguageTags(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{name: "simple", input: "en-US", want: []string{"en", "US"}},
+		{name: "leading hyphen", input: "-en", want: []string{"", "en"}},
+		{name: "trailing hyphen", input: "en-", want: []string{"en", ""}},
+		{name: "double hyphen", input: "en--US", want: []string{"en", "", "US"}},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ptr, tags := splitLanguageTags(tc.input)
+			require.Equal(t, tc.want, tags)
+			releaseLanguageTagSlice(ptr)
+		})
+	}
+
+	// Oversized slices should be trimmed back down on release.
+	large := strings.Repeat("x-", languageTagSliceMaxCap+1) + "z"
+	ptr, tags := splitLanguageTags(large)
+	require.Greater(t, cap(tags), languageTagSliceMaxCap)
+	releaseLanguageTagSlice(ptr)
+
+	ptr, tags = splitLanguageTags("en")
+	require.LessOrEqual(t, cap(tags), languageTagSliceMaxCap)
+	releaseLanguageTagSlice(ptr)
+}
+
+func Test_releaseHeaderParams(t *testing.T) {
+	params := acquireHeaderParams()
+	params.values["foo"] = []byte("bar")
+	releaseHeaderParams(params)
+
+	params = acquireHeaderParams()
+	require.Len(t, params.values, 0)
+
+	oldMapPtr := reflect.ValueOf(params.values).Pointer()
+	for i := 0; i < headerParamsValuesMaxEntries+5; i++ {
+		params.values[strconv.Itoa(i)] = []byte("v")
+	}
+	releaseHeaderParams(params)
+
+	params = acquireHeaderParams()
+	require.Len(t, params.values, 0)
+	require.NotEqual(t, oldMapPtr, reflect.ValueOf(params.values).Pointer())
+	releaseHeaderParams(params)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
@@ -187,7 +255,7 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 func Test_Utils_ParamsMatch(t *testing.T) {
 	testCases := []struct {
 		description string
-		accept      headerParams
+		accept      *headerParams
 		offer       string
 		match       bool
 	}{
@@ -199,31 +267,31 @@ func Test_Utils_ParamsMatch(t *testing.T) {
 		},
 		{
 			description: "accept is empty, offer has params",
-			accept:      make(headerParams),
+			accept:      &headerParams{values: make(map[string][]byte)},
 			offer:       ";foo=bar",
 			match:       true,
 		},
 		{
 			description: "offer is empty, accept has params",
-			accept:      headerParams{"foo": []byte("bar")},
+			accept:      newHeaderParams(map[string]string{"foo": "bar"}),
 			offer:       "",
 			match:       false,
 		},
 		{
 			description: "accept has extra parameters",
-			accept:      headerParams{"foo": []byte("bar"), "a": []byte("1")},
+			accept:      newHeaderParams(map[string]string{"foo": "bar", "a": "1"}),
 			offer:       ";foo=bar",
 			match:       false,
 		},
 		{
 			description: "matches regardless of order",
-			accept:      headerParams{"b": []byte("2"), "a": []byte("1")},
+			accept:      newHeaderParams(map[string]string{"b": "2", "a": "1"}),
 			offer:       ";b=2;a=1",
 			match:       true,
 		},
 		{
 			description: "case insensitive",
-			accept:      headerParams{"ParaM": []byte("FoO")},
+			accept:      newHeaderParams(map[string]string{"ParaM": "FoO"}),
 			offer:       ";pAram=foO",
 			match:       true,
 		},
@@ -237,10 +305,7 @@ func Test_Utils_ParamsMatch(t *testing.T) {
 func Benchmark_Utils_ParamsMatch(b *testing.B) {
 	var match bool
 
-	specParams := headerParams{
-		"appLe": []byte("orange"),
-		"param": []byte("foo"),
-	}
+	specParams := newHeaderParams(map[string]string{"appLe": "orange", "param": "foo"})
 	b.ReportAllocs()
 	for b.Loop() {
 		match = paramsMatch(specParams, `;param=foo; apple=orange`)
@@ -253,7 +318,7 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 	testCases := []struct {
 		description string
 		spec        string
-		specParams  headerParams
+		specParams  *headerParams
 		offerType   string
 		accepts     bool
 	}{
@@ -278,14 +343,14 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 		{
 			description: "params match",
 			spec:        "application/json",
-			specParams:  headerParams{"format": []byte("foo"), "version": []byte("1")},
+			specParams:  newHeaderParams(map[string]string{"format": "foo", "version": "1"}),
 			offerType:   "application/json;version=1;format=foo;q=0.1",
 			accepts:     true,
 		},
 		{
 			description: "spec has extra params",
 			spec:        "text/html",
-			specParams:  headerParams{"charset": []byte("utf-8")},
+			specParams:  newHeaderParams(map[string]string{"charset": "utf-8"}),
 			offerType:   "text/html",
 			accepts:     false,
 		},
@@ -298,14 +363,14 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 		{
 			description: "ignores optional whitespace",
 			spec:        "application/json",
-			specParams:  headerParams{"format": []byte("foo"), "version": []byte("1")},
+			specParams:  newHeaderParams(map[string]string{"format": "foo", "version": "1"}),
 			offerType:   "application/json;  version=1 ;    format=foo   ",
 			accepts:     true,
 		},
 		{
 			description: "ignores optional whitespace",
 			spec:        "application/json",
-			specParams:  headerParams{"format": []byte("foo bar"), "version": []byte("1")},
+			specParams:  newHeaderParams(map[string]string{"format": "foo bar", "version": "1"}),
 			offerType:   `application/json;version="1";format="foo bar"`,
 			accepts:     true,
 		},
@@ -336,7 +401,7 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 		{
 			description:  "headerValue is empty",
 			headerValue:  "",
-			expectedList: nil,
+			expectedList: []string{},
 		},
 		{
 			description:  "has a comma without element",
@@ -400,7 +465,7 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 		{spec: "image/*", quality: 1, specificity: 2, order: 8},
 		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
 		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
-		{spec: "application/json", quality: 0.999, specificity: 3, params: headerParams{"a": []byte("1")}, order: 11},
+		{spec: "application/json", quality: 0.999, specificity: 3, params: newHeaderParams(map[string]string{"a": "1"}), order: 11},
 		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
 	}
 	sortAcceptedTypes(acceptedTypes)
@@ -413,7 +478,7 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
 		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
 		{spec: "image/*", quality: 1, specificity: 2, order: 8},
-		{spec: "application/json", quality: 0.999, specificity: 3, params: headerParams{"a": []byte("1")}, order: 11},
+		{spec: "application/json", quality: 0.999, specificity: 3, params: newHeaderParams(map[string]string{"a": "1"}), order: 11},
 		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
 		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
 		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
@@ -1334,26 +1399,36 @@ func Test_UnescapeHeaderValue(t *testing.T) {
 		{in: "bad\\", ok: false},
 	}
 	for _, tc := range cases {
-		out, err := unescapeHeaderValue([]byte(tc.in))
+		out, bufPtr, err := unescapeHeaderValue([]byte(tc.in))
 		if tc.ok {
 			require.NoError(t, err, tc.in)
 			require.Equal(t, tc.out, out, tc.in)
 		} else {
 			require.Error(t, err, tc.in)
 		}
+		releaseHeaderValueBuffer(bufPtr)
 	}
 }
 
 func Test_JoinHeaderValues(t *testing.T) {
 	t.Parallel()
-	require.Nil(t, joinHeaderValues(nil))
-	require.Equal(t, []byte("a"), joinHeaderValues([][]byte{[]byte("a")}))
-	require.Equal(t, []byte("a,b"), joinHeaderValues([][]byte{[]byte("a"), []byte("b")}))
+
+	buf, ptr := joinHeaderValues(nil)
+	require.Nil(t, buf)
+	require.Nil(t, ptr)
+
+	buf, ptr = joinHeaderValues([][]byte{[]byte("a")})
+	require.Equal(t, []byte("a"), buf)
+	require.Nil(t, ptr)
+
+	buf, ptr = joinHeaderValues([][]byte{[]byte("a"), []byte("b")})
+	require.Equal(t, []byte("a,b"), buf)
+	releaseHeaderValueBuffer(ptr)
 }
 
 func Test_ParamsMatch_InvalidEscape(t *testing.T) {
 	t.Parallel()
-	match := paramsMatch(headerParams{"foo": []byte("bar")}, `;foo="bar\\`)
+	match := paramsMatch(newHeaderParams(map[string]string{"foo": "bar"}), `;foo="bar\\`)
 	require.False(t, match)
 }
 

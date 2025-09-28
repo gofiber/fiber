@@ -19,11 +19,54 @@ import (
 
 var protocolCheck = regexp.MustCompile(`^https?://.*$`)
 
-var fileBufPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, 1<<20) // 1MB buffer
-		return &b
-	},
+const (
+	randByteDefaultCap = 32
+	randByteMaxCap     = 1 << 12 // 4KB
+)
+
+var (
+	fileBufPool = sync.Pool{
+		New: func() any {
+			b := make([]byte, 1<<20) // 1MB buffer
+			return &b
+		},
+	}
+
+	randBytePool = sync.Pool{
+		New: func() any {
+			return make([]byte, 0, randByteDefaultCap)
+		},
+	}
+)
+
+func acquireRandBytes(size int) []byte {
+	bufAny := randBytePool.Get()
+	buf, ok := bufAny.([]byte)
+	if !ok {
+		panic(errors.New("failed to type-assert to []byte"))
+	}
+
+	if cap(buf) < size {
+		buf = make([]byte, size)
+	}
+
+	return buf[:size]
+}
+
+func releaseRandBytes(buf []byte) {
+	if buf == nil {
+		return
+	}
+
+	clear(buf)
+
+	if cap(buf) > randByteMaxCap {
+		buf = make([]byte, 0, randByteDefaultCap)
+	} else {
+		buf = buf[:0]
+	}
+
+	randBytePool.Put(buf)
 }
 
 const (
@@ -43,24 +86,25 @@ func unsafeRandString(n int) (string, error) {
 	inputLength := byte(len(letterBytes))
 
 	// Compute the largest multiple of inputLength ≤ 256 to avoid modulo bias.
-	// Any byte ≥ max will be rejected and re‑read.
+	// Any byte ≥ max will be rejected and re-read.
 	maxLength := byte(256 - (256 % int(inputLength)))
 
-	out := make([]byte, n)
-	buf := make([]byte, n)
+	raw := acquireRandBytes(n)
+	defer releaseRandBytes(raw)
 
 	// Read n raw bytes in one shot
-	if _, err := rand.Read(buf); err != nil {
+	if _, err := rand.Read(raw); err != nil {
 		return "", fmt.Errorf("rand.Read failed: %w", err)
 	}
 
-	for i, b := range buf {
+	out := make([]byte, n)
+	for i, b := range raw {
 		// Reject values ≥ maxLength
 		for b >= maxLength {
-			if _, err := rand.Read(buf[i : i+1]); err != nil {
+			if _, err := rand.Read(raw[i : i+1]); err != nil {
 				return "", fmt.Errorf("rand.Read failed: %w", err)
 			}
-			b = buf[i]
+			b = raw[i]
 		}
 		out[i] = letterBytes[b%inputLength]
 	}

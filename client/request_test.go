@@ -354,6 +354,32 @@ func Benchmark_Request_Params(b *testing.B) {
 	}
 }
 
+func Test_requestPairPoolResetAndShrink(t *testing.T) {
+	t.Parallel()
+
+	p := acquirePair(0)
+	require.NotNil(t, p)
+	p.k = append(p.k, "a", "b")
+	p.v = append(p.v, "1", "2")
+
+	releasePair(p)
+
+	reused := acquirePair(1)
+	require.Zero(t, len(reused.k))
+	require.Zero(t, len(reused.v))
+	releasePair(reused)
+
+	oversized := acquirePair(pairSliceMaxCap + 32)
+	require.GreaterOrEqual(t, cap(oversized.k), pairSliceMaxCap+32)
+	require.GreaterOrEqual(t, cap(oversized.v), pairSliceMaxCap+32)
+	releasePair(oversized)
+
+	trimmed := acquirePair(1)
+	require.LessOrEqual(t, cap(trimmed.k), pairSliceMaxCap)
+	require.LessOrEqual(t, cap(trimmed.v), pairSliceMaxCap)
+	releasePair(trimmed)
+}
+
 func Test_Request_UA(t *testing.T) {
 	t.Parallel()
 

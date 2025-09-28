@@ -163,10 +163,16 @@ func (r *Response) Reset() {
 	r.client = nil
 	r.request = nil
 
-	for len(r.cookie) != 0 {
-		t := r.cookie[0]
-		r.cookie = r.cookie[1:]
-		fasthttp.ReleaseCookie(t)
+	for i := range r.cookie {
+		if c := r.cookie[i]; c != nil {
+			fasthttp.ReleaseCookie(c)
+			r.cookie[i] = nil
+		}
+	}
+	if cap(r.cookie) > responseCookieSliceMaxCap {
+		r.cookie = make([]*fasthttp.Cookie, 0, responseCookieSliceDefaultCap)
+	} else {
+		r.cookie = r.cookie[:0]
 	}
 
 	r.RawResponse.Reset()
@@ -183,10 +189,15 @@ func (r *Response) Close() {
 	ReleaseResponse(r)
 }
 
+const (
+	responseCookieSliceDefaultCap = 4
+	responseCookieSliceMaxCap     = 64
+)
+
 var responsePool = &sync.Pool{
 	New: func() any {
 		return &Response{
-			cookie:      []*fasthttp.Cookie{},
+			cookie:      make([]*fasthttp.Cookie, 0, responseCookieSliceDefaultCap),
 			RawResponse: fasthttp.AcquireResponse(),
 		}
 	},

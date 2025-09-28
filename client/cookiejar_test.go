@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 	"time"
 
@@ -312,4 +313,95 @@ func Test_CookieJar_PathMatch(t *testing.T) {
 	uriNoMatch := fasthttp.AcquireURI()
 	require.NoError(t, uriNoMatch.Parse(nil, []byte("http://example.com/apiv1")))
 	require.Empty(t, jar.Get(uriNoMatch))
+}
+
+func Test_CookieJar_ReleaseClearsHosts(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{
+		hostCookies: make(map[string][]*fasthttp.Cookie, 2),
+	}
+
+	for i := 0; i < 2; i++ {
+		cookie := fasthttp.AcquireCookie()
+		cookie.SetKey("k")
+		cookie.SetValue("v")
+		host := fmt.Sprintf("host-%d", i)
+		jar.hostCookies[host] = append(jar.hostCookies[host], cookie)
+	}
+
+	jar.Release()
+
+	require.NotNil(t, jar.hostCookies)
+	require.Empty(t, jar.hostCookies)
+}
+
+func Test_CookieJar_ReleaseDropsOversizedMaps(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{
+		hostCookies: make(map[string][]*fasthttp.Cookie, cookieJarHostMaxEntries+1),
+	}
+
+	for i := 0; i < cookieJarHostMaxEntries+1; i++ {
+		cookie := fasthttp.AcquireCookie()
+		cookie.SetKey("k")
+		cookie.SetValue("v")
+		host := fmt.Sprintf("oversize-%d", i)
+		jar.hostCookies[host] = append(jar.hostCookies[host], cookie)
+	}
+
+	jar.Release()
+
+	require.Nil(t, jar.hostCookies)
+}
+
+func Test_releaseCookieMatchesShrinksOversizedSlices(t *testing.T) {
+	t.Parallel()
+
+	matchesPtr := acquireCookieMatches()
+	require.NotNil(t, matchesPtr)
+
+	// Expand the slice beyond the max capacity and populate it with placeholders.
+	oversized := make([]*fasthttp.Cookie, cookieJarMatchMaxCap+8)
+	copy(oversized, []*fasthttp.Cookie{{}, {}})
+	*matchesPtr = oversized
+
+	releaseCookieMatches(matchesPtr)
+
+	pooledPtr := acquireCookieMatches()
+	require.NotNil(t, pooledPtr)
+	require.Len(t, *pooledPtr, 0)
+	require.LessOrEqual(t, cap(*pooledPtr), cookieJarMatchMaxCap)
+
+	releaseCookieMatches(pooledPtr)
+}
+
+func Test_CookieJar_BorrowCookiesUsesPool(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	uri := fasthttp.AcquireURI()
+	require.NoError(t, uri.Parse(nil, []byte("http://example.com/path")))
+
+	cookie := &fasthttp.Cookie{}
+	cookie.SetKey("k")
+	cookie.SetValue("v")
+	jar.Set(uri, cookie)
+
+	matches, matchesPtr := jar.borrowCookiesByHostAndPath(uri.Host(), uri.Path(), false)
+	require.NotNil(t, matchesPtr)
+	require.Len(t, matches, 1)
+
+	for _, c := range matches {
+		fasthttp.ReleaseCookie(c)
+	}
+
+	releaseCookieMatches(matchesPtr)
+
+	pooledPtr := acquireCookieMatches()
+	require.Len(t, *pooledPtr, 0)
+	releaseCookieMatches(pooledPtr)
+
+	fasthttp.ReleaseURI(uri)
 }

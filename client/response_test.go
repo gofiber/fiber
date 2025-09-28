@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_Response_Status(t *testing.T) {
@@ -198,6 +199,23 @@ func Test_Response_Header(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "bar", resp.Header("foo"))
 	resp.Close()
+}
+
+func Test_Response_Reset_ShrinksCookieSlice(t *testing.T) {
+	t.Parallel()
+
+	resp := AcquireResponse()
+	defer ReleaseResponse(resp)
+
+	for i := 0; i < responseCookieSliceMaxCap*2; i++ {
+		resp.cookie = append(resp.cookie, fasthttp.AcquireCookie())
+	}
+	require.Greater(t, cap(resp.cookie), responseCookieSliceMaxCap)
+
+	resp.Reset()
+
+	require.Len(t, resp.cookie, 0)
+	require.Equal(t, responseCookieSliceDefaultCap, cap(resp.cookie))
 }
 
 func Test_Response_Headers(t *testing.T) {

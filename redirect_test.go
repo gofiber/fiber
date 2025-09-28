@@ -61,6 +61,30 @@ func Test_Redirect_To_WithFlashMessages(t *testing.T) {
 	require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 2, isOldInput: false})
 }
 
+func Test_redirectMsgBufferPool(t *testing.T) {
+	t.Parallel()
+
+	bufPtr := acquireRedirectMsgBuffer()
+	require.NotNil(t, bufPtr)
+	buf := *bufPtr
+	require.Equal(t, 0, len(buf))
+	require.GreaterOrEqual(t, cap(buf), redirectMsgBufferDefaultCap)
+
+	releaseRedirectMsgBuffer(bufPtr)
+
+	bufPtr = acquireRedirectMsgBuffer()
+	buf = *bufPtr
+	// Inflate the buffer beyond the max cap and ensure it resets on release.
+	big := make([]byte, redirectMsgBufferMaxCap+redirectMsgBufferDefaultCap)
+	*bufPtr = big
+	releaseRedirectMsgBuffer(bufPtr)
+
+	bufPtr = acquireRedirectMsgBuffer()
+	buf = *bufPtr
+	require.LessOrEqual(t, cap(buf), redirectMsgBufferDefaultCap)
+	releaseRedirectMsgBuffer(bufPtr)
+}
+
 // go test -run Test_Redirect_Route_WithParams
 func Test_Redirect_Route_WithParams(t *testing.T) {
 	t.Parallel()

@@ -1,12 +1,69 @@
 package logger
 
 import (
+	"errors"
 	"fmt"
 	"maps"
-	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v3"
 )
+
+const (
+	reqHeaderMapDefaultCap = 16
+	reqHeaderMapMaxEntries = 256
+)
+
+var reqHeaderMapPool = sync.Pool{
+	New: func() any {
+		m := make(map[string][]string, reqHeaderMapDefaultCap)
+		return &m
+	},
+}
+
+func acquireReqHeaderMap() *map[string][]string {
+	mapAny := reqHeaderMapPool.Get()
+	headerMapPtr, ok := mapAny.(*map[string][]string)
+	if !ok {
+		panic(errors.New("failed to type-assert to *map[string][]string"))
+	}
+
+	headers := *headerMapPtr
+	if headers == nil {
+		headers = make(map[string][]string, reqHeaderMapDefaultCap)
+	} else if len(headers) > 0 {
+		clear(headers)
+	}
+
+	*headerMapPtr = headers
+
+	return headerMapPtr
+}
+
+func releaseReqHeaderMap(headerMapPtr *map[string][]string) {
+	if headerMapPtr == nil {
+		return
+	}
+
+	headers := *headerMapPtr
+	if headers == nil {
+		*headerMapPtr = make(map[string][]string, reqHeaderMapDefaultCap)
+		reqHeaderMapPool.Put(headerMapPtr)
+		return
+	}
+
+	entryCount := len(headers)
+	if entryCount > 0 {
+		clear(headers)
+	}
+
+	if entryCount > reqHeaderMapMaxEntries {
+		headers = nil
+	}
+
+	*headerMapPtr = headers
+	reqHeaderMapPool.Put(headerMapPtr)
+}
 
 // Logger variables
 const (
@@ -100,16 +157,59 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.Write(c.Response().Body())
 		},
 		TagReqHeaders: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			out := make(map[string][]string, 0)
-			if err := c.Bind().Header(&out); err != nil {
+			headerMapPtr := acquireReqHeaderMap()
+			headers := *headerMapPtr
+			defer func() {
+				*headerMapPtr = headers
+				releaseReqHeaderMap(headerMapPtr)
+			}()
+
+			if err := c.Bind().Header(&headers); err != nil {
 				return 0, err
 			}
 
-			reqHeaders := make([]string, 0)
-			for k, v := range out {
-				reqHeaders = append(reqHeaders, k+"="+strings.Join(v, ","))
+			var (
+				written   int
+				firstPair = true
+			)
+
+			for key, values := range headers {
+				if !firstPair {
+					if err := output.WriteByte('&'); err != nil {
+						return written, err
+					}
+					written++
+				}
+				firstPair = false
+
+				n, err := output.WriteString(key)
+				written += n
+				if err != nil {
+					return written, err
+				}
+
+				if err := output.WriteByte('='); err != nil {
+					return written, err
+				}
+				written++
+
+				for i, value := range values {
+					if i > 0 {
+						if err := output.WriteByte(','); err != nil {
+							return written, err
+						}
+						written++
+					}
+
+					n, err = output.WriteString(value)
+					written += n
+					if err != nil {
+						return written, err
+					}
+				}
 			}
-			return output.Write([]byte(strings.Join(reqHeaders, "&")))
+
+			return written, nil
 		},
 		TagQueryStringParams: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.WriteString(c.Request().URI().QueryArgs().String())

@@ -37,6 +37,11 @@ type manager struct {
 
 const redactedKey = "[redacted]"
 
+const (
+	cacheHeaderDefaultCap = 8
+	cacheHeaderMaxEntries = 128
+)
+
 var errCacheMiss = errors.New("cache: miss")
 
 func newManager(storage fiber.Storage, redactKeys bool) *manager {
@@ -61,7 +66,12 @@ func newManager(storage fiber.Storage, redactKeys bool) *manager {
 
 // acquire returns an *entry from the sync.Pool
 func (m *manager) acquire() *item {
-	return m.pool.Get().(*item) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	entryAny := m.pool.Get()
+	entry, ok := entryAny.(*item)
+	if !ok {
+		panic(errors.New("failed to type-assert to *item"))
+	}
+	return entry
 }
 
 // release and reset *entry to sync.Pool
@@ -72,11 +82,19 @@ func (m *manager) release(e *item) {
 	}
 	e.body = nil
 	e.ctype = nil
+	e.cencoding = nil
 	e.status = 0
 	e.age = 0
 	e.exp = 0
 	e.ttl = 0
-	e.headers = nil
+	e.heapidx = 0
+	headersLen := len(e.headers)
+	if headersLen > 0 {
+		clear(e.headers)
+	}
+	if headersLen > cacheHeaderMaxEntries {
+		e.headers = make(map[string][]byte, cacheHeaderDefaultCap)
+	}
 	m.pool.Put(e)
 }
 

@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -51,7 +52,12 @@ func newManager(storage fiber.Storage, redactKeys bool) *manager {
 
 // acquire returns an *entry from the sync.Pool
 func (m *manager) acquire() *item {
-	return m.pool.Get().(*item) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	entryAny := m.pool.Get()
+	entry, ok := entryAny.(*item)
+	if !ok {
+		panic(errors.New("failed to type-assert to *item"))
+	}
+	return entry
 }
 
 // release and reset *entry to sync.Pool

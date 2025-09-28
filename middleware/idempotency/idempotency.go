@@ -59,7 +59,9 @@ func New(config ...Config) fiber.Handler {
 		if val, err := cfg.Storage.GetWithContext(c, key); err != nil {
 			return false, fmt.Errorf("failed to read response: %w", err)
 		} else if val != nil {
-			var res response
+			res := acquireCachedResponse()
+			defer releaseCachedResponse(res)
+
 			if _, err := res.UnmarshalMsg(val); err != nil {
 				return false, fmt.Errorf("failed to unmarshal response: %w", err)
 			}
@@ -74,8 +76,10 @@ func New(config ...Config) fiber.Handler {
 
 			if len(res.Body) != 0 {
 				if err := c.Send(res.Body); err != nil {
+					res.Body = nil
 					return true, err
 				}
+				res.Body = nil
 			}
 
 			_ = c.Locals(localsKeyIsFromCache, true)
@@ -133,27 +137,22 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Construct response
-		res := &response{
-			StatusCode: c.Response().StatusCode(),
+		res := acquireCachedResponse()
+		defer releaseCachedResponse(res)
 
-			Body: utils.CopyBytes(c.Response().Body()),
+		res.StatusCode = c.Response().StatusCode()
+		res.Body = append(res.Body[:0], c.Response().Body()...)
+
+		headers := res.Headers
+		resetCachedResponseHeaders(headers)
+		if err := c.Bind().RespHeader(headers); err != nil {
+			return fmt.Errorf("failed to bind to response headers: %w", err)
 		}
-		{
-			headers := make(map[string][]string)
-			if err := c.Bind().RespHeader(headers); err != nil {
-				return fmt.Errorf("failed to bind to response headers: %w", err)
-			}
 
-			if cfg.KeepResponseHeaders == nil {
-				// Keep all
-				res.Headers = headers
-			} else {
-				// Filter
-				res.Headers = make(map[string][]string)
-				for h := range headers {
-					if _, ok := keepResponseHeadersMap[utils.ToLower(h)]; ok {
-						res.Headers[h] = headers[h]
-					}
+		if len(keepResponseHeadersMap) > 0 {
+			for h := range headers {
+				if _, ok := keepResponseHeadersMap[strings.ToLower(h)]; !ok {
+					delete(headers, h)
 				}
 			}
 		}

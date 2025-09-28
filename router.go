@@ -6,8 +6,10 @@ package fiber
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"sync/atomic"
 
 	utils "github.com/gofiber/utils/v2"
@@ -58,6 +60,41 @@ type Route struct {
 	mount bool // Indicated a mounted app on a specific route
 	star  bool // Path equals '*'
 	root  bool // Path equals '/'
+}
+
+const (
+	removedUseRouteDefaultCap = 8
+	removedUseRouteMaxEntries = 64
+)
+
+var removedUseRoutePool = sync.Pool{
+	New: func() any {
+		return make(map[string]struct{}, removedUseRouteDefaultCap)
+	},
+}
+
+func acquireRemovedUseRouteSet() map[string]struct{} {
+	set, ok := removedUseRoutePool.Get().(map[string]struct{})
+	if !ok {
+		panic(errors.New("failed to type-assert to map[string]struct{}"))
+	}
+	if len(set) > 0 {
+		clear(set)
+	}
+	return set
+}
+
+func releaseRemovedUseRouteSet(set map[string]struct{}) {
+	if set == nil {
+		return
+	}
+	used := len(set)
+	clear(set)
+	if used > removedUseRouteMaxEntries {
+		removedUseRoutePool.Put(make(map[string]struct{}, removedUseRouteDefaultCap))
+		return
+	}
+	removedUseRoutePool.Put(set)
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
@@ -436,7 +473,8 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	removedUseRoutes := make(map[string]struct{})
+	removedUseRoutes := acquireRemovedUseRouteSet()
+	defer releaseRemovedUseRouteSet(removedUseRoutes)
 
 	for _, method := range methods {
 		// Uppercase HTTP methods

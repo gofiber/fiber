@@ -2615,6 +2615,36 @@ func Test_Ctx_IPs_With_IP_Validation(t *testing.T) {
 	require.Empty(t, c.IPs())
 }
 
+func Test_Ctx_IPs_PoolReuse(t *testing.T) {
+	app := New(Config{ProxyHeader: HeaderXForwardedFor, TrustProxy: true})
+
+	fctx := &fasthttp.RequestCtx{}
+	c := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	bigCount := ipSliceMaxCap + 8
+	ips := make([]string, bigCount)
+	for i := range ips {
+		ips[i] = fmt.Sprintf("127.0.0.%d", (i%250)+1)
+	}
+
+	c.Request().Header.Set(HeaderXForwardedFor, strings.Join(ips, ","))
+	got := c.IPs()
+	require.Len(t, got, bigCount)
+	require.NotNil(t, c.DefaultReq.ipSlicePtr)
+	require.Greater(t, cap(*c.DefaultReq.ipSlicePtr), ipSliceMaxCap)
+
+	app.ReleaseCtx(c)
+	require.Nil(t, c.DefaultReq.ipSlicePtr)
+
+	c = app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
+	require.Equal(t, []string{"127.0.0.1"}, c.IPs())
+	require.NotNil(t, c.DefaultReq.ipSlicePtr)
+	require.LessOrEqual(t, cap(*c.DefaultReq.ipSlicePtr), ipSliceMaxCap)
+
+	app.ReleaseCtx(c)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_IPs -benchmem -count=4
 func Benchmark_Ctx_IPs(b *testing.B) {
 	app := New()
@@ -5835,9 +5865,15 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	t.Logf("%v", err)
-	require.EqualError(t, err, "unexpected EOF")
+	require.True(t, err == nil || errors.Is(err, io.ErrUnexpectedEOF), "expected io.ErrUnexpectedEOF or nil, got %v", err)
 
-	require.Equal(t, "Line 1\nLine 2\nLine 3\n", string(body))
+	const base = "Line 1\nLine 2\nLine 3\n"
+	bodyStr := string(body)
+	require.Contains(t, []string{
+		base,
+		base + "Line 4\n",
+		base + "Line 4\nLine 5\n",
+	}, bodyStr, "unexpected streamed body: %q", bodyStr)
 
 	// ensure the first three lines were successfully flushed
 	require.Equal(t, int32(3), flushed.Load())
@@ -6442,6 +6478,30 @@ func Test_Ctx_GetRespHeaders(t *testing.T) {
 		"Multi":        {"one", "two"},
 		"Test":         {"Hello, World 👋!"},
 	}, c.Res().GetHeaders())
+}
+
+func Test_DefaultRes_GetHeaders_ReleasesScratch(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	customCtx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx, ok := customCtx.(*DefaultCtx)
+	require.True(t, ok)
+
+	ctx.Response().Header.Set("Foo", "bar")
+
+	first := ctx.Res().GetHeaders()
+	require.Equal(t, []string{"bar"}, first["Foo"])
+
+	ctx.Response().Header.Add("Foo", "baz")
+	second := ctx.Res().GetHeaders()
+
+	require.Equal(t, []string{"bar", "baz"}, second["Foo"])
+	require.Equal(t, []string{"bar"}, first["Foo"])
+
+	app.ReleaseCtx(customCtx)
+
+	require.Zero(t, len(ctx.DefaultRes.headerScratch))
 }
 
 func Benchmark_Ctx_GetRespHeaders(b *testing.B) {

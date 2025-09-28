@@ -8,6 +8,7 @@ package fiber
 
 import (
 	"bytes"
+	"errors"
 	"regexp"
 	"strconv"
 	"strings"
@@ -27,9 +28,25 @@ type routeParser struct {
 	plusCount     int             // number of plus parameters, used internally to give the plus parameter its number
 }
 
+const (
+	routeParserSegDefaultCap   = 16
+	routeParserSegMaxCap       = 128
+	routeParserParamDefaultCap = 16
+	routeParserParamMaxCap     = 128
+)
+
 var routerParserPool = &sync.Pool{
 	New: func() any {
-		return &routeParser{}
+		return &routeParser{
+			segs:   make([]*routeSegment, 0, routeParserSegDefaultCap),
+			params: make([]string, 0, routeParserParamDefaultCap),
+		}
+	},
+}
+
+var routeSegmentPool = sync.Pool{
+	New: func() any {
+		return &routeSegment{}
 	},
 }
 
@@ -50,6 +67,50 @@ type routeSegment struct {
 	// common information
 	IsLast           bool // shows if the segment is the last one for the route
 	HasOptionalSlash bool // segment has the possibility of an optional slash
+}
+
+func acquireRouteSegment() *routeSegment {
+	segAny := routeSegmentPool.Get()
+	seg, ok := segAny.(*routeSegment)
+	if !ok {
+		panic(errors.New("failed to type-assert to *routeSegment"))
+	}
+
+	resetRouteSegment(seg)
+
+	return seg
+}
+
+func releaseRouteSegment(seg *routeSegment) {
+	if seg == nil {
+		return
+	}
+
+	resetRouteSegment(seg)
+	routeSegmentPool.Put(seg)
+}
+
+func resetRouteSegment(seg *routeSegment) {
+	if seg == nil {
+		return
+	}
+
+	seg.Const = ""
+	seg.ParamName = ""
+	seg.ComparePart = ""
+	if len(seg.Constraints) > 0 {
+		for i := range seg.Constraints {
+			seg.Constraints[i] = nil
+		}
+		seg.Constraints = nil
+	}
+	seg.PartCount = 0
+	seg.Length = 0
+	seg.IsParam = false
+	seg.IsGreedy = false
+	seg.IsOptional = false
+	seg.IsLast = false
+	seg.HasOptionalSlash = false
 }
 
 // different special routing signs
@@ -179,7 +240,11 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		patternPretty = utils.TrimRight(patternPretty, '/')
 	}
 
-	parser, _ := routerParserPool.Get().(*routeParser) //nolint:errcheck // only contains routeParser
+	parserAny := routerParserPool.Get()
+	parser, ok := parserAny.(*routeParser)
+	if !ok {
+		panic(errors.New("failed to type-assert to *routeParser"))
+	}
 	parser.reset()
 	parser.parseRoute(string(patternPretty))
 	defer routerParserPool.Put(parser)
@@ -204,8 +269,25 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 }
 
 func (parser *routeParser) reset() {
-	parser.segs = parser.segs[:0]
-	parser.params = parser.params[:0]
+	for i, seg := range parser.segs {
+		releaseRouteSegment(seg)
+		parser.segs[i] = nil
+	}
+	if cap(parser.segs) > routeParserSegMaxCap {
+		parser.segs = make([]*routeSegment, 0, routeParserSegDefaultCap)
+	} else {
+		parser.segs = parser.segs[:0]
+	}
+
+	if len(parser.params) > 0 {
+		clear(parser.params)
+	}
+	if cap(parser.params) > routeParserParamMaxCap {
+		parser.params = make([]string, 0, routeParserParamDefaultCap)
+	} else {
+		parser.params = parser.params[:0]
+	}
+
 	parser.wildCardCount = 0
 	parser.plusCount = 0
 }
@@ -319,10 +401,11 @@ func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (
 		processedPart = pattern[:nextParamPosition]
 	}
 	constPart := RemoveEscapeChar(processedPart)
-	return len(processedPart), &routeSegment{
-		Const:  constPart,
-		Length: len(constPart),
-	}
+	segment := acquireRouteSegment()
+	segment.Const = constPart
+	segment.Length = len(constPart)
+
+	return len(processedPart), segment
 }
 
 // analyseParameterPart find the parameter end and create the route segment
@@ -428,12 +511,11 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 		paramName += strconv.Itoa(parser.plusCount)
 	}
 
-	segment := &routeSegment{
-		ParamName:  paramName,
-		IsParam:    true,
-		IsOptional: isWildCard || pattern[paramEndPosition] == optionalParam,
-		IsGreedy:   isWildCard || isPlusParam,
-	}
+	segment := acquireRouteSegment()
+	segment.ParamName = paramName
+	segment.IsParam = true
+	segment.IsOptional = isWildCard || pattern[paramEndPosition] == optionalParam
+	segment.IsGreedy = isWildCard || isPlusParam
 
 	if len(constraints) > 0 {
 		segment.Constraints = constraints

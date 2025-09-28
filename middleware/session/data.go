@@ -4,6 +4,11 @@ import (
 	"sync"
 )
 
+const (
+	sessionDataDefaultCap = 8
+	sessionDataMaxEntries = 256
+)
+
 // msgp -file="data.go" -o="data_msgp.go" -tests=true -unexported
 //
 //go:generate msgp -o=data_msgp.go -tests=true -unexported
@@ -16,7 +21,7 @@ type data struct {
 var dataPool = sync.Pool{
 	New: func() any {
 		d := new(data)
-		d.Data = make(map[any]any)
+		d.Data = make(map[any]any, sessionDataDefaultCap)
 		return d
 	},
 }
@@ -46,7 +51,17 @@ func acquireData() *data {
 func (d *data) Reset() {
 	d.Lock()
 	defer d.Unlock()
-	d.Data = make(map[any]any)
+	if d.Data == nil {
+		d.Data = make(map[any]any, sessionDataDefaultCap)
+		return
+	}
+	used := len(d.Data)
+	if used > 0 {
+		clear(d.Data)
+	}
+	if used > sessionDataMaxEntries {
+		d.Data = make(map[any]any, sessionDataDefaultCap)
+	}
 }
 
 // Get retrieves a value from the data map by key.

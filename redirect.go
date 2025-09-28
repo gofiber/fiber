@@ -15,13 +15,111 @@ import (
 )
 
 // Pool for redirection
+const (
+	redirectMessagesDefaultCap = 4
+	redirectMessagesMaxCap     = 64
+)
+
 var redirectPool = sync.Pool{
 	New: func() any {
 		return &Redirect{
 			status:   StatusSeeOther,
-			messages: make(redirectionMsgs, 0),
+			messages: make(redirectionMsgs, 0, redirectMessagesDefaultCap),
 		}
 	},
+}
+
+const (
+	redirectInputDefaultCap = 8
+	redirectInputMaxEntries = 64
+)
+
+const (
+	redirectMsgBufferDefaultCap = 64
+	redirectMsgBufferMaxCap     = 1024
+)
+
+var redirectMsgBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 0, redirectMsgBufferDefaultCap)
+		return &buf
+	},
+}
+
+var redirectInputPool = sync.Pool{
+	New: func() any {
+		return make(map[string]string, redirectInputDefaultCap)
+	},
+}
+
+func acquireRedirectInputMap() map[string]string {
+	m, ok := redirectInputPool.Get().(map[string]string)
+	if !ok {
+		panic(errors.New("failed to type-assert to map[string]string"))
+	}
+
+	if len(m) > 0 {
+		clear(m)
+	}
+
+	return m
+}
+
+func releaseRedirectInputMap(m map[string]string) {
+	if m == nil {
+		return
+	}
+
+	used := len(m)
+	if used > 0 {
+		clear(m)
+	}
+
+	if used > redirectInputMaxEntries {
+		redirectInputPool.Put(make(map[string]string, redirectInputDefaultCap))
+		return
+	}
+
+	redirectInputPool.Put(m)
+}
+
+func acquireRedirectMsgBuffer() *[]byte {
+	bufAny := redirectMsgBufferPool.Get()
+	bufPtr, ok := bufAny.(*[]byte)
+	if !ok || bufPtr == nil {
+		buf := make([]byte, 0, redirectMsgBufferDefaultCap)
+		return &buf
+	}
+
+	buf := *bufPtr
+	if cap(buf) < redirectMsgBufferDefaultCap {
+		buf = make([]byte, 0, redirectMsgBufferDefaultCap)
+	} else {
+		buf = buf[:0]
+	}
+
+	*bufPtr = buf
+	return bufPtr
+}
+
+func releaseRedirectMsgBuffer(bufPtr *[]byte) {
+	if bufPtr == nil {
+		return
+	}
+
+	buf := *bufPtr
+	for i := range buf {
+		buf[i] = 0
+	}
+
+	if cap(buf) > redirectMsgBufferMaxCap {
+		buf = make([]byte, 0, redirectMsgBufferDefaultCap)
+	} else {
+		buf = buf[:0]
+	}
+
+	*bufPtr = buf
+	redirectMsgBufferPool.Put(bufPtr)
 }
 
 // Cookie name to send flash messages when to use redirection.
@@ -94,7 +192,15 @@ func ReleaseRedirect(r *Redirect) {
 
 func (r *Redirect) release() {
 	r.status = StatusSeeOther
-	r.messages = r.messages[:0]
+	msgs := r.messages
+	for i := range msgs {
+		msgs[i] = redirectionMsg{}
+	}
+	if cap(msgs) > redirectMessagesMaxCap {
+		r.messages = make(redirectionMsgs, 0, redirectMessagesDefaultCap)
+	} else {
+		r.messages = msgs[:0]
+	}
 	r.c = nil
 }
 
@@ -145,7 +251,9 @@ func (r *Redirect) WithInput() *Redirect {
 	ctype := utils.ToLower(utils.UnsafeString(r.c.RequestCtx().Request.Header.ContentType()))
 	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))
 
-	oldInput := make(map[string]string)
+	oldInput := acquireRedirectInputMap()
+	defer releaseRedirectInputMap(oldInput)
+
 	switch ctype {
 	case MIMEApplicationForm, MIMEMultipartForm:
 		_ = r.c.Bind().Form(oldInput) //nolint:errcheck // not needed
@@ -315,10 +423,15 @@ func (r *Redirect) processFlashMessages() {
 		return
 	}
 
-	val, err := r.messages.MarshalMsg(nil)
+	bufPtr := acquireRedirectMsgBuffer()
+	defer releaseRedirectMsgBuffer(bufPtr)
+
+	val, err := r.messages.MarshalMsg((*bufPtr)[:0])
 	if err != nil {
 		return
 	}
+
+	*bufPtr = val
 
 	dst := make([]byte, hex.EncodedLen(len(val)))
 	hex.Encode(dst, val)

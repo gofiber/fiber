@@ -134,6 +134,119 @@ type pair struct {
 	v []string
 }
 
+const (
+	pairSliceDefaultCap = 8
+	pairSliceMaxCap     = 256
+)
+
+var pairPool = sync.Pool{
+	New: func() any {
+		return &pair{
+			k: make([]string, 0, pairSliceDefaultCap),
+			v: make([]string, 0, pairSliceDefaultCap),
+		}
+	},
+}
+
+func acquirePair(size int) *pair {
+	if size < pairSliceDefaultCap {
+		size = pairSliceDefaultCap
+	}
+
+	pairAny := pairPool.Get()
+	p, ok := pairAny.(*pair)
+	if !ok {
+		panic(errors.New("failed to type-assert to *pair"))
+	}
+
+	if cap(p.k) < size {
+		p.k = make([]string, 0, size)
+	} else {
+		p.k = p.k[:0]
+	}
+
+	if cap(p.v) < size {
+		p.v = make([]string, 0, size)
+	} else {
+		p.v = p.v[:0]
+	}
+
+	return p
+}
+
+func releasePair(p *pair) {
+	if p == nil {
+		return
+	}
+
+	if cap(p.k) > pairSliceMaxCap {
+		p.k = make([]string, 0, pairSliceDefaultCap)
+	} else {
+		p.k = p.k[:0]
+	}
+
+	if cap(p.v) > pairSliceMaxCap {
+		p.v = make([]string, 0, pairSliceDefaultCap)
+	} else {
+		p.v = p.v[:0]
+	}
+
+	pairPool.Put(p)
+}
+
+const (
+	headerKeySliceDefaultCap = 8
+	headerKeySliceMaxCap     = 64
+)
+
+var headerKeySlicePool = sync.Pool{
+	New: func() any {
+		buf := make([][]byte, 0, headerKeySliceDefaultCap)
+		return &buf
+	},
+}
+
+func acquireHeaderKeySlice(size int) (*[][]byte, [][]byte) {
+	if size < headerKeySliceDefaultCap {
+		size = headerKeySliceDefaultCap
+	}
+
+	keysPtr, ok := headerKeySlicePool.Get().(*[][]byte)
+	if !ok || keysPtr == nil {
+		buf := make([][]byte, 0, size)
+		keysPtr = &buf
+	}
+
+	keys := *keysPtr
+	if cap(keys) < size {
+		keys = make([][]byte, 0, size)
+	} else {
+		keys = keys[:0]
+	}
+
+	*keysPtr = keys
+	return keysPtr, keys
+}
+
+func releaseHeaderKeySlice(keysPtr *[][]byte) {
+	if keysPtr == nil {
+		return
+	}
+
+	keys := *keysPtr
+	for i := range keys {
+		keys[i] = nil
+	}
+
+	if cap(keys) > headerKeySliceMaxCap {
+		*keysPtr = make([][]byte, 0, headerKeySliceDefaultCap)
+	} else {
+		*keysPtr = keys[:0]
+	}
+
+	headerKeySlicePool.Put(keysPtr)
+}
+
 // Len implements sort.Interface and reports the number of tracked keys.
 func (p *pair) Len() int {
 	return len(p.k)
@@ -158,8 +271,13 @@ func (p *pair) Less(i, j int) bool {
 func (r *Request) Headers() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		peekKeys := r.header.PeekKeys()
-		keys := make([][]byte, len(peekKeys))
-		copy(keys, peekKeys) // It is necessary to have immutable byte slice.
+		keysPtr, keys := acquireHeaderKeySlice(len(peekKeys))
+		if len(peekKeys) > 0 {
+			keys = keys[:len(peekKeys)]
+			copy(keys, peekKeys) // It is necessary to have immutable byte slice.
+		}
+		*keysPtr = keys
+		defer releaseHeaderKeySlice(keysPtr)
 
 		for _, key := range keys {
 			vals := r.header.PeekAll(utils.UnsafeString(key))
@@ -217,17 +335,16 @@ func (r *Request) Param(key string) []string {
 // Do not store references to returned values; make copies instead.
 func (r *Request) Params() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
-		vals := r.params.Len()
-		p := pair{
-			k: make([]string, 0, vals),
-			v: make([]string, 0, vals),
-		}
+		p := acquirePair(r.params.Len())
+		defer releasePair(p)
+
 		for k, v := range r.params.All() {
 			p.k = append(p.k, utils.UnsafeString(k))
 			p.v = append(p.v, utils.UnsafeString(v))
 		}
-		sort.Sort(&p)
+		sort.Sort(p)
 
+		vals := len(p.k)
 		j := 0
 		for i := range vals {
 			if i == vals-1 || p.k[i] != p.k[i+1] {
@@ -452,17 +569,16 @@ func (r *Request) FormData(key string) []string {
 // Do not store references to returned values; make copies instead.
 func (r *Request) AllFormData() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
-		vals := r.formData.Len()
-		p := pair{
-			k: make([]string, 0, vals),
-			v: make([]string, 0, vals),
-		}
+		p := acquirePair(r.formData.Len())
+		defer releasePair(p)
+
 		for k, v := range r.formData.All() {
 			p.k = append(p.k, utils.UnsafeString(k))
 			p.v = append(p.v, utils.UnsafeString(v))
 		}
-		sort.Sort(&p)
+		sort.Sort(p)
 
+		vals := len(p.k)
 		j := 0
 		for i := range vals {
 			if i == vals-1 || p.k[i] != p.k[i+1] {
@@ -643,7 +759,9 @@ func (r *Request) Custom(url, method string) (*Response, error) {
 // Send executes the Request.
 func (r *Request) Send() (*Response, error) {
 	r.checkClient()
-	return newCore().execute(r.Context(), r.Client(), r)
+	c := acquireCore()
+	defer releaseCore(c)
+	return c.execute(r.Context(), r.Client(), r)
 }
 
 // Reset clears the Request object, returning it to its default state.
@@ -660,11 +778,13 @@ func (r *Request) Reset() {
 	r.bodyType = noBody
 	r.boundary = boundary
 
-	for len(r.files) != 0 {
-		t := r.files[0]
-		r.files = r.files[1:]
-		ReleaseFile(t)
+	for i := range r.files {
+		if f := r.files[i]; f != nil {
+			ReleaseFile(f)
+			r.files[i] = nil
+		}
 	}
+	r.files = r.files[:0]
 
 	r.formData.Reset()
 	r.path.Reset()
@@ -965,7 +1085,11 @@ func ReleaseRequest(req *Request) {
 	requestPool.Put(req)
 }
 
-var filePool sync.Pool
+var filePool = sync.Pool{
+	New: func() any {
+		return &File{}
+	},
+}
 
 // SetFileFunc defines a function that modifies a File object.
 type SetFileFunc func(f *File)
@@ -1001,17 +1125,10 @@ func SetFileReader(r io.ReadCloser) SetFileFunc {
 // AcquireFile returns a (pooled) File object and applies the provided SetFileFunc functions to it.
 func AcquireFile(setter ...SetFileFunc) *File {
 	fv := filePool.Get()
-	if fv != nil {
-		f, ok := fv.(*File)
-		if !ok {
-			panic(errors.New("failed to type-assert to *File"))
-		}
-		for _, v := range setter {
-			v(f)
-		}
-		return f
+	f, ok := fv.(*File)
+	if !ok {
+		panic(errors.New("failed to type-assert to *File"))
 	}
-	f := &File{}
 	for _, v := range setter {
 		v(f)
 	}

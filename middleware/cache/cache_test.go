@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -84,6 +85,35 @@ func (s *failingCacheStorage) Reset() error {
 }
 
 func (*failingCacheStorage) Close() error { return nil }
+
+func TestManagerReleaseShrinksHeaderMap(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	mgr := newManager(storage, false)
+
+	item := mgr.acquire()
+	require.NotNil(t, item)
+
+	headerCount := cacheHeaderMaxEntries + 16
+	item.headers = make(map[string][]byte, headerCount)
+	for i := 0; i < headerCount; i++ {
+		key := fmt.Sprintf("Key-%d", i)
+		item.headers[key] = []byte("value")
+	}
+
+	originalPtr := reflect.ValueOf(item.headers).Pointer()
+
+	mgr.release(item)
+
+	reacquired := mgr.acquire()
+	require.Equal(t, 0, len(reacquired.headers))
+
+	newPtr := reflect.ValueOf(reacquired.headers).Pointer()
+	require.NotEqual(t, originalPtr, newPtr)
+
+	mgr.release(reacquired)
+}
 
 func TestCacheStorageGetError(t *testing.T) {
 	t.Parallel()

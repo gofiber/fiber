@@ -165,9 +165,89 @@ func Test_RoutePatternMatch(t *testing.T) {
 			require.Equal(t, c.match, match, "route: '%s', url: '%s'", pattern, c.url)
 		}
 	}
+
 	for _, testCase := range routeTestCases {
 		testCaseFn(testCase.pattern, testCase.testCases)
 	}
+}
+
+func TestRouteParserResetBounds(t *testing.T) {
+	t.Parallel()
+
+	parser := &routeParser{
+		segs:          make([]*routeSegment, 1, routeParserSegMaxCap+32),
+		params:        make([]string, 1, routeParserParamMaxCap+32),
+		wildCardCount: 3,
+		plusCount:     2,
+	}
+
+	parser.segs[0] = &routeSegment{Const: "value"}
+	parser.params[0] = "param"
+
+	parser.reset()
+
+	require.Zero(t, len(parser.segs))
+	require.Zero(t, len(parser.params))
+	require.Equal(t, routeParserSegDefaultCap, cap(parser.segs))
+	require.Equal(t, routeParserParamDefaultCap, cap(parser.params))
+	require.Zero(t, parser.wildCardCount)
+	require.Zero(t, parser.plusCount)
+}
+
+func TestRouteSegmentPoolResetsState(t *testing.T) {
+	t.Parallel()
+
+	seg := acquireRouteSegment()
+	seg.Const = "value"
+	seg.ParamName = "param"
+	seg.ComparePart = "compare"
+	seg.Constraints = []*Constraint{{Name: "id", Data: []string{"1"}}}
+	seg.PartCount = 3
+	seg.Length = 42
+	seg.IsParam = true
+	seg.IsGreedy = true
+	seg.IsOptional = true
+	seg.IsLast = true
+	seg.HasOptionalSlash = true
+
+	releaseRouteSegment(seg)
+
+	reused := acquireRouteSegment()
+	require.Empty(t, reused.Const)
+	require.Empty(t, reused.ParamName)
+	require.Empty(t, reused.ComparePart)
+	require.Nil(t, reused.Constraints)
+	require.Zero(t, reused.PartCount)
+	require.Zero(t, reused.Length)
+	require.False(t, reused.IsParam)
+	require.False(t, reused.IsGreedy)
+	require.False(t, reused.IsOptional)
+	require.False(t, reused.IsLast)
+	require.False(t, reused.HasOptionalSlash)
+
+	releaseRouteSegment(reused)
+}
+
+func TestRouteParserResetReleasesSegments(t *testing.T) {
+	t.Parallel()
+
+	parser := &routeParser{
+		segs:   make([]*routeSegment, 0, 1),
+		params: make([]string, 0, 1),
+	}
+
+	seg := acquireRouteSegment()
+	seg.Const = "value"
+	parser.segs = append(parser.segs, seg)
+	parser.params = append(parser.params, "param")
+
+	parser.reset()
+
+	require.Empty(t, parser.segs)
+	require.Empty(t, parser.params)
+	require.Empty(t, seg.Const)
+	require.False(t, seg.IsParam)
+	require.False(t, seg.IsGreedy)
 }
 
 func TestHasPartialMatchBoundary(t *testing.T) {

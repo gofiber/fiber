@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -51,6 +52,29 @@ func New(config ...Config) fiber.Handler {
 		dataPool = sync.Pool{New: func() any { return new(Data) }}
 	)
 
+	acquireData := func() *Data {
+		dataAny := dataPool.Get()
+		data, ok := dataAny.(*Data)
+		if !ok {
+			panic(errors.New("failed to type-assert to *Data"))
+		}
+		return data
+	}
+
+	releaseData := func(data *Data) {
+		if data == nil {
+			return
+		}
+
+		data.Start = time.Time{}
+		data.Stop = time.Time{}
+		data.ChainErr = nil
+		data.TemplateChain = nil
+		data.LogFuncChain = nil
+
+		dataPool.Put(data)
+	}
+
 	// Err padding
 	errPadding := 15
 	errPaddingStr := strconv.Itoa(errPadding)
@@ -90,15 +114,15 @@ func New(config ...Config) fiber.Handler {
 		})
 
 		// Logger data
-		data := dataPool.Get().(*Data) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
-		// no need for a reset, as long as we always override everything
+		data := acquireData()
+		// Fields are overwritten on each request and releaseData clears residual state after logging.
 		data.Pid = pid
 		data.ErrPaddingStr = errPaddingStr
 		data.Timestamp = timestamp
 		data.TemplateChain = templateChain
 		data.LogFuncChain = logFunChain
 		// put data back in the pool
-		defer dataPool.Put(data)
+		defer releaseData(data)
 
 		// Set latency start time
 		if cfg.enableLatency {

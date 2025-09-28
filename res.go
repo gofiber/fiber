@@ -3,6 +3,7 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -12,12 +13,121 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
+
+const (
+	resHeaderMapDefaultCap    = 8
+	resHeaderMapMaxEntries    = 64
+	resHeaderValuesDefaultCap = 1
+	resHeaderValuesMaxLen     = 16
+	resHeaderScratchMaxKeep   = 4
+)
+
+var (
+	resHeaderValuesPool = sync.Pool{ //nolint:gochecknoglobals // shared buffer pool
+		New: func() any {
+			slice := make([]string, 0, resHeaderValuesDefaultCap)
+			return &slice
+		},
+	}
+
+	responseHeaderScratchPool = sync.Pool{ //nolint:gochecknoglobals // shared scratch pool
+		New: func() any {
+			return &responseHeaderScratch{}
+		},
+	}
+)
+
+type responseHeaderScratch struct {
+	headers   map[string][]string
+	valuePtrs map[string]*[]string
+}
+
+func acquireResponseHeaderScratch() *responseHeaderScratch {
+	scratchAny := responseHeaderScratchPool.Get()
+	scratch, ok := scratchAny.(*responseHeaderScratch)
+	if !ok {
+		panic(errors.New("failed to type-assert to *responseHeaderScratch"))
+	}
+	scratch.prepare()
+	return scratch
+}
+
+func releaseResponseHeaderScratch(s *responseHeaderScratch) {
+	if s == nil {
+		return
+	}
+	s.prepare()
+	responseHeaderScratchPool.Put(s)
+}
+
+func (s *responseHeaderScratch) prepare() {
+	if s.headers == nil {
+		s.headers = make(map[string][]string, resHeaderMapDefaultCap)
+	} else {
+		mapLen := len(s.headers)
+		if mapLen > 0 {
+			clear(s.headers)
+		}
+		if mapLen > resHeaderMapMaxEntries {
+			s.headers = make(map[string][]string, resHeaderMapDefaultCap)
+		}
+	}
+
+	if s.valuePtrs == nil {
+		s.valuePtrs = make(map[string]*[]string, resHeaderMapDefaultCap)
+		return
+	}
+
+	ptrCount := len(s.valuePtrs)
+	for key, ptr := range s.valuePtrs {
+		releaseResHeaderValues(ptr)
+		delete(s.valuePtrs, key)
+	}
+	if ptrCount > resHeaderMapMaxEntries {
+		s.valuePtrs = make(map[string]*[]string, resHeaderMapDefaultCap)
+	}
+}
+
+func acquireResHeaderValues() *[]string {
+	sliceAny := resHeaderValuesPool.Get()
+	slicePtr, ok := sliceAny.(*[]string)
+	if !ok {
+		panic(errors.New("failed to type-assert to *[]string"))
+	}
+	slice := *slicePtr
+	if len(slice) > 0 {
+		slice = slice[:0]
+	}
+	*slicePtr = slice
+	return slicePtr
+}
+
+func releaseResHeaderValues(slicePtr *[]string) {
+	if slicePtr == nil {
+		return
+	}
+
+	slice := *slicePtr
+	if len(slice) > 0 {
+		clear(slice)
+	}
+
+	if cap(slice) > resHeaderValuesMaxLen {
+		slice = make([]string, 0, resHeaderValuesDefaultCap)
+	} else {
+		slice = slice[:0]
+	}
+
+	*slicePtr = slice
+	resHeaderValuesPool.Put(slicePtr)
+}
 
 // SendFile defines configuration options when to transfer file with SendFile.
 type SendFile struct {
@@ -123,7 +233,8 @@ type ResFmt struct {
 //
 //go:generate ifacemaker --file res.go --struct DefaultRes --iface Res --pkg fiber --output res_interface_gen.go --not-exported true --iface-comment "Res is an interface for response-related Ctx methods."
 type DefaultRes struct {
-	c *DefaultCtx
+	c             *DefaultCtx
+	headerScratch []*responseHeaderScratch
 }
 
 // App returns the *App reference to the instance of the Fiber application
@@ -415,13 +526,24 @@ func (r *DefaultRes) Get(key string, defaultValue ...string) string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) GetHeaders() map[string][]string {
+	scratch := acquireResponseHeaderScratch()
 	app := r.c.app
-	headers := make(map[string][]string)
-	for k, v := range r.c.fasthttp.Response.Header.All() {
-		key := app.toString(k)
-		headers[key] = append(headers[key], app.toString(v))
-	}
-	return headers
+
+	r.c.fasthttp.Response.Header.VisitAll(func(key, value []byte) {
+		headerKey := app.toString(key)
+		valuesPtr, ok := scratch.valuePtrs[headerKey]
+		if !ok {
+			valuesPtr = acquireResHeaderValues()
+			scratch.valuePtrs[headerKey] = valuesPtr
+		}
+
+		values := append(*valuesPtr, app.toString(value))
+		*valuesPtr = values
+		scratch.headers[headerKey] = values
+	})
+
+	r.headerScratch = append(r.headerScratch, scratch)
+	return scratch.headers
 }
 
 // JSON converts any interface or string to JSON.
@@ -972,6 +1094,17 @@ func (r *DefaultRes) WriteString(s string) (int, error) {
 
 // Release is a method to reset Res fields when to use ReleaseCtx()
 func (r *DefaultRes) release() {
+	for i := range r.headerScratch {
+		releaseResponseHeaderScratch(r.headerScratch[i])
+		r.headerScratch[i] = nil
+	}
+
+	if cap(r.headerScratch) > resHeaderScratchMaxKeep {
+		r.headerScratch = nil
+	} else {
+		r.headerScratch = r.headerScratch[:0]
+	}
+
 	r.c = nil
 }
 
