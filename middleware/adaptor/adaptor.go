@@ -140,18 +140,13 @@ func FiberApp(app *fiber.App) http.HandlerFunc {
 }
 
 func isUnixNetwork(network string) bool {
-	switch network {
-		case "unix", "unixgram", "unixpacket":
-			return true
-		default:
-			return false
-	}
+	return network == "unix" || network == "unixgram" || network == "unixpacket"
 }
 
 
 func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	if addr, ok := localAddr.(net.Addr); ok && isUnixNetwork(addr.Network()) {
-		return net.ResolveUnixAddr("unix", addr.String())
+		return addr, nil
 	}
 
 	resolved, err := net.ResolveTCPAddr("tcp", remoteAddr)
@@ -192,10 +187,6 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			for _, v := range val {
 				req.Header.Set(key, v)
 			}
-		}
-
-		if _, _, err := net.SplitHostPort(r.RemoteAddr); err != nil && err.(*net.AddrError).Err == "missing port in address" { //nolint:errorlint,forcetypeassert,errcheck // overlinting
-			r.RemoteAddr = net.JoinHostPort(r.RemoteAddr, "80")
 		}
 
 		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
