@@ -24,6 +24,8 @@ import (
 )
 
 func Test_HTTPHandler(t *testing.T) {
+	t.Parallel()
+
 	expectedMethod := fiber.MethodPost
 	expectedProto := "HTTP/1.1"
 	expectedProtoMajor := 1
@@ -121,6 +123,8 @@ var (
 )
 
 func Test_HTTPMiddleware(t *testing.T) {
+	t.Parallel()
+
 	const expectedHost = "foobar.com"
 	tests := []struct {
 		name       string
@@ -206,6 +210,8 @@ func Test_HTTPMiddleware(t *testing.T) {
 }
 
 func Test_HTTPMiddlewareWithCookies(t *testing.T) {
+	t.Parallel()
+
 	const (
 		cookieHeader    = "Cookie"
 		setCookieHeader = "Set-Cookie"
@@ -281,18 +287,26 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 }
 
 func Test_FiberHandler(t *testing.T) {
+	t.Parallel()
+
 	testFiberToHandlerFunc(t, false)
 }
 
 func Test_FiberApp(t *testing.T) {
+	t.Parallel()
+
 	testFiberToHandlerFunc(t, false, fiber.New())
 }
 
 func Test_FiberHandlerDefaultPort(t *testing.T) {
+	t.Parallel()
+
 	testFiberToHandlerFunc(t, true)
 }
 
 func Test_FiberAppDefaultPort(t *testing.T) {
+	t.Parallel()
+
 	testFiberToHandlerFunc(t, true, fiber.New())
 }
 
@@ -388,6 +402,8 @@ func setFiberContextValueMiddleware(next fiber.Handler, key, value any) fiber.Ha
 }
 
 func Test_FiberHandler_RequestNilBody(t *testing.T) {
+	t.Parallel()
+
 	expectedMethod := fiber.MethodGet
 	expectedRequestURI := "/foo/bar"
 	expectedContentLength := 0
@@ -877,6 +893,19 @@ func Test_resolveRemoteAddr(t *testing.T) {
 			expectError:   true,
 			errorContains: "failed to resolve TCP address after adding port:",
 		},
+		{
+			name:        "empty address - should fail",
+			remoteAddr:  "",
+			localAddr:   nil,
+			expectError: true,
+		},
+		{
+			name:          "too long address - should fail",
+			remoteAddr:    strings.Repeat("a", 254),
+			localAddr:     nil,
+			expectError:   true,
+			errorContains: "remote address too long",
+		},
 	}
 
 	for _, tt := range tests {
@@ -970,6 +999,46 @@ func Test_FiberHandler_WithUnixSocket(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.StatusCode())
 	require.Equal(t, "unix socket success", string(w.body))
+}
+
+func Test_FiberHandler_BodySizeLimit(t *testing.T) {
+	t.Parallel()
+
+	// Test body size limit enforcement
+	fiberH := func(c fiber.Ctx) error {
+		return c.SendString("processed")
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	// Create a large body exceeding limit
+	largeBody := make([]byte, 15*1024*1024) // 15MB > 10MB limit
+	req := createTestRequest(http.MethodPost, "/test", "127.0.0.1:8080", bytes.NewReader(largeBody))
+	req.ContentLength = int64(len(largeBody))
+
+	w := executeHandlerTest(t, handlerFunc, req)
+
+	// Should return 413 due to size limit
+	require.Equal(t, http.StatusRequestEntityTooLarge, w.StatusCode())
+}
+
+func Test_CopyContextToFiberContext_Safe(t *testing.T) {
+	t.Parallel()
+
+	t.Run("safe handling of unexported fields", func(t *testing.T) {
+		t.Parallel()
+		// Test that unexported fields are handled safely
+		type testContext struct {
+			exportedField string
+			unexported    string // unexported
+		}
+
+		var fctx fasthttp.RequestCtx
+		ctx := testContext{exportedField: "exported", unexported: "unexported"}
+
+		// Should not panic and handle safely
+		CopyContextToFiberContext(&ctx, &fctx)
+		// No specific assertion, just ensure no panic
+	})
 }
 
 func TestUnixSocketAdaptor(t *testing.T) {
