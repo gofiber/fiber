@@ -43,7 +43,7 @@ httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
     w.WriteHeader(http.StatusNoContent)
 })
 
-app.Get("/legacy", httpHandler)
+app.Get("/foo", httpHandler)
 
 // Simple POST handler
 app.Post("/api/register", func(c fiber.Ctx) error {

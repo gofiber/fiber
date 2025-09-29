@@ -148,7 +148,7 @@ func main() {
     })
 
     app := fiber.New()
-    app.Get("/legacy", httpHandler)
+    app.Get("/", httpHandler)
 
     app.Listen(":8080")
 }
