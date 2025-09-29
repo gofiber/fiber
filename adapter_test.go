@@ -14,7 +14,8 @@ func TestToFiberHandler_Nil(t *testing.T) {
 	t.Parallel()
 
 	var handler Handler
-	converted := toFiberHandler(handler)
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
 	require.Nil(t, converted)
 }
 
@@ -23,7 +24,8 @@ func TestToFiberHandler_FiberHandler(t *testing.T) {
 
 	fiberHandler := func(c Ctx) error { return c.SendStatus(http.StatusAccepted) }
 
-	converted := toFiberHandler(fiberHandler)
+	converted, ok := toFiberHandler(fiberHandler)
+	require.True(t, ok)
 	require.NotNil(t, converted)
 	require.Equal(t, reflect.ValueOf(fiberHandler).Pointer(), reflect.ValueOf(converted).Pointer())
 }
@@ -55,6 +57,31 @@ func TestConvertHandler_HTTPHandler(t *testing.T) {
 	require.Equal(t, "http", string(ctx.Response().Body()))
 }
 
+func TestToFiberHandler_HTTPHandler(t *testing.T) {
+	t.Parallel()
+
+	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-HTTP", "handler")
+		_, err := w.Write([]byte("through"))
+		assert.NoError(t, err)
+	})
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+	require.NotNil(t, converted)
+
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	err := converted(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "handler", string(ctx.Response().Header.Peek("X-HTTP")))
+	require.Equal(t, "through", string(ctx.Response().Body()))
+}
+
 func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
 	t.Parallel()
 
@@ -62,7 +89,8 @@ func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}
 
-	converted := toFiberHandler(httpFunc)
+	converted, ok := toFiberHandler(httpFunc)
+	require.True(t, ok)
 	require.NotNil(t, converted)
 
 	app := New()
