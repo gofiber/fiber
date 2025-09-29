@@ -585,11 +585,18 @@ func Test_CopyContextToFiberContext(t *testing.T) {
 	})
 
 	t.Run("invalid src", func(t *testing.T) {
-		t.Parallel()
 		var fctx fasthttp.RequestCtx
-		// Pass nil to test !v.IsValid()
 		CopyContextToFiberContext(nil, &fctx)
-		// No assertions needed - just ensuring it doesn't panic
+		// Add assertion to ensure no panic and coverage is detected
+		assert.NotNil(t, fctx)
+	})
+
+	t.Run("nil pointer", func(t *testing.T) {
+		var nilPtr *context.Context // Nil pointer to a context
+		var fctx fasthttp.RequestCtx
+		CopyContextToFiberContext(nilPtr, &fctx)
+		// Add assertion to ensure no panic and coverage is detected
+		assert.NotNil(t, fctx)
 	})
 
 	t.Run("multi-level pointer", func(t *testing.T) {
