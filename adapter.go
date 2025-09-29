@@ -7,15 +7,15 @@ import (
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
-// adaptableHandler enumerates the handler shapes that can be bridged to Fiber.
-type adaptableHandler interface {
+// GenericHandler enumerates the handler shapes that can be bridged to Fiber.
+type GenericHandler interface {
 	Handler |
 		http.HandlerFunc |
 		func(http.ResponseWriter, *http.Request)
 }
 
 // toFiberHandler converts supported handler types to a Fiber handler.
-func toFiberHandler[T adaptableHandler](handler T) Handler {
+func toFiberHandler[T GenericHandler](handler T) Handler {
 	switch h := any(handler).(type) {
 	case Handler:
 		return h
