@@ -56,24 +56,30 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 // CopyContextToFiberContext copies the values of context.Context to a fasthttp.RequestCtx.
 // This function safely handles struct fields without using unsafe operations where possible.
 // Deprecated: This function uses reflection and unsafe pointers; consider using explicit context passing.
-func CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx) {
-	contextValue := reflect.ValueOf(context)
-	contextType := reflect.TypeOf(context)
-
-	if contextValue.Kind() == reflect.Ptr {
-		if contextValue.IsNil() {
-			return
-		}
-		contextValue = contextValue.Elem()
-		contextType = contextType.Elem()
-	}
-
-	if contextType.Kind() != reflect.Struct {
+func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
+	v := reflect.ValueOf(src)
+	if !v.IsValid() {
 		return
 	}
-
-	contextValues := contextValue
-	contextKeys := contextType
+	// Deref pointer chains
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return
+		}
+		v = v.Elem()
+	}
+	t := v.Type()
+	if t.Kind() != reflect.Struct {
+		return
+	}
+	// Ensure addressable for safe unsafe-access of unexported fields
+	if !v.CanAddr() {
+		tmp := reflect.New(t)
+		tmp.Elem().Set(v)
+		v = tmp.Elem()
+	}
+	contextValues := v
+	contextKeys := t
 
 	var lastKey any
 	for i := 0; i < contextValues.NumField(); i++ {

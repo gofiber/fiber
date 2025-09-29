@@ -580,6 +580,36 @@ func Test_CopyContextToFiberContext(t *testing.T) {
 		CopyContextToFiberContext(&ctx, &fctx)
 		// No assertions needed - just ensuring it doesn't panic and continues
 	})
+
+	t.Run("invalid src", func(t *testing.T) {
+		t.Parallel()
+		var fctx fasthttp.RequestCtx
+		// Pass nil to test !v.IsValid()
+		CopyContextToFiberContext(nil, &fctx)
+		// No assertions needed - just ensuring it doesn't panic
+	})
+
+	t.Run("multi-level pointer", func(t *testing.T) {
+		t.Parallel()
+		var fctx fasthttp.RequestCtx
+		ctx := context.Background()
+		ptr := &ctx
+		doublePtr := &ptr
+		// Test deref pointer chains
+		CopyContextToFiberContext(doublePtr, &fctx)
+		// No assertions needed - just ensuring it doesn't panic
+	})
+
+	t.Run("non-addressable struct", func(t *testing.T) {
+		t.Parallel()
+		var fctx fasthttp.RequestCtx
+		type testStruct struct {
+			Field string
+		}
+		// Pass struct value directly to test addressability check
+		CopyContextToFiberContext(testStruct{Field: "test"}, &fctx)
+		// No assertions needed - just ensuring it doesn't panic and creates temporary
+	})
 }
 
 func Test_HTTPMiddleware_ErrorHandling(t *testing.T) {
