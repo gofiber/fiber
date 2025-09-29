@@ -1,6 +1,8 @@
 package adaptor
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -138,6 +140,32 @@ func FiberApp(app *fiber.App) http.HandlerFunc {
 	return handlerFunc(app)
 }
 
+func isUnixNetwork(network string) bool {
+	return network == "unix" || network == "unixgram" || network == "unixpacket"
+}
+
+func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
+	if addr, ok := localAddr.(net.Addr); ok && isUnixNetwork(addr.Network()) {
+		return addr, nil
+	}
+
+	resolved, err := net.ResolveTCPAddr("tcp", remoteAddr)
+	if err == nil {
+		return resolved, nil
+	}
+
+	var addrErr *net.AddrError
+	if errors.As(err, &addrErr) && addrErr.Err == "missing port in address" {
+		remoteAddr = net.JoinHostPort(remoteAddr, "80")
+		resolved, err2 := net.ResolveTCPAddr("tcp", remoteAddr)
+		if err2 != nil {
+			return nil, fmt.Errorf("failed to resolve TCP address after adding port: %w", err2)
+		}
+		return resolved, nil
+	}
+	return nil, fmt.Errorf("failed to resolve TCP address: %w", err)
+}
+
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req := fasthttp.AcquireRequest()
@@ -164,14 +192,10 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			}
 		}
 
-		if _, _, err := net.SplitHostPort(r.RemoteAddr); err != nil && err.(*net.AddrError).Err == "missing port in address" { //nolint:errorlint,forcetypeassert,errcheck // overlinting
-			r.RemoteAddr = net.JoinHostPort(r.RemoteAddr, "80")
-		}
-
-		remoteAddr, err := net.ResolveTCPAddr("tcp", r.RemoteAddr)
+		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
 		if err != nil {
-			http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
-			return
+			// fallback: fasthttp handles nil remoteAddr
+			remoteAddr = nil
 		}
 
 		// New fasthttp Ctx from pool
