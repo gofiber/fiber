@@ -54,12 +54,23 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 
 // CopyContextToFiberContext copies the values of context.Context to a fasthttp.RequestCtx.
 func CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx) {
-	contextValues := reflect.ValueOf(context).Elem()
-	contextKeys := reflect.TypeOf(context).Elem()
+	contextValue := reflect.ValueOf(context)
+	contextType := reflect.TypeOf(context)
 
-	if contextKeys.Kind() != reflect.Struct {
+	if contextValue.Kind() == reflect.Ptr {
+		if contextValue.IsNil() {
+			return
+		}
+		contextValue = contextValue.Elem()
+		contextType = contextType.Elem()
+	}
+
+	if contextType.Kind() != reflect.Struct {
 		return
 	}
+
+	contextValues := contextValue
+	contextKeys := contextType
 
 	var lastKey any
 	for i := 0; i < contextValues.NumField(); i++ {
