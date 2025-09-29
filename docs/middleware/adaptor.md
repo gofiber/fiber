@@ -14,6 +14,13 @@ when you need to convert middleware, swap handler directions, or transform
 requests explicitly.
 :::
 
+:::caution Fiber features are unavailable
+Even when you register them directly, adapted `net/http` handlers still run with standard
+library semantics. They don't have access to `fiber.Ctx`, and the compatibility layer comes
+with additional overhead compared to native Fiber handlers. Use them for interop and legacy
+scenarios, but prefer Fiber handlers when performance or Fiber-specific APIs matter.
+:::
+
 ## Features
 
 - Convert `net/http` handlers and middleware to Fiber handlers

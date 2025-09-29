@@ -32,6 +32,13 @@ shapes such as `http.Handler`, `http.HandlerFunc`, or
 `func(http.ResponseWriter, *http.Request)`. Fiber automatically adapts supported
 `net/http` values for you during registration.
 
+:::caution Compatibility overhead
+Adapted `net/http` handlers execute through a compatibility layer. They don't receive
+`fiber.Ctx` or gain access to Fiber-specific APIs, and the conversion adds more
+overhead than running a native `fiber.Handler`. Prefer Fiber handlers when you need the
+lowest latency or Fiber features.
+:::
+
 ```go title="Examples"
 // Simple GET handler
 app.Get("/api/list", func(c fiber.Ctx) error {

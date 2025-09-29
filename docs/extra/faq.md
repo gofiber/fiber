@@ -184,6 +184,13 @@ utilities for converting between Fiber and `net/http`. It allows seamless
 integration of `net/http` handlers, middleware, and requests into Fiber
 applications, and vice versa.
 
+:::caution Performance trade-offs
+Converted `net/http` handlers run through a compatibility layer. They won't expose
+`fiber.Ctx` or Fiber-specific helpers, and the extra adaptation work makes them slower
+than native Fiber handlers. Use them when interoperability matters, but prefer Fiber
+handlers for maximum performance.
+:::
+
 For details on how to:
 
 * Convert `net/http` handlers to Fiber handlers

@@ -1642,6 +1642,12 @@ such as `app.Get`, `Group`, or `RouteChain` and Fiber will adapt it at
 registration time. Manual wrapping through the adaptor middleware is no longer
 required for these common cases.
 
+:::note Compatibility considerations
+Adapted handlers stick to `net/http` semantics. They do not interact with `fiber.Ctx`
+and are slower than native Fiber handlers because of the extra conversion layer. Use
+them to ease migrations, but prefer Fiber handlers in performance-critical paths.
+:::
+
 ```go
 httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
     if _, err := w.Write([]byte("served by net/http")); err != nil {
