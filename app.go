@@ -802,7 +802,7 @@ func (app *App) Use(args ...any) Router {
 		case []string:
 			prefixes = arg
 		default:
-			handler, ok := toFiberHandler(arg)
+			handler, ok := convertHandler(arg)
 			if !ok {
 				panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 			}

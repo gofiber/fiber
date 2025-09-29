@@ -7,25 +7,24 @@ import (
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
-// toFiberHandler converts supported handler types to a Fiber handler.
-// It returns the converted handler and a boolean indicating whether the
-// conversion succeeded.
-func toFiberHandler(handler any) (Handler, bool) {
-	if handler == nil {
-		return nil, true
-	}
+// adaptableHandler enumerates the handler shapes that can be bridged to Fiber.
+type adaptableHandler interface {
+	Handler |
+		http.HandlerFunc |
+		func(http.ResponseWriter, *http.Request)
+}
 
-	switch h := handler.(type) {
+// toFiberHandler converts supported handler types to a Fiber handler.
+func toFiberHandler[T adaptableHandler](handler T) Handler {
+	switch h := any(handler).(type) {
 	case Handler:
-		return h, true
+		return h
 	case http.HandlerFunc:
-		return wrapHTTPHandler(h), true
-	case http.Handler:
-		return wrapHTTPHandler(h), true
+		return wrapHTTPHandler(h)
 	case func(http.ResponseWriter, *http.Request):
-		return wrapHTTPHandler(http.HandlerFunc(h)), true
+		return wrapHTTPHandler(http.HandlerFunc(h))
 	default:
-		return nil, false
+		return nil
 	}
 }
 
@@ -50,7 +49,7 @@ func collectHandlers(context string, args ...any) []Handler {
 	handlers := make([]Handler, 0, len(args))
 
 	for _, arg := range args {
-		handler, ok := toFiberHandler(arg)
+		handler, ok := convertHandler(arg)
 		if !ok {
 			panic(fmt.Sprintf("%s: invalid handler %T\n", context, arg))
 		}
@@ -58,4 +57,22 @@ func collectHandlers(context string, args ...any) []Handler {
 	}
 
 	return handlers
+}
+
+// convertHandler normalizes a single handler argument into a Fiber handler.
+func convertHandler(arg any) (Handler, bool) {
+	switch h := arg.(type) {
+	case nil:
+		return nil, true
+	case Handler:
+		return h, true
+	case http.HandlerFunc:
+		return toFiberHandler(h), true
+	case http.Handler:
+		return wrapHTTPHandler(h), true
+	case func(http.ResponseWriter, *http.Request):
+		return toFiberHandler(h), true
+	default:
+		return nil, false
+	}
 }

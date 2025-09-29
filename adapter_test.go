@@ -13,9 +13,9 @@ import (
 func TestToFiberHandler_Nil(t *testing.T) {
 	t.Parallel()
 
-	handler, ok := toFiberHandler(nil)
-	require.True(t, ok)
-	require.Nil(t, handler)
+	var handler Handler
+	converted := toFiberHandler(handler)
+	require.Nil(t, converted)
 }
 
 func TestToFiberHandler_FiberHandler(t *testing.T) {
@@ -23,13 +23,12 @@ func TestToFiberHandler_FiberHandler(t *testing.T) {
 
 	fiberHandler := func(c Ctx) error { return c.SendStatus(http.StatusAccepted) }
 
-	converted, ok := toFiberHandler(fiberHandler)
-	require.True(t, ok)
+	converted := toFiberHandler(fiberHandler)
 	require.NotNil(t, converted)
 	require.Equal(t, reflect.ValueOf(fiberHandler).Pointer(), reflect.ValueOf(converted).Pointer())
 }
 
-func TestToFiberHandler_HTTPHandler(t *testing.T) {
+func TestConvertHandler_HTTPHandler(t *testing.T) {
 	t.Parallel()
 
 	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -39,7 +38,7 @@ func TestToFiberHandler_HTTPHandler(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	converted, ok := toFiberHandler(httpHandler)
+	converted, ok := convertHandler(httpHandler)
 	require.True(t, ok)
 	require.NotNil(t, converted)
 
@@ -63,8 +62,7 @@ func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}
 
-	converted, ok := toFiberHandler(httpFunc)
-	require.True(t, ok)
+	converted := toFiberHandler(httpFunc)
 	require.NotNil(t, converted)
 
 	app := New()
