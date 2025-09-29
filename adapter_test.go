@@ -15,7 +15,7 @@ func TestToFiberHandler_Nil(t *testing.T) {
 
 	var handler Handler
 	converted, ok := toFiberHandler(handler)
-	require.True(t, ok)
+	require.False(t, ok)
 	require.Nil(t, converted)
 }
 
@@ -130,11 +130,10 @@ func TestCollectHandlers_MixedHandlers(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	handlers := collectHandlers("test", before, httpHandler, nil)
-	require.Len(t, handlers, 3)
+	handlers := collectHandlers("test", before, httpHandler)
+	require.Len(t, handlers, 2)
 	require.Equal(t, reflect.ValueOf(before).Pointer(), reflect.ValueOf(handlers[0]).Pointer())
 	require.NotNil(t, handlers[1])
-	require.Nil(t, handlers[2])
 
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -149,4 +148,12 @@ func TestCollectHandlers_MixedHandlers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "done", string(ctx.Response().Body()))
 	require.Equal(t, "fiber", string(ctx.Response().Header.Peek("X-Before")))
+}
+
+func TestConvertHandler_Nil(t *testing.T) {
+	t.Parallel()
+
+	converted, ok := convertHandler(nil)
+	require.False(t, ok)
+	require.Nil(t, converted)
 }

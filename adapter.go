@@ -11,6 +11,9 @@ import (
 func toFiberHandler(handler any) (Handler, bool) {
 	switch h := handler.(type) {
 	case Handler:
+		if h == nil {
+			return nil, false
+		}
 		return h, true
 	case http.HandlerFunc:
 		return wrapHTTPHandler(h), true
@@ -58,7 +61,7 @@ func collectHandlers(context string, args ...any) []Handler {
 func convertHandler(arg any) (Handler, bool) {
 	switch h := arg.(type) {
 	case nil:
-		return nil, true
+		return nil, false
 	default:
 		return toFiberHandler(h)
 	}
