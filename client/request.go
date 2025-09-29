@@ -159,7 +159,7 @@ func (r *Request) Headers() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		peekKeys := r.header.PeekKeys()
 
-		// It is necessary to have immutable byte slice.
+		// Copy keys to immutable strings to decouple from fasthttp's internal buffers.
 		keys := make([]string, len(peekKeys))
 		for i, key := range peekKeys {
 			keys[i] = utils.UnsafeString(key)
