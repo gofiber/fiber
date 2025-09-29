@@ -243,6 +243,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 
 	// Test case for POST request with cookies
 	t.Run("POST request with cookies", func(t *testing.T) {
+		t.Parallel()
 		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
 		require.NoError(t, err)
 		req.AddCookie(&http.Cookie{Name: cookieOneName, Value: cookieOneValue})
@@ -266,6 +267,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 
 	// New test case for GET request
 	t.Run("GET request", func(t *testing.T) {
+		t.Parallel()
 		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/", nil)
 		require.NoError(t, err)
 
@@ -276,6 +278,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 
 	// New test case for request without cookies
 	t.Run("POST request without cookies", func(t *testing.T) {
+		t.Parallel()
 		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
 		require.NoError(t, err)
 
