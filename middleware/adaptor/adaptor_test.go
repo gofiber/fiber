@@ -588,7 +588,7 @@ func Test_CopyContextToFiberContext(t *testing.T) {
 		var fctx fasthttp.RequestCtx
 		CopyContextToFiberContext(nil, &fctx)
 		// Add assertion to ensure no panic and coverage is detected
-		assert.NotNil(t, fctx)
+		assert.NotNil(t, &fctx)
 	})
 
 	t.Run("nil pointer", func(t *testing.T) {
@@ -596,7 +596,7 @@ func Test_CopyContextToFiberContext(t *testing.T) {
 		var fctx fasthttp.RequestCtx
 		CopyContextToFiberContext(nilPtr, &fctx)
 		// Add assertion to ensure no panic and coverage is detected
-		assert.NotNil(t, fctx)
+		assert.NotNil(t, &fctx)
 	})
 
 	t.Run("multi-level pointer", func(t *testing.T) {
