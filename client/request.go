@@ -280,13 +280,13 @@ func (r *Request) Headers() iter.Seq2[string, []string] {
 		defer releaseHeaderKeySlice(keysPtr)
 
 		for _, key := range keys {
-			vals := r.header.PeekAll(utils.UnsafeString(key))
+			vals := r.header.PeekAll(key)
 			valsStr := make([]string, len(vals))
 			for i, v := range vals {
 				valsStr[i] = utils.UnsafeString(v)
 			}
 
-			if !yield(utils.UnsafeString(key), valsStr) {
+			if !yield(key, valsStr) {
 				return
 			}
 		}
