@@ -68,6 +68,8 @@ type Request struct {
 	maxRedirects int
 
 	bodyType bodyType
+
+	disablePathNormalizing bool
 }
 
 // Method returns the HTTP method set in the Request.
@@ -605,6 +607,18 @@ func (r *Request) SetMaxRedirects(count int) *Request {
 	return r
 }
 
+// DisablePathNormalizing reports whether path normalizing is disabled for the Request.
+func (r *Request) DisablePathNormalizing() bool {
+	return r.disablePathNormalizing
+}
+
+// SetDisablePathNormalizing configures the Request to disable or enable path normalizing.
+func (r *Request) SetDisablePathNormalizing(disable bool) *Request {
+	r.disablePathNormalizing = disable
+	r.RawRequest.URI().DisablePathNormalizing = disable
+	return r
+}
+
 // checkClient ensures that a Client is set. If none is set, it defaults to the global defaultClient.
 func (r *Request) checkClient() {
 	if r.client == nil {
@@ -671,6 +685,7 @@ func (r *Request) Reset() {
 	r.maxRedirects = 0
 	r.bodyType = noBody
 	r.boundary = boundary
+	r.disablePathNormalizing = false
 
 	for len(r.files) != 0 {
 		t := r.files[0]
