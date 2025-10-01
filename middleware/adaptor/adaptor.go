@@ -2,6 +2,7 @@ package adaptor
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
