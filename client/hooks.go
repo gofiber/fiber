@@ -34,23 +34,24 @@ var (
 
 	randBytePool = sync.Pool{
 		New: func() any {
-			return make([]byte, 0, randByteDefaultCap)
+			b := make([]byte, 0, randByteDefaultCap)
+			return &b
 		},
 	}
 )
 
 func acquireRandBytes(size int) []byte {
 	bufAny := randBytePool.Get()
-	buf, ok := bufAny.([]byte)
+	buf, ok := bufAny.(*[]byte)
 	if !ok {
-		panic(errors.New("failed to type-assert to []byte"))
+		panic(errors.New("failed to type-assert to *[]byte"))
 	}
 
-	if cap(buf) < size {
-		buf = make([]byte, size)
+	if cap(*buf) < size {
+		*buf = make([]byte, size)
 	}
 
-	return buf[:size]
+	return (*buf)[:size]
 }
 
 func releaseRandBytes(buf []byte) {
@@ -66,7 +67,7 @@ func releaseRandBytes(buf []byte) {
 		buf = buf[:0]
 	}
 
-	randBytePool.Put(buf)
+	randBytePool.Put(&buf)
 }
 
 const (

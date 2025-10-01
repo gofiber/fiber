@@ -371,7 +371,7 @@ func Test_releaseCookieMatchesShrinksOversizedSlices(t *testing.T) {
 
 	pooledPtr := acquireCookieMatches()
 	require.NotNil(t, pooledPtr)
-	require.Len(t, *pooledPtr, 0)
+	require.Empty(t, *pooledPtr)
 	require.LessOrEqual(t, cap(*pooledPtr), cookieJarMatchMaxCap)
 
 	releaseCookieMatches(pooledPtr)
@@ -400,7 +400,7 @@ func Test_CookieJar_BorrowCookiesUsesPool(t *testing.T) {
 	releaseCookieMatches(matchesPtr)
 
 	pooledPtr := acquireCookieMatches()
-	require.Len(t, *pooledPtr, 0)
+	require.Empty(t, *pooledPtr)
 	releaseCookieMatches(pooledPtr)
 
 	fasthttp.ReleaseURI(uri)

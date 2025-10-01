@@ -1,6 +1,8 @@
 package idempotency
 
-import "sync"
+import (
+	"sync"
+)
 
 // response is a struct that represents the response of a request.
 // generation tool `go install github.com/tinylib/msgp@latest`

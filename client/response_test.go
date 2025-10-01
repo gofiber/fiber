@@ -214,7 +214,7 @@ func Test_Response_Reset_ShrinksCookieSlice(t *testing.T) {
 
 	resp.Reset()
 
-	require.Len(t, resp.cookie, 0)
+	require.Empty(t, resp.cookie)
 	require.Equal(t, responseCookieSliceDefaultCap, cap(resp.cookie))
 }
 

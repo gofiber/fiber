@@ -6501,7 +6501,7 @@ func Test_DefaultRes_GetHeaders_ReleasesScratch(t *testing.T) {
 
 	app.ReleaseCtx(customCtx)
 
-	require.Zero(t, len(ctx.DefaultRes.headerScratch))
+	require.Empty(t, ctx.DefaultRes.headerScratch)
 }
 
 func Benchmark_Ctx_GetRespHeaders(b *testing.B) {

@@ -390,8 +390,8 @@ func Test_requestPairPoolResetAndShrink(t *testing.T) {
 	releasePair(p)
 
 	reused := acquirePair(1)
-	require.Zero(t, len(reused.k))
-	require.Zero(t, len(reused.v))
+	require.Empty(t, reused.k)
+	require.Empty(t, reused.v)
 	releasePair(reused)
 
 	oversized := acquirePair(pairSliceMaxCap + 32)

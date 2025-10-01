@@ -175,7 +175,8 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 
 			for key, values := range headers {
 				if !firstPair {
-					if err := output.WriteByte('&'); err != nil {
+					err := output.WriteByte('&')
+					if err != nil {
 						return written, err
 					}
 					written++
@@ -188,14 +189,16 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 					return written, err
 				}
 
-				if err := output.WriteByte('='); err != nil {
+				err = output.WriteByte('=')
+				if err != nil {
 					return written, err
 				}
 				written++
 
 				for i, value := range values {
 					if i > 0 {
-						if err := output.WriteByte(','); err != nil {
+						err = output.WriteByte(',')
+						if err != nil {
 							return written, err
 						}
 						written++

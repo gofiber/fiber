@@ -133,8 +133,6 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 }
 
 // cookiesForRequest returns cookies that match the given host, path and security settings.
-//
-//nolint:revive // secure is required to filter Secure cookies based on scheme
 func acquireCookieMatches() *[]*fasthttp.Cookie {
 	sliceAny := cookieJarMatchPool.Get()
 	matchesPtr, ok := sliceAny.(*[]*fasthttp.Cookie)
@@ -170,18 +168,13 @@ func releaseCookieMatches(matchesPtr *[]*fasthttp.Cookie) {
 	cookieJarMatchPool.Put(matchesPtr)
 }
 
-func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []*fasthttp.Cookie {
-	matches, _ := cj.collectCookiesForRequest(nil, host, path, secure)
-	return matches
-}
-
 func (cj *CookieJar) borrowCookiesForRequest(host string, path []byte, secure bool) ([]*fasthttp.Cookie, *[]*fasthttp.Cookie) {
 	matchesPtr := acquireCookieMatches()
 	matches, ptr := cj.collectCookiesForRequest(matchesPtr, host, path, secure)
 	return matches, ptr
 }
 
-func (cj *CookieJar) collectCookiesForRequest(
+func (cj *CookieJar) collectCookiesForRequest( //nolint:revive // Accepting a bool param is fine here
 	matchesPtr *[]*fasthttp.Cookie,
 	host string,
 	path []byte,

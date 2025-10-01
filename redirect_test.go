@@ -67,13 +67,13 @@ func Test_redirectMsgBufferPool(t *testing.T) {
 	bufPtr := acquireRedirectMsgBuffer()
 	require.NotNil(t, bufPtr)
 	buf := *bufPtr
-	require.Equal(t, 0, len(buf))
+	require.Empty(t, buf)
 	require.GreaterOrEqual(t, cap(buf), redirectMsgBufferDefaultCap)
 
 	releaseRedirectMsgBuffer(bufPtr)
 
 	bufPtr = acquireRedirectMsgBuffer()
-	buf = *bufPtr
+	// buf = *bufPtr
 	// Inflate the buffer beyond the max cap and ensure it resets on release.
 	big := make([]byte, redirectMsgBufferMaxCap+redirectMsgBufferDefaultCap)
 	*bufPtr = big

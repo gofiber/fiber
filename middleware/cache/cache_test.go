@@ -107,7 +107,7 @@ func TestManagerReleaseShrinksHeaderMap(t *testing.T) {
 	mgr.release(item)
 
 	reacquired := mgr.acquire()
-	require.Equal(t, 0, len(reacquired.headers))
+	require.Empty(t, reacquired.headers)
 
 	newPtr := reflect.ValueOf(reacquired.headers).Pointer()
 	require.NotEqual(t, originalPtr, newPtr)

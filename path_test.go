@@ -186,8 +186,8 @@ func TestRouteParserResetBounds(t *testing.T) {
 
 	parser.reset()
 
-	require.Zero(t, len(parser.segs))
-	require.Zero(t, len(parser.params))
+	require.Empty(t, parser.segs)
+	require.Empty(t, parser.params)
 	require.Equal(t, routeParserSegDefaultCap, cap(parser.segs))
 	require.Equal(t, routeParserParamDefaultCap, cap(parser.params))
 	require.Zero(t, parser.wildCardCount)

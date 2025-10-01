@@ -125,7 +125,6 @@ func Test_splitLanguageTags(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ptr, tags := splitLanguageTags(tc.input)
@@ -151,7 +150,7 @@ func Test_releaseHeaderParams(t *testing.T) {
 	releaseHeaderParams(params)
 
 	params = acquireHeaderParams()
-	require.Len(t, params.values, 0)
+	require.Empty(t, params.values)
 
 	oldMapPtr := reflect.ValueOf(params.values).Pointer()
 	for i := 0; i < headerParamsValuesMaxEntries+5; i++ {
@@ -160,7 +159,7 @@ func Test_releaseHeaderParams(t *testing.T) {
 	releaseHeaderParams(params)
 
 	params = acquireHeaderParams()
-	require.Len(t, params.values, 0)
+	require.Empty(t, params.values)
 	require.NotEqual(t, oldMapPtr, reflect.ValueOf(params.values).Pointer())
 	releaseHeaderParams(params)
 }
