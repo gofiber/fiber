@@ -55,9 +55,9 @@ type Client struct {
 	userResponseHooks    []ResponseHook
 	builtinResponseHooks []ResponseHook
 
-	timeout time.Duration
-	mu      sync.RWMutex
-	debug   bool
+	timeout                time.Duration
+	mu                     sync.RWMutex
+	debug                  bool
 	disablePathNormalizing bool
 }
 
