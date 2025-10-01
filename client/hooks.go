@@ -93,7 +93,12 @@ func parserRequestURL(c *Client, req *Request) error {
 	}
 
 	// Set the URI in the raw request.
+	disablePathNormalizing := c.DisablePathNormalizing() || req.DisablePathNormalizing()
 	req.RawRequest.SetRequestURI(uri)
+	req.RawRequest.URI().DisablePathNormalizing = disablePathNormalizing
+	if disablePathNormalizing {
+		req.RawRequest.URI().SetPathBytes(req.RawRequest.URI().PathOriginal())
+	}
 
 	// Merge query parameters.
 	hashSplit := strings.Split(splitURL[1], "#")

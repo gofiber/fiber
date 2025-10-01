@@ -38,6 +38,8 @@ type Client struct {
 	cookies *Cookie
 	path    *PathParam
 
+	disablePathNormalizing bool
+
 	jsonMarshal   utils.JSONMarshal
 	jsonUnmarshal utils.JSONUnmarshal
 	xmlMarshal    utils.XMLMarshal
@@ -353,6 +355,17 @@ func (c *Client) SetReferer(r string) *Client {
 	return c
 }
 
+// DisablePathNormalizing reports whether path normalizing is disabled for the client.
+func (c *Client) DisablePathNormalizing() bool {
+	return c.disablePathNormalizing
+}
+
+// SetDisablePathNormalizing configures the client to disable or enable path normalizing.
+func (c *Client) SetDisablePathNormalizing(disable bool) *Client {
+	c.disablePathNormalizing = disable
+	return c
+}
+
 // PathParam returns the value of the specified path parameter. Returns an empty string if it does not exist.
 func (c *Client) PathParam(key string) string {
 	if val, ok := (*c.path)[key]; ok {
@@ -529,6 +542,7 @@ func (c *Client) Reset() {
 	c.referer = ""
 	c.retryConfig = nil
 	c.debug = false
+	c.disablePathNormalizing = false
 
 	if c.cookieJar != nil {
 		c.cookieJar.Release()
@@ -545,18 +559,19 @@ func (c *Client) Reset() {
 // JSON is used as the default serialization mechanism. The priority is:
 // Body > FormData > File.
 type Config struct {
-	Ctx          context.Context //nolint:containedctx // It's needed to be stored in the config.
-	Body         any
-	Header       map[string]string
-	Param        map[string]string
-	Cookie       map[string]string
-	PathParam    map[string]string
-	FormData     map[string]string
-	UserAgent    string
-	Referer      string
-	File         []*File
-	Timeout      time.Duration
-	MaxRedirects int
+	Ctx                    context.Context //nolint:containedctx // It's needed to be stored in the config.
+	Body                   any
+	Header                 map[string]string
+	Param                  map[string]string
+	Cookie                 map[string]string
+	PathParam              map[string]string
+	FormData               map[string]string
+	UserAgent              string
+	Referer                string
+	File                   []*File
+	Timeout                time.Duration
+	MaxRedirects           int
+	DisablePathNormalizing bool
 }
 
 // setConfigToRequest sets the parameters passed via Config to the Request.
@@ -600,6 +615,10 @@ func setConfigToRequest(req *Request, config ...Config) {
 
 	if cfg.MaxRedirects != 0 {
 		req.SetMaxRedirects(cfg.MaxRedirects)
+	}
+
+	if cfg.DisablePathNormalizing {
+		req.SetDisablePathNormalizing(true)
 	}
 
 	if cfg.Body != nil {

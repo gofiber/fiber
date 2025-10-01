@@ -207,6 +207,37 @@ func Test_Parser_Request_URL(t *testing.T) {
 		require.True(t, flag2)
 		require.True(t, flag3)
 	})
+
+	t.Run("request disable path normalizing should be respected", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123").
+			SetDisablePathNormalizing(true)
+
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123", req.RawRequest.URI().String())
+	})
+
+	t.Run("client disable path normalizing should be respected", func(t *testing.T) {
+		t.Parallel()
+		client := New().SetDisablePathNormalizing(true)
+		req := AcquireRequest().
+			SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123")
+
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123", req.RawRequest.URI().String())
+	})
 }
 
 func Test_Parser_Request_Header(t *testing.T) {
