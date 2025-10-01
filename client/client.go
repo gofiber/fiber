@@ -38,8 +38,6 @@ type Client struct {
 	cookies *Cookie
 	path    *PathParam
 
-	disablePathNormalizing bool
-
 	jsonMarshal   utils.JSONMarshal
 	jsonUnmarshal utils.JSONUnmarshal
 	xmlMarshal    utils.XMLMarshal
@@ -60,6 +58,7 @@ type Client struct {
 	timeout time.Duration
 	mu      sync.RWMutex
 	debug   bool
+	disablePathNormalizing bool
 }
 
 // R creates a new Request associated with the client.
