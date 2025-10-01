@@ -44,30 +44,24 @@ var ErrClientNil = errors.New("client cannot be nil")
 
 // Request contains all data related to an HTTP request.
 type Request struct {
-	ctx context.Context //nolint:containedctx // Context is needed to be stored in the request.
-
-	body    any
-	header  *Header
-	params  *QueryParam
-	cookies *Cookie
-	path    *PathParam
-
-	client *Client
-
-	formData *FormData
-
-	RawRequest *fasthttp.Request
-	url        string
-	method     string
-	userAgent  string
-	boundary   string
-	referer    string
-	files      []*File
-
+	body         any
+	ctx          context.Context //nolint:containedctx // Context is needed to be stored in the request.
+	client       *Client
+	RawRequest   *fasthttp.Request
+	formData     *FormData
+	path         *PathParam
+	cookies      *Cookie
+	header       *Header
+	params       *QueryParam
+	referer      string
+	boundary     string
+	userAgent    string
+	method       string
+	url          string
+	files        []*File
 	timeout      time.Duration
 	maxRedirects int
-
-	bodyType bodyType
+	bodyType     bodyType
 }
 
 // Method returns the HTTP method set in the Request.
