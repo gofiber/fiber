@@ -15,7 +15,7 @@ If your app is served directly over HTTP/1.1, certain features may be ignored or
 To enable HTTP/2 in production, you can run Fiber behind a reverse proxy that upgrades connections.
 Popular choices include Nginx and Traefik.
 
-Example for Nginx
+Nginx Example
 ```go title="Example"
 server {
     listen 443 ssl http2;
