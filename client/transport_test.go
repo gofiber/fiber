@@ -19,6 +19,21 @@ func (stubBalancingClient) DoDeadline(*fasthttp.Request, *fasthttp.Response, tim
 }
 func (stubBalancingClient) PendingRequests() int { return 0 }
 
+type lbBalancingClient struct {
+	client *fasthttp.LBClient
+}
+
+func (l *lbBalancingClient) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error {
+	if l.client == nil {
+		return nil
+	}
+	return l.client.DoDeadline(req, resp, deadline)
+}
+
+func (l *lbBalancingClient) PendingRequests() int { return 0 }
+
+func (l *lbBalancingClient) LBClient() *fasthttp.LBClient { return l.client }
+
 type stubRedirectCall struct {
 	status   int
 	location string
@@ -108,25 +123,28 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	t.Parallel()
 
 	hostWithoutOverrides := &fasthttp.HostClient{Addr: "example.com:80"}
-	hostWithDial := &fasthttp.HostClient{Addr: "example.org:80"}
-	hostWithTLS := &fasthttp.HostClient{Addr: "example.net:80", TLSConfig: &tls.Config{ServerName: "example"}}
+	nestedDialHost := &fasthttp.HostClient{Addr: "example.org:80"}
+	nestedTLSHost := &fasthttp.HostClient{Addr: "example.net:80", TLSConfig: &tls.Config{ServerName: "example"}}
 
-	hostWithDial.Dial = func(addr string) (net.Conn, error) {
+	nestedDialHost.Dial = func(addr string) (net.Conn, error) {
 		return nil, errors.New("original dial")
 	}
 
-	lb := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{stubBalancingClient{}, hostWithoutOverrides, hostWithDial, hostWithTLS}}
+	nestedDialLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nestedDialHost}}}
+	nestedTLSLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nestedTLSHost}}}
+
+	lb := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{stubBalancingClient{}, hostWithoutOverrides, nestedDialLB, nestedTLSLB}}
 
 	transport := newLBClientTransport(lb)
 	require.Same(t, lb, transport.Client())
-	require.Equal(t, hostWithTLS.TLSConfig, transport.tlsConfig)
+	require.Equal(t, nestedTLSHost.TLSConfig, transport.tlsConfig)
 	require.NotNil(t, transport.dial)
 
 	overrideTLS := &tls.Config{ServerName: "override"}
 	transport.SetTLSConfig(overrideTLS)
 	require.Equal(t, overrideTLS, hostWithoutOverrides.TLSConfig)
-	require.Equal(t, overrideTLS, hostWithDial.TLSConfig)
-	require.Equal(t, overrideTLS, hostWithTLS.TLSConfig)
+	require.Equal(t, overrideTLS, nestedDialHost.TLSConfig)
+	require.Equal(t, overrideTLS, nestedTLSHost.TLSConfig)
 
 	overrideDialCalled := atomic.Bool{}
 	overrideDial := func(addr string) (net.Conn, error) {
@@ -134,7 +152,13 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 		return nil, errors.New("override dial")
 	}
 	transport.SetDial(overrideDial)
+	overrideDialCalled.Store(false)
 	_, err := hostWithoutOverrides.Dial("example.com:80")
+	require.Error(t, err)
+	require.True(t, overrideDialCalled.Load())
+
+	overrideDialCalled.Store(false)
+	_, err = nestedDialHost.Dial("example.org:80")
 	require.Error(t, err)
 	require.True(t, overrideDialCalled.Load())
 
@@ -154,6 +178,10 @@ func TestExtractTLSConfigVariations(t *testing.T) {
 
 	host := &fasthttp.HostClient{TLSConfig: &tls.Config{ServerName: "configured"}}
 	require.Equal(t, host.TLSConfig, extractTLSConfig([]fasthttp.BalancingClient{host}))
+
+	nested := &fasthttp.HostClient{TLSConfig: &tls.Config{ServerName: "nested"}}
+	nestedLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nested}}}
+	require.Equal(t, nested.TLSConfig, extractTLSConfig([]fasthttp.BalancingClient{nestedLB}))
 }
 
 func TestExtractDialVariations(t *testing.T) {
@@ -175,6 +203,19 @@ func TestExtractDialVariations(t *testing.T) {
 	_, err := dialFn("example.com:80")
 	require.Error(t, err)
 	require.True(t, called.Load())
+
+	nestedHost := &fasthttp.HostClient{}
+	nestedCalled := atomic.Bool{}
+	nestedHost.Dial = func(addr string) (net.Conn, error) {
+		nestedCalled.Store(true)
+		return nil, errors.New("nested dial")
+	}
+	nestedLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nestedHost}}}
+	nestedDial := extractDial([]fasthttp.BalancingClient{nestedLB})
+	require.NotNil(t, nestedDial)
+	_, err = nestedDial("example.com:80")
+	require.Error(t, err)
+	require.True(t, nestedCalled.Load())
 }
 
 func TestWalkBalancingClientWithBreak(t *testing.T) {
@@ -187,6 +228,10 @@ func TestWalkBalancingClientWithBreak(t *testing.T) {
 		t.Fatal("unexpected call")
 		return false
 	}))
+
+	nested := &fasthttp.HostClient{}
+	nestedLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nested}}}
+	require.True(t, walkBalancingClientWithBreak(nestedLB, func(*fasthttp.HostClient) bool { return true }))
 }
 
 func TestDoRedirectsWithClientBranches(t *testing.T) {

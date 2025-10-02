@@ -194,8 +194,15 @@ func forEachHostClient(lb *fasthttp.LBClient, fn func(*fasthttp.HostClient)) {
 }
 
 func walkBalancingClient(client fasthttp.BalancingClient, fn func(*fasthttp.HostClient)) {
-	if hc, ok := client.(*fasthttp.HostClient); ok {
-		fn(hc)
+	switch c := client.(type) {
+	case *fasthttp.HostClient:
+		fn(c)
+	case interface{ LBClient() *fasthttp.LBClient }:
+		if nested := c.LBClient(); nested != nil {
+			for _, nestedClient := range nested.Clients {
+				walkBalancingClient(nestedClient, fn)
+			}
+		}
 	}
 }
 
@@ -232,8 +239,17 @@ func extractDial(clients []fasthttp.BalancingClient) fasthttp.DialFunc {
 }
 
 func walkBalancingClientWithBreak(client fasthttp.BalancingClient, fn func(*fasthttp.HostClient) bool) bool {
-	if hc, ok := client.(*fasthttp.HostClient); ok {
-		return fn(hc)
+	switch c := client.(type) {
+	case *fasthttp.HostClient:
+		return fn(c)
+	case interface{ LBClient() *fasthttp.LBClient }:
+		if nested := c.LBClient(); nested != nil {
+			for _, nestedClient := range nested.Clients {
+				if walkBalancingClientWithBreak(nestedClient, fn) {
+					return true
+				}
+			}
+		}
 	}
 	return false
 }

@@ -69,10 +69,6 @@ func (c *Client) Do(req *fasthttp.Request, resp *fasthttp.Response) error {
 	return c.transport.Do(req, resp)
 }
 
-func (c *Client) do(req *fasthttp.Request, resp *fasthttp.Response) error {
-	return c.Do(req, resp)
-}
-
 // DoTimeout executes the request and waits for a response up to the provided timeout.
 // It mirrors the behavior of the respective fasthttp client's DoTimeout implementation.
 func (c *Client) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error {
@@ -88,10 +84,6 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 // DoRedirects executes the request following redirects up to maxRedirects.
 func (c *Client) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
 	return c.transport.DoRedirects(req, resp, maxRedirects)
-}
-
-func (c *Client) doRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	return c.DoRedirects(req, resp, maxRedirects)
 }
 
 // CloseIdleConnections closes idle connections on the underlying fasthttp transport when supported.
@@ -247,8 +239,6 @@ func (c *Client) TLSConfig() *tls.Config {
 		c.setTLSConfig(cfg)
 		return cfg
 	}
-
-	c.setTLSConfig(*cfgPtr)
 	return *cfgPtr
 }
 
