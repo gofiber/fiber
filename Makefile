@@ -38,7 +38,7 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	GOTOOLCHAIN=$(TOOLCHAIN) go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.7 run ./...
+	GOTOOLCHAIN=$(GOVERSION) go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0 run ./...
 
 ## modernize: 🛠 Run gopls modernize
 .PHONY: modernize
