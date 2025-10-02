@@ -16,7 +16,7 @@ To enable HTTP/2 in production, you can run Fiber behind a reverse proxy that up
 Popular choices include Nginx and Traefik.
 
 Nginx Example
-```go title="Example"
+```nginx title="Example"
 server {
     listen 443 ssl http2;
     server_name example.com;
