@@ -164,6 +164,8 @@ func TestClientCBORUnmarshalOverride(t *testing.T) {
 
 	called := false
 	custom := func(b []byte, v any) error {
+		_ = b
+		_ = v
 		called = true
 		return nil
 	}
@@ -245,8 +247,8 @@ func TestClientResetClearsState(t *testing.T) {
 	require.False(t, client.disablePathNormalizing)
 	require.Nil(t, client.cookieJar)
 	require.Nil(t, jar.hostCookies)
-	require.Equal(t, 0, len(*client.path))
-	require.Equal(t, 0, len(*client.cookies))
+	require.Empty(t, *client.path)
+	require.Empty(t, *client.cookies)
 	require.Equal(t, 0, client.header.Len())
 	require.Equal(t, 0, client.params.Len())
 }
@@ -376,7 +378,7 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 		})
 
 		go func() {
-			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{ //nolint:errcheck // handled in assertion
+			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
 				DisableStartupMessage: true,
 			}))
 		}()
@@ -404,6 +406,7 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 
 		var called int32
 		customDial := func(addr string) (net.Conn, error) {
+			_ = addr
 			atomic.AddInt32(&called, 1)
 			return nil, errors.New("dial")
 		}
@@ -428,6 +431,7 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 		var dialCalls int32
 		dialErr := errors.New("dial failed")
 		client.HostClient().Dial = func(addr string) (net.Conn, error) {
+			_ = addr
 			atomic.AddInt32(&dialCalls, 1)
 			return nil, dialErr
 		}
@@ -539,14 +543,16 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 		})
 
 		go func() {
-			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{ //nolint:errcheck // handled in assertion
+			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
 				DisableStartupMessage: true,
 			}))
 		}()
 		time.Sleep(1 * time.Second)
 
 		lb := newLBClient(ln.Addr().String())
-		lb.Clients[0].(*fasthttp.HostClient).IsTLS = true
+		host, ok := lb.Clients[0].(*fasthttp.HostClient)
+		require.True(t, ok)
+		host.IsTLS = true
 		client := NewWithLBClient(lb)
 
 		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
@@ -579,6 +585,7 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 
 		var called int32
 		customDial := func(addr string) (net.Conn, error) {
+			_ = addr
 			atomic.AddInt32(&called, 1)
 			return nil, errors.New("dial")
 		}
@@ -611,6 +618,7 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 		for _, bc := range client.LBClient().Clients {
 			if hc, ok := bc.(*fasthttp.HostClient); ok {
 				hc.Dial = func(addr string) (net.Conn, error) {
+					_ = addr
 					atomic.AddInt32(&dialCalls, 1)
 					return nil, dialErr
 				}

@@ -30,21 +30,26 @@ func (l *lbBalancingClient) DoDeadline(req *fasthttp.Request, resp *fasthttp.Res
 	return l.client.DoDeadline(req, resp, deadline)
 }
 
-func (l *lbBalancingClient) PendingRequests() int { return 0 }
+func (*lbBalancingClient) PendingRequests() int { return 0 }
 
 func (l *lbBalancingClient) LBClient() *fasthttp.LBClient { return l.client }
 
 type stubRedirectCall struct {
-	status   int
-	location string
 	err      error
+	status   *int
+	location *string
 }
+
+func ptrInt(v int) *int { return &v }
+
+func ptrString(v string) *string { return &v }
 
 type stubRedirectClient struct {
 	calls []stubRedirectCall
 }
 
 func (s *stubRedirectClient) Do(req *fasthttp.Request, resp *fasthttp.Response) error {
+	_ = req
 	if len(s.calls) == 0 {
 		resp.Reset()
 		resp.Header.SetStatusCode(fasthttp.StatusOK)
@@ -55,11 +60,11 @@ func (s *stubRedirectClient) Do(req *fasthttp.Request, resp *fasthttp.Response) 
 	s.calls = s.calls[1:]
 
 	resp.Reset()
-	if call.status != 0 {
-		resp.Header.SetStatusCode(call.status)
+	if call.status != nil {
+		resp.Header.SetStatusCode(*call.status)
 	}
-	if call.location != "" {
-		resp.Header.Set("Location", call.location)
+	if call.location != nil {
+		resp.Header.Set("Location", *call.location)
 	}
 	return call.err
 }
@@ -70,6 +75,7 @@ func TestStandardClientTransportCoverage(t *testing.T) {
 	var dialCount atomic.Int32
 	client := &fasthttp.Client{}
 	client.Dial = func(addr string) (net.Conn, error) {
+		_ = addr
 		dialCount.Add(1)
 		return nil, errors.New("dial error")
 	}
@@ -124,14 +130,16 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 
 	hostWithoutOverrides := &fasthttp.HostClient{Addr: "example.com:80"}
 	nestedDialHost := &fasthttp.HostClient{Addr: "example.org:80"}
-	nestedTLSHost := &fasthttp.HostClient{Addr: "example.net:80", TLSConfig: &tls.Config{ServerName: "example"}}
+	nestedTLSHost := &fasthttp.HostClient{Addr: "example.net:80", TLSConfig: &tls.Config{ServerName: "example", MinVersion: tls.VersionTLS12}}
 	multiLevelHost := &fasthttp.HostClient{Addr: "example.edu:80"}
 
 	nestedDialHost.Dial = func(addr string) (net.Conn, error) {
+		_ = addr
 		return nil, errors.New("original dial")
 	}
 
 	multiLevelHost.Dial = func(addr string) (net.Conn, error) {
+		_ = addr
 		return nil, errors.New("multi-level dial")
 	}
 
@@ -148,7 +156,7 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	require.Equal(t, nestedTLSHost.TLSConfig, transport.TLSConfig())
 	require.NotNil(t, transport.dial)
 
-	overrideTLS := &tls.Config{ServerName: "override"}
+	overrideTLS := &tls.Config{ServerName: "override", MinVersion: tls.VersionTLS12}
 	transport.SetTLSConfig(overrideTLS)
 	require.Equal(t, overrideTLS, hostWithoutOverrides.TLSConfig)
 	require.Equal(t, overrideTLS, nestedDialHost.TLSConfig)
@@ -158,6 +166,7 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 
 	overrideDialCalled := atomic.Bool{}
 	overrideDial := func(addr string) (net.Conn, error) {
+		_ = addr
 		overrideDialCalled.Store(true)
 		return nil, errors.New("override dial")
 	}
@@ -191,10 +200,10 @@ func TestExtractTLSConfigVariations(t *testing.T) {
 	require.Nil(t, extractTLSConfig(nil))
 	require.Nil(t, extractTLSConfig([]fasthttp.BalancingClient{stubBalancingClient{}}))
 
-	host := &fasthttp.HostClient{TLSConfig: &tls.Config{ServerName: "configured"}}
+	host := &fasthttp.HostClient{TLSConfig: &tls.Config{ServerName: "configured", MinVersion: tls.VersionTLS12}}
 	require.Equal(t, host.TLSConfig, extractTLSConfig([]fasthttp.BalancingClient{host}))
 
-	nested := &fasthttp.HostClient{TLSConfig: &tls.Config{ServerName: "nested"}}
+	nested := &fasthttp.HostClient{TLSConfig: &tls.Config{ServerName: "nested", MinVersion: tls.VersionTLS12}}
 	nestedLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nested}}}
 	require.Equal(t, nested.TLSConfig, extractTLSConfig([]fasthttp.BalancingClient{nestedLB}))
 
@@ -212,6 +221,7 @@ func TestExtractDialVariations(t *testing.T) {
 	hostWithDial := &fasthttp.HostClient{}
 	called := atomic.Bool{}
 	hostWithDial.Dial = func(addr string) (net.Conn, error) {
+		_ = addr
 		called.Store(true)
 		return nil, errors.New("dial")
 	}
@@ -225,6 +235,7 @@ func TestExtractDialVariations(t *testing.T) {
 	nestedHost := &fasthttp.HostClient{}
 	nestedCalled := atomic.Bool{}
 	nestedHost.Dial = func(addr string) (net.Conn, error) {
+		_ = addr
 		nestedCalled.Store(true)
 		return nil, errors.New("nested dial")
 	}
@@ -238,6 +249,7 @@ func TestExtractDialVariations(t *testing.T) {
 	multiNestedHost := &fasthttp.HostClient{}
 	multiCalled := atomic.Bool{}
 	multiNestedHost.Dial = func(addr string) (net.Conn, error) {
+		_ = addr
 		multiCalled.Store(true)
 		return nil, errors.New("multi nested dial")
 	}
@@ -283,20 +295,20 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 
 	req.SetRequestURI("http://example.com/start")
 
-	client := &stubRedirectClient{calls: []stubRedirectCall{{status: fasthttp.StatusMovedPermanently, location: "/next"}}}
+	client := &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusMovedPermanently), location: ptrString("/next")}}}
 	require.ErrorIs(t, doRedirectsWithClient(req, resp, -1, client), fasthttp.ErrTooManyRedirects)
 
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.SetRequestURI("http://example.com/start")
-	client = &stubRedirectClient{calls: []stubRedirectCall{{status: fasthttp.StatusFound}}}
+	client = &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusFound)}}}
 	require.ErrorIs(t, doRedirectsWithClient(req, resp, 1, client), fasthttp.ErrMissingLocation)
 
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.SetRequestURI("http://example.com/start")
 	req.SetBodyString("payload")
-	client = &stubRedirectClient{calls: []stubRedirectCall{{status: fasthttp.StatusMovedPermanently, location: "/redirect"}, {status: fasthttp.StatusOK}}}
+	client = &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusMovedPermanently), location: ptrString("/redirect")}, {status: ptrInt(fasthttp.StatusOK)}}}
 	require.NoError(t, doRedirectsWithClient(req, resp, 1, client))
 	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
 	require.Equal(t, "http://example.com/redirect", req.URI().String())
-	require.Len(t, req.Body(), 0)
+	require.Empty(t, req.Body())
 }

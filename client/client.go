@@ -91,15 +91,15 @@ func (c *Client) CloseIdleConnections() {
 	c.transport.CloseIdleConnections()
 }
 
-func (c *Client) tlsConfig() *tls.Config {
+func (c *Client) currentTLSConfig() *tls.Config {
 	return c.transport.TLSConfig()
 }
 
-func (c *Client) setTLSConfig(config *tls.Config) {
+func (c *Client) applyTLSConfig(config *tls.Config) {
 	c.transport.SetTLSConfig(config)
 }
 
-func (c *Client) setDial(dial fasthttp.DialFunc) {
+func (c *Client) applyDial(dial fasthttp.DialFunc) {
 	c.transport.SetDial(dial)
 }
 
@@ -233,17 +233,17 @@ func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client {
 // TLSConfig returns the client's TLS configuration.
 // If none is set, it initializes a new one.
 func (c *Client) TLSConfig() *tls.Config {
-	if cfg := c.tlsConfig(); cfg != nil {
+	if cfg := c.currentTLSConfig(); cfg != nil {
 		return cfg
 	}
 	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
-	c.setTLSConfig(cfg)
+	c.applyTLSConfig(cfg)
 	return cfg
 }
 
 // SetTLSConfig sets the TLS configuration for the client.
 func (c *Client) SetTLSConfig(config *tls.Config) *Client {
-	c.setTLSConfig(config)
+	c.applyTLSConfig(config)
 	return c
 }
 
@@ -301,7 +301,7 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 
 // SetProxyURL sets the proxy URL for the client. This affects all subsequent requests.
 func (c *Client) SetProxyURL(proxyURL string) error {
-	c.setDial(fasthttpproxy.FasthttpHTTPDialer(proxyURL))
+	c.applyDial(fasthttpproxy.FasthttpHTTPDialer(proxyURL))
 	return nil
 }
 
@@ -583,7 +583,7 @@ func (c *Client) SetDial(dial fasthttp.DialFunc) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.setDial(dial)
+	c.applyDial(dial)
 	return c
 }
 
