@@ -93,15 +93,15 @@ func (c *core) execFunc() (*Response, error) {
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-					return c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
+					return c.client.doRedirects(reqv, respv, c.req.maxRedirects)
 				}
-				return c.client.fasthttp.Do(reqv, respv)
+				return c.client.do(reqv, respv)
 			})
 		} else {
 			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-				err = c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
+				err = c.client.doRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
-				err = c.client.fasthttp.Do(reqv, respv)
+				err = c.client.do(reqv, respv)
 			}
 		}
 

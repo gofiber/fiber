@@ -30,8 +30,8 @@ var ErrFailedToAppendCert = errors.New("failed to append certificate")
 // The Fiber client also provides an option to override or merge most of the
 // client settings at the request level.
 type Client struct {
-	logger   log.CommonLogger
-	fasthttp *fasthttp.Client
+	logger    log.CommonLogger
+	transport httpClientTransport
 
 	header  *Header
 	params  *QueryParam
@@ -59,6 +59,84 @@ type Client struct {
 	mu                     sync.RWMutex
 	debug                  bool
 	disablePathNormalizing bool
+}
+
+// Do executes the request using the underlying fasthttp transport.
+//
+// It mirrors [fasthttp.Client.Do], [fasthttp.HostClient.Do], or
+// [fasthttp.LBClient.Do] depending on how the Fiber client was constructed.
+func (c *Client) Do(req *fasthttp.Request, resp *fasthttp.Response) error {
+	return c.transport.Do(req, resp)
+}
+
+func (c *Client) do(req *fasthttp.Request, resp *fasthttp.Response) error {
+	return c.Do(req, resp)
+}
+
+// DoTimeout executes the request and waits for a response up to the provided timeout.
+// It mirrors the behavior of the respective fasthttp client's DoTimeout implementation.
+func (c *Client) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error {
+	return c.transport.DoTimeout(req, resp, timeout)
+}
+
+// DoDeadline executes the request and waits for a response until the provided deadline.
+// It mirrors the behavior of the respective fasthttp client's DoDeadline implementation.
+func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error {
+	return c.transport.DoDeadline(req, resp, deadline)
+}
+
+// DoRedirects executes the request following redirects up to maxRedirects.
+func (c *Client) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
+	return c.transport.DoRedirects(req, resp, maxRedirects)
+}
+
+func (c *Client) doRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
+	return c.DoRedirects(req, resp, maxRedirects)
+}
+
+// CloseIdleConnections closes idle connections on the underlying fasthttp transport when supported.
+func (c *Client) CloseIdleConnections() {
+	c.transport.CloseIdleConnections()
+}
+
+func (c *Client) tlsConfig() **tls.Config {
+	return c.transport.TLSConfig()
+}
+
+func (c *Client) setTLSConfig(config *tls.Config) {
+	c.transport.SetTLSConfig(config)
+}
+
+func (c *Client) setDial(dial fasthttp.DialFunc) {
+	c.transport.SetDial(dial)
+}
+
+func (c *Client) resetTransport() {
+	c.transport.Reset()
+}
+
+// FasthttpClient returns the underlying fasthttp.Client if the client was created with one.
+func (c *Client) FasthttpClient() *fasthttp.Client {
+	if client, ok := c.transport.(*standardClientTransport); ok {
+		return client.client
+	}
+	return nil
+}
+
+// HostClient returns the underlying fasthttp.HostClient if the client was created with one.
+func (c *Client) HostClient() *fasthttp.HostClient {
+	if client, ok := c.transport.(*hostClientTransport); ok {
+		return client.client
+	}
+	return nil
+}
+
+// LBClient returns the underlying fasthttp.LBClient if the client was created with one.
+func (c *Client) LBClient() *fasthttp.LBClient {
+	if client, ok := c.transport.(*lbClientTransport); ok {
+		return client.client
+	}
+	return nil
 }
 
 // R creates a new Request associated with the client.
@@ -163,18 +241,20 @@ func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client {
 // TLSConfig returns the client's TLS configuration.
 // If none is set, it initializes a new one.
 func (c *Client) TLSConfig() *tls.Config {
-	if c.fasthttp.TLSConfig == nil {
-		c.fasthttp.TLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		}
+	cfgPtr := c.tlsConfig()
+	if *cfgPtr == nil {
+		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+		c.setTLSConfig(cfg)
+		return cfg
 	}
 
-	return c.fasthttp.TLSConfig
+	c.setTLSConfig(*cfgPtr)
+	return *cfgPtr
 }
 
 // SetTLSConfig sets the TLS configuration for the client.
 func (c *Client) SetTLSConfig(config *tls.Config) *Client {
-	c.fasthttp.TLSConfig = config
+	c.setTLSConfig(config)
 	return c
 }
 
@@ -232,7 +312,7 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 
 // SetProxyURL sets the proxy URL for the client. This affects all subsequent requests.
 func (c *Client) SetProxyURL(proxyURL string) error {
-	c.fasthttp.Dial = fasthttpproxy.FasthttpHTTPDialer(proxyURL)
+	c.setDial(fasthttpproxy.FasthttpHTTPDialer(proxyURL))
 	return nil
 }
 
@@ -514,7 +594,7 @@ func (c *Client) SetDial(dial fasthttp.DialFunc) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.fasthttp.Dial = dial
+	c.setDial(dial)
 	return c
 }
 
@@ -534,7 +614,7 @@ func (c *Client) Logger() log.CommonLogger {
 
 // Reset resets the client to its default state, clearing most configurations.
 func (c *Client) Reset() {
-	c.fasthttp = &fasthttp.Client{}
+	c.resetTransport()
 	c.baseURL = ""
 	c.timeout = 0
 	c.userAgent = ""
@@ -659,8 +739,28 @@ func NewWithClient(c *fasthttp.Client) *Client {
 	if c == nil {
 		panic("fasthttp.Client must not be nil")
 	}
+	return newClient(newStandardClientTransport(c))
+}
+
+// NewWithHostClient creates and returns a new Client object from an existing fasthttp.HostClient.
+func NewWithHostClient(c *fasthttp.HostClient) *Client {
+	if c == nil {
+		panic("fasthttp.HostClient must not be nil")
+	}
+	return newClient(newHostClientTransport(c))
+}
+
+// NewWithLBClient creates and returns a new Client object from an existing fasthttp.LBClient.
+func NewWithLBClient(c *fasthttp.LBClient) *Client {
+	if c == nil {
+		panic("fasthttp.LBClient must not be nil")
+	}
+	return newClient(newLBClientTransport(c))
+}
+
+func newClient(transport httpClientTransport) *Client {
 	return &Client{
-		fasthttp: c,
+		transport: transport,
 		header: &Header{
 			RequestHeader: &fasthttp.RequestHeader{},
 		},

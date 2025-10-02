@@ -8,14 +8,17 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/addon/retry"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
+	"github.com/gofiber/fiber/v3/log"
 	utils "github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,6 +82,175 @@ func Test_New_With_Client(t *testing.T) {
 	})
 }
 
+func Test_New_With_HostClient(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with valid host client", func(t *testing.T) {
+		t.Parallel()
+
+		hc := &fasthttp.HostClient{Addr: "example.com:80"}
+		client := NewWithHostClient(hc)
+
+		require.NotNil(t, client)
+		require.Equal(t, hc, client.HostClient())
+		require.Nil(t, client.FasthttpClient())
+	})
+
+	t.Run("with nil host client", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fasthttp.HostClient must not be nil", func() {
+			NewWithHostClient(nil)
+		})
+	})
+}
+
+func Test_New_With_LBClient(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with valid lb client", func(t *testing.T) {
+		t.Parallel()
+
+		lb := &fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: "example.com:80"},
+			},
+		}
+
+		client := NewWithLBClient(lb)
+
+		require.NotNil(t, client)
+		require.Equal(t, lb, client.LBClient())
+		require.Nil(t, client.FasthttpClient())
+		require.Nil(t, client.HostClient())
+	})
+
+	t.Run("with nil lb client", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fasthttp.LBClient must not be nil", func() {
+			NewWithLBClient(nil)
+		})
+	})
+}
+
+func TestClientUnderlyingTransports(t *testing.T) {
+	t.Parallel()
+
+	std := New()
+	require.NotNil(t, std.FasthttpClient())
+	require.Nil(t, std.HostClient())
+	require.Nil(t, std.LBClient())
+
+	hostTransport := &fasthttp.HostClient{Addr: "example.com:80"}
+	host := NewWithHostClient(hostTransport)
+	require.Nil(t, host.FasthttpClient())
+	require.Same(t, hostTransport, host.HostClient())
+	require.Nil(t, host.LBClient())
+
+	lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hostTransport}}
+	lb := NewWithLBClient(lbClient)
+	require.Nil(t, lb.FasthttpClient())
+	require.Nil(t, lb.HostClient())
+	require.Same(t, lbClient, lb.LBClient())
+}
+
+func TestClientCBORUnmarshalOverride(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	initial := client.CBORUnmarshal()
+	require.NotNil(t, initial)
+
+	called := false
+	custom := func(b []byte, v any) error {
+		called = true
+		return nil
+	}
+
+	client.SetCBORUnmarshal(custom)
+	fn := client.CBORUnmarshal()
+	require.NotNil(t, fn)
+
+	var payload []byte
+	require.NoError(t, fn(payload, nil))
+	require.True(t, called)
+}
+
+func TestClientSetRootCertificateErrors(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	require.Panics(t, func() {
+		client.SetRootCertificate("does-not-exist.pem")
+	})
+
+	tmpDir := t.TempDir()
+	badPath := filepath.Join(tmpDir, "invalid.pem")
+	require.NoError(t, os.WriteFile(badPath, []byte("not a pem"), 0o600))
+
+	require.Panics(t, func() {
+		client.SetRootCertificate(badPath)
+	})
+}
+
+func TestClientSetRootCertificateFromStringError(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	require.Panics(t, func() {
+		client.SetRootCertificateFromString("invalid pem data")
+	})
+}
+
+func TestClientLoggerAccessors(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	_ = client.Logger()
+	contextual := log.WithContext(context.Background())
+	client.SetLogger(contextual)
+	require.Equal(t, contextual, client.Logger())
+}
+
+func TestClientResetClearsState(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+
+	jar := AcquireCookieJar()
+	jar.hostCookies = map[string][]*fasthttp.Cookie{"example.com": {}}
+	client.SetCookieJar(jar)
+
+	client.SetBaseURL("http://example.com")
+	client.SetTimeout(2 * time.Second)
+	client.SetUserAgent("reset-agent")
+	client.SetReferer("reset-ref")
+	client.SetRetryConfig(&RetryConfig{MaxRetryCount: 3})
+	client.Debug()
+	client.SetDisablePathNormalizing(true)
+	client.SetHeaders(map[string]string{"X-Test": "value"})
+	client.SetParams(map[string]string{"p": "1"})
+	client.SetCookies(map[string]string{"cookie": "value"})
+	client.SetPathParams(map[string]string{"id": "123"})
+
+	client.Reset()
+
+	require.Empty(t, client.BaseURL())
+	require.Zero(t, client.timeout)
+	require.Empty(t, client.userAgent)
+	require.Empty(t, client.referer)
+	require.Nil(t, client.retryConfig)
+	require.False(t, client.debug)
+	require.False(t, client.disablePathNormalizing)
+	require.Nil(t, client.cookieJar)
+	require.Nil(t, jar.hostCookies)
+	require.Equal(t, 0, len(*client.path))
+	require.Equal(t, 0, len(*client.cookies))
+	require.Equal(t, 0, client.header.Len())
+	require.Equal(t, 0, client.params.Len())
+}
+
 func Test_Client_Add_Hook(t *testing.T) {
 	t.Parallel()
 
@@ -121,6 +293,346 @@ func Test_Client_Add_Hook(t *testing.T) {
 		})
 
 		require.Len(t, client.ResponseHook(), 3)
+	})
+}
+
+func Test_Client_HostClient_Behavior(t *testing.T) {
+	t.Parallel()
+
+	t.Run("do and redirects", func(t *testing.T) {
+		t.Parallel()
+
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Get("/ok", func(c fiber.Ctx) error {
+				return c.SendString("ok")
+			})
+			app.Get("/redirect", func(c fiber.Ctx) error {
+				return c.Redirect().Status(fiber.StatusFound).To("/ok")
+			})
+		})
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := NewWithHostClient(&fasthttp.HostClient{Addr: addr})
+
+		resp, err := client.Get("http://" + addr + "/ok")
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "ok", resp.String())
+
+		resp, err = client.Get("http://"+addr+"/redirect", Config{MaxRedirects: 1})
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "ok", resp.String())
+	})
+
+	t.Run("retries respect dial overrides", func(t *testing.T) {
+		t.Parallel()
+
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("retry")
+			})
+		})
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := NewWithHostClient(&fasthttp.HostClient{Addr: addr})
+		client.SetRetryConfig(&RetryConfig{
+			InitialInterval: time.Millisecond,
+			MaxRetryCount:   2,
+		})
+
+		var attempts int32
+		client.SetDial(func(address string) (net.Conn, error) {
+			if atomic.AddInt32(&attempts, 1) == 1 {
+				return nil, errors.New("dial failure")
+			}
+			return fasthttp.Dial(address)
+		})
+
+		resp, err := client.Get("http://" + addr)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "retry", resp.String())
+		require.EqualValues(t, 2, atomic.LoadInt32(&attempts))
+	})
+
+	t.Run("tls configuration propagates", func(t *testing.T) {
+		t.Parallel()
+
+		serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+		require.NoError(t, err)
+
+		ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+		require.NoError(t, err)
+		ln = tls.NewListener(ln, serverTLSConf)
+
+		app := fiber.New()
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("tls-host")
+		})
+
+		go func() {
+			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{ //nolint:errcheck // handled in assertion
+				DisableStartupMessage: true,
+			}))
+		}()
+		time.Sleep(1 * time.Second)
+
+		client := NewWithHostClient(&fasthttp.HostClient{Addr: ln.Addr().String(), IsTLS: true})
+
+		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
+		require.NoError(t, err)
+		require.Equal(t, clientTLSConf, client.TLSConfig())
+		require.Equal(t, clientTLSConf, client.HostClient().TLSConfig)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "tls-host", resp.String())
+
+		require.NoError(t, app.Shutdown())
+	})
+
+	t.Run("proxy overrides and reset", func(t *testing.T) {
+		t.Parallel()
+
+		client := NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80"})
+
+		require.NoError(t, client.SetProxyURL("http://127.0.0.1:8080"))
+		require.NotNil(t, client.HostClient().Dial)
+
+		var called int32
+		customDial := func(addr string) (net.Conn, error) {
+			atomic.AddInt32(&called, 1)
+			return nil, errors.New("dial")
+		}
+		client.SetDial(customDial)
+
+		_, err := client.HostClient().Dial("example.com:80")
+		require.Error(t, err)
+		require.EqualValues(t, 1, atomic.LoadInt32(&called))
+
+		original := client.HostClient()
+		client.Reset()
+		require.NotNil(t, client.HostClient())
+		require.NotEqual(t, original, client.HostClient())
+		require.Nil(t, client.FasthttpClient())
+	})
+
+	t.Run("timeouts and close idle", func(t *testing.T) {
+		t.Parallel()
+
+		client := NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80"})
+
+		var dialCalls int32
+		dialErr := errors.New("dial failed")
+		client.HostClient().Dial = func(addr string) (net.Conn, error) {
+			atomic.AddInt32(&dialCalls, 1)
+			return nil, dialErr
+		}
+
+		req := fasthttp.AcquireRequest()
+		resp := fasthttp.AcquireResponse()
+		req.SetRequestURI("http://example.com/")
+
+		err := client.DoTimeout(req, resp, 5*time.Millisecond)
+		require.ErrorIs(t, err, dialErr)
+
+		req.SetRequestURI("http://example.com/")
+		err = client.DoDeadline(req, resp, time.Now().Add(5*time.Millisecond))
+		require.ErrorIs(t, err, dialErr)
+
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+
+		require.EqualValues(t, 2, atomic.LoadInt32(&dialCalls))
+		require.NotPanics(t, client.CloseIdleConnections)
+	})
+}
+
+func Test_Client_LBClient_Behavior(t *testing.T) {
+	t.Parallel()
+
+	newLBClient := func(addr string) *fasthttp.LBClient {
+		return &fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: addr},
+			},
+		}
+	}
+
+	t.Run("do and redirects", func(t *testing.T) {
+		t.Parallel()
+
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Get("/ok", func(c fiber.Ctx) error {
+				return c.SendString("ok")
+			})
+			app.Get("/redirect", func(c fiber.Ctx) error {
+				return c.Redirect().Status(fiber.StatusFound).To("/ok")
+			})
+		})
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := NewWithLBClient(newLBClient(addr))
+
+		resp, err := client.Get("http://" + addr + "/ok")
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "ok", resp.String())
+
+		resp, err = client.Get("http://"+addr+"/redirect", Config{MaxRedirects: 1})
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "ok", resp.String())
+	})
+
+	t.Run("retries respect dial overrides", func(t *testing.T) {
+		t.Parallel()
+
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("retry")
+			})
+		})
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := NewWithLBClient(newLBClient(addr))
+		client.SetRetryConfig(&RetryConfig{
+			InitialInterval: time.Millisecond,
+			MaxRetryCount:   2,
+		})
+
+		var attempts int32
+		client.SetDial(func(address string) (net.Conn, error) {
+			if atomic.AddInt32(&attempts, 1) == 1 {
+				return nil, errors.New("dial failure")
+			}
+			return fasthttp.Dial(address)
+		})
+
+		resp, err := client.Get("http://" + addr)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "retry", resp.String())
+		require.EqualValues(t, 2, atomic.LoadInt32(&attempts))
+	})
+
+	t.Run("tls configuration propagates", func(t *testing.T) {
+		t.Parallel()
+
+		serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+		require.NoError(t, err)
+
+		ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+		require.NoError(t, err)
+		ln = tls.NewListener(ln, serverTLSConf)
+
+		app := fiber.New()
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("tls-lb")
+		})
+
+		go func() {
+			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{ //nolint:errcheck // handled in assertion
+				DisableStartupMessage: true,
+			}))
+		}()
+		time.Sleep(1 * time.Second)
+
+		lb := newLBClient(ln.Addr().String())
+		lb.Clients[0].(*fasthttp.HostClient).IsTLS = true
+		client := NewWithLBClient(lb)
+
+		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
+		require.NoError(t, err)
+		require.Equal(t, clientTLSConf, client.TLSConfig())
+
+		hc, ok := client.LBClient().Clients[0].(*fasthttp.HostClient)
+		require.True(t, ok)
+		require.Equal(t, clientTLSConf, hc.TLSConfig)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "tls-lb", resp.String())
+
+		require.NoError(t, app.Shutdown())
+	})
+
+	t.Run("proxy overrides and reset", func(t *testing.T) {
+		t.Parallel()
+
+		client := NewWithLBClient(&fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: "example.com:80"},
+			},
+		})
+
+		require.NoError(t, client.SetProxyURL("http://127.0.0.1:8080"))
+
+		hc, ok := client.LBClient().Clients[0].(*fasthttp.HostClient)
+		require.True(t, ok)
+		require.NotNil(t, hc.Dial)
+
+		var called int32
+		customDial := func(addr string) (net.Conn, error) {
+			atomic.AddInt32(&called, 1)
+			return nil, errors.New("dial")
+		}
+		client.SetDial(customDial)
+
+		_, err := hc.Dial("example.com:80")
+		require.Error(t, err)
+		require.EqualValues(t, 1, atomic.LoadInt32(&called))
+
+		original := client.LBClient()
+		client.Reset()
+		require.NotNil(t, client.LBClient())
+		require.NotEqual(t, original, client.LBClient())
+		require.Nil(t, client.FasthttpClient())
+		require.Nil(t, client.HostClient())
+	})
+
+	t.Run("timeouts and close idle", func(t *testing.T) {
+		t.Parallel()
+
+		client := NewWithLBClient(&fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: "example.com:80"},
+				&fasthttp.HostClient{Addr: "example.org:80"},
+			},
+		})
+
+		var dialCalls int32
+		dialErr := errors.New("dial failed")
+		for _, bc := range client.LBClient().Clients {
+			if hc, ok := bc.(*fasthttp.HostClient); ok {
+				hc.Dial = func(addr string) (net.Conn, error) {
+					atomic.AddInt32(&dialCalls, 1)
+					return nil, dialErr
+				}
+			}
+		}
+
+		req := fasthttp.AcquireRequest()
+		resp := fasthttp.AcquireResponse()
+		req.SetRequestURI("http://example.com/")
+
+		err := client.DoTimeout(req, resp, 5*time.Millisecond)
+		require.ErrorIs(t, err, dialErr)
+
+		req.SetRequestURI("http://example.com/")
+		err = client.DoDeadline(req, resp, time.Now().Add(5*time.Millisecond))
+		require.ErrorIs(t, err, dialErr)
+
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+
+		require.GreaterOrEqual(t, atomic.LoadInt32(&dialCalls), int32(2))
+		require.NotPanics(t, client.CloseIdleConnections)
 	})
 }
 
