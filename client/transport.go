@@ -13,7 +13,7 @@ type httpClientTransport interface {
 	DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error
 	DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error
 	CloseIdleConnections()
-	TLSConfig() **tls.Config
+	TLSConfig() *tls.Config
 	SetTLSConfig(config *tls.Config)
 	SetDial(dial fasthttp.DialFunc)
 	Reset()
@@ -48,8 +48,8 @@ func (s *standardClientTransport) CloseIdleConnections() {
 	s.client.CloseIdleConnections()
 }
 
-func (s *standardClientTransport) TLSConfig() **tls.Config {
-	return &s.client.TLSConfig
+func (s *standardClientTransport) TLSConfig() *tls.Config {
+	return s.client.TLSConfig
 }
 
 func (s *standardClientTransport) SetTLSConfig(config *tls.Config) {
@@ -96,8 +96,8 @@ func (h *hostClientTransport) CloseIdleConnections() {
 	h.client.CloseIdleConnections()
 }
 
-func (h *hostClientTransport) TLSConfig() **tls.Config {
-	return &h.client.TLSConfig
+func (h *hostClientTransport) TLSConfig() *tls.Config {
+	return h.client.TLSConfig
 }
 
 func (h *hostClientTransport) SetTLSConfig(config *tls.Config) {
@@ -159,8 +159,8 @@ func (l *lbClientTransport) CloseIdleConnections() {
 	})
 }
 
-func (l *lbClientTransport) TLSConfig() **tls.Config {
-	return &l.tlsConfig
+func (l *lbClientTransport) TLSConfig() *tls.Config {
+	return l.tlsConfig
 }
 
 func (l *lbClientTransport) SetTLSConfig(config *tls.Config) {
@@ -193,15 +193,17 @@ func forEachHostClient(lb *fasthttp.LBClient, fn func(*fasthttp.HostClient)) {
 	}
 }
 
-func walkBalancingClient(client fasthttp.BalancingClient, fn func(*fasthttp.HostClient)) {
+func walkBalancingClient(client any, fn func(*fasthttp.HostClient)) {
 	switch c := client.(type) {
 	case *fasthttp.HostClient:
 		fn(c)
+	case *fasthttp.LBClient:
+		for _, nestedClient := range c.Clients {
+			walkBalancingClient(nestedClient, fn)
+		}
 	case interface{ LBClient() *fasthttp.LBClient }:
 		if nested := c.LBClient(); nested != nil {
-			for _, nestedClient := range nested.Clients {
-				walkBalancingClient(nestedClient, fn)
-			}
+			walkBalancingClient(nested, fn)
 		}
 	}
 }
@@ -238,16 +240,20 @@ func extractDial(clients []fasthttp.BalancingClient) fasthttp.DialFunc {
 	return dial
 }
 
-func walkBalancingClientWithBreak(client fasthttp.BalancingClient, fn func(*fasthttp.HostClient) bool) bool {
+func walkBalancingClientWithBreak(client any, fn func(*fasthttp.HostClient) bool) bool {
 	switch c := client.(type) {
 	case *fasthttp.HostClient:
 		return fn(c)
+	case *fasthttp.LBClient:
+		for _, nestedClient := range c.Clients {
+			if walkBalancingClientWithBreak(nestedClient, fn) {
+				return true
+			}
+		}
 	case interface{ LBClient() *fasthttp.LBClient }:
 		if nested := c.LBClient(); nested != nil {
-			for _, nestedClient := range nested.Clients {
-				if walkBalancingClientWithBreak(nestedClient, fn) {
-					return true
-				}
+			if walkBalancingClientWithBreak(nested, fn) {
+				return true
 			}
 		}
 	}
@@ -292,6 +298,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 
 		if req.Header.IsPost() && (statusCode == fasthttp.StatusMovedPermanently || statusCode == fasthttp.StatusFound) {
 			req.Header.SetMethod(fasthttp.MethodGet)
+			req.ResetBody()
 		}
 	}
 }

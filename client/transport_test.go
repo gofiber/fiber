@@ -125,19 +125,27 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	hostWithoutOverrides := &fasthttp.HostClient{Addr: "example.com:80"}
 	nestedDialHost := &fasthttp.HostClient{Addr: "example.org:80"}
 	nestedTLSHost := &fasthttp.HostClient{Addr: "example.net:80", TLSConfig: &tls.Config{ServerName: "example"}}
+	multiLevelHost := &fasthttp.HostClient{Addr: "example.edu:80"}
 
 	nestedDialHost.Dial = func(addr string) (net.Conn, error) {
 		return nil, errors.New("original dial")
 	}
 
+	multiLevelHost.Dial = func(addr string) (net.Conn, error) {
+		return nil, errors.New("multi-level dial")
+	}
+
 	nestedDialLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nestedDialHost}}}
 	nestedTLSLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nestedTLSHost}}}
+	multiLevelLeaf := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{multiLevelHost}}}
+	multiLevelWrapper := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{multiLevelLeaf}}}
 
-	lb := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{stubBalancingClient{}, hostWithoutOverrides, nestedDialLB, nestedTLSLB}}
+	lb := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{stubBalancingClient{}, hostWithoutOverrides, nestedDialLB, nestedTLSLB, multiLevelWrapper}}
 
 	transport := newLBClientTransport(lb)
 	require.Same(t, lb, transport.Client())
 	require.Equal(t, nestedTLSHost.TLSConfig, transport.tlsConfig)
+	require.Equal(t, nestedTLSHost.TLSConfig, transport.TLSConfig())
 	require.NotNil(t, transport.dial)
 
 	overrideTLS := &tls.Config{ServerName: "override"}
@@ -145,6 +153,8 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	require.Equal(t, overrideTLS, hostWithoutOverrides.TLSConfig)
 	require.Equal(t, overrideTLS, nestedDialHost.TLSConfig)
 	require.Equal(t, overrideTLS, nestedTLSHost.TLSConfig)
+	require.Equal(t, overrideTLS, multiLevelHost.TLSConfig)
+	require.Equal(t, overrideTLS, transport.TLSConfig())
 
 	overrideDialCalled := atomic.Bool{}
 	overrideDial := func(addr string) (net.Conn, error) {
@@ -159,6 +169,11 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 
 	overrideDialCalled.Store(false)
 	_, err = nestedDialHost.Dial("example.org:80")
+	require.Error(t, err)
+	require.True(t, overrideDialCalled.Load())
+
+	overrideDialCalled.Store(false)
+	_, err = multiLevelHost.Dial("example.edu:80")
 	require.Error(t, err)
 	require.True(t, overrideDialCalled.Load())
 
@@ -182,6 +197,9 @@ func TestExtractTLSConfigVariations(t *testing.T) {
 	nested := &fasthttp.HostClient{TLSConfig: &tls.Config{ServerName: "nested"}}
 	nestedLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nested}}}
 	require.Equal(t, nested.TLSConfig, extractTLSConfig([]fasthttp.BalancingClient{nestedLB}))
+
+	multiLayerLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nestedLB}}}
+	require.Equal(t, nested.TLSConfig, extractTLSConfig([]fasthttp.BalancingClient{multiLayerLB}))
 }
 
 func TestExtractDialVariations(t *testing.T) {
@@ -216,6 +234,20 @@ func TestExtractDialVariations(t *testing.T) {
 	_, err = nestedDial("example.com:80")
 	require.Error(t, err)
 	require.True(t, nestedCalled.Load())
+
+	multiNestedHost := &fasthttp.HostClient{}
+	multiCalled := atomic.Bool{}
+	multiNestedHost.Dial = func(addr string) (net.Conn, error) {
+		multiCalled.Store(true)
+		return nil, errors.New("multi nested dial")
+	}
+	multiNestedLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{multiNestedHost}}}
+	multiLayerWrapper := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{multiNestedLB}}}
+	multiLayerDial := extractDial([]fasthttp.BalancingClient{multiLayerWrapper})
+	require.NotNil(t, multiLayerDial)
+	_, err = multiLayerDial("example.com:80")
+	require.Error(t, err)
+	require.True(t, multiCalled.Load())
 }
 
 func TestWalkBalancingClientWithBreak(t *testing.T) {
@@ -232,6 +264,13 @@ func TestWalkBalancingClientWithBreak(t *testing.T) {
 	nested := &fasthttp.HostClient{}
 	nestedLB := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{nested}}}
 	require.True(t, walkBalancingClientWithBreak(nestedLB, func(*fasthttp.HostClient) bool { return true }))
+
+	directNestedHost := &fasthttp.HostClient{}
+	directNestedLB := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{directNestedHost}}
+	require.True(t, walkBalancingClientWithBreak(directNestedLB, func(hc *fasthttp.HostClient) bool {
+		require.Same(t, directNestedHost, hc)
+		return true
+	}))
 }
 
 func TestDoRedirectsWithClientBranches(t *testing.T) {
@@ -254,8 +293,10 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.SetRequestURI("http://example.com/start")
+	req.SetBodyString("payload")
 	client = &stubRedirectClient{calls: []stubRedirectCall{{status: fasthttp.StatusMovedPermanently, location: "/redirect"}, {status: fasthttp.StatusOK}}}
 	require.NoError(t, doRedirectsWithClient(req, resp, 1, client))
 	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
 	require.Equal(t, "http://example.com/redirect", req.URI().String())
+	require.Len(t, req.Body(), 0)
 }

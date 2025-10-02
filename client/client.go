@@ -91,7 +91,7 @@ func (c *Client) CloseIdleConnections() {
 	c.transport.CloseIdleConnections()
 }
 
-func (c *Client) tlsConfig() **tls.Config {
+func (c *Client) tlsConfig() *tls.Config {
 	return c.transport.TLSConfig()
 }
 
@@ -233,13 +233,12 @@ func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client {
 // TLSConfig returns the client's TLS configuration.
 // If none is set, it initializes a new one.
 func (c *Client) TLSConfig() *tls.Config {
-	cfgPtr := c.tlsConfig()
-	if *cfgPtr == nil {
-		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
-		c.setTLSConfig(cfg)
+	if cfg := c.tlsConfig(); cfg != nil {
 		return cfg
 	}
-	return *cfgPtr
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	c.setTLSConfig(cfg)
+	return cfg
 }
 
 // SetTLSConfig sets the TLS configuration for the client.
