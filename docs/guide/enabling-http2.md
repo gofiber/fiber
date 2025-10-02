@@ -34,7 +34,7 @@ server {
 ```
 This configuration enables HTTP/2 with TLS and proxies requests to your Fiber app on port 3000.
 
-Example of Traefik
+Traefik Example
 ```go title="Example"
 entryPoints:
   websecure:
