@@ -45,11 +45,13 @@ func ptrInt(v int) *int { return &v }
 func ptrString(v string) *string { return &v }
 
 type stubRedirectClient struct {
-	calls []stubRedirectCall
+	calls     []stubRedirectCall
+	callCount int
 }
 
 func (s *stubRedirectClient) Do(req *fasthttp.Request, resp *fasthttp.Response) error {
 	_ = req
+	s.callCount++
 	if len(s.calls) == 0 {
 		resp.Reset()
 		resp.Header.SetStatusCode(fasthttp.StatusOK)
@@ -68,6 +70,8 @@ func (s *stubRedirectClient) Do(req *fasthttp.Request, resp *fasthttp.Response) 
 	}
 	return call.err
 }
+
+func (s *stubRedirectClient) CallCount() int { return s.callCount }
 
 func TestStandardClientTransportCoverage(t *testing.T) {
 	t.Parallel()
@@ -335,4 +339,26 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 
 	client = &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusMovedPermanently), location: ptrString("/loop")}, {status: ptrInt(fasthttp.StatusFound), location: ptrString("/final")}, {status: ptrInt(fasthttp.StatusOK)}}}
 	require.ErrorIs(t, doRedirectsWithClient(req, resp, 1, client), fasthttp.ErrTooManyRedirects)
+}
+
+func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {
+	t.Parallel()
+
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI("http://example.com/start")
+	req.Header.SetMethod(fasthttp.MethodPost)
+
+	calls := make([]stubRedirectCall, 0, defaultRedirectLimit+1)
+	for i := 0; i < defaultRedirectLimit+1; i++ {
+		calls = append(calls, stubRedirectCall{status: ptrInt(fasthttp.StatusFound), location: ptrString("/loop")})
+	}
+
+	client := &stubRedirectClient{calls: calls}
+	err := doRedirectsWithClient(req, resp, -1, client)
+	require.ErrorIs(t, err, fasthttp.ErrTooManyRedirects)
+	require.Equal(t, defaultRedirectLimit+1, client.CallCount())
 }

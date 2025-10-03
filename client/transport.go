@@ -8,8 +8,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// defaultRedirectLimit is applied when callers supply a negative redirect cap.
-const defaultRedirectLimit = 10
+// defaultRedirectLimit mirrors fasthttp's default when callers supply a negative redirect cap.
+const defaultRedirectLimit = 16
 
 type httpClientTransport interface {
 	Do(req *fasthttp.Request, resp *fasthttp.Response) error
