@@ -63,7 +63,7 @@ http:
           - url: "http://127.0.0.1:3000"
 ```
 With this configuration, Traefik terminates TLS and serves your app over HTTP/2.
-</details>
+</details>\n\n### Configuring Fiber\n\nWhen your application is behind a proxy, you must configure Fiber to trust the proxy headers so that information like the client's IP address and protocol are correctly parsed. You can do this via the `ProxyHeader` configuration.\n\n```go\napp := fiber.New(fiber.Config{\n  // For Nginx, you might use X-Real-IP or X-Forwarded-For\n  ProxyHeader: fiber.HeaderXForwardedFor,\n})\n```\n\nFor more details, see the [configuration documentation on `ProxyHeader`](../api/fiber.md#proxyheader).
 
 ## HTTP/3 (QUIC) Support
 Early Hints (103 responses) are officially part of HTTP/2 and newer. Many reverse proxies also support HTTP/3 (QUIC):
