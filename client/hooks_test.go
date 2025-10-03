@@ -598,6 +598,18 @@ func Test_Parser_Request_Body(t *testing.T) {
 		err := parserRequestBody(client, req)
 		require.ErrorIs(t, err, ErrBodyType)
 	})
+
+	t.Run("unsupported body type", func(t *testing.T) {
+		t.Parallel()
+
+		client := New()
+		req := AcquireRequest()
+
+		req.bodyType = 999 // some invalid type
+
+		err := parserRequestBody(client, req)
+		require.ErrorIs(t, err, ErrBodyTypeNotSupported)
+	})
 }
 
 type dummyLogger struct {

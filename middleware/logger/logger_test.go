@@ -1037,7 +1037,6 @@ func Test_Logger_ForceColors(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 	expected := fmt.Sprintf("0.0.0.0%s404%s%sGET%s/%sNot Found%s\n", colors.Yellow, colors.Reset, colors.Cyan, colors.Reset, colors.Red, colors.Reset)
-	fmt.Println(buf.String())
 	require.Equal(t, expected, buf.String())
 }
 
