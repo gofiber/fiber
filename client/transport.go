@@ -269,18 +269,39 @@ type redirectClient interface {
 }
 
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient) error {
-	if maxRedirects < 0 {
+	currentURL := req.URI().String()
+	redirects := 0
+
+	if maxRedirects <= 0 {
+		req.SetRequestURI(currentURL)
+		if err := client.Do(req, resp); err != nil {
+			return err
+		}
+
+		statusCode := resp.Header.StatusCode()
+		if !fasthttp.StatusCodeIsRedirect(statusCode) || maxRedirects == 0 {
+			return nil
+		}
+
+		location := resp.Header.Peek("Location")
+		if len(location) == 0 {
+			return fasthttp.ErrMissingLocation
+		}
+
+		nextURL, err := composeRedirectURL(currentURL, location, req.DisableRedirectPathNormalizing)
+		if err != nil {
+			return err
+		}
+		currentURL = nextURL
+		redirects = 1
+
+		if req.Header.IsPost() && (statusCode == fasthttp.StatusMovedPermanently || statusCode == fasthttp.StatusFound) {
+			req.Header.SetMethod(fasthttp.MethodGet)
+			req.SetBody(nil)
+		}
+
 		maxRedirects = defaultRedirectLimit
 	}
-
-	currentURL := req.URI().String()
-
-	if maxRedirects == 0 {
-		req.SetRequestURI(currentURL)
-		return client.Do(req, resp)
-	}
-
-	redirects := 0
 
 	for {
 		req.SetRequestURI(currentURL)

@@ -318,6 +318,7 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 	require.Equal(t, fasthttp.MethodPost, string(req.Header.Method()))
 	require.Equal(t, "http://example.com/again", req.URI().String())
 	require.Equal(t, "payload", string(req.Body()))
+	require.Equal(t, 1, singleCall.CallCount())
 
 	resp.Reset()
 	req.Header.SetMethod(fasthttp.MethodPost)
