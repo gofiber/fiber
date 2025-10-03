@@ -67,7 +67,7 @@ http:
 With this configuration, Traefik terminates TLS and serves your app over HTTP/2.
 </details>
 
-## HTTP/3 (QUIC) Support
+### HTTP/3 (QUIC) Support
 
 Early Hints (103 responses) are officially part of HTTP/2 and newer. Many reverse proxies also support HTTP/3 (QUIC):
 
