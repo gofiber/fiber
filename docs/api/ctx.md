@@ -2174,7 +2174,7 @@ before the final response. This allows the browser to start preloading
 resources while the server prepares the full response.
 
 :::caution
-This feature requires HTTP/2 or newer. Early Hints (`103` responses) are supported in HTTP/2 and newer protocols. Older HTTP/1.1 clients may ignore these interim responses or misbehave when receiving them.
+This feature requires HTTP/2 or newer protocols. Early Hints (`103` responses) may be ignored by older HTTP/1.1 clients or cause them to misbehave.
 
 To enable HTTP/2 support for your Fiber application, see the [Reverse Proxy Configuration](../guide/reverse-proxy.md) guide.
 :::
