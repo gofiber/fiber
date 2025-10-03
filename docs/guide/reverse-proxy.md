@@ -83,8 +83,9 @@ For more details, see the official documentation:
 - [Nginx QUIC / HTTP/3](https://nginx.org/en/docs/quic.html)
 - [Traefik HTTP/3](https://doc.traefik.io/traefik/reference/install-configuration/entrypoints/#http3)
 
-Few of the available Reverse Proxies
+Popular Reverse Proxies:
 
 - [Nginx](https://nginx.org/)
-- [Traefik](https://traefik.io/?gad_campaignid=20537010384)
+- [Traefik](https://traefik.io/)
 - [HA PROXY](https://www.haproxy.com/documentation/)
+- [Caddy](https://caddyserver.com/docs/quick-starts/reverse-proxy)
