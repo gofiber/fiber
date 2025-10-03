@@ -1,6 +1,6 @@
 ---
 id: reverse-proxy
-title: Reverse Proxies
+title: reverse-proxy
 description: >-
   Learn how to set up reverse proxies like Nginx or Traefik to enable modern
   HTTP capabilities in your Fiber application, including HTTP/2 and the
@@ -9,8 +9,10 @@ description: >-
 sidebar_position: 4
 ---
 
-# Reverse Proxies
-## Enabling HTTP/2
+## Reverse Proxies
+
+### Enabling HTTP/2
+
 Some features in Fiber, such as SendEarlyHints, require HTTP/2 or newer. If your app is served directly over HTTP/1.1, certain features may be ignored or not function as expected.
 
 To enable HTTP/2 in production, run Fiber behind a reverse proxy that upgrades connections. Popular choices include Nginx and Traefik.
@@ -27,9 +29,6 @@ server {
     ssl_certificate_key /etc/ssl/private/example.key;
 
     location / {
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
@@ -37,6 +36,7 @@ server {
     }
 }
 ```
+
 This configuration enables HTTP/2 with TLS and proxies requests to your Fiber app on port 3000.
 </details>
 <details>
@@ -62,10 +62,12 @@ http:
         servers:
           - url: "http://127.0.0.1:3000"
 ```
-With this configuration, Traefik terminates TLS and serves your app over HTTP/2.
-</details>\n\n### Configuring Fiber\n\nWhen your application is behind a proxy, you must configure Fiber to trust the proxy headers so that information like the client's IP address and protocol are correctly parsed. You can do this via the `ProxyHeader` configuration.\n\n```go\napp := fiber.New(fiber.Config{\n  // For Nginx, you might use X-Real-IP or X-Forwarded-For\n  ProxyHeader: fiber.HeaderXForwardedFor,\n})\n```\n\nFor more details, see the [configuration documentation on `ProxyHeader`](../api/fiber.md#proxyheader).
 
-## HTTP/3 (QUIC) Support
+With this configuration, Traefik terminates TLS and serves your app over HTTP/2.
+</details>
+
+### HTTP/3 (QUIC) Support
+
 Early Hints (103 responses) are officially part of HTTP/2 and newer. Many reverse proxies also support HTTP/3 (QUIC):
 
 - **Nginx**: Requires a recent build with QUIC/HTTP3 patches.
@@ -79,7 +81,8 @@ For more details, see the official documentation:
 - [Nginx QUIC / HTTP/3](https://nginx.org/en/docs/quic.html)
 - [Traefik HTTP/3](https://doc.traefik.io/traefik/reference/install-configuration/entrypoints/#http3)
 
-## Popular Reverse Proxies
+Few of the available Reverse Proxies
+
 - [Nginx](https://nginx.org/)
-- [Traefik](https://traefik.io/)
-- [HAProxy](https://www.haproxy.org/)
+- [Traefik](https://traefik.io/?gad_campaignid=20537010384)
+- [HA PROXY](https://www.haproxy.com/documentation/)
