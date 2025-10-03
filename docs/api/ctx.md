@@ -2175,7 +2175,7 @@ resources while the server prepares the full response.
 
 :::caution
 Early Hints (`103` responses) are supported in HTTP/2 and newer. Older HTTP/1.1 clients may ignore these interim responses or misbehave when receiving them.
-See [Enabling HTTP/2](../guide/reverse-proxy.md) for instructions on how to use a reverse proxy (e.g. Nginx or Traefik) to enable HTTP/2 support.
+See [Enabling HTTP/2](../guide/reverse-proxy#enabling-http2) for instructions on how to use a reverse proxy (e.g. Nginx or Traefik) to enable HTTP/2 support.
 :::
 
 ```go title="Signature"
