@@ -271,10 +271,11 @@ type redirectClient interface {
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient) error {
 	currentURL := req.URI().String()
 	redirects := 0
-	originalLimit := maxRedirects
+	singleRequestOnly := maxRedirects <= 0
 
 	if maxRedirects < 0 {
 		maxRedirects = defaultRedirectLimit
+		singleRequestOnly = false
 	}
 
 	for {
@@ -289,7 +290,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 			return nil
 		}
 
-		if originalLimit == 0 {
+		if singleRequestOnly {
 			return nil
 		}
 
@@ -312,6 +313,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		if req.Header.IsPost() && (statusCode == fasthttp.StatusMovedPermanently || statusCode == fasthttp.StatusFound) {
 			req.Header.SetMethod(fasthttp.MethodGet)
 			req.SetBody(nil)
+			req.Header.Del(fasthttp.HeaderContentType)
 		}
 	}
 }
