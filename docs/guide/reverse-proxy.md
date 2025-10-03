@@ -1,6 +1,6 @@
 ---
 id: reverse-proxy
-title: reverse-proxy
+title: Reverse Proxies
 description: >-
   Learn how to set up reverse proxies like Nginx or Traefik to enable modern
   HTTP capabilities in your Fiber application, including HTTP/2 and the
