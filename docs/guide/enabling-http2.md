@@ -15,8 +15,8 @@ If your app is served directly over HTTP/1.1, certain features may be ignored or
 To enable HTTP/2 in production, you can run Fiber behind a reverse proxy that upgrades connections.
 Popular choices include Nginx and Traefik.
 
-Example for Nginx
-```go title="Example"
+Nginx Example
+```nginx title="Example"
 server {
     listen 443 ssl http2;
     server_name example.com;
@@ -34,8 +34,8 @@ server {
 ```
 This configuration enables HTTP/2 with TLS and proxies requests to your Fiber app on port 3000.
 
-Example of Traefik
-```go title="Example"
+Traefik Example
+```yaml title="Example"
 entryPoints:
   websecure:
     address: ":443"
