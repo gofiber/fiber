@@ -153,6 +153,9 @@ func (l *lbClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Res
 	return l.client.DoDeadline(req, resp, deadline)
 }
 
+// DoRedirects proxies redirect handling through doRedirectsWithClient so
+// lbClientTransport matches fasthttp.Client semantics even though
+// fasthttp.LBClient does not publish a dedicated DoRedirects helper.
 func (l *lbClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
 	return doRedirectsWithClient(req, resp, maxRedirects, l.client)
 }
@@ -191,12 +194,16 @@ func (l *lbClientTransport) Client() any {
 	return l.client
 }
 
+// forEachHostClient applies fn to every host client reachable from the provided
+// load balancer, recursing into nested balancing clients.
 func forEachHostClient(lb *fasthttp.LBClient, fn func(*fasthttp.HostClient)) {
 	for _, c := range lb.Clients {
 		walkBalancingClient(c, fn)
 	}
 }
 
+// walkBalancingClient traverses nested balancing clients and invokes fn for
+// each host client encountered.
 func walkBalancingClient(client any, fn func(*fasthttp.HostClient)) {
 	switch c := client.(type) {
 	case *fasthttp.HostClient:
@@ -212,6 +219,9 @@ func walkBalancingClient(client any, fn func(*fasthttp.HostClient)) {
 	}
 }
 
+// extractTLSConfig returns the first TLS configuration discovered while walking
+// the provided balancing clients, enabling cached reuse across nested load
+// balancers.
 func extractTLSConfig(clients []fasthttp.BalancingClient) *tls.Config {
 	var cfg *tls.Config
 	for _, c := range clients {
@@ -228,6 +238,9 @@ func extractTLSConfig(clients []fasthttp.BalancingClient) *tls.Config {
 	return cfg
 }
 
+// extractDial returns the first dial function discovered while walking the
+// provided balancing clients, ensuring overrides propagate through nested
+// transports.
 func extractDial(clients []fasthttp.BalancingClient) fasthttp.DialFunc {
 	var dial fasthttp.DialFunc
 	for _, c := range clients {
@@ -244,6 +257,9 @@ func extractDial(clients []fasthttp.BalancingClient) fasthttp.DialFunc {
 	return dial
 }
 
+// walkBalancingClientWithBreak traverses balancing clients and invokes fn for
+// each host client encountered until fn returns true, allowing callers to stop
+// the traversal early when a match is found.
 func walkBalancingClientWithBreak(client any, fn func(*fasthttp.HostClient) bool) bool {
 	switch c := client.(type) {
 	case *fasthttp.HostClient:
@@ -264,10 +280,16 @@ func walkBalancingClientWithBreak(client any, fn func(*fasthttp.HostClient) bool
 	return false
 }
 
+// redirectClient describes the minimal surface needed by doRedirectsWithClient to
+// issue HTTP requests while preserving fasthttp redirect semantics.
 type redirectClient interface {
 	Do(req *fasthttp.Request, resp *fasthttp.Response) error
 }
 
+// doRedirectsWithClient mirrors fasthttp's redirect loop for transports that do
+// not expose DoRedirects (e.g. fasthttp.LBClient). The helper always issues the
+// initial request, respects zero redirect limits, falls back to the default cap
+// for negative values, and validates redirect targets before following them.
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient) error {
 	currentURL := req.URI().String()
 	redirects := 0
@@ -318,7 +340,15 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 	}
 }
 
+// composeRedirectURL resolves a redirect target relative to the current request
+// URL while rejecting suspicious payloads (e.g. control characters) and
+// restricting schemes to HTTP/S so caller-provided Location headers cannot
+// trigger arbitrary transports.
 func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (string, error) {
+	if bytes.ContainsAny(location, "\r\n") {
+		return "", fasthttp.ErrorInvalidURI
+	}
+
 	uri := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(uri)
 
@@ -327,6 +357,10 @@ func composeRedirectURL(base string, location []byte, disablePathNormalizing boo
 	uri.DisablePathNormalizing = disablePathNormalizing
 
 	if scheme := uri.Scheme(); len(scheme) > 0 && !bytes.EqualFold(scheme, []byte("http")) && !bytes.EqualFold(scheme, []byte("https")) {
+		return "", fasthttp.ErrorInvalidURI
+	}
+
+	if len(uri.Scheme()) > 0 && len(uri.Host()) == 0 {
 		return "", fasthttp.ErrorInvalidURI
 	}
 
