@@ -2176,7 +2176,7 @@ resources while the server prepares the full response.
 :::caution
 This feature requires HTTP/2 or newer protocols. Early Hints (`103` responses) may be ignored by older HTTP/1.1 clients or cause them to misbehave.
 
-To enable HTTP/2 support for your Fiber application, see the [Reverse Proxy Configuration](../guide/reverse-proxy.md) guide.
+To use Early Hints, ensure your Fiber application is served over HTTP/2. You can enable HTTP/2 support by using a [reverse proxy](../guide/reverse-proxy.md) that supports HTTP/2.
 :::
 
 ```go title="Signature"

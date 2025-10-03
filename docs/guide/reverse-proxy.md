@@ -33,8 +33,8 @@ server {
 
     # Modern SSL configuration
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512;
-    ssl_prefer_server_ciphers off;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers on;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -63,7 +63,6 @@ server {
     ssl_certificate_key /path/to/your/private.key;
     
     # HTTP/3 specific settings
-    ssl_early_data on;
     ssl_protocols TLSv1.3;
     
     # Add Alt-Svc header for HTTP/3 discovery
@@ -107,7 +106,7 @@ services:
       - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
     ports:
       - "443:443"
-      - "8080:8080"
+      - "8080:8080" # Dashboard access - secure this in production!
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./letsencrypt:/letsencrypt
@@ -159,8 +158,6 @@ http:
   middlewares:
     security-headers:
       headers:
-        customRequestHeaders:
-          X-Forwarded-Proto: "https"
         customResponseHeaders:
           X-Frame-Options: "DENY"
           X-Content-Type-Options: "nosniff"
@@ -204,13 +201,8 @@ your-domain.com {
     # Enable HTTP/3 (experimental)
     protocols h1 h2 h3
     
-    # Custom headers for Fiber
-    reverse_proxy 127.0.0.1:3000 {
-        header_up Host {host}
-        header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
-    }
+    # Caddy automatically sets the required headers for Fiber (Host, X-Real-IP, etc.)
+    reverse_proxy 127.0.0.1:3000
     
     # Additional security headers
     header {
@@ -237,12 +229,14 @@ import (
 func main() {
     app := fiber.New(fiber.Config{
         // Trust proxy headers
-        EnableTrustedProxyCheck: true,
-        TrustedProxies: []string{
-            "127.0.0.1",
-            "10.0.0.0/8",
-            "172.16.0.0/12",
-            "192.168.0.0/16",
+        TrustProxy: true,
+        TrustProxyConfig: &fiber.TrustProxyConfig{
+            Proxies: []string{
+                "127.0.0.1",
+                "10.0.0.0/8",
+                "172.16.0.0/12",
+                "192.168.0.0/16",
+            },
         },
         ProxyHeader: fiber.HeaderXForwardedFor,
     })
