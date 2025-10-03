@@ -11,6 +11,9 @@ import (
 // defaultRedirectLimit mirrors fasthttp's default when callers supply a negative redirect cap.
 const defaultRedirectLimit = 16
 
+// httpClientTransport unifies the operations exposed by the Fiber client across
+// the fasthttp.Client, fasthttp.HostClient, and fasthttp.LBClient adapters so
+// helper logic can treat the concrete transports uniformly.
 type httpClientTransport interface {
 	Do(req *fasthttp.Request, resp *fasthttp.Response) error
 	DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error
@@ -153,9 +156,9 @@ func (l *lbClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Res
 	return l.client.DoDeadline(req, resp, deadline)
 }
 
-// DoRedirects proxies redirect handling through doRedirectsWithClient so
-// lbClientTransport matches fasthttp.Client semantics even though
-// fasthttp.LBClient does not publish a dedicated DoRedirects helper.
+// DoRedirects proxies redirect handling through doRedirectsWithClient so the
+// load-balanced transport mirrors fasthttp.Client semantics despite
+// fasthttp.LBClient not exposing DoRedirects directly.
 func (l *lbClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
 	return doRedirectsWithClient(req, resp, maxRedirects, l.client)
 }
@@ -195,15 +198,15 @@ func (l *lbClientTransport) Client() any {
 }
 
 // forEachHostClient applies fn to every host client reachable from the provided
-// load balancer, recursing into nested balancing clients.
+// load balancer by recursively following nested balancers and wrapper types.
 func forEachHostClient(lb *fasthttp.LBClient, fn func(*fasthttp.HostClient)) {
 	for _, c := range lb.Clients {
 		walkBalancingClient(c, fn)
 	}
 }
 
-// walkBalancingClient traverses nested balancing clients and invokes fn for
-// each host client encountered.
+// walkBalancingClient traverses balancing clients recursively, invoking fn for
+// every host client discovered beneath the current node.
 func walkBalancingClient(client any, fn func(*fasthttp.HostClient)) {
 	switch c := client.(type) {
 	case *fasthttp.HostClient:
@@ -220,8 +223,8 @@ func walkBalancingClient(client any, fn func(*fasthttp.HostClient)) {
 }
 
 // extractTLSConfig returns the first TLS configuration discovered while walking
-// the provided balancing clients, enabling cached reuse across nested load
-// balancers.
+// the provided balancing clients so cached settings flow through nested load
+// balancers without redundant traversal.
 func extractTLSConfig(clients []fasthttp.BalancingClient) *tls.Config {
 	var cfg *tls.Config
 	for _, c := range clients {
@@ -239,8 +242,7 @@ func extractTLSConfig(clients []fasthttp.BalancingClient) *tls.Config {
 }
 
 // extractDial returns the first dial function discovered while walking the
-// provided balancing clients, ensuring overrides propagate through nested
-// transports.
+// provided balancing clients so overrides propagate through nested transports.
 func extractDial(clients []fasthttp.BalancingClient) fasthttp.DialFunc {
 	var dial fasthttp.DialFunc
 	for _, c := range clients {
@@ -257,9 +259,9 @@ func extractDial(clients []fasthttp.BalancingClient) fasthttp.DialFunc {
 	return dial
 }
 
-// walkBalancingClientWithBreak traverses balancing clients and invokes fn for
-// each host client encountered until fn returns true, allowing callers to stop
-// the traversal early when a match is found.
+// walkBalancingClientWithBreak traverses balancing clients recursively and
+// invokes fn for each host client until fn signals success, enabling early
+// termination once a match is found.
 func walkBalancingClientWithBreak(client any, fn func(*fasthttp.HostClient) bool) bool {
 	switch c := client.(type) {
 	case *fasthttp.HostClient:
@@ -280,8 +282,9 @@ func walkBalancingClientWithBreak(client any, fn func(*fasthttp.HostClient) bool
 	return false
 }
 
-// redirectClient describes the minimal surface needed by doRedirectsWithClient to
-// issue HTTP requests while preserving fasthttp redirect semantics.
+// redirectClient describes the minimal Do-capable surface needed by
+// doRedirectsWithClient so transports that do not expose DoRedirects (such as
+// fasthttp.LBClient) can participate in redirect handling.
 type redirectClient interface {
 	Do(req *fasthttp.Request, resp *fasthttp.Response) error
 }
@@ -345,8 +348,10 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 // restricting schemes to HTTP/S so caller-provided Location headers cannot
 // trigger arbitrary transports.
 func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (string, error) {
-	if bytes.ContainsAny(location, "\r\n") {
-		return "", fasthttp.ErrorInvalidURI
+	for _, b := range location {
+		if b < 0x20 || b == 0x7f {
+			return "", fasthttp.ErrorInvalidURI
+		}
 	}
 
 	uri := fasthttp.AcquireURI()

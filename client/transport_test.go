@@ -341,6 +341,13 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.SetRequestURI("http://example.com/start")
 
+	client = &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusFound), location: ptrString("/bad\x00path")}}}
+	require.ErrorIs(t, doRedirectsWithClient(req, resp, 1, client), fasthttp.ErrorInvalidURI)
+
+	resp.Reset()
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.SetRequestURI("http://example.com/start")
+
 	client = &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusMovedPermanently), location: ptrString("/loop")}, {status: ptrInt(fasthttp.StatusFound), location: ptrString("/final")}, {status: ptrInt(fasthttp.StatusOK)}}}
 	require.ErrorIs(t, doRedirectsWithClient(req, resp, 1, client), fasthttp.ErrTooManyRedirects)
 }
