@@ -79,7 +79,7 @@ For more details, see the official documentation:
 - [Nginx QUIC / HTTP/3](https://nginx.org/en/docs/quic.html)
 - [Traefik HTTP/3](https://doc.traefik.io/traefik/reference/install-configuration/entrypoints/#http3)
 
-Few of the available Reverse Proxies
+Popular Reverse Proxies
 - [Nginx](https://nginx.org/)
 - [Traefik](https://traefik.io/)
-- [HA PROXY](https://www.haproxy.com/documentation/)
+- [HAProxy](https://www.haproxy.org/)
