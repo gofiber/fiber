@@ -81,5 +81,5 @@ For more details, see the official documentation:
 
 Few of the available Reverse Proxies
 - [Nginx](https://nginx.org/)
-- [Traefik](https://traefik.io/?gad_campaignid=20537010384)
+- [Traefik](https://traefik.io/)
 - [HA PROXY](https://www.haproxy.com/documentation/)
