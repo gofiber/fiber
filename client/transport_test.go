@@ -294,21 +294,45 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 	defer fasthttp.ReleaseResponse(resp)
 
 	req.SetRequestURI("http://example.com/start")
-
-	client := &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusMovedPermanently), location: ptrString("/next")}}}
-	require.ErrorIs(t, doRedirectsWithClient(req, resp, -1, client), fasthttp.ErrTooManyRedirects)
-
 	req.Header.SetMethod(fasthttp.MethodPost)
-	req.SetRequestURI("http://example.com/start")
-	client = &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusFound)}}}
-	require.ErrorIs(t, doRedirectsWithClient(req, resp, 1, client), fasthttp.ErrMissingLocation)
-
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.SetRequestURI("http://example.com/start")
 	req.SetBodyString("payload")
-	client = &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusMovedPermanently), location: ptrString("/redirect")}, {status: ptrInt(fasthttp.StatusOK)}}}
-	require.NoError(t, doRedirectsWithClient(req, resp, 1, client))
+
+	client := &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusMovedPermanently), location: ptrString("/redirect")}, {status: ptrInt(fasthttp.StatusOK)}}}
+	require.NoError(t, doRedirectsWithClient(req, resp, -1, client))
 	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
 	require.Equal(t, "http://example.com/redirect", req.URI().String())
 	require.Empty(t, req.Body())
+
+	resp.Reset()
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.SetRequestURI("http://example.com/again")
+	req.SetBodyString("payload")
+
+	singleCall := &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusFound), location: ptrString("/ignored")}}}
+	require.NoError(t, doRedirectsWithClient(req, resp, 0, singleCall))
+	require.Equal(t, fasthttp.StatusFound, resp.StatusCode())
+	require.Equal(t, fasthttp.MethodPost, string(req.Header.Method()))
+	require.Equal(t, "http://example.com/again", req.URI().String())
+	require.Equal(t, "payload", string(req.Body()))
+
+	resp.Reset()
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.SetRequestURI("http://example.com/start")
+
+	client = &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusFound)}}}
+	require.ErrorIs(t, doRedirectsWithClient(req, resp, 1, client), fasthttp.ErrMissingLocation)
+
+	resp.Reset()
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.SetRequestURI("http://example.com/start")
+
+	client = &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusMovedPermanently), location: ptrString("ftp://example.com")}}}
+	require.ErrorIs(t, doRedirectsWithClient(req, resp, 1, client), fasthttp.ErrorInvalidURI)
+
+	resp.Reset()
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.SetRequestURI("http://example.com/start")
+
+	client = &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusMovedPermanently), location: ptrString("/loop")}, {status: ptrInt(fasthttp.StatusFound), location: ptrString("/final")}, {status: ptrInt(fasthttp.StatusOK)}}}
+	require.ErrorIs(t, doRedirectsWithClient(req, resp, 1, client), fasthttp.ErrTooManyRedirects)
 }

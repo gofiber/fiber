@@ -1,11 +1,15 @@
 package client
 
 import (
+	"bytes"
 	"crypto/tls"
 	"time"
 
 	"github.com/valyala/fasthttp"
 )
+
+// defaultRedirectLimit is applied when callers supply a negative redirect cap.
+const defaultRedirectLimit = 10
 
 type httpClientTransport interface {
 	Do(req *fasthttp.Request, resp *fasthttp.Response) error
@@ -266,10 +270,16 @@ type redirectClient interface {
 
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient) error {
 	if maxRedirects < 0 {
-		maxRedirects = 0
+		maxRedirects = defaultRedirectLimit
 	}
 
 	currentURL := req.URI().String()
+
+	if maxRedirects == 0 {
+		req.SetRequestURI(currentURL)
+		return client.Do(req, resp)
+	}
+
 	redirects := 0
 
 	for {
@@ -294,21 +304,30 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 			return fasthttp.ErrMissingLocation
 		}
 
-		currentURL = composeRedirectURL(currentURL, location, req.DisableRedirectPathNormalizing)
+		nextURL, err := composeRedirectURL(currentURL, location, req.DisableRedirectPathNormalizing)
+		if err != nil {
+			return err
+		}
+		currentURL = nextURL
 
 		if req.Header.IsPost() && (statusCode == fasthttp.StatusMovedPermanently || statusCode == fasthttp.StatusFound) {
 			req.Header.SetMethod(fasthttp.MethodGet)
-			req.ResetBody()
+			req.SetBody(nil)
 		}
 	}
 }
 
-func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) string {
+func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (string, error) {
 	uri := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(uri)
+
 	uri.Update(base)
 	uri.UpdateBytes(location)
 	uri.DisablePathNormalizing = disablePathNormalizing
-	redirectURL := uri.String()
-	fasthttp.ReleaseURI(uri)
-	return redirectURL
+
+	if scheme := uri.Scheme(); len(scheme) > 0 && !bytes.EqualFold(scheme, []byte("http")) && !bytes.EqualFold(scheme, []byte("https")) {
+		return "", fasthttp.ErrorInvalidURI
+	}
+
+	return uri.String(), nil
 }
