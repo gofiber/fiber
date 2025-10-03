@@ -766,7 +766,7 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 		})
 
 		// force change to IdleTimeout
-		store.Config.IdleTimeout = 10 * time.Second
+		store.IdleTimeout = 10 * time.Second
 
 		// fiber instance
 		app := fiber.New()
@@ -895,7 +895,7 @@ func Test_Session_Destroy(t *testing.T) {
 
 		err = sess.Destroy()
 		require.NoError(t, err)
-		require.Equal(t, "", string(ctx.Response().Header.Peek("session_id")))
+		require.Empty(t, string(ctx.Response().Header.Peek("session_id")))
 	})
 }
 
@@ -1030,8 +1030,8 @@ func Test_Session_Cookie_SameSite(t *testing.T) {
 			cookie := string(ctx.Response().Header.PeekCookie("session_id"))
 			// The order of attributes in the cookie string is not guaranteed.
 			// Instead of checking for a single substring, we check for the presence of each part.
-			parts := strings.Split(tc.expectedInHeader, "; ")
-			for _, part := range parts {
+			parts := strings.SplitSeq(tc.expectedInHeader, "; ")
+			for part := range parts {
 				require.Contains(t, cookie, part)
 			}
 
@@ -1179,8 +1179,8 @@ func Test_Session_Reset(t *testing.T) {
 		acquiredSession.Release()
 
 		// Check that the session id is not in the header or cookie anymore
-		require.Equal(t, "", string(ctx.Response().Header.Peek("session_id")))
-		require.Equal(t, "", string(ctx.Request().Header.Peek("session_id")))
+		require.Empty(t, string(ctx.Response().Header.Peek("session_id")))
+		require.Empty(t, string(ctx.Request().Header.Peek("session_id")))
 
 		app.ReleaseCtx(ctx)
 	})
@@ -1421,8 +1421,7 @@ func Test_Session_Concurrency(t *testing.T) {
 
 	// Start numGoroutines goroutines
 	for range numGoroutines {
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			defer wg.Done()
 
 			localCtx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1506,7 +1505,7 @@ func Test_Session_Concurrency(t *testing.T) {
 				errChan <- err
 				return
 			}
-		}()
+		})
 	}
 
 	wg.Wait()      // Wait for all goroutines to finish

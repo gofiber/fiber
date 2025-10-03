@@ -234,7 +234,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 	app.Use(HTTPMiddleware(nethttpMW))
 	app.Post("/", func(c fiber.Ctx) error {
 		// RETURNING CURRENT COOKIES TO RESPONSE
-		var cookies []string = strings.Split(c.Get(cookieHeader), "; ")
+		cookies := strings.Split(c.Get(cookieHeader), "; ")
 		for _, cookie := range cookies {
 			c.Set(setCookieHeader, cookie)
 		}

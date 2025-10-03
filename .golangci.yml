@@ -39,7 +39,7 @@ linters:
     - nakedret
     - nilerr
     - nilnil
-    - noctx
+    # - noctx # TODO: enable this once the codebase is migrated to context aware APIs
     - nolintlint
     - nonamedreturns
     - nosprintfhostport
@@ -223,20 +223,20 @@ linters:
   exclusions:
     generated: lax
     rules:
-      - linters:
+      - text: (?i)do not define dynamic errors, use wrapped static errors instead*
+        linters:
           - err113
-        text: (?i)do not define dynamic errors, use wrapped static errors instead*
-      - linters:
+      - path: log/.*\.go
+        linters:
           - depguard
-        path: log/.*\.go
-      - linters:
+      - path: _test\.go
+        linters:
           - bodyclose
           - err113
-        path: _test\.go
-      - linters:
+      - source: (?i)fmt.Fprintf?
+        linters:
           - errcheck
           - revive
-        source: (?i)fmt.Fprintf?
     paths:
       - _msgp\.go
       - _msgp_test\.go

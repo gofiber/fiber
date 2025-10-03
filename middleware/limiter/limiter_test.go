@@ -234,17 +234,15 @@ func Test_Limiter_With_Max_Func_With_Zero(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for i := 0; i <= 4; i++ {
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
+		wg.Go(func() {
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 			body, err := io.ReadAll(resp.Body)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, "Hello tester!", string(body))
-		}(&wg)
+		})
 	}
 
 	wg.Wait()
@@ -275,17 +273,15 @@ func Test_Limiter_With_Max_Func(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for i := 0; i <= maxRequests-1; i++ {
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
+		wg.Go(func() {
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 			body, err := io.ReadAll(resp.Body)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, "Hello tester!", string(body))
-		}(&wg)
+		})
 	}
 
 	wg.Wait()
@@ -319,17 +315,15 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for i := 0; i <= 49; i++ {
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
+		wg.Go(func() {
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 			body, err := io.ReadAll(resp.Body)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, "Hello tester!", string(body))
-		}(&wg)
+		})
 	}
 
 	wg.Wait()
@@ -362,17 +356,15 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for i := 0; i <= 49; i++ {
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
+		wg.Go(func() {
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 			body, err := io.ReadAll(resp.Body)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, "Hello tester!", string(body))
-		}(&wg)
+		})
 	}
 
 	wg.Wait()
@@ -981,10 +973,10 @@ func Test_Limiter_Headers(t *testing.T) {
 
 	require.Equal(t, "50", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
 	if v := string(fctx.Response.Header.Peek("X-RateLimit-Remaining")); v == "" {
-		t.Errorf("The X-RateLimit-Remaining header is not set correctly - value is an empty string.")
+		t.Error("The X-RateLimit-Remaining header is not set correctly - value is an empty string.")
 	}
-	if v := string(fctx.Response.Header.Peek("X-RateLimit-Reset")); !(v == "1" || v == "2") {
-		t.Errorf("The X-RateLimit-Reset header is not set correctly - value is out of bounds.")
+	if v := string(fctx.Response.Header.Peek("X-RateLimit-Reset")); (v != "1") && (v != "2") {
+		t.Error("The X-RateLimit-Reset header is not set correctly - value is out of bounds.")
 	}
 }
 
@@ -1011,9 +1003,9 @@ func Test_Limiter_Disable_Headers(t *testing.T) {
 
 	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
 	require.Equal(t, "Hello tester!", string(fctx.Response.Body()))
-	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
-	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Remaining")))
-	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Reset")))
+	require.Empty(t, string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
+	require.Empty(t, string(fctx.Response.Header.Peek("X-RateLimit-Remaining")))
+	require.Empty(t, string(fctx.Response.Header.Peek("X-RateLimit-Reset")))
 
 	// second request should hit the limit and return 429 without headers
 	fctx2 := &fasthttp.RequestCtx{}
@@ -1023,10 +1015,10 @@ func Test_Limiter_Disable_Headers(t *testing.T) {
 	app.Handler()(fctx2)
 
 	require.Equal(t, fiber.StatusTooManyRequests, fctx2.Response.StatusCode())
-	require.Equal(t, "", string(fctx2.Response.Header.Peek(fiber.HeaderRetryAfter)))
-	require.Equal(t, "", string(fctx2.Response.Header.Peek("X-RateLimit-Limit")))
-	require.Equal(t, "", string(fctx2.Response.Header.Peek("X-RateLimit-Remaining")))
-	require.Equal(t, "", string(fctx2.Response.Header.Peek("X-RateLimit-Reset")))
+	require.Empty(t, string(fctx2.Response.Header.Peek(fiber.HeaderRetryAfter)))
+	require.Empty(t, string(fctx2.Response.Header.Peek("X-RateLimit-Limit")))
+	require.Empty(t, string(fctx2.Response.Header.Peek("X-RateLimit-Remaining")))
+	require.Empty(t, string(fctx2.Response.Header.Peek("X-RateLimit-Reset")))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Limiter -benchmem -count=4

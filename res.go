@@ -324,7 +324,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 
 	r.Vary(HeaderAccept)
 
-	if r.c.DefaultReq.Get(HeaderAccept) == "" {
+	if r.c.Get(HeaderAccept) == "" {
 		r.c.fasthttp.Response.Header.SetContentType(handlers[0].MediaType)
 		return handlers[0].Handler(r.c)
 	}
@@ -342,7 +342,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		}
 		types = append(types, h.MediaType)
 	}
-	accept := r.c.DefaultReq.Accepts(types...)
+	accept := r.c.Accepts(types...)
 
 	if accept == "" {
 		if defaultHandler == nil {
@@ -368,7 +368,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
 	// Get accepted content type
-	accept := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor")
+	accept := r.c.Accepts("html", "json", "txt", "xml", "msgpack", "cbor")
 
 	// Set accepted content type
 	r.Type(accept)

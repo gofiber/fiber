@@ -28,7 +28,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		defer app.ReleaseCtx(ctx)
 
 		// set cookie
-		ctx.Request().Header.SetCookie(store.Config.Extractor.Key, expectedID)
+		ctx.Request().Header.SetCookie(store.Extractor.Key, expectedID)
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -44,7 +44,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		defer app.ReleaseCtx(ctx)
 
 		// set header
-		ctx.Request().Header.Set(store.Config.Extractor.Key, expectedID)
+		ctx.Request().Header.Set(store.Extractor.Key, expectedID)
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -60,7 +60,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		defer app.ReleaseCtx(ctx)
 
 		// set url parameter
-		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.Config.Extractor.Key, expectedID))
+		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.Extractor.Key, expectedID))
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -84,7 +84,7 @@ func Test_Store_Get(t *testing.T) {
 		defer app.ReleaseCtx(ctx)
 
 		// set cookie
-		ctx.Request().Header.SetCookie(store.Config.Extractor.Key, unexpectedID)
+		ctx.Request().Header.SetCookie(store.Extractor.Key, unexpectedID)
 
 		acquiredSession, err := store.Get(ctx)
 		require.NoError(t, err)

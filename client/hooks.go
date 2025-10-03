@@ -230,8 +230,9 @@ func parserRequestBody(c *Client, req *Request) error {
 	case noBody:
 		// No body to set.
 		return nil
+	default:
+		return ErrBodyTypeNotSupported
 	}
-
 	return nil
 }
 

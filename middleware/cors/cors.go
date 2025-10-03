@@ -45,12 +45,9 @@ func New(config ...Config) fiber.Handler {
 	// defined in the 'AllowOrigins' configuration.
 	allowOrigins := []string{}
 	allowSOrigins := []subdomain{}
-	allowAllOrigins := false
 
 	// Validate and normalize static AllowOrigins
-	if len(cfg.AllowOrigins) == 0 && cfg.AllowOriginsFunc == nil {
-		allowAllOrigins = true
-	}
+	allowAllOrigins := len(cfg.AllowOrigins) == 0 && cfg.AllowOriginsFunc == nil
 	for _, origin := range cfg.AllowOrigins {
 		if origin == "*" {
 			allowAllOrigins = true

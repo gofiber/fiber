@@ -456,7 +456,7 @@ func Test_Request_Cookie(t *testing.T) {
 		require.Equal(t, "foo", req.Cookie("bar"))
 
 		req.DelCookies("foo")
-		require.Equal(t, "", req.Cookie("foo"))
+		require.Empty(t, req.Cookie("foo"))
 		require.Equal(t, "foo", req.Cookie("bar"))
 	})
 }
@@ -560,7 +560,7 @@ func Test_Request_PathParam(t *testing.T) {
 		require.Equal(t, "foo", req.PathParam("bar"))
 
 		req.DelPathParams("foo")
-		require.Equal(t, "", req.PathParam("foo"))
+		require.Empty(t, req.PathParam("foo"))
 		require.Equal(t, "foo", req.PathParam("bar"))
 	})
 
@@ -575,8 +575,8 @@ func Test_Request_PathParam(t *testing.T) {
 		require.Equal(t, "foo", req.PathParam("bar"))
 
 		req.ResetPathParams()
-		require.Equal(t, "", req.PathParam("foo"))
-		require.Equal(t, "", req.PathParam("bar"))
+		require.Empty(t, req.PathParam("foo"))
+		require.Empty(t, req.PathParam("bar"))
 	})
 }
 
@@ -922,7 +922,7 @@ func Test_Request_Head(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "", resp.String())
+		require.Empty(t, resp.String())
 		resp.Close()
 	}
 }
@@ -976,7 +976,7 @@ func Test_Request_Delete(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-		require.Equal(t, "", resp.String())
+		require.Empty(t, resp.String())
 
 		resp.Close()
 	}
@@ -1622,7 +1622,7 @@ func Test_SetValWithStruct(t *testing.T) {
 			TIntSlice: []int{0, 1, 2},
 		})
 
-		require.Equal(t, "", string(p.Peek("unexport")))
+		require.Empty(t, string(p.Peek("unexport")))
 		require.Equal(t, []byte("5"), p.Peek("TInt"))
 		require.Equal(t, []byte("5"), p.Peek("TUint"))
 		require.Equal(t, []byte("string"), p.Peek("TString"))
@@ -1776,7 +1776,7 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			})
 		}
 
-		require.Equal(b, "", string(p.Peek("unexport")))
+		require.Empty(b, string(p.Peek("unexport")))
 		require.Equal(b, []byte("5"), p.Peek("TInt"))
 		require.Equal(b, []byte("5"), p.Peek("TUint"))
 		require.Equal(b, []byte("string"), p.Peek("TString"))

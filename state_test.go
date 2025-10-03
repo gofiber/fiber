@@ -51,12 +51,12 @@ func TestState_GetString(t *testing.T) {
 	st.Set("num", 123)
 	s, ok = st.GetString("num")
 	require.False(t, ok)
-	require.Equal(t, "", s)
+	require.Empty(t, s)
 
 	// missing key should return false
 	s, ok = st.GetString("missing")
 	require.False(t, ok)
-	require.Equal(t, "", s)
+	require.Empty(t, s)
 }
 
 func TestState_GetInt(t *testing.T) {

@@ -90,7 +90,7 @@ func Test_Static_Direct(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMEApplicationJSON, resp.Header.Get("Content-Type"))
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -134,7 +134,7 @@ func Test_Static_Custom_CacheControl(t *testing.T) {
 
 	normalResp, normalErr := app.Test(httptest.NewRequest(fiber.MethodGet, "/config.yml", nil))
 	require.NoError(t, normalErr, "app.Test(req)")
-	require.Equal(t, "", normalResp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.Empty(t, normalResp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
 func Test_Static_Disable_Cache(t *testing.T) {
@@ -164,7 +164,7 @@ func Test_Static_Disable_Cache(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test.txt", nil))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -174,7 +174,7 @@ func Test_Static_Disable_Cache(t *testing.T) {
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test.txt", nil))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -792,7 +792,7 @@ func Test_Static_Compress(t *testing.T) {
 
 			require.NoError(t, err, "app.Test(req)")
 			require.Equal(t, 200, resp.StatusCode, "Status code")
-			require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+			require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 			require.Equal(t, "46", resp.Header.Get(fiber.HeaderContentLength))
 
 			// request compressible file, ContentLength will change
@@ -823,7 +823,7 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "299", resp.Header.Get(fiber.HeaderContentLength))
 
 	// request compressible file with different encodings

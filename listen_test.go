@@ -659,16 +659,14 @@ func captureOutput(f func()) string {
 	log.SetOutput(writer)
 	out := make(chan string)
 	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		var buf bytes.Buffer
-		wg.Done()
 		_, copyErr := io.Copy(&buf, reader)
 		if copyErr != nil {
 			panic(copyErr)
 		}
 		out <- buf.String()
-	}()
+	})
 	wg.Wait()
 	f()
 	err = writer.Close()

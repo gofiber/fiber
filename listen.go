@@ -28,10 +28,10 @@ import (
 
 // Figlet text to show Fiber ASCII art on startup message
 var figletFiberText = `
-    _______ __             
+    _______ __
    / ____(_) /_  ___  _____
   / /_  / / __ \/ _ \/ ___/
- / __/ / / /_/ /  __/ /    
+ / __/ / / /_/ /  __/ /
 /_/   /_/_.___/\___/_/          %s`
 
 const (
@@ -298,7 +298,8 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 	if tlsConfig != nil {
 		listener, err = tls.Listen(cfg.ListenerNetwork, addr, tlsConfig)
 	} else {
-		listener, err = net.Listen(cfg.ListenerNetwork, addr)
+		lc := net.ListenConfig{}
+		listener, err = lc.Listen(cfg.GracefulContext, cfg.ListenerNetwork, addr)
 	}
 
 	// Check for error before using the listener

@@ -386,7 +386,7 @@ func Test_parseToMap_Extended(t *testing.T) {
 	m := make(map[string]string)
 	err := parseToMap(m, data)
 	require.NoError(t, err)
-	require.Equal(t, "", m["empty"])
+	require.Empty(t, m["empty"])
 
 	m2 := make(map[string][]int)
 	err = parseToMap(m2, data)
