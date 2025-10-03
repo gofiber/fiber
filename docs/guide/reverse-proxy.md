@@ -10,9 +10,7 @@ sidebar_position: 4
 ---
 
 # Reverse Proxies
-
 ## Enabling HTTP/2
-
 Some features in Fiber, such as SendEarlyHints, require HTTP/2 or newer. If your app is served directly over HTTP/1.1, certain features may be ignored or not function as expected.
 
 To enable HTTP/2 in production, run Fiber behind a reverse proxy that upgrades connections. Popular choices include Nginx and Traefik.
@@ -67,8 +65,7 @@ http:
 With this configuration, Traefik terminates TLS and serves your app over HTTP/2.
 </details>
 
-### HTTP/3 (QUIC) Support
-
+## HTTP/3 (QUIC) Support
 Early Hints (103 responses) are officially part of HTTP/2 and newer. Many reverse proxies also support HTTP/3 (QUIC):
 
 - **Nginx**: Requires a recent build with QUIC/HTTP3 patches.
