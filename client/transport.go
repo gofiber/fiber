@@ -208,18 +208,10 @@ func forEachHostClient(lb *fasthttp.LBClient, fn func(*fasthttp.HostClient)) {
 // walkBalancingClient traverses balancing clients recursively, invoking fn for
 // every host client discovered beneath the current node.
 func walkBalancingClient(client any, fn func(*fasthttp.HostClient)) {
-	switch c := client.(type) {
-	case *fasthttp.HostClient:
-		fn(c)
-	case *fasthttp.LBClient:
-		for _, nestedClient := range c.Clients {
-			walkBalancingClient(nestedClient, fn)
-		}
-	case interface{ LBClient() *fasthttp.LBClient }:
-		if nested := c.LBClient(); nested != nil {
-			walkBalancingClient(nested, fn)
-		}
-	}
+	walkBalancingClientWithBreak(client, func(hc *fasthttp.HostClient) bool {
+		fn(hc)
+		return false
+	})
 }
 
 // extractTLSConfig returns the first TLS configuration discovered while walking
@@ -339,6 +331,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 			req.Header.SetMethod(fasthttp.MethodGet)
 			req.SetBody(nil)
 			req.Header.Del(fasthttp.HeaderContentType)
+			req.Header.Del(fasthttp.HeaderContentLength)
 		}
 	}
 }
