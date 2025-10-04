@@ -22,7 +22,6 @@ Reverse proxies can handle:
 
 Some Fiber features (like [`SendEarlyHints`](https://docs.gofiber.io/api/ctx#sendearlyhints)) require **HTTP/2 or newer**, which is easiest to enable using a reverse proxy.  
 
-See the full guide here: [🛡️ Reverse Proxy](https://docs.gofiber.io/guide/reverse-proxy)
 
 ### Popular Reverse Proxies:
 
