@@ -1,10 +1,10 @@
 ---
-id: 🔄 Reverse Proxy Configuration
+id: reverse-proxy
 title: 🔄 Reverse Proxy Configuration
 description: >-
   Learn how to set up reverse proxies like Nginx or Traefik to enable modern
-  HTTP capabilities in your Fiber application, including HTTP/2 and the
-  experimental HTTP/3 (QUIC) support. This guide also covers basic reverse
+  HTTP capabilities in your Fiber application, including HTTP/2 and 
+  HTTP/3 (QUIC) support. This guide also covers basic reverse
   proxy configuration and links to external documentation.
 sidebar_position: 4
 ---
@@ -30,8 +30,6 @@ Some Fiber features (like [`SendEarlyHints`](https://docs.gofiber.io/api/ctx#sen
 - [Caddy](https://caddyserver.com/docs/quick-starts/reverse-proxy)
 
 ### Enabling HTTP/2
-
-Some features in Fiber, such as SendEarlyHints, require HTTP/2 or newer. If your app is served directly over HTTP/1.1, certain features may be ignored or not function as expected.
 
 To enable HTTP/2 in production, run Fiber behind a reverse proxy that upgrades connections. Popular choices include Nginx and Traefik.
 
@@ -91,8 +89,8 @@ With this configuration, Traefik terminates TLS and serves your app over HTTP/2.
 
 Early Hints (103 responses) are defined for HTTP and can be delivered over HTTP/1.1 and HTTP/2/3. In practice, browsers process 103 most reliably over HTTP/2/3. Many reverse proxies also support HTTP/3 (QUIC):
 
-- **Nginx**: Requires a recent build with QUIC/HTTP/3 patches.
-- **Traefik**: Supports HTTP/3 via its entryPoint configuration.
+- **Nginx**
+- **Traefik**
 
 Enabling HTTP/3 is optional but can provide lower latency and improved performance for clients that support it. If you enable HTTP/3, your Early Hints responses will still work as expected.
 For more details, see the official documentation:
