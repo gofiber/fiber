@@ -298,8 +298,7 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 	if tlsConfig != nil {
 		listener, err = tls.Listen(cfg.ListenerNetwork, addr, tlsConfig)
 	} else {
-		lc := net.ListenConfig{}
-		listener, err = lc.Listen(cfg.GracefulContext, cfg.ListenerNetwork, addr)
+		listener, err = net.Listen(cfg.ListenerNetwork, addr)
 	}
 
 	// Check for error before using the listener
