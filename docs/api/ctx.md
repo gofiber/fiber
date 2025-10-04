@@ -2174,7 +2174,7 @@ before the final response. This allows the browser to start preloading
 resources while the server prepares the full response.
 
 :::caution
-This feature requires HTTP/2 or newer. Some legacy HTTP/1.1 clients may not support sendEarlyHints. 
+This feature requires HTTP/2 or newer. Some legacy HTTP/1.1 clients may not support sendEarlyHints.
 Early Hints (`103` responses) are supported in HTTP/2 and newer. Older HTTP/1.1 clients may ignore these interim responses or misbehave when receiving them.
 See [Enabling HTTP/2](../guide/reverse-proxy#enabling-http2) for instructions on how to use a reverse proxy (e.g. Nginx or Traefik) to enable HTTP/2 support.
 :::
