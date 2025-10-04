@@ -26,12 +26,12 @@ Some Fiber features (like [`SendEarlyHints`](https://docs.gofiber.io/api/ctx#sen
 
 - [Nginx](https://nginx.org/)
 - [Traefik](https://traefik.io/)
-- [HA PROXY](https://www.haproxy.com/documentation/)
-- [Caddy](https://caddyserver.com/docs/quick-starts/reverse-proxy)
+- [HA PROXY](https://www.haproxy.com/)
+- [Caddy](https://caddyserver.com/)
 
 ### Enabling HTTP/2
 
-To enable HTTP/2 in production, run Fiber behind a reverse proxy that upgrades connections. Popular choices include Nginx and Traefik.
+Popular choices include Nginx and Traefik.
 
 <details>
 <summary>Nginx Example</summary>
@@ -95,6 +95,5 @@ Early Hints (103 responses) are defined for HTTP and can be delivered over HTTP/
 Enabling HTTP/3 is optional but can provide lower latency and improved performance for clients that support it. If you enable HTTP/3, your Early Hints responses will still work as expected.
 For more details, see the official documentation:
 
-- [Nginx HTTP/2 Module](https://nginx.org/en/docs/http/ngx_http_v2_module.html)
 - [Nginx QUIC / HTTP/3](https://nginx.org/en/docs/quic.html)
 - [Traefik HTTP/3](https://doc.traefik.io/traefik/reference/install-configuration/entrypoints/#http3)
