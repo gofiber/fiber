@@ -307,7 +307,7 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
 	require.Equal(t, "http://example.com/redirect", req.URI().String())
 	require.Empty(t, req.Body())
-	require.Len(t, req.Header.ContentType(), 0)
+	require.Empty(t, req.Header.ContentType())
 
 	resp.Reset()
 	req.Header.SetMethod(fasthttp.MethodPost)
@@ -319,7 +319,7 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
 	require.Equal(t, "http://example.com/see-other", req.URI().String())
 	require.Empty(t, req.Body())
-	require.Len(t, req.Header.ContentType(), 0)
+	require.Empty(t, req.Header.ContentType())
 
 	resp.Reset()
 	req.Header.SetMethod(fasthttp.MethodPost)
