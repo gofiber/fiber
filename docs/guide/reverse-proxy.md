@@ -11,6 +11,26 @@ sidebar_position: 4
 
 ## Reverse Proxies
 
+Running Fiber behind a reverse proxy is a common production setup.  
+Reverse proxies can handle:
+
+- **HTTPS/TLS termination** (offloading SSL certificates)
+- **Protocol upgrades** (HTTP/2, HTTP/3 support)
+- **Request routing & load balancing**
+- **Caching & compression**
+- **Security features** (rate limiting, WAF, DDoS mitigation)
+
+Some Fiber features (like [`SendEarlyHints`](https://docs.gofiber.io/api/ctx#sendearlyhints)) require **HTTP/2 or newer**, which is easiest to enable using a reverse proxy.  
+
+See the full guide here: [🛡️ Reverse Proxy](https://docs.gofiber.io/guide/reverse-proxy)
+
+### Popular Reverse Proxies:
+
+- [Nginx](https://nginx.org/)
+- [Traefik](https://traefik.io/)
+- [HA PROXY](https://www.haproxy.com/documentation/)
+- [Caddy](https://caddyserver.com/docs/quick-starts/reverse-proxy)
+
 ### Enabling HTTP/2
 
 Some features in Fiber, such as SendEarlyHints, require HTTP/2 or newer. If your app is served directly over HTTP/1.1, certain features may be ignored or not function as expected.
@@ -22,7 +42,8 @@ To enable HTTP/2 in production, run Fiber behind a reverse proxy that upgrades c
 
 ```nginx title="nginx.conf"
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate     /etc/ssl/certs/example.crt;
@@ -81,10 +102,3 @@ For more details, see the official documentation:
 - [Nginx HTTP/2 Module](https://nginx.org/en/docs/http/ngx_http_v2_module.html)
 - [Nginx QUIC / HTTP/3](https://nginx.org/en/docs/quic.html)
 - [Traefik HTTP/3](https://doc.traefik.io/traefik/reference/install-configuration/entrypoints/#http3)
-
-Popular Reverse Proxies:
-
-- [Nginx](https://nginx.org/)
-- [Traefik](https://traefik.io/)
-- [HA PROXY](https://www.haproxy.com/documentation/)
-- [Caddy](https://caddyserver.com/docs/quick-starts/reverse-proxy)
