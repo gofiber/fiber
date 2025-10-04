@@ -399,6 +399,38 @@ To enable the routing changes above we had to slightly adjust the signature of t
 
 ### Test Config
 
+## 🔬 Parallel Benchmarks
+
+To better reflect real-world workloads where multiple requests are processed concurrently, Fiber now includes parallel benchmark variants for critical hot paths in the router and route matching.
+
+What’s included:
+
+- Parallel versions of router handler benchmarks (e.g., method-not-allowed, not-found, handler, chaining, case sensitivity, strict routing, unescaping)
+- Parallel route matching benchmarks (normal, star, and root)
+
+Why this matters:
+
+- Parallel benchmarks surface contention and mutex costs that are not visible in purely sequential runs.
+- They help reviewers catch performance regressions related to synchronization, allocations, and cache-line sharing.
+
+How to run (examples):
+
+```bash
+# Run all parallel benchmarks in the module
+go test -run ^$ -bench ^Benchmark_.*_Parallel$ -benchmem -count=2
+
+# Run a specific parallel router benchmark
+go test -run ^$ -bench ^Benchmark_Router_Handler_Parallel$ -benchmem -count=2
+
+# Optional: explore CPU scaling
+go test -run ^$ -bench ^Benchmark_.*_Parallel$ -benchmem -count=2 -cpu=1,2,4,8
+```
+
+Contributor tip:
+
+- When touching hot paths, consider adding or updating the corresponding parallel benchmark with `b.RunParallel`.
+- Ensure any per-iteration state (like request contexts or parameter buffers) is created inside the parallel closure to avoid data races.
+
 The `app.Test()` method now allows users to customize their test configurations:
 
 <details>
