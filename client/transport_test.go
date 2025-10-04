@@ -106,10 +106,6 @@ func TestStandardClientTransportCoverage(t *testing.T) {
 	require.True(t, ok)
 	require.Same(t, client, underlying)
 
-	transport.Reset()
-	resetClient, ok := transport.Client().(*fasthttp.Client)
-	require.True(t, ok)
-	require.NotSame(t, client, resetClient)
 	require.Equal(t, int32(3), dialCount.Load())
 }
 
@@ -123,10 +119,6 @@ func TestHostClientTransportClientAccessor(t *testing.T) {
 	require.True(t, ok)
 	require.Same(t, host, current)
 
-	transport.Reset()
-	afterReset, ok := transport.Client().(*fasthttp.HostClient)
-	require.True(t, ok)
-	require.NotSame(t, host, afterReset)
 }
 
 func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
@@ -190,12 +182,6 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, overrideDialCalled.Load())
 
-	transport.Reset()
-	require.Nil(t, transport.tlsConfig)
-	require.Nil(t, transport.dial)
-	resetClient, ok := transport.Client().(*fasthttp.LBClient)
-	require.True(t, ok)
-	require.NotSame(t, lb, resetClient)
 }
 
 func TestExtractTLSConfigVariations(t *testing.T) {

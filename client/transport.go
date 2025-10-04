@@ -23,7 +23,6 @@ type httpClientTransport interface {
 	TLSConfig() *tls.Config
 	SetTLSConfig(config *tls.Config)
 	SetDial(dial fasthttp.DialFunc)
-	Reset()
 	Client() any
 }
 
@@ -65,10 +64,6 @@ func (s *standardClientTransport) SetTLSConfig(config *tls.Config) {
 
 func (s *standardClientTransport) SetDial(dial fasthttp.DialFunc) {
 	s.client.Dial = dial
-}
-
-func (s *standardClientTransport) Reset() {
-	s.client = &fasthttp.Client{}
 }
 
 func (s *standardClientTransport) Client() any {
@@ -113,10 +108,6 @@ func (h *hostClientTransport) SetTLSConfig(config *tls.Config) {
 
 func (h *hostClientTransport) SetDial(dial fasthttp.DialFunc) {
 	h.client.Dial = dial
-}
-
-func (h *hostClientTransport) Reset() {
-	h.client = &fasthttp.HostClient{}
 }
 
 func (h *hostClientTransport) Client() any {
@@ -185,12 +176,6 @@ func (l *lbClientTransport) SetDial(dial fasthttp.DialFunc) {
 	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
 		hc.Dial = dial
 	})
-}
-
-func (l *lbClientTransport) Reset() {
-	l.client = &fasthttp.LBClient{}
-	l.tlsConfig = nil
-	l.dial = nil
 }
 
 func (l *lbClientTransport) Client() any {

@@ -238,6 +238,9 @@ func TestClientResetClearsState(t *testing.T) {
 
 	client.Reset()
 
+	require.NotNil(t, client.FasthttpClient())
+	require.Nil(t, client.HostClient())
+	require.Nil(t, client.LBClient())
 	require.Empty(t, client.BaseURL())
 	require.Zero(t, client.timeout)
 	require.Empty(t, client.userAgent)
@@ -416,11 +419,10 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 		require.Error(t, err)
 		require.EqualValues(t, 1, atomic.LoadInt32(&called))
 
-		original := client.HostClient()
 		client.Reset()
-		require.NotNil(t, client.HostClient())
-		require.NotEqual(t, original, client.HostClient())
-		require.Nil(t, client.FasthttpClient())
+		require.NotNil(t, client.FasthttpClient())
+		require.Nil(t, client.HostClient())
+		require.Nil(t, client.LBClient())
 	})
 
 	t.Run("timeouts and close idle", func(t *testing.T) {
@@ -595,11 +597,9 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 		require.Error(t, err)
 		require.EqualValues(t, 1, atomic.LoadInt32(&called))
 
-		original := client.LBClient()
 		client.Reset()
-		require.NotNil(t, client.LBClient())
-		require.NotEqual(t, original, client.LBClient())
-		require.Nil(t, client.FasthttpClient())
+		require.NotNil(t, client.FasthttpClient())
+		require.Nil(t, client.LBClient())
 		require.Nil(t, client.HostClient())
 	})
 

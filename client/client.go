@@ -103,10 +103,6 @@ func (c *Client) applyDial(dial fasthttp.DialFunc) {
 	c.transport.SetDial(dial)
 }
 
-func (c *Client) resetTransport() {
-	c.transport.Reset()
-}
-
 // FasthttpClient returns the underlying fasthttp.Client if the client was created with one.
 func (c *Client) FasthttpClient() *fasthttp.Client {
 	if client, ok := c.transport.(*standardClientTransport); ok {
@@ -603,7 +599,7 @@ func (c *Client) Logger() log.CommonLogger {
 
 // Reset resets the client to its default state, clearing most configurations.
 func (c *Client) Reset() {
-	c.resetTransport()
+	c.transport = newStandardClientTransport(&fasthttp.Client{})
 	c.baseURL = ""
 	c.timeout = 0
 	c.userAgent = ""
