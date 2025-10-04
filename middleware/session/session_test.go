@@ -1422,8 +1422,6 @@ func Test_Session_Concurrency(t *testing.T) {
 	// Start numGoroutines goroutines
 	for range numGoroutines {
 		wg.Go(func() {
-			defer wg.Done()
-
 			localCtx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 			sess, err := store.getSession(localCtx)

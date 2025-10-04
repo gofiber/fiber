@@ -2139,7 +2139,6 @@ func Test_App_AddCustomRequestMethod(t *testing.T) {
 
 	// method name is always uppercase - https://datatracker.ietf.org/doc/html/rfc7231#section-4.1
 	require.Len(t, app.stack, len(appMethods))
-	require.Len(t, app.stack, len(appMethods))
 	require.Equal(t, "TEST", appMethods[len(appMethods)-1])
 }
 

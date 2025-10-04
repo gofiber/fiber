@@ -189,7 +189,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		TagMethod: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			if cfg.enableColors {
 				colors := c.App().Config().ColorScheme
-				return fmt.Fprintf(output, "%s%6s%s", methodColor(c.Method(), colors), c.Method(), colors.Reset)
+				return fmt.Fprintf(output, "%s%s%s", methodColor(c.Method(), colors), c.Method(), colors.Reset)
 			}
 			return output.WriteString(c.Method())
 		},
