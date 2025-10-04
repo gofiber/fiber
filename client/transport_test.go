@@ -311,6 +311,18 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 
 	resp.Reset()
 	req.Header.SetMethod(fasthttp.MethodPost)
+	req.Header.SetContentType("application/json")
+	req.SetBodyString("payload")
+
+	seeOtherClient := &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusSeeOther), location: ptrString("/see-other")}, {status: ptrInt(fasthttp.StatusOK)}}}
+	require.NoError(t, doRedirectsWithClient(req, resp, -1, seeOtherClient))
+	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
+	require.Equal(t, "http://example.com/see-other", req.URI().String())
+	require.Empty(t, req.Body())
+	require.Len(t, req.Header.ContentType(), 0)
+
+	resp.Reset()
+	req.Header.SetMethod(fasthttp.MethodPost)
 	req.SetRequestURI("http://example.com/again")
 	req.SetBodyString("payload")
 

@@ -335,7 +335,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		}
 		currentURL = nextURL
 
-		if req.Header.IsPost() && (statusCode == fasthttp.StatusMovedPermanently || statusCode == fasthttp.StatusFound) {
+		if req.Header.IsPost() && (statusCode == fasthttp.StatusMovedPermanently || statusCode == fasthttp.StatusFound || statusCode == fasthttp.StatusSeeOther) {
 			req.Header.SetMethod(fasthttp.MethodGet)
 			req.SetBody(nil)
 			req.Header.Del(fasthttp.HeaderContentType)
