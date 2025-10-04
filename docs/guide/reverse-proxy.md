@@ -92,7 +92,7 @@ With this configuration, Traefik terminates TLS and serves your app over HTTP/2.
 
 Early Hints (103 responses) are defined for HTTP and can be delivered over HTTP/1.1 and HTTP/2/3. In practice, browsers process 103 most reliably over HTTP/2/3. Many reverse proxies also support HTTP/3 (QUIC):
 
-- **Nginx**: Requires a recent build with QUIC/HTTP3 patches.
+- **Nginx**: Requires a recent build with QUIC/HTTP/3 patches.
 - **Traefik**: Supports HTTP/3 via its entryPoint configuration.
 
 Enabling HTTP/3 is optional but can provide lower latency and improved performance for clients that support it. If you enable HTTP/3, your Early Hints responses will still work as expected.
