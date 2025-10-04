@@ -1318,6 +1318,37 @@ func Benchmark_Router_Next_Default_Parallel_Immutable(b *testing.B) {
 	})
 }
 
+// Additional parallel benchmarks for comprehensive concurrency testing
+
+// go test -benchmem -run=^$ -bench ^Benchmark_Router_WithCompression_Parallel$ -count=4
+func Benchmark_Router_WithCompression_Parallel(b *testing.B) {
+	app := New()
+	handler := func(c Ctx) error {
+		return c.Next()
+	}
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	appHandler := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod(MethodGet)
+		c.URI().SetPath("/")
+
+		for pb.Next() {
+			c.Response.Reset() // Reset response for each iteration
+			appHandler(c)
+		}
+	})
+}
+
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
 func Benchmark_Route_Match(b *testing.B) {
 	var match bool
@@ -1404,6 +1435,241 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 	require.Equal(b, []string{}, params[0:len(parsed.params)])
 }
 
+// Parallel benchmarks for router and route matching to detect concurrency issues
+
+// go test -benchmem -run=^$ -bench ^Benchmark_App_MethodNotAllowed_Parallel$ -count=4
+func Benchmark_App_MethodNotAllowed_Parallel(b *testing.B) {
+	app := New()
+	h := func(c Ctx) error {
+		return c.SendString("Hello World!")
+	}
+	app.All("/this/is/a/", h)
+	app.Get("/this/is/a/dummy/route/oke", h)
+	appHandler := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("DELETE")
+		c.URI().SetPath("/this/is/a/dummy/route/oke")
+
+		for pb.Next() {
+			c.Response.Reset() // Reset response for each iteration
+			appHandler(c)
+			// Validate the method not allowed response
+			if c.Response.StatusCode() != 405 {
+				b.Errorf("Expected 405, got %d", c.Response.StatusCode())
+			}
+		}
+	})
+}
+
+// go test -benchmem -run=^$ -bench ^Benchmark_Router_NotFound_Parallel$ -count=4
+func Benchmark_Router_NotFound_Parallel(b *testing.B) {
+	app := New()
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	})
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("DELETE")
+		c.URI().SetPath("/this/route/does/not/exist")
+
+		for pb.Next() {
+			c.Response.Reset() // Reset response for each iteration
+			appHandler(c)
+			// Validate the not found response
+			if c.Response.StatusCode() != 404 {
+				b.Errorf("Expected 404, got %d", c.Response.StatusCode())
+			}
+		}
+	})
+}
+
+// go test -benchmem -run=^$ -bench ^Benchmark_Router_Handler_Parallel$ -count=4
+func Benchmark_Router_Handler_Parallel(b *testing.B) {
+	app := New()
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("DELETE")
+		c.URI().SetPath("/user/keys/1337")
+
+		for pb.Next() {
+			c.Response.Reset() // Reset response for each iteration
+			appHandler(c)
+		}
+	})
+}
+
+// go test -benchmem -run=^$ -bench ^Benchmark_Router_Handler_Strict_Case_Parallel$ -count=4
+func Benchmark_Router_Handler_Strict_Case_Parallel(b *testing.B) {
+	app := New(Config{
+		StrictRouting: true,
+		CaseSensitive: true,
+	})
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("DELETE")
+		c.URI().SetPath("/user/keys/1337")
+
+		for pb.Next() {
+			c.Response.Reset() // Reset response for each iteration
+			appHandler(c)
+		}
+	})
+}
+
+// go test -benchmem -run=^$ -bench ^Benchmark_Router_Chain_Parallel$ -count=4
+func Benchmark_Router_Chain_Parallel(b *testing.B) {
+	app := New()
+	handler := func(c Ctx) error {
+		return c.Next()
+	}
+	app.Get("/", handler, handler, handler, handler, handler, handler)
+	appHandler := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod(MethodGet)
+		c.URI().SetPath("/")
+
+		for pb.Next() {
+			c.Response.Reset() // Reset response for each iteration
+			appHandler(c)
+		}
+	})
+}
+
+// go test -benchmem -run=^$ -bench ^Benchmark_Route_Match_Parallel$ -count=4
+func Benchmark_Route_Match_Parallel(b *testing.B) {
+	parsed := parseRoute("/user/keys/:id")
+	route := &Route{
+		use:         false,
+		root:        false,
+		star:        false,
+		routeParser: parsed,
+		Params:      parsed.params,
+		path:        "/user/keys/:id",
+		Path:        "/user/keys/:id",
+		Method:      "DELETE",
+	}
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
+		return nil
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		var params [maxParams]string // Per-goroutine params array
+		for pb.Next() {
+			match := route.match("/user/keys/1337", "/user/keys/1337", &params)
+			if !match {
+				b.Error("Route should match")
+			}
+			// Validate extracted parameter
+			if len(parsed.params) > 0 && params[0] != "1337" {
+				b.Errorf("Expected param '1337', got '%s'", params[0])
+			}
+		}
+	})
+}
+
+// go test -benchmem -run=^$ -bench ^Benchmark_Route_Match_Star_Parallel$ -count=4
+func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
+	parsed := parseRoute("/*")
+	route := &Route{
+		use:         false,
+		root:        false,
+		star:        true,
+		routeParser: parsed,
+		Params:      parsed.params,
+		path:        "/user/keys/bla",
+		Path:        "/user/keys/bla",
+		Method:      "DELETE",
+	}
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
+		return nil
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		var params [maxParams]string // Per-goroutine params array
+		for pb.Next() {
+			match := route.match("/user/keys/bla", "/user/keys/bla", &params)
+			if !match {
+				b.Error("Route should match")
+			}
+			// Validate extracted wildcard parameter
+			if len(parsed.params) > 0 && params[0] != "user/keys/bla" {
+				b.Errorf("Expected param 'user/keys/bla', got '%s'", params[0])
+			}
+		}
+	})
+}
+
+// go test -benchmem -run=^$ -bench ^Benchmark_Route_Match_Root_Parallel$ -count=4
+func Benchmark_Route_Match_Root_Parallel(b *testing.B) {
+	parsed := parseRoute("/")
+	route := &Route{
+		use:         false,
+		root:        true,
+		star:        false,
+		path:        "/",
+		routeParser: parsed,
+		Params:      parsed.params,
+		Path:        "/",
+		Method:      "DELETE",
+	}
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
+		return nil
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		var params [maxParams]string // Per-goroutine params array
+		for pb.Next() {
+			match := route.match("/", "/", &params)
+			if !match {
+				b.Error("Route should match")
+			}
+			// Root route should have no parameters
+			if len(parsed.params) != 0 {
+				b.Error("Root route should have no parameters")
+			}
+		}
+	})
+}
+
+type testRoute struct {
+
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4
 func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	app := New()
@@ -1489,270 +1755,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 	}
 }
 
-// Additional parallel benchmarks to capture contention under concurrency.
-// Each uses b.RunParallel and allocates per-goroutine fasthttp.RequestCtx to avoid data races.
 
-// go test -benchmem -run=^$ -bench ^Benchmark_App_MethodNotAllowed_Parallel$ -count=1
-func Benchmark_App_MethodNotAllowed_Parallel(b *testing.B) {
-	app := New()
-	h := func(c Ctx) error { return c.SendString("Hello World!") }
-	app.All("/this/is/a/", h)
-	app.Get("/this/is/a/dummy/route/oke", h)
-	appHandler := app.Handler()
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("DELETE")
-		for pb.Next() {
-			c.URI().SetPath("/this/is/a/dummy/route/oke")
-			appHandler(c)
-		}
-	})
-}
-
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_NotFound_Parallel$ -count=1
-func Benchmark_Router_NotFound_Parallel(b *testing.B) {
-	b.ReportAllocs()
-	app := New()
-	app.Use(func(c Ctx) error { return c.Next() })
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("DELETE")
-		for pb.Next() {
-			c.URI().SetPath("/this/route/does/not/exist")
-			appHandler(c)
-		}
-	})
-}
-
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_Handler_Parallel$ -count=1
-func Benchmark_Router_Handler_Parallel(b *testing.B) {
-	app := New()
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("DELETE")
-		for pb.Next() {
-			c.URI().SetPath("/user/keys/1337")
-			appHandler(c)
-		}
-	})
-}
-
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_Handler_Strict_Case_Parallel$ -count=1
-func Benchmark_Router_Handler_Strict_Case_Parallel(b *testing.B) {
-	app := New(Config{StrictRouting: true, CaseSensitive: true})
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("DELETE")
-		for pb.Next() {
-			c.URI().SetPath("/user/keys/1337")
-			appHandler(c)
-		}
-	})
-}
-
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_Chain_Parallel$ -count=1
-func Benchmark_Router_Chain_Parallel(b *testing.B) {
-	app := New()
-	handler := func(c Ctx) error { return c.Next() }
-	app.Get("/", handler, handler, handler, handler, handler, handler)
-	appHandler := app.Handler()
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod(MethodGet)
-		for pb.Next() {
-			c.URI().SetPath("/")
-			appHandler(c)
-		}
-	})
-}
-
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_WithCompression_Parallel$ -count=1
-func Benchmark_Router_WithCompression_Parallel(b *testing.B) {
-	app := New()
-	handler := func(c Ctx) error { return c.Next() }
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-	app.Get("/", handler)
-	appHandler := app.Handler()
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod(MethodGet)
-		for pb.Next() {
-			c.URI().SetPath("/")
-			appHandler(c)
-		}
-	})
-}
-
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_Handler_CaseSensitive_Parallel$ -count=1
-func Benchmark_Router_Handler_CaseSensitive_Parallel(b *testing.B) {
-	app := New()
-	app.config.CaseSensitive = true
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("DELETE")
-		for pb.Next() {
-			c.URI().SetPath("/user/keys/1337")
-			appHandler(c)
-		}
-	})
-}
-
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_Handler_Unescape_Parallel$ -count=1
-func Benchmark_Router_Handler_Unescape_Parallel(b *testing.B) {
-	app := New()
-	app.config.UnescapePath = true
-	registerDummyRoutes(app)
-	app.Delete("/créer", func(_ Ctx) error { return nil })
-	appHandler := app.Handler()
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod(MethodDelete)
-		for pb.Next() {
-			c.URI().SetPath("/cr%C3%A9er")
-			appHandler(c)
-		}
-	})
-}
-
-// go test -benchmem -run=^$ -bench ^Benchmark_Router_Handler_StrictRouting_Parallel$ -count=1
-func Benchmark_Router_Handler_StrictRouting_Parallel(b *testing.B) {
-	app := New()
-	app.config.CaseSensitive = true
-	registerDummyRoutes(app)
-	appHandler := app.Handler()
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("DELETE")
-		for pb.Next() {
-			c.URI().SetPath("/user/keys/1337")
-			appHandler(c)
-		}
-	})
-}
-
-// go test -benchmem -run=^$ -bench ^Benchmark_Route_Match_Parallel$ -count=1
-func Benchmark_Route_Match_Parallel(b *testing.B) {
-	parsed := parseRoute("/user/keys/:id")
-	route := &Route{
-		use:         false,
-		root:        false,
-		star:        false,
-		routeParser: parsed,
-		Params:      parsed.params,
-		path:        "/user/keys/:id",
-		Path:        "/user/keys/:id",
-		Method:      "DELETE",
-	}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error { return nil })
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		var p [maxParams]string
-		for pb.Next() {
-			_ = route.match("/user/keys/1337", "/user/keys/1337", &p)
-		}
-	})
-}
-
-// go test -benchmem -run=^$ -bench ^Benchmark_Route_Match_Star_Parallel$ -count=1
-func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
-	parsed := parseRoute("/*")
-	route := &Route{
-		use:         false,
-		root:        false,
-		star:        true,
-		routeParser: parsed,
-		Params:      parsed.params,
-		path:        "/user/keys/bla",
-		Path:        "/user/keys/bla",
-		Method:      "DELETE",
-	}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error { return nil })
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		var p [maxParams]string
-		for pb.Next() {
-			_ = route.match("/user/keys/bla", "/user/keys/bla", &p)
-		}
-	})
-}
-
-// go test -benchmem -run=^$ -bench ^Benchmark_Route_Match_Root_Parallel$ -count=1
-func Benchmark_Route_Match_Root_Parallel(b *testing.B) {
-	parsed := parseRoute("/")
-	route := &Route{
-		use:         false,
-		root:        true,
-		star:        false,
-		path:        "/",
-		routeParser: parsed,
-		Params:      parsed.params,
-		Path:        "/",
-		Method:      "DELETE",
-	}
-	route.Handlers = append(route.Handlers, func(_ Ctx) error { return nil })
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		var p [maxParams]string
-		for pb.Next() {
-			_ = route.match("/", "/", &p)
-		}
-	})
-}
 
 type testRoute struct {
 	Method string `json:"method"`
