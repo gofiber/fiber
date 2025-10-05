@@ -968,7 +968,7 @@ var requestPool = &sync.Pool{
 			params:     &QueryParam{Args: fasthttp.AcquireArgs()},
 			cookies:    &Cookie{},
 			path:       &PathParam{},
-			boundary:   "FiberFormBoundary",
+			boundary:   boundary,
 			formData:   &FormData{Args: fasthttp.AcquireArgs()},
 			files:      make([]*File, 0),
 			RawRequest: fasthttp.AcquireRequest(),
