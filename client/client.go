@@ -294,8 +294,8 @@ func (c *Client) SetHeaders(h map[string]string) *Client {
 
 // Param returns all values of the specified query parameter.
 func (c *Client) Param(key string) []string {
-	res := []string{}
 	tmp := c.params.PeekMulti(key)
+	res := make([]string, 0, len(tmp))
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
