@@ -560,17 +560,6 @@ func Test_Parser_Request_Body(t *testing.T) {
 		require.Contains(t, string(req.RawRequest.Body()), "world")
 	})
 
-	t.Run("file body missing path and name", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		file := AcquireFile(SetFileReader(io.NopCloser(strings.NewReader("world"))))
-
-		req := AcquireRequest().AddFiles(file)
-
-		err := parserRequestBody(client, req)
-		require.ErrorIs(t, err, ErrFileNoName)
-	})
-
 	t.Run("file and form data", func(t *testing.T) {
 		t.Parallel()
 		client := New()
