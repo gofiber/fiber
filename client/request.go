@@ -447,8 +447,8 @@ func (r *Request) resetBody(t bodyType) {
 
 // FormData returns all values associated with a form field.
 func (r *Request) FormData(key string) []string {
-	var res []string
 	tmp := r.formData.PeekMulti(key)
+	res := make([]string, 0, len(tmp))
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
