@@ -958,7 +958,10 @@ func (f *File) Reset() {
 	f.name = ""
 	f.fieldName = ""
 	f.path = ""
-	f.reader = nil
+	if f.reader != nil {
+		_ = f.reader.Close()
+		f.reader = nil
+	}
 }
 
 var requestPool = &sync.Pool{
