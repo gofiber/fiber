@@ -293,7 +293,7 @@ func parserRequestBodyFile(req *Request) error {
 	return nil
 }
 
-func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) (e error) {
+func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
 	// If reader is not set, open the file.
 	if f.reader == nil {
 		var err error
@@ -304,11 +304,7 @@ func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) (e error) {
 	}
 
 	// Ensure the file reader is always closed after copying.
-	defer func() {
-		if err := f.reader.Close(); err != nil {
-			e = fmt.Errorf("close file error: %w", err)
-		}
-	}()
+	defer f.reader.Close() //nolint:errcheck // not needed
 
 	// Create form file and copy the content.
 	w, err := mw.CreateFormFile(f.fieldName, f.name)
