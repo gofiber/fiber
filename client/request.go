@@ -959,7 +959,7 @@ func (f *File) Reset() {
 	f.fieldName = ""
 	f.path = ""
 	if f.reader != nil {
-		_ = f.reader.Close()
+		_ = f.reader.Close() //nolint:errcheck // not needed
 		f.reader = nil
 	}
 }
