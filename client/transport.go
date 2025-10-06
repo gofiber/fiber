@@ -115,24 +115,11 @@ func (h *hostClientTransport) Client() any {
 }
 
 type lbClientTransport struct {
-	client    *fasthttp.LBClient
-	tlsConfig *tls.Config
-	dial      fasthttp.DialFunc
+	client *fasthttp.LBClient
 }
 
 func newLBClientTransport(client *fasthttp.LBClient) *lbClientTransport {
-	t := &lbClientTransport{client: client}
-
-	if len(client.Clients) > 0 {
-		if cfg := extractTLSConfig(client.Clients); cfg != nil {
-			t.tlsConfig = cfg
-		}
-		if dial := extractDial(client.Clients); dial != nil {
-			t.dial = dial
-		}
-	}
-
-	return t
+	return &lbClientTransport{client: client}
 }
 
 func (l *lbClientTransport) Do(req *fasthttp.Request, resp *fasthttp.Response) error {
@@ -161,18 +148,19 @@ func (l *lbClientTransport) CloseIdleConnections() {
 }
 
 func (l *lbClientTransport) TLSConfig() *tls.Config {
-	return l.tlsConfig
+	if len(l.client.Clients) == 0 {
+		return nil
+	}
+	return extractTLSConfig(l.client.Clients)
 }
 
 func (l *lbClientTransport) SetTLSConfig(config *tls.Config) {
-	l.tlsConfig = config
 	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
 		hc.TLSConfig = config
 	})
 }
 
 func (l *lbClientTransport) SetDial(dial fasthttp.DialFunc) {
-	l.dial = dial
 	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
 		hc.Dial = dial
 	})

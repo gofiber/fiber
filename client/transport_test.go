@@ -154,9 +154,7 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 
 	transport := newLBClientTransport(lb)
 	require.Same(t, lb, transport.Client())
-	require.Equal(t, nestedTLSHost.TLSConfig, transport.tlsConfig)
 	require.Equal(t, nestedTLSHost.TLSConfig, transport.TLSConfig())
-	require.NotNil(t, transport.dial)
 
 	overrideTLS := &tls.Config{ServerName: "override", MinVersion: tls.VersionTLS12}
 	transport.SetTLSConfig(overrideTLS)
