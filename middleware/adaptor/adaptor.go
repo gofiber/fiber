@@ -231,7 +231,11 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 
 		// New fasthttp Ctx from pool
-		fctx := ctxPool.Get().(*fasthttp.RequestCtx) //nolint:forcetypeassert,errcheck // overlinting
+		ctxAny := ctxPool.Get()
+		fctx, ok := ctxAny.(*fasthttp.RequestCtx)
+		if !ok {
+			panic(errors.New("failed to type-assert to *fasthttp.RequestCtx"))
+		}
 		fctx.Response.Reset()
 		fctx.Request.Reset()
 		defer ctxPool.Put(fctx)

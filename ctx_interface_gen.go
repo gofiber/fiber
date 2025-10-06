@@ -163,6 +163,7 @@ type Ctx interface {
 	setMatched(matched bool)
 	setRoute(route *Route)
 	getPathOriginal() string
+	acquireIPSlices(size int) (*[]string, []string)
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
 	// AcceptsCharsets checks if the specified charset is acceptable.

@@ -2,6 +2,7 @@ package binder
 
 import (
 	"errors"
+	"mime/multipart"
 	"sync"
 )
 
@@ -71,6 +72,28 @@ var MsgPackBinderPool = sync.Pool{
 	},
 }
 
+const (
+	stringSliceMapDefaultCap = 8
+	stringSliceMapMaxEntries = 128
+)
+
+var stringSliceMapPool = sync.Pool{
+	New: func() any {
+		return make(map[string][]string, stringSliceMapDefaultCap)
+	},
+}
+
+const (
+	fileHeaderSliceMapDefaultCap = 4
+	fileHeaderSliceMapMaxEntries = 64
+)
+
+var fileHeaderSliceMapPool = sync.Pool{
+	New: func() any {
+		return make(map[string][]*multipart.FileHeader, fileHeaderSliceMapDefaultCap)
+	},
+}
+
 // GetFromThePool retrieves a binder from the provided sync.Pool and panics if
 // the stored value cannot be cast to the requested type.
 func GetFromThePool[T any](pool *sync.Pool) T {
@@ -85,4 +108,60 @@ func GetFromThePool[T any](pool *sync.Pool) T {
 // PutToThePool returns the binder to the provided sync.Pool.
 func PutToThePool[T any](pool *sync.Pool, binder T) {
 	pool.Put(binder)
+}
+
+func acquireStringSliceMap() map[string][]string {
+	m, ok := stringSliceMapPool.Get().(map[string][]string)
+	if !ok {
+		panic(errors.New("failed to type-assert to map[string][]string"))
+	}
+	if m == nil {
+		return make(map[string][]string, stringSliceMapDefaultCap)
+	}
+	if len(m) > 0 {
+		clear(m)
+	}
+	return m
+}
+
+func releaseStringSliceMap(m map[string][]string) {
+	if m == nil {
+		return
+	}
+	used := len(m)
+	if used > 0 {
+		clear(m)
+	}
+	if used > stringSliceMapMaxEntries {
+		return
+	}
+	stringSliceMapPool.Put(m)
+}
+
+func acquireFileHeaderSliceMap() map[string][]*multipart.FileHeader {
+	m, ok := fileHeaderSliceMapPool.Get().(map[string][]*multipart.FileHeader)
+	if !ok {
+		panic(errors.New("failed to type-assert to map[string][]*multipart.FileHeader"))
+	}
+	if m == nil {
+		return make(map[string][]*multipart.FileHeader, fileHeaderSliceMapDefaultCap)
+	}
+	if len(m) > 0 {
+		clear(m)
+	}
+	return m
+}
+
+func releaseFileHeaderSliceMap(m map[string][]*multipart.FileHeader) {
+	if m == nil {
+		return
+	}
+	used := len(m)
+	if used > 0 {
+		clear(m)
+	}
+	if used > fileHeaderSliceMapMaxEntries {
+		return
+	}
+	fileHeaderSliceMapPool.Put(m)
 }

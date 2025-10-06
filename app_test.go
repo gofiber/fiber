@@ -290,14 +290,16 @@ func Test_App_BodyLimit_Negative(t *testing.T) {
 			return c.SendStatus(StatusOK)
 		})
 
+		cfg := TestConfig{Timeout: 0, FailOnTimeout: false}
+
 		largeBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit+1)
 		req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(largeBody))
-		_, err := app.Test(req)
+		_, err := app.Test(req, cfg)
 		require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 
 		smallBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit-1)
 		req = httptest.NewRequest(MethodPost, "/", bytes.NewReader(smallBody))
-		resp, err := app.Test(req)
+		resp, err := app.Test(req, cfg)
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode)
 	}
@@ -314,12 +316,14 @@ func Test_App_BodyLimit_Zero(t *testing.T) {
 
 	largeBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit+1)
 	req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(largeBody))
-	_, err := app.Test(req)
+	timeoutCfg := TestConfig{Timeout: 5 * time.Second}
+
+	_, err := app.Test(req, timeoutCfg)
 	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 
 	smallBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit-1)
 	req = httptest.NewRequest(MethodPost, "/", bytes.NewReader(smallBody))
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, timeoutCfg)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
@@ -334,17 +338,19 @@ func Test_App_BodyLimit_LargerThanDefault(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
+	timeoutCfg := TestConfig{Timeout: 5 * time.Second}
+
 	// Body larger than the default but within our custom limit should succeed
 	midBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit+512)
 	req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(midBody))
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, timeoutCfg)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 
 	// Body above the custom limit should fail
 	largeBody := bytes.Repeat([]byte{'a'}, limit+1)
 	req = httptest.NewRequest(MethodPost, "/", bytes.NewReader(largeBody))
-	_, err = app.Test(req)
+	_, err = app.Test(req, timeoutCfg)
 	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 }
 

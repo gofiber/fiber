@@ -19,6 +19,34 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+const (
+	sanitizePathDefaultCap = 64
+	sanitizePathMaxCap     = 4096
+)
+
+var sanitizePathBufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 0, sanitizePathDefaultCap)
+		return &buf
+	},
+}
+
+func releaseSanitizePathBuf(bufPtr *[]byte, buf []byte) {
+	if bufPtr == nil {
+		return
+	}
+
+	clear(buf)
+	if cap(buf) > sanitizePathMaxCap {
+		buf = make([]byte, 0, sanitizePathDefaultCap)
+	} else {
+		buf = buf[:0]
+	}
+
+	*bufPtr = buf
+	sanitizePathBufPool.Put(bufPtr)
+}
+
 // sanitizePath validates and cleans the requested path.
 // It returns an error if the path attempts to traverse directories.
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
@@ -27,14 +55,26 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
 	if bytes.IndexByte(p, '\\') >= 0 {
-		b := make([]byte, len(p))
-		copy(b, p)
-		for i := range b {
-			if b[i] == '\\' {
-				b[i] = '/'
+		bufAny := sanitizePathBufPool.Get()
+		bufPtr, ok := bufAny.(*[]byte)
+		if !ok {
+			panic(errors.New("failed to type-assert to *[]byte"))
+		}
+		buf := *bufPtr
+		if cap(buf) < len(p) {
+			buf = make([]byte, len(p))
+		} else {
+			buf = buf[:len(p)]
+		}
+
+		copy(buf, p)
+		for i := range buf {
+			if buf[i] == '\\' {
+				buf[i] = '/'
 			}
 		}
-		s = utils.UnsafeString(b)
+		s = utils.UnsafeString(buf)
+		defer releaseSanitizePathBuf(bufPtr, buf)
 	} else {
 		s = utils.UnsafeString(p)
 	}

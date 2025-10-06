@@ -6,7 +6,63 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 )
+
+const (
+	serviceErrorSliceDefaultCap = 4
+	serviceErrorSliceMaxCap     = 64
+)
+
+var serviceErrorSlicePool = sync.Pool{ //nolint:gochecknoglobals // shared error slice pool
+	New: func() any {
+		slice := make([]error, 0, serviceErrorSliceDefaultCap)
+		return &slice
+	},
+}
+
+func acquireServiceErrorSlice(size int) (*[]error, []error) {
+	if size < serviceErrorSliceDefaultCap {
+		size = serviceErrorSliceDefaultCap
+	}
+
+	sliceAny := serviceErrorSlicePool.Get()
+	slicePtr, ok := sliceAny.(*[]error)
+	if !ok || slicePtr == nil {
+		slice := make([]error, 0, size)
+		return &slice, slice
+	}
+
+	slice := *slicePtr
+	if cap(slice) < size {
+		slice = make([]error, 0, size)
+	} else {
+		slice = slice[:0]
+	}
+
+	*slicePtr = slice
+	return slicePtr, slice
+}
+
+func releaseServiceErrorSlice(slicePtr *[]error) {
+	if slicePtr == nil {
+		return
+	}
+
+	slice := *slicePtr
+	for i := range slice {
+		slice[i] = nil
+	}
+
+	if cap(slice) > serviceErrorSliceMaxCap {
+		slice = make([]error, 0, serviceErrorSliceDefaultCap)
+	} else {
+		slice = slice[:0]
+	}
+
+	*slicePtr = slice
+	serviceErrorSlicePool.Put(slicePtr)
+}
 
 // Service is an interface that defines the methods for a service.
 type Service interface {
@@ -69,7 +125,12 @@ func (app *App) startServices(ctx context.Context) error {
 		return nil
 	}
 
-	var errs []error
+	errsPtr, errs := acquireServiceErrorSlice(len(app.configured.Services))
+	defer func() {
+		*errsPtr = errs
+		releaseServiceErrorSlice(errsPtr)
+	}()
+
 	for _, srv := range app.configured.Services {
 		if err := ctx.Err(); err != nil {
 			// Context is canceled, return an error the soonest possible, so that
@@ -97,12 +158,18 @@ func (app *App) startServices(ctx context.Context) error {
 // Iterates over all the started services in reverse order and tries to terminate them,
 // returning an error if any error occurs.
 func (app *App) shutdownServices(ctx context.Context) error {
-	if app.state.ServicesLen() == 0 {
+	services := app.state.Services()
+	if len(services) == 0 {
 		return nil
 	}
 
-	var errs []error
-	for _, srv := range app.state.Services() {
+	errsPtr, errs := acquireServiceErrorSlice(len(services))
+	defer func() {
+		*errsPtr = errs
+		releaseServiceErrorSlice(errsPtr)
+	}()
+
+	for _, srv := range services {
 		if err := ctx.Err(); err != nil {
 			// Context is canceled, do a best effort to terminate the services.
 			errs = append(errs, fmt.Errorf("service %s terminate: %w", srv.String(), err))

@@ -2,8 +2,9 @@ package keyauth
 
 import (
 	"errors"
-	"fmt"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
@@ -21,6 +22,49 @@ const (
 
 // ErrMissingOrMalformedAPIKey is returned when the API key is missing or invalid.
 var ErrMissingOrMalformedAPIKey = errors.New("missing or invalid API Key")
+
+const (
+	challengeBufferDefaultCap = 128
+	challengeBufferMaxCap     = 1024
+)
+
+var (
+	challengeSlicePool = sync.Pool{
+		New: func() any {
+			s := make([]string, 0, 4)
+			return &s
+		},
+	}
+
+	challengeBufferPool = sync.Pool{
+		New: func() any {
+			buf := make([]byte, 0, challengeBufferDefaultCap)
+			return &buf
+		},
+	}
+)
+
+func releaseChallengeBuffer(bufPtr *[]byte, used int) {
+	if bufPtr == nil {
+		return
+	}
+
+	buf := *bufPtr
+	if used > len(buf) {
+		used = len(buf)
+	}
+	for i := 0; i < used; i++ {
+		buf[i] = 0
+	}
+
+	if cap(buf) > challengeBufferMaxCap {
+		*bufPtr = make([]byte, 0, challengeBufferDefaultCap)
+	} else {
+		*bufPtr = buf[:0]
+	}
+
+	challengeBufferPool.Put(bufPtr)
+}
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -63,26 +107,55 @@ func New(config ...Config) fiber.Handler {
 				header = fiber.HeaderProxyAuthenticate
 			}
 			if len(authSchemes) > 0 {
-				challenges := make([]string, 0, len(authSchemes))
+				challengesAny := challengeSlicePool.Get()
+				challengesPtr, ok := challengesAny.(*[]string)
+				if !ok {
+					panic(errors.New("failed to type-assert to *[]string"))
+				}
+				challenges := (*challengesPtr)[:0]
+				defer func() {
+					for i := range challenges {
+						challenges[i] = ""
+					}
+					*challengesPtr = challenges[:0]
+					challengeSlicePool.Put(challengesPtr)
+				}()
+
 				for _, scheme := range authSchemes {
-					var b strings.Builder
-					fmt.Fprintf(&b, "%s realm=%q", scheme, cfg.Realm)
-					if utils.EqualFold(scheme, "Bearer") {
-						if cfg.Error != "" {
-							fmt.Fprintf(&b, ", error=%q", cfg.Error)
-							if cfg.ErrorDescription != "" {
-								fmt.Fprintf(&b, ", error_description=%q", cfg.ErrorDescription)
-							}
-							if cfg.ErrorURI != "" {
-								fmt.Fprintf(&b, ", error_uri=%q", cfg.ErrorURI)
-							}
-							if cfg.Error == ErrorInsufficientScope {
-								fmt.Fprintf(&b, ", scope=%q", cfg.Scope)
-							}
+					bufPtr, ok := challengeBufferPool.Get().(*[]byte)
+					if !ok {
+						panic(errors.New("failed to type-assert to *[]byte"))
+					}
+					buf := (*bufPtr)[:0]
+
+					buf = append(buf, scheme...)
+					buf = append(buf, ' ')
+					buf = append(buf, "realm="...)
+					buf = strconv.AppendQuote(buf, cfg.Realm)
+
+					if utils.EqualFold(scheme, "Bearer") && cfg.Error != "" {
+						buf = append(buf, ", error="...)
+						buf = strconv.AppendQuote(buf, cfg.Error)
+
+						if cfg.ErrorDescription != "" {
+							buf = append(buf, ", error_description="...)
+							buf = strconv.AppendQuote(buf, cfg.ErrorDescription)
+						}
+						if cfg.ErrorURI != "" {
+							buf = append(buf, ", error_uri="...)
+							buf = strconv.AppendQuote(buf, cfg.ErrorURI)
+						}
+						if cfg.Error == ErrorInsufficientScope {
+							buf = append(buf, ", scope="...)
+							buf = strconv.AppendQuote(buf, cfg.Scope)
 						}
 					}
-					challenges = append(challenges, b.String())
+
+					challenge := string(buf)
+					releaseChallengeBuffer(bufPtr, len(buf))
+					challenges = append(challenges, challenge)
 				}
+
 				c.Set(header, strings.Join(challenges, ", "))
 			} else if cfg.Challenge != "" {
 				c.Set(header, cfg.Challenge)

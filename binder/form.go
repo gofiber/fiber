@@ -1,8 +1,6 @@
 package binder
 
 import (
-	"mime/multipart"
-
 	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -21,12 +19,13 @@ func (*FormBinding) Name() string {
 
 // Bind parses the request body and returns the result.
 func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
-	data := make(map[string][]string)
-
 	// Handle multipart form
 	if FilterFlags(utils.UnsafeString(req.Header.ContentType())) == MIMEMultipartForm {
 		return b.bindMultipart(req, out)
 	}
+
+	data := acquireStringSliceMap()
+	defer releaseStringSliceMap(data)
 
 	for key, val := range req.PostArgs().All() {
 		k := utils.UnsafeString(key)
@@ -46,7 +45,12 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 		return err
 	}
 
-	data := make(map[string][]string)
+	data := acquireStringSliceMap()
+	defer releaseStringSliceMap(data)
+
+	files := acquireFileHeaderSliceMap()
+	defer releaseFileHeaderSliceMap(files)
+
 	for key, values := range multipartForm.Value {
 		err = formatBindData(b.Name(), out, data, key, values, b.EnableSplitting, true)
 		if err != nil {
@@ -54,7 +58,6 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 		}
 	}
 
-	files := make(map[string][]*multipart.FileHeader)
 	for key, values := range multipartForm.File {
 		err = formatBindData(b.Name(), out, files, key, values, b.EnableSplitting, true)
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 
 	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -29,38 +30,166 @@ type RangeSet struct {
 //
 //go:generate ifacemaker --file req.go --struct DefaultReq --iface Req --pkg fiber --output req_interface_gen.go --not-exported true --iface-comment "Req is an interface for request-related Ctx methods."
 type DefaultReq struct {
-	c *DefaultCtx
+	c          *DefaultCtx
+	ipSlicePtr *[]string
+}
+
+const (
+	encodingOrderDefaultCap = 4
+	encodingOrderMaxCap     = 16
+)
+
+var encodingOrderPool = sync.Pool{
+	New: func() any {
+		slice := make([]string, 0, encodingOrderDefaultCap)
+		return &slice
+	},
+}
+
+func acquireEncodingOrder() *[]string {
+	orderPtr, ok := encodingOrderPool.Get().(*[]string)
+	if !ok {
+		panic(errors.New("failed to type-assert to *[]string"))
+	}
+
+	order := *orderPtr
+	order = order[:0]
+	*orderPtr = order
+
+	return orderPtr
+}
+
+func releaseEncodingOrder(orderPtr *[]string) {
+	if orderPtr == nil {
+		return
+	}
+
+	order := *orderPtr
+	for i := range order {
+		order[i] = ""
+	}
+
+	if cap(order) > encodingOrderMaxCap {
+		order = make([]string, 0, encodingOrderDefaultCap)
+	} else {
+		order = order[:0]
+	}
+
+	*orderPtr = order
+	encodingOrderPool.Put(orderPtr)
+}
+
+const (
+	ipSliceDefaultCap = 4
+	ipSliceMaxCap     = 64
+)
+
+var ipSlicePool = sync.Pool{
+	New: func() any {
+		slice := make([]string, 0, ipSliceDefaultCap)
+		return &slice
+	},
+}
+
+func acquireIPSliceBuffer(size int) (*[]string, []string) {
+	if size < ipSliceDefaultCap {
+		size = ipSliceDefaultCap
+	}
+
+	sliceAny := ipSlicePool.Get()
+	slicePtr, ok := sliceAny.(*[]string)
+	if !ok || slicePtr == nil {
+		slice := make([]string, 0, size)
+		slicePtr = &slice
+	}
+
+	slice := *slicePtr
+	if cap(slice) < size {
+		slice = make([]string, 0, size)
+	} else {
+		slice = slice[:0]
+	}
+
+	*slicePtr = slice
+	return slicePtr, slice
+}
+
+func releaseIPSliceBuffer(slicePtr *[]string) {
+	if slicePtr == nil {
+		return
+	}
+
+	slice := *slicePtr
+	for i := range slice {
+		slice[i] = ""
+	}
+
+	if cap(slice) > ipSliceMaxCap {
+		slice = make([]string, 0, ipSliceDefaultCap)
+	} else {
+		slice = slice[:0]
+	}
+
+	*slicePtr = slice
+	ipSlicePool.Put(slicePtr)
+}
+
+func (r *DefaultReq) acquireIPSlices(size int) (*[]string, []string) {
+	if r.ipSlicePtr == nil {
+		slicePtr, slice := acquireIPSliceBuffer(size)
+		r.ipSlicePtr = slicePtr
+		return slicePtr, slice
+	}
+
+	if size < ipSliceDefaultCap {
+		size = ipSliceDefaultCap
+	}
+
+	slice := *r.ipSlicePtr
+	if cap(slice) < size {
+		slice = make([]string, 0, size)
+	} else {
+		slice = slice[:0]
+	}
+
+	*r.ipSlicePtr = slice
+	return r.ipSlicePtr, slice
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
 func (r *DefaultReq) Accepts(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAccept))
+	header, bufPtr := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAccept))
+	defer releaseHeaderValueBuffer(bufPtr)
 	return getOffer(header, acceptsOfferType, offers...)
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
 func (r *DefaultReq) AcceptsCharsets(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptCharset))
+	header, bufPtr := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptCharset))
+	defer releaseHeaderValueBuffer(bufPtr)
 	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
 func (r *DefaultReq) AcceptsEncodings(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding))
+	header, bufPtr := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding))
+	defer releaseHeaderValueBuffer(bufPtr)
 	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable using
 // RFC 4647 Basic Filtering.
 func (r *DefaultReq) AcceptsLanguages(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
+	header, bufPtr := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
+	defer releaseHeaderValueBuffer(bufPtr)
 	return getOffer(header, acceptsLanguageOfferBasic, offers...)
 }
 
 // AcceptsLanguagesExtended checks if the specified language is acceptable using
 // RFC 4647 Extended Filtering.
 func (r *DefaultReq) AcceptsLanguagesExtended(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
+	header, bufPtr := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
+	defer releaseHeaderValueBuffer(bufPtr)
 	return getOffer(header, acceptsLanguageOfferExtended, offers...)
 }
 
@@ -140,7 +269,6 @@ func (r *DefaultReq) Body() []byte {
 		err                error
 		body, originalBody []byte
 		headerEncoding     string
-		encodingOrder      = []string{"", "", ""}
 	)
 
 	request := &r.c.fasthttp.Request
@@ -153,9 +281,13 @@ func (r *DefaultReq) Body() []byte {
 		return r.getBody()
 	}
 
+	encodingOrderPtr := acquireEncodingOrder()
+	encodingOrder := getSplicedStrList(headerEncoding, *encodingOrderPtr)
+	*encodingOrderPtr = encodingOrder
+	defer releaseEncodingOrder(encodingOrderPtr)
+
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
-	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	for i := range encodingOrder {
 		encodingOrder[i] = utils.ToLower(encodingOrder[i])
 	}
@@ -375,7 +507,7 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 		// Avoid big allocation on big header
 		maxEstimatedCount)
 
-	ipsFound := make([]string, 0, estimatedCount)
+	slicePtr, ipsFound := r.acquireIPSlices(estimatedCount)
 
 	i := 0
 	j := -1
@@ -415,6 +547,10 @@ iploop:
 		}
 
 		ipsFound = append(ipsFound, s)
+	}
+
+	if slicePtr != nil {
+		*slicePtr = ipsFound
 	}
 
 	return ipsFound
@@ -908,6 +1044,10 @@ func (r *DefaultReq) IsFromLocal() bool {
 
 // Release is a method to reset Req fields when to use ReleaseCtx()
 func (r *DefaultReq) release() {
+	if r.ipSlicePtr != nil {
+		releaseIPSliceBuffer(r.ipSlicePtr)
+		r.ipSlicePtr = nil
+	}
 	r.c = nil
 }
 

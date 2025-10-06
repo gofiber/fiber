@@ -16,6 +16,61 @@ func init() {
 	servicesStatePrefixHash = hex.EncodeToString([]byte(servicesStatePrefix + uuid.New().String()))
 }
 
+const (
+	serviceKeySliceDefaultCap = 4
+	serviceKeySliceMaxCap     = 64
+)
+
+var serviceKeySlicePool = sync.Pool{ //nolint:gochecknoglobals // shared slice pool
+	New: func() any {
+		slice := make([]string, 0, serviceKeySliceDefaultCap)
+		return &slice
+	},
+}
+
+func acquireServiceKeySlice(size int) (*[]string, []string) {
+	if size < serviceKeySliceDefaultCap {
+		size = serviceKeySliceDefaultCap
+	}
+
+	sliceAny := serviceKeySlicePool.Get()
+	slicePtr, ok := sliceAny.(*[]string)
+	if !ok || slicePtr == nil {
+		slice := make([]string, 0, size)
+		return &slice, slice
+	}
+
+	slice := *slicePtr
+	if cap(slice) < size {
+		slice = make([]string, 0, size)
+	} else {
+		slice = slice[:0]
+	}
+
+	*slicePtr = slice
+	return slicePtr, slice
+}
+
+func releaseServiceKeySlice(slicePtr *[]string) {
+	if slicePtr == nil {
+		return
+	}
+
+	slice := *slicePtr
+	for i := range slice {
+		slice[i] = ""
+	}
+
+	if cap(slice) > serviceKeySliceMaxCap {
+		slice = make([]string, 0, serviceKeySliceDefaultCap)
+	} else {
+		slice = slice[:0]
+	}
+
+	*slicePtr = slice
+	serviceKeySlicePool.Put(slicePtr)
+}
+
 // State is a key-value store for Fiber's app in order to be used as a global storage for the app's dependencies.
 // It's a thread-safe implementation of a map[string]any, using sync.Map.
 type State struct {
@@ -254,8 +309,8 @@ func (s *State) deleteService(srv Service) {
 }
 
 // serviceKeys returns a slice containing all keys present for services in the application's State.
-func (s *State) serviceKeys() []string {
-	keys := make([]string, 0)
+func (s *State) serviceKeys() (*[]string, []string) {
+	keysPtr, keys := acquireServiceKeySlice(serviceKeySliceDefaultCap)
 	s.dependencies.Range(func(key, _ any) bool {
 		keyStr, ok := key.(string)
 		if !ok {
@@ -270,15 +325,19 @@ func (s *State) serviceKeys() []string {
 		return true
 	})
 
-	return keys
+	*keysPtr = keys
+	return keysPtr, keys
 }
 
 // Services returns a map containing all services present in the State.
 // The key is the hash of the service String() value and the value is the service itself.
 func (s *State) Services() map[string]Service {
-	services := make(map[string]Service)
+	keysPtr, keys := s.serviceKeys()
+	defer releaseServiceKeySlice(keysPtr)
 
-	for _, key := range s.serviceKeys() {
+	services := make(map[string]Service, len(keys))
+
+	for _, key := range keys {
 		services[key] = MustGetState[Service](s, key)
 	}
 

@@ -46,6 +46,23 @@ func Test_New(t *testing.T) {
 	}
 }
 
+func TestAcquireReleaseReplacerArgs(t *testing.T) {
+	ptr := acquireReplacerArgs(3)
+
+	args := *ptr
+	require.Len(t, args, 6)
+
+	releaseReplacerArgs(ptr)
+
+	ptr = acquireReplacerArgs(1)
+	args = *ptr
+	require.Len(t, args, 2)
+	for _, value := range args {
+		require.Empty(t, value)
+	}
+	releaseReplacerArgs(ptr)
+}
+
 func Test_Rewrite(t *testing.T) {
 	// Case 1: Next function always returns true
 	app := fiber.New()
