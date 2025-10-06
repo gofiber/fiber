@@ -144,7 +144,13 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	multiLevelLeaf := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{multiLevelHost}}}
 	multiLevelWrapper := &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{multiLevelLeaf}}}
 
-	lb := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{stubBalancingClient{}, hostWithoutOverrides, nestedDialLB, nestedTLSLB, multiLevelWrapper}}
+	lb := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
+		stubBalancingClient{},
+		hostWithoutOverrides,
+		nestedDialLB,
+		nestedTLSLB,
+		multiLevelWrapper,
+	}}
 
 	transport := newLBClientTransport(lb)
 	require.Same(t, lb, transport.Client())
