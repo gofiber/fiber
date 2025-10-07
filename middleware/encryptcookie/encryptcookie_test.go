@@ -249,10 +249,10 @@ func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 
 	app.Use(New(Config{
 		Key: testKey,
-		Encryptor: func(_ string, decryptedString, _ string) (string, error) {
+		Encryptor: func(_, decryptedString, _ string) (string, error) {
 			return base64.StdEncoding.EncodeToString([]byte(decryptedString)), nil
 		},
-		Decryptor: func(_ string, encryptedString, _ string) (string, error) {
+		Decryptor: func(_, encryptedString, _ string) (string, error) {
 			decodedBytes, err := base64.StdEncoding.DecodeString(encryptedString)
 			return string(decodedBytes), err
 		},
@@ -444,10 +444,10 @@ func Benchmark_Encrypt_Cookie_Custom_Encryptor(b *testing.B) {
 
 	app.Use(New(Config{
 		Key: testKey,
-		Encryptor: func(_ string, decryptedString, _ string) (string, error) {
+		Encryptor: func(_, decryptedString, _ string) (string, error) {
 			return base64.StdEncoding.EncodeToString([]byte(decryptedString)), nil
 		},
-		Decryptor: func(_ string, encryptedString, _ string) (string, error) {
+		Decryptor: func(_, encryptedString, _ string) (string, error) {
 			decodedBytes, err := base64.StdEncoding.DecodeString(encryptedString)
 			return string(decodedBytes), err
 		},
@@ -627,10 +627,10 @@ func Benchmark_Encrypt_Cookie_Custom_Encryptor_Parallel(b *testing.B) {
 
 	app.Use(New(Config{
 		Key: testKey,
-		Encryptor: func(_ string, decryptedString, _ string) (string, error) {
+		Encryptor: func(_, decryptedString, _ string) (string, error) {
 			return base64.StdEncoding.EncodeToString([]byte(decryptedString)), nil
 		},
-		Decryptor: func(_ string, encryptedString, _ string) (string, error) {
+		Decryptor: func(_, encryptedString, _ string) (string, error) {
 			decodedBytes, err := base64.StdEncoding.DecodeString(encryptedString)
 			return string(decodedBytes), err
 		},
