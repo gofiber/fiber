@@ -658,16 +658,14 @@ func captureOutput(f func()) string {
 	os.Stderr = writer
 	log.SetOutput(writer)
 	out := make(chan string)
-	wg := new(sync.WaitGroup)
-	wg.Go(func() {
+	go func() {
 		var buf bytes.Buffer
 		_, copyErr := io.Copy(&buf, reader)
 		if copyErr != nil {
 			panic(copyErr)
 		}
-		out <- buf.String()
-	})
-	wg.Wait()
+		out <- buf.String() // this out channel helps in synchronization
+	}()
 	f()
 	err = writer.Close()
 	if err != nil {

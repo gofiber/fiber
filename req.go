@@ -177,7 +177,7 @@ func (r *DefaultReq) Body() []byte {
 		case errors.Is(err, ErrNotImplemented):
 			_ = r.c.SendStatus(StatusNotImplemented) //nolint:errcheck // It is fine to ignore the error
 		default:
-			_ = r.c.SendStatus(StatusBadRequest) //nolint:errcheck // It is fine to ignore the error
+			// do nothing
 		}
 		return []byte(err.Error())
 	}

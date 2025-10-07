@@ -2220,7 +2220,7 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 			require.Equal(t, "compressMW", route.Name)
 		case "/unnamed", "/pages/unnamed":
 			require.Empty(t, route.Name)
-		case "named":
+		case "/named":
 			require.Equal(t, named, route.Name)
 		case "/pages":
 			require.Equal(t, "pages.csrfMW", route.Name)
