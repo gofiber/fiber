@@ -1205,7 +1205,19 @@ Idempotency middleware now redacts keys by default and offers a `DisableValueRed
 
 ### EncryptCookie
 
-Added support for specifying key length when using `encryptcookie.GenerateKey(length)`. Keys must be base64-encoded and may be 16, 24, or 32 bytes when decoded, supporting AES-128, AES-192, and AES-256 (default).
+- Added support for specifying key length when using `encryptcookie.GenerateKey(length)`. Keys must be base64-encoded and may be 16, 24, or 32 bytes when decoded, supporting AES-128, AES-192, and AES-256 (default).
+- Custom encryptor and decryptor callbacks now receive the cookie name. The default AES-GCM helpers bind it as additional authenticated data (AAD) so ciphertext cannot be replayed under a different cookie.
+- **Breaking change:** Custom encryptor/decryptor hooks now accept the cookie name as their first argument. Update overrides like:
+
+  ```go
+  // Before
+  Encryptor func(value, key string) (string, error)
+  Decryptor func(value, key string) (string, error)
+
+  // After
+  Encryptor func(name, value, key string) (string, error)
+  Decryptor func(name, value, key string) (string, error)
+  ```
 
 ### EnvVar
 
