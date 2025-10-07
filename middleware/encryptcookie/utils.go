@@ -36,7 +36,7 @@ func validateKey(key string) error {
 }
 
 // EncryptCookie Encrypts a cookie value with specific encryption key
-func EncryptCookie(value, key string) (string, error) {
+func EncryptCookie(name, value, key string) (string, error) {
 	keyDecoded, err := decodeKey(key)
 	if err != nil {
 		return "", err
@@ -57,12 +57,12 @@ func EncryptCookie(value, key string) (string, error) {
 		return "", fmt.Errorf("failed to read nonce: %w", err)
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, []byte(value), nil)
+	ciphertext := gcm.Seal(nonce, nonce, []byte(value), []byte(name))
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
 // DecryptCookie Decrypts a cookie value with specific encryption key
-func DecryptCookie(value, key string) (string, error) {
+func DecryptCookie(name, value, key string) (string, error) {
 	keyDecoded, err := decodeKey(key)
 	if err != nil {
 		return "", err
@@ -90,7 +90,7 @@ func DecryptCookie(value, key string) (string, error) {
 	}
 
 	nonce, ciphertext := enc[:nonceSize], enc[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, []byte(name))
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt ciphertext: %w", err)
 	}

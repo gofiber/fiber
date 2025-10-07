@@ -208,8 +208,8 @@ func (r *Request) SetHeaders(h map[string]string) *Request {
 
 // Param returns all values associated with the given query parameter.
 func (r *Request) Param(key string) []string {
-	var res []string
 	tmp := r.params.PeekMulti(key)
+	res := make([]string, 0, len(tmp))
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
@@ -447,8 +447,8 @@ func (r *Request) resetBody(t bodyType) {
 
 // FormData returns all values associated with a form field.
 func (r *Request) FormData(key string) []string {
-	var res []string
 	tmp := r.formData.PeekMulti(key)
+	res := make([]string, 0, len(tmp))
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
@@ -971,7 +971,7 @@ var requestPool = &sync.Pool{
 			params:     &QueryParam{Args: fasthttp.AcquireArgs()},
 			cookies:    &Cookie{},
 			path:       &PathParam{},
-			boundary:   "FiberFormBoundary",
+			boundary:   boundary,
 			formData:   &FormData{Args: fasthttp.AcquireArgs()},
 			files:      make([]*File, 0),
 			RawRequest: fasthttp.AcquireRequest(),
