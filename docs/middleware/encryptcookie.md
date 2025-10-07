@@ -67,8 +67,8 @@ Use an encoded key of 16, 24, or 32 bytes to select AES‑128, AES‑192, or AES
 | Next      | `func(fiber.Ctx) bool`                             | A function to skip this middleware when it returns true.                                                | `nil`                        |
 | Except    | `[]string`                                          | Array of cookie keys that should not be encrypted.                                                    | `[]`                         |
 | Key       | `string`                                            | A base64-encoded unique key to encode & decode cookies. Required. Key length should be 16, 24, or 32 bytes. | (No default, required field) |
-| Encryptor | `func(decryptedString, key string) (string, error)` | A custom function to encrypt cookies.                                                                 | `EncryptCookie`              |
-| Decryptor | `func(encryptedString, key string) (string, error)` | A custom function to decrypt cookies.                                                                 | `DecryptCookie`              |
+| Encryptor | `func(name, decryptedString, key string) (string, error)` | A custom function to encrypt cookies.                                                                 | `EncryptCookie`              |
+| Decryptor | `func(name, encryptedString, key string) (string, error)` | A custom function to decrypt cookies.                                                                 | `DecryptCookie`              |
 
 ## Default Config
 
