@@ -151,7 +151,10 @@ func (l *lbClientTransport) TLSConfig() *tls.Config {
 	if len(l.client.Clients) == 0 {
 		return nil
 	}
-	return extractTLSConfig(l.client.Clients)
+	if cfg := extractTLSConfig(l.client.Clients); cfg != nil {
+		return cfg.Clone()
+	}
+	return nil
 }
 
 func (l *lbClientTransport) SetTLSConfig(config *tls.Config) {
@@ -204,24 +207,6 @@ func extractTLSConfig(clients []fasthttp.BalancingClient) *tls.Config {
 		}
 	}
 	return cfg
-}
-
-// extractDial returns the first dial function discovered while walking the
-// provided balancing clients so overrides propagate through nested transports.
-func extractDial(clients []fasthttp.BalancingClient) fasthttp.DialFunc {
-	var dial fasthttp.DialFunc
-	for _, c := range clients {
-		if walkBalancingClientWithBreak(c, func(hc *fasthttp.HostClient) bool {
-			if hc.Dial != nil {
-				dial = hc.Dial
-				return true
-			}
-			return false
-		}) {
-			break
-		}
-	}
-	return dial
 }
 
 // walkBalancingClientWithBreak traverses balancing clients recursively and
