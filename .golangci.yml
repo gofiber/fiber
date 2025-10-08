@@ -72,11 +72,11 @@ linters:
           list-mode: lax
           deny:
             - pkg: flag
-              desc: '`flag` package is only allowed in main.go'
+              desc: "`flag` package is only allowed in main.go"
             - pkg: log
               desc: logging is provided by `pkg/log`
             - pkg: io/ioutil
-              desc: '`io/ioutil` package is deprecated, use the `io` and `os` package instead'
+              desc: "`io/ioutil` package is deprecated, use the `io` and `os` package instead"
     errcheck:
       disable-default-exclusions: true
       check-type-assertions: true
@@ -233,6 +233,7 @@ linters:
         linters:
           - bodyclose
           - err113
+          - goconst # disabling goconst in test files only
       - source: (?i)fmt.Fprintf?
         linters:
           - errcheck

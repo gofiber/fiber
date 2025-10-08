@@ -2,7 +2,6 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-//nolint:goconst // Much easier to just ignore memory leaks in tests
 package fiber
 
 import (

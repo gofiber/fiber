@@ -773,7 +773,7 @@ func Test_isFile(t *testing.T) {
 
 func Test_Static_Compress(t *testing.T) {
 	t.Parallel()
-	dir := "../../.github/testdata/fs" //nolint:goconst // test
+	dir := "../../.github/testdata/fs"
 	app := fiber.New()
 	app.Get("/*", New(dir, Config{
 		Compress: true,

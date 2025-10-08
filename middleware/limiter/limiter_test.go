@@ -189,7 +189,7 @@ func Test_Limiter_With_Max_Func_With_Zero_And_Limiter_Sliding(t *testing.T) {
 	}))
 
 	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" { //nolint:goconst // test
+		if c.Params("status") == "fail" {
 			return c.SendStatus(400)
 		}
 		return c.SendStatus(200)

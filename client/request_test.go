@@ -1,4 +1,3 @@
-//nolint:goconst // Much easier to just ignore memory leaks in tests
 package client
 
 import (
