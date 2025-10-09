@@ -391,7 +391,10 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 
 		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
 		require.NoError(t, err)
-		require.Equal(t, clientTLSConf, client.TLSConfig())
+		cloned := client.TLSConfig()
+		require.NotNil(t, cloned)
+		require.Same(t, clientTLSConf, cloned)
+		require.NotNil(t, cloned.RootCAs)
 		require.Equal(t, clientTLSConf, client.HostClient().TLSConfig)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
 		require.Equal(t, "tls-host", resp.String())
@@ -559,7 +562,10 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 
 		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
 		require.NoError(t, err)
-		require.Equal(t, clientTLSConf, client.TLSConfig())
+		cloned := client.TLSConfig()
+		require.NotNil(t, cloned)
+		require.NotSame(t, clientTLSConf, cloned)
+		require.NotNil(t, cloned.RootCAs)
 
 		hc, ok := client.LBClient().Clients[0].(*fasthttp.HostClient)
 		require.True(t, ok)

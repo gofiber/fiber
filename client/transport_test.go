@@ -118,7 +118,6 @@ func TestHostClientTransportClientAccessor(t *testing.T) {
 	current, ok := transport.Client().(*fasthttp.HostClient)
 	require.True(t, ok)
 	require.Same(t, host, current)
-
 }
 
 func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
@@ -194,7 +193,6 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	_, err = multiLevelHost.Dial("example.edu:80")
 	require.Error(t, err)
 	require.True(t, overrideDialCalled.Load())
-
 }
 
 func TestExtractTLSConfigVariations(t *testing.T) {
