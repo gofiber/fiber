@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -10,6 +11,39 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 )
+
+// timestampManager provides a shared timestamp updater to reduce goroutine overhead.
+type timestampManager struct { //nolint:govet // timestampManager more than 32 byte
+	format   string
+	value    atomic.Value
+	location *time.Location
+	interval time.Duration
+}
+
+var globalManagers sync.Map
+
+func getOrCreateManager(loc *time.Location, format string, interval time.Duration) *timestampManager {
+	key := fmt.Sprintf("%s|%s|%d", loc.String(), format, interval)
+	if m, ok := globalManagers.Load(key); ok {
+		if tm, ok := m.(*timestampManager); ok {
+			return tm
+		}
+	}
+	m := &timestampManager{
+		location: loc,
+		interval: interval,
+		format:   format,
+	}
+	m.value.Store(time.Now().In(loc).Format(format))
+	go func() {
+		for {
+			time.Sleep(interval)
+			m.value.Store(time.Now().In(loc).Format(format))
+		}
+	}()
+	globalManagers.Store(key, m)
+	return m
+}
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -27,19 +61,15 @@ func New(config ...Config) fiber.Handler {
 	// Check if format contains latency
 	cfg.enableLatency = strings.Contains(cfg.Format, "${"+TagLatency+"}")
 
+	// Use shared timestamp manager to avoid per-instance goroutines.
 	var timestamp atomic.Value
-	// Create correct timeformat
-	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
-
-	// Update date/time every 500 milliseconds in a separate go routine
 	if strings.Contains(cfg.Format, "${"+TagTime+"}") {
-		go func() {
-			for {
-				time.Sleep(cfg.TimeInterval)
-				timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
-			}
-		}()
+		manager := getOrCreateManager(cfg.timeZoneLocation, cfg.TimeFormat, cfg.TimeInterval)
+		timestamp = manager.value
+	} else {
+		timestamp.Store("")
 	}
+
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
 
