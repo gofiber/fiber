@@ -107,6 +107,18 @@ func TestStandardClientTransportCoverage(t *testing.T) {
 	require.Same(t, client, underlying)
 
 	require.Equal(t, int32(3), dialCount.Load())
+
+	clientTLS := &tls.Config{ServerName: "standard", MinVersion: tls.VersionTLS12}
+	client.TLSConfig = clientTLS
+
+	cloned := transport.TLSConfig()
+	require.NotNil(t, cloned)
+	require.NotSame(t, clientTLS, cloned)
+	require.Equal(t, clientTLS.ServerName, cloned.ServerName)
+
+	override := &tls.Config{ServerName: "override", MinVersion: tls.VersionTLS13}
+	transport.SetTLSConfig(override)
+	require.Equal(t, override, client.TLSConfig)
 }
 
 func TestHostClientTransportClientAccessor(t *testing.T) {
@@ -118,6 +130,18 @@ func TestHostClientTransportClientAccessor(t *testing.T) {
 	current, ok := transport.Client().(*fasthttp.HostClient)
 	require.True(t, ok)
 	require.Same(t, host, current)
+
+	hostTLS := &tls.Config{ServerName: "host", MinVersion: tls.VersionTLS12}
+	host.TLSConfig = hostTLS
+
+	cloned := transport.TLSConfig()
+	require.NotNil(t, cloned)
+	require.NotSame(t, hostTLS, cloned)
+	require.Equal(t, hostTLS.ServerName, cloned.ServerName)
+
+	override := &tls.Config{ServerName: "host-override", MinVersion: tls.VersionTLS13}
+	transport.SetTLSConfig(override)
+	require.Equal(t, override, host.TLSConfig)
 }
 
 func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
