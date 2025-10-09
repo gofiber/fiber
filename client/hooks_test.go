@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -558,6 +559,28 @@ func Test_Parser_Request_Body(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, string(req.RawRequest.Body()), "--FiberFormBoundary")
 		require.Contains(t, string(req.RawRequest.Body()), "world")
+	})
+
+	t.Run("file body open error", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		missingPath := filepath.Join(t.TempDir(), "missing.txt")
+
+		req := AcquireRequest().AddFile(missingPath)
+
+		err := parserRequestBody(client, req)
+		require.ErrorContains(t, err, "open file error")
+	})
+
+	t.Run("file body missing path and name", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		file := AcquireFile(SetFileReader(io.NopCloser(strings.NewReader("world"))))
+
+		req := AcquireRequest().AddFiles(file)
+
+		err := parserRequestBody(client, req)
+		require.ErrorIs(t, err, ErrFileNoName)
 	})
 
 	t.Run("file and form data", func(t *testing.T) {
