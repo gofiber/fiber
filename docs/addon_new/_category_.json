@@ -1,0 +1,9 @@
+{
+  "label": "\uD83D\uDD0C Addon",
+  "position": 5,
+  "collapsed": true,
+  "link": {
+    "type": "generated-index",
+    "description": "Addon is an additional useful package that can be used in Fiber."
+  }
+}
