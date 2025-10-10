@@ -29,6 +29,13 @@ var ctxPool = sync.Pool{
 	},
 }
 
+var bufferPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 32*1024)
+		return &b
+	},
+}
+
 // HTTPHandlerFunc wraps net/http handler func to fiber handler
 func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 	return HTTPHandler(h)
@@ -257,6 +264,29 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			w.Header().Add(string(k), string(v))
 		}
 		w.WriteHeader(fctx.Response.StatusCode())
-		_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
+
+		// Check if streaming is not possible or unnecessary.
+		bodyStream := fctx.Response.BodyStream()
+		flusher, ok := w.(http.Flusher)
+		if bodyStream == nil || !ok {
+			_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
+			return
+		}
+
+		// Stream fctx.Response.BodyStream() -> w
+		// in chunks.
+		buf := bufferPool.Get().(*[]byte)
+		for {
+			n, err := bodyStream.Read(*buf)
+			if n > 0 {
+				_, _ = w.Write((*buf)[:n])
+				flusher.Flush()
+			}
+
+			if err != nil {
+				break
+			}
+		}
+		bufferPool.Put(buf)
 	}
 }
