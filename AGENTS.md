@@ -47,7 +47,9 @@ These targets can be invoked via `make <target>` as needed during development an
 
 ## Programmatic checks
 
-Before submitting generated changes for a pull request, run:
+Before presenting final changes or submitting a pull request, run each of the
+following commands and ensure they succeed. Include the command outputs in your
+final response to confirm they were executed:
 
 ```bash
 make audit
