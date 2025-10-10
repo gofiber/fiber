@@ -18,20 +18,20 @@ import (
 type Router interface {
 	Use(args ...any) Router
 
-	Get(path string, handler Handler, handlers ...Handler) Router
-	Head(path string, handler Handler, handlers ...Handler) Router
-	Post(path string, handler Handler, handlers ...Handler) Router
-	Put(path string, handler Handler, handlers ...Handler) Router
-	Delete(path string, handler Handler, handlers ...Handler) Router
-	Connect(path string, handler Handler, handlers ...Handler) Router
-	Options(path string, handler Handler, handlers ...Handler) Router
-	Trace(path string, handler Handler, handlers ...Handler) Router
-	Patch(path string, handler Handler, handlers ...Handler) Router
+	Get(path string, handler any, handlers ...any) Router
+	Head(path string, handler any, handlers ...any) Router
+	Post(path string, handler any, handlers ...any) Router
+	Put(path string, handler any, handlers ...any) Router
+	Delete(path string, handler any, handlers ...any) Router
+	Connect(path string, handler any, handlers ...any) Router
+	Options(path string, handler any, handlers ...any) Router
+	Trace(path string, handler any, handlers ...any) Router
+	Patch(path string, handler any, handlers ...any) Router
 
-	Add(methods []string, path string, handler Handler, handlers ...Handler) Router
-	All(path string, handler Handler, handlers ...Handler) Router
+	Add(methods []string, path string, handler any, handlers ...any) Router
+	All(path string, handler any, handlers ...any) Router
 
-	Group(prefix string, handlers ...Handler) Router
+	Group(prefix string, handlers ...any) Router
 
 	RouteChain(path string) Register
 	Route(prefix string, fn func(router Router), name ...string) Router

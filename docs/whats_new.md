@@ -1646,6 +1646,30 @@ app.Listen(":3000", fiber.ListenConfig{
 
 ### 🗺 Router
 
+#### Direct `net/http` handlers
+
+Route registration helpers now accept native `net/http` handlers. Pass an
+`http.Handler`, `http.HandlerFunc`, or compatible function directly to methods
+such as `app.Get`, `Group`, or `RouteChain` and Fiber will adapt it at
+registration time. Manual wrapping through the adaptor middleware is no longer
+required for these common cases.
+
+:::note Compatibility considerations
+Adapted handlers stick to `net/http` semantics. They do not interact with `fiber.Ctx`
+and are slower than native Fiber handlers because of the extra conversion layer. Use
+them to ease migrations, but prefer Fiber handlers in performance-critical paths.
+:::
+
+```go
+httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    if _, err := w.Write([]byte("served by net/http")); err != nil {
+        panic(err)
+    }
+})
+
+app.Get("/", httpHandler)
+```
+
 #### Middleware Registration
 
 The signatures for [`Add`](#middleware-registration) and [`Route`](#route-chaining) have been changed.
