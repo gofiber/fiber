@@ -116,7 +116,7 @@ import (
     "time"
 )
 
-store := session.NewStore()
+store := session.NewStore(session.Config{})
 
 // In background tasks
 func backgroundTask(sessionID string) {

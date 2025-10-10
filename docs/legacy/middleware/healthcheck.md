@@ -42,7 +42,7 @@ import (
 After your app is initialized, register the middleware on the endpoints you want to expose:
 
 ```go
-// Use the default probe on the conventional endpoints
+// Use the default probe for liveness/startup and a custom probe for readiness
 app.Get(healthcheck.LivenessEndpoint, healthcheck.New())
 app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {

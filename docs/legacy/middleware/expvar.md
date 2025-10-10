@@ -18,6 +18,9 @@ Import the middleware package:
 
 ```go
 import (
+    "expvar"
+    "fmt"
+
     "github.com/gofiber/fiber/v3"
     expvarmw "github.com/gofiber/fiber/v3/middleware/expvar"
 )

@@ -62,13 +62,13 @@ Use an encoded key of 16, 24, or 32 bytes to select AES‑128, AES‑192, or AES
 
 ## Config
 
-| Property  | Type                                                | Description                                                                                           | Default                      |
-|:----------|:----------------------------------------------------|:------------------------------------------------------------------------------------------------------|:-----------------------------|
-| Next      | `func(fiber.Ctx) bool`                             | A function to skip this middleware when it returns true.                                                | `nil`                        |
-| Except    | `[]string`                                          | Array of cookie keys that should not be encrypted.                                                    | `[]`                         |
-| Key       | `string`                                            | A base64-encoded unique key to encode & decode cookies. Required. Key length should be 16, 24, or 32 bytes. | (No default, required field) |
-| Encryptor | `func(decryptedString, key string) (string, error)` | A custom function to encrypt cookies.                                                                 | `EncryptCookie`              |
-| Decryptor | `func(encryptedString, key string) (string, error)` | A custom function to decrypt cookies.                                                                 | `DecryptCookie`              |
+| Property        | Type                                                 | Description                                                                                                 | Default                      |
+|:----------------|:-----------------------------------------------------|:------------------------------------------------------------------------------------------------------------|:-----------------------------|
+| Next            | `func(fiber.Ctx) bool`                               | A function to skip this middleware when it returns true.                                                    | `nil`                        |
+| Except          | `[]string`                                           | Array of cookie keys that should not be encrypted.                                                          | `[]`                         |
+| Key             | `string`                                             | A base64-encoded unique key to encode & decode cookies. Required. Key length should be 16, 24, or 32 bytes. | (No default, required field) |
+| EncryptorFunc   | `func(decryptedString, key string) (string, error)`  | A custom function to encrypt cookies.                                                                       | `EncryptCookie`              |
+| DecryptorFunc   | `func(encryptedString, key string) (string, error)`  | A custom function to decrypt cookies.                                                                       | `DecryptCookie`              |
 
 ## Default Config
 
@@ -89,9 +89,10 @@ Place `encryptcookie` before middleware that reads or writes cookies. If you use
 Exclude cookies from encryption by listing them in `Except`. If a frontend framework such as Angular reads the CSRF token from a cookie, add that name to the `Except` array:
 
 ```go
+const csrfCookieName = "csrf_"
 app.Use(encryptcookie.New(encryptcookie.Config{
     Key:    "secret-thirty-2-character-string",
-    Except: []string{csrf.ConfigDefault.CookieName}, // exclude CSRF cookie
+    Except: []string{csrfCookieName}, // exclude CSRF cookie
 }))
 app.Use(csrf.New(csrf.Config{
     Extractor:      csrf.FromHeader(csrf.HeaderName),

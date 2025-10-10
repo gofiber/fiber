@@ -94,14 +94,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Body(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -146,14 +146,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().CBOR(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -182,14 +182,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Form(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -217,15 +217,15 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Form(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
     log.Println(p.Avatar.Filename) // file.txt
-    
+
     // ...
 })
 ```
@@ -254,14 +254,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().JSON(p); err != nil {
         return err
     }
 
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -294,14 +294,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().MsgPack(p); err != nil {
         return err
     }
 
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -331,14 +331,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().XML(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -351,7 +351,7 @@ curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name>
 
 ### Cookie
 
-This method is similar to [Body Binding](#body), but for cookie parameters.  
+This method is similar to [Body Binding](#body), but for cookie parameters.
 It is important to use the struct tag `cookie`. For example, if you want to parse a cookie with a field called `Age`, you would use a struct field with `cookie:"age"`.
 
 ```go title="Signature"
@@ -367,11 +367,11 @@ type Person struct {
 
 app.Get("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Cookie(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name)  // Joseph
     log.Println(p.Age)   // 23
     log.Println(p.Job)   // true
@@ -386,7 +386,7 @@ curl --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
 
 ### Header
 
-This method is similar to [Body Binding](#body), but for request headers.  
+This method is similar to [Body Binding](#body), but for request headers.
 It is important to use the struct tag `header`. For example, if you want to parse a request header with a field called `Pass`, you would use a struct field with `header:"pass"`.
 
 ```go title="Signature"
@@ -402,15 +402,15 @@ type Person struct {
 
 app.Get("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Header(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
     log.Println(p.Products) // [shoe hat]
-    
+
     // ...
 })
 ```
@@ -423,7 +423,7 @@ curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,
 
 ### Query
 
-This method is similar to [Body Binding](#body), but for query parameters.  
+This method is similar to [Body Binding](#body), but for query parameters.
 It is important to use the struct tag `query`. For example, if you want to parse a query parameter with a field called `Pass`, you would use a struct field with `query:"pass"`.
 
 ```go title="Signature"
@@ -439,18 +439,18 @@ type Person struct {
 
 app.Get("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Query(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
     // Depending on fiber.Config{EnableSplittingOnParsers: false} - default
     log.Println(p.Products) // ["shoe,hat"]
     // With fiber.Config{EnableSplittingOnParsers: true}
     // log.Println(p.Products) // ["shoe", "hat"]
-    
+
     // ...
 })
 ```
@@ -483,15 +483,15 @@ type Person struct {
 
 app.Get("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().RespHeader(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
     log.Println(p.Products) // [shoe hat]
-    
+
     // ...
 })
 ```
@@ -504,7 +504,7 @@ curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,
 
 ### URI
 
-This method is similar to [Body Binding](#body), but for path parameters.  
+This method is similar to [Body Binding](#body), but for path parameters.
 It is important to use the struct tag `uri`. For example, if you want to parse a path parameter with a field called `Pass`, you would use a struct field with `uri:"pass"`.
 
 ```go title="Signature"
@@ -517,11 +517,11 @@ app.Get("/user/:id", func(c fiber.Ctx) error {
     param := struct {
         ID uint `uri:"id"`
     }{}
-    
+
     if err := c.Bind().URI(&param); err != nil {
         return err
     }
-    
+
     // ...
     return c.SendString(fmt.Sprintf("User ID: %d", param.ID))
 })
@@ -574,7 +574,7 @@ app.Post("/custom", func(c fiber.Ctx) error {
 })
 ```
 
-Internally, custom binders are also used in the [Body](#body) method.  
+Internally, custom binders are also used in the [Body](#body) method.
 The `MIMETypes` method is used to check if the custom binder should be used for the given content type.
 
 ## Options
@@ -583,7 +583,7 @@ For more control over error handling, you can use the following methods.
 
 ### WithAutoHandling
 
-If you want to handle binder errors automatically, you can use `WithAutoHandling`.  
+If you want to handle binder errors automatically, you can use `WithAutoHandling`.
 If there's an error, it will return the error and set HTTP status to `400 Bad Request`.
 This function does NOT panic therefore you must still return on error explicitly
 
@@ -593,7 +593,7 @@ func (b *Bind) WithAutoHandling() *Bind
 
 ### WithoutAutoHandling
 
-To handle binder errors manually, you can use the `WithoutAutoHandling` method.  
+To handle binder errors manually, you can use the `WithoutAutoHandling` method.
 It's the default behavior of the binder.
 
 ```go title="Signature"
@@ -605,7 +605,7 @@ func (b *Bind) WithoutAutoHandling() *Bind
 Allows you to configure the BodyParser/QueryParser decoder based on schema options, providing the possibility to add custom types for parsing.
 
 ```go title="Signature"
-func SetParserDecoder(parserConfig fiber.ParserConfig{
+type ParserConfig{
     IgnoreUnknownKeys bool,
     ParserType        []fiber.ParserType{
         Customtype any,
@@ -613,7 +613,9 @@ func SetParserDecoder(parserConfig fiber.ParserConfig{
     },
     ZeroEmpty         bool,
     SetAliasTag       string,
-})
+}
+
+func SetParserDecoder(parserConfig fiber.ParserConfig)
 ```
 
 ```go title="Example"
@@ -717,7 +719,7 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().JSON(p); err != nil { // Receives validation errors
         return err
     }
@@ -753,7 +755,7 @@ app.Get("/", func(c fiber.Ctx) error {
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
     log.Println(p.Products) // ["shoe", "hat"]
-    
+
     // ...
 })
 ```

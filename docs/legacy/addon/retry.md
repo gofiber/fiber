@@ -73,6 +73,8 @@ retry.NewExponentialBackoff()
 ## Custom Config
 
 ```go
+import "time"
+
 retry.NewExponentialBackoff(retry.Config{
     InitialInterval: 2 * time.Second,
     MaxBackoffTime:  64 * time.Second,

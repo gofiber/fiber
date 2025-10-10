@@ -14,16 +14,16 @@ The `adaptor` package converts between Fiber and `net/http`, letting you reuse h
 
 ## API Reference
 
-| Name                        | Signature                                                                     | Description                                                      |
-|-----------------------------|-------------------------------------------------------------------------------|------------------------------------------------------------------|
-| `HTTPHandler`               | `HTTPHandler(h http.Handler) fiber.Handler`                                   | Converts `http.Handler` to `fiber.Handler`                       |
-| `HTTPHandlerFunc`           | `HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler`                           | Converts `http.HandlerFunc` to `fiber.Handler`                   |
-| `HTTPMiddleware`            | `HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler`            | Converts `http.Handler` middleware to `fiber.Handler` middleware |
-| `FiberHandler`              | `FiberHandler(h fiber.Handler) http.Handler`                                  | Converts `fiber.Handler` to `http.Handler`                       |
-| `FiberHandlerFunc`          | `FiberHandlerFunc(h fiber.Handler) http.HandlerFunc`                          | Converts `fiber.Handler` to `http.HandlerFunc`                   |
-| `FiberApp`                  | `FiberApp(app *fiber.App) http.HandlerFunc`                                   | Converts an entire Fiber app to a `http.HandlerFunc`             |
-| `ConvertRequest`            | `ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error)`          | Converts `fiber.Ctx` into a `http.Request`                       |
-| `CopyContextToFiberContext` | `CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx)` | Copies `context.Context` to `fasthttp.RequestCtx`                |
+| Name                        | Signature                                                                                 | Description                                                      |
+|-----------------------------|-------------------------------------------------------------------------------------------|------------------------------------------------------------------|
+| `HTTPHandler`               | `HTTPHandler(h http.Handler) fiber.Handler`                                               | Converts `http.Handler` to `fiber.Handler`                       |
+| `HTTPHandlerFunc`           | `HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler`                                       | Converts `http.HandlerFunc` to `fiber.Handler`                   |
+| `HTTPMiddleware`            | `HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler`                        | Converts `http.Handler` middleware to `fiber.Handler` middleware |
+| `FiberHandler`              | `FiberHandler(h fiber.Handler) http.Handler`                                              | Converts `fiber.Handler` to `http.Handler`                       |
+| `FiberHandlerFunc`          | `FiberHandlerFunc(h fiber.Handler) http.HandlerFunc`                                      | Converts `fiber.Handler` to `http.HandlerFunc`                   |
+| `FiberApp`                  | `FiberApp(app *fiber.App) http.HandlerFunc`                                               | Converts an entire Fiber app to a `http.HandlerFunc`             |
+| `ConvertRequest`            | `ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error)`                      | Converts `fiber.Ctx` into a `http.Request`                       |
+| `CopyContextToFiberContext` | `CopyContextToFiberContext(context context.Context, requestContext *fasthttp.RequestCtx)` | Copies `context.Context` to `fasthttp.RequestCtx`                |
 
 ---
 
@@ -108,10 +108,10 @@ import (
 func main() {
     // Convert a Fiber handler to an http.Handler
     http.Handle("/", adaptor.FiberHandler(helloFiber))
-    
+
     // Convert a Fiber handler to an http.HandlerFunc
     http.HandleFunc("/func", adaptor.FiberHandlerFunc(helloFiber))
-    
+
     http.ListenAndServe(":3000", nil)
 }
 

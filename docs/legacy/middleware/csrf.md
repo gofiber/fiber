@@ -391,25 +391,25 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 
 ## Config Properties
 
-| Property          | Type                               | Description                                                                                                                   | Default                      |
-|:------------------|:-----------------------------------|:------------------------------------------------------------------------------------------------------------------------------|:-----------------------------|
-| Next              | `func(fiber.Ctx) bool`             | Skip middleware when returns true                                                                                             | `nil`                        |
-| CookieName        | `string`                           | CSRF cookie name                                                                                                              | `"csrf_"`                    |
-| CookieDomain      | `string`                           | CSRF cookie domain                                                                                                            | `""`                         |
-| CookiePath        | `string`                           | CSRF cookie path                                                                                                              | `""`                         |
-| CookieSecure      | `bool`                             | HTTPS only cookie (**required for production**)                                                                               | `false`                      |
-| CookieHTTPOnly    | `bool`                             | Prevent JavaScript access (**use `false` for SPAs**)                                                                          | `false`                      |
-| CookieSameSite    | `string`                           | SameSite attribute (**use "Lax" or "Strict"**)                                                                                | `"Lax"`                      |
-| CookieSessionOnly | `bool`                             | Session-only cookie (expires on browser close)                                                                                | `false`                      |
-| IdleTimeout       | `time.Duration`                    | Token expiration time                                                                                                         | `30 * time.Minute`           |
-| KeyGenerator      | `func() string`                    | Token generation function                                                                                                     | `utils.UUIDv4`               |
-| ErrorHandler      | `fiber.ErrorHandler`               | Custom error handler                                                                                                          | `defaultErrorHandler`        |
-| Extractor         | `extractors.Extractor`             | Token extraction method with metadata                                                                                         | `extractors.FromHeader("X-Csrf-Token")` |
-| DisableValueRedaction | `bool`                         | Disables redaction of tokens and storage keys in logs and error messages. | `false`                      |
-| Session           | `*session.Store`                   | Session store (**recommended for production**)                                                                                | `nil`                        |
-| Storage           | `fiber.Storage`                    | Token storage (overridden by Session)                                                                                         | `nil`                        |
-| TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests                                                                                     | `[]`                         |
-| SingleUseToken    | `bool`                             | Generate new token after each use                                                                                             | `false`                      |
+| Property              | Type                             | Description                                                                                                                       | Default                                 |
+|:----------------------|:---------------------------------|:----------------------------------------------------------------------------------------------------------------------------------|:----------------------------------------|
+| Next                  | `func(fiber.Ctx) bool`           | Skip middleware when returns true                                                                                                 | `nil`                                   |
+| CookieName            | `string`                         | CSRF cookie name                                                                                                                  | `"csrf_"`                               |
+| CookieDomain          | `string`                         | CSRF cookie domain                                                                                                                | `""`                                    |
+| CookiePath            | `string`                         | CSRF cookie path                                                                                                                  | `""`                                    |
+| CookieSecure          | `bool`                           | HTTPS only cookie (**required for production**)                                                                                   | `false`                                 |
+| CookieHTTPOnly        | `bool`                           | Prevent JavaScript access (**use `false` for SPAs**)                                                                              | `false`                                 |
+| CookieSameSite        | `string`                         | SameSite attribute (**use "Lax" or "Strict"**)                                                                                    | `"Lax"`                                 |
+| CookieSessionOnly     | `bool`                           | Session-only cookie (expires on browser close)                                                                                    | `false`                                 |
+| IdleTimeout           | `time.Duration`                  | Token expiration time                                                                                                             | `30 * time.Minute`                      |
+| KeyGenerator          | `func() string`                  | Token generation function                                                                                                         | `utils.UUIDv4`                          |
+| ErrorHandler          | `fiber.ErrorHandler`             | Custom error handler                                                                                                              | `defaultErrorHandler`                   |
+| Extractor             | `extractors.Extractor`           | Token extraction method with metadata                                                                                             | `extractors.FromHeader("X-Csrf-Token")` |
+| DisableValueRedaction | `bool`                           | Disables redaction of tokens and storage keys in logs and error messages.                                                         | `false`                                 |
+| Session               | `*session.Store`                 | Session store (**recommended for production**)                                                                                    | `nil`                                   |
+| Storage               | `fiber.Storage`                  | Token storage (overridden by Session)                                                                                             | `memory.New()`                          |
+| TrustedOrigins        | `[]string`                       | Trusted origins for cross-origin requests                                                                                         | `[]`                                    |
+| SingleUseToken        | `bool`                           | Generate new token after each use                                                                                                 | `false`                                 |
 
 ## Error Types
 

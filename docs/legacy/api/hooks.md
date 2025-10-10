@@ -137,7 +137,7 @@ func (h *Hooks) OnListen(handler ...OnListenHandler)
 package main
 
 import (
-    "log"
+    stdlog "log"
     "os"
 
     "github.com/gofiber/fiber/v3"

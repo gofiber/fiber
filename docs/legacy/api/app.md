@@ -719,7 +719,7 @@ If not provided, TestConfig is set to the following defaults:
 
 ```go title="Default TestConfig"
 config := fiber.TestConfig{
-  Timeout:      time.Second(),
+  Timeout:      time.Second,
   FailOnTimeout: true,
 }
 ```

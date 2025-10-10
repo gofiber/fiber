@@ -78,7 +78,7 @@ type Config struct {
     // A function to dynamically calculate the max requests supported by the rate limiter middleware
     //
     // Default: func(c fiber.Ctx) int {
-    //   return c.Max
+    //   return cfg.Max
     // }
     MaxFunc func(c fiber.Ctx) int
 

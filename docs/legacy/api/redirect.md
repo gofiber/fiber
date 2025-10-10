@@ -51,17 +51,17 @@ app.Get("/", func(c fiber.Ctx) error {
 Redirects to a named route with parameters and queries.
 
 :::info
-To send params and queries to a route, use the [`RedirectConfig`](#redirectconfig) struct.
+To send params and queries to a route, use the [`fiber.RedirectRouteConfig`](#RedirectRouteConfig) struct.
 :::
 
 ```go title="Signature"
-func (r *Redirect) Route(name string, config ...RedirectConfig) error
+func (r *Redirect) Route(name string, config ...fiber.RedirectRouteConfig) error
 ```
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   // /user/fiber
-  return c.Redirect().Route("user", fiber.RedirectConfig{
+  return c.Redirect().Route("user", fiber.fiber.RedirectRouteConfig{
     Params: fiber.Map{
       "name": "fiber",
     },
@@ -70,7 +70,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 app.Get("/with-queries", func(c fiber.Ctx) error {
   // /user/fiber?data[0][name]=john&data[0][age]=10&test=doe
-  return c.Redirect().Route("user", fiber.RedirectConfig{
+  return c.Redirect().Route("user", fiber.fiber.RedirectRouteConfig{
     Params: fiber.Map{
       "name": "fiber",
     },
@@ -139,7 +139,7 @@ app.Get("/coffee", func(c fiber.Ctx) error {
 })
 ```
 
-### RedirectConfig
+### RedirectRouteConfig
 
 Sets the configuration for the redirect.
 
@@ -148,8 +148,8 @@ It is used in conjunction with the [**Route**](#route) method.
 :::
 
 ```go title="Definition"
-// RedirectConfig is a config to use with Redirect().Route()
-type RedirectConfig struct {
+// fiber.RedirectRouteConfig is a config to use with Redirect().Route()
+type RedirectRouteConfig struct {
   Params  fiber.Map         // Route parameters
   Queries map[string]string // Query map
 }

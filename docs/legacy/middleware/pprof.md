@@ -39,10 +39,10 @@ app.Use(pprof.New(pprof.Config{Prefix: "/endpoint-prefix"}))
 
 ## Config
 
-| Property | Type                    | Description                                                                                                                                                                          | Default |
-|:---------|:------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-------:|
-| Next     | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when it returns true.                                                                                                                  | `nil`   |
-| Prefix   | `string`                | Prefix adds a segment before `/debug/pprof`; it must start with a slash and omit the trailing slash. Example: `/federated-fiber` | `""`   |
+| Property | Type                    | Description                                                                                                                        | Default |
+|:---------|:------------------------|:-----------------------------------------------------------------------------------------------------------------------------------|:-------:|
+| Next     | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when it returns true.                                                              |  `nil`  |
+| Prefix   | `string`                | Prefix adds a segment before `/debug/pprof`; it must start with a slash and omit the trailing slash. Example: `/federated-fiber`   |  `""`   |
 
 ## Default Config
 

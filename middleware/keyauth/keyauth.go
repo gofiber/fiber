@@ -93,7 +93,7 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// TokenFromContext returns the bearer token from the request context.
+// TokenFromContext returns the API key from the request context.
 // returns an empty string if the token does not exist
 func TokenFromContext(c fiber.Ctx) string {
 	token, ok := c.Locals(tokenKey).(string)

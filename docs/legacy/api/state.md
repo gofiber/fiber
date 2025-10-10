@@ -180,7 +180,7 @@ if count, ok := app.State().GetInt("userCount"); ok {
 GetBool retrieves a boolean value from the State. It returns the bool and a boolean indicating a successful type assertion.
 
 ```go title="Signature"
-func (s *State) GetBool(key string) (value, bool)
+func (s *State) GetBool(key string) (bool, bool)
 ```
 
 **Usage Example:**
@@ -474,13 +474,13 @@ fmt.Printf("Request Count: %d\n", requestCount)
 GetService retrieves a Service from the State and casts it to the desired type. It returns the cast value and a boolean indicating if the cast was successful.
 
 ```go title="Signature"
-func GetService[T Service](s *State, key string) (T, bool) {
+func GetService[T Service](s *State, key string) (T, bool)
 ```
 
 **Usage Example:**
 
 ```go
-if srv, ok := fiber.GetService[*redisService](app.State(), "someService")
+if srv, ok := fiber.GetService[*redisService](app.State(), "someService"); ok {
     fmt.Printf("Some Service: %s\n", srv.String())
 }
 ```

@@ -89,7 +89,7 @@ Example:
 ```go
 app.Use(limiter.New(limiter.Config{
     MaxFunc:  func(c fiber.Ctx) int {
-      return getUserLimit(ctx.Param("id"))
+      return getUserLimit(ctx.Params("id"))
     },
     Expiration:     30 * time.Second,
 }))

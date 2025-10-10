@@ -11,7 +11,7 @@ sidebar_position: 6
 # log
 
 ```go
-import "command-line-arguments"
+import "github.com/gofiber/fiber/v3/log"
 ```
 
 ## Index
@@ -52,7 +52,7 @@ import "command-line-arguments"
 
 
 <a name="Debug"></a>
-## func [Debug](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L29>)
+## func Debug
 
 ```go
 func Debug(v ...any)
@@ -61,7 +61,7 @@ func Debug(v ...any)
 Debug calls the default logger's Debug method.
 
 <a name="Debugf"></a>
-## func [Debugf](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L64>)
+## func Debugf
 
 ```go
 func Debugf(format string, v ...any)
@@ -70,7 +70,7 @@ func Debugf(format string, v ...any)
 Debugf calls the default logger's Debugf method.
 
 <a name="Debugw"></a>
-## func [Debugw](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L86>)
+## func Debugw
 
 ```go
 func Debugw(msg string, keysAndValues ...any)
@@ -79,7 +79,7 @@ func Debugw(msg string, keysAndValues ...any)
 Debugw logs a message with some additional context. The variadic key\-value pairs are treated as they are privateLog With.
 
 <a name="Error"></a>
-## func [Error](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L14>)
+## func Error
 
 ```go
 func Error(v ...any)
@@ -88,7 +88,7 @@ func Error(v ...any)
 Error calls the default logger's Error method.
 
 <a name="Errorf"></a>
-## func [Errorf](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L49>)
+## func Errorf
 
 ```go
 func Errorf(format string, v ...any)
@@ -97,7 +97,7 @@ func Errorf(format string, v ...any)
 Errorf calls the default logger's Errorf method.
 
 <a name="Errorw"></a>
-## func [Errorw](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L104>)
+## func Errorw
 
 ```go
 func Errorw(msg string, keysAndValues ...any)
@@ -106,7 +106,7 @@ func Errorw(msg string, keysAndValues ...any)
 Errorw logs a message with some additional context. The variadic key\-value pairs are treated as they are privateLog With.
 
 <a name="Fatal"></a>
-## func [Fatal](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L9>)
+## func Fatal
 
 ```go
 func Fatal(v ...any)
@@ -115,7 +115,7 @@ func Fatal(v ...any)
 Fatal calls the default logger's Fatal method and then os.Exit\(1\).
 
 <a name="Fatalf"></a>
-## func [Fatalf](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L44>)
+## func Fatalf
 
 ```go
 func Fatalf(format string, v ...any)
@@ -124,7 +124,7 @@ func Fatalf(format string, v ...any)
 Fatalf calls the default logger's Fatalf method and then os.Exit\(1\).
 
 <a name="Fatalw"></a>
-## func [Fatalw](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L110>)
+## func Fatalw
 
 ```go
 func Fatalw(msg string, keysAndValues ...any)
@@ -133,7 +133,7 @@ func Fatalw(msg string, keysAndValues ...any)
 Fatalw logs a message with some additional context. The variadic key\-value pairs are treated as they are privateLog With.
 
 <a name="Info"></a>
-## func [Info](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L24>)
+## func Info
 
 ```go
 func Info(v ...any)
@@ -142,7 +142,7 @@ func Info(v ...any)
 Info calls the default logger's Info method.
 
 <a name="Infof"></a>
-## func [Infof](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L59>)
+## func Infof
 
 ```go
 func Infof(format string, v ...any)
@@ -151,7 +151,7 @@ func Infof(format string, v ...any)
 Infof calls the default logger's Infof method.
 
 <a name="Infow"></a>
-## func [Infow](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L92>)
+## func Infow
 
 ```go
 func Infow(msg string, keysAndValues ...any)
@@ -160,7 +160,7 @@ func Infow(msg string, keysAndValues ...any)
 Infow logs a message with some additional context. The variadic key\-value pairs are treated as they are privateLog With.
 
 <a name="Panic"></a>
-## func [Panic](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L39>)
+## func Panic
 
 ```go
 func Panic(v ...any)
@@ -169,16 +169,16 @@ func Panic(v ...any)
 Panic calls the default logger's Panic method.
 
 <a name="Panicf"></a>
-## func [Panicf](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L74>)
+## func Panicf
 
 ```go
 func Panicf(format string, v ...any)
 ```
 
-Panicf calls the default logger's Tracef method.
+Panicf calls the default logger's Panicf method.
 
 <a name="Panicw"></a>
-## func [Panicw](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L116>)
+## func Panicw
 
 ```go
 func Panicw(msg string, keysAndValues ...any)
@@ -187,7 +187,7 @@ func Panicw(msg string, keysAndValues ...any)
 Panicw logs a message with some additional context. The variadic key\-value pairs are treated as they are privateLog With.
 
 <a name="SetLevel"></a>
-## func [SetLevel](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L141>)
+## func SetLevel
 
 ```go
 func SetLevel(lv Level)
@@ -196,7 +196,7 @@ func SetLevel(lv Level)
 SetLevel sets the level of logs below which logs will not be output. The default logger is LevelTrace. Note that this method is not concurrent\-safe.
 
 <a name="SetLogger"></a>
-## func [SetLogger](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L129>)
+## func SetLogger
 
 ```go
 func SetLogger[T any](v AllLogger[T])
@@ -205,7 +205,7 @@ func SetLogger[T any](v AllLogger[T])
 SetLogger sets the default logger and the system logger. Note that this method is not concurrent\-safe and must not be called after the use of DefaultLogger and global functions from this package.
 
 <a name="SetOutput"></a>
-## func [SetOutput](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L134>)
+## func SetOutput
 
 ```go
 func SetOutput(w io.Writer)
@@ -214,7 +214,7 @@ func SetOutput(w io.Writer)
 SetOutput sets the output of default logger and system logger. By default, it is stderr.
 
 <a name="Trace"></a>
-## func [Trace](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L34>)
+## func Trace
 
 ```go
 func Trace(v ...any)
@@ -223,7 +223,7 @@ func Trace(v ...any)
 Trace calls the default logger's Trace method.
 
 <a name="Tracef"></a>
-## func [Tracef](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L69>)
+## func Tracef
 
 ```go
 func Tracef(format string, v ...any)
@@ -232,7 +232,7 @@ func Tracef(format string, v ...any)
 Tracef calls the default logger's Tracef method.
 
 <a name="Tracew"></a>
-## func [Tracew](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L80>)
+## func Tracew
 
 ```go
 func Tracew(msg string, keysAndValues ...any)
@@ -241,7 +241,7 @@ func Tracew(msg string, keysAndValues ...any)
 Tracew logs a message with some additional context. The variadic key\-value pairs are treated as they are privateLog With.
 
 <a name="Warn"></a>
-## func [Warn](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L19>)
+## func Warn
 
 ```go
 func Warn(v ...any)
@@ -250,7 +250,7 @@ func Warn(v ...any)
 Warn calls the default logger's Warn method.
 
 <a name="Warnf"></a>
-## func [Warnf](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L54>)
+## func Warnf
 
 ```go
 func Warnf(format string, v ...any)
@@ -259,7 +259,7 @@ func Warnf(format string, v ...any)
 Warnf calls the default logger's Warnf method.
 
 <a name="Warnw"></a>
-## func [Warnw](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L98>)
+## func Warnw
 
 ```go
 func Warnw(msg string, keysAndValues ...any)
@@ -268,7 +268,7 @@ func Warnw(msg string, keysAndValues ...any)
 Warnw logs a message with some additional context. The variadic key\-value pairs are treated as they are privateLog With.
 
 <a name="AllLogger"></a>
-## type [AllLogger](<https://github.com/gofiber/fiber/blob/main/log/log.go#L82-L88>)
+## type AllLogger
 
 AllLogger is the combination of Logger, FormatLogger, CtxLogger and ConfigurableLogger. Custom extensions can be made through AllLogger
 
@@ -283,7 +283,7 @@ type AllLogger[T any] interface {
 ```
 
 <a name="DefaultLogger"></a>
-### func [DefaultLogger](<https://github.com/gofiber/fiber/blob/main/log/default.go#L243>)
+### func DefaultLogger
 
 ```go
 func DefaultLogger[T any]() AllLogger[T]
@@ -292,7 +292,7 @@ func DefaultLogger[T any]() AllLogger[T]
 DefaultLogger returns the default logger.
 
 <a name="CommonLogger"></a>
-## type [CommonLogger](<https://github.com/gofiber/fiber/blob/main/log/log.go#L60-L64>)
+## type CommonLogger
 
 CommonLogger is the set of logging operations available across Fiber's logging implementations.
 
@@ -305,7 +305,7 @@ type CommonLogger interface {
 ```
 
 <a name="WithContext"></a>
-### func [WithContext](<https://github.com/gofiber/fiber/blob/main/log/fiberlog.go#L122>)
+### func WithContext
 
 ```go
 func WithContext(ctx context.Context) CommonLogger
@@ -314,7 +314,7 @@ func WithContext(ctx context.Context) CommonLogger
 WithContext binds the default logger to the provided context and returns the contextualized logger.
 
 <a name="ConfigurableLogger"></a>
-## type [ConfigurableLogger](<https://github.com/gofiber/fiber/blob/main/log/log.go#L67-L78>)
+## type ConfigurableLogger
 
 ConfigurableLogger provides methods to config a logger.
 
@@ -334,7 +334,7 @@ type ConfigurableLogger[T any] interface {
 ```
 
 <a name="FormatLogger"></a>
-## type [FormatLogger](<https://github.com/gofiber/fiber/blob/main/log/log.go#L37-L45>)
+## type FormatLogger
 
 FormatLogger is a logger interface that output logs with a format.
 
@@ -351,7 +351,7 @@ type FormatLogger interface {
 ```
 
 <a name="Level"></a>
-## type [Level](<https://github.com/gofiber/fiber/blob/main/log/log.go#L93>)
+## type Level
 
 Level defines the priority of a log message. When a logger is configured with a level, any log message with a lower log level \(smaller by integer comparison\) will not be output.
 
@@ -374,7 +374,7 @@ const (
 ```
 
 <a name="Logger"></a>
-## type [Logger](<https://github.com/gofiber/fiber/blob/main/log/log.go#L26-L34>)
+## type Logger
 
 Logger is a logger interface that provides logging function with levels.
 
@@ -391,7 +391,7 @@ type Logger interface {
 ```
 
 <a name="WithLogger"></a>
-## type [WithLogger](<https://github.com/gofiber/fiber/blob/main/log/log.go#L48-L56>)
+## type WithLogger
 
 WithLogger is a logger interface that output logs with a message and key\-value pairs.
 
