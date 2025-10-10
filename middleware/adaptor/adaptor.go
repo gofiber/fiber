@@ -275,11 +275,11 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 
 		// Stream fctx.Response.BodyStream() -> w
 		// in chunks.
-		buf := bufferPool.Get().(*[]byte)
+		buf := bufferPool.Get().(*[]byte) //nolint:errcheck // not needed
 		for {
 			n, err := bodyStream.Read(*buf)
 			if n > 0 {
-				_, _ = w.Write((*buf)[:n])
+				_, _ = w.Write((*buf)[:n]) //nolint:errcheck // not needed
 				flusher.Flush()
 			}
 
