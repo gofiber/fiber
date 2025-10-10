@@ -297,6 +297,9 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 
 // SetProxyURL sets the proxy URL for the client. This affects all subsequent requests.
 func (c *Client) SetProxyURL(proxyURL string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.applyDial(fasthttpproxy.FasthttpHTTPDialer(proxyURL))
 	return nil
 }
