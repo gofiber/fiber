@@ -70,7 +70,7 @@ func Tracef(format string, v ...any) {
 	logger.Tracef(format, v...)
 }
 
-// Panicf calls the default logger's Tracef method.
+// Panicf calls the default logger's Panicf method.
 func Panicf(format string, v ...any) {
 	logger.Panicf(format, v...)
 }

@@ -26,7 +26,7 @@ type Config struct {
 	//
 	// If the special wildcard `"*"` is present in the list, all origins will be allowed.
 	//
-	// Optional. Default value []string{}
+	// Optional. Default value []string{*}
 	AllowOrigins []string
 
 	// AllowMethods defines a list methods allowed when accessing the resource.
