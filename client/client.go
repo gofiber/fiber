@@ -103,7 +103,7 @@ func (c *Client) applyDial(dial fasthttp.DialFunc) {
 	c.transport.SetDial(dial)
 }
 
-// FasthttpClient returns the underlying fasthttp.Client if the client was created with one.
+// FasthttpClient returns the underlying *fasthttp.Client if the client was created with one.
 func (c *Client) FasthttpClient() *fasthttp.Client {
 	if client, ok := c.transport.(*standardClientTransport); ok {
 		return client.client

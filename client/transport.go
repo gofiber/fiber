@@ -55,10 +55,7 @@ func (s *standardClientTransport) CloseIdleConnections() {
 }
 
 func (s *standardClientTransport) TLSConfig() *tls.Config {
-	if s.client.TLSConfig == nil {
-		return nil
-	}
-	return s.client.TLSConfig.Clone()
+	return s.client.TLSConfig
 }
 
 func (s *standardClientTransport) SetTLSConfig(config *tls.Config) {
@@ -102,10 +99,7 @@ func (h *hostClientTransport) CloseIdleConnections() {
 }
 
 func (h *hostClientTransport) TLSConfig() *tls.Config {
-	if h.client.TLSConfig == nil {
-		return nil
-	}
-	return h.client.TLSConfig.Clone()
+	return h.client.TLSConfig
 }
 
 func (h *hostClientTransport) SetTLSConfig(config *tls.Config) {
@@ -158,7 +152,7 @@ func (l *lbClientTransport) TLSConfig() *tls.Config {
 		return nil
 	}
 	if cfg := extractTLSConfig(l.client.Clients); cfg != nil {
-		return cfg.Clone()
+		return cfg
 	}
 	return nil
 }

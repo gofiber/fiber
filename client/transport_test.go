@@ -111,10 +111,8 @@ func TestStandardClientTransportCoverage(t *testing.T) {
 	clientTLS := &tls.Config{ServerName: "standard", MinVersion: tls.VersionTLS12}
 	client.TLSConfig = clientTLS
 
-	cloned := transport.TLSConfig()
-	require.NotNil(t, cloned)
-	require.NotSame(t, clientTLS, cloned)
-	require.Equal(t, clientTLS.ServerName, cloned.ServerName)
+	cfg := transport.TLSConfig()
+	require.Same(t, clientTLS, cfg)
 
 	override := &tls.Config{ServerName: "override", MinVersion: tls.VersionTLS13}
 	transport.SetTLSConfig(override)
@@ -134,10 +132,8 @@ func TestHostClientTransportClientAccessor(t *testing.T) {
 	hostTLS := &tls.Config{ServerName: "host", MinVersion: tls.VersionTLS12}
 	host.TLSConfig = hostTLS
 
-	cloned := transport.TLSConfig()
-	require.NotNil(t, cloned)
-	require.NotSame(t, hostTLS, cloned)
-	require.Equal(t, hostTLS.ServerName, cloned.ServerName)
+	cfg := transport.TLSConfig()
+	require.Same(t, hostTLS, cfg)
 
 	override := &tls.Config{ServerName: "host-override", MinVersion: tls.VersionTLS13}
 	transport.SetTLSConfig(override)
@@ -178,9 +174,7 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	transport := newLBClientTransport(lb)
 	require.Same(t, lb, transport.Client())
 	cfg := transport.TLSConfig()
-	require.NotNil(t, cfg)
-	require.Equal(t, nestedTLSHost.TLSConfig.ServerName, cfg.ServerName)
-	require.NotSame(t, nestedTLSHost.TLSConfig, cfg)
+	require.Same(t, nestedTLSHost.TLSConfig, cfg)
 
 	overrideTLS := &tls.Config{ServerName: "override", MinVersion: tls.VersionTLS12}
 	transport.SetTLSConfig(overrideTLS)
@@ -188,13 +182,10 @@ func TestLBClientTransportAccessorsAndOverrides(t *testing.T) {
 	require.Equal(t, overrideTLS, nestedDialHost.TLSConfig)
 	require.Equal(t, overrideTLS, nestedTLSHost.TLSConfig)
 	require.Equal(t, overrideTLS, multiLevelHost.TLSConfig)
-	cloned := transport.TLSConfig()
-	require.NotNil(t, cloned)
-	require.Equal(t, overrideTLS.ServerName, cloned.ServerName)
-	require.NotSame(t, overrideTLS, cloned)
-	cloned.ServerName = "mutated"
-	latest := transport.TLSConfig()
-	require.Equal(t, "override", latest.ServerName)
+	cfg = transport.TLSConfig()
+	require.Same(t, overrideTLS, cfg)
+	cfg.ServerName = "mutated"
+	require.Equal(t, "mutated", transport.TLSConfig().ServerName)
 
 	overrideDialCalled := atomic.Bool{}
 	overrideDial := func(addr string) (net.Conn, error) {
