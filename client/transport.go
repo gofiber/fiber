@@ -151,10 +151,7 @@ func (l *lbClientTransport) TLSConfig() *tls.Config {
 	if len(l.client.Clients) == 0 {
 		return nil
 	}
-	if cfg := extractTLSConfig(l.client.Clients); cfg != nil {
-		return cfg
-	}
-	return nil
+	return extractTLSConfig(l.client.Clients)
 }
 
 func (l *lbClientTransport) SetTLSConfig(config *tls.Config) {
