@@ -71,7 +71,7 @@ New creates a new middleware handler
 func TokenFromContext(c fiber.Ctx) string
 ```
 
-TokenFromContext returns the API key from the request context. returns an empty string if the token does not exist
+TokenFromContext returns the API key from the request context. It returns an empty string if the API key does not exist.
 
 <a name="Config"></a>
 ## type Config
