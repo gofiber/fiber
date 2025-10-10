@@ -275,7 +275,11 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 
 		// Stream fctx.Response.BodyStream() -> w
 		// in chunks.
-		buf := bufferPool.Get().(*[]byte) //nolint:errcheck // not needed
+		buf, ok := bufferPool.Get().(*[]byte)
+		if !ok {
+			panic(errors.New("failed to type-assert to *[]byte"))
+		}
+
 		for {
 			n, err := bodyStream.Read(*buf)
 			if n > 0 {
