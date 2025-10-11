@@ -774,6 +774,12 @@ The default redirect status code has been updated from `302 Found` to `303 See O
 The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
 You can take a look to [client docs](./client/rest.md) to see what's new with the client.
 
+### Fasthttp transport integration
+
+- `client.NewWithHostClient` and `client.NewWithLBClient` allow you to plug existing `fasthttp` clients directly into Fiber while keeping retries, redirects, and hook logic consistent.
+- Dialer, TLS, and proxy helpers now update every host client inside a load balancer, so complex pools inherit the same configuration.
+- The Fiber client exposes `Do`, `DoTimeout`, `DoDeadline`, and `CloseIdleConnections`, matching the surface area of the wrapped fasthttp transports.
+
 ## 🧰 Generic functions
 
 Fiber v3 introduces new generic functions that provide additional utility and flexibility for developers. These functions are designed to simplify common tasks and improve code readability.
