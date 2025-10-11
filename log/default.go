@@ -28,7 +28,7 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	level := lv.toString()
 	buf := bytebufferpool.Get()
 	buf.WriteString(level)
-	buf.WriteString(fmt.Sprint(fmtArgs...))
+	fmt.Fprint(buf, fmtArgs...)
 
 	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	if lv == LevelPanic {

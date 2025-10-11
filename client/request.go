@@ -535,12 +535,15 @@ func (r *Request) DelFormData(key ...string) *Request {
 // If no name was provided during addition, it attempts to match by the file's base name.
 func (r *Request) File(name string) *File {
 	for _, v := range r.files {
-		if v.name == "" {
+		switch v.name {
+		case "":
 			if filepath.Base(v.path) == name {
 				return v
 			}
-		} else if v.name == name {
+		case name:
 			return v
+		default:
+			continue
 		}
 	}
 	return nil
@@ -710,7 +713,7 @@ type Header struct {
 func (h *Header) PeekMultiple(key string) []string {
 	var res []string
 	byteKey := []byte(key)
-	for k, value := range h.RequestHeader.All() {
+	for k, value := range h.All() {
 		if bytes.EqualFold(k, byteKey) {
 			res = append(res, utils.UnsafeString(value))
 		}
@@ -916,7 +919,7 @@ func (f *FormData) SetWithStruct(v any) {
 // DelData deletes multiple form fields.
 func (f *FormData) DelData(key ...string) {
 	for _, v := range key {
-		f.Args.Del(v)
+		f.Del(v)
 	}
 }
 

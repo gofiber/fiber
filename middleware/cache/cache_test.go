@@ -910,14 +910,14 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 	require.NoError(t, err)
 	headBody, err := io.ReadAll(headResp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "", string(headBody))
+	require.Empty(t, string(headBody))
 	require.Equal(t, cacheMiss, headResp.Header.Get("X-Cache"))
 
 	headResp, err = app.Test(httptest.NewRequest(fiber.MethodHead, "/?cache=123", nil))
 	require.NoError(t, err)
 	headBody, err = io.ReadAll(headResp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "", string(headBody))
+	require.Empty(t, string(headBody))
 	require.Equal(t, cacheHit, headResp.Header.Get("X-Cache"))
 
 	getResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?cache=123", nil))

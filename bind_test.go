@@ -217,7 +217,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 		Body:  "Existing Body",
 	}
 	require.NoError(t, c.Bind().Query(q))
-	require.Equal(t, "", q.Title)
+	require.Empty(t, q.Title)
 }
 
 // go test -run Test_Bind_Query_Schema -v
@@ -474,7 +474,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 		Body:  "Existing Body",
 	}
 	require.NoError(t, c.Bind().Header(r))
-	require.Equal(t, "", r.Title)
+	require.Empty(t, r.Title)
 }
 
 // go test -run Test_Bind_Header_Schema -v
@@ -1138,7 +1138,7 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 		require.NoError(t, c.Bind().Body(&d))
 		date := fmt.Sprintf("%v", d.Date)
 		require.Equal(t, "{0 63743587200 <nil>}", date)
-		require.Equal(t, "", d.Title)
+		require.Empty(t, d.Title)
 		require.Equal(t, "New Body", d.Body)
 	}
 
@@ -1657,7 +1657,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 		Body:  "Existing Body",
 	}
 	require.NoError(t, c.Bind().Cookie(r))
-	require.Equal(t, "", r.Title)
+	require.Empty(t, r.Title)
 }
 
 // go test -run Test_Bind_Cookie_Schema -v

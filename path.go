@@ -184,11 +184,9 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	parser.parseRoute(string(patternPretty))
 	defer routerParserPool.Put(parser)
 
-	if string(patternPretty) == "/" && path == "/" {
+	if (string(patternPretty) == "/" && path == "/") || (string(patternPretty) == "/*") {
 		return true
 		// '*' wildcard matches any path
-	} else if string(patternPretty) == "/*" {
-		return true
 	}
 
 	// Does this route have parameters
@@ -355,11 +353,14 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 				}
 			}
 		}
+
 		switch {
 		case paramEndPosition == -1:
 			paramEndPosition = len(pattern) - 1
 		case bytes.IndexByte(parameterDelimiterChars, pattern[paramEndPosition+1]) == -1:
 			paramEndPosition++
+		default:
+			// do nothing
 		}
 	}
 
@@ -500,7 +501,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			// check if the end of the segment is an optional slash
 			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
 				i--
-			} else if !(i <= partLen && detectionPath[:i] == segment.Const) {
+			} else if i > partLen || detectionPath[:i] != segment.Const {
 				return false
 			}
 		} else {
@@ -512,7 +513,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			// take over the params positions
 			params[paramsIterator] = path[:i]
 
-			if !(segment.IsOptional && i == 0) {
+			if !segment.IsOptional || i != 0 {
 				// check constraint
 				for _, c := range segment.Constraints {
 					if matched := c.CheckConstraint(params[paramsIterator]); !matched {
@@ -714,7 +715,6 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		}
 	}
 
-	// check constraints
 	switch c.ID {
 	case noConstraint:
 		return true
@@ -791,6 +791,8 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		if match := c.RegexCompiler.MatchString(param); !match {
 			return false
 		}
+	default:
+		return false
 	}
 
 	return err == nil

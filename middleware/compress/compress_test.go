@@ -180,12 +180,12 @@ func Test_Compress_Disabled(t *testing.T) {
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate the file size is not shrunk
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, len(body), len(filedata))
+	require.Len(t, body, len(filedata))
 }
 
 func Test_Compress_Adds_Vary_Header(t *testing.T) {
@@ -409,7 +409,7 @@ func Test_Compress_Strong_ETag_Unchanged_When_Not_Compressed(t *testing.T) {
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err)
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "\"abc\"", resp.Header.Get(fiber.HeaderETag))
 	require.Equal(t, "Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
 }
@@ -446,7 +446,7 @@ func Test_Compress_Skip_Head(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, headBody)
 
-	require.Equal(t, "", headResp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, headResp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "Accept-Encoding", headResp.Header.Get(fiber.HeaderVary))
 	require.Equal(t, "\"abc\"", headResp.Header.Get(fiber.HeaderETag))
 }
@@ -468,7 +468,7 @@ func Test_Compress_Skip_Status_NoContent(t *testing.T) {
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "\"abc\"", resp.Header.Get(fiber.HeaderETag))
 }
 
@@ -490,7 +490,7 @@ func Test_Compress_Skip_Status_NotModified(t *testing.T) {
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "\"abc\"", resp.Header.Get(fiber.HeaderETag))
 }
 
@@ -510,7 +510,7 @@ func Test_Compress_Skip_Range(t *testing.T) {
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
 }
 
@@ -529,7 +529,7 @@ func Test_Compress_Skip_Range_NoAcceptEncoding(t *testing.T) {
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
 }
 
@@ -550,7 +550,7 @@ func Test_Compress_Skip_Range_Vary_Star(t *testing.T) {
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "*", resp.Header.Get(fiber.HeaderVary))
 }
 
@@ -571,7 +571,7 @@ func Test_Compress_Skip_Range_Vary_Similar_Substring(t *testing.T) {
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "Accept-Encoding2, Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
 }
 
@@ -592,7 +592,7 @@ func Test_Compress_Skip_Status_PartialContent(t *testing.T) {
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusPartialContent, resp.StatusCode)
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 }
 
 func Test_Compress_Skip_NoTransform(t *testing.T) {
@@ -627,7 +627,7 @@ func Test_Compress_Skip_NoTransform(t *testing.T) {
 
 			resp, err := app.Test(req, testConfig)
 			require.NoError(t, err, "app.Test(req)")
-			require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+			require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 		})
 	}
 }
@@ -648,7 +648,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 500, resp.StatusCode, "Status code")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
