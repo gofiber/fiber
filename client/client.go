@@ -229,6 +229,9 @@ func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client {
 // TLSConfig returns the client's TLS configuration.
 // If none is set, it initializes a new one.
 func (c *Client) TLSConfig() *tls.Config {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if cfg := c.currentTLSConfig(); cfg != nil {
 		return cfg
 	}
@@ -239,6 +242,9 @@ func (c *Client) TLSConfig() *tls.Config {
 
 // SetTLSConfig sets the TLS configuration for the client.
 func (c *Client) SetTLSConfig(config *tls.Config) *Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.applyTLSConfig(config)
 	return c
 }
