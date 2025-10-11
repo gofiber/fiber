@@ -52,18 +52,18 @@ var ignoreHeaders = map[string]struct{}{
 	"Content-Encoding":    {}, // already stored explicitly by the cache manager
 }
 
-var cacheableStatusCodes = map[int]bool{
-	fiber.StatusOK:                          true,
-	fiber.StatusNonAuthoritativeInformation: true,
-	fiber.StatusNoContent:                   true,
-	fiber.StatusPartialContent:              true,
-	fiber.StatusMultipleChoices:             true,
-	fiber.StatusMovedPermanently:            true,
-	fiber.StatusNotFound:                    true,
-	fiber.StatusMethodNotAllowed:            true,
-	fiber.StatusGone:                        true,
-	fiber.StatusRequestURITooLong:           true,
-	fiber.StatusNotImplemented:              true,
+var cacheableStatusCodes = map[int]struct{}{
+	fiber.StatusOK:                          {},
+	fiber.StatusNonAuthoritativeInformation: {},
+	fiber.StatusNoContent:                   {},
+	fiber.StatusPartialContent:              {},
+	fiber.StatusMultipleChoices:             {},
+	fiber.StatusMovedPermanently:            {},
+	fiber.StatusNotFound:                    {},
+	fiber.StatusMethodNotAllowed:            {},
+	fiber.StatusGone:                        {},
+	fiber.StatusRequestURITooLong:           {},
+	fiber.StatusNotImplemented:              {},
 }
 
 // New creates a new middleware handler
@@ -237,7 +237,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Don't cache response if status code is not cacheable
-		if !cacheableStatusCodes[c.Response().StatusCode()] {
+		if _, ok := cacheableStatusCodes[c.Response().StatusCode()]; !ok {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return nil
 		}
