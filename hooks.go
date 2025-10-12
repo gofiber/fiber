@@ -77,27 +77,27 @@ type ListenData struct {
 
 // PreStartupMessageData contains metadata exposed to OnPreStartupMessage hooks.
 type PreStartupMessageData struct {
-        PrimaryInfo   Map
-        SecondaryInfo Map
+	PrimaryInfo   Map
+	SecondaryInfo Map
 
-        Header string
+	Header string
 
-        ColorScheme Colors
-        Host        string
-        Port        string
-        Version     string
-        AppName     string
+	ColorScheme Colors
+	Host        string
+	Port        string
+	Version     string
+	AppName     string
 
-        ChildPIDs []int
+	ChildPIDs []int
 
-        HandlerCount int
-        ProcessCount int
-        PID          int
+	HandlerCount int
+	ProcessCount int
+	PID          int
 
-        TLS            bool
-        Prefork        bool
-        PreventDefault bool
-        HeaderSet      bool
+	TLS            bool
+	Prefork        bool
+	PreventDefault bool
+	HeaderSet      bool
 }
 
 func newPreStartupMessageData(listenData ListenData) *PreStartupMessageData {
