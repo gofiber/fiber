@@ -20,9 +20,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/console"
 	"github.com/gofiber/fiber/v3/log"
-	"github.com/mattn/go-colorable"
-	"github.com/mattn/go-isatty"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -384,9 +383,9 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 		procs = "1"
 	}
 
-	out := colorable.NewColorableStdout()
-	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
-		out = colorable.NewNonColorable(os.Stdout)
+	out := console.NewColorableStdout()
+	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!console.IsTerminal(os.Stdout.Fd()) && !console.IsCygwinTerminal(os.Stdout.Fd())) {
+		out = console.NewNonColorable(os.Stdout)
 	}
 
 	fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset))
@@ -480,9 +479,9 @@ func (app *App) printRoutesMessage() {
 		}
 	}
 
-	out := colorable.NewColorableStdout()
-	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
-		out = colorable.NewNonColorable(os.Stdout)
+	out := console.NewColorableStdout()
+	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!console.IsTerminal(os.Stdout.Fd()) && !console.IsCygwinTerminal(os.Stdout.Fd())) {
+		out = console.NewNonColorable(os.Stdout)
 	}
 
 	w := tabwriter.NewWriter(out, 1, 1, 1, ' ', 0)
