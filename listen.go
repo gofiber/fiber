@@ -371,7 +371,7 @@ func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig, chi
 	}
 }
 
-// startupMessage prepares the startup message with the handler number, port, address and other information.
+// startupMessage renders the startup banner using the provided listener metadata and configuration.
 func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 	preData := newPreStartupMessageData(listenData)
 	app.hooks.executeOnPreStartupMessageHooks(preData)
