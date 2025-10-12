@@ -1,3 +1,5 @@
+//go:build !s390x && !ppc64 && !ppc64le
+
 package fiber
 
 import (

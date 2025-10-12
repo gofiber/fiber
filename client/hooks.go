@@ -93,7 +93,12 @@ func parserRequestURL(c *Client, req *Request) error {
 	}
 
 	// Set the URI in the raw request.
+	disablePathNormalizing := c.DisablePathNormalizing() || req.DisablePathNormalizing()
 	req.RawRequest.SetRequestURI(uri)
+	req.RawRequest.URI().DisablePathNormalizing = disablePathNormalizing
+	if disablePathNormalizing {
+		req.RawRequest.URI().SetPathBytes(req.RawRequest.URI().PathOriginal())
+	}
 
 	// Merge query parameters.
 	hashSplit := strings.Split(splitURL[1], "#")
@@ -264,43 +269,51 @@ func parserRequestBodyFile(req *Request) error {
 
 	defer fileBufPool.Put(fileBuf)
 
-	for i, v := range req.files {
-		if v.name == "" && v.path == "" {
+	for i, f := range req.files {
+		if f.name == "" && f.path == "" {
 			return ErrFileNoName
 		}
 
 		// Set the file name if not provided.
-		if v.name == "" && v.path != "" {
-			v.path = filepath.Clean(v.path)
-			v.name = filepath.Base(v.path)
+		if f.name == "" && f.path != "" {
+			f.path = filepath.Clean(f.path)
+			f.name = filepath.Base(f.path)
 		}
 
 		// Set the field name if not provided.
-		if v.fieldName == "" {
-			v.fieldName = "file" + strconv.Itoa(i+1)
+		if f.fieldName == "" {
+			f.fieldName = "file" + strconv.Itoa(i+1)
 		}
 
-		// If reader is not set, open the file.
-		if v.reader == nil {
-			v.reader, err = os.Open(v.path)
-			if err != nil {
-				return fmt.Errorf("open file error: %w", err)
-			}
+		if err := addFormFile(mw, f, fileBuf); err != nil {
+			return err
 		}
+	}
 
-		// Create form file and copy the content.
-		w, err := mw.CreateFormFile(v.fieldName, v.name)
+	return nil
+}
+
+func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
+	// If reader is not set, open the file.
+	if f.reader == nil {
+		var err error
+		f.reader, err = os.Open(f.path)
 		if err != nil {
-			return fmt.Errorf("create file error: %w", err)
+			return fmt.Errorf("open file error: %w", err)
 		}
+	}
 
-		if _, err := io.CopyBuffer(w, v.reader, *fileBuf); err != nil {
-			return fmt.Errorf("failed to copy file data: %w", err)
-		}
+	// Ensure the file reader is always closed after copying.
+	defer f.reader.Close() //nolint:errcheck // not needed
 
-		if err := v.reader.Close(); err != nil {
-			return fmt.Errorf("close file error: %w", err)
-		}
+	// Create form file and copy the content.
+	w, err := mw.CreateFormFile(f.fieldName, f.name)
+	if err != nil {
+		return fmt.Errorf("create file error: %w", err)
+	}
+
+	if _, err := io.CopyBuffer(w, f.reader, *fileBuf); err != nil {
+		return fmt.Errorf("failed to copy file data: %w", err)
 	}
 
 	return nil

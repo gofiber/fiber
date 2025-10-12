@@ -12,8 +12,8 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tinylib/msgp v1.4.0
 	github.com/valyala/bytebufferpool v1.0.0
-	github.com/valyala/fasthttp v1.65.0
-	golang.org/x/crypto v0.42.0
+	github.com/valyala/fasthttp v1.67.0
+	golang.org/x/crypto v0.43.0
 )
 
 require (
@@ -24,8 +24,8 @@ require (
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/net v0.44.0
-	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/text v0.29.0
+	golang.org/x/net v0.46.0
+	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/text v0.30.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

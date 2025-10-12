@@ -179,6 +179,12 @@ func (s *Storage) gc() {
 				}
 			}
 			s.mux.RUnlock()
+
+			if len(expired) == 0 {
+				// avoid locking if nothing to delete
+				continue
+			}
+
 			s.mux.Lock()
 			// Double-checked locking.
 			// We might have replaced the item in the meantime.

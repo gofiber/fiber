@@ -68,6 +68,8 @@ type Request struct {
 	maxRedirects int
 
 	bodyType bodyType
+
+	disablePathNormalizing bool
 }
 
 // Method returns the HTTP method set in the Request.
@@ -158,17 +160,21 @@ func (p *pair) Less(i, j int) bool {
 func (r *Request) Headers() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		peekKeys := r.header.PeekKeys()
-		keys := make([][]byte, len(peekKeys))
-		copy(keys, peekKeys) // It is necessary to have immutable byte slice.
+
+		// Copy keys to immutable strings to decouple from fasthttp's internal buffers.
+		keys := make([]string, len(peekKeys))
+		for i, key := range peekKeys {
+			keys[i] = utils.UnsafeString(key)
+		}
 
 		for _, key := range keys {
-			vals := r.header.PeekAll(utils.UnsafeString(key))
+			vals := r.header.PeekAll(key)
 			valsStr := make([]string, len(vals))
 			for i, v := range vals {
 				valsStr[i] = utils.UnsafeString(v)
 			}
 
-			if !yield(utils.UnsafeString(key), valsStr) {
+			if !yield(key, valsStr) {
 				return
 			}
 		}
@@ -202,8 +208,8 @@ func (r *Request) SetHeaders(h map[string]string) *Request {
 
 // Param returns all values associated with the given query parameter.
 func (r *Request) Param(key string) []string {
-	var res []string
 	tmp := r.params.PeekMulti(key)
+	res := make([]string, 0, len(tmp))
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
@@ -441,8 +447,8 @@ func (r *Request) resetBody(t bodyType) {
 
 // FormData returns all values associated with a form field.
 func (r *Request) FormData(key string) []string {
-	var res []string
 	tmp := r.formData.PeekMulti(key)
+	res := make([]string, 0, len(tmp))
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
@@ -601,6 +607,18 @@ func (r *Request) SetMaxRedirects(count int) *Request {
 	return r
 }
 
+// DisablePathNormalizing reports whether path normalizing is disabled for the Request.
+func (r *Request) DisablePathNormalizing() bool {
+	return r.disablePathNormalizing
+}
+
+// SetDisablePathNormalizing configures the Request to disable or enable path normalizing.
+func (r *Request) SetDisablePathNormalizing(disable bool) *Request {
+	r.disablePathNormalizing = disable
+	r.RawRequest.URI().DisablePathNormalizing = disable
+	return r
+}
+
 // checkClient ensures that a Client is set. If none is set, it defaults to the global defaultClient.
 func (r *Request) checkClient() {
 	if r.client == nil {
@@ -667,6 +685,7 @@ func (r *Request) Reset() {
 	r.maxRedirects = 0
 	r.bodyType = noBody
 	r.boundary = boundary
+	r.disablePathNormalizing = false
 
 	for len(r.files) != 0 {
 		t := r.files[0]
@@ -949,7 +968,7 @@ var requestPool = &sync.Pool{
 			params:     &QueryParam{Args: fasthttp.AcquireArgs()},
 			cookies:    &Cookie{},
 			path:       &PathParam{},
-			boundary:   "FiberFormBoundary",
+			boundary:   boundary,
 			formData:   &FormData{Args: fasthttp.AcquireArgs()},
 			files:      make([]*File, 0),
 			RawRequest: fasthttp.AcquireRequest(),

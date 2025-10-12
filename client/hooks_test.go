@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -206,6 +207,37 @@ func Test_Parser_Request_URL(t *testing.T) {
 		require.True(t, flag1)
 		require.True(t, flag2)
 		require.True(t, flag3)
+	})
+
+	t.Run("request disable path normalizing should be respected", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123").
+			SetDisablePathNormalizing(true)
+
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123", req.RawRequest.URI().String())
+	})
+
+	t.Run("client disable path normalizing should be respected", func(t *testing.T) {
+		t.Parallel()
+		client := New().SetDisablePathNormalizing(true)
+		req := AcquireRequest().
+			SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123")
+
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123", req.RawRequest.URI().String())
 	})
 }
 
@@ -527,6 +559,28 @@ func Test_Parser_Request_Body(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, string(req.RawRequest.Body()), "--FiberFormBoundary")
 		require.Contains(t, string(req.RawRequest.Body()), "world")
+	})
+
+	t.Run("file body open error", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		missingPath := filepath.Join(t.TempDir(), "missing.txt")
+
+		req := AcquireRequest().AddFile(missingPath)
+
+		err := parserRequestBody(client, req)
+		require.ErrorContains(t, err, "open file error")
+	})
+
+	t.Run("file body missing path and name", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		file := AcquireFile(SetFileReader(io.NopCloser(strings.NewReader("world"))))
+
+		req := AcquireRequest().AddFiles(file)
+
+		err := parserRequestBody(client, req)
+		require.ErrorIs(t, err, ErrFileNoName)
 	})
 
 	t.Run("file and form data", func(t *testing.T) {
