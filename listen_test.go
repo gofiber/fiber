@@ -629,11 +629,16 @@ func Test_StartupMessageCustomization(t *testing.T) {
 	app := New()
 	listenData := app.prepareListenData(":8080", false, cfg, nil)
 
-	listenData.UseHeader("FOOBER v98\n-------")
-	listenData.UsePrimaryInfoMap(Map{"Git hash": "abc123"})
-	listenData.UseSecondaryInfoMap(Map{"Version": "v98"})
+	app.Hooks().OnPreStartupMessage(func(data PreStartupMessageData) {
+		data.UseHeader("FOOBER v98\n-------")
+		data.UsePrimaryInfoMap(Map{"Git hash": "abc123"})
+		data.UseSecondaryInfoMap(Map{"Version": "v98"})
+	})
 
-	ch := listenData.AfterPrint()
+	var post PostStartupMessageData
+	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) {
+		post = data
+	})
 
 	startupMessage := captureOutput(func() {
 		app.startupMessage(listenData, cfg)
@@ -645,11 +650,9 @@ func Test_StartupMessageCustomization(t *testing.T) {
 	require.NotContains(t, startupMessage, "Server started on:")
 	require.NotContains(t, startupMessage, "Prefork:")
 
-	select {
-	case <-ch:
-	default:
-		t.Fatal("AfterPrint channel was not closed")
-	}
+	require.True(t, post.Printed)
+	require.False(t, post.Disabled)
+	require.False(t, post.Prevented)
 }
 
 func Test_StartupMessagePreventDefault(t *testing.T) {
@@ -657,21 +660,43 @@ func Test_StartupMessagePreventDefault(t *testing.T) {
 	app := New()
 	listenData := app.prepareListenData(":9090", false, cfg, nil)
 
-	listenData.PreventDefault()
+	app.Hooks().OnPreStartupMessage(func(data PreStartupMessageData) {
+		data.PreventDefault()
+	})
 
-	ch := listenData.AfterPrint()
+	var post PostStartupMessageData
+	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) {
+		post = data
+	})
 
 	startupMessage := captureOutput(func() {
 		app.startupMessage(listenData, cfg)
 	})
 
 	require.Empty(t, startupMessage)
+	require.False(t, post.Printed)
+	require.False(t, post.Disabled)
+	require.True(t, post.Prevented)
+}
 
-	select {
-	case <-ch:
-	default:
-		t.Fatal("AfterPrint channel was not closed when startup message prevented")
-	}
+func Test_StartupMessageDisabledPostHook(t *testing.T) {
+	cfg := ListenConfig{DisableStartupMessage: true}
+	app := New()
+	listenData := app.prepareListenData(":7070", false, cfg, nil)
+
+	var post PostStartupMessageData
+	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) {
+		post = data
+	})
+
+	startupMessage := captureOutput(func() {
+		app.startupMessage(listenData, cfg)
+	})
+
+	require.Empty(t, startupMessage)
+	require.False(t, post.Printed)
+	require.True(t, post.Disabled)
+	require.False(t, post.Prevented)
 }
 
 // go test -run Test_Listen_Print_Route

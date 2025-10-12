@@ -374,13 +374,25 @@ func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig, chi
 
 // startupMessage prepares the startup message with the handler number, port, address and other information.
 func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
-	if listenData.startupMessage == nil {
-		return
+	state := listenData.startupMessage
+
+	preData := newPreStartupMessageData(listenData)
+	app.hooks.executeOnPreStartupMessageHooks(preData)
+
+	disabled := cfg.DisableStartupMessage
+	prevented := false
+	if state != nil {
+		prevented = state.prevented()
 	}
+	isChild := IsChild()
+	printed := false
 
-	defer listenData.finishStartupMessage()
+	defer func() {
+		postData := newPostStartupMessageData(listenData, printed, disabled, prevented, isChild)
+		app.hooks.executeOnPostStartupMessageHooks(postData)
+	}()
 
-	if cfg.DisableStartupMessage || listenData.startupMessage.prevented() || IsChild() {
+	if state == nil || disabled || prevented || isChild {
 		return
 	}
 
@@ -391,8 +403,8 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
-	if listenData.startupMessage.hasHeader() {
-		header := listenData.startupMessage.header
+	if state.hasHeader() {
+		header := state.header
 		fmt.Fprint(out, header)
 		if !strings.HasSuffix(header, "\n") {
 			fmt.Fprintln(out)
@@ -402,8 +414,8 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 		fmt.Fprintln(out, strings.Repeat("-", 50))
 	}
 
-	if listenData.startupMessage.hasPrimary() {
-		printStartupEntries(out, colors, listenData.startupMessage.primary)
+	if state.hasPrimary() {
+		printStartupEntries(out, colors, state.primary)
 	} else {
 		scheme := schemeHTTP
 		if listenData.TLS {
@@ -431,8 +443,8 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 			colors.Green, colors.Reset, colors.Blue, listenData.HandlerCount, colors.Reset)
 	}
 
-	if listenData.startupMessage.hasSecondary() {
-		printStartupEntries(out, colors, listenData.startupMessage.secondary)
+	if state.hasSecondary() {
+		printStartupEntries(out, colors, state.secondary)
 	} else {
 		if listenData.Prefork {
 			fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%sEnabled%s\n", colors.Green, colors.Reset, colors.Blue, colors.Reset)
@@ -465,6 +477,8 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 	}
 
 	fmt.Fprintf(out, "\n%s", colors.Reset)
+
+	printed = true
 }
 
 func printStartupEntries(out io.Writer, colors Colors, entries []startupMessageEntry) {
