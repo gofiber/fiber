@@ -312,13 +312,29 @@ func Test_ListenDataMetadata(t *testing.T) {
 		require.Equal(t, childPIDs, data.ChildPIDs)
 		require.Equal(t, app.config.ColorScheme, data.ColorScheme)
 
-		data.UsePrimaryInfoMap(Map{"Custom": "value"})
-		data.UseSecondaryInfoMap(Map{"Other": "value"})
-
 		return nil
 	})
 
 	app.runOnListenHooks(listenData)
+
+	app.Hooks().OnPreStartupMessage(func(data PreStartupMessageData) {
+		require.Equal(t, globalIpv4Addr, data.Host)
+		require.Equal(t, "3030", data.Port)
+		require.True(t, data.TLS)
+		require.Equal(t, Version, data.Version)
+		require.Equal(t, "meta", data.AppName)
+		require.Equal(t, 42, data.HandlerCount)
+		require.Equal(t, runtime.GOMAXPROCS(0), data.ProcessCount)
+		require.Equal(t, os.Getpid(), data.PID)
+		require.True(t, data.Prefork)
+		require.Equal(t, childPIDs, data.ChildPIDs)
+		require.Equal(t, app.config.ColorScheme, data.ColorScheme)
+
+		data.UsePrimaryInfoMap(Map{"Custom": "value"})
+		data.UseSecondaryInfoMap(Map{"Other": "value"})
+	})
+
+	app.hooks.executeOnPreStartupMessageHooks(newPreStartupMessageData(listenData))
 
 	require.True(t, listenData.startupMessage.hasPrimary())
 	require.True(t, listenData.startupMessage.hasSecondary())

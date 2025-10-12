@@ -186,38 +186,39 @@ func main() {
 | `ChildPIDs` | `[]int` | Child process identifiers when preforking. |
 | `ColorScheme` | [`Colors`](https://github.com/gofiber/fiber/blob/main/color.go) | Active color scheme for the startup message. |
 
-You can customize the default startup output with the helper methods:
+### Startup message customization
+
+Use `OnPreStartupMessage` to tweak or suppress the banner before Fiber prints it, and `OnPostStartupMessage` to run logic after the banner is printed (or skipped):
 
 - `PreventDefault()` stops Fiber from printing the built-in startup message.
 - `UseHeader(header string)` overrides the ASCII art banner.
 - `UsePrimaryInfoMap(fiber.Map)` replaces the primary info section (server URL, handler counts, etc.).
 - `UseSecondaryInfoMap(fiber.Map)` replaces the secondary info section (prefork status, PID, process count).
-- `AfterPrint() <-chan struct{}` returns a channel that closes once Fiber has printed (or skipped) the startup message. Use this from a goroutine to log follow-up information.
+- `PostStartupMessageData.Printed` reports whether Fiber wrote the banner.
 
 ```go title="Customize the startup message"
 package main
 
 import (
-    "log"
+    "fmt"
     "os"
 
     "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-    app := fiber.New(fiber.Config{DisableStartupMessage: true})
+    app := fiber.New()
 
-    app.Hooks().OnListen(func(listenData fiber.ListenData) error {
-        listenData.UseHeader("FOOBER " + listenData.Version + "\n-------")
-        listenData.UsePrimaryInfoMap(fiber.Map{"Git hash": os.Getenv("GIT_HASH")})
-        listenData.UseSecondaryInfoMap(fiber.Map{"Prefork": listenData.Prefork})
+    app.Hooks().OnPreStartupMessage(func(sm fiber.PreStartupMessageData) {
+        sm.UseHeader("FOOBER " + sm.Version + "\n-------")
+        sm.UsePrimaryInfoMap(fiber.Map{"Git hash": os.Getenv("GIT_HASH")})
+        sm.UseSecondaryInfoMap(fiber.Map{"Prefork": sm.Prefork})
+    })
 
-        go func() {
-            <-listenData.AfterPrint()
-            log.Println("startup completed")
-        }()
-
-        return nil
+    app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) {
+        if sm.Printed {
+            fmt.Println("startup completed")
+        }
     })
 
     app.Listen(":5000")

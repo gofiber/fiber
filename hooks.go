@@ -3,7 +3,6 @@ package fiber
 import (
 	"fmt"
 	"sort"
-	"sync"
 
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -19,6 +18,10 @@ type (
 	OnGroupNameHandler = OnGroupHandler
 	// OnListenHandler runs when the application begins listening and receives the listener details.
 	OnListenHandler = func(ListenData) error
+	// OnPreStartupMessageHandler runs before Fiber prints the startup banner.
+	OnPreStartupMessageHandler = func(PreStartupMessageData)
+	// OnPostStartupMessageHandler runs after Fiber prints (or skips) the startup banner.
+	OnPostStartupMessageHandler = func(PostStartupMessageData)
 	// OnPreShutdownHandler runs before the application shuts down.
 	OnPreShutdownHandler = func() error
 	// OnPostShutdownHandler runs after shutdown and receives the shutdown result.
@@ -40,6 +43,8 @@ type Hooks struct {
 	onGroup        []OnGroupHandler
 	onGroupName    []OnGroupNameHandler
 	onListen       []OnListenHandler
+	onPreStartup   []OnPreStartupMessageHandler
+	onPostStartup  []OnPostStartupMessageHandler
 	onPreShutdown  []OnPreShutdownHandler
 	onPostShutdown []OnPostShutdownHandler
 	onFork         []OnForkHandler
@@ -60,20 +65,15 @@ const (
 )
 
 // startupMessageState stores customization data for the startup message.
-type startupMessageState struct {
+type startupMessageState struct { //betteralign:ignore // Compact packing trades readability for negligible savings.
+	header    string
 	primary   []startupMessageEntry
 	secondary []startupMessageEntry
-	header    string
-
-	afterPrint chan struct{}
-	closeOnce  sync.Once
-	flags      uint8
+	flags     uint8
 }
 
 func newStartupMessageState() *startupMessageState {
-	return &startupMessageState{
-		afterPrint: make(chan struct{}),
-	}
+	return &startupMessageState{}
 }
 
 func (s *startupMessageState) setHeader(header string) {
@@ -107,12 +107,6 @@ func (s *startupMessageState) preventDefault() {
 	s.flags |= startupMessagePreventFlag
 }
 
-func (s *startupMessageState) closeAfterPrint() {
-	s.closeOnce.Do(func() {
-		close(s.afterPrint)
-	})
-}
-
 func (s *startupMessageState) hasHeader() bool {
 	return s.flags&startupMessageHasHeaderFlag != 0
 }
@@ -130,7 +124,108 @@ func (s *startupMessageState) prevented() bool {
 }
 
 // ListenData contains the listener metadata provided to OnListenHandler.
-type ListenData struct {
+type ListenData struct { //betteralign:ignore // Field order mirrors public API expectations.
+	startupMessage *startupMessageState
+
+	ColorScheme Colors
+	Host        string
+	Port        string
+	Version     string
+	AppName     string
+
+	ChildPIDs []int
+
+	HandlerCount int
+	ProcessCount int
+	PID          int
+
+	TLS     bool
+	Prefork bool
+}
+
+// PreStartupMessageData contains metadata exposed to OnPreStartupMessage hooks.
+type PreStartupMessageData struct { //betteralign:ignore // Maintains alignment with ListenData for documentation parity.
+	state *startupMessageState
+
+	ColorScheme Colors
+	Host        string
+	Port        string
+	Version     string
+	AppName     string
+
+	ChildPIDs []int
+
+	HandlerCount int
+	ProcessCount int
+	PID          int
+
+	TLS     bool
+	Prefork bool
+}
+
+// PreventDefault stops Fiber from printing the default startup message.
+func (d PreStartupMessageData) PreventDefault() {
+	if d.state == nil {
+		return
+	}
+
+	d.state.preventDefault()
+}
+
+// UseHeader overrides the startup message header. Provide a value that includes any desired
+// newlines or separators. The default ASCII art is used when this method is not called.
+func (d PreStartupMessageData) UseHeader(header string) {
+	if d.state == nil {
+		return
+	}
+
+	d.state.setHeader(header)
+}
+
+// UsePrimaryInfoMap replaces the default primary startup information lines with the provided map.
+// Keys are rendered in lexicographical order for deterministic output.
+func (d PreStartupMessageData) UsePrimaryInfoMap(values Map) {
+	if d.state == nil {
+		return
+	}
+
+	d.state.setPrimary(values)
+}
+
+// UseSecondaryInfoMap replaces the default secondary startup information lines with the provided map.
+// Keys are rendered in lexicographical order for deterministic output.
+func (d PreStartupMessageData) UseSecondaryInfoMap(values Map) {
+	if d.state == nil {
+		return
+	}
+
+	d.state.setSecondary(values)
+}
+
+func newPreStartupMessageData(listenData ListenData) PreStartupMessageData {
+	var childPIDs []int
+	if len(listenData.ChildPIDs) > 0 {
+		childPIDs = append(childPIDs, listenData.ChildPIDs...)
+	}
+
+	return PreStartupMessageData{
+		Host:         listenData.Host,
+		Port:         listenData.Port,
+		Version:      listenData.Version,
+		AppName:      listenData.AppName,
+		ColorScheme:  listenData.ColorScheme,
+		ChildPIDs:    childPIDs,
+		HandlerCount: listenData.HandlerCount,
+		ProcessCount: listenData.ProcessCount,
+		PID:          listenData.PID,
+		state:        listenData.startupMessage,
+		TLS:          listenData.TLS,
+		Prefork:      listenData.Prefork,
+	}
+}
+
+// PostStartupMessageData contains metadata exposed to OnPostStartupMessage hooks.
+type PostStartupMessageData struct { //betteralign:ignore // Aligns with pre-hook metadata while keeping flags grouped.
 	Host    string
 	Port    string
 	Version string
@@ -143,68 +238,37 @@ type ListenData struct {
 	ProcessCount int
 	PID          int
 
-	startupMessage *startupMessageState
-
-	TLS     bool
-	Prefork bool
+	TLS       bool
+	Prefork   bool
+	Printed   bool
+	Disabled  bool
+	Prevented bool
+	IsChild   bool
 }
 
-// PreventDefault stops Fiber from printing the default startup message.
-func (l ListenData) PreventDefault() {
-	if l.startupMessage == nil {
-		return
+func newPostStartupMessageData(listenData ListenData, printed, disabled, prevented, isChild bool) PostStartupMessageData {
+	var childPIDs []int
+	if len(listenData.ChildPIDs) > 0 {
+		childPIDs = append(childPIDs, listenData.ChildPIDs...)
 	}
 
-	l.startupMessage.preventDefault()
-}
-
-// UseHeader overrides the startup message header. Provide a value that includes any desired
-// newlines or separators. The default ASCII art is used when this method is not called.
-func (l ListenData) UseHeader(header string) {
-	if l.startupMessage == nil {
-		return
+	return PostStartupMessageData{
+		Host:         listenData.Host,
+		Port:         listenData.Port,
+		Version:      listenData.Version,
+		AppName:      listenData.AppName,
+		ColorScheme:  listenData.ColorScheme,
+		ChildPIDs:    childPIDs,
+		HandlerCount: listenData.HandlerCount,
+		ProcessCount: listenData.ProcessCount,
+		PID:          listenData.PID,
+		TLS:          listenData.TLS,
+		Prefork:      listenData.Prefork,
+		Printed:      printed,
+		Disabled:     disabled,
+		Prevented:    prevented,
+		IsChild:      isChild,
 	}
-
-	l.startupMessage.setHeader(header)
-}
-
-// UsePrimaryInfoMap replaces the default primary startup information lines with the provided map.
-// Keys are rendered in lexicographical order for deterministic output.
-func (l ListenData) UsePrimaryInfoMap(values Map) {
-	if l.startupMessage == nil {
-		return
-	}
-
-	l.startupMessage.setPrimary(values)
-}
-
-// UseSecondaryInfoMap replaces the default secondary startup information lines with the provided map.
-// Keys are rendered in lexicographical order for deterministic output.
-func (l ListenData) UseSecondaryInfoMap(values Map) {
-	if l.startupMessage == nil {
-		return
-	}
-
-	l.startupMessage.setSecondary(values)
-}
-
-// AfterPrint returns a channel that is closed once the startup message has been printed (or skipped).
-func (l ListenData) AfterPrint() <-chan struct{} {
-	if l.startupMessage == nil {
-		ch := make(chan struct{})
-		close(ch)
-		return ch
-	}
-
-	return l.startupMessage.afterPrint
-}
-
-func (l ListenData) finishStartupMessage() {
-	if l.startupMessage == nil {
-		return
-	}
-
-	l.startupMessage.closeAfterPrint()
 }
 
 func mapToEntries(values Map) ([]startupMessageEntry, bool) {
@@ -235,6 +299,8 @@ func newHooks(app *App) *Hooks {
 		onGroupName:    make([]OnGroupNameHandler, 0),
 		onName:         make([]OnNameHandler, 0),
 		onListen:       make([]OnListenHandler, 0),
+		onPreStartup:   make([]OnPreStartupMessageHandler, 0),
+		onPostStartup:  make([]OnPostStartupMessageHandler, 0),
 		onPreShutdown:  make([]OnPreShutdownHandler, 0),
 		onPostShutdown: make([]OnPostShutdownHandler, 0),
 		onFork:         make([]OnForkHandler, 0),
@@ -282,6 +348,20 @@ func (h *Hooks) OnGroupName(handler ...OnGroupNameHandler) {
 func (h *Hooks) OnListen(handler ...OnListenHandler) {
 	h.app.mutex.Lock()
 	h.onListen = append(h.onListen, handler...)
+	h.app.mutex.Unlock()
+}
+
+// OnPreStartupMessage is a hook to execute user functions before the startup message is printed.
+func (h *Hooks) OnPreStartupMessage(handler ...OnPreStartupMessageHandler) {
+	h.app.mutex.Lock()
+	h.onPreStartup = append(h.onPreStartup, handler...)
+	h.app.mutex.Unlock()
+}
+
+// OnPostStartupMessage is a hook to execute user functions after the startup message is printed (or skipped).
+func (h *Hooks) OnPostStartupMessage(handler ...OnPostStartupMessageHandler) {
+	h.app.mutex.Lock()
+	h.onPostStartup = append(h.onPostStartup, handler...)
 	h.app.mutex.Unlock()
 }
 
@@ -385,6 +465,18 @@ func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 	}
 
 	return nil
+}
+
+func (h *Hooks) executeOnPreStartupMessageHooks(data PreStartupMessageData) {
+	for _, handler := range h.onPreStartup {
+		handler(data)
+	}
+}
+
+func (h *Hooks) executeOnPostStartupMessageHooks(data PostStartupMessageData) {
+	for _, handler := range h.onPostStartup {
+		handler(data)
+	}
 }
 
 func (h *Hooks) executeOnPreShutdownHooks() {

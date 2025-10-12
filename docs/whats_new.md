@@ -295,22 +295,21 @@ app.Listen("app.sock", fiber.ListenerConfig{
 })
 ```
 
-- Expanded `ListenData` with versioning, handler, process, and PID metadata, plus helpers for customizing the startup banner.
+- Expanded `ListenData` with versioning, handler, process, and PID metadata, plus dedicated startup message hooks for customization.
 
 ```go
-app := fiber.New(fiber.Config{DisableStartupMessage: true})
+app := fiber.New()
 
-app.Hooks().OnListen(func(listenData fiber.ListenData) error {
-    listenData.UseHeader("FOOBER " + listenData.Version + "\n-------")
-    listenData.UsePrimaryInfoMap(fiber.Map{"Git hash": os.Getenv("GIT_HASH")})
-    listenData.UseSecondaryInfoMap(fiber.Map{"Process count": listenData.ProcessCount})
+app.Hooks().OnPreStartupMessage(func(sm fiber.PreStartupMessageData) {
+    sm.UseHeader("FOOBER " + sm.Version + "\n-------")
+    sm.UsePrimaryInfoMap(fiber.Map{"Git hash": os.Getenv("GIT_HASH")})
+    sm.UseSecondaryInfoMap(fiber.Map{"Process count": sm.ProcessCount})
+})
 
-    go func() {
-        <-listenData.AfterPrint()
+app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) {
+    if sm.Printed {
         log.Println("startup completed")
-    }()
-
-    return nil
+    }
 })
 
 go app.Listen(":3000")
