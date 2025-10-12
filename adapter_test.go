@@ -127,8 +127,8 @@ func TestCollectHandlers_TypedNilHTTPHandlers(t *testing.T) {
 	var raw func(http.ResponseWriter, *http.Request)
 
 	tests := []struct {
-		name    string
 		handler any
+		name    string
 	}{
 		{
 			name:    "HandlerFunc",
@@ -145,7 +145,6 @@ func TestCollectHandlers_TypedNilHTTPHandlers(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
