@@ -1,3 +1,6 @@
+// Transport adapters unify fasthttp clients behind a shared interface so the
+// Fiber client can coordinate behavior like redirects, TLS overrides, and
+// dial customizations regardless of the underlying transport type.
 package client
 
 import (
@@ -26,6 +29,8 @@ type httpClientTransport interface {
 	Client() any
 }
 
+// standardClientTransport adapts fasthttp.Client to the httpClientTransport
+// interface used by Fiber's client helpers.
 type standardClientTransport struct {
 	client *fasthttp.Client
 }
@@ -70,6 +75,8 @@ func (s *standardClientTransport) Client() any {
 	return s.client
 }
 
+// hostClientTransport adapts fasthttp.HostClient to the httpClientTransport
+// interface used by Fiber's client helpers.
 type hostClientTransport struct {
 	client *fasthttp.HostClient
 }
@@ -114,6 +121,8 @@ func (h *hostClientTransport) Client() any {
 	return h.client
 }
 
+// lbClientTransport adapts fasthttp.LBClient to the httpClientTransport
+// interface used by Fiber's client helpers.
 type lbClientTransport struct {
 	client *fasthttp.LBClient
 }

@@ -1,3 +1,6 @@
+// Core pipeline scaffolds request execution for Fiber's HTTP client, including
+// hook invocation, retry orchestration, and timeout management around fasthttp
+// transports.
 package client
 
 import (

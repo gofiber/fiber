@@ -1,3 +1,8 @@
+// Package client exposes Fiber's HTTP client built on top of fasthttp.
+//
+// It allows constructing new clients or wrapping existing fasthttp transports
+// so applications can share pools, dialers, and TLS settings between Fiber and
+// lower-level fasthttp integrations.
 package client
 
 import (
@@ -24,11 +29,11 @@ import (
 
 var ErrFailedToAppendCert = errors.New("failed to append certificate")
 
-// Client is used to create a Fiber client with client-level settings that
-// apply to all requests made by the client.
+// Client provides Fiber's high-level HTTP API while delegating transport work
+// to fasthttp.Client, fasthttp.HostClient, or fasthttp.LBClient implementations.
 //
-// The Fiber client also provides an option to override or merge most of the
-// client settings at the request level.
+// Settings configured on the client are shared across every request and may be
+// overridden per request when needed.
 type Client struct {
 	logger    log.CommonLogger
 	transport httpClientTransport
@@ -606,7 +611,9 @@ func (c *Client) Logger() log.CommonLogger {
 	return c.logger
 }
 
-// Reset resets the client to its default state, clearing most configurations.
+// Reset resets the client to its default state, clearing most configurations
+// and replacing the underlying transport with a new fasthttp.Client so future
+// requests resume with Fiber's standard transport settings.
 func (c *Client) Reset() {
 	c.transport = newStandardClientTransport(&fasthttp.Client{})
 	c.baseURL = ""
