@@ -8,8 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -95,7 +93,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 	}()
 
 	// collect child pids
-	var pids []string
+	var childPIDs []int
 
 	// launch child procs
 	for range maxProcs {
@@ -121,7 +119,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 		// store child process
 		pid := cmd.Process.Pid
 		children[pid] = cmd
-		pids = append(pids, strconv.Itoa(pid))
+		childPIDs = append(childPIDs, pid)
 
 		// execute fork hook
 		if app.hooks != nil {
@@ -140,14 +138,12 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 
 	// Run onListen hooks
 	// Hooks have to be run here as different as non-prefork mode due to they should run as child or master
-	app.runOnListenHooks(app.prepareListenData(addr, tlsConfig != nil, cfg))
+	listenData := app.prepareListenData(addr, tlsConfig != nil, cfg, childPIDs)
 
-	// Print startup message
-	if !cfg.DisableStartupMessage {
-		app.startupMessage(addr, tlsConfig != nil, ","+strings.Join(pids, ","), cfg)
-	}
+	app.runOnListenHooks(listenData)
 
-	// Print routes
+	app.startupMessage(listenData, cfg)
+
 	if cfg.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}

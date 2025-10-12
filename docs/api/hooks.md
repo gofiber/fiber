@@ -168,6 +168,62 @@ func main() {
 </TabItem>
 </Tabs>
 
+### ListenData
+
+`ListenData` exposes runtime metadata about the listener:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `Host` | `string` | Resolved hostname or IP address. |
+| `Port` | `string` | The bound port. |
+| `TLS` | `bool` | Indicates whether TLS is enabled. |
+| `Version` | `string` | Fiber version reported in the startup banner. |
+| `AppName` | `string` | Application name from the configuration. |
+| `HandlerCount` | `int` | Total registered handler count. |
+| `ProcessCount` | `int` | Number of processes Fiber will use. |
+| `PID` | `int` | Current process identifier. |
+| `Prefork` | `bool` | Whether prefork is enabled. |
+| `ChildPIDs` | `[]int` | Child process identifiers when preforking. |
+| `ColorScheme` | [`Colors`](https://github.com/gofiber/fiber/blob/main/color.go) | Active color scheme for the startup message. |
+
+You can customize the default startup output with the helper methods:
+
+- `PreventDefault()` stops Fiber from printing the built-in startup message.
+- `UseHeader(header string)` overrides the ASCII art banner.
+- `UsePrimaryInfoMap(fiber.Map)` replaces the primary info section (server URL, handler counts, etc.).
+- `UseSecondaryInfoMap(fiber.Map)` replaces the secondary info section (prefork status, PID, process count).
+- `AfterPrint() <-chan struct{}` returns a channel that closes once Fiber has printed (or skipped) the startup message. Use this from a goroutine to log follow-up information.
+
+```go title="Customize the startup message"
+package main
+
+import (
+    "log"
+    "os"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New(fiber.Config{DisableStartupMessage: true})
+
+    app.Hooks().OnListen(func(listenData fiber.ListenData) error {
+        listenData.UseHeader("FOOBER " + listenData.Version + "\n-------")
+        listenData.UsePrimaryInfoMap(fiber.Map{"Git hash": os.Getenv("GIT_HASH")})
+        listenData.UseSecondaryInfoMap(fiber.Map{"Prefork": listenData.Prefork})
+
+        go func() {
+            <-listenData.AfterPrint()
+            log.Println("startup completed")
+        }()
+
+        return nil
+    })
+
+    app.Listen(":5000")
+}
+```
+
 ## OnFork
 
 Runs in the child process after a fork.
