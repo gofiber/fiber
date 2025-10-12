@@ -19,7 +19,7 @@ type (
 	// OnListenHandler runs when the application begins listening and receives the listener details.
 	OnListenHandler = func(ListenData) error
 	// OnPreStartupMessageHandler runs before Fiber prints the startup banner.
-	OnPreStartupMessageHandler = func(PreStartupMessageData)
+	OnPreStartupMessageHandler = func(*PreStartupMessageData)
 	// OnPostStartupMessageHandler runs after Fiber prints (or skips) the startup banner.
 	OnPostStartupMessageHandler = func(PostStartupMessageData)
 	// OnPreShutdownHandler runs before the application shuts down.
@@ -57,76 +57,8 @@ type startupMessageEntry struct {
 	value string
 }
 
-const (
-	startupMessagePreventFlag uint8 = 1 << iota
-	startupMessageHasHeaderFlag
-	startupMessageHasPrimaryFlag
-	startupMessageHasSecondaryFlag
-)
-
-// startupMessageState stores customization data for the startup message.
-type startupMessageState struct { //betteralign:ignore // Compact packing trades readability for negligible savings.
-	header    string
-	primary   []startupMessageEntry
-	secondary []startupMessageEntry
-	flags     uint8
-}
-
-func newStartupMessageState() *startupMessageState {
-	return &startupMessageState{}
-}
-
-func (s *startupMessageState) setHeader(header string) {
-	s.header = header
-	s.flags |= startupMessageHasHeaderFlag
-}
-
-func (s *startupMessageState) setPrimary(values Map) {
-	entries, ok := mapToEntries(values)
-	s.primary = entries
-	if ok {
-		s.flags |= startupMessageHasPrimaryFlag
-		return
-	}
-
-	s.flags &^= startupMessageHasPrimaryFlag
-}
-
-func (s *startupMessageState) setSecondary(values Map) {
-	entries, ok := mapToEntries(values)
-	s.secondary = entries
-	if ok {
-		s.flags |= startupMessageHasSecondaryFlag
-		return
-	}
-
-	s.flags &^= startupMessageHasSecondaryFlag
-}
-
-func (s *startupMessageState) preventDefault() {
-	s.flags |= startupMessagePreventFlag
-}
-
-func (s *startupMessageState) hasHeader() bool {
-	return s.flags&startupMessageHasHeaderFlag != 0
-}
-
-func (s *startupMessageState) hasPrimary() bool {
-	return s.flags&startupMessageHasPrimaryFlag != 0
-}
-
-func (s *startupMessageState) hasSecondary() bool {
-	return s.flags&startupMessageHasSecondaryFlag != 0
-}
-
-func (s *startupMessageState) prevented() bool {
-	return s.flags&startupMessagePreventFlag != 0
-}
-
 // ListenData contains the listener metadata provided to OnListenHandler.
 type ListenData struct { //betteralign:ignore // Field order mirrors public API expectations.
-	startupMessage *startupMessageState
-
 	ColorScheme Colors
 	Host        string
 	Port        string
@@ -145,8 +77,6 @@ type ListenData struct { //betteralign:ignore // Field order mirrors public API 
 
 // PreStartupMessageData contains metadata exposed to OnPreStartupMessage hooks.
 type PreStartupMessageData struct { //betteralign:ignore // Maintains alignment with ListenData for documentation parity.
-	state *startupMessageState
-
 	ColorScheme Colors
 	Host        string
 	Port        string
@@ -159,56 +89,23 @@ type PreStartupMessageData struct { //betteralign:ignore // Maintains alignment 
 	ProcessCount int
 	PID          int
 
-	TLS     bool
-	Prefork bool
+	TLS            bool
+	Prefork        bool
+	PreventDefault bool
+
+	Header        string
+	HeaderSet     bool
+	PrimaryInfo   Map
+	SecondaryInfo Map
 }
 
-// PreventDefault stops Fiber from printing the default startup message.
-func (d PreStartupMessageData) PreventDefault() {
-	if d.state == nil {
-		return
-	}
-
-	d.state.preventDefault()
-}
-
-// UseHeader overrides the startup message header. Provide a value that includes any desired
-// newlines or separators. The default ASCII art is used when this method is not called.
-func (d PreStartupMessageData) UseHeader(header string) {
-	if d.state == nil {
-		return
-	}
-
-	d.state.setHeader(header)
-}
-
-// UsePrimaryInfoMap replaces the default primary startup information lines with the provided map.
-// Keys are rendered in lexicographical order for deterministic output.
-func (d PreStartupMessageData) UsePrimaryInfoMap(values Map) {
-	if d.state == nil {
-		return
-	}
-
-	d.state.setPrimary(values)
-}
-
-// UseSecondaryInfoMap replaces the default secondary startup information lines with the provided map.
-// Keys are rendered in lexicographical order for deterministic output.
-func (d PreStartupMessageData) UseSecondaryInfoMap(values Map) {
-	if d.state == nil {
-		return
-	}
-
-	d.state.setSecondary(values)
-}
-
-func newPreStartupMessageData(listenData ListenData) PreStartupMessageData {
+func newPreStartupMessageData(listenData ListenData) *PreStartupMessageData {
 	var childPIDs []int
 	if len(listenData.ChildPIDs) > 0 {
 		childPIDs = append(childPIDs, listenData.ChildPIDs...)
 	}
 
-	return PreStartupMessageData{
+	return &PreStartupMessageData{
 		Host:         listenData.Host,
 		Port:         listenData.Port,
 		Version:      listenData.Version,
@@ -218,7 +115,6 @@ func newPreStartupMessageData(listenData ListenData) PreStartupMessageData {
 		HandlerCount: listenData.HandlerCount,
 		ProcessCount: listenData.ProcessCount,
 		PID:          listenData.PID,
-		state:        listenData.startupMessage,
 		TLS:          listenData.TLS,
 		Prefork:      listenData.Prefork,
 	}
@@ -479,7 +375,7 @@ func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 	return nil
 }
 
-func (h *Hooks) executeOnPreStartupMessageHooks(data PreStartupMessageData) {
+func (h *Hooks) executeOnPreStartupMessageHooks(data *PreStartupMessageData) {
 	for _, handler := range h.onPreStartup {
 		handler(data)
 	}

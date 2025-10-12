@@ -357,32 +357,29 @@ func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig, chi
 	}
 
 	return ListenData{
-		Host:           host,
-		Port:           port,
-		Version:        Version,
-		AppName:        app.config.AppName,
-		ColorScheme:    app.config.ColorScheme,
-		ChildPIDs:      clonedPIDs,
-		HandlerCount:   int(app.handlersCount),
-		ProcessCount:   processCount,
-		PID:            os.Getpid(),
-		startupMessage: newStartupMessageState(),
-		TLS:            isTLS,
-		Prefork:        cfg.EnablePrefork,
+		Host:         host,
+		Port:         port,
+		Version:      Version,
+		AppName:      app.config.AppName,
+		ColorScheme:  app.config.ColorScheme,
+		ChildPIDs:    clonedPIDs,
+		HandlerCount: int(app.handlersCount),
+		ProcessCount: processCount,
+		PID:          os.Getpid(),
+		TLS:          isTLS,
+		Prefork:      cfg.EnablePrefork,
 	}
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information.
 func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
-	state := listenData.startupMessage
-
 	preData := newPreStartupMessageData(listenData)
 	app.hooks.executeOnPreStartupMessageHooks(preData)
 
 	disabled := cfg.DisableStartupMessage
 	prevented := false
-	if state != nil {
-		prevented = state.prevented()
+	if preData != nil {
+		prevented = preData.PreventDefault
 	}
 	isChild := IsChild()
 	printed := false
@@ -392,7 +389,7 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 		app.hooks.executeOnPostStartupMessageHooks(postData)
 	}()
 
-	if state == nil || disabled || prevented || isChild {
+	if preData == nil || disabled || prevented || isChild {
 		return
 	}
 
@@ -403,8 +400,8 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
-	if state.hasHeader() {
-		header := state.header
+	if preData.HeaderSet {
+		header := preData.Header
 		fmt.Fprint(out, header)
 		if !strings.HasSuffix(header, "\n") {
 			fmt.Fprintln(out)
@@ -414,8 +411,8 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 		fmt.Fprintln(out, strings.Repeat("-", 50))
 	}
 
-	if state.hasPrimary() {
-		printStartupEntries(out, colors, state.primary)
+	if entries, ok := mapToEntries(preData.PrimaryInfo); ok {
+		printStartupEntries(out, colors, entries)
 	} else {
 		scheme := schemeHTTP
 		if listenData.TLS {
@@ -443,8 +440,8 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 			colors.Green, colors.Reset, colors.Blue, listenData.HandlerCount, colors.Reset)
 	}
 
-	if state.hasSecondary() {
-		printStartupEntries(out, colors, state.secondary)
+	if entries, ok := mapToEntries(preData.SecondaryInfo); ok {
+		printStartupEntries(out, colors, entries)
 	} else {
 		if listenData.Prefork {
 			fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%sEnabled%s\n", colors.Green, colors.Reset, colors.Blue, colors.Reset)

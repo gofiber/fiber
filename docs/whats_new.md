@@ -300,10 +300,11 @@ app.Listen("app.sock", fiber.ListenerConfig{
 ```go
 app := fiber.New()
 
-app.Hooks().OnPreStartupMessage(func(sm fiber.PreStartupMessageData) {
-    sm.UseHeader("FOOBER " + sm.Version + "\n-------")
-    sm.UsePrimaryInfoMap(fiber.Map{"Git hash": os.Getenv("GIT_HASH")})
-    sm.UseSecondaryInfoMap(fiber.Map{"Process count": sm.ProcessCount})
+app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) {
+    sm.Header = "FOOBER " + sm.Version + "\n-------"
+    sm.HeaderSet = true
+    sm.PrimaryInfo = fiber.Map{"Git hash": os.Getenv("GIT_HASH")}
+    sm.SecondaryInfo = fiber.Map{"Process count": sm.ProcessCount}
 })
 
 app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) {

@@ -629,10 +629,11 @@ func Test_StartupMessageCustomization(t *testing.T) {
 	app := New()
 	listenData := app.prepareListenData(":8080", false, cfg, nil)
 
-	app.Hooks().OnPreStartupMessage(func(data PreStartupMessageData) {
-		data.UseHeader("FOOBER v98\n-------")
-		data.UsePrimaryInfoMap(Map{"Git hash": "abc123"})
-		data.UseSecondaryInfoMap(Map{"Version": "v98"})
+	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) {
+		data.Header = "FOOBER v98\n-------"
+		data.HeaderSet = true
+		data.PrimaryInfo = Map{"Git hash": "abc123"}
+		data.SecondaryInfo = Map{"Version": "v98"}
 	})
 
 	var post PostStartupMessageData
@@ -660,8 +661,8 @@ func Test_StartupMessagePreventDefault(t *testing.T) {
 	app := New()
 	listenData := app.prepareListenData(":9090", false, cfg, nil)
 
-	app.Hooks().OnPreStartupMessage(func(data PreStartupMessageData) {
-		data.PreventDefault()
+	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) {
+		data.PreventDefault = true
 	})
 
 	var post PostStartupMessageData
