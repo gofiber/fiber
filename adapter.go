@@ -70,7 +70,18 @@ func collectHandlers(context string, args ...any) []Handler {
 	handlers := make([]Handler, 0, len(args))
 
 	for i, arg := range args {
-		handler, ok := convertHandler(arg)
+		var (
+			handler Handler
+			ok      bool
+		)
+
+		switch h := arg.(type) {
+		case nil:
+			handler, ok = nil, false
+		default:
+			handler, ok = toFiberHandler(h)
+		}
+
 		if !ok {
 			panic(fmt.Sprintf("%s: invalid handler #%d (%T)\n", context, i, arg))
 		}
@@ -78,14 +89,4 @@ func collectHandlers(context string, args ...any) []Handler {
 	}
 
 	return handlers
-}
-
-// convertHandler normalizes a single handler argument into a Fiber handler.
-func convertHandler(arg any) (Handler, bool) {
-	switch h := arg.(type) {
-	case nil:
-		return nil, false
-	default:
-		return toFiberHandler(h)
-	}
 }

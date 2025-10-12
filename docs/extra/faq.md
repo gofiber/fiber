@@ -178,8 +178,8 @@ For more information, see issue [#750](https://github.com/gofiber/fiber/issues/7
 ## How can I handle conversions between Fiber and net/http?
 
 Fiber can register common `net/http` handlers directly—just pass an
-`http.Handler`, `http.HandlerFunc`, or compatible function to your routing
-method. For other interoperability scenarios, the `adaptor` middleware provides
+`http.Handler`, `http.HandlerFunc`, compatible function, or even a native
+`fasthttp.RequestHandler` to your routing method. For other interoperability scenarios, the `adaptor` middleware provides
 utilities for converting between Fiber and `net/http`. It allows seamless
 integration of `net/http` handlers, middleware, and requests into Fiber
 applications, and vice versa.

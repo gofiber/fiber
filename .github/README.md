@@ -129,7 +129,7 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 
 ### net/http compatibility
 
-Fiber can run side by side with the standard library. The router accepts existing `net/http` handlers directly, so you can plug in legacy endpoints without wrapping them manually:
+Fiber can run side by side with the standard library. The router accepts existing `net/http` handlers directly and even works with native `fasthttp.RequestHandler` callbacks, so you can plug in legacy endpoints without wrapping them manually:
 
 ```go
 package main

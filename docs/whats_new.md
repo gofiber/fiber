@@ -326,6 +326,10 @@ In `v2` one handler was already mandatory when the route has been registered, bu
 +    All(path string, handler Handler, middleware ...Handler) Router
 ```
 
+### Handler compatibility
+
+The router now accepts native `fasthttp.RequestHandler` callbacks in addition to the familiar `fiber.Handler` and `net/http`-style functions, making it easier to reuse existing Fasthttp codebases without extra adapters.
+
 ### Route chaining
 
 This release introduces a dedicated `RouteChain` helper, inspired by [`Express`](https://expressjs.com/en/api.html#app.route), for declaring a stack of handlers on the same path. The original `Route` helper for prefix encapsulation also remains available.

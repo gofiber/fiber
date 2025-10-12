@@ -27,10 +27,10 @@ func (app *App) Add(methods []string, path string, handler any, handlers ...any)
 func (app *App) All(path string, handler any, handlers ...any) Router
 ```
 
-Handlers can be native Fiber handlers (`func(fiber.Ctx) error`) or familiar `net/http`
+Handlers can be native Fiber handlers (`func(fiber.Ctx) error`), familiar `net/http`
 shapes such as `http.Handler`, `http.HandlerFunc`, or
-`func(http.ResponseWriter, *http.Request)`. Fiber automatically adapts supported
-`net/http` values for you during registration.
+`func(http.ResponseWriter, *http.Request)`, and even plain `fasthttp.RequestHandler`
+functions. Fiber automatically adapts supported handlers for you during registration.
 
 :::caution Compatibility overhead
 Adapted `net/http` handlers execute through a compatibility layer. They don't receive
@@ -51,6 +51,11 @@ httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 })
 
 app.Get("/foo", httpHandler)
+
+// Mount a fasthttp.RequestHandler directly
+app.Get("/bar", func(ctx *fasthttp.RequestCtx) {
+    ctx.SetStatusCode(fiber.StatusAccepted)
+})
 
 // Simple POST handler
 app.Post("/api/register", func(c fiber.Ctx) error {
