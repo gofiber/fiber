@@ -11,7 +11,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -524,9 +523,17 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 	port := addr.Port
 	require.NoError(t, ln.Close())
 
+	childTemplate := []int{11111, 22222, 33333, 44444, 55555, 60000}
+	childPIDs := make([]int, 0, len(childTemplate)*10)
+	for range 10 {
+		childPIDs = append(childPIDs, childTemplate...)
+	}
+
+	app := New()
+	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, cfg, childPIDs)
+
 	startupMessage := captureOutput(func() {
-		New().
-			startupMessage(fmt.Sprintf(":%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
+		app.startupMessage(listenData, cfg)
 	})
 	colors := Colors{}
 	require.Contains(t, startupMessage, fmt.Sprintf("https://127.0.0.1:%d", port))
@@ -550,8 +557,16 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	port := addr.Port
 	require.NoError(t, ln.Close())
 
+	childTemplate := []int{11111, 22222, 33333, 44444, 55555, 60000}
+	childPIDs := make([]int, 0, len(childTemplate)*10)
+	for range 10 {
+		childPIDs = append(childPIDs, childTemplate...)
+	}
+
+	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, cfg, childPIDs)
+
 	startupMessage := captureOutput(func() {
-		app.startupMessage(fmt.Sprintf(":%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
+		app.startupMessage(listenData, cfg)
 	})
 	require.Equal(t, "Test App v3.0.0", app.Config().AppName)
 	require.Contains(t, startupMessage, app.Config().AppName)
@@ -573,8 +588,10 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testi
 	port := addr.Port
 	require.NoError(t, ln.Close())
 
+	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), false, cfg, nil)
+
 	startupMessage := captureOutput(func() {
-		app.startupMessage(fmt.Sprintf(":%d", port), false, "", cfg)
+		app.startupMessage(listenData, cfg)
 	})
 	require.Contains(t, startupMessage, "Serveur de vérification des données")
 }
@@ -594,8 +611,10 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 	port := addr.Port
 	require.NoError(t, ln.Close())
 
+	listenData := app.prepareListenData(fmt.Sprintf("server.com:%d", port), true, cfg, nil)
+
 	startupMessage := captureOutput(func() {
-		app.startupMessage(fmt.Sprintf("server.com:%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 5), cfg)
+		app.startupMessage(listenData, cfg)
 	})
 	colors := Colors{}
 	require.Contains(t, startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset))
@@ -603,6 +622,56 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 	expectedURL := fmt.Sprintf("https://server.com:%d", port)
 	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, expectedURL, colors.Reset))
 	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: \t\t\t%sDisabled%s", colors.Red, colors.Reset))
+}
+
+func Test_StartupMessageCustomization(t *testing.T) {
+	cfg := ListenConfig{}
+	app := New()
+	listenData := app.prepareListenData(":8080", false, cfg, nil)
+
+	listenData.UseHeader("FOOBER v98\n-------")
+	listenData.UsePrimaryInfoMap(Map{"Git hash": "abc123"})
+	listenData.UseSecondaryInfoMap(Map{"Version": "v98"})
+
+	ch := listenData.AfterPrint()
+
+	startupMessage := captureOutput(func() {
+		app.startupMessage(listenData, cfg)
+	})
+
+	require.Contains(t, startupMessage, "FOOBER v98")
+	require.Contains(t, startupMessage, "Git hash:\tabc123")
+	require.Contains(t, startupMessage, "Version:\tv98")
+	require.NotContains(t, startupMessage, "Server started on:")
+	require.NotContains(t, startupMessage, "Prefork:")
+
+	select {
+	case <-ch:
+	default:
+		t.Fatal("AfterPrint channel was not closed")
+	}
+}
+
+func Test_StartupMessagePreventDefault(t *testing.T) {
+	cfg := ListenConfig{}
+	app := New()
+	listenData := app.prepareListenData(":9090", false, cfg, nil)
+
+	listenData.PreventDefault()
+
+	ch := listenData.AfterPrint()
+
+	startupMessage := captureOutput(func() {
+		app.startupMessage(listenData, cfg)
+	})
+
+	require.Empty(t, startupMessage)
+
+	select {
+	case <-ch:
+	default:
+		t.Fatal("AfterPrint channel was not closed when startup message prevented")
+	}
 }
 
 // go test -run Test_Listen_Print_Route

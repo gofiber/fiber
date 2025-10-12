@@ -1,6 +1,10 @@
 package fiber
 
 import (
+	"fmt"
+	"sort"
+	"sync"
+
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -42,11 +46,149 @@ type Hooks struct {
 	onMount        []OnMountHandler
 }
 
-// ListenData is a struct to use it with OnListenHandler
+// startupMessageEntry represents a single line of startup message information.
+type startupMessageEntry struct {
+	key   string
+	value string
+}
+
+// startupMessageState stores customization data for the startup message.
+type startupMessageState struct {
+	header       string
+	hasHeader    bool
+	primary      []startupMessageEntry
+	hasPrimary   bool
+	secondary    []startupMessageEntry
+	hasSecondary bool
+	prevent      bool
+
+	afterPrint chan struct{}
+	closeOnce  sync.Once
+}
+
+func newStartupMessageState() *startupMessageState {
+	return &startupMessageState{
+		afterPrint: make(chan struct{}),
+	}
+}
+
+func (s *startupMessageState) setHeader(header string) {
+	s.header = header
+	s.hasHeader = true
+}
+
+func (s *startupMessageState) setPrimary(values Map) {
+	s.primary, s.hasPrimary = mapToEntries(values)
+}
+
+func (s *startupMessageState) setSecondary(values Map) {
+	s.secondary, s.hasSecondary = mapToEntries(values)
+}
+
+func (s *startupMessageState) preventDefault() {
+	s.prevent = true
+}
+
+func (s *startupMessageState) closeAfterPrint() {
+	s.closeOnce.Do(func() {
+		close(s.afterPrint)
+	})
+}
+
+// ListenData contains the listener metadata provided to OnListenHandler.
 type ListenData struct {
 	Host string
 	Port string
 	TLS  bool
+
+	Version      string
+	AppName      string
+	HandlerCount int
+	ProcessCount int
+	PID          int
+	Prefork      bool
+	ChildPIDs    []int
+	ColorScheme  Colors
+
+	startupMessage *startupMessageState
+}
+
+// PreventDefault stops Fiber from printing the default startup message.
+func (l ListenData) PreventDefault() {
+	if l.startupMessage == nil {
+		return
+	}
+
+	l.startupMessage.preventDefault()
+}
+
+// UseHeader overrides the startup message header. Provide a value that includes any desired
+// newlines or separators. The default ASCII art is used when this method is not called.
+func (l ListenData) UseHeader(header string) {
+	if l.startupMessage == nil {
+		return
+	}
+
+	l.startupMessage.setHeader(header)
+}
+
+// UsePrimaryInfoMap replaces the default primary startup information lines with the provided map.
+// Keys are rendered in lexicographical order for deterministic output.
+func (l ListenData) UsePrimaryInfoMap(values Map) {
+	if l.startupMessage == nil {
+		return
+	}
+
+	l.startupMessage.setPrimary(values)
+}
+
+// UseSecondaryInfoMap replaces the default secondary startup information lines with the provided map.
+// Keys are rendered in lexicographical order for deterministic output.
+func (l ListenData) UseSecondaryInfoMap(values Map) {
+	if l.startupMessage == nil {
+		return
+	}
+
+	l.startupMessage.setSecondary(values)
+}
+
+// AfterPrint returns a channel that is closed once the startup message has been printed (or skipped).
+func (l ListenData) AfterPrint() <-chan struct{} {
+	if l.startupMessage == nil {
+		ch := make(chan struct{})
+		close(ch)
+		return ch
+	}
+
+	return l.startupMessage.afterPrint
+}
+
+func (l ListenData) finishStartupMessage() {
+	if l.startupMessage == nil {
+		return
+	}
+
+	l.startupMessage.closeAfterPrint()
+}
+
+func mapToEntries(values Map) ([]startupMessageEntry, bool) {
+	if len(values) == 0 {
+		return nil, false
+	}
+
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	entries := make([]startupMessageEntry, 0, len(values))
+	for _, key := range keys {
+		entries = append(entries, startupMessageEntry{key: key, value: fmt.Sprint(values[key])})
+	}
+
+	return entries, true
 }
 
 func newHooks(app *App) *Hooks {

@@ -9,13 +9,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -230,11 +230,13 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	// prepare the server for the start
 	app.startupProcess()
 
+	listenData := app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, cfg, nil)
+
 	// run hooks
-	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, cfg))
+	app.runOnListenHooks(listenData)
 
 	// Print startup message & routes
-	app.printMessages(cfg, ln)
+	app.printMessages(cfg, listenData)
 
 	// Serve
 	if cfg.BeforeServeFunc != nil {
@@ -262,11 +264,13 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	// prepare the server for the start
 	app.startupProcess()
 
+	listenData := app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, cfg, nil)
+
 	// run hooks
-	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, cfg))
+	app.runOnListenHooks(listenData)
 
 	// Print startup message & routes
-	app.printMessages(cfg, ln)
+	app.printMessages(cfg, listenData)
 
 	// Serve
 	if cfg.BeforeServeFunc != nil {
@@ -320,20 +324,16 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 	return listener, nil
 }
 
-func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
-	// Print startup message
-	if !cfg.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), getTLSConfig(ln) != nil, "", cfg)
-	}
+func (app *App) printMessages(cfg ListenConfig, listenData ListenData) {
+	app.startupMessage(listenData, cfg)
 
-	// Print routes
 	if cfg.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
 }
 
-// prepareListenData creates a slice of ListenData
-func (*App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
+// prepareListenData creates a ListenData instance populated with the application metadata.
+func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig, childPIDs []int) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS is fine here
 	host, port := parseAddr(addr)
 	if host == "" {
 		if cfg.ListenerNetwork == NetworkTCP6 {
@@ -341,115 +341,133 @@ func (*App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenD
 		} else {
 			host = globalIpv4Addr
 		}
+	}
+
+	processCount := 1
+	if cfg.EnablePrefork {
+		processCount = runtime.GOMAXPROCS(0)
+	}
+
+	var clonedPIDs []int
+	if len(childPIDs) > 0 {
+		clonedPIDs = append(clonedPIDs, childPIDs...)
 	}
 
 	return ListenData{
-		Host: host,
-		Port: port,
-		TLS:  isTLS,
+		Host:           host,
+		Port:           port,
+		TLS:            isTLS,
+		Version:        Version,
+		AppName:        app.config.AppName,
+		HandlerCount:   int(app.handlersCount),
+		ProcessCount:   processCount,
+		PID:            os.Getpid(),
+		Prefork:        cfg.EnablePrefork,
+		ChildPIDs:      clonedPIDs,
+		ColorScheme:    app.config.ColorScheme,
+		startupMessage: newStartupMessageState(),
 	}
 }
 
-// startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenConfig) { //nolint:revive // Accepting a bool param named isTLS if fine here
-	// ignore child processes
-	if IsChild() {
+// startupMessage prepares the startup message with the handler number, port, address and other information.
+func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) { //nolint:revive // Accepting ListenData by value is fine here
+	if listenData.startupMessage == nil {
 		return
 	}
 
-	// Alias colors
-	colors := app.config.ColorScheme
+	defer listenData.finishStartupMessage()
 
-	host, port := parseAddr(addr)
-	if host == "" {
-		if cfg.ListenerNetwork == NetworkTCP6 {
-			host = "[::1]"
-		} else {
-			host = globalIpv4Addr
-		}
+	if cfg.DisableStartupMessage || listenData.startupMessage.prevent || IsChild() {
+		return
 	}
 
-	scheme := schemeHTTP
-	if isTLS {
-		scheme = schemeHTTPS
-	}
-
-	isPrefork := "Disabled"
-	if cfg.EnablePrefork {
-		isPrefork = "Enabled"
-	}
-
-	procs := strconv.Itoa(runtime.GOMAXPROCS(0))
-	if !cfg.EnablePrefork {
-		procs = "1"
-	}
+	colors := listenData.ColorScheme
 
 	out := colorable.NewColorableStdout()
 	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
-	fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset))
-	fmt.Fprintln(out, strings.Repeat("-", 50))
-
-	if host == "0.0.0.0" {
-		fmt.Fprintf(out,
-			"%sINFO%s Server started on: \t%s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)\n",
-			colors.Green, colors.Reset, colors.Blue, scheme, port, colors.Reset, port)
+	if listenData.startupMessage.hasHeader {
+		header := listenData.startupMessage.header
+		fmt.Fprint(out, header)
+		if !strings.HasSuffix(header, "\n") {
+			fmt.Fprintln(out)
+		}
 	} else {
-		fmt.Fprintf(out,
-			"%sINFO%s Server started on: \t%s%s%s\n",
-			colors.Green, colors.Reset, colors.Blue, fmt.Sprintf("%s://%s:%s", scheme, host, port), colors.Reset)
+		fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+listenData.Version+colors.Reset))
+		fmt.Fprintln(out, strings.Repeat("-", 50))
 	}
 
-	if app.config.AppName != "" {
-		fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
-	}
-
-	app.logServices(app.servicesStartupCtx(), out, colors)
-
-	fmt.Fprintf(out,
-		"%sINFO%s Total handlers count: \t%s%s%s\n",
-		colors.Green, colors.Reset, colors.Blue, strconv.Itoa(int(app.handlersCount)), colors.Reset)
-
-	if isPrefork == "Enabled" {
-		fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, isPrefork, colors.Reset)
+	if listenData.startupMessage.hasPrimary {
+		printStartupEntries(out, colors, listenData.startupMessage.primary)
 	} else {
-		fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Red, isPrefork, colors.Reset)
-	}
-
-	fmt.Fprintf(out, "%sINFO%s PID: \t\t\t%s%v%s\n", colors.Green, colors.Reset, colors.Blue, os.Getpid(), colors.Reset)
-	fmt.Fprintf(out, "%sINFO%s Total process count: \t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, procs, colors.Reset)
-
-	if cfg.EnablePrefork {
-		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
-		pidSlice := make([]string, 0)
-		for v := range strings.SplitSeq(pids, ",") {
-			if v != "" {
-				pidSlice = append(pidSlice, v)
-			}
+		scheme := schemeHTTP
+		if listenData.TLS {
+			scheme = schemeHTTPS
 		}
 
+		if listenData.Host == globalIpv4Addr {
+			fmt.Fprintf(out,
+				"%sINFO%s Server started on: \t%s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)\n",
+				colors.Green, colors.Reset, colors.Blue, scheme, listenData.Port, colors.Reset, listenData.Port)
+		} else {
+			fmt.Fprintf(out,
+				"%sINFO%s Server started on: \t%s%s://%s:%s%s\n",
+				colors.Green, colors.Reset, colors.Blue, scheme, listenData.Host, listenData.Port, colors.Reset)
+		}
+
+		if listenData.AppName != "" {
+			fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, listenData.AppName, colors.Reset)
+		}
+
+		app.logServices(app.servicesStartupCtx(), out, colors)
+
+		fmt.Fprintf(out,
+			"%sINFO%s Total handlers count: \t%s%d%s\n",
+			colors.Green, colors.Reset, colors.Blue, listenData.HandlerCount, colors.Reset)
+	}
+
+	if listenData.startupMessage.hasSecondary {
+		printStartupEntries(out, colors, listenData.startupMessage.secondary)
+	} else {
+		if listenData.Prefork {
+			fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%sEnabled%s\n", colors.Green, colors.Reset, colors.Blue, colors.Reset)
+		} else {
+			fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%sDisabled%s\n", colors.Green, colors.Reset, colors.Red, colors.Reset)
+		}
+
+		fmt.Fprintf(out, "%sINFO%s PID: \t\t\t%s%d%s\n", colors.Green, colors.Reset, colors.Blue, listenData.PID, colors.Reset)
+		fmt.Fprintf(out, "%sINFO%s Total process count: \t%s%d%s\n", colors.Green, colors.Reset, colors.Blue, listenData.ProcessCount, colors.Reset)
+	}
+
+	if listenData.Prefork && len(listenData.ChildPIDs) > 0 {
 		fmt.Fprintf(out, "%sINFO%s Child PIDs: \t\t%s", colors.Green, colors.Reset, colors.Blue)
-		totalPids := len(pidSlice)
+
+		totalPIDs := len(listenData.ChildPIDs)
 		rowTotalPidCount := 10
 
-		for i := 0; i < totalPids; i += rowTotalPidCount {
+		for i := 0; i < totalPIDs; i += rowTotalPidCount {
 			start := i
-			end := min(i+rowTotalPidCount, totalPids)
+			end := min(i+rowTotalPidCount, totalPIDs)
 
-			for n, pid := range pidSlice[start:end] {
-				fmt.Fprintf(out, "%s", pid)
-				if n+1 != len(pidSlice[start:end]) {
-					fmt.Fprintf(out, ", ")
+			for idx, pid := range listenData.ChildPIDs[start:end] {
+				fmt.Fprintf(out, "%d", pid)
+				if idx+1 != len(listenData.ChildPIDs[start:end]) {
+					fmt.Fprint(out, ", ")
 				}
 			}
 			fmt.Fprintf(out, "\n%s", colors.Reset)
 		}
 	}
 
-	// add new Line as spacer
 	fmt.Fprintf(out, "\n%s", colors.Reset)
+}
+
+func printStartupEntries(out io.Writer, colors Colors, entries []startupMessageEntry) {
+	for _, entry := range entries {
+		fmt.Fprintf(out, "%sINFO%s %s:\t%s%s%s\n", colors.Green, colors.Reset, entry.key, colors.Blue, entry.value, colors.Reset)
+	}
 }
 
 // printRoutesMessage print all routes with method, path, name and handlers
