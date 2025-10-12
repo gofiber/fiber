@@ -356,28 +356,28 @@ func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig, chi
 	return ListenData{
 		Host:           host,
 		Port:           port,
-		TLS:            isTLS,
 		Version:        Version,
 		AppName:        app.config.AppName,
+		ColorScheme:    app.config.ColorScheme,
+		ChildPIDs:      clonedPIDs,
 		HandlerCount:   int(app.handlersCount),
 		ProcessCount:   processCount,
 		PID:            os.Getpid(),
-		Prefork:        cfg.EnablePrefork,
-		ChildPIDs:      clonedPIDs,
-		ColorScheme:    app.config.ColorScheme,
 		startupMessage: newStartupMessageState(),
+		TLS:            isTLS,
+		Prefork:        cfg.EnablePrefork,
 	}
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information.
-func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) { //nolint:revive // Accepting ListenData by value is fine here
+func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 	if listenData.startupMessage == nil {
 		return
 	}
 
 	defer listenData.finishStartupMessage()
 
-	if cfg.DisableStartupMessage || listenData.startupMessage.prevent || IsChild() {
+	if cfg.DisableStartupMessage || listenData.startupMessage.prevented() || IsChild() {
 		return
 	}
 
@@ -388,7 +388,7 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) { //noli
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
-	if listenData.startupMessage.hasHeader {
+	if listenData.startupMessage.hasHeader() {
 		header := listenData.startupMessage.header
 		fmt.Fprint(out, header)
 		if !strings.HasSuffix(header, "\n") {
@@ -399,7 +399,7 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) { //noli
 		fmt.Fprintln(out, strings.Repeat("-", 50))
 	}
 
-	if listenData.startupMessage.hasPrimary {
+	if listenData.startupMessage.hasPrimary() {
 		printStartupEntries(out, colors, listenData.startupMessage.primary)
 	} else {
 		scheme := schemeHTTP
@@ -428,7 +428,7 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) { //noli
 			colors.Green, colors.Reset, colors.Blue, listenData.HandlerCount, colors.Reset)
 	}
 
-	if listenData.startupMessage.hasSecondary {
+	if listenData.startupMessage.hasSecondary() {
 		printStartupEntries(out, colors, listenData.startupMessage.secondary)
 	} else {
 		if listenData.Prefork {
