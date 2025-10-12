@@ -300,17 +300,19 @@ app.Listen("app.sock", fiber.ListenerConfig{
 ```go
 app := fiber.New()
 
-app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) {
+app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
     sm.Header = "FOOBER " + sm.Version + "\n-------"
     sm.HeaderSet = true
     sm.PrimaryInfo = fiber.Map{"Git hash": os.Getenv("GIT_HASH")}
     sm.SecondaryInfo = fiber.Map{"Process count": sm.ProcessCount}
+    return nil
 })
 
-app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) {
+app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) error {
     if sm.Printed {
         log.Println("startup completed")
     }
+    return nil
 })
 
 go app.Listen(":3000")
