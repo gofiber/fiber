@@ -1,6 +1,7 @@
 package fiber
 
 import (
+	"fmt"
 	"net/http"
 	"reflect"
 	"testing"
@@ -113,9 +114,93 @@ func TestWrapHTTPHandler_Nil(t *testing.T) {
 func TestCollectHandlers_InvalidType(t *testing.T) {
 	t.Parallel()
 
-	require.PanicsWithValue(t, "context: invalid handler int\n", func() {
+	require.PanicsWithValue(t, "context: invalid handler #0 (int)\n", func() {
 		collectHandlers("context", 42)
 	})
+}
+
+func TestCollectHandlers_TypedNilHTTPHandlers(t *testing.T) {
+	t.Parallel()
+
+	var handlerFunc http.HandlerFunc
+	var handler http.Handler
+	var raw func(http.ResponseWriter, *http.Request)
+
+	tests := []struct {
+		name    string
+		handler any
+	}{
+		{
+			name:    "HandlerFunc",
+			handler: handlerFunc,
+		},
+		{
+			name:    "Handler",
+			handler: handler,
+		},
+		{
+			name:    "Function",
+			handler: raw,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			expected := fmt.Sprintf("context: invalid handler #0 (%T)\n", tt.handler)
+
+			require.PanicsWithValue(t, expected, func() {
+				collectHandlers("context", tt.handler)
+			})
+		})
+	}
+}
+
+type dummyHandler struct{}
+
+func (dummyHandler) ServeHTTP(http.ResponseWriter, *http.Request) {}
+
+func TestCollectHandlers_TypedNilPointerHTTPHandler(t *testing.T) {
+	t.Parallel()
+
+	var handler http.Handler = (*dummyHandler)(nil)
+
+	require.PanicsWithValue(t, "context: invalid handler #0 (*fiber.dummyHandler)\n", func() {
+		collectHandlers("context", handler)
+	})
+}
+
+func TestCollectHandlers_FasthttpHandler(t *testing.T) {
+	t.Parallel()
+
+	before := func(c Ctx) error {
+		c.Set("X-Before", "fiber")
+		return nil
+	}
+
+	fasthttpHandler := fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
+		ctx.Response.Header.Set("X-FASTHTTP", "ok")
+		ctx.SetBody([]byte("done"))
+	})
+
+	handlers := collectHandlers("fasthttp", before, fasthttpHandler)
+	require.Len(t, handlers, 2)
+
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	for _, handler := range handlers {
+		require.NoError(t, handler(ctx))
+	}
+
+	require.Equal(t, "fiber", string(ctx.Response().Header.Peek("X-Before")))
+	require.Equal(t, "ok", string(ctx.Response().Header.Peek("X-FASTHTTP")))
+	require.Equal(t, "done", string(ctx.Response().Body()))
 }
 
 func TestCollectHandlers_MixedHandlers(t *testing.T) {

@@ -3,7 +3,9 @@ package fiber
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
@@ -16,11 +18,32 @@ func toFiberHandler(handler any) (Handler, bool) {
 		}
 		return h, true
 	case http.HandlerFunc:
+		if h == nil {
+			return nil, false
+		}
 		return wrapHTTPHandler(h), true
 	case http.Handler:
+		if h == nil {
+			return nil, false
+		}
+		hv := reflect.ValueOf(h)
+		if hv.Kind() == reflect.Pointer && hv.IsNil() {
+			return nil, false
+		}
 		return wrapHTTPHandler(h), true
 	case func(http.ResponseWriter, *http.Request):
+		if h == nil {
+			return nil, false
+		}
 		return wrapHTTPHandler(http.HandlerFunc(h)), true
+	case fasthttp.RequestHandler:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			h(c.RequestCtx())
+			return nil
+		}, true
 	default:
 		return nil, false
 	}
@@ -46,10 +69,10 @@ func wrapHTTPHandler(handler http.Handler) Handler {
 func collectHandlers(context string, args ...any) []Handler {
 	handlers := make([]Handler, 0, len(args))
 
-	for _, arg := range args {
+	for i, arg := range args {
 		handler, ok := convertHandler(arg)
 		if !ok {
-			panic(fmt.Sprintf("%s: invalid handler %T\n", context, arg))
+			panic(fmt.Sprintf("%s: invalid handler #%d (%T)\n", context, i, arg))
 		}
 		handlers = append(handlers, handler)
 	}
