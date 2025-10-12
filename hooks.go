@@ -58,7 +58,7 @@ type startupMessageEntry struct {
 }
 
 // ListenData contains the listener metadata provided to OnListenHandler.
-type ListenData struct { //betteralign:ignore // Field order mirrors public API expectations.
+type ListenData struct {
 	ColorScheme Colors
 	Host        string
 	Port        string
@@ -76,27 +76,28 @@ type ListenData struct { //betteralign:ignore // Field order mirrors public API 
 }
 
 // PreStartupMessageData contains metadata exposed to OnPreStartupMessage hooks.
-type PreStartupMessageData struct { //betteralign:ignore // Maintains alignment with ListenData for documentation parity.
-	ColorScheme Colors
-	Host        string
-	Port        string
-	Version     string
-	AppName     string
+type PreStartupMessageData struct {
+        PrimaryInfo   Map
+        SecondaryInfo Map
 
-	ChildPIDs []int
+        Header string
 
-	HandlerCount int
-	ProcessCount int
-	PID          int
+        ColorScheme Colors
+        Host        string
+        Port        string
+        Version     string
+        AppName     string
 
-	TLS            bool
-	Prefork        bool
-	PreventDefault bool
+        ChildPIDs []int
 
-	Header        string
-	HeaderSet     bool
-	PrimaryInfo   Map
-	SecondaryInfo Map
+        HandlerCount int
+        ProcessCount int
+        PID          int
+
+        TLS            bool
+        Prefork        bool
+        PreventDefault bool
+        HeaderSet      bool
 }
 
 func newPreStartupMessageData(listenData ListenData) *PreStartupMessageData {
@@ -121,7 +122,7 @@ func newPreStartupMessageData(listenData ListenData) *PreStartupMessageData {
 }
 
 // PostStartupMessageData contains metadata exposed to OnPostStartupMessage hooks.
-type PostStartupMessageData struct { //betteralign:ignore // Aligns with pre-hook metadata while keeping flags grouped.
+type PostStartupMessageData struct {
 	Host    string
 	Port    string
 	Version string
