@@ -35,7 +35,7 @@ shapes such as `http.Handler`, `http.HandlerFunc`, or
 :::caution Compatibility overhead
 Adapted `net/http` handlers execute through a compatibility layer. They don't receive
 `fiber.Ctx` or gain access to Fiber-specific APIs, and the conversion adds more
-overhead than running a native `fiber.Handler`. Prefer Fiber handlers when you need the
+overhead than running a native `fiber.Handler`. Because they cannot call `c.Next()`, they will also terminate the handler chain. Prefer Fiber handlers when you need the
 lowest latency or Fiber features.
 :::
 
