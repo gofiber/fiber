@@ -52,18 +52,22 @@ type startupMessageEntry struct {
 	value string
 }
 
+const (
+	startupMessagePreventFlag uint8 = 1 << iota
+	startupMessageHasHeaderFlag
+	startupMessageHasPrimaryFlag
+	startupMessageHasSecondaryFlag
+)
+
 // startupMessageState stores customization data for the startup message.
 type startupMessageState struct {
-	header       string
-	hasHeader    bool
-	primary      []startupMessageEntry
-	hasPrimary   bool
-	secondary    []startupMessageEntry
-	hasSecondary bool
-	prevent      bool
+	primary   []startupMessageEntry
+	secondary []startupMessageEntry
+	header    string
 
 	afterPrint chan struct{}
 	closeOnce  sync.Once
+	flags      uint8
 }
 
 func newStartupMessageState() *startupMessageState {
@@ -74,19 +78,33 @@ func newStartupMessageState() *startupMessageState {
 
 func (s *startupMessageState) setHeader(header string) {
 	s.header = header
-	s.hasHeader = true
+	s.flags |= startupMessageHasHeaderFlag
 }
 
 func (s *startupMessageState) setPrimary(values Map) {
-	s.primary, s.hasPrimary = mapToEntries(values)
+	entries, ok := mapToEntries(values)
+	s.primary = entries
+	if ok {
+		s.flags |= startupMessageHasPrimaryFlag
+		return
+	}
+
+	s.flags &^= startupMessageHasPrimaryFlag
 }
 
 func (s *startupMessageState) setSecondary(values Map) {
-	s.secondary, s.hasSecondary = mapToEntries(values)
+	entries, ok := mapToEntries(values)
+	s.secondary = entries
+	if ok {
+		s.flags |= startupMessageHasSecondaryFlag
+		return
+	}
+
+	s.flags &^= startupMessageHasSecondaryFlag
 }
 
 func (s *startupMessageState) preventDefault() {
-	s.prevent = true
+	s.flags |= startupMessagePreventFlag
 }
 
 func (s *startupMessageState) closeAfterPrint() {
@@ -95,22 +113,40 @@ func (s *startupMessageState) closeAfterPrint() {
 	})
 }
 
+func (s *startupMessageState) hasHeader() bool {
+	return s.flags&startupMessageHasHeaderFlag != 0
+}
+
+func (s *startupMessageState) hasPrimary() bool {
+	return s.flags&startupMessageHasPrimaryFlag != 0
+}
+
+func (s *startupMessageState) hasSecondary() bool {
+	return s.flags&startupMessageHasSecondaryFlag != 0
+}
+
+func (s *startupMessageState) prevented() bool {
+	return s.flags&startupMessagePreventFlag != 0
+}
+
 // ListenData contains the listener metadata provided to OnListenHandler.
 type ListenData struct {
-	Host string
-	Port string
-	TLS  bool
+	Host    string
+	Port    string
+	Version string
+	AppName string
 
-	Version      string
-	AppName      string
+	ColorScheme Colors
+	ChildPIDs   []int
+
 	HandlerCount int
 	ProcessCount int
 	PID          int
-	Prefork      bool
-	ChildPIDs    []int
-	ColorScheme  Colors
 
 	startupMessage *startupMessageState
+
+	TLS     bool
+	Prefork bool
 }
 
 // PreventDefault stops Fiber from printing the default startup message.

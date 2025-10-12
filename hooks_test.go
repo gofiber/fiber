@@ -320,8 +320,8 @@ func Test_ListenDataMetadata(t *testing.T) {
 
 	app.runOnListenHooks(listenData)
 
-	require.True(t, listenData.startupMessage.hasPrimary)
-	require.True(t, listenData.startupMessage.hasSecondary)
+	require.True(t, listenData.startupMessage.hasPrimary())
+	require.True(t, listenData.startupMessage.hasSecondary())
 }
 
 func Test_Hook_OnListenPrefork(t *testing.T) {
