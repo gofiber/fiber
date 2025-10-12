@@ -11,6 +11,10 @@ import (
 
 // toFiberHandler converts a supported handler type to a Fiber handler.
 func toFiberHandler(handler any) (Handler, bool) {
+	if handler == nil {
+		return nil, false
+	}
+
 	switch h := handler.(type) {
 	case Handler:
 		if h == nil {
@@ -70,17 +74,7 @@ func collectHandlers(context string, args ...any) []Handler {
 	handlers := make([]Handler, 0, len(args))
 
 	for i, arg := range args {
-		var (
-			handler Handler
-			ok      bool
-		)
-
-		switch h := arg.(type) {
-		case nil:
-			handler, ok = nil, false
-		default:
-			handler, ok = toFiberHandler(h)
-		}
+		handler, ok := toFiberHandler(arg)
 
 		if !ok {
 			panic(fmt.Sprintf("%s: invalid handler #%d (%T)\n", context, i, arg))

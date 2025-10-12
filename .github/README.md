@@ -135,6 +135,7 @@ Fiber can run side by side with the standard library. The router accepts existin
 package main
 
 import (
+    "log"
     "net/http"
 
     "github.com/gofiber/fiber/v3"
@@ -150,7 +151,8 @@ func main() {
     app := fiber.New()
     app.Get("/", httpHandler)
 
-    app.Listen(":8080")
+    // Start the server on port 3000
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
