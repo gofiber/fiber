@@ -374,26 +374,17 @@ func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig, chi
 // startupMessage renders the startup banner using the provided listener metadata and configuration.
 func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 	preData := newPreStartupMessageData(listenData)
-	if err := app.hooks.executeOnPreStartupMessageHooks(preData); err != nil {
-		log.Errorf("failed to call pre startup message hook: %v", err)
-	}
+	app.hooks.executeOnPreStartupMessageHooks(preData)
 
 	disabled := cfg.DisableStartupMessage
-	prevented := false
-	if preData != nil {
-		prevented = preData.PreventDefault
-	}
 	isChild := IsChild()
-	printed := false
 
 	defer func() {
-		postData := newPostStartupMessageData(listenData, printed, disabled, prevented, isChild)
-		if err := app.hooks.executeOnPostStartupMessageHooks(postData); err != nil {
-			log.Errorf("failed to call post startup message hook: %v", err)
-		}
+		postData := newPostStartupMessageData(listenData, disabled, isChild)
+		app.hooks.executeOnPostStartupMessageHooks(postData)
 	}()
 
-	if preData == nil || disabled || prevented || isChild {
+	if preData == nil || disabled || isChild {
 		return
 	}
 
@@ -404,7 +395,7 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
-	if preData.HeaderSet {
+	if preData.Header != "" {
 		header := preData.Header
 		fmt.Fprint(out, header)
 		if !strings.HasSuffix(header, "\n") {
@@ -478,8 +469,6 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 	}
 
 	fmt.Fprintf(out, "\n%s", colors.Reset)
-
-	printed = true
 }
 
 func printStartupEntries(out io.Writer, colors Colors, entries []startupMessageEntry) {

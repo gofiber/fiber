@@ -629,18 +629,15 @@ func Test_StartupMessageCustomization(t *testing.T) {
 	app := New()
 	listenData := app.prepareListenData(":8080", false, cfg, nil)
 
-	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) {
 		data.Header = "FOOBER v98\n-------"
-		data.HeaderSet = true
 		data.PrimaryInfo = Map{"Git hash": "abc123"}
 		data.SecondaryInfo = Map{"Version": "v98"}
-		return nil
 	})
 
 	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) error {
+	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) {
 		post = data
-		return nil
 	})
 
 	startupMessage := captureOutput(func() {
@@ -653,35 +650,8 @@ func Test_StartupMessageCustomization(t *testing.T) {
 	require.NotContains(t, startupMessage, "Server started on:")
 	require.NotContains(t, startupMessage, "Prefork:")
 
-	require.True(t, post.Printed)
 	require.False(t, post.Disabled)
-	require.False(t, post.Prevented)
-}
-
-func Test_StartupMessagePreventDefault(t *testing.T) {
-	cfg := ListenConfig{}
-	app := New()
-	listenData := app.prepareListenData(":9090", false, cfg, nil)
-
-	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
-		data.PreventDefault = true
-		return nil
-	})
-
-	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) error {
-		post = data
-		return nil
-	})
-
-	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, cfg)
-	})
-
-	require.Empty(t, startupMessage)
-	require.False(t, post.Printed)
-	require.False(t, post.Disabled)
-	require.True(t, post.Prevented)
+	require.False(t, post.IsChild)
 }
 
 func Test_StartupMessageDisabledPostHook(t *testing.T) {
@@ -690,9 +660,8 @@ func Test_StartupMessageDisabledPostHook(t *testing.T) {
 	listenData := app.prepareListenData(":7070", false, cfg, nil)
 
 	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) error {
+	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) {
 		post = data
-		return nil
 	})
 
 	startupMessage := captureOutput(func() {
@@ -700,9 +669,8 @@ func Test_StartupMessageDisabledPostHook(t *testing.T) {
 	})
 
 	require.Empty(t, startupMessage)
-	require.False(t, post.Printed)
 	require.True(t, post.Disabled)
-	require.False(t, post.Prevented)
+	require.False(t, post.IsChild)
 }
 
 // go test -run Test_Listen_Print_Route
