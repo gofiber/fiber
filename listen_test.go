@@ -652,6 +652,7 @@ func Test_StartupMessageCustomization(t *testing.T) {
 
 	require.False(t, post.Disabled)
 	require.False(t, post.IsChild)
+	require.False(t, post.Prevented)
 }
 
 func Test_StartupMessageDisabledPostHook(t *testing.T) {
@@ -671,6 +672,31 @@ func Test_StartupMessageDisabledPostHook(t *testing.T) {
 	require.Empty(t, startupMessage)
 	require.True(t, post.Disabled)
 	require.False(t, post.IsChild)
+	require.False(t, post.Prevented)
+}
+
+func Test_StartupMessagePreventedByHook(t *testing.T) {
+	cfg := ListenConfig{}
+	app := New()
+	listenData := app.prepareListenData(":9090", false, cfg, nil)
+
+	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) {
+		data.PreventDefault = true
+	})
+
+	var post PostStartupMessageData
+	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) {
+		post = data
+	})
+
+	startupMessage := captureOutput(func() {
+		app.startupMessage(listenData, cfg)
+	})
+
+	require.Empty(t, startupMessage)
+	require.False(t, post.Disabled)
+	require.False(t, post.IsChild)
+	require.True(t, post.Prevented)
 }
 
 // go test -run Test_Listen_Print_Route
