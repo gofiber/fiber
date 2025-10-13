@@ -188,12 +188,11 @@ func main() {
 
 ### Startup message customization
 
-Use `OnPreStartupMessage` to tweak or suppress the banner before Fiber prints it, and `OnPostStartupMessage` to run logic after the banner is printed (or skipped):
+Use `OnPreStartupMessage` to tweak the banner before Fiber prints it, and `OnPostStartupMessage` to run logic after the banner is printed (or skipped):
 
-- Set `sm.PreventDefault = true` to stop Fiber from printing the built-in startup message.
-- Assign `sm.Header` and mark `sm.HeaderSet = true` to override the ASCII art banner.
+- Assign `sm.Header` to override the ASCII art banner. Leave it empty to use the default.
 - Provide `sm.PrimaryInfo` and/or `sm.SecondaryInfo` maps to replace the primary (server URL, handler counts, etc.) and secondary (prefork status, PID, process count) sections.
-- `PostStartupMessageData.Printed` reports whether Fiber wrote the banner.
+- `PostStartupMessageData` reports whether the banner was skipped via the `Disabled` and `IsChild` flags.
 
 ```go title="Customize the startup message"
 package main
@@ -208,19 +207,16 @@ import (
 func main() {
     app := fiber.New()
 
-    app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
+    app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) {
         sm.Header = "FOOBER " + sm.Version + "\n-------"
-        sm.HeaderSet = true
         sm.PrimaryInfo = fiber.Map{"Git hash": os.Getenv("GIT_HASH")}
         sm.SecondaryInfo = fiber.Map{"Prefork": sm.Prefork}
-        return nil
     })
 
-    app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) error {
-        if sm.Printed {
+    app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) {
+        if !sm.Disabled && !sm.IsChild {
             fmt.Println("startup completed")
         }
-        return nil
     })
 
     app.Listen(":5000")

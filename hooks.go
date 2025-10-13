@@ -19,9 +19,9 @@ type (
 	// OnListenHandler runs when the application begins listening and receives the listener details.
 	OnListenHandler = func(ListenData) error
 	// OnPreStartupMessageHandler runs before Fiber prints the startup banner.
-	OnPreStartupMessageHandler = func(*PreStartupMessageData) error
+	OnPreStartupMessageHandler = func(*PreStartupMessageData)
 	// OnPostStartupMessageHandler runs after Fiber prints (or skips) the startup banner.
-	OnPostStartupMessageHandler = func(PostStartupMessageData) error
+	OnPostStartupMessageHandler = func(PostStartupMessageData)
 	// OnPreShutdownHandler runs before the application shuts down.
 	OnPreShutdownHandler = func() error
 	// OnPostShutdownHandler runs after shutdown and receives the shutdown result.
@@ -94,10 +94,8 @@ type PreStartupMessageData struct {
 	ProcessCount int
 	PID          int
 
-	TLS            bool
-	Prefork        bool
-	PreventDefault bool
-	HeaderSet      bool
+	TLS     bool
+	Prefork bool
 }
 
 func newPreStartupMessageData(listenData ListenData) *PreStartupMessageData {
@@ -135,15 +133,13 @@ type PostStartupMessageData struct {
 	ProcessCount int
 	PID          int
 
-	TLS       bool
-	Prefork   bool
-	Printed   bool
-	Disabled  bool
-	Prevented bool
-	IsChild   bool
+	TLS      bool
+	Prefork  bool
+	Disabled bool
+	IsChild  bool
 }
 
-func newPostStartupMessageData(listenData ListenData, printed, disabled, prevented, isChild bool) PostStartupMessageData {
+func newPostStartupMessageData(listenData ListenData, disabled, isChild bool) PostStartupMessageData {
 	var childPIDs []int
 	if len(listenData.ChildPIDs) > 0 {
 		childPIDs = append(childPIDs, listenData.ChildPIDs...)
@@ -161,9 +157,7 @@ func newPostStartupMessageData(listenData ListenData, printed, disabled, prevent
 		PID:          listenData.PID,
 		TLS:          listenData.TLS,
 		Prefork:      listenData.Prefork,
-		Printed:      printed,
 		Disabled:     disabled,
-		Prevented:    prevented,
 		IsChild:      isChild,
 	}
 }
@@ -364,24 +358,16 @@ func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 	return nil
 }
 
-func (h *Hooks) executeOnPreStartupMessageHooks(data *PreStartupMessageData) error {
+func (h *Hooks) executeOnPreStartupMessageHooks(data *PreStartupMessageData) {
 	for _, handler := range h.onPreStartup {
-		if err := handler(data); err != nil {
-			return err
-		}
+		handler(data)
 	}
-
-	return nil
 }
 
-func (h *Hooks) executeOnPostStartupMessageHooks(data PostStartupMessageData) error {
+func (h *Hooks) executeOnPostStartupMessageHooks(data PostStartupMessageData) {
 	for _, handler := range h.onPostStartup {
-		if err := handler(data); err != nil {
-			return err
-		}
+		handler(data)
 	}
-
-	return nil
 }
 
 func (h *Hooks) executeOnPreShutdownHooks() {
