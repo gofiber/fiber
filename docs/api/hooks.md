@@ -192,7 +192,8 @@ Use `OnPreStartupMessage` to tweak the banner before Fiber prints it, and `OnPos
 
 - Assign `sm.Header` to override the ASCII art banner. Leave it empty to use the default.
 - Provide `sm.PrimaryInfo` and/or `sm.SecondaryInfo` maps to replace the primary (server URL, handler counts, etc.) and secondary (prefork status, PID, process count) sections.
-- `PostStartupMessageData` reports whether the banner was skipped via the `Disabled` and `IsChild` flags.
+- Set `sm.PreventDefault = true` to suppress the built-in banner without affecting other hooks.
+- `PostStartupMessageData` reports whether the banner was skipped via the `Disabled`, `IsChild`, and `Prevented` flags.
 
 ```go title="Customize the startup message"
 package main
@@ -214,7 +215,7 @@ func main() {
     })
 
     app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) {
-        if !sm.Disabled && !sm.IsChild {
+        if !sm.Disabled && !sm.IsChild && !sm.Prevented {
             fmt.Println("startup completed")
         }
     })

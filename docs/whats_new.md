@@ -304,10 +304,11 @@ app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) {
     sm.Header = "FOOBER " + sm.Version + "\n-------"
     sm.PrimaryInfo = fiber.Map{"Git hash": os.Getenv("GIT_HASH")}
     sm.SecondaryInfo = fiber.Map{"Process count": sm.ProcessCount}
+    // Set sm.PreventDefault = true to suppress the default banner entirely.
 })
 
 app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) {
-    if !sm.Disabled && !sm.IsChild {
+    if !sm.Disabled && !sm.IsChild && !sm.Prevented {
         log.Println("startup completed")
     }
 })

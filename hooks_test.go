@@ -339,6 +339,7 @@ func Test_ListenDataMetadata(t *testing.T) {
 
 	require.Equal(t, Map{"Custom": "value"}, pre.PrimaryInfo)
 	require.Equal(t, Map{"Other": "value"}, pre.SecondaryInfo)
+	require.False(t, pre.PreventDefault)
 }
 
 func Test_Hook_OnListenPrefork(t *testing.T) {

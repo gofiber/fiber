@@ -94,8 +94,9 @@ type PreStartupMessageData struct {
 	ProcessCount int
 	PID          int
 
-	TLS     bool
-	Prefork bool
+	TLS            bool
+	Prefork        bool
+	PreventDefault bool
 }
 
 func newPreStartupMessageData(listenData ListenData) *PreStartupMessageData {
@@ -133,13 +134,14 @@ type PostStartupMessageData struct {
 	ProcessCount int
 	PID          int
 
-	TLS      bool
-	Prefork  bool
-	Disabled bool
-	IsChild  bool
+	TLS       bool
+	Prefork   bool
+	Disabled  bool
+	IsChild   bool
+	Prevented bool
 }
 
-func newPostStartupMessageData(listenData ListenData, disabled, isChild bool) PostStartupMessageData {
+func newPostStartupMessageData(listenData ListenData, disabled, isChild, prevented bool) PostStartupMessageData {
 	var childPIDs []int
 	if len(listenData.ChildPIDs) > 0 {
 		childPIDs = append(childPIDs, listenData.ChildPIDs...)
@@ -159,6 +161,7 @@ func newPostStartupMessageData(listenData ListenData, disabled, isChild bool) Po
 		Prefork:      listenData.Prefork,
 		Disabled:     disabled,
 		IsChild:      isChild,
+		Prevented:    prevented,
 	}
 }
 

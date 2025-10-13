@@ -375,13 +375,14 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 
 	disabled := cfg.DisableStartupMessage
 	isChild := IsChild()
+	prevented := preData != nil && preData.PreventDefault
 
 	defer func() {
-		postData := newPostStartupMessageData(listenData, disabled, isChild)
+		postData := newPostStartupMessageData(listenData, disabled, isChild, prevented)
 		app.hooks.executeOnPostStartupMessageHooks(postData)
 	}()
 
-	if preData == nil || disabled || isChild {
+	if preData == nil || disabled || isChild || prevented {
 		return
 	}
 
