@@ -19,9 +19,9 @@ type (
 	// OnListenHandler runs when the application begins listening and receives the listener details.
 	OnListenHandler = func(ListenData) error
 	// OnPreStartupMessageHandler runs before Fiber prints the startup banner.
-	OnPreStartupMessageHandler = func(*PreStartupMessageData)
+	OnPreStartupMessageHandler = func(*PreStartupMessageData) error
 	// OnPostStartupMessageHandler runs after Fiber prints (or skips) the startup banner.
-	OnPostStartupMessageHandler = func(PostStartupMessageData)
+	OnPostStartupMessageHandler = func(PostStartupMessageData) error
 	// OnPreShutdownHandler runs before the application shuts down.
 	OnPreShutdownHandler = func() error
 	// OnPostShutdownHandler runs after shutdown and receives the shutdown result.
@@ -364,16 +364,24 @@ func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 	return nil
 }
 
-func (h *Hooks) executeOnPreStartupMessageHooks(data *PreStartupMessageData) {
+func (h *Hooks) executeOnPreStartupMessageHooks(data *PreStartupMessageData) error {
 	for _, handler := range h.onPreStartup {
-		handler(data)
+		if err := handler(data); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-func (h *Hooks) executeOnPostStartupMessageHooks(data PostStartupMessageData) {
+func (h *Hooks) executeOnPostStartupMessageHooks(data PostStartupMessageData) error {
 	for _, handler := range h.onPostStartup {
-		handler(data)
+		if err := handler(data); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 func (h *Hooks) executeOnPreShutdownHooks() {

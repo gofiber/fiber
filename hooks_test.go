@@ -317,7 +317,7 @@ func Test_ListenDataMetadata(t *testing.T) {
 
 	app.runOnListenHooks(listenData)
 
-	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) {
+	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
 		require.Equal(t, globalIpv4Addr, data.Host)
 		require.Equal(t, "3030", data.Port)
 		require.True(t, data.TLS)
@@ -332,10 +332,11 @@ func Test_ListenDataMetadata(t *testing.T) {
 
 		data.PrimaryInfo = Map{"Custom": "value"}
 		data.SecondaryInfo = Map{"Other": "value"}
+		return nil
 	})
 
 	pre := newPreStartupMessageData(listenData)
-	app.hooks.executeOnPreStartupMessageHooks(pre)
+	require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
 
 	require.Equal(t, Map{"Custom": "value"}, pre.PrimaryInfo)
 	require.Equal(t, Map{"Other": "value"}, pre.SecondaryInfo)
