@@ -374,7 +374,9 @@ func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig, chi
 // startupMessage renders the startup banner using the provided listener metadata and configuration.
 func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 	preData := newPreStartupMessageData(listenData)
-	app.hooks.executeOnPreStartupMessageHooks(preData)
+	if err := app.hooks.executeOnPreStartupMessageHooks(preData); err != nil {
+		log.Errorf("failed to call pre startup message hook: %v", err)
+	}
 
 	disabled := cfg.DisableStartupMessage
 	prevented := false
@@ -386,7 +388,9 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 
 	defer func() {
 		postData := newPostStartupMessageData(listenData, printed, disabled, prevented, isChild)
-		app.hooks.executeOnPostStartupMessageHooks(postData)
+		if err := app.hooks.executeOnPostStartupMessageHooks(postData); err != nil {
+			log.Errorf("failed to call post startup message hook: %v", err)
+		}
 	}()
 
 	if preData == nil || disabled || prevented || isChild {
