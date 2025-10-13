@@ -1,3 +1,6 @@
+// Core pipeline scaffolds request execution for Fiber's HTTP client, including
+// hook invocation, retry orchestration, and timeout management around fasthttp
+// transports.
 package client
 
 import (
@@ -93,15 +96,15 @@ func (c *core) execFunc() (*Response, error) {
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-					return c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
+					return c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
-				return c.client.fasthttp.Do(reqv, respv)
+				return c.client.Do(reqv, respv)
 			})
 		} else {
 			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-				err = c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
+				err = c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
-				err = c.client.fasthttp.Do(reqv, respv)
+				err = c.client.Do(reqv, respv)
 			}
 		}
 
