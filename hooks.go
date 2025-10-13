@@ -77,91 +77,45 @@ type ListenData struct {
 
 // PreStartupMessageData contains metadata exposed to OnPreStartupMessage hooks.
 type PreStartupMessageData struct {
+	*ListenData
+
 	PrimaryInfo   Map
 	SecondaryInfo Map
 
 	Header string
 
-	ColorScheme Colors
-	Host        string
-	Port        string
-	Version     string
-	AppName     string
-
-	ChildPIDs []int
-
-	HandlerCount int
-	ProcessCount int
-	PID          int
-
-	TLS            bool
-	Prefork        bool
 	PreventDefault bool
 }
 
 func newPreStartupMessageData(listenData ListenData) *PreStartupMessageData {
-	var childPIDs []int
+	clone := listenData
 	if len(listenData.ChildPIDs) > 0 {
-		childPIDs = append(childPIDs, listenData.ChildPIDs...)
+		clone.ChildPIDs = append([]int(nil), listenData.ChildPIDs...)
 	}
 
-	return &PreStartupMessageData{
-		Host:         listenData.Host,
-		Port:         listenData.Port,
-		Version:      listenData.Version,
-		AppName:      listenData.AppName,
-		ColorScheme:  listenData.ColorScheme,
-		ChildPIDs:    childPIDs,
-		HandlerCount: listenData.HandlerCount,
-		ProcessCount: listenData.ProcessCount,
-		PID:          listenData.PID,
-		TLS:          listenData.TLS,
-		Prefork:      listenData.Prefork,
-	}
+	return &PreStartupMessageData{ListenData: &clone}
 }
 
 // PostStartupMessageData contains metadata exposed to OnPostStartupMessage hooks.
 type PostStartupMessageData struct {
-	Host    string
-	Port    string
-	Version string
-	AppName string
+	*ListenData
 
-	ColorScheme Colors
-	ChildPIDs   []int
-
-	HandlerCount int
-	ProcessCount int
-	PID          int
-
-	TLS       bool
-	Prefork   bool
 	Disabled  bool
 	IsChild   bool
 	Prevented bool
 }
 
 func newPostStartupMessageData(listenData ListenData, disabled, isChild, prevented bool) PostStartupMessageData {
-	var childPIDs []int
+	clone := listenData
 	if len(listenData.ChildPIDs) > 0 {
-		childPIDs = append(childPIDs, listenData.ChildPIDs...)
+		clone.ChildPIDs = append([]int(nil), listenData.ChildPIDs...)
 	}
 
 	return PostStartupMessageData{
-		Host:         listenData.Host,
-		Port:         listenData.Port,
-		Version:      listenData.Version,
-		AppName:      listenData.AppName,
-		ColorScheme:  listenData.ColorScheme,
-		ChildPIDs:    childPIDs,
-		HandlerCount: listenData.HandlerCount,
-		ProcessCount: listenData.ProcessCount,
-		PID:          listenData.PID,
-		TLS:          listenData.TLS,
-		Prefork:      listenData.Prefork,
-		Disabled:     disabled,
-		IsChild:      isChild,
-		Prevented:    prevented,
+		ListenData: &clone,
+		Disabled:   disabled,
+		IsChild:    isChild,
+		Prevented:  prevented,
 	}
 }
 
