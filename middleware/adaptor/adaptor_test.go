@@ -704,7 +704,7 @@ func Test_FiberHandler_WithErrorInHandler(t *testing.T) {
 func Test_FiberHandler_WithSendStreamWriter(t *testing.T) {
 	t.Parallel()
 
-	// Test error handling in fiber handler
+	// Test streaming functionality in FiberHandler using SendStreamWriter.
 	fiberH := func(c fiber.Ctx) error {
 		c.Status(fiber.StatusTeapot)
 		return c.SendStreamWriter(func(w *bufio.Writer) {
@@ -734,7 +734,7 @@ func Test_FiberHandler_WithSendStreamWriter(t *testing.T) {
 func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	t.Parallel()
 
-	// Test error handling in fiber handler
+	// Test streaming functionality to ensure data is sent even during a timeout.
 	fiberH := func(c fiber.Ctx) error {
 		c.Status(fiber.StatusTeapot)
 		return c.SendStreamWriter(func(w *bufio.Writer) {
