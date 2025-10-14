@@ -709,7 +709,7 @@ func Test_FiberHandler_WithSendStreamWriter(t *testing.T) {
 		c.Status(fiber.StatusTeapot)
 		return c.SendStreamWriter(func(w *bufio.Writer) {
 			w.WriteString("Hello ")            //nolint:errcheck // not needed
-			_ = w.Flush()                      //nolint:errcheck // not needed
+			w.Flush()                          //nolint:errcheck // not needed
 			time.Sleep(200 * time.Millisecond) // Simulate a long operation
 			w.WriteString("World!")            //nolint:errcheck // not needed
 		})
@@ -754,13 +754,14 @@ func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	}
 	listener, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
-	defer listener.Close() //nolint:errcheck // not needed
 	addr := fmt.Sprintf("http://%s", listener.Addr())
 
 	go func() {
 		server.Serve(listener) //nolint:errcheck // not needed
 	}()
-	defer server.Close() //nolint:errcheck // not needed
+	defer func() {
+		require.NoError(t, server.Close())
+	}()
 
 	cc := &http.Client{
 		Timeout: 200 * time.Millisecond,
