@@ -335,7 +335,7 @@ func Test_ListenDataMetadata(t *testing.T) {
 	})
 
 	pre := newPreStartupMessageData(listenData)
-	app.hooks.executeOnPreStartupMessageHooks(pre)
+	require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
 
 	require.Equal(t, Map{"Custom": "value"}, pre.PrimaryInfo)
 	require.Equal(t, Map{"Other": "value"}, pre.SecondaryInfo)
