@@ -740,7 +740,7 @@ func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 		return c.SendStreamWriter(func(w *bufio.Writer) {
 			w.WriteString("Hello ")            //nolint:errcheck // not needed
 			w.Flush()                          //nolint:errcheck // not needed
-			time.Sleep(200 * time.Millisecond) // Simulate a long operation
+			time.Sleep(500 * time.Millisecond) // Simulate a long operation
 			w.WriteString("World!")            //nolint:errcheck // not needed
 		})
 	}
