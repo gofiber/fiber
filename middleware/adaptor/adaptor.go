@@ -29,9 +29,11 @@ var ctxPool = sync.Pool{
 	},
 }
 
+const bufferSize = 32 * 1024
+
 var bufferPool = sync.Pool{
 	New: func() any {
-		return new([32 * 1024]byte)
+		return new([bufferSize]byte)
 	},
 }
 
@@ -274,9 +276,9 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 
 		// Stream fctx.Response.BodyStream() -> w
 		// in chunks.
-		bufPtr, ok := bufferPool.Get().(*[32 * 1024]byte)
+		bufPtr, ok := bufferPool.Get().(*[bufferSize]byte)
 		if !ok {
-			panic(errors.New("failed to type-assert to *[32 * 1024]byte"))
+			panic(fmt.Errorf("failed to type-assert to *[%d]byte", bufferSize))
 		}
 		defer bufferPool.Put(bufPtr)
 
