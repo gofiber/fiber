@@ -327,16 +327,20 @@ func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 	return nil
 }
 
-func (h *Hooks) executeOnPreStartupMessageHooks(data *PreStartupMessageData) {
+func (h *Hooks) executeOnPreStartupMessageHooks(data *PreStartupMessageData) error {
 	for _, handler := range h.onPreStartup {
 		handler(data)
 	}
+
+	return nil
 }
 
-func (h *Hooks) executeOnPostStartupMessageHooks(data PostStartupMessageData) {
+func (h *Hooks) executeOnPostStartupMessageHooks(data PostStartupMessageData) error {
 	for _, handler := range h.onPostStartup {
 		handler(data)
 	}
+
+	return nil
 }
 
 func (h *Hooks) executeOnPreShutdownHooks() {
