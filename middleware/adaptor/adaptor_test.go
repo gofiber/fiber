@@ -708,10 +708,10 @@ func Test_FiberHandler_WithSendStreamWriter(t *testing.T) {
 	fiberH := func(c fiber.Ctx) error {
 		c.Status(fiber.StatusTeapot)
 		return c.SendStreamWriter(func(w *bufio.Writer) {
-			_, _ = w.WriteString("Hello ")
-			_ = w.Flush()
-			time.Sleep(200 * time.Millisecond)
-			_, _ = w.WriteString("World!")
+			w.WriteString("Hello ")            //nolint:errcheck // not needed
+			_ = w.Flush()                      //nolint:errcheck // not needed
+			time.Sleep(200 * time.Millisecond) // Simulate a long operation
+			w.WriteString("World!")            //nolint:errcheck // not needed
 		})
 	}
 	handlerFunc := FiberHandlerFunc(fiberH)
@@ -738,32 +738,34 @@ func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	fiberH := func(c fiber.Ctx) error {
 		c.Status(fiber.StatusTeapot)
 		return c.SendStreamWriter(func(w *bufio.Writer) {
-			_, _ = w.WriteString("Hello ")
-			_ = w.Flush()
+			w.WriteString("Hello ")            //nolint:errcheck // not needed
+			w.Flush()                          //nolint:errcheck // not needed
 			time.Sleep(200 * time.Millisecond) // Simulate a long operation
-			_, _ = w.WriteString("World!")
+			w.WriteString("World!")            //nolint:errcheck // not needed
 		})
 	}
 	handlerFunc := FiberHandlerFunc(fiberH)
 
 	// Start a mock HTTP server using the handlerFunc
 	server := &http.Server{
-		Handler: handlerFunc,
+		Handler:      handlerFunc,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
 	listener, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
-	defer listener.Close()
+	defer listener.Close() //nolint:errcheck // not needed
 	addr := fmt.Sprintf("http://%s", listener.Addr())
 
 	go func() {
-		_ = server.Serve(listener)
+		server.Serve(listener) //nolint:errcheck // not needed
 	}()
-	defer server.Close()
+	defer server.Close() //nolint:errcheck // not needed
 
 	cc := &http.Client{
 		Timeout: 200 * time.Millisecond,
 	}
-	resp, err := cc.Get(addr)
+	resp, err := cc.Get(addr) //nolint:noctx // ctx is not needed
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 
