@@ -208,16 +208,18 @@ import (
 func main() {
     app := fiber.New()
 
-    app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) {
+    app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
         sm.Header = "FOOBER " + sm.Version + "\n-------"
         sm.PrimaryInfo = fiber.Map{"Git hash": os.Getenv("GIT_HASH")}
         sm.SecondaryInfo = fiber.Map{"Prefork": sm.Prefork}
+        return nil
     })
 
-    app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) {
+    app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) error {
         if !sm.Disabled && !sm.IsChild && !sm.Prevented {
             fmt.Println("startup completed")
         }
+        return nil
     })
 
     app.Listen(":5000")
