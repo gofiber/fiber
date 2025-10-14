@@ -267,7 +267,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		// Check if streaming is not possible or unnecessary.
 		bodyStream := fctx.Response.BodyStream()
 		flusher, ok := w.(http.Flusher)
-		if bodyStream == nil || !ok {
+		if !ok || bodyStream == nil {
 			_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
 			return
 		}
