@@ -2,6 +2,7 @@
 package adaptor
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -506,6 +507,8 @@ func (w *netHTTPResponseWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func (w *netHTTPResponseWriter) Flush() {}
+
 func Test_ConvertRequest(t *testing.T) {
 	t.Parallel()
 
@@ -696,6 +699,78 @@ func Test_FiberHandler_WithErrorInHandler(t *testing.T) {
 
 	// Should return the error status
 	require.Equal(t, fiber.StatusTeapot, w.StatusCode())
+}
+
+func Test_FiberHandler_WithSendStreamWriter(t *testing.T) {
+	t.Parallel()
+
+	// Test error handling in fiber handler
+	fiberH := func(c fiber.Ctx) error {
+		c.Status(fiber.StatusTeapot)
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			_, _ = w.WriteString("Hello ")
+			_ = w.Flush()
+			time.Sleep(200 * time.Millisecond)
+			_, _ = w.WriteString("World!")
+		})
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	r := &http.Request{
+		Method:     http.MethodGet,
+		RequestURI: "/test",
+		Header:     make(http.Header),
+		Body:       http.NoBody,
+	}
+
+	w := &netHTTPResponseWriter{}
+	handlerFunc.ServeHTTP(w, r)
+
+	// Should return the error status
+	require.Equal(t, fiber.StatusTeapot, w.StatusCode())
+	require.Equal(t, "Hello World!", string(w.body))
+}
+
+func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
+	t.Parallel()
+
+	// Test error handling in fiber handler
+	fiberH := func(c fiber.Ctx) error {
+		c.Status(fiber.StatusTeapot)
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			_, _ = w.WriteString("Hello ")
+			_ = w.Flush()
+			time.Sleep(200 * time.Millisecond) // Simulate a long operation
+			_, _ = w.WriteString("World!")
+		})
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	// Start a mock HTTP server using the handlerFunc
+	server := &http.Server{
+		Handler: handlerFunc,
+	}
+	listener, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+	addr := fmt.Sprintf("http://%s", listener.Addr())
+
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	defer server.Close()
+
+	cc := &http.Client{
+		Timeout: 200 * time.Millisecond,
+	}
+	resp, err := cc.Get(addr)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	body, readErr := io.ReadAll(resp.Body)
+	require.ErrorIs(t, readErr, context.DeadlineExceeded)
+	require.Equal(t, "Hello ", string(body))
 }
 
 // failingReader always returns an error when Read is called
