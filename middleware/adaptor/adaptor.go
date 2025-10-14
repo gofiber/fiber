@@ -286,7 +286,9 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		for {
 			n, err := bodyStream.Read(buf)
 			if n > 0 {
-				_, _ = w.Write(buf[:n]) //nolint:errcheck // not needed
+				if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+					break
+				}
 				flusher.Flush()
 			}
 
