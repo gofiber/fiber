@@ -359,7 +359,8 @@ func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client
 
 ### TLSConfig
 
-Returns the client's TLS configuration. If none is set, it initializes a new one.
+Returns the client's TLS configuration. If none is set, it initializes a new
+configuration with `MinVersion` defaulting to TLS 1.2.
 
 ```go title="Signature"
 func (c *Client) TLSConfig() *tls.Config
@@ -762,7 +763,8 @@ func (c *Client) Logger() log.CommonLogger
 
 ### Reset
 
-Clears and resets the client to its default state.
+Clears and resets the client to its default state and reinstates the default
+`fasthttp.Client` transport.
 
 ```go title="Signature"
 func (c *Client) Reset()
