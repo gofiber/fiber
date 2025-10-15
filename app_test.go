@@ -197,6 +197,129 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 }
 
+func Test_App_RegisterNetHTTPHandler(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		register   func(app *App, path string, handler any)
+		method     string
+		expectBody bool
+	}{
+		{
+			name: "Get",
+			register: func(app *App, path string, handler any) {
+				app.Get(path, handler)
+			},
+			method:     http.MethodGet,
+			expectBody: true,
+		},
+		{
+			name: "Head",
+			register: func(app *App, path string, handler any) {
+				app.Head(path, handler)
+			},
+			method: http.MethodHead,
+		},
+		{
+			name: "Post",
+			register: func(app *App, path string, handler any) {
+				app.Post(path, handler)
+			},
+			method:     http.MethodPost,
+			expectBody: true,
+		},
+		{
+			name: "Put",
+			register: func(app *App, path string, handler any) {
+				app.Put(path, handler)
+			},
+			method:     http.MethodPut,
+			expectBody: true,
+		},
+		{
+			name: "Delete",
+			register: func(app *App, path string, handler any) {
+				app.Delete(path, handler)
+			},
+			method:     http.MethodDelete,
+			expectBody: true,
+		},
+		{
+			name: "Connect",
+			register: func(app *App, path string, handler any) {
+				app.Connect(path, handler)
+			},
+			method:     http.MethodConnect,
+			expectBody: true,
+		},
+		{
+			name: "Options",
+			register: func(app *App, path string, handler any) {
+				app.Options(path, handler)
+			},
+			method:     http.MethodOptions,
+			expectBody: true,
+		},
+		{
+			name: "Trace",
+			register: func(app *App, path string, handler any) {
+				app.Trace(path, handler)
+			},
+			method:     http.MethodTrace,
+			expectBody: true,
+		},
+		{
+			name: "Patch",
+			register: func(app *App, path string, handler any) {
+				app.Patch(path, handler)
+			},
+			method:     http.MethodPatch,
+			expectBody: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			handler := func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("X-Test", r.Method)
+				w.WriteHeader(http.StatusAccepted)
+				if r.Method == http.MethodHead {
+					return
+				}
+
+				_, err := w.Write([]byte("hello from net/http " + r.Method))
+				assert.NoError(t, err)
+			}
+
+			tt.register(app, "/foo", http.HandlerFunc(handler))
+
+			req := httptest.NewRequest(tt.method, "/foo", nil)
+			if tt.method == http.MethodConnect {
+				req.URL.Scheme = "http"
+				req.URL.Host = "example.com"
+			}
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusAccepted, resp.StatusCode)
+			require.Equal(t, tt.method, resp.Header.Get("X-Test"))
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			if tt.expectBody {
+				require.Equal(t, "hello from net/http "+tt.method, string(body))
+			} else {
+				require.Empty(t, body)
+			}
+		})
+	}
+}
+
 func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T) {
 	t.Parallel()
 	app := New()

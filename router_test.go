@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	utils "github.com/gofiber/utils/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -66,6 +67,131 @@ func Test_Route_Handler_Order(t *testing.T) {
 
 	expectedOrder := []int{1, 2, 3, 4}
 	require.Equal(t, expectedOrder, order, "Handler order")
+}
+
+func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var order []string
+
+	fiberBefore := func(c Ctx) error {
+		order = append(order, "fiber-before")
+		c.Set("X-Fiber", "1")
+		return c.Next()
+	}
+
+	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		order = append(order, "http-final")
+		w.Header().Set("X-HTTP", "true")
+		_, err := w.Write([]byte("http"))
+		assert.NoError(t, err)
+	})
+
+	fiberAfter := func(c Ctx) error {
+		order = append(order, "fiber-after")
+		return c.SendString("fiber")
+	}
+
+	app.Get("/mixed", fiberBefore, httpHandler, fiberAfter)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/mixed", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+	t.Cleanup(func() {
+		require.NoError(t, resp.Body.Close())
+	})
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "http", string(body))
+	require.Equal(t, "true", resp.Header.Get("X-HTTP"))
+	require.Equal(t, "1", resp.Header.Get("X-Fiber"))
+
+	require.Equal(t, []string{"fiber-before", "http-final"}, order)
+}
+
+func Test_Route_Group_WithHTTPHandlers(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var order []string
+
+	app.Use("/api", func(c Ctx) error {
+		order = append(order, "app-use")
+		return c.Next()
+	})
+
+	grp := app.Group("/api", func(c Ctx) error {
+		order = append(order, "group-middleware")
+		return c.Next()
+	})
+
+	grp.Get("/users", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		order = append(order, "http-handler")
+		_, err := w.Write([]byte("users"))
+		assert.NoError(t, err)
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/users", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+	t.Cleanup(func() {
+		require.NoError(t, resp.Body.Close())
+	})
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "users", string(body))
+
+	require.Equal(t, []string{"app-use", "group-middleware", "http-handler"}, order)
+}
+
+func Test_RouteChain_WithHTTPHandlers(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	chain := app.RouteChain("/combo")
+	chain.Get(func(c Ctx) error {
+		c.Set("X-Chain", "fiber")
+		return c.Next()
+	}, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte("combo"))
+		assert.NoError(t, err)
+	}))
+
+	chain.RouteChain("/nested").Get(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Nested", "true")
+		_, err := w.Write([]byte("nested"))
+		assert.NoError(t, err)
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/combo", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, "fiber", resp.Header.Get("X-Chain"))
+	t.Cleanup(func() {
+		require.NoError(t, resp.Body.Close())
+	})
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "combo", string(body))
+
+	nestedResp, err := app.Test(httptest.NewRequest(MethodGet, "/combo/nested", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, nestedResp.StatusCode)
+	require.Equal(t, "true", nestedResp.Header.Get("X-Nested"))
+	t.Cleanup(func() {
+		require.NoError(t, nestedResp.Body.Close())
+	})
+
+	nestedBody, err := io.ReadAll(nestedResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "nested", string(nestedBody))
 }
 
 func Test_Route_Match_SameLength(t *testing.T) {
@@ -431,6 +557,11 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 }
 
 func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
+	converted := make([]any, len(middleware))
+	for i, h := range middleware {
+		converted[i] = h
+	}
+
 	app.Get("/test", func(c Ctx) error {
 		app.Get("/dynamically-defined", func(c Ctx) error {
 			return c.SendStatus(StatusOK)
@@ -439,7 +570,7 @@ func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
 		app.RebuildTree()
 
 		return c.SendStatus(StatusOK)
-	}, middleware...)
+	}, converted...)
 }
 
 func verifyRequest(tb testing.TB, app *App, path string, expectedStatus int) *http.Response {
