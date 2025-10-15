@@ -3,6 +3,8 @@ package fiber
 import (
 	"bytes"
 	"errors"
+	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -285,6 +287,61 @@ func Test_Hook_OnListen(t *testing.T) {
 	require.NoError(t, app.Listen(":0"))
 
 	require.Equal(t, "ready", buf.String())
+}
+
+func Test_ListenDataMetadata(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{AppName: "meta"})
+	app.handlersCount = 42
+
+	cfg := ListenConfig{EnablePrefork: true}
+	childPIDs := []int{11, 22}
+	listenData := app.prepareListenData(":3030", true, cfg, childPIDs)
+
+	app.Hooks().OnListen(func(data ListenData) error {
+		require.Equal(t, globalIpv4Addr, data.Host)
+		require.Equal(t, "3030", data.Port)
+		require.True(t, data.TLS)
+		require.Equal(t, Version, data.Version)
+		require.Equal(t, "meta", data.AppName)
+		require.Equal(t, 42, data.HandlerCount)
+		require.Equal(t, runtime.GOMAXPROCS(0), data.ProcessCount)
+		require.Equal(t, os.Getpid(), data.PID)
+		require.True(t, data.Prefork)
+		require.Equal(t, childPIDs, data.ChildPIDs)
+		require.Equal(t, app.config.ColorScheme, data.ColorScheme)
+
+		return nil
+	})
+
+	app.runOnListenHooks(listenData)
+
+	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+		require.Equal(t, globalIpv4Addr, data.Host)
+		require.Equal(t, "3030", data.Port)
+		require.True(t, data.TLS)
+		require.Equal(t, Version, data.Version)
+		require.Equal(t, "meta", data.AppName)
+		require.Equal(t, 42, data.HandlerCount)
+		require.Equal(t, runtime.GOMAXPROCS(0), data.ProcessCount)
+		require.Equal(t, os.Getpid(), data.PID)
+		require.True(t, data.Prefork)
+		require.Equal(t, childPIDs, data.ChildPIDs)
+		require.Equal(t, app.config.ColorScheme, data.ColorScheme)
+
+		data.PrimaryInfo = Map{"Custom": "value"}
+		data.SecondaryInfo = Map{"Other": "value"}
+
+		return nil
+	})
+
+	pre := newPreStartupMessageData(listenData)
+	require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+
+	require.Equal(t, Map{"Custom": "value"}, pre.PrimaryInfo)
+	require.Equal(t, Map{"Other": "value"}, pre.SecondaryInfo)
+	require.False(t, pre.PreventDefault)
 }
 
 func Test_Hook_OnListenPrefork(t *testing.T) {

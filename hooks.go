@@ -1,6 +1,9 @@
 package fiber
 
 import (
+	"fmt"
+	"sort"
+
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -15,6 +18,10 @@ type (
 	OnGroupNameHandler = OnGroupHandler
 	// OnListenHandler runs when the application begins listening and receives the listener details.
 	OnListenHandler = func(ListenData) error
+	// OnPreStartupMessageHandler runs before Fiber prints the startup banner.
+	OnPreStartupMessageHandler = func(*PreStartupMessageData) error
+	// OnPostStartupMessageHandler runs after Fiber prints (or skips) the startup banner.
+	OnPostStartupMessageHandler = func(PostStartupMessageData) error
 	// OnPreShutdownHandler runs before the application shuts down.
 	OnPreShutdownHandler = func() error
 	// OnPostShutdownHandler runs after shutdown and receives the shutdown result.
@@ -36,17 +43,100 @@ type Hooks struct {
 	onGroup        []OnGroupHandler
 	onGroupName    []OnGroupNameHandler
 	onListen       []OnListenHandler
+	onPreStartup   []OnPreStartupMessageHandler
+	onPostStartup  []OnPostStartupMessageHandler
 	onPreShutdown  []OnPreShutdownHandler
 	onPostShutdown []OnPostShutdownHandler
 	onFork         []OnForkHandler
 	onMount        []OnMountHandler
 }
 
-// ListenData is a struct to use it with OnListenHandler
+// startupMessageEntry represents a single line of startup message information.
+type startupMessageEntry struct {
+	key   string
+	value string
+}
+
+// ListenData contains the listener metadata provided to OnListenHandler.
 type ListenData struct {
-	Host string
-	Port string
-	TLS  bool
+	ColorScheme Colors
+	Host        string
+	Port        string
+	Version     string
+	AppName     string
+
+	ChildPIDs []int
+
+	HandlerCount int
+	ProcessCount int
+	PID          int
+
+	TLS     bool
+	Prefork bool
+}
+
+// PreStartupMessageData contains metadata exposed to OnPreStartupMessage hooks.
+type PreStartupMessageData struct {
+	*ListenData
+
+	PrimaryInfo   Map
+	SecondaryInfo Map
+
+	Header string
+
+	PreventDefault bool
+}
+
+func newPreStartupMessageData(listenData ListenData) *PreStartupMessageData {
+	clone := listenData
+	if len(listenData.ChildPIDs) > 0 {
+		clone.ChildPIDs = append([]int(nil), listenData.ChildPIDs...)
+	}
+
+	return &PreStartupMessageData{ListenData: &clone}
+}
+
+// PostStartupMessageData contains metadata exposed to OnPostStartupMessage hooks.
+type PostStartupMessageData struct {
+	*ListenData
+
+	Disabled  bool
+	IsChild   bool
+	Prevented bool
+}
+
+func newPostStartupMessageData(listenData ListenData, disabled, isChild, prevented bool) PostStartupMessageData {
+	clone := listenData
+	if len(listenData.ChildPIDs) > 0 {
+		clone.ChildPIDs = append([]int(nil), listenData.ChildPIDs...)
+	}
+
+	return PostStartupMessageData{
+		ListenData: &clone,
+		Disabled:   disabled,
+		IsChild:    isChild,
+		Prevented:  prevented,
+	}
+}
+
+func mapToEntries(values Map) ([]startupMessageEntry, bool) {
+	if len(values) == 0 {
+		return nil, false
+	}
+
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	entries := make([]startupMessageEntry, 0, len(values))
+	for _, key := range keys {
+		entries = append(entries, startupMessageEntry{key: key, value: fmt.Sprint(values[key])})
+	}
+
+	return entries, true
 }
 
 func newHooks(app *App) *Hooks {
@@ -57,6 +147,8 @@ func newHooks(app *App) *Hooks {
 		onGroupName:    make([]OnGroupNameHandler, 0),
 		onName:         make([]OnNameHandler, 0),
 		onListen:       make([]OnListenHandler, 0),
+		onPreStartup:   make([]OnPreStartupMessageHandler, 0),
+		onPostStartup:  make([]OnPostStartupMessageHandler, 0),
 		onPreShutdown:  make([]OnPreShutdownHandler, 0),
 		onPostShutdown: make([]OnPostShutdownHandler, 0),
 		onFork:         make([]OnForkHandler, 0),
@@ -104,6 +196,20 @@ func (h *Hooks) OnGroupName(handler ...OnGroupNameHandler) {
 func (h *Hooks) OnListen(handler ...OnListenHandler) {
 	h.app.mutex.Lock()
 	h.onListen = append(h.onListen, handler...)
+	h.app.mutex.Unlock()
+}
+
+// OnPreStartupMessage is a hook to execute user functions before the startup message is printed.
+func (h *Hooks) OnPreStartupMessage(handler ...OnPreStartupMessageHandler) {
+	h.app.mutex.Lock()
+	h.onPreStartup = append(h.onPreStartup, handler...)
+	h.app.mutex.Unlock()
+}
+
+// OnPostStartupMessage is a hook to execute user functions after the startup message is printed (or skipped).
+func (h *Hooks) OnPostStartupMessage(handler ...OnPostStartupMessageHandler) {
+	h.app.mutex.Lock()
+	h.onPostStartup = append(h.onPostStartup, handler...)
 	h.app.mutex.Unlock()
 }
 
@@ -202,6 +308,26 @@ func (h *Hooks) executeOnGroupNameHooks(group Group) error {
 func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 	for _, v := range h.onListen {
 		if err := v(listenData); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *Hooks) executeOnPreStartupMessageHooks(data *PreStartupMessageData) error {
+	for _, handler := range h.onPreStartup {
+		if err := handler(data); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *Hooks) executeOnPostStartupMessageHooks(data PostStartupMessageData) error {
+	for _, handler := range h.onPostStartup {
+		if err := handler(data); err != nil {
 			return err
 		}
 	}
