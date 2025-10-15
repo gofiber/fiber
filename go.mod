@@ -6,8 +6,6 @@ require (
 	github.com/gofiber/schema v1.6.0
 	github.com/gofiber/utils/v2 v2.0.0-rc.1
 	github.com/google/uuid v1.6.0
-	github.com/mattn/go-colorable v0.1.14
-	github.com/mattn/go-isatty v0.0.20
 	github.com/shamaton/msgpack/v2 v2.3.1
 	github.com/stretchr/testify v1.11.1
 	github.com/tinylib/msgp v1.4.0
@@ -25,7 +23,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/net v0.46.0
-	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/sys v0.37.0
 	golang.org/x/text v0.30.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
