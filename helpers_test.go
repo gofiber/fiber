@@ -18,21 +18,21 @@ import (
 
 func Test_Utils_GetOffer(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "", getOffer([]byte("hello"), acceptsOffer))
+	require.Empty(t, getOffer([]byte("hello"), acceptsOffer))
 	require.Equal(t, "1", getOffer([]byte(""), acceptsOffer, "1"))
-	require.Equal(t, "", getOffer([]byte("2"), acceptsOffer, "1"))
+	require.Empty(t, getOffer([]byte("2"), acceptsOffer, "1"))
 
-	require.Equal(t, "", getOffer([]byte(""), acceptsOfferType))
-	require.Equal(t, "", getOffer([]byte("text/html"), acceptsOfferType))
-	require.Equal(t, "", getOffer([]byte("text/html"), acceptsOfferType, "application/json"))
-	require.Equal(t, "", getOffer([]byte("text/html;q=0"), acceptsOfferType, "text/html"))
-	require.Equal(t, "", getOffer([]byte("application/json, */*; q=0"), acceptsOfferType, "image/png"))
+	require.Empty(t, getOffer([]byte(""), acceptsOfferType))
+	require.Empty(t, getOffer([]byte("text/html"), acceptsOfferType))
+	require.Empty(t, getOffer([]byte("text/html"), acceptsOfferType, "application/json"))
+	require.Empty(t, getOffer([]byte("text/html;q=0"), acceptsOfferType, "text/html"))
+	require.Empty(t, getOffer([]byte("application/json, */*; q=0"), acceptsOfferType, "image/png"))
 	require.Equal(t, "application/xml", getOffer([]byte("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"), acceptsOfferType, "application/xml", "application/json"))
 	require.Equal(t, "text/html", getOffer([]byte("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"), acceptsOfferType, "text/html"))
 	require.Equal(t, "application/pdf", getOffer([]byte("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000"), acceptsOfferType, "application/pdf", "application/json"))
 	require.Equal(t, "application/pdf", getOffer([]byte("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000"), acceptsOfferType, "application/pdf", "application/json"))
 	require.Equal(t, "text/plain;a=1", getOffer([]byte("text/plain;a=1"), acceptsOfferType, "text/plain;a=1"))
-	require.Equal(t, "", getOffer([]byte("text/plain;a=1;b=2"), acceptsOfferType, "text/plain;b=2"))
+	require.Empty(t, getOffer([]byte("text/plain;a=1;b=2"), acceptsOfferType, "text/plain;b=2"))
 
 	// Spaces, quotes, out of order params, and case insensitivity
 	require.Equal(t, "text/plain", getOffer([]byte("text/plain  "), acceptsOfferType, "text/plain"))
@@ -54,13 +54,13 @@ func Test_Utils_GetOffer(t *testing.T) {
 	// Takes the last value specified
 	require.Equal(t, "text/plain;a=1;b=2", getOffer([]byte("text/plain;a=1;b=1;B=2"), acceptsOfferType, "text/plain;a=1;b=1", "text/plain;a=1;b=2"))
 
-	require.Equal(t, "", getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer))
-	require.Equal(t, "", getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer, "ascii"))
+	require.Empty(t, getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer))
+	require.Empty(t, getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer, "ascii"))
 	require.Equal(t, "utf-8", getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer, "utf-8"))
 	require.Equal(t, "iso-8859-1", getOffer([]byte("utf-8;q=0, iso-8859-1;q=0.5"), acceptsOffer, "utf-8", "iso-8859-1"))
 
 	require.Equal(t, "deflate", getOffer([]byte("gzip, deflate"), acceptsOffer, "deflate"))
-	require.Equal(t, "", getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
+	require.Empty(t, getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
 
 	// Accept-Language Basic Filtering
 	require.True(t, acceptsLanguageOfferBasic("en", "en-US", nil))
@@ -68,7 +68,7 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.True(t, acceptsLanguageOfferBasic("EN", "en-us", nil))
 	require.False(t, acceptsLanguageOfferBasic("en", "en_US", nil))
 	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOfferBasic, "en-US", "fr-CA"))
-	require.Equal(t, "", getOffer([]byte("xx"), acceptsLanguageOfferBasic, "en"))
+	require.Empty(t, getOffer([]byte("xx"), acceptsLanguageOfferBasic, "en"))
 	require.False(t, acceptsLanguageOfferBasic("en-*", "en-US", nil))
 	require.True(t, acceptsLanguageOfferBasic("*", "en-US", nil))
 

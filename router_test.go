@@ -940,14 +940,12 @@ func Test_App_Remove_Route_Concurrent(t *testing.T) {
 	// Concurrently remove and add routes
 	var wg sync.WaitGroup
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			app.RemoveRoute("/test", MethodGet)
 			app.Get("/test", func(c Ctx) error {
 				return c.SendStatus(StatusOK)
 			})
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -1172,7 +1170,7 @@ func TestRemoveRoute(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, 404, resp.StatusCode)
-	require.Equal(t, "", buf.String())
+	require.Empty(t, buf.String())
 
 	buf.Reset()
 

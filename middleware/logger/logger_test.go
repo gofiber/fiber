@@ -134,7 +134,7 @@ func Test_Logger_locals(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/empty", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "", buf.String())
+	require.Empty(t, buf.String())
 }
 
 // go test -run Test_Logger_Next
@@ -830,11 +830,9 @@ func Test_Logger_Data_Race(t *testing.T) {
 		err1, err2   error
 	)
 	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		resp1, err1 = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-		wg.Done()
-	}()
+	})
 	resp2, err2 = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	wg.Wait()
 

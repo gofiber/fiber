@@ -309,7 +309,7 @@ func Test_Extractor_FromCustom(t *testing.T) {
 		// Verify metadata
 		require.Equal(t, SourceCustom, customExtractor.Source)
 		require.Equal(t, "X-Custom", customExtractor.Key)
-		require.Equal(t, "", customExtractor.AuthScheme)
+		require.Empty(t, customExtractor.AuthScheme)
 	})
 
 	t.Run("extraction_with_error", func(t *testing.T) {
@@ -656,7 +656,7 @@ func Test_Extractor_FromAuthHeader_NoScheme(t *testing.T) {
 		// Verify metadata
 		require.Equal(t, SourceAuthHeader, extractor.Source)
 		require.Equal(t, fiber.HeaderAuthorization, extractor.Key)
-		require.Equal(t, "", extractor.AuthScheme)
+		require.Empty(t, extractor.AuthScheme)
 	})
 
 	t.Run("empty_header_returns_not_found", func(t *testing.T) {

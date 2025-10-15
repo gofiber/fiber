@@ -159,7 +159,7 @@ func Test_CSRF_Chain_Extractor_Metadata(t *testing.T) {
 		t.Parallel()
 		chained := extractors.Chain()
 		require.Equal(t, extractors.SourceCustom, chained.Source)
-		require.Equal(t, "", chained.Key)
+		require.Empty(t, chained.Key)
 		require.Empty(t, chained.Chain)
 	})
 

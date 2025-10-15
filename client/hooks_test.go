@@ -200,8 +200,10 @@ func Test_Parser_Request_URL(t *testing.T) {
 				flag1 = true
 			case "foo2":
 				flag2 = true
-			case "foo": //nolint:goconst // test
+			case "foo":
 				flag3 = true
+			default:
+				t.Fatalf("unexpected query param value: %s", v)
 			}
 		}
 		require.True(t, flag1)
@@ -411,7 +413,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "bar", string(req.RawRequest.Header.Cookie("foo")))
 		require.Equal(t, "foo", string(req.RawRequest.Header.Cookie("bar")))
-		require.Equal(t, "", string(req.RawRequest.Header.Cookie("bar1")))
+		require.Empty(t, string(req.RawRequest.Header.Cookie("bar1")))
 	})
 
 	t.Run("request cookie should be set", func(t *testing.T) {
@@ -433,7 +435,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "bar", string(req.RawRequest.Header.Cookie("foo")))
 		require.Equal(t, "67", string(req.RawRequest.Header.Cookie("bar")))
-		require.Equal(t, "", string(req.RawRequest.Header.Cookie("bar1")))
+		require.Empty(t, string(req.RawRequest.Header.Cookie("bar1")))
 	})
 
 	t.Run("request cookie will override client cookie", func(t *testing.T) {
@@ -619,6 +621,18 @@ func Test_Parser_Request_Body(t *testing.T) {
 		err := parserRequestBody(client, req)
 		require.ErrorIs(t, err, ErrBodyType)
 	})
+
+	t.Run("unsupported body type", func(t *testing.T) {
+		t.Parallel()
+
+		client := New()
+		req := AcquireRequest()
+
+		req.bodyType = 999 // some invalid type
+
+		err := parserRequestBody(client, req)
+		require.ErrorIs(t, err, ErrBodyTypeNotSupported)
+	})
 }
 
 type dummyLogger struct {
@@ -642,7 +656,7 @@ func (*dummyLogger) Panic(_ ...any) {}
 func (*dummyLogger) Tracef(_ string, _ ...any) {}
 
 func (l *dummyLogger) Debugf(format string, v ...any) {
-	_, _ = l.buf.WriteString(fmt.Sprintf(format, v...)) //nolint:errcheck // not needed
+	fmt.Fprintf(l.buf, format, v...)
 }
 
 func (*dummyLogger) Infof(_ string, _ ...any) {}
