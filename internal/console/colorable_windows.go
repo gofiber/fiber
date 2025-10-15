@@ -1,5 +1,4 @@
 //go:build windows && !appengine
-// +build windows,!appengine
 
 package console
 
