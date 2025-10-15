@@ -299,40 +299,13 @@ app.Listen("app.sock", fiber.ListenerConfig{
 
 We have slightly adapted our router interface
 
-### HTTP method registration
-
-In `v2` one handler was already mandatory when the route has been registered, but this was checked at runtime and was not correctly reflected in the signature, this has now been changed in `v3` to make it more explicit.
-
-```diff
--    Get(path string, handlers ...Handler) Router
-+    Get(path string, handler Handler, middleware ...Handler) Router
--    Head(path string, handlers ...Handler) Router
-+    Head(path string, handler Handler, middleware ...Handler) Router
--    Post(path string, handlers ...Handler) Router
-+    Post(path string, handler Handler, middleware ...Handler) Router
--    Put(path string, handlers ...Handler) Router
-+    Put(path string, handler Handler, middleware ...Handler) Router
--    Delete(path string, handlers ...Handler) Router
-+    Delete(path string, handler Handler, middleware ...Handler) Router
--    Connect(path string, handlers ...Handler) Router
-+    Connect(path string, handler Handler, middleware ...Handler) Router
--    Options(path string, handlers ...Handler) Router
-+    Options(path string, handler Handler, middleware ...Handler) Router
--    Trace(path string, handlers ...Handler) Router
-+    Trace(path string, handler Handler, middleware ...Handler) Router
--    Patch(path string, handlers ...Handler) Router
-+    Patch(path string, handler Handler, middleware ...Handler) Router
--    All(path string, handlers ...Handler) Router
-+    All(path string, handler Handler, middleware ...Handler) Router
-```
-
 ### Handler compatibility
 
-The router now accepts native `fasthttp.RequestHandler` callbacks in addition to the familiar `fiber.Handler` and `net/http`-style functions, making it easier to reuse existing Fasthttp codebases without extra adapters.
+Fiber now ships with a routing adapter (see `adapter.go`) that understands native Fiber handlers alongside `net/http` and `fasthttp` handlers. Route registration helpers accept a required `handler` argument plus optional additional `handlers`, all typed as `any`, and the adapter transparently converts supported handler styles so you can keep using the ecosystem functions you're familiar with.
 
 ### Route chaining
 
-This release introduces a dedicated `RouteChain` helper, inspired by [`Express`](https://expressjs.com/en/api.html#app.route), for declaring a stack of handlers on the same path. The original `Route` helper for prefix encapsulation also remains available.
+`RouteChain` is a new helper inspired by [`Express`](https://expressjs.com/en/api.html#app.route) that makes it easy to declare a stack of handlers on the same path, while the existing `Route` helper stays available for prefix encapsulation.
 
 ```go
 RouteChain(path string) Register
@@ -398,7 +371,7 @@ To enable the routing changes above we had to slightly adjust the signature of t
 
 ```diff
 -    Add(method, path string, handlers ...Handler) Router
-+    Add(methods []string, path string, handler Handler, middleware ...Handler) Router
++    Add(methods []string, path string, handler any, handlers ...any) Router
 ```
 
 ### Test Config
