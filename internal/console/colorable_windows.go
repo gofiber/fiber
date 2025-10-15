@@ -524,7 +524,7 @@ loop:
 				w.rest.Reset()
 				break
 			}
-			buf.Write([]byte(string(c)))
+buf.WriteByte(c)
 		}
 		if m == 0 {
 			break loop
