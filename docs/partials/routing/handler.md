@@ -9,28 +9,52 @@ Registers a route bound to a specific [HTTP method](https://developer.mozilla.or
 
 ```go title="Signatures"
 // HTTP methods
-func (app *App) Get(path string, handler Handler, handlers ...Handler) Router
-func (app *App) Head(path string, handler Handler, handlers ...Handler) Router
-func (app *App) Post(path string, handler Handler, handlers ...Handler) Router
-func (app *App) Put(path string, handler Handler, handlers ...Handler) Router
-func (app *App) Delete(path string, handler Handler, handlers ...Handler) Router
-func (app *App) Connect(path string, handler Handler, handlers ...Handler) Router
-func (app *App) Options(path string, handler Handler, handlers ...Handler) Router
-func (app *App) Trace(path string, handler Handler, handlers ...Handler) Router
-func (app *App) Patch(path string, handler Handler, handlers ...Handler) Router
+func (app *App) Get(path string, handler any, handlers ...any) Router
+func (app *App) Head(path string, handler any, handlers ...any) Router
+func (app *App) Post(path string, handler any, handlers ...any) Router
+func (app *App) Put(path string, handler any, handlers ...any) Router
+func (app *App) Delete(path string, handler any, handlers ...any) Router
+func (app *App) Connect(path string, handler any, handlers ...any) Router
+func (app *App) Options(path string, handler any, handlers ...any) Router
+func (app *App) Trace(path string, handler any, handlers ...any) Router
+func (app *App) Patch(path string, handler any, handlers ...any) Router
 
-// Add allows you to specify a method as value
-func (app *App) Add(method, path string, handler Handler, handlers ...Handler) Router
+// Add allows you to specify multiple methods at once
+func (app *App) Add(methods []string, path string, handler any, handlers ...any) Router
 
 // All will register the route on all HTTP methods
 // Almost the same as app.Use but not bound to prefixes
-func (app *App) All(path string, handler Handler, handlers ...Handler) Router
+func (app *App) All(path string, handler any, handlers ...any) Router
 ```
+
+Handlers can be native Fiber handlers (`func(fiber.Ctx) error`), familiar `net/http`
+shapes such as `http.Handler`, `http.HandlerFunc`, or
+`func(http.ResponseWriter, *http.Request)`, and even plain `fasthttp.RequestHandler`
+functions. Fiber automatically adapts supported handlers for you during registration.
+
+:::caution Compatibility overhead
+Adapted `net/http` handlers execute through a compatibility layer. They don't receive
+`fiber.Ctx` or gain access to Fiber-specific APIs, and the conversion adds more
+overhead than running a native `fiber.Handler`. Because they cannot call `c.Next()`, they will also terminate the handler chain. Prefer Fiber handlers when you need the
+lowest latency or Fiber features.
+:::
 
 ```go title="Examples"
 // Simple GET handler
 app.Get("/api/list", func(c fiber.Ctx) error {
     return c.SendString("I'm a GET request!")
+})
+
+// Reuse an existing net/http handler without manual adaptation
+httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusNoContent)
+})
+
+app.Get("/foo", httpHandler)
+
+// Mount a fasthttp.RequestHandler directly
+app.Get("/bar", func(ctx *fasthttp.RequestCtx) {
+    ctx.SetStatusCode(fiber.StatusAccepted)
 })
 
 // Simple POST handler

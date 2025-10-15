@@ -177,7 +177,19 @@ For more information, see issue [#750](https://github.com/gofiber/fiber/issues/7
 
 ## How can I handle conversions between Fiber and net/http?
 
-The `adaptor` middleware provides utilities for converting between Fiber and `net/http`. It allows seamless integration of `net/http` handlers, middleware, and requests into Fiber applications, and vice versa.
+Fiber can register common `net/http` handlers directly—just pass an
+`http.Handler`, `http.HandlerFunc`, compatible function, or even a native
+`fasthttp.RequestHandler` to your routing method. For other interoperability scenarios, the `adaptor` middleware provides
+utilities for converting between Fiber and `net/http`. It allows seamless
+integration of `net/http` handlers, middleware, and requests into Fiber
+applications, and vice versa.
+
+:::caution Performance trade-offs
+Converted `net/http` handlers run through a compatibility layer. They won't expose
+`fiber.Ctx` or Fiber-specific helpers, and the extra adaptation work makes them slower
+than native Fiber handlers. Use them when interoperability matters, but prefer Fiber
+handlers for maximum performance.
+:::
 
 For details on how to:
 
