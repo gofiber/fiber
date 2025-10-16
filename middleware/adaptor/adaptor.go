@@ -29,6 +29,14 @@ var ctxPool = sync.Pool{
 	},
 }
 
+const bufferSize = 32 * 1024
+
+var bufferPool = sync.Pool{
+	New: func() any {
+		return new([bufferSize]byte)
+	},
+}
+
 // HTTPHandlerFunc wraps net/http handler func to fiber handler
 func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 	return HTTPHandler(h)
@@ -257,6 +265,36 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			w.Header().Add(string(k), string(v))
 		}
 		w.WriteHeader(fctx.Response.StatusCode())
-		_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
+
+		// Check if streaming is not possible or unnecessary.
+		bodyStream := fctx.Response.BodyStream()
+		flusher, ok := w.(http.Flusher)
+		if !ok || bodyStream == nil {
+			_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
+			return
+		}
+
+		// Stream fctx.Response.BodyStream() -> w
+		// in chunks.
+		bufPtr, ok := bufferPool.Get().(*[bufferSize]byte)
+		if !ok {
+			panic(fmt.Errorf("failed to type-assert to *[%d]byte", bufferSize))
+		}
+		defer bufferPool.Put(bufPtr)
+
+		buf := bufPtr[:]
+		for {
+			n, err := bodyStream.Read(buf)
+			if n > 0 {
+				if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+					break
+				}
+				flusher.Flush()
+			}
+
+			if err != nil {
+				break
+			}
+		}
 	}
 }
