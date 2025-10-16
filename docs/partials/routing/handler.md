@@ -27,10 +27,13 @@ func (app *App) Add(methods []string, path string, handler any, handlers ...any)
 func (app *App) All(path string, handler any, handlers ...any) Router
 ```
 
-Handlers can be native Fiber handlers (`func(fiber.Ctx) error`), familiar `net/http`
-shapes such as `http.Handler`, `http.HandlerFunc`, or
-`func(http.ResponseWriter, *http.Request)`, and even plain `fasthttp.RequestHandler`
-functions. Fiber automatically adapts supported handlers for you during registration.
+Handlers can be native Fiber handlers (`func(fiber.Ctx) error`), Express-style
+callbacks (`func(fiber.Req, fiber.Res)`, with optional `func() error` `next`
+parameters and/or `error` return values), familiar `net/http` shapes such as
+`http.Handler`, `http.HandlerFunc`, or `func(http.ResponseWriter, *http.Request)`,
+and even plain `fasthttp.RequestHandler` functions. Fiber automatically adapts
+supported handlers for you during registration, so you can mix and match the
+style that best fits your existing code.
 
 :::caution Compatibility overhead
 Adapted `net/http` handlers execute through a compatibility layer. They don't receive
@@ -51,6 +54,18 @@ httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 })
 
 app.Get("/foo", httpHandler)
+
+// Align with Express-style handlers using fiber.Req and fiber.Res helpers
+app.Use(func(req fiber.Req, res fiber.Res, next func() error) error {
+    if req.IP() == "192.168.1.254" {
+        return res.SendStatus(fiber.StatusForbidden)
+    }
+    return next()
+})
+
+app.Get("/express", func(req fiber.Req, res fiber.Res) error {
+    return res.SendString("Hello from Express-style handlers!")
+})
 
 // Mount a fasthttp.RequestHandler directly
 app.Get("/bar", func(ctx *fasthttp.RequestCtx) {

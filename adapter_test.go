@@ -31,6 +31,121 @@ func TestToFiberHandler_FiberHandler(t *testing.T) {
 	require.Equal(t, reflect.ValueOf(fiberHandler).Pointer(), reflect.ValueOf(converted).Pointer())
 }
 
+func newTestCtx(t *testing.T) (*App, *DefaultCtx) {
+	t.Helper()
+
+	app := New()
+	fasthttpCtx := &fasthttp.RequestCtx{}
+	customCtx := app.AcquireCtx(fasthttpCtx)
+	ctx, ok := customCtx.(*DefaultCtx)
+	require.True(t, ok)
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(customCtx)
+	})
+
+	return app, ctx
+}
+
+func TestToFiberHandler_ExpressTwoParamsWithError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res) error {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		return res.SendString("express")
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	require.NoError(t, converted(ctx))
+	require.Equal(t, "express", string(ctx.Response().Body()))
+}
+
+func TestToFiberHandler_ExpressTwoParamsWithoutError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res) {
+		assert.Equal(t, app, req.App())
+		assert.NoError(t, res.SendStatus(http.StatusCreated))
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	require.NoError(t, converted(ctx))
+	require.Equal(t, http.StatusCreated, ctx.Response().StatusCode())
+}
+
+func TestToFiberHandler_ExpressThreeParamsWithError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func() error) error {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		return next()
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextErr := fmt.Errorf("next")
+	nextCalled := false
+	nextHandler := func(c Ctx) error {
+		nextCalled = true
+		return nextErr
+	}
+
+	route := &Route{Handlers: []Handler{converted, nextHandler}}
+	ctx.route = route
+	ctx.indexHandler = 0
+
+	err := converted(ctx)
+	require.ErrorIs(t, err, nextErr)
+	require.True(t, nextCalled)
+
+	// Reset route to avoid leaking state when ctx is reused from the pool.
+	ctx.route = nil
+	ctx.indexHandler = 0
+}
+
+func TestToFiberHandler_ExpressThreeParamsWithoutError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func() error) {
+		assert.Equal(t, app, req.App())
+		err := next()
+		assert.Error(t, err)
+		assert.EqualError(t, err, "next without error")
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextHandler := func(c Ctx) error {
+		return fmt.Errorf("next without error")
+	}
+
+	route := &Route{Handlers: []Handler{converted, nextHandler}}
+	ctx.route = route
+	ctx.indexHandler = 0
+
+	err := converted(ctx)
+	require.EqualError(t, err, "next without error")
+
+	ctx.route = nil
+	ctx.indexHandler = 0
+}
+
 func TestCollectHandlers_HTTPHandler(t *testing.T) {
 	t.Parallel()
 
