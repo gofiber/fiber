@@ -125,11 +125,40 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 ## ⚠️ Limitations
 
 - Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.24 or higher.
-- Fiber does not natively expose the `net/http` interfaces. When you need to integrate with that ecosystem, use the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/) to bridge handlers and middlewares between Fiber and `net/http`.
+- Fiber automatically adapts common `net/http` handler shapes when you register them on the router, and you can still use the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/) when you need to bridge entire apps or `net/http` middleware.
 
 ### net/http compatibility
 
-Fiber can run side by side with the standard library by using the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/). It converts handlers and middlewares in both directions and even lets you mount a Fiber app in a `net/http` server.
+Fiber can run side by side with the standard library. The router accepts existing `net/http` handlers directly and even works with native `fasthttp.RequestHandler` callbacks, so you can plug in legacy endpoints without wrapping them manually:
+
+```go
+package main
+
+import (
+    "log"
+    "net/http"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if _, err := w.Write([]byte("served by net/http")); err != nil {
+            panic(err)
+        }
+    })
+
+    app := fiber.New()
+    app.Get("/", httpHandler)
+
+    // Start the server on port 3000
+    log.Fatal(app.Listen(":3000"))
+}
+```
+
+When you need to convert entire applications or re-use `net/http` middleware chains, rely on the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/). It converts handlers and middlewares in both directions and even lets you mount a Fiber app in a `net/http` server.
+
+> **Note:** Adapted `net/http` handlers continue to operate with the standard-library semantics. They don't get access to `fiber.Ctx` features and incur the overhead of the compatibility layer, so native `fiber.Handler` callbacks still provide the best performance.
 
 ## 👀 Examples
 
