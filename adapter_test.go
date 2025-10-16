@@ -107,14 +107,14 @@ func TestToFiberHandler_ExpressThreeParamsWithError(t *testing.T) {
 	route := &Route{Handlers: []Handler{converted, nextHandler}}
 	ctx.route = route
 	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
 
 	err := converted(ctx)
 	require.ErrorIs(t, err, nextErr)
 	require.True(t, nextCalled)
-
-	// Reset route to avoid leaking state when ctx is reused from the pool.
-	ctx.route = nil
-	ctx.indexHandler = 0
 }
 
 func TestToFiberHandler_ExpressThreeParamsWithoutError(t *testing.T) {
@@ -139,12 +139,13 @@ func TestToFiberHandler_ExpressThreeParamsWithoutError(t *testing.T) {
 	route := &Route{Handlers: []Handler{converted, nextHandler}}
 	ctx.route = route
 	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
 
 	err := converted(ctx)
 	require.EqualError(t, err, "next without error")
-
-	ctx.route = nil
-	ctx.indexHandler = 0
 }
 
 func TestCollectHandlers_HTTPHandler(t *testing.T) {
