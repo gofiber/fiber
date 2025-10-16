@@ -118,7 +118,7 @@ func TestToFiberHandler_HTTPHandler_Flush(t *testing.T) {
 func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
 	app := New()
 
-	app.Get("/", func(w http.ResponseWriter, r *http.Request) {
+	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			t.Fatalf("w does not implement http.Flusher")
@@ -132,6 +132,8 @@ func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // not needed
+
 	require.Equal(t, StatusOK, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)
@@ -142,9 +144,11 @@ func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
 func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 	app := New()
 
-	app.Get("/", func(w http.ResponseWriter, r *http.Request) {
+	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
 		flusher, ok := w.(http.Flusher)
-		require.True(t, ok, "w does not implement http.Flusher")
+		if !ok {
+			t.Fatalf("w does not implement http.Flusher")
+		}
 		w.WriteHeader(StatusOK)
 		fmt.Fprintf(w, "Hello ")
 		flusher.Flush()
@@ -153,10 +157,12 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
-		Timeout: 200 * time.Millisecond,
+		Timeout:       200 * time.Millisecond,
 		FailOnTimeout: false,
 	})
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // not needed
+
 	require.Equal(t, StatusOK, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)

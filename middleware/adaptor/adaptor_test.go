@@ -23,6 +23,13 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const (
+	expectedRequestURI = "/foo/bar?baz=123"
+	expectedBody       = "body 123 foo bar baz"
+	expectedHost       = "foobar.com"
+	expectedRemoteAddr = "1.2.3.4:6789"
+)
+
 func Test_HTTPHandler(t *testing.T) {
 	t.Parallel()
 
@@ -30,11 +37,7 @@ func Test_HTTPHandler(t *testing.T) {
 	expectedProto := "HTTP/1.1"
 	expectedProtoMajor := 1
 	expectedProtoMinor := 1
-	expectedRequestURI := "/foo/bar?baz=123"
-	expectedBody := "body 123 foo bar baz"
 	expectedContentLength := len(expectedBody)
-	expectedHost := "foobar.com"
-	expectedRemoteAddr := "1.2.3.4:6789"
 	expectedHeader := map[string]string{
 		"Foo-Bar":         "baz",
 		"Abc":             "defg",
@@ -220,6 +223,8 @@ func Test_HTTPHandler_Flush_App_Test(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // not needed
+
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)
@@ -243,10 +248,12 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
-		Timeout: 200 * time.Millisecond,
+		Timeout:       200 * time.Millisecond,
 		FailOnTimeout: false,
 	})
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // not needed
+
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)
