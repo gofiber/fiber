@@ -523,7 +523,7 @@ loop:
 				w.rest.Reset()
 				break
 			}
-buf.WriteByte(c)
+			buf.WriteByte(c)
 		}
 		if m == 0 {
 			break loop
