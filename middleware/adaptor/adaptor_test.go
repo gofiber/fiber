@@ -121,11 +121,7 @@ func Test_HTTPHandler_Flush(t *testing.T) {
 	expectedProto := "HTTP/1.1"
 	expectedProtoMajor := 1
 	expectedProtoMinor := 1
-	expectedRequestURI := "/foo/bar?baz=123"
-	expectedBody := "body 123 foo bar baz"
 	expectedContentLength := len(expectedBody)
-	expectedHost := "foobar.com"
-	expectedRemoteAddr := "1.2.3.4:6789"
 	expectedHeader := map[string]string{
 		"Foo-Bar":         "baz",
 		"Abc":             "defg",
@@ -166,9 +162,11 @@ func Test_HTTPHandler_Flush(t *testing.T) {
 		w.Header().Set("Header2", "value2")
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "request body is ")
-		if flusher, ok := w.(http.Flusher); ok {
-			flusher.Flush()
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatalf("w does not implement http.Flusher")
 		}
+		flusher.Flush()
 		fmt.Fprintf(w, "%q", body)
 	}
 	fiberH := HTTPHandlerFunc(http.HandlerFunc(nethttpH))
@@ -279,7 +277,6 @@ var (
 func Test_HTTPMiddleware(t *testing.T) {
 	t.Parallel()
 
-	const expectedHost = "foobar.com"
 	tests := []struct {
 		name       string
 		url        string
@@ -471,10 +468,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	t.Helper()
 
 	expectedMethod := fiber.MethodPost
-	expectedRequestURI := "/foo/bar?baz=123"
-	expectedBody := "body 123 foo bar baz"
 	expectedContentLength := len(expectedBody)
-	expectedHost := "foobar.com"
 	expectedRemoteAddr := "1.2.3.4:6789"
 	if checkDefaultPort {
 		expectedRemoteAddr = "1.2.3.4:80"
