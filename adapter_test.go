@@ -2,9 +2,12 @@ package fiber
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,6 +85,83 @@ func TestToFiberHandler_HTTPHandler(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "handler", string(ctx.Response().Header.Peek("X-HTTP")))
 	require.Equal(t, "through", string(ctx.Response().Body()))
+}
+
+func TestToFiberHandler_HTTPHandler_Flush(t *testing.T) {
+	t.Parallel()
+
+	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-HTTP", "handler")
+		_, err := w.Write([]byte("through"))
+		flusher, ok := w.(http.Flusher)
+		assert.True(t, ok, "w does not implement http.Flusher")
+		flusher.Flush()
+		assert.NoError(t, err)
+	})
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+	require.NotNil(t, converted)
+
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	err := converted(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "handler", string(ctx.Response().Header.Peek("X-HTTP")))
+	require.Equal(t, "through", string(ctx.Response().Body()))
+}
+
+func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
+	app := New()
+
+	app.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatalf("w does not implement http.Flusher")
+		}
+		w.WriteHeader(StatusOK)
+		fmt.Fprintf(w, "Hello ")
+		flusher.Flush()
+		time.Sleep(500 * time.Millisecond)
+		fmt.Fprintf(w, "World!")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "Hello World!", string(body))
+}
+
+func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
+	app := New()
+
+	app.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		require.True(t, ok, "w does not implement http.Flusher")
+		w.WriteHeader(StatusOK)
+		fmt.Fprintf(w, "Hello ")
+		flusher.Flush()
+		time.Sleep(500 * time.Millisecond)
+		fmt.Fprintf(w, "World!")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+		Timeout: 200 * time.Millisecond,
+		FailOnTimeout: false,
+	})
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	require.Equal(t, "Hello ", string(body))
 }
 
 func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
