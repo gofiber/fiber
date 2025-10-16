@@ -128,7 +128,6 @@ func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
 		w.WriteHeader(StatusOK)
 		fmt.Fprintf(w, "Hello ")
 		flusher.Flush()
-		time.Sleep(500 * time.Millisecond)
 		fmt.Fprintf(w, "World!")
 	})
 
