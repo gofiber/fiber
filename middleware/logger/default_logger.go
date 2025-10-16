@@ -7,9 +7,8 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/console"
 	utils "github.com/gofiber/utils/v2"
-	"github.com/mattn/go-colorable"
-	"github.com/mattn/go-isatty"
 	"github.com/valyala/bytebufferpool"
 )
 
@@ -147,9 +146,9 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 func beforeHandlerFunc(cfg Config) {
 	// If colors are enabled, check terminal compatibility
 	if cfg.enableColors {
-		cfg.Stream = colorable.NewColorableStdout()
-		if !cfg.ForceColors && (os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd()))) {
-			cfg.Stream = colorable.NewNonColorable(os.Stdout)
+		cfg.Stream = console.ColorableStdout()
+		if !cfg.ForceColors && (os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!console.IsTerminal(os.Stdout.Fd()) && !console.IsCygwinTerminal(os.Stdout.Fd()))) {
+			cfg.Stream = console.NonColorable(os.Stdout)
 		}
 	}
 }
