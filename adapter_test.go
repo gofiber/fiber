@@ -1,6 +1,7 @@
 package fiber
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -96,9 +97,9 @@ func TestToFiberHandler_ExpressThreeParamsWithError(t *testing.T) {
 	converted, ok := toFiberHandler(handler)
 	require.True(t, ok)
 
-	nextErr := fmt.Errorf("next")
+	nextErr := errors.New("next")
 	nextCalled := false
-	nextHandler := func(c Ctx) error {
+	nextHandler := func(_ Ctx) error {
 		nextCalled = true
 		return nextErr
 	}
@@ -121,18 +122,18 @@ func TestToFiberHandler_ExpressThreeParamsWithoutError(t *testing.T) {
 
 	app, ctx := newTestCtx(t)
 
-	handler := func(req Req, res Res, next func() error) {
+	handler := func(req Req, _ Res, next func() error) {
 		assert.Equal(t, app, req.App())
 		err := next()
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.EqualError(t, err, "next without error")
 	}
 
 	converted, ok := toFiberHandler(handler)
 	require.True(t, ok)
 
-	nextHandler := func(c Ctx) error {
-		return fmt.Errorf("next without error")
+	nextHandler := func(_ Ctx) error {
+		return errors.New("next without error")
 	}
 
 	route := &Route{Handlers: []Handler{converted, nextHandler}}
