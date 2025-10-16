@@ -83,7 +83,7 @@ var (
 	procGetConsoleCursorInfo       = kernel32.NewProc("GetConsoleCursorInfo")
 	procSetConsoleCursorInfo       = kernel32.NewProc("SetConsoleCursorInfo")
 	procSetConsoleTitle            = kernel32.NewProc("SetConsoleTitleW")
-	procGetConsoleMode             = kernel32.NewProc("GetConsoleMode")
+	procGetConsoleModeColorable    = kernel32.NewProc("GetConsoleMode")
 	procSetConsoleMode             = kernel32.NewProc("SetConsoleMode")
 	procCreateConsoleScreenBuffer  = kernel32.NewProc("CreateConsoleScreenBuffer")
 )
@@ -107,7 +107,7 @@ func newColorable(file *os.File) io.Writer {
 
 	if IsTerminal(file.Fd()) {
 		var mode uint32
-		if r, _, _ := procGetConsoleMode.Call(file.Fd(), uintptr(unsafe.Pointer(&mode))); r != 0 {
+		if r, _, _ := procGetConsoleModeColorable.Call(file.Fd(), uintptr(unsafe.Pointer(&mode))); r != 0 {
 			if mode&cENABLE_VIRTUAL_TERMINAL_PROCESSING != 0 {
 				return file
 			}
@@ -1036,7 +1036,7 @@ func n256setup() {
 func EnableColorsStdout(enabled *bool) func() {
 	var mode uint32
 	h := os.Stdout.Fd()
-	if r, _, _ := procGetConsoleMode.Call(h, uintptr(unsafe.Pointer(&mode))); r != 0 {
+	if r, _, _ := procGetConsoleModeColorable.Call(h, uintptr(unsafe.Pointer(&mode))); r != 0 {
 		if r, _, _ = procSetConsoleMode.Call(h, uintptr(mode|cENABLE_VIRTUAL_TERMINAL_PROCESSING)); r != 0 {
 			if enabled != nil {
 				*enabled = true

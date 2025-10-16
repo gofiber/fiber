@@ -11,7 +11,7 @@ import (
 func TestColorableStdoutEnablesVirtualTerminal(t *testing.T) {
 	handle := os.Stdout.Fd()
 	var mode uint32
-	r, _, err := procGetConsoleMode.Call(handle, uintptr(unsafe.Pointer(&mode)))
+	r, _, _ := procGetConsoleModeColorable.Call(handle, uintptr(unsafe.Pointer(&mode)))
 	if r == 0 {
 		t.Skip("stdout is not a console")
 	}
