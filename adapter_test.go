@@ -116,6 +116,8 @@ func TestToFiberHandler_HTTPHandler_Flush(t *testing.T) {
 }
 
 func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
@@ -142,6 +144,8 @@ func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
 }
 
 func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
