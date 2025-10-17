@@ -28,8 +28,9 @@ func (app *App) All(path string, handler any, handlers ...any) Router
 ```
 
 Handlers can be native Fiber handlers (`func(fiber.Ctx) error`), Express-style
-callbacks (`func(fiber.Req, fiber.Res)` with an optional `next func() error`
-parameter and optional `error` return values), familiar `net/http` shapes such
+callbacks (`func(fiber.Req, fiber.Res)` with optional `next` callbacks typed as
+`func() error` or `func()`, plus optional `error` return values), familiar
+`net/http` shapes such
 as `http.Handler`, `http.HandlerFunc`, or `func(http.ResponseWriter, *http.Request)`,
 and even plain `fasthttp.RequestHandler` functions. Fiber automatically adapts
 supported handlers for you during registration, so you can mix and match the
@@ -41,8 +42,8 @@ layer. They don't receive
 `fiber.Ctx` or gain access to Fiber-specific APIs, and the conversion adds more
 overhead than running a native `fiber.Handler`. Because they cannot call `c.Next()`, they will also terminate the handler chain.
 Express-style handlers are not subject to this limitation when they accept a
-`next func() error` parameter. Prefer Fiber handlers when you need the lowest
-latency or Fiber features.
+`next` callback (either `func() error` or `func()`). Prefer Fiber handlers when
+you need the lowest latency or Fiber features.
 :::
 
 ```go title="Examples"
@@ -60,11 +61,12 @@ app.Get("/foo", httpHandler)
 
 // Align with Express-style handlers using fiber.Req and fiber.Res helpers (works
 // for middleware and routes alike)
-app.Use(func(req fiber.Req, res fiber.Res, next func() error) error {
+app.Use(func(req fiber.Req, res fiber.Res, next func()) {
     if req.IP() == "192.168.1.254" {
-        return res.SendStatus(fiber.StatusForbidden)
+        _ = res.SendStatus(fiber.StatusForbidden)
+        return
     }
-    return next()
+    next()
 })
 
 app.Get("/express", func(req fiber.Req, res fiber.Res) error {

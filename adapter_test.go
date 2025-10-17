@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 
@@ -146,6 +147,72 @@ func TestToFiberHandler_ExpressThreeParamsWithoutError(t *testing.T) {
 
 	err := converted(ctx)
 	require.EqualError(t, err, "next without error")
+}
+
+func TestToFiberHandler_ExpressNextNoArgWithErrorReturn(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func()) error {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		next()
+		return nil
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextErr := errors.New("next without return value")
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return nextErr
+	}
+
+	route := &Route{Handlers: []Handler{converted, nextHandler}}
+	ctx.route = route
+	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
+
+	err := converted(ctx)
+	require.ErrorIs(t, err, nextErr)
+	require.True(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressNextNoArgMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+	})
+
+	callOrder := make([]string, 0, 2)
+
+	app.Use(func(req Req, res Res, next func()) {
+		callOrder = append(callOrder, "middleware")
+		next()
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+	})
+
+	app.Get("/", func(c Ctx) error {
+		callOrder = append(callOrder, "handler")
+		return c.SendStatus(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	require.Equal(t, []string{"middleware", "handler"}, callOrder)
 }
 
 func TestCollectHandlers_HTTPHandler(t *testing.T) {

@@ -57,6 +57,31 @@ func toFiberHandler(handler any) (Handler, bool) {
 			})
 			return nextErr
 		}, true
+	case func(Req, Res, func()) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			var nextErr error
+			err := h(c.Req(), c.Res(), func() {
+				nextErr = c.Next()
+			})
+			if err != nil {
+				return err
+			}
+			return nextErr
+		}, true
+	case func(Req, Res, func()):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			var nextErr error
+			h(c.Req(), c.Res(), func() {
+				nextErr = c.Next()
+			})
+			return nextErr
+		}, true
 	case http.HandlerFunc:
 		if h == nil {
 			return nil, false
