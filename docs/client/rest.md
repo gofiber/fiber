@@ -406,6 +406,22 @@ Sets a proxy URL for the client. All subsequent requests will use this proxy.
 func (c *Client) SetProxyURL(proxyURL string) error
 ```
 
+## StreamResponseBody
+
+Returns whether response body streaming is enabled. When enabled, the response body is not fully loaded into memory and can be read as a stream using `BodyStream()`. This is useful for handling large responses or server-sent events.
+
+```go title="Signature"
+func (c *Client) StreamResponseBody() bool
+```
+
+## SetStreamResponseBody
+
+Sets whether the response body should be streamed directly to the caller instead of being fully buffered in memory. This is useful for downloading large files or handling streaming responses.
+
+```go title="Signature"
+func (c *Client) SetStreamResponseBody(stream bool) *Client
+```
+
 ## RetryConfig
 
 Returns the retry configuration of the client.
