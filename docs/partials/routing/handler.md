@@ -89,11 +89,11 @@ Can be used for middleware packages and prefix catchers. Prefixes now require ei
 ```go title="Signature"
 func (app *App) Use(args ...any) Router
 
-// Different usage variations
-func (app *App) Use(handler any, handlers ...any) Router
-func (app *App) Use(path string, handler any, handlers ...any) Router
-func (app *App) Use(paths []string, handler any, handlers ...any) Router
-func (app *App) Use(path string, app *App) Router
+// Fiber inspects args to support these common usage patterns:
+// - app.Use(handler, handlers ...any)
+// - app.Use(path string, handler, handlers ...any)
+// - app.Use(paths []string, handler, handlers ...any)
+// - app.Use(path string, subApp *App)
 ```
 
 Each handler argument can independently be a Fiber handler, an Express-style
