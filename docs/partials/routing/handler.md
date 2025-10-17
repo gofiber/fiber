@@ -28,18 +28,21 @@ func (app *App) All(path string, handler any, handlers ...any) Router
 ```
 
 Handlers can be native Fiber handlers (`func(fiber.Ctx) error`), Express-style
-callbacks (`func(fiber.Req, fiber.Res)`, with optional `func() error` `next`
-parameters and/or `error` return values), familiar `net/http` shapes such as
-`http.Handler`, `http.HandlerFunc`, or `func(http.ResponseWriter, *http.Request)`,
+callbacks (`func(fiber.Req, fiber.Res)` with an optional `next func() error`
+parameter and optional `error` return values), familiar `net/http` shapes such
+as `http.Handler`, `http.HandlerFunc`, or `func(http.ResponseWriter, *http.Request)`,
 and even plain `fasthttp.RequestHandler` functions. Fiber automatically adapts
 supported handlers for you during registration, so you can mix and match the
 style that best fits your existing code.
 
 :::caution Compatibility overhead
-Adapted `net/http` handlers execute through a compatibility layer. They don't receive
+When you register net/http handlers, Fiber adapts them through a compatibility
+layer. They don't receive
 `fiber.Ctx` or gain access to Fiber-specific APIs, and the conversion adds more
-overhead than running a native `fiber.Handler`. Because they cannot call `c.Next()`, they will also terminate the handler chain. Prefer Fiber handlers when you need the
-lowest latency or Fiber features.
+overhead than running a native `fiber.Handler`. Because they cannot call `c.Next()`, they will also terminate the handler chain.
+Express-style handlers are not subject to this limitation when they accept a
+`next func() error` parameter. Prefer Fiber handlers when you need the lowest
+latency or Fiber features.
 :::
 
 ```go title="Examples"
@@ -55,7 +58,8 @@ httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 app.Get("/foo", httpHandler)
 
-// Align with Express-style handlers using fiber.Req and fiber.Res helpers
+// Align with Express-style handlers using fiber.Req and fiber.Res helpers (works
+// for middleware and routes alike)
 app.Use(func(req fiber.Req, res fiber.Res, next func() error) error {
     if req.IP() == "192.168.1.254" {
         return res.SendStatus(fiber.StatusForbidden)
@@ -91,6 +95,9 @@ func (app *App) Use(path string, handler any, handlers ...any) Router
 func (app *App) Use(paths []string, handler any, handlers ...any) Router
 func (app *App) Use(path string, app *App) Router
 ```
+
+Each handler argument can independently be a Fiber handler, an Express-style
+callback, a `net/http` handler, or any other supported shape.
 
 ```go title="Examples"
 // Match any request
