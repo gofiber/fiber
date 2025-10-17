@@ -86,9 +86,9 @@ Can be used for middleware packages and prefix catchers. Prefixes now require ei
 func (app *App) Use(args ...any) Router
 
 // Different usage variations
-func (app *App) Use(handler Handler, handlers ...Handler) Router
-func (app *App) Use(path string, handler Handler, handlers ...Handler) Router
-func (app *App) Use(paths []string, handler Handler, handlers ...Handler) Router
+func (app *App) Use(handler any, handlers ...any) Router
+func (app *App) Use(path string, handler any, handlers ...any) Router
+func (app *App) Use(paths []string, handler any, handlers ...any) Router
 func (app *App) Use(path string, app *App) Router
 ```
 
