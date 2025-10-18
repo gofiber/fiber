@@ -401,7 +401,7 @@ func TestToFiberHandler_ExpressErrorHandlerNoReturnControlsPropagation(t *testin
 	app, ctx := newTestCtx(t)
 
 	boom := errors.New("boom")
-	handler := func(err error, req Req, res Res, next func()) {
+	handler := func(err error, req Req, res Res, _ func()) {
 		assert.Equal(t, boom, err)
 		assert.Equal(t, app, req.App())
 		assert.Equal(t, app, res.App())
@@ -478,7 +478,7 @@ func TestToFiberHandler_ExpressErrorHandlerMiddlewareIntegration(t *testing.T) {
 	})
 
 	boom := errors.New("boom")
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(_ Ctx) error {
 		return boom
 	})
 
@@ -508,7 +508,7 @@ func TestToFiberHandler_ExpressErrorHandlerRouteIntegration(t *testing.T) {
 		assert.Equal(t, app, req.App())
 		assert.Equal(t, app, res.App())
 		return res.Status(http.StatusServiceUnavailable).SendString("handled:" + err.Error())
-	}, func(c Ctx) error {
+	}, func(_ Ctx) error {
 		return errors.New("route failure")
 	})
 
@@ -703,7 +703,6 @@ func TestCollectHandlers_TypedNilFasthttpHandlers(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
