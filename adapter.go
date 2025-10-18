@@ -60,9 +60,8 @@ func toFiberHandler(handler any) (Handler, bool) {
 		return func(c Ctx) error {
 			var nextErr error
 			h(c.Req(), c.Res(), func() error {
-				err := c.Next()
-				nextErr = err
-				return err
+				nextErr = c.Next()
+				return nextErr
 			})
 			return nextErr
 		}, true
