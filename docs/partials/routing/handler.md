@@ -62,12 +62,11 @@ app.Get("/foo", httpHandler)
 
 // Align with Express-style handlers using fiber.Req and fiber.Res helpers (works
 // for middleware and routes alike)
-app.Use(func(req fiber.Req, res fiber.Res, next func()) {
+app.Use(func(req fiber.Req, res fiber.Res, next func() error) error {
     if req.IP() == "192.168.1.254" {
-        _ = res.SendStatus(fiber.StatusForbidden)
-        return
+        return res.SendStatus(fiber.StatusForbidden)
     }
-    next()
+    return next()
 })
 
 app.Get("/express", func(req fiber.Req, res fiber.Res) error {
