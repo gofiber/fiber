@@ -21,6 +21,14 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return h, true
+	case func(Ctx):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			h(c)
+			return nil
+		}, true
 	case func(Req, Res) error:
 		if h == nil {
 			return nil, false
@@ -108,6 +116,13 @@ func toFiberHandler(handler any) (Handler, bool) {
 		return func(c Ctx) error {
 			h(c.RequestCtx())
 			return nil
+		}, true
+	case func(*fasthttp.RequestCtx) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			return h(c.RequestCtx())
 		}, true
 	default:
 		return nil, false

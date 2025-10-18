@@ -27,14 +27,15 @@ func (app *App) Add(methods []string, path string, handler any, handlers ...any)
 func (app *App) All(path string, handler any, handlers ...any) Router
 ```
 
-Handlers can be native Fiber handlers (`func(fiber.Ctx) error`), Express-style
-callbacks (`func(fiber.Req, fiber.Res)` with optional `next` callbacks typed as
-`func() error` or `func()`, plus optional `error` return values), familiar
-`net/http` shapes such
-as `http.Handler`, `http.HandlerFunc`, or `func(http.ResponseWriter, *http.Request)`,
-and even plain `fasthttp.RequestHandler` functions. Fiber automatically adapts
-supported handlers for you during registration, so you can mix and match the
-style that best fits your existing code.
+Handlers can be native Fiber handlers (`func(fiber.Ctx) error` or even
+`func(fiber.Ctx)`), Express-style callbacks (`func(fiber.Req, fiber.Res)` with
+optional `next` callbacks typed as `func() error` or `func()`, plus optional
+`error` return values), familiar `net/http` shapes such as `http.Handler`,
+`http.HandlerFunc`, or `func(http.ResponseWriter, *http.Request)`, and
+fasthttp-based callbacks like `fasthttp.RequestHandler` or
+`func(*fasthttp.RequestCtx) error`. Fiber automatically adapts supported
+handlers for you during registration, so you can mix and match the style that
+best fits your existing code.
 
 :::caution Compatibility overhead
 When you register net/http handlers, Fiber adapts them through a compatibility
@@ -47,7 +48,7 @@ you need the lowest latency or Fiber features.
 :::
 
 ```go title="Examples"
-// Simple GET handler
+// Simple GET handler (Fiber accepts both func(fiber.Ctx) and func(fiber.Ctx) error)
 app.Get("/api/list", func(c fiber.Ctx) error {
     return c.SendString("I'm a GET request!")
 })
@@ -98,8 +99,9 @@ func (app *App) Use(args ...any) Router
 // - app.Use(path string, subApp *App)
 ```
 
-Each handler argument can independently be a Fiber handler, an Express-style
-callback, a `net/http` handler, or any other supported shape.
+Each handler argument can independently be a Fiber handler (with or without an
+`error` return), an Express-style callback, a `net/http` handler, or any other
+supported shape including fasthttp callbacks that return errors.
 
 ```go title="Examples"
 // Match any request

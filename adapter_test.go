@@ -33,6 +33,24 @@ func TestToFiberHandler_FiberHandler(t *testing.T) {
 	require.Equal(t, reflect.ValueOf(fiberHandler).Pointer(), reflect.ValueOf(converted).Pointer())
 }
 
+func TestToFiberHandler_FiberHandlerNoErrorReturn(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(c Ctx) {
+		require.Equal(t, app, c.App())
+		c.Set("X-Handler", "ok")
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+	require.NotNil(t, converted)
+
+	require.NoError(t, converted(ctx))
+	require.Equal(t, "ok", string(ctx.Response().Header.Peek("X-Handler")))
+}
+
 func newTestCtx(t *testing.T) (*App, *DefaultCtx) {
 	t.Helper()
 
@@ -268,6 +286,25 @@ func TestToFiberHandler_HTTPHandler(t *testing.T) {
 	require.Equal(t, "through", string(ctx.Response().Body()))
 }
 
+func TestToFiberHandler_FasthttpHandlerWithError(t *testing.T) {
+	t.Parallel()
+
+	_, ctx := newTestCtx(t)
+
+	fasthttpHandler := func(fctx *fasthttp.RequestCtx) error {
+		fctx.Response.Header.Set("X-FASTHTTP", "error")
+		return errors.New("fasthttp error")
+	}
+
+	converted, ok := toFiberHandler(fasthttpHandler)
+	require.True(t, ok)
+	require.NotNil(t, converted)
+
+	err := converted(ctx)
+	require.EqualError(t, err, "fasthttp error")
+	require.Equal(t, "error", string(ctx.Response().Header.Peek("X-FASTHTTP")))
+}
+
 func TestToFiberHandler_HTTPHandlerFunc(t *testing.T) {
 	t.Parallel()
 
@@ -385,6 +422,26 @@ func TestCollectHandlers_FasthttpHandler(t *testing.T) {
 	require.Equal(t, "fiber", string(ctx.Response().Header.Peek("X-Before")))
 	require.Equal(t, "ok", string(ctx.Response().Header.Peek("X-FASTHTTP")))
 	require.Equal(t, "done", string(ctx.Response().Body()))
+}
+
+func TestCollectHandlers_FiberHandlerNoErrorReturn(t *testing.T) {
+	t.Parallel()
+
+	noError := func(c Ctx) {
+		c.Set("X-Handler", "fiber")
+	}
+
+	handlers := collectHandlers("ctx", noError)
+	require.Len(t, handlers, 1)
+
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	require.NoError(t, handlers[0](ctx))
+	require.Equal(t, "fiber", string(ctx.Response().Header.Peek("X-Handler")))
 }
 
 func TestCollectHandlers_MixedHandlers(t *testing.T) {
