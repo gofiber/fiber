@@ -3,6 +3,7 @@ package fiber
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -298,6 +299,227 @@ func TestToFiberHandler_ExpressNextNoArgMiddleware(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	require.Equal(t, []string{"middleware", "handler"}, callOrder)
+}
+
+func TestToFiberHandler_ExpressErrorHandlerSkipsWhenNoError(t *testing.T) {
+	t.Parallel()
+
+	_, ctx := newTestCtx(t)
+
+	handler := func(_ error, _ Req, _ Res) error {
+		t.Fatalf("error handler should not run when downstream succeeds")
+		return nil
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextHandler := func(_ Ctx) error {
+		return nil
+	}
+
+	ctx.route = &Route{Handlers: []Handler{converted, nextHandler}}
+	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
+
+	require.NoError(t, converted(ctx))
+}
+
+func TestToFiberHandler_ExpressErrorHandlerHandlesError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	boom := errors.New("boom")
+	handler := func(err error, req Req, res Res) error {
+		assert.Equal(t, boom, err)
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		return res.Status(http.StatusTeapot).SendString("handled")
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextHandler := func(_ Ctx) error {
+		return boom
+	}
+
+	ctx.route = &Route{Handlers: []Handler{converted, nextHandler}}
+	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
+
+	err := converted(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusTeapot, ctx.Response().StatusCode())
+	require.Equal(t, "handled", string(ctx.Response().Body()))
+}
+
+func TestToFiberHandler_ExpressErrorHandlerNextPropagates(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	boom := errors.New("boom")
+	handler := func(err error, req Req, res Res, next func() error) error {
+		assert.Equal(t, boom, err)
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		return next()
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return boom
+	}
+
+	ctx.route = &Route{Handlers: []Handler{converted, nextHandler}}
+	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
+
+	err := converted(ctx)
+	require.ErrorIs(t, err, boom)
+	require.True(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressErrorHandlerNoReturnControlsPropagation(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	boom := errors.New("boom")
+	handler := func(err error, req Req, res Res, next func()) {
+		assert.Equal(t, boom, err)
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		// Do not call next() so the error is swallowed.
+		assert.NoError(t, res.SendStatus(http.StatusAccepted))
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextHandler := func(_ Ctx) error {
+		return boom
+	}
+
+	ctx.route = &Route{Handlers: []Handler{converted, nextHandler}}
+	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
+
+	err := converted(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusAccepted, ctx.Response().StatusCode())
+}
+
+func TestToFiberHandler_ExpressErrorHandlerNoReturnNextPropagates(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	boom := errors.New("boom")
+	handler := func(err error, req Req, res Res, next func()) {
+		assert.Equal(t, boom, err)
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		next()
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextHandler := func(_ Ctx) error {
+		return boom
+	}
+
+	ctx.route = &Route{Handlers: []Handler{converted, nextHandler}}
+	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
+
+	err := converted(ctx)
+	require.ErrorIs(t, err, boom)
+}
+
+func TestToFiberHandler_ExpressErrorHandlerMiddlewareIntegration(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+	})
+
+	app.Use(func(err error, req Req, res Res, _ func() error) error {
+		if err == nil {
+			return nil
+		}
+
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		return res.Status(http.StatusBadGateway).SendString(err.Error())
+	})
+
+	boom := errors.New("boom")
+	app.Get("/", func(c Ctx) error {
+		return boom
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, readErr)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "boom", string(body))
+}
+
+func TestToFiberHandler_ExpressErrorHandlerRouteIntegration(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+	})
+
+	app.Get("/", func(err error, req Req, res Res) error {
+		if err == nil {
+			return nil
+		}
+
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		return res.Status(http.StatusServiceUnavailable).SendString("handled:" + err.Error())
+	}, func(c Ctx) error {
+		return errors.New("route failure")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, readErr)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "handled:route failure", string(body))
 }
 
 func TestCollectHandlers_HTTPHandler(t *testing.T) {

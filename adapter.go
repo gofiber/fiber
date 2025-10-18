@@ -90,6 +90,111 @@ func toFiberHandler(handler any) (Handler, bool) {
 			})
 			return nextErr
 		}, true
+	case func(error, Req, Res) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			return h(err, c.Req(), c.Res())
+		}, true
+	case func(error, Req, Res):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			h(err, c.Req(), c.Res())
+			return nil
+		}, true
+	case func(error, Req, Res, func() error) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			nextCalled := false
+			propagate := err
+			handlerErr := h(err, c.Req(), c.Res(), func() error {
+				nextCalled = true
+				return propagate
+			})
+			if handlerErr != nil {
+				return handlerErr
+			}
+			if nextCalled {
+				return propagate
+			}
+			return nil
+		}, true
+	case func(error, Req, Res, func() error):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			nextCalled := false
+			nextErr := err
+			h(err, c.Req(), c.Res(), func() error {
+				nextCalled = true
+				return nextErr
+			})
+			if nextCalled {
+				return nextErr
+			}
+			return nil
+		}, true
+	case func(error, Req, Res, func()) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			nextCalled := false
+			handlerErr := h(err, c.Req(), c.Res(), func() {
+				nextCalled = true
+			})
+			if handlerErr != nil {
+				return handlerErr
+			}
+			if nextCalled {
+				return err
+			}
+			return nil
+		}, true
+	case func(error, Req, Res, func()):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			nextCalled := false
+			h(err, c.Req(), c.Res(), func() {
+				nextCalled = true
+			})
+			if nextCalled {
+				return err
+			}
+			return nil
+		}, true
 	case http.HandlerFunc:
 		if h == nil {
 			return nil, false
