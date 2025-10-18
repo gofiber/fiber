@@ -202,6 +202,73 @@ func TestToFiberHandler_ExpressNextNoArgWithErrorReturn(t *testing.T) {
 	require.True(t, nextCalled)
 }
 
+func TestToFiberHandler_ExpressNextNoArgPropagatesError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func()) {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		next()
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextErr := errors.New("next without return value")
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return nextErr
+	}
+
+	route := &Route{Handlers: []Handler{converted, nextHandler}}
+	ctx.route = route
+	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
+
+	err := converted(ctx)
+	require.ErrorIs(t, err, nextErr)
+	require.True(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressNextNoArgStopsChain(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, _ func()) {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		// Intentionally do not call next().
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return errors.New("should not be called")
+	}
+
+	route := &Route{Handlers: []Handler{converted, nextHandler}}
+	ctx.route = route
+	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
+
+	err := converted(ctx)
+	require.NoError(t, err)
+	require.False(t, nextCalled)
+}
+
 func TestToFiberHandler_ExpressNextNoArgMiddleware(t *testing.T) {
 	t.Parallel()
 
