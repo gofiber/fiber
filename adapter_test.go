@@ -393,6 +393,40 @@ func TestCollectHandlers_TypedNilPointerHTTPHandler(t *testing.T) {
 	})
 }
 
+func TestCollectHandlers_TypedNilFasthttpHandlers(t *testing.T) {
+	t.Parallel()
+
+	var requestHandler fasthttp.RequestHandler
+	var requestHandlerWithError func(*fasthttp.RequestCtx) error
+
+	tests := []struct {
+		handler any
+		name    string
+	}{
+		{
+			name:    "RequestHandler",
+			handler: requestHandler,
+		},
+		{
+			name:    "RequestHandlerWithError",
+			handler: requestHandlerWithError,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			expected := fmt.Sprintf("context: invalid handler #0 (%T)\n", tt.handler)
+
+			require.PanicsWithValue(t, expected, func() {
+				collectHandlers("context", tt.handler)
+			})
+		})
+	}
+}
+
 func TestCollectHandlers_FasthttpHandler(t *testing.T) {
 	t.Parallel()
 
