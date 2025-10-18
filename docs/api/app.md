@@ -105,7 +105,7 @@ Mounting order is important for `MountPath`. To get mount paths properly, you sh
 You can group routes by creating a `*Group` struct.
 
 ```go title="Signature"
-func (app *App) Group(prefix string, handlers ...Handler) Router
+func (app *App) Group(prefix string, handlers ...any) Router
 ```
 
 ```go title="Example"
@@ -153,18 +153,18 @@ func (app *App) RouteChain(path string) Register
 
 ```go
 type Register interface {
-    All(handler Handler, handlers ...Handler) Register
-    Get(handler Handler, handlers ...Handler) Register
-    Head(handler Handler, handlers ...Handler) Register
-    Post(handler Handler, handlers ...Handler) Register
-    Put(handler Handler, handlers ...Handler) Register
-    Delete(handler Handler, handlers ...Handler) Register
-    Connect(handler Handler, handlers ...Handler) Register
-    Options(handler Handler, handlers ...Handler) Register
-    Trace(handler Handler, handlers ...Handler) Register
-    Patch(handler Handler, handlers ...Handler) Register
+    All(handler any, handlers ...any) Register
+    Get(handler any, handlers ...any) Register
+    Head(handler any, handlers ...any) Register
+    Post(handler any, handlers ...any) Register
+    Put(handler any, handlers ...any) Register
+    Delete(handler any, handlers ...any) Register
+    Connect(handler any, handlers ...any) Register
+    Options(handler any, handlers ...any) Register
+    Trace(handler any, handlers ...any) Register
+    Patch(handler any, handlers ...any) Register
 
-    Add(methods []string, handler Handler, handlers ...Handler) Register
+    Add(methods []string, handler any, handlers ...any) Register
 
     RouteChain(path string) Register
 }

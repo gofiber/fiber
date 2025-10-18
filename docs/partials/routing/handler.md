@@ -27,20 +27,33 @@ func (app *App) Add(methods []string, path string, handler any, handlers ...any)
 func (app *App) All(path string, handler any, handlers ...any) Router
 ```
 
-Handlers can be native Fiber handlers (`func(fiber.Ctx) error`), familiar `net/http`
-shapes such as `http.Handler`, `http.HandlerFunc`, or
-`func(http.ResponseWriter, *http.Request)`, and even plain `fasthttp.RequestHandler`
-functions. Fiber automatically adapts supported handlers for you during registration.
+Handlers can be native Fiber handlers (`func(fiber.Ctx) error` or even
+`func(fiber.Ctx)`), Express-style callbacks (`func(fiber.Req, fiber.Res)` with
+optional `next` callbacks typed as `func() error` or `func()`, plus optional
+`error` return values), and Express-style error middleware that begins with an
+`error` parameter (`func(error, fiber.Req, fiber.Res, ...)`). Familiar
+`net/http` shapes such as `http.Handler`, `http.HandlerFunc`, or
+`func(http.ResponseWriter, *http.Request)` are also supported, as are
+fasthttp-based callbacks like `fasthttp.RequestHandler` or
+`func(*fasthttp.RequestCtx) error`. Fiber automatically adapts supported
+handlers for you during registration, so you can mix and match the style that
+best fits your existing code.
 
 :::caution Compatibility overhead
-Adapted `net/http` handlers execute through a compatibility layer. They don't receive
+When you register net/http handlers, Fiber adapts them through a compatibility
+layer. They don't receive
 `fiber.Ctx` or gain access to Fiber-specific APIs, and the conversion adds more
-overhead than running a native `fiber.Handler`. Because they cannot call `c.Next()`, they will also terminate the handler chain. Prefer Fiber handlers when you need the
-lowest latency or Fiber features.
+overhead than running a native `fiber.Handler`. Because they cannot call `c.Next()`, they will also terminate the handler chain.
+Express-style handlers are not subject to this limitation when they accept a
+`next` callback (either `func() error` or `func()`). Express-style error
+middleware runs after downstream handlers return an error via `c.Next()`,
+giving you a place to translate or log failures before deciding whether to
+propagate them. Prefer Fiber handlers when you need the lowest latency or Fiber
+features.
 :::
 
 ```go title="Examples"
-// Simple GET handler
+// Simple GET handler (Fiber accepts both func(fiber.Ctx) and func(fiber.Ctx) error)
 app.Get("/api/list", func(c fiber.Ctx) error {
     return c.SendString("I'm a GET request!")
 })
@@ -51,6 +64,24 @@ httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 })
 
 app.Get("/foo", httpHandler)
+
+// Align with Express-style handlers using fiber.Req and fiber.Res helpers (works
+// for middleware and routes alike)
+app.Use(func(req fiber.Req, res fiber.Res, next func() error) error {
+    if req.IP() == "192.168.1.254" {
+        return res.SendStatus(fiber.StatusForbidden)
+    }
+    return next()
+})
+
+app.Get("/express", func(req fiber.Req, res fiber.Res) error {
+    return res.SendString("Hello from Express-style handlers!")
+})
+
+// Express-style error middleware (runs after c.Next() returns an error)
+app.Use(func(err error, req fiber.Req, res fiber.Res) error {
+    return res.Status(fiber.StatusInternalServerError).SendString(err.Error())
+})
 
 // Mount a fasthttp.RequestHandler directly
 app.Get("/bar", func(ctx *fasthttp.RequestCtx) {
@@ -70,12 +101,16 @@ Can be used for middleware packages and prefix catchers. Prefixes now require ei
 ```go title="Signature"
 func (app *App) Use(args ...any) Router
 
-// Different usage variations
-func (app *App) Use(handler Handler, handlers ...Handler) Router
-func (app *App) Use(path string, handler Handler, handlers ...Handler) Router
-func (app *App) Use(paths []string, handler Handler, handlers ...Handler) Router
-func (app *App) Use(path string, app *App) Router
+// Fiber inspects args to support these common usage patterns:
+// - app.Use(handler, handlers ...any)
+// - app.Use(path string, handler, handlers ...any)
+// - app.Use(paths []string, handler, handlers ...any)
+// - app.Use(path string, subApp *App)
 ```
+
+Each handler argument can independently be a Fiber handler (with or without an
+`error` return), an Express-style callback, a `net/http` handler, or any other
+supported shape including fasthttp callbacks that return errors.
 
 ```go title="Examples"
 // Match any request

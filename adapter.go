@@ -21,6 +21,180 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return h, true
+	case func(Ctx):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			h(c)
+			return nil
+		}, true
+	case func(Req, Res) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			return h(c.Req(), c.Res())
+		}, true
+	case func(Req, Res):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			h(c.Req(), c.Res())
+			return nil
+		}, true
+	case func(Req, Res, func() error) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			return h(c.Req(), c.Res(), func() error {
+				return c.Next()
+			})
+		}, true
+	case func(Req, Res, func() error):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			var nextErr error
+			h(c.Req(), c.Res(), func() error {
+				nextErr = c.Next()
+				return nextErr
+			})
+			return nextErr
+		}, true
+	case func(Req, Res, func()) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			var nextErr error
+			err := h(c.Req(), c.Res(), func() {
+				nextErr = c.Next()
+			})
+			if err != nil {
+				return err
+			}
+			return nextErr
+		}, true
+	case func(Req, Res, func()):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			var nextErr error
+			h(c.Req(), c.Res(), func() {
+				nextErr = c.Next()
+			})
+			return nextErr
+		}, true
+	case func(error, Req, Res) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			return h(err, c.Req(), c.Res())
+		}, true
+	case func(error, Req, Res):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			h(err, c.Req(), c.Res())
+			return nil
+		}, true
+	case func(error, Req, Res, func() error) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			nextCalled := false
+			propagate := err
+			handlerErr := h(err, c.Req(), c.Res(), func() error {
+				nextCalled = true
+				return propagate
+			})
+			if handlerErr != nil {
+				return handlerErr
+			}
+			if nextCalled {
+				return propagate
+			}
+			return nil
+		}, true
+	case func(error, Req, Res, func() error):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			nextCalled := false
+			nextErr := err
+			h(err, c.Req(), c.Res(), func() error {
+				nextCalled = true
+				return nextErr
+			})
+			if nextCalled {
+				return nextErr
+			}
+			return nil
+		}, true
+	case func(error, Req, Res, func()) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			nextCalled := false
+			handlerErr := h(err, c.Req(), c.Res(), func() {
+				nextCalled = true
+			})
+			if handlerErr != nil {
+				return handlerErr
+			}
+			if nextCalled {
+				return err
+			}
+			return nil
+		}, true
+	case func(error, Req, Res, func()):
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			err := c.Next()
+			if err == nil {
+				return nil
+			}
+			nextCalled := false
+			h(err, c.Req(), c.Res(), func() {
+				nextCalled = true
+			})
+			if nextCalled {
+				return err
+			}
+			return nil
+		}, true
 	case http.HandlerFunc:
 		if h == nil {
 			return nil, false
@@ -47,6 +221,13 @@ func toFiberHandler(handler any) (Handler, bool) {
 		return func(c Ctx) error {
 			h(c.RequestCtx())
 			return nil
+		}, true
+	case func(*fasthttp.RequestCtx) error:
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			return h(c.RequestCtx())
 		}, true
 	default:
 		return nil, false

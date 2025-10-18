@@ -158,6 +158,23 @@ func main() {
 
 When you need to convert entire applications or re-use `net/http` middleware chains, rely on the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/). It converts handlers and middlewares in both directions and even lets you mount a Fiber app in a `net/http` server.
 
+### Express-style handlers
+
+Fiber also adapts Express-style callbacks that operate on the lightweight `fiber.Req` and `fiber.Res` helper interfaces. This lets you port middleware and route handlers from Express-inspired codebases while keeping Fiber's router features:
+
+```go
+app.Use(func(req fiber.Req, res fiber.Res, next func() error) error {
+    if req.IP() == "192.168.1.254" {
+        return res.SendStatus(fiber.StatusForbidden)
+    }
+    return next()
+})
+
+app.Get("/", func(req fiber.Req, res fiber.Res) error {
+    return res.SendString("Hello from Express-style handlers!")
+})
+```
+
 > **Note:** Adapted `net/http` handlers continue to operate with the standard-library semantics. They don't get access to `fiber.Ctx` features and incur the overhead of the compatibility layer, so native `fiber.Handler` callbacks still provide the best performance.
 
 ## 👀 Examples
