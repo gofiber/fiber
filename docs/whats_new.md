@@ -303,7 +303,15 @@ We have slightly adapted our router interface
 
 Fiber now ships with a routing adapter (see `adapter.go`) that understands native Fiber handlers alongside `net/http` and `fasthttp` handlers. Route registration helpers accept a required `handler` argument plus optional additional `handlers`, all typed as `any`, and the adapter transparently converts supported handler styles so you can keep using the ecosystem functions you're familiar with.
 
-To align even closer with Express, you can also register handlers that accept the new `fiber.Req` and `fiber.Res` helper interfaces. The adapter understands both two-argument (`func(fiber.Req, fiber.Res)`) and three-argument (`func(fiber.Req, fiber.Res, func() error)`) callbacks, regardless of whether they return an `error`. When you include the optional `next` callback, Fiber wires it to `c.Next()` for you so middleware continues to behave as expected.
+To align even closer with Express, you can also register handlers that accept the new `fiber.Req` and `fiber.Res` helper interfaces. The adapter understands both two-argument (`func(fiber.Req, fiber.Res)`) and three-argument (`func(fiber.Req, fiber.Res, func() error)`) callbacks, regardless of whether they return an `error`. When you include the optional `next` callback, Fiber wires it to `c.Next()` for you so middleware continues to behave as expected. If your handler returns an `error`, the value returned from the injected `next()` bubbles straight back to the caller. When your handler omits an `error` return, Fiber records the result of `next()` and returns it after your function exits so downstream failures still propagate.
+
+#### Express-style request & middleware handlers (cases 3–8)
+
+Use these when you want to replicate Express' `(req, res, next)` patterns for regular middleware or route handlers. Choose a `next` callback that returns an `error` (`func() error`) when you want to manually inspect or transform downstream failures before returning from your handler. The `func()` variants keep the call-site concise when you only need to advance the chain—Fiber still relays any error from `c.Next()` back to the router.
+
+#### Express-style error middleware (cases 9–14)
+
+These handlers run after a prior handler returns an error, matching Express' four-argument `(err, req, res, next)` middleware. Fiber forwards the current context error as the first argument so you can observe, modify, or swallow it. Returning `nil` signals that the error was handled; returning a non-`nil` error replaces the upstream value. Just like the request handlers, pick a `next` signature with an `error` return when you need to intercept downstream failures, or use the no-argument form when you only care about control flow.
 
 | Case | Handler signature | Notes |
 | ---- | ----------------- | ----- |
