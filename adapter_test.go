@@ -93,7 +93,7 @@ func TestToFiberHandler_ExpressTwoParamsWithoutError(t *testing.T) {
 
 	handler := func(req Req, res Res) {
 		assert.Equal(t, app, req.App())
-		assert.NoError(t, res.SendStatus(http.StatusCreated))
+		require.NoError(t, res.SendStatus(http.StatusCreated))
 	}
 
 	converted, ok := toFiberHandler(handler)
@@ -371,7 +371,7 @@ func TestToFiberHandler_ExpressErrorHandlerNoReturnHandlesError(t *testing.T) {
 		assert.Equal(t, boom, err)
 		assert.Equal(t, app, req.App())
 		assert.Equal(t, app, res.App())
-		assert.NoError(t, res.Status(http.StatusGatewayTimeout).SendString("handled"))
+		require.NoError(t, res.Status(http.StatusGatewayTimeout).SendString("handled"))
 	}
 
 	converted, ok := toFiberHandler(handler)
@@ -438,7 +438,7 @@ func TestToFiberHandler_ExpressErrorHandlerNextCallbackPropagates(t *testing.T) 
 		assert.Equal(t, boom, err)
 		assert.Equal(t, app, req.App())
 		assert.Equal(t, app, res.App())
-		assert.NoError(t, res.SendStatus(http.StatusAccepted))
+		require.NoError(t, res.SendStatus(http.StatusAccepted))
 		nextErr := next()
 		require.ErrorIs(t, nextErr, boom)
 	}
@@ -472,7 +472,7 @@ func TestToFiberHandler_ExpressErrorHandlerNoReturnControlsPropagation(t *testin
 		assert.Equal(t, app, req.App())
 		assert.Equal(t, app, res.App())
 		// Do not call next() so the error is swallowed.
-		assert.NoError(t, res.SendStatus(http.StatusAccepted))
+		require.NoError(t, res.SendStatus(http.StatusAccepted))
 	}
 
 	converted, ok := toFiberHandler(handler)
@@ -627,7 +627,7 @@ func TestCollectHandlers_HTTPHandler(t *testing.T) {
 		w.Header().Set("X-HTTP", "ok")
 		w.WriteHeader(http.StatusTeapot)
 		_, err := w.Write([]byte("http"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	handlers := collectHandlers("test", httpHandler)
@@ -654,7 +654,7 @@ func TestToFiberHandler_HTTPHandler(t *testing.T) {
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-HTTP", "handler")
 		_, err := w.Write([]byte("through"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	converted, ok := toFiberHandler(handler)
@@ -873,7 +873,7 @@ func TestCollectHandlers_MixedHandlers(t *testing.T) {
 	}
 	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte("done"))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	handlers := collectHandlers("test", before, httpHandler)
