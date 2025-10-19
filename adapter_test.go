@@ -623,11 +623,11 @@ func TestToFiberHandler_ExpressErrorHandlerRouteIntegration(t *testing.T) {
 func TestCollectHandlers_HTTPHandler(t *testing.T) {
 	t.Parallel()
 
+	var writeErr error
 	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-HTTP", "ok")
 		w.WriteHeader(http.StatusTeapot)
-		_, err := w.Write([]byte("http"))
-		require.NoError(t, err)
+		_, writeErr = w.Write([]byte("http"))
 	})
 
 	handlers := collectHandlers("test", httpHandler)
@@ -646,15 +646,16 @@ func TestCollectHandlers_HTTPHandler(t *testing.T) {
 	require.Equal(t, http.StatusTeapot, ctx.Response().StatusCode())
 	require.Equal(t, "ok", string(ctx.Response().Header.Peek("X-HTTP")))
 	require.Equal(t, "http", string(ctx.Response().Body()))
+	require.NoError(t, writeErr)
 }
 
 func TestToFiberHandler_HTTPHandler(t *testing.T) {
 	t.Parallel()
 
+	var writeErr error
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-HTTP", "handler")
-		_, err := w.Write([]byte("through"))
-		require.NoError(t, err)
+		_, writeErr = w.Write([]byte("through"))
 	})
 
 	converted, ok := toFiberHandler(handler)
@@ -671,6 +672,7 @@ func TestToFiberHandler_HTTPHandler(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "handler", string(ctx.Response().Header.Peek("X-HTTP")))
 	require.Equal(t, "through", string(ctx.Response().Body()))
+	require.NoError(t, writeErr)
 }
 
 func TestToFiberHandler_FasthttpHandlerWithError(t *testing.T) {
@@ -871,9 +873,9 @@ func TestCollectHandlers_MixedHandlers(t *testing.T) {
 		c.Set("X-Before", "fiber")
 		return nil
 	}
+	var writeErr error
 	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, err := w.Write([]byte("done"))
-		require.NoError(t, err)
+		_, writeErr = w.Write([]byte("done"))
 	})
 
 	handlers := collectHandlers("test", before, httpHandler)
@@ -894,6 +896,7 @@ func TestCollectHandlers_MixedHandlers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "done", string(ctx.Response().Body()))
 	require.Equal(t, "fiber", string(ctx.Response().Header.Peek("X-Before")))
+	require.NoError(t, writeErr)
 }
 
 func TestCollectHandlers_Nil(t *testing.T) {
