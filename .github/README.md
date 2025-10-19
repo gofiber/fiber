@@ -163,6 +163,12 @@ When you need to convert entire applications or re-use `net/http` middleware cha
 Fiber also adapts Express-style callbacks that operate on the lightweight `fiber.Req` and `fiber.Res` helper interfaces. This lets you port middleware and route handlers from Express-inspired codebases while keeping Fiber's router features:
 
 ```go
+// Request/response handlers (2-argument)
+app.Get("/", func(req fiber.Req, res fiber.Res) error {
+    return res.SendString("Hello from Express-style handlers!")
+})
+
+// Middleware with an error-returning next callback (3-argument)
 app.Use(func(req fiber.Req, res fiber.Res, next func() error) error {
     if req.IP() == "192.168.1.254" {
         return res.SendStatus(fiber.StatusForbidden)
@@ -170,8 +176,20 @@ app.Use(func(req fiber.Req, res fiber.Res, next func() error) error {
     return next()
 })
 
-app.Get("/", func(req fiber.Req, res fiber.Res) error {
-    return res.SendString("Hello from Express-style handlers!")
+// Middleware with a no-arg next callback (3-argument)
+app.Use(func(req fiber.Req, res fiber.Res, next func()) {
+    if req.Get("X-Skip") == "true" {
+        return // stop the chain without calling next
+    }
+    next()
+})
+
+// Error-handling middleware (4-argument)
+app.Use(func(err error, req fiber.Req, res fiber.Res, next func() error) error {
+    if err != nil {
+        return res.Status(fiber.StatusInternalServerError).SendString(err.Error())
+    }
+    return next()
 })
 ```
 

@@ -305,6 +305,28 @@ Fiber now ships with a routing adapter (see `adapter.go`) that understands nativ
 
 To align even closer with Express, you can also register handlers that accept the new `fiber.Req` and `fiber.Res` helper interfaces. The adapter understands both two-argument (`func(fiber.Req, fiber.Res)`) and three-argument (`func(fiber.Req, fiber.Res, func() error)`) callbacks, regardless of whether they return an `error`. When you include the optional `next` callback, Fiber wires it to `c.Next()` for you so middleware continues to behave as expected.
 
+| Case | Handler signature | Notes |
+| ---- | ----------------- | ----- |
+| 1 | `fiber.Handler` | Native Fiber handler. |
+| 2 | `func(fiber.Ctx)` | Fiber handler without an error return. |
+| 3 | `func(fiber.Req, fiber.Res) error` | Express-style request handler with error return. |
+| 4 | `func(fiber.Req, fiber.Res)` | Express-style request handler without error return. |
+| 5 | `func(fiber.Req, fiber.Res, func() error) error` | Express-style middleware with an error-returning `next` callback and handler error return. |
+| 6 | `func(fiber.Req, fiber.Res, func() error)` | Express-style middleware with an error-returning `next` callback. |
+| 7 | `func(fiber.Req, fiber.Res, func()) error` | Express-style middleware with a no-argument `next` callback and handler error return. |
+| 8 | `func(fiber.Req, fiber.Res, func())` | Express-style middleware with a no-argument `next` callback. |
+| 9 | `func(error, fiber.Req, fiber.Res) error` | Express-style error middleware that can transform and return errors. |
+| 10 | `func(error, fiber.Req, fiber.Res)` | Express-style error middleware that handles errors without returning one. |
+| 11 | `func(error, fiber.Req, fiber.Res, func() error) error` | Express-style error middleware with error-returning `next` callback and handler error return. |
+| 12 | `func(error, fiber.Req, fiber.Res, func() error)` | Express-style error middleware with error-returning `next` callback. |
+| 13 | `func(error, fiber.Req, fiber.Res, func()) error` | Express-style error middleware with no-argument `next` callback and handler error return. |
+| 14 | `func(error, fiber.Req, fiber.Res, func())` | Express-style error middleware with no-argument `next` callback. |
+| 15 | `http.HandlerFunc` | Standard-library handler function adapted through `fasthttpadaptor`. |
+| 16 | `http.Handler` | Standard-library handler implementation; pointer receivers must be non-nil. |
+| 17 | `func(http.ResponseWriter, *http.Request)` | Standard-library function handlers via `fasthttpadaptor`. |
+| 18 | `fasthttp.RequestHandler` | Direct fasthttp handler without error return. |
+| 19 | `func(*fasthttp.RequestCtx) error` | fasthttp handler that returns an error to Fiber. |
+
 ### Route chaining
 
 `RouteChain` is a new helper inspired by [`Express`](https://expressjs.com/en/api.html#app.route) that makes it easy to declare a stack of handlers on the same path, while the existing `Route` helper stays available for prefix encapsulation.
