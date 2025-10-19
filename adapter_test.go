@@ -428,6 +428,44 @@ func TestToFiberHandler_ExpressErrorHandlerNextPropagates(t *testing.T) {
 	require.True(t, nextCalled)
 }
 
+func TestToFiberHandler_ExpressErrorHandlerNextSeesMutations(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	boom := errors.New("boom")
+	handler := func(err error, req Req, res Res, next func() error) error {
+		assert.Equal(t, boom, err)
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		res.Set("X-Error-Handled", "true")
+		return next()
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	calls := 0
+	nextHandler := func(c Ctx) error {
+		calls++
+		if calls == 2 {
+			require.Equal(t, "true", string(c.Response().Header.Peek("X-Error-Handled")))
+		}
+		return boom
+	}
+
+	ctx.route = &Route{Handlers: []Handler{converted, nextHandler}}
+	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
+
+	err := converted(ctx)
+	require.ErrorIs(t, err, boom)
+	require.Equal(t, 2, calls)
+}
+
 func TestToFiberHandler_ExpressErrorHandlerNextCallbackPropagates(t *testing.T) {
 	t.Parallel()
 

@@ -311,7 +311,7 @@ Use these when you want to replicate Express' `(req, res, next)` patterns for re
 
 #### Express-style error middleware (cases 9–14)
 
-These handlers run after a prior handler returns an error, matching Express' four-argument `(err, req, res, next)` middleware. Fiber forwards the current context error as the first argument so you can observe, modify, or swallow it. Returning `nil` signals that the error was handled; returning a non-`nil` error replaces the upstream value. Just like the request handlers, pick a `next` signature with an `error` return when you need to intercept downstream failures, or use the no-argument form when you only care about control flow.
+These handlers run after a prior handler returns an error, matching Express' four-argument `(err, req, res, next)` middleware. Fiber forwards the current context error as the first argument so you can observe, modify, or swallow it. Returning `nil` signals that the error was handled; returning a non-`nil` error replaces the upstream value. When you call `next`, Fiber rewinds the handler index and reruns the remaining stack so response mutations are visible to later middleware—design downstream handlers to tolerate that second pass. Just like the request handlers, pick a `next` signature with an `error` return when you need to intercept downstream failures, or use the no-argument form when you only care about control flow.
 
 | Case | Handler signature | Notes |
 | ---- | ----------------- | ----- |

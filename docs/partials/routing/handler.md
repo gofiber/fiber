@@ -64,8 +64,11 @@ function, the handler chain stops, matching Express semantics.
 
 These handlers only run after a downstream Fiber handler returns an error via
 `c.Next()`. When they accept a `next` callback, Fiber forwards the original
-error. If you call `next`, the chain continues with the previously returned
-error; otherwise the middleware swallows it. Unlike Express, Fiber currently
+error. Calling `next` resets the handler index and reruns the remaining stack so
+any response mutations you make before delegating are visible to later
+middleware. Because the adapter has to execute the downstream chain once to
+capture the error, that means `next` performs a second pass—keep your handlers
+idempotent or guard side effects accordingly. Unlike Express, Fiber currently
 passes only the error from `c.Next()`—there is no separate `err` state for
 non-error invocations.
 

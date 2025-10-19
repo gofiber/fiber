@@ -193,6 +193,12 @@ app.Use(func(err error, req fiber.Req, res fiber.Res, next func() error) error {
 })
 ```
 
+When an Express-style error middleware accepts a `next` callback, Fiber rewinds
+the handler index before delegating so the remaining handlers see any response
+mutations you performed. Because the adapter has to run the downstream stack
+once to capture the error, calling `next()` performs a second pass—design
+downstream middleware to tolerate repeated execution.
+
 > **Note:** Adapted `net/http` handlers continue to operate with the standard-library semantics. They don't get access to `fiber.Ctx` features and incur the overhead of the compatibility layer, so native `fiber.Handler` callbacks still provide the best performance.
 
 ## 👀 Examples

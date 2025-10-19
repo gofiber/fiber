@@ -118,21 +118,33 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
+			var (
+				currentIndex int
+				defaultCtx   *DefaultCtx
+			)
+			if dc, ok := c.(*DefaultCtx); ok {
+				currentIndex = dc.indexHandler
+				defaultCtx = dc
+			}
 			err := c.Next()
 			if err == nil {
 				return nil
 			}
 			nextCalled := false
-			propagate := err
+			var nextErr error
 			handlerErr := h(err, c.Req(), c.Res(), func() error {
 				nextCalled = true
-				return propagate
+				if defaultCtx != nil {
+					defaultCtx.setIndexHandler(currentIndex)
+				}
+				nextErr = c.Next()
+				return nextErr
 			})
 			if handlerErr != nil {
 				return handlerErr
 			}
 			if nextCalled {
-				return propagate
+				return nextErr
 			}
 			return nil
 		}, true
@@ -141,14 +153,26 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
+			var (
+				currentIndex int
+				defaultCtx   *DefaultCtx
+			)
+			if dc, ok := c.(*DefaultCtx); ok {
+				currentIndex = dc.indexHandler
+				defaultCtx = dc
+			}
 			err := c.Next()
 			if err == nil {
 				return nil
 			}
 			nextCalled := false
-			nextErr := err
+			var nextErr error
 			h(err, c.Req(), c.Res(), func() error {
 				nextCalled = true
+				if defaultCtx != nil {
+					defaultCtx.setIndexHandler(currentIndex)
+				}
+				nextErr = c.Next()
 				return nextErr
 			})
 			if nextCalled {
@@ -161,6 +185,14 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
+			var (
+				currentIndex int
+				defaultCtx   *DefaultCtx
+			)
+			if dc, ok := c.(*DefaultCtx); ok {
+				currentIndex = dc.indexHandler
+				defaultCtx = dc
+			}
 			err := c.Next()
 			if err == nil {
 				return nil
@@ -168,12 +200,15 @@ func toFiberHandler(handler any) (Handler, bool) {
 			nextCalled := false
 			handlerErr := h(err, c.Req(), c.Res(), func() {
 				nextCalled = true
+				if defaultCtx != nil {
+					defaultCtx.setIndexHandler(currentIndex)
+				}
 			})
 			if handlerErr != nil {
 				return handlerErr
 			}
 			if nextCalled {
-				return err
+				return c.Next()
 			}
 			return nil
 		}, true
@@ -182,6 +217,14 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
+			var (
+				currentIndex int
+				defaultCtx   *DefaultCtx
+			)
+			if dc, ok := c.(*DefaultCtx); ok {
+				currentIndex = dc.indexHandler
+				defaultCtx = dc
+			}
 			err := c.Next()
 			if err == nil {
 				return nil
@@ -189,9 +232,12 @@ func toFiberHandler(handler any) (Handler, bool) {
 			nextCalled := false
 			h(err, c.Req(), c.Res(), func() {
 				nextCalled = true
+				if defaultCtx != nil {
+					defaultCtx.setIndexHandler(currentIndex)
+				}
 			})
 			if nextCalled {
-				return err
+				return c.Next()
 			}
 			return nil
 		}, true
