@@ -563,6 +563,51 @@ func TestToFiberHandler_ExpressErrorHandlerNoReturnNextPropagates(t *testing.T) 
 	require.ErrorIs(t, err, boom)
 }
 
+func TestToFiberHandler_ExpressErrorHandlerStopsLaterHandlersWithoutNext(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	boom := errors.New("boom")
+
+	first := func(err error, req Req, res Res, _ func() error) error {
+		assert.Equal(t, boom, err)
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		return nil
+	}
+
+	secondRan := false
+	second := func(err error, req Req, res Res, _ func() error) error {
+		secondRan = true
+		assert.Equal(t, boom, err)
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		return nil
+	}
+
+	firstConverted, ok := toFiberHandler(first)
+	require.True(t, ok)
+
+	secondConverted, ok := toFiberHandler(second)
+	require.True(t, ok)
+
+	failing := func(_ Ctx) error {
+		return boom
+	}
+
+	ctx.route = &Route{Handlers: []Handler{firstConverted, secondConverted, failing}}
+	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
+
+	err := firstConverted(ctx)
+	require.NoError(t, err)
+	require.False(t, secondRan)
+}
+
 func TestToFiberHandler_ExpressErrorHandlerNoArgNextWithErrorReturn(t *testing.T) {
 	t.Parallel()
 

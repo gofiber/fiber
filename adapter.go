@@ -9,6 +9,64 @@ import (
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
+type expressErrorMode uint8
+
+const (
+	expressErrorModeCollect expressErrorMode = iota + 1
+	expressErrorModeResume
+)
+
+type expressErrorState struct {
+	err          error
+	handlerIndex int
+	mode         expressErrorMode
+}
+
+var expressErrorStateKey = &struct{}{}
+
+func getExpressErrorState(c Ctx) (*expressErrorState, *DefaultCtx) {
+	dc, ok := c.(*DefaultCtx)
+	if !ok {
+		return nil, nil
+	}
+	if value := dc.RequestCtx().UserValue(expressErrorStateKey); value != nil {
+		if state, ok := value.(*expressErrorState); ok {
+			return state, dc
+		}
+	}
+	return nil, dc
+}
+
+func collectExpressError(c Ctx, dc *DefaultCtx, handlerIndex int) error {
+	if dc == nil {
+		return c.Next()
+	}
+	state := &expressErrorState{
+		mode:         expressErrorModeCollect,
+		handlerIndex: handlerIndex,
+	}
+	dc.RequestCtx().SetUserValue(expressErrorStateKey, state)
+	err := dc.Next()
+	dc.RequestCtx().SetUserValue(expressErrorStateKey, nil)
+	return err
+}
+
+func resumeExpressError(c Ctx, dc *DefaultCtx, handlerIndex int, err error) error {
+	if dc == nil {
+		return c.Next()
+	}
+	dc.setIndexHandler(handlerIndex)
+	state := &expressErrorState{
+		mode:         expressErrorModeResume,
+		handlerIndex: handlerIndex,
+		err:          err,
+	}
+	dc.RequestCtx().SetUserValue(expressErrorStateKey, state)
+	nextErr := dc.Next()
+	dc.RequestCtx().SetUserValue(expressErrorStateKey, nil)
+	return nextErr
+}
+
 // toFiberHandler converts a supported handler type to a Fiber handler.
 func toFiberHandler(handler any) (Handler, bool) {
 	if handler == nil {
@@ -95,7 +153,21 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			err := c.Next()
+			state, defaultCtx := getExpressErrorState(c)
+			if state != nil && state.mode == expressErrorModeCollect && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				return defaultCtx.Next()
+			}
+			currentIndex := 0
+			if defaultCtx != nil {
+				currentIndex = defaultCtx.indexHandler
+			}
+			if state != nil && state.mode == expressErrorModeResume && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				if state.err == nil {
+					return nil
+				}
+				return h(state.err, c.Req(), c.Res())
+			}
+			err := collectExpressError(c, defaultCtx, currentIndex)
 			if err == nil {
 				return nil
 			}
@@ -106,7 +178,20 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			err := c.Next()
+			state, defaultCtx := getExpressErrorState(c)
+			if state != nil && state.mode == expressErrorModeCollect && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				return defaultCtx.Next()
+			}
+			currentIndex := 0
+			if defaultCtx != nil {
+				currentIndex = defaultCtx.indexHandler
+			}
+			var err error
+			if state != nil && state.mode == expressErrorModeResume && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				err = state.err
+			} else {
+				err = collectExpressError(c, defaultCtx, currentIndex)
+			}
 			if err == nil {
 				return nil
 			}
@@ -118,15 +203,20 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			var (
-				currentIndex int
-				defaultCtx   *DefaultCtx
-			)
-			if dc, ok := c.(*DefaultCtx); ok {
-				currentIndex = dc.indexHandler
-				defaultCtx = dc
+			state, defaultCtx := getExpressErrorState(c)
+			if state != nil && state.mode == expressErrorModeCollect && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				return defaultCtx.Next()
 			}
-			err := c.Next()
+			currentIndex := 0
+			if defaultCtx != nil {
+				currentIndex = defaultCtx.indexHandler
+			}
+			var err error
+			if state != nil && state.mode == expressErrorModeResume && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				err = state.err
+			} else {
+				err = collectExpressError(c, defaultCtx, currentIndex)
+			}
 			if err == nil {
 				return nil
 			}
@@ -134,10 +224,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 			var nextErr error
 			handlerErr := h(err, c.Req(), c.Res(), func() error {
 				nextCalled = true
-				if defaultCtx != nil {
-					defaultCtx.setIndexHandler(currentIndex)
-				}
-				nextErr = c.Next()
+				nextErr = resumeExpressError(c, defaultCtx, currentIndex, err)
 				return nextErr
 			})
 			if handlerErr != nil {
@@ -153,15 +240,20 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			var (
-				currentIndex int
-				defaultCtx   *DefaultCtx
-			)
-			if dc, ok := c.(*DefaultCtx); ok {
-				currentIndex = dc.indexHandler
-				defaultCtx = dc
+			state, defaultCtx := getExpressErrorState(c)
+			if state != nil && state.mode == expressErrorModeCollect && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				return defaultCtx.Next()
 			}
-			err := c.Next()
+			currentIndex := 0
+			if defaultCtx != nil {
+				currentIndex = defaultCtx.indexHandler
+			}
+			var err error
+			if state != nil && state.mode == expressErrorModeResume && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				err = state.err
+			} else {
+				err = collectExpressError(c, defaultCtx, currentIndex)
+			}
 			if err == nil {
 				return nil
 			}
@@ -169,10 +261,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 			var nextErr error
 			h(err, c.Req(), c.Res(), func() error {
 				nextCalled = true
-				if defaultCtx != nil {
-					defaultCtx.setIndexHandler(currentIndex)
-				}
-				nextErr = c.Next()
+				nextErr = resumeExpressError(c, defaultCtx, currentIndex, err)
 				return nextErr
 			})
 			if nextCalled {
@@ -185,30 +274,32 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			var (
-				currentIndex int
-				defaultCtx   *DefaultCtx
-			)
-			if dc, ok := c.(*DefaultCtx); ok {
-				currentIndex = dc.indexHandler
-				defaultCtx = dc
+			state, defaultCtx := getExpressErrorState(c)
+			if state != nil && state.mode == expressErrorModeCollect && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				return defaultCtx.Next()
 			}
-			err := c.Next()
+			currentIndex := 0
+			if defaultCtx != nil {
+				currentIndex = defaultCtx.indexHandler
+			}
+			var err error
+			if state != nil && state.mode == expressErrorModeResume && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				err = state.err
+			} else {
+				err = collectExpressError(c, defaultCtx, currentIndex)
+			}
 			if err == nil {
 				return nil
 			}
 			nextCalled := false
 			handlerErr := h(err, c.Req(), c.Res(), func() {
 				nextCalled = true
-				if defaultCtx != nil {
-					defaultCtx.setIndexHandler(currentIndex)
-				}
 			})
 			if handlerErr != nil {
 				return handlerErr
 			}
 			if nextCalled {
-				return c.Next()
+				return resumeExpressError(c, defaultCtx, currentIndex, err)
 			}
 			return nil
 		}, true
@@ -217,27 +308,29 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			var (
-				currentIndex int
-				defaultCtx   *DefaultCtx
-			)
-			if dc, ok := c.(*DefaultCtx); ok {
-				currentIndex = dc.indexHandler
-				defaultCtx = dc
+			state, defaultCtx := getExpressErrorState(c)
+			if state != nil && state.mode == expressErrorModeCollect && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				return defaultCtx.Next()
 			}
-			err := c.Next()
+			currentIndex := 0
+			if defaultCtx != nil {
+				currentIndex = defaultCtx.indexHandler
+			}
+			var err error
+			if state != nil && state.mode == expressErrorModeResume && defaultCtx != nil && defaultCtx.indexHandler > state.handlerIndex {
+				err = state.err
+			} else {
+				err = collectExpressError(c, defaultCtx, currentIndex)
+			}
 			if err == nil {
 				return nil
 			}
 			nextCalled := false
 			h(err, c.Req(), c.Res(), func() {
 				nextCalled = true
-				if defaultCtx != nil {
-					defaultCtx.setIndexHandler(currentIndex)
-				}
 			})
 			if nextCalled {
-				return c.Next()
+				return resumeExpressError(c, defaultCtx, currentIndex, err)
 			}
 			return nil
 		}, true
