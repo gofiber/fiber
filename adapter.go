@@ -16,12 +16,12 @@ func toFiberHandler(handler any) (Handler, bool) {
 	}
 
 	switch h := handler.(type) {
-	case Handler:
+	case Handler: // (1) direct Fiber handler
 		if h == nil {
 			return nil, false
 		}
 		return h, true
-	case func(Ctx):
+	case func(Ctx): // (2) Fiber handler without error return
 		if h == nil {
 			return nil, false
 		}
@@ -29,14 +29,14 @@ func toFiberHandler(handler any) (Handler, bool) {
 			h(c)
 			return nil
 		}, true
-	case func(Req, Res) error:
+	case func(Req, Res) error: // (3) Express-style handler with error return
 		if h == nil {
 			return nil, false
 		}
 		return func(c Ctx) error {
 			return h(c.Req(), c.Res())
 		}, true
-	case func(Req, Res):
+	case func(Req, Res): // (4) Express-style handler without error return
 		if h == nil {
 			return nil, false
 		}
@@ -44,7 +44,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 			h(c.Req(), c.Res())
 			return nil
 		}, true
-	case func(Req, Res, func() error) error:
+	case func(Req, Res, func() error) error: // (5) Express-style handler with error-returning next callback and error return
 		if h == nil {
 			return nil, false
 		}
@@ -53,7 +53,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 				return c.Next()
 			})
 		}, true
-	case func(Req, Res, func() error):
+	case func(Req, Res, func() error): // (6) Express-style handler with error-returning next callback
 		if h == nil {
 			return nil, false
 		}
@@ -65,7 +65,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 			})
 			return nextErr
 		}, true
-	case func(Req, Res, func()) error:
+	case func(Req, Res, func()) error: // (7) Express-style handler with no-arg next callback and error return
 		if h == nil {
 			return nil, false
 		}
@@ -79,7 +79,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 			}
 			return nextErr
 		}, true
-	case func(Req, Res, func()):
+	case func(Req, Res, func()): // (8) Express-style handler with no-arg next callback
 		if h == nil {
 			return nil, false
 		}
@@ -90,7 +90,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 			})
 			return nextErr
 		}, true
-	case func(error, Req, Res) error:
+	case func(error, Req, Res) error: // (9) Express-style error handler with error return
 		if h == nil {
 			return nil, false
 		}
@@ -101,7 +101,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 			}
 			return h(err, c.Req(), c.Res())
 		}, true
-	case func(error, Req, Res):
+	case func(error, Req, Res): // (10) Express-style error handler
 		if h == nil {
 			return nil, false
 		}
@@ -113,7 +113,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 			h(err, c.Req(), c.Res())
 			return nil
 		}, true
-	case func(error, Req, Res, func() error) error:
+	case func(error, Req, Res, func() error) error: // (11) Express-style error handler with error-returning next callback and error return
 		if h == nil {
 			return nil, false
 		}
@@ -136,7 +136,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 			}
 			return nil
 		}, true
-	case func(error, Req, Res, func() error):
+	case func(error, Req, Res, func() error): // (12) Express-style error handler with error-returning next callback
 		if h == nil {
 			return nil, false
 		}
@@ -156,7 +156,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 			}
 			return nil
 		}, true
-	case func(error, Req, Res, func()) error:
+	case func(error, Req, Res, func()) error: // (13) Express-style error handler with no-arg next callback and error return
 		if h == nil {
 			return nil, false
 		}
@@ -177,7 +177,7 @@ func toFiberHandler(handler any) (Handler, bool) {
 			}
 			return nil
 		}, true
-	case func(error, Req, Res, func()):
+	case func(error, Req, Res, func()): // (14) Express-style error handler with no-arg next callback
 		if h == nil {
 			return nil, false
 		}
@@ -195,12 +195,12 @@ func toFiberHandler(handler any) (Handler, bool) {
 			}
 			return nil
 		}, true
-	case http.HandlerFunc:
+	case http.HandlerFunc: // (15) net/http HandlerFunc
 		if h == nil {
 			return nil, false
 		}
 		return wrapHTTPHandler(h), true
-	case http.Handler:
+	case http.Handler: // (16) net/http Handler implementation
 		if h == nil {
 			return nil, false
 		}
@@ -209,12 +209,12 @@ func toFiberHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return wrapHTTPHandler(h), true
-	case func(http.ResponseWriter, *http.Request):
+	case func(http.ResponseWriter, *http.Request): // (17) net/http function handler
 		if h == nil {
 			return nil, false
 		}
 		return wrapHTTPHandler(http.HandlerFunc(h)), true
-	case fasthttp.RequestHandler:
+	case fasthttp.RequestHandler: // (18) fasthttp handler
 		if h == nil {
 			return nil, false
 		}
@@ -222,14 +222,14 @@ func toFiberHandler(handler any) (Handler, bool) {
 			h(c.RequestCtx())
 			return nil
 		}, true
-	case func(*fasthttp.RequestCtx) error:
+	case func(*fasthttp.RequestCtx) error: // (19) fasthttp handler with error return
 		if h == nil {
 			return nil, false
 		}
 		return func(c Ctx) error {
 			return h(c.RequestCtx())
 		}, true
-	default:
+	default: // (20) unsupported handler type
 		return nil, false
 	}
 }
