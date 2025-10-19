@@ -27,30 +27,70 @@ func (app *App) Add(methods []string, path string, handler any, handlers ...any)
 func (app *App) All(path string, handler any, handlers ...any) Router
 ```
 
-Handlers can be native Fiber handlers (`func(fiber.Ctx) error` or even
-`func(fiber.Ctx)`), Express-style callbacks (`func(fiber.Req, fiber.Res)` with
-optional `next` callbacks typed as `func() error` or `func()`, plus optional
-`error` return values), and Express-style error middleware that begins with an
-`error` parameter (`func(error, fiber.Req, fiber.Res, ...)`). Familiar
-`net/http` shapes such as `http.Handler`, `http.HandlerFunc`, or
-`func(http.ResponseWriter, *http.Request)` are also supported, as are
-fasthttp-based callbacks like `fasthttp.RequestHandler` or
-`func(*fasthttp.RequestCtx) error`. Fiber automatically adapts supported
-handlers for you during registration, so you can mix and match the style that
-best fits your existing code.
+Fiber's adapter converts a variety of handler shapes to native
+`func(fiber.Ctx) error` callbacks. It currently recognizes nineteen cases (the
+numbers below match the comments in `toFiberHandler` inside `adapter.go`). This
+lets you mix Fiber-style handlers with Express-style callbacks and even reuse
+`net/http` or `fasthttp` functions.
+
+### Fiber-native handlers (cases 1–2)
+
+1. `fiber.Handler` — the canonical `func(fiber.Ctx) error` form.
+2. `func(fiber.Ctx)` — Fiber runs the function and treats it as if it returned
+   `nil`.
+
+### Express-style request handlers (cases 3–8)
+
+3. `func(fiber.Req, fiber.Res) error`
+4. `func(fiber.Req, fiber.Res)`
+5. `func(fiber.Req, fiber.Res, func() error) error`
+6. `func(fiber.Req, fiber.Res, func() error)`
+7. `func(fiber.Req, fiber.Res, func()) error`
+8. `func(fiber.Req, fiber.Res, func())`
+
+The adapter injects a `next` callback when your signature accepts one. Fiber
+propagates downstream errors from `c.Next()` back through the wrapper, so
+returning those errors remains optional. If you never call the injected `next`
+function, the handler chain stops, matching Express semantics.
+
+### Express-style error middleware (cases 9–14)
+
+9.  `func(error, fiber.Req, fiber.Res) error`
+10. `func(error, fiber.Req, fiber.Res)`
+11. `func(error, fiber.Req, fiber.Res, func() error) error`
+12. `func(error, fiber.Req, fiber.Res, func() error)`
+13. `func(error, fiber.Req, fiber.Res, func()) error`
+14. `func(error, fiber.Req, fiber.Res, func())`
+
+These handlers only run after a downstream Fiber handler returns an error via
+`c.Next()`. When they accept a `next` callback, Fiber forwards the original
+error. If you call `next`, the chain continues with the previously returned
+error; otherwise the middleware swallows it. Unlike Express, Fiber currently
+passes only the error from `c.Next()`—there is no separate `err` state for
+non-error invocations.
+
+### net/http handlers (cases 15–17)
+
+15. `http.HandlerFunc`
+16. `http.Handler`
+17. `func(http.ResponseWriter, *http.Request)`
 
 :::caution Compatibility overhead
-When you register net/http handlers, Fiber adapts them through a compatibility
-layer. They don't receive
-`fiber.Ctx` or gain access to Fiber-specific APIs, and the conversion adds more
-overhead than running a native `fiber.Handler`. Because they cannot call `c.Next()`, they will also terminate the handler chain.
-Express-style handlers are not subject to this limitation when they accept a
-`next` callback (either `func() error` or `func()`). Express-style error
-middleware runs after downstream handlers return an error via `c.Next()`,
-giving you a place to translate or log failures before deciding whether to
-propagate them. Prefer Fiber handlers when you need the lowest latency or Fiber
-features.
+Fiber adapts these handlers through `fasthttpadaptor`. They do not receive
+`fiber.Ctx`, cannot call `c.Next()`, and therefore always terminate the handler
+chain. The compatibility layer also adds more overhead than running a native
+Fiber handler, so prefer the other forms when possible.
 :::
+
+### fasthttp handlers (cases 18–19)
+
+18. `fasthttp.RequestHandler`
+19. `func(*fasthttp.RequestCtx) error`
+
+fasthttp handlers run with full access to the underlying `fasthttp.RequestCtx`.
+They are expected to manage the response directly. Fiber will propagate any
+error returned by the `func(*fasthttp.RequestCtx) error` variant but otherwise
+does not inspect the context state.
 
 ```go title="Examples"
 // Simple GET handler (Fiber accepts both func(fiber.Ctx) and func(fiber.Ctx) error)
