@@ -67,24 +67,34 @@ func resumeExpressError(c Ctx, dc *DefaultCtx, handlerIndex int, err error) erro
 	return nextErr
 }
 
-func prepareExpressError(c Ctx) (state *expressErrorState, dc *DefaultCtx, handlerIndex int, err error, resumed bool, skip bool) {
-	state, dc = getExpressErrorState(c)
+type expressErrorPrep struct {
+	dc           *DefaultCtx
+	err          error
+	handlerIndex int
+	skip         bool
+}
+
+func prepareExpressError(c Ctx) expressErrorPrep {
+	state, dc := getExpressErrorState(c)
+	prep := expressErrorPrep{dc: dc}
+
 	if dc != nil {
-		if state != nil && state.mode == expressErrorModeCollect && dc.indexHandler > state.handlerIndex {
-			err = dc.Next()
-			skip = true
-			handlerIndex = dc.indexHandler
-			return state, dc, handlerIndex, err, resumed, skip
-		}
-		handlerIndex = dc.indexHandler
-		if state != nil && state.mode == expressErrorModeResume && dc.indexHandler > state.handlerIndex {
-			err = state.err
-			resumed = true
-			return state, dc, handlerIndex, err, resumed, skip
+		prep.handlerIndex = dc.indexHandler
+		if state != nil {
+			if state.mode == expressErrorModeCollect && dc.indexHandler > state.handlerIndex {
+				prep.err = dc.Next()
+				prep.skip = true
+				return prep
+			}
+			if state.mode == expressErrorModeResume && dc.indexHandler > state.handlerIndex {
+				prep.err = state.err
+				return prep
+			}
 		}
 	}
-	err = collectExpressError(c, dc, handlerIndex)
-	return state, dc, handlerIndex, err, resumed, skip
+
+	prep.err = collectExpressError(c, dc, prep.handlerIndex)
+	return prep
 }
 
 // toFiberHandler converts a supported handler type to a Fiber handler.
@@ -204,28 +214,28 @@ func adaptExpressErrorHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			_, _, _, err, _, skip := prepareExpressError(c)
-			if skip {
-				return err
+			prep := prepareExpressError(c)
+			if prep.skip {
+				return prep.err
 			}
-			if err == nil {
+			if prep.err == nil {
 				return nil
 			}
-			return h(err, c.Req(), c.Res())
+			return h(prep.err, c.Req(), c.Res())
 		}, true
 	case func(error, Req, Res): // (10) Express-style error handler
 		if h == nil {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			_, _, _, err, _, skip := prepareExpressError(c)
-			if skip {
-				return err
+			prep := prepareExpressError(c)
+			if prep.skip {
+				return prep.err
 			}
-			if err == nil {
+			if prep.err == nil {
 				return nil
 			}
-			h(err, c.Req(), c.Res())
+			h(prep.err, c.Req(), c.Res())
 			return nil
 		}, true
 	case func(error, Req, Res, func() error) error: // (11) Express-style error handler with error-returning next callback and error return
@@ -233,18 +243,18 @@ func adaptExpressErrorHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			_, defaultCtx, currentIndex, err, _, skip := prepareExpressError(c)
-			if skip {
-				return err
+			prep := prepareExpressError(c)
+			if prep.skip {
+				return prep.err
 			}
-			if err == nil {
+			if prep.err == nil {
 				return nil
 			}
 			nextCalled := false
 			var nextErr error
-			handlerErr := h(err, c.Req(), c.Res(), func() error {
+			handlerErr := h(prep.err, c.Req(), c.Res(), func() error {
 				nextCalled = true
-				nextErr = resumeExpressError(c, defaultCtx, currentIndex, err)
+				nextErr = resumeExpressError(c, prep.dc, prep.handlerIndex, prep.err)
 				return nextErr
 			})
 			if handlerErr != nil {
@@ -260,18 +270,18 @@ func adaptExpressErrorHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			_, defaultCtx, currentIndex, err, _, skip := prepareExpressError(c)
-			if skip {
-				return err
+			prep := prepareExpressError(c)
+			if prep.skip {
+				return prep.err
 			}
-			if err == nil {
+			if prep.err == nil {
 				return nil
 			}
 			nextCalled := false
 			var nextErr error
-			h(err, c.Req(), c.Res(), func() error {
+			h(prep.err, c.Req(), c.Res(), func() error {
 				nextCalled = true
-				nextErr = resumeExpressError(c, defaultCtx, currentIndex, err)
+				nextErr = resumeExpressError(c, prep.dc, prep.handlerIndex, prep.err)
 				return nextErr
 			})
 			if nextCalled {
@@ -284,22 +294,22 @@ func adaptExpressErrorHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			_, defaultCtx, currentIndex, err, _, skip := prepareExpressError(c)
-			if skip {
-				return err
+			prep := prepareExpressError(c)
+			if prep.skip {
+				return prep.err
 			}
-			if err == nil {
+			if prep.err == nil {
 				return nil
 			}
 			nextCalled := false
-			handlerErr := h(err, c.Req(), c.Res(), func() {
+			handlerErr := h(prep.err, c.Req(), c.Res(), func() {
 				nextCalled = true
 			})
 			if handlerErr != nil {
 				return handlerErr
 			}
 			if nextCalled {
-				return resumeExpressError(c, defaultCtx, currentIndex, err)
+				return resumeExpressError(c, prep.dc, prep.handlerIndex, prep.err)
 			}
 			return nil
 		}, true
@@ -308,19 +318,19 @@ func adaptExpressErrorHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			_, defaultCtx, currentIndex, err, _, skip := prepareExpressError(c)
-			if skip {
-				return err
+			prep := prepareExpressError(c)
+			if prep.skip {
+				return prep.err
 			}
-			if err == nil {
+			if prep.err == nil {
 				return nil
 			}
 			nextCalled := false
-			h(err, c.Req(), c.Res(), func() {
+			h(prep.err, c.Req(), c.Res(), func() {
 				nextCalled = true
 			})
 			if nextCalled {
-				return resumeExpressError(c, defaultCtx, currentIndex, err)
+				return resumeExpressError(c, prep.dc, prep.handlerIndex, prep.err)
 			}
 			return nil
 		}, true
