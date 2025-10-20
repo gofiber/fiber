@@ -307,7 +307,7 @@ func TestToFiberHandler_ExpressErrorHandlerSkipsWhenNoError(t *testing.T) {
 	_, ctx := newTestCtx(t)
 
 	handler := func(_ error, _ Req, _ Res) error {
-		t.Fatalf("error handler should not run when downstream succeeds")
+		t.Fatal("error handler should not run when downstream succeeds")
 		return nil
 	}
 
