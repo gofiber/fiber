@@ -123,7 +123,7 @@ func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
 	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			t.Fatalf("w does not implement http.Flusher")
+			t.Fatal("w does not implement http.Flusher")
 		}
 		w.WriteHeader(StatusOK)
 		fmt.Fprintf(w, "Hello ")
@@ -150,7 +150,7 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			t.Fatalf("w does not implement http.Flusher")
+			t.Fatal("w does not implement http.Flusher")
 		}
 		w.WriteHeader(StatusOK)
 		fmt.Fprintf(w, "Hello ")

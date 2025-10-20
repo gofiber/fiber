@@ -165,7 +165,7 @@ func Test_HTTPHandler_Flush(t *testing.T) {
 		fmt.Fprintf(w, "request body is ")
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			t.Fatalf("w does not implement http.Flusher")
+			t.Fatal("w does not implement http.Flusher")
 		}
 		flusher.Flush()
 		fmt.Fprintf(w, "%q", body)
@@ -213,7 +213,7 @@ func Test_HTTPHandler_Flush_App_Test(t *testing.T) {
 	app.Get("/", HTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			t.Fatalf("w does not implement http.Flusher")
+			t.Fatal("w does not implement http.Flusher")
 		}
 		w.WriteHeader(fiber.StatusOK)
 		fmt.Fprintf(w, "Hello ")
