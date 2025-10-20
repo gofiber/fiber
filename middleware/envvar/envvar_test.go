@@ -21,7 +21,7 @@ func Test_EnvVarStructWithExportVars(t *testing.T) {
 
 	require.Equal(t, "testEnvValue", vars.Vars["testKey"])
 	require.Equal(t, "testDefaultVal", vars.Vars["testDefaultKey"])
-	require.Equal(t, "", vars.Vars["anotherEnvKey"])
+	require.Empty(t, vars.Vars["anotherEnvKey"])
 }
 
 func Test_EnvVarHandler(t *testing.T) {
@@ -116,7 +116,7 @@ func Test_EnvVarHandlerHead(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "", string(body))
+	require.Empty(t, string(body))
 }
 
 func Test_EnvVarHandlerSpecialValue(t *testing.T) {

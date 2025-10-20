@@ -24,7 +24,7 @@ func Test_Hook_OnRoute(t *testing.T) {
 	app := New()
 
 	app.Hooks().OnRoute(func(r Route) error {
-		require.Equal(t, "", r.Name)
+		require.Empty(t, r.Name)
 
 		return nil
 	})

@@ -159,6 +159,8 @@ func Test_AuthSources(t *testing.T) {
 					req.URL.RawQuery = q.Encode()
 				case formExtractorName:
 					req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+				default:
+					// nothing to do for paramExtractorName
 				}
 
 				res, err := app.Test(req, testConfig)
@@ -1008,7 +1010,7 @@ func Test_WWWAuthenticateOnlyOn401(t *testing.T) {
 	res, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusForbidden, res.StatusCode)
-	require.Equal(t, "", res.Header.Get("WWW-Authenticate"))
+	require.Empty(t, res.Header.Get("WWW-Authenticate"))
 }
 
 func Test_DefaultChallengeForNonAuthExtractor(t *testing.T) {

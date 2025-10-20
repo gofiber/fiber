@@ -79,7 +79,7 @@ func Test_parseToMap_defaultCase(t *testing.T) {
 	m2 := map[string]string{}
 	err = parseToMap(m2, map[string][]string{"empty": {}})
 	require.NoError(t, err)
-	require.Equal(t, "", m2["empty"])
+	require.Empty(t, m2["empty"])
 }
 
 func Test_parse_function_maps(t *testing.T) {

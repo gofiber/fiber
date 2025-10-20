@@ -23,9 +23,9 @@ func Test_Default(t *testing.T) {
 	require.Equal(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
 	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
 	require.Equal(t, "SAMEORIGIN", resp.Header.Get(fiber.HeaderXFrameOptions))
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentSecurityPolicy))
 	require.Equal(t, "no-referrer", resp.Header.Get(fiber.HeaderReferrerPolicy))
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderPermissionsPolicy))
+	require.Empty(t, resp.Header.Get(fiber.HeaderPermissionsPolicy))
 	require.Equal(t, "require-corp", resp.Header.Get("Cross-Origin-Embedder-Policy"))
 	require.Equal(t, "same-origin", resp.Header.Get("Cross-Origin-Opener-Policy"))
 	require.Equal(t, "same-origin", resp.Header.Get("Cross-Origin-Resource-Policy"))
@@ -148,7 +148,7 @@ func Test_Next(t *testing.T) {
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", nil))
 	require.NoError(t, err)
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderReferrerPolicy))
+	require.Empty(t, resp.Header.Get(fiber.HeaderReferrerPolicy))
 }
 
 func Test_ContentSecurityPolicy(t *testing.T) {
@@ -182,7 +182,7 @@ func Test_ContentSecurityPolicyReportOnly(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicyReportOnly))
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentSecurityPolicy))
 }
 
 func Test_PermissionsPolicy(t *testing.T) {
@@ -230,7 +230,7 @@ func Test_HSTSHeaders(t *testing.T) {
 
 	handler(ctx)
 
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
 }
 
 func Test_HSTSExcludeSubdomainsAndPreload(t *testing.T) {

@@ -234,7 +234,7 @@ func TestHasPartialMatchBoundary(t *testing.T) {
 func Test_Utils_GetTrimmedParam(t *testing.T) {
 	t.Parallel()
 	res := GetTrimmedParam("")
-	require.Equal(t, "", res)
+	require.Empty(t, res)
 	res = GetTrimmedParam("*")
 	require.Equal(t, "*", res)
 	res = GetTrimmedParam(":param")

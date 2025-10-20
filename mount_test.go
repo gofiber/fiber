@@ -218,7 +218,7 @@ func Test_App_MountPath(t *testing.T) {
 	require.Equal(t, "/one", one.MountPath())
 	require.Equal(t, "/one/two", two.MountPath())
 	require.Equal(t, "/one/two/three", three.MountPath())
-	require.Equal(t, "", app.MountPath())
+	require.Empty(t, app.MountPath())
 }
 
 func Test_App_ErrorHandler_GroupMount(t *testing.T) {
