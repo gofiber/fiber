@@ -173,9 +173,9 @@ func (r *DefaultReq) Body() []byte {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUnsupportedMediaType):
-			_ = r.c.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck // It is fine to ignore the error
+			_ = r.c.DefaultRes.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		case errors.Is(err, ErrNotImplemented):
-			_ = r.c.SendStatus(StatusNotImplemented) //nolint:errcheck // It is fine to ignore the error
+			_ = r.c.DefaultRes.SendStatus(StatusNotImplemented) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static checkk
 		default:
 			// do nothing
 		}
@@ -808,8 +808,8 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
-		r.c.Status(StatusRequestedRangeNotSatisfiable)
-		r.c.Set(HeaderContentRange, "bytes */"+strconv.Itoa(size))
+		r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
+		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+strconv.Itoa(size)) //nolint:staticcheck // It is fine to ignore the static check
 		return rangeData, ErrRequestedRangeNotSatisfiable
 	}
 

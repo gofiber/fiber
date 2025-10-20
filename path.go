@@ -184,9 +184,9 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	parser.parseRoute(string(patternPretty))
 	defer routerParserPool.Put(parser)
 
+	// '*' wildcard matches any path
 	if (string(patternPretty) == "/" && path == "/") || (string(patternPretty) == "/*") {
 		return true
-		// '*' wildcard matches any path
 	}
 
 	// Does this route have parameters
