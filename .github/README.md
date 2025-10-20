@@ -183,21 +183,7 @@ app.Use(func(req fiber.Req, res fiber.Res, next func()) {
     }
     next()
 })
-
-// Error-handling middleware (4-argument)
-app.Use(func(err error, req fiber.Req, res fiber.Res, next func() error) error {
-    if err != nil {
-        return res.Status(fiber.StatusInternalServerError).SendString(err.Error())
-    }
-    return next()
-})
 ```
-
-When an Express-style error middleware accepts a `next` callback, Fiber defers
-dispatching downstream handlers until you invoke it. Returning `nil` without
-calling `next` swallows the error and stops the chain, while calling `next`
-rewinds the handler index so later middleware observes any response mutations
-you performed before delegating.
 
 > **Note:** Adapted `net/http` handlers continue to operate with the standard-library semantics. They don't get access to `fiber.Ctx` features and incur the overhead of the compatibility layer, so native `fiber.Handler` callbacks still provide the best performance.
 

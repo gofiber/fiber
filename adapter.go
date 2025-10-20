@@ -9,94 +9,6 @@ import (
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
-type expressErrorMode uint8
-
-const (
-	expressErrorModeCollect expressErrorMode = iota + 1
-	expressErrorModeResume
-)
-
-type expressErrorState struct {
-	err          error
-	handlerIndex int
-	mode         expressErrorMode
-}
-
-var expressErrorStateKey = &struct{}{}
-
-func getExpressErrorState(c Ctx) (*expressErrorState, *DefaultCtx) {
-	dc, ok := c.(*DefaultCtx)
-	if !ok {
-		return nil, nil
-	}
-	if value := dc.RequestCtx().UserValue(expressErrorStateKey); value != nil {
-		if state, ok := value.(*expressErrorState); ok {
-			return state, dc
-		}
-	}
-	return nil, dc
-}
-
-func collectExpressError(c Ctx, dc *DefaultCtx, handlerIndex int) error {
-	if dc == nil {
-		return c.Next()
-	}
-	state := &expressErrorState{
-		mode:         expressErrorModeCollect,
-		handlerIndex: handlerIndex,
-	}
-	dc.RequestCtx().SetUserValue(expressErrorStateKey, state)
-	err := dc.Next()
-	dc.RequestCtx().SetUserValue(expressErrorStateKey, nil)
-	return err
-}
-
-func resumeExpressError(c Ctx, dc *DefaultCtx, handlerIndex int, err error) error {
-	if dc == nil {
-		return c.Next()
-	}
-	dc.setIndexHandler(handlerIndex)
-	state := &expressErrorState{
-		mode:         expressErrorModeResume,
-		handlerIndex: handlerIndex,
-		err:          err,
-	}
-	dc.RequestCtx().SetUserValue(expressErrorStateKey, state)
-	nextErr := dc.Next()
-	dc.RequestCtx().SetUserValue(expressErrorStateKey, nil)
-	return nextErr
-}
-
-type expressErrorPrep struct {
-	dc           *DefaultCtx
-	err          error
-	handlerIndex int
-	skip         bool
-}
-
-func prepareExpressError(c Ctx) expressErrorPrep {
-	state, dc := getExpressErrorState(c)
-	prep := expressErrorPrep{dc: dc}
-
-	if dc != nil {
-		prep.handlerIndex = dc.indexHandler
-		if state != nil {
-			if state.mode == expressErrorModeCollect && dc.indexHandler > state.handlerIndex {
-				prep.err = dc.Next()
-				prep.skip = true
-				return prep
-			}
-			if state.mode == expressErrorModeResume && dc.indexHandler > state.handlerIndex {
-				prep.err = state.err
-				return prep
-			}
-		}
-	}
-
-	prep.err = collectExpressError(c, dc, prep.handlerIndex)
-	return prep
-}
-
 // toFiberHandler converts a supported handler type to a Fiber handler.
 func toFiberHandler(handler any) (Handler, bool) {
 	if handler == nil {
@@ -108,13 +20,11 @@ func toFiberHandler(handler any) (Handler, bool) {
 		return adaptFiberHandler(handler)
 	case func(Req, Res) error, func(Req, Res), func(Req, Res, func() error) error, func(Req, Res, func() error), func(Req, Res, func()) error, func(Req, Res, func()): // (3)-(8) Express-style request handlers
 		return adaptExpressHandler(handler)
-	case func(error, Req, Res) error, func(error, Req, Res), func(error, Req, Res, func() error) error, func(error, Req, Res, func() error), func(error, Req, Res, func()) error, func(error, Req, Res, func()): // (9)-(14) Express-style error handlers
-		return adaptExpressErrorHandler(handler)
-	case http.HandlerFunc, http.Handler, func(http.ResponseWriter, *http.Request): // (15)-(17) net/http handlers
+	case http.HandlerFunc, http.Handler, func(http.ResponseWriter, *http.Request): // (9)-(11) net/http handlers
 		return adaptHTTPHandler(handler)
-	case fasthttp.RequestHandler, func(*fasthttp.RequestCtx) error: // (18)-(19) fasthttp handlers
+	case fasthttp.RequestHandler, func(*fasthttp.RequestCtx) error: // (12)-(13) fasthttp handlers
 		return adaptFastHTTPHandler(handler)
-	default: // (20) unsupported handler type
+	default: // (14) unsupported handler type
 		return nil, false
 	}
 }
@@ -207,146 +117,14 @@ func adaptExpressHandler(handler any) (Handler, bool) {
 	}
 }
 
-func adaptExpressErrorHandler(handler any) (Handler, bool) {
-	switch h := handler.(type) {
-	case func(error, Req, Res) error: // (9) Express-style error handler with error return
-		if h == nil {
-			return nil, false
-		}
-		return func(c Ctx) error {
-			prep := prepareExpressError(c)
-			if prep.skip {
-				return prep.err
-			}
-			if prep.err == nil {
-				return nil
-			}
-			return h(prep.err, c.Req(), c.Res())
-		}, true
-	case func(error, Req, Res): // (10) Express-style error handler
-		if h == nil {
-			return nil, false
-		}
-		return func(c Ctx) error {
-			prep := prepareExpressError(c)
-			if prep.skip {
-				return prep.err
-			}
-			if prep.err == nil {
-				return nil
-			}
-			h(prep.err, c.Req(), c.Res())
-			return nil
-		}, true
-	case func(error, Req, Res, func() error) error: // (11) Express-style error handler with error-returning next callback and error return
-		if h == nil {
-			return nil, false
-		}
-		return func(c Ctx) error {
-			prep := prepareExpressError(c)
-			if prep.skip {
-				return prep.err
-			}
-			if prep.err == nil {
-				return nil
-			}
-			nextCalled := false
-			var nextErr error
-			handlerErr := h(prep.err, c.Req(), c.Res(), func() error {
-				nextCalled = true
-				nextErr = resumeExpressError(c, prep.dc, prep.handlerIndex, prep.err)
-				return nextErr
-			})
-			if handlerErr != nil {
-				return handlerErr
-			}
-			if nextCalled {
-				return nextErr
-			}
-			return nil
-		}, true
-	case func(error, Req, Res, func() error): // (12) Express-style error handler with error-returning next callback
-		if h == nil {
-			return nil, false
-		}
-		return func(c Ctx) error {
-			prep := prepareExpressError(c)
-			if prep.skip {
-				return prep.err
-			}
-			if prep.err == nil {
-				return nil
-			}
-			nextCalled := false
-			var nextErr error
-			h(prep.err, c.Req(), c.Res(), func() error {
-				nextCalled = true
-				nextErr = resumeExpressError(c, prep.dc, prep.handlerIndex, prep.err)
-				return nextErr
-			})
-			if nextCalled {
-				return nextErr
-			}
-			return nil
-		}, true
-	case func(error, Req, Res, func()) error: // (13) Express-style error handler with no-arg next callback and error return
-		if h == nil {
-			return nil, false
-		}
-		return func(c Ctx) error {
-			prep := prepareExpressError(c)
-			if prep.skip {
-				return prep.err
-			}
-			if prep.err == nil {
-				return nil
-			}
-			nextCalled := false
-			handlerErr := h(prep.err, c.Req(), c.Res(), func() {
-				nextCalled = true
-			})
-			if handlerErr != nil {
-				return handlerErr
-			}
-			if nextCalled {
-				return resumeExpressError(c, prep.dc, prep.handlerIndex, prep.err)
-			}
-			return nil
-		}, true
-	case func(error, Req, Res, func()): // (14) Express-style error handler with no-arg next callback
-		if h == nil {
-			return nil, false
-		}
-		return func(c Ctx) error {
-			prep := prepareExpressError(c)
-			if prep.skip {
-				return prep.err
-			}
-			if prep.err == nil {
-				return nil
-			}
-			nextCalled := false
-			h(prep.err, c.Req(), c.Res(), func() {
-				nextCalled = true
-			})
-			if nextCalled {
-				return resumeExpressError(c, prep.dc, prep.handlerIndex, prep.err)
-			}
-			return nil
-		}, true
-	default:
-		return nil, false
-	}
-}
-
 func adaptHTTPHandler(handler any) (Handler, bool) {
 	switch h := handler.(type) {
-	case http.HandlerFunc: // (15) net/http HandlerFunc
+	case http.HandlerFunc: // (9) net/http HandlerFunc
 		if h == nil {
 			return nil, false
 		}
 		return wrapHTTPHandler(h), true
-	case http.Handler: // (16) net/http Handler implementation
+	case http.Handler: // (10) net/http Handler implementation
 		if h == nil {
 			return nil, false
 		}
@@ -355,7 +133,7 @@ func adaptHTTPHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return wrapHTTPHandler(h), true
-	case func(http.ResponseWriter, *http.Request): // (17) net/http function handler
+	case func(http.ResponseWriter, *http.Request): // (11) net/http function handler
 		if h == nil {
 			return nil, false
 		}
@@ -367,7 +145,7 @@ func adaptHTTPHandler(handler any) (Handler, bool) {
 
 func adaptFastHTTPHandler(handler any) (Handler, bool) {
 	switch h := handler.(type) {
-	case fasthttp.RequestHandler: // (18) fasthttp handler
+	case fasthttp.RequestHandler: // (12) fasthttp handler
 		if h == nil {
 			return nil, false
 		}
@@ -375,7 +153,7 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 			h(c.RequestCtx())
 			return nil
 		}, true
-	case func(*fasthttp.RequestCtx) error: // (19) fasthttp handler with error return
+	case func(*fasthttp.RequestCtx) error: // (13) fasthttp handler with error return
 		if h == nil {
 			return nil, false
 		}

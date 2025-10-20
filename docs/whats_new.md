@@ -305,14 +305,6 @@ Fiber now ships with a routing adapter (see `adapter.go`) that understands nativ
 
 To align even closer with Express, you can also register handlers that accept the new `fiber.Req` and `fiber.Res` helper interfaces. The adapter understands both two-argument (`func(fiber.Req, fiber.Res)`) and three-argument (`func(fiber.Req, fiber.Res, func() error)`) callbacks, regardless of whether they return an `error`. When you include the optional `next` callback, Fiber wires it to `c.Next()` for you so middleware continues to behave as expected. If your handler returns an `error`, the value returned from the injected `next()` bubbles straight back to the caller. When your handler omits an `error` return, Fiber records the result of `next()` and returns it after your function exits so downstream failures still propagate.
 
-#### Express-style request & middleware handlers (cases 3–8)
-
-Use these when you want to replicate Express' `(req, res, next)` patterns for regular middleware or route handlers. Choose a `next` callback that returns an `error` (`func() error`) when you want to manually inspect or transform downstream failures before returning from your handler. The `func()` variants keep the call-site concise when you only need to advance the chain—Fiber still relays any error from `c.Next()` back to the router.
-
-#### Express-style error middleware (cases 9–14)
-
-These handlers run after a prior handler returns an error, matching Express' four-argument `(err, req, res, next)` middleware. Fiber forwards the current context error as the first argument so you can observe, modify, or swallow it. Returning `nil` without calling `next` stops the chain and signals that the error was handled; returning a non-`nil` error replaces the upstream value. When you call `next`, Fiber rewinds the handler index so later middleware observes any response mutations before the chain continues. Just like the request handlers, pick a `next` signature with an `error` return when you need to intercept downstream failures, or use the no-argument form when you only care about control flow.
-
 | Case | Handler signature | Notes |
 | ---- | ----------------- | ----- |
 | 1 | `fiber.Handler` | Native Fiber handler. |
@@ -323,17 +315,11 @@ These handlers run after a prior handler returns an error, matching Express' fou
 | 6 | `func(fiber.Req, fiber.Res, func() error)` | Express-style middleware with an error-returning `next` callback. |
 | 7 | `func(fiber.Req, fiber.Res, func()) error` | Express-style middleware with a no-argument `next` callback and handler error return. |
 | 8 | `func(fiber.Req, fiber.Res, func())` | Express-style middleware with a no-argument `next` callback. |
-| 9 | `func(error, fiber.Req, fiber.Res) error` | Express-style error middleware that can transform and return errors. |
-| 10 | `func(error, fiber.Req, fiber.Res)` | Express-style error middleware that handles errors without returning one. |
-| 11 | `func(error, fiber.Req, fiber.Res, func() error) error` | Express-style error middleware with error-returning `next` callback and handler error return. |
-| 12 | `func(error, fiber.Req, fiber.Res, func() error)` | Express-style error middleware with error-returning `next` callback. |
-| 13 | `func(error, fiber.Req, fiber.Res, func()) error` | Express-style error middleware with no-argument `next` callback and handler error return. |
-| 14 | `func(error, fiber.Req, fiber.Res, func())` | Express-style error middleware with no-argument `next` callback. |
-| 15 | `http.HandlerFunc` | Standard-library handler function adapted through `fasthttpadaptor`. |
-| 16 | `http.Handler` | Standard-library handler implementation; pointer receivers must be non-nil. |
-| 17 | `func(http.ResponseWriter, *http.Request)` | Standard-library function handlers via `fasthttpadaptor`. |
-| 18 | `fasthttp.RequestHandler` | Direct fasthttp handler without error return. |
-| 19 | `func(*fasthttp.RequestCtx) error` | fasthttp handler that returns an error to Fiber. |
+| 9 | `http.HandlerFunc` | Standard-library handler function adapted through `fasthttpadaptor`. |
+| 10 | `http.Handler` | Standard-library handler implementation; pointer receivers must be non-nil. |
+| 11 | `func(http.ResponseWriter, *http.Request)` | Standard-library function handlers via `fasthttpadaptor`. |
+| 12 | `fasthttp.RequestHandler` | Direct fasthttp handler without error return. |
+| 13 | `func(*fasthttp.RequestCtx) error` | fasthttp handler that returns an error to Fiber. |
 
 ### Route chaining
 
