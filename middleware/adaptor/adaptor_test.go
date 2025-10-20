@@ -24,6 +24,13 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const (
+	expectedRequestURI = "/foo/bar?baz=123"
+	expectedBody       = "body 123 foo bar baz"
+	expectedHost       = "foobar.com"
+	expectedRemoteAddr = "1.2.3.4:6789"
+)
+
 func Test_HTTPHandler(t *testing.T) {
 	t.Parallel()
 
@@ -31,11 +38,7 @@ func Test_HTTPHandler(t *testing.T) {
 	expectedProto := "HTTP/1.1"
 	expectedProtoMajor := 1
 	expectedProtoMinor := 1
-	expectedRequestURI := "/foo/bar?baz=123"
-	expectedBody := "body 123 foo bar baz"
 	expectedContentLength := len(expectedBody)
-	expectedHost := "foobar.com"
-	expectedRemoteAddr := "1.2.3.4:6789"
 	expectedHeader := map[string]string{
 		"Foo-Bar":         "baz",
 		"Abc":             "defg",
@@ -112,6 +115,155 @@ func Test_HTTPHandler(t *testing.T) {
 	require.Equal(t, expectedResponseBody, string(resp.Body()), "Body")
 }
 
+func Test_HTTPHandler_Flush(t *testing.T) {
+	t.Parallel()
+
+	expectedMethod := fiber.MethodPost
+	expectedProto := "HTTP/1.1"
+	expectedProtoMajor := 1
+	expectedProtoMinor := 1
+	expectedContentLength := len(expectedBody)
+	expectedHeader := map[string]string{
+		"Foo-Bar":         "baz",
+		"Abc":             "defg",
+		"XXX-Remote-Addr": "123.43.4543.345",
+	}
+	expectedURL, err := url.ParseRequestURI(expectedRequestURI)
+	require.NoError(t, err)
+
+	type contextKeyType string
+	expectedContextKey := contextKeyType("contextKey")
+	expectedContextValue := "contextValue"
+
+	callsCount := 0
+	nethttpH := func(w http.ResponseWriter, r *http.Request) {
+		callsCount++
+		assert.Equal(t, expectedMethod, r.Method, "Method")
+		assert.Equal(t, expectedProto, r.Proto, "Proto")
+		assert.Equal(t, expectedProtoMajor, r.ProtoMajor, "ProtoMajor")
+		assert.Equal(t, expectedProtoMinor, r.ProtoMinor, "ProtoMinor")
+		assert.Equal(t, expectedRequestURI, r.RequestURI, "RequestURI")
+		assert.Equal(t, expectedContentLength, int(r.ContentLength), "ContentLength")
+		assert.Empty(t, r.TransferEncoding, "TransferEncoding")
+		assert.Equal(t, expectedHost, r.Host, "Host")
+		assert.Equal(t, expectedRemoteAddr, r.RemoteAddr, "RemoteAddr")
+
+		body, readErr := io.ReadAll(r.Body)
+		assert.NoError(t, readErr)
+		assert.Equal(t, expectedBody, string(body), "Body")
+		assert.Equal(t, expectedURL, r.URL, "URL")
+		assert.Equal(t, expectedContextValue, r.Context().Value(expectedContextKey), "Context")
+
+		for k, expectedV := range expectedHeader {
+			v := r.Header.Get(k)
+			assert.Equal(t, expectedV, v, "Header")
+		}
+
+		w.Header().Set("Header1", "value1")
+		w.Header().Set("Header2", "value2")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "request body is ")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatalf("w does not implement http.Flusher")
+		}
+		flusher.Flush()
+		fmt.Fprintf(w, "%q", body)
+	}
+	fiberH := HTTPHandlerFunc(http.HandlerFunc(nethttpH))
+	fiberH = setFiberContextValueMiddleware(fiberH, expectedContextKey, expectedContextValue)
+
+	var fctx fasthttp.RequestCtx
+	var req fasthttp.Request
+
+	req.Header.SetMethod(expectedMethod)
+	req.SetRequestURI(expectedRequestURI)
+	req.Header.SetHost(expectedHost)
+	req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck // not needed
+	for k, v := range expectedHeader {
+		req.Header.Set(k, v)
+	}
+
+	remoteAddr, err := net.ResolveTCPAddr("tcp", expectedRemoteAddr)
+	require.NoError(t, err)
+
+	fctx.Init(&req, remoteAddr, &disableLogger{})
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fctx)
+	defer app.ReleaseCtx(ctx)
+
+	err = fiberH(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, callsCount, "callsCount")
+
+	resp := &fctx.Response
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode(), "StatusCode")
+	require.Equal(t, "value1", string(resp.Header.Peek("Header1")), "Header1")
+	require.Equal(t, "value2", string(resp.Header.Peek("Header2")), "Header2")
+
+	expectedResponseBody := fmt.Sprintf("request body is %q", expectedBody)
+	require.Equal(t, expectedResponseBody, string(resp.Body()), "Body")
+}
+
+func Test_HTTPHandler_Flush_App_Test(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Get("/", HTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatalf("w does not implement http.Flusher")
+		}
+		w.WriteHeader(fiber.StatusOK)
+		fmt.Fprintf(w, "Hello ")
+		flusher.Flush()
+		time.Sleep(500 * time.Millisecond)
+		fmt.Fprintf(w, "World!")
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // not needed
+
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "Hello World!", string(body))
+}
+
+func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Get("/", HTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatalf("w does not implement http.Flusher")
+		}
+		w.WriteHeader(fiber.StatusOK)
+		fmt.Fprintf(w, "Hello ")
+		flusher.Flush()
+		time.Sleep(500 * time.Millisecond)
+		fmt.Fprintf(w, "World!")
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
+		Timeout:       200 * time.Millisecond,
+		FailOnTimeout: false,
+	})
+	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // not needed
+
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	require.Equal(t, "Hello ", string(body))
+}
+
 type contextKey string
 
 func (c contextKey) String() string {
@@ -126,7 +278,6 @@ var (
 func Test_HTTPMiddleware(t *testing.T) {
 	t.Parallel()
 
-	const expectedHost = "foobar.com"
 	tests := []struct {
 		name       string
 		url        string
@@ -235,7 +386,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 	app.Use(HTTPMiddleware(nethttpMW))
 	app.Post("/", func(c fiber.Ctx) error {
 		// RETURNING CURRENT COOKIES TO RESPONSE
-		var cookies []string = strings.Split(c.Get(cookieHeader), "; ")
+		cookies := strings.Split(c.Get(cookieHeader), "; ")
 		for _, cookie := range cookies {
 			c.Set(setCookieHeader, cookie)
 		}
@@ -318,10 +469,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	t.Helper()
 
 	expectedMethod := fiber.MethodPost
-	expectedRequestURI := "/foo/bar?baz=123"
-	expectedBody := "body 123 foo bar baz"
 	expectedContentLength := len(expectedBody)
-	expectedHost := "foobar.com"
 	expectedRemoteAddr := "1.2.3.4:6789"
 	if checkDefaultPort {
 		expectedRemoteAddr = "1.2.3.4:80"

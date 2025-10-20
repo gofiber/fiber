@@ -20,7 +20,6 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	testPreforkMaster = true
 
 	setupIsChild(t)
-	defer teardownIsChild(t)
 
 	app := New()
 
@@ -73,7 +72,6 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	setupIsChild(t)
-	defer teardownIsChild(t)
 
 	rescueStdout := os.Stdout
 	defer func() { os.Stdout = rescueStdout }()
@@ -95,11 +93,5 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 func setupIsChild(t *testing.T) {
 	t.Helper()
 
-	require.NoError(t, os.Setenv(envPreforkChildKey, envPreforkChildVal)) //nolint:tenv // Ignore error
-}
-
-func teardownIsChild(t *testing.T) {
-	t.Helper()
-
-	require.NoError(t, os.Setenv(envPreforkChildKey, "")) //nolint:tenv // Ignore error
+	t.Setenv(envPreforkChildKey, envPreforkChildVal)
 }

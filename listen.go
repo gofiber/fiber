@@ -28,10 +28,10 @@ import (
 
 // Figlet text to show Fiber ASCII art on startup message
 var figletFiberText = `
-    _______ __             
+    _______ __
    / ____(_) /_  ___  _____
   / /_  / / __ \/ _ \/ ___/
- / __/ / / /_/ /  __/ /    
+ / __/ / / /_/ /  __/ /
 /_/   /_/_.___/\___/_/          %s`
 
 const (

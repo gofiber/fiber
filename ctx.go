@@ -338,6 +338,7 @@ func (c *DefaultCtx) IsMiddleware() bool {
 func (c *DefaultCtx) HasBody() bool {
 	hdr := &c.fasthttp.Request.Header
 
+	//nolint:revive // switch is exhaustive for all ContentLength() cases
 	switch cl := hdr.ContentLength(); {
 	case cl > 0:
 		return true

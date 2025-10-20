@@ -146,7 +146,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			if data.ChainErr != nil {
 				if cfg.enableColors {
 					colors := c.App().Config().ColorScheme
-					return output.WriteString(fmt.Sprintf("%s%s%s", colors.Red, data.ChainErr.Error(), colors.Reset))
+					return fmt.Fprintf(output, "%s%s%s", colors.Red, data.ChainErr.Error(), colors.Reset)
 				}
 				return output.WriteString(data.ChainErr.Error())
 			}
@@ -176,20 +176,20 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			case nil:
 				return 0, nil
 			default:
-				return output.WriteString(fmt.Sprintf("%v", v))
+				return fmt.Fprintf(output, "%v", v)
 			}
 		},
 		TagStatus: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			if cfg.enableColors {
 				colors := c.App().Config().ColorScheme
-				return output.WriteString(fmt.Sprintf("%s%3d%s", statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset))
+				return fmt.Fprintf(output, "%s%3d%s", statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset)
 			}
 			return appendInt(output, c.Response().StatusCode())
 		},
 		TagMethod: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			if cfg.enableColors {
 				colors := c.App().Config().ColorScheme
-				return output.WriteString(fmt.Sprintf("%s%s%s", methodColor(c.Method(), colors), c.Method(), colors.Reset))
+				return fmt.Fprintf(output, "%s%s%s", methodColor(c.Method(), colors), c.Method(), colors.Reset)
 			}
 			return output.WriteString(c.Method())
 		},
@@ -198,7 +198,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		},
 		TagLatency: func(output Buffer, _ fiber.Ctx, data *Data, _ string) (int, error) {
 			latency := data.Stop.Sub(data.Start)
-			return output.WriteString(fmt.Sprintf("%13v", latency))
+			return fmt.Fprintf(output, "%13v", latency)
 		},
 		TagTime: func(output Buffer, _ fiber.Ctx, data *Data, _ string) (int, error) {
 			return output.WriteString(data.Timestamp.Load().(string)) //nolint:forcetypeassert,errcheck // We always store a string in here

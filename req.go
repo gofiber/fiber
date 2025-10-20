@@ -173,9 +173,11 @@ func (r *DefaultReq) Body() []byte {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUnsupportedMediaType):
-			_ = r.c.DefaultRes.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck // It is fine to ignore the error
+			_ = r.c.DefaultRes.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		case errors.Is(err, ErrNotImplemented):
-			_ = r.c.DefaultRes.SendStatus(StatusNotImplemented) //nolint:errcheck // It is fine to ignore the error
+			_ = r.c.DefaultRes.SendStatus(StatusNotImplemented) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static checkk
+		default:
+			// do nothing
 		}
 		return []byte(err.Error())
 	}
@@ -397,6 +399,8 @@ iploop:
 				v6 = true
 			case '.':
 				v4 = true
+			default:
+				// do nothing
 			}
 			j++
 		}
@@ -449,6 +453,8 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 					v6 = true
 				case '.':
 					v4 = true
+				default:
+					// do nothing
 				}
 				j++
 			}
@@ -653,6 +659,8 @@ func (r *DefaultReq) Scheme() string {
 
 		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
 			scheme = app.toString(val)
+		default:
+			continue
 		}
 	}
 	return scheme
@@ -801,7 +809,7 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 	}
 	if len(rangeData.Ranges) < 1 {
 		r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
-		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+strconv.Itoa(size))
+		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+strconv.Itoa(size)) //nolint:staticcheck // It is fine to ignore the static check
 		return rangeData, ErrRequestedRangeNotSatisfiable
 	}
 
