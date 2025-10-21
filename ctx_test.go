@@ -5600,7 +5600,7 @@ func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 		require.Equal(t, "/user/fiber", location)
 	})
 
-	t.Run("case sensitive", func(t *testing.T) {
+	t.Run("case-sensitive", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{CaseSensitive: true})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
