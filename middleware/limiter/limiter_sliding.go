@@ -65,7 +65,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 			e.currHits = 0
 
 			// Check how much into the current window it currently is and sets the
-			// expiry based on that, otherwise this would only reset on
+			// expiry based on that; otherwise, this would only reset on
 			// the next request and not show the correct expiry.
 			elapsed := ts - e.exp
 			if elapsed >= expiration {

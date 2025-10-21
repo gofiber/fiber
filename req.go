@@ -412,7 +412,7 @@ iploop:
 		s := utils.TrimRight(headerValue[i:j], ' ')
 
 		if r.c.app.config.EnableIPValidation {
-			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
+			// Skip validation if IP is clearly not IPv4/IPv6; otherwise, validate without allocations
 			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
 				continue iploop
 			}

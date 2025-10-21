@@ -79,7 +79,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 // New creates a new middleware handler.
 // The root argument specifies the root directory from which to serve static assets.
 //
-// Note: Root has to be string or fs.FS, otherwise it will panic.
+// Note: Root has to be string or fs.FS; otherwise, it will panic.
 func New(root string, cfg ...Config) fiber.Handler {
 	config := configDefault(cfg...)
 

@@ -170,7 +170,7 @@ func releaseMiddleware(m *Middleware) {
 //   - c: The Fiber context.
 //
 // Returns:
-//   - *Middleware: The middleware object if found, otherwise nil.
+//   - *Middleware: The middleware object if found; otherwise, nil.
 //
 // Usage:
 //
@@ -267,7 +267,7 @@ func (m *Middleware) Destroy() error {
 // Fresh checks if the session is fresh.
 //
 // Returns:
-//   - bool: True if the session is fresh, otherwise false.
+//   - bool: True if the session is fresh; otherwise, false.
 //
 // Usage:
 //

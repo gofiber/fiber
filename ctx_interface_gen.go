@@ -409,7 +409,7 @@ type Ctx interface {
 	// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 	Type(extension string, charset ...string) Ctx
 	// Vary adds the given header field to the Vary response header.
-	// This will append the header, if not already listed, otherwise leaves it listed in the current location.
+	// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
 	Vary(fields ...string)
 	// Write appends p into response body.
 	Write(p []byte) (int, error)
