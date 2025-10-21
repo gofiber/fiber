@@ -743,7 +743,7 @@ func BenchmarkState_Get(b *testing.B) {
 
 	st := newState()
 	n := 1000
-	// pre-populate the state
+	// prepopulate the state
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, i)
@@ -762,7 +762,7 @@ func BenchmarkState_GetString(b *testing.B) {
 
 	st := newState()
 	n := 1000
-	// pre-populate the state
+	// prepopulate the state
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, strconv.Itoa(i))
@@ -781,7 +781,7 @@ func BenchmarkState_GetInt(b *testing.B) {
 
 	st := newState()
 	n := 1000
-	// pre-populate the state
+	// prepopulate the state
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, i)
@@ -800,7 +800,7 @@ func BenchmarkState_GetBool(b *testing.B) {
 
 	st := newState()
 	n := 1000
-	// pre-populate the state
+	// prepopulate the state
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, i%2 == 0)
@@ -819,7 +819,7 @@ func BenchmarkState_GetFloat64(b *testing.B) {
 
 	st := newState()
 	n := 1000
-	// pre-populate the state
+	// prepopulate the state
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, float64(i))
@@ -838,7 +838,7 @@ func BenchmarkState_MustGet(b *testing.B) {
 
 	st := newState()
 	n := 1000
-	// pre-populate the state
+	// prepopulate the state
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, i)
@@ -857,7 +857,7 @@ func BenchmarkState_GetStateGeneric(b *testing.B) {
 
 	st := newState()
 	n := 1000
-	// pre-populate the state
+	// prepopulate the state
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, i)
@@ -876,7 +876,7 @@ func BenchmarkState_MustGetStateGeneric(b *testing.B) {
 
 	st := newState()
 	n := 1000
-	// pre-populate the state
+	// prepopulate the state
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, i)
@@ -895,7 +895,7 @@ func BenchmarkState_GetStateWithDefault(b *testing.B) {
 
 	st := newState()
 	n := 1000
-	// pre-populate the state
+	// prepopulate the state
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, i)
@@ -914,7 +914,7 @@ func BenchmarkState_Has(b *testing.B) {
 
 	st := newState()
 	n := 1000
-	// pre-populate the state
+	// prepopulate the state
 	for i := range n {
 		st.Set("key"+strconv.Itoa(i), i)
 	}
@@ -981,7 +981,7 @@ func BenchmarkState_GetUint(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with uint values.
+	// Prepopulate the state with uint values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint(i)) //nolint:gosec // This is a test
@@ -998,7 +998,7 @@ func BenchmarkState_GetInt8(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with int8 values (using modulo to stay in range).
+	// Prepopulate the state with int8 values (using modulo to stay in range).
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int8(i%128)) //nolint:gosec // This is a test
@@ -1015,7 +1015,7 @@ func BenchmarkState_GetInt16(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with int16 values.
+	// Prepopulate the state with int16 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int16(i)) //nolint:gosec // This is a test
@@ -1032,7 +1032,7 @@ func BenchmarkState_GetInt32(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with int32 values.
+	// Prepopulate the state with int32 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int32(i)) //nolint:gosec // This is a test
@@ -1049,7 +1049,7 @@ func BenchmarkState_GetInt64(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with int64 values.
+	// Prepopulate the state with int64 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int64(i))
@@ -1066,7 +1066,7 @@ func BenchmarkState_GetUint8(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with uint8 values.
+	// Prepopulate the state with uint8 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint8(i%256)) //nolint:gosec // This is a test
@@ -1083,7 +1083,7 @@ func BenchmarkState_GetUint16(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with uint16 values.
+	// Prepopulate the state with uint16 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint16(i)) //nolint:gosec // This is a test
@@ -1100,7 +1100,7 @@ func BenchmarkState_GetUint32(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with uint32 values.
+	// Prepopulate the state with uint32 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint32(i)) //nolint:gosec // This is a test
@@ -1117,7 +1117,7 @@ func BenchmarkState_GetUint64(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with uint64 values.
+	// Prepopulate the state with uint64 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint64(i)) //nolint:gosec // This is a test
@@ -1134,7 +1134,7 @@ func BenchmarkState_GetUintptr(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with uintptr values.
+	// Prepopulate the state with uintptr values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uintptr(i))
@@ -1151,7 +1151,7 @@ func BenchmarkState_GetFloat32(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with float32 values.
+	// Prepopulate the state with float32 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, float32(i))
@@ -1168,7 +1168,7 @@ func BenchmarkState_GetComplex64(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with complex64 values.
+	// Prepopulate the state with complex64 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		// Create a complex64 value with both real and imaginary parts.
@@ -1186,7 +1186,7 @@ func BenchmarkState_GetComplex128(b *testing.B) {
 	b.ReportAllocs()
 	st := newState()
 	n := 1000
-	// Pre-populate the state with complex128 values.
+	// Prepopulate the state with complex128 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
 		// Create a complex128 value with both real and imaginary parts.
