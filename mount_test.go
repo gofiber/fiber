@@ -167,7 +167,7 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 			return c.SendString("ok")
 		})
 		app.Use(func(c Ctx) error {
-			// is overwritten in case the positioning is not correct
+			// is overwritten when the positioning is not correct
 			c.Locals("world", "hello")
 			return c.Next()
 		})
