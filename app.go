@@ -637,7 +637,7 @@ func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *Ap
 }
 
 // GetString returns s unchanged when Immutable is off or s is read-only (rodata).
-// Otherwise it returns a detached copy (strings.Clone).
+// Otherwise, it returns a detached copy (strings.Clone).
 func (app *App) GetString(s string) string {
 	if !app.config.Immutable || len(s) == 0 {
 		return s
@@ -649,7 +649,7 @@ func (app *App) GetString(s string) string {
 }
 
 // GetBytes returns b unchanged when Immutable is off or b is read-only (rodata).
-// Otherwise it returns a detached copy.
+// Otherwise, it returns a detached copy.
 func (app *App) GetBytes(b []byte) []byte {
 	if !app.config.Immutable || len(b) == 0 {
 		return b
@@ -1263,7 +1263,7 @@ func (app *App) init() *App {
 // ErrorHandler is the application's method in charge of finding the
 // appropriate handler for the given request. It searches any mounted
 // sub fibers by their prefixes and if it finds a match, it uses that
-// error handler. Otherwise it uses the configured error handler for
+// error handler. Otherwise, it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	var (

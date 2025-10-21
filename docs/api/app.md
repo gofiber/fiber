@@ -11,7 +11,7 @@ import Reference from '@site/src/components/reference';
 
 ### GetString
 
-Returns `s` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `s` resides in read-only memory. Otherwise it returns a detached copy using `strings.Clone`.
+Returns `s` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `s` resides in read-only memory. Otherwise, it returns a detached copy using `strings.Clone`.
 
 ```go title="Signature"
 func (app *App) GetString(s string) string
@@ -19,7 +19,7 @@ func (app *App) GetString(s string) string
 
 ### GetBytes
 
-Returns `b` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `b` resides in read-only memory. Otherwise it returns a detached copy.
+Returns `b` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `b` resides in read-only memory. Otherwise, it returns a detached copy.
 
 ```go title="Signature"
 func (app *App) GetBytes(b []byte) []byte
