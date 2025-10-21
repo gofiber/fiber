@@ -1097,7 +1097,7 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 	// Attempt that includes a null-byte on Windows
 	assertTraversalBlocked("/index.html%00.txt")
 
-	// Check behavior on an obviously non-existent and suspicious file
+	// Check behavior on an obviously nonexistent and suspicious file
 	assertTraversalBlocked("/\\this\\path\\does\\not\\exist\\..")
 
 	// Attempts involving relative traversal and current directory reference
