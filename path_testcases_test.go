@@ -350,7 +350,7 @@ func init() {
 					{url: "/partialCheck/foo/bar/test", params: []string{"test"}, match: true, partialCheck: true},
 					{url: "/partialCheck/foo/bar/test/test2", params: []string{"test"}, match: true, partialCheck: true},
 					{url: "/partialCheck/foo/bar", params: nil, match: false, partialCheck: true},
-					{url: "/partiaFoo", params: nil, match: false, partialCheck: true},
+					{url: "/partialFoo", params: nil, match: false, partialCheck: true},
 				},
 			},
 			{
