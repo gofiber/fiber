@@ -151,7 +151,7 @@ func (b *Bind) RespHeader(out any) error {
 }
 
 // Cookie binds the request cookie strings into the struct, map[string]string and map[string][]string.
-// NOTE: If your cookie is like key=val1,val2; they'll be binded as a slice if your map is map[string][]string. Else, it'll use last element of cookie.
+// NOTE: If your cookie is like key=val1,val2; they'll be bound as a slice if your map is map[string][]string. Else, it'll use last element of cookie.
 func (b *Bind) Cookie(out any) error {
 	bind := binder.GetFromThePool[*binder.CookieBinding](&binder.CookieBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
