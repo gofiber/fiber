@@ -263,8 +263,8 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 	for i := range segLen {
 		// check how often the compare part is in the following const parts
 		if segs[i].IsParam {
-			// check if parameter segments are directly after each other and if one of them is greedy
-			// in case the next parameter or the current parameter is not a wildcard it's not greedy, we only want one character
+			// check if parameter segments are directly after each other;
+			// when neither this parameter nor the next parameter are greedy, we only want one character
 			if segLen > i+1 && !segs[i].IsGreedy && segs[i+1].IsParam && !segs[i+1].IsGreedy {
 				segs[i].Length = 1
 			}
