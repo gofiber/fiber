@@ -1073,7 +1073,7 @@ func Test_CacheStorage_CustomHeaders(t *testing.T) {
 }
 
 // Because time points are updated once every X milliseconds, entries in tests can often have
-// equal expiration times and thus be in an random order. This closure hands out increasing
+// equal expiration times and thus be in a random order. This closure hands out increasing
 // time intervals to maintain strong ascending order of expiration
 func stableAscendingExpiration() func(c1 fiber.Ctx, c2 *Config) time.Duration {
 	i := 0

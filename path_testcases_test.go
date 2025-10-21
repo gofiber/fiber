@@ -248,7 +248,7 @@ func init() {
 					{url: "/fooba", params: nil, match: false},
 				},
 			},
-			// chars in front of an parameter
+			// chars in front of a parameter
 			{
 				pattern: "/name::name",
 				testCases: []routeTestCase{
