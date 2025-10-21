@@ -590,7 +590,7 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 			continue
 		}
 		if route.Params[i] == key || (!app.config.CaseSensitive && utils.EqualFold(route.Params[i], key)) {
-			// in case values are not here
+			// if there is no value for the key
 			if len(values) <= i || len(values[i]) == 0 {
 				break
 			}
