@@ -222,7 +222,7 @@ func Test_Utils_ParamsMatch(t *testing.T) {
 			match:       true,
 		},
 		{
-			description: "case insensitive",
+			description: "case-insensitive",
 			accept:      headerParams{"ParaM": []byte("FoO")},
 			offer:       ";pAram=foO",
 			match:       true,
