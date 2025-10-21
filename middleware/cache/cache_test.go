@@ -533,7 +533,7 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 				a, err := strconv.Atoi(string(idFromServ))
 				require.NoError(t, err)
 
-				// SomeTimes,The id is not equal with a
+				// Sometimes, the id is not equal to a
 				require.Equal(t, id, a)
 			}(i)
 		}
