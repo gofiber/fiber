@@ -1763,7 +1763,7 @@ func Test_CSRF_Chain_Extractor(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Chain extractor: try header first, fallback to form
+	// Chain extractor: try header first, fall back to form
 	chainExtractor := extractors.Chain(
 		extractors.FromHeader("X-Csrf-Token"),
 		extractors.FromForm("_csrf"),
