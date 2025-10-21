@@ -211,7 +211,7 @@ func TestAdapter_MixedHandlerIntegration(t *testing.T) {
 		return c.Next()
 	})
 
-	app.Use(func(req Req, res Res, next func() error) error {
+	app.Use(func(_ Req, res Res, next func() error) error {
 		res.Set("X-Express", "middleware")
 		return next()
 	})
@@ -221,15 +221,16 @@ func TestAdapter_MixedHandlerIntegration(t *testing.T) {
 		return c.SendString("fiber handler")
 	})
 
-	app.Post("/express", func(req Req, res Res) error {
+	app.Post("/express", func(_ Req, res Res) error {
 		res.Set("X-Route", "express")
 		return res.SendString("express handler")
 	})
 
-	app.Put("/http", func(w http.ResponseWriter, r *http.Request) {
+	var httpHandlerWriteErr error
+	app.Put("/http", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-Route", "http")
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte("http handler"))
+		_, httpHandlerWriteErr = w.Write([]byte("http handler"))
 	})
 
 	app.Delete("/fasthttp", func(ctx *fasthttp.RequestCtx) error {
@@ -246,7 +247,7 @@ func TestAdapter_MixedHandlerIntegration(t *testing.T) {
 			resp, err := app.Test(req)
 			require.NoError(t, err)
 			t.Cleanup(func() {
-				resp.Body.Close()
+				require.NoError(t, resp.Body.Close())
 			})
 
 			body, err := io.ReadAll(resp.Body)
@@ -271,6 +272,8 @@ func TestAdapter_MixedHandlerIntegration(t *testing.T) {
 	run("net/http", func() *http.Request {
 		return httptest.NewRequest(http.MethodPut, "/http", http.NoBody)
 	}, http.StatusAccepted, "http handler", "http")
+
+	require.NoError(t, httpHandlerWriteErr)
 
 	run("fasthttp", func() *http.Request {
 		return httptest.NewRequest(http.MethodDelete, "/fasthttp", http.NoBody)
