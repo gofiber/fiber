@@ -717,7 +717,7 @@ func (r *DefaultReq) Queries() map[string]string {
 // It takes the following parameters:
 // - c: The context object representing the current request.
 // - key: The name of the query parameter.
-// - defaultValue: (Optional) The default value to return in case the query parameter is not found or cannot be parsed.
+// - defaultValue: (Optional) The default value to return if the query parameter is not found or cannot be parsed.
 // The function performs the following steps:
 //  1. Type-asserts the context object to *DefaultCtx.
 //  2. Retrieves the raw query parameter value from the request's URI.
