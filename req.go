@@ -560,7 +560,7 @@ func (r *DefaultReq) Method(override ...string) string {
 }
 
 // MultipartForm parse form entries from binary.
-// This returns a map[string][]string, so given a key the value will be a string slice.
+// This returns a map[string][]string, so given a key, the value will be a string slice.
 func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 	return r.c.fasthttp.MultipartForm()
 }

@@ -254,7 +254,7 @@ type Ctx interface {
 	// Otherwise, it updates the context's method and returns the overridden method as a string.
 	Method(override ...string) string
 	// MultipartForm parse form entries from binary.
-	// This returns a map[string][]string, so given a key the value will be a string slice.
+	// This returns a map[string][]string, so given a key, the value will be a string slice.
 	MultipartForm() (*multipart.Form, error)
 	// Params is used to get the route parameters.
 	// Defaults to empty string "" if the param doesn't exist.

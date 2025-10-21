@@ -121,7 +121,7 @@ type Req interface {
 	// Otherwise, it updates the context's method and returns the overridden method as a string.
 	Method(override ...string) string
 	// MultipartForm parse form entries from binary.
-	// This returns a map[string][]string, so given a key the value will be a string slice.
+	// This returns a map[string][]string, so given a key, the value will be a string slice.
 	MultipartForm() (*multipart.Form, error)
 	// OriginalURL contains the original request URL.
 	// Returned value is only valid within the handler. Do not store any references.
