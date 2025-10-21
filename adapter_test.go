@@ -3,6 +3,7 @@ package fiber
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -200,6 +201,80 @@ func TestToFiberHandler_ExpressNextNoArgWithErrorReturn(t *testing.T) {
 	err := converted(ctx)
 	require.ErrorIs(t, err, nextErr)
 	require.True(t, nextCalled)
+}
+
+func TestAdapter_MixedHandlerIntegration(t *testing.T) {
+	app := New()
+
+	app.Use(func(c Ctx) error {
+		c.Set("X-Middleware", "fiber")
+		return c.Next()
+	})
+
+	app.Use(func(req Req, res Res, next func() error) error {
+		res.Set("X-Express", "middleware")
+		return next()
+	})
+
+	app.Get("/fiber", func(c Ctx) error {
+		c.Set("X-Route", "fiber")
+		return c.SendString("fiber handler")
+	})
+
+	app.Post("/express", func(req Req, res Res) error {
+		res.Set("X-Route", "express")
+		return res.SendString("express handler")
+	})
+
+	app.Put("/http", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Route", "http")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("http handler"))
+	})
+
+	app.Delete("/fasthttp", func(ctx *fasthttp.RequestCtx) error {
+		ctx.Response.Header.Set("X-Route", "fasthttp")
+		ctx.SetStatusCode(http.StatusCreated)
+		ctx.SetBodyString("fasthttp handler")
+		return nil
+	})
+
+	run := func(name string, buildRequest func() *http.Request, expectStatus int, expectBody, expectRoute string) {
+		t.Run(name, func(t *testing.T) {
+			req := buildRequest()
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				resp.Body.Close()
+			})
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			require.Equal(t, expectStatus, resp.StatusCode)
+			require.Equal(t, expectBody, string(body))
+			require.Equal(t, "fiber", resp.Header.Get("X-Middleware"))
+			require.Equal(t, "middleware", resp.Header.Get("X-Express"))
+			require.Equal(t, expectRoute, resp.Header.Get("X-Route"))
+		})
+	}
+
+	run("fiber", func() *http.Request {
+		return httptest.NewRequest(http.MethodGet, "/fiber", http.NoBody)
+	}, http.StatusOK, "fiber handler", "fiber")
+
+	run("express", func() *http.Request {
+		return httptest.NewRequest(http.MethodPost, "/express", http.NoBody)
+	}, http.StatusOK, "express handler", "express")
+
+	run("net/http", func() *http.Request {
+		return httptest.NewRequest(http.MethodPut, "/http", http.NoBody)
+	}, http.StatusAccepted, "http handler", "http")
+
+	run("fasthttp", func() *http.Request {
+		return httptest.NewRequest(http.MethodDelete, "/fasthttp", http.NoBody)
+	}, http.StatusCreated, "fasthttp handler", "fasthttp")
 }
 
 func TestToFiberHandler_ExpressNextNoArgPropagatesError(t *testing.T) {
