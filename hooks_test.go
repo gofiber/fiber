@@ -178,7 +178,7 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 	})
 }
 
-func Test_Hook_OnPrehutdown(t *testing.T) {
+func Test_Hook_OnPreShutdown(t *testing.T) {
 	t.Parallel()
 	app := New()
 
