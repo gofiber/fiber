@@ -2149,7 +2149,7 @@ func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 
 			app := fiber.New()
 			requestCtx := &fasthttp.RequestCtx{}
-			tc.setupCtx(requestCtx) // Setup the context properly
+			tc.setupCtx(requestCtx) // Set up the context properly
 
 			ctx := app.AcquireCtx(requestCtx)
 			defer app.ReleaseCtx(ctx)
