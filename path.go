@@ -259,7 +259,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 		}
 	}
 
-	// loop from begin to end
+	// loop from beginning to end
 	for i := range segLen {
 		// check how often the compare part is in the following const parts
 		if segs[i].IsParam {
