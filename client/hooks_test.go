@@ -326,7 +326,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		req := AcquireRequest().
 			SetFormDataWithMap(map[string]string{
 				"foo":  "bar",
-				"ball": "cricle and square",
+				"ball": "circle and square",
 			})
 
 		err := parserRequestHeader(client, req)
@@ -531,12 +531,12 @@ func Test_Parser_Request_Body(t *testing.T) {
 		client := New()
 		req := AcquireRequest().
 			SetFormDataWithMap(map[string]string{
-				"ball": "cricle and square",
+				"ball": "circle and square",
 			})
 
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
-		require.Equal(t, "ball=cricle+and+square", string(req.RawRequest.Body()))
+		require.Equal(t, "ball=circle+and+square", string(req.RawRequest.Body()))
 	})
 
 	t.Run("form data body error", func(t *testing.T) {
