@@ -6,7 +6,7 @@
   "unknownWords": "report-flagged",
   "import": [
     "@cspell/dict-en_us/cspell-ext.json",
-    "cspell/dict-en-gb/cspell-ext.json",
+    "@cspell/dict-en-gb/cspell-ext.json",
     "@cspell/dict-software-terms/cspell-ext.json",
     "@cspell/dict-golang/cspell-ext.json",
     "@cspell/dict-fullstack/cspell-ext.json",
