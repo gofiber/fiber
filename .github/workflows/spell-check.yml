@@ -33,6 +33,7 @@ jobs:
         run: |
           npm install --no-save \
             @cspell/dict-en_us \
+            @cspell/dict-en-gb \
             @cspell/dict-software-terms \
             @cspell/dict-golang \
             @cspell/dict-fullstack \
