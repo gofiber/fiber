@@ -10,7 +10,6 @@ on:
   push:
     branches:
       - main
-      - master
 
 permissions:
   contents: read
@@ -55,6 +54,6 @@ jobs:
         uses: streetsidesoftware/cspell-action@v7
         with:
           config: ./.cspell.json
-          incremental_files_only: 'true'
-          check_dot_files: 'explicit'
-          report: 'all'
+          incremental_files_only: false
+          check_dot_files: explicit
+          report: all
