@@ -1,0 +1,118 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "version": "0.2",
+  "language": "en",
+  "allowCompoundWords": true,
+  "useGitignore": true,
+  "import": [
+    "@cspell/dict-en_us/cspell-ext.json",
+    "@cspell/dict-software-terms/cspell-ext.json",
+    "@cspell/dict-golang/cspell-ext.json",
+    "@cspell/dict-fullstack/cspell-ext.json",
+    "@cspell/dict-docker/cspell-ext.json",
+    "@cspell/dict-k8s/cspell-ext.json",
+    "@cspell/dict-node/cspell-ext.json",
+    "@cspell/dict-npm/cspell-ext.json",
+    "@cspell/dict-typescript/cspell-ext.json",
+    "@cspell/dict-html/cspell-ext.json",
+    "@cspell/dict-css/cspell-ext.json",
+    "@cspell/dict-shell/cspell-ext.json",
+    "@cspell/dict-python/cspell-ext.json",
+    "@cspell/dict-redis/cspell-ext.json",
+    "@cspell/dict-sql/cspell-ext.json",
+    "@cspell/dict-filetypes/cspell-ext.json",
+    "@cspell/dict-companies/cspell-ext.json",
+    "@cspell/dict-markdown/cspell-ext.json",
+    "@cspell/dict-en-common-misspellings/cspell-ext.json"
+  ],
+  "dictionaries": [
+    "en_us",
+    "softwareTerms",
+    "fullstack",
+    "docker",
+    "k8s",
+    "node",
+    "npm",
+    "typescript",
+    "html",
+    "css",
+    "shell",
+    "python",
+    "redis",
+    "sql",
+    "filetypes",
+    "companies",
+    "markdown",
+    "en-common-misspellings"
+  ],
+  "ignorePaths": [
+    ".git",
+    "node_modules",
+    "vendor",
+    "addon/**/node_modules",
+    "docs/.vitepress/cache",
+    "**/*.svg",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.jpeg",
+    "**/*.gif",
+    "**/*.ico",
+    "**/*.lock"
+  ],
+  "words": [
+    "prefork",
+    "preforks",
+    "msgp",
+    "ctx"
+  ],
+  "overrides": [
+    {
+      "filename": ["**/*.go"],
+      "dictionaries": [
+        "en_us",
+        "softwareTerms",
+        "golang",
+        "fullstack",
+        "en-common-misspellings"
+      ]
+    },
+    {
+      "filename": ["**/*.md"],
+      "dictionaries": [
+        "en_us",
+        "softwareTerms",
+        "fullstack",
+        "docker",
+        "k8s",
+        "node",
+        "npm",
+        "typescript",
+        "html",
+        "css",
+        "shell",
+        "python",
+        "redis",
+        "sql",
+        "markdown",
+        "companies",
+        "filetypes",
+        "en-common-misspellings"
+      ]
+    },
+    {
+      "filename": ["**/*.yml", "**/*.yaml", "**/*.json"],
+      "dictionaries": [
+        "en_us",
+        "softwareTerms",
+        "k8s",
+        "docker",
+        "node",
+        "npm",
+        "shell",
+        "filetypes",
+        "companies",
+        "en-common-misspellings"
+      ]
+    }
+  ]
+}

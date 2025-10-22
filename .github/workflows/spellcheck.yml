@@ -1,0 +1,61 @@
+name: Spell check
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  cspell:
+    name: Spell check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install cspell dictionaries
+        run: |
+          npm install --no-save \
+            @cspell/dict-en_us \
+            @cspell/dict-software-terms \
+            @cspell/dict-golang \
+            @cspell/dict-fullstack \
+            @cspell/dict-docker \
+            @cspell/dict-k8s \
+            @cspell/dict-node \
+            @cspell/dict-npm \
+            @cspell/dict-typescript \
+            @cspell/dict-html \
+            @cspell/dict-css \
+            @cspell/dict-shell \
+            @cspell/dict-python \
+            @cspell/dict-redis \
+            @cspell/dict-sql \
+            @cspell/dict-filetypes \
+            @cspell/dict-companies \
+            @cspell/dict-markdown \
+            @cspell/dict-en-common-misspellings
+
+      - name: Run cspell
+        uses: streetsidesoftware/cspell-action@v7
+        with:
+          config: ./.cspell.json
+          incremental_files_only: 'true'
+          check_dot_files: 'explicit'
+          report: 'all'
