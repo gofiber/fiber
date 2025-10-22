@@ -25,7 +25,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "20.x"
 
       - name: Install cspell dictionaries
         run: |
@@ -53,7 +53,7 @@ jobs:
       - name: Run cspell
         uses: streetsidesoftware/cspell-action@v7
         with:
-          config: ./.cspell.json
           incremental_files_only: false
           check_dot_files: explicit
+          verbose: true
           report: all
