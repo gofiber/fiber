@@ -214,19 +214,19 @@ type Ctx interface {
 	// while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
 	// Example: URL: https://example.com:8080 -> Host: example.com:8080
 	// Make copies or use the Immutable setting instead.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	Host() string
 	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Example: URL: https://example.com:8080 -> Hostname: example.com
 	// Make copies or use the Immutable setting instead.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	Hostname() string
 	// Port returns the remote port of the request.
 	Port() string
 	// IP returns the remote IP address of the request.
 	// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	IP() string
 	// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
 	// When IP validation is enabled, any invalid IPs will be omitted.
@@ -254,7 +254,7 @@ type Ctx interface {
 	// Otherwise, it updates the context's method and returns the overridden method as a string.
 	Method(override ...string) string
 	// MultipartForm parse form entries from binary.
-	// This returns a map[string][]string, so given a key the value will be a string slice.
+	// This returns a map[string][]string, so given a key, the value will be a string slice.
 	MultipartForm() (*multipart.Form, error)
 	// Params is used to get the route parameters.
 	// Defaults to empty string "" if the param doesn't exist.
@@ -263,7 +263,7 @@ type Ctx interface {
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Params(key string, defaultValue ...string) string
 	// Scheme contains the request protocol string: http or https for TLS requests.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	Scheme() string
 	// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 	Protocol() string
@@ -409,7 +409,7 @@ type Ctx interface {
 	// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 	Type(extension string, charset ...string) Ctx
 	// Vary adds the given header field to the Vary response header.
-	// This will append the header, if not already listed, otherwise leaves it listed in the current location.
+	// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
 	Vary(fields ...string)
 	// Write appends p into response body.
 	Write(p []byte) (int, error)

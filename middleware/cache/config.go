@@ -50,7 +50,7 @@ type Config struct {
 	// Default: []string{fiber.MethodGet, fiber.MethodHead}
 	Methods []string
 
-	// Expiration is the time that an cached response will live
+	// Expiration is the time that a cached response will live
 	//
 	// Optional. Default: 5 * time.Minute
 	Expiration time.Duration

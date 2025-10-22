@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 // Package fiber is an Express inspired web framework built on top of Fasthttp,
@@ -637,7 +637,7 @@ func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *Ap
 }
 
 // GetString returns s unchanged when Immutable is off or s is read-only (rodata).
-// Otherwise it returns a detached copy (strings.Clone).
+// Otherwise, it returns a detached copy (strings.Clone).
 func (app *App) GetString(s string) string {
 	if !app.config.Immutable || len(s) == 0 {
 		return s
@@ -649,7 +649,7 @@ func (app *App) GetString(s string) string {
 }
 
 // GetBytes returns b unchanged when Immutable is off or b is read-only (rodata).
-// Otherwise it returns a detached copy.
+// Otherwise, it returns a detached copy.
 func (app *App) GetBytes(b []byte) []byte {
 	if !app.config.Immutable || len(b) == 0 {
 		return b
@@ -1015,7 +1015,7 @@ func (app *App) HandlersCount() uint32 {
 //
 // Make sure the program doesn't exit and waits instead for Shutdown to return.
 //
-// Important: app.Listen() must be called in a separate goroutine, otherwise shutdown hooks will not work
+// Important: app.Listen() must be called in a separate goroutine; otherwise, shutdown hooks will not work
 // as Listen() is a blocking operation. Example:
 //
 //	go app.Listen(":3000")
@@ -1263,7 +1263,7 @@ func (app *App) init() *App {
 // ErrorHandler is the application's method in charge of finding the
 // appropriate handler for the given request. It searches any mounted
 // sub fibers by their prefixes and if it finds a match, it uses that
-// error handler. Otherwise it uses the configured error handler for
+// error handler. Otherwise, it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	var (

@@ -947,7 +947,7 @@ func shouldIncludeCharset(mimeType string) bool {
 }
 
 // Vary adds the given header field to the Vary response header.
-// This will append the header, if not already listed, otherwise leaves it listed in the current location.
+// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
 func (r *DefaultRes) Vary(fields ...string) {
 	r.Append(HeaderVary, fields...)
 }

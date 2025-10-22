@@ -317,7 +317,7 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 // while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
 // Example: URL: https://example.com:8080 -> Host: example.com:8080
 // Make copies or use the Immutable setting instead.
-// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); len(host) > 0 {
@@ -335,7 +335,7 @@ func (r *DefaultReq) Host() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Example: URL: https://example.com:8080 -> Hostname: example.com
 // Make copies or use the Immutable setting instead.
-// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) Hostname() string {
 	addr, _ := parseAddr(r.Host())
 
@@ -353,7 +353,7 @@ func (r *DefaultReq) Port() string {
 
 // IP returns the remote IP address of the request.
 // If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
-// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) IP() string {
 	app := r.c.app
 	if r.IsProxyTrusted() && len(app.config.ProxyHeader) > 0 {
@@ -412,7 +412,7 @@ iploop:
 		s := utils.TrimRight(headerValue[i:j], ' ')
 
 		if r.c.app.config.EnableIPValidation {
-			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
+			// Skip validation if IP is clearly not IPv4/IPv6; otherwise, validate without allocations
 			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
 				continue iploop
 			}
@@ -560,7 +560,7 @@ func (r *DefaultReq) Method(override ...string) string {
 }
 
 // MultipartForm parse form entries from binary.
-// This returns a map[string][]string, so given a key the value will be a string slice.
+// This returns a map[string][]string, so given a key, the value will be a string slice.
 func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 	return r.c.fasthttp.MultipartForm()
 }
@@ -590,7 +590,7 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 			continue
 		}
 		if route.Params[i] == key || (!app.config.CaseSensitive && utils.EqualFold(route.Params[i], key)) {
-			// in case values are not here
+			// if there is no value for the key
 			if len(values) <= i || len(values[i]) == 0 {
 				break
 			}
@@ -625,7 +625,7 @@ func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
 }
 
 // Scheme contains the request protocol string: http or https for TLS requests.
-// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) Scheme() string {
 	ctx := r.c.fasthttp
 	if ctx.IsTLS() {
@@ -717,7 +717,7 @@ func (r *DefaultReq) Queries() map[string]string {
 // It takes the following parameters:
 // - c: The context object representing the current request.
 // - key: The name of the query parameter.
-// - defaultValue: (Optional) The default value to return in case the query parameter is not found or cannot be parsed.
+// - defaultValue: (Optional) The default value to return if the query parameter is not found or cannot be parsed.
 // The function performs the following steps:
 //  1. Type-asserts the context object to *DefaultCtx.
 //  2. Retrieves the raw query parameter value from the request's URI.

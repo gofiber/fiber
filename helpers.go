@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -308,7 +308,7 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 }
 
 // paramsMatch returns whether offerParams contains all parameters present in specParams.
-// Matching is case insensitive, and surrounding quotes are stripped.
+// Matching is case-insensitive, and surrounding quotes are stripped.
 // To align with the behavior of res.format from Express, the order of parameters is
 // ignored, and if a parameter is specified twice in the incoming Accept, the last
 // provided value is given precedence.

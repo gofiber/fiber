@@ -265,7 +265,7 @@ Reusing Context objects significantly reduces garbage collection overhead, ensur
 
 ## Preforking Mechanism
 
-To take full advantage of multi‑core systems, Fiber offers a prefork mode. In this mode, the master process spawns several child processes that listen on the same port using OS features such as SO_REUSEPORT (or a fallback to SO_REUSEADDR).
+To take full advantage of multi‑core systems, Fiber offers a prefork mode. In this mode, the master process spawns several child processes that listen on the same port using OS features such as SO_REUSEPORT (or fall back to SO_REUSEADDR).
 
 ```mermaid
 flowchart LR

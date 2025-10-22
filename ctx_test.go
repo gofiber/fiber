@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -3307,7 +3307,7 @@ func Test_Ctx_Path(t *testing.T) {
 	app.Get("/test/:user", func(c Ctx) error {
 		require.Equal(t, "/Test/John", c.Path())
 		require.Equal(t, "/Test/John", string(c.Request().URI().Path()))
-		// not strict && case insensitive
+		// not strict && case-insensitive
 		require.Equal(t, "/ABC/", c.Path("/ABC/"))
 		require.Equal(t, "/ABC/", string(c.Request().URI().Path()))
 		require.Equal(t, "/test/john/", c.Path("/test/john/"))
@@ -5583,7 +5583,7 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 	t.Parallel()
 
-	t.Run("case insensitive", func(t *testing.T) {
+	t.Run("case-insensitive", func(t *testing.T) {
 		t.Parallel()
 		app := New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -5600,7 +5600,7 @@ func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 		require.Equal(t, "/user/fiber", location)
 	})
 
-	t.Run("case sensitive", func(t *testing.T) {
+	t.Run("case-sensitive", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{CaseSensitive: true})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})

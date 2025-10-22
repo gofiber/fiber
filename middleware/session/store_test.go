@@ -176,9 +176,9 @@ func Test_Store_GetByID(t *testing.T) {
 		require.Equal(t, ErrEmptySessionID, err)
 	})
 
-	t.Run("non-existent session ID", func(t *testing.T) {
+	t.Run("nonexistent session ID", func(t *testing.T) {
 		t.Parallel()
-		sess, err := store.GetByID(context.Background(), "non-existent-session-id")
+		sess, err := store.GetByID(context.Background(), "nonexistent-session-id")
 		require.Error(t, err)
 		require.Nil(t, sess)
 		require.Equal(t, ErrSessionIDNotFoundInStore, err)

@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -167,7 +167,7 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 			return c.SendString("ok")
 		})
 		app.Use(func(c Ctx) error {
-			// is overwritten in case the positioning is not correct
+			// is overwritten when the positioning is not correct
 			c.Locals("world", "hello")
 			return c.Next()
 		})

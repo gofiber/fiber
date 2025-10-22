@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -530,7 +530,7 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
 		ErrorHandler: func(c Ctx, _ error) error {
-			return c.Status(200).SendString("hi, i'm an custom error")
+			return c.Status(200).SendString("hi, i'm a custom error")
 		},
 	})
 
@@ -544,7 +544,7 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "hi, i'm an custom error", string(body))
+	require.Equal(t, "hi, i'm a custom error", string(body))
 }
 
 func Test_App_ErrorHandler_HandlerStack(t *testing.T) {

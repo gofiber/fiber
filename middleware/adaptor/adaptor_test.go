@@ -2,6 +2,7 @@
 package adaptor
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -654,6 +655,8 @@ func (w *netHTTPResponseWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func (w *netHTTPResponseWriter) Flush() {}
+
 func Test_ConvertRequest(t *testing.T) {
 	t.Parallel()
 
@@ -844,6 +847,81 @@ func Test_FiberHandler_WithErrorInHandler(t *testing.T) {
 
 	// Should return the error status
 	require.Equal(t, fiber.StatusTeapot, w.StatusCode())
+}
+
+func Test_FiberHandler_WithSendStreamWriter(t *testing.T) {
+	t.Parallel()
+
+	// Test streaming functionality in FiberHandler using SendStreamWriter.
+	fiberH := func(c fiber.Ctx) error {
+		c.Status(fiber.StatusTeapot)
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			w.WriteString("Hello ")            //nolint:errcheck // not needed
+			w.Flush()                          //nolint:errcheck // not needed
+			time.Sleep(200 * time.Millisecond) // Simulate a long operation
+			w.WriteString("World!")            //nolint:errcheck // not needed
+		})
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	r := &http.Request{
+		Method:     http.MethodGet,
+		RequestURI: "/test",
+		Header:     make(http.Header),
+		Body:       http.NoBody,
+	}
+
+	w := &netHTTPResponseWriter{}
+	handlerFunc.ServeHTTP(w, r)
+
+	// Should return the error status
+	require.Equal(t, fiber.StatusTeapot, w.StatusCode())
+	require.Equal(t, "Hello World!", string(w.body))
+}
+
+func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
+	t.Parallel()
+
+	// Test streaming functionality to ensure data is sent even during a timeout.
+	fiberH := func(c fiber.Ctx) error {
+		c.Status(fiber.StatusTeapot)
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			w.WriteString("Hello ")            //nolint:errcheck // not needed
+			w.Flush()                          //nolint:errcheck // not needed
+			time.Sleep(500 * time.Millisecond) // Simulate a long operation
+			w.WriteString("World!")            //nolint:errcheck // not needed
+		})
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	// Start a mock HTTP server using the handlerFunc
+	server := &http.Server{
+		Handler:      handlerFunc,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+	listener, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := fmt.Sprintf("http://%s", listener.Addr())
+
+	go func() {
+		server.Serve(listener) //nolint:errcheck // not needed
+	}()
+	defer func() {
+		require.NoError(t, server.Close())
+	}()
+
+	cc := &http.Client{
+		Timeout: 200 * time.Millisecond,
+	}
+	resp, err := cc.Get(addr) //nolint:noctx // ctx is not needed
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	body, readErr := io.ReadAll(resp.Body)
+	require.ErrorIs(t, readErr, context.DeadlineExceeded)
+	require.Equal(t, "Hello ", string(body))
 }
 
 // failingReader always returns an error when Read is called

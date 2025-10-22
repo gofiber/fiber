@@ -300,7 +300,7 @@ You can create advanced extractors for use cases like JWT embedding or JSON body
 For applications that need to support both AJAX and form submissions:
 
 ```go
-// Try header first (AJAX), fallback to form (traditional forms)
+// Try header first (AJAX), fall back to form (traditional forms)
 app.Use(csrf.New(csrf.Config{
     Extractor: extractors.Chain(
         extractors.FromHeader("X-Csrf-Token"),
