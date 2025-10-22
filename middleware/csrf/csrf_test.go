@@ -1763,7 +1763,7 @@ func Test_CSRF_Chain_Extractor(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Chain extractor: try header first, fallback to form
+	// Chain extractor: try header first, fall back to form
 	chainExtractor := extractors.Chain(
 		extractors.FromHeader("X-Csrf-Token"),
 		extractors.FromForm("_csrf"),
@@ -2149,7 +2149,7 @@ func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 
 			app := fiber.New()
 			requestCtx := &fasthttp.RequestCtx{}
-			tc.setupCtx(requestCtx) // Setup the context properly
+			tc.setupCtx(requestCtx) // Set up the context properly
 
 			ctx := app.AcquireCtx(requestCtx)
 			defer app.ReleaseCtx(ctx)

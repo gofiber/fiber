@@ -65,7 +65,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 			e.currHits = 0
 
 			// Check how much into the current window it currently is and sets the
-			// expiry based on that, otherwise this would only reset on
+			// expiry based on that; otherwise, this would only reset on
 			// the next request and not show the correct expiry.
 			elapsed := ts - e.exp
 			if elapsed >= expiration {
@@ -100,7 +100,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// duration + expiration = end of next window.
 		// Because we don't want to garbage collect in the middle of a window
 		// we add the expiration to the duration.
-		// Otherwise after the end of "sample window", attackers could launch
+		// Otherwise, after the end of "sample window", attackers could launch
 		// a new request with the full window length.
 		if setErr := manager.set(c, key, e, time.Duration(resetInSec+expiration)*time.Second); setErr != nil { //nolint:gosec // Not a concern
 			mux.Unlock()

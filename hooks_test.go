@@ -178,7 +178,7 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 	})
 }
 
-func Test_Hook_OnPrehutdown(t *testing.T) {
+func Test_Hook_OnPreShutdown(t *testing.T) {
 	t.Parallel()
 	app := New()
 
@@ -186,14 +186,14 @@ func Test_Hook_OnPrehutdown(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnPreShutdown(func() error {
-		_, err := buf.WriteString("pre-shutdowning")
+		_, err := buf.WriteString("pre-shutdown")
 		require.NoError(t, err)
 
 		return nil
 	})
 
 	require.NoError(t, app.Shutdown())
-	require.Equal(t, "pre-shutdowning", buf.String())
+	require.Equal(t, "pre-shutdown", buf.String())
 }
 
 func Test_Hook_OnPostShutdown(t *testing.T) {

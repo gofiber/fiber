@@ -1338,7 +1338,7 @@ func Test_Client_Header(t *testing.T) {
 		require.Equal(t, "foo", res[0])
 	})
 
-	t.Run("set header case insensitive", func(t *testing.T) {
+	t.Run("set header case-insensitive", func(t *testing.T) {
 		t.Parallel()
 		req := New()
 		req.SetHeader("foo", "bar").

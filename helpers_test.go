@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 📝 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -222,7 +222,7 @@ func Test_Utils_ParamsMatch(t *testing.T) {
 			match:       true,
 		},
 		{
-			description: "case insensitive",
+			description: "case-insensitive",
 			accept:      headerParams{"ParaM": []byte("FoO")},
 			offer:       ";pAram=foO",
 			match:       true,

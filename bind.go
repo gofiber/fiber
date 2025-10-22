@@ -151,7 +151,7 @@ func (b *Bind) RespHeader(out any) error {
 }
 
 // Cookie binds the request cookie strings into the struct, map[string]string and map[string][]string.
-// NOTE: If your cookie is like key=val1,val2; they'll be binded as an slice if your map is map[string][]string. Else, it'll use last element of cookie.
+// NOTE: If your cookie is like key=val1,val2; they'll be bound as a slice if your map is map[string][]string. Else, it'll use last element of cookie.
 func (b *Bind) Cookie(out any) error {
 	bind := binder.GetFromThePool[*binder.CookieBinding](&binder.CookieBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
@@ -299,7 +299,7 @@ func (b *Bind) MsgPack(out any) error {
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 // If none of the content types above are matched, it'll take a look custom binders by checking the MIMETypes() method of custom binder.
-// If there're no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
+// If there is no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
 func (b *Bind) Body(out any) error {
 	// Get content-type
 	ctype := utils.ToLower(utils.UnsafeString(b.ctx.RequestCtx().Request.Header.ContentType()))
