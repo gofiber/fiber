@@ -70,6 +70,12 @@
     "prefork",
     "preforks",
     "msgp",
-    "ctx"
+    "ctx",
+    "fctx",
+    "nolint",
+    "bytebufferpool",
+    "healthz",
+    "fiberlog",
+    "gosec"
   ]
 }
