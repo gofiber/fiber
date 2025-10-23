@@ -58,5 +58,3 @@ jobs:
         with:
           incremental_files_only: false
           check_dot_files: explicit
-          verbose: false
-          report: all

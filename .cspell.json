@@ -84,6 +84,7 @@
     "AGENTS.md"
   ],
   "ignoreWords": [
+    "renewerner",
     "keyauth",
     "valyala",
     "msgp",
@@ -92,7 +93,10 @@
     "fasthttp",
     "fasthttpctx",
     "fxamacker",
-
+    "websecure",
+    "CompressedFileSuffixes",
+    "expvarhandler",
+    "datatracker",
     "bytebufferpool",
     "fasthttpadaptor",
     "fasthttpproxy",
@@ -259,6 +263,6 @@
     "iploop",
     "csrf",
     "fiberlog",
-    "fctx",
+    "fctx"
   ]
 }
