@@ -49,12 +49,14 @@ jobs:
             @cspell/dict-filetypes \
             @cspell/dict-companies \
             @cspell/dict-markdown \
-            @cspell/dict-en-common-misspellings
+            @cspell/dict-en-common-misspellings \
+            @cspell/dict-people-names \
+            @cspell/dict-data-science
 
       - name: Run cspell
         uses: streetsidesoftware/cspell-action@v7
         with:
           incremental_files_only: false
           check_dot_files: explicit
-          verbose: true
+          verbose: false
           report: all

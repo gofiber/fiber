@@ -24,7 +24,8 @@
     "@cspell/dict-filetypes/cspell-ext.json",
     "@cspell/dict-companies/cspell-ext.json",
     "@cspell/dict-markdown/cspell-ext.json",
-    "@cspell/dict-en-common-misspellings/cspell-ext.json"
+    "@cspell/dict-en-common-misspellings/cspell-ext.json",
+    "@cspell/dict-people-names/cspell-ext.json"
   ],
   "dictionaries": [
     "en_us",
@@ -53,13 +54,18 @@
     "filetypes",
     "companies",
     "markdown",
-    "en-common-misspellings"
+    "en-common-misspellings",
+    "people-names",
+    "data-science",
+    "data-science-models",
+    "data-science-tools"
   ],
   "ignorePaths": [
     ".git",
     "node_modules",
     "vendor",
     "internal",
+    ".github",
     "**/*.svg",
     "**/*.png",
     "**/*.jpg",
@@ -71,7 +77,9 @@
     "**/*_msgp.go",
     "**/*_msgp_test.go",
     "go.mod",
-    "go.sum"
+    "go.sum",
+    ".golangci.yml",
+    ".markdownlint.yml"
   ],
   "ignoreWords": [
     "gofiber",
@@ -85,7 +93,11 @@
     "nolint",
     "bytebufferpool",
     "healthz",
+    "livez",
+    "readyz",
     "fiberlog",
-    "gosec"
+    "gosec",
+    "fxamacker",
+    "stretchr"
   ]
 }
