@@ -2,7 +2,7 @@
   "version": "0.2",
   "language": "en, en-gb, en-us",
   "useGitignore": true,
-  "caseSesnsitive": false,
+  "caseSensitive": false,
   "import": [
     "@cspell/dict-en_us/cspell-ext.json",
     "@cspell/dict-en-gb/cspell-ext.json",
