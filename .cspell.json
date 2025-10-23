@@ -84,7 +84,12 @@
     "AGENTS.md"
   ],
   "ignoreWords": [
+    "valyala",
+    "msgp",
+    "nolint",
+    "gosec",
     "fasthttp",
+    "bytebufferpool",
     "fasthttpadaptor",
     "fasthttpproxy",
     "gofiber",
@@ -230,6 +235,14 @@
     "erodata",
     "reqv",
     "respv",
-    "hostclient"
+    "hostclient",
+    "fcookie",
+    "sess",
+    "prefork",
+    "unbrotli",
+    "unzstd",
+    "tcpaddr",
+    "nonamedreturns",
+    "iploop"
   ]
 }

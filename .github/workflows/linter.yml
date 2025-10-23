@@ -3,7 +3,6 @@ name: golangci-lint
 on:
   push:
     branches:
-      - master
       - main
     paths-ignore:
       - "**/*.md"
