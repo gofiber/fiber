@@ -76,15 +76,16 @@
     "**/*_gen.go",
     "**/*_msgp.go",
     "**/*_msgp_test.go",
+    "**/*_test.go",
     "go.mod",
     "go.sum",
     ".golangci.yml",
-    ".markdownlint.yml"
+    ".markdownlint.yml",
+    "AGENTS.md"
   ],
   "ignoreWords": [
     "gofiber",
     "valyala",
-    "fasthttp",
     "prefork",
     "preforks",
     "msgp",
@@ -98,6 +99,7 @@
     "fiberlog",
     "gosec",
     "fxamacker",
-    "stretchr"
+    "stretchr",
+    "fasthttp*"
   ]
 }
