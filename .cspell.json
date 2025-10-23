@@ -3,7 +3,7 @@
   "language": "en, en-gb, en-us",
   "useGitignore": true,
   "caseSesnsitive": false,
-  "unknownWords": "report-flagged",
+  "unknownWords": "report-common-typos",
   "import": [
     "@cspell/dict-en_us/cspell-ext.json",
     "@cspell/dict-en-gb/cspell-ext.json",
@@ -84,11 +84,15 @@
     "AGENTS.md"
   ],
   "ignoreWords": [
+    "keyauth",
     "valyala",
     "msgp",
     "nolint",
     "gosec",
     "fasthttp",
+    "fasthttpctx",
+    "fxamacker",
+
     "bytebufferpool",
     "fasthttpadaptor",
     "fasthttpproxy",
@@ -151,6 +155,13 @@
     "Pingback",
     "noopen",
     "startupz",
+    "livez",
+    "oldutils",
+    "stretchr",
+    "codemicro",
+    "readyz",
+    "healthz",
+    "timeformat",
     "disabledefaultcontenttype",
     "disabledefaultdate",
     "disableheadernormalizing",
@@ -160,6 +171,8 @@
     "enablesplittingonparsers",
     "trustproxy",
     "getonly",
+    "xmlencoder",
+    "xmldecoder",
     "cborencoder",
     "cbordecoder",
     "msgpackencoder",
@@ -243,6 +256,9 @@
     "unzstd",
     "tcpaddr",
     "nonamedreturns",
-    "iploop"
+    "iploop",
+    "csrf",
+    "fiberlog",
+    "fctx",
   ]
 }
