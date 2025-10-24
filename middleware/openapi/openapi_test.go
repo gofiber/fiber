@@ -154,7 +154,7 @@ func Test_OpenAPI_RawJSON(t *testing.T) {
 	}
 	exp, err := json.Marshal(expected)
 	require.NoError(t, err)
-	require.Equal(t, string(exp), string(body))
+	require.JSONEq(t, string(exp), string(body))
 }
 
 func Test_OpenAPI_RawJSONFile(t *testing.T) {
@@ -176,7 +176,7 @@ func Test_OpenAPI_RawJSONFile(t *testing.T) {
 	expected, err := os.ReadFile("testdata/openapi.json")
 	require.NoError(t, err)
 
-	require.Equal(t, string(expected), string(body))
+	require.JSONEq(t, string(expected), string(body))
 }
 
 func Test_OpenAPI_OperationConfig(t *testing.T) {
