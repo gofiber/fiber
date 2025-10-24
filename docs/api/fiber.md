@@ -59,9 +59,7 @@ app := fiber.New(fiber.Config{
 | <Reference id="disablepreparsemultipartform">DisablePreParseMultipartForm</Reference> | `bool`
                           | Will not pre parse Multipart Form data if set to true. This option is useful for servers that desire to treat multipart form data as a binary blob, or choose when to parse the data.
                                                | `false`                                                                |
-| <Reference id="disableautoregister">DisableAutoRegister</Reference>                   | `bool`
-                          | Prevents Fiber from automatically registering a `HEAD` route for each `GET` route so you can supply custom HEAD handlers.
-                                               | `false`                                                                |
+| <Reference id="disableautoregister">DisableAutoRegister</Reference> | `bool` | Prevents Fiber from automatically registering a `HEAD` route for each `GET` route so you can supply custom HEAD handlers. | `false` |
 | <Reference id="enableipvalidation">EnableIPValidation</Reference>                     | `bool`
                           | If set to true, `c.IP()` and `c.IPs()` will validate IP addresses before returning them. Also, `c.IP()` will return only the first valid IP rather than just the raw header value that may be a comma separated string.<br /><br />**WARNING:** There is a small performance cost to doing this validation. Keep disabled if speed is your only concern and your application is behind a trusted proxy that already validates this header.
                                                | `false`                                                                |

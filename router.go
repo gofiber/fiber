@@ -641,6 +641,8 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		return
 	}
 
+	var added bool
+
 	for _, route := range app.stack[getIndex] {
 		if route.mount || route.use {
 			continue
@@ -660,6 +662,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		headStack = append(headStack, headRoute)
 		existing[route.Path] = struct{}{}
 		app.routesRefreshed = true
+		added = true
 
 		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // Not a concern
 
@@ -669,7 +672,9 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		}
 	}
 
-	app.stack[headIndex] = headStack
+	if added {
+		app.stack[headIndex] = headStack
+	}
 }
 
 // RebuildTree rebuilds the prefix tree from the previously registered routes.
