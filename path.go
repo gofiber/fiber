@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📄 Github Repository: https://github.com/gofiber/fiber
+// 📄 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 // ⚠️ This path parser was inspired by ucarion/urlpath (MIT License).
 // 💖 Maintained and modified for Fiber by @renewerner87
@@ -59,7 +59,6 @@ const (
 	optionalParam                byte = '?'  // concludes a parameter by name and makes it optional
 	paramStarterChar             byte = ':'  // start character for a parameter with name
 	slashDelimiter               byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
-	slashDelimiterStr            byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
 	escapeChar                   byte = '\\' // escape character
 	paramConstraintStart         byte = '<'  // start of type constraint for a parameter
 	paramConstraintEnd           byte = '>'  // end of type constraint for a parameter
@@ -184,10 +183,8 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	parser.parseRoute(string(patternPretty))
 	defer routerParserPool.Put(parser)
 
-	if string(patternPretty) == "/" && path == "/" {
-		return true
-		// '*' wildcard matches any path
-	} else if string(patternPretty) == "/*" {
+	// '*' wildcard matches any path
+	if (string(patternPretty) == "/" && path == "/") || (string(patternPretty) == "/*") {
 		return true
 	}
 
@@ -256,17 +253,17 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 		} else {
 			comparePart = segs[i].Const
 			if len(comparePart) > 1 {
-				comparePart = utils.TrimRight(comparePart, slashDelimiterStr)
+				comparePart = utils.TrimRight(comparePart, slashDelimiter)
 			}
 		}
 	}
 
-	// loop from begin to end
+	// loop from beginning to end
 	for i := range segLen {
 		// check how often the compare part is in the following const parts
 		if segs[i].IsParam {
-			// check if parameter segments are directly after each other and if one of them is greedy
-			// in case the next parameter or the current parameter is not a wildcard it's not greedy, we only want one character
+			// check if parameter segments are directly after each other;
+			// when neither this parameter nor the next parameter are greedy, we only want one character
 			if segLen > i+1 && !segs[i].IsGreedy && segs[i+1].IsParam && !segs[i+1].IsGreedy {
 				segs[i].Length = 1
 			}
@@ -355,11 +352,14 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 				}
 			}
 		}
+
 		switch {
 		case paramEndPosition == -1:
 			paramEndPosition = len(pattern) - 1
 		case bytes.IndexByte(parameterDelimiterChars, pattern[paramEndPosition+1]) == -1:
 			paramEndPosition++
+		default:
+			// do nothing
 		}
 	}
 
@@ -500,7 +500,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			// check if the end of the segment is an optional slash
 			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
 				i--
-			} else if !(i <= partLen && detectionPath[:i] == segment.Const) {
+			} else if i > partLen || detectionPath[:i] != segment.Const {
 				return false
 			}
 		} else {
@@ -512,7 +512,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			// take over the params positions
 			params[paramsIterator] = path[:i]
 
-			if !(segment.IsOptional && i == 0) {
+			if !segment.IsOptional || i != 0 {
 				// check constraint
 				for _, c := range segment.Constraints {
 					if matched := c.CheckConstraint(params[paramsIterator]); !matched {
@@ -714,7 +714,6 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		}
 	}
 
-	// check constraints
 	switch c.ID {
 	case noConstraint:
 		return true
@@ -791,6 +790,8 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		if match := c.RegexCompiler.MatchString(param); !match {
 			return false
 		}
+	default:
+		return false
 	}
 
 	return err == nil

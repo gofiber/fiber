@@ -533,7 +533,7 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 				a, err := strconv.Atoi(string(idFromServ))
 				require.NoError(t, err)
 
-				// SomeTimes,The id is not equal with a
+				// Sometimes, the id is not equal to a
 				require.Equal(t, id, a)
 			}(i)
 		}
@@ -910,14 +910,14 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 	require.NoError(t, err)
 	headBody, err := io.ReadAll(headResp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "", string(headBody))
+	require.Empty(t, string(headBody))
 	require.Equal(t, cacheMiss, headResp.Header.Get("X-Cache"))
 
 	headResp, err = app.Test(httptest.NewRequest(fiber.MethodHead, "/?cache=123", nil))
 	require.NoError(t, err)
 	headBody, err = io.ReadAll(headResp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "", string(headBody))
+	require.Empty(t, string(headBody))
 	require.Equal(t, cacheHit, headResp.Header.Get("X-Cache"))
 
 	getResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?cache=123", nil))
@@ -1073,7 +1073,7 @@ func Test_CacheStorage_CustomHeaders(t *testing.T) {
 }
 
 // Because time points are updated once every X milliseconds, entries in tests can often have
-// equal expiration times and thus be in an random order. This closure hands out increasing
+// equal expiration times and thus be in a random order. This closure hands out increasing
 // time intervals to maintain strong ascending order of expiration
 func stableAscendingExpiration() func(c1 fiber.Ctx, c2 *Config) time.Duration {
 	i := 0

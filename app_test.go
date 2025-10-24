@@ -1,8 +1,7 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-//nolint:goconst // Much easier to just ignore memory leaks in tests
 package fiber
 
 import (
@@ -161,7 +160,7 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
-	require.Equal(t, "", resp.Header.Get(HeaderAllow))
+	require.Empty(t, resp.Header.Get(HeaderAllow))
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
@@ -531,7 +530,7 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
 		ErrorHandler: func(c Ctx, _ error) error {
-			return c.Status(200).SendString("hi, i'm an custom error")
+			return c.Status(200).SendString("hi, i'm a custom error")
 		},
 	})
 
@@ -545,7 +544,7 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "hi, i'm an custom error", string(body))
+	require.Equal(t, "hi, i'm a custom error", string(body))
 }
 
 func Test_App_ErrorHandler_HandlerStack(t *testing.T) {
@@ -1131,19 +1130,19 @@ func Test_App_GetString(t *testing.T) {
 	appMutable := New()
 	same := appMutable.GetString(heap)
 	if unsafe.StringData(same) != unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
-		t.Errorf("expected original string when immutable is disabled")
+		t.Error("expected original string when immutable is disabled")
 	}
 
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.GetString(heap)
 	if unsafe.StringData(copied) == unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
-		t.Errorf("expected a copy for heap-backed string when immutable is enabled")
+		t.Error("expected a copy for heap-backed string when immutable is enabled")
 	}
 
 	literal := "fiber"
 	sameLit := appImmutable.GetString(literal)
 	if unsafe.StringData(sameLit) != unsafe.StringData(literal) { //nolint:gosec // compare pointer addresses
-		t.Errorf("expected original literal when immutable is enabled")
+		t.Error("expected original literal when immutable is enabled")
 	}
 }
 
@@ -1154,7 +1153,7 @@ func Test_App_GetBytes(t *testing.T) {
 	appMutable := New()
 	same := appMutable.GetBytes(b)
 	if unsafe.SliceData(same) != unsafe.SliceData(b) { //nolint:gosec // compare pointer addresses
-		t.Errorf("expected original slice when immutable is disabled")
+		t.Error("expected original slice when immutable is disabled")
 	}
 
 	alias := make([]byte, 10)
@@ -1163,14 +1162,14 @@ func Test_App_GetBytes(t *testing.T) {
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.GetBytes(sub)
 	if unsafe.SliceData(copied) == unsafe.SliceData(sub) { //nolint:gosec // compare pointer addresses
-		t.Errorf("expected a copy for aliased slice when immutable is enabled")
+		t.Error("expected a copy for aliased slice when immutable is enabled")
 	}
 
 	full := make([]byte, 5)
 	copy(full, b)
 	detached := appImmutable.GetBytes(full)
 	if unsafe.SliceData(detached) == unsafe.SliceData(full) { //nolint:gosec // compare pointer addresses
-		t.Errorf("expected a copy even when cap==len")
+		t.Error("expected a copy even when cap==len")
 	}
 }
 
@@ -1795,7 +1794,7 @@ func Test_App_Stack(t *testing.T) {
 
 	stack := app.Stack()
 	methodList := app.config.RequestMethods
-	require.Equal(t, len(methodList), len(stack))
+	require.Len(t, methodList, len(stack))
 	require.Len(t, stack[app.methodInt(MethodGet)], 3)
 	require.Len(t, stack[app.methodInt(MethodHead)], 1)
 	require.Len(t, stack[app.methodInt(MethodPost)], 2)
@@ -2261,8 +2260,7 @@ func Test_App_AddCustomRequestMethod(t *testing.T) {
 	appMethods := app.config.RequestMethods
 
 	// method name is always uppercase - https://datatracker.ietf.org/doc/html/rfc7231#section-4.1
-	require.Equal(t, len(app.stack), len(appMethods))
-	require.Equal(t, len(app.stack), len(appMethods))
+	require.Len(t, app.stack, len(appMethods))
 	require.Equal(t, "TEST", appMethods[len(appMethods)-1])
 }
 
@@ -2342,16 +2340,16 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 		switch route.Path {
 		case "/":
 			require.Equal(t, "compressMW", route.Name)
-		case "/unnamed":
-			require.Equal(t, "", route.Name)
-		case "named":
+		case "/unnamed", "/pages/unnamed":
+			require.Empty(t, route.Name)
+		case "/named":
 			require.Equal(t, named, route.Name)
 		case "/pages":
 			require.Equal(t, "pages.csrfMW", route.Name)
 		case "/pages/home":
 			require.Equal(t, "pages.home", route.Name)
-		case "/pages/unnamed":
-			require.Equal(t, "", route.Name)
+		default:
+			t.Errorf("unknown route: %s", route.Path)
 		}
 	}
 }

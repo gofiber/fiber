@@ -44,13 +44,10 @@ func New(config ...Config) fiber.Handler {
 	// allowOrigins is a slice of strings that contains the allowed origins
 	// defined in the 'AllowOrigins' configuration.
 	allowOrigins := []string{}
-	allowSOrigins := []subdomain{}
-	allowAllOrigins := false
+	allowSubOrigins := []subdomain{}
 
 	// Validate and normalize static AllowOrigins
-	if len(cfg.AllowOrigins) == 0 && cfg.AllowOriginsFunc == nil {
-		allowAllOrigins = true
-	}
+	allowAllOrigins := len(cfg.AllowOrigins) == 0 && cfg.AllowOriginsFunc == nil
 	for _, origin := range cfg.AllowOrigins {
 		if origin == "*" {
 			allowAllOrigins = true
@@ -66,7 +63,7 @@ func New(config ...Config) fiber.Handler {
 			}
 			schemeSep := strings.Index(normalizedOrigin, "://") + len("://")
 			sd := subdomain{prefix: normalizedOrigin[:schemeSep], suffix: normalizedOrigin[schemeSep:]}
-			allowSOrigins = append(allowSOrigins, sd)
+			allowSubOrigins = append(allowSubOrigins, sd)
 		} else {
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
@@ -135,7 +132,7 @@ func New(config ...Config) fiber.Handler {
 
 			// Check if the origin is in the list of allowed subdomains
 			if allowOrigin == "" {
-				for _, sOrigin := range allowSOrigins {
+				for _, sOrigin := range allowSubOrigins {
 					if sOrigin.match(originHeader) {
 						allowOrigin = originHeaderRaw
 						break

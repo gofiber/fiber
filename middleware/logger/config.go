@@ -36,7 +36,7 @@ type Config struct {
 	// Optional. Default: map[string]LogFunc
 	CustomTags map[string]LogFunc
 
-	// You can define specific things before the returning the handler: colors, template, etc.
+	// You can define specific things before returning the handler: colors, template, etc.
 	//
 	// Optional. Default: beforeHandlerFunc
 	BeforeHandlerFunc func(Config)

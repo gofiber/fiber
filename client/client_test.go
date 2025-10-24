@@ -850,13 +850,12 @@ func Test_Client_ConcurrencyRequests(t *testing.T) {
 	wg := sync.WaitGroup{}
 	for range 5 {
 		for _, method := range []string{"GET", "POST", "PUT", "DELETE", "PATCH"} {
-			wg.Add(1)
-			go func(m string) {
-				defer wg.Done()
+			m := method
+			wg.Go(func() {
 				resp, err := client.Custom("http://example.com", m)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, "example.com "+m, utils.UnsafeString(resp.RawResponse.Body()))
-			}(method)
+			})
 		}
 	}
 
@@ -927,7 +926,7 @@ func Test_Head(t *testing.T) {
 		resp, err := Head("http://" + addr)
 		require.NoError(t, err)
 		require.Equal(t, "7", resp.Header(fiber.HeaderContentLength))
-		require.Equal(t, "", utils.UnsafeString(resp.RawResponse.Body()))
+		require.Empty(t, utils.UnsafeString(resp.RawResponse.Body()))
 	})
 
 	t.Run("client head", func(t *testing.T) {
@@ -941,7 +940,7 @@ func Test_Head(t *testing.T) {
 		resp, err := New().Head("http://" + addr)
 		require.NoError(t, err)
 		require.Equal(t, "7", resp.Header(fiber.HeaderContentLength))
-		require.Equal(t, "", utils.UnsafeString(resp.RawResponse.Body()))
+		require.Empty(t, utils.UnsafeString(resp.RawResponse.Body()))
 	})
 }
 
@@ -1091,7 +1090,7 @@ func Test_Delete(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Equal(t, "", resp.String())
+			require.Empty(t, resp.String())
 		}
 	})
 
@@ -1112,7 +1111,7 @@ func Test_Delete(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Equal(t, "", resp.String())
+			require.Empty(t, resp.String())
 		}
 	})
 }
@@ -1145,7 +1144,7 @@ func Test_Options(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, "GET, POST, PUT, DELETE, PATCH", resp.Header(fiber.HeaderAllow))
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Equal(t, "", resp.String())
+			require.Empty(t, resp.String())
 		}
 	})
 
@@ -1163,7 +1162,7 @@ func Test_Options(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, "GET, POST, PUT, DELETE, PATCH", resp.Header(fiber.HeaderAllow))
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Equal(t, "", resp.String())
+			require.Empty(t, resp.String())
 		}
 	})
 }
@@ -1339,7 +1338,7 @@ func Test_Client_Header(t *testing.T) {
 		require.Equal(t, "foo", res[0])
 	})
 
-	t.Run("set header case insensitive", func(t *testing.T) {
+	t.Run("set header case-insensitive", func(t *testing.T) {
 		t.Parallel()
 		req := New()
 		req.SetHeader("foo", "bar").
@@ -1435,7 +1434,7 @@ func Test_Client_Cookie(t *testing.T) {
 		require.Equal(t, "foo", req.Cookie("bar"))
 
 		req.DelCookies("foo")
-		require.Equal(t, "", req.Cookie("foo"))
+		require.Empty(t, req.Cookie("foo"))
 		require.Equal(t, "foo", req.Cookie("bar"))
 	})
 }
@@ -1795,7 +1794,7 @@ func Test_Client_PathParam(t *testing.T) {
 		require.Equal(t, "foo", req.PathParam("bar"))
 
 		req.DelPathParams("foo")
-		require.Equal(t, "", req.PathParam("foo"))
+		require.Empty(t, req.PathParam("foo"))
 		require.Equal(t, "foo", req.PathParam("bar"))
 	})
 }
@@ -1971,7 +1970,7 @@ func Test_Replace(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "", resp.String())
+	require.Empty(t, resp.String())
 
 	r := New().SetDial(dial).SetHeader("k1", "v1")
 	clean := Replace(r)
@@ -1987,7 +1986,7 @@ func Test_Replace(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "", resp.String())
+	require.Empty(t, resp.String())
 
 	C().SetDial(nil)
 }

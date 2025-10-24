@@ -342,7 +342,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		}
 		types = append(types, h.MediaType)
 	}
-	accept := r.c.DefaultReq.Accepts(types...)
+	accept := r.c.DefaultReq.Accepts(types...) //nolint:staticcheck // It is fine to ignore the static check
 
 	if accept == "" {
 		if defaultHandler == nil {
@@ -368,7 +368,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
 	// Get accepted content type
-	accept := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor")
+	accept := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor") //nolint:staticcheck // It is fine to ignore the static check
 
 	// Set accepted content type
 	r.Type(accept)
@@ -947,7 +947,7 @@ func shouldIncludeCharset(mimeType string) bool {
 }
 
 // Vary adds the given header field to the Vary response header.
-// This will append the header, if not already listed, otherwise leaves it listed in the current location.
+// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
 func (r *DefaultRes) Vary(fields ...string) {
 	r.Append(HeaderVary, fields...)
 }

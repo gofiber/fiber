@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -27,10 +27,10 @@ import (
 
 // Figlet text to show Fiber ASCII art on startup message
 var figletFiberText = `
-    _______ __             
+    _______ __
    / ____(_) /_  ___  _____
   / /_  / / __ \/ _ \/ ___/
- / __/ / / /_/ /  __/ /    
+ / __/ / / /_/ /  __/ /
 /_/   /_/_.___/\___/_/          %s`
 
 const (

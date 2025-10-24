@@ -159,6 +159,8 @@ func Test_AuthSources(t *testing.T) {
 					req.URL.RawQuery = q.Encode()
 				case formExtractorName:
 					req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+				default:
+					// nothing to do for paramExtractorName
 				}
 
 				res, err := app.Test(req, testConfig)
@@ -194,7 +196,7 @@ func TestMultipleKeyLookup(t *testing.T) {
 		scheme  = "Bearer"
 	)
 
-	// setup the fiber endpoint
+	// set up the fiber endpoint
 	app := fiber.New()
 
 	customExtractor := extractors.Chain(
@@ -254,10 +256,10 @@ func TestMultipleKeyLookup(t *testing.T) {
 }
 
 func Test_MultipleKeyAuth(t *testing.T) {
-	// setup the fiber endpoint
+	// set up the fiber endpoint
 	app := fiber.New()
 
-	// setup keyauth for /auth1
+	// set up keyauth for /auth1
 	app.Use(New(Config{
 		Next: func(c fiber.Ctx) bool {
 			return c.Path() != "/auth1"
@@ -1008,7 +1010,7 @@ func Test_WWWAuthenticateOnlyOn401(t *testing.T) {
 	res, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusForbidden, res.StatusCode)
-	require.Equal(t, "", res.Header.Get("WWW-Authenticate"))
+	require.Empty(t, res.Header.Get("WWW-Authenticate"))
 }
 
 func Test_DefaultChallengeForNonAuthExtractor(t *testing.T) {

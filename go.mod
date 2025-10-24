@@ -6,7 +6,7 @@ require (
 	github.com/gofiber/schema v1.6.0
 	github.com/gofiber/utils/v2 v2.0.0-rc.1
 	github.com/google/uuid v1.6.0
-	github.com/shamaton/msgpack/v2 v2.3.1
+	github.com/shamaton/msgpack/v2 v2.4.0
 	github.com/stretchr/testify v1.11.1
 	github.com/tinylib/msgp v1.4.0
 	github.com/valyala/bytebufferpool v1.0.0

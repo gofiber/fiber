@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📃 Github Repository: https://github.com/gofiber/fiber
+// 📃 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -940,14 +940,12 @@ func Test_App_Remove_Route_Concurrent(t *testing.T) {
 	// Concurrently remove and add routes
 	var wg sync.WaitGroup
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			app.RemoveRoute("/test", MethodGet)
 			app.Get("/test", func(c Ctx) error {
 				return c.SendStatus(StatusOK)
 			})
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -1172,7 +1170,7 @@ func TestRemoveRoute(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, 404, resp.StatusCode)
-	require.Equal(t, "", buf.String())
+	require.Empty(t, buf.String())
 
 	buf.Reset()
 
@@ -1206,7 +1204,7 @@ func registerDummyRoutes(app *App) {
 	h := func(_ Ctx) error {
 		return nil
 	}
-	for _, r := range routesFixture.GithubAPI {
+	for _, r := range routesFixture.GitHubAPI {
 		app.Add([]string{r.Method}, r.Path, h)
 	}
 }
@@ -1591,8 +1589,8 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	}
 }
 
-// go test -run=^$ -bench=Benchmark_Router_Github_API -benchmem -count=16
-func Benchmark_Router_Github_API(b *testing.B) {
+// go test -run=^$ -bench=Benchmark_Router_GitHub_API -benchmem -count=16
+func Benchmark_Router_GitHub_API(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
 	app.startupProcess()
@@ -1627,7 +1625,7 @@ type testRoute struct {
 
 type routeJSON struct {
 	TestRoutes []testRoute `json:"test_routes"`
-	GithubAPI  []testRoute `json:"github_api"`
+	GitHubAPI  []testRoute `json:"github_api"`
 }
 
 func newCustomApp() *App {

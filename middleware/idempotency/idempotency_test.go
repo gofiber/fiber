@@ -119,11 +119,9 @@ func Test_Idempotency(t *testing.T) {
 	{
 		var wg sync.WaitGroup
 		for range 100 {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				assert.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
-			}()
+			})
 		}
 		wg.Wait()
 		require.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))

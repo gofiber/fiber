@@ -201,7 +201,7 @@ Different extraction sources have different security properties and use cases:
 When using multiple sources, order them by your security preferences:
 
 ```go
-// Example: Prefer headers, fallback to cookies, then query
+// Example: Prefer headers, fall back to cookies, then query
 extractors.Chain(
     extractors.FromAuthHeader("Bearer"),    // Standard auth
     extractors.FromCookie("auth_token"),    // Secure storage

@@ -123,7 +123,7 @@ func WithClient(cli *fasthttp.Client) {
 }
 
 // Forward performs the given http request and fills the given http response.
-// This method will return an fiber.Handler
+// This method will return a fiber.Handler
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		return Do(c, addr, clients...)
@@ -210,7 +210,7 @@ func getScheme(uri []byte) []byte {
 }
 
 // DomainForward performs an http request based on the given domain and populates the given http response.
-// This method will return an fiber.Handler
+// This method will return a fiber.Handler
 func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		host := string(c.Request().Host())
@@ -243,7 +243,7 @@ func (r *roundrobin) get() string {
 }
 
 // BalancerForward Forward performs the given http request with round robin algorithm to server and fills the given http response.
-// This method will return an fiber.Handler
+// This method will return a fiber.Handler
 func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler {
 	r := &roundrobin{
 		current: 0,

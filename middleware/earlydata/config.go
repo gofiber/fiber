@@ -26,7 +26,7 @@ type Config struct {
 	// Optional. Default: a function which rejects the request on unsafe and allows the request on safe HTTP request methods.
 	AllowEarlyData func(c fiber.Ctx) bool
 
-	// Error is returned in case an early-data request is rejected.
+	// Error is returned if an early-data request is rejected.
 	//
 	// Optional. Default: fiber.ErrTooEarly.
 	Error error

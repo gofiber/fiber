@@ -464,7 +464,7 @@ func GetStateWithDefault[T any](s *State, key string, defaultVal T) T
 **Usage Example:**
 
 ```go
-// Retrieve a value with a default fallback.
+// Retrieve a value with a fallback.
 requestCount := GetStateWithDefault[int](app.State(), "requestCount", 0)
 fmt.Printf("Request Count: %d\n", requestCount)
 ```

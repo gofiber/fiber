@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -338,6 +338,7 @@ func (c *DefaultCtx) IsMiddleware() bool {
 func (c *DefaultCtx) HasBody() bool {
 	hdr := &c.fasthttp.Request.Header
 
+	//nolint:revive // switch is exhaustive for all ContentLength() cases
 	switch cl := hdr.ContentLength(); {
 	case cl > 0:
 		return true

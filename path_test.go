@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 📝 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -234,7 +234,7 @@ func TestHasPartialMatchBoundary(t *testing.T) {
 func Test_Utils_GetTrimmedParam(t *testing.T) {
 	t.Parallel()
 	res := GetTrimmedParam("")
-	require.Equal(t, "", res)
+	require.Empty(t, res)
 	res = GetTrimmedParam("*")
 	require.Equal(t, "*", res)
 	res = GetTrimmedParam(":param")

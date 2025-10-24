@@ -266,7 +266,7 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 //   - id: The unique identifier of the session.
 //
 // Returns:
-//   - *Session: The session object if found, otherwise nil.
+//   - *Session: The session object if found; otherwise, nil.
 //   - error: An error if the session retrieval fails or if the session ID is empty.
 //
 // Usage:

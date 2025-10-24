@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 📝 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -85,7 +85,7 @@ func AcquireRedirect() *Redirect {
 
 // ReleaseRedirect returns c acquired via Redirect to redirect pool.
 //
-// It is forbidden accessing req and/or its' members after returning
+// It is forbidden accessing req and/or its members after returning
 // it to redirect pool.
 func ReleaseRedirect(r *Redirect) {
 	r.release()

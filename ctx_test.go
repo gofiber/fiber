@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -51,22 +51,22 @@ func Test_Ctx_Accepts(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderAccept, "text/html,application/xhtml+xml,application/xml;q=0.9")
-	require.Equal(t, "", c.Accepts(""))
-	require.Equal(t, "", c.Req().Accepts())
+	require.Empty(t, c.Accepts(""))
+	require.Empty(t, c.Req().Accepts())
 	require.Equal(t, ".xml", c.Accepts(".xml"))
-	require.Equal(t, "", c.Accepts(".john"))
+	require.Empty(t, c.Accepts(".john"))
 	require.Equal(t, "application/xhtml+xml", c.Accepts("application/xml", "application/xml+rss", "application/yaml", "application/xhtml+xml"), "must use client-preferred mime type")
 
 	c.Request().Header.Set(HeaderAccept, "application/json, text/plain, */*;q=0")
-	require.Equal(t, "", c.Accepts("html"), "must treat */*;q=0 as not acceptable")
+	require.Empty(t, c.Accepts("html"), "must treat */*;q=0 as not acceptable")
 
 	c.Request().Header.Set(HeaderAccept, "text/*, application/json")
 	require.Equal(t, "html", c.Accepts("html"))
 	require.Equal(t, "text/html", c.Accepts("text/html"))
 	require.Equal(t, "json", c.Req().Accepts("json", "text"))
 	require.Equal(t, "application/json", c.Accepts("application/json"))
-	require.Equal(t, "", c.Accepts("image/png"))
-	require.Equal(t, "", c.Accepts("png"))
+	require.Empty(t, c.Accepts("image/png"))
+	require.Empty(t, c.Accepts("png"))
 
 	c.Request().Header.Set(HeaderAccept, "text/html, application/json")
 	require.Equal(t, "text/*", c.Req().Accepts("text/*"))
@@ -166,7 +166,7 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
 	require.Empty(t, body)
-	require.Equal(t, "", resp.Header.Get(HeaderContentType))
+	require.Empty(t, resp.Header.Get(HeaderContentType))
 	require.Equal(t, int64(0), resp.ContentLength)
 
 	// Add a new method
@@ -312,7 +312,7 @@ func Test_Ctx_AcceptsLanguages_BasicFiltering(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "en-US")
 	require.Equal(t, "en-US", c.AcceptsLanguages("en", "en-US"))
-	require.Equal(t, "", c.AcceptsLanguages("en"))
+	require.Empty(t, c.AcceptsLanguages("en"))
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "en-US, fr")
 	require.Equal(t, "en-US", c.AcceptsLanguages("de", "en-US", "fr"))
@@ -324,10 +324,10 @@ func Test_Ctx_AcceptsLanguages_BasicFiltering(t *testing.T) {
 	require.Equal(t, "en", c.AcceptsLanguages("en", "fr"))
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "en_US")
-	require.Equal(t, "", c.AcceptsLanguages("en-US"))
+	require.Empty(t, c.AcceptsLanguages("en-US"))
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "en-*")
-	require.Equal(t, "", c.AcceptsLanguages("en-US"))
+	require.Empty(t, c.AcceptsLanguages("en-US"))
 }
 
 // go test -run Test_Ctx_AcceptsLanguages_CaseInsensitive
@@ -425,7 +425,7 @@ func Test_Ctx_Append(t *testing.T) {
 	require.Equal(t, "World, XHello, Hello", string(c.Response().Header.Peek("X2-Test")))
 	require.Equal(t, "XHello, World, Hello", string(c.Response().Header.Peek("X3-Test")))
 	require.Equal(t, "XHello, Hello, HelloZ, YHello", string(c.Response().Header.Peek("X4-Test")))
-	require.Equal(t, "", string(c.Response().Header.Peek("x-custom-header")))
+	require.Empty(t, string(c.Response().Header.Peek("x-custom-header")))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Append -benchmem -count=4
@@ -696,6 +696,8 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 					require.NoError(t, fl.Flush())
 					require.NoError(t, fl.Close())
 					tCase.body = b.Bytes()
+				default:
+					// we do nothing and expect the original body to be returned
 				}
 			}
 
@@ -932,6 +934,8 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 					require.NoError(t, fl.Flush())
 					require.NoError(t, fl.Close())
 					tCase.body = b.Bytes()
+				default:
+					// we do nothing and expect the original body to be returned
 				}
 			}
 
@@ -1844,7 +1848,7 @@ func Test_Ctx_FormFile(t *testing.T) {
 	respBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
 	require.Empty(t, respBody)
-	require.Equal(t, "", resp.Header.Get(HeaderContentType))
+	require.Empty(t, resp.Header.Get(HeaderContentType))
 	require.Equal(t, int64(0), resp.ContentLength)
 }
 
@@ -1875,7 +1879,7 @@ func Test_Ctx_FormValue(t *testing.T) {
 	respBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
 	require.Empty(t, respBody)
-	require.Equal(t, "", resp.Header.Get(HeaderContentType))
+	require.Empty(t, resp.Header.Get(HeaderContentType))
 	require.Equal(t, int64(0), resp.ContentLength)
 }
 
@@ -2001,7 +2005,7 @@ func Test_Ctx_Binders(t *testing.T) {
 		require.Equal(t, 111, testStruct.Class)
 		require.Equal(t, "bar", testStruct.NameWithDefault)
 		require.Equal(t, 222, testStruct.ClassWithDefault)
-		require.Equal(t, []string{"foo", "bar", "test"}, testStruct.TestEmbeddedStruct.Names)
+		require.Equal(t, []string{"foo", "bar", "test"}, testStruct.Names)
 	}
 
 	t.Run("Body:xml", func(t *testing.T) {
@@ -2069,7 +2073,7 @@ func Test_Ctx_Binders(t *testing.T) {
 		require.Equal(t, 111, testStruct.Class)
 		require.Equal(t, "bar", testStruct.NameWithDefault)
 		require.Equal(t, 222, testStruct.ClassWithDefault)
-		require.Nil(t, testStruct.TestEmbeddedStruct.Names)
+		require.Nil(t, testStruct.Names)
 	})
 
 	t.Run("ReqHeader", func(t *testing.T) {
@@ -2475,7 +2479,7 @@ func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 
 		// when proxy header is enabled but the value is empty, without IP validation we return an empty string
 		c.Request().Header.Set(proxyHeaderName, "")
-		require.Equal(t, "", c.IP())
+		require.Empty(t, c.IP())
 
 		// without IP validation we return an invalid IP
 		c.Request().Header.Set(proxyHeaderName, "not-valid-ip")
@@ -3183,7 +3187,7 @@ func Test_Ctx_Params(t *testing.T) {
 		return nil
 	})
 	app.Get("/test4/:optional?", func(c Ctx) error {
-		require.Equal(t, "", c.Params("optional"))
+		require.Empty(t, c.Params("optional"))
 		require.Equal(t, "default", Params(c, "optional", "default"))
 		return nil
 	})
@@ -3237,7 +3241,7 @@ func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 	app := New(Config{CaseSensitive: true})
 	app.Get("/test/:User", func(c Ctx) error {
 		require.Equal(t, "john", c.Params("User"))
-		require.Equal(t, "", c.Params("user"))
+		require.Empty(t, c.Params("user"))
 		return nil
 	})
 	app.Get("/test2/:id/:Id", func(c Ctx) error {
@@ -3303,7 +3307,7 @@ func Test_Ctx_Path(t *testing.T) {
 	app.Get("/test/:user", func(c Ctx) error {
 		require.Equal(t, "/Test/John", c.Path())
 		require.Equal(t, "/Test/John", string(c.Request().URI().Path()))
-		// not strict && case insensitive
+		// not strict && case-insensitive
 		require.Equal(t, "/ABC/", c.Path("/ABC/"))
 		require.Equal(t, "/ABC/", string(c.Request().URI().Path()))
 		require.Equal(t, "/test/john/", c.Path("/test/john/"))
@@ -3555,7 +3559,7 @@ func Test_Ctx_Range(t *testing.T) {
 			require.Equal(t, "bytes", result.Type)
 			require.NoError(t, err)
 		}
-		require.Equal(t, len(ranges), len(result.Ranges))
+		require.Len(t, ranges, len(result.Ranges))
 		for i := range ranges {
 			require.Equal(t, ranges[i], result.Ranges[i])
 		}
@@ -4904,7 +4908,7 @@ func Test_Ctx_Links(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Links()
-	require.Equal(t, "", string(c.Response().Header.Peek(HeaderLink)))
+	require.Empty(t, string(c.Response().Header.Peek(HeaderLink)))
 
 	c.Links(
 		"http://api.example.com/users?page=2", "next",
@@ -5579,7 +5583,7 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 	t.Parallel()
 
-	t.Run("case insensitive", func(t *testing.T) {
+	t.Run("case-insensitive", func(t *testing.T) {
 		t.Parallel()
 		app := New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -5596,7 +5600,7 @@ func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 		require.Equal(t, "/user/fiber", location)
 	})
 
-	t.Run("case sensitive", func(t *testing.T) {
+	t.Run("case-sensitive", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{CaseSensitive: true})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -6158,7 +6162,7 @@ func Test_Ctx_Queries(t *testing.T) {
 	require.Equal(t, "tom", queries["name"])
 	require.Equal(t, "basketball,football", queries["hobby"])
 	require.Equal(t, "milo,coke,pepsi", queries["favouriteDrinks"])
-	require.Equal(t, "", queries["alloc"])
+	require.Empty(t, queries["alloc"])
 	require.Equal(t, "1", queries["no"])
 	require.Equal(t, "value2", queries["field1"])
 	require.Equal(t, "value3", queries["field2"])
@@ -6209,7 +6213,7 @@ func Benchmark_Ctx_Queries(b *testing.B) {
 	require.Equal(b, "tom", queries["name"])
 	require.Equal(b, "basketball,football", queries["hobby"])
 	require.Equal(b, "milo,coke,pepsi", queries["favouriteDrinks"])
-	require.Equal(b, "", queries["alloc"])
+	require.Empty(b, queries["alloc"])
 	require.Equal(b, "1", queries["no"])
 }
 

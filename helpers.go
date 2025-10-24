@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -233,7 +233,7 @@ func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
 	ts := strings.Split(offer, "-")
 
 	// Step 2: first subtag must match (or be '*')
-	if !(rs[0] == "*" || utils.EqualFold(rs[0], ts[0])) {
+	if rs[0] != "*" && !utils.EqualFold(rs[0], ts[0]) {
 		return false
 	}
 
@@ -308,7 +308,7 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 }
 
 // paramsMatch returns whether offerParams contains all parameters present in specParams.
-// Matching is case insensitive, and surrounding quotes are stripped.
+// Matching is case-insensitive, and surrounding quotes are stripped.
 // To align with the behavior of res.format from Express, the order of parameters is
 // ignored, and if a parameter is specified twice in the incoming Accept, the last
 // provided value is given precedence.
@@ -444,6 +444,8 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 					if quotes%2 == 1 {
 						escaping = !escaping
 					}
+				default:
+					// all other characters are ignored
 				}
 				n++
 			}

@@ -303,6 +303,24 @@ We have slightly adapted our router interface
 
 Fiber now ships with a routing adapter (see `adapter.go`) that understands native Fiber handlers alongside `net/http` and `fasthttp` handlers. Route registration helpers accept a required `handler` argument plus optional additional `handlers`, all typed as `any`, and the adapter transparently converts supported handler styles so you can keep using the ecosystem functions you're familiar with.
 
+To align even closer with Express, you can also register handlers that accept the new `fiber.Req` and `fiber.Res` helper interfaces. The adapter understands both two-argument (`func(fiber.Req, fiber.Res)`) and three-argument (`func(fiber.Req, fiber.Res, func() error)`) callbacks, regardless of whether they return an `error`. When you include the optional `next` callback, Fiber wires it to `c.Next()` for you so middleware continues to behave as expected. If your handler returns an `error`, the value returned from the injected `next()` bubbles straight back to the caller. When your handler omits an `error` return, Fiber records the result of `next()` and returns it after your function exits so downstream failures still propagate.
+
+| Case | Handler signature | Notes |
+| ---- | ----------------- | ----- |
+| 1 | `fiber.Handler` | Native Fiber handler. |
+| 2 | `func(fiber.Ctx)` | Fiber handler without an error return. |
+| 3 | `func(fiber.Req, fiber.Res) error` | Express-style request handler with error return. |
+| 4 | `func(fiber.Req, fiber.Res)` | Express-style request handler without error return. |
+| 5 | `func(fiber.Req, fiber.Res, func() error) error` | Express-style middleware with an error-returning `next` callback and handler error return. |
+| 6 | `func(fiber.Req, fiber.Res, func() error)` | Express-style middleware with an error-returning `next` callback. |
+| 7 | `func(fiber.Req, fiber.Res, func()) error` | Express-style middleware with a no-argument `next` callback and handler error return. |
+| 8 | `func(fiber.Req, fiber.Res, func())` | Express-style middleware with a no-argument `next` callback. |
+| 9 | `http.HandlerFunc` | Standard-library handler function adapted through `fasthttpadaptor`. |
+| 10 | `http.Handler` | Standard-library handler implementation; pointer receivers must be non-nil. |
+| 11 | `func(http.ResponseWriter, *http.Request)` | Standard-library function handlers via `fasthttpadaptor`. |
+| 12 | `fasthttp.RequestHandler` | Direct fasthttp handler without error return. |
+| 13 | `func(*fasthttp.RequestCtx) error` | fasthttp handler that returns an error to Fiber. |
+
 ### Route chaining
 
 `RouteChain` is a new helper inspired by [`Express`](https://expressjs.com/en/api.html#app.route) that makes it easy to declare a stack of handlers on the same path, while the existing `Route` helper stays available for prefix encapsulation.
@@ -1155,7 +1173,7 @@ We've made some changes to the CORS middleware to improve its functionality and 
 
 #### New Struct Fields
 
-- `Config.AllowPrivateNetwork`: This new field is a boolean that allows you to control whether private networks are allowed. This is related to the [Private Network Access (PNA)](https://wicg.github.io/private-network-access/) specification from the Web Incubator Community Group (WICG). When set to `true`, the CORS middleware will allow CORS preflight requests from private networks and respond with the `Access-Control-Allow-Private-Network: true` header. This could be useful in development environments or specific use cases, but should be done with caution due to potential security risks.
+- `Config.AllowPrivateNetwork`: This new field is a boolean that allows you to control whether private networks are allowed. This is related to the [Private Network Access (PNA)](https://wicg.github.io/private-network-access/) specification from the [Web Incubator Community Group (WICG)](https://wicg.io/). When set to `true`, the CORS middleware will allow CORS preflight requests from private networks and respond with the `Access-Control-Allow-Private-Network: true` header. This could be useful in development environments or specific use cases, but should be done with caution due to potential security risks.
 
 #### Updated Struct Fields
 

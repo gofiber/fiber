@@ -10,7 +10,7 @@ After adding a service to the app configuration, Fiber starts it on launch and s
 
 ## Service Interface
 
-The `Service` interface defines the methods a service must implement.
+The `Service` interface defines methods a service must implement.
 
 ### Definition
 
