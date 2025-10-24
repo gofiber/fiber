@@ -94,17 +94,17 @@ func (r *Response) String() string {
 	return utils.Trim(string(r.Body()), ' ')
 }
 
-// JSON unmarshals the response body into the given interface{} using JSON.
+// JSON unmarshal the response body into the given interface{} using JSON.
 func (r *Response) JSON(v any) error {
 	return r.client.jsonUnmarshal(r.Body(), v)
 }
 
-// CBOR unmarshals the response body into the given interface{} using CBOR.
+// CBOR unmarshal the response body into the given interface{} using CBOR.
 func (r *Response) CBOR(v any) error {
 	return r.client.cborUnmarshal(r.Body(), v)
 }
 
-// XML unmarshals the response body into the given interface{} using XML.
+// XML unmarshal the response body into the given interface{} using XML.
 func (r *Response) XML(v any) error {
 	return r.client.xmlUnmarshal(r.Body(), v)
 }

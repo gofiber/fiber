@@ -400,7 +400,7 @@ fmt.Println(string(resp.Body()))
     "football", 
     "basketball"
   ], 
-  "name": "efectn"
+  "name": "joe"
 }
 ```
 

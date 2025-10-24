@@ -2,8 +2,7 @@
 id: learning-resources
 title: 📚 Learning Resources
 description: >-
-  Interactive learning platforms and community resources to help you master 
-  Fiber concepts through hands-on practice.
+  Interactive learning platforms and community resources to help you learn Fiber concepts through hands-on practice.
 sidebar_position: 3
 ---
 
@@ -13,7 +12,7 @@ Looking to practice Fiber concepts through hands-on exercises? Here are some com
 
 ### Go Interview Practice - Fiber Challenges
 
-A comprehensive platform offering progressive Fiber challenges that complement the official documentation. Master Go's fastest web framework through hands-on challenges and build lightning-fast APIs with Express.js-inspired syntax.
+A comprehensive platform offering progressive Fiber challenges that complement the official documentation.
 
 ![Learning Path Overview](/img/learning-resources/fiber-learning-path.png)
 
@@ -21,7 +20,7 @@ A comprehensive platform offering progressive Fiber challenges that complement t
 
 - **High-Performance APIs** - Build ultra-fast RESTful APIs with zero-allocation routing
 - **Middleware & Security** - Implement custom middleware, rate limiting, CORS, and authentication
-- **Request Validation** - Master input validation, error handling, and data transformation
+- **Request Validation** - Input validation, error handling, and data transformation
 - **Authentication & JWT** - Secure authentication systems with JWT tokens and API key validation
 
 ![Challenge Interface](/img/learning-resources/fiber-challenge-interface.png)

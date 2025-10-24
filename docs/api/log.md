@@ -78,7 +78,7 @@ Append `f` to format the message.
 log.Debugf("Hello %s", "boy")
 log.Infof("%d is the answer to life, the universe, and everything", 42)
 log.Warnf("We are under attack, %s!", "boss")
-log.Errorf("%s, we have a problem.", "Master Shifu")
+log.Errorf("%s, we have a problem.", "John Smith")
 log.Fatalf("So Long, and Thanks for All the %s.", "fish")
 ```
 
@@ -90,7 +90,7 @@ Key-value helpers log structured fields; mismatched pairs emit `KEYVALS UNPAIRED
 log.Debugw("", "greeting", "Hello", "target", "boy")
 log.Infow("", "number", 42)
 log.Warnw("", "job", "boss")
-log.Errorw("", "name", "Master Shifu")
+log.Errorw("", "name", "John Smith")
 log.Fatalw("", "fruit", "fish")
 ```
 
