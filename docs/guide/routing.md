@@ -16,6 +16,38 @@ import RoutingHandler from './../partials/routing/handler.md';
 
 <RoutingHandler />
 
+## Automatic HEAD routes
+
+Fiber automatically registers a `HEAD` route for every `GET` route you add. The generated handler chain mirrors the `GET` chain, so HEAD requests reuse middleware, status codes, and headers while the response body is suppressed.
+
+```go title="GET handlers automatically expose HEAD"
+app := fiber.New()
+
+app.Get("/users/:id", func(c fiber.Ctx) error {
+    c.Set("X-User", c.Params("id"))
+    return c.SendStatus(fiber.StatusOK)
+})
+
+// HEAD /users/:id now returns the same headers and status without a body.
+```
+
+If you register a dedicated `HEAD` handler later, Fiber replaces the generated route so your implementation wins:
+
+```go title="Override the generated HEAD handler"
+app.Head("/users/:id", func(c fiber.Ctx) error {
+    return c.SendStatus(fiber.StatusNoContent)
+})
+```
+
+To opt out globally, start the app with `DisableAutoRegister`:
+
+```go title="Disable automatic HEAD registration"
+app := fiber.New(fiber.Config{DisableAutoRegister: true})
+app.Get("/users/:id", handler) // HEAD /users/:id now returns 405 unless you add it manually.
+```
+
+Auto-generated HEAD routes participate in every router scope, including `Group` hierarchies, mounted sub-apps, parameterized and wildcard paths, and static file helpers. They also appear in route listings such as `app.Stack()` so tooling sees both the GET and HEAD entries.
+
 ## Paths
 
 A route path paired with an HTTP method defines an endpoint. It can be a plain **string** or a **pattern**.

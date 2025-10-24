@@ -129,6 +129,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: false
 	CaseSensitive bool `json:"case_sensitive"`
 
+	// When set to true, disables automatic registration of HEAD routes for
+	// every GET route.
+	//
+	// Default: false
+	DisableAutoRegister bool `json:"disable_auto_register"`
+
 	// When set to true, this relinquishes the 0-allocation promise in certain
 	// cases in order to access the handler values (e.g. request bodies) in an
 	// immutable fashion so that these values are available even if you return
@@ -1333,6 +1339,13 @@ func (app *App) startupProcess() *App {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
+	app.ensureAutoHeadRoutesLocked()
+	for prefix, subApp := range app.mountFields.appList {
+		if prefix == "" {
+			continue
+		}
+		subApp.ensureAutoHeadRoutes()
+	}
 	app.mountStartupProcess()
 
 	// build route tree stack

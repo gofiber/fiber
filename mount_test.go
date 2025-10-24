@@ -26,7 +26,7 @@ func Test_App_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, uint32(1), app.handlersCount)
+	require.Equal(t, uint32(2), app.handlersCount)
 }
 
 func Test_App_Mount_RootPath_Nested(t *testing.T) {
@@ -46,7 +46,7 @@ func Test_App_Mount_RootPath_Nested(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/home", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, uint32(1), app.handlersCount)
+	require.Equal(t, uint32(2), app.handlersCount)
 }
 
 // go test -run Test_App_Mount_Nested
@@ -85,7 +85,7 @@ func Test_App_Mount_Nested(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	require.Equal(t, uint32(3), app.handlersCount)
+	require.Equal(t, uint32(6), app.handlersCount)
 }
 
 // go test -run Test_App_Mount_Express_Behavior
@@ -134,7 +134,7 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 	testEndpoint(app, "/foo", "subapp foo!", StatusOK)
 	testEndpoint(app, "/unknown", ErrNotFound.Message, StatusNotFound)
 
-	require.Equal(t, uint32(9), app.handlersCount)
+	require.Equal(t, uint32(17), app.handlersCount)
 }
 
 // go test -run Test_App_Mount_RoutePositions
@@ -276,7 +276,7 @@ func Test_App_Group_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, uint32(1), app.handlersCount)
+	require.Equal(t, uint32(2), app.handlersCount)
 }
 
 func Test_App_UseParentErrorHandler(t *testing.T) {
