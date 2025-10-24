@@ -471,9 +471,8 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			}
 
 			if method == MethodGet && !route.use && !route.mount {
-				app.pruneAutoHeadRouteLocked(route.Path)
+				app.pruneAutoHeadRouteLocked(route.path)
 			}
-
 		}
 	}
 }
@@ -481,7 +480,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 // pruneAutoHeadRouteLocked removes an automatically generated HEAD route so a
 // later explicit registration can take its place without duplicating handler
 // chains. The caller must already hold app.mutex.
-func (app *App) pruneAutoHeadRouteLocked(path string) {
+func (app *App) pruneAutoHeadRouteLocked(normalizedPath string) {
 	headIndex := app.methodInt(MethodHead)
 	if headIndex == -1 {
 		return
@@ -490,7 +489,7 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 	headStack := app.stack[headIndex]
 	for i := len(headStack) - 1; i >= 0; i-- {
 		headRoute := headStack[i]
-		if headRoute.Path != path || headRoute.mount || headRoute.use || !headRoute.autoHead {
+		if headRoute.path != normalizedPath || headRoute.mount || headRoute.use || !headRoute.autoHead {
 			continue
 		}
 
@@ -586,7 +585,7 @@ func (app *App) addRoute(method string, route *Route) {
 	m := app.methodInt(method)
 
 	if method == MethodHead && !route.mount && !route.use {
-		app.pruneAutoHeadRouteLocked(route.Path)
+		app.pruneAutoHeadRouteLocked(route.path)
 	}
 
 	// prevent identically route registration
@@ -634,7 +633,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		if route.mount || route.use {
 			continue
 		}
-		existing[route.Path] = struct{}{}
+		existing[route.path] = struct{}{}
 	}
 
 	if len(app.stack[getIndex]) == 0 {
@@ -647,7 +646,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		if route.mount || route.use {
 			continue
 		}
-		if _, ok := existing[route.Path]; ok {
+		if _, ok := existing[route.path]; ok {
 			continue
 		}
 
@@ -660,7 +659,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		// still producing an empty payload on the wire.
 
 		headStack = append(headStack, headRoute)
-		existing[route.Path] = struct{}{}
+		existing[route.path] = struct{}{}
 		app.routesRefreshed = true
 		added = true
 

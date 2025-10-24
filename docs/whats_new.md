@@ -358,7 +358,7 @@ You can find more information about `app.RouteChain` and `app.Route` in the API 
 
 ### Automatic HEAD routes for GET
 
-Fiber now auto-registers a `HEAD` route whenever you add a `GET` route. The generated handler chain matches the `GET` chain so status codes and headers stay in sync while the response body remains empty, ensuring HEAD clients observe the same metadata as a GET consumer.
+Fiber now auto-registers a `HEAD` route whenever you add a `GET` route. The generated handler chain matches the `GET` chain so status codes and headers stay in sync while the response body remains empty, ensuring `HEAD` clients observe the same metadata as a `GET` consumer.
 
 ```go title="GET now enables HEAD automatically"
 app := fiber.New()
@@ -379,14 +379,19 @@ app.Head("/health", func(c fiber.Ctx) error {
 })
 ```
 
-Prefer to manage HEAD routes yourself? Disable the feature through `fiber.Config.DisableAutoRegister`:
+Prefer to manage `HEAD` routes yourself? Disable the feature through `fiber.Config.DisableAutoRegister`:
 
 ```go title="Disable automatic HEAD registration"
+handler := func(c fiber.Ctx) error {
+    c.Set("X-Service", "api")
+    return c.SendString("OK")
+}
+
 app := fiber.New(fiber.Config{DisableAutoRegister: true})
 app.Get("/health", handler) // HEAD /health now returns 405 unless you add it manually.
 ```
 
-Auto-generated HEAD routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their GET counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
+Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
 
 ### Middleware registration
 

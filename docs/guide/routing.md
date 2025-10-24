@@ -18,7 +18,7 @@ import RoutingHandler from './../partials/routing/handler.md';
 
 ## Automatic HEAD routes
 
-Fiber automatically registers a `HEAD` route for every `GET` route you add. The generated handler chain mirrors the `GET` chain, so HEAD requests reuse middleware, status codes, and headers while the response body is suppressed.
+Fiber automatically registers a `HEAD` route for every `GET` route you add. The generated handler chain mirrors the `GET` chain, so `HEAD` requests reuse middleware, status codes, and headers while the response body is suppressed.
 
 ```go title="GET handlers automatically expose HEAD"
 app := fiber.New()
@@ -46,7 +46,7 @@ app := fiber.New(fiber.Config{DisableAutoRegister: true})
 app.Get("/users/:id", handler) // HEAD /users/:id now returns 405 unless you add it manually.
 ```
 
-Auto-generated HEAD routes participate in every router scope, including `Group` hierarchies, mounted sub-apps, parameterized and wildcard paths, and static file helpers. They also appear in route listings such as `app.Stack()` so tooling sees both the GET and HEAD entries.
+Auto-generated `HEAD` routes participate in every router scope, including `Group` hierarchies, mounted sub-apps, parameterized and wildcard paths, and static file helpers. They also appear in route listings such as `app.Stack()` so tooling sees both the `GET` and `HEAD` entries.
 
 ## Paths
 

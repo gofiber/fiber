@@ -334,8 +334,21 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 		{name: "head mirrors status without body"},
 	}
 
+	requireClose := func(tb testing.TB, closer io.Closer) {
+		tb.Helper()
+		require.NoError(tb, closer.Close())
+	}
+
+	registerCleanup := func(tb testing.TB, body io.ReadCloser) {
+		tb.Helper()
+		tb.Cleanup(func() {
+			requireClose(tb, body)
+		})
+	}
+
 	runners := []func(t *testing.T){
 		func(t *testing.T) {
+			t.Helper()
 			app := New()
 			app.Get("/", func(c Ctx) error {
 				c.Set("X-Test", "auto")
@@ -344,18 +357,18 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 
 			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/", nil))
 			require.NoError(t, err)
-			defer respHead.Body.Close()
+			registerCleanup(t, respHead.Body)
 			require.Equal(t, StatusOK, respHead.StatusCode)
 			require.Equal(t, int64(len("Hello")), respHead.ContentLength)
 			require.Equal(t, "auto", respHead.Header.Get("X-Test"))
 
 			body, err := io.ReadAll(respHead.Body)
 			require.NoError(t, err)
-			require.Len(t, body, 0)
+			require.Empty(t, body)
 
 			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 			require.NoError(t, err)
-			defer respGet.Body.Close()
+			registerCleanup(t, respGet.Body)
 			require.Equal(t, StatusOK, respGet.StatusCode)
 			require.Equal(t, int64(len("Hello")), respGet.ContentLength)
 			data, err := io.ReadAll(respGet.Body)
@@ -363,6 +376,7 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 			require.Equal(t, "Hello", string(data))
 		},
 		func(t *testing.T) {
+			t.Helper()
 			app := New(Config{DisableAutoRegister: true})
 			app.Get("/", func(c Ctx) error {
 				return c.SendString("Hello")
@@ -370,10 +384,11 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 
 			resp, err := app.Test(httptest.NewRequest(MethodHead, "/", nil))
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			registerCleanup(t, resp.Body)
 			require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
 		},
 		func(t *testing.T) {
+			t.Helper()
 			app := New()
 			var getCalls int
 			app.Get("/override", func(c Ctx) error {
@@ -385,7 +400,7 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, StatusOK, respHead.StatusCode)
 			require.Equal(t, 1, getCalls)
-			require.NoError(t, respHead.Body.Close())
+			requireClose(t, respHead.Body)
 
 			var headCalls int
 			app.Head("/override", func(c Ctx) error {
@@ -396,16 +411,17 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 
 			respHead, err = app.Test(httptest.NewRequest(MethodHead, "/override", nil))
 			require.NoError(t, err)
-			defer respHead.Body.Close()
+			registerCleanup(t, respHead.Body)
 			require.Equal(t, StatusNoContent, respHead.StatusCode)
 			require.Equal(t, "true", respHead.Header.Get("X-Explicit"))
 			body, err := io.ReadAll(respHead.Body)
 			require.NoError(t, err)
-			require.Len(t, body, 0)
+			require.Empty(t, body)
 			require.Equal(t, 1, getCalls)
 			require.Equal(t, 1, headCalls)
 		},
 		func(t *testing.T) {
+			t.Helper()
 			app := New()
 			group := app.Group("/api")
 			group.Get("/users/:id", func(c Ctx) error {
@@ -415,14 +431,15 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 
 			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/api/users/42", nil))
 			require.NoError(t, err)
-			defer respHead.Body.Close()
+			registerCleanup(t, respHead.Body)
 			require.Equal(t, StatusOK, respHead.StatusCode)
 			require.Equal(t, "42", respHead.Header.Get("X-User"))
 			body, err := io.ReadAll(respHead.Body)
 			require.NoError(t, err)
-			require.Len(t, body, 0)
+			require.Empty(t, body)
 		},
 		func(t *testing.T) {
+			t.Helper()
 			dir := t.TempDir()
 			file := filepath.Join(dir, "file.txt")
 			content := []byte("data")
@@ -435,28 +452,30 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 
 			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/file", nil))
 			require.NoError(t, err)
-			defer respHead.Body.Close()
+			registerCleanup(t, respHead.Body)
 			require.Equal(t, StatusOK, respHead.StatusCode)
 			require.Equal(t, int64(len(content)), respHead.ContentLength)
 			body, err := io.ReadAll(respHead.Body)
 			require.NoError(t, err)
-			require.Len(t, body, 0)
+			require.Empty(t, body)
 
 			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/file", nil))
 			require.NoError(t, err)
-			defer respGet.Body.Close()
+			registerCleanup(t, respGet.Body)
 			data, err := io.ReadAll(respGet.Body)
 			require.NoError(t, err)
 			require.Equal(t, content, data)
 		},
 		func(t *testing.T) {
+			t.Helper()
 			app := New()
 			resp, err := app.Test(httptest.NewRequest(MethodHead, "/missing", nil))
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			registerCleanup(t, resp.Body)
 			require.Equal(t, StatusNotFound, resp.StatusCode)
 		},
 		func(t *testing.T) {
+			t.Helper()
 			app := New()
 			var headCalls int
 			app.Head("/late", func(c Ctx) error {
@@ -473,7 +492,7 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 
 			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/late", nil))
 			require.NoError(t, err)
-			defer respHead.Body.Close()
+			registerCleanup(t, respHead.Body)
 			require.Equal(t, StatusAccepted, respHead.StatusCode)
 			require.Equal(t, "head", respHead.Header.Get("X-Late"))
 			require.Equal(t, 1, headCalls)
@@ -481,11 +500,12 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 
 			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/late", nil))
 			require.NoError(t, err)
-			defer respGet.Body.Close()
+			registerCleanup(t, respGet.Body)
 			require.Equal(t, StatusOK, respGet.StatusCode)
 			require.Equal(t, 1, getCalls)
 		},
 		func(t *testing.T) {
+			t.Helper()
 			app := New()
 			app.Get("/list", func(c Ctx) error {
 				return c.SendString("list")
@@ -509,6 +529,7 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 			require.True(t, hasHead)
 		},
 		func(t *testing.T) {
+			t.Helper()
 			app := New()
 			app.Get("/nocontent", func(c Ctx) error {
 				return c.SendStatus(StatusNoContent)
@@ -516,15 +537,15 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 
 			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/nocontent", nil))
 			require.NoError(t, err)
-			defer respHead.Body.Close()
+			registerCleanup(t, respHead.Body)
 			require.Equal(t, StatusNoContent, respHead.StatusCode)
 			body, err := io.ReadAll(respHead.Body)
 			require.NoError(t, err)
-			require.Len(t, body, 0)
+			require.Empty(t, body)
 
 			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/nocontent", nil))
 			require.NoError(t, err)
-			defer respGet.Body.Close()
+			registerCleanup(t, respGet.Body)
 			require.Equal(t, StatusNoContent, respGet.StatusCode)
 		},
 	}
@@ -532,7 +553,6 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 	require.Len(t, runners, len(cases))
 
 	for i, tc := range cases {
-		tc := tc
 		runner := runners[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
