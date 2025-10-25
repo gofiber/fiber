@@ -710,6 +710,7 @@ func setConfigToRequest(req *Request, config ...Config) {
 		default:
 			req.SetJSON(cfg.Body)
 		}
+		return
 	}
 
 	if cfg.FormData != nil {
