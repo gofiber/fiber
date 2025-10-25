@@ -182,12 +182,12 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodTrace, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 405, resp.StatusCode)
-	require.Equal(t, "GET, POST, OPTIONS", resp.Header.Get(HeaderAllow))
+	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	resp, err = app.Test(httptest.NewRequest(MethodPatch, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 405, resp.StatusCode)
-	require.Equal(t, "GET, POST, OPTIONS", resp.Header.Get(HeaderAllow))
+	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	app.Head("/", testEmptyHandler)
 
@@ -1792,11 +1792,13 @@ func Test_App_Stack(t *testing.T) {
 	app.Get("/path2", testEmptyHandler)
 	app.Post("/path3", testEmptyHandler)
 
+	app.startupProcess()
+
 	stack := app.Stack()
 	methodList := app.config.RequestMethods
 	require.Len(t, methodList, len(stack))
 	require.Len(t, stack[app.methodInt(MethodGet)], 3)
-	require.Len(t, stack[app.methodInt(MethodHead)], 1)
+	require.Len(t, stack[app.methodInt(MethodHead)], 3)
 	require.Len(t, stack[app.methodInt(MethodPost)], 2)
 	require.Len(t, stack[app.methodInt(MethodPut)], 1)
 	require.Len(t, stack[app.methodInt(MethodPatch)], 1)
@@ -1815,8 +1817,10 @@ func Test_App_HandlersCount(t *testing.T) {
 	app.Get("/path2", testEmptyHandler)
 	app.Post("/path3", testEmptyHandler)
 
+	app.startupProcess()
+
 	count := app.HandlersCount()
-	require.Equal(t, uint32(3), count)
+	require.Equal(t, uint32(4), count)
 }
 
 // go test -run Test_App_ReadTimeout
