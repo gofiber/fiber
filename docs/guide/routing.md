@@ -42,6 +42,11 @@ app.Head("/users/:id", func(c fiber.Ctx) error {
 To opt out globally, start the app with `DisableAutoRegister`:
 
 ```go title="Disable automatic HEAD registration"
+handler := func(c fiber.Ctx) error {
+    c.Set("X-User", c.Params("id"))
+    return c.SendStatus(fiber.StatusOK)
+}
+
 app := fiber.New(fiber.Config{DisableAutoRegister: true})
 app.Get("/users/:id", handler) // HEAD /users/:id now returns 405 unless you add it manually.
 ```

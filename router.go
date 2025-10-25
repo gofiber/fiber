@@ -480,16 +480,18 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 // pruneAutoHeadRouteLocked removes an automatically generated HEAD route so a
 // later explicit registration can take its place without duplicating handler
 // chains. The caller must already hold app.mutex.
-func (app *App) pruneAutoHeadRouteLocked(normalizedPath string) {
+func (app *App) pruneAutoHeadRouteLocked(path string) {
 	headIndex := app.methodInt(MethodHead)
 	if headIndex == -1 {
 		return
 	}
 
+	norm := app.normalizePath(path)
+
 	headStack := app.stack[headIndex]
 	for i := len(headStack) - 1; i >= 0; i-- {
 		headRoute := headStack[i]
-		if headRoute.path != normalizedPath || headRoute.mount || headRoute.use || !headRoute.autoHead {
+		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead {
 			continue
 		}
 
@@ -654,9 +656,9 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		headRoute.group = route.group
 		headRoute.Method = MethodHead
 		headRoute.autoHead = true
-		// Fasthttp automatically suppresses response bodies for HEAD
-		// requests, so the copied handler stack can run unchanged while
-		// still producing an empty payload on the wire.
+		// Fasthttp automatically omits response bodies when transmitting
+		// HEAD responses, so the copied GET handler stack can execute
+		// unchanged while still producing an empty body on the wire.
 
 		headStack = append(headStack, headRoute)
 		existing[route.path] = struct{}{}
