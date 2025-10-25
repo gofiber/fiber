@@ -702,7 +702,14 @@ func setConfigToRequest(req *Request, config ...Config) {
 	}
 
 	if cfg.Body != nil {
-		req.SetJSON(cfg.Body)
+		switch v := cfg.Body.(type) {
+		case []byte:
+			req.SetRawBody(v)
+		case string:
+			req.SetRawBody([]byte(v))
+		default:
+			req.SetJSON(cfg.Body)
+		}
 		return
 	}
 
