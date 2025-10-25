@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
@@ -440,10 +439,9 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 		},
 		func(t *testing.T) {
 			t.Helper()
-			dir := t.TempDir()
-			file := filepath.Join(dir, "file.txt")
-			content := []byte("data")
-			require.NoError(t, os.WriteFile(file, content, 0o600))
+			const file = "./.github/testdata/testRoutes.json"
+			content, err := os.ReadFile(file)
+			require.NoError(t, err)
 
 			app := New()
 			app.Get("/file", func(c Ctx) error {
