@@ -15,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -732,6 +734,200 @@ func (app *App) Name(name string) Router {
 		panic(err)
 	}
 
+	return app
+}
+
+// Summary assigns a short summary to the most recently added route.
+func (app *App) Summary(sum string) Router {
+	app.mutex.Lock()
+	app.latestRoute.Summary = sum
+	app.mutex.Unlock()
+	return app
+}
+
+// Description assigns a description to the most recently added route.
+func (app *App) Description(desc string) Router {
+	app.mutex.Lock()
+	app.latestRoute.Description = desc
+	app.mutex.Unlock()
+	return app
+}
+
+// Consumes assigns a request media type to the most recently added route.
+func (app *App) Consumes(typ string) Router {
+	if typ != "" {
+		if _, _, err := mime.ParseMediaType(typ); err != nil || !strings.Contains(typ, "/") {
+			panic("invalid media type: " + typ)
+		}
+	}
+	app.mutex.Lock()
+	app.latestRoute.Consumes = typ
+	app.mutex.Unlock()
+	return app
+}
+
+// Produces assigns a response media type to the most recently added route.
+func (app *App) Produces(typ string) Router {
+	if typ != "" {
+		if _, _, err := mime.ParseMediaType(typ); err != nil || !strings.Contains(typ, "/") {
+			panic("invalid media type: " + typ)
+		}
+	}
+	app.mutex.Lock()
+	app.latestRoute.Produces = typ
+	app.mutex.Unlock()
+	return app
+}
+
+// RequestBody documents the request payload for the most recently added route.
+func (app *App) RequestBody(description string, required bool, mediaTypes ...string) Router {
+	sanitized := sanitizeRequiredMediaTypes(mediaTypes)
+
+	app.mutex.Lock()
+	app.latestRoute.RequestBody = &RouteRequestBody{
+		Description: description,
+		Required:    required,
+		MediaTypes:  append([]string(nil), sanitized...),
+	}
+	if len(sanitized) > 0 {
+		app.latestRoute.Consumes = sanitized[0]
+	}
+	app.mutex.Unlock()
+
+	return app
+}
+
+// Parameter documents an input parameter for the most recently added route.
+func (app *App) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+	if strings.TrimSpace(name) == "" {
+		panic("parameter name is required")
+	}
+
+	location := strings.ToLower(strings.TrimSpace(in))
+	switch location {
+	case "path", "query", "header", "cookie":
+	default:
+		panic("invalid parameter location: " + in)
+	}
+
+	if schema == nil {
+		schema = map[string]any{"type": "string"}
+	}
+
+	schemaCopy := make(map[string]any, len(schema))
+	maps.Copy(schemaCopy, schema)
+	if _, ok := schemaCopy["type"]; !ok {
+		schemaCopy["type"] = "string"
+	}
+
+	if location == "path" {
+		required = true
+	}
+
+	param := RouteParameter{
+		Name:        name,
+		In:          location,
+		Required:    required,
+		Description: description,
+		Schema:      schemaCopy,
+	}
+
+	app.mutex.Lock()
+	app.latestRoute.Parameters = append(app.latestRoute.Parameters, param)
+	app.mutex.Unlock()
+
+	return app
+}
+
+// Response documents an HTTP response for the most recently added route.
+func (app *App) Response(status int, description string, mediaTypes ...string) Router {
+	if status != 0 && (status < 100 || status > 599) {
+		panic("invalid status code")
+	}
+
+	sanitized := sanitizeMediaTypes(mediaTypes)
+
+	if description == "" {
+		if status == 0 {
+			description = "Default response"
+		} else if text := http.StatusText(status); text != "" {
+			description = text
+		} else {
+			description = "Status " + strconv.Itoa(status)
+		}
+	}
+
+	key := "default"
+	if status > 0 {
+		key = strconv.Itoa(status)
+	}
+
+	resp := RouteResponse{Description: description}
+	if len(sanitized) > 0 {
+		resp.MediaTypes = append([]string(nil), sanitized...)
+	}
+
+	app.mutex.Lock()
+	if app.latestRoute.Responses == nil {
+		app.latestRoute.Responses = make(map[string]RouteResponse)
+	}
+	app.latestRoute.Responses[key] = resp
+	if status == StatusOK && len(resp.MediaTypes) > 0 {
+		app.latestRoute.Produces = resp.MediaTypes[0]
+	}
+	app.mutex.Unlock()
+
+	return app
+}
+
+func sanitizeMediaTypes(mediaTypes []string) []string {
+	if len(mediaTypes) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(mediaTypes))
+	sanitized := make([]string, 0, len(mediaTypes))
+	for _, typ := range mediaTypes {
+		trimmed := strings.TrimSpace(typ)
+		if trimmed == "" {
+			continue
+		}
+		if _, _, err := mime.ParseMediaType(trimmed); err != nil || !strings.Contains(trimmed, "/") {
+			panic("invalid media type: " + typ)
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		sanitized = append(sanitized, trimmed)
+	}
+	if len(sanitized) == 0 {
+		return nil
+	}
+	return sanitized
+}
+
+func sanitizeRequiredMediaTypes(mediaTypes []string) []string {
+	sanitized := sanitizeMediaTypes(mediaTypes)
+	if len(sanitized) == 0 {
+		panic("at least one media type must be provided")
+	}
+	return sanitized
+}
+
+// Tags assigns tags to the most recently added route.
+func (app *App) Tags(tags ...string) Router {
+	app.mutex.Lock()
+	app.latestRoute.Tags = tags
+	app.mutex.Unlock()
+	return app
+}
+
+// Deprecated marks the most recently added route as deprecated.
+func (app *App) Deprecated() Router {
+	app.mutex.Lock()
+	app.latestRoute.Deprecated = true
+	app.mutex.Unlock()
 	return app
 }
 

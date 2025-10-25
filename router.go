@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"slices"
 	"sync/atomic"
 
@@ -37,6 +38,30 @@ type Router interface {
 	Route(prefix string, fn func(router Router), name ...string) Router
 
 	Name(name string) Router
+	// Summary sets a short summary for the most recently registered route.
+	Summary(sum string) Router
+	// Description sets a human-readable description for the most recently
+	// registered route.
+	Description(desc string) Router
+	// Consumes sets the request media type for the most recently
+	// registered route.
+	Consumes(typ string) Router
+	// Produces sets the response media type for the most recently
+	// registered route.
+	Produces(typ string) Router
+	// RequestBody documents the request body for the most recently
+	// registered route.
+	RequestBody(description string, required bool, mediaTypes ...string) Router
+	// Parameter documents an input parameter for the most recently
+	// registered route.
+	Parameter(name, in string, required bool, schema map[string]any, description string) Router
+	// Response documents an HTTP response for the most recently
+	// registered route.
+	Response(status int, description string, mediaTypes ...string) Router
+	// Tags sets the tags for the most recently registered route.
+	Tags(tags ...string) Router
+	// Deprecated marks the most recently registered route as deprecated.
+	Deprecated() Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
@@ -44,21 +69,54 @@ type Route struct {
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	group *Group // Group instance. used for routes in groups
 
+	routeParser routeParser // Parameter parser
+
+	Handlers    []Handler                `json:"-"` // Ctx handlers
+	Parameters  []RouteParameter         `json:"parameters"`
+	Responses   map[string]RouteResponse `json:"responses"`
+	RequestBody *RouteRequestBody        `json:"requestBody"` //nolint:tagliatelle
+	Tags        []string                 `json:"tags"`
+	Params      []string                 `json:"params"` // Case-sensitive param keys
+
 	path string // Prettified path
 
 	// Public fields
 	Method string `json:"method"` // HTTP method
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
-	Path        string      `json:"path"`   // Original registered route path
-	Params      []string    `json:"params"` // Case-sensitive param keys
-	Handlers    []Handler   `json:"-"`      // Ctx handlers
-	routeParser routeParser // Parameter parser
+	Path        string `json:"path"` // Original registered route path
+	Summary     string `json:"summary"`
+	Description string `json:"description"`
+	Consumes    string `json:"consumes"`
+	Produces    string `json:"produces"`
+	Deprecated  bool   `json:"deprecated"`
 	// Data for routing
 	use   bool // USE matches path prefixes
 	mount bool // Indicated a mounted app on a specific route
 	star  bool // Path equals '*'
 	root  bool // Path equals '/'
+}
+
+// RouteParameter describes an input captured by a route.
+type RouteParameter struct {
+	Schema      map[string]any `json:"schema"`
+	Description string         `json:"description"`
+	Name        string         `json:"name"`
+	In          string         `json:"in"`
+	Required    bool           `json:"required"`
+}
+
+// RouteResponse describes a response emitted by a route.
+type RouteResponse struct {
+	MediaTypes  []string `json:"mediaTypes"` //nolint:tagliatelle
+	Description string   `json:"description"`
+}
+
+// RouteRequestBody describes the request payload accepted by a route.
+type RouteRequestBody struct {
+	MediaTypes  []string `json:"mediaTypes"` //nolint:tagliatelle
+	Description string   `json:"description"`
+	Required    bool     `json:"required"`
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
@@ -376,12 +434,71 @@ func (*App) copyRoute(route *Route) *Route {
 		routeParser: route.routeParser,
 
 		// Public data
-		Path:     route.Path,
-		Params:   route.Params,
-		Name:     route.Name,
-		Method:   route.Method,
-		Handlers: route.Handlers,
+		Path:        route.Path,
+		Params:      route.Params,
+		Name:        route.Name,
+		Method:      route.Method,
+		Handlers:    route.Handlers,
+		Summary:     route.Summary,
+		Description: route.Description,
+		Consumes:    route.Consumes,
+		Produces:    route.Produces,
+		RequestBody: cloneRouteRequestBody(route.RequestBody),
+		Parameters:  cloneRouteParameters(route.Parameters),
+		Responses:   cloneRouteResponses(route.Responses),
+		Tags:        route.Tags,
+		Deprecated:  route.Deprecated,
 	}
+}
+
+func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {
+	if body == nil {
+		return nil
+	}
+	clone := &RouteRequestBody{
+		Description: body.Description,
+		Required:    body.Required,
+	}
+	if len(body.MediaTypes) > 0 {
+		clone.MediaTypes = append([]string(nil), body.MediaTypes...)
+	}
+	return clone
+}
+
+func cloneRouteParameters(params []RouteParameter) []RouteParameter {
+	if len(params) == 0 {
+		return nil
+	}
+	cloned := make([]RouteParameter, len(params))
+	for i, p := range params {
+		cloned[i] = RouteParameter{
+			Name:        p.Name,
+			In:          p.In,
+			Required:    p.Required,
+			Description: p.Description,
+		}
+		if len(p.Schema) > 0 {
+			schemaCopy := make(map[string]any, len(p.Schema))
+			maps.Copy(schemaCopy, p.Schema)
+			cloned[i].Schema = schemaCopy
+		}
+	}
+	return cloned
+}
+
+func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteResponse {
+	if len(responses) == 0 {
+		return nil
+	}
+	cloned := make(map[string]RouteResponse, len(responses))
+	for code, resp := range responses {
+		copyResp := RouteResponse{Description: resp.Description}
+		if len(resp.MediaTypes) > 0 {
+			copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
+		}
+		cloned[code] = copyResp
+	}
+	return cloned
 }
 
 func (app *App) normalizePath(path string) string {
@@ -524,9 +641,13 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			Params:      parsedRaw.params,
 			group:       group,
 
-			Path:     pathRaw,
-			Method:   method,
-			Handlers: handlers,
+			Path:        pathRaw,
+			Method:      method,
+			Handlers:    handlers,
+			Summary:     "",
+			Description: "",
+			Consumes:    MIMETextPlain,
+			Produces:    MIMETextPlain,
 		}
 
 		// Increment global handler count
