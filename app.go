@@ -752,7 +752,7 @@ func (app *App) Produces(typ string) Router {
 
 // RequestBody documents the request payload for the most recently added route.
 func (app *App) RequestBody(description string, required bool, mediaTypes ...string) Router {
-	sanitized := sanitizeMediaTypes(mediaTypes, true)
+	sanitized := sanitizeRequiredMediaTypes(mediaTypes)
 
 	app.mutex.Lock()
 	app.latestRoute.RequestBody = &RouteRequestBody{
@@ -816,7 +816,7 @@ func (app *App) Response(status int, description string, mediaTypes ...string) R
 		panic("invalid status code")
 	}
 
-	sanitized := sanitizeMediaTypes(mediaTypes, false)
+	sanitized := sanitizeMediaTypes(mediaTypes)
 
 	if description == "" {
 		if status == 0 {
@@ -851,11 +851,8 @@ func (app *App) Response(status int, description string, mediaTypes ...string) R
 	return app
 }
 
-func sanitizeMediaTypes(mediaTypes []string, require bool) []string {
+func sanitizeMediaTypes(mediaTypes []string) []string {
 	if len(mediaTypes) == 0 {
-		if require {
-			panic("at least one media type must be provided")
-		}
 		return nil
 	}
 
@@ -875,11 +872,16 @@ func sanitizeMediaTypes(mediaTypes []string, require bool) []string {
 		seen[trimmed] = struct{}{}
 		sanitized = append(sanitized, trimmed)
 	}
-	if require && len(sanitized) == 0 {
-		panic("at least one media type must be provided")
-	}
 	if len(sanitized) == 0 {
 		return nil
+	}
+	return sanitized
+}
+
+func sanitizeRequiredMediaTypes(mediaTypes []string) []string {
+	sanitized := sanitizeMediaTypes(mediaTypes)
+	if len(sanitized) == 0 {
+		panic("at least one media type must be provided")
 	}
 	return sanitized
 }

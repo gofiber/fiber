@@ -33,6 +33,7 @@ func Test_Group_OpenAPI_Helpers(t *testing.T) {
 		grp := app.Group("/api")
 		grp.Get("/users", testEmptyHandler).Consumes(MIMEApplicationJSON)
 		route := app.stack[app.methodInt(MethodGet)][0]
+		//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
 		require.Equal(t, MIMEApplicationJSON, route.Consumes)
 	})
 
@@ -42,6 +43,7 @@ func Test_Group_OpenAPI_Helpers(t *testing.T) {
 		grp := app.Group("/api")
 		grp.Get("/users", testEmptyHandler).Produces(MIMEApplicationXML)
 		route := app.stack[app.methodInt(MethodGet)][0]
+		//nolint:testifylint // MIMEApplicationXML is a plain string, JSONEq not required
 		require.Equal(t, MIMEApplicationXML, route.Produces)
 	})
 

@@ -85,12 +85,12 @@ Each documented route automatically includes a `200` response with the descripti
 ```go
 var ConfigDefault = Config{
     Next:        nil,
+    Operations:  nil,
     Title:       "Fiber API",
     Version:     "1.0.0",
     Description: "",
     ServerURL:   "",
     Path:        "/openapi.json",
-    Operations:         nil,
 }
 ```
 
@@ -98,24 +98,25 @@ var ConfigDefault = Config{
 
 ```go
 type Operation struct {
-    Id          string
-    Summary     string
-    Description string
-    Tags        []string
-    Deprecated  bool
-    Consumes    string
-    Produces    string
-    Parameters  []Parameter
     RequestBody *RequestBody
     Responses   map[string]Response
+    Parameters  []Parameter
+    Tags        []string
+
+    ID          string
+    Summary     string
+    Description string
+    Consumes    string
+    Produces    string
+    Deprecated  bool
 }
 
 type Parameter struct {
+    Schema      map[string]any
     Name        string
     In          string
     Description string
     Required    bool
-    Schema      map[string]any
 }
 
 type Media struct {
@@ -123,14 +124,14 @@ type Media struct {
 }
 
 type Response struct {
-    Description string
     Content     map[string]Media
+    Description string
 }
 
 type RequestBody struct {
+    Content     map[string]Media
     Description string
     Required    bool
-    Content     map[string]Media
 }
 ```
 

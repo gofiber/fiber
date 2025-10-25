@@ -68,25 +68,27 @@ type Route struct {
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	group *Group // Group instance. used for routes in groups
 
+	routeParser routeParser // Parameter parser
+
+	Handlers    []Handler                `json:"-"` // Ctx handlers
+	Parameters  []RouteParameter         `json:"parameters"`
+	Responses   map[string]RouteResponse `json:"responses"`
+	RequestBody *RouteRequestBody        `json:"requestBody"` //nolint:tagliatelle
+	Tags        []string                 `json:"tags"`
+	Params      []string                 `json:"params"` // Case-sensitive param keys
+
 	path string // Prettified path
 
 	// Public fields
 	Method string `json:"method"` // HTTP method
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
-	Path        string                   `json:"path"`   // Original registered route path
-	Params      []string                 `json:"params"` // Case-sensitive param keys
-	Handlers    []Handler                `json:"-"`      // Ctx handlers
-	Summary     string                   `json:"summary"`
-	Description string                   `json:"description"`
-	Consumes    string                   `json:"consumes"`
-	Produces    string                   `json:"produces"`
-	RequestBody *RouteRequestBody        `json:"requestBody"`
-	Parameters  []RouteParameter         `json:"parameters"`
-	Responses   map[string]RouteResponse `json:"responses"`
-	Tags        []string                 `json:"tags"`
-	Deprecated  bool                     `json:"deprecated"`
-	routeParser routeParser              // Parameter parser
+	Path        string `json:"path"` // Original registered route path
+	Summary     string `json:"summary"`
+	Description string `json:"description"`
+	Consumes    string `json:"consumes"`
+	Produces    string `json:"produces"`
+	Deprecated  bool   `json:"deprecated"`
 	// Data for routing
 	use   bool // USE matches path prefixes
 	mount bool // Indicated a mounted app on a specific route
@@ -96,24 +98,24 @@ type Route struct {
 
 // RouteParameter describes an input captured by a route.
 type RouteParameter struct {
+	Schema      map[string]any `json:"schema"`
+	Description string         `json:"description"`
 	Name        string         `json:"name"`
 	In          string         `json:"in"`
 	Required    bool           `json:"required"`
-	Description string         `json:"description"`
-	Schema      map[string]any `json:"schema"`
 }
 
 // RouteResponse describes a response emitted by a route.
 type RouteResponse struct {
+	MediaTypes  []string `json:"mediaTypes"` //nolint:tagliatelle
 	Description string   `json:"description"`
-	MediaTypes  []string `json:"mediaTypes"`
 }
 
 // RouteRequestBody describes the request payload accepted by a route.
 type RouteRequestBody struct {
+	MediaTypes  []string `json:"mediaTypes"` //nolint:tagliatelle
 	Description string   `json:"description"`
 	Required    bool     `json:"required"`
-	MediaTypes  []string `json:"mediaTypes"`
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {

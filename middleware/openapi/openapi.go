@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"strings"
 	"sync"
@@ -32,6 +33,9 @@ func New(config ...Config) fiber.Handler {
 		once.Do(func() {
 			spec := generateSpec(c.App(), cfg)
 			data, genErr = json.Marshal(spec)
+			if genErr != nil {
+				genErr = fmt.Errorf("openapi: marshal spec: %w", genErr)
+			}
 		})
 		if genErr != nil {
 			return genErr
@@ -42,10 +46,10 @@ func New(config ...Config) fiber.Handler {
 }
 
 type openAPISpec struct {
-	OpenAPI string                          `json:"openapi"`
-	Info    openAPIInfo                     `json:"info"`
-	Servers []openAPIServer                 `json:"servers,omitempty"`
 	Paths   map[string]map[string]operation `json:"paths"`
+	Servers []openAPIServer                 `json:"servers,omitempty"`
+	Info    openAPIInfo                     `json:"info"`
+	OpenAPI string                          `json:"openapi"`
 }
 
 type openAPIInfo struct {
@@ -59,33 +63,34 @@ type openAPIServer struct {
 }
 
 type operation struct {
-	OperationID string              `json:"operationId,omitempty"`
-	Summary     string              `json:"summary"`
-	Description string              `json:"description"`
-	Tags        []string            `json:"tags,omitempty"`
-	Deprecated  bool                `json:"deprecated,omitempty"`
-	Parameters  []parameter         `json:"parameters,omitempty"`
-	RequestBody *requestBody        `json:"requestBody,omitempty"`
 	Responses   map[string]response `json:"responses"`
+	RequestBody *requestBody        `json:"requestBody,omitempty"` //nolint:tagliatelle
+	Parameters  []parameter         `json:"parameters,omitempty"`
+	Tags        []string            `json:"tags,omitempty"`
+
+	OperationID string `json:"operationId,omitempty"` //nolint:tagliatelle
+	Summary     string `json:"summary"`
+	Description string `json:"description"`
+	Deprecated  bool   `json:"deprecated,omitempty"`
 }
 
 type response struct {
-	Description string                    `json:"description"`
 	Content     map[string]map[string]any `json:"content,omitempty"`
+	Description string                    `json:"description"`
 }
 
 type parameter struct {
+	Schema      map[string]any `json:"schema,omitempty"`
+	Description string         `json:"description,omitempty"`
 	Name        string         `json:"name"`
 	In          string         `json:"in"`
 	Required    bool           `json:"required"`
-	Description string         `json:"description,omitempty"`
-	Schema      map[string]any `json:"schema,omitempty"`
 }
 
 type requestBody struct {
+	Content     map[string]map[string]any `json:"content"`
 	Description string                    `json:"description,omitempty"`
 	Required    bool                      `json:"required,omitempty"`
-	Content     map[string]map[string]any `json:"content"`
 }
 
 func generateSpec(app *fiber.App, cfg Config) openAPISpec {
@@ -169,7 +174,7 @@ func generateSpec(app *fiber.App, cfg Config) openAPISpec {
 				}
 			}
 
-			opID := meta.Id
+			opID := meta.ID
 			if opID == "" {
 				opID = r.Name
 			}

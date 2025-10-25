@@ -11,6 +11,12 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
+	// Operations allows providing per-route metadata keyed by
+	// "METHOD /path" (e.g. "GET /users").
+	//
+	// Optional. Default: nil
+	Operations map[string]Operation
+
 	// Title is the title for the generated OpenAPI specification.
 	//
 	// Optional. Default: "Fiber API"
@@ -35,23 +41,17 @@ type Config struct {
 	//
 	// Optional. Default: "/openapi.json"
 	Path string
-
-	// Operations allows providing per-route metadata keyed by
-	// "METHOD /path" (e.g. "GET /users").
-	//
-	// Optional. Default: nil
-	Operations map[string]Operation
 }
 
 // ConfigDefault is the default config.
 var ConfigDefault = Config{
 	Next:        nil,
+	Operations:  nil,
 	Title:       "Fiber API",
 	Version:     "1.0.0",
 	Description: "",
 	ServerURL:   "",
 	Path:        "/openapi.json",
-	Operations:  nil,
 }
 
 func configDefault(config ...Config) Config {
@@ -88,30 +88,27 @@ func configDefault(config ...Config) Config {
 
 // Operation configures metadata for a single route in the generated spec.
 type Operation struct {
-	Id          string
+	RequestBody *RequestBody
+	Responses   map[string]Response
+	Parameters  []Parameter
+	Tags        []string
+
+	ID          string
 	Summary     string
 	Description string
-	Tags        []string
+	Consumes    string
+	Produces    string
 	Deprecated  bool
-	// Consumes defines the request media type.
-	Consumes string
-	// Produces defines the response media type.
-	Produces string
-	// Parameters augments the generated parameter list.
-	Parameters []Parameter
-	// RequestBody overrides or augments the generated request body.
-	RequestBody *RequestBody
-	// Responses augments the generated responses by status code (e.g. "201").
-	Responses map[string]Response
 }
 
 // Parameter describes a single OpenAPI parameter.
 type Parameter struct {
+	Schema map[string]any
+
 	Name        string
 	In          string
 	Description string
 	Required    bool
-	Schema      map[string]any
 }
 
 // Media describes the schema payload for a request or response media type.
@@ -121,13 +118,13 @@ type Media struct {
 
 // Response describes an OpenAPI response object.
 type Response struct {
-	Description string
 	Content     map[string]Media
+	Description string
 }
 
 // RequestBody describes the request body configuration for an operation.
 type RequestBody struct {
+	Content     map[string]Media
 	Description string
 	Required    bool
-	Content     map[string]Media
 }

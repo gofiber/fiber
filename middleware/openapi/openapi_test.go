@@ -33,9 +33,9 @@ func Test_OpenAPI_Generate(t *testing.T) {
 	operations := spec.Paths["/users"]
 	require.Contains(t, operations, "get")
 	require.Contains(t, operations, "post")
-	getOp := operations["get"].(map[string]any)
+	getOp := requireMap(t, operations["get"])
 	require.Contains(t, getOp, "responses")
-	responses := getOp["responses"].(map[string]any)
+	responses := requireMap(t, getOp["responses"])
 	require.Contains(t, responses, "200")
 }
 
@@ -186,7 +186,7 @@ func Test_OpenAPI_OperationConfig(t *testing.T) {
 	app.Use(New(Config{
 		Operations: map[string]Operation{
 			"GET /users": {
-				Id:          "listUsersCustom",
+				ID:          "listUsersCustom",
 				Summary:     "List users",
 				Description: "Returns all users",
 				Tags:        []string{"users"},
@@ -323,17 +323,17 @@ func Test_OpenAPI_Methods(t *testing.T) {
 	handler := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }
 
 	tests := []struct {
-		method   string
 		register func(*fiber.App)
+		method   string
 	}{
-		{fiber.MethodGet, func(a *fiber.App) { a.Get("/method", handler) }},
-		{fiber.MethodPost, func(a *fiber.App) { a.Post("/method", handler) }},
-		{fiber.MethodPut, func(a *fiber.App) { a.Put("/method", handler) }},
-		{fiber.MethodPatch, func(a *fiber.App) { a.Patch("/method", handler) }},
-		{fiber.MethodDelete, func(a *fiber.App) { a.Delete("/method", handler) }},
-		{fiber.MethodHead, func(a *fiber.App) { a.Head("/method", handler) }},
-		{fiber.MethodOptions, func(a *fiber.App) { a.Options("/method", handler) }},
-		{fiber.MethodTrace, func(a *fiber.App) { a.Trace("/method", handler) }},
+		{func(a *fiber.App) { a.Get("/method", handler) }, fiber.MethodGet},
+		{func(a *fiber.App) { a.Post("/method", handler) }, fiber.MethodPost},
+		{func(a *fiber.App) { a.Put("/method", handler) }, fiber.MethodPut},
+		{func(a *fiber.App) { a.Patch("/method", handler) }, fiber.MethodPatch},
+		{func(a *fiber.App) { a.Delete("/method", handler) }, fiber.MethodDelete},
+		{func(a *fiber.App) { a.Head("/method", handler) }, fiber.MethodHead},
+		{func(a *fiber.App) { a.Options("/method", handler) }, fiber.MethodOptions},
+		{func(a *fiber.App) { a.Trace("/method", handler) }, fiber.MethodTrace},
 	}
 
 	for _, tt := range tests {
@@ -372,14 +372,14 @@ func Test_OpenAPI_Params(t *testing.T) {
 	paths := getPaths(t, app)
 	require.Contains(t, paths, "/users/{id}")
 	require.Contains(t, paths["/users/{id}"], "get")
-	op := paths["/users/{id}"]["get"].(map[string]any)
-	params := op["parameters"].([]any)
+	op := requireMap(t, paths["/users/{id}"]["get"])
+	params := requireSlice(t, op["parameters"])
 	require.Len(t, params, 1)
-	p0 := params[0].(map[string]any)
+	p0 := requireMap(t, params[0])
 	require.Equal(t, "id", p0["name"])
 	require.Equal(t, "path", p0["in"])
 	require.Equal(t, "identifier", p0["description"])
-	schema := p0["schema"].(map[string]any)
+	schema := requireMap(t, p0["schema"])
 	require.Equal(t, "integer", schema["type"])
 }
 
@@ -409,13 +409,13 @@ func Test_OpenAPI_Groups_Metadata(t *testing.T) {
 	paths := getPaths(t, app)
 
 	require.Contains(t, paths, "/api/users")
-	op := paths["/api/users"]["get"].(map[string]any)
+	op := requireMap(t, paths["/api/users"]["get"])
 	require.Equal(t, "List users", op["summary"])
 	require.Equal(t, "Group users", op["description"])
-	require.ElementsMatch(t, []any{"users"}, op["tags"].([]any))
+	require.ElementsMatch(t, []any{"users"}, requireSlice(t, op["tags"]))
 	require.Equal(t, true, op["deprecated"])
-	resp := op["responses"].(map[string]any)
-	cont := resp["200"].(map[string]any)["content"].(map[string]any)
+	resp := requireMap(t, op["responses"])
+	cont := requireMap(t, requireMap(t, resp["200"])["content"])
 	require.Contains(t, cont, fiber.MIMEApplicationJSON)
 }
 
@@ -511,11 +511,11 @@ func Test_OpenAPI_MultipleParams(t *testing.T) {
 
 	paths := getPaths(t, app)
 	require.Contains(t, paths, "/users/{uid}/books/{bid}")
-	op := paths["/users/{uid}/books/{bid}"]["get"].(map[string]any)
-	params := op["parameters"].([]any)
+	op := requireMap(t, paths["/users/{uid}/books/{bid}"]["get"])
+	params := requireSlice(t, op["parameters"])
 	require.Len(t, params, 2)
-	p0 := params[0].(map[string]any)
-	p1 := params[1].(map[string]any)
+	p0 := requireMap(t, params[0])
+	p1 := requireMap(t, params[1])
 	require.Equal(t, "uid", p0["name"])
 	require.Equal(t, "path", p0["in"])
 	require.Equal(t, "bid", p1["name"])
@@ -531,13 +531,13 @@ func Test_OpenAPI_ConsumesProduces(t *testing.T) {
 
 	paths := getPaths(t, app)
 
-	op := paths["/users"]["post"].(map[string]any)
-	rb := op["requestBody"].(map[string]any)
-	reqContent := rb["content"].(map[string]any)
+	op := requireMap(t, paths["/users"]["post"])
+	rb := requireMap(t, op["requestBody"])
+	reqContent := requireMap(t, rb["content"])
 	require.Contains(t, reqContent, fiber.MIMEApplicationJSON)
 
-	resp := op["responses"].(map[string]any)["200"].(map[string]any)
-	cont := resp["content"].(map[string]any)
+	resp := requireMap(t, requireMap(t, op["responses"])["200"])
+	cont := requireMap(t, resp["content"])
 	require.Contains(t, cont, fiber.MIMEApplicationXML)
 }
 
@@ -547,7 +547,7 @@ func Test_OpenAPI_NoRequestBodyForGET(t *testing.T) {
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	paths := getPaths(t, app)
-	op := paths["/users"]["get"].(map[string]any)
+	op := requireMap(t, paths["/users"]["get"])
 	require.NotContains(t, op, "requestBody")
 }
 
@@ -576,4 +576,18 @@ func Test_OpenAPI_Cache(t *testing.T) {
 
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 	require.NotContains(t, spec.Paths, "/second")
+}
+
+func requireMap(t *testing.T, value any) map[string]any {
+	t.Helper()
+	m, ok := value.(map[string]any)
+	require.True(t, ok)
+	return m
+}
+
+func requireSlice(t *testing.T, value any) []any {
+	t.Helper()
+	s, ok := value.([]any)
+	require.True(t, ok)
+	return s
 }

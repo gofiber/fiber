@@ -1466,6 +1466,7 @@ func Test_App_Produces(t *testing.T) {
 	app := New()
 	app.Get("/", testEmptyHandler).Produces(MIMEApplicationJSON)
 	route := app.stack[app.methodInt(MethodGet)][0]
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
 	require.Equal(t, MIMEApplicationJSON, route.Produces)
 }
 
@@ -1480,6 +1481,7 @@ func Test_App_RequestBody(t *testing.T) {
 	require.Equal(t, "User payload", route.RequestBody.Description)
 	require.True(t, route.RequestBody.Required)
 	require.Equal(t, []string{MIMEApplicationJSON, MIMEApplicationXML}, route.RequestBody.MediaTypes)
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
 	require.Equal(t, MIMEApplicationJSON, route.Consumes)
 }
 
@@ -1517,6 +1519,7 @@ func Test_App_Response(t *testing.T) {
 		Response(0, "Default fallback")
 
 	route := app.stack[app.methodInt(MethodGet)][0]
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
 	require.Equal(t, MIMEApplicationJSON, route.Produces)
 	require.Len(t, route.Responses, 3)
 
