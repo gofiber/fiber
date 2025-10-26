@@ -2094,7 +2094,9 @@ func Test_Set_Config_To_Request(t *testing.T) {
 
 		setConfigToRequest(req, Config{Body: "test"})
 
-		require.Equal(t, "test", string(req.body.([]byte)))
+		body, ok := req.body.([]byte)
+		require.True(t, ok)
+		require.Equal(t, "test", string(body))
 	})
 
 	t.Run("set body byte", func(t *testing.T) {
@@ -2116,7 +2118,9 @@ func Test_Set_Config_To_Request(t *testing.T) {
 
 		setConfigToRequest(req, Config{Body: payload{Foo: "bar"}})
 
-		require.Equal(t, payload{Foo: "bar"}, req.body.(payload))
+		payloadBody, ok := req.body.(payload)
+		require.True(t, ok)
+		require.Equal(t, payload{Foo: "bar"}, payloadBody)
 	})
 
 	t.Run("set body map", func(t *testing.T) {
