@@ -2088,13 +2088,48 @@ func Test_Set_Config_To_Request(t *testing.T) {
 		require.Equal(t, 1, req.MaxRedirects())
 	})
 
-	t.Run("set body", func(t *testing.T) {
+	t.Run("set body string", func(t *testing.T) {
 		t.Parallel()
 		req := AcquireRequest()
 
 		setConfigToRequest(req, Config{Body: "test"})
 
-		require.Equal(t, "test", req.body)
+		require.Equal(t, "test", string(req.body.([]byte)))
+	})
+
+	t.Run("set body byte", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+
+		setConfigToRequest(req, Config{Body: []byte("test")})
+
+		require.Equal(t, []byte("test"), req.body)
+	})
+
+	t.Run("set body json", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+
+		type payload struct {
+			Foo string `json:"foo"`
+		}
+
+		setConfigToRequest(req, Config{Body: payload{Foo: "bar"}})
+
+		require.Equal(t, payload{Foo: "bar"}, req.body.(payload))
+	})
+
+	t.Run("set body map", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+
+		setConfigToRequest(req, Config{Body: map[string]string{
+			"foo": "bar",
+		}})
+
+		require.Equal(t, map[string]string{
+			"foo": "bar",
+		}, req.body)
 	})
 
 	t.Run("set file", func(t *testing.T) {
