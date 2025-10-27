@@ -330,8 +330,10 @@ func Test_ListenDataMetadata(t *testing.T) {
 		require.Equal(t, childPIDs, data.ChildPIDs)
 		require.Equal(t, app.config.ColorScheme, data.ColorScheme)
 
-		data.PrimaryInfo = Map{"Custom": "value"}
-		data.SecondaryInfo = Map{"Other": "value"}
+		data.ResetEntries()
+
+		data.UpsertInfo("custom", "Custom Info", "value", 3)
+		data.UpsertInfo("other", "Other Info", "value", 2)
 
 		return nil
 	})
@@ -339,8 +341,13 @@ func Test_ListenDataMetadata(t *testing.T) {
 	pre := newPreStartupMessageData(listenData)
 	require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
 
-	require.Equal(t, Map{"Custom": "value"}, pre.PrimaryInfo)
-	require.Equal(t, Map{"Other": "value"}, pre.SecondaryInfo)
+	require.Equal(t, "value", pre.entries[0].value)
+	require.Equal(t, "Custom Info", pre.entries[0].title)
+	require.Equal(t, 3, pre.entries[0].priority)
+
+	require.Equal(t, "value", pre.entries[1].value)
+	require.Equal(t, "Other Info", pre.entries[1].title)
+	require.Equal(t, 2, pre.entries[1].priority)
 	require.False(t, pre.PreventDefault)
 }
 

@@ -51,10 +51,24 @@ type Hooks struct {
 	onMount        []OnMountHandler
 }
 
+type StartupMessageLevel int
+
+const (
+	// StartupMessageLevelInfo represents informational startup message entries.
+	StartupMessageLevelInfo StartupMessageLevel = iota
+	// StartupMessageLevelWarning represents warning startup message entries.
+	StartupMessageLevelWarning
+	// StartupMessageLevelError represents error startup message entries.
+	StartupMessageLevelError
+)
+
 // startupMessageEntry represents a single line of startup message information.
 type startupMessageEntry struct {
-	key   string
-	value string
+	key      string
+	title    string
+	value    string
+	priority int
+	level    StartupMessageLevel
 }
 
 // ListenData contains the listener metadata provided to OnListenHandler.
@@ -79,12 +93,81 @@ type ListenData struct {
 type PreStartupMessageData struct {
 	*ListenData
 
-	PrimaryInfo   Map
-	SecondaryInfo Map
+	entries []startupMessageEntry
 
 	Header string
 
 	PreventDefault bool
+}
+
+func (sm *PreStartupMessageData) UpsertInfo(key, title, value string, priority ...int) {
+	pri := 1
+	if len(priority) > 0 {
+		pri = priority[0]
+	}
+
+	sm.upsertEntry(key, title, value, pri, StartupMessageLevelInfo)
+}
+
+func (sm *PreStartupMessageData) UpsertWarning(key, title, value string, priority ...int) {
+	pri := 1
+	if len(priority) > 0 {
+		pri = priority[0]
+	}
+
+	sm.upsertEntry(key, title, value, pri, StartupMessageLevelWarning)
+}
+
+func (sm *PreStartupMessageData) UpsertError(key, title, value string, priority ...int) {
+	pri := 1
+	if len(priority) > 0 {
+		pri = priority[0]
+	}
+
+	sm.upsertEntry(key, title, value, pri, StartupMessageLevelError)
+}
+
+func (sm *PreStartupMessageData) EntryKeys() []string {
+	keys := make([]string, 0, len(sm.entries))
+	for _, entry := range sm.entries {
+		keys = append(keys, entry.key)
+	}
+	return keys
+}
+
+func (sm *PreStartupMessageData) ResetEntries() {
+	sm.entries = sm.entries[:0]
+}
+
+func (sm *PreStartupMessageData) upsertEntry(key, title, value string, priority int, level StartupMessageLevel) {
+	if sm.entries == nil {
+		sm.entries = make([]startupMessageEntry, 0)
+	}
+
+	for i, entry := range sm.entries {
+		if entry.key == key {
+			sm.entries[i].value = value
+			sm.entries[i].title = title
+			sm.entries[i].level = level
+			sm.entries[i].priority = priority
+			return
+		}
+	}
+
+	sm.entries = append(sm.entries, startupMessageEntry{key: key, title: title, value: value, level: level, priority: priority})
+}
+
+func (sm *PreStartupMessageData) DeleteEntry(key string) {
+	if sm.entries == nil {
+		return
+	}
+
+	for i, entry := range sm.entries {
+		if entry.key == key {
+			sm.entries = append(sm.entries[:i], sm.entries[i+1:]...)
+			return
+		}
+	}
 }
 
 func newPreStartupMessageData(listenData ListenData) *PreStartupMessageData {

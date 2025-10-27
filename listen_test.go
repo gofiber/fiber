@@ -631,8 +631,10 @@ func Test_StartupMessageCustomization(t *testing.T) {
 
 	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
 		data.Header = "FOOBER v98\n-------"
-		data.PrimaryInfo = Map{"Git hash": "abc123"}
-		data.SecondaryInfo = Map{"Version": "v98"}
+
+		data.ResetEntries()
+		data.UpsertInfo("git_hash", "Git hash", "abc123", 3)
+		data.UpsertInfo("version", "Version", "v98", 2)
 
 		return nil
 	})
@@ -649,8 +651,8 @@ func Test_StartupMessageCustomization(t *testing.T) {
 	})
 
 	require.Contains(t, startupMessage, "FOOBER v98")
-	require.Contains(t, startupMessage, "Git hash:\tabc123")
-	require.Contains(t, startupMessage, "Version:\tv98")
+	require.Contains(t, startupMessage, "Git hash: \tabc123")
+	require.Contains(t, startupMessage, "Version: \tv98")
 	require.NotContains(t, startupMessage, "Server started on:")
 	require.NotContains(t, startupMessage, "Prefork:")
 

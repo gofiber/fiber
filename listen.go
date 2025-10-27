@@ -374,6 +374,43 @@ func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig, chi
 // startupMessage renders the startup banner using the provided listener metadata and configuration.
 func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 	preData := newPreStartupMessageData(listenData)
+	colors := listenData.ColorScheme
+
+	out := colorable.NewColorableStdout()
+	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+		out = colorable.NewNonColorable(os.Stdout)
+	}
+
+	// Add default entries
+	scheme := schemeHTTP
+	if listenData.TLS {
+		scheme = schemeHTTPS
+	}
+
+	if listenData.Host == globalIpv4Addr {
+		preData.UpsertInfo("server_address", "Server started on", fmt.Sprintf("%s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)",
+			colors.Blue, scheme, listenData.Port, colors.Reset, listenData.Port), 10)
+	} else {
+		preData.UpsertInfo("server_address", "Server started on", fmt.Sprintf("%s%s://%s:%s%s",
+			colors.Blue, scheme, listenData.Host, listenData.Port, colors.Reset), 10)
+	}
+
+	if listenData.AppName != "" {
+		preData.UpsertInfo("app_name", "Application name", fmt.Sprintf("\t%s%s%s", colors.Blue, listenData.AppName, colors.Reset), 9)
+	}
+
+	preData.UpsertInfo("total_handlers", "Total handlers", fmt.Sprintf("\t%s%d%s", colors.Blue, listenData.HandlerCount, colors.Reset), 8)
+
+	if listenData.Prefork {
+		preData.UpsertInfo("prefork", "Prefork", fmt.Sprintf("\t\t%sEnabled%s", colors.Blue, colors.Reset), 7)
+	} else {
+		preData.UpsertInfo("prefork", "Prefork", fmt.Sprintf("\t\t%sDisabled%s", colors.Red, colors.Reset), 6)
+	}
+
+	preData.UpsertInfo("pid", "PID", fmt.Sprintf("\t\t%s%d%s", colors.Blue, listenData.PID, colors.Reset), 5)
+
+	preData.UpsertInfo("process_count", "Total process count", fmt.Sprintf("%s%d%s", colors.Blue, listenData.ProcessCount, colors.Reset), 4)
+
 	if err := app.hooks.executeOnPreStartupMessageHooks(preData); err != nil {
 		log.Errorf("failed to call pre startup message hook: %v", err)
 	}
@@ -393,13 +430,6 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 		return
 	}
 
-	colors := listenData.ColorScheme
-
-	out := colorable.NewColorableStdout()
-	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
-		out = colorable.NewNonColorable(os.Stdout)
-	}
-
 	if preData.Header != "" {
 		header := preData.Header
 		fmt.Fprint(out, header)
@@ -411,47 +441,9 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 		fmt.Fprintln(out, strings.Repeat("-", 50))
 	}
 
-	if entries, ok := mapToEntries(preData.PrimaryInfo); ok {
-		printStartupEntries(out, colors, entries)
-	} else {
-		scheme := schemeHTTP
-		if listenData.TLS {
-			scheme = schemeHTTPS
-		}
+	printStartupEntries(out, colors, preData.entries)
 
-		if listenData.Host == globalIpv4Addr {
-			fmt.Fprintf(out,
-				"%sINFO%s Server started on: \t%s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)\n",
-				colors.Green, colors.Reset, colors.Blue, scheme, listenData.Port, colors.Reset, listenData.Port)
-		} else {
-			fmt.Fprintf(out,
-				"%sINFO%s Server started on: \t%s%s://%s:%s%s\n",
-				colors.Green, colors.Reset, colors.Blue, scheme, listenData.Host, listenData.Port, colors.Reset)
-		}
-
-		if listenData.AppName != "" {
-			fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, listenData.AppName, colors.Reset)
-		}
-
-		app.logServices(app.servicesStartupCtx(), out, &colors)
-
-		fmt.Fprintf(out,
-			"%sINFO%s Total handlers count: \t%s%d%s\n",
-			colors.Green, colors.Reset, colors.Blue, listenData.HandlerCount, colors.Reset)
-	}
-
-	if entries, ok := mapToEntries(preData.SecondaryInfo); ok {
-		printStartupEntries(out, colors, entries)
-	} else {
-		if listenData.Prefork {
-			fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%sEnabled%s\n", colors.Green, colors.Reset, colors.Blue, colors.Reset)
-		} else {
-			fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%sDisabled%s\n", colors.Green, colors.Reset, colors.Red, colors.Reset)
-		}
-
-		fmt.Fprintf(out, "%sINFO%s PID: \t\t\t%s%d%s\n", colors.Green, colors.Reset, colors.Blue, listenData.PID, colors.Reset)
-		fmt.Fprintf(out, "%sINFO%s Total process count: \t%s%d%s\n", colors.Green, colors.Reset, colors.Blue, listenData.ProcessCount, colors.Reset)
-	}
+	app.logServices(app.servicesStartupCtx(), out, &colors)
 
 	if listenData.Prefork && len(listenData.ChildPIDs) > 0 {
 		fmt.Fprintf(out, "%sINFO%s Child PIDs: \t\t%s", colors.Green, colors.Reset, colors.Blue)
@@ -477,8 +469,22 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 }
 
 func printStartupEntries(out io.Writer, colors Colors, entries []startupMessageEntry) {
+	// Sort entries by priority (higher priority first)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].priority > entries[j].priority
+	})
+
 	for _, entry := range entries {
-		fmt.Fprintf(out, "%sINFO%s %s:\t%s%s%s\n", colors.Green, colors.Reset, entry.key, colors.Blue, entry.value, colors.Reset)
+		switch entry.level {
+		case StartupMessageLevelInfo:
+			fmt.Fprintf(out, "%sINFO%s %s: \t%s%s%s\n", colors.Green, colors.Reset, entry.title, colors.Blue, entry.value, colors.Reset)
+		case StartupMessageLevelWarning:
+			fmt.Fprintf(out, "%sWARN%s %s: \t%s%s%s\n", colors.Yellow, colors.Reset, entry.title, colors.Blue, entry.value, colors.Reset)
+		case StartupMessageLevelError:
+			fmt.Fprintf(out, "%sERROR%s %s: \t%s%s%s\n", colors.Red, colors.Reset, entry.title, colors.Blue, entry.value, colors.Reset)
+		default:
+			fmt.Fprintf(out, "%sINFO%s %s: \t%s%s%s\n", colors.Green, colors.Reset, entry.title, colors.Blue, entry.value, colors.Reset)
+		}
 	}
 }
 
