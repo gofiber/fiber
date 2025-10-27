@@ -835,7 +835,9 @@ func (app *App) Use(args ...any) Router {
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (app *App) Get(path string, handler any, handlers ...any) Router {
-	return app.Add([]string{MethodGet}, path, handler, handlers...)
+	app.Add([]string{MethodGet}, path, handler, handlers...)
+
+	return app
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -1339,13 +1341,6 @@ func (app *App) startupProcess() *App {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	app.ensureAutoHeadRoutesLocked()
-	for prefix, subApp := range app.mountFields.appList {
-		if prefix == "" {
-			continue
-		}
-		subApp.ensureAutoHeadRoutes()
-	}
 	app.mountStartupProcess()
 
 	// build route tree stack

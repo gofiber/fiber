@@ -470,7 +470,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
 			}
 
-			if method == MethodGet && !route.use && !route.mount {
+			if method == MethodGet && !route.use && !route.mount && !app.configured.DisableAutoRegister {
 				app.pruneAutoHeadRouteLocked(route.path)
 			}
 		}
@@ -575,6 +575,29 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		} else {
 			// Add route to stack
 			app.addRoute(method, &route)
+
+			// auto register head route
+			if method == MethodGet && !app.configured.DisableAutoRegister {
+				headRoute := app.copyRoute(&route)
+				headRoute.group = route.group
+				headRoute.Method = MethodHead
+				headRoute.autoHead = true
+				// Fasthttp automatically omits response bodies when transmitting
+				// HEAD responses, so the copied GET handler stack can execute
+				// unchanged while still producing an empty body on the wire.
+
+				app.addRoute(MethodHead, headRoute)
+
+				atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // Not a concern
+
+				// TODO: not sure if we need to set latestRoute as headRoute here
+				/*app.mutex.Lock()
+				app.latestRoute = headRoute
+				app.mutex.Unlock()*/
+				if err := app.hooks.executeOnRouteHooks(*headRoute); err != nil {
+					panic(err)
+				}
+			}
 		}
 	}
 }
@@ -586,7 +609,7 @@ func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
 
-	if method == MethodHead && !route.mount && !route.use {
+	if method == MethodHead && !route.mount && !route.use && !route.autoHead {
 		app.pruneAutoHeadRouteLocked(route.path)
 	}
 
@@ -603,78 +626,11 @@ func (app *App) addRoute(method string, route *Route) {
 	}
 
 	// Execute onRoute hooks & change latestRoute if not adding mounted route
-	if !route.mount {
+	if !route.mount && !route.autoHead {
 		app.latestRoute = route
 		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
 			panic(err)
 		}
-	}
-}
-
-func (app *App) ensureAutoHeadRoutes() {
-	app.mutex.Lock()
-	defer app.mutex.Unlock()
-
-	app.ensureAutoHeadRoutesLocked()
-}
-
-func (app *App) ensureAutoHeadRoutesLocked() {
-	if app.config.DisableAutoRegister {
-		return
-	}
-
-	headIndex := app.methodInt(MethodHead)
-	getIndex := app.methodInt(MethodGet)
-	if headIndex == -1 || getIndex == -1 {
-		return
-	}
-
-	headStack := app.stack[headIndex]
-	existing := make(map[string]struct{}, len(headStack))
-	for _, route := range headStack {
-		if route.mount || route.use {
-			continue
-		}
-		existing[route.path] = struct{}{}
-	}
-
-	if len(app.stack[getIndex]) == 0 {
-		return
-	}
-
-	var added bool
-
-	for _, route := range app.stack[getIndex] {
-		if route.mount || route.use {
-			continue
-		}
-		if _, ok := existing[route.path]; ok {
-			continue
-		}
-
-		headRoute := app.copyRoute(route)
-		headRoute.group = route.group
-		headRoute.Method = MethodHead
-		headRoute.autoHead = true
-		// Fasthttp automatically omits response bodies when transmitting
-		// HEAD responses, so the copied GET handler stack can execute
-		// unchanged while still producing an empty body on the wire.
-
-		headStack = append(headStack, headRoute)
-		existing[route.path] = struct{}{}
-		app.routesRefreshed = true
-		added = true
-
-		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // Not a concern
-
-		app.latestRoute = headRoute
-		if err := app.hooks.executeOnRouteHooks(*headRoute); err != nil {
-			panic(err)
-		}
-	}
-
-	if added {
-		app.stack[headIndex] = headStack
 	}
 }
 
