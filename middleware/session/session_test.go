@@ -1068,7 +1068,7 @@ func Test_Session_Cookie_In_Middleware_Chain(t *testing.T) {
 	require.NoError(t, err)
 	defer sess.Release()
 	sess.Set("name", "john")
-	require.False(t, sess.Fresh()) // Session should not be fresh - it reuses the same ID from context locals
+	require.False(t, sess.Fresh())  // Session should not be fresh - it reuses the same ID from context locals
 	require.Equal(t, id, sess.ID()) // session id should be the same
 
 	require.Equal(t, "1", sess.Get("id"))
