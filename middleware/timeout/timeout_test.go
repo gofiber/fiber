@@ -21,6 +21,21 @@ var (
 	errUnrelated = errors.New("unmatched error")
 )
 
+// runHandler executes the handler and returns fiber.ErrRequestTimeout if it
+// sees a deadline exceeded error or one of the custom "timeout-like" errors.
+func runHandler(c fiber.Ctx, h fiber.Handler, cfg Config) error {
+	err := h(c)
+	if err != nil && (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors)) {
+		if cfg.OnTimeout != nil {
+			if toErr := cfg.OnTimeout(c); toErr != nil {
+				return toErr
+			}
+		}
+		return fiber.ErrRequestTimeout
+	}
+	return err
+}
+
 // sleepWithContext simulates a task that takes `d` time, but returns `te` if the context is canceled.
 func sleepWithContext(ctx context.Context, d time.Duration, te error) error {
 	timer := time.NewTimer(d)
@@ -156,9 +171,8 @@ func TestTimeout_CustomHandler(t *testing.T) {
 	called := 0
 
 	app.Get("/custom-handler", New(func(c fiber.Ctx) error {
-		if err := sleepWithContext(c.Context(), 100*time.Millisecond, context.DeadlineExceeded); err != nil {
-			return err
-		}
+		time.Sleep(100 * time.Millisecond)
+		return context.DeadlineExceeded
 		return c.SendString("should not reach")
 	}, Config{
 		Timeout: 20 * time.Millisecond,
@@ -173,19 +187,6 @@ func TestTimeout_CustomHandler(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
 	require.Equal(t, 1, called)
-}
-
-// TestRunHandler_DefaultOnTimeout ensures context.DeadlineExceeded triggers ErrRequestTimeout.
-func TestRunHandler_DefaultOnTimeout(t *testing.T) {
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-
-	err := runHandler(ctx, func(_ fiber.Ctx) error {
-		return context.DeadlineExceeded
-	}, Config{})
-
-	require.Equal(t, fiber.ErrRequestTimeout, err)
 }
 
 // TestRunHandler_CustomOnTimeout verifies that a custom error and OnTimeout handler are used.

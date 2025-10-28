@@ -1,10 +1,11 @@
 package timeout
 
 import (
-	"context"
 	"errors"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
+	utils "github.com/gofiber/utils/v2"
 )
 
 // New enforces a timeout for each incoming request. It replaces the request's
@@ -21,42 +22,36 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 
 		timeout := cfg.Timeout
 		if timeout <= 0 {
-			return runHandler(ctx, h, cfg)
+			return h(ctx)
 		}
 
-		parent := ctx.Context()
-		tCtx, cancel := context.WithTimeout(parent, timeout)
-		ctx.SetContext(tCtx)
-		defer func() {
-			cancel()
-			ctx.SetContext(parent)
+		err := make(chan error)
+		go func() {
+			err <- h(ctx)
 		}()
-
-		err := runHandler(ctx, h, cfg)
-
-		if errors.Is(tCtx.Err(), context.DeadlineExceeded) && err == nil {
-			if cfg.OnTimeout != nil {
-				return cfg.OnTimeout(ctx)
+		for {
+			select {
+			case err := <-err:
+				if err != nil && (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors)) {
+					if cfg.OnTimeout != nil {
+						if toErr := cfg.OnTimeout(ctx); toErr != nil {
+							return toErr
+						}
+					}
+					return fiber.ErrRequestTimeout
+				}
+				return err
+			case <-time.After(timeout):
+				if cfg.OnTimeout != nil {
+					err := cfg.OnTimeout(ctx)
+					ctx.RequestCtx().TimeoutErrorWithResponse(&ctx.RequestCtx().Response)
+					return err
+				}
+				ctx.RequestCtx().TimeoutErrorWithCode(utils.StatusMessage(fiber.StatusRequestTimeout), fiber.StatusRequestTimeout)
+				return fiber.ErrRequestTimeout
 			}
-			return fiber.ErrRequestTimeout
 		}
-		return err
 	}
-}
-
-// runHandler executes the handler and returns fiber.ErrRequestTimeout if it
-// sees a deadline exceeded error or one of the custom "timeout-like" errors.
-func runHandler(c fiber.Ctx, h fiber.Handler, cfg Config) error {
-	err := h(c)
-	if err != nil && (errors.Is(err, context.DeadlineExceeded) || (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors))) {
-		if cfg.OnTimeout != nil {
-			if toErr := cfg.OnTimeout(c); toErr != nil {
-				return toErr
-			}
-		}
-		return fiber.ErrRequestTimeout
-	}
-	return err
 }
 
 // isCustomError checks whether err matches any error in errList using errors.Is.
