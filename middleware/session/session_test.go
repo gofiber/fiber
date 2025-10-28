@@ -1068,7 +1068,7 @@ func Test_Session_Cookie_In_Middleware_Chain(t *testing.T) {
 	require.NoError(t, err)
 	defer sess.Release()
 	sess.Set("name", "john")
-	require.True(t, sess.Fresh())
+	require.False(t, sess.Fresh()) // Session should not be fresh - it has existing data and same ID
 	require.Equal(t, id, sess.ID()) // session id should be the same
 
 	require.Equal(t, "1", sess.Get("id"))
@@ -1552,4 +1552,167 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 
 	// Check that the error message is as expected
 	require.ErrorContains(t, err, "failed to decode session data", "Unexpected error")
+}
+
+// go test -run Test_Session_Fresh_Flag_Bug
+// This test verifies the fix for the fresh flag bug where calling getSession()
+// multiple times in the same request would incorrectly mark the session as fresh
+// when the ID was found in context locals.
+func Test_Session_Fresh_Flag_Bug(t *testing.T) {
+	t.Parallel()
+
+	store := NewStore()
+	app := fiber.New()
+
+	// Test Case 1: First call with no session cookie - should be fresh
+	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	sess1, err := store.Get(ctx1)
+	require.NoError(t, err)
+	require.True(t, sess1.Fresh(), "First session should be fresh (no cookie provided)")
+	sessionID := sess1.ID()
+	require.NoError(t, sess1.Save())
+	sess1.Release()
+	app.ReleaseCtx(ctx1)
+
+	// Test Case 2: Second call with session cookie - should NOT be fresh
+	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx2.Request().Header.SetCookie("session_id", sessionID)
+	sess2, err := store.Get(ctx2)
+	require.NoError(t, err)
+	require.False(t, sess2.Fresh(), "Existing session should not be fresh")
+	require.Equal(t, sessionID, sess2.ID())
+
+	// Test Case 3: Call getSession() again in the same request
+	// This simulates what happens when CSRF middleware calls store operations
+	// The session ID is now in context locals from the first getSession() call
+	sess3, err := store.getSession(ctx2)
+	require.NoError(t, err)
+	require.False(t, sess3.Fresh(), "Session should still not be fresh on second getSession() call in same request")
+	require.Equal(t, sessionID, sess3.ID())
+
+	sess2.Release()
+	sess3.Release()
+	app.ReleaseCtx(ctx2)
+
+	// Test Case 4: Expired session - should generate new ID and be fresh
+	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx3.Request().Header.SetCookie("session_id", "expired-or-nonexistent-id")
+	sess4, err := store.Get(ctx3)
+	require.NoError(t, err)
+	require.True(t, sess4.Fresh(), "New session (after expired/missing data) should be fresh")
+	require.NotEqual(t, "expired-or-nonexistent-id", sess4.ID(), "Should have generated a new session ID")
+
+	sess4.Release()
+	app.ReleaseCtx(ctx3)
+}
+
+// go test -run Test_Session_CSRF_Scenario
+// This test simulates the user-reported issue with CSRF + session middleware
+// where a POST without CSRF token would result in a new session_id cookie
+func Test_Session_CSRF_Scenario(t *testing.T) {
+	t.Parallel()
+
+	store := NewStore(Config{
+		IdleTimeout: 2 * time.Second, // Longer timeout to ensure session persists
+	})
+	app := fiber.New()
+
+	// Simulate: First GET request creates session
+	ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	sess1, err := store.Get(ctx1)
+	require.NoError(t, err)
+	require.True(t, sess1.Fresh())
+	firstSessionID := sess1.ID()
+
+	// Store some data (simulating CSRF token storage)
+	sess1.Set("csrf_token", "token-123")
+	require.NoError(t, sess1.Save())
+	sess1.Release()
+	app.ReleaseCtx(ctx1)
+
+	// Small delay to ensure save completes
+	time.Sleep(10 * time.Millisecond)
+
+	// Simulate: POST request with valid session (before expiration)
+	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx2.Request().Header.SetCookie("session_id", firstSessionID)
+	sess2, err := store.Get(ctx2)
+	require.NoError(t, err)
+	require.False(t, sess2.Fresh(), "Session should not be fresh - it exists")
+	require.Equal(t, firstSessionID, sess2.ID(), "Session ID should remain the same")
+	require.Equal(t, "token-123", sess2.Get("csrf_token"))
+
+	// Simulate CSRF validation failure (session is accessed but request fails)
+	// Session should still maintain the same ID
+	require.Equal(t, firstSessionID, sess2.ID())
+	sess2.Release()
+	app.ReleaseCtx(ctx2)
+
+	// Wait for session to expire
+	time.Sleep(2200 * time.Millisecond)
+
+	// Simulate: POST request with expired session
+	// This is the scenario the user reported - session data is gone
+	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx3.Request().Header.SetCookie("session_id", firstSessionID)
+	sess3, err := store.Get(ctx3)
+	require.NoError(t, err)
+	require.True(t, sess3.Fresh(), "Session should be fresh - old data expired")
+	require.NotEqual(t, firstSessionID, sess3.ID(), "Should have generated new session ID (expected behavior)")
+	require.Nil(t, sess3.Get("csrf_token"), "Old session data should be gone")
+
+	sess3.Release()
+	app.ReleaseCtx(ctx3)
+}
+
+// go test -run Test_Session_Multiple_GetSession_Calls
+// This test ensures that calling getSession() multiple times within the same
+// request context doesn't incorrectly mark the session as fresh due to the
+// session ID being stored in context locals
+func Test_Session_Multiple_GetSession_Calls(t *testing.T) {
+	t.Parallel()
+
+	store := NewStore()
+	app := fiber.New()
+
+	// Create initial session
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	sess1, err := store.Get(ctx)
+	require.NoError(t, err)
+	require.True(t, sess1.Fresh())
+	sessionID := sess1.ID()
+	sess1.Set("test_key", "test_value")
+	require.NoError(t, sess1.Save())
+	sess1.Release()
+	app.ReleaseCtx(ctx)
+
+	// New request with existing session
+	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx2.Request().Header.SetCookie("session_id", sessionID)
+
+	// First getSession() call - loads from storage
+	sess2, err := store.getSession(ctx2)
+	require.NoError(t, err)
+	require.False(t, sess2.Fresh(), "First call: existing session should not be fresh")
+	require.Equal(t, sessionID, sess2.ID())
+	require.Equal(t, "test_value", sess2.Get("test_key"))
+
+	// Second getSession() call - ID now in context locals
+	// This is where the bug would manifest before the fix
+	sess3, err := store.getSession(ctx2)
+	require.NoError(t, err)
+	require.False(t, sess3.Fresh(), "Second call: session should STILL not be fresh (bug fix verification)")
+	require.Equal(t, sessionID, sess3.ID())
+	require.Equal(t, "test_value", sess3.Get("test_key"))
+
+	// Third call to ensure consistency
+	sess4, err := store.getSession(ctx2)
+	require.NoError(t, err)
+	require.False(t, sess4.Fresh(), "Third call: session should remain not fresh")
+	require.Equal(t, sessionID, sess4.ID())
+
+	sess2.Release()
+	sess3.Release()
+	sess4.Release()
+	app.ReleaseCtx(ctx2)
 }
