@@ -100,31 +100,31 @@ type PreStartupMessageData struct {
 	PreventDefault bool
 }
 
-func (sm *PreStartupMessageData) UpsertInfo(key, title, value string, priority ...int) {
-	pri := 1
+func (sm *PreStartupMessageData) AddInfo(key, title, value string, priority ...int) {
+	pri := -1
 	if len(priority) > 0 {
 		pri = priority[0]
 	}
 
-	sm.upsertEntry(key, title, value, pri, StartupMessageLevelInfo)
+	sm.addEntry(key, title, value, pri, StartupMessageLevelInfo)
 }
 
-func (sm *PreStartupMessageData) UpsertWarning(key, title, value string, priority ...int) {
-	pri := 1
+func (sm *PreStartupMessageData) AddWarning(key, title, value string, priority ...int) {
+	pri := -1
 	if len(priority) > 0 {
 		pri = priority[0]
 	}
 
-	sm.upsertEntry(key, title, value, pri, StartupMessageLevelWarning)
+	sm.addEntry(key, title, value, pri, StartupMessageLevelWarning)
 }
 
-func (sm *PreStartupMessageData) UpsertError(key, title, value string, priority ...int) {
-	pri := 1
+func (sm *PreStartupMessageData) AddError(key, title, value string, priority ...int) {
+	pri := -1
 	if len(priority) > 0 {
 		pri = priority[0]
 	}
 
-	sm.upsertEntry(key, title, value, pri, StartupMessageLevelError)
+	sm.addEntry(key, title, value, pri, StartupMessageLevelError)
 }
 
 func (sm *PreStartupMessageData) EntryKeys() []string {
@@ -139,7 +139,7 @@ func (sm *PreStartupMessageData) ResetEntries() {
 	sm.entries = sm.entries[:0]
 }
 
-func (sm *PreStartupMessageData) upsertEntry(key, title, value string, priority int, level StartupMessageLevel) {
+func (sm *PreStartupMessageData) addEntry(key, title, value string, priority int, level StartupMessageLevel) {
 	if sm.entries == nil {
 		sm.entries = make([]startupMessageEntry, 0)
 	}

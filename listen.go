@@ -388,28 +388,28 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 	}
 
 	if listenData.Host == globalIpv4Addr {
-		preData.UpsertInfo("server_address", "Server started on", fmt.Sprintf("%s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)",
+		preData.AddInfo("server_address", "Server started on", fmt.Sprintf("%s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)",
 			colors.Blue, scheme, listenData.Port, colors.Reset, listenData.Port), 10)
 	} else {
-		preData.UpsertInfo("server_address", "Server started on", fmt.Sprintf("%s%s://%s:%s%s",
+		preData.AddInfo("server_address", "Server started on", fmt.Sprintf("%s%s://%s:%s%s",
 			colors.Blue, scheme, listenData.Host, listenData.Port, colors.Reset), 10)
 	}
 
 	if listenData.AppName != "" {
-		preData.UpsertInfo("app_name", "Application name", fmt.Sprintf("\t%s%s%s", colors.Blue, listenData.AppName, colors.Reset), 9)
+		preData.AddInfo("app_name", "Application name", fmt.Sprintf("\t%s%s%s", colors.Blue, listenData.AppName, colors.Reset), 9)
 	}
 
-	preData.UpsertInfo("total_handlers", "Total handlers", fmt.Sprintf("\t%s%d%s", colors.Blue, listenData.HandlerCount, colors.Reset), 8)
+	preData.AddInfo("total_handlers", "Total handlers", fmt.Sprintf("\t%s%d%s", colors.Blue, listenData.HandlerCount, colors.Reset), 8)
 
 	if listenData.Prefork {
-		preData.UpsertInfo("prefork", "Prefork", fmt.Sprintf("\t\t%sEnabled%s", colors.Blue, colors.Reset), 7)
+		preData.AddInfo("prefork", "Prefork", fmt.Sprintf("\t\t%sEnabled%s", colors.Blue, colors.Reset), 7)
 	} else {
-		preData.UpsertInfo("prefork", "Prefork", fmt.Sprintf("\t\t%sDisabled%s", colors.Red, colors.Reset), 6)
+		preData.AddInfo("prefork", "Prefork", fmt.Sprintf("\t\t%sDisabled%s", colors.Red, colors.Reset), 6)
 	}
 
-	preData.UpsertInfo("pid", "PID", fmt.Sprintf("\t\t%s%d%s", colors.Blue, listenData.PID, colors.Reset), 5)
+	preData.AddInfo("pid", "PID", fmt.Sprintf("\t\t%s%d%s", colors.Blue, listenData.PID, colors.Reset), 5)
 
-	preData.UpsertInfo("process_count", "Total process count", fmt.Sprintf("%s%d%s", colors.Blue, listenData.ProcessCount, colors.Reset), 4)
+	preData.AddInfo("process_count", "Total process count", fmt.Sprintf("%s%d%s", colors.Blue, listenData.ProcessCount, colors.Reset), 4)
 
 	if err := app.hooks.executeOnPreStartupMessageHooks(preData); err != nil {
 		log.Errorf("failed to call pre startup message hook: %v", err)
