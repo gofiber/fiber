@@ -633,8 +633,8 @@ func Test_StartupMessageCustomization(t *testing.T) {
 		data.Header = "FOOBER v98\n-------"
 
 		data.ResetEntries()
-		data.UpsertInfo("git_hash", "Git hash", "abc123", 3)
-		data.UpsertInfo("version", "Version", "v98", 2)
+		data.AddInfo("git_hash", "Git hash", "abc123", 3)
+		data.AddInfo("version", "Version", "v98", 2)
 
 		return nil
 	})

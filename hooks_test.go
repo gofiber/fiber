@@ -332,8 +332,8 @@ func Test_ListenDataMetadata(t *testing.T) {
 
 		data.ResetEntries()
 
-		data.UpsertInfo("custom", "Custom Info", "value", 3)
-		data.UpsertInfo("other", "Other Info", "value", 2)
+		data.AddInfo("custom", "Custom Info", "value", 3)
+		data.AddInfo("other", "Other Info", "value", 2)
 
 		return nil
 	})
