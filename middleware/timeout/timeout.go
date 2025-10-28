@@ -25,7 +25,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			return h(ctx)
 		}
 
-		err := make(chan error)
+		err := make(chan error, 1)
 		go func() {
 			err <- h(ctx)
 		}()

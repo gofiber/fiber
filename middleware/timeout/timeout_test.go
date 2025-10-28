@@ -170,7 +170,7 @@ func TestTimeout_CustomHandler(t *testing.T) {
 	app := fiber.New()
 	called := 0
 
-	app.Get("/custom-handler", New(func(c fiber.Ctx) error {
+	app.Get("/custom-handler", New(func(_ fiber.Ctx) error {
 		time.Sleep(100 * time.Millisecond)
 		return context.DeadlineExceeded
 	}, Config{
