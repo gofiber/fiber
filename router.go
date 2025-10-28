@@ -619,7 +619,7 @@ func (app *App) ensureAutoHeadRoutes() {
 }
 
 func (app *App) ensureAutoHeadRoutesLocked() {
-	if app.config.DisableAutoRegister {
+	if app.config.DisableHeadAutoRegister {
 		return
 	}
 

@@ -376,7 +376,7 @@ func TestAutoRegisterHeadRoutes(t *testing.T) {
 		},
 		func(t *testing.T) {
 			t.Helper()
-			app := New(Config{DisableAutoRegister: true})
+			app := New(Config{DisableHeadAutoRegister: true})
 			app.Get("/", func(c Ctx) error {
 				return c.SendString("Hello")
 			})

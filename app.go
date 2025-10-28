@@ -133,7 +133,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// every GET route.
 	//
 	// Default: false
-	DisableAutoRegister bool `json:"disable_auto_register"`
+	DisableHeadAutoRegister bool `json:"disable_head_auto_register"`
 
 	// When set to true, this relinquishes the 0-allocation promise in certain
 	// cases in order to access the handler values (e.g. request bodies) in an

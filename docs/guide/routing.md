@@ -31,7 +31,7 @@ app.Get("/users/:id", func(c fiber.Ctx) error {
 // HEAD /users/:id now returns the same headers and status without a body.
 ```
 
-If you register a dedicated `HEAD` handler later, Fiber replaces the generated route so your implementation wins:
+You can still register dedicated `HEAD` handlers—even with auto-registration enabled—and Fiber replaces the generated route so your implementation wins:
 
 ```go title="Override the generated HEAD handler"
 app.Head("/users/:id", func(c fiber.Ctx) error {
@@ -39,7 +39,7 @@ app.Head("/users/:id", func(c fiber.Ctx) error {
 })
 ```
 
-To opt out globally, start the app with `DisableAutoRegister`:
+To opt out globally, start the app with `DisableHeadAutoRegister`:
 
 ```go title="Disable automatic HEAD registration"
 handler := func(c fiber.Ctx) error {
@@ -47,7 +47,7 @@ handler := func(c fiber.Ctx) error {
     return c.SendStatus(fiber.StatusOK)
 }
 
-app := fiber.New(fiber.Config{DisableAutoRegister: true})
+app := fiber.New(fiber.Config{DisableHeadAutoRegister: true})
 app.Get("/users/:id", handler) // HEAD /users/:id now returns 405 unless you add it manually.
 ```
 

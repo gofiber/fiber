@@ -371,7 +371,7 @@ app.Get("/health", func(c fiber.Ctx) error {
 // HEAD /health reuses the GET middleware chain and returns headers only.
 ```
 
-Explicit `HEAD` handlers continue to win when you register them:
+You can still register explicit `HEAD` handlers for any `GET` route, and they continue to win when you add them:
 
 ```go title="Override the generated HEAD handler"
 app.Head("/health", func(c fiber.Ctx) error {
@@ -379,7 +379,7 @@ app.Head("/health", func(c fiber.Ctx) error {
 })
 ```
 
-Prefer to manage `HEAD` routes yourself? Disable the feature through `fiber.Config.DisableAutoRegister`:
+Prefer to manage `HEAD` routes yourself? Disable the feature through `fiber.Config.DisableHeadAutoRegister`:
 
 ```go title="Disable automatic HEAD registration"
 handler := func(c fiber.Ctx) error {
@@ -387,7 +387,7 @@ handler := func(c fiber.Ctx) error {
     return c.SendString("OK")
 }
 
-app := fiber.New(fiber.Config{DisableAutoRegister: true})
+app := fiber.New(fiber.Config{DisableHeadAutoRegister: true})
 app.Get("/health", handler) // HEAD /health now returns 405 unless you add it manually.
 ```
 
