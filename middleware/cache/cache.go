@@ -109,13 +109,13 @@ func New(config ...Config) fiber.Handler {
 	}()
 
 	// Delete key from both manager and storage
-	deleteKey := func(dkey string) error {
-		if err := manager.del(context.Background(), dkey); err != nil {
+	deleteKey := func(ctx context.Context, dkey string) error {
+		if err := manager.del(ctx, dkey); err != nil {
 			return err
 		}
 		// External storage saves body data with different key
 		if cfg.Storage != nil {
-			if err := manager.del(context.Background(), dkey+"_body"); err != nil {
+			if err := manager.del(ctx, dkey+"_body"); err != nil {
 				return err
 			}
 		}
@@ -141,8 +141,10 @@ func New(config ...Config) fiber.Handler {
 		// TODO(allocation optimization): try to minimize the allocation from 2 to 1
 		key := cfg.KeyGenerator(c) + "_" + requestMethod
 
+		reqCtx := c.Context()
+
 		// Get entry from pool
-		e, err := manager.get(c, key)
+		e, err := manager.get(reqCtx, key)
 		if err != nil && !errors.Is(err, errCacheMiss) {
 			return err
 		}
@@ -162,7 +164,7 @@ func New(config ...Config) fiber.Handler {
 
 			// Check if entry is expired
 			if e.exp != 0 && ts >= e.exp {
-				if err := deleteKey(key); err != nil {
+				if err := deleteKey(reqCtx, key); err != nil {
 					if e != nil {
 						manager.release(e)
 					}
@@ -179,7 +181,7 @@ func New(config ...Config) fiber.Handler {
 				// Separate body value to avoid msgp serialization
 				// We can store raw bytes with Storage 👍
 				if cfg.Storage != nil {
-					rawBody, err := manager.getRaw(c, key+"_body")
+					rawBody, err := manager.getRaw(reqCtx, key+"_body")
 					if err != nil {
 						manager.release(e)
 						mux.Unlock()
@@ -263,7 +265,7 @@ func New(config ...Config) fiber.Handler {
 		if cfg.MaxBytes > 0 {
 			for storedBytes+bodySize > cfg.MaxBytes {
 				keyToRemove, size := heap.removeFirst()
-				if err := deleteKey(keyToRemove); err != nil {
+				if err := deleteKey(reqCtx, keyToRemove); err != nil {
 					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), err)
 				}
 				storedBytes -= size
@@ -320,7 +322,7 @@ func New(config ...Config) fiber.Handler {
 			storedBytes += bodySize
 		}
 
-		cleanupOnStoreError := func(releaseEntry, rawStored bool) error {
+		cleanupOnStoreError := func(ctx context.Context, releaseEntry, rawStored bool) error {
 			var cleanupErr error
 			if cfg.MaxBytes > 0 {
 				_, size := heap.remove(heapIdx)
@@ -331,7 +333,7 @@ func New(config ...Config) fiber.Handler {
 			}
 			if rawStored {
 				rawKey := key + "_body"
-				if err := manager.del(context.Background(), rawKey); err != nil {
+				if err := manager.del(ctx, rawKey); err != nil {
 					cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cache: failed to delete raw key %q after store error: %w", maskKey(rawKey), err))
 				}
 			}
@@ -340,24 +342,24 @@ func New(config ...Config) fiber.Handler {
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			if err := manager.setRaw(c, key+"_body", e.body, expiration); err != nil {
-				if cleanupErr := cleanupOnStoreError(true, false); cleanupErr != nil {
+			if err := manager.setRaw(reqCtx, key+"_body", e.body, expiration); err != nil {
+				if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
 					err = errors.Join(err, cleanupErr)
 				}
 				return err
 			}
 			// avoid body msgp encoding
 			e.body = nil
-			if err := manager.set(c, key, e, expiration); err != nil {
-				if cleanupErr := cleanupOnStoreError(false, true); cleanupErr != nil {
+			if err := manager.set(reqCtx, key, e, expiration); err != nil {
+				if cleanupErr := cleanupOnStoreError(reqCtx, false, true); cleanupErr != nil {
 					err = errors.Join(err, cleanupErr)
 				}
 				return err
 			}
 		} else {
 			// Store entry in memory
-			if err := manager.set(c, key, e, expiration); err != nil {
-				if cleanupErr := cleanupOnStoreError(true, false); cleanupErr != nil {
+			if err := manager.set(reqCtx, key, e, expiration); err != nil {
+				if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
 					err = errors.Join(err, cleanupErr)
 				}
 				return err

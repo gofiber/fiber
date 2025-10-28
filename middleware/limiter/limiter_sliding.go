@@ -43,8 +43,10 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// Lock entry
 		mux.Lock()
 
+		reqCtx := c.Context()
+
 		// Get entry from pool and release when finished
-		e, err := manager.get(c, key)
+		e, err := manager.get(reqCtx, key)
 		if err != nil {
 			mux.Unlock()
 			return err
@@ -102,7 +104,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// we add the expiration to the duration.
 		// Otherwise, after the end of "sample window", attackers could launch
 		// a new request with the full window length.
-		if setErr := manager.set(c, key, e, time.Duration(resetInSec+expiration)*time.Second); setErr != nil { //nolint:gosec // Not a concern
+		if setErr := manager.set(reqCtx, key, e, time.Duration(resetInSec+expiration)*time.Second); setErr != nil { //nolint:gosec // Not a concern
 			mux.Unlock()
 			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 		}
@@ -134,7 +136,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest) {
 			// Lock entry
 			mux.Lock()
-			entry, getErr := manager.get(c, key)
+			entry, getErr := manager.get(reqCtx, key)
 			if getErr != nil {
 				mux.Unlock()
 				return getErr
@@ -142,7 +144,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 			e = entry
 			e.currHits--
 			remaining++
-			if setErr := manager.set(c, key, e, cfg.Expiration); setErr != nil {
+			if setErr := manager.set(reqCtx, key, e, cfg.Expiration); setErr != nil {
 				mux.Unlock()
 				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 			}
