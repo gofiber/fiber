@@ -102,27 +102,29 @@ func newContextRecorderStorage() *contextRecorderStorage {
 	return &contextRecorderStorage{failingCacheStorage: newFailingCacheStorage()}
 }
 
-func (s *contextRecorderStorage) record(ctx context.Context, key string, dest *[]contextRecord) {
-	value, _ := ctx.Value(markerKey).(string)
-	*dest = append(*dest, contextRecord{
+func contextRecordFrom(ctx context.Context, key string) contextRecord {
+	record := contextRecord{
 		key:      key,
-		value:    value,
 		canceled: errors.Is(ctx.Err(), context.Canceled),
-	})
+	}
+	if value, ok := ctx.Value(markerKey).(string); ok {
+		record.value = value
+	}
+	return record
 }
 
 func (s *contextRecorderStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
-	s.record(ctx, key, &s.gets)
+	s.gets = append(s.gets, contextRecordFrom(ctx, key))
 	return s.failingCacheStorage.GetWithContext(ctx, key)
 }
 
 func (s *contextRecorderStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
-	s.record(ctx, key, &s.sets)
+	s.sets = append(s.sets, contextRecordFrom(ctx, key))
 	return s.failingCacheStorage.SetWithContext(ctx, key, val, exp)
 }
 
 func (s *contextRecorderStorage) DeleteWithContext(ctx context.Context, key string) error {
-	s.record(ctx, key, &s.deletes)
+	s.deletes = append(s.deletes, contextRecordFrom(ctx, key))
 	return s.failingCacheStorage.DeleteWithContext(ctx, key)
 }
 
@@ -233,20 +235,14 @@ type contextKey string
 
 const markerKey contextKey = "marker"
 
-type canceledContext struct {
-	context.Context
+func contextWithMarker(label string) context.Context {
+	return context.WithValue(context.Background(), markerKey, label)
 }
 
-func (c canceledContext) Err() error {
-	return context.Canceled
-}
-
-func contextWithMarker(label string, canceled bool) context.Context {
-	base := context.WithValue(context.Background(), markerKey, label)
-	if !canceled {
-		return base
-	}
-	return canceledContext{Context: base}
+func canceledContextWithMarker(label string) context.Context {
+	ctx, cancel := context.WithCancel(contextWithMarker(label))
+	cancel()
+	return ctx
 }
 
 func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
@@ -256,11 +252,12 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(func(c fiber.Ctx) error {
-		switch string(c.Path()) {
-		case "/first":
-			c.SetContext(contextWithMarker("first", false))
-		case "/second":
-			c.SetContext(contextWithMarker("evict", true))
+		path := c.Path()
+		if path == "/first" {
+			c.SetContext(contextWithMarker("first"))
+		}
+		if path == "/second" {
+			c.SetContext(canceledContextWithMarker("evict"))
 		}
 		return c.Next()
 	})
@@ -311,7 +308,7 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 	})
 
 	app.Use(func(c fiber.Ctx) error {
-		c.SetContext(contextWithMarker("cleanup", true))
+		c.SetContext(canceledContextWithMarker("cleanup"))
 		return c.Next()
 	})
 
@@ -347,7 +344,11 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 		}
 
 		canceled := string(c.Request().Header.Peek("X-Cancel")) == "true"
-		c.SetContext(contextWithMarker(ctxLabel, canceled))
+		if canceled {
+			c.SetContext(canceledContextWithMarker(ctxLabel))
+		} else {
+			c.SetContext(contextWithMarker(ctxLabel))
+		}
 		return c.Next()
 	})
 
@@ -390,11 +391,11 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 			continue
 		}
 
-		switch rec.key {
-		case "/cache_GET":
+		if rec.key == "/cache_GET" {
 			require.True(t, rec.canceled)
 			fetchEntry = true
-		case "/cache_GET_body":
+		}
+		if rec.key == "/cache_GET_body" {
 			require.True(t, rec.canceled)
 			fetchBody = true
 		}

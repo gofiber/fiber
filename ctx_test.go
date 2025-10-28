@@ -3759,7 +3759,7 @@ type mockContextAwareStorage struct {
 	t              *testing.T
 	key            any
 	expectedValue  any
-	expectedCtx    context.Context
+	validateCtx    func(context.Context)
 	cancel         context.CancelFunc
 	ctxMatched     atomic.Bool
 	cancelObserved atomic.Bool
@@ -3782,12 +3782,10 @@ func (s *mockContextAwareStorage) Get(string) ([]byte, error) {
 
 func (s *mockContextAwareStorage) SetWithContext(ctx context.Context, _ string, _ []byte, _ time.Duration) error {
 	s.t.Helper()
-	if s.expectedCtx == nil {
-		s.helperFailure("expectedCtx must be configured before SetWithContext")
+	if s.validateCtx == nil {
+		s.helperFailure("validateCtx must be configured before SetWithContext")
 	}
-	if ctx != s.expectedCtx {
-		s.helperFailure("storage received unexpected context instance")
-	}
+	s.validateCtx(ctx)
 	if val := ctx.Value(s.key); val != s.expectedValue {
 		s.helperFailure("storage observed unexpected context value: %v", val)
 	}
@@ -3830,6 +3828,9 @@ func (s *mockContextAwareStorage) Reset() error {
 }
 
 func (s *mockContextAwareStorage) Close() error {
+	if s == nil {
+		return nil
+	}
 	return nil
 }
 
@@ -3837,7 +3838,9 @@ func (s *mockContextAwareStorage) Close() error {
 func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
 	t.Parallel()
 
-	const ctxKey = "storage-context-key"
+	type ctxKeyType string
+
+	const ctxKey ctxKeyType = "storage-context-key"
 
 	storage := &mockContextAwareStorage{t: t, key: ctxKey, expectedValue: "expected-context-value"}
 	app := New()
@@ -3848,7 +3851,11 @@ func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
 
 		ctxWithValue := context.WithValue(context.Background(), ctxKey, storage.expectedValue)
 		ctx, cancel := context.WithCancel(ctxWithValue)
-		storage.expectedCtx = ctx
+		storage.validateCtx = func(received context.Context) {
+			if received != ctx {
+				storage.helperFailure("storage received unexpected context instance")
+			}
+		}
 		storage.cancel = cancel
 
 		c.SetContext(ctx)
