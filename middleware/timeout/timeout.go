@@ -29,27 +29,25 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		go func() {
 			err <- h(ctx)
 		}()
-		for {
-			select {
-			case err := <-err:
-				if err != nil && (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors)) {
-					if cfg.OnTimeout != nil {
-						if toErr := cfg.OnTimeout(ctx); toErr != nil {
-							return toErr
-						}
-					}
-					return fiber.ErrRequestTimeout
-				}
-				return err
-			case <-time.After(timeout):
+		select {
+		case err := <-err:
+			if err != nil && (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors)) {
 				if cfg.OnTimeout != nil {
-					err := cfg.OnTimeout(ctx)
-					ctx.RequestCtx().TimeoutErrorWithResponse(&ctx.RequestCtx().Response)
-					return err
+					if toErr := cfg.OnTimeout(ctx); toErr != nil {
+						return toErr
+					}
 				}
-				ctx.RequestCtx().TimeoutErrorWithCode(utils.StatusMessage(fiber.StatusRequestTimeout), fiber.StatusRequestTimeout)
 				return fiber.ErrRequestTimeout
 			}
+			return err
+		case <-time.After(timeout):
+			if cfg.OnTimeout != nil {
+				err := cfg.OnTimeout(ctx)
+				ctx.RequestCtx().TimeoutErrorWithResponse(&ctx.RequestCtx().Response)
+				return err
+			}
+			ctx.RequestCtx().TimeoutErrorWithCode(utils.StatusMessage(fiber.StatusRequestTimeout), fiber.StatusRequestTimeout)
+			return fiber.ErrRequestTimeout
 		}
 	}
 }
