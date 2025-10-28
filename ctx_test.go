@@ -3755,6 +3755,132 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+type mockContextAwareStorage struct {
+	t              *testing.T
+	key            any
+	expectedValue  any
+	expectedCtx    context.Context
+	cancel         context.CancelFunc
+	ctxMatched     atomic.Bool
+	cancelObserved atomic.Bool
+}
+
+func (s *mockContextAwareStorage) helperFailure(msg string, args ...any) {
+	s.t.Helper()
+	s.t.Fatalf(msg, args...)
+}
+
+func (s *mockContextAwareStorage) GetWithContext(context.Context, string) ([]byte, error) {
+	s.helperFailure("unexpected call to GetWithContext")
+	return nil, nil
+}
+
+func (s *mockContextAwareStorage) Get(string) ([]byte, error) {
+	s.helperFailure("unexpected call to Get")
+	return nil, nil
+}
+
+func (s *mockContextAwareStorage) SetWithContext(ctx context.Context, _ string, _ []byte, _ time.Duration) error {
+	s.t.Helper()
+	if s.expectedCtx == nil {
+		s.helperFailure("expectedCtx must be configured before SetWithContext")
+	}
+	if ctx != s.expectedCtx {
+		s.helperFailure("storage received unexpected context instance")
+	}
+	if val := ctx.Value(s.key); val != s.expectedValue {
+		s.helperFailure("storage observed unexpected context value: %v", val)
+	}
+	s.ctxMatched.Store(true)
+	if s.cancel != nil {
+		s.cancel()
+	}
+	select {
+	case <-ctx.Done():
+		s.cancelObserved.Store(true)
+	case <-time.After(100 * time.Millisecond):
+		s.helperFailure("storage did not observe context cancellation")
+	}
+	return nil
+}
+
+func (s *mockContextAwareStorage) Set(string, []byte, time.Duration) error {
+	s.helperFailure("unexpected call to Set")
+	return nil
+}
+
+func (s *mockContextAwareStorage) DeleteWithContext(context.Context, string) error {
+	s.helperFailure("unexpected call to DeleteWithContext")
+	return nil
+}
+
+func (s *mockContextAwareStorage) Delete(string) error {
+	s.helperFailure("unexpected call to Delete")
+	return nil
+}
+
+func (s *mockContextAwareStorage) ResetWithContext(context.Context) error {
+	s.helperFailure("unexpected call to ResetWithContext")
+	return nil
+}
+
+func (s *mockContextAwareStorage) Reset() error {
+	s.helperFailure("unexpected call to Reset")
+	return nil
+}
+
+func (s *mockContextAwareStorage) Close() error {
+	return nil
+}
+
+// go test -run Test_Ctx_SaveFileToStorage_ContextPropagation
+func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
+	t.Parallel()
+
+	const ctxKey = "storage-context-key"
+
+	storage := &mockContextAwareStorage{t: t, key: ctxKey, expectedValue: "expected-context-value"}
+	app := New()
+
+	app.Post("/test", func(c Ctx) error {
+		fh, err := c.FormFile("file")
+		require.NoError(t, err)
+
+		ctxWithValue := context.WithValue(context.Background(), ctxKey, storage.expectedValue)
+		ctx, cancel := context.WithCancel(ctxWithValue)
+		storage.expectedCtx = ctx
+		storage.cancel = cancel
+
+		c.SetContext(ctx)
+
+		err = c.SaveFileToStorage(fh, "test", storage)
+		require.NoError(t, err)
+
+		require.True(t, storage.ctxMatched.Load(), "storage should receive the context installed on Ctx")
+		require.True(t, storage.cancelObserved.Load(), "storage should observe context cancellation")
+
+		return nil
+	})
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	ioWriter, err := writer.CreateFormFile("file", "test")
+	require.NoError(t, err)
+
+	_, err = ioWriter.Write([]byte("hello world"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	req := httptest.NewRequest(MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 // go test -run Test_Ctx_Secure
 func Test_Ctx_Secure(t *testing.T) {
 	t.Parallel()
