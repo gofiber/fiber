@@ -23,7 +23,7 @@ func BenchmarkRequestHeapScan(b *testing.B) {
 	var totalScanHeap, totalScanAll uint64
 	for i := 0; i < b.N; i++ {
 		reqs := make([]*Request, batchSize)
-		// revive:disable-next-line:call-to-gc // ensure consistent heap state before measuring scan metrics
+		// revive:disable-next-line:call-to-gc // Ensure consistent heap state before measuring scan metrics
 		runtime.GC()
 		metrics.Read(samples)
 		startScanHeap := samples[0].Value.Uint64()
