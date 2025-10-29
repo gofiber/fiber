@@ -324,7 +324,7 @@ func (r *Request) SetReferer(referer string) *Request {
 // Cookie returns the value of a named cookie.
 // If the cookie does not exist, an empty string is returned.
 func (r *Request) Cookie(key string) string {
-	if val, ok := (r.cookies)[key]; ok {
+	if val, ok := r.cookies[key]; ok {
 		return val
 	}
 	return ""
