@@ -40,7 +40,7 @@ func BenchmarkRequestHeapScan(b *testing.B) {
 		}
 		b.StopTimer()
 
-		// revive:disable-next-line:call-to-gc // force GC to capture post-benchmark scan metrics
+		// revive:disable-next-line:call-to-gc // Force GC to capture post-benchmark scan metrics
 		runtime.GC()
 		metrics.Read(samples)
 		totalScanHeap += samples[0].Value.Uint64() - startScanHeap
