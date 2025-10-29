@@ -363,7 +363,7 @@ func (r *Request) DelCookies(key ...string) *Request {
 // PathParam returns the value of a named path parameter.
 // If the parameter does not exist, an empty string is returned.
 func (r *Request) PathParam(key string) string {
-	if val, ok := (r.path)[key]; ok {
+	if val, ok := r.path[key]; ok {
 		return val
 	}
 	return ""
