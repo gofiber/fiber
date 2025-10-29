@@ -21,7 +21,7 @@ type Config struct {
 
 	// AllowOrigin defines a list of origins that may access the resource.
 	//
-	// This supports subdomains wildcard by prefixing the domain with a `*.`
+// This supports wildcard matching for subdomains by prefixing the domain with a `*.`
 	// e.g. "http://.domain.com". This will allow all level of subdomains of domain.com to access the resource.
 	//
 	// If the special wildcard `"*"` is present in the list, all origins will be allowed.
