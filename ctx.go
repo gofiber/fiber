@@ -441,7 +441,7 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 		return fmt.Errorf("failed to read: %w", err)
 	}
 
-	if err := storage.SetWithContext(c, path, content, 0); err != nil {
+	if err := storage.SetWithContext(c.Context(), path, content, 0); err != nil {
 		return fmt.Errorf("failed to store: %w", err)
 	}
 

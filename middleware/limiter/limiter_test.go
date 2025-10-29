@@ -30,6 +30,55 @@ func newFailingLimiterStorage() *failingLimiterStorage {
 	}
 }
 
+type contextRecord struct {
+	key      string
+	value    string
+	canceled bool
+}
+
+type contextRecorderLimiterStorage struct {
+	*failingLimiterStorage
+	gets []contextRecord
+	sets []contextRecord
+}
+
+func newContextRecorderLimiterStorage() *contextRecorderLimiterStorage {
+	return &contextRecorderLimiterStorage{failingLimiterStorage: newFailingLimiterStorage()}
+}
+
+func contextRecordFrom(ctx context.Context, key string) contextRecord {
+	record := contextRecord{
+		key:      key,
+		canceled: errors.Is(ctx.Err(), context.Canceled),
+	}
+	if value, ok := ctx.Value(markerKey).(string); ok {
+		record.value = value
+	}
+	return record
+}
+
+func (s *contextRecorderLimiterStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	s.gets = append(s.gets, contextRecordFrom(ctx, key))
+	return s.failingLimiterStorage.GetWithContext(ctx, key)
+}
+
+func (s *contextRecorderLimiterStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.sets = append(s.sets, contextRecordFrom(ctx, key))
+	return s.failingLimiterStorage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s *contextRecorderLimiterStorage) recordedGets() []contextRecord {
+	out := make([]contextRecord, len(s.gets))
+	copy(out, s.gets)
+	return out
+}
+
+func (s *contextRecorderLimiterStorage) recordedSets() []contextRecord {
+	out := make([]contextRecord, len(s.sets))
+	copy(out, s.sets)
+	return out
+}
+
 func (s *failingLimiterStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
 	if err, ok := s.errs["get|"+key]; ok && err != nil {
 		return nil, err
@@ -65,6 +114,20 @@ func (*failingLimiterStorage) ResetWithContext(context.Context) error { return n
 func (*failingLimiterStorage) Reset() error { return nil }
 
 func (*failingLimiterStorage) Close() error { return nil }
+
+type contextKey string
+
+const markerKey contextKey = "marker"
+
+func contextWithMarker(label string) context.Context {
+	return context.WithValue(context.Background(), markerKey, label)
+}
+
+func canceledContextWithMarker(label string) context.Context {
+	ctx, cancel := context.WithCancel(contextWithMarker(label))
+	cancel()
+	return ctx
+}
 
 func TestLimiterFixedStorageGetError(t *testing.T) {
 	t.Parallel()
@@ -121,6 +184,72 @@ func TestLimiterFixedStorageSetError(t *testing.T) {
 	require.ErrorContains(t, captured, "[redacted]")
 }
 
+func TestLimiterFixedPropagatesRequestContextToStorage(t *testing.T) {
+	t.Parallel()
+
+	storage := newContextRecorderLimiterStorage()
+
+	app := fiber.New()
+
+	app.Use(func(c fiber.Ctx) error {
+		path := c.Path()
+		if path == "/normal" {
+			c.SetContext(contextWithMarker("fixed-normal"))
+		}
+		if path == "/rollback" {
+			c.SetContext(canceledContextWithMarker("fixed-rollback"))
+		}
+		return c.Next()
+	})
+
+	app.Use(New(Config{
+		Storage:                storage,
+		Max:                    1,
+		Expiration:             time.Minute,
+		SkipSuccessfulRequests: true,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path()
+		},
+		LimiterMiddleware: FixedWindow{},
+	}))
+
+	app.Get("/:mode", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	for _, path := range []string{"/normal", "/rollback"} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	}
+
+	gets := storage.recordedGets()
+	require.Len(t, gets, 4)
+
+	sets := storage.recordedSets()
+	require.Len(t, sets, 4)
+
+	verifyRecords := func(t *testing.T, records []contextRecord, key, wantValue string, wantCanceled bool) {
+		t.Helper()
+		var matched []contextRecord
+		for _, rec := range records {
+			if rec.key == key {
+				matched = append(matched, rec)
+			}
+		}
+		require.Len(t, matched, 2)
+		for _, rec := range matched {
+			require.Equal(t, wantValue, rec.value)
+			require.Equal(t, wantCanceled, rec.canceled)
+		}
+	}
+
+	verifyRecords(t, gets, "/normal", "fixed-normal", false)
+	verifyRecords(t, gets, "/rollback", "fixed-rollback", true)
+	verifyRecords(t, sets, "/normal", "fixed-normal", false)
+	verifyRecords(t, sets, "/rollback", "fixed-rollback", true)
+}
+
 func TestLimiterFixedStorageGetErrorDisableRedaction(t *testing.T) {
 	t.Parallel()
 
@@ -173,6 +302,72 @@ func TestLimiterFixedStorageSetErrorDisableRedaction(t *testing.T) {
 	require.Error(t, captured)
 	require.ErrorContains(t, captured, testLimiterClientKey)
 	require.NotContains(t, captured.Error(), "[redacted]")
+}
+
+func TestLimiterSlidingPropagatesRequestContextToStorage(t *testing.T) {
+	t.Parallel()
+
+	storage := newContextRecorderLimiterStorage()
+
+	app := fiber.New()
+
+	app.Use(func(c fiber.Ctx) error {
+		path := c.Path()
+		if path == "/normal" {
+			c.SetContext(contextWithMarker("sliding-normal"))
+		}
+		if path == "/rollback" {
+			c.SetContext(canceledContextWithMarker("sliding-rollback"))
+		}
+		return c.Next()
+	})
+
+	app.Use(New(Config{
+		Storage:                storage,
+		Max:                    1,
+		Expiration:             time.Minute,
+		SkipSuccessfulRequests: true,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path()
+		},
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/:mode", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	for _, path := range []string{"/normal", "/rollback"} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	}
+
+	gets := storage.recordedGets()
+	require.Len(t, gets, 4)
+
+	sets := storage.recordedSets()
+	require.Len(t, sets, 4)
+
+	verifyRecords := func(t *testing.T, records []contextRecord, key, wantValue string, wantCanceled bool) {
+		t.Helper()
+		var matched []contextRecord
+		for _, rec := range records {
+			if rec.key == key {
+				matched = append(matched, rec)
+			}
+		}
+		require.Len(t, matched, 2)
+		for _, rec := range matched {
+			require.Equal(t, wantValue, rec.value)
+			require.Equal(t, wantCanceled, rec.canceled)
+		}
+	}
+
+	verifyRecords(t, gets, "/normal", "sliding-normal", false)
+	verifyRecords(t, gets, "/rollback", "sliding-rollback", true)
+	verifyRecords(t, sets, "/normal", "sliding-normal", false)
+	verifyRecords(t, sets, "/rollback", "sliding-rollback", true)
 }
 
 // go test -run Test_Limiter_With_Max_Func_With_Zero -race -v

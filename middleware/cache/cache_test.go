@@ -85,6 +85,67 @@ func (s *failingCacheStorage) Reset() error {
 
 func (*failingCacheStorage) Close() error { return nil }
 
+type contextRecord struct {
+	key      string
+	value    string
+	canceled bool
+}
+
+type contextRecorderStorage struct {
+	*failingCacheStorage
+	deletes []contextRecord
+	gets    []contextRecord
+	sets    []contextRecord
+}
+
+func newContextRecorderStorage() *contextRecorderStorage {
+	return &contextRecorderStorage{failingCacheStorage: newFailingCacheStorage()}
+}
+
+func contextRecordFrom(ctx context.Context, key string) contextRecord {
+	record := contextRecord{
+		key:      key,
+		canceled: errors.Is(ctx.Err(), context.Canceled),
+	}
+	if value, ok := ctx.Value(markerKey).(string); ok {
+		record.value = value
+	}
+	return record
+}
+
+func (s *contextRecorderStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	s.gets = append(s.gets, contextRecordFrom(ctx, key))
+	return s.failingCacheStorage.GetWithContext(ctx, key)
+}
+
+func (s *contextRecorderStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.sets = append(s.sets, contextRecordFrom(ctx, key))
+	return s.failingCacheStorage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s *contextRecorderStorage) DeleteWithContext(ctx context.Context, key string) error {
+	s.deletes = append(s.deletes, contextRecordFrom(ctx, key))
+	return s.failingCacheStorage.DeleteWithContext(ctx, key)
+}
+
+func (s *contextRecorderStorage) recordedGets() []contextRecord {
+	out := make([]contextRecord, len(s.gets))
+	copy(out, s.gets)
+	return out
+}
+
+func (s *contextRecorderStorage) recordedSets() []contextRecord {
+	out := make([]contextRecord, len(s.sets))
+	copy(out, s.sets)
+	return out
+}
+
+func (s *contextRecorderStorage) recordedDeletes() []contextRecord {
+	out := make([]contextRecord, len(s.deletes))
+	copy(out, s.deletes)
+	return out
+}
+
 func TestCacheStorageGetError(t *testing.T) {
 	t.Parallel()
 
@@ -168,6 +229,180 @@ func TestCacheStorageDeleteError(t *testing.T) {
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Error(t, captured)
 	require.ErrorContains(t, captured, "cache: failed to delete expired key")
+}
+
+type contextKey string
+
+const markerKey contextKey = "marker"
+
+func contextWithMarker(label string) context.Context {
+	return context.WithValue(context.Background(), markerKey, label)
+}
+
+func canceledContextWithMarker(label string) context.Context {
+	ctx, cancel := context.WithCancel(contextWithMarker(label))
+	cancel()
+	return ctx
+}
+
+func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
+	t.Parallel()
+
+	storage := newContextRecorderStorage()
+	app := fiber.New()
+
+	app.Use(func(c fiber.Ctx) error {
+		path := c.Path()
+		if path == "/first" {
+			c.SetContext(contextWithMarker("first"))
+		}
+		if path == "/second" {
+			c.SetContext(canceledContextWithMarker("evict"))
+		}
+		return c.Next()
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Minute, MaxBytes: 5}))
+
+	app.Get("/first", func(c fiber.Ctx) error {
+		return c.SendString("aaa")
+	})
+
+	app.Get("/second", func(c fiber.Ctx) error {
+		return c.SendString("bbbb")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/first", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/second", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	records := storage.recordedDeletes()
+	require.Len(t, records, 2)
+
+	var keys []string
+	for _, rec := range records {
+		keys = append(keys, rec.key)
+		require.Equal(t, "evict", rec.value)
+		require.True(t, rec.canceled)
+	}
+
+	require.ElementsMatch(t, []string{"/first_GET", "/first_GET_body"}, keys)
+}
+
+func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
+	t.Parallel()
+
+	storage := newContextRecorderStorage()
+	storage.errs["set|/_GET"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(func(c fiber.Ctx) error {
+		c.SetContext(canceledContextWithMarker("cleanup"))
+		return c.Next()
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Minute}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("payload")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "cache: failed to store key")
+
+	records := storage.recordedDeletes()
+	require.Len(t, records, 1)
+	require.Equal(t, "/_GET_body", records[0].key)
+	require.Equal(t, "cleanup", records[0].value)
+	require.True(t, records[0].canceled)
+}
+
+func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
+	t.Parallel()
+
+	storage := newContextRecorderStorage()
+	app := fiber.New()
+
+	app.Use(func(c fiber.Ctx) error {
+		ctxLabel := string(c.Request().Header.Peek("X-Context"))
+		if ctxLabel == "" {
+			return c.Next()
+		}
+
+		canceled := string(c.Request().Header.Peek("X-Cancel")) == "true"
+		if canceled {
+			c.SetContext(canceledContextWithMarker(ctxLabel))
+		} else {
+			c.SetContext(contextWithMarker(ctxLabel))
+		}
+		return c.Next()
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Minute}))
+
+	app.Get("/cache", func(c fiber.Ctx) error {
+		return c.SendString("payload")
+	})
+
+	firstReq := httptest.NewRequest(fiber.MethodGet, "/cache", nil)
+	firstReq.Header.Set("X-Context", "store")
+	firstReq.Header.Set("X-Cancel", "true")
+
+	resp, err := app.Test(firstReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	secondReq := httptest.NewRequest(fiber.MethodGet, "/cache", nil)
+	secondReq.Header.Set("X-Context", "fetch")
+	secondReq.Header.Set("X-Cancel", "true")
+
+	resp, err = app.Test(secondReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	setRecords := storage.recordedSets()
+	require.Len(t, setRecords, 2)
+	for _, rec := range setRecords {
+		require.Contains(t, []string{"/cache_GET", "/cache_GET_body"}, rec.key)
+		require.Equal(t, "store", rec.value)
+		require.True(t, rec.canceled)
+	}
+
+	getRecords := storage.recordedGets()
+	require.NotEmpty(t, getRecords)
+
+	var fetchEntry, fetchBody bool
+	for _, rec := range getRecords {
+		if rec.value != "fetch" {
+			continue
+		}
+
+		if rec.key == "/cache_GET" {
+			require.True(t, rec.canceled)
+			fetchEntry = true
+		}
+		if rec.key == "/cache_GET_body" {
+			require.True(t, rec.canceled)
+			fetchBody = true
+		}
+	}
+
+	require.True(t, fetchEntry, "expected cached entry retrieval to observe request context")
+	require.True(t, fetchBody, "expected cached body retrieval to observe request context")
 }
 
 func Test_Cache_CacheControl(t *testing.T) {
