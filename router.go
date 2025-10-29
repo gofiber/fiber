@@ -54,11 +54,13 @@ type Route struct {
 	Params      []string    `json:"params"` // Case-sensitive param keys
 	Handlers    []Handler   `json:"-"`      // Ctx handlers
 	routeParser routeParser // Parameter parser
+
 	// Data for routing
-	use   bool // USE matches path prefixes
-	mount bool // Indicated a mounted app on a specific route
-	star  bool // Path equals '*'
-	root  bool // Path equals '/'
+	use      bool // USE matches path prefixes
+	mount    bool // Indicated a mounted app on a specific route
+	star     bool // Path equals '*'
+	root     bool // Path equals '/'
+	autoHead bool // Automatically generated HEAD route
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
@@ -366,10 +368,11 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 func (*App) copyRoute(route *Route) *Route {
 	return &Route{
 		// Router booleans
-		use:   route.use,
-		mount: route.mount,
-		star:  route.star,
-		root:  route.root,
+		use:      route.use,
+		mount:    route.mount,
+		star:     route.star,
+		root:     route.root,
+		autoHead: route.autoHead,
 
 		// Path data
 		path:        route.path,
@@ -466,7 +469,36 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 
 				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
 			}
+
+			if method == MethodGet && !route.use && !route.mount {
+				app.pruneAutoHeadRouteLocked(route.path)
+			}
 		}
+	}
+}
+
+// pruneAutoHeadRouteLocked removes an automatically generated HEAD route so a
+// later explicit registration can take its place without duplicating handler
+// chains. The caller must already hold app.mutex.
+func (app *App) pruneAutoHeadRouteLocked(path string) {
+	headIndex := app.methodInt(MethodHead)
+	if headIndex == -1 {
+		return
+	}
+
+	norm := app.normalizePath(path)
+
+	headStack := app.stack[headIndex]
+	for i := len(headStack) - 1; i >= 0; i-- {
+		headRoute := headStack[i]
+		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead {
+			continue
+		}
+
+		app.stack[headIndex] = append(headStack[:i], headStack[i+1:]...)
+		app.routesRefreshed = true
+		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // Not a concern
+		return
 	}
 }
 
@@ -554,6 +586,10 @@ func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
 
+	if method == MethodHead && !route.mount && !route.use {
+		app.pruneAutoHeadRouteLocked(route.path)
+	}
+
 	// prevent identically route registration
 	l := len(app.stack[m])
 	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount {
@@ -572,6 +608,73 @@ func (app *App) addRoute(method string, route *Route) {
 		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
 			panic(err)
 		}
+	}
+}
+
+func (app *App) ensureAutoHeadRoutes() {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	app.ensureAutoHeadRoutesLocked()
+}
+
+func (app *App) ensureAutoHeadRoutesLocked() {
+	if app.config.DisableHeadAutoRegister {
+		return
+	}
+
+	headIndex := app.methodInt(MethodHead)
+	getIndex := app.methodInt(MethodGet)
+	if headIndex == -1 || getIndex == -1 {
+		return
+	}
+
+	headStack := app.stack[headIndex]
+	existing := make(map[string]struct{}, len(headStack))
+	for _, route := range headStack {
+		if route.mount || route.use {
+			continue
+		}
+		existing[route.path] = struct{}{}
+	}
+
+	if len(app.stack[getIndex]) == 0 {
+		return
+	}
+
+	var added bool
+
+	for _, route := range app.stack[getIndex] {
+		if route.mount || route.use {
+			continue
+		}
+		if _, ok := existing[route.path]; ok {
+			continue
+		}
+
+		headRoute := app.copyRoute(route)
+		headRoute.group = route.group
+		headRoute.Method = MethodHead
+		headRoute.autoHead = true
+		// Fasthttp automatically omits response bodies when transmitting
+		// HEAD responses, so the copied GET handler stack can execute
+		// unchanged while still producing an empty body on the wire.
+
+		headStack = append(headStack, headRoute)
+		existing[route.path] = struct{}{}
+		app.routesRefreshed = true
+		added = true
+
+		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // Not a concern
+
+		app.latestRoute = headRoute
+		if err := app.hooks.executeOnRouteHooks(*headRoute); err != nil {
+			panic(err)
+		}
+	}
+
+	if added {
+		app.stack[headIndex] = headStack
 	}
 }
 
