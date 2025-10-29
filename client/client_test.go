@@ -2297,3 +2297,120 @@ func Benchmark_Client_Request_Parallel(b *testing.B) {
 		require.NoError(b, err)
 	})
 }
+
+func Test_Client_StreamResponseBody(t *testing.T) {
+	t.Parallel()
+	client := New()
+	require.False(t, client.StreamResponseBody())
+	client.SetStreamResponseBody(true)
+	require.True(t, client.StreamResponseBody())
+	client.SetStreamResponseBody(false)
+	require.False(t, client.StreamResponseBody())
+}
+
+func Test_Client_StreamResponseBody_ServerSentEvents(t *testing.T) {
+	t.Parallel()
+
+	app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+		app.Get("/sse", func(c fiber.Ctx) error {
+			c.Set("Content-Type", "text/event-stream")
+			c.Set("Cache-Control", "no-cache")
+			c.Set("Connection", "keep-alive")
+
+			messages := []string{
+				"data: message 1\n\n",
+				"data: message 2\n\n",
+				"data: message 3\n\n",
+			}
+
+			for _, msg := range messages {
+				if _, err := c.WriteString(msg); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+	})
+	defer func() { require.NoError(t, app.Shutdown()) }()
+
+	client := New().SetStreamResponseBody(true)
+	resp, err := client.Get("http://" + addr + "/sse")
+	require.NoError(t, err)
+	defer resp.Close()
+
+	bodyStream := resp.BodyStream()
+	require.NotNil(t, bodyStream)
+
+	buffer := make([]byte, 1024)
+	n, err := bodyStream.Read(buffer)
+	require.NoError(t, err)
+	require.Positive(t, n)
+
+	content := string(buffer[:n])
+	require.Contains(t, content, "data: message 1")
+}
+
+func Test_Client_StreamResponseBody_LargeResponse(t *testing.T) {
+	t.Parallel()
+
+	largeData := make([]byte, 1024*1024)
+	for i := range largeData {
+		largeData[i] = byte(i % 256)
+	}
+
+	app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+		app.Get("/large", func(c fiber.Ctx) error {
+			return c.Send(largeData)
+		})
+	})
+	defer func() { require.NoError(t, app.Shutdown()) }()
+	client := New().SetStreamResponseBody(true)
+	resp, err := client.Get("http://" + addr + "/large")
+	require.NoError(t, err)
+	defer resp.Close()
+	bodyStream := resp.BodyStream()
+	require.NotNil(t, bodyStream)
+	streamedData, err := io.ReadAll(bodyStream)
+	require.NoError(t, err)
+	require.Equal(t, largeData, streamedData)
+	client2 := New()
+	resp2, err := client2.Get("http://" + addr + "/large")
+	require.NoError(t, err)
+	defer resp2.Close()
+	body := resp2.Body()
+	require.Equal(t, largeData, body)
+}
+
+func Test_Client_StreamResponseBody_Disabled_Default(t *testing.T) {
+	t.Parallel()
+
+	app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+		app.Get("/test", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+	})
+	defer func() { require.NoError(t, app.Shutdown()) }()
+
+	client := New()
+	resp, err := client.Get("http://" + addr + "/test")
+	require.NoError(t, err)
+	defer resp.Close()
+
+	body := resp.Body()
+	require.Equal(t, "Hello, World!", string(body))
+
+	bodyStream := resp.BodyStream()
+	require.NotNil(t, bodyStream)
+}
+
+func Test_Client_StreamResponseBody_ChainableMethods(t *testing.T) {
+	t.Parallel()
+
+	client := New().
+		SetStreamResponseBody(true).
+		SetTimeout(time.Second * 5).
+		SetStreamResponseBody(false)
+
+	require.False(t, client.StreamResponseBody())
+}
