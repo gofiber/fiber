@@ -47,14 +47,14 @@ type Request struct {
 	ctx context.Context //nolint:containedctx // Context is needed to be stored in the request.
 
 	body    any
-	header  *Header
-	params  *QueryParam
-	cookies *Cookie
-	path    *PathParam
+	header  Header
+	params  QueryParam
+	cookies Cookie
+	path    PathParam
 
 	client *Client
 
-	formData *FormData
+	formData FormData
 
 	RawRequest *fasthttp.Request
 	url        string
@@ -324,7 +324,7 @@ func (r *Request) SetReferer(referer string) *Request {
 // Cookie returns the value of a named cookie.
 // If the cookie does not exist, an empty string is returned.
 func (r *Request) Cookie(key string) string {
-	if val, ok := (*r.cookies)[key]; ok {
+	if val, ok := r.cookies[key]; ok {
 		return val
 	}
 	return ""
@@ -363,7 +363,7 @@ func (r *Request) DelCookies(key ...string) *Request {
 // PathParam returns the value of a named path parameter.
 // If the parameter does not exist, an empty string is returned.
 func (r *Request) PathParam(key string) string {
-	if val, ok := (*r.path)[key]; ok {
+	if val, ok := r.path[key]; ok {
 		return val
 	}
 	return ""
@@ -967,12 +967,12 @@ func (f *File) Reset() {
 var requestPool = &sync.Pool{
 	New: func() any {
 		return &Request{
-			header:     &Header{RequestHeader: &fasthttp.RequestHeader{}},
-			params:     &QueryParam{Args: fasthttp.AcquireArgs()},
-			cookies:    &Cookie{},
-			path:       &PathParam{},
+			header:     Header{RequestHeader: &fasthttp.RequestHeader{}},
+			params:     QueryParam{Args: fasthttp.AcquireArgs()},
+			cookies:    Cookie{},
+			path:       PathParam{},
 			boundary:   boundary,
-			formData:   &FormData{Args: fasthttp.AcquireArgs()},
+			formData:   FormData{Args: fasthttp.AcquireArgs()},
 			files:      make([]*File, 0),
 			RawRequest: fasthttp.AcquireRequest(),
 		}
