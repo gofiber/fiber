@@ -75,7 +75,6 @@
     "**/*_gen.go",
     "**/*_msgp.go",
     "**/*_msgp_test.go",
-    "**/*_test.go",
     "go.mod",
     "go.sum",
     ".golangci.yml",
