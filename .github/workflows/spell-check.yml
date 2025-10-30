@@ -58,4 +58,5 @@ jobs:
         with:
           incremental_files_only: false
           check_dot_files: explicit
-          report: typos 
+          report: typos
+          verbose: true
