@@ -3,7 +3,6 @@ name: Modernize Lint
 on:
   push:
     branches:
-      - master
       - main
     paths:
       - "**.go"

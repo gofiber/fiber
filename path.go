@@ -1,7 +1,7 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
 // 📄 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
-// ⚠️ This path parser was inspired by ucarion/urlpath (MIT License).
+// ⚠️ This path parser was inspired by https://github.com/ucarion/urlpath
 // 💖 Maintained and modified for Fiber by @renewerner87
 
 package fiber

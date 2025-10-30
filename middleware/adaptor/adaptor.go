@@ -239,7 +239,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 
 		// New fasthttp Ctx from pool
-		fctx := ctxPool.Get().(*fasthttp.RequestCtx) //nolint:forcetypeassert,errcheck // overlinting
+		fctx := ctxPool.Get().(*fasthttp.RequestCtx) //nolint:forcetypeassert,errcheck // not needed
 		fctx.Response.Reset()
 		fctx.Request.Reset()
 		defer ctxPool.Put(fctx)

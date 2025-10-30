@@ -200,7 +200,7 @@ func (r *Response) String() string
 
 ## JSON
 
-**JSON** unmarshals the response body into the provided variable `v` using JSON. `v` should be a pointer to a struct or a type compatible with JSON unmarshalling.
+**JSON** unmarshal the response body into the provided variable `v` using JSON. `v` should be a pointer to a struct or a type compatible with JSON unmarshal.
 
 ```go title="Signature"
 func (r *Response) JSON(v any) error
@@ -241,7 +241,7 @@ fmt.Printf("%+v\n", out)
 
 ## XML
 
-**XML** unmarshals the response body into the provided variable `v` using XML decoding.
+**XML** unmarshal the response body into the provided variable `v` using XML decoding.
 
 ```go title="Signature"
 func (r *Response) XML(v any) error
@@ -249,7 +249,7 @@ func (r *Response) XML(v any) error
 
 ## CBOR
 
-**CBOR** unmarshals the response body into `v` using CBOR decoding.
+**CBOR** unmarshal the response body into `v` using CBOR decoding.
 
 ```go title="Signature"
 func (r *Response) CBOR(v any) error
