@@ -316,6 +316,249 @@ func Test_Route_Match_Parser(t *testing.T) {
 	require.Equal(t, "test", app.toString(body))
 }
 
+func TestAutoRegisterHeadRoutes(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+	}{
+		{name: "auto registers head for get"},
+		{name: "disable auto register config"},
+		{name: "explicit head overrides auto head route"},
+		{name: "auto head for grouped routes"},
+		{name: "static handler auto head"},
+		{name: "head without matching route returns 404"},
+		{name: "late explicit get keeps explicit head"},
+		{name: "route listing includes auto head"},
+		{name: "head mirrors status without body"},
+	}
+
+	requireClose := func(tb testing.TB, closer io.Closer) {
+		tb.Helper()
+		require.NoError(tb, closer.Close())
+	}
+
+	registerCleanup := func(tb testing.TB, body io.ReadCloser) {
+		tb.Helper()
+		tb.Cleanup(func() {
+			requireClose(tb, body)
+		})
+	}
+
+	runners := []func(t *testing.T){
+		func(t *testing.T) {
+			t.Helper()
+			app := New()
+			app.Get("/", func(c Ctx) error {
+				c.Set("X-Test", "auto")
+				return c.SendString("Hello")
+			})
+
+			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/", nil))
+			require.NoError(t, err)
+			registerCleanup(t, respHead.Body)
+			require.Equal(t, StatusOK, respHead.StatusCode)
+			require.Equal(t, int64(len("Hello")), respHead.ContentLength)
+			require.Equal(t, "auto", respHead.Header.Get("X-Test"))
+
+			body, err := io.ReadAll(respHead.Body)
+			require.NoError(t, err)
+			require.Empty(t, body)
+
+			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+			require.NoError(t, err)
+			registerCleanup(t, respGet.Body)
+			require.Equal(t, StatusOK, respGet.StatusCode)
+			require.Equal(t, int64(len("Hello")), respGet.ContentLength)
+			data, err := io.ReadAll(respGet.Body)
+			require.NoError(t, err)
+			require.Equal(t, "Hello", string(data))
+		},
+		func(t *testing.T) {
+			t.Helper()
+			app := New(Config{DisableHeadAutoRegister: true})
+			app.Get("/", func(c Ctx) error {
+				return c.SendString("Hello")
+			})
+
+			resp, err := app.Test(httptest.NewRequest(MethodHead, "/", nil))
+			require.NoError(t, err)
+			registerCleanup(t, resp.Body)
+			require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		},
+		func(t *testing.T) {
+			t.Helper()
+			app := New()
+			var getCalls int
+			app.Get("/override", func(c Ctx) error {
+				getCalls++
+				return c.SendString("GET")
+			})
+
+			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/override", nil))
+			require.NoError(t, err)
+			require.Equal(t, StatusOK, respHead.StatusCode)
+			require.Equal(t, 1, getCalls)
+			requireClose(t, respHead.Body)
+
+			var headCalls int
+			app.Head("/override", func(c Ctx) error {
+				headCalls++
+				c.Set("X-Explicit", "true")
+				return c.SendStatus(StatusNoContent)
+			})
+
+			respHead, err = app.Test(httptest.NewRequest(MethodHead, "/override", nil))
+			require.NoError(t, err)
+			registerCleanup(t, respHead.Body)
+			require.Equal(t, StatusNoContent, respHead.StatusCode)
+			require.Equal(t, "true", respHead.Header.Get("X-Explicit"))
+			body, err := io.ReadAll(respHead.Body)
+			require.NoError(t, err)
+			require.Empty(t, body)
+			require.Equal(t, 1, getCalls)
+			require.Equal(t, 1, headCalls)
+		},
+		func(t *testing.T) {
+			t.Helper()
+			app := New()
+			group := app.Group("/api")
+			group.Get("/users/:id", func(c Ctx) error {
+				c.Set("X-User", c.Params("id"))
+				return c.SendString("grouped")
+			})
+
+			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/api/users/42", nil))
+			require.NoError(t, err)
+			registerCleanup(t, respHead.Body)
+			require.Equal(t, StatusOK, respHead.StatusCode)
+			require.Equal(t, "42", respHead.Header.Get("X-User"))
+			body, err := io.ReadAll(respHead.Body)
+			require.NoError(t, err)
+			require.Empty(t, body)
+		},
+		func(t *testing.T) {
+			t.Helper()
+			const file = "./.github/testdata/testRoutes.json"
+			content, err := os.ReadFile(file)
+			require.NoError(t, err)
+
+			app := New()
+			app.Get("/file", func(c Ctx) error {
+				return c.SendFile(file)
+			})
+
+			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/file", nil))
+			require.NoError(t, err)
+			registerCleanup(t, respHead.Body)
+			require.Equal(t, StatusOK, respHead.StatusCode)
+			require.Equal(t, int64(len(content)), respHead.ContentLength)
+			body, err := io.ReadAll(respHead.Body)
+			require.NoError(t, err)
+			require.Empty(t, body)
+
+			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/file", nil))
+			require.NoError(t, err)
+			registerCleanup(t, respGet.Body)
+			data, err := io.ReadAll(respGet.Body)
+			require.NoError(t, err)
+			require.Equal(t, content, data)
+		},
+		func(t *testing.T) {
+			t.Helper()
+			app := New()
+			resp, err := app.Test(httptest.NewRequest(MethodHead, "/missing", nil))
+			require.NoError(t, err)
+			registerCleanup(t, resp.Body)
+			require.Equal(t, StatusNotFound, resp.StatusCode)
+		},
+		func(t *testing.T) {
+			t.Helper()
+			app := New()
+			var headCalls int
+			app.Head("/late", func(c Ctx) error {
+				headCalls++
+				c.Set("X-Late", "head")
+				return c.SendStatus(StatusAccepted)
+			})
+
+			var getCalls int
+			app.Get("/late", func(c Ctx) error {
+				getCalls++
+				return c.SendString("ok")
+			})
+
+			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/late", nil))
+			require.NoError(t, err)
+			registerCleanup(t, respHead.Body)
+			require.Equal(t, StatusAccepted, respHead.StatusCode)
+			require.Equal(t, "head", respHead.Header.Get("X-Late"))
+			require.Equal(t, 1, headCalls)
+			require.Equal(t, 0, getCalls)
+
+			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/late", nil))
+			require.NoError(t, err)
+			registerCleanup(t, respGet.Body)
+			require.Equal(t, StatusOK, respGet.StatusCode)
+			require.Equal(t, 1, getCalls)
+		},
+		func(t *testing.T) {
+			t.Helper()
+			app := New()
+			app.Get("/list", func(c Ctx) error {
+				return c.SendString("list")
+			})
+
+			app.startupProcess()
+
+			routes := app.GetRoutes()
+			var hasGet, hasHead bool
+			for _, route := range routes {
+				if route.Path == "/list" {
+					if route.Method == MethodGet {
+						hasGet = true
+					}
+					if route.Method == MethodHead {
+						hasHead = true
+					}
+				}
+			}
+			require.True(t, hasGet)
+			require.True(t, hasHead)
+		},
+		func(t *testing.T) {
+			t.Helper()
+			app := New()
+			app.Get("/nocontent", func(c Ctx) error {
+				return c.SendStatus(StatusNoContent)
+			})
+
+			respHead, err := app.Test(httptest.NewRequest(MethodHead, "/nocontent", nil))
+			require.NoError(t, err)
+			registerCleanup(t, respHead.Body)
+			require.Equal(t, StatusNoContent, respHead.StatusCode)
+			body, err := io.ReadAll(respHead.Body)
+			require.NoError(t, err)
+			require.Empty(t, body)
+
+			respGet, err := app.Test(httptest.NewRequest(MethodGet, "/nocontent", nil))
+			require.NoError(t, err)
+			registerCleanup(t, respGet.Body)
+			require.Equal(t, StatusNoContent, respGet.StatusCode)
+		},
+	}
+
+	require.Len(t, runners, len(cases))
+
+	for i, tc := range cases {
+		runner := runners[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runner(t)
+		})
+	}
+}
+
 func Test_Route_Match_Middleware(t *testing.T) {
 	t.Parallel()
 
@@ -966,19 +1209,19 @@ func Test_Route_Registration_Prevent_Duplicate_With_Middleware(t *testing.T) {
 	registerTreeManipulationRoutes(app)
 
 	verifyRequest(t, app, "/dynamically-defined", StatusNotFound)
-	require.Equal(t, uint32(3), app.handlersCount)
+	require.Equal(t, uint32(6), app.handlersCount)
 
 	verifyRequest(t, app, "/test", StatusOK)
-	require.Equal(t, uint32(4), app.handlersCount)
+	require.Equal(t, uint32(7), app.handlersCount)
 
 	verifyRequest(t, app, "/dynamically-defined", StatusOK)
-	require.Equal(t, uint32(4), app.handlersCount)
+	require.Equal(t, uint32(8), app.handlersCount)
 
 	verifyRequest(t, app, "/test", StatusOK)
-	require.Equal(t, uint32(5), app.handlersCount)
+	require.Equal(t, uint32(9), app.handlersCount)
 
 	verifyRequest(t, app, "/dynamically-defined", StatusOK)
-	require.Equal(t, uint32(5), app.handlersCount)
+	require.Equal(t, uint32(9), app.handlersCount)
 }
 
 func TestNormalizePath(t *testing.T) {
@@ -1084,7 +1327,9 @@ func TestRemoveRoute(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	require.Equal(t, uint32(5), app.handlersCount)
+	app.startupProcess()
+
+	require.Equal(t, uint32(6), app.handlersCount)
 
 	req, err := http.NewRequestWithContext(context.Background(), MethodPost, "/", nil)
 	require.NoError(t, err)
@@ -1108,7 +1353,7 @@ func TestRemoveRoute(t *testing.T) {
 
 	buf.Reset()
 
-	require.Equal(t, uint32(5), app.handlersCount)
+	require.Equal(t, uint32(6), app.handlersCount)
 
 	app.RemoveRoute("/test", MethodGet)
 	app.RebuildTree()
@@ -1227,7 +1472,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 		appHandler(c)
 	}
 	require.Equal(b, 405, c.Response.StatusCode())
-	require.Equal(b, MethodGet, string(c.Response.Header.Peek("Allow")))
+	require.Equal(b, MethodGet+", "+MethodHead, string(c.Response.Header.Peek("Allow")))
 	require.Equal(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
 }
 
@@ -1642,6 +1887,7 @@ func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 	m := app.methodInt(MethodGet)
 	app.stack[m] = append([]*Route{useRoute}, app.stack[m]...)
 	app.routesRefreshed = true
+	app.ensureAutoHeadRoutes()
 	app.RebuildTree()
 
 	fctx := &fasthttp.RequestCtx{}
@@ -1655,7 +1901,7 @@ func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 	require.False(t, matched)
 	require.ErrorIs(t, err, ErrMethodNotAllowed)
 	allow := string(ctx.Response().Header.Peek(HeaderAllow))
-	require.Equal(t, MethodGet, allow)
+	require.Equal(t, "GET, HEAD", allow)
 }
 
 func Test_NextCustom_NotFound(t *testing.T) {

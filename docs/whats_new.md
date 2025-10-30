@@ -356,6 +356,43 @@ app.RouteChain("/api").RouteChain("/user/:id?")
 
 You can find more information about `app.RouteChain` and `app.Route` in the API documentation ([RouteChain](./api/app#routechain), [Route](./api/app#route)).
 
+### Automatic HEAD routes for GET
+
+Fiber now auto-registers a `HEAD` route whenever you add a `GET` route. The generated handler chain matches the `GET` chain so status codes and headers stay in sync while the response body remains empty, ensuring `HEAD` clients observe the same metadata as a `GET` consumer.
+
+```go title="GET now enables HEAD automatically"
+app := fiber.New()
+
+app.Get("/health", func(c fiber.Ctx) error {
+    c.Set("X-Service", "api")
+    return c.SendString("OK")
+})
+
+// HEAD /health reuses the GET middleware chain and returns headers only.
+```
+
+You can still register explicit `HEAD` handlers for any `GET` route, and they continue to win when you add them:
+
+```go title="Override the generated HEAD handler"
+app.Head("/health", func(c fiber.Ctx) error {
+    return c.SendStatus(fiber.StatusNoContent)
+})
+```
+
+Prefer to manage `HEAD` routes yourself? Disable the feature through `fiber.Config.DisableHeadAutoRegister`:
+
+```go title="Disable automatic HEAD registration"
+handler := func(c fiber.Ctx) error {
+    c.Set("X-Service", "api")
+    return c.SendString("OK")
+}
+
+app := fiber.New(fiber.Config{DisableHeadAutoRegister: true})
+app.Get("/health", handler) // HEAD /health now returns 405 unless you add it manually.
+```
+
+Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
+
 ### Middleware registration
 
 We have aligned our method for middlewares closer to [`Express`](https://expressjs.com/en/api.html#app.use) and now also support the [`Use`](./api/app#use) of multiple prefixes.
