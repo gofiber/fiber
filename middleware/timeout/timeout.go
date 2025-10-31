@@ -3,28 +3,68 @@ package timeout
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
 
-// New implementation of timeout middleware. Set custom errors(context.DeadlineExceeded vs) for get fiber.ErrRequestTimeout response.
-func New(h fiber.Handler, t time.Duration, tErrs ...error) fiber.Handler {
+// New enforces a timeout for each incoming request. It replaces the request's
+// context with one that has the configured deadline, which is exposed through
+// c.Context(). If the timeout expires or any of the specified errors occur,
+// fiber.ErrRequestTimeout is returned.
+func New(h fiber.Handler, config ...Config) fiber.Handler {
+	cfg := configDefault(config...)
+
 	return func(ctx fiber.Ctx) error {
-		timeoutContext, cancel := context.WithTimeout(ctx.Context(), t)
-		defer cancel()
-		ctx.SetContext(timeoutContext)
-		if err := h(ctx); err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
-				return fiber.ErrRequestTimeout
-			}
-			for i := range tErrs {
-				if errors.Is(err, tErrs[i]) {
-					return fiber.ErrRequestTimeout
-				}
-			}
-			return err
+		if cfg.Next != nil && cfg.Next(ctx) {
+			return h(ctx)
 		}
-		return nil
+
+		timeout := cfg.Timeout
+		if timeout <= 0 {
+			return runHandler(ctx, h, cfg)
+		}
+
+		parent := ctx.Context()
+		tCtx, cancel := context.WithTimeout(parent, timeout)
+		ctx.SetContext(tCtx)
+		defer func() {
+			cancel()
+			ctx.SetContext(parent)
+		}()
+
+		err := runHandler(ctx, h, cfg)
+
+		if errors.Is(tCtx.Err(), context.DeadlineExceeded) && err == nil {
+			if cfg.OnTimeout != nil {
+				return cfg.OnTimeout(ctx)
+			}
+			return fiber.ErrRequestTimeout
+		}
+		return err
 	}
+}
+
+// runHandler executes the handler and returns fiber.ErrRequestTimeout if it
+// sees a deadline exceeded error or one of the custom "timeout-like" errors.
+func runHandler(c fiber.Ctx, h fiber.Handler, cfg Config) error {
+	err := h(c)
+	if err != nil && (errors.Is(err, context.DeadlineExceeded) || (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors))) {
+		if cfg.OnTimeout != nil {
+			if toErr := cfg.OnTimeout(c); toErr != nil {
+				return toErr
+			}
+		}
+		return fiber.ErrRequestTimeout
+	}
+	return err
+}
+
+// isCustomError checks whether err matches any error in errList using errors.Is.
+func isCustomError(err error, errList []error) bool {
+	for _, e := range errList {
+		if errors.Is(err, e) {
+			return true
+		}
+	}
+	return false
 }

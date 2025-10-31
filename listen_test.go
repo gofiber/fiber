@@ -10,11 +10,13 @@ import (
 	"log" //nolint:depguard // TODO: Required to capture output, use internal log package instead
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	utils "github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -32,103 +34,47 @@ func Test_Listen(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.Listen(":4003", ListenConfig{DisableStartupMessage: true}))
+	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_Listen_Graceful_Shutdown
 func Test_Listen_Graceful_Shutdown(t *testing.T) {
-	var mu sync.Mutex
-	var shutdown bool
-
-	app := New()
-
-	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.Hostname())
+	t.Run("Basic Graceful Shutdown", func(t *testing.T) {
+		testGracefulShutdown(t, 0)
 	})
 
-	ln := fasthttputil.NewInmemoryListener()
-	errs := make(chan error)
+	t.Run("Shutdown With Timeout", func(t *testing.T) {
+		testGracefulShutdown(t, 500*time.Millisecond)
+	})
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-
-		errs <- app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-			GracefulContext:       ctx,
-			OnShutdownSuccess: func() {
-				mu.Lock()
-				shutdown = true
-				mu.Unlock()
-			},
-		})
-	}()
-
-	// Server readiness check
-	for i := 0; i < 10; i++ {
-		conn, err := ln.Dial()
-		if err == nil {
-			conn.Close() //nolint:errcheck // ignore error
-			break
-		}
-		// Wait a bit before retrying
-		time.Sleep(100 * time.Millisecond)
-		if i == 9 {
-			t.Fatalf("Server did not become ready in time: %v", err)
-		}
-	}
-
-	testCases := []struct {
-		ExpectedErr        error
-		ExpectedBody       string
-		Time               time.Duration
-		ExpectedStatusCode int
-	}{
-		{Time: 500 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExpectedErr: nil},
-		{Time: 3 * time.Second, ExpectedBody: "", ExpectedStatusCode: StatusOK, ExpectedErr: fasthttputil.ErrInmemoryListenerClosed},
-	}
-
-	for _, tc := range testCases {
-		time.Sleep(tc.Time)
-
-		req := fasthttp.AcquireRequest()
-		req.SetRequestURI("http://example.com")
-
-		client := fasthttp.HostClient{}
-		client.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
-
-		resp := fasthttp.AcquireResponse()
-		err := client.Do(req, resp)
-
-		require.Equal(t, tc.ExpectedErr, err)
-		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
-		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
-
-		fasthttp.ReleaseRequest(req)
-		fasthttp.ReleaseResponse(resp)
-	}
-
-	mu.Lock()
-	err := <-errs
-	require.True(t, shutdown)
-	require.NoError(t, err)
-	mu.Unlock()
+	t.Run("Shutdown With Timeout Error", func(t *testing.T) {
+		testGracefulShutdown(t, 1*time.Nanosecond)
+	})
 }
 
-// go test -run Test_Listen_Graceful_Shutdown_Timeout
-func Test_Listen_Graceful_Shutdown_Timeout(t *testing.T) {
+func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
+	t.Helper()
+
 	var mu sync.Mutex
-	var shutdownSuccess bool
-	var shutdownTimeoutError error
+	var shutdown bool
+	var receivedErr error
 
 	app := New()
-
 	app.Get("/", func(c Ctx) error {
+		time.Sleep(10 * time.Millisecond)
 		return c.SendString(c.Hostname())
 	})
 
 	ln := fasthttputil.NewInmemoryListener()
-	errs := make(chan error)
+	errs := make(chan error, 1)
+
+	app.hooks.OnPostShutdown(func(err error) error {
+		mu.Lock()
+		defer mu.Unlock()
+		shutdown = true
+		receivedErr = err
+		return nil
+	})
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -137,93 +83,83 @@ func Test_Listen_Graceful_Shutdown_Timeout(t *testing.T) {
 		errs <- app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 			GracefulContext:       ctx,
-			ShutdownTimeout:       500 * time.Millisecond,
-			OnShutdownSuccess: func() {
-				mu.Lock()
-				shutdownSuccess = true
-				mu.Unlock()
-			},
-			OnShutdownError: func(err error) {
-				mu.Lock()
-				shutdownTimeoutError = err
-				mu.Unlock()
-			},
+			ShutdownTimeout:       shutdownTimeout,
 		})
 	}()
 
-	// Server readiness check
-	for i := 0; i < 10; i++ {
+	require.Eventually(t, func() bool {
 		conn, err := ln.Dial()
-		// To test a graceful shutdown timeout, do not close the connection.
 		if err == nil {
-			_ = conn
-			break
+			if err := conn.Close(); err != nil {
+				t.Logf("error closing connection: %v", err)
+			}
+			return true
 		}
-		// Wait a bit before retrying
-		time.Sleep(100 * time.Millisecond)
-		if i == 9 {
-			t.Fatalf("Server did not become ready in time: %v", err)
-		}
+		return false
+	}, time.Second, 100*time.Millisecond, "Server failed to become ready")
+
+	client := fasthttp.HostClient{
+		Dial: func(_ string) (net.Conn, error) { return ln.Dial() },
 	}
 
-	testCases := []struct {
-		ExpectedErr             error
-		ExpectedShutdownError   error
-		ExpectedBody            string
-		Time                    time.Duration
-		ExpectedStatusCode      int
-		ExpectedShutdownSuccess bool
-	}{
+	type testCase struct {
+		expectedErr        error
+		expectedBody       string
+		name               string
+		waitTime           time.Duration
+		expectedStatusCode int
+		closeConnection    bool
+	}
+
+	testCases := []testCase{
 		{
-			Time:                    100 * time.Millisecond,
-			ExpectedBody:            "example.com",
-			ExpectedStatusCode:      StatusOK,
-			ExpectedErr:             nil,
-			ExpectedShutdownError:   nil,
-			ExpectedShutdownSuccess: false,
+			name:               "Server running normally",
+			waitTime:           500 * time.Millisecond,
+			expectedBody:       "example.com",
+			expectedStatusCode: StatusOK,
+			expectedErr:        nil,
+			closeConnection:    true,
 		},
 		{
-			Time:                    3 * time.Second,
-			ExpectedBody:            "",
-			ExpectedStatusCode:      StatusOK,
-			ExpectedErr:             fasthttputil.ErrInmemoryListenerClosed,
-			ExpectedShutdownError:   context.DeadlineExceeded,
-			ExpectedShutdownSuccess: false,
+			name:               "Server shutdown complete",
+			waitTime:           3 * time.Second,
+			expectedBody:       "",
+			expectedStatusCode: StatusOK,
+			expectedErr:        fasthttputil.ErrInmemoryListenerClosed,
+			closeConnection:    true,
 		},
 	}
 
 	for _, tc := range testCases {
-		time.Sleep(tc.Time)
+		t.Run(tc.name, func(t *testing.T) {
+			time.Sleep(tc.waitTime)
 
-		req := fasthttp.AcquireRequest()
-		req.SetRequestURI("http://example.com")
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.SetRequestURI("http://example.com")
 
-		client := fasthttp.HostClient{}
-		client.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
+			resp := fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseResponse(resp)
 
-		resp := fasthttp.AcquireResponse()
-		err := client.Do(req, resp)
+			err := client.Do(req, resp)
 
-		if err == nil {
-			require.NoError(t, err)
-			require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
-			require.Equal(t, tc.ExpectedBody, string(resp.Body()))
-		} else {
-			require.ErrorIs(t, err, tc.ExpectedErr)
-		}
-
-		mu.Lock()
-		require.Equal(t, tc.ExpectedShutdownSuccess, shutdownSuccess)
-		require.Equal(t, tc.ExpectedShutdownError, shutdownTimeoutError)
-		mu.Unlock()
-
-		fasthttp.ReleaseRequest(req)
-		fasthttp.ReleaseResponse(resp)
+			if tc.expectedErr == nil {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedStatusCode, resp.StatusCode())
+				require.Equal(t, tc.expectedBody, utils.UnsafeString(resp.Body()))
+			} else {
+				require.ErrorIs(t, err, tc.expectedErr)
+			}
+		})
 	}
 
 	mu.Lock()
-	err := <-errs
-	require.NoError(t, err)
+	require.True(t, shutdown)
+	if shutdownTimeout == 1*time.Nanosecond {
+		require.Error(t, receivedErr)
+		require.ErrorIs(t, receivedErr, context.DeadlineExceeded)
+	}
+	require.NoError(t, <-errs)
 	mu.Unlock()
 }
 
@@ -233,7 +169,7 @@ func Test_Listen_Prefork(t *testing.T) {
 
 	app := New()
 
-	require.NoError(t, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
 // go test -run Test_Listen_TLSMinVersion
@@ -244,18 +180,18 @@ func Test_Listen_TLSMinVersion(t *testing.T) {
 
 	// Invalid TLSMinVersion
 	require.Panics(t, func() {
-		_ = app.Listen(":443", ListenConfig{TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
+		_ = app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
 	})
 	require.Panics(t, func() {
-		_ = app.Listen(":443", ListenConfig{TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
+		_ = app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
 	})
 
 	// Prefork
 	require.Panics(t, func() {
-		_ = app.Listen(":443", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
+		_ = app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
 	})
 	require.Panics(t, func() {
-		_ = app.Listen(":443", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
+		_ = app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
 	})
 
 	// Valid TLSMinVersion
@@ -270,7 +206,7 @@ func Test_Listen_TLSMinVersion(t *testing.T) {
 		time.Sleep(1000 * time.Millisecond)
 		assert.NoError(t, app.Shutdown())
 	}()
-	require.NoError(t, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS13}))
+	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS13}))
 }
 
 // go test -run Test_Listen_TLS
@@ -313,7 +249,7 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.Listen(":99999", ListenConfig{
+	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
@@ -364,7 +300,7 @@ func Test_Listen_MutualTLS_Prefork(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.Listen(":99999", ListenConfig{
+	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
@@ -512,19 +448,89 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	require.Contains(t, network, "0.0.0.0:")
 }
 
+// go test -run Test_Listen_ListenerNetwork_Unix
+func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
+	app := New()
+
+	app.Get("/test", func(c Ctx) error {
+		return c.SendString("all good")
+	})
+
+	var (
+		f       os.FileInfo
+		network string
+
+		reqErr error
+		resp   = &fasthttp.Response{}
+	)
+
+	// Create temporary directory for storing socket in
+	tmp, err := os.MkdirTemp(os.TempDir(), "fiber-test")
+	require.NoError(t, err)
+	sock := filepath.Join(tmp, "fiber-test.sock")
+
+	// Make sure temporary directory is cleaned up
+	defer func() { assert.NoError(t, os.RemoveAll(tmp)) }()
+
+	// Send request through socket
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+
+		client := &fasthttp.HostClient{
+			Addr: sock,
+			Dial: func(addr string) (net.Conn, error) {
+				return net.Dial("unix", addr)
+			},
+		}
+
+		req := &fasthttp.Request{}
+		req.SetRequestURI("http://host/test")
+
+		reqErr = client.Do(req, resp)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	require.NoError(t, app.Listen(sock, ListenConfig{
+		DisableStartupMessage: true,
+		ListenerNetwork:       NetworkUnix,
+		UnixSocketFileMode:    0o666,
+		ListenerAddrFunc: func(addr net.Addr) {
+			network = addr.String()
+			f, err = os.Stat(network)
+		},
+	}))
+
+	// Verify that listening and setting permissions works correctly
+	require.Equal(t, sock, network)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o666), f.Mode().Perm())
+
+	// Verify that request was successful
+	require.NoError(t, reqErr)
+	require.Equal(t, 200, resp.StatusCode())
+	require.Equal(t, "all good", string(resp.Body()))
+}
+
 // go test -run Test_Listen_Master_Process_Show_Startup_Message
 func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 	cfg := ListenConfig{
 		EnablePrefork: true,
 	}
 
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
+	require.NoError(t, ln.Close())
+
 	startupMessage := captureOutput(func() {
 		New().
-			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
+			startupMessage(fmt.Sprintf(":%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
 	})
 	colors := Colors{}
-	require.Contains(t, startupMessage, "https://127.0.0.1:3000")
-	require.Contains(t, startupMessage, "(bound on host 0.0.0.0 and port 3000)")
+	require.Contains(t, startupMessage, fmt.Sprintf("https://127.0.0.1:%d", port))
+	require.Contains(t, startupMessage, fmt.Sprintf("(bound on host 0.0.0.0 and port %d)", port))
 	require.Contains(t, startupMessage, "Child PIDs")
 	require.Contains(t, startupMessage, "11111, 22222, 33333, 44444, 55555, 60000")
 	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: \t\t\t%sEnabled%s", colors.Blue, colors.Reset))
@@ -537,8 +543,15 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	}
 
 	app := New(Config{AppName: "Test App v3.0.0"})
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
+	require.NoError(t, ln.Close())
+
 	startupMessage := captureOutput(func() {
-		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
+		app.startupMessage(fmt.Sprintf(":%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
 	})
 	require.Equal(t, "Test App v3.0.0", app.Config().AppName)
 	require.Contains(t, startupMessage, app.Config().AppName)
@@ -553,8 +566,15 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testi
 	appName := "Serveur de vérification des données"
 	app := New(Config{AppName: appName})
 
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
+	require.NoError(t, ln.Close())
+
 	startupMessage := captureOutput(func() {
-		app.startupMessage(":3000", false, "", cfg)
+		app.startupMessage(fmt.Sprintf(":%d", port), false, "", cfg)
 	})
 	require.Contains(t, startupMessage, "Serveur de vérification des données")
 }
@@ -567,13 +587,21 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 
 	appName := "Fiber Example Application"
 	app := New(Config{AppName: appName})
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
+	require.NoError(t, ln.Close())
+
 	startupMessage := captureOutput(func() {
-		app.startupMessage("server.com:8081", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 5), cfg)
+		app.startupMessage(fmt.Sprintf("server.com:%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 5), cfg)
 	})
 	colors := Colors{}
 	require.Contains(t, startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset))
 	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, appName, colors.Reset))
-	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, "https://server.com:8081", colors.Reset))
+	expectedURL := fmt.Sprintf("https://server.com:%d", port)
+	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, expectedURL, colors.Reset))
 	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: \t\t\t%sDisabled%s", colors.Red, colors.Reset))
 }
 
@@ -630,18 +658,14 @@ func captureOutput(f func()) string {
 	os.Stderr = writer
 	log.SetOutput(writer)
 	out := make(chan string)
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
 	go func() {
 		var buf bytes.Buffer
-		wg.Done()
-		_, err := io.Copy(&buf, reader)
-		if err != nil {
-			panic(err)
+		_, copyErr := io.Copy(&buf, reader)
+		if copyErr != nil {
+			panic(copyErr)
 		}
-		out <- buf.String()
+		out <- buf.String() // this out channel helps in synchronization
 	}()
-	wg.Wait()
 	f()
 	err = writer.Close()
 	if err != nil {

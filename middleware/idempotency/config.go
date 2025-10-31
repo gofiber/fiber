@@ -22,6 +22,7 @@ type Config struct {
 	//
 	// Optional. Default: an in-memory storage for this process only.
 	Storage fiber.Storage
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: a function which skips the middleware on safe HTTP request method.
@@ -46,6 +47,11 @@ type Config struct {
 	//
 	// Optional. Default: 30 * time.Minute
 	Lifetime time.Duration
+
+	// DisableValueRedaction turns off masking idempotency keys in logs and errors when set to true.
+	//
+	// Optional. Default: false
+	DisableValueRedaction bool
 }
 
 // ConfigDefault is the default config
@@ -70,7 +76,8 @@ var ConfigDefault = Config{
 
 	Lock: nil, // Set in configDefault so we don't allocate data here.
 
-	Storage: nil, // Set in configDefault so we don't allocate data here.
+	Storage:               nil, // Set in configDefault so we don't allocate data here.
+	DisableValueRedaction: false,
 }
 
 // Helper function to set default values

@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -26,7 +26,7 @@ func Test_App_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, uint32(1), app.handlersCount)
+	require.Equal(t, uint32(2), app.handlersCount)
 }
 
 func Test_App_Mount_RootPath_Nested(t *testing.T) {
@@ -46,7 +46,7 @@ func Test_App_Mount_RootPath_Nested(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/home", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, uint32(1), app.handlersCount)
+	require.Equal(t, uint32(2), app.handlersCount)
 }
 
 // go test -run Test_App_Mount_Nested
@@ -85,8 +85,7 @@ func Test_App_Mount_Nested(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	require.Equal(t, uint32(3), app.handlersCount)
-	require.Equal(t, uint32(3), app.routesCount)
+	require.Equal(t, uint32(6), app.handlersCount)
 }
 
 // go test -run Test_App_Mount_Express_Behavior
@@ -135,8 +134,7 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 	testEndpoint(app, "/foo", "subapp foo!", StatusOK)
 	testEndpoint(app, "/unknown", ErrNotFound.Message, StatusNotFound)
 
-	require.Equal(t, uint32(9), app.handlersCount)
-	require.Equal(t, uint32(17), app.routesCount)
+	require.Equal(t, uint32(17), app.handlersCount)
 }
 
 // go test -run Test_App_Mount_RoutePositions
@@ -169,7 +167,7 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 			return c.SendString("ok")
 		})
 		app.Use(func(c Ctx) error {
-			// is overwritten in case the positioning is not correct
+			// is overwritten when the positioning is not correct
 			c.Locals("world", "hello")
 			return c.Next()
 		})
@@ -192,19 +190,15 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 
 	require.True(t, routeStackGET[1].use)
 	require.Equal(t, "/", routeStackGET[1].path)
-	require.Less(t, routeStackGET[0].pos, routeStackGET[1].pos, "wrong position of route 0")
 
 	require.False(t, routeStackGET[2].use)
 	require.Equal(t, "/bar", routeStackGET[2].path)
-	require.Less(t, routeStackGET[1].pos, routeStackGET[2].pos, "wrong position of route 1")
 
 	require.True(t, routeStackGET[3].use)
 	require.Equal(t, "/", routeStackGET[3].path)
-	require.Less(t, routeStackGET[2].pos, routeStackGET[3].pos, "wrong position of route 2")
 
 	require.False(t, routeStackGET[4].use)
 	require.Equal(t, "/subapp2/world", routeStackGET[4].path)
-	require.Less(t, routeStackGET[3].pos, routeStackGET[4].pos, "wrong position of route 3")
 
 	require.Len(t, routeStackGET, 5)
 }
@@ -224,7 +218,7 @@ func Test_App_MountPath(t *testing.T) {
 	require.Equal(t, "/one", one.MountPath())
 	require.Equal(t, "/one/two", two.MountPath())
 	require.Equal(t, "/one/two/three", three.MountPath())
-	require.Equal(t, "", app.MountPath())
+	require.Empty(t, app.MountPath())
 }
 
 func Test_App_ErrorHandler_GroupMount(t *testing.T) {
@@ -282,7 +276,7 @@ func Test_App_Group_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, uint32(1), app.handlersCount)
+	require.Equal(t, uint32(2), app.handlersCount)
 }
 
 func Test_App_UseParentErrorHandler(t *testing.T) {

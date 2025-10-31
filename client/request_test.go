@@ -183,10 +183,9 @@ func Benchmark_Request_Headers(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Headers() {
 			_ = k
 			_ = v
@@ -322,19 +321,44 @@ func Test_Request_QueryParam(t *testing.T) {
 func Test_Request_Params(t *testing.T) {
 	t.Parallel()
 
-	req := AcquireRequest()
-	req.AddParams(map[string][]string{
-		"foo": {"bar", "fiber"},
-		"bar": {"foo"},
+	t.Run("empty iterator", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		called := false
+		req.Params()(func(_ string, _ []string) bool {
+			called = true
+			return true
+		})
+
+		require.False(t, called)
 	})
 
-	pathParams := maps.Collect(req.Params())
+	t.Run("populated iterator", func(t *testing.T) {
+		t.Parallel()
 
-	require.Contains(t, pathParams["foo"], "bar")
-	require.Contains(t, pathParams["foo"], "fiber")
-	require.Contains(t, pathParams["bar"], "foo")
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
 
-	require.Len(t, pathParams, 2)
+		req.AddParams(map[string][]string{
+			"foo": {"bar", "fiber"},
+			"bar": {"foo"},
+		})
+
+		pathParams := maps.Collect(req.Params())
+
+		require.Contains(t, pathParams["foo"], "bar")
+		require.Contains(t, pathParams["foo"], "fiber")
+		require.Contains(t, pathParams["bar"], "foo")
+
+		require.Len(t, pathParams, 2)
+	})
 }
 
 func Benchmark_Request_Params(b *testing.B) {
@@ -344,10 +368,9 @@ func Benchmark_Request_Params(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Params() {
 			_ = k
 			_ = v
@@ -432,7 +455,7 @@ func Test_Request_Cookie(t *testing.T) {
 		require.Equal(t, "foo", req.Cookie("bar"))
 
 		req.DelCookies("foo")
-		require.Equal(t, "", req.Cookie("foo"))
+		require.Empty(t, req.Cookie("foo"))
 		require.Equal(t, "foo", req.Cookie("bar"))
 	})
 }
@@ -451,6 +474,14 @@ func Test_Request_Cookies(t *testing.T) {
 	require.Equal(t, "bar", cookies["foo"])
 	require.Equal(t, "foo", cookies["bar"])
 
+	require.NotPanics(t, func() {
+		for _, v := range req.Cookies() {
+			if v == "bar" {
+				break
+			}
+		}
+	})
+
 	require.Len(t, cookies, 2)
 }
 
@@ -461,10 +492,9 @@ func Benchmark_Request_Cookies(b *testing.B) {
 		"bar": "foo",
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Cookies() {
 			_ = k
 			_ = v
@@ -529,7 +559,7 @@ func Test_Request_PathParam(t *testing.T) {
 		require.Equal(t, "foo", req.PathParam("bar"))
 
 		req.DelPathParams("foo")
-		require.Equal(t, "", req.PathParam("foo"))
+		require.Empty(t, req.PathParam("foo"))
 		require.Equal(t, "foo", req.PathParam("bar"))
 	})
 
@@ -544,8 +574,8 @@ func Test_Request_PathParam(t *testing.T) {
 		require.Equal(t, "foo", req.PathParam("bar"))
 
 		req.ResetPathParams()
-		require.Equal(t, "", req.PathParam("foo"))
-		require.Equal(t, "", req.PathParam("bar"))
+		require.Empty(t, req.PathParam("foo"))
+		require.Empty(t, req.PathParam("bar"))
 	})
 }
 
@@ -564,6 +594,14 @@ func Test_Request_PathParams(t *testing.T) {
 	require.Equal(t, "foo", pathParams["bar"])
 
 	require.Len(t, pathParams, 2)
+
+	require.NotPanics(t, func() {
+		for _, v := range req.PathParams() {
+			if v == "bar" {
+				break
+			}
+		}
+	})
 }
 
 func Benchmark_Request_PathParams(b *testing.B) {
@@ -573,10 +611,9 @@ func Benchmark_Request_PathParams(b *testing.B) {
 		"bar": "foo",
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.PathParams() {
 			_ = k
 			_ = v
@@ -776,10 +813,9 @@ func Benchmark_Request_Files(b *testing.B) {
 	req.AddFile("../.github/index.html")
 	req.AddFiles(AcquireFile(SetFileName("tmp.txt")))
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Files() {
 			_ = k
 			_ = v
@@ -805,7 +841,7 @@ func Test_Request_Invalid_URL(t *testing.T) {
 	require.Equal(t, (*Response)(nil), resp)
 }
 
-func Test_Request_Unsupport_Protocol(t *testing.T) {
+func Test_Request_Unsupported_Protocol(t *testing.T) {
 	t.Parallel()
 
 	resp, err := AcquireRequest().
@@ -827,7 +863,7 @@ func Test_Request_Get(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		req := AcquireRequest().SetClient(client)
 
 		resp, err := req.Get("http://example.com")
@@ -852,7 +888,7 @@ func Test_Request_Post(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			SetFormData("foo", "bar").
@@ -878,14 +914,14 @@ func Test_Request_Head(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			Head("http://example.com")
 
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "", resp.String())
+		require.Empty(t, resp.String())
 		resp.Close()
 	}
 }
@@ -903,7 +939,7 @@ func Test_Request_Put(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			SetFormData("foo", "bar").
@@ -932,14 +968,14 @@ func Test_Request_Delete(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			Delete("http://example.com")
 
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-		require.Equal(t, "", resp.String())
+		require.Empty(t, resp.String())
 
 		resp.Close()
 	}
@@ -960,7 +996,7 @@ func Test_Request_Options(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			Options("http://example.com")
@@ -988,7 +1024,7 @@ func Test_Request_Send(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			SetURL("http://example.com").
@@ -1017,7 +1053,7 @@ func Test_Request_Patch(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			SetFormData("foo", "bar").
@@ -1034,14 +1070,14 @@ func Test_Request_Patch(t *testing.T) {
 func Test_Request_Header_With_Server(t *testing.T) {
 	t.Parallel()
 	handler := func(c fiber.Ctx) error {
-		c.Request().Header.VisitAll(func(key, value []byte) {
+		for key, value := range c.Request().Header.All() {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, err := c.Write(key)
 				require.NoError(t, err)
 				_, err = c.Write(value)
 				require.NoError(t, err)
 			}
-		})
+		}
 		return nil
 	}
 
@@ -1250,7 +1286,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		require.Equal(t, "myBoundary", req.Boundary())
 
-		resp, err := req.Post("http://exmaple.com")
+		resp, err := req.Post("http://example.com")
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
 
@@ -1293,7 +1329,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		client := New().SetDial(ln)
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			req := AcquireRequest().
 				SetClient(client).
 				AddFiles(
@@ -1320,7 +1356,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		app, ln, start := createHelperServer(t)
 		app.Post("/", func(c fiber.Ctx) error {
-			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{35}`)
+			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{33}`)
 			require.True(t, reg.MatchString(c.Get(fiber.HeaderContentType)))
 
 			return c.Send(c.Request().Body())
@@ -1339,7 +1375,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 				SetFileReader(io.NopCloser(strings.NewReader("world"))),
 			))
 
-		resp, err := req.Post("http://exmaple.com")
+		resp, err := req.Post("http://example.com")
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	})
@@ -1361,19 +1397,44 @@ func Test_Request_Body_With_Server(t *testing.T) {
 func Test_Request_AllFormData(t *testing.T) {
 	t.Parallel()
 
-	req := AcquireRequest()
-	req.AddFormDataWithMap(map[string][]string{
-		"foo": {"bar", "fiber"},
-		"bar": {"foo"},
+	t.Run("empty iterator", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		called := false
+		req.AllFormData()(func(_ string, _ []string) bool {
+			called = true
+			return true
+		})
+
+		require.False(t, called)
 	})
 
-	pathParams := maps.Collect(req.AllFormData())
+	t.Run("populated iterator", func(t *testing.T) {
+		t.Parallel()
 
-	require.Contains(t, pathParams["foo"], "bar")
-	require.Contains(t, pathParams["foo"], "fiber")
-	require.Contains(t, pathParams["bar"], "foo")
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
 
-	require.Len(t, pathParams, 2)
+		req.AddFormDataWithMap(map[string][]string{
+			"foo": {"bar", "fiber"},
+			"bar": {"foo"},
+		})
+
+		pathParams := maps.Collect(req.AllFormData())
+
+		require.Contains(t, pathParams["foo"], "bar")
+		require.Contains(t, pathParams["foo"], "fiber")
+		require.Contains(t, pathParams["bar"], "foo")
+
+		require.Len(t, pathParams, 2)
+	})
 }
 
 func Benchmark_Request_AllFormData(b *testing.B) {
@@ -1383,10 +1444,9 @@ func Benchmark_Request_AllFormData(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.AllFormData() {
 			_ = k
 			_ = v
@@ -1561,7 +1621,7 @@ func Test_SetValWithStruct(t *testing.T) {
 			TIntSlice: []int{0, 1, 2},
 		})
 
-		require.Equal(t, "", string(p.Peek("unexport")))
+		require.Empty(t, string(p.Peek("unexport")))
 		require.Equal(t, []byte("5"), p.Peek("TInt"))
 		require.Equal(t, []byte("5"), p.Peek("TUint"))
 		require.Equal(t, []byte("string"), p.Peek("TString"))
@@ -1579,7 +1639,7 @@ func Test_SetValWithStruct(t *testing.T) {
 
 		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
-				if string(v) == "bar" { //nolint:goconst // test
+				if string(v) == "bar" {
 					return true
 				}
 			}
@@ -1700,9 +1760,8 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			SetValWithStruct(p, "param", args{
 				unexport:  5,
 				TInt:      5,
@@ -1716,7 +1775,7 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			})
 		}
 
-		require.Equal(b, "", string(p.Peek("unexport")))
+		require.Empty(b, string(p.Peek("unexport")))
 		require.Equal(b, []byte("5"), p.Peek("TInt"))
 		require.Equal(b, []byte("5"), p.Peek("TUint"))
 		require.Equal(b, []byte("string"), p.Peek("TString"))
@@ -1775,9 +1834,8 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			SetValWithStruct(p, "param", &args{
 				TInt:      5,
 				TString:   "string",
@@ -1835,9 +1893,8 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			SetValWithStruct(p, "param", 5)
 		}
 

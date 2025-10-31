@@ -1,8 +1,13 @@
 package fiber
 
 import (
+	"errors"
+	"reflect"
+	"slices"
+	"sync"
+
 	"github.com/gofiber/fiber/v3/binder"
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 )
 
 // CustomBinder An interface to register custom binders.
@@ -17,10 +22,41 @@ type StructValidator interface {
 	Validate(out any) error
 }
 
-// Bind struct
+var bindPool = sync.Pool{
+	New: func() any {
+		return &Bind{
+			dontHandleErrs: true,
+		}
+	},
+}
+
+// Bind provides helper methods for binding request data to Go values.
 type Bind struct {
 	ctx            Ctx
 	dontHandleErrs bool
+	skipValidation bool
+}
+
+// AcquireBind returns Bind reference from bind pool.
+func AcquireBind() *Bind {
+	b, ok := bindPool.Get().(*Bind)
+	if !ok {
+		panic(errors.New("failed to type-assert to *Bind"))
+	}
+
+	return b
+}
+
+// ReleaseBind returns b acquired via Bind to bind pool.
+func ReleaseBind(b *Bind) {
+	b.release()
+	bindPool.Put(b)
+}
+
+func (b *Bind) release() {
+	b.ctx = nil
+	b.dontHandleErrs = true
+	b.skipValidation = false
 }
 
 // WithoutAutoHandling If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
@@ -52,6 +88,9 @@ func (b *Bind) returnErr(err error) error {
 
 // Struct validation.
 func (b *Bind) validateStruct(out any) error {
+	if b.skipValidation {
+		return nil
+	}
 	validator := b.ctx.App().config.StructValidator
 	if validator != nil {
 		return validator.Validate(out)
@@ -112,7 +151,7 @@ func (b *Bind) RespHeader(out any) error {
 }
 
 // Cookie binds the request cookie strings into the struct, map[string]string and map[string][]string.
-// NOTE: If your cookie is like key=val1,val2; they'll be binded as an slice if your map is map[string][]string. Else, it'll use last element of cookie.
+// NOTE: If your cookie is like key=val1,val2; they'll be bound as a slice if your map is map[string][]string. Else, it'll use last element of cookie.
 func (b *Bind) Cookie(out any) error {
 	bind := binder.GetFromThePool[*binder.CookieBinding](&binder.CookieBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
@@ -238,11 +277,29 @@ func (b *Bind) URI(out any) error {
 	return b.validateStruct(out)
 }
 
+// MsgPack binds the body string into the struct.
+func (b *Bind) MsgPack(out any) error {
+	bind := binder.GetFromThePool[*binder.MsgPackBinding](&binder.MsgPackBinderPool)
+	bind.MsgPackDecoder = b.ctx.App().Config().MsgPackDecoder
+
+	// Reset & put binder
+	defer func() {
+		bind.Reset()
+		binder.PutToThePool(&binder.MsgPackBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
+}
+
 // Body binds the request body into the struct, map[string]string and map[string][]string.
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 // If none of the content types above are matched, it'll take a look custom binders by checking the MIMETypes() method of custom binder.
-// If there're no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
+// If there is no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
 func (b *Bind) Body(out any) error {
 	// Get content-type
 	ctype := utils.ToLower(utils.UnsafeString(b.ctx.RequestCtx().Request.Header.ContentType()))
@@ -251,10 +308,8 @@ func (b *Bind) Body(out any) error {
 	// Check custom binders
 	binders := b.ctx.App().customBinders
 	for _, customBinder := range binders {
-		for _, mime := range customBinder.MIMETypes() {
-			if mime == ctype {
-				return b.returnErr(customBinder.Parse(b.ctx, out))
-			}
+		if slices.Contains(customBinder.MIMETypes(), ctype) {
+			return b.returnErr(customBinder.Parse(b.ctx, out))
 		}
 	}
 
@@ -262,6 +317,8 @@ func (b *Bind) Body(out any) error {
 	switch ctype {
 	case MIMEApplicationJSON:
 		return b.JSON(out)
+	case MIMEApplicationMsgPack:
+		return b.MsgPack(out)
 	case MIMETextXML, MIMEApplicationXML:
 		return b.XML(out)
 	case MIMEApplicationCBOR:
@@ -272,4 +329,63 @@ func (b *Bind) Body(out any) error {
 
 	// No suitable content type found
 	return ErrUnprocessableEntity
+}
+
+// All binds values from URI params, the request body, the query string,
+// headers, and cookies into the provided struct in precedence order.
+func (b *Bind) All(out any) error {
+	outVal := reflect.ValueOf(out)
+	if outVal.Kind() != reflect.Ptr || outVal.Elem().Kind() != reflect.Struct {
+		return ErrUnprocessableEntity
+	}
+
+	outElem := outVal.Elem()
+
+	// Precedence: URL Params -> Body -> Query -> Headers -> Cookies
+	sources := []func(any) error{b.URI}
+
+	// Check if both Body and Content-Type are set
+	if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
+		sources = append(sources, b.Body)
+	}
+	sources = append(sources, b.Query, b.Header, b.Cookie)
+	prevSkip := b.skipValidation
+	b.skipValidation = true
+
+	// TODO: Support custom precedence with an optional binding_source tag
+	// TODO: Create WithOverrideEmptyValues
+	// Bind from each source, but only update unset fields
+	for _, bindFunc := range sources {
+		tempStruct := reflect.New(outElem.Type()).Interface()
+		if err := bindFunc(tempStruct); err != nil {
+			b.skipValidation = prevSkip
+			return err
+		}
+
+		tempStructVal := reflect.ValueOf(tempStruct).Elem()
+		mergeStruct(outElem, tempStructVal)
+	}
+
+	b.skipValidation = prevSkip
+	return b.returnErr(b.validateStruct(out))
+}
+
+func mergeStruct(dst, src reflect.Value) {
+	dstFields := dst.NumField()
+	for i := range dstFields {
+		dstField := dst.Field(i)
+		srcField := src.Field(i)
+
+		// Skip if the destination field is already set
+		if isZero(dstField.Interface()) {
+			if dstField.CanSet() && srcField.IsValid() {
+				dstField.Set(srcField)
+			}
+		}
+	}
+}
+
+func isZero(value any) bool {
+	v := reflect.ValueOf(value)
+	return v.IsZero()
 }

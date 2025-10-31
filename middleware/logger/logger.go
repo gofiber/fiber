@@ -40,7 +40,6 @@ func New(config ...Config) fiber.Handler {
 			}
 		}()
 	}
-
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
 
@@ -76,7 +75,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Set error handler once
 		once.Do(func() {
-			// get longested possible path
+			// get longest possible path
 			stack := c.App().Stack()
 			for m := range stack {
 				for r := range stack[m] {

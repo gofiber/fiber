@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📄 Github Repository: https://github.com/gofiber/fiber
+// 📄 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 // 💖 Maintained and modified for Fiber by @renewerner87
 package fiber
@@ -20,7 +20,6 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	testPreforkMaster = true
 
 	setupIsChild(t)
-	defer teardownIsChild(t)
 
 	app := New()
 
@@ -61,7 +60,7 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.prefork(":3000", nil, listenConfigDefault()))
+	require.NoError(t, app.prefork(":0", nil, listenConfigDefault()))
 
 	dummyChildCmd.Store("invalid")
 
@@ -73,7 +72,6 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	setupIsChild(t)
-	defer teardownIsChild(t)
 
 	rescueStdout := os.Stdout
 	defer func() { os.Stdout = rescueStdout }()
@@ -83,7 +81,7 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 
 	os.Stdout = w
 
-	New().startupProcess().startupMessage(":3000", false, "", listenConfigDefault())
+	New().startupProcess().startupMessage(":0", false, "", listenConfigDefault())
 
 	require.NoError(t, w.Close())
 
@@ -95,11 +93,5 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 func setupIsChild(t *testing.T) {
 	t.Helper()
 
-	require.NoError(t, os.Setenv(envPreforkChildKey, envPreforkChildVal)) //nolint:tenv // Ignore error
-}
-
-func teardownIsChild(t *testing.T) {
-	t.Helper()
-
-	require.NoError(t, os.Setenv(envPreforkChildKey, "")) //nolint:tenv // Ignore error
+	t.Setenv(envPreforkChildKey, envPreforkChildVal)
 }

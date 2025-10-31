@@ -3,13 +3,15 @@
 package memory
 
 import (
+	"context"
 	"sync"
 	"time"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 )
 
-// Storage interface that is implemented by storage providers
+// Storage provides an in-memory implementation of the storage interface for
+// testing purposes.
 type Storage struct {
 	db         map[string]entry
 	done       chan struct{}
@@ -23,7 +25,7 @@ type entry struct {
 	expiry uint32
 }
 
-// New creates a new memory storage
+// New creates a new memory storage.
 func New(config ...Config) *Storage {
 	// Set default config
 	cfg := configDefault(config...)
@@ -42,7 +44,8 @@ func New(config ...Config) *Storage {
 	return store
 }
 
-// Get value by key
+// Get returns the stored value for key, ignoring missing or expired entries by
+// returning nil.
 func (s *Storage) Get(key string) ([]byte, error) {
 	if len(key) == 0 {
 		return nil, nil
@@ -57,7 +60,21 @@ func (s *Storage) Get(key string) ([]byte, error) {
 	return v.data, nil
 }
 
-// Set key with value
+// GetWithContext retrieves the value for the given key while honoring context
+// cancellation.
+func (s *Storage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		// Continue execution if context is not done
+	}
+
+	return s.Get(key)
+}
+
+// Set saves val under key and schedules it to expire after exp. A zero exp keeps
+// the entry indefinitely.
 func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	// Ain't Nobody Got Time For That
 	if len(key) == 0 || len(val) == 0 {
@@ -80,7 +97,20 @@ e := entry{data: valCopy, expiry: expire}
 	return nil
 }
 
-// Delete key by key
+// SetWithContext sets the value for the given key while honoring context
+// cancellation.
+func (s *Storage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		// Continue execution if context is not done
+	}
+
+	return s.Set(key, val, exp)
+}
+
+// Delete removes the value stored for key.
 func (s *Storage) Delete(key string) error {
 	// Ain't Nobody Got Time For That
 	if len(key) == 0 {
@@ -92,7 +122,20 @@ func (s *Storage) Delete(key string) error {
 	return nil
 }
 
-// Reset all keys
+// DeleteWithContext removes the value for the given key while honoring
+// context cancellation.
+func (s *Storage) DeleteWithContext(ctx context.Context, key string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		// Continue execution if context is not done
+	}
+
+	return s.Delete(key)
+}
+
+// Reset clears all keys and values from the storage map.
 func (s *Storage) Reset() error {
 	ndb := make(map[string]entry)
 	s.mux.Lock()
@@ -101,7 +144,21 @@ func (s *Storage) Reset() error {
 	return nil
 }
 
-// Close the memory storage
+// ResetWithContext clears all stored keys while honoring context
+// cancellation.
+func (s *Storage) ResetWithContext(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		// Continue execution if context is not done
+	}
+
+	return s.Reset()
+}
+
+// Close stops the background garbage collector and releases resources
+// associated with the storage instance.
 func (s *Storage) Close() error {
 	s.done <- struct{}{}
 	return nil
@@ -126,6 +183,12 @@ func (s *Storage) gc() {
 				}
 			}
 			s.mux.RUnlock()
+
+			if len(expired) == 0 {
+				// avoid locking if nothing to delete
+				continue
+			}
+
 			s.mux.Lock()
 			// Double-checked locking.
 			// We might have replaced the item in the meantime.
@@ -140,14 +203,15 @@ func (s *Storage) gc() {
 	}
 }
 
-// Return database client
+// Conn returns the underlying storage map. The map must not be modified by
+// callers.
 func (s *Storage) Conn() map[string]entry {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 	return s.db
 }
 
-// Return all the keys
+// Keys returns all keys stored in the memory storage.
 func (s *Storage) Keys() ([][]byte, error) {
 	s.mux.RLock()
 	defer s.mux.RUnlock()

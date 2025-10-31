@@ -1,13 +1,13 @@
-// Special thanks to Echo: https://github.com/labstack/echo/blob/master/middleware/key_auth.go
 package keyauth
 
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
+	utils "github.com/gofiber/utils/v2"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -16,32 +16,19 @@ type contextKey int
 
 // The keys for the values in context
 const (
-	tokenKey contextKey = 0
+	tokenKey contextKey = iota
 )
 
-// When there is no request of the key thrown ErrMissingOrMalformedAPIKey
-var ErrMissingOrMalformedAPIKey = errors.New("missing or malformed API Key")
-
-const (
-	query  = "query"
-	form   = "form"
-	param  = "param"
-	cookie = "cookie"
-)
+// ErrMissingOrMalformedAPIKey is returned when the API key is missing or invalid.
+var ErrMissingOrMalformedAPIKey = errors.New("missing or invalid API Key")
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Init config
 	cfg := configDefault(config...)
 
-	// Initialize
-	if cfg.CustomKeyLookup == nil {
-		var err error
-		cfg.CustomKeyLookup, err = DefaultKeyLookup(cfg.KeyLookup, cfg.AuthScheme)
-		if err != nil {
-			panic(fmt.Errorf("unable to create lookup function: %w", err))
-		}
-	}
+	// Determine the auth schemes from the extractor chain.
+	authSchemes := getAuthSchemes(cfg.Extractor)
 
 	// Return middleware handler
 	return func(c fiber.Ctx) error {
@@ -51,18 +38,58 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Extract and verify key
-		key, err := cfg.CustomKeyLookup(c)
-		if err != nil {
-			return cfg.ErrorHandler(c, err)
+		key, err := cfg.Extractor.Extract(c)
+		if errors.Is(err, extractors.ErrNotFound) {
+			// Replace shared extractor not found error with a keyauth specific error
+			err = ErrMissingOrMalformedAPIKey
+		}
+		// If there was no error extracting the key, validate it
+		if err == nil {
+			var valid bool
+			valid, err = cfg.Validator(c, key)
+			if err == nil && valid {
+				c.Locals(tokenKey, key)
+				return cfg.SuccessHandler(c)
+			}
 		}
 
-		valid, err := cfg.Validator(c, key)
+		// Execute the error handler first
+		handlerErr := cfg.ErrorHandler(c, err)
 
-		if err == nil && valid {
-			c.Locals(tokenKey, key)
-			return cfg.SuccessHandler(c)
+		status := c.Response().StatusCode()
+		if status == fiber.StatusUnauthorized || status == fiber.StatusProxyAuthRequired {
+			header := fiber.HeaderWWWAuthenticate
+			if status == fiber.StatusProxyAuthRequired {
+				header = fiber.HeaderProxyAuthenticate
+			}
+			if len(authSchemes) > 0 {
+				challenges := make([]string, 0, len(authSchemes))
+				for _, scheme := range authSchemes {
+					var b strings.Builder
+					fmt.Fprintf(&b, "%s realm=%q", scheme, cfg.Realm)
+					if utils.EqualFold(scheme, "Bearer") {
+						if cfg.Error != "" {
+							fmt.Fprintf(&b, ", error=%q", cfg.Error)
+							if cfg.ErrorDescription != "" {
+								fmt.Fprintf(&b, ", error_description=%q", cfg.ErrorDescription)
+							}
+							if cfg.ErrorURI != "" {
+								fmt.Fprintf(&b, ", error_uri=%q", cfg.ErrorURI)
+							}
+							if cfg.Error == ErrorInsufficientScope {
+								fmt.Fprintf(&b, ", scope=%q", cfg.Scope)
+							}
+						}
+					}
+					challenges = append(challenges, b.String())
+				}
+				c.Set(header, strings.Join(challenges, ", "))
+			} else if cfg.Challenge != "" {
+				c.Set(header, cfg.Challenge)
+			}
 		}
-		return cfg.ErrorHandler(c, err)
+
+		return handlerErr
 	}
 }
 
@@ -76,106 +103,16 @@ func TokenFromContext(c fiber.Ctx) string {
 	return token
 }
 
-// MultipleKeySourceLookup creates a CustomKeyLookup function that checks multiple sources until one is found
-// Each element should be specified according to the format used in KeyLookup
-func MultipleKeySourceLookup(keyLookups []string, authScheme string) (KeyLookupFunc, error) {
-	subExtractors := map[string]KeyLookupFunc{}
-	var err error
-	for _, keyLookup := range keyLookups {
-		subExtractors[keyLookup], err = DefaultKeyLookup(keyLookup, authScheme)
-		if err != nil {
-			return nil, err
-		}
+// getAuthSchemes inspects an extractor and its chain to find all auth schemes
+// used by FromAuthHeader. It returns a slice of schemes, or an empty slice if
+// none are found.
+func getAuthSchemes(e extractors.Extractor) []string {
+	var schemes []string
+	if e.Source == extractors.SourceAuthHeader && e.AuthScheme != "" {
+		schemes = append(schemes, e.AuthScheme)
 	}
-	return func(c fiber.Ctx) (string, error) {
-		for keyLookup, subExtractor := range subExtractors {
-			res, err := subExtractor(c)
-			if err == nil && res != "" {
-				return res, nil
-			}
-			if !errors.Is(err, ErrMissingOrMalformedAPIKey) {
-				// Defensive Code - not currently possible to hit
-				return "", fmt.Errorf("[%s] %w", keyLookup, err)
-			}
-		}
-		return "", ErrMissingOrMalformedAPIKey
-	}, nil
-}
-
-func DefaultKeyLookup(keyLookup, authScheme string) (KeyLookupFunc, error) {
-	parts := strings.Split(keyLookup, ":")
-	if len(parts) <= 1 {
-		return nil, fmt.Errorf("invalid keyLookup: %q, expected format 'source:name'", keyLookup)
+	for _, ex := range e.Chain {
+		schemes = append(schemes, getAuthSchemes(ex)...)
 	}
-	extractor := KeyFromHeader(parts[1], authScheme) // in the event of an invalid prefix, it is interpreted as header:
-	switch parts[0] {
-	case query:
-		extractor = KeyFromQuery(parts[1])
-	case form:
-		extractor = KeyFromForm(parts[1])
-	case param:
-		extractor = KeyFromParam(parts[1])
-	case cookie:
-		extractor = KeyFromCookie(parts[1])
-	}
-	return extractor, nil
-}
-
-// keyFromHeader returns a function that extracts api key from the request header.
-func KeyFromHeader(header, authScheme string) KeyLookupFunc {
-	return func(c fiber.Ctx) (string, error) {
-		auth := c.Get(header)
-		l := len(authScheme)
-		if len(auth) > 0 && l == 0 {
-			return auth, nil
-		}
-		if len(auth) > l+1 && auth[:l] == authScheme {
-			return auth[l+1:], nil
-		}
-		return "", ErrMissingOrMalformedAPIKey
-	}
-}
-
-// keyFromQuery returns a function that extracts api key from the query string.
-func KeyFromQuery(param string) KeyLookupFunc {
-	return func(c fiber.Ctx) (string, error) {
-		key := fiber.Query[string](c, param)
-		if key == "" {
-			return "", ErrMissingOrMalformedAPIKey
-		}
-		return key, nil
-	}
-}
-
-// keyFromForm returns a function that extracts api key from the form.
-func KeyFromForm(param string) KeyLookupFunc {
-	return func(c fiber.Ctx) (string, error) {
-		key := c.FormValue(param)
-		if key == "" {
-			return "", ErrMissingOrMalformedAPIKey
-		}
-		return key, nil
-	}
-}
-
-// keyFromParam returns a function that extracts api key from the url param string.
-func KeyFromParam(param string) KeyLookupFunc {
-	return func(c fiber.Ctx) (string, error) {
-		key, err := url.PathUnescape(c.Params(param))
-		if err != nil {
-			return "", ErrMissingOrMalformedAPIKey
-		}
-		return key, nil
-	}
-}
-
-// keyFromCookie returns a function that extracts api key from the named cookie.
-func KeyFromCookie(name string) KeyLookupFunc {
-	return func(c fiber.Ctx) (string, error) {
-		key := c.Cookies(name)
-		if key == "" {
-			return "", ErrMissingOrMalformedAPIKey
-		}
-		return key, nil
-	}
+	return schemes
 }

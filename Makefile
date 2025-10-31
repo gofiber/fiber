@@ -1,3 +1,5 @@
+GOVERSION ?= $(shell go env GOVERSION)
+
 ## help: 💡 Display available commands
 .PHONY: help
 help:
@@ -9,7 +11,7 @@ help:
 audit:
 	go mod verify
 	go vet ./...
-	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	GOTOOLCHAIN=$(GOVERSION) go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 ## benchmark: 📈 Benchmark code performance
 .PHONY: benchmark
@@ -19,33 +21,39 @@ benchmark:
 ## coverage: ☂️  Generate coverage report
 .PHONY: coverage
 coverage:
-	go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -coverprofile=/tmp/coverage.out -covermode=atomic
+	GOTOOLCHAIN=$(GOVERSION) go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -coverprofile=/tmp/coverage.out -covermode=atomic
 	go tool cover -html=/tmp/coverage.out
 
 ## format: 🎨 Fix code format issues
 .PHONY: format
 format:
-	go run mvdan.cc/gofumpt@latest -w -l .
+	GOTOOLCHAIN=$(GOVERSION) go run mvdan.cc/gofumpt@latest -w -l .
 
 ## markdown: 🎨 Find markdown format issues (Requires markdownlint-cli2)
 .PHONY: markdown
 markdown:
+	@which markdownlint-cli2 > /dev/null || npm install -g markdownlint-cli2
 	markdownlint-cli2 "**/*.md" "#vendor"
 
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2 run ./...
+	GOTOOLCHAIN=$(GOVERSION) go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0 run ./...
+
+## modernize: 🛠 Run gopls modernize
+.PHONY: modernize
+modernize:
+	GOTOOLCHAIN=$(GOVERSION) go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix -test=false ./...
 
 ## test: 🚦 Execute all tests
 .PHONY: test
 test:
-	go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -shuffle=on
+	GOTOOLCHAIN=$(GOVERSION) go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -shuffle=on
 
 ## longtest: 🚦 Execute all tests 10x
 .PHONY: longtest
 longtest:
-	go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=15 -shuffle=on
+	GOTOOLCHAIN=$(GOVERSION) go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=15 -shuffle=on
 
 ## tidy: 📌 Clean and tidy dependencies
 .PHONY: tidy
@@ -55,11 +63,11 @@ tidy:
 ## betteralign: 📐 Optimize alignment of fields in structs
 .PHONY: betteralign
 betteralign:
-	go run github.com/dkorunic/betteralign/cmd/betteralign@latest -test_files -generated_files -apply ./...
+	GOTOOLCHAIN=$(GOVERSION) go run github.com/dkorunic/betteralign/cmd/betteralign@v0.7.2 -test_files -generated_files -apply ./...
 
 ## generate: ⚡️ Generate msgp && interface implementations
 .PHONY: generate
 generate:
 	go install github.com/tinylib/msgp@latest
-	go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c
+	go install github.com/vburenin/ifacemaker@f30b6f9bdbed4b5c4804ec9ba4a04a999525c202
 	go generate ./...

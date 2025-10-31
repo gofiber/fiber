@@ -11,18 +11,25 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"runtime"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
-	fiberlog "github.com/gofiber/fiber/v3/log"
-	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
+	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
+)
+
+const (
+	pathFooBar = "/?foo=bar"
+	httpProto  = "HTTP/1.1"
 )
 
 func benchmarkSetup(b *testing.B, app *fiber.App, uri string) {
@@ -35,9 +42,8 @@ func benchmarkSetup(b *testing.B, app *fiber.App, uri string) {
 	fctx.Request.SetRequestURI(uri)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 }
@@ -71,7 +77,7 @@ func Test_Logger(t *testing.T) {
 
 	app.Use(New(Config{
 		Format: "${error}",
-		Output: buf,
+		Stream: buf,
 	}))
 
 	app.Get("/", func(_ fiber.Ctx) error {
@@ -94,7 +100,7 @@ func Test_Logger_locals(t *testing.T) {
 
 	app.Use(New(Config{
 		Format: "${locals:demo}",
-		Output: buf,
+		Stream: buf,
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -128,7 +134,7 @@ func Test_Logger_locals(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/empty", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "", buf.String())
+	require.Empty(t, buf.String())
 }
 
 // go test -run Test_Logger_Next
@@ -171,6 +177,147 @@ func Test_Logger_Done(t *testing.T) {
 	require.Positive(t, buf.Len(), 0)
 }
 
+// Test_Logger_Filter tests the Filter functionality of the logger middleware.
+// It verifies that logs are written or skipped based on the filter condition.
+func Test_Logger_Filter(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Test Not Found", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		logOutput := bytes.Buffer{}
+
+		// Return true to skip logging for all requests != 404
+		app.Use(New(Config{
+			Skip: func(c fiber.Ctx) bool {
+				return c.Response().StatusCode() != fiber.StatusNotFound
+			},
+			Stream: &logOutput,
+		}))
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/nonexistent", nil))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+		// Expect logs for the 404 request
+		require.Contains(t, logOutput.String(), "404")
+	})
+
+	t.Run("Test OK", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		logOutput := bytes.Buffer{}
+
+		// Return true to skip logging for all requests == 200
+		app.Use(New(Config{
+			Skip: func(c fiber.Ctx) bool {
+				return c.Response().StatusCode() == fiber.StatusOK
+			},
+			Stream: &logOutput,
+		}))
+
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		// We skip logging for status == 200, so "200" should not appear
+		require.NotContains(t, logOutput.String(), "200")
+	})
+
+	t.Run("Always Skip", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		logOutput := bytes.Buffer{}
+
+		// Filter always returns true => skip all logs
+		app.Use(New(Config{
+			Skip: func(_ fiber.Ctx) bool {
+				return true // always skip
+			},
+			Stream: &logOutput,
+		}))
+
+		app.Get("/something", func(c fiber.Ctx) error {
+			return c.Status(fiber.StatusTeapot).SendString("I'm a teapot")
+		})
+
+		_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/something", nil))
+		require.NoError(t, err)
+
+		// Expect NO logs
+		require.Empty(t, logOutput.String())
+	})
+
+	t.Run("Never Skip", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		logOutput := bytes.Buffer{}
+
+		// Filter always returns false => never skip logs
+		app.Use(New(Config{
+			Skip: func(_ fiber.Ctx) bool {
+				return false // never skip
+			},
+			Stream: &logOutput,
+		}))
+
+		app.Get("/always", func(c fiber.Ctx) error {
+			return c.Status(fiber.StatusTeapot).SendString("Teapot again")
+		})
+
+		_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/always", nil))
+		require.NoError(t, err)
+
+		// Expect some logging - check any substring
+		require.Contains(t, logOutput.String(), strconv.Itoa(fiber.StatusTeapot))
+	})
+
+	t.Run("Skip /healthz", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		logOutput := bytes.Buffer{}
+
+		// Filter returns true (skip logs) if the request path is /healthz
+		app.Use(New(Config{
+			Skip: func(c fiber.Ctx) bool {
+				return c.Path() == "/healthz"
+			},
+			Stream: &logOutput,
+		}))
+
+		// Normal route
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello World!")
+		})
+		// Health route
+		app.Get("/healthz", func(c fiber.Ctx) error {
+			return c.SendString("OK")
+		})
+
+		// Request to "/" -> should be logged
+		_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+		require.NoError(t, err)
+		require.Contains(t, logOutput.String(), "200")
+
+		// Reset output buffer
+		logOutput.Reset()
+
+		// Request to "/healthz" -> should be skipped
+		_, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/healthz", nil))
+		require.NoError(t, err)
+		require.Empty(t, logOutput.String())
+	})
+}
+
 // go test -run Test_Logger_ErrorTimeZone
 func Test_Logger_ErrorTimeZone(t *testing.T) {
 	t.Parallel()
@@ -194,10 +341,8 @@ func Test_Logger_LoggerToWriter(t *testing.T) {
 		bytebufferpool.Put(buf)
 	})
 
-	logger := fiberlog.DefaultLogger()
-	stdlogger, ok := logger.Logger().(*log.Logger)
-	require.True(t, ok)
-
+	logger := fiberlog.DefaultLogger[*log.Logger]()
+	stdlogger := logger.Logger()
 	stdlogger.SetFlags(0)
 	logger.SetOutput(buf)
 
@@ -234,7 +379,7 @@ func Test_Logger_LoggerToWriter(t *testing.T) {
 
 			app.Use("/"+level, New(Config{
 				Format: "${error}",
-				Output: LoggerToWriter(logger, tc.
+				Stream: LoggerToWriter(logger, tc.
 					level),
 			}))
 
@@ -257,7 +402,7 @@ func Test_Logger_LoggerToWriter(t *testing.T) {
 		})
 
 		require.Panics(t, func() {
-			LoggerToWriter(nil, fiberlog.LevelFatal)
+			LoggerToWriter[any](nil, fiberlog.LevelFatal)
 		})
 	}
 }
@@ -276,7 +421,7 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Output:        o,
+		Stream:        o,
 		DisableColors: true,
 	}))
 
@@ -293,7 +438,7 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Output: o,
+		Stream: o,
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
@@ -312,18 +457,121 @@ func Test_Logger_All(t *testing.T) {
 
 	app.Use(New(Config{
 		Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
-		Output: buf,
+		Stream: buf,
 	}))
 
 	// Alias colors
 	colors := app.Config().ColorScheme
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, pathFooBar, nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
-	expected := fmt.Sprintf("%dHost=example.comhttpHTTP/1.10.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sCannot GET /", os.Getpid(), colors.Black, colors.Red, colors.Green, colors.Yellow, colors.Blue, colors.Magenta, colors.Cyan, colors.White, colors.Reset)
+	expected := fmt.Sprintf("%dHost=example.comhttpHTTP/1.10.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sNot Found", os.Getpid(), colors.Black, colors.Red, colors.Green, colors.Yellow, colors.Blue, colors.Magenta, colors.Cyan, colors.White, colors.Reset)
 	require.Equal(t, expected, buf.String())
+}
+
+func Test_Logger_CLF_Format(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: CommonFormat,
+		Stream: buf,
+	}))
+
+	method := fiber.MethodGet
+	status := fiber.StatusNotFound
+	bytesSent := 0
+
+	resp, err := app.Test(httptest.NewRequest(method, pathFooBar, nil))
+	require.NoError(t, err)
+	require.Equal(t, status, resp.StatusCode)
+
+	pattern := fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d`, method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent)
+	require.Regexp(t, pattern, buf.String())
+}
+
+func Test_Logger_Combined_CLF_Format(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: CombinedFormat,
+		Stream: buf,
+	}))
+
+	method := fiber.MethodGet
+	status := fiber.StatusNotFound
+	bytesSent := 0
+	referer := "http://example.com"
+	ua := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+
+	req := httptest.NewRequest(method, pathFooBar, nil)
+	req.Header.Set("Referer", referer)
+	req.Header.Set("User-Agent", ua)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, status, resp.StatusCode)
+
+	pattern := fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d "%s" "%s"`, method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent, regexp.QuoteMeta(referer), regexp.QuoteMeta(ua)) //nolint:gocritic // double quoting for regex and string is not needed
+	require.Regexp(t, pattern, buf.String())
+}
+
+func Test_Logger_Json_Format(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: JSONFormat,
+		Stream: buf,
+	}))
+
+	method := fiber.MethodGet
+	status := fiber.StatusNotFound
+	ip := "0.0.0.0"
+	bytesSent := 0
+
+	req := httptest.NewRequest(method, pathFooBar, nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, status, resp.StatusCode)
+
+	pattern := fmt.Sprintf(`\{"time":"\d{2}:\d{2}:\d{2}","ip":"%s","method":%q,"url":"%s","status":%d,"bytesSent":%d\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(pathFooBar), status, bytesSent) //nolint:gocritic // double quoting for regex and string is not needed
+	require.Regexp(t, pattern, buf.String())
+}
+
+func Test_Logger_ECS_Format(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: ECSFormat,
+		Stream: buf,
+	}))
+
+	method := fiber.MethodGet
+	status := fiber.StatusNotFound
+	ip := "0.0.0.0"
+	bytesSent := 0
+	msg := fmt.Sprintf("%s %s responded with %d", method, pathFooBar, status)
+
+	req := httptest.NewRequest(method, pathFooBar, nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, status, resp.StatusCode)
+
+	pattern := fmt.Sprintf(`\{"@timestamp":"\d{2}:\d{2}:\d{2}","ecs":\{"version":"1.6.0"\},"client":\{"ip":"%s"\},"http":\{"request":\{"method":%q,"url":"%s","protocol":%q\},"response":\{"status_code":%d,"body":\{"bytes":%d\}\}\},"log":\{"level":"INFO","logger":"fiber"\},"message":"%s"\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent, regexp.QuoteMeta(msg)) //nolint:gocritic // double quoting for regex and string is not needed
+	require.Regexp(t, pattern, buf.String())
 }
 
 func getLatencyTimeUnits() []struct {
@@ -358,7 +606,7 @@ func Test_Logger_WithLatency(t *testing.T) {
 	app := fiber.New()
 
 	logger := New(Config{
-		Output: buff,
+		Stream: buff,
 		Format: "${latency}",
 	})
 	app.Use(logger)
@@ -403,7 +651,7 @@ func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
 	app := fiber.New()
 
 	logger := New(Config{
-		Output: buff,
+		Stream: buff,
 	})
 	app.Use(logger)
 
@@ -453,7 +701,7 @@ func Test_Query_Params(t *testing.T) {
 
 	app.Use(New(Config{
 		Format: "${queryParams}",
-		Output: buf,
+		Stream: buf,
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?foo=bar&baz=moz", nil))
@@ -474,7 +722,7 @@ func Test_Response_Body(t *testing.T) {
 
 	app.Use(New(Config{
 		Format: "${resBody}",
-		Output: buf,
+		Stream: buf,
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -508,7 +756,7 @@ func Test_Request_Body(t *testing.T) {
 
 	app.Use(New(Config{
 		Format: "${bytesReceived} ${bytesSent} ${status}",
-		Output: buf,
+		Stream: buf,
 	}))
 
 	app.Post("/", func(c fiber.Ctx) error {
@@ -536,7 +784,7 @@ func Test_Logger_AppendUint(t *testing.T) {
 
 	app.Use(New(Config{
 		Format: "${bytesReceived} ${bytesSent} ${status}",
-		Output: buf,
+		Stream: buf,
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -582,11 +830,9 @@ func Test_Logger_Data_Race(t *testing.T) {
 		err1, err2   error
 	)
 	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		resp1, err1 = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-		wg.Done()
-	}()
+	})
 	resp2, err2 = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	wg.Wait()
 
@@ -611,7 +857,7 @@ func Test_Response_Header(t *testing.T) {
 	}))
 	app.Use(New(Config{
 		Format: "${respHeader:X-Request-ID}",
-		Output: buf,
+		Stream: buf,
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello fiber!")
@@ -634,7 +880,7 @@ func Test_Req_Header(t *testing.T) {
 
 	app.Use(New(Config{
 		Format: "${reqHeader:test}",
-		Output: buf,
+		Stream: buf,
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello fiber!")
@@ -658,7 +904,7 @@ func Test_ReqHeader_Header(t *testing.T) {
 
 	app.Use(New(Config{
 		Format: "${reqHeader:test}",
-		Output: buf,
+		Stream: buf,
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello fiber!")
@@ -689,7 +935,7 @@ func Test_CustomTags(t *testing.T) {
 				return output.WriteString(customTag)
 			},
 		},
-		Output: buf,
+		Stream: buf,
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello fiber!")
@@ -713,7 +959,7 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 
 	app.Use(New(Config{
 		Format: "${bytesReceived} ${bytesSent} ${status}",
-		Output: buf,
+		Stream: buf,
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -724,7 +970,7 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 			for {
 				i++
 				msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
-				fmt.Fprintf(w, "data: Message: %s\n\n", msg) //nolint:errcheck // ignore error
+				fmt.Fprintf(w, "data: Message: %s\n\n", msg)
 				err := w.Flush()
 				if err != nil {
 					break
@@ -759,13 +1005,39 @@ func Test_Logger_EnableColors(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Output: o,
+		Stream: o,
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 	require.EqualValues(t, 1, *o)
+}
+
+// go test -run Test_Logger_ForceColors
+func Test_Logger_ForceColors(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format:        "${ip}${status}${method}${path}${error}\n",
+		Stream:        buf,
+		DisableColors: true,
+		ForceColors:   true,
+	}))
+
+	// Alias colors
+	colors := app.Config().ColorScheme
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf("0.0.0.0%s404%s%sGET%s/%sNot Found%s\n", colors.Yellow, colors.Reset, colors.Cyan, colors.Reset, colors.Red, colors.Reset)
+	require.Equal(t, expected, buf.String())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Logger$ -benchmem -count=4
@@ -782,7 +1054,7 @@ func Benchmark_Logger(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${bytesReceived} ${bytesSent} ${status}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("test", "test")
@@ -794,7 +1066,7 @@ func Benchmark_Logger(b *testing.B) {
 	b.Run("DefaultFormat", func(bb *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
@@ -805,8 +1077,20 @@ func Benchmark_Logger(b *testing.B) {
 	b.Run("DefaultFormatDisableColors", func(bb *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
-			Output:        io.Discard,
+			Stream:        io.Discard,
 			DisableColors: true,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
+	b.Run("DefaultFormatForceColors", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Stream:      io.Discard,
+			ForceColors: true,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
@@ -816,10 +1100,10 @@ func Benchmark_Logger(b *testing.B) {
 
 	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
 		app := fiber.New()
-		logger := fiberlog.DefaultLogger()
+		logger := fiberlog.DefaultLogger[*log.Logger]()
 		logger.SetOutput(io.Discard)
 		app.Use(New(Config{
-			Output: LoggerToWriter(logger, fiberlog.LevelDebug),
+			Stream: LoggerToWriter(logger, fiberlog.LevelDebug),
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
@@ -831,7 +1115,7 @@ func Benchmark_Logger(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${bytesReceived} ${bytesSent} ${status} ${reqHeader:test}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("test", "test")
@@ -844,7 +1128,7 @@ func Benchmark_Logger(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${locals:demo}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Locals("demo", "johndoe")
@@ -857,7 +1141,7 @@ func Benchmark_Logger(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${locals:demo}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/int", func(c fiber.Ctx) error {
 			c.Locals("demo", 55)
@@ -874,7 +1158,7 @@ func Benchmark_Logger(b *testing.B) {
 					io.Discard.Write(logString) //nolint:errcheck // ignore error
 				}
 			},
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/logging", func(ctx fiber.Ctx) error {
 			return ctx.SendStatus(fiber.StatusOK)
@@ -886,7 +1170,7 @@ func Benchmark_Logger(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
@@ -898,7 +1182,7 @@ func Benchmark_Logger(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${bytesReceived} ${bytesSent} ${status}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("Connection", "keep-alive")
@@ -908,7 +1192,7 @@ func Benchmark_Logger(b *testing.B) {
 				for {
 					i++
 					msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
-					fmt.Fprintf(w, "data: Message: %s\n\n", msg) //nolint:errcheck // ignore error
+					fmt.Fprintf(w, "data: Message: %s\n\n", msg)
 					err := w.Flush()
 					if err != nil {
 						break
@@ -927,7 +1211,7 @@ func Benchmark_Logger(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${resBody}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Sample response body")
@@ -950,7 +1234,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${bytesReceived} ${bytesSent} ${status}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("test", "test")
@@ -962,7 +1246,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 	b.Run("DefaultFormat", func(bb *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
@@ -972,10 +1256,10 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 
 	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
 		app := fiber.New()
-		logger := fiberlog.DefaultLogger()
+		logger := fiberlog.DefaultLogger[*log.Logger]()
 		logger.SetOutput(io.Discard)
 		app.Use(New(Config{
-			Output: LoggerToWriter(logger, fiberlog.LevelDebug),
+			Stream: LoggerToWriter(logger, fiberlog.LevelDebug),
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
@@ -986,8 +1270,20 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 	b.Run("DefaultFormatDisableColors", func(bb *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
-			Output:        io.Discard,
+			Stream:        io.Discard,
 			DisableColors: true,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
+
+	b.Run("DefaultFormatForceColors", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Stream:      io.Discard,
+			ForceColors: true,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
@@ -999,7 +1295,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${bytesReceived} ${bytesSent} ${status} ${reqHeader:test}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("test", "test")
@@ -1012,7 +1308,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${locals:demo}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Locals("demo", "johndoe")
@@ -1025,7 +1321,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${locals:demo}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/int", func(c fiber.Ctx) error {
 			c.Locals("demo", 55)
@@ -1042,7 +1338,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 					io.Discard.Write(logString) //nolint:errcheck // ignore error
 				}
 			},
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/logging", func(ctx fiber.Ctx) error {
 			return ctx.SendStatus(fiber.StatusOK)
@@ -1054,7 +1350,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
@@ -1066,7 +1362,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${bytesReceived} ${bytesSent} ${status}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("Connection", "keep-alive")
@@ -1076,7 +1372,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 				for {
 					i++
 					msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
-					fmt.Fprintf(w, "data: Message: %s\n\n", msg) //nolint:errcheck // ignore error
+					fmt.Fprintf(w, "data: Message: %s\n\n", msg)
 					err := w.Flush()
 					if err != nil {
 						break
@@ -1095,7 +1391,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Format: "${resBody}",
-			Output: io.Discard,
+			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Sample response body")

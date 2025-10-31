@@ -170,7 +170,7 @@ func releaseMiddleware(m *Middleware) {
 //   - c: The Fiber context.
 //
 // Returns:
-//   - *Middleware: The middleware object if found, otherwise nil.
+//   - *Middleware: The middleware object if found; otherwise, nil.
 //
 // Usage:
 //
@@ -232,6 +232,21 @@ func (m *Middleware) Delete(key any) {
 	m.Session.Delete(key)
 }
 
+// Keys returns all keys in the current session.
+//
+// Returns:
+//   - []any: A slice of all keys in the session.
+//
+// Usage:
+//
+//	keys := m.Keys()
+func (m *Middleware) Keys() []any {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.Session.Keys()
+}
+
 // Destroy destroys the session.
 //
 // Returns:
@@ -252,7 +267,7 @@ func (m *Middleware) Destroy() error {
 // Fresh checks if the session is fresh.
 //
 // Returns:
-//   - bool: True if the session is fresh, otherwise false.
+//   - bool: True if the session is fresh; otherwise, false.
 //
 // Usage:
 //
@@ -286,6 +301,24 @@ func (m *Middleware) Reset() error {
 	defer m.mu.Unlock()
 
 	return m.Session.Reset()
+}
+
+// Regenerate generates a new session ID while preserving session data.
+//
+// This method is commonly used after authentication to prevent session fixation attacks.
+// Unlike Reset(), this method preserves all existing session data.
+//
+// Returns:
+//   - error: An error if the regeneration fails.
+//
+// Usage:
+//
+//	err := m.Regenerate()
+func (m *Middleware) Regenerate() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.Session.Regenerate()
 }
 
 // Store returns the session store.

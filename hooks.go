@@ -4,16 +4,25 @@ import (
 	"github.com/gofiber/fiber/v3/log"
 )
 
-// OnRouteHandler Handlers define a function to create hooks for Fiber.
 type (
-	OnRouteHandler     = func(Route) error
-	OnNameHandler      = OnRouteHandler
-	OnGroupHandler     = func(Group) error
+	// OnRouteHandler defines the hook signature invoked whenever a route is registered.
+	OnRouteHandler = func(Route) error
+	// OnNameHandler shares the OnRouteHandler signature for route naming callbacks.
+	OnNameHandler = OnRouteHandler
+	// OnGroupHandler defines the hook signature invoked whenever a group is registered.
+	OnGroupHandler = func(Group) error
+	// OnGroupNameHandler shares the OnGroupHandler signature for group naming callbacks.
 	OnGroupNameHandler = OnGroupHandler
-	OnListenHandler    = func(ListenData) error
-	OnShutdownHandler  = func() error
-	OnForkHandler      = func(int) error
-	OnMountHandler     = func(*App) error
+	// OnListenHandler runs when the application begins listening and receives the listener details.
+	OnListenHandler = func(ListenData) error
+	// OnPreShutdownHandler runs before the application shuts down.
+	OnPreShutdownHandler = func() error
+	// OnPostShutdownHandler runs after shutdown and receives the shutdown result.
+	OnPostShutdownHandler = func(error) error
+	// OnForkHandler runs inside a forked worker process and receives the worker ID.
+	OnForkHandler = func(int) error
+	// OnMountHandler runs after a sub-application mounts to a parent and receives the parent app reference.
+	OnMountHandler = func(*App) error
 )
 
 // Hooks is a struct to use it with App.
@@ -22,14 +31,15 @@ type Hooks struct {
 	app *App
 
 	// Hooks
-	onRoute     []OnRouteHandler
-	onName      []OnNameHandler
-	onGroup     []OnGroupHandler
-	onGroupName []OnGroupNameHandler
-	onListen    []OnListenHandler
-	onShutdown  []OnShutdownHandler
-	onFork      []OnForkHandler
-	onMount     []OnMountHandler
+	onRoute        []OnRouteHandler
+	onName         []OnNameHandler
+	onGroup        []OnGroupHandler
+	onGroupName    []OnGroupNameHandler
+	onListen       []OnListenHandler
+	onPreShutdown  []OnPreShutdownHandler
+	onPostShutdown []OnPostShutdownHandler
+	onFork         []OnForkHandler
+	onMount        []OnMountHandler
 }
 
 // ListenData is a struct to use it with OnListenHandler
@@ -41,15 +51,16 @@ type ListenData struct {
 
 func newHooks(app *App) *Hooks {
 	return &Hooks{
-		app:         app,
-		onRoute:     make([]OnRouteHandler, 0),
-		onGroup:     make([]OnGroupHandler, 0),
-		onGroupName: make([]OnGroupNameHandler, 0),
-		onName:      make([]OnNameHandler, 0),
-		onListen:    make([]OnListenHandler, 0),
-		onShutdown:  make([]OnShutdownHandler, 0),
-		onFork:      make([]OnForkHandler, 0),
-		onMount:     make([]OnMountHandler, 0),
+		app:            app,
+		onRoute:        make([]OnRouteHandler, 0),
+		onGroup:        make([]OnGroupHandler, 0),
+		onGroupName:    make([]OnGroupNameHandler, 0),
+		onName:         make([]OnNameHandler, 0),
+		onListen:       make([]OnListenHandler, 0),
+		onPreShutdown:  make([]OnPreShutdownHandler, 0),
+		onPostShutdown: make([]OnPostShutdownHandler, 0),
+		onFork:         make([]OnForkHandler, 0),
+		onMount:        make([]OnMountHandler, 0),
 	}
 }
 
@@ -96,10 +107,17 @@ func (h *Hooks) OnListen(handler ...OnListenHandler) {
 	h.app.mutex.Unlock()
 }
 
-// OnShutdown is a hook to execute user functions after Shutdown.
-func (h *Hooks) OnShutdown(handler ...OnShutdownHandler) {
+// OnPreShutdown is a hook to execute user functions before Shutdown.
+func (h *Hooks) OnPreShutdown(handler ...OnPreShutdownHandler) {
 	h.app.mutex.Lock()
-	h.onShutdown = append(h.onShutdown, handler...)
+	h.onPreShutdown = append(h.onPreShutdown, handler...)
+	h.app.mutex.Unlock()
+}
+
+// OnPostShutdown is a hook to execute user functions after Shutdown.
+func (h *Hooks) OnPostShutdown(handler ...OnPostShutdownHandler) {
+	h.app.mutex.Lock()
+	h.onPostShutdown = append(h.onPostShutdown, handler...)
 	h.app.mutex.Unlock()
 }
 
@@ -191,10 +209,18 @@ func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 	return nil
 }
 
-func (h *Hooks) executeOnShutdownHooks() {
-	for _, v := range h.onShutdown {
+func (h *Hooks) executeOnPreShutdownHooks() {
+	for _, v := range h.onPreShutdown {
 		if err := v(); err != nil {
-			log.Errorf("failed to call shutdown hook: %v", err)
+			log.Errorf("failed to call pre shutdown hook: %v", err)
+		}
+	}
+}
+
+func (h *Hooks) executeOnPostShutdownHooks(err error) {
+	for _, v := range h.onPostShutdown {
+		if hookErr := v(err); hookErr != nil {
+			log.Errorf("failed to call post shutdown hook: %v", hookErr)
 		}
 	}
 }

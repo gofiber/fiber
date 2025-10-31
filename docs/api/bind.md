@@ -6,31 +6,72 @@ sidebar_position: 4
 toc_max_heading_level: 4
 ---
 
-Bindings are used to parse the request/response body, query parameters, cookies, and much more into a struct.
+Bindings parse request and response bodies, query parameters, cookies, and more into structs.
 
 :::info
-All binder returned values are only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Binder-returned values are valid only within the handler. To keep them, copy the data
+or enable the [**`Immutable`**](./ctx.md) setting. [Read more...](../#zero-allocation)
 :::
 
 ## Binders
 
+- [All](#all)
 - [Body](#body)
+  - [CBOR](#cbor)
   - [Form](#form)
   - [JSON](#json)
+  - [MsgPack](#msgpack)
   - [XML](#xml)
-  - [CBOR](#cbor)
 - [Cookie](#cookie)
 - [Header](#header)
 - [Query](#query)
 - [RespHeader](#respheader)
 - [URI](#uri)
 
+### All
+
+The `All` function binds data from URL parameters, the request body, query parameters, headers, and cookies into `out`. Sources are applied in the following order using struct field tags.
+
+#### Precedence Order
+
+The binding sources have the following precedence:
+
+1. **URL Parameters (URI)**
+2. **Request Body (e.g., JSON or form data)**
+3. **Query Parameters**
+4. **Request Headers**
+5. **Cookies**
+
+```go title="Signature"
+func (b *Bind) All(out any) error
+```
+
+``` go title="Example"
+type User struct {
+    Name      string                `query:"name" json:"name" form:"name"`
+    Email     string                `json:"email" form:"email"`
+    Role      string                `header:"X-User-Role"`
+    SessionID string                `json:"session_id" cookie:"session_id"`
+    ID        int                   `uri:"id" query:"id" json:"id" form:"id"`
+}
+
+app.Post("/users", func(c fiber.Ctx) error {
+    user := new(User)
+
+    if err := c.Bind().All(user); err != nil {
+        return err
+    }
+
+    // All available data is now bound to the user struct
+    return c.JSON(user)
+})
+```
+
 ### Body
 
 Binds the request body to a struct.
 
-It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a JSON body with a field called `Pass`, you would use a struct field with `json:"pass"`.
+Use tags that match the content type. For example, to parse a JSON body with a `Pass` field, declare `json:"pass"`.
 
 | Content-Type                        | Struct Tag |
 | ----------------------------------- | ---------- |
@@ -39,6 +80,7 @@ It is important to specify the correct struct tag based on the content type to b
 | `application/json`                  | `json`     |
 | `application/xml`                   | `xml`      |
 | `text/xml`                          | `xml`      |
+| `application/vnd.msgpack`           | `msgpack`  |
 
 ```go title="Signature"
 func (b *Bind) Body(out any) error
@@ -46,8 +88,8 @@ func (b *Bind) Body(out any) error
 
 ```go title="Example"
 type Person struct {
-    Name string `json:"name" xml:"name" form:"name"`
-    Pass string `json:"pass" xml:"pass" form:"pass"`
+    Name string `json:"name" xml:"name" form:"name" msgpack:"name"`
+    Pass string `json:"pass" xml:"pass" form:"pass" msgpack:"pass"`
 }
 
 app.Post("/", func(c fiber.Ctx) error {
@@ -64,11 +106,14 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
-Run tests with the following `curl` commands:
+Test the handler with these `curl` commands:
 
 ```bash
 # JSON
 curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pass\":\"doe\"}" localhost:3000
+
+# MsgPack
+curl -X POST -H "Content-Type: application/vnd.msgpack" --data-binary $'\x82\xa4name\xa4john\xa4pass\xa3doe'  localhost:3000
 
 # XML
 curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name><pass>doe</pass></login>" localhost:3000
@@ -78,6 +123,45 @@ curl -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "name=j
 
 # Multipart Form
 curl -X POST -F name=john -F pass=doe http://localhost:3000
+```
+
+### CBOR
+
+> **Note:** Before using any CBOR-related features, make sure to follow the [CBOR setup instructions](../guide/advance-format.md#cbor).
+
+Binds the request CBOR body to a struct.
+
+It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a CBOR body with a field called `Pass`, you would use a struct field with `cbor:"pass"`.
+
+```go title="Signature"
+func (b *Bind) CBOR(out any) error
+```
+
+```go title="Example"
+// Field names should start with an uppercase letter
+type Person struct {
+    Name string `cbor:"name"`
+    Pass string `cbor:"pass"`
+}
+
+app.Post("/", func(c fiber.Ctx) error {
+    p := new(Person)
+    
+    if err := c.Bind().CBOR(p); err != nil {
+        return err
+    }
+    
+    log.Println(p.Name) // john
+    log.Println(p.Pass) // doe
+    
+    // ...
+})
+```
+
+Test the defaults with this `curl` command:
+
+```bash
+curl -X POST -H "Content-Type: application/cbor" --data "\xa2dnamedjohndpasscdoe" localhost:3000
 ```
 
 ### Form
@@ -120,6 +204,38 @@ curl -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "name=j
 curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" localhost:3000
 ```
 
+:::info
+If you need to bind multipart file, you can use `*multipart.FileHeader`, `*[]*multipart.FileHeader` or `[]*multipart.FileHeader` as a field type.
+:::
+
+```go title="Example"
+type Person struct {
+    Name string                `form:"name"`
+    Pass string                `form:"pass"`
+    Avatar *multipart.FileHeader `form:"avatar"`
+}
+
+app.Post("/", func(c fiber.Ctx) error {
+    p := new(Person)
+    
+    if err := c.Bind().Form(p); err != nil {
+        return err
+    }
+    
+    log.Println(p.Name) // john
+    log.Println(p.Pass) // doe
+    log.Println(p.Avatar.Filename) // file.txt
+    
+    // ...
+})
+```
+
+Run tests with the following `curl` command:
+
+```bash
+curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" -F 'avatar=@filename' localhost:3000
+```
+
 ### JSON
 
 Binds the request JSON body to a struct.
@@ -154,6 +270,46 @@ Run tests with the following `curl` command:
 
 ```bash
 curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pass\":\"doe\"}" localhost:3000
+```
+
+### MsgPack
+
+> **Note:** Before using any MsgPack-related features, make sure to follow the [MsgPack setup instructions](../guide/advance-format.md#msgpack).
+
+Binds the request MsgPack body to a struct.
+
+It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a Msgpack body with a field called `Pass`, you would use a struct field with `msgpack:"pass"`.
+
+> Our library uses [shamaton-msgpack](https://github.com/shamaton/msgpack) which uses `msgpack` struct tags by default. If you want to use other libraries, you may need to update the struct tags accordingly.
+
+```go title="Signature"
+func (b *Bind) MsgPack(out any) error
+```
+
+```go title="Example"
+type Person struct {
+    Name string `msgpack:"name"`
+    Pass string `msgpack:"pass"`
+}
+
+app.Post("/", func(c fiber.Ctx) error {
+    p := new(Person)
+    
+    if err := c.Bind().MsgPack(p); err != nil {
+        return err
+    }
+
+    log.Println(p.Name) // john
+    log.Println(p.Pass) // doe
+    
+    // ...
+})
+```
+
+Run tests with the following `curl` command:
+
+```bash
+curl -X POST -H "Content-Type: application/vnd.msgpack" --data-binary $'\x82\xa4name\xa4john\xa4pass\xa3doe'  localhost:3000
 ```
 
 ### XML
@@ -191,43 +347,6 @@ Run tests with the following `curl` command:
 
 ```bash
 curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name><pass>doe</pass></login>" localhost:3000
-```
-
-### CBOR
-
-Binds the request CBOR body to a struct.
-
-It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a CBOR body with a field called `Pass`, you would use a struct field with `cbor:"pass"`.
-
-```go title="Signature"
-func (b *Bind) CBOR(out any) error
-```
-
-```go title="Example"
-// Field names should start with an uppercase letter
-type Person struct {
-    Name string `cbor:"name"`
-    Pass string `cbor:"pass"`
-}
-
-app.Post("/", func(c fiber.Ctx) error {
-    p := new(Person)
-    
-    if err := c.Bind().CBOR(p); err != nil {
-        return err
-    }
-    
-    log.Println(p.Name) // john
-    log.Println(p.Pass) // doe
-    
-    // ...
-})
-```
-
-Run tests with the following `curl` command:
-
-```bash
-curl -X POST -H "Content-Type: application/cbor" --data "\xa2dnamedjohndpasscdoe" localhost:3000
 ```
 
 ### Cookie
@@ -466,7 +585,7 @@ For more control over error handling, you can use the following methods.
 
 If you want to handle binder errors automatically, you can use `WithAutoHandling`.  
 If there's an error, it will return the error and set HTTP status to `400 Bad Request`.
-This function does NOT panic therefor you must still return on error explicitly
+This function does NOT panic therefore you must still return on error explicitly
 
 ```go title="Signature"
 func (b *Bind) WithAutoHandling() *Bind

@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 )
 
 // Put fields related to mounting.
@@ -55,7 +55,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 
 	// register mounted group
 	mountGroup := &Group{Prefix: prefix, app: subApp}
-	app.register([]string{methodUse}, prefix, mountGroup, nil)
+	app.register([]string{methodUse}, prefix, mountGroup)
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(app); err != nil {
@@ -85,7 +85,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 
 	// register mounted group
 	mountGroup := &Group{Prefix: groupPath, app: subApp}
-	grp.app.register([]string{methodUse}, groupPath, mountGroup, nil)
+	grp.app.register([]string{methodUse}, groupPath, mountGroup)
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(grp.app); err != nil {
@@ -95,7 +95,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 	return grp
 }
 
-// The MountPath property contains one or more path patterns on which a sub-app was mounted.
+// MountPath returns the route pattern where the current app instance was mounted as a sub-application.
 func (app *App) MountPath() string {
 	return app.mountFields.mountPath
 }
@@ -175,7 +175,6 @@ func (app *App) processSubAppsRoutes() {
 		}
 	}
 	var handlersCount uint32
-	var routePos uint32
 	// Iterate over the stack of the parent app
 	for m := range app.stack {
 		// Iterate over each route in the stack
@@ -184,9 +183,6 @@ func (app *App) processSubAppsRoutes() {
 			route := app.stack[m][i]
 			// Check if the route has a mounted app
 			if !route.mount {
-				routePos++
-				// If not, update the route's position and continue
-				route.pos = routePos
 				if !route.use || (route.use && m == 0) {
 					handlersCount += uint32(len(route.Handlers)) //nolint:gosec // Not a concern
 				}
@@ -215,11 +211,7 @@ func (app *App) processSubAppsRoutes() {
 			copy(newStack[i+len(subRoutes):], app.stack[m][i+1:])
 			app.stack[m] = newStack
 
-			// Decrease the parent app's route count to account for the mounted app's original route
-			atomic.AddUint32(&app.routesCount, ^uint32(0))
 			i--
-			// Increase the parent app's route count to account for the sub-app's routes
-			atomic.AddUint32(&app.routesCount, uint32(len(subRoutes))) //nolint:gosec // Not a concern
 
 			// Mark the parent app's routes as refreshed
 			app.routesRefreshed = true

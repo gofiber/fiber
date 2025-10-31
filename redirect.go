@@ -1,15 +1,16 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 📝 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
 import (
+	"encoding/hex"
 	"errors"
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 )
 
@@ -17,7 +18,7 @@ import (
 var redirectPool = sync.Pool{
 	New: func() any {
 		return &Redirect{
-			status:   StatusFound,
+			status:   StatusSeeOther,
 			messages: make(redirectionMsgs, 0),
 		}
 	},
@@ -61,7 +62,7 @@ type FlashMessage struct {
 type Redirect struct {
 	c        *DefaultCtx     // Embed ctx
 	messages redirectionMsgs // Flash messages and old input data
-	status   int             // Status code of redirection. Default: StatusFound
+	status   int             // Status code of redirection. Default: 303 StatusSeeOther
 }
 
 // RedirectConfig A config to use with Redirect().Route()
@@ -84,7 +85,7 @@ func AcquireRedirect() *Redirect {
 
 // ReleaseRedirect returns c acquired via Redirect to redirect pool.
 //
-// It is forbidden accessing req and/or its' members after returning
+// It is forbidden accessing req and/or its members after returning
 // it to redirect pool.
 func ReleaseRedirect(r *Redirect) {
 	r.release()
@@ -92,13 +93,13 @@ func ReleaseRedirect(r *Redirect) {
 }
 
 func (r *Redirect) release() {
-	r.status = 302
+	r.status = StatusSeeOther
 	r.messages = r.messages[:0]
 	r.c = nil
 }
 
 // Status sets the status code of redirection.
-// If status is not specified, status defaults to 302 Found.
+// If status is not specified, status defaults to 303 See Other.
 func (r *Redirect) Status(code int) *Redirect {
 	r.status = code
 
@@ -270,7 +271,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 			i++
 		}
 
-		return r.To(location + "?" + r.c.app.getString(queryText.Bytes()))
+		return r.To(location + "?" + r.c.app.toString(queryText.Bytes()))
 	}
 
 	return r.To(location)
@@ -296,9 +297,12 @@ func (r *Redirect) Back(fallback ...string) error {
 // parseAndClearFlashMessages is a method to get flash messages before they are getting removed
 func (r *Redirect) parseAndClearFlashMessages() {
 	// parse flash messages
-	cookieValue := r.c.Cookies(FlashCookieName)
+	cookieValue, err := hex.DecodeString(r.c.Cookies(FlashCookieName))
+	if err != nil {
+		return
+	}
 
-	_, err := r.c.flashMessages.UnmarshalMsg(r.c.app.getBytes(cookieValue))
+	_, err = r.c.flashMessages.UnmarshalMsg(cookieValue)
 	if err != nil {
 		return
 	}
@@ -316,9 +320,12 @@ func (r *Redirect) processFlashMessages() {
 		return
 	}
 
+	dst := make([]byte, hex.EncodedLen(len(val)))
+	hex.Encode(dst, val)
+
 	r.c.Cookie(&Cookie{
 		Name:        FlashCookieName,
-		Value:       r.c.app.getString(val),
+		Value:       r.c.app.toString(dst),
 		SessionOnly: true,
 	})
 }

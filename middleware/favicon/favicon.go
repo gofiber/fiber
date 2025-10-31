@@ -88,6 +88,7 @@ func New(config ...Config) fiber.Handler {
 		iconData      []byte
 		iconLenHeader string
 		iconLen       int
+		f             fs.File
 	)
 	if cfg.Data != nil {
 		// use the provided favicon data
@@ -97,10 +98,13 @@ func New(config ...Config) fiber.Handler {
 	} else if cfg.File != "" {
 		// read from configured filesystem if present
 		if cfg.FileSystem != nil {
-			f, err := cfg.FileSystem.Open(cfg.File)
+			f, err = cfg.FileSystem.Open(cfg.File)
 			if err != nil {
 				panic(err)
 			}
+			defer func() {
+				_ = f.Close() //nolint:errcheck // not needed
+			}()
 			if iconData, err = io.ReadAll(f); err != nil {
 				panic(err)
 			}

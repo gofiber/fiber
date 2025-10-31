@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_Rand_String(t *testing.T) {
@@ -38,10 +40,20 @@ func Test_Rand_String(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := randString(tt.args)
+			got, err := unsafeRandString(tt.args)
+			require.NoError(t, err)
 			require.Len(t, got, tt.args)
 		})
 	}
+
+	t.Run("valid characters", func(t *testing.T) {
+		t.Parallel()
+		got, err := unsafeRandString(32)
+		require.NoError(t, err)
+		for i := 0; i < len(got); i++ {
+			require.Contains(t, letterBytes, string(got[i]))
+		}
+	})
 }
 
 func Test_Parser_Request_URL(t *testing.T) {
@@ -188,13 +200,46 @@ func Test_Parser_Request_URL(t *testing.T) {
 				flag1 = true
 			case "foo2":
 				flag2 = true
-			case "foo": //nolint:goconst // test
+			case "foo":
 				flag3 = true
+			default:
+				t.Fatalf("unexpected query param value: %s", v)
 			}
 		}
 		require.True(t, flag1)
 		require.True(t, flag2)
 		require.True(t, flag3)
+	})
+
+	t.Run("request disable path normalizing should be respected", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123").
+			SetDisablePathNormalizing(true)
+
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123", req.RawRequest.URI().String())
+	})
+
+	t.Run("client disable path normalizing should be respected", func(t *testing.T) {
+		t.Parallel()
+		client := New().SetDisablePathNormalizing(true)
+		req := AcquireRequest().
+			SetURL("https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123")
+
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "https://example.my.host/other.host%2Fpath%2Fto%2Fdata%23123", req.RawRequest.URI().String())
 	})
 }
 
@@ -281,7 +326,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		req := AcquireRequest().
 			SetFormDataWithMap(map[string]string{
 				"foo":  "bar",
-				"ball": "cricle and square",
+				"ball": "circle and square",
 			})
 
 		err := parserRequestHeader(client, req)
@@ -298,7 +343,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		require.NoError(t, err)
-		require.Contains(t, string(req.RawRequest.Header.MultipartFormBoundary()), "--FiberFormBoundary")
+		require.Contains(t, string(req.RawRequest.Header.MultipartFormBoundary()), "FiberFormBoundary")
 		require.Contains(t, string(req.RawRequest.Header.ContentType()), multipartFormData)
 	})
 
@@ -368,7 +413,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "bar", string(req.RawRequest.Header.Cookie("foo")))
 		require.Equal(t, "foo", string(req.RawRequest.Header.Cookie("bar")))
-		require.Equal(t, "", string(req.RawRequest.Header.Cookie("bar1")))
+		require.Empty(t, string(req.RawRequest.Header.Cookie("bar1")))
 	})
 
 	t.Run("request cookie should be set", func(t *testing.T) {
@@ -390,7 +435,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "bar", string(req.RawRequest.Header.Cookie("foo")))
 		require.Equal(t, "67", string(req.RawRequest.Header.Cookie("bar")))
-		require.Equal(t, "", string(req.RawRequest.Header.Cookie("bar1")))
+		require.Empty(t, string(req.RawRequest.Header.Cookie("bar1")))
 	})
 
 	t.Run("request cookie will override client cookie", func(t *testing.T) {
@@ -486,12 +531,12 @@ func Test_Parser_Request_Body(t *testing.T) {
 		client := New()
 		req := AcquireRequest().
 			SetFormDataWithMap(map[string]string{
-				"ball": "cricle and square",
+				"ball": "circle and square",
 			})
 
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
-		require.Equal(t, "ball=cricle+and+square", string(req.RawRequest.Body()))
+		require.Equal(t, "ball=circle+and+square", string(req.RawRequest.Body()))
 	})
 
 	t.Run("form data body error", func(t *testing.T) {
@@ -514,8 +559,30 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
-		require.Contains(t, string(req.RawRequest.Body()), "----FiberFormBoundary")
+		require.Contains(t, string(req.RawRequest.Body()), "--FiberFormBoundary")
 		require.Contains(t, string(req.RawRequest.Body()), "world")
+	})
+
+	t.Run("file body open error", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		missingPath := filepath.Join(t.TempDir(), "missing.txt")
+
+		req := AcquireRequest().AddFile(missingPath)
+
+		err := parserRequestBody(client, req)
+		require.ErrorContains(t, err, "open file error")
+	})
+
+	t.Run("file body missing path and name", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		file := AcquireFile(SetFileReader(io.NopCloser(strings.NewReader("world"))))
+
+		req := AcquireRequest().AddFiles(file)
+
+		err := parserRequestBody(client, req)
+		require.ErrorIs(t, err, ErrFileNoName)
 	})
 
 	t.Run("file and form data", func(t *testing.T) {
@@ -527,7 +594,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
-		require.Contains(t, string(req.RawRequest.Body()), "----FiberFormBoundary")
+		require.Contains(t, string(req.RawRequest.Body()), "--FiberFormBoundary")
 		require.Contains(t, string(req.RawRequest.Body()), "world")
 		require.Contains(t, string(req.RawRequest.Body()), "bar")
 	})
@@ -554,6 +621,18 @@ func Test_Parser_Request_Body(t *testing.T) {
 		err := parserRequestBody(client, req)
 		require.ErrorIs(t, err, ErrBodyType)
 	})
+
+	t.Run("unsupported body type", func(t *testing.T) {
+		t.Parallel()
+
+		client := New()
+		req := AcquireRequest()
+
+		req.bodyType = 999 // some invalid type
+
+		err := parserRequestBody(client, req)
+		require.ErrorIs(t, err, ErrBodyTypeNotSupported)
+	})
 }
 
 type dummyLogger struct {
@@ -577,7 +656,7 @@ func (*dummyLogger) Panic(_ ...any) {}
 func (*dummyLogger) Tracef(_ string, _ ...any) {}
 
 func (l *dummyLogger) Debugf(format string, v ...any) {
-	_, _ = l.buf.WriteString(fmt.Sprintf(format, v...)) //nolint:errcheck // not needed
+	fmt.Fprintf(l.buf, format, v...)
 }
 
 func (*dummyLogger) Infof(_ string, _ ...any) {}
@@ -675,4 +754,71 @@ func Test_Client_Logger_DisableDebug(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Empty(t, buf.String())
+}
+
+func Benchmark_Parser_Request_Body_File(b *testing.B) {
+	b.Helper()
+
+	const (
+		fileCount = 3
+		fileSize  = 32 << 10 // 32KB payload per file
+	)
+
+	formValues := map[string]string{
+		"username": "fiber",
+		"api_key":  "d5942ef5",
+	}
+
+	fileContents := make([][]byte, fileCount)
+	for i := range fileContents {
+		fileContents[i] = bytes.Repeat([]byte{byte('a' + i)}, fileSize)
+	}
+
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		var totalBytes int64
+		for _, c := range fileContents {
+			totalBytes += int64(len(c))
+		}
+		b.SetBytes(totalBytes)
+		req := newBenchmarkRequest(formValues, fileContents)
+		if err := parserRequestBodyFile(req); err != nil {
+			b.Fatalf("parserRequestBodyFile: %v", err)
+		}
+		releaseBenchmarkRequest(req)
+	}
+}
+
+func newBenchmarkRequest(formValues map[string]string, fileContents [][]byte) *Request {
+	req := &Request{
+		boundary:   "FiberBenchmarkBoundary",
+		formData:   FormData{Args: fasthttp.AcquireArgs()},
+		RawRequest: fasthttp.AcquireRequest(),
+		files:      make([]*File, len(fileContents)),
+	}
+
+	req.RawRequest.Header.SetContentType("multipart/form-data; boundary=" + req.boundary)
+
+	for key, value := range formValues {
+		req.formData.Set(key, value)
+	}
+
+	for i, content := range fileContents {
+		req.files[i] = AcquireFile(
+			SetFileName(fmt.Sprintf("file-%d.bin", i)),
+			SetFileFieldName(fmt.Sprintf("file%d", i)),
+			SetFileReader(io.NopCloser(bytes.NewReader(content))),
+		)
+	}
+
+	return req
+}
+
+func releaseBenchmarkRequest(req *Request) {
+	fasthttp.ReleaseRequest(req.RawRequest)
+	fasthttp.ReleaseArgs(req.formData.Args)
+	for _, f := range req.files {
+		ReleaseFile(f)
+	}
 }

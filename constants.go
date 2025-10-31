@@ -16,19 +16,19 @@ const (
 
 // MIME types that are commonly used
 const (
-	MIMETextXML         = "text/xml"
-	MIMETextHTML        = "text/html"
-	MIMETextPlain       = "text/plain"
-	MIMETextJavaScript  = "text/javascript"
-	MIMETextCSS         = "text/css"
-	MIMEApplicationXML  = "application/xml"
-	MIMEApplicationJSON = "application/json"
-	MIMEApplicationCBOR = "application/cbor"
-	// Deprecated: use MIMETextJavaScript instead
+	MIMETextXML               = "text/xml"
+	MIMETextHTML              = "text/html"
+	MIMETextPlain             = "text/plain"
+	MIMETextJavaScript        = "text/javascript"
+	MIMETextCSS               = "text/css"
+	MIMEApplicationXML        = "application/xml"
+	MIMEApplicationJSON       = "application/json"
 	MIMEApplicationJavaScript = "application/javascript"
+	MIMEApplicationCBOR       = "application/cbor"
 	MIMEApplicationForm       = "application/x-www-form-urlencoded"
 	MIMEOctetStream           = "application/octet-stream"
 	MIMEMultipartForm         = "multipart/form-data"
+	MIMEApplicationMsgPack    = "application/vnd.msgpack"
 
 	MIMETextXMLCharsetUTF8         = "text/xml; charset=utf-8"
 	MIMETextHTMLCharsetUTF8        = "text/html; charset=utf-8"
@@ -37,8 +37,6 @@ const (
 	MIMETextCSSCharsetUTF8         = "text/css; charset=utf-8"
 	MIMEApplicationXMLCharsetUTF8  = "application/xml; charset=utf-8"
 	MIMEApplicationJSONCharsetUTF8 = "application/json; charset=utf-8"
-	// Deprecated: use MIMETextJavaScriptCharsetUTF8 instead
-	MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
 )
 
 // HTTP status codes were copied from net/http with the following updates:
@@ -293,24 +291,27 @@ const (
 	NetworkTCP  = "tcp"
 	NetworkTCP4 = "tcp4"
 	NetworkTCP6 = "tcp6"
+	NetworkUnix = "unix"
 )
 
 // Compression types
 const (
-	StrGzip    = "gzip"
-	StrBr      = "br"
-	StrDeflate = "deflate"
-	StrBrotli  = "brotli"
-	StrZstd    = "zstd"
+	StrGzip     = "gzip"
+	StrCompress = "compress"
+	StrIdentity = "identity"
+	StrBr       = "br"
+	StrDeflate  = "deflate"
+	StrBrotli   = "brotli"
+	StrZstd     = "zstd"
 )
 
 // Cookie SameSite
 // https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-03#section-4.1.2.7
 const (
 	CookieSameSiteDisabled   = "disabled" // not in RFC, just control "SameSite" attribute will not be set.
-	CookieSameSiteLaxMode    = "lax"
-	CookieSameSiteStrictMode = "strict"
-	CookieSameSiteNoneMode   = "none"
+	CookieSameSiteLaxMode    = "Lax"
+	CookieSameSiteStrictMode = "Strict"
+	CookieSameSiteNoneMode   = "None"
 )
 
 // Route Constraints

@@ -230,9 +230,7 @@ func Test_Logger(t *testing.T) {
 
 	require.Equal(t, underlyingLogger, setLogger.Logger())
 
-	logger, ok := setLogger.Logger().(*log.Logger)
-	require.True(t, ok)
-
+	logger := setLogger.Logger()
 	logger.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmicroseconds)
 	require.Equal(t, log.LstdFlags|log.Lshortfile|log.Lmicroseconds, setLogger.stdlog.Flags())
 }
@@ -372,9 +370,8 @@ func Benchmark_LogfKeyAndValues(b *testing.B) {
 			}
 
 			bb.ReportAllocs()
-			bb.ResetTimer()
 
-			for i := 0; i < bb.N; i++ {
+			for bb.Loop() {
 				l.privateLogw(tt.level, tt.format, tt.keysAndValues)
 			}
 		})

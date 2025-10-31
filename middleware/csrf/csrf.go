@@ -2,25 +2,28 @@ package csrf
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
-	"reflect"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/fiber/v3/extractors"
+	utils "github.com/gofiber/utils/v2"
 )
 
 var (
-	ErrTokenNotFound   = errors.New("csrf token not found")
-	ErrTokenInvalid    = errors.New("csrf token invalid")
-	ErrRefererNotFound = errors.New("referer not supplied")
-	ErrRefererInvalid  = errors.New("referer invalid")
-	ErrRefererNoMatch  = errors.New("referer does not match host and is not a trusted origin")
-	ErrOriginInvalid   = errors.New("origin invalid")
-	ErrOriginNoMatch   = errors.New("origin does not match host and is not a trusted origin")
+	ErrTokenNotFound   = errors.New("csrf: token not found")
+	ErrTokenInvalid    = errors.New("csrf: token invalid")
+	ErrRefererNotFound = errors.New("csrf: referer header missing")
+	ErrRefererInvalid  = errors.New("csrf: referer header invalid")
+	ErrRefererNoMatch  = errors.New("csrf: referer does not match host or trusted origins")
+	ErrOriginInvalid   = errors.New("csrf: origin header invalid")
+	ErrOriginNoMatch   = errors.New("csrf: origin does not match host or trusted origins")
 	errOriginNotFound  = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
-	dummyValue         = []byte{'+'}
+	dummyValue         = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
+
 )
 
 // Handler for CSRF middleware
@@ -45,13 +48,22 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
+	redactKeys := !cfg.DisableValueRedaction
+
+	maskValue := func(value string) string {
+		if redactKeys {
+			return redactedKey
+		}
+		return value
+	}
+
 	// Create manager to simplify storage operations ( see *_manager.go )
 	var sessionManager *sessionManager
 	var storageManager *storageManager
 	if cfg.Session != nil {
 		sessionManager = newSessionManager(cfg.Session)
 	} else {
-		storageManager = newStorageManager(cfg.Storage)
+		storageManager = newStorageManager(cfg.Storage, redactKeys)
 	}
 
 	// Pre-parse trusted origins
@@ -59,19 +71,20 @@ func New(config ...Config) fiber.Handler {
 	trustedSubOrigins := []subdomain{}
 
 	for _, origin := range cfg.TrustedOrigins {
-		if i := strings.Index(origin, "://*."); i != -1 {
-			trimmedOrigin := utils.Trim(origin[:i+3]+origin[i+4:], ' ')
-			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
+		trimmedOrigin := utils.Trim(origin, ' ')
+		if i := strings.Index(trimmedOrigin, "://*."); i != -1 {
+			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
+			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
 			if !isValid {
-				panic("[CSRF] Invalid origin format in configuration:" + origin)
+				panic("[CSRF] Invalid origin format in configuration:" + maskValue(origin))
 			}
-			sd := subdomain{prefix: normalizedOrigin[:i+3], suffix: normalizedOrigin[i+3:]}
+			schemeSep := strings.Index(normalizedOrigin, "://") + len("://")
+			sd := subdomain{prefix: normalizedOrigin[:schemeSep], suffix: normalizedOrigin[schemeSep:]}
 			trustedSubOrigins = append(trustedSubOrigins, sd)
 		} else {
-			trimmedOrigin := utils.Trim(origin, ' ')
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
-				panic("[CSRF] Invalid origin format in configuration:" + origin)
+				panic("[CSRF] Invalid origin format in configuration:" + maskValue(origin))
 			}
 			trustedOrigins = append(trustedOrigins, normalizedOrigin)
 		}
@@ -102,7 +115,10 @@ func New(config ...Config) fiber.Handler {
 			cookieToken := c.Cookies(cfg.CookieName)
 
 			if cookieToken != "" {
-				raw := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
+				raw, err := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
+				if err != nil {
+					return cfg.ErrorHandler(c, err)
+				}
 
 				if raw != nil {
 					token = cookieToken // Token is valid, safe to set it
@@ -129,9 +145,13 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, err)
 			}
 
-			// Extract token from client request i.e. header, query, param, form or cookie
-			extractedToken, err := cfg.Extractor(c)
+			// Extract token from client request i.e. header, query, param, form
+			extractedToken, err := cfg.Extractor.Extract(c)
 			if err != nil {
+				if errors.Is(err, extractors.ErrNotFound) {
+					return cfg.ErrorHandler(c, ErrTokenNotFound)
+				}
+				// If there's an error during extraction (other than not found), handle it.
 				return cfg.ErrorHandler(c, err)
 			}
 
@@ -139,14 +159,18 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, ErrTokenNotFound)
 			}
 
-			// If not using FromCookie extractor, check that the token matches the cookie
-			// This is to prevent CSRF attacks by using a Double Submit Cookie method
-			// Useful when we do not have access to the users Session
-			if !isFromCookie(cfg.Extractor) && !compareStrings(extractedToken, c.Cookies(cfg.CookieName)) {
+			// Double Submit Cookie validation: ensure the extracted token matches the cookie value
+			// This prevents CSRF attacks by requiring attackers to know both the cookie AND submit
+			// the same token through a different channel (header, form, etc.)
+			// WARNING: If using a custom extractor that reads from the same cookie, this provides no protection
+			if !compareStrings(extractedToken, c.Cookies(cfg.CookieName)) {
 				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
 
-			raw := getRawFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+			raw, err := getRawFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+			if err != nil {
+				return cfg.ErrorHandler(c, err)
+			}
 
 			if raw == nil {
 				// If token is not in storage, expire the cookie
@@ -156,7 +180,9 @@ func New(config ...Config) fiber.Handler {
 			}
 			if cfg.SingleUseToken {
 				// If token is single use, delete it from storage
-				deleteTokenFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+				if err := deleteTokenFromStorage(c, extractedToken, cfg, sessionManager, storageManager); err != nil {
+					return cfg.ErrorHandler(c, err)
+				}
 			} else {
 				token = extractedToken // Token is valid, safe to set it
 			}
@@ -169,7 +195,9 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Create or extend the token in the storage
-		createOrExtendTokenInStorage(c, token, cfg, sessionManager, storageManager)
+		if err := createOrExtendTokenInStorage(c, token, cfg, sessionManager, storageManager); err != nil {
+			return cfg.ErrorHandler(c, err)
+		}
 
 		// Update the CSRF cookie
 		updateCSRFCookie(c, cfg, token)
@@ -207,28 +235,38 @@ func HandlerFromContext(c fiber.Ctx) *Handler {
 
 // getRawFromStorage returns the raw value from the storage for the given token
 // returns nil if the token does not exist, is expired or is invalid
-func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) []byte {
+func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) ([]byte, error) {
 	if cfg.Session != nil {
-		return sessionManager.getRaw(c, token, dummyValue)
+		return sessionManager.getRaw(c, token, dummyValue), nil
 	}
-	return storageManager.getRaw(token)
+	raw, err := storageManager.getRaw(c, token)
+	if err != nil {
+		return nil, fmt.Errorf("csrf: failed to fetch token from storage: %w", err)
+	}
+	return raw, nil
 }
 
 // createOrExtendTokenInStorage creates or extends the token in the storage
-func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) {
+func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) error {
 	if cfg.Session != nil {
 		sessionManager.setRaw(c, token, dummyValue, cfg.IdleTimeout)
-	} else {
-		storageManager.setRaw(token, dummyValue, cfg.IdleTimeout)
+		return nil
 	}
+	if err := storageManager.setRaw(c, token, dummyValue, cfg.IdleTimeout); err != nil {
+		return fmt.Errorf("csrf: failed to store token in storage: %w", err)
+	}
+	return nil
 }
 
-func deleteTokenFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) {
+func deleteTokenFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) error {
 	if cfg.Session != nil {
 		sessionManager.delRaw(c)
-	} else {
-		storageManager.delRaw(token)
+		return nil
 	}
+	if err := storageManager.delRaw(c, token); err != nil {
+		return fmt.Errorf("csrf: failed to delete token from storage: %w", err)
+	}
+	return nil
 }
 
 // Update CSRF cookie
@@ -267,15 +305,12 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 		return handler.config.ErrorHandler(c, ErrTokenNotFound)
 	}
 	// Remove the token from storage
-	deleteTokenFromStorage(c, cookieToken, handler.config, handler.sessionManager, handler.storageManager)
+	if err := deleteTokenFromStorage(c, cookieToken, handler.config, handler.sessionManager, handler.storageManager); err != nil {
+		return handler.config.ErrorHandler(c, err)
+	}
 	// Expire the cookie
 	expireCSRFCookie(c, handler.config)
 	return nil
-}
-
-// isFromCookie checks if the extractor is set to ExtractFromCookie
-func isFromCookie(extractor any) bool {
-	return reflect.ValueOf(extractor).Pointer() == reflect.ValueOf(FromCookie).Pointer()
 }
 
 // originMatchesHost checks that the origin header matches the host header
@@ -296,10 +331,8 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 		return nil
 	}
 
-	for _, trustedOrigin := range trustedOrigins {
-		if origin == trustedOrigin {
-			return nil
-		}
+	if slices.Contains(trustedOrigins, origin) {
+		return nil
 	}
 
 	for _, trustedSubOrigin := range trustedSubOrigins {
@@ -331,10 +364,8 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins 
 
 	referer = refererURL.String()
 
-	for _, trustedOrigin := range trustedOrigins {
-		if referer == trustedOrigin {
-			return nil
-		}
+	if slices.Contains(trustedOrigins, referer) {
+		return nil
 	}
 
 	for _, trustedSubOrigin := range trustedSubOrigins {

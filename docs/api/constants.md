@@ -1,11 +1,11 @@
 ---
 id: constants
 title: 📋 Constants
-description: Some constants for Fiber.
-sidebar_position: 8
+description: Core HTTP constants used throughout Fiber.
+sidebar_position: 10
 ---
 
-### HTTP methods were copied from net/http
+### HTTP methods (mirrors `net/http`)
 
 ```go
 const (
@@ -22,7 +22,7 @@ const (
 )
 ```
 
-### MIME types that are commonly used
+### Common MIME types
 
 ```go
 const (
@@ -34,7 +34,6 @@ const (
     MIMEApplicationXML                   = "application/xml"
     MIMEApplicationJSON                  = "application/json"
     MIMEApplicationCBOR                  = "application/cbor"
-    MIMEApplicationJavaScript            = "application/javascript"
     MIMEApplicationForm                  = "application/x-www-form-urlencoded"
     MIMEOctetStream                      = "application/octet-stream"
     MIMEMultipartForm                    = "multipart/form-data"
@@ -46,11 +45,10 @@ const (
     MIMETextCSSCharsetUTF8               = "text/css; charset=utf-8"
     MIMEApplicationXMLCharsetUTF8        = "application/xml; charset=utf-8"
     MIMEApplicationJSONCharsetUTF8       = "application/json; charset=utf-8"
-    MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
 )
 ```
 
-### HTTP status codes were copied from net/http
+### HTTP status codes (mirrors `net/http`)
 
 ```go
 const (

@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -28,10 +28,10 @@ import (
 
 // Figlet text to show Fiber ASCII art on startup message
 var figletFiberText = `
-    _______ __             
+    _______ __
    / ____(_) /_  ___  _____
   / /_  / / __ \/ _ \/ ___/
- / __/ / / /_/ /  __/ /    
+ / __/ / / /_/ /  __/ /
 /_/   /_/_.___/\___/_/          %s`
 
 const (
@@ -60,53 +60,47 @@ type ListenConfig struct {
 	// Default: nil
 	BeforeServeFunc func(app *App) error `json:"before_serve_func"`
 
-	// OnShutdownError allows to customize error behavior when to graceful shutdown server by given signal.
-	//
-	// Print error with log.Fatalf() by default.
-	// Default: nil
-	OnShutdownError func(err error)
-
-	// OnShutdownSuccess allows to customize success behavior when to graceful shutdown server by given signal.
-	//
-	// Default: nil
-	OnShutdownSuccess func()
-
 	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
 	// Enables integration with Let's Encrypt or other ACME-compatible providers.
 	//
 	// Default: nil
 	AutoCertManager *autocert.Manager `json:"auto_cert_manager"`
 
-	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
+	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), "unix" (Unix Domain Sockets)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 	//
 	// Default: NetworkTCP4
 	ListenerNetwork string `json:"listener_network"`
 
-	// CertFile is a path of certficate file.
+	// CertFile is a path of certificate file.
 	// If you want to use TLS, you have to enter this field.
 	//
 	// Default : ""
 	CertFile string `json:"cert_file"`
 
-	// KeyFile is a path of certficate's private key.
+	// KeyFile is a path of certificate's private key.
 	// If you want to use TLS, you have to enter this field.
 	//
 	// Default : ""
 	CertKeyFile string `json:"cert_key_file"`
 
-	// CertClientFile is a path of client certficate.
+	// CertClientFile is a path of client certificate.
 	// If you want to use mTLS, you have to enter this field.
 	//
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
 
 	// When the graceful shutdown begins, use this field to set the timeout
-	// duration. If the timeout is reached, OnShutdownError will be called.
+	// duration. If the timeout is reached, OnPostShutdown will be called with the error.
 	// Set to 0 to disable the timeout and wait indefinitely.
 	//
 	// Default: 10 * time.Second
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
+
+	// FileMode to set for Unix Domain Socket (ListenerNetwork must be "unix")
+	//
+	// Default: 0770
+	UnixSocketFileMode os.FileMode `json:"unix_socket_file_mode"`
 
 	// TLSMinVersion allows to set TLS minimum version.
 	//
@@ -134,12 +128,10 @@ type ListenConfig struct {
 func listenConfigDefault(config ...ListenConfig) ListenConfig {
 	if len(config) < 1 {
 		return ListenConfig{
-			TLSMinVersion:   tls.VersionTLS12,
-			ListenerNetwork: NetworkTCP4,
-			OnShutdownError: func(err error) {
-				log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
-			},
-			ShutdownTimeout: 10 * time.Second,
+			TLSMinVersion:      tls.VersionTLS12,
+			ListenerNetwork:    NetworkTCP4,
+			UnixSocketFileMode: 0o770,
+			ShutdownTimeout:    10 * time.Second,
 		}
 	}
 
@@ -148,10 +140,8 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 		cfg.ListenerNetwork = NetworkTCP4
 	}
 
-	if cfg.OnShutdownError == nil {
-		cfg.OnShutdownError = func(err error) {
-			log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
-		}
+	if cfg.UnixSocketFileMode == 0 {
+		cfg.UnixSocketFileMode = 0o770
 	}
 
 	if cfg.TLSMinVersion == 0 {
@@ -298,6 +288,13 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 	var listener net.Listener
 	var err error
 
+	// Remove previously created socket, to make sure it's possible to listen
+	if cfg.ListenerNetwork == NetworkUnix {
+		if err = os.Remove(addr); err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("unexpected error when trying to remove unix socket file %q: %w", addr, err)
+		}
+	}
+
 	if tlsConfig != nil {
 		listener, err = tls.Listen(cfg.ListenerNetwork, addr, tlsConfig)
 	} else {
@@ -308,6 +305,12 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 	if err != nil {
 		// Wrap the error from tls.Listen/net.Listen
 		return nil, fmt.Errorf("failed to listen: %w", err)
+	}
+
+	if cfg.ListenerNetwork == NetworkUnix {
+		if err = os.Chmod(addr, cfg.UnixSocketFileMode); err != nil {
+			return nil, fmt.Errorf("cannot chmod %#o for %q: %w", cfg.UnixSocketFileMode, addr, err)
+		}
 	}
 
 	if cfg.ListenerAddrFunc != nil {
@@ -329,7 +332,7 @@ func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 	}
 }
 
-// prepareListenData create an slice of ListenData
+// prepareListenData creates a slice of ListenData
 func (*App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
 	host, port := parseAddr(addr)
 	if host == "" {
@@ -348,7 +351,7 @@ func (*App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenD
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenConfig) { //nolint: revive // Accepting a bool param named isTLS if fine here
+func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenConfig) { //nolint:revive // Accepting a bool param named isTLS if fine here
 	// ignore child processes
 	if IsChild() {
 		return
@@ -386,72 +389,67 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
-	fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset)) //nolint:errcheck,revive // ignore error
-	fmt.Fprintf(out, strings.Repeat("-", 50)+"\n")                                              //nolint:errcheck,revive,govet // ignore error
+	fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset))
+	fmt.Fprintln(out, strings.Repeat("-", 50))
 
 	if host == "0.0.0.0" {
-		//nolint:errcheck,revive // ignore error
 		fmt.Fprintf(out,
 			"%sINFO%s Server started on: \t%s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)\n",
 			colors.Green, colors.Reset, colors.Blue, scheme, port, colors.Reset, port)
 	} else {
-		//nolint:errcheck,revive // ignore error
 		fmt.Fprintf(out,
 			"%sINFO%s Server started on: \t%s%s%s\n",
 			colors.Green, colors.Reset, colors.Blue, fmt.Sprintf("%s://%s:%s", scheme, host, port), colors.Reset)
 	}
 
 	if app.config.AppName != "" {
-		fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset) //nolint:errcheck,revive // ignore error
+		fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
 	}
 
-	//nolint:errcheck,revive // ignore error
+	app.logServices(app.servicesStartupCtx(), out, colors)
+
 	fmt.Fprintf(out,
 		"%sINFO%s Total handlers count: \t%s%s%s\n",
 		colors.Green, colors.Reset, colors.Blue, strconv.Itoa(int(app.handlersCount)), colors.Reset)
 
 	if isPrefork == "Enabled" {
-		fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, isPrefork, colors.Reset) //nolint:errcheck,revive // ignore error
+		fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, isPrefork, colors.Reset)
 	} else {
-		fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Red, isPrefork, colors.Reset) //nolint:errcheck,revive // ignore error
+		fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Red, isPrefork, colors.Reset)
 	}
 
-	fmt.Fprintf(out, "%sINFO%s PID: \t\t\t%s%v%s\n", colors.Green, colors.Reset, colors.Blue, os.Getpid(), colors.Reset)       //nolint:errcheck,revive // ignore error
-	fmt.Fprintf(out, "%sINFO%s Total process count: \t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, procs, colors.Reset) //nolint:errcheck,revive // ignore error
+	fmt.Fprintf(out, "%sINFO%s PID: \t\t\t%s%v%s\n", colors.Green, colors.Reset, colors.Blue, os.Getpid(), colors.Reset)
+	fmt.Fprintf(out, "%sINFO%s Total process count: \t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, procs, colors.Reset)
 
 	if cfg.EnablePrefork {
 		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
 		pidSlice := make([]string, 0)
-		for _, v := range strings.Split(pids, ",") {
+		for v := range strings.SplitSeq(pids, ",") {
 			if v != "" {
 				pidSlice = append(pidSlice, v)
 			}
 		}
 
-		fmt.Fprintf(out, "%sINFO%s Child PIDs: \t\t%s", colors.Green, colors.Reset, colors.Blue) //nolint:errcheck,revive // ignore error
+		fmt.Fprintf(out, "%sINFO%s Child PIDs: \t\t%s", colors.Green, colors.Reset, colors.Blue)
 		totalPids := len(pidSlice)
 		rowTotalPidCount := 10
 
 		for i := 0; i < totalPids; i += rowTotalPidCount {
 			start := i
-			end := i + rowTotalPidCount
-
-			if end > totalPids {
-				end = totalPids
-			}
+			end := min(i+rowTotalPidCount, totalPids)
 
 			for n, pid := range pidSlice[start:end] {
-				fmt.Fprintf(out, "%s", pid) //nolint:errcheck,revive // ignore error
+				fmt.Fprintf(out, "%s", pid)
 				if n+1 != len(pidSlice[start:end]) {
-					fmt.Fprintf(out, ", ") //nolint:errcheck,revive // ignore error
+					fmt.Fprintf(out, ", ")
 				}
 			}
-			fmt.Fprintf(out, "\n%s", colors.Reset) //nolint:errcheck,revive // ignore error
+			fmt.Fprintf(out, "\n%s", colors.Reset)
 		}
 	}
 
 	// add new Line as spacer
-	fmt.Fprintf(out, "\n%s", colors.Reset) //nolint:errcheck,revive // ignore error
+	fmt.Fprintf(out, "\n%s", colors.Reset)
 }
 
 // printRoutesMessage print all routes with method, path, name and handlers
@@ -493,11 +491,10 @@ func (app *App) printRoutesMessage() {
 		return routes[i].path < routes[j].path
 	})
 
-	fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\t%s\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow, colors.Reset) //nolint:errcheck,revive // ignore error
-	fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\t%s\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow, colors.Reset) //nolint:errcheck,revive // ignore error
+	fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\t%s\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow, colors.Reset)
+	fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\t%s\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow, colors.Reset)
 
 	for _, route := range routes {
-		//nolint:errcheck,revive // ignore error
 		fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s%s\n", colors.Blue, route.method, colors.White, colors.Green, route.path, colors.White, colors.Cyan, route.name, colors.White, colors.Yellow, route.handlers, colors.Reset)
 	}
 
@@ -517,11 +514,9 @@ func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
 	}
 
 	if err != nil {
-		cfg.OnShutdownError(err)
+		app.hooks.executeOnPostShutdownHooks(err)
 		return
 	}
 
-	if success := cfg.OnShutdownSuccess; success != nil {
-		success()
-	}
+	app.hooks.executeOnPostShutdownHooks(nil)
 }

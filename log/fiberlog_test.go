@@ -10,7 +10,7 @@ import (
 
 func Test_DefaultSystemLogger(t *testing.T) {
 	t.Parallel()
-	defaultL := DefaultLogger()
+	defaultL := DefaultLogger[*log.Logger]()
 	require.Equal(t, logger, defaultL)
 }
 
@@ -71,10 +71,9 @@ func Test_Fiberlog_SetLevel(t *testing.T) {
 }
 
 func Benchmark_DefaultSystemLogger(b *testing.B) {
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		_ = DefaultLogger()
+	for b.Loop() {
+		_ = DefaultLogger[*log.Logger]()
 	}
 }
 
@@ -85,8 +84,7 @@ func Benchmark_SetLogger(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		SetLogger(setLog)
 	}
 }
@@ -130,9 +128,8 @@ func Benchmark_Fiberlog_SetLevel(b *testing.B) {
 
 	for _, tc := range testCases {
 		b.ReportAllocs()
-		b.ResetTimer()
 		b.Run(tc.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				SetLevel(tc.level)
 			}
 		})
@@ -144,7 +141,7 @@ func Benchmark_DefaultSystemLogger_Parallel(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = DefaultLogger()
+			_ = DefaultLogger[*log.Logger]()
 		}
 	})
 }

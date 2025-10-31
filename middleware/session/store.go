@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
-	"github.com/gofiber/utils/v2"
 )
 
 // ErrEmptySessionID is an error that occurs when the session ID is empty.
@@ -27,11 +27,12 @@ const (
 	sessionIDContextKey sessionIDKey = iota
 )
 
+// Store manages session data using the configured storage backend.
 type Store struct {
 	Config
 }
 
-// New creates a new session store with the provided configuration.
+// NewStore creates a new session store with the provided configuration.
 //
 // Parameters:
 //   - config: Variadic parameter to override default config.
@@ -41,7 +42,7 @@ type Store struct {
 //
 // Usage:
 //
-//	store := session.New()
+//	store := session.NewStore()
 func NewStore(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)
@@ -127,11 +128,11 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		id = s.getSessionID(c)
 	}
 
-	fresh := ok // Assume the session is fresh if the ID is found in locals
+	fresh := false // Session is not fresh initially; only set to true if we generate a new ID
 
 	// Attempt to fetch session data if an ID is provided
 	if id != "" {
-		rawData, err = s.Storage.Get(id)
+		rawData, err = s.Storage.GetWithContext(c, id)
 		if err != nil {
 			return nil, err
 		}
@@ -184,7 +185,8 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	return sess, nil
 }
 
-// getSessionID returns the session ID from cookies, headers, or query string.
+// getSessionID returns the session ID using the configured extractor.
+// The extractor is provided by the shared extractors package.
 //
 // Parameters:
 //   - c: The Fiber context.
@@ -196,26 +198,12 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 //
 //	id := store.getSessionID(c)
 func (s *Store) getSessionID(c fiber.Ctx) string {
-	id := c.Cookies(s.sessionName)
-	if len(id) > 0 {
-		return utils.CopyString(id)
+	sessionID, err := s.Extractor.Extract(c)
+	if err != nil {
+		// If extraction fails, return empty string to generate a new session
+		return ""
 	}
-
-	if s.source == SourceHeader {
-		id = string(c.Request().Header.Peek(s.sessionName))
-		if len(id) > 0 {
-			return id
-		}
-	}
-
-	if s.source == SourceURLQuery {
-		id = fiber.Query[string](c, s.sessionName)
-		if len(id) > 0 {
-			return utils.CopyString(id)
-		}
-	}
-
-	return ""
+	return sessionID
 }
 
 // Reset deletes all sessions from the storage.
@@ -229,8 +217,8 @@ func (s *Store) getSessionID(c fiber.Ctx) string {
 //	if err != nil {
 //	    // handle error
 //	}
-func (s *Store) Reset() error {
-	return s.Storage.Reset()
+func (s *Store) Reset(ctx context.Context) error {
+	return s.Storage.ResetWithContext(ctx)
 }
 
 // Delete deletes a session by its ID.
@@ -247,11 +235,11 @@ func (s *Store) Reset() error {
 //	if err != nil {
 //	    // handle error
 //	}
-func (s *Store) Delete(id string) error {
+func (s *Store) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return ErrEmptySessionID
 	}
-	return s.Storage.Delete(id)
+	return s.Storage.DeleteWithContext(ctx, id)
 }
 
 // GetByID retrieves a session by its ID from the storage.
@@ -278,7 +266,7 @@ func (s *Store) Delete(id string) error {
 //   - id: The unique identifier of the session.
 //
 // Returns:
-//   - *Session: The session object if found, otherwise nil.
+//   - *Session: The session object if found; otherwise, nil.
 //   - error: An error if the session retrieval fails or if the session ID is empty.
 //
 // Usage:
@@ -287,12 +275,12 @@ func (s *Store) Delete(id string) error {
 //	if err != nil {
 //	    // handle error
 //	}
-func (s *Store) GetByID(id string) (*Session, error) {
+func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	if id == "" {
 		return nil, ErrEmptySessionID
 	}
 
-	rawData, err := s.Storage.Get(id)
+	rawData, err := s.Storage.GetWithContext(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +307,7 @@ func (s *Store) GetByID(id string) (*Session, error) {
 
 	if s.AbsoluteTimeout > 0 {
 		if sess.isAbsExpired() {
-			if err := sess.Destroy(); err != nil {
+			if err := sess.Destroy(); err != nil { //nolint:contextcheck // it is not right
 				sess.Release()
 				log.Errorf("failed to destroy session: %v", err)
 			}

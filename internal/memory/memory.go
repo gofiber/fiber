@@ -6,9 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 )
 
+// Storage stores arbitrary values in memory for use in tests and benchmarks.
 type Storage struct {
 	data map[string]item // data
 	sync.RWMutex
@@ -20,6 +21,7 @@ type item struct {
 	e uint32 // exp
 }
 
+// New constructs an in-memory Storage initialized with a background GC loop.
 func New() *Storage {
 	store := &Storage{
 		data: make(map[string]item),
@@ -29,7 +31,8 @@ func New() *Storage {
 	return store
 }
 
-// Get value by key
+// Get retrieves the value stored under key, returning nil when the entry does
+// not exist or has expired.
 func (s *Storage) Get(key string) any {
 	s.RLock()
 	v, ok := s.data[key]
@@ -40,7 +43,8 @@ func (s *Storage) Get(key string) any {
 	return v.v
 }
 
-// Set key with value
+// Set stores val under key and applies the optional ttl before expiring the
+// entry. A non-positive ttl keeps the item forever.
 func (s *Storage) Set(key string, val any, ttl time.Duration) {
 	var exp uint32
 	if ttl > 0 {
@@ -52,14 +56,14 @@ func (s *Storage) Set(key string, val any, ttl time.Duration) {
 	s.Unlock()
 }
 
-// Delete key by key
+// Delete removes key and its associated value from the storage.
 func (s *Storage) Delete(key string) {
 	s.Lock()
 	delete(s.data, key)
 	s.Unlock()
 }
 
-// Reset all keys
+// Reset clears the storage by dropping every stored key.
 func (s *Storage) Reset() {
 	nd := make(map[string]item)
 	s.Lock()
@@ -82,6 +86,12 @@ func (s *Storage) gc(sleep time.Duration) {
 			}
 		}
 		s.RUnlock()
+
+		if len(expired) == 0 {
+			// avoid locking if nothing to delete
+			continue
+		}
+
 		s.Lock()
 		// Double-checked locking.
 		// We might have replaced the item in the meantime.

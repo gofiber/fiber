@@ -1,11 +1,29 @@
 ---
 id: app
 title: 🚀 App
-description: The app instance conventionally denotes the Fiber application.
+description: The `App` type represents your Fiber application.
 sidebar_position: 2
 ---
 
 import Reference from '@site/src/components/reference';
+
+## Helpers
+
+### GetString
+
+Returns `s` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `s` resides in read-only memory. Otherwise, it returns a detached copy using `strings.Clone`.
+
+```go title="Signature"
+func (app *App) GetString(s string) string
+```
+
+### GetBytes
+
+Returns `b` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `b` resides in read-only memory. Otherwise, it returns a detached copy.
+
+```go title="Signature"
+func (app *App) GetBytes(b []byte) []byte
+```
 
 ## Routing
 
@@ -17,7 +35,7 @@ import RoutingHandler from './../partials/routing/handler.md';
 
 ### Mounting
 
-You can mount a Fiber instance using the [`app.Use`](./app.md#use) method, similar to [`Express`](https://expressjs.com/en/api.html#router.use).
+Mount another Fiber instance with [`app.Use`](./app.md#use), similar to Express's [`router.use`](https://expressjs.com/en/api.html#router.use).
 
 ```go title="Example"
 package main
@@ -31,14 +49,14 @@ import (
 func main() {
     app := fiber.New()
     micro := fiber.New()
-    
+
     // Mount the micro app on the "/john" route
     app.Use("/john", micro) // GET /john/doe -> 200 OK
-    
+
     micro.Get("/doe", func(c fiber.Ctx) error {
         return c.SendStatus(fiber.StatusOK)
     })
-    
+
     log.Fatal(app.Listen(":3000"))
 }
 ```
@@ -69,7 +87,7 @@ func main() {
     two.Use("/three", three)
     one.Use("/two", two)
     app.Use("/one", one)
-    
+
     fmt.Println("Mount paths:")
     fmt.Println("one.MountPath():", one.MountPath())       // "/one"
     fmt.Println("two.MountPath():", two.MountPath())       // "/one/two"
@@ -87,7 +105,7 @@ Mounting order is important for `MountPath`. To get mount paths properly, you sh
 You can group routes by creating a `*Group` struct.
 
 ```go title="Signature"
-func (app *App) Group(prefix string, handlers ...Handler) Router
+func (app *App) Group(prefix string, handlers ...any) Router
 ```
 
 ```go title="Example"
@@ -120,14 +138,14 @@ func handler(c fiber.Ctx) error {
 }
 ```
 
-### Route
+### RouteChain
 
 Returns an instance of a single route, which you can then use to handle HTTP verbs with optional middleware.
 
-Similar to [`Express`](https://expressjs.com/de/api.html#app.route).
+Similar to [`Express`](https://expressjs.com/en/api.html#app.route).
 
 ```go title="Signature"
-func (app *App) Route(path string) Register
+func (app *App) RouteChain(path string) Register
 ```
 
 <details>
@@ -135,20 +153,20 @@ func (app *App) Route(path string) Register
 
 ```go
 type Register interface {
-    All(handler Handler, middleware ...Handler) Register
-    Get(handler Handler, middleware ...Handler) Register
-    Head(handler Handler, middleware ...Handler) Register
-    Post(handler Handler, middleware ...Handler) Register
-    Put(handler Handler, middleware ...Handler) Register
-    Delete(handler Handler, middleware ...Handler) Register
-    Connect(handler Handler, middleware ...Handler) Register
-    Options(handler Handler, middleware ...Handler) Register
-    Trace(handler Handler, middleware ...Handler) Register
-    Patch(handler Handler, middleware ...Handler) Register
+    All(handler any, handlers ...any) Register
+    Get(handler any, handlers ...any) Register
+    Head(handler any, handlers ...any) Register
+    Post(handler any, handlers ...any) Register
+    Put(handler any, handlers ...any) Register
+    Delete(handler any, handlers ...any) Register
+    Connect(handler any, handlers ...any) Register
+    Options(handler any, handlers ...any) Register
+    Trace(handler any, handlers ...any) Register
+    Patch(handler any, handlers ...any) Register
 
-    Add(methods []string, handler Handler, middleware ...Handler) Register
+    Add(methods []string, handler any, handlers ...any) Register
 
-    Route(path string) Register
+    RouteChain(path string) Register
 }
 ```
 
@@ -166,12 +184,12 @@ import (
 func main() {
     app := fiber.New()
 
-    // Use `Route` as a chainable route declaration method
-    app.Route("/test").Get(func(c fiber.Ctx) error {
+    // Use `RouteChain` as a chainable route declaration method
+    app.RouteChain("/test").Get(func(c fiber.Ctx) error {
         return c.SendString("GET /test")
     })
 
-    app.Route("/events").All(func(c fiber.Ctx) error {
+    app.RouteChain("/events").All(func(c fiber.Ctx) error {
         // Runs for all HTTP verbs first
         // Think of it as route-specific middleware!
     }).
@@ -184,12 +202,12 @@ func main() {
     })
 
     // Combine multiple routes
-    app.Route("/v2").Route("/user").Get(func(c fiber.Ctx) error {
-        return c.SendString("GET /v2/user")
+    app.RouteChain("/reports").RouteChain("/daily").Get(func(c fiber.Ctx) error {
+        return c.SendString("GET /reports/daily")
     })
 
     // Use multiple methods
-    app.Route("/api").Get(func(c fiber.Ctx) error {
+    app.RouteChain("/api").Get(func(c fiber.Ctx) error {
         return c.SendString("GET /api")
     }).Post(func(c fiber.Ctx) error {
         return c.SendString("POST /api")
@@ -199,9 +217,24 @@ func main() {
 }
 ```
 
+### Route
+
+Defines routes with a common prefix inside the supplied function. Internally it uses [`Group`](#group) to create a sub-router and accepts an optional name prefix.
+
+```go title="Signature"
+func (app *App) Route(prefix string, fn func(router Router), name ...string) Router
+```
+
+```go title="Example"
+app.Route("/test", func(api fiber.Router) {
+    api.Get("/foo", handler).Name("foo") // /test/foo (name: test.foo)
+    api.Get("/bar", handler).Name("bar") // /test/bar (name: test.bar)
+}, "test.")
+```
+
 ### HandlersCount
 
-This method returns the number of registered handlers.
+Returns the number of registered handlers.
 
 ```go title="Signature"
 func (app *App) HandlersCount() uint32
@@ -209,7 +242,7 @@ func (app *App) HandlersCount() uint32
 
 ### Stack
 
-This method returns the original router stack.
+Returns the underlying router stack.
 
 ```go title="Signature"
 func (app *App) Stack() [][]*Route
@@ -411,7 +444,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/", handler).Name("index")
-    
+
     route := app.GetRoute("index")
 
     data, _ := json.MarshalIndent(route, "", "  ")
@@ -512,19 +545,20 @@ func (app *App) Handler() fasthttp.RequestHandler
 func (app *App) ErrorHandler(ctx Ctx, err error) error
 ```
 
-## NewCtxFunc
+## NewWithCustomCtx
 
-`NewCtxFunc` allows you to customize the `ctx` struct as needed.
+`NewWithCustomCtx` creates a new `*App` and sets the custom context factory
+function at construction time.
 
 ```go title="Signature"
-func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
+func NewWithCustomCtx(fn func(app *App) CustomCtx, config ...Config) *App
 ```
 
 ```go title="Example"
 package main
 
 import (
-    "fmt"
+    "log"
 
     "github.com/gofiber/fiber/v3"
 )
@@ -533,22 +567,18 @@ type CustomCtx struct {
     fiber.DefaultCtx
 }
 
-// Custom method
 func (c *CustomCtx) Params(key string, defaultValue ...string) string {
     return "prefix_" + c.DefaultCtx.Params(key)
 }
 
 func main() {
-    app := fiber.New()
-
-    app.NewCtxFunc(func(app *fiber.App) fiber.CustomCtx {
+    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
         return &CustomCtx{
             DefaultCtx: *fiber.NewDefaultCtx(app),
         }
     })
 
     app.Get("/:id", func(c fiber.Ctx) error {
-        // Use custom method - output: prefix_123
         return c.SendString(c.Params("id"))
     })
 
@@ -662,7 +692,7 @@ import (
 
 func main() {
     app := fiber.New()
-    
+
     // Create route with GET method for test:
     app.Get("/", func(c fiber.Ctx) error {
         fmt.Println(c.BaseURL())              // => http://google.com
@@ -761,3 +791,69 @@ func main() {
 ```
 
 In this example, a new route is defined and then `RebuildTree()` is called to ensure the new route is registered and available.
+
+## RemoveRoute
+
+This method removes a route by path. You must call the `RebuildTree()` method after the removal to finalize the update and rebuild the routing tree.
+If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
+
+```go title="Signature"
+func (app *App) RemoveRoute(path string, methods ...string)
+```
+
+```go title="Example"
+package main
+
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    app.Get("/api/feature-a", func(c fiber.Ctx) error {
+           app.RemoveRoute("/api/feature", fiber.MethodGet)
+           app.RebuildTree()
+           // Redefine route
+           app.Get("/api/feature", func(c fiber.Ctx) error {
+                   return c.SendString("Testing feature-a")
+           })
+
+           app.RebuildTree()
+           return c.SendStatus(fiber.StatusOK)
+    })
+    app.Get("/api/feature-b", func(c fiber.Ctx) error {
+           app.RemoveRoute("/api/feature", fiber.MethodGet)
+           app.RebuildTree()
+           // Redefine route
+           app.Get("/api/feature", func(c fiber.Ctx) error {
+                   return c.SendString("Testing feature-b")
+           })
+
+           app.RebuildTree()
+           return c.SendStatus(fiber.StatusOK)
+    })
+
+    log.Fatal(app.Listen(":3000"))
+}
+```
+
+## RemoveRouteByName
+
+This method removes a route by name.
+If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
+
+```go title="Signature"
+func (app *App) RemoveRouteByName(name string, methods ...string)
+```
+
+## RemoveRouteFunc
+
+This method removes a route by function having `*Route` parameter.
+If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
+
+```go title="Signature"
+func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string)
+```

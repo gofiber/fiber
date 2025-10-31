@@ -4,16 +4,16 @@ id: encryptcookie
 
 # Encrypt Cookie
 
-Encrypt Cookie is a middleware for [Fiber](https://github.com/gofiber/fiber) that secures your cookie values through encryption.
+The Encrypt Cookie middleware for [Fiber](https://github.com/gofiber/fiber) encrypts cookie values for secure storage.
 
 :::note
-This middleware encrypts cookie values and not the cookie names.
+This middleware encrypts cookie values but not cookie names.
 :::
 
 ## Signatures
 
 ```go
-// Intitializes the middleware
+// Initializes the middleware
 func New(config ...Config) fiber.Handler
 
 // GenerateKey returns a random string of 16, 24, or 32 bytes.
@@ -24,7 +24,7 @@ func GenerateKey(length int) string
 
 ## Examples
 
-To use the Encrypt Cookie middleware, first, import the middleware package as part of the Fiber web framework:
+Import the middleware package:
 
 ```go
 import (
@@ -33,12 +33,12 @@ import (
 )
 ```
 
-Once you've imported the middleware package, you can use it inside your Fiber app:
+Once your Fiber app is initialized, register the middleware:
 
 ```go
 // Provide a minimal configuration
 app.Use(encryptcookie.New(encryptcookie.Config{
-    Key: "secret-thirty-2-character-string",
+    Key: "secret-32-character-string",
 }))
 
 // Retrieve the encrypted cookie value
@@ -57,19 +57,26 @@ app.Post("/", func(c fiber.Ctx) error {
 ```
 
 :::note
-The `Key` parameter requires an encoded string of 16, 24, or 32 bytes for encryption, corresponding to AES-128, AES-192, and AES-256-GCM standards, respectively. Ensure the key is randomly generated and securely stored.
-To generate a 32 char key, use `openssl rand -base64 32` or `encryptcookie.GenerateKey(32)`. Avoid dynamically generating a new `Key` with `encryptcookie.GenerateKey(32)` at each application startup to prevent rendering previously encrypted data inaccessible.
+Use an encoded key of 16, 24, or 32 bytes to select AES‑128, AES‑192, or AES‑256‑GCM. Generate a stable key with `openssl rand -base64 32` or `encryptcookie.GenerateKey(32)` and store it securely. Generating a new key on each startup renders existing cookies unreadable.
 :::
 
 ## Config
 
 | Property  | Type                                                | Description                                                                                           | Default                      |
 |:----------|:----------------------------------------------------|:------------------------------------------------------------------------------------------------------|:-----------------------------|
-| Next      | `func(fiber.Ctx) bool`                             | A function to skip this middleware when returned true.                                                | `nil`                        |
+| Next      | `func(fiber.Ctx) bool`                             | A function to skip this middleware when it returns true.                                                | `nil`                        |
 | Except    | `[]string`                                          | Array of cookie keys that should not be encrypted.                                                    | `[]`                         |
-| Key       | `string`                                            | A base64-encoded unique key to encode & decode cookies. Required. Key length should be 32 characters. | (No default, required field) |
-| Encryptor | `func(decryptedString, key string) (string, error)` | A custom function to encrypt cookies.                                                                 | `EncryptCookie`              |
-| Decryptor | `func(encryptedString, key string) (string, error)` | A custom function to decrypt cookies.                                                                 | `DecryptCookie`              |
+| Key       | `string`                                            | A base64-encoded unique key to encode & decode cookies. Required. Key length should be 16, 24, or 32 bytes. | (No default, required field) |
+| Encryptor | `func(name, decryptedString, key string) (string, error)` | A custom function to encrypt cookies.                                                                 | `EncryptCookie`              |
+| Decryptor | `func(name, encryptedString, key string) (string, error)` | A custom function to decrypt cookies.                                                                 | `DecryptCookie`              |
+
+### Encryptor and Decryptor parameters
+
+Custom encryptor and decryptor functions receive three arguments:
+
+- `name`: The cookie name. The default helpers bind this value as additional authenticated data (AAD) so encrypted values can only be decrypted for the same cookie.
+- `string`: The cookie payload. `EncryptCookie` accepts the decrypted value and returns ciphertext, while `DecryptCookie` receives ciphertext and must return the decrypted value.
+- `key`: The base64-encoded key pulled from the middleware configuration. Use it to derive or validate any encryption keys your implementation requires.
 
 ## Default Config
 
@@ -83,11 +90,11 @@ var ConfigDefault = Config{
 }
 ```
 
-## Usage With Other Middlewares That Reads Or Modify Cookies
+## Use with Other Middleware That Reads or Modifies Cookies
 
-Place the `encryptcookie` middleware before any other middleware that reads or modifies cookies. For example, if you are using the CSRF middleware, ensure that the `encryptcookie` middleware is placed before it. Failure to do so may prevent the CSRF middleware from reading the encrypted cookie.
+Place `encryptcookie` before middleware that reads or writes cookies. If you use the CSRF middleware, register `encryptcookie` first so it can read the token.
 
-You may also choose to exclude certain cookies from encryption. For instance, if you are using the `CSRF` middleware with a frontend framework like Angular, and the framework reads the token from a cookie, you should exclude that cookie from encryption. This can be achieved by adding the cookie name to the Except array in the configuration:
+Exclude cookies from encryption by listing them in `Except`. If a frontend framework such as Angular reads the CSRF token from a cookie, add that name to the `Except` array:
 
 ```go
 app.Use(encryptcookie.New(encryptcookie.Config{
@@ -95,7 +102,7 @@ app.Use(encryptcookie.New(encryptcookie.Config{
     Except: []string{csrf.ConfigDefault.CookieName}, // exclude CSRF cookie
 }))
 app.Use(csrf.New(csrf.Config{
-    KeyLookup:      "header:" + csrf.HeaderName,
+    Extractor:      csrf.FromHeader(csrf.HeaderName),
     CookieSameSite: "Lax",
     CookieSecure:   true,
     CookieHTTPOnly: false,

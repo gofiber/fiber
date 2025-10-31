@@ -6,7 +6,7 @@ description: >-
 sidebar_position: 2
 ---
 
-The `Request` structure in Gofiber's HTTP client represents an HTTP request. It encapsulates all the necessary information needed to send a request to a server, including:
+The `Request` struct in Fiber's HTTP client represents an HTTP request. It encapsulates the data required to send a request, including:
 
 - **URL**: The endpoint to which the request is sent.
 - **Method**: The HTTP method (GET, POST, PUT, DELETE, etc.).
@@ -111,7 +111,7 @@ func (r *Request) Custom(url, method string) (*Response, error)
 
 ## AcquireRequest
 
-**AcquireRequest** returns a new (pooled) `Request` object. When you are done with the request, call `ReleaseRequest` to return it to the pool and reduce GC load.
+**AcquireRequest** returns a new pooled `Request`. Call `ReleaseRequest` when you're finished to return it to the pool and limit allocations.
 
 ```go title="Signature"
 func AcquireRequest() *Request
@@ -119,7 +119,7 @@ func AcquireRequest() *Request
 
 ## ReleaseRequest
 
-**ReleaseRequest** returns the `Request` object back to the pool. Do not use the request after releasing it, as this may cause data races.
+**ReleaseRequest** returns the `Request` to the pool. Do not use it after releasing; doing so may cause data races.
 
 ```go title="Signature"
 func ReleaseRequest(req *Request)
@@ -400,7 +400,7 @@ fmt.Println(string(resp.Body()))
     "football", 
     "basketball"
   ], 
-  "name": "efectn"
+  "name": "joe"
 }
 ```
 
@@ -1205,12 +1205,13 @@ func (c Cookie) SetCookiesWithStruct(v any)
 func (c Cookie) DelCookies(key ...string)
 ```
 
-### VisitAll
+### All
 
-**VisitAll** iterates over all cookies and executes a given function.
+**All** returns an iterator over all cookies. The key and value returned
+should not be retained after the loop ends.
 
 ```go title="Signature"
-func (c Cookie) VisitAll(f func(key, val string))
+func (c Cookie) All() iter.Seq2[string, string]
 ```
 
 ### Reset
@@ -1277,12 +1278,13 @@ func (p PathParam) SetParamsWithStruct(v any)
 func (p PathParam) DelParams(key ...string)
 ```
 
-### VisitAll
+### All
 
-**VisitAll** iterates over all path parameters and executes the provided function.
+**All** returns an iterator over all path parameters. The key and value returned
+should not be retained after the loop ends.
 
 ```go title="Signature"
-func (p PathParam) VisitAll(f func(key, val string))
+func (p PathParam) All() iter.Seq2[string, string]
 ```
 
 ### Reset

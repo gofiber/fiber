@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_Default(t *testing.T) {
@@ -22,9 +23,9 @@ func Test_Default(t *testing.T) {
 	require.Equal(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
 	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
 	require.Equal(t, "SAMEORIGIN", resp.Header.Get(fiber.HeaderXFrameOptions))
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentSecurityPolicy))
 	require.Equal(t, "no-referrer", resp.Header.Get(fiber.HeaderReferrerPolicy))
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderPermissionsPolicy))
+	require.Empty(t, resp.Header.Get(fiber.HeaderPermissionsPolicy))
 	require.Equal(t, "require-corp", resp.Header.Get("Cross-Origin-Embedder-Policy"))
 	require.Equal(t, "same-origin", resp.Header.Get("Cross-Origin-Opener-Policy"))
 	require.Equal(t, "same-origin", resp.Header.Get("Cross-Origin-Resource-Policy"))
@@ -147,7 +148,7 @@ func Test_Next(t *testing.T) {
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", nil))
 	require.NoError(t, err)
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderReferrerPolicy))
+	require.Empty(t, resp.Header.Get(fiber.HeaderReferrerPolicy))
 }
 
 func Test_ContentSecurityPolicy(t *testing.T) {
@@ -181,7 +182,7 @@ func Test_ContentSecurityPolicyReportOnly(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicyReportOnly))
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentSecurityPolicy))
 }
 
 func Test_PermissionsPolicy(t *testing.T) {
@@ -198,4 +199,62 @@ func Test_PermissionsPolicy(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, "microphone=()", resp.Header.Get(fiber.HeaderPermissionsPolicy))
+}
+
+func Test_HSTSHeaders(t *testing.T) {
+	hstsAge := 60
+	app := fiber.New()
+
+	app.Use(New(Config{HSTSMaxAge: hstsAge}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	handler := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetProtocol("https")
+
+	handler(ctx)
+
+	require.Equal(t, "max-age=60; includeSubDomains", string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetProtocol("http")
+
+	handler(ctx)
+
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
+}
+
+func Test_HSTSExcludeSubdomainsAndPreload(t *testing.T) {
+	hstsAge := 31536000
+	app := fiber.New()
+
+	app.Use(New(Config{
+		HSTSMaxAge:            hstsAge,
+		HSTSExcludeSubdomains: true,
+		HSTSPreloadEnabled:    true,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	handler := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetProtocol("https")
+
+	handler(ctx)
+
+	require.Equal(t, "max-age=31536000; preload", string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
 }

@@ -55,6 +55,31 @@ func createProxyTestServerIPv6(t *testing.T, handler fiber.Handler) (*fiber.App,
 	return createProxyTestServer(t, handler, fiber.NetworkTCP6, "[::1]:0")
 }
 
+func createRedirectServer(t *testing.T) string {
+	t.Helper()
+	app := fiber.New()
+
+	var addr string
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Location("http://" + addr + "/final")
+		return c.Status(fiber.StatusMovedPermanently).SendString("redirect")
+	})
+	app.Get("/final", func(c fiber.Ctx) error {
+		return c.SendString("final")
+	})
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		ln.Close() //nolint:errcheck // It is fine to ignore the error here
+	})
+	addr = ln.Addr().String()
+
+	startServer(app, ln)
+
+	return addr
+}
+
 // go test -run Test_Proxy_Empty_Host
 func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
 	t.Parallel()
@@ -152,7 +177,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	// disable certificate verification in Balancer
 	app.Use(Balancer(Config{
 		Servers:   []string{addr},
-		TlsConfig: clientTLSConf,
+		TLSConfig: clientTLSConf,
 	}))
 
 	startServer(app, ln)
@@ -461,7 +486,7 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	})
 
 	app := fiber.New()
-	app.Use(Balancer(Config{Servers: []string{addr}}))
+	app.Use(Balancer(Config{Servers: []string{addr}, KeepConnectionHeader: true}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
@@ -501,42 +526,14 @@ func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 // go test -race -run Test_Proxy_Do_WithRealURL
 func Test_Proxy_Do_WithRealURL(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Get("/test", func(c fiber.Ctx) error {
-		return Do(c, "https://www.google.com")
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("real url")
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
-	require.NoError(t, err1)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "/test", resp.Request.URL.String())
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "https://www.google.com/")
-}
-
-// go test -race -run Test_Proxy_Do_WithRedirect
-func Test_Proxy_Do_WithRedirect(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 	app.Get("/test", func(c fiber.Ctx) error {
-		return Do(c, "https://google.com")
-	})
-
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
-	require.NoError(t, err1)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "https://www.google.com/")
-	require.Equal(t, 301, resp.StatusCode)
-}
-
-// go test -race -run Test_Proxy_DoRedirects_RestoreOriginalURL
-func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Get("/test", func(c fiber.Ctx) error {
-		return DoRedirects(c, "http://google.com", 1)
+		return Do(c, "http://"+addr)
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
@@ -544,8 +541,52 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 		FailOnTimeout: true,
 	})
 	require.NoError(t, err1)
-	_, err := io.ReadAll(resp.Body)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "/test", resp.Request.URL.String())
+	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
+	require.Equal(t, "real url", string(body))
+}
+
+// go test -race -run Test_Proxy_Do_WithRedirect
+func Test_Proxy_Do_WithRedirect(t *testing.T) {
+	t.Parallel()
+
+	addr := createRedirectServer(t)
+	app := fiber.New()
+	app.Get("/test", func(c fiber.Ctx) error {
+		return Do(c, "http://"+addr)
+	})
+
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
+	require.NoError(t, err1)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "redirect", string(body))
+	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
+}
+
+// go test -race -run Test_Proxy_DoRedirects_RestoreOriginalURL
+func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
+	t.Parallel()
+
+	addr := createRedirectServer(t)
+	app := fiber.New()
+	app.Get("/test", func(c fiber.Ctx) error {
+		return DoRedirects(c, "http://"+addr, 1)
+	})
+
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
+	require.NoError(t, err1)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "final", string(body))
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "/test", resp.Request.URL.String())
 }
@@ -553,12 +594,17 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 // go test -race -run Test_Proxy_DoRedirects_TooManyRedirects
 func Test_Proxy_DoRedirects_TooManyRedirects(t *testing.T) {
 	t.Parallel()
+
+	addr := createRedirectServer(t)
 	app := fiber.New()
 	app.Get("/test", func(c fiber.Ctx) error {
-		return DoRedirects(c, "http://google.com", 0)
+		return DoRedirects(c, "http://"+addr, 0)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
 	require.NoError(t, err1)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -830,4 +876,69 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "forwarded", string(b))
+}
+
+func Test_Proxy_Immutable(t *testing.T) {
+	t.Parallel()
+
+	target, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+
+	app := fiber.New(fiber.Config{Immutable: true})
+
+	app.Use(Balancer(Config{Servers: []string{addr}}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = addr
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+}
+
+func Test_Proxy_KeepConnectionHeader(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderConnection, "backend")
+		return c.SendString("ok")
+	})
+
+	app := fiber.New()
+	app.Use(Balancer(Config{Servers: []string{addr}, KeepConnectionHeader: true}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = addr
+	req.Header.Set(fiber.HeaderConnection, "keep-alive")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, "backend", resp.Header.Get(fiber.HeaderConnection))
+}
+
+func Test_Proxy_DropConnectionHeader(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderConnection, "backend")
+		return c.SendString("ok")
+	})
+
+	app := fiber.New()
+	app.Use(Balancer(Config{Servers: []string{addr}}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = addr
+	req.Header.Set(fiber.HeaderConnection, "keep-alive")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Empty(t, resp.Header.Get(fiber.HeaderConnection))
 }

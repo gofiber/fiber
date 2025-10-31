@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/bytebufferpool"
@@ -15,6 +15,12 @@ import (
 
 // default logger for fiber
 func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
+	// Check if Skip is defined and call it.
+	// Now, if Skip(c) == true, we SKIP logging:
+	if cfg.Skip != nil && cfg.Skip(c) {
+		return nil // Skip logging if Skip returns true
+	}
+
 	// Alias colors
 	colors := c.App().Config().ColorScheme
 
@@ -22,23 +28,22 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 	buf := bytebufferpool.Get()
 
 	// Default output when no custom Format or io.Writer is given
-	if cfg.Format == defaultFormat {
+	if cfg.Format == DefaultFormat {
 		// Format error if exist
 		formatErr := ""
 		if cfg.enableColors {
 			if data.ChainErr != nil {
 				formatErr = colors.Red + " | " + data.ChainErr.Error() + colors.Reset
 			}
-			buf.WriteString(
-				fmt.Sprintf("%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
-					data.Timestamp.Load().(string), //nolint:forcetypeassert,errcheck // Timestamp is always a string
-					statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
-					data.Stop.Sub(data.Start),
-					c.IP(),
-					methodColor(c.Method(), colors), c.Method(), colors.Reset,
-					c.Path(),
-					formatErr,
-				),
+			fmt.Fprintf(buf,
+				"%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
+				data.Timestamp.Load().(string), //nolint:forcetypeassert,errcheck // Timestamp is always a string
+				statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
+				data.Stop.Sub(data.Start),
+				c.IP(),
+				methodColor(c.Method(), colors), c.Method(), colors.Reset,
+				c.Path(),
+				formatErr,
 			)
 		} else {
 			if data.ChainErr != nil {
@@ -91,7 +96,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 		}
 
 		// Write buffer to output
-		writeLog(cfg.Output, buf.Bytes())
+		writeLog(cfg.Stream, buf.Bytes())
 
 		if cfg.Done != nil {
 			cfg.Done(c, buf.Bytes())
@@ -125,7 +130,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 		buf.WriteString(err.Error())
 	}
 
-	writeLog(cfg.Output, buf.Bytes())
+	writeLog(cfg.Stream, buf.Bytes())
 
 	if cfg.Done != nil {
 		cfg.Done(c, buf.Bytes())
@@ -141,9 +146,9 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 func beforeHandlerFunc(cfg Config) {
 	// If colors are enabled, check terminal compatibility
 	if cfg.enableColors {
-		cfg.Output = colorable.NewColorableStdout()
-		if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
-			cfg.Output = colorable.NewNonColorable(os.Stdout)
+		cfg.Stream = colorable.NewColorableStdout()
+		if !cfg.ForceColors && (os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd()))) {
+			cfg.Stream = colorable.NewNonColorable(os.Stdout)
 		}
 	}
 }
@@ -158,9 +163,9 @@ func appendInt(output Buffer, v int) (int, error) {
 func writeLog(w io.Writer, msg []byte) {
 	if _, err := w.Write(msg); err != nil {
 		// Write error to output
-		if _, err := w.Write([]byte(err.Error())); err != nil {
+		if _, writeErr := w.Write([]byte(err.Error())); writeErr != nil {
 			// There is something wrong with the given io.Writer
-			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err) //nolint: errcheck // It is fine to ignore the error
+			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", writeErr)
 		}
 	}
 }

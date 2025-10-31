@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 📝 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -58,7 +58,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: []string{"name"},
 	}, rp)
 
-	// heavy test with escaped charaters
+	// heavy test with escaped characters
 	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*")
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
@@ -170,10 +170,71 @@ func Test_RoutePatternMatch(t *testing.T) {
 	}
 }
 
+func TestHasPartialMatchBoundary(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name          string
+		path          string
+		matchedLength int
+		expected      bool
+	}{
+		{
+			name:          "negative length",
+			path:          "/demo",
+			matchedLength: -1,
+			expected:      false,
+		},
+		{
+			name:          "greater than length",
+			path:          "/demo",
+			matchedLength: 6,
+			expected:      false,
+		},
+		{
+			name:          "exact match",
+			path:          "/demo",
+			matchedLength: len("/demo"),
+			expected:      true,
+		},
+		{
+			name:          "zero length",
+			path:          "/demo",
+			matchedLength: 0,
+			expected:      false,
+		},
+		{
+			name:          "previous rune slash",
+			path:          "/demo/child",
+			matchedLength: len("/demo/"),
+			expected:      true,
+		},
+		{
+			name:          "next rune slash",
+			path:          "/demo/child",
+			matchedLength: len("/demo"),
+			expected:      true,
+		},
+		{
+			name:          "no boundary",
+			path:          "/demo/child",
+			matchedLength: len("/dem"),
+			expected:      false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, testCase.expected, hasPartialMatchBoundary(testCase.path, testCase.matchedLength))
+		})
+	}
+}
+
 func Test_Utils_GetTrimmedParam(t *testing.T) {
 	t.Parallel()
 	res := GetTrimmedParam("")
-	require.Equal(t, "", res)
+	require.Empty(t, res)
 	res = GetTrimmedParam("*")
 	require.Equal(t, "*", res)
 	res = GetTrimmedParam(":param")
@@ -196,9 +257,8 @@ func Test_Utils_RemoveEscapeChar(t *testing.T) {
 
 func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 	var res string
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = RemoveEscapeChar(":test\\:bla")
 	}
 
@@ -217,7 +277,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 				state = "not match"
 			}
 			t.Run(testCollection.pattern+" | "+state+" | "+c.url, func(b *testing.B) {
-				for i := 0; i <= b.N; i++ {
+				for b.Loop() {
 					if match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck); match {
 						// Get testCases from the original path
 						matchRes = true
@@ -250,7 +310,7 @@ func Benchmark_RoutePatternMatch(t *testing.B) {
 				state = "not match"
 			}
 			t.Run(testCollection.pattern+" | "+state+" | "+c.url, func(b *testing.B) {
-				for i := 0; i <= b.N; i++ {
+				for b.Loop() {
 					if match := RoutePatternMatch(c.url, testCollection.pattern); match {
 						// Get testCases from the original path
 						matchRes = true

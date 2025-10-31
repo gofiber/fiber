@@ -10,11 +10,13 @@ import (
 	"mime/multipart"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/shamaton/msgpack/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -28,6 +30,21 @@ func Test_returnErr(t *testing.T) {
 
 	err := c.Bind().WithAutoHandling().returnErr(nil)
 	require.NoError(t, err)
+}
+
+// go test -run Test_AcquireReleaseBind -v
+func Test_AcquireReleaseBind(t *testing.T) {
+	b := AcquireBind()
+	b.dontHandleErrs = false
+	b.skipValidation = true
+	b.ctx = &DefaultCtx{}
+	ReleaseBind(b)
+
+	b2 := AcquireBind()
+	require.Nil(t, b2.ctx)
+	require.True(t, b2.dontHandleErrs)
+	require.False(t, b2.skipValidation)
+	ReleaseBind(b2)
 }
 
 // go test -run Test_Bind_Query -v
@@ -55,7 +72,7 @@ func Test_Bind_Query(t *testing.T) {
 	require.NoError(t, c.Bind().Query(q))
 	require.Len(t, q.Hobby, 2)
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=soccer&hobby=basketball,football")
 	q = new(Query)
 	require.NoError(t, c.Bind().Query(q))
 	require.Len(t, q.Hobby, 3)
@@ -131,12 +148,12 @@ func Test_Bind_Query_Map(t *testing.T) {
 	require.NoError(t, c.Bind().Query(&q))
 	require.Len(t, q["hobby"], 2)
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=soccer&hobby=basketball,football")
 	q = make(map[string][]string)
 	require.NoError(t, c.Bind().Query(&q))
 	require.Len(t, q["hobby"], 3)
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=soccer")
 	qq := make(map[string]string)
 	require.NoError(t, c.Bind().Query(&qq))
 	require.Equal(t, "1", qq["id"])
@@ -148,7 +165,7 @@ func Test_Bind_Query_Map(t *testing.T) {
 
 	em := make(map[string][]int)
 	c.Request().URI().SetQueryString("")
-	require.ErrorIs(t, c.Bind().Query(&em), binder.ErrMapNotConvertable)
+	require.ErrorIs(t, c.Bind().Query(&em), binder.ErrMapNotConvertible)
 }
 
 // go test -run Test_Bind_Query_WithSetParserDecoder -v
@@ -200,7 +217,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 		Body:  "Existing Body",
 	}
 	require.NoError(t, c.Bind().Query(q))
-	require.Equal(t, "", q.Title)
+	require.Empty(t, q.Title)
 }
 
 // go test -run Test_Bind_Query_Schema -v
@@ -457,7 +474,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 		Body:  "Existing Body",
 	}
 	require.NoError(t, c.Bind().Header(r))
-	require.Equal(t, "", r.Title)
+	require.Empty(t, r.Title)
 }
 
 // go test -run Test_Bind_Header_Schema -v
@@ -665,8 +682,7 @@ func Benchmark_Bind_Query(b *testing.B) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := new(Query)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(q)
 	}
 
@@ -693,8 +709,7 @@ func Benchmark_Bind_Query_Default(b *testing.B) {
 	c.Request().URI().SetQueryString("")
 	q := new(Query)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		*q = Query{}
 		err = c.Bind().Query(q)
 	}
@@ -717,8 +732,7 @@ func Benchmark_Bind_Query_Map(b *testing.B) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(&q)
 	}
 	require.NoError(b, err)
@@ -746,8 +760,7 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 	cq := new(CollectionQuery)
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(cq)
 	}
 
@@ -773,8 +786,7 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q := new(Query)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(q)
 	}
 	require.NoError(b, err)
@@ -801,8 +813,7 @@ func Benchmark_Bind_Header(b *testing.B) {
 
 	q := new(ReqHeader)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Header(q)
 	}
 	require.NoError(b, err)
@@ -823,8 +834,7 @@ func Benchmark_Bind_Header_Map(b *testing.B) {
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Header(&q)
 	}
 	require.NoError(b, err)
@@ -851,8 +861,7 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 
 	q := new(ReqHeader)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().RespHeader(q)
 	}
 	require.NoError(b, err)
@@ -873,8 +882,7 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().RespHeader(&q)
 	}
 	require.NoError(b, err)
@@ -883,12 +891,17 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 // go test -run Test_Bind_Body_Compression
 func Test_Bind_Body(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		MsgPackEncoder: msgpack.Marshal,
+		MsgPackDecoder: msgpack.Unmarshal,
+		CBOREncoder:    cbor.Marshal,
+		CBORDecoder:    cbor.Unmarshal,
+	})
 	reqBody := []byte(`{"name":"john"}`)
 
 	type Demo struct {
-		Name  string   `json:"name" xml:"name" form:"name" query:"name"`
-		Names []string `json:"names" xml:"names" form:"names" query:"names"`
+		Name  string   `json:"name" xml:"name" form:"name" query:"name" msgpack:"name"`
+		Names []string `json:"names" xml:"names" form:"names" query:"names" msgpack:"names"`
 	}
 
 	// Helper function to test compressed bodies
@@ -944,8 +957,23 @@ func Test_Bind_Body(t *testing.T) {
 		require.Equal(t, "john", d.Name)
 	}
 
+	testErrorParser := func(t *testing.T, contentType string, body []byte) {
+		t.Helper()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.SetContentType(contentType)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentLength(len(body))
+		d := new(Demo)
+		err := c.Bind().Body(d)
+		require.Error(t, err)
+	}
+
 	t.Run("JSON", func(t *testing.T) {
 		testDecodeParser(t, MIMEApplicationJSON, []byte(`{"name":"john"}`))
+	})
+	t.Run("MsgPack", func(t *testing.T) {
+		testDecodeParser(t, MIMEApplicationMsgPack, []byte{0x81, 0xa4, 0x6e, 0x61, 0x6d, 0x65, 0xa4, 0x6a, 0x6f, 0x68, 0x6e})
+		testErrorParser(t, MIMEApplicationMsgPack, []byte{0xFF, 0xFF})
 	})
 	t.Run("CBOR", func(t *testing.T) {
 		enc, err := cbor.Marshal(&Demo{Name: "john"})
@@ -1110,7 +1138,7 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 		require.NoError(t, c.Bind().Body(&d))
 		date := fmt.Sprintf("%v", d.Date)
 		require.Equal(t, "{0 63743587200 <nil>}", date)
-		require.Equal(t, "", d.Title)
+		require.Empty(t, d.Title)
 		require.Equal(t, "New Body", d.Body)
 	}
 
@@ -1128,16 +1156,50 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 	type Demo struct {
 		Name string `json:"name"`
 	}
-	body := []byte(`{"name":"john"}`)
+	body, err := json.Marshal(&Demo{Name: "john"})
+	if err != nil {
+		b.Error(err)
+	}
 	c.Request().SetBody(body)
 	c.Request().Header.SetContentType(MIMEApplicationJSON)
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
+		err = c.Bind().Body(d)
+	}
+	require.NoError(b, err)
+	require.Equal(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_MsgPack -benchmem -count=4
+func Benchmark_Bind_Body_MsgPack(b *testing.B) {
+	var err error
+
+	app := New(
+		Config{
+			MsgPackEncoder: msgpack.Marshal,
+			MsgPackDecoder: msgpack.Unmarshal,
+			CBOREncoder:    cbor.Marshal,
+			CBORDecoder:    cbor.Unmarshal,
+		},
+	)
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Demo struct {
+		Name string `msgpack:"name"`
+	}
+	body := []byte{0x81, 0xa4, 0x6e, 0x61, 0x6d, 0x65, 0xa4, 0x6a, 0x6f, 0x68, 0x6e} // {"name":"john"}
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEApplicationMsgPack)
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1161,9 +1223,8 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1174,7 +1235,10 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 func Benchmark_Bind_Body_CBOR(b *testing.B) {
 	var err error
 
-	app := New()
+	app := New(Config{
+		CBOREncoder: cbor.Marshal,
+		CBORDecoder: cbor.Unmarshal,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Demo struct {
@@ -1190,9 +1254,8 @@ func Benchmark_Bind_Body_CBOR(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1216,9 +1279,8 @@ func Benchmark_Bind_Body_Form(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1248,9 +1310,8 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 
@@ -1291,9 +1352,8 @@ func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 
@@ -1319,9 +1379,8 @@ func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 	d := make(map[string]string)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(&d)
 	}
 	require.NoError(b, err)
@@ -1378,7 +1437,7 @@ func Benchmark_Bind_URI(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.route = &Route{
 		Params: []string{
@@ -1397,9 +1456,8 @@ func Benchmark_Bind_URI(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().URI(&res)
 	}
 
@@ -1415,7 +1473,7 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.route = &Route{
 		Params: []string{
@@ -1429,9 +1487,8 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 	res := make(map[string]string)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().URI(&res)
 	}
 
@@ -1600,7 +1657,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 		Body:  "Existing Body",
 	}
 	require.NoError(t, c.Bind().Cookie(r))
-	require.Equal(t, "", r.Title)
+	require.Empty(t, r.Title)
 }
 
 // go test -run Test_Bind_Cookie_Schema -v
@@ -1710,9 +1767,8 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 
 	q := new(Cookie)
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Cookie(q)
 	}
 	require.NoError(b, err)
@@ -1734,9 +1790,8 @@ func Benchmark_Bind_Cookie_Map(b *testing.B) {
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Cookie(&q)
 	}
 	require.NoError(b, err)
@@ -1814,7 +1869,7 @@ func (*structValidator) Validate(out any) error {
 }
 
 type simpleQuery struct {
-	Name string `query:"name"`
+	Name string `query:"name" json:"name"`
 }
 
 // go test -run Test_Bind_StructValidator
@@ -1834,7 +1889,10 @@ func Test_Bind_StructValidator(t *testing.T) {
 // go test -run Test_Bind_RepeatParserWithSameStruct -v
 func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		CBOREncoder: cbor.Marshal,
+		CBORDecoder: cbor.Unmarshal,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
@@ -1884,4 +1942,289 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	testDecodeParser(MIMEApplicationCBOR, string(cb))
 	testDecodeParser(MIMEApplicationForm, "body_param=body_param")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"body_param\"\r\n\r\nbody_param\r\n--b--")
+}
+
+type RequestConfig struct {
+	Headers     map[string]string
+	Cookies     map[string]string
+	ContentType string
+	Query       string
+	Body        []byte
+}
+
+func (rc *RequestConfig) ApplyTo(ctx Ctx) {
+	if rc.Body != nil {
+		ctx.Request().SetBody(rc.Body)
+		ctx.Request().Header.SetContentLength(len(rc.Body))
+	}
+	if rc.ContentType != "" {
+		ctx.Request().Header.SetContentType(rc.ContentType)
+	}
+	for k, v := range rc.Headers {
+		ctx.Request().Header.Set(k, v)
+	}
+	for k, v := range rc.Cookies {
+		ctx.Request().Header.SetCookie(k, v)
+	}
+	if rc.Query != "" {
+		ctx.Request().URI().SetQueryString(rc.Query)
+	}
+}
+
+// go test -run Test_Bind_All
+func Test_Bind_All(t *testing.T) {
+	t.Parallel()
+	type User struct {
+		Avatar    *multipart.FileHeader `form:"avatar"`
+		Name      string                `query:"name" json:"name" form:"name"`
+		Email     string                `json:"email" form:"email"`
+		Role      string                `header:"X-User-Role"`
+		SessionID string                `json:"session_id" cookie:"session_id"`
+		ID        int                   `uri:"id" query:"id" json:"id" form:"id"`
+	}
+	newBind := func(app *App) *Bind {
+		return &Bind{
+			ctx: app.AcquireCtx(&fasthttp.RequestCtx{}),
+		}
+	}
+
+	defaultConfig := func() *RequestConfig {
+		return &RequestConfig{
+			ContentType: MIMEApplicationJSON,
+			Body:        []byte(`{"name":"john", "email": "john@doe.com", "session_id": "abc1234", "id": 1}`),
+			Headers: map[string]string{
+				"X-User-Role": "admin",
+			},
+			Cookies: map[string]string{
+				"session_id": "abc123",
+			},
+			Query: "id=1&name=john",
+		}
+	}
+
+	tests := []struct {
+		out      any
+		expected *User
+		config   *RequestConfig
+		name     string
+		wantErr  bool
+	}{
+		{
+			name:    "Invalid output type",
+			out:     123,
+			wantErr: true,
+		},
+		{
+			name:   "Successful binding",
+			out:    new(User),
+			config: defaultConfig(),
+			expected: &User{
+				ID:        1,
+				Name:      "john",
+				Email:     "john@doe.com",
+				Role:      "admin",
+				SessionID: "abc1234",
+			},
+		},
+		{
+			name: "Missing fields (partial JSON only)",
+			out:  new(User),
+			config: &RequestConfig{
+				ContentType: MIMEApplicationJSON,
+				Body:        []byte(`{"name":"partial"}`),
+			},
+			expected: &User{
+				Name: "partial",
+			},
+		},
+		{
+			name: "Override query with JSON",
+			out:  new(User),
+			config: &RequestConfig{
+				ContentType: MIMEApplicationJSON,
+				Body:        []byte(`{"name":"fromjson", "id": 99}`),
+				Query:       "id=1&name=queryname",
+			},
+			expected: &User{
+				Name: "fromjson",
+				ID:   99,
+			},
+		},
+		{
+			name: "Form binding",
+			out:  new(User),
+			config: &RequestConfig{
+				ContentType: MIMEApplicationForm,
+				Body:        []byte("id=2&name=formname&email=form@doe.com"),
+			},
+			expected: &User{
+				ID:    2,
+				Name:  "formname",
+				Email: "form@doe.com",
+			},
+		},
+		{
+			name: "Skip body when content-type missing",
+			out:  new(User),
+			config: &RequestConfig{
+				Body:  []byte(`{"name":"bodyname"}`),
+				Query: "name=queryname",
+			},
+			expected: &User{
+				Name: "queryname",
+			},
+		},
+		{
+			name: "Skip empty body despite content-type",
+			out:  new(User),
+			config: &RequestConfig{
+				ContentType: MIMEApplicationJSON,
+				Body:        []byte{},
+				Query:       "name=queryname",
+			},
+			expected: &User{
+				Name: "queryname",
+			},
+		},
+	}
+
+	app := New()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			bind := newBind(app)
+
+			if tt.config != nil {
+				tt.config.ApplyTo(bind.ctx)
+			}
+
+			err := bind.All(tt.out)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			if tt.expected != nil {
+				actual, ok := tt.out.(*User)
+				require.True(t, ok)
+
+				require.Equal(t, tt.expected.ID, actual.ID)
+				require.Equal(t, tt.expected.Name, actual.Name)
+				require.Equal(t, tt.expected.Email, actual.Email)
+				require.Equal(t, tt.expected.Role, actual.Role)
+				require.Equal(t, tt.expected.SessionID, actual.SessionID)
+			}
+		})
+	}
+}
+
+// go test -run Test_Bind_All_Uri_Precedence
+func Test_Bind_All_Uri_Precedence(t *testing.T) {
+	t.Parallel()
+	type User struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+		ID    int    `uri:"id" json:"id" query:"id" form:"id"`
+	}
+
+	app := New()
+
+	app.Post("/test1/:id", func(c Ctx) error {
+		d := new(User)
+		if err := c.Bind().All(d); err != nil {
+			t.Fatal(err)
+		}
+
+		require.Equal(t, 111, d.ID)
+		require.Equal(t, "john", d.Name)
+		require.Equal(t, "john@doe.com", d.Email)
+		return nil
+	})
+
+	body := strings.NewReader(`{"id": 999, "name": "john", "email": "john@doe.com"}`)
+	req := httptest.NewRequest(MethodPost, "/test1/111?id=888", body)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+}
+
+// go test -run Test_Bind_All_Query_Precedence
+func Test_Bind_All_Query_Precedence(t *testing.T) {
+	t.Parallel()
+	type Data struct {
+		ID int `query:"id" header:"id" cookie:"id"`
+	}
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("id=5")
+	c.Request().Header.Set("id", "3")
+	c.Request().Header.SetCookie("id", "2")
+
+	d := new(Data)
+	require.NoError(t, (&Bind{ctx: c}).All(d))
+	require.Equal(t, 5, d.ID)
+}
+
+// go test -run Test_Bind_All_StructValidator
+func Test_Bind_All_StructValidator(t *testing.T) {
+	t.Parallel()
+	app := New(Config{StructValidator: &structValidator{}})
+
+	// Success case: name comes from body only
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx.Request().SetBody([]byte(`{"name":"john"}`))
+	sq := new(simpleQuery)
+	require.NoError(t, (&Bind{ctx: ctx}).All(sq))
+	require.Equal(t, "john", sq.Name)
+
+	// Failure: missing name everywhere
+	ctxFail := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctxFail.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctxFail.Request().SetBody([]byte(`{}`))
+	sqFail := new(simpleQuery)
+	err := (&Bind{ctx: ctxFail}).WithoutAutoHandling().All(sqFail)
+	require.EqualError(t, err, "you should have entered right name")
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_All -benchmem -count=4
+func BenchmarkBind_All(b *testing.B) {
+	type User struct {
+		SessionID string `json:"session_id" cookie:"session_id"`
+		Name      string `query:"name" json:"name" form:"name"`
+		Email     string `json:"email" form:"email"`
+		Role      string `header:"X-User-Role"`
+		ID        int    `uri:"id" query:"id" json:"id" form:"id"`
+	}
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	config := &RequestConfig{
+		ContentType: MIMEApplicationJSON,
+		Body:        []byte(`{"name":"john", "email": "john@doe.com", "session_id": "abc1234", "id": 1}`),
+		Headers: map[string]string{
+			"X-User-Role": "admin",
+		},
+		Cookies: map[string]string{
+			"session_id": "abc123",
+		},
+		Query: "id=1&name=john",
+	}
+
+	bind := &Bind{
+		ctx: c,
+	}
+
+	for b.Loop() {
+		user := &User{}
+		config.ApplyTo(c)
+		if err := bind.All(user); err != nil {
+			b.Fatalf("unexpected error: %v", err)
+		}
+	}
 }

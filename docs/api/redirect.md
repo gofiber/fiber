@@ -6,16 +6,16 @@ sidebar_position: 5
 toc_max_heading_level: 5
 ---
 
-The redirect methods are used to redirect the context (request) to a different URL or route.
+Redirect helpers send the client to another URL or route.
 
 ## Redirect Methods
 
 ### To
 
-Redirects to the URL derived from the specified path, with a specified [status](#status), a positive integer that corresponds to an HTTP status code.
+Redirects to a URL built from the given path. Optionally set an HTTP [status](#status).
 
 :::info
-If **not** specified, status defaults to **302 Found**.
+If unspecified, status defaults to **303 See Other**.
 :::
 
 ```go title="Signature"
@@ -24,7 +24,7 @@ func (r *Redirect) To(location string) error
 
 ```go title="Example"
 app.Get("/coffee", func(c fiber.Ctx) error {
-  // => HTTP - GET 301 /teapot 
+  // => HTTP - GET 301 /teapot
   return c.Redirect().Status(fiber.StatusMovedPermanently).To("/teapot")
 })
 
@@ -35,11 +35,11 @@ app.Get("/teapot", func(c fiber.Ctx) error {
 
 ```go title="More examples"
 app.Get("/", func(c fiber.Ctx) error {
-  // => HTTP - GET 302 /foo/bar 
+  // => HTTP - GET 303 /foo/bar
   return c.Redirect().To("/foo/bar")
-  // => HTTP - GET 302 ../login
+  // => HTTP - GET 303 ../login
   return c.Redirect().To("../login")
-  // => HTTP - GET 302 http://example.com
+  // => HTTP - GET 303 http://example.com
   return c.Redirect().To("http://example.com")
   // => HTTP - GET 301 https://example.com
   return c.Redirect().Status(301).To("http://example.com")
@@ -48,10 +48,10 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Route
 
-Redirects to a specific route along with the parameters and queries.
+Redirects to a named route with parameters and queries.
 
 :::info
-If you want to send queries and params to a route, you must use the [**RedirectConfig**](#redirectconfig) struct.
+To send params and queries to a route, use the [`RedirectConfig`](#redirectconfig) struct.
 :::
 
 ```go title="Signature"
@@ -89,10 +89,10 @@ app.Get("/user/:name", func(c fiber.Ctx) error {
 
 ### Back
 
-Redirects back to the referer URL. It redirects to a fallback URL if the referer header doesn't exist, with a specified status, a positive integer that corresponds to an HTTP status code.
+Redirects to the referer. If it's missing, fall back to the provided URL. You can also set the status code.
 
 :::info
-If **not** specified, status defaults to **302 Found**.
+If unspecified, status defaults to **303 See Other**.
 :::
 
 ```go title="Signature"
@@ -134,7 +134,7 @@ func (r *Redirect) Status(status int) *Redirect
 
 ```go title="Example"
 app.Get("/coffee", func(c fiber.Ctx) error {
-  // => HTTP - GET 301 /teapot 
+  // => HTTP - GET 301 /teapot
   return c.Redirect().Status(fiber.StatusMovedPermanently).To("/teapot")
 })
 ```
@@ -161,7 +161,7 @@ Similar to [Laravel](https://laravel.com/docs/11.x/redirects#redirecting-with-fl
 
 #### Messages
 
-Get flash messages. Check [With](#with) for more information.
+Retrieve all flash messages. See [With](#with) for details.
 
 ```go title="Signature"
 func (r *Redirect) Messages() map[string]string
@@ -176,7 +176,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 #### Message
 
-Get a flash message by key. Check [With](#with) for more information.
+Get a flash message by key; see [With](#with).
 
 ```go title="Signature"
 func (r *Redirect) Message(key string) *Redirect
@@ -191,7 +191,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 #### OldInputs
 
-Get old input data. Check [WithInput](#withinput) for more information.
+Retrieve stored input data. See [WithInput](#withinput).
 
 ```go title="Signature"
 func (r *Redirect) OldInputs() map[string]string
@@ -206,7 +206,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 #### OldInput
 
-Get old input data by key. Check [WithInput](#withinput) for more information.
+Get stored input data by key; see [WithInput](#withinput).
 
 ```go title="Signature"
 func (r *Redirect) OldInput(key string) string
@@ -221,7 +221,7 @@ app.Get("/name", func(c fiber.Ctx) error {
 
 #### With
 
-You can send flash messages by using `With()`.
+Send flash messages with `With`.
 
 ```go title="Signature"
 func (r *Redirect) With(key, value string) *Redirect
@@ -240,9 +240,9 @@ app.Get("/", func(c fiber.Ctx) error {
 
 #### WithInput
 
-You can send input data by using `WithInput()`. They will be sent as a cookie.
+Send input data with `WithInput`, which stores them in a cookie.
 
-This method can send form, multipart form, or query data to the redirected route depending on the request content type.
+It captures form, multipart, or query data depending on the request content type.
 
 ```go title="Signature"
 func (r *Redirect) WithInput() *Redirect

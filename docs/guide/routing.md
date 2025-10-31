@@ -16,9 +16,46 @@ import RoutingHandler from './../partials/routing/handler.md';
 
 <RoutingHandler />
 
+## Automatic HEAD routes
+
+Fiber automatically registers a `HEAD` route for every `GET` route you add. The generated handler chain mirrors the `GET` chain, so `HEAD` requests reuse middleware, status codes, and headers while the response body is suppressed.
+
+```go title="GET handlers automatically expose HEAD"
+app := fiber.New()
+
+app.Get("/users/:id", func(c fiber.Ctx) error {
+    c.Set("X-User", c.Params("id"))
+    return c.SendStatus(fiber.StatusOK)
+})
+
+// HEAD /users/:id now returns the same headers and status without a body.
+```
+
+You can still register dedicated `HEAD` handlers—even with auto-registration enabled—and Fiber replaces the generated route so your implementation wins:
+
+```go title="Override the generated HEAD handler"
+app.Head("/users/:id", func(c fiber.Ctx) error {
+    return c.SendStatus(fiber.StatusNoContent)
+})
+```
+
+To opt out globally, start the app with `DisableHeadAutoRegister`:
+
+```go title="Disable automatic HEAD registration"
+handler := func(c fiber.Ctx) error {
+    c.Set("X-User", c.Params("id"))
+    return c.SendStatus(fiber.StatusOK)
+}
+
+app := fiber.New(fiber.Config{DisableHeadAutoRegister: true})
+app.Get("/users/:id", handler) // HEAD /users/:id now returns 405 unless you add it manually.
+```
+
+Auto-generated `HEAD` routes participate in every router scope, including `Group` hierarchies, mounted sub-apps, parameterized and wildcard paths, and static file helpers. They also appear in route listings such as `app.Stack()` so tooling sees both the `GET` and `HEAD` entries.
+
 ## Paths
 
-Route paths, combined with a request method, define the endpoints at which requests can be made. Route paths can be **strings** or **string patterns**.
+A route path paired with an HTTP method defines an endpoint. It can be a plain **string** or a **pattern**.
 
 ### Examples of route paths based on strings
 
@@ -39,24 +76,24 @@ app.Get("/random.txt", func(c fiber.Ctx) error {
 })
 ```
 
-As with the expressJs framework, the order of the route declaration plays a role.
-When a request is received, the routes are checked in the order in which they are declared.
+As with the Express.js framework, the order in which routes are declared matters.
+Routes are evaluated sequentially, so more specific paths should appear before those with variables.
 
 :::info
-So please be careful to write routes with variable parameters after the routes that contain fixed parts, so that these variable parts do not match instead and unexpected behavior occurs.
+Place routes with variable parameters after fixed paths to avoid unintended matches.
 :::
 
 ## Parameters
 
-Route parameters are dynamic elements in the route, which are **named** or **not named segments**. This segments that are used to capture the values specified at their position in the URL. The obtained values can be retrieved using the [Params](https://fiber.wiki/context#params) function, with the name of the route parameter specified in the path as their respective keys or for unnamed parameters the character\(\*, +\) and the counter of this.
+Route parameters are dynamic segments in a path, either named or unnamed, used to capture values from the URL. Retrieve them with the [Params](https://fiber.wiki/context#params) function using the parameter name or, for unnamed parameters, the wildcard (`*`) or plus (`+`) symbol with an index.
 
-The characters :, +, and \* are characters that introduce a parameter.
+The characters `:`, `+`, and `*` introduce parameters.
 
-Greedy parameters are indicated by wildcard\(\*\) or plus\(+\) signs.
+Use `*` or `+` to capture segments greedily.
 
-The routing also offers the possibility to use optional parameters, for the named parameters these are marked with a final "?", unlike the plus sign which is not optional, you can use the wildcard character for a parameter range which is optional and greedy.
+You can define optional parameters by appending `?` to a named segment. The `+` sign is greedy and required, while `*` acts as an optional greedy wildcard.
 
-### Example of define routes with route parameters
+### Example of defining routes with route parameters
 
 ```go
 // Parameters
@@ -87,11 +124,11 @@ app.Get(`/v1/some/resource/name\:customVerb`, func(c fiber.Ctx) error {
 ```
 
 :::info
-Since the hyphen \(`-`\) and the dot \(`.`\) are interpreted literally, they can be used along with route parameters for useful purposes.
+The hyphen \(`-`\) and dot \(`.`\) are treated literally, so you can combine them with route parameters.
 :::
 
 :::info
-All special parameter characters can also be escaped with `"\\"` and lose their value, so you can use them in the route if you want, like in the custom methods of the [google api design guide](https://cloud.google.com/apis/design/custom_methods). It's recommended to use backticks `` ` `` because in go's regex documentation, they always use backticks to make sure it is unambiguous and the escape character doesn't interfere with regex patterns in an unexpected way.
+Escape special parameter characters with `\\` to treat them literally. This technique is useful for custom methods like those in the [Google API Design Guide](https://cloud.google.com/apis/design/custom_methods). Wrap routes in backticks to keep escape sequences clear.
 :::
 
 ```go
@@ -110,7 +147,7 @@ app.Get("/flights/:from-:to", func(c fiber.Ctx) error {
 })
 ```
 
-Our intelligent router recognizes that the introductory parameter characters should be part of the request route in this case and can process them as such.
+Fiber's router detects when these characters belong to the literal path and handles them accordingly.
 
 ```go
 // http://localhost:3000/shop/product/color:blue/size:xs
@@ -120,7 +157,7 @@ app.Get("/shop/product/color::color/size::size", func(c fiber.Ctx) error {
 })
 ```
 
-In addition, several parameters in a row and several unnamed parameter characters in the route, such as the wildcard or plus character, are possible, which greatly expands the possibilities of the router for the user.
+You can chain multiple named or unnamed parameters—including wildcard and plus segments—giving the router greater flexibility.
 
 ```go
 // GET /@v1
@@ -128,7 +165,7 @@ In addition, several parameters in a row and several unnamed parameter character
 app.Get("/:sign:param", handler)
 
 // GET /api-v1
-// Params: "name" -> "v1" 
+// Params: "name" -> "v1"
 app.Get("/api-:name", handler)
 
 // GET /customer/v1/cart/proxy
@@ -140,7 +177,7 @@ app.Get("/*v1*/proxy", handler)
 app.Get("/v1/*/shop/*", handler)
 ```
 
-We have adapted the routing strongly to the express routing, but currently without the possibility of the regular expressions, because they are quite slow. The possibilities can be tested with version 0.1.7 \(express 4\) in the online [Express route tester](http://forbeslindesay.github.io/express-route-tester/).
+Fiber's routing is inspired by Express but intentionally omits regular expression routes due to their performance cost. You can try similar patterns using the Express route tester (v0.1.7).
 
 ### Constraints
 
@@ -150,21 +187,21 @@ Route constraints execute when a match has occurred to the incoming URL and the 
 Constraints aren't validation for parameters. If constraints aren't valid for a parameter value, Fiber returns **404 handler**.
 :::
 
-| Constraint        | Example                              | Example matches                                                                             |
-| ----------------- | ------------------------------------ | ------------------------------------------------------------------------------------------- |
-| int               | `:id<int\>`                           | 123456789, -123456789                                                                       |
-| bool              | `:active<bool\>`                       | true,false                                                                                  |
-| guid              | `:id<guid\>`                         | CD2C1638-1638-72D5-1638-DEADBEEF1638                                                        |
-| float             | `:weight<float\>`                      | 1.234, -1,001.01e8                                                                          |
-| minLen(value)     | `:username<minLen(4)\>`                | Test (must be at least 4 characters)                                                        |
-| maxLen(value)     | `:filename<maxLen(8)\>`                | MyFile (must be no more than 8 characters                                                   |
-| len(length)       | `:filename<len(12)\>`                  | somefile.txt (exactly 12 characters)                                                        |
-| min(value)        | `:age<min(18)\>`                       | 19 (Integer value must be at least 18)                                                      |
-| max(value)        | `:age<max(120)\>`                      | 91 (Integer value must be no more than 120)                                                 |
-| range(min,max)    | `:age<range(18,120)\>`                 | 91 (Integer value must be at least 18 but no more than 120)                                 |
-| alpha             | `:name<alpha\>`                        | Rick (String must consist of one or more alphabetical characters, a-z and case-insensitive) |
-| datetime          | `:dob<datetime(2006\\\\-01\\\\-02)\>`  | 2005-11-01                                                                                  |
-| regex(expression) | `:date<regex(\\d{4}-\\d{2}-\\d{2})\>` | 2022-08-27 (Must match regular expression)                                                  |
+| Constraint        | Example                          | Example matches                                                                             |
+| ----------------- | -------------------------------- | ------------------------------------------------------------------------------------------- |
+| int               | `:id<int>`                       | 123456789, -123456789                                                                       |
+| bool              | `:active<bool>`                  | true,false                                                                                  |
+| guid              | `:id<guid>`                      | CD2C1638-1638-72D5-1638-DEADBEEF1638                                                        |
+| float             | `:weight<float>`                 | 1.234, -1,001.01e8                                                                          |
+| minLen(value)     | `:username<minLen(4)>`           | Test (must be at least 4 characters)                                                        |
+| maxLen(value)     | `:filename<maxLen(8)>`           | MyFile (must be no more than 8 characters                                                   |
+| len(length)       | `:filename<len(12)>`             | somefile.txt (exactly 12 characters)                                                        |
+| min(value)        | `:age<min(18)>`                  | 19 (Integer value must be at least 18)                                                      |
+| max(value)        | `:age<max(120)>`                 | 91 (Integer value must be no more than 120)                                                 |
+| range(min,max)    | `:age<range(18,120)>`            | 91 (Integer value must be at least 18 but no more than 120)                                 |
+| alpha             | `:name<alpha>`                   | Rick (String must consist of one or more alphabetical characters, a-z and case-insensitive) |
+| datetime          | `:dob<datetime(2006\\-01\\-02)>` | 2005-11-01                                                                                  |
+| regex(expression) | `:date<regex(\d{4}-\d{2}-\d{2})>` | 2022-08-27 (Must match regular expression)                                                  |
 
 #### Examples
 
@@ -180,7 +217,7 @@ app.Get("/:test<min(5)>", func(c fiber.Ctx) error {
 // 12
 
 // curl -X GET http://localhost:3000/1
-// Cannot GET /1
+// Not Found
 ```
 
 </TabItem>
@@ -194,10 +231,10 @@ app.Get("/:test<min(100);maxLen(5)>", func(c fiber.Ctx) error {
 })
 
 // curl -X GET http://localhost:3000/120000
-// Cannot GET /120000
+// Not Found
 
 // curl -X GET http://localhost:3000/1
-// Cannot GET /1
+// Not Found
 
 // curl -X GET http://localhost:3000/250
 // 250
@@ -206,7 +243,7 @@ app.Get("/:test<min(100);maxLen(5)>", func(c fiber.Ctx) error {
 </TabItem>
 <TabItem value="regex-constraint" label="Regex Constraint">
 
-Fiber precompiles regex query when to register routes. So there're no performance overhead for regex constraint.
+Fiber precompiles the regex when registering routes, so regex constraints add no runtime overhead.
 
 ```go
 app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})>`, func(c fiber.Ctx) error {
@@ -214,10 +251,10 @@ app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})>`, func(c fiber.Ctx) error {
 })
 
 // curl -X GET http://localhost:3000/125
-// Cannot GET /125
+// Not Found
 
 // curl -X GET http://localhost:3000/test
-// Cannot GET /test
+// Not Found
 
 // curl -X GET http://localhost:3000/2022-08-27
 // 2022-08-27
@@ -227,7 +264,7 @@ app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})>`, func(c fiber.Ctx) error {
 </Tabs>
 
 :::caution
-You should use `\\` before routing-specific characters when to use datetime constraint (`*`, `+`, `?`, `:`, `/`, `<`, `>`, `;`, `(`, `)`), to avoid wrong parsing.
+Prefix routing characters with `\\` when using the datetime constraint (`*`, `+`, `?`, `:`, `/`, `<`, `>`, `;`, `(`, `)`), to avoid misparsing.
 :::
 
 #### Optional Parameter Example
@@ -243,15 +280,18 @@ app.Get("/:test<int>?", func(c fiber.Ctx) error {
 // curl -X GET http://localhost:3000/
 //
 // curl -X GET http://localhost:3000/7.0
-// Cannot GET /7.0
+// Not Found
 ```
 
 #### Custom Constraint
 
 Custom constraints can be added to Fiber using the `app.RegisterCustomConstraint` method. Your constraints have to be compatible with the `CustomConstraint` interface.
 
-It is a good idea to add external constraints to your project once you want to add more specific rules to your routes.
-For example, you can add a constraint to check if a parameter is a valid ULID.
+:::caution
+Attention, custom constraints can now override built-in constraints. If a custom constraint has the same name as a built-in constraint, the custom constraint will be used instead. This allows for more flexibility in defining route parameter constraints.
+:::
+
+Add external constraints when you need stricter rules, such as verifying that a parameter is a valid ULID.
 
 ```go
 // CustomConstraint is an interface for custom constraints
@@ -320,6 +360,10 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 `Use` method path is a **mount**, or **prefix** path, and limits middleware to only apply to any paths requested that begin with it.
+
+:::note
+Prefix matches must now end at a slash boundary (or be an exact match). For example, `/api` runs for `/api` and `/api/users` but no longer for `/apiv2`. Parameter tokens such as `:name`, `:name?`, `*`, and `+` are still expanded before this boundary check runs.
+:::
 
 ### Constraints on Adding Routes Dynamically
 

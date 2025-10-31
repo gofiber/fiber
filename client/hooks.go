@@ -1,58 +1,71 @@
 package client
 
 import (
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"mime/multipart"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
+	"sync"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
-var (
-	protocolCheck = regexp.MustCompile(`^https?://.*$`)
+var protocolCheck = regexp.MustCompile(`^https?://.*$`)
 
-	headerAccept = "Accept"
+var fileBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 1<<20) // 1MB buffer
+		return &b
+	},
+}
 
+const (
+	headerAccept      = "Accept"
 	applicationJSON   = "application/json"
 	applicationCBOR   = "application/cbor"
 	applicationXML    = "application/xml"
 	applicationForm   = "application/x-www-form-urlencoded"
 	multipartFormData = "multipart/form-data"
 
-	letterBytes   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	letterIdxBits = 6                    // 6 bits to represent a letter index
-	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
-	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting into 63 bits
+	letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
-// randString returns a random string of length n.
-func randString(n int) string {
-	b := make([]byte, n)
-	length := len(letterBytes)
-	src := rand.NewSource(time.Now().UnixNano())
+// unsafeRandString returns a random string of length n.
+// An error is returned if the random source fails.
+func unsafeRandString(n int) (string, error) {
+	inputLength := byte(len(letterBytes))
 
-	for i, cache, remain := n-1, src.Int63(), letterIdxMax; i >= 0; {
-		if remain == 0 {
-			cache, remain = src.Int63(), letterIdxMax
-		}
+	// Compute the largest multiple of inputLength ≤ 256 to avoid modulo bias.
+	// Any byte ≥ max will be rejected and re‑read.
+	maxLength := byte(256 - (256 % int(inputLength)))
 
-		if idx := int(cache & int64(letterIdxMask)); idx < length {
-			b[i] = letterBytes[idx]
-			i--
-		}
-		cache >>= int64(letterIdxBits)
-		remain--
+	out := make([]byte, n)
+	buf := make([]byte, n)
+
+	// Read n raw bytes in one shot
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("rand.Read failed: %w", err)
 	}
 
-	return utils.UnsafeString(b)
+	for i, b := range buf {
+		// Reject values ≥ maxLength
+		for b >= maxLength {
+			if _, err := rand.Read(buf[i : i+1]); err != nil {
+				return "", fmt.Errorf("rand.Read failed: %w", err)
+			}
+			b = buf[i]
+		}
+		out[i] = letterBytes[b%inputLength]
+	}
+
+	return utils.UnsafeString(out), nil
 }
 
 // parserRequestURL sets options for the hostclient and normalizes the URL.
@@ -72,15 +85,20 @@ func parserRequestURL(c *Client, req *Request) error {
 	}
 
 	// Set path parameters from the request and client.
-	req.path.VisitAll(func(key, val string) {
+	for key, val := range req.path.All() {
 		uri = strings.ReplaceAll(uri, ":"+key, val)
-	})
-	c.path.VisitAll(func(key, val string) {
+	}
+	for key, val := range c.path.All() {
 		uri = strings.ReplaceAll(uri, ":"+key, val)
-	})
+	}
 
 	// Set the URI in the raw request.
+	disablePathNormalizing := c.DisablePathNormalizing() || req.DisablePathNormalizing()
 	req.RawRequest.SetRequestURI(uri)
+	req.RawRequest.URI().DisablePathNormalizing = disablePathNormalizing
+	if disablePathNormalizing {
+		req.RawRequest.URI().SetPathBytes(req.RawRequest.URI().PathOriginal())
+	}
 
 	// Merge query parameters.
 	hashSplit := strings.Split(splitURL[1], "#")
@@ -90,12 +108,12 @@ func parserRequestURL(c *Client, req *Request) error {
 
 	args.Parse(hashSplit[0])
 
-	c.params.VisitAll(func(key, value []byte) {
+	for key, value := range c.params.All() {
 		args.AddBytesKV(key, value)
-	})
-	req.params.VisitAll(func(key, value []byte) {
+	}
+	for key, value := range req.params.All() {
 		args.AddBytesKV(key, value)
-	})
+	}
 
 	req.RawRequest.URI().SetQueryStringBytes(utils.CopyBytes(args.QueryString()))
 	req.RawRequest.URI().SetHash(hashSplit[1])
@@ -110,14 +128,14 @@ func parserRequestHeader(c *Client, req *Request) error {
 	req.RawRequest.Header.SetMethod(req.Method())
 
 	// Merge headers from the client.
-	c.header.VisitAll(func(key, value []byte) {
+	for key, value := range c.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
-	})
+	}
 
 	// Merge headers from the request.
-	req.header.VisitAll(func(key, value []byte) {
+	for key, value := range req.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
-	})
+	}
 
 	// Set Content-Type and Accept headers based on the request body type.
 	switch req.bodyType {
@@ -134,7 +152,11 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.SetContentType(multipartFormData)
 		// If boundary is default, append a random string to it.
 		if req.boundary == boundary {
-			req.boundary += randString(16)
+			randStr, err := unsafeRandString(16)
+			if err != nil {
+				return fmt.Errorf("boundary generation: %w", err)
+			}
+			req.boundary += randStr
 		}
 		req.RawRequest.Header.SetMultipartFormBoundary(req.boundary)
 	default:
@@ -162,14 +184,14 @@ func parserRequestHeader(c *Client, req *Request) error {
 	}
 
 	// Set cookies from the client.
-	c.cookies.VisitAll(func(key, val string) {
+	for key, val := range c.cookies.All() {
 		req.RawRequest.Header.SetCookie(key, val)
-	})
+	}
 
 	// Set cookies from the request.
-	req.cookies.VisitAll(func(key, val string) {
+	for key, val := range req.cookies.All() {
 		req.RawRequest.Header.SetCookie(key, val)
-	})
+	}
 
 	return nil
 }
@@ -200,7 +222,7 @@ func parserRequestBody(c *Client, req *Request) error {
 	case filesBody:
 		return parserRequestBodyFile(req)
 	case rawBody:
-		if body, ok := req.body.([]byte); ok {
+		if body, ok := req.body.([]byte); ok { //nolint:revive // ignore simplicity
 			req.RawRequest.SetBody(body)
 		} else {
 			return ErrBodyType
@@ -208,8 +230,9 @@ func parserRequestBody(c *Client, req *Request) error {
 	case noBody:
 		// No body to set.
 		return nil
+	default:
+		return ErrBodyTypeNotSupported
 	}
-
 	return nil
 }
 
@@ -229,55 +252,69 @@ func parserRequestBodyFile(req *Request) error {
 	}()
 
 	// Add form data.
-	req.formData.VisitAll(func(key, value []byte) {
-		if err != nil {
-			return
-		}
+	for key, value := range req.formData.All() {
 		err = mw.WriteField(utils.UnsafeString(key), utils.UnsafeString(value))
-	})
+		if err != nil {
+			break
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("write formdata error: %w", err)
 	}
 
 	// Add files.
-	fileBuf := make([]byte, 1<<20) // 1MB buffer
-	for i, v := range req.files {
-		if v.name == "" && v.path == "" {
+	fileBuf, ok := fileBufPool.Get().(*[]byte)
+	if !ok {
+		return errors.New("failed to retrieve buffer from a sync.Pool")
+	}
+
+	defer fileBufPool.Put(fileBuf)
+
+	for i, f := range req.files {
+		if f.name == "" && f.path == "" {
 			return ErrFileNoName
 		}
 
 		// Set the file name if not provided.
-		if v.name == "" && v.path != "" {
-			v.path = filepath.Clean(v.path)
-			v.name = filepath.Base(v.path)
+		if f.name == "" && f.path != "" {
+			f.path = filepath.Clean(f.path)
+			f.name = filepath.Base(f.path)
 		}
 
 		// Set the field name if not provided.
-		if v.fieldName == "" {
-			v.fieldName = "file" + strconv.Itoa(i+1)
+		if f.fieldName == "" {
+			f.fieldName = "file" + strconv.Itoa(i+1)
 		}
 
-		// If reader is not set, open the file.
-		if v.reader == nil {
-			v.reader, err = os.Open(v.path)
-			if err != nil {
-				return fmt.Errorf("open file error: %w", err)
-			}
+		if err := addFormFile(mw, f, fileBuf); err != nil {
+			return err
 		}
+	}
 
-		// Create form file and copy the content.
-		w, err := mw.CreateFormFile(v.fieldName, v.name)
+	return nil
+}
+
+func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
+	// If reader is not set, open the file.
+	if f.reader == nil {
+		var err error
+		f.reader, err = os.Open(f.path)
 		if err != nil {
-			return fmt.Errorf("create file error: %w", err)
+			return fmt.Errorf("open file error: %w", err)
 		}
+	}
 
-		if _, err := io.CopyBuffer(w, v.reader, fileBuf); err != nil {
-			return fmt.Errorf("failed to copy file data: %w", err)
-		}
+	// Ensure the file reader is always closed after copying.
+	defer f.reader.Close() //nolint:errcheck // not needed
 
-		if err := v.reader.Close(); err != nil {
-			return fmt.Errorf("close file error: %w", err)
-		}
+	// Create form file and copy the content.
+	w, err := mw.CreateFormFile(f.fieldName, f.name)
+	if err != nil {
+		return fmt.Errorf("create file error: %w", err)
+	}
+
+	if _, err := io.CopyBuffer(w, f.reader, *fileBuf); err != nil {
+		return fmt.Errorf("failed to copy file data: %w", err)
 	}
 
 	return nil
@@ -286,15 +323,15 @@ func parserRequestBodyFile(req *Request) error {
 // parserResponseCookie parses the Set-Cookie headers from the response and stores them.
 func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	var err error
-	resp.RawResponse.Header.VisitAllCookie(func(key, value []byte) {
+	for key, value := range resp.RawResponse.Header.Cookies() {
 		cookie := fasthttp.AcquireCookie()
-		err = cookie.ParseBytes(value)
-		if err != nil {
-			return
+		if err = cookie.ParseBytes(value); err != nil {
+			fasthttp.ReleaseCookie(cookie)
+			break
 		}
 		cookie.SetKeyBytes(key)
 		resp.cookie = append(resp.cookie, cookie)
-	})
+	}
 
 	if err != nil {
 		return err

@@ -17,6 +17,7 @@ categories:
   - title: '🧹 Updates'
     labels:
       - '🧹 Updates'
+      - '⚡️ Performance'
   - title: '🐛 Fixes'
     labels:
       - '☢️ Bug'
@@ -48,6 +49,7 @@ version-resolver:
       - '☢️ Bug'
       - '🤖 Dependencies'
       - '🧹 Updates'
+      - '⚡️ Performance'
   default: patch
 template: |
     $CHANGES

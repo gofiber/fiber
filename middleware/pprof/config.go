@@ -20,7 +20,8 @@ type Config struct {
 }
 
 var ConfigDefault = Config{
-	Next: nil,
+	Next:   nil,
+	Prefix: "",
 }
 
 func configDefault(config ...Config) Config {
@@ -35,6 +36,9 @@ func configDefault(config ...Config) Config {
 	// Set default values
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
+	}
+	if cfg.Prefix == "" {
+		cfg.Prefix = ConfigDefault.Prefix
 	}
 
 	return cfg

@@ -3,11 +3,13 @@ package binder
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"mime/multipart"
 	"reflect"
 	"strings"
 	"sync"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 
 	"github.com/gofiber/schema"
@@ -69,7 +71,7 @@ func init() {
 }
 
 // parse data into the map or struct
-func parse(aliasTag string, out any, data map[string][]string) error {
+func parse(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
 	ptrVal := reflect.ValueOf(out)
 
 	// Get pointer value
@@ -83,11 +85,11 @@ func parse(aliasTag string, out any, data map[string][]string) error {
 	}
 
 	// Parse into the struct
-	return parseToStruct(aliasTag, out, data)
+	return parseToStruct(aliasTag, out, data, files...)
 }
 
-// Parse data into the struct with gorilla/schema
-func parseToStruct(aliasTag string, out any, data map[string][]string) error {
+// Parse data into the struct with gofiber/schema
+func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
 	// Get decoder from pool
 	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
 	defer decoderPoolMap[aliasTag].Put(schemaDecoder)
@@ -95,7 +97,7 @@ func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 	// Set alias tag
 	schemaDecoder.SetAliasTag(aliasTag)
 
-	if err := schemaDecoder.Decode(out, data); err != nil {
+	if err := schemaDecoder.Decode(out, data, files...); err != nil {
 		return fmt.Errorf("bind: %w", err)
 	}
 
@@ -111,16 +113,14 @@ func parseToMap(ptr any, data map[string][]string) error {
 	case reflect.Slice:
 		newMap, ok := ptr.(map[string][]string)
 		if !ok {
-			return ErrMapNotConvertable
+			return ErrMapNotConvertible
 		}
 
-		for k, v := range data {
-			newMap[k] = v
-		}
+		maps.Copy(newMap, data)
 	case reflect.String, reflect.Interface:
 		newMap, ok := ptr.(map[string]string)
 		if !ok {
-			return ErrMapNotConvertable
+			return ErrMapNotConvertible
 		}
 
 		for k, v := range data {
@@ -175,72 +175,120 @@ func parseParamSquareBrackets(k string) (string, error) {
 	return bb.String(), nil
 }
 
-func equalFieldType(out any, kind reflect.Kind, key string) bool {
-	// Get type of interface
-	outTyp := reflect.TypeOf(out).Elem()
+func isStringKeyMap(t reflect.Type) bool {
+	return t.Kind() == reflect.Map && t.Key().Kind() == reflect.String
+}
+
+func isExported(f reflect.StructField) bool {
+	return f.PkgPath == ""
+}
+
+func fieldName(f reflect.StructField, aliasTag string) string {
+	name := f.Tag.Get(aliasTag)
+	if name == "" {
+		name = f.Name
+	} else {
+		name = strings.Split(name, ",")[0]
+	}
+
+	return utils.ToLower(name)
+}
+
+type fieldInfo struct {
+	names       map[string]reflect.Kind
+	nestedKinds map[reflect.Kind]struct{}
+}
+
+var (
+	headerFieldCache     sync.Map
+	respHeaderFieldCache sync.Map
+	cookieFieldCache     sync.Map
+	queryFieldCache      sync.Map
+	formFieldCache       sync.Map
+	uriFieldCache        sync.Map
+)
+
+func getFieldCache(aliasTag string) *sync.Map {
+	switch aliasTag {
+	case "header":
+		return &headerFieldCache
+	case "respHeader":
+		return &respHeaderFieldCache
+	case "cookie":
+		return &cookieFieldCache
+	case "form":
+		return &formFieldCache
+	case "uri":
+		return &uriFieldCache
+	case "query":
+		return &queryFieldCache
+	}
+
+	panic("unknown alias tag: " + aliasTag)
+}
+
+func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
+	info := fieldInfo{
+		names:       make(map[string]reflect.Kind),
+		nestedKinds: make(map[reflect.Kind]struct{}),
+	}
+
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !isExported(f) {
+			continue
+		}
+		info.names[fieldName(f, aliasTag)] = f.Type.Kind()
+
+		if f.Type.Kind() == reflect.Struct {
+			for j := 0; j < f.Type.NumField(); j++ {
+				sf := f.Type.Field(j)
+				if !isExported(sf) {
+					continue
+				}
+				info.nestedKinds[sf.Type.Kind()] = struct{}{}
+			}
+		}
+	}
+
+	return info
+}
+
+func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
+	typ := reflect.TypeOf(out).Elem()
 	key = utils.ToLower(key)
 
-	// Support maps
-	if outTyp.Kind() == reflect.Map && outTyp.Key().Kind() == reflect.String {
+	if isStringKeyMap(typ) {
 		return true
 	}
 
-	// Must be a struct to match a field
-	if outTyp.Kind() != reflect.Struct {
+	if typ.Kind() != reflect.Struct {
 		return false
 	}
-	// Copy interface to an value to be used
-	outVal := reflect.ValueOf(out).Elem()
-	// Loop over each field
-	for i := 0; i < outTyp.NumField(); i++ {
-		// Get field value data
-		structField := outVal.Field(i)
-		// Can this field be changed?
-		if !structField.CanSet() {
-			continue
-		}
-		// Get field key data
-		typeField := outTyp.Field(i)
-		// Get type of field key
-		structFieldKind := structField.Kind()
-		// Does the field type equals input?
-		if structFieldKind != kind {
-			// Is the field an embedded struct?
-			if structFieldKind == reflect.Struct {
-				// Loop over embedded struct fields
-				for j := 0; j < structField.NumField(); j++ {
-					structFieldField := structField.Field(j)
 
-					// Can this embedded field be changed?
-					if !structFieldField.CanSet() {
-						continue
-					}
-
-					// Is the embedded struct field type equal to the input?
-					if structFieldField.Kind() == kind {
-						return true
-					}
-				}
-			}
-
-			continue
-		}
-		// Get tag from field if exist
-		inputFieldName := typeField.Tag.Get("query") // Name of query binder
-		if inputFieldName == "" {
-			inputFieldName = typeField.Name
-		} else {
-			inputFieldName = strings.Split(inputFieldName, ",")[0]
-		}
-		// Compare field/tag with provided key
-		if utils.ToLower(inputFieldName) == key {
-			return true
-		}
+	cache := getFieldCache(aliasTag)
+	val, ok := cache.Load(typ)
+	if !ok {
+		info := buildFieldInfo(typ, aliasTag)
+		val, _ = cache.LoadOrStore(typ, info)
 	}
+
+	info, ok := val.(fieldInfo)
+	if !ok {
+		return false
+	}
+
+	if k, ok := info.names[key]; ok && k == kind {
+		return true
+	}
+	if _, ok := info.nestedKinds[kind]; ok {
+		return true
+	}
+
 	return false
 }
 
-// Get content type from content type header
+// FilterFlags returns the media type value by trimming any parameters from a Content-Type header.
 func FilterFlags(content string) string {
 	for i, char := range content {
 		if char == ' ' || char == ';' {
@@ -250,7 +298,7 @@ func FilterFlags(content string) string {
 	return content
 }
 
-func formatBindData[T any](out any, data map[string][]string, key string, value T, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
+func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key string, value K, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
 	var err error
 	if supportBracketNotation && strings.Contains(key, "[") {
 		key, err = parseParamSquareBrackets(key)
@@ -261,10 +309,28 @@ func formatBindData[T any](out any, data map[string][]string, key string, value 
 
 	switch v := any(value).(type) {
 	case string:
-		assignBindData(out, data, key, v, enableSplitting)
+		dataMap, ok := any(data).(map[string][]string)
+		if !ok {
+			return fmt.Errorf("unsupported value type: %T", value)
+		}
+
+		assignBindData(aliasTag, out, dataMap, key, v, enableSplitting)
 	case []string:
+		dataMap, ok := any(data).(map[string][]string)
+		if !ok {
+			return fmt.Errorf("unsupported value type: %T", value)
+		}
+
 		for _, val := range v {
-			assignBindData(out, data, key, val, enableSplitting)
+			assignBindData(aliasTag, out, dataMap, key, val, enableSplitting)
+		}
+	case []*multipart.FileHeader:
+		for _, val := range v {
+			valT, ok := any(val).(T)
+			if !ok {
+				return fmt.Errorf("unsupported value type: %T", value)
+			}
+			data[key] = append(data[key], valT)
 		}
 	default:
 		return fmt.Errorf("unsupported value type: %T", value)
@@ -273,12 +339,10 @@ func formatBindData[T any](out any, data map[string][]string, key string, value 
 	return err
 }
 
-func assignBindData(out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
-	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key) {
+func assignBindData(aliasTag string, out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
+	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key, aliasTag) {
 		values := strings.Split(value, ",")
-		for i := 0; i < len(values); i++ {
-			data[key] = append(data[key], values[i])
-		}
+		data[key] = append(data[key], values...)
 	} else {
 		data[key] = append(data[key], value)
 	}

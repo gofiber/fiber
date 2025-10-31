@@ -8,7 +8,7 @@ import (
 // Binder errors
 var (
 	ErrSuitableContentNotFound = errors.New("binder: suitable content not found to parse body")
-	ErrMapNotConvertable       = errors.New("binder: map is not convertable to map[string]string or map[string][]string")
+	ErrMapNotConvertible       = errors.New("binder: map is not convertible to map[string]string or map[string][]string")
 )
 
 var HeaderBinderPool = sync.Pool{
@@ -65,6 +65,14 @@ var CBORBinderPool = sync.Pool{
 	},
 }
 
+var MsgPackBinderPool = sync.Pool{
+	New: func() any {
+		return &MsgPackBinding{}
+	},
+}
+
+// GetFromThePool retrieves a binder from the provided sync.Pool and panics if
+// the stored value cannot be cast to the requested type.
 func GetFromThePool[T any](pool *sync.Pool) T {
 	binder, ok := pool.Get().(T)
 	if !ok {
@@ -74,6 +82,7 @@ func GetFromThePool[T any](pool *sync.Pool) T {
 	return binder
 }
 
+// PutToThePool returns the binder to the provided sync.Pool.
 func PutToThePool[T any](pool *sync.Pool, binder T) {
 	pool.Put(binder)
 }

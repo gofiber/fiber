@@ -62,6 +62,16 @@ type Config struct {
 	//
 	// Default: false
 	SkipSuccessfulRequests bool
+
+	// When set to true, the middleware will not include the rate limit headers (X-RateLimit-* and Retry-After) in the response.
+	//
+	// Default: false
+	DisableHeaders bool
+
+	// DisableValueRedaction turns off masking limiter keys in logs and error messages when set to true.
+	//
+	// Default: false
+	DisableValueRedaction bool
 }
 
 // ConfigDefault is the default config
@@ -76,6 +86,8 @@ var ConfigDefault = Config{
 	},
 	SkipFailedRequests:     false,
 	SkipSuccessfulRequests: false,
+	DisableHeaders:         false,
+	DisableValueRedaction:  false,
 	LimiterMiddleware:      FixedWindow{},
 }
 

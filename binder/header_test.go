@@ -51,7 +51,6 @@ func Test_HeaderBinder_Bind(t *testing.T) {
 
 func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &HeaderBinding{
 		EnableSplitting: true,
@@ -74,7 +73,7 @@ func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	req.Header.Set("posts", "post1,post2,post3")
 
 	var err error
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = binder.Bind(req, &user)
 	}
 
@@ -85,4 +84,17 @@ func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	require.Contains(b, user.Posts, "post1")
 	require.Contains(b, user.Posts, "post2")
 	require.Contains(b, user.Posts, "post3")
+}
+
+func Test_HeaderBinder_Bind_ParseError(t *testing.T) {
+	b := &HeaderBinding{}
+	type User struct {
+		Age int `header:"Age"`
+	}
+	var user User
+	req := fasthttp.AcquireRequest()
+	req.Header.Set("age", "invalid")
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	err := b.Bind(req, &user)
+	require.Error(t, err)
 }

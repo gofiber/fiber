@@ -77,13 +77,13 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) er
 	}
 	// create variables
 	maxProcs := runtime.GOMAXPROCS(0)
-	childs := make(map[int]*exec.Cmd)
+	children := make(map[int]*exec.Cmd)
 	channel := make(chan child, maxProcs)
 
 	// kill child procs when master exits
 	defer func() {
-		for _, proc := range childs {
-			if err := proc.Process.Kill(); err != nil {
+		for _, proc := range children {
+			if err = proc.Process.Kill(); err != nil {
 				if !errors.Is(err, os.ErrProcessDone) {
 					log.Errorf("prefork: failed to kill child: %v", err)
 				}
@@ -95,7 +95,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) er
 	var pids []string
 
 	// launch child procs
-	for i := 0; i < maxProcs; i++ {
+	for range maxProcs {
 		cmd := exec.Command(os.Args[0], os.Args[1:]...) //nolint:gosec // It's fine to launch the same process again
 		if testPreforkMaster {
 			// When test prefork master,
@@ -117,7 +117,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) er
 
 		// store child process
 		pid := cmd.Process.Pid
-		childs[pid] = cmd
+		children[pid] = cmd
 		pids = append(pids, strconv.Itoa(pid))
 
 		// execute fork hook

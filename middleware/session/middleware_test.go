@@ -1,12 +1,15 @@
 package session
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -54,7 +57,41 @@ func Test_Session_Middleware(t *testing.T) {
 		if sess == nil {
 			return c.SendStatus(fiber.StatusInternalServerError)
 		}
+
+		// Set a value to ensure it is cleared after reset
+		sess.Set("key", "value")
+
 		if err := sess.Reset(); err != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		// Ensure value is cleared
+		value, ok := sess.Get("key").(string)
+		if ok || value != "" {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app.Post("/regenerate", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		// Set a value to ensure it is preserved after regeneration
+		sess.Set("key", "value")
+
+		// Regenerate the session ID
+		if err := sess.Regenerate(); err != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		// Ensure the session ID has changed but session data is preserved
+		newID := sess.ID()
+		if newID == "" {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		// Check if the session data is still accessible
+		value, ok := sess.Get("key").(string)
+		if !ok || value != "value" {
 			return c.SendStatus(fiber.StatusInternalServerError)
 		}
 		return c.SendStatus(fiber.StatusOK)
@@ -86,7 +123,42 @@ func Test_Session_Middleware(t *testing.T) {
 		return c.SendStatus(fiber.StatusInternalServerError)
 	})
 
-	// Test GET, SET, DELETE, RESET, DESTROY by sending requests to the respective routes
+	app.Post("/keys", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		// get a value from the body
+		value := c.FormValue("keys")
+		for rawKey := range strings.SplitSeq(value, ",") {
+			key := strings.TrimSpace(rawKey)
+			if key == "" {
+				continue
+			}
+			// Set each key in the session
+			sess.Set(key, "value_"+key)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app.Get("/keys", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		keys := sess.Keys()
+		if len(keys) == 0 {
+			return c.SendStatus(fiber.StatusNotFound)
+		}
+		// Keys may be of any type, so convert to string for display
+		strKeys := []string{}
+		for _, key := range keys {
+			strKeys = append(strKeys, fmt.Sprintf("%v", key))
+		}
+		return c.SendString("keys=" + strings.Join(strKeys, ","))
+	})
+
+	// Test GET, SET, DELETE, RESET, REGENERATE, DESTROY by sending requests to the respective routes
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.SetRequestURI("/get")
@@ -157,6 +229,23 @@ func Test_Session_Middleware(t *testing.T) {
 	require.NotEqual(t, token, newToken)
 	token = newToken
 
+	// Test POST /regenerate to regenerate the session ID
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.SetRequestURI("/regenerate")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	// verify we have a new session token
+	newToken = string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	require.NotEmpty(t, newToken, "Expected Set-Cookie header to be present")
+	newTokenParts = strings.SplitN(strings.SplitN(newToken, ";", 2)[0], "=", 2)
+	require.Len(t, newTokenParts, 2, "Expected Set-Cookie header to contain a token")
+	newToken = newTokenParts[1]
+	require.NotEqual(t, token, newToken)
+	token = newToken
+
 	// Test POST /destroy to destroy the session
 	ctx.Request.Reset()
 	ctx.Response.Reset()
@@ -207,6 +296,34 @@ func Test_Session_Middleware(t *testing.T) {
 	require.Len(t, newTokenParts, 2, "Expected Set-Cookie header to contain a token")
 	newToken = newTokenParts[1]
 	require.NotEqual(t, token, newToken)
+
+	token = newToken
+
+	// Test POST /keys to set multiple keys
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.SetRequestURI("/keys")
+	ctx.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded") // Set the Content-Type
+	ctx.Request.SetBodyString("keys=key1,key2")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+
+	// Test GET /keys to check if the session has the keys
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/keys")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	body := string(ctx.Response.Body())
+	require.True(t, strings.HasPrefix(body, "keys="))
+	parts = strings.Split(strings.TrimPrefix(body, "keys="), ",")
+	require.Len(t, parts, 2, "Expected two keys in the session")
+	sort.Strings(parts)
+	require.Equal(t, []string{"key1", "key2"}, parts)
 }
 
 func Test_Session_NewWithStore(t *testing.T) {
@@ -273,12 +390,10 @@ func Test_Session_WithConfig(t *testing.T) {
 			return c.Get("key") == "value"
 		},
 		IdleTimeout: 1 * time.Second,
-		KeyLookup:   "cookie:session_id_test",
+		Extractor:   extractors.FromCookie("session_id_test"),
 		KeyGenerator: func() string {
 			return "test"
 		},
-		source:      "cookie_test",
-		sessionName: "session_id_test",
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {

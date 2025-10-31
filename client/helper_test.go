@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +23,10 @@ func startTestServer(tb testing.TB, beforeStarting func(app *fiber.App)) *testSe
 	tb.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		CBOREncoder: cbor.Marshal,
+		CBORDecoder: cbor.Unmarshal,
+	})
 
 	if beforeStarting != nil {
 		beforeStarting(app)
@@ -131,7 +135,7 @@ func testRequestFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *
 	}
 }
 
-func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Client), excepted string, count ...int) { //nolint: unparam // maybe needed
+func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Client), excepted string, count ...int) { //nolint:unparam // maybe needed
 	t.Helper()
 
 	app, ln, start := createHelperServer(t)

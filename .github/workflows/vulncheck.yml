@@ -3,7 +3,6 @@ name: Run govulncheck
 on:
   push:
     branches:
-      - master
       - main
     paths-ignore:
       - "**/*.md"
@@ -18,10 +17,10 @@ jobs:
       GO111MODULE: on
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "stable"
           check-latest: true

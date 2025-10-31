@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -21,6 +22,25 @@ func Test_Storage_Memory_Set(t *testing.T) {
 	keys, err := testStore.Keys()
 	require.NoError(t, err)
 	require.Len(t, keys, 1)
+}
+
+func Test_Storage_Memory_SetWithContext(t *testing.T) {
+	t.Parallel()
+	var (
+		testStore = New()
+		key       = "john"
+		val       = []byte("doe")
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := testStore.SetWithContext(ctx, key, val, 0)
+	require.ErrorIs(t, err, context.Canceled)
+
+	keys, err := testStore.Keys()
+	require.NoError(t, err)
+	require.Nil(t, keys)
 }
 
 func Test_Storage_Memory_Set_Override(t *testing.T) {
@@ -56,6 +76,29 @@ func Test_Storage_Memory_Get(t *testing.T) {
 	result, err := testStore.Get(key)
 	require.NoError(t, err)
 	require.Equal(t, val, result)
+
+	keys, err := testStore.Keys()
+	require.NoError(t, err)
+	require.Len(t, keys, 1)
+}
+
+func Test_Storage_Memory_GetWithContext(t *testing.T) {
+	t.Parallel()
+	var (
+		testStore = New()
+		key       = "john"
+		val       = []byte("doe")
+	)
+
+	err := testStore.Set(key, val, 0)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := testStore.GetWithContext(ctx, key)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, result)
 
 	keys, err := testStore.Keys()
 	require.NoError(t, err)
@@ -159,6 +202,32 @@ func Test_Storage_Memory_Delete(t *testing.T) {
 	require.Nil(t, keys)
 }
 
+func Test_Storage_Memory_DeleteWithContext(t *testing.T) {
+	t.Parallel()
+	var (
+		testStore = New()
+		key       = "john"
+		val       = []byte("doe")
+	)
+
+	err := testStore.Set(key, val, 0)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = testStore.DeleteWithContext(ctx, key)
+	require.ErrorIs(t, err, context.Canceled)
+
+	result, err := testStore.Get(key)
+	require.NoError(t, err)
+	require.Equal(t, val, result)
+
+	keys, err := testStore.Keys()
+	require.NoError(t, err)
+	require.Len(t, keys, 1)
+}
+
 func Test_Storage_Memory_Reset(t *testing.T) {
 	t.Parallel()
 	testStore := New()
@@ -190,6 +259,40 @@ func Test_Storage_Memory_Reset(t *testing.T) {
 	require.Nil(t, keys)
 }
 
+func Test_Storage_Memory_ResetWithContext(t *testing.T) {
+	t.Parallel()
+	testStore := New()
+	val := []byte("doe")
+
+	err := testStore.Set("john1", val, 0)
+	require.NoError(t, err)
+
+	err = testStore.Set("john2", val, 0)
+	require.NoError(t, err)
+
+	keys, err := testStore.Keys()
+	require.NoError(t, err)
+	require.Len(t, keys, 2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = testStore.ResetWithContext(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+
+	result, err := testStore.Get("john1")
+	require.NoError(t, err)
+	require.Equal(t, val, result)
+
+	result, err = testStore.Get("john2")
+	require.NoError(t, err)
+	require.Equal(t, val, result)
+
+	keys, err = testStore.Keys()
+	require.NoError(t, err)
+	require.Len(t, keys, 2)
+}
+
 func Test_Storage_Memory_Close(t *testing.T) {
 	t.Parallel()
 	testStore := New()
@@ -206,10 +309,9 @@ func Test_Storage_Memory_Conn(t *testing.T) {
 func Benchmark_Memory_Set(b *testing.B) {
 	testStore := New()
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		_ = testStore.Set("john", []byte("doe"), 0) //nolint: errcheck // error not needed for benchmark
+	for b.Loop() {
+		_ = testStore.Set("john", []byte("doe"), 0) //nolint:errcheck // error not needed for benchmark
 	}
 }
 
@@ -220,7 +322,7 @@ func Benchmark_Memory_Set_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = testStore.Set("john", []byte("doe"), 0) //nolint: errcheck // error not needed for benchmark
+			_ = testStore.Set("john", []byte("doe"), 0) //nolint:errcheck // error not needed for benchmark
 		}
 	})
 }
@@ -228,9 +330,8 @@ func Benchmark_Memory_Set_Parallel(b *testing.B) {
 func Benchmark_Memory_Set_Asserted(b *testing.B) {
 	testStore := New()
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := testStore.Set("john", []byte("doe"), 0)
 		require.NoError(b, err)
 	}
@@ -256,10 +357,9 @@ func Benchmark_Memory_Get(b *testing.B) {
 	require.NoError(b, err)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		_, _ = testStore.Get("john") //nolint: errcheck // error not needed for benchmark
+	for b.Loop() {
+		_, _ = testStore.Get("john") //nolint:errcheck // error not needed for benchmark
 	}
 }
 
@@ -273,7 +373,7 @@ func Benchmark_Memory_Get_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, _ = testStore.Get("john") //nolint: errcheck // error not needed for benchmark
+			_, _ = testStore.Get("john") //nolint:errcheck // error not needed for benchmark
 		}
 	})
 }
@@ -284,9 +384,8 @@ func Benchmark_Memory_Get_Asserted(b *testing.B) {
 	require.NoError(b, err)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := testStore.Get("john")
 		require.NoError(b, err)
 	}
@@ -312,11 +411,10 @@ func Benchmark_Memory_Get_Asserted_Parallel(b *testing.B) {
 func Benchmark_Memory_SetAndDelete(b *testing.B) {
 	testStore := New()
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		_ = testStore.Set("john", []byte("doe"), 0) //nolint: errcheck // error not needed for benchmark
-		_ = testStore.Delete("john")                //nolint: errcheck // error not needed for benchmark
+	for b.Loop() {
+		_ = testStore.Set("john", []byte("doe"), 0) //nolint:errcheck // error not needed for benchmark
+		_ = testStore.Delete("john")                //nolint:errcheck // error not needed for benchmark
 	}
 }
 
@@ -327,8 +425,8 @@ func Benchmark_Memory_SetAndDelete_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = testStore.Set("john", []byte("doe"), 0) //nolint: errcheck // error not needed for benchmark
-			_ = testStore.Delete("john")                //nolint: errcheck // error not needed for benchmark
+			_ = testStore.Set("john", []byte("doe"), 0) //nolint:errcheck // error not needed for benchmark
+			_ = testStore.Delete("john")                //nolint:errcheck // error not needed for benchmark
 		}
 	})
 }
@@ -336,9 +434,8 @@ func Benchmark_Memory_SetAndDelete_Parallel(b *testing.B) {
 func Benchmark_Memory_SetAndDelete_Asserted(b *testing.B) {
 	testStore := New()
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := testStore.Set("john", []byte("doe"), 0)
 		require.NoError(b, err)
 

@@ -11,6 +11,9 @@ import TabItem from '@theme/TabItem';
 
 ## Basic Auth
 
+Clients send credentials via the `Authorization` header, while the server
+stores hashed passwords as shown in the middleware example.
+
 <Tabs>
 <TabItem value="client" label="Client">
 
@@ -57,7 +60,8 @@ func main() {
     app.Use(
         basicauth.New(basicauth.Config{
             Users: map[string]string{
-                "john": "doe",
+                // "doe" hashed using SHA-256
+                "john": "{SHA256}eZ75KhGvkY4/t0HfQpNPO1aO0tk6wd908bjUGieTKm8=",
             },
         }),
     )
@@ -147,7 +151,82 @@ func main() {
 </TabItem>
 </Tabs>
 
-## Cookiejar
+## Reusing fasthttp transports
+
+The Fiber client can wrap existing `fasthttp` clients so that you can reuse
+connection pools, custom dialers, or load-balancing logic that is already tuned
+for your infrastructure.
+
+### HostClient
+
+```go
+package main
+
+import (
+    "log"
+    "time"
+
+    "github.com/gofiber/fiber/v3/client"
+    "github.com/valyala/fasthttp"
+)
+
+func main() {
+    hc := &fasthttp.HostClient{
+        Addr:              "api.internal:443",
+        IsTLS:             true,
+        MaxConnDuration:   30 * time.Second,
+        MaxIdleConnDuration: 10 * time.Second,
+    }
+
+    cc := client.NewWithHostClient(hc)
+
+    resp, err := cc.Get("https://api.internal:443/status")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Printf("status=%d body=%s", resp.StatusCode(), resp.Body())
+}
+```
+
+### LBClient
+
+```go
+package main
+
+import (
+    "log"
+    "time"
+
+    "github.com/gofiber/fiber/v3/client"
+    "github.com/valyala/fasthttp"
+)
+
+func main() {
+    lb := &fasthttp.LBClient{
+        Timeout: 2 * time.Second,
+        Clients: []fasthttp.BalancingClient{
+            &fasthttp.HostClient{Addr: "edge-1.internal:8080"},
+            &fasthttp.HostClient{Addr: "edge-2.internal:8080"},
+        },
+    }
+
+    cc := client.NewWithLBClient(lb)
+
+    // Per-request overrides such as redirects, retries, TLS, and proxy dialers
+    // are shared across every host client managed by the load balancer.
+    resp, err := cc.Get("http://service.internal/api")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Printf("status=%d body=%s", resp.StatusCode(), resp.Body())
+}
+```
+
+## Cookie jar
+
+The client can store and reuse cookies between requests by attaching a cookie jar.
 
 ### Request
 
@@ -185,6 +264,8 @@ func main() {
 
 ### Response
 
+Read cookies set by the server directly from the jar.
+
 ```go
 func main() {
     jar := client.AcquireCookieJar()
@@ -216,7 +297,7 @@ func main() {
 
 </details>
 
-### Response 2
+### Response (follow-up request)
 
 ```go
 func main() {

@@ -6,7 +6,7 @@ description: >-
 sidebar_position: 4
 ---
 
-Hooks allow you to intercept and modify the request or response flow of the Fiber client. They are particularly useful for:
+Hooks let you intercept and modify the request or response flow of the Fiber client. They are useful for:
 
 - Changing request parameters (e.g., URL, headers) before sending the request.
 - Logging request and response details.
@@ -90,14 +90,14 @@ Full Name: gofiber/fiber
 
 ### Built-in Request Hooks
 
-Fiber provides some built-in request hooks:
+Fiber includes built-in request hooks:
 
 - **parserRequestURL**: Normalizes and customizes the URL based on path and query parameters. Required for `PathParam` and `QueryParam` methods.
 - **parserRequestHeader**: Sets request headers, cookies, content type, referer, and user agent based on client and request properties.
 - **parserRequestBody**: Automatically serializes the request body (JSON, XML, form, file uploads, etc.).
 
 :::info
-If any request hook returns an error, the request is interrupted and the error is returned immediately.
+If a request hook returns an error, Fiber stops the request and returns the error immediately.
 :::
 
 **Example with Multiple Hooks:**
@@ -159,9 +159,9 @@ func main() {
         fmt.Printf("HTTP protocol: %s\n\n", resp.Protocol())
 
         fmt.Println("Response Headers:")
-        resp.RawResponse.Header.VisitAll(func(key, value []byte) {
-            fmt.Printf("%s: %s\n", key, value)
-        })
+       for key, value := range resp.RawResponse.Header.All() {
+           fmt.Printf("%s: %s\n", key, value)
+       }
 
         return nil
     })
@@ -198,13 +198,13 @@ X-Cache: HIT
 
 ### Built-in Response Hooks
 
-Fiber provides built-in response hooks:
+Fiber includes built-in response hooks:
 
 - **parserResponseCookie**: Parses cookies from the response and stores them in the response object and cookie jar if available.
 - **logger**: Logs information about the raw request and response. It uses the `log.CommonLogger` interface.
 
 :::info
-If a response hook returns an error, it stops executing any further hooks and returns the error.
+If a response hook returns an error, Fiber skips the remaining hooks and returns that error.
 :::
 
 **Example with Multiple Response Hooks:**
@@ -253,7 +253,7 @@ exit status 2
 
 ## Hook Execution Order
 
-Hooks run in FIFO order (First-In-First-Out). That means hooks are executed in the order they were added. Keep this in mind when adding multiple hooks, as the order can affect the outcome.
+Hooks run in FIFO order (first in, first out), so they're executed in the order you add them. Keep this in mind when adding multiple hooks, as the order can affect the outcome.
 
 **Example:**
 

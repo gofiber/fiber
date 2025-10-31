@@ -45,7 +45,7 @@ func (e *ExponentialBackoff) Retry(f func() error) error {
 		e.currentInterval = e.InitialInterval
 	}
 	var err error
-	for i := 0; i < e.MaxRetryCount; i++ {
+	for range e.MaxRetryCount {
 		err = f()
 		if err == nil {
 			return nil
