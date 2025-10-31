@@ -53,11 +53,13 @@ func (s *Storage) Get(key string) ([]byte, error) {
 	s.mux.RLock()
 	v, ok := s.db[key]
 	s.mux.RUnlock()
+
 	if !ok || v.expiry != 0 && v.expiry <= utils.Timestamp() {
 		return nil, nil
 	}
 
-	return v.data, nil
+	// Return a copy to prevent callers from mutating stored data
+	return utils.CopyBytes(v.data), nil
 }
 
 // GetWithContext retrieves the value for the given key while honoring context
@@ -86,9 +88,13 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 		expire = uint32(exp.Seconds()) + utils.Timestamp()
 	}
 
-	e := entry{data: val, expiry: expire}
+	// Copy both key and value to avoid unsafe reuse from sync.Pool
+	keyCopy := utils.CopyString(key)
+	valCopy := utils.CopyBytes(val)
+
+	e := entry{data: valCopy, expiry: expire}
 	s.mux.Lock()
-	s.db[key] = e
+	s.db[keyCopy] = e
 	s.mux.Unlock()
 	return nil
 }
