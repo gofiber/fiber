@@ -57,7 +57,8 @@ func (s *Storage) Get(key string) ([]byte, error) {
 		return nil, nil
 	}
 
-	return v.data, nil
+// Return a copy to prevent callers from mutating stored data
+return utils.CopyBytes(v.data), nil
 }
 
 // GetWithContext retrieves the value for the given key while honoring context
