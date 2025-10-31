@@ -69,9 +69,13 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 		expire = uint32(exp.Seconds()) + utils.Timestamp()
 	}
 
-	e := entry{data: val, expiry: expire}
+// Copy both key and value to avoid unsafe reuse from sync.Pool
+keyCopy := utils.CopyString(key)
+valCopy := utils.CopyBytes(val)
+
+e := entry{data: valCopy, expiry: expire}
 	s.mux.Lock()
-	s.db[key] = e
+	s.db[keyCopy] = e
 	s.mux.Unlock()
 	return nil
 }
