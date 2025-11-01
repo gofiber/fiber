@@ -264,7 +264,7 @@ func acquireErrChan() chan error {
 }
 
 // releaseErrChan returns the error channel to the pool.
-// Its caller's responsibility to ensure that:
+// It's caller's responsibility to ensure that:
 // - the channel is not closed
 // - the channel is drained before returning it
 // - the channel is not reused after returning it
