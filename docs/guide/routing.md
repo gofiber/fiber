@@ -85,7 +85,7 @@ Place routes with variable parameters after fixed paths to avoid unintended matc
 
 ## Parameters
 
-Route parameters are dynamic segments in a path, either named or unnamed, used to capture values from the URL. Retrieve them with the [Params](https://docs.gofiber.io/api/ctx/#params) function using the parameter name or, for unnamed parameters, the wildcard (`*`) or plus (`+`) symbol with an index.
+Route parameters are dynamic segments in a path, either named or unnamed, used to capture values from the URL. Retrieve them with the [Params](../api/ctx.md#params) function using the parameter name or, for unnamed parameters, the wildcard (`*`) or plus (`+`) symbol with an index.
 
 The characters `:`, `+`, and `*` introduce parameters.
 
