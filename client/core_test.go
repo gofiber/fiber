@@ -2,13 +2,16 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 
 	"github.com/gofiber/fiber/v3"
@@ -70,6 +73,10 @@ func Test_Exec_Func(t *testing.T) {
 		return errors.New("the request is error")
 	})
 
+	app.Get("/redirect", func(c fiber.Ctx) error {
+		return c.Redirect().Status(fiber.StatusFound).To("/normal")
+	})
+
 	app.Get("/hang-up", func(c fiber.Ctx) error {
 		time.Sleep(time.Second)
 		return c.SendString(c.Hostname() + " hang up")
@@ -90,6 +97,25 @@ func Test_Exec_Func(t *testing.T) {
 
 		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 		req.RawRequest.SetRequestURI("http://example.com/normal")
+
+		resp, err := core.execFunc()
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.RawResponse.StatusCode())
+		require.Equal(t, "example.com", string(resp.RawResponse.Body()))
+	})
+
+	t.Run("follow redirect with retry config", func(t *testing.T) {
+		t.Parallel()
+		core, client, req := newCore(), New(), AcquireRequest()
+		core.ctx = context.Background()
+		core.client = client
+		core.req = req
+
+		client.SetRetryConfig(&RetryConfig{MaxRetryCount: 1})
+		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
+		req.SetMaxRedirects(1)
+		req.RawRequest.Header.SetMethod(fiber.MethodGet)
+		req.RawRequest.SetRequestURI("http://example.com/redirect")
 
 		resp, err := core.execFunc()
 		require.NoError(t, err)
@@ -130,6 +156,59 @@ func Test_Exec_Func(t *testing.T) {
 		_, err := core.execFunc()
 
 		require.Equal(t, ErrTimeoutOrCancel, err)
+	})
+
+	t.Run("cancel drains errChan", func(t *testing.T) {
+		core, client, req := newCore(), New(), AcquireRequest()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		core.ctx = ctx
+		core.client = client
+		core.req = req
+
+		req.RawRequest.SetRequestURI("http://example.com/drain-err")
+
+		blockingTransport := newBlockingErrTransport(errors.New("upstream failure"))
+		client.transport = blockingTransport
+		defer blockingTransport.release()
+
+		type execResult struct {
+			resp *Response
+			err  error
+		}
+
+		resultCh := make(chan execResult, 1)
+		go func() {
+			resp, err := core.execFunc()
+			resultCh <- execResult{resp: resp, err: err}
+		}()
+
+		select {
+		case <-blockingTransport.called:
+		case <-time.After(time.Second):
+			t.Fatal("transport Do was not invoked")
+		}
+
+		cancel()
+
+		var result execResult
+		select {
+		case result = <-resultCh:
+		case <-time.After(time.Second):
+			t.Fatal("execFunc did not return")
+		}
+
+		require.Nil(t, result.resp)
+		require.ErrorIs(t, result.err, ErrTimeoutOrCancel)
+
+		blockingTransport.release()
+
+		select {
+		case <-blockingTransport.finished:
+		case <-time.After(time.Second):
+			t.Fatal("transport Do did not finish")
+		}
 	})
 }
 
@@ -245,4 +324,73 @@ func Test_Execute(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "example.com hang up", string(resp.RawResponse.Body()))
 	})
+}
+
+type blockingErrTransport struct {
+	err error
+
+	called   chan struct{}
+	unblock  chan struct{}
+	finished chan struct{}
+
+	calledOnce   sync.Once
+	releaseOnce  sync.Once
+	finishedOnce sync.Once
+}
+
+func newBlockingErrTransport(err error) *blockingErrTransport {
+	return &blockingErrTransport{
+		err:      err,
+		called:   make(chan struct{}),
+		unblock:  make(chan struct{}),
+		finished: make(chan struct{}),
+	}
+}
+
+func (b *blockingErrTransport) Do(_ *fasthttp.Request, _ *fasthttp.Response) error {
+	b.calledOnce.Do(func() { close(b.called) })
+	<-b.unblock
+	b.finishedOnce.Do(func() { close(b.finished) })
+	return b.err
+}
+
+func (b *blockingErrTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error {
+	_ = timeout
+	return b.Do(req, resp)
+}
+
+func (b *blockingErrTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error {
+	_ = deadline
+	return b.Do(req, resp)
+}
+
+func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
+	_ = maxRedirects
+	return b.Do(req, resp)
+}
+
+func (b *blockingErrTransport) CloseIdleConnections() {
+	_ = b
+}
+
+func (b *blockingErrTransport) TLSConfig() *tls.Config {
+	_ = b
+	return nil
+}
+
+func (b *blockingErrTransport) SetTLSConfig(_ *tls.Config) {
+	_ = b
+}
+
+func (b *blockingErrTransport) SetDial(_ fasthttp.DialFunc) {
+	_ = b
+}
+
+func (b *blockingErrTransport) Client() any {
+	_ = b
+	return nil
+}
+
+func (b *blockingErrTransport) release() {
+	b.releaseOnce.Do(func() { close(b.unblock) })
 }
