@@ -20,7 +20,7 @@ Reverse proxies can handle:
 - **Caching & compression**
 - **Security features** (rate limiting, WAF, DDoS mitigation)
 
-Some Fiber features (like [`SendEarlyHints`](https://docs.gofiber.io/api/ctx#sendearlyhints)) require **HTTP/2 or newer**, which is easiest to enable using a reverse proxy.
+Some Fiber features (like [`SendEarlyHints`](../api/ctx.md#sendearlyhints)) require **HTTP/2 or newer**, which is easiest to enable using a reverse proxy.
 
 ### Popular Reverse Proxies
 
