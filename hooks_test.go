@@ -3,6 +3,8 @@ package fiber
 import (
 	"bytes"
 	"errors"
+	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -285,6 +287,68 @@ func Test_Hook_OnListen(t *testing.T) {
 	require.NoError(t, app.Listen(":0"))
 
 	require.Equal(t, "ready", buf.String())
+}
+
+func Test_ListenDataMetadata(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{AppName: "meta"})
+	app.handlersCount = 42
+
+	cfg := ListenConfig{EnablePrefork: true}
+	childPIDs := []int{11, 22}
+	listenData := app.prepareListenData(":3030", true, cfg, childPIDs)
+
+	app.Hooks().OnListen(func(data ListenData) error {
+		require.Equal(t, globalIpv4Addr, data.Host)
+		require.Equal(t, "3030", data.Port)
+		require.True(t, data.TLS)
+		require.Equal(t, Version, data.Version)
+		require.Equal(t, "meta", data.AppName)
+		require.Equal(t, 42, data.HandlerCount)
+		require.Equal(t, runtime.GOMAXPROCS(0), data.ProcessCount)
+		require.Equal(t, os.Getpid(), data.PID)
+		require.True(t, data.Prefork)
+		require.Equal(t, childPIDs, data.ChildPIDs)
+		require.Equal(t, app.config.ColorScheme, data.ColorScheme)
+
+		return nil
+	})
+
+	app.runOnListenHooks(listenData)
+
+	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+		require.Equal(t, globalIpv4Addr, data.Host)
+		require.Equal(t, "3030", data.Port)
+		require.True(t, data.TLS)
+		require.Equal(t, Version, data.Version)
+		require.Equal(t, "meta", data.AppName)
+		require.Equal(t, 42, data.HandlerCount)
+		require.Equal(t, runtime.GOMAXPROCS(0), data.ProcessCount)
+		require.Equal(t, os.Getpid(), data.PID)
+		require.True(t, data.Prefork)
+		require.Equal(t, childPIDs, data.ChildPIDs)
+		require.Equal(t, app.config.ColorScheme, data.ColorScheme)
+
+		data.ResetEntries()
+
+		data.AddInfo("custom", "Custom Info", "value", 3)
+		data.AddInfo("other", "Other Info", "value", 2)
+
+		return nil
+	})
+
+	pre := newPreStartupMessageData(listenData)
+	require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+
+	require.Equal(t, "value", pre.entries[0].value)
+	require.Equal(t, "Custom Info", pre.entries[0].title)
+	require.Equal(t, 3, pre.entries[0].priority)
+
+	require.Equal(t, "value", pre.entries[1].value)
+	require.Equal(t, "Other Info", pre.entries[1].title)
+	require.Equal(t, 2, pre.entries[1].priority)
+	require.False(t, pre.PreventDefault)
 }
 
 func Test_Hook_OnListenPrefork(t *testing.T) {

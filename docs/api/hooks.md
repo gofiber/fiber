@@ -168,6 +168,64 @@ func main() {
 </TabItem>
 </Tabs>
 
+### ListenData
+
+`ListenData` exposes runtime metadata about the listener:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `Host` | `string` | Resolved hostname or IP address. |
+| `Port` | `string` | The bound port. |
+| `TLS` | `bool` | Indicates whether TLS is enabled. |
+| `Version` | `string` | Fiber version reported in the startup banner. |
+| `AppName` | `string` | Application name from the configuration. |
+| `HandlerCount` | `int` | Total registered handler count. |
+| `ProcessCount` | `int` | Number of processes Fiber will use. |
+| `PID` | `int` | Current process identifier. |
+| `Prefork` | `bool` | Whether prefork is enabled. |
+| `ChildPIDs` | `[]int` | Child process identifiers when preforking. |
+| `ColorScheme` | [`Colors`](https://github.com/gofiber/fiber/blob/main/color.go) | Active color scheme for the startup message. |
+
+### Startup message customization
+
+Use `OnPreStartupMessage` to tweak the banner before Fiber prints it, and `OnPostStartupMessage` to run logic after the banner is printed (or skipped):
+
+- Assign `sm.Header` to override the ASCII art banner. Leave it empty to use the default.
+- Provide `sm.PrimaryInfo` and/or `sm.SecondaryInfo` maps to replace the primary (server URL, handler counts, etc.) and secondary (prefork status, PID, process count) sections.
+- Set `sm.PreventDefault = true` to suppress the built-in banner without affecting other hooks.
+- `PostStartupMessageData` reports whether the banner was skipped via the `Disabled`, `IsChild`, and `Prevented` flags.
+
+```go title="Customize the startup message"
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
+        sm.Header = "FOOBER " + sm.Version + "\n-------"
+        sm.PrimaryInfo = fiber.Map{"Git hash": os.Getenv("GIT_HASH")}
+        sm.SecondaryInfo = fiber.Map{"Prefork": sm.Prefork}
+        return nil
+    })
+
+    app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) error {
+        if !sm.Disabled && !sm.IsChild && !sm.Prevented {
+            fmt.Println("startup completed")
+        }
+        return nil
+    })
+
+    app.Listen(":5000")
+}
+```
+
 ## OnFork
 
 Runs in the child process after a fork.
