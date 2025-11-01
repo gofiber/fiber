@@ -354,40 +354,32 @@ func (b *blockingErrTransport) Do(_ *fasthttp.Request, _ *fasthttp.Response) err
 	return b.err
 }
 
-func (b *blockingErrTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error {
-	_ = timeout
+func (b *blockingErrTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
 	return b.Do(req, resp)
 }
 
-func (b *blockingErrTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error {
-	_ = deadline
+func (b *blockingErrTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, _ time.Time) error {
 	return b.Do(req, resp)
 }
 
-func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	_ = maxRedirects
+func (b *blockingErrTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
 	return b.Do(req, resp)
 }
 
-func (b *blockingErrTransport) CloseIdleConnections() {
-	_ = b
+func (*blockingErrTransport) CloseIdleConnections() {
 }
 
-func (b *blockingErrTransport) TLSConfig() *tls.Config {
-	_ = b
+func (*blockingErrTransport) TLSConfig() *tls.Config {
 	return nil
 }
 
-func (b *blockingErrTransport) SetTLSConfig(_ *tls.Config) {
-	_ = b
+func (*blockingErrTransport) SetTLSConfig(_ *tls.Config) {
 }
 
-func (b *blockingErrTransport) SetDial(_ fasthttp.DialFunc) {
-	_ = b
+func (*blockingErrTransport) SetDial(_ fasthttp.DialFunc) {
 }
 
-func (b *blockingErrTransport) Client() any {
-	_ = b
+func (*blockingErrTransport) Client() any {
 	return nil
 }
 
