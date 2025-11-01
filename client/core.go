@@ -258,7 +258,7 @@ var errChanPool = &sync.Pool{
 func acquireErrChan() chan error {
 	ch, ok := errChanPool.Get().(chan error)
 	if !ok {
-		panic(errors.New("failed to type-assert to error"))
+		panic(errors.New("failed to type-assert to chan error"))
 	}
 	return ch
 }
