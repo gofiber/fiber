@@ -239,7 +239,7 @@ func acquireResponseChan() chan *Response {
 }
 
 // releaseResponseChan returns the *Response channel to the pool.
-// Its caller's responsibility to ensure that:
+// It's the caller's responsibility to ensure that:
 // - the channel is not closed
 // - the channel is drained before returning it
 // - the channel is not reused after returning it
