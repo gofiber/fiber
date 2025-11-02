@@ -1625,6 +1625,33 @@ func Benchmark_Cache(b *testing.B) {
 	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
+func Benchmark_Cache_Miss(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/*", func(c fiber.Ctx) error {
+		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		return c.Status(fiber.StatusOK).Send(data)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		fctx.Request.SetRequestURI("/demo/" + strconv.Itoa(n))
+		h(fctx)
+	}
+
+	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	require.Greater(b, len(fctx.Response.Body()), 30000)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Cache_Storage -benchmem -count=4
 func Benchmark_Cache_Storage(b *testing.B) {
 	app := fiber.New()
