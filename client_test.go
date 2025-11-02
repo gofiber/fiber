@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -366,6 +367,43 @@ func Test_Client_Agent_Cookie(t *testing.T) {
 	}
 
 	testAgent(t, handler, wrapAgent, "v1v2v3v4")
+}
+
+func Test_Client_Agent_StringReuseCopiesBody(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := New(Config{DisableStartupMessage: true})
+
+	var counter atomic.Int32
+	app.Get("/", func(c *Ctx) error {
+		n := counter.Add(1)
+		return c.SendString(fmt.Sprintf("body-%d", n))
+	})
+
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	t.Cleanup(func() {
+		_ = ln.Close()
+		_ = app.Shutdown()
+	})
+
+	agent := Get("http://example.com").Reuse().Dest(make([]byte, 0, 64))
+	agent.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+
+	code1, body1, errs1 := agent.String()
+	utils.AssertEqual(t, StatusOK, code1)
+	utils.AssertEqual(t, 0, len(errs1))
+	utils.AssertEqual(t, "body-1", body1)
+
+	code2, body2, errs2 := agent.String()
+	utils.AssertEqual(t, StatusOK, code2)
+	utils.AssertEqual(t, 0, len(errs2))
+	utils.AssertEqual(t, "body-2", body2)
+
+	utils.AssertEqual(t, "body-1", body1)
+
+	ReleaseAgent(agent)
 }
 
 func Test_Client_Agent_Referer(t *testing.T) {
