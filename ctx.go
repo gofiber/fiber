@@ -426,11 +426,11 @@ func (c *Ctx) BodyParser(out interface{}) error {
 			processedKey := key
 			processedValues := values
 			if c.app.config.Immutable {
-				processedKey = c.app.getString(utils.UnsafeBytes(key))
+				processedKey = strings.Clone(key)
 				if len(values) > 0 {
 					processedValues = make([]string, len(values))
 					for i, val := range values {
-						processedValues[i] = c.app.getString(utils.UnsafeBytes(val))
+						processedValues[i] = strings.Clone(val)
 					}
 				} else {
 					processedValues = nil
@@ -733,15 +733,11 @@ func (c *Ctx) GetRespHeaders() map[string][]string {
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) Hostname() string {
 	if c.IsProxyTrusted() {
-		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
-			if commaPos := strings.Index(host, ","); commaPos != -1 {
-				host = host[:commaPos]
-				if c.app.config.Immutable {
-					return c.app.getString(utils.UnsafeBytes(host))
-				}
-				return host
+		if hostBytes := c.fasthttp.Request.Header.Peek(HeaderXForwardedHost); len(hostBytes) > 0 {
+			if commaPos := bytes.IndexByte(hostBytes, ','); commaPos != -1 {
+				hostBytes = hostBytes[:commaPos]
 			}
-			return host
+			return c.app.getString(hostBytes)
 		}
 	}
 	return c.app.getString(c.fasthttp.Request.URI().Host())
@@ -820,10 +816,6 @@ iploop:
 			}
 		}
 
-		if c.app.config.Immutable {
-			s = c.app.getString(utils.UnsafeBytes(s))
-		}
-
 		ipsFound = append(ipsFound, s)
 	}
 
@@ -871,10 +863,6 @@ func (c *Ctx) extractIPFromHeader(header string) string {
 				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
 					continue iploop
 				}
-			}
-
-			if c.app.config.Immutable {
-				return c.app.getString(utils.UnsafeBytes(s))
 			}
 
 			return s
@@ -1092,7 +1080,7 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 			}
 			value := c.values[i]
 			if c.app.config.Immutable {
-				return c.app.getString(utils.UnsafeBytes(value))
+				return strings.Clone(value)
 			}
 			return value
 		}
@@ -1164,7 +1152,6 @@ func (c *Ctx) Protocol() string {
 	}
 
 	scheme := schemeHTTP
-	copiedFromHeader := false
 	const lenXHeaderName = 12
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
 		if len(key) < lenXHeaderName {
@@ -1181,19 +1168,14 @@ func (c *Ctx) Protocol() string {
 				} else {
 					scheme = v
 				}
-				copiedFromHeader = true
 			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
 				scheme = schemeHTTPS
 			}
 
 		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
 			scheme = c.app.getString(val)
-			copiedFromHeader = true
 		}
 	})
-	if copiedFromHeader && c.app.config.Immutable {
-		return c.app.getString(utils.UnsafeBytes(scheme))
-	}
 	return scheme
 }
 
@@ -1447,8 +1429,10 @@ func (c *Ctx) Range(size int) (Range, error) {
 		startStr = singleRange[:i]
 		endStr = singleRange[i+1:]
 
-		start, startErr := fasthttp.ParseUint(utils.UnsafeBytes(startStr))
-		end, endErr := fasthttp.ParseUint(utils.UnsafeBytes(endStr))
+		startUint, startErr := strconv.ParseUint(startStr, 10, 0)
+		endUint, endErr := strconv.ParseUint(endStr, 10, 0)
+		start := int(startUint)
+		end := int(endUint)
 		if startErr != nil { // -nnn
 			start = size - end
 			end = size - 1
@@ -1855,7 +1839,7 @@ func (c *Ctx) Subdomains(offset ...int) []string {
 	subdomains = subdomains[:l]
 	if c.app.config.Immutable {
 		for i, subdomain := range subdomains {
-			subdomains[i] = c.app.getString(utils.UnsafeBytes(subdomain))
+			subdomains[i] = strings.Clone(subdomain)
 		}
 	}
 	return subdomains
