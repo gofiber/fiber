@@ -3254,7 +3254,9 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(header) == 0 || len(headerPeek) == 0 {
 			t.Fatalf("expected non-empty header")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		headerPtr := uintptr(unsafe.Pointer(unsafe.StringData(header)))
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		peekPtr := uintptr(unsafe.Pointer(&headerPeek[0]))
 		if headerPtr == peekPtr {
 			t.Fatalf("expected header pointer to differ from request buffer")
@@ -3265,7 +3267,9 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(query) == 0 || len(queryPeek) == 0 {
 			t.Fatalf("expected non-empty query")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		queryPtr := uintptr(unsafe.Pointer(unsafe.StringData(query)))
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		queryPeekPtr := uintptr(unsafe.Pointer(&queryPeek[0]))
 		if queryPtr == queryPeekPtr {
 			t.Fatalf("expected query pointer to differ from request buffer")
@@ -3276,7 +3280,9 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(cookie) == 0 || len(cookiePeek) == 0 {
 			t.Fatalf("expected non-empty cookie")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		cookiePtr := uintptr(unsafe.Pointer(unsafe.StringData(cookie)))
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		cookiePeekPtr := uintptr(unsafe.Pointer(&cookiePeek[0]))
 		if cookiePtr == cookiePeekPtr {
 			t.Fatalf("expected cookie pointer to differ from request buffer")
@@ -3287,7 +3293,9 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(headerValues) == 0 || len(headerPeekFirst) == 0 {
 			t.Fatalf("expected repeated header values")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		headerListPtr := uintptr(unsafe.Pointer(unsafe.StringData(headerValues[0])))
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		headerPeekPtr := uintptr(unsafe.Pointer(&headerPeekFirst[0]))
 		if headerListPtr == headerPeekPtr {
 			t.Fatalf("expected header list pointer to differ from request buffer")
@@ -3298,13 +3306,16 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(param) == 0 || len(pathRaw) == 0 {
 			t.Fatalf("expected non-empty param and path")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		paramPtr := uintptr(unsafe.Pointer(unsafe.StringData(param)))
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		pathPtr := uintptr(unsafe.Pointer(&pathRaw[0]))
 		if paramPtr == pathPtr {
 			t.Fatalf("expected param pointer to differ from path buffer")
 		}
 
 		pathString := c.Path()
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		pathStringPtr := uintptr(unsafe.Pointer(unsafe.StringData(pathString)))
 		if pathStringPtr == pathPtr {
 			t.Fatalf("expected path string pointer to differ from raw path buffer")
@@ -3318,7 +3329,9 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(originalURL) == 0 || len(originalRaw) == 0 {
 			t.Fatalf("expected non-empty original URL")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		originalPtr := uintptr(unsafe.Pointer(unsafe.StringData(originalURL)))
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		originalRawPtr := uintptr(unsafe.Pointer(&originalRaw[0]))
 		if originalPtr == originalRawPtr {
 			t.Fatalf("expected original URL pointer to differ from request URI buffer")
@@ -3329,7 +3342,9 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(hostname) == 0 || len(hostRaw) == 0 {
 			t.Fatalf("expected non-empty hostname")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		hostnamePtr := uintptr(unsafe.Pointer(unsafe.StringData(hostname)))
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		hostRawPtr := uintptr(unsafe.Pointer(&hostRaw[0]))
 		if hostnamePtr == hostRawPtr {
 			t.Fatalf("expected hostname pointer to differ from host buffer")
@@ -3339,6 +3354,7 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(subdomains) == 0 {
 			t.Fatalf("expected subdomains slice to be populated")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		subdomainPtr := uintptr(unsafe.Pointer(unsafe.StringData(subdomains[0])))
 		if subdomainPtr == hostnamePtr {
 			t.Fatalf("expected subdomain pointer to differ from hostname buffer")
@@ -3349,7 +3365,9 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(ips) == 0 || len(xff) == 0 {
 			t.Fatalf("expected non-empty IPs and forwarded header")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		ipPtr := uintptr(unsafe.Pointer(unsafe.StringData(ips[0])))
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		xffPtr := uintptr(unsafe.Pointer(&xff[0]))
 		if ipPtr == xffPtr {
 			t.Fatalf("expected IP pointer to differ from forwarded header buffer")
@@ -3359,6 +3377,7 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(ipValue) == 0 {
 			t.Fatalf("expected IP to be populated")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		ipValuePtr := uintptr(unsafe.Pointer(unsafe.StringData(ipValue)))
 		if ipValuePtr == xffPtr {
 			t.Fatalf("expected client IP pointer to differ from forwarded header buffer")
@@ -3369,7 +3388,9 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(body) == 0 || len(bodyRaw) == 0 {
 			t.Fatalf("expected non-empty body")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		bodyPtr := uintptr(unsafe.Pointer(&body[0]))
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		bodyRawPtr := uintptr(unsafe.Pointer(&bodyRaw[0]))
 		if bodyPtr == bodyRawPtr {
 			t.Fatalf("expected body pointer to differ from request body buffer")
@@ -3380,7 +3401,9 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(form) == 0 || len(formRaw) == 0 {
 			t.Fatalf("expected non-empty form value")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		formPtr := uintptr(unsafe.Pointer(unsafe.StringData(form)))
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		formRawPtr := uintptr(unsafe.Pointer(&formRaw[0]))
 		if formPtr == formRawPtr {
 			t.Fatalf("expected form value pointer to differ from request form buffer")
@@ -3390,6 +3413,7 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(queries) == 0 {
 			t.Fatalf("expected queries map to be populated")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		queryMapPtr := uintptr(unsafe.Pointer(unsafe.StringData(queries["q"])))
 		if queryMapPtr == queryPeekPtr {
 			t.Fatalf("expected queries map pointer to differ from request buffer")
@@ -3400,7 +3424,9 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(respHeader) == 0 || len(respPeek) == 0 {
 			t.Fatalf("expected response header to be set")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		respHeaderPtr := uintptr(unsafe.Pointer(unsafe.StringData(respHeader)))
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		respPeekPtr := uintptr(unsafe.Pointer(&respPeek[0]))
 		if respHeaderPtr == respPeekPtr {
 			t.Fatalf("expected response header pointer to differ from response buffer")
@@ -3410,6 +3436,7 @@ func Test_Ctx_Immutable_IsolatedPointers(t *testing.T) {
 		if len(respHeaders) == 0 {
 			t.Fatalf("expected response headers slice to contain value")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		respHeadersPtr := uintptr(unsafe.Pointer(unsafe.StringData(respHeaders[0])))
 		if respHeadersPtr == respPeekPtr {
 			t.Fatalf("expected response headers slice pointer to differ from response buffer")
@@ -3445,11 +3472,13 @@ func Test_Ctx_Immutable_MultipartValuesAreCopied(t *testing.T) {
 		if len(values) == 0 {
 			t.Fatalf("expected multipart value")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		valPtr := uintptr(unsafe.Pointer(unsafe.StringData(values[0])))
 		bodyRaw := c.fasthttp.Request.Body()
 		if len(bodyRaw) == 0 {
 			t.Fatalf("expected raw body to be populated")
 		}
+		// #nosec G103 -- pointer comparisons in tests verify immutable copies.
 		bodyPtr := uintptr(unsafe.Pointer(&bodyRaw[0]))
 		if valPtr == bodyPtr {
 			t.Fatalf("expected multipart value pointer to differ from request body buffer")

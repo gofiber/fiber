@@ -384,11 +384,15 @@ func Test_Client_Agent_StringReuseCopiesBody(t *testing.T) {
 
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 	t.Cleanup(func() {
-		_ = ln.Close()
-		_ = app.Shutdown()
+		if err := app.Shutdown(); err != nil && !errors.Is(err, fasthttputil.ErrInmemoryListenerClosed) {
+			t.Fatalf("failed to shutdown app: %v", err)
+		}
+		if err := ln.Close(); err != nil && !errors.Is(err, fasthttputil.ErrInmemoryListenerClosed) {
+			t.Fatalf("failed to close listener: %v", err)
+		}
 	})
 
-	agent := Get("http://example.com").Reuse().Dest(make([]byte, 0, 64))
+	agent := Get("http://string-reuse.example.com").Reuse().Dest(make([]byte, 0, 64))
 	agent.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 
 	code1, body1, errs1 := agent.String()
