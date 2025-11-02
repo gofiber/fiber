@@ -426,14 +426,13 @@ func (c *Ctx) BodyParser(out interface{}) error {
 			processedKey := key
 			processedValues := values
 			if c.app.config.Immutable {
-				processedKey = string(c.app.getBytes(key))
+				processedKey = c.app.getString(c.app.getBytes(key))
 				if len(values) > 0 {
-					processedValues = make([]string, len(values))
+					copied := make([]string, len(values))
 					for i, val := range values {
-						processedValues[i] = string(c.app.getBytes(val))
+						copied[i] = c.app.getString(c.app.getBytes(val))
 					}
-				} else {
-					processedValues = nil
+					processedValues = copied
 				}
 			}
 
@@ -1080,7 +1079,7 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 			}
 			value := c.values[i]
 			if c.app.config.Immutable {
-				return string(c.app.getBytes(value))
+				return c.app.getString(c.app.getBytes(value))
 			}
 			return value
 		}
@@ -1429,10 +1428,8 @@ func (c *Ctx) Range(size int) (Range, error) {
 		startStr = singleRange[:i]
 		endStr = singleRange[i+1:]
 
-		startUint, startErr := strconv.ParseUint(startStr, 10, 0)
-		endUint, endErr := strconv.ParseUint(endStr, 10, 0)
-		start := int(startUint)
-		end := int(endUint)
+		start, startErr := fasthttp.ParseUint(utils.UnsafeBytes(startStr))
+		end, endErr := fasthttp.ParseUint(utils.UnsafeBytes(endStr))
 		if startErr != nil { // -nnn
 			start = size - end
 			end = size - 1
@@ -1839,7 +1836,7 @@ func (c *Ctx) Subdomains(offset ...int) []string {
 	subdomains = subdomains[:l]
 	if c.app.config.Immutable {
 		for i, subdomain := range subdomains {
-			subdomains[i] = string(c.app.getBytes(subdomain))
+			subdomains[i] = c.app.getString(c.app.getBytes(subdomain))
 		}
 	}
 	return subdomains
