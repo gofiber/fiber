@@ -4,6 +4,7 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -13,13 +14,14 @@ import (
 // Storage provides an in-memory implementation of the storage interface for
 // testing purposes.
 type Storage struct {
-	db         map[string]entry
+	db         map[string]Entry
 	done       chan struct{}
 	gcInterval time.Duration
 	mux        sync.RWMutex
 }
 
-type entry struct {
+// Entry represents a value stored in memory along with its expiration.
+type Entry struct {
 	data []byte
 	// max value is 4294967295 -> Sun Feb 07 2106 06:28:15 GMT+0000
 	expiry uint32
@@ -32,7 +34,7 @@ func New(config ...Config) *Storage {
 
 	// Create storage
 	store := &Storage{
-		db:         make(map[string]entry),
+		db:         make(map[string]Entry),
 		gcInterval: cfg.GCInterval,
 		done:       make(chan struct{}),
 	}
@@ -64,13 +66,9 @@ func (s *Storage) Get(key string) ([]byte, error) {
 // GetWithContext retrieves the value for the given key while honoring context
 // cancellation.
 func (s *Storage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-		// Continue execution if context is not done
+	if err := wrapContextError(ctx, "get"); err != nil {
+		return nil, err
 	}
-
 	return s.Get(key)
 }
 
@@ -91,7 +89,7 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	keyCopy := utils.CopyString(key)
 	valCopy := utils.CopyBytes(val)
 
-	e := entry{data: valCopy, expiry: expire}
+	e := Entry{data: valCopy, expiry: expire}
 	s.mux.Lock()
 	s.db[keyCopy] = e
 	s.mux.Unlock()
@@ -101,13 +99,9 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 // SetWithContext sets the value for the given key while honoring context
 // cancellation.
 func (s *Storage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		// Continue execution if context is not done
+	if err := wrapContextError(ctx, "set"); err != nil {
+		return err
 	}
-
 	return s.Set(key, val, exp)
 }
 
@@ -126,19 +120,15 @@ func (s *Storage) Delete(key string) error {
 // DeleteWithContext removes the value for the given key while honoring
 // context cancellation.
 func (s *Storage) DeleteWithContext(ctx context.Context, key string) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		// Continue execution if context is not done
+	if err := wrapContextError(ctx, "delete"); err != nil {
+		return err
 	}
-
 	return s.Delete(key)
 }
 
 // Reset clears all keys and values from the storage map.
 func (s *Storage) Reset() error {
-	ndb := make(map[string]entry)
+	ndb := make(map[string]Entry)
 	s.mux.Lock()
 	s.db = ndb
 	s.mux.Unlock()
@@ -148,13 +138,9 @@ func (s *Storage) Reset() error {
 // ResetWithContext clears all stored keys while honoring context
 // cancellation.
 func (s *Storage) ResetWithContext(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		// Continue execution if context is not done
+	if err := wrapContextError(ctx, "reset"); err != nil {
+		return err
 	}
-
 	return s.Reset()
 }
 
@@ -206,7 +192,7 @@ func (s *Storage) gc() {
 
 // Conn returns the underlying storage map. The map must not be modified by
 // callers.
-func (s *Storage) Conn() map[string]entry {
+func (s *Storage) Conn() map[string]Entry {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 	return s.db
@@ -236,4 +222,11 @@ func (s *Storage) Keys() ([][]byte, error) {
 	}
 
 	return keys, nil
+}
+
+func wrapContextError(ctx context.Context, op string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("memory storage %s: %w", op, err)
+	}
+	return nil
 }
