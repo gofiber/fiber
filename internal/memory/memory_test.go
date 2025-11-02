@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
 

@@ -26,7 +26,7 @@ import (
 	"time"
 	"unsafe"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
