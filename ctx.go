@@ -426,11 +426,11 @@ func (c *Ctx) BodyParser(out interface{}) error {
 			processedKey := key
 			processedValues := values
 			if c.app.config.Immutable {
-				processedKey = c.app.getString(c.app.getBytes(key))
+				processedKey = c.app.getString(utils.UnsafeBytes(key))
 				if len(values) > 0 {
 					processedValues = make([]string, len(values))
 					for i, val := range values {
-						processedValues[i] = c.app.getString(c.app.getBytes(val))
+						processedValues[i] = c.app.getString(utils.UnsafeBytes(val))
 					}
 				} else {
 					processedValues = nil
@@ -737,7 +737,7 @@ func (c *Ctx) Hostname() string {
 			if commaPos := strings.Index(host, ","); commaPos != -1 {
 				host = host[:commaPos]
 				if c.app.config.Immutable {
-					return c.app.getString(c.app.getBytes(host))
+					return c.app.getString(utils.UnsafeBytes(host))
 				}
 				return host
 			}
@@ -821,7 +821,7 @@ iploop:
 		}
 
 		if c.app.config.Immutable {
-			s = c.app.getString(c.app.getBytes(s))
+			s = c.app.getString(utils.UnsafeBytes(s))
 		}
 
 		ipsFound = append(ipsFound, s)
@@ -874,7 +874,7 @@ func (c *Ctx) extractIPFromHeader(header string) string {
 			}
 
 			if c.app.config.Immutable {
-				return c.app.getString(c.app.getBytes(s))
+				return c.app.getString(utils.UnsafeBytes(s))
 			}
 
 			return s
@@ -1092,7 +1092,7 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 			}
 			value := c.values[i]
 			if c.app.config.Immutable {
-				return c.app.getString(c.app.getBytes(value))
+				return c.app.getString(utils.UnsafeBytes(value))
 			}
 			return value
 		}
@@ -1192,7 +1192,7 @@ func (c *Ctx) Protocol() string {
 		}
 	})
 	if copiedFromHeader && c.app.config.Immutable {
-		return c.app.getString(c.app.getBytes(scheme))
+		return c.app.getString(utils.UnsafeBytes(scheme))
 	}
 	return scheme
 }
@@ -1855,7 +1855,7 @@ func (c *Ctx) Subdomains(offset ...int) []string {
 	subdomains = subdomains[:l]
 	if c.app.config.Immutable {
 		for i, subdomain := range subdomains {
-			subdomains[i] = c.app.getString(c.app.getBytes(subdomain))
+			subdomains[i] = c.app.getString(utils.UnsafeBytes(subdomain))
 		}
 	}
 	return subdomains
