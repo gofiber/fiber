@@ -383,6 +383,13 @@ func (*blockingErrTransport) Client() any {
 	return nil
 }
 
+func (*blockingErrTransport) StreamResponseBody() bool {
+	return false
+}
+
+func (*blockingErrTransport) SetStreamResponseBody(_ bool) {
+}
+
 func (b *blockingErrTransport) release() {
 	b.releaseOnce.Do(func() { close(b.unblock) })
 }
