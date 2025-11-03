@@ -426,11 +426,11 @@ func (c *Ctx) BodyParser(out interface{}) error {
 			processedKey := key
 			processedValues := values
 			if c.app.config.Immutable {
-				processedKey = c.app.getString(c.app.getBytes(key))
+				processedKey = string(c.app.getBytes(key))
 				if len(values) > 0 {
 					copied := make([]string, len(values))
 					for i, val := range values {
-						copied[i] = c.app.getString(c.app.getBytes(val))
+						copied[i] = string(c.app.getBytes(val))
 					}
 					processedValues = copied
 				}
@@ -1079,7 +1079,7 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 			}
 			value := c.values[i]
 			if c.app.config.Immutable {
-				return c.app.getString(c.app.getBytes(value))
+				return string(c.app.getBytes(value))
 			}
 			return value
 		}
@@ -1836,7 +1836,7 @@ func (c *Ctx) Subdomains(offset ...int) []string {
 	subdomains = subdomains[:l]
 	if c.app.config.Immutable {
 		for i, subdomain := range subdomains {
-			subdomains[i] = c.app.getString(c.app.getBytes(subdomain))
+			subdomains[i] = string(c.app.getBytes(subdomain))
 		}
 	}
 	return subdomains
