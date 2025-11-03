@@ -3,7 +3,7 @@ package binder
 import (
 	"fmt"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // XMLBinding is the XML binder for XML request body.

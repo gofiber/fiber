@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
 )
@@ -799,10 +799,7 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 		if start > end || start < 0 {
 			continue
 		}
-		rangeData.Ranges = append(rangeData.Ranges, struct {
-			Start int
-			End   int
-		}{
+		rangeData.Ranges = append(rangeData.Ranges, RangeSet{
 			Start: start,
 			End:   end,
 		})

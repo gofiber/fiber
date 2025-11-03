@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/google/uuid"
 )
 

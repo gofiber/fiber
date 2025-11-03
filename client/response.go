@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
