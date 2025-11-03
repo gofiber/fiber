@@ -80,6 +80,10 @@ Each documented route automatically includes a `200` response with the descripti
 | Path        | `string`                | Path is the route where the specification will be served.       | `"/openapi.json"` |
 | Operations  | `map[string]Operation`  | Per-route metadata keyed by `METHOD /path`.                     | `nil`             |
 
+When the middleware is attached to a group or mounted under a prefixed `Use`, the configured `Path` is resolved relative to that
+prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global `app.U
+se(openapi.New())` only intercepts `/openapi.json` and will not affect other endpoints ending in `openapi.json`.
+
 ## Default Config
 
 ```go

@@ -456,6 +456,44 @@ func Test_OpenAPI_GroupMiddleware(t *testing.T) {
 	require.Contains(t, spec.Paths, "/api/v2/users")
 }
 
+func Test_OpenAPI_DoesNotInterceptSimilarPaths(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New())
+	app.Get("/reports/openapi.json", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusAccepted) })
+
+	req := httptest.NewRequest(fiber.MethodGet, "/reports/openapi.json", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusAccepted, resp.StatusCode)
+}
+
+func Test_OpenAPI_RootAndGroupSpecs(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{Title: "root"}))
+
+	v1 := app.Group("/v1")
+	v1.Use(New(Config{Title: "group"}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Equal(t, "root", spec.Info.Title)
+
+	req = httptest.NewRequest(fiber.MethodGet, "/v1/openapi.json", nil)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Equal(t, "group", spec.Info.Title)
+}
+
 func Test_OpenAPI_ConfigValues(t *testing.T) {
 	app := fiber.New()
 

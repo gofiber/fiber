@@ -26,7 +26,8 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		if !strings.HasSuffix(c.Path(), cfg.Path) {
+		targetPath := resolvedSpecPath(c, cfg.Path)
+		if c.Path() != targetPath {
 			return c.Next()
 		}
 
@@ -43,6 +44,37 @@ func New(config ...Config) fiber.Handler {
 		c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSONCharsetUTF8)
 		return c.Status(fiber.StatusOK).Send(data)
 	}
+}
+
+func resolvedSpecPath(c fiber.Ctx, cfgPath string) string {
+	path := cfgPath
+	if path == "" {
+		path = ConfigDefault.Path
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
+	route := c.Route()
+	if route == nil {
+		return path
+	}
+
+	prefix := route.Path
+	if idx := strings.Index(prefix, "*"); idx >= 0 {
+		prefix = prefix[:idx]
+	}
+	if prefix == "/" || prefix == "" {
+		return path
+	}
+	if strings.HasSuffix(prefix, "/") {
+		prefix = strings.TrimSuffix(prefix, "/")
+	}
+	if prefix == "" {
+		return path
+	}
+
+	return prefix + path
 }
 
 type openAPISpec struct {

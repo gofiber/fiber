@@ -864,7 +864,7 @@ func sanitizeMediaTypes(mediaTypes []string) []string {
 			continue
 		}
 		if _, _, err := mime.ParseMediaType(trimmed); err != nil || !strings.Contains(trimmed, "/") {
-			panic("invalid media type: " + typ)
+			panic("invalid media type: " + trimmed)
 		}
 		if _, ok := seen[trimmed]; ok {
 			continue
