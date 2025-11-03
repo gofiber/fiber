@@ -800,9 +800,7 @@ func printDebugInfo(req *Request, resp *Response, w io.Writer) {
 func (a *Agent) String() (int, string, []error) {
 	defer a.release()
 	code, body, errs := a.bytes()
-	// TODO: There might be a data race here on body. Maybe use utils.CopyBytes on it?
-
-	return code, utils.UnsafeString(body), errs
+	return code, string(body), errs
 }
 
 // Struct returns the status code, bytes body and errors of URL.

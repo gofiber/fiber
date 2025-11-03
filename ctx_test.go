@@ -2959,6 +2959,127 @@ func Test_Ctx_Subdomains(t *testing.T) {
 	utils.AssertEqual(t, []string{"localhost:3000"}, c.Subdomains())
 }
 
+// go test -run Test_Ctx_Immutable_AfterHandler
+func Test_Ctx_Immutable_AfterHandler(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		Immutable:          true,
+		ProxyHeader:        HeaderXForwardedFor,
+		EnableIPValidation: true,
+	})
+
+	type ctxSnapshot struct {
+		method          string
+		path            string
+		originalURL     string
+		baseURL         string
+		protocol        string
+		hostname        string
+		paramName       string
+		queryFoo        string
+		cookieSession   string
+		headerUserAgent string
+		ip              string
+		ips             []string
+		subdomains      []string
+		body            []byte
+		routePath       string
+	}
+
+	snapshots := make([]ctxSnapshot, 0, 2)
+
+	app.All("/v1/:name", func(c *Ctx) error {
+		snapshots = append(snapshots, ctxSnapshot{
+			method:          c.Method(),
+			path:            c.Path(),
+			originalURL:     c.OriginalURL(),
+			baseURL:         c.BaseURL(),
+			protocol:        c.Protocol(),
+			hostname:        c.Hostname(),
+			paramName:       c.Params("name"),
+			queryFoo:        c.Query("foo"),
+			cookieSession:   c.Cookies("session"),
+			headerUserAgent: c.Get(HeaderUserAgent),
+			ip:              c.IP(),
+			ips:             c.IPs(),
+			subdomains:      c.Subdomains(),
+			body:            c.Body(),
+			routePath:       c.Route().Path,
+		})
+
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(MethodPost, "https://initial.invalid/v1/alpha?foo=bar", strings.NewReader("body-one"))
+	req.Header.Set(HeaderXForwardedHost, "p1.api.example.com")
+	req.Header.Set(HeaderXForwardedProto, "https")
+	req.Header.Set(HeaderXForwardedFor, "10.0.0.1, 10.0.0.2")
+	req.Header.Set(HeaderUserAgent, "agent-one")
+	req.Header.Set(HeaderCookie, "session=alpha")
+
+	originalFirst := req.URL.String()
+
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, nil, resp.Body.Close())
+
+	utils.AssertEqual(t, 1, len(snapshots))
+	first := snapshots[0]
+
+	follow := httptest.NewRequest(MethodPatch, "http://secondary.invalid/v1/beta?foo=qux", strings.NewReader("body-two"))
+	follow.Header.Set(HeaderXForwardedHost, "edge.stage.example.org")
+	follow.Header.Set(HeaderXForwardedProto, "http")
+	follow.Header.Set(HeaderXForwardedFor, "192.168.1.50")
+	follow.Header.Set(HeaderUserAgent, "agent-two")
+	follow.Header.Set(HeaderCookie, "session=beta")
+
+	originalSecond := follow.URL.String()
+
+	resp, err = app.Test(follow)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, nil, resp.Body.Close())
+
+	utils.AssertEqual(t, 2, len(snapshots))
+	second := snapshots[1]
+
+	// Ensure the first request's state stays valid after the context is released.
+	utils.AssertEqual(t, MethodPost, first.method)
+	utils.AssertEqual(t, "/v1/alpha", first.path)
+	utils.AssertEqual(t, originalFirst, first.originalURL)
+	utils.AssertEqual(t, "https://p1.api.example.com", first.baseURL)
+	utils.AssertEqual(t, "https", first.protocol)
+	utils.AssertEqual(t, "p1.api.example.com", first.hostname)
+	utils.AssertEqual(t, "alpha", first.paramName)
+	utils.AssertEqual(t, "bar", first.queryFoo)
+	utils.AssertEqual(t, "alpha", first.cookieSession)
+	utils.AssertEqual(t, "agent-one", first.headerUserAgent)
+	utils.AssertEqual(t, "10.0.0.1", first.ip)
+	utils.AssertEqual(t, []string{"10.0.0.1", "10.0.0.2"}, first.ips)
+	utils.AssertEqual(t, []string{"p1", "api"}, first.subdomains)
+	utils.AssertEqual(t, "body-one", string(first.body))
+	utils.AssertEqual(t, "/v1/:name", first.routePath)
+
+	// Verify the second request collected distinct immutable copies.
+	utils.AssertEqual(t, MethodPatch, second.method)
+	utils.AssertEqual(t, "/v1/beta", second.path)
+	utils.AssertEqual(t, originalSecond, second.originalURL)
+	utils.AssertEqual(t, "http://edge.stage.example.org", second.baseURL)
+	utils.AssertEqual(t, "http", second.protocol)
+	utils.AssertEqual(t, "edge.stage.example.org", second.hostname)
+	utils.AssertEqual(t, "beta", second.paramName)
+	utils.AssertEqual(t, "qux", second.queryFoo)
+	utils.AssertEqual(t, "beta", second.cookieSession)
+	utils.AssertEqual(t, "agent-two", second.headerUserAgent)
+	utils.AssertEqual(t, "192.168.1.50", second.ip)
+	utils.AssertEqual(t, []string{"192.168.1.50"}, second.ips)
+	utils.AssertEqual(t, []string{"edge", "stage"}, second.subdomains)
+	utils.AssertEqual(t, "body-two", string(second.body))
+	utils.AssertEqual(t, "/v1/:name", second.routePath)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Subdomains -benchmem -count=4
 func Benchmark_Ctx_Subdomains(b *testing.B) {
 	app := New()

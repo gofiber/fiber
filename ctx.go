@@ -351,7 +351,7 @@ func (c *Ctx) Body() []byte {
 		c.fasthttp.Request.SetBodyRaw(originalBody)
 	}
 	if err != nil {
-		return []byte(err.Error())
+		return c.app.getBytes(err.Error())
 	}
 
 	if c.app.config.Immutable {
@@ -423,7 +423,20 @@ func (c *Ctx) BodyParser(out interface{}) error {
 
 		data := make(map[string][]string)
 		for key, values := range multipartForm.Value {
-			err = formatParserData(out, data, bodyTag, key, values, c.app.config.EnableSplittingOnParsers, true)
+			processedKey := key
+			processedValues := values
+			if c.app.config.Immutable {
+				processedKey = c.app.getString([]byte(key))
+				if len(values) > 0 {
+					copied := make([]string, len(values))
+					for i, val := range values {
+						copied[i] = c.app.getString([]byte(val))
+					}
+					processedValues = copied
+				}
+			}
+
+			err = formatParserData(out, data, bodyTag, processedKey, processedValues, c.app.config.EnableSplittingOnParsers, true)
 			if err != nil {
 				return err
 			}
@@ -714,17 +727,16 @@ func (c *Ctx) GetRespHeaders() map[string][]string {
 }
 
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
+// Returned value is only valid within the handler. Do not store any references unless
+// Config.Immutable is enabled, in which case the value is copied before it is returned.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) Hostname() string {
 	if c.IsProxyTrusted() {
-		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
-			commaPos := strings.Index(host, ",")
-			if commaPos != -1 {
-				return host[:commaPos]
+		if hostBytes := c.fasthttp.Request.Header.Peek(HeaderXForwardedHost); len(hostBytes) > 0 {
+			if commaPos := bytes.IndexByte(hostBytes, ','); commaPos != -1 {
+				hostBytes = hostBytes[:commaPos]
 			}
-			return host
+			return c.app.getString(hostBytes)
 		}
 	}
 	return c.app.getString(c.fasthttp.Request.URI().Host())
@@ -1050,8 +1062,8 @@ func (c *Ctx) OriginalURL() string {
 // Params is used to get the route parameters.
 // Defaults to empty string "" if the param doesn't exist.
 // If a default value is given, it will return that value if the param doesn't exist.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the value outside the Handler.
+// Returned value is only valid within the handler. Do not store any references unless
+// Config.Immutable is enabled, in which case the value is copied before it is returned.
 func (c *Ctx) Params(key string, defaultValue ...string) string {
 	if key == "*" || key == "+" {
 		key += "1"
@@ -1065,7 +1077,11 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 			if len(c.values) <= i || len(c.values[i]) == 0 {
 				break
 			}
-			return c.values[i]
+			value := c.values[i]
+			if c.app.config.Immutable {
+				return c.app.getString([]byte(value))
+			}
+			return value
 		}
 	}
 	return defaultString("", defaultValue)
@@ -1818,6 +1834,11 @@ func (c *Ctx) Subdomains(offset ...int) []string {
 		l = len(subdomains)
 	}
 	subdomains = subdomains[:l]
+	if c.app.config.Immutable {
+		for i, subdomain := range subdomains {
+			subdomains[i] = c.app.getString([]byte(subdomain))
+		}
+	}
 	return subdomains
 }
 
@@ -1859,9 +1880,9 @@ func (c *Ctx) String() string {
 	buf.WriteString(" - ")
 
 	// Add method and URI
-	buf.Write(c.fasthttp.Request.Header.Method())
+	buf.WriteString(c.app.getString(c.fasthttp.Request.Header.Method()))
 	buf.WriteByte(' ')
-	buf.Write(c.fasthttp.URI().FullURI())
+	buf.WriteString(c.app.getString(c.fasthttp.URI().FullURI()))
 
 	// Allocate string
 	str := buf.String()
