@@ -426,11 +426,11 @@ func (c *Ctx) BodyParser(out interface{}) error {
 			processedKey := key
 			processedValues := values
 			if c.app.config.Immutable {
-				processedKey = string(c.app.getBytes(key))
+				processedKey = c.app.getString([]byte(key))
 				if len(values) > 0 {
 					copied := make([]string, len(values))
 					for i, val := range values {
-						copied[i] = string(c.app.getBytes(val))
+						copied[i] = c.app.getString([]byte(val))
 					}
 					processedValues = copied
 				}
