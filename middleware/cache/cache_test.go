@@ -1643,7 +1643,9 @@ func Benchmark_Cache_Miss(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	var n int
+	for b.Loop() {
+		n++
 		fctx.Request.SetRequestURI("/demo/" + strconv.Itoa(n))
 		h(fctx)
 	}
