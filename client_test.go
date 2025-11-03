@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -987,6 +988,44 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, code)
 	utils.AssertEqual(t, "reuse", body)
 	utils.AssertEqual(t, 0, len(errs))
+}
+
+func Test_Client_Agent_StringCopiesBody(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := New(Config{DisableStartupMessage: true})
+
+	var hits int32
+	app.Get("/", func(c *Ctx) error {
+		current := atomic.AddInt32(&hits, 1)
+		return c.SendString(fmt.Sprintf("body-%d", current))
+	})
+
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+
+	a := Get("http://example.com").
+		Reuse()
+
+	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+
+	code, firstBody, errs := a.String()
+
+	utils.AssertEqual(t, StatusOK, code)
+	utils.AssertEqual(t, "body-1", firstBody)
+	utils.AssertEqual(t, 0, len(errs))
+
+	code, secondBody, errs := a.String()
+
+	utils.AssertEqual(t, StatusOK, code)
+	utils.AssertEqual(t, "body-2", secondBody)
+	utils.AssertEqual(t, 0, len(errs))
+
+	utils.AssertEqual(t, "body-1", firstBody)
+	utils.AssertEqual(t, "body-2", secondBody)
+
+	ReleaseAgent(a)
 }
 
 func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
