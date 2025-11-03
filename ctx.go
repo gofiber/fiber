@@ -1079,7 +1079,7 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 			}
 			value := c.values[i]
 			if c.app.config.Immutable {
-				return string(c.app.getBytes(value))
+				return c.app.getString([]byte(value))
 			}
 			return value
 		}
@@ -1836,7 +1836,7 @@ func (c *Ctx) Subdomains(offset ...int) []string {
 	subdomains = subdomains[:l]
 	if c.app.config.Immutable {
 		for i, subdomain := range subdomains {
-			subdomains[i] = string(c.app.getBytes(subdomain))
+			subdomains[i] = c.app.getString([]byte(subdomain))
 		}
 	}
 	return subdomains
