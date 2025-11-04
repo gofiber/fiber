@@ -148,6 +148,10 @@ func parseToMap(target reflect.Value, data map[string][]string) error {
 			newMap[k] = v[len(v)-1]
 		}
 	default:
+		// Interface element maps (e.g. map[string]any) are left untouched because
+		// the binder cannot safely infer element conversions without mutating
+		// caller-provided values. These destinations therefore see a successful
+		// no-op parse.
 		return nil // it's not necessary to check all types
 	}
 
