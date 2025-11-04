@@ -3653,6 +3653,41 @@ func Test_Ctx_Route(t *testing.T) {
 	require.Empty(t, c.Route().Handlers)
 }
 
+// go test -run Test_Ctx_FullPath
+func Test_Ctx_FullPath(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/test", func(c Ctx) error {
+		require.Equal(t, "/test", c.FullPath())
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+// go test -run Test_Ctx_FullPath_Group
+func Test_Ctx_FullPath_Group(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	group := app.Group("/v1")
+	group.Get("/test", func(c Ctx) error {
+		require.Equal(t, "/v1/test", c.FullPath())
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
 // go test -run Test_Ctx_RouteNormalized
 func Test_Ctx_RouteNormalized(t *testing.T) {
 	t.Parallel()

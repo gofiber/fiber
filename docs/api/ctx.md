@@ -420,6 +420,23 @@ func MyMiddleware() fiber.Handler {
 }
 ```
 
+### FullPath
+
+Returns the full path of the matched route. This includes any prefixes that were added by [groups](../guide/routing.md#grouping-routes) or mounts.
+
+```go title="Signature"
+func (c fiber.Ctx) FullPath() string
+```
+
+```go title="Example"
+api := app.Group("/api")
+api.Get("/users/:id", func(c fiber.Ctx) error {
+  return c.JSON(fiber.Map{
+    "route": c.FullPath(), // "/api/users/:id"
+  })
+})
+```
+
 ### Matched
 
 Returns `true` if the current request path was matched by the router.
