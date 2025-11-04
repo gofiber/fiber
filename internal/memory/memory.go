@@ -57,12 +57,12 @@ func (s *Storage) Get(key string) any {
 	if !ok || v.e != 0 && v.e <= utils.Timestamp() {
 		return nil
 	}
-	
+
 	// Defensive copy for byte slices to prevent external mutation
 	if b, ok := v.v.([]byte); ok {
 		return utils.CopyBytes(b)
 	}
-	
+
 	return v.v
 }
 
@@ -77,15 +77,15 @@ func (s *Storage) Set(key string, val any, ttl time.Duration) {
 	if ttl > 0 {
 		exp = uint32(ttl.Seconds()) + utils.Timestamp()
 	}
-	
+
 	// Defensive copies to prevent unsafe reuse from sync.Pool
 	keyCopy := utils.CopyString(key)
-	
+
 	// Copy byte slices to prevent external mutation
 	if b, ok := val.([]byte); ok {
 		val = utils.CopyBytes(b)
 	}
-	
+
 	i := item{e: exp, v: val}
 	s.Lock()
 	s.data[keyCopy] = i

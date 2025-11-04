@@ -90,7 +90,7 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	keyCopy := utils.CopyString(key)
 	valCopy := utils.CopyBytes(val)
 
-	e := entry{data: valCopy, expiry: expire}
+	e := Entry{data: valCopy, expiry: expire}
 	s.mux.Lock()
 	s.db[keyCopy] = e
 	s.mux.Unlock()
