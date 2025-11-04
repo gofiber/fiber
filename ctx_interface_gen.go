@@ -110,6 +110,8 @@ type Ctx interface {
 	ViewBind(vars Map) error
 	// Route returns the matched Route struct.
 	Route() *Route
+	// FullPath returns the matched route path, including any group prefixes.
+	FullPath() string
 	// Matched returns true if the current request path was matched by the router.
 	Matched() bool
 	// IsMiddleware returns true if the current request handler was registered as middleware.

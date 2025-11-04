@@ -317,6 +317,11 @@ func (c *DefaultCtx) Route() *Route {
 	return c.route
 }
 
+// FullPath returns the matched route path, including any group prefixes.
+func (c *DefaultCtx) FullPath() string {
+	return c.Route().Path
+}
+
 // Matched returns true if the current request path was matched by the router.
 func (c *DefaultCtx) Matched() bool {
 	return c.getMatched()
