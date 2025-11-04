@@ -422,7 +422,9 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
 
-	c.Redirect().parseAndClearFlashMessages()
+	cookieValue := c.Cookies(FlashCookieName)
+
+	c.Redirect().parseAndClearFlashMessages(cookieValue)
 
 	require.Equal(t, FlashMessage{
 		Key:   "success",
@@ -476,7 +478,9 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=test")
 
-	c.Redirect().parseAndClearFlashMessages()
+	cookieValue = c.Cookies(FlashCookieName)
+
+	c.Redirect().parseAndClearFlashMessages(cookieValue)
 
 	require.Empty(t, c.Redirect().messages)
 }
@@ -499,7 +503,7 @@ func Test_Redirect_parseAndClearFlashMessages_InvalidHex(t *testing.T) {
 	c.Request().Header.SetCookie(FlashCookieName, "not-a-valid-hex-string")
 
 	// Call parseAndClearFlashMessages
-	r.parseAndClearFlashMessages()
+	r.parseAndClearFlashMessages(c.Cookies(FlashCookieName))
 
 	// Verify that no flash messages are processed (should be empty)
 	require.Empty(t, r.messages)
@@ -760,10 +764,12 @@ func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
 
+	cookieValue := c.Cookies(FlashCookieName)
+
 	b.ReportAllocs()
 
 	for b.Loop() {
-		c.Redirect().parseAndClearFlashMessages()
+		c.Redirect().parseAndClearFlashMessages(cookieValue)
 	}
 
 	require.Equal(b, FlashMessage{
@@ -830,7 +836,8 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 	require.NoError(b, err)
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
-	c.Redirect().parseAndClearFlashMessages()
+	cookieValue := c.Cookies(FlashCookieName)
+	c.Redirect().parseAndClearFlashMessages(cookieValue)
 
 	var msgs []FlashMessage
 
@@ -866,7 +873,8 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 	require.NoError(b, err)
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
-	c.Redirect().parseAndClearFlashMessages()
+	cookieValue := c.Cookies(FlashCookieName)
+	c.Redirect().parseAndClearFlashMessages(cookieValue)
 
 	var oldInputs []OldInputData
 
@@ -900,7 +908,8 @@ func Benchmark_Redirect_Message(b *testing.B) {
 	require.NoError(b, err)
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
-	c.Redirect().parseAndClearFlashMessages()
+	cookieValue := c.Cookies(FlashCookieName)
+	c.Redirect().parseAndClearFlashMessages(cookieValue)
 
 	var msg FlashMessage
 
@@ -930,7 +939,8 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 	require.NoError(b, err)
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
-	c.Redirect().parseAndClearFlashMessages()
+	cookieValue := c.Cookies(FlashCookieName)
+	c.Redirect().parseAndClearFlashMessages(cookieValue)
 
 	var input OldInputData
 
