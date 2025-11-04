@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // Put fields related to mounting.

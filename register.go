@@ -22,7 +22,7 @@ type Register interface {
 	RouteChain(path string) Register
 }
 
-var _ (Register) = (*Registering)(nil)
+var _ Register = (*Registering)(nil)
 
 // Registering provides route registration helpers for a specific path on the
 // application instance.

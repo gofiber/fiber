@@ -241,7 +241,6 @@ linters:
     paths:
       - _msgp\.go
       - _msgp_test\.go
-      - internal
       - third_party$
       - builtin$
       - examples$
@@ -270,7 +269,6 @@ formatters:
     paths:
       - _msgp\.go
       - _msgp_test\.go
-      - internal
       - third_party$
       - builtin$
       - examples$

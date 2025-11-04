@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // Storage stores arbitrary values in memory for use in tests and benchmarks.

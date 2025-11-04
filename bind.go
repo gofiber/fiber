@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // CustomBinder An interface to register custom binders.

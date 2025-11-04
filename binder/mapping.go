@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 
 	"github.com/gofiber/schema"
