@@ -108,7 +108,7 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 // thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
 func parseToMap(target reflect.Value, data map[string][]string) error {
 	if !target.IsValid() {
-		return fmt.Errorf("bind: invalid map value")
+		return errors.New("binder: invalid destination value")
 	}
 
 	if target.Kind() == reflect.Interface && !target.IsNil() {
@@ -134,7 +134,7 @@ func parseToMap(target reflect.Value, data map[string][]string) error {
 		}
 
 		maps.Copy(newMap, data)
-	case reflect.String, reflect.Interface:
+	case reflect.String:
 		newMap, ok := target.Interface().(map[string]string)
 		if !ok {
 			return ErrMapNotConvertible

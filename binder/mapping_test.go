@@ -154,7 +154,8 @@ func Test_parseToMap(t *testing.T) {
 	// Test map[string]any
 	m3 := make(map[string]any)
 	err = parseToMap(reflect.ValueOf(m3), inputMap)
-	require.ErrorIs(t, err, ErrMapNotConvertible)
+	require.NoError(t, err)
+	require.Empty(t, m3)
 
 	var zeroStringMap map[string]string
 	err = parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), inputMap)
