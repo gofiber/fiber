@@ -81,7 +81,7 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 
 	// Parse into the map
 	if ptrVal.Kind() == reflect.Map && ptrVal.Type().Key().Kind() == reflect.String {
-		return parseToMap(ptrVal.Interface(), data)
+		return parseToMap(ptrVal, data)
 	}
 
 	// Parse into the struct
@@ -106,19 +106,36 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 
 // Parse data into the map
 // thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
-func parseToMap(ptr any, data map[string][]string) error {
-	elem := reflect.TypeOf(ptr).Elem()
+func parseToMap(target reflect.Value, data map[string][]string) error {
+	if !target.IsValid() {
+		return fmt.Errorf("bind: invalid map value")
+	}
 
-	switch elem.Kind() {
+	if target.Kind() == reflect.Interface && !target.IsNil() {
+		target = target.Elem()
+	}
+
+	if target.Kind() != reflect.Map || target.Type().Key().Kind() != reflect.String {
+		return nil // nothing to do for non-map destinations
+	}
+
+	if target.IsNil() {
+		if !target.CanSet() {
+			return ErrMapNilDestination
+		}
+		target.Set(reflect.MakeMap(target.Type()))
+	}
+
+	switch target.Type().Elem().Kind() {
 	case reflect.Slice:
-		newMap, ok := ptr.(map[string][]string)
+		newMap, ok := target.Interface().(map[string][]string)
 		if !ok {
 			return ErrMapNotConvertible
 		}
 
 		maps.Copy(newMap, data)
 	case reflect.String, reflect.Interface:
-		newMap, ok := ptr.(map[string]string)
+		newMap, ok := target.Interface().(map[string]string)
 		if !ok {
 			return ErrMapNotConvertible
 		}

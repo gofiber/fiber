@@ -9,6 +9,7 @@ import (
 var (
 	ErrSuitableContentNotFound = errors.New("binder: suitable content not found to parse body")
 	ErrMapNotConvertible       = errors.New("binder: map is not convertible to map[string]string or map[string][]string")
+	ErrMapNilDestination       = errors.New("binder: map destination is nil and cannot be initialized")
 )
 
 var HeaderBinderPool = sync.Pool{
