@@ -435,6 +435,21 @@ api.Get("/users/:id", func(c fiber.Ctx) error {
     "route": c.FullPath(), // "/api/users/:id"
   })
 })
+
+app.Use(func(c fiber.Ctx) error {
+  beforeNext := c.FullPath() // "/"
+
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  afterNext := c.FullPath() // "/api/users/:id"
+  // ... react to the downstream handler's route path
+
+  _ = beforeNext
+  _ = afterNext
+  return nil
+})
 ```
 
 ### Matched
