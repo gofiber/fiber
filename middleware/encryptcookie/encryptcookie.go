@@ -42,7 +42,7 @@ func New(config ...Config) fiber.Handler {
 				if c.Response().Header.Cookie(&cookieValue) {
 					encryptedValue, encErr := cfg.Encryptor(keyString, string(cookieValue.Value()), cfg.Key)
 					if encErr != nil {
-						panic(encErr)
+						return encErr
 					}
 
 					cookieValue.SetValue(encryptedValue)
