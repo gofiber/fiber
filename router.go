@@ -316,8 +316,8 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 		}
 
 		// Optional: Check flash messages
-		if cookieValue := d.Cookies(FlashCookieName); cookieValue != "" {
-			d.Redirect().parseAndClearFlashMessages(cookieValue)
+		if d.Cookies(FlashCookieName) != "" {
+			d.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.next(d)
 	} else {
@@ -328,8 +328,8 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 		}
 
 		// Optional: Check flash messages
-		if cookieValue := ctx.Cookies(FlashCookieName); cookieValue != "" {
-			ctx.Redirect().parseAndClearFlashMessages(cookieValue)
+		if ctx.Cookies(FlashCookieName) != "" {
+			ctx.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.nextCustom(ctx)
 	}
