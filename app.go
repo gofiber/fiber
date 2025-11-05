@@ -421,6 +421,10 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Optional. Default: a provider that returns context.Background()
 	ServicesShutdownContextProvider func() context.Context
+
+	EnableCORSOnError bool
+
+	CORSHeaders map[string]string
 }
 
 // Default TrustProxyConfig
@@ -1304,6 +1308,12 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	// Acquire Ctx with fasthttp request from pool
 	c := app.AcquireCtx(fctx)
 	defer app.ReleaseCtx(c)
+
+	if app.config.EnableCORSOnError {
+		for key, val := range app.config.CORSHeaders {
+			fctx.Response.Header.Set(key, val)
+		}
+	}
 
 	var (
 		errNetOP *net.OpError
