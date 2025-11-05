@@ -133,7 +133,7 @@ func Test_parseToMap(t *testing.T) {
 
 	// Test map[string]string
 	m := make(map[string]string)
-	err := parseToMap(m, inputMap)
+	err := parseToMap(reflect.ValueOf(m), inputMap)
 	require.NoError(t, err)
 
 	require.Equal(t, "value2", m["key1"])
@@ -142,7 +142,7 @@ func Test_parseToMap(t *testing.T) {
 
 	// Test map[string][]string
 	m2 := make(map[string][]string)
-	err = parseToMap(m2, inputMap)
+	err = parseToMap(reflect.ValueOf(m2), inputMap)
 	require.NoError(t, err)
 
 	require.Len(t, m2["key1"], 2)
@@ -153,8 +153,22 @@ func Test_parseToMap(t *testing.T) {
 
 	// Test map[string]any
 	m3 := make(map[string]any)
-	err = parseToMap(m3, inputMap)
-	require.ErrorIs(t, err, ErrMapNotConvertible)
+	err = parseToMap(reflect.ValueOf(m3), inputMap)
+	require.NoError(t, err)
+	require.Empty(t, m3)
+
+	var zeroStringMap map[string]string
+	err = parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), inputMap)
+	require.NoError(t, err)
+	require.Equal(t, "value2", zeroStringMap["key1"])
+
+	var zeroSliceMap map[string][]string
+	err = parseToMap(reflect.ValueOf(&zeroSliceMap).Elem(), inputMap)
+	require.NoError(t, err)
+	require.Len(t, zeroSliceMap["key1"], 2)
+
+	err = parseToMap(reflect.ValueOf(map[string]string(nil)), inputMap)
+	require.ErrorIs(t, err, ErrMapNilDestination)
 }
 
 func Test_FilterFlags(t *testing.T) {
@@ -384,16 +398,16 @@ func Test_parseToMap_Extended(t *testing.T) {
 	}
 
 	m := make(map[string]string)
-	err := parseToMap(m, data)
+	err := parseToMap(reflect.ValueOf(m), data)
 	require.NoError(t, err)
 	require.Empty(t, m["empty"])
 
 	m2 := make(map[string][]int)
-	err = parseToMap(m2, data)
+	err = parseToMap(reflect.ValueOf(m2), data)
 	require.ErrorIs(t, err, ErrMapNotConvertible)
 
 	m3 := make(map[string]int)
-	err = parseToMap(m3, data)
+	err = parseToMap(reflect.ValueOf(m3), data)
 	require.NoError(t, err)
 }
 
