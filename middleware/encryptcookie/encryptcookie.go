@@ -1,6 +1,8 @@
 package encryptcookie
 
 import (
+	"errors"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp"
 )
@@ -42,7 +44,7 @@ func New(config ...Config) fiber.Handler {
 				if c.Response().Header.Cookie(&cookieValue) {
 					encryptedValue, encErr := cfg.Encryptor(keyString, string(cookieValue.Value()), cfg.Key)
 					if encErr != nil {
-						return encErr
+						return errors.Join(err, encErr)
 					}
 
 					cookieValue.SetValue(encryptedValue)
