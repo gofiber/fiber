@@ -306,6 +306,8 @@ func (r *Redirect) parseAndClearFlashMessages() {
 	if err != nil {
 		return
 	}
+
+	r.c.Response().Header.DelClientCookie(FlashCookieName)
 }
 
 // processFlashMessages is a helper function to process flash messages and old input data

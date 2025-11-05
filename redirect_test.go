@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -474,6 +475,9 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 		},
 	}, c.Redirect().OldInputs())
 
+	setCookie := string(c.Response().Header.Peek(HeaderSetCookie))
+	require.True(t, strings.HasPrefix(setCookie, FlashCookieName+"=; expires="))
+
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=test")
 
 	c.Redirect().parseAndClearFlashMessages()
@@ -557,6 +561,8 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 
+	require.True(t, strings.HasPrefix(resp.Header.Get(HeaderSetCookie), FlashCookieName+"=; expires="))
+
 	// Parse the JSON response and verify flash messages
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -619,6 +625,8 @@ func Test_Redirect_FlashMessagesWithSpecialChars(t *testing.T) {
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
+
+	require.True(t, strings.HasPrefix(resp.Header.Get(HeaderSetCookie), FlashCookieName+"=; expires="))
 
 	// Parse and verify the response
 	body, err := io.ReadAll(resp.Body)
