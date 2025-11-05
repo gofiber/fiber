@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"sync/atomic"
@@ -316,7 +317,8 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 		}
 
 		// Optional: Check flash messages
-		if d.Cookies(FlashCookieName) != "" {
+		rawHeaders := d.Request().Header.RawHeaders()
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
 			d.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.next(d)
@@ -328,7 +330,8 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 		}
 
 		// Optional: Check flash messages
-		if ctx.Cookies(FlashCookieName) != "" {
+		rawHeaders := ctx.Request().Header.RawHeaders()
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
 			ctx.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.nextCustom(ctx)
