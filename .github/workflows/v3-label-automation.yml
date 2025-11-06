@@ -22,11 +22,11 @@ jobs:
         uses: actions/add-to-project@v1.0.2
         with:
           project-url: https://github.com/orgs/gofiber/projects/1
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.MILESTONE_PROJECT_TOKEN }}
       - name: Assign v3 milestone
         uses: actions/github-script@v8
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.MILESTONE_PROJECT_TOKEN }}
           script: |
             const payload = context.eventName === 'issues' ? context.payload.issue : context.payload.pull_request;
             const issueNumber = payload.number;
