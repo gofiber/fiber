@@ -4,7 +4,7 @@ on:
   issues:
     types:
       - labeled
-  pull_request:
+  pull_request_target:
     types:
       - labeled
 
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Add item to v3 project
-        uses: actions/add-to-project@v0.5.0
+        uses: actions/add-to-project@v1.0.2
         with:
           project-url: https://github.com/orgs/gofiber/projects/1
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -29,10 +29,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const core = require('@actions/core');
             const payload = context.eventName === 'issues' ? context.payload.issue : context.payload.pull_request;
             const issueNumber = payload.number;
-            const { data: milestones } = await github.rest.issues.listMilestones({
+            const milestones = await github.paginate(github.rest.issues.listMilestones, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
@@ -40,8 +39,7 @@ jobs:
             });
             const milestone = milestones.find((item) => item.title === 'v3');
             if (!milestone) {
-              core.setFailed('Milestone "v3" was not found.');
-              return;
+              throw new Error('Milestone "v3" was not found.');
             }
             await github.rest.issues.update({
               owner: context.repo.owner,
