@@ -49,25 +49,26 @@ const userContextKey contextKey = 0 // __local_user_context__
 //
 //go:generate ifacemaker --file ctx.go --file req.go --file res.go --struct DefaultCtx --iface Ctx --pkg fiber --promoted --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
-	DefaultReq                         // Default request api
-	DefaultRes                         // Default response api
-	app           *App                 // Reference to *App
-	route         *Route               // Reference to *Route
-	fasthttp      *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	bind          *Bind                // Default bind reference
-	redirect      *Redirect            // Default redirect reference
-	values        [maxParams]string    // Route parameter values
-	viewBindMap   sync.Map             // Default view map to bind template engine
-	baseURI       string               // HTTP base uri
-	pathOriginal  string               // Original HTTP path
-	flashMessages redirectionMsgs      // Flash messages
-	path          []byte               // HTTP path with the modifications by the configuration
-	detectionPath []byte               // Route detection path
-	treePathHash  int                  // Hash of the path for the search in the tree
-	indexRoute    int                  // Index of the current route
-	indexHandler  int                  // Index of the current handler
-	methodInt     int                  // HTTP method INT equivalent
-	matched       bool                 // Non use route matched
+	DefaultReq                            // Default request api
+	DefaultRes                            // Default response api
+	app              *App                 // Reference to *App
+	route            *Route               // Reference to *Route
+	fasthttp         *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	bind             *Bind                // Default bind reference
+	redirect         *Redirect            // Default redirect reference
+	values           [maxParams]string    // Route parameter values
+	viewBindMap      sync.Map             // Default view map to bind template engine
+	baseURI          string               // HTTP base uri
+	pathOriginal     string               // Original HTTP path
+	flashMessages    redirectionMsgs      // Flash messages
+	path             []byte               // HTTP path with the modifications by the configuration
+	detectionPath    []byte               // Route detection path
+	treePathHash     int                  // Hash of the path for the search in the tree
+	indexRoute       int                  // Index of the current route
+	indexHandler     int                  // Index of the current handler
+	methodInt        int                  // HTTP method INT equivalent
+	matched          bool                 // Non use route matched
+	skipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -554,6 +555,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.indexHandler = 0
 	// Reset matched flag
 	c.matched = false
+	c.skipNonUseRoutes = false
 	// Set paths
 	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
@@ -584,6 +586,7 @@ func (c *DefaultCtx) release() {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
 	}
+	c.skipNonUseRoutes = false
 	c.DefaultReq.release()
 	c.DefaultRes.release()
 }
@@ -656,6 +659,10 @@ func (c *DefaultCtx) getMatched() bool {
 	return c.matched
 }
 
+func (c *DefaultCtx) getSkipNonUseRoutes() bool {
+	return c.skipNonUseRoutes
+}
+
 func (c *DefaultCtx) setIndexHandler(handler int) {
 	c.indexHandler = handler
 }
@@ -666,6 +673,10 @@ func (c *DefaultCtx) setIndexRoute(route int) {
 
 func (c *DefaultCtx) setMatched(matched bool) {
 	c.matched = matched
+}
+
+func (c *DefaultCtx) setSkipNonUseRoutes(skip bool) {
+	c.skipNonUseRoutes = skip
 }
 
 func (c *DefaultCtx) setRoute(route *Route) {

@@ -160,9 +160,11 @@ type Ctx interface {
 	getDetectionPath() string
 	getValues() *[maxParams]string
 	getMatched() bool
+	getSkipNonUseRoutes() bool
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
+	setSkipNonUseRoutes(skip bool)
 	setRoute(route *Route)
 	getPathOriginal() string
 	// Accepts checks if the specified extensions or content types are acceptable.
