@@ -84,3 +84,39 @@ func Benchmark_QueryBinder_Bind(b *testing.B) {
 	require.Contains(b, user.Posts, "post2")
 	require.Contains(b, user.Posts, "post3")
 }
+
+func Test_QueryBinder_Bind_PointerSlices(t *testing.T) {
+	t.Parallel()
+
+	binder := &QueryBinding{
+		EnableSplitting: true,
+	}
+
+	type Preferences struct {
+		Tags *[]string `query:"tags"`
+	}
+
+	type Profile struct {
+		Emails *[]string    `query:"emails"`
+		Prefs  *Preferences `query:"preferences"`
+	}
+
+	var profile Profile
+
+	req := fasthttp.AcquireRequest()
+	req.URI().SetQueryString("emails=work,personal&preferences[tags]=golang,api")
+
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	err := binder.Bind(req, &profile)
+	require.NoError(t, err)
+
+	require.NotNil(t, profile.Emails)
+	require.ElementsMatch(t, []string{"work", "personal"}, *profile.Emails)
+
+	require.NotNil(t, profile.Prefs)
+	require.NotNil(t, profile.Prefs.Tags)
+	require.ElementsMatch(t, []string{"golang", "api"}, *profile.Prefs.Tags)
+}
