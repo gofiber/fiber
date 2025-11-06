@@ -45,7 +45,9 @@ func performOversizedRequest(t *testing.T, app *fiber.App, configure func(req *f
 		if err != nil {
 			return false
 		}
-		_ = conn.Close()
+		if err := conn.Close(); err != nil {
+			return false
+		}
 		return true
 	}, time.Second, 10*time.Millisecond)
 
