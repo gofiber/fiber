@@ -220,6 +220,14 @@ type fieldInfo struct {
 	nestedKinds map[reflect.Kind]struct{}
 }
 
+func unwrapType(t reflect.Type) reflect.Type {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	return t
+}
+
 var (
 	headerFieldCache     sync.Map
 	respHeaderFieldCache sync.Map
@@ -259,15 +267,17 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 		if !isExported(f) {
 			continue
 		}
-		info.names[fieldName(f, aliasTag)] = f.Type.Kind()
+		fieldType := unwrapType(f.Type)
+		info.names[fieldName(f, aliasTag)] = fieldType.Kind()
 
-		if f.Type.Kind() == reflect.Struct {
-			for j := 0; j < f.Type.NumField(); j++ {
-				sf := f.Type.Field(j)
+		if fieldType.Kind() == reflect.Struct {
+			for j := 0; j < fieldType.NumField(); j++ {
+				sf := fieldType.Field(j)
 				if !isExported(sf) {
 					continue
 				}
-				info.nestedKinds[sf.Type.Kind()] = struct{}{}
+				nestedType := unwrapType(sf.Type)
+				info.nestedKinds[nestedType.Kind()] = struct{}{}
 			}
 		}
 	}

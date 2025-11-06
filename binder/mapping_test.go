@@ -49,6 +49,27 @@ func Test_EqualFieldType(t *testing.T) {
 	require.True(t, equalFieldType(&user2, reflect.String, "user.Address", "query"))
 	require.True(t, equalFieldType(&user2, reflect.Int, "user.AGE", "query"))
 	require.True(t, equalFieldType(&user2, reflect.Int, "user.age", "query"))
+
+	var pointerUser struct {
+		Tags *[]string `query:"tags"`
+	}
+	require.True(t, equalFieldType(&pointerUser, reflect.Slice, "tags", "query"))
+
+	type nested struct {
+		Values []string `query:"values"`
+	}
+	var nestedWrapper struct {
+		Nested *nested `query:"nested"`
+	}
+	require.True(t, equalFieldType(&nestedWrapper, reflect.Slice, "nested.values", "query"))
+
+	type nestedPointerSlice struct {
+		Values *[]string `query:"values"`
+	}
+	var nestedPointerWrapper struct {
+		Nested *nestedPointerSlice `query:"nested"`
+	}
+	require.True(t, equalFieldType(&nestedPointerWrapper, reflect.Slice, "nested.values", "query"))
 }
 
 func Test_ParseParamSquareBrackets(t *testing.T) {
