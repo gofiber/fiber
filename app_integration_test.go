@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/helmet"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
@@ -118,6 +119,23 @@ func Test_Integration_App_ServerErrorHandler_PreservesHelmetHeadersOnBodyLimit(t
 	require.Equal(t, "same-origin", string(resp.Header.Peek("Cross-Origin-Opener-Policy")))
 	require.Equal(t, "same-origin", string(resp.Header.Peek("Cross-Origin-Resource-Policy")))
 	require.Equal(t, "require-corp", string(resp.Header.Peek("Cross-Origin-Embedder-Policy")))
+}
+
+func Test_Integration_App_ServerErrorHandler_PreservesRequestID(t *testing.T) {
+	const expectedRequestID = "integration-request-id"
+
+	app := fiber.New(fiber.Config{BodyLimit: 16})
+	app.Use(requestid.New())
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp := performOversizedRequest(t, app, func(req *fasthttp.Request) {
+		req.Header.Set("X-Request-ID", expectedRequestID)
+	})
+
+	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode())
+	require.Equal(t, expectedRequestID, string(resp.Header.Peek("X-Request-ID")))
 }
 
 func Test_Integration_App_ServerErrorHandler_RetainsHeadersFromSubsequentMiddleware(t *testing.T) {
