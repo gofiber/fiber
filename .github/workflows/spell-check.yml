@@ -64,4 +64,4 @@ jobs:
       - name: Run codespell
         uses: codespell-project/actions-codespell@v2
         with:
-          skip: ./.git,./node_modules
+          skip: ./.git,./node_modules,./**/*.go
