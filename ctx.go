@@ -56,6 +56,7 @@ type DefaultCtx struct {
 	fasthttp         *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind             *Bind                // Default bind reference
 	redirect         *Redirect            // Default redirect reference
+	ctx              CustomCtx            // Reference to the actual context (self or custom wrapper)
 	values           [maxParams]string    // Route parameter values
 	viewBindMap      sync.Map             // Default view map to bind template engine
 	baseURI          string               // HTTP base uri
@@ -69,7 +70,6 @@ type DefaultCtx struct {
 	methodInt        int                  // HTTP method INT equivalent
 	matched          bool                 // Non use route matched
 	skipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
-	ctx              CustomCtx            // Reference to the actual context (self or custom wrapper)
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
