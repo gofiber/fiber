@@ -232,6 +232,11 @@ func (c *DefaultCtx) Next() error {
 	}
 
 	// Continue handler stack
+	return c.continueNextRoute()
+}
+
+// continueNextRoute continues to the next route in the stack
+func (c *DefaultCtx) continueNextRoute() error {
 	if d, isDefault := c.ctx.(*DefaultCtx); isDefault {
 		_, err := c.app.next(d)
 		return err
@@ -243,15 +248,8 @@ func (c *DefaultCtx) Next() error {
 // RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
-	var err error
-
 	c.indexRoute = -1
-	if d, isDefault := c.ctx.(*DefaultCtx); isDefault {
-		_, err = c.app.next(d)
-		return err
-	}
-	_, err = c.app.nextCustom(c.ctx)
-	return err
+	return c.continueNextRoute()
 }
 
 // OriginalURL contains the original request URL.
