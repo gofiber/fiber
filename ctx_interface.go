@@ -32,6 +32,7 @@ type CustomCtx interface {
 	setMatched(matched bool)
 	setSkipNonUseRoutes(skip bool)
 	setRoute(route *Route)
+	setCtxRef(ctx CustomCtx)
 }
 
 // NewDefaultCtx constructs the default context implementation bound to the
@@ -56,6 +57,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 		panic(errors.New("failed to type-assert to CustomCtx"))
 	}
 	ctx.Reset(fctx)
+	ctx.setCtxRef(ctx)
 
 	return ctx
 }

@@ -7339,3 +7339,91 @@ func Benchmark_Ctx_IsFromLocalhost(b *testing.B) {
 		})
 	})
 }
+
+// Test custom context with app.Use middleware
+func Test_Ctx_CustomCtx_With_Use(t *testing.T) {
+	t.Parallel()
+
+	type MyCustomCtx struct {
+		DefaultCtx
+	}
+
+	customMethodCalled := false
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &MyCustomCtx{
+			DefaultCtx: *NewDefaultCtx(app),
+		}
+	})
+
+	// Add middleware using app.Use
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	})
+
+	// Add route handler that casts to custom context
+	app.Get("/:id", func(c Ctx) error {
+		customCtx, ok := c.(*MyCustomCtx)
+		if !ok {
+			return c.SendString("error: context is not MyCustomCtx")
+		}
+		customMethodCalled = true
+		return c.SendString("custom:" + customCtx.Params("id"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test123", nil))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	require.True(t, customMethodCalled, "Custom context should be preserved through middleware")
+	require.Equal(t, "custom:test123", string(body))
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+// Test custom context with custom methods and app.Use middleware
+func Test_Ctx_CustomCtx_With_CustomMethod_And_Use(t *testing.T) {
+	t.Parallel()
+
+	type MyCustomCtx2 struct {
+		DefaultCtx
+	}
+
+	// Add custom method to the context
+	customMethod := func(c *MyCustomCtx2) string {
+		return "custom value from " + c.Params("id")
+	}
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &MyCustomCtx2{
+			DefaultCtx: *NewDefaultCtx(app),
+		}
+	})
+
+	// Add middleware using app.Use
+	middlewareCalled := false
+	app.Use(func(c Ctx) error {
+		middlewareCalled = true
+		return c.Next()
+	})
+
+	// Add route handler that uses custom context and method
+	app.Get("/:id", func(c Ctx) error {
+		customCtx, ok := c.(*MyCustomCtx2)
+		if !ok {
+			return c.SendString("error: context is not MyCustomCtx2")
+		}
+		return c.SendString(customMethod(customCtx))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test456", nil))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	require.True(t, middlewareCalled, "Middleware should be called")
+	require.Equal(t, "custom value from test456", string(body))
+	require.Equal(t, StatusOK, resp.StatusCode)
+}

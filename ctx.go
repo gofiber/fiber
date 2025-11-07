@@ -69,6 +69,7 @@ type DefaultCtx struct {
 	methodInt        int                  // HTTP method INT equivalent
 	matched          bool                 // Non use route matched
 	skipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
+	ctx              CustomCtx            // Reference to the actual context (self or custom wrapper)
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -227,11 +228,15 @@ func (c *DefaultCtx) Next() error {
 	// Did we execute all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
 		// Continue route stack
-		return c.route.Handlers[c.indexHandler](c)
+		return c.route.Handlers[c.indexHandler](c.ctx)
 	}
 
 	// Continue handler stack
-	_, err := c.app.next(c)
+	if d, isDefault := c.ctx.(*DefaultCtx); isDefault {
+		_, err := c.app.next(d)
+		return err
+	}
+	_, err := c.app.nextCustom(c.ctx)
 	return err
 }
 
@@ -241,7 +246,11 @@ func (c *DefaultCtx) RestartRouting() error {
 	var err error
 
 	c.indexRoute = -1
-	_, err = c.app.next(c)
+	if d, isDefault := c.ctx.(*DefaultCtx); isDefault {
+		_, err = c.app.next(d)
+		return err
+	}
+	_, err = c.app.nextCustom(c.ctx)
 	return err
 }
 
@@ -576,6 +585,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
+	c.ctx = nil
 	if c.bind != nil {
 		ReleaseBind(c.bind)
 		c.bind = nil
@@ -681,6 +691,10 @@ func (c *DefaultCtx) setSkipNonUseRoutes(skip bool) {
 
 func (c *DefaultCtx) setRoute(route *Route) {
 	c.route = route
+}
+
+func (c *DefaultCtx) setCtxRef(ctx CustomCtx) {
+	c.ctx = ctx
 }
 
 func (c *DefaultCtx) getPathOriginal() string {
