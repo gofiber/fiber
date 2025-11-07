@@ -138,6 +138,30 @@ func Test_Integration_App_ServerErrorHandler_PreservesRequestID(t *testing.T) {
 	require.Equal(t, expectedRequestID, string(resp.Header.Peek("X-Request-ID")))
 }
 
+func Test_Integration_App_ServerErrorHandler_GroupMiddlewareChain(t *testing.T) {
+	app := fiber.New(fiber.Config{BodyLimit: 16})
+	app.Use(helmet.New())
+
+	api := app.Group("/api")
+	api.Use(requestid.New())
+	api.Use(func(c fiber.Ctx) error {
+		c.Set("X-Group-Middleware", "active")
+		return c.Next()
+	})
+	api.Post("/resource", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp := performOversizedRequest(t, app, func(req *fasthttp.Request) {
+		req.SetRequestURI("http://example.com/api/resource")
+	})
+
+	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode())
+	require.Equal(t, "nosniff", string(resp.Header.Peek(fiber.HeaderXContentTypeOptions)))
+	require.NotEmpty(t, resp.Header.Peek("X-Request-ID"))
+	require.Equal(t, "active", string(resp.Header.Peek("X-Group-Middleware")))
+}
+
 func Test_Integration_App_ServerErrorHandler_RetainsHeadersFromSubsequentMiddleware(t *testing.T) {
 	app := fiber.New(fiber.Config{BodyLimit: 8})
 	app.Use(func(c fiber.Ctx) error {
