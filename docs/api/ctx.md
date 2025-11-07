@@ -94,7 +94,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ### SetContext
 
 Sets the base `context.Context` used by [`Context`](#context). Use this to
-propagate deadlines, cancelation signals, or values to asynchronous operations.
+propagate deadlines, cancellation signals, or values to asynchronous operations.
 
 ```go title="Signature"
 func (c fiber.Ctx) SetContext(ctx context.Context)
