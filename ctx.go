@@ -56,7 +56,7 @@ type DefaultCtx struct {
 	fasthttp         *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind             *Bind                // Default bind reference
 	redirect         *Redirect            // Default redirect reference
-	ctx              CustomCtx            // Reference to the actual context (self or custom wrapper)
+	ctx              CustomCtx            // Reference to the actual context (self when DefaultCtx is used directly, or the custom wrapper when embedded)
 	values           [maxParams]string    // Route parameter values
 	viewBindMap      sync.Map             // Default view map to bind template engine
 	baseURI          string               // HTTP base uri
