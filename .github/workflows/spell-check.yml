@@ -60,3 +60,6 @@ jobs:
           check_dot_files: explicit
           report: typos
           verbose: true
+
+      - name: Run codespell
+        uses: codespell-project/actions-codespell@v2
