@@ -18,11 +18,11 @@ import (
 )
 
 type integrationCustomCtx struct {
-	fiber.DefaultCtx
+	*fiber.DefaultCtx
 }
 
 func newIntegrationCustomCtx(app *fiber.App) fiber.CustomCtx {
-	return &integrationCustomCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
+	return &integrationCustomCtx{DefaultCtx: fiber.NewDefaultCtx(app)}
 }
 
 func performOversizedRequest(t *testing.T, app *fiber.App, configure func(req *fasthttp.Request)) *fasthttp.Response {
