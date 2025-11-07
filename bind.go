@@ -53,6 +53,13 @@ func ReleaseBind(b *Bind) {
 	bindPool.Put(b)
 }
 
+// releasePooledBinder resets a binder and returns it to its pool.
+// It should be used with defer to ensure proper cleanup of pooled binders.
+func releasePooledBinder[T interface{ Reset() }](pool *sync.Pool, bind T) {
+	bind.Reset()
+	binder.PutToThePool(pool, bind)
+}
+
 func (b *Bind) release() {
 	b.ctx = nil
 	b.dontHandleErrs = true
@@ -119,11 +126,7 @@ func (b *Bind) Header(out any) error {
 	bind := binder.GetFromThePool[*binder.HeaderBinding](&binder.HeaderBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
 
-	// Reset & put binder
-	defer func() {
-		bind.Reset()
-		binder.PutToThePool(&binder.HeaderBinderPool, bind)
-	}()
+	defer releasePooledBinder(&binder.HeaderBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Request(), out)); err != nil {
 		return err
@@ -137,11 +140,7 @@ func (b *Bind) RespHeader(out any) error {
 	bind := binder.GetFromThePool[*binder.RespHeaderBinding](&binder.RespHeaderBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
 
-	// Reset & put binder
-	defer func() {
-		bind.Reset()
-		binder.PutToThePool(&binder.RespHeaderBinderPool, bind)
-	}()
+	defer releasePooledBinder(&binder.RespHeaderBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Response(), out)); err != nil {
 		return err
@@ -156,11 +155,7 @@ func (b *Bind) Cookie(out any) error {
 	bind := binder.GetFromThePool[*binder.CookieBinding](&binder.CookieBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
 
-	// Reset & put binder
-	defer func() {
-		bind.Reset()
-		binder.PutToThePool(&binder.CookieBinderPool, bind)
-	}()
+	defer releasePooledBinder(&binder.CookieBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
 		return err
@@ -174,11 +169,7 @@ func (b *Bind) Query(out any) error {
 	bind := binder.GetFromThePool[*binder.QueryBinding](&binder.QueryBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
 
-	// Reset & put binder
-	defer func() {
-		bind.Reset()
-		binder.PutToThePool(&binder.QueryBinderPool, bind)
-	}()
+	defer releasePooledBinder(&binder.QueryBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
 		return err
@@ -192,11 +183,7 @@ func (b *Bind) JSON(out any) error {
 	bind := binder.GetFromThePool[*binder.JSONBinding](&binder.JSONBinderPool)
 	bind.JSONDecoder = b.ctx.App().Config().JSONDecoder
 
-	// Reset & put binder
-	defer func() {
-		bind.Reset()
-		binder.PutToThePool(&binder.JSONBinderPool, bind)
-	}()
+	defer releasePooledBinder(&binder.JSONBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
 		return err
@@ -210,11 +197,7 @@ func (b *Bind) CBOR(out any) error {
 	bind := binder.GetFromThePool[*binder.CBORBinding](&binder.CBORBinderPool)
 	bind.CBORDecoder = b.ctx.App().Config().CBORDecoder
 
-	// Reset & put binder
-	defer func() {
-		bind.Reset()
-		binder.PutToThePool(&binder.CBORBinderPool, bind)
-	}()
+	defer releasePooledBinder(&binder.CBORBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
 		return err
@@ -227,11 +210,7 @@ func (b *Bind) XML(out any) error {
 	bind := binder.GetFromThePool[*binder.XMLBinding](&binder.XMLBinderPool)
 	bind.XMLDecoder = b.ctx.App().config.XMLDecoder
 
-	// Reset & put binder
-	defer func() {
-		bind.Reset()
-		binder.PutToThePool(&binder.XMLBinderPool, bind)
-	}()
+	defer releasePooledBinder(&binder.XMLBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
 		return err
@@ -248,11 +227,7 @@ func (b *Bind) Form(out any) error {
 	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
 
-	// Reset & put binder
-	defer func() {
-		bind.Reset()
-		binder.PutToThePool(&binder.FormBinderPool, bind)
-	}()
+	defer releasePooledBinder(&binder.FormBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
 		return err
@@ -265,10 +240,7 @@ func (b *Bind) Form(out any) error {
 func (b *Bind) URI(out any) error {
 	bind := binder.GetFromThePool[*binder.URIBinding](&binder.URIBinderPool)
 
-	// Reset & put binder
-	defer func() {
-		binder.PutToThePool(&binder.URIBinderPool, bind)
-	}()
+	defer releasePooledBinder(&binder.URIBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Route().Params, b.ctx.Params, out)); err != nil {
 		return err
@@ -282,11 +254,7 @@ func (b *Bind) MsgPack(out any) error {
 	bind := binder.GetFromThePool[*binder.MsgPackBinding](&binder.MsgPackBinderPool)
 	bind.MsgPackDecoder = b.ctx.App().Config().MsgPackDecoder
 
-	// Reset & put binder
-	defer func() {
-		bind.Reset()
-		binder.PutToThePool(&binder.MsgPackBinderPool, bind)
-	}()
+	defer releasePooledBinder(&binder.MsgPackBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
 		return err

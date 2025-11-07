@@ -26,9 +26,11 @@ type CustomCtx interface {
 	getPathOriginal() string
 	getValues() *[maxParams]string
 	getMatched() bool
+	getSkipNonUseRoutes() bool
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
+	setSkipNonUseRoutes(skip bool)
 	setRoute(route *Route)
 }
 

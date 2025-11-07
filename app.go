@@ -1327,6 +1327,22 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = NewError(StatusBadRequest, err.Error())
 	}
 
+	if c.getMethodInt() != -1 {
+		c.setSkipNonUseRoutes(true)
+		defer c.setSkipNonUseRoutes(false)
+
+		var nextErr error
+		if d, isDefault := c.(*DefaultCtx); isDefault {
+			_, nextErr = app.next(d)
+		} else {
+			_, nextErr = app.nextCustom(c)
+		}
+
+		if nextErr != nil && !errors.Is(nextErr, ErrNotFound) && !errors.Is(nextErr, ErrMethodNotAllowed) {
+			log.Errorf("serverErrorHandler: middleware traversal failed: %v", nextErr)
+		}
+	}
+
 	if catch := app.ErrorHandler(c, err); catch != nil {
 		log.Errorf("serverErrorHandler: failed to call ErrorHandler: %v", catch)
 		_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here

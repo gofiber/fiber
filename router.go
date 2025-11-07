@@ -139,6 +139,10 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			continue
 		}
 
+		if c.skipNonUseRoutes && !route.use {
+			continue
+		}
+
 		// Pass route reference and param values
 		c.route = route
 		// Non use handler matched
@@ -235,6 +239,10 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		if !route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
 			continue
 		}
+		if c.getSkipNonUseRoutes() && !route.use {
+			continue
+		}
+
 		// Pass route reference and param values
 		c.setRoute(route)
 		// Non use handler matched
