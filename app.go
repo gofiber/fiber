@@ -1329,6 +1329,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 	if c.getMethodInt() != -1 {
 		c.setSkipNonUseRoutes(true)
+		defer c.setSkipNonUseRoutes(false)
 
 		var nextErr error
 		if d, isDefault := c.(*DefaultCtx); isDefault {
@@ -1340,8 +1341,6 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		if nextErr != nil && !errors.Is(nextErr, ErrNotFound) && !errors.Is(nextErr, ErrMethodNotAllowed) {
 			log.Errorf("serverErrorHandler: middleware traversal failed: %v", nextErr)
 		}
-
-		c.setSkipNonUseRoutes(false)
 	}
 
 	if catch := app.ErrorHandler(c, err); catch != nil {
