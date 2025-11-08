@@ -17,10 +17,10 @@ jobs:
       GO111MODULE: on
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v5.0.0
 
       - name: Install Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.0.0
         with:
           go-version: "stable"
           check-latest: true

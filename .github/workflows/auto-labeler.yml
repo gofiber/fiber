@@ -19,6 +19,6 @@ jobs:
     steps:
       - name: Check Labels
         id: labeler
-        uses: fuxingloh/multi-labeler@v4
+        uses: fuxingloh/multi-labeler@v4.0.0
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}

@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v5.0.0
 
       - name: Run markdownlint-cli2
-        uses: DavidAnson/markdownlint-cli2-action@v20
+        uses: DavidAnson/markdownlint-cli2-action@v20.0.0
         with:
           globs: |
             **/*.md

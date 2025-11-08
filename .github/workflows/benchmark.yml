@@ -26,12 +26,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v5.0.0
         with:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
       - name: Install Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.0.0
         with:
           # NOTE: Keep this in sync with the version from go.mod
           go-version: "1.25.x"
@@ -82,7 +82,7 @@ jobs:
 
       - name: Get Benchmark Results from main branch
         id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v4.3.0
         with:
           path: ./cache
           key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-benchmark
@@ -137,7 +137,7 @@ jobs:
           auto-push: false
 
       - name: Update Benchmark Results cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v4.3.0
         if: ${{ github.ref_name == 'main' }}
         with:
           path: ./cache
