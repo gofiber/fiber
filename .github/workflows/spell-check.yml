@@ -60,3 +60,9 @@ jobs:
           check_dot_files: explicit
           report: typos
           verbose: true
+
+      - name: Run codespell
+        uses: codespell-project/actions-codespell@v2
+        with:
+          skip: ./.git,./node_modules,./**/*.go,./*.go,./.github/workflows/spell-check.yml
+          ignore_words_list: TE,te
