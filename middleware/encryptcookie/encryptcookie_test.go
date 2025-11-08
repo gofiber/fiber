@@ -3,6 +3,7 @@ package encryptcookie
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"net/http/httptest"
 	"strconv"
 	"testing"
@@ -92,6 +93,84 @@ func Test_Middleware_InvalidBase64(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorContains(t, err, "failed to base64-decode value")
 	})
+}
+
+func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
+	t.Parallel()
+
+	testKey := GenerateKey(32)
+	expected := errors.New("encrypt failed")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusTeapot).SendString("encryption error")
+		},
+	})
+
+	app.Use(New(Config{
+		Key: testKey,
+		Encryptor: func(name, value, _ string) (string, error) {
+			if name == "test" {
+				return "", expected
+			}
+			return value, nil
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Cookie(&fiber.Cookie{
+			Name:  "test",
+			Value: "value",
+		})
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.ErrorIs(t, captured, expected)
+}
+
+func Test_Middleware_EncryptionErrorDoesNotMaskNextError(t *testing.T) {
+	t.Parallel()
+
+	testKey := GenerateKey(32)
+	encryptErr := errors.New("encrypt failed")
+	downstreamErr := errors.New("downstream failed")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusTeapot).SendString("combined error")
+		},
+	})
+
+	app.Use(New(Config{
+		Key: testKey,
+		Encryptor: func(name, value, _ string) (string, error) {
+			if name == "test" {
+				return "", encryptErr
+			}
+			return value, nil
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Cookie(&fiber.Cookie{
+			Name:  "test",
+			Value: "value",
+		})
+		return downstreamErr
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.ErrorIs(t, captured, downstreamErr)
+	require.ErrorIs(t, captured, encryptErr)
 }
 
 func Test_Middleware_Encrypt_Cookie(t *testing.T) {
