@@ -55,6 +55,7 @@ func (s *Storage) Get(key string) ([]byte, error) {
 	s.mux.RLock()
 	v, ok := s.db[key]
 	s.mux.RUnlock()
+
 	if !ok || v.expiry != 0 && v.expiry <= utils.Timestamp() {
 		return nil, nil
 	}

@@ -8,7 +8,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/memory"
-	"github.com/gofiber/utils/v2"
 )
 
 // msgp -file="storage_manager.go" -o="storage_manager_msgp.go" -tests=true -unexported
@@ -41,7 +40,7 @@ func newStorageManager(storage fiber.Storage, redactKeys bool) *storageManager {
 		// Use provided storage if provided
 		storageManager.storage = storage
 	} else {
-		// Fallback too memory storage
+		// Fallback to memory storage
 		storageManager.memory = memory.New()
 	}
 	return storageManager
@@ -77,8 +76,7 @@ func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp
 		return nil
 	}
 
-	// The key and value are crucial in csrf and can be references to data that might be reused (e.g., from a pool). To prevent unsafe value retention, copies of both the key and raw value are made here.
-	m.memory.Set(utils.CopyString(key), utils.CopyBytes(raw), exp)
+	m.memory.Set(key, raw, exp)
 	return nil
 }
 
