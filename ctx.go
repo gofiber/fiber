@@ -41,7 +41,10 @@ var (
 type contextKey int
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
-const userContextKey contextKey = 0 // __local_user_context__
+const (
+	userContextKey    contextKey = 0 // __local_user_context__
+	handlerContextKey contextKey = 1 // __local_handler_context__
+)
 
 // DefaultCtx is the default implementation of the Ctx interface
 // generation tool `go install github.com/vburenin/ifacemaker@f30b6f9bdbed4b5c4804ec9ba4a04a999525c202`
@@ -49,6 +52,7 @@ const userContextKey contextKey = 0 // __local_user_context__
 //
 //go:generate ifacemaker --file ctx.go --file req.go --file res.go --struct DefaultCtx --iface Ctx --pkg fiber --promoted --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
+	customCtx        CustomCtx            // Active custom context implementation, if any
 	DefaultReq                            // Default request api
 	DefaultRes                            // Default response api
 	app              *App                 // Reference to *App
@@ -227,10 +231,19 @@ func (c *DefaultCtx) Next() error {
 	// Did we execute all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
 		// Continue route stack
-		return c.route.Handlers[c.indexHandler](c)
+		handler := Ctx(c)
+		if c.customCtx != nil {
+			handler = c.customCtx
+		}
+		return c.route.Handlers[c.indexHandler](handler)
 	}
 
 	// Continue handler stack
+	if c.customCtx != nil {
+		_, err := c.app.nextCustom(c.customCtx)
+		return err
+	}
+
 	_, err := c.app.next(c)
 	return err
 }
@@ -241,6 +254,11 @@ func (c *DefaultCtx) RestartRouting() error {
 	var err error
 
 	c.indexRoute = -1
+	if c.customCtx != nil {
+		_, err = c.app.nextCustom(c.customCtx)
+		return err
+	}
+
 	_, err = c.app.next(c)
 	return err
 }
@@ -569,7 +587,13 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 	c.DefaultReq.c = c
 	c.DefaultRes.c = c
+	if ctx, ok := fctx.UserValue(handlerContextKey).(CustomCtx); ok {
+		c.customCtx = ctx
+	} else {
+		c.customCtx = nil
+	}
 	c.fasthttp.SetUserValue(userContextKey, nil)
+	c.fasthttp.SetUserValue(handlerContextKey, nil)
 }
 
 // Release is a method to reset context fields when to use ReleaseCtx()
@@ -587,6 +611,7 @@ func (c *DefaultCtx) release() {
 		c.redirect = nil
 	}
 	c.skipNonUseRoutes = false
+	c.customCtx = nil
 	c.DefaultReq.release()
 	c.DefaultRes.release()
 }

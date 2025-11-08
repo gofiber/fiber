@@ -142,6 +142,36 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 	require.Equal(t, int64(len(body)), resp.ContentLength)
 }
 
+func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &customCtx{
+			DefaultCtx: *NewDefaultCtx(app),
+		}
+	})
+
+	app.Use(func(c Ctx) error {
+		_, ok := c.(*customCtx)
+		require.True(t, ok)
+		return c.Next()
+	})
+
+	app.Get("/", func(c Ctx) error {
+		custom, ok := c.(*customCtx)
+		require.True(t, ok)
+		return c.SendString(custom.Params(""))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	require.Equal(t, "prefix_", string(body))
+}
+
 // go test -run Test_Ctx_CustomCtx
 func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 	t.Parallel()
