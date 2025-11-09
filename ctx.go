@@ -229,19 +229,30 @@ func (c *DefaultCtx) Next() error {
 
 	// Did we execute all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
-		// Continue route stack
-		return c.route.Handlers[c.indexHandler](activeHandler(c))
+		if c.handlerCtx != nil {
+			return c.route.Handlers[c.indexHandler](c.handlerCtx)
+		}
+		return c.route.Handlers[c.indexHandler](c)
 	}
 
-	// Continue handler stack
-	return continueHandlers(c)
+	if c.handlerCtx != nil {
+		_, err := c.app.nextCustom(c.handlerCtx)
+		return err
+	}
+	_, err := c.app.next(c)
+	return err
 }
 
 // RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
 	c.indexRoute = -1
-	return continueHandlers(c)
+	if c.handlerCtx != nil {
+		_, err := c.app.nextCustom(c.handlerCtx)
+		return err
+	}
+	_, err := c.app.next(c)
+	return err
 }
 
 func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
@@ -254,22 +265,6 @@ func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
 		return
 	}
 	c.handlerCtx = ctx
-}
-
-func activeHandler(c *DefaultCtx) Ctx {
-	if c.handlerCtx != nil {
-		return c.handlerCtx
-	}
-	return c
-}
-
-func continueHandlers(c *DefaultCtx) error {
-	if c.handlerCtx != nil {
-		_, err := c.app.nextCustom(c.handlerCtx)
-		return err
-	}
-	_, err := c.app.next(c)
-	return err
 }
 
 // OriginalURL contains the original request URL.

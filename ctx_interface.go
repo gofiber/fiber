@@ -56,8 +56,10 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 		panic(errors.New("failed to type-assert to CustomCtx"))
 	}
 
-	if setter, ok := ctx.(interface{ setHandlerCtx(CustomCtx) }); ok {
-		setter.setHandlerCtx(ctx)
+	if app.hasCustomCtx {
+		if setter, ok := ctx.(interface{ setHandlerCtx(CustomCtx) }); ok {
+			setter.setHandlerCtx(ctx)
+		}
 	}
 
 	ctx.Reset(fctx)
