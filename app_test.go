@@ -628,6 +628,64 @@ func Test_App_serverErrorHandler_Network_Error(t *testing.T) {
 	require.Equal(t, StatusBadGateway, c.fasthttp.Response.StatusCode())
 }
 
+func Test_App_serverErrorHandler_Unsupported_Method_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	app.serverErrorHandler(c.fasthttp, errors.New("unsupported http request method 'FOO'"))
+	require.Equal(t, string(c.fasthttp.Response.Body()), utils.StatusMessage(StatusNotImplemented))
+	require.Equal(t, StatusNotImplemented, c.fasthttp.Response.StatusCode())
+}
+
+func Test_App_serverErrorHandler_Unsupported_Method_Request(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/bar", func(c Ctx) error {
+		return c.SendString("bar")
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	t.Cleanup(func() {
+		_ = ln.Close()
+	})
+
+	serverStarted := make(chan struct{}, 1)
+	serverErr := make(chan error, 1)
+
+	go func() {
+		serverStarted <- struct{}{}
+		if err := app.Listener(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+			return
+		}
+		serverErr <- nil
+	}()
+
+	<-serverStarted
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+
+	_, err = conn.Write([]byte("FOO /bar HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+	require.NoError(t, err)
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotImplemented, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, utils.StatusMessage(StatusNotImplemented), string(body))
+	require.NoError(t, resp.Body.Close())
+	require.NoError(t, conn.Close())
+
+	require.NoError(t, app.Shutdown())
+	require.NoError(t, <-serverErr)
+}
+
 func Test_App_Nested_Params(t *testing.T) {
 	t.Parallel()
 	app := New()
