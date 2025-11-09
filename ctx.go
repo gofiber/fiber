@@ -42,8 +42,7 @@ type contextKey int
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const (
-	userContextKey    contextKey = 0 // __local_user_context__
-	handlerContextKey contextKey = 1 // __local_handler_context__
+	userContextKey contextKey = iota // __local_user_context__
 )
 
 // DefaultCtx is the default implementation of the Ctx interface
@@ -52,7 +51,7 @@ const (
 //
 //go:generate ifacemaker --file ctx.go --file req.go --file res.go --struct DefaultCtx --iface Ctx --pkg fiber --promoted --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
-	customCtx        CustomCtx            // Active custom context implementation, if any
+	handlerCtx       CustomCtx            // Active custom context implementation, if any
 	DefaultReq                            // Default request api
 	DefaultRes                            // Default response api
 	app              *App                 // Reference to *App
@@ -231,35 +230,45 @@ func (c *DefaultCtx) Next() error {
 	// Did we execute all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
 		// Continue route stack
-		handler := Ctx(c)
-		if c.customCtx != nil {
-			handler = c.customCtx
-		}
-		return c.route.Handlers[c.indexHandler](handler)
+		return c.route.Handlers[c.indexHandler](activeHandler(c))
 	}
 
 	// Continue handler stack
-	if c.customCtx != nil {
-		_, err := c.app.nextCustom(c.customCtx)
-		return err
-	}
-
-	_, err := c.app.next(c)
-	return err
+	return continueHandlers(c)
 }
 
 // RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
-	var err error
-
 	c.indexRoute = -1
-	if c.customCtx != nil {
-		_, err = c.app.nextCustom(c.customCtx)
+	return continueHandlers(c)
+}
+
+func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
+	if ctx == nil {
+		c.handlerCtx = nil
+		return
+	}
+	if defaultCtx, ok := ctx.(*DefaultCtx); ok && defaultCtx == c {
+		c.handlerCtx = nil
+		return
+	}
+	c.handlerCtx = ctx
+}
+
+func activeHandler(c *DefaultCtx) Ctx {
+	if c.handlerCtx != nil {
+		return c.handlerCtx
+	}
+	return c
+}
+
+func continueHandlers(c *DefaultCtx) error {
+	if c.handlerCtx != nil {
+		_, err := c.app.nextCustom(c.handlerCtx)
 		return err
 	}
-
-	_, err = c.app.next(c)
+	_, err := c.app.next(c)
 	return err
 }
 
@@ -587,13 +596,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 	c.DefaultReq.c = c
 	c.DefaultRes.c = c
-	if ctx, ok := fctx.UserValue(handlerContextKey).(CustomCtx); ok {
-		c.customCtx = ctx
-	} else {
-		c.customCtx = nil
-	}
 	c.fasthttp.SetUserValue(userContextKey, nil)
-	c.fasthttp.SetUserValue(handlerContextKey, nil)
 }
 
 // Release is a method to reset context fields when to use ReleaseCtx()
@@ -611,7 +614,7 @@ func (c *DefaultCtx) release() {
 		c.redirect = nil
 	}
 	c.skipNonUseRoutes = false
-	c.customCtx = nil
+	c.handlerCtx = nil
 	c.DefaultReq.release()
 	c.DefaultRes.release()
 }
