@@ -634,7 +634,7 @@ func Test_App_serverErrorHandler_Unsupported_Method_Error(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	app.serverErrorHandler(c.fasthttp, errors.New("unsupported http request method 'FOO'"))
-	require.Equal(t, string(c.fasthttp.Response.Body()), utils.StatusMessage(StatusNotImplemented))
+	require.Equal(t, utils.StatusMessage(StatusNotImplemented), string(c.fasthttp.Response.Body()))
 	require.Equal(t, StatusNotImplemented, c.fasthttp.Response.StatusCode())
 }
 
@@ -647,9 +647,6 @@ func Test_App_serverErrorHandler_Unsupported_Method_Request(t *testing.T) {
 	})
 
 	ln := fasthttputil.NewInmemoryListener()
-	t.Cleanup(func() {
-		_ = ln.Close()
-	})
 
 	serverStarted := make(chan struct{}, 1)
 	serverErr := make(chan error, 1)
