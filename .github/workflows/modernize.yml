@@ -7,10 +7,14 @@ on:
     paths:
       - "**.go"
       - "!**/*_msgp*.go"
+      - "go.mod"
+      - "go.sum"
   pull_request:
     paths:
       - "**.go"
       - "!**/*_msgp*.go"
+      - "go.mod"
+      - "go.sum"
 
 permissions:
   contents: read

@@ -4,9 +4,13 @@ on:
       - main
     paths:
       - "**.go"
+      - "go.mod"
+      - "go.sum"
   pull_request:
     paths:
       - "**.go"
+      - "go.mod"
+      - "go.sum"
 
 permissions:
   # deployments permission to deploy GitHub pages website
