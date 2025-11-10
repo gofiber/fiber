@@ -81,17 +81,17 @@ func (h *indexedHeap) put(key string, exp uint64, bytes uint) int {
 	return idx
 }
 
-func (h *indexedHeap) removeInternal(realIdx int) (string, uint) {
+func (h *indexedHeap) removeInternal(realIdx int) (key string, size uint) { //nolint:nonamedreturns // gocritic unnamedResult prefers named key and size when removing heap entries
 	x := heap.Remove(h, realIdx).(heapEntry) //nolint:forcetypeassert,errcheck // Forced type assertion required to implement the heap.Interface interface
 	return x.key, x.bytes
 }
 
 // Remove entry by index
-func (h *indexedHeap) remove(idx int) (string, uint) {
+func (h *indexedHeap) remove(idx int) (key string, size uint) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming returned key and size pair
 	return h.removeInternal(h.indices[idx])
 }
 
 // Remove entry with lowest expiration time
-func (h *indexedHeap) removeFirst() (string, uint) {
+func (h *indexedHeap) removeFirst() (key string, size uint) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming returned key and size pair
 	return h.removeInternal(0)
 }

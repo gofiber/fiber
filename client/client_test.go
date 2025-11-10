@@ -26,10 +26,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (*fiber.App, string) {
+func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (app *fiber.App, addr string) { //nolint:nonamedreturns // gocritic unnamedResult requires explicit result names for clarity when returning app and address
 	t.Helper()
 
-	app := fiber.New()
+	app = fiber.New()
 
 	if beforeStarting != nil {
 		beforeStarting(app)
@@ -50,7 +50,7 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 	}(app)
 
 	select {
-	case addr := <-addrChan:
+	case addr = <-addrChan:
 		return app, addr
 	case err := <-errChan:
 		t.Fatalf("Failed to start test server: %v", err)

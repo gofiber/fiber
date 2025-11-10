@@ -81,15 +81,12 @@ func (r *DefaultReq) BodyRaw() []byte {
 	return r.getBody()
 }
 
+//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
 func (r *DefaultReq) tryDecodeBodyInOrder(
 	originalBody *[]byte,
 	encodings []string,
-) ([]byte, uint8, error) {
+) (body []byte, decodesRealized uint8, err error) {
 	request := &r.c.fasthttp.Request
-	var (
-		body            []byte
-		decodesRealized uint8
-	)
 	for idx := range encodings {
 		i := len(encodings) - 1 - idx
 		encoding := encodings[i]

@@ -223,7 +223,7 @@ func Test_configDefault_override(t *testing.T) {
 }
 
 // helper to perform request
-func do(app *fiber.App, req *http.Request) (*http.Response, string) {
+func do(app *fiber.App, req *http.Request) (resp *http.Response, body string) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming returned response and body payload for clarity
 	resp, err := app.Test(req, fiber.TestConfig{Timeout: 5 * time.Second})
 	if err != nil {
 		panic(err)
