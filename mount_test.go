@@ -108,26 +108,25 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 
 	app := New()
 	subApp := New()
+
 	// app setup
-	{
-		subApp.Get("/hello", createTestHandler("subapp hello!"))
-		subApp.Get("/world", createTestHandler("subapp world!")) // <- wins
+	subApp.Get("/hello", createTestHandler("subapp hello!"))
+	subApp.Get("/world", createTestHandler("subapp world!")) // <- wins
 
-		app.Get("/hello", createTestHandler("app hello!")) // <- wins
-		app.Use("/", subApp)                               // <- subApp registration
-		app.Get("/world", createTestHandler("app world!"))
+	app.Get("/hello", createTestHandler("app hello!")) // <- wins
+	app.Use("/", subApp)                               // <- subApp registration
+	app.Get("/world", createTestHandler("app world!"))
 
-		app.Get("/bar", createTestHandler("app bar!"))
-		subApp.Get("/bar", createTestHandler("subapp bar!")) // <- wins
+	app.Get("/bar", createTestHandler("app bar!"))
+	subApp.Get("/bar", createTestHandler("subapp bar!")) // <- wins
 
-		subApp.Get("/foo", createTestHandler("subapp foo!")) // <- wins
-		app.Get("/foo", createTestHandler("app foo!"))
+	subApp.Get("/foo", createTestHandler("subapp foo!")) // <- wins
+	app.Get("/foo", createTestHandler("app foo!"))
 
-		// 404 Handler
-		app.Use(func(c Ctx) error {
-			return c.SendStatus(StatusNotFound)
-		})
-	}
+	// 404 Handler
+	app.Use(func(c Ctx) error {
+		return c.SendStatus(StatusNotFound)
+	})
 	// expectation check
 	testEndpoint(app, "/world", "subapp world!", StatusOK)
 	testEndpoint(app, "/hello", "app hello!", StatusOK)

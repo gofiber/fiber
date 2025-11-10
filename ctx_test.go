@@ -822,17 +822,15 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 				)
 
 				// deflate
-				{
-					writer = zlib.NewWriter(&buf)
-					if _, err = writer.Write(data); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Flush(); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Close(); err != nil {
-						return nil, encodingErr
-					}
+				writer = zlib.NewWriter(&buf)
+				if _, err = writer.Write(data); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Flush(); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Close(); err != nil {
+					return nil, encodingErr
 				}
 
 				data = make([]byte, buf.Len())
@@ -840,17 +838,15 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 				buf.Reset()
 
 				// gzip
-				{
-					writer = gzip.NewWriter(&buf)
-					if _, err = writer.Write(data); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Flush(); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Close(); err != nil {
-						return nil, encodingErr
-					}
+				writer = gzip.NewWriter(&buf)
+				if _, err = writer.Write(data); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Flush(); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Close(); err != nil {
+					return nil, encodingErr
 				}
 
 				return buf.Bytes(), nil
@@ -1060,17 +1056,15 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 				)
 
 				// deflate
-				{
-					writer = zlib.NewWriter(&buf)
-					if _, err = writer.Write(data); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Flush(); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Close(); err != nil {
-						return nil, encodingErr
-					}
+				writer = zlib.NewWriter(&buf)
+				if _, err = writer.Write(data); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Flush(); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Close(); err != nil {
+					return nil, encodingErr
 				}
 
 				data = make([]byte, buf.Len())
@@ -1078,17 +1072,15 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 				buf.Reset()
 
 				// gzip
-				{
-					writer = gzip.NewWriter(&buf)
-					if _, err = writer.Write(data); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Flush(); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Close(); err != nil {
-						return nil, encodingErr
-					}
+				writer = gzip.NewWriter(&buf)
+				if _, err = writer.Write(data); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Flush(); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Close(); err != nil {
+					return nil, encodingErr
 				}
 
 				return buf.Bytes(), nil
@@ -6277,9 +6269,9 @@ func Test_Ctx_Write(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	_, err := c.Write([]byte("Hello, "))
+	_, err := c.WriteString("Hello, ")
 	require.NoError(t, err)
-	_, err = c.Write([]byte("World!"))
+	_, err = c.WriteString("World!")
 	require.NoError(t, err)
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 }

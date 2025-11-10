@@ -109,7 +109,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			for k, v := range out {
 				reqHeaders = append(reqHeaders, k+"="+strings.Join(v, ","))
 			}
-			return output.Write([]byte(strings.Join(reqHeaders, "&")))
+			return output.WriteString(strings.Join(reqHeaders, "&"))
 		},
 		TagQueryStringParams: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.WriteString(c.Request().URI().QueryArgs().String())

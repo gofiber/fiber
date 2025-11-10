@@ -127,7 +127,7 @@ func FromAuthHeader(authScheme string) Extractor {
 					return "", ErrNotFound
 				}
 				rest := authHeader[schemeLen:]
-				if len(rest) == 0 || rest[0] != ' ' {
+				if rest == "" || rest[0] != ' ' {
 					return "", ErrNotFound
 				}
 

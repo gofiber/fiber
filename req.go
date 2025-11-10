@@ -84,13 +84,7 @@ func (r *DefaultReq) BodyRaw() []byte {
 func (r *DefaultReq) tryDecodeBodyInOrder(
 	originalBody *[]byte,
 	encodings []string,
-) ([]byte, uint8, error) {
-	var (
-		err             error
-		body            []byte
-		decodesRealized uint8
-	)
-
+) (body []byte, decodesRealized uint8, err error) {
 	request := &r.c.fasthttp.Request
 	for idx := range encodings {
 		i := len(encodings) - 1 - idx
@@ -149,7 +143,7 @@ func (r *DefaultReq) Body() []byte {
 	headerEncoding = utils.ToLower(utils.UnsafeString(request.Header.ContentEncoding()))
 
 	// If no encoding is provided, return the original body
-	if len(headerEncoding) == 0 {
+	if headerEncoding == "" {
 		return r.getBody()
 	}
 
@@ -320,7 +314,7 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 // Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
-		if host := r.Get(HeaderXForwardedHost); len(host) > 0 {
+		if host := r.Get(HeaderXForwardedHost); host != "" {
 			commaPos := strings.Index(host, ",")
 			if commaPos != -1 {
 				return host[:commaPos]
@@ -356,7 +350,7 @@ func (r *DefaultReq) Port() string {
 // Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 func (r *DefaultReq) IP() string {
 	app := r.c.app
-	if r.IsProxyTrusted() && len(app.config.ProxyHeader) > 0 {
+	if r.IsProxyTrusted() && app.config.ProxyHeader != "" {
 		return r.extractIPFromHeader(app.config.ProxyHeader)
 	}
 
@@ -382,7 +376,6 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 	i := 0
 	j := -1
 
-iploop:
 	for {
 		var v4, v6 bool
 
@@ -414,7 +407,7 @@ iploop:
 		if r.c.app.config.EnableIPValidation {
 			// Skip validation if IP is clearly not IPv4/IPv6; otherwise, validate without allocations
 			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
-				continue iploop
+				continue
 			}
 		}
 
@@ -436,7 +429,6 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 		i := 0
 		j := -1
 
-	iploop:
 		for {
 			var v4, v6 bool
 
@@ -467,7 +459,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 
 			if app.config.EnableIPValidation {
 				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
-					continue iploop
+					continue
 				}
 			}
 
@@ -591,7 +583,7 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 		}
 		if route.Params[i] == key || (!app.config.CaseSensitive && utils.EqualFold(route.Params[i], key)) {
 			// if there is no value for the key
-			if len(values) <= i || len(values[i]) == 0 {
+			if len(values) <= i || values[i] == "" {
 				break
 			}
 			val := values[i]

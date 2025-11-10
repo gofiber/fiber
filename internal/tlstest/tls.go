@@ -17,7 +17,7 @@ import (
 
 // GetTLSConfigs generates TLS configurations for a test server and client that
 // trust each other using an in-memory certificate authority.
-func GetTLSConfigs() (*tls.Config, *tls.Config, error) {
+func GetTLSConfigs() (serverTLSConf *tls.Config, clientTLSConf *tls.Config, err error) {
 	// set up our CA certificate
 	ca := &x509.Certificate{
 		SerialNumber: big.NewInt(2021),
@@ -116,7 +116,7 @@ func GetTLSConfigs() (*tls.Config, *tls.Config, error) {
 		return nil, nil, fmt.Errorf("load server key pair: %w", err)
 	}
 
-	serverTLSConf := &tls.Config{
+	serverTLSConf = &tls.Config{
 		Certificates: []tls.Certificate{serverCert},
 		MinVersion:   tls.VersionTLS12,
 	}
@@ -125,7 +125,7 @@ func GetTLSConfigs() (*tls.Config, *tls.Config, error) {
 	if ok := certPool.AppendCertsFromPEM(caPEM.Bytes()); !ok {
 		return nil, nil, errors.New("append CA cert to cert pool")
 	}
-	clientTLSConf := &tls.Config{
+	clientTLSConf = &tls.Config{
 		RootCAs:    certPool,
 		MinVersion: tls.VersionTLS12,
 	}

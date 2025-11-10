@@ -1058,20 +1058,20 @@ func Test_App_Order(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c Ctx) error {
-		_, err := c.Write([]byte("1"))
+		_, err := c.WriteString("1")
 		require.NoError(t, err)
 		return c.Next()
 	})
 
 	app.All("/test", func(c Ctx) error {
-		_, err := c.Write([]byte("2"))
+		_, err := c.WriteString("2")
 		require.NoError(t, err)
 
 		return c.Next()
 	})
 
 	app.Use(func(c Ctx) error {
-		_, err := c.Write([]byte("3"))
+		_, err := c.WriteString("3")
 		require.NoError(t, err)
 
 		return c.SendStatus(StatusOK)

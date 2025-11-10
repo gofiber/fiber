@@ -49,7 +49,7 @@ func New(config ...Config) *Storage {
 // Get returns the stored value for key, ignoring missing or expired entries by
 // returning nil.
 func (s *Storage) Get(key string) ([]byte, error) {
-	if len(key) == 0 {
+	if key == "" {
 		return nil, nil
 	}
 	s.mux.RLock()
@@ -77,7 +77,7 @@ func (s *Storage) GetWithContext(ctx context.Context, key string) ([]byte, error
 // the entry indefinitely.
 func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	// Ain't Nobody Got Time For That
-	if len(key) == 0 || len(val) == 0 {
+	if key == "" || len(val) == 0 {
 		return nil
 	}
 
@@ -109,7 +109,7 @@ func (s *Storage) SetWithContext(ctx context.Context, key string, val []byte, ex
 // Delete removes the value stored for key.
 func (s *Storage) Delete(key string) error {
 	// Ain't Nobody Got Time For That
-	if len(key) == 0 {
+	if key == "" {
 		return nil
 	}
 	s.mux.Lock()

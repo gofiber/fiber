@@ -567,7 +567,7 @@ func Test_FiberHandler_RequestNilBody(t *testing.T) {
 		require.Equal(t, expectedRequestURI, string(c.RequestCtx().RequestURI()), "RequestURI")
 		require.Equal(t, expectedContentLength, c.RequestCtx().Request.Header.ContentLength(), "ContentLength")
 
-		_, err := c.Write([]byte("request body is nil"))
+		_, err := c.WriteString("request body is nil")
 		return err
 	}
 	nethttpH := FiberHandler(fiberH)

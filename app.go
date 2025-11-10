@@ -647,7 +647,7 @@ func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *Ap
 // GetString returns s unchanged when Immutable is off or s is read-only (rodata).
 // Otherwise, it returns a detached copy (strings.Clone).
 func (app *App) GetString(s string) string {
-	if !app.config.Immutable || len(s) == 0 {
+	if !app.config.Immutable || s == "" {
 		return s
 	}
 	if isReadOnly(unsafe.Pointer(unsafe.StringData(s))) { //nolint:gosec // pointer check avoids unnecessary copy

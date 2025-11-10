@@ -223,16 +223,20 @@ func Test_configDefault_override(t *testing.T) {
 }
 
 // helper to perform request
-func do(app *fiber.App, req *http.Request) (*http.Response, string) {
-	resp, err := app.Test(req, fiber.TestConfig{Timeout: 5 * time.Second})
+func do(app *fiber.App, req *http.Request) (resp *http.Response, body string) {
+	var err error
+
+	resp, err = app.Test(req, fiber.TestConfig{Timeout: 5 * time.Second})
 	if err != nil {
 		panic(err)
 	}
-	body, err := io.ReadAll(resp.Body)
+	var payload []byte
+	payload, err = io.ReadAll(resp.Body)
 	if err != nil {
 		panic(err)
 	}
-	return resp, string(body)
+	body = string(payload)
+	return resp, body
 }
 
 func Test_New_NextSkip(t *testing.T) {

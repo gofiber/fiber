@@ -202,7 +202,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 		status := c.RequestCtx().Response.StatusCode()
 
 		if status != fiber.StatusNotFound && status != fiber.StatusForbidden {
-			if len(cacheControlValue) > 0 {
+			if cacheControlValue != "" {
 				c.RequestCtx().Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)
 			}
 

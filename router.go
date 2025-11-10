@@ -93,7 +93,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 		plen := len(r.path)
 		if r.root {
 			// If r.root is '/', it matches everything starting at '/'
-			if len(detectionPath) > 0 && detectionPath[0] == '/' {
+			if detectionPath != "" && detectionPath[0] == '/' {
 				return true
 			}
 		} else if len(detectionPath) >= plen && detectionPath[:plen] == r.path {
@@ -517,7 +517,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 	// No nil handlers allowed
 	for _, h := range handlers {
-		if nil == h {
+		if h == nil {
 			panic(fmt.Sprintf("nil handler in route: %s\n", pathRaw))
 		}
 	}

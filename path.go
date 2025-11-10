@@ -212,7 +212,7 @@ func (parser *routeParser) reset() {
 func (parser *routeParser) parseRoute(pattern string, customConstraints ...CustomConstraint) {
 	var n int
 	var seg *routeSegment
-	for len(pattern) > 0 {
+	for pattern != "" {
 		nextParamPosition := findNextParamPosition(pattern)
 		// handle the parameter part
 		if nextParamPosition == 0 {
