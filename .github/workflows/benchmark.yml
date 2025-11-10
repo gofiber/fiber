@@ -2,15 +2,11 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "**.go"
-      - "go.mod"
-      - "go.sum"
+    paths-ignore:
+      - "**/*.md"
   pull_request:
-    paths:
-      - "**.go"
-      - "go.mod"
-      - "go.sum"
+    paths-ignore:
+      - "**/*.md"
 
 permissions:
   # deployments permission to deploy GitHub pages website

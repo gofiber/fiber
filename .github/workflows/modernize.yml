@@ -4,17 +4,13 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "**.go"
-      - "!**/*_msgp*.go"
-      - "go.mod"
-      - "go.sum"
+    paths-ignore:
+      - "**/*.md"
+      - "**/*_msgp*.go"
   pull_request:
-    paths:
-      - "**.go"
-      - "!**/*_msgp*.go"
-      - "go.mod"
-      - "go.sum"
+    paths-ignore:
+      - "**/*.md"
+      - "**/*_msgp*.go"
 
 permissions:
   contents: read
