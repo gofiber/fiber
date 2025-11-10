@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -48,7 +49,7 @@ func TestTimeout_Success(t *testing.T) {
 		return c.SendString("OK")
 	}, Config{Timeout: 50 * time.Millisecond}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/fast", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/fast", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK for fast requests")
@@ -67,7 +68,7 @@ func TestTimeout_Exceeded(t *testing.T) {
 		return c.SendString("Should never get here")
 	}, Config{Timeout: 100 * time.Millisecond}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/slow", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody)
 	start := time.Now()
 	resp, err := app.Test(req)
 	elapsed := time.Since(start)
@@ -91,7 +92,7 @@ func TestTimeout_CustomError(t *testing.T) {
 		return c.SendString("Should never get here")
 	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/custom", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/custom", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Expected 408 for custom timeout error")
@@ -108,7 +109,7 @@ func TestTimeout_UnmatchedError(t *testing.T) {
 		return errUnrelated // Not in the custom error list
 	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/unmatched", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/unmatched", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode,
@@ -127,7 +128,7 @@ func TestTimeout_ZeroDuration(t *testing.T) {
 		return c.SendString("No timeout used")
 	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/zero", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/zero", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
@@ -143,7 +144,7 @@ func TestTimeout_NegativeDuration(t *testing.T) {
 		return c.SendString("No timeout used")
 	}, Config{Timeout: -100 * time.Millisecond}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/negative", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/negative", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
@@ -168,7 +169,7 @@ func TestTimeout_CustomHandler(t *testing.T) {
 		},
 	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/custom-handler", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/custom-handler", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)

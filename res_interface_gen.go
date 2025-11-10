@@ -99,7 +99,7 @@ type Res interface {
 	// Variables are read by the Render method and may be overwritten.
 	ViewBind(vars Map) error
 	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route, params Map) (string, error)
+	getLocationFromRoute(route *Route, params Map) (string, error)
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.

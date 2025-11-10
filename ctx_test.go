@@ -19,6 +19,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -163,7 +164,7 @@ func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
 		return c.SendString(custom.Params(""))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -188,7 +189,7 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 
 	// Add route with custom method
 	app.Add([]string{"JOHN"}, "/doe", testEmptyHandler)
-	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", nil))
+	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -2461,7 +2462,7 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 		return c.SendString(c.Port())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/port", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/port", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -2808,7 +2809,7 @@ func Test_Ctx_Locals(t *testing.T) {
 		require.Equal(t, "doe", c.Locals("john"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2826,7 +2827,7 @@ func Test_Ctx_Deadline(t *testing.T) {
 		require.False(t, ok)
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2842,7 +2843,7 @@ func Test_Ctx_Done(t *testing.T) {
 		require.Equal(t, (<-chan struct{})(nil), c.Done())
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2858,7 +2859,7 @@ func Test_Ctx_Err(t *testing.T) {
 		require.NoError(t, c.Err())
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2875,7 +2876,7 @@ func Test_Ctx_Value(t *testing.T) {
 		require.Equal(t, "doe", c.Value("john"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2909,7 +2910,7 @@ func Test_Ctx_AccessAfterHandlerPanics(t *testing.T) {
 		ctx = c
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.Panics(t, func() {
@@ -2925,7 +2926,7 @@ func Test_Ctx_Context_AfterHandlerPanics(t *testing.T) {
 		ctx = c
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.Panics(t, func() {
@@ -2971,7 +2972,7 @@ func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
 			t.Parallel()
-			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
+			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), http.NoBody))
 
 			require.NoError(t, err, "Unexpected error from response")
 			require.Equal(t, StatusOK, resp.StatusCode, "context.Context returned from c.Context() is reused")
@@ -3000,7 +3001,7 @@ func Test_Ctx_Locals_Generic(t *testing.T) {
 		require.Equal(t, 0, Locals[int](c, "isHuman"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -3023,7 +3024,7 @@ func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
 		require.Equal(t, User{name: "john", age: 18}, Locals[User](c, "user"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -3074,7 +3075,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	})
 
 	// Test without TLS handler
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ServerName", http.NoBody))
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -3092,7 +3093,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	}}
 
 	// Test ServerName
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ServerName", http.NoBody))
 	require.NoError(t, err)
 
 	body, err = io.ReadAll(resp.Body)
@@ -3100,7 +3101,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	require.Equal(t, []byte("example.golang"), body)
 
 	// Test SignatureSchemes
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", http.NoBody))
 	require.NoError(t, err)
 
 	body, err = io.ReadAll(resp.Body)
@@ -3108,7 +3109,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	require.Equal(t, "["+strconv.Itoa(pssWithSHA256)+"]", string(body))
 
 	// Test SupportedVersions
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", http.NoBody))
 	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -3226,23 +3227,23 @@ func Test_Ctx_Params(t *testing.T) {
 		require.Equal(t, "first", c.Params("Id"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test5/first/second", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test5/first/second", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -3279,11 +3280,11 @@ func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 		require.Equal(t, "second", c.Params("Id"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/first/second", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/first/second", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -3353,7 +3354,7 @@ func Test_Ctx_Path(t *testing.T) {
 		require.Equal(t, "/اختبار/", string(c.Request().URI().Path()))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -3621,7 +3622,7 @@ func Test_Ctx_Range_Unsatisfiable(t *testing.T) {
 		return c.SendString("ok")
 	})
 
-	req := httptest.NewRequest(MethodGet, "http://example.com/", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
 	req.Header.Set(HeaderRange, "bytes=20-30")
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -3672,7 +3673,7 @@ func Test_Ctx_Route(t *testing.T) {
 		require.Equal(t, "/test", c.Route().Path)
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -3693,7 +3694,7 @@ func Test_Ctx_FullPath(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -3711,7 +3712,7 @@ func Test_Ctx_FullPath_Group(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -3742,7 +3743,7 @@ func Test_Ctx_FullPath_Middleware(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -3758,7 +3759,7 @@ func Test_Ctx_RouteNormalized(t *testing.T) {
 		require.Equal(t, "/test", c.Route().Path)
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "//test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "//test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 }
@@ -4204,7 +4205,7 @@ func Test_Ctx_SendEarlyHints(t *testing.T) {
 		return c.SendString("fail")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/earlyhints", nil)
+	req := httptest.NewRequest(MethodGet, "/earlyhints", http.NoBody)
 	resp, err := app.Test(req)
 
 	require.NoError(t, err, "app.Test(req)")
@@ -4380,7 +4381,7 @@ func Test_Static_Compress(t *testing.T) {
 		t.Run(algo+"_compression", func(t *testing.T) {
 			t.Parallel()
 
-			req := httptest.NewRequest(MethodGet, "/file", nil)
+			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
 			req.Header.Set("Accept-Encoding", algo)
 			resp, err := app.Test(req, TestConfig{
 				Timeout:       10 * time.Second,
@@ -4479,7 +4480,7 @@ func Test_Ctx_SendFile_EmbedFS(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 
@@ -4496,7 +4497,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 		return c.SendFile("ctx12.go")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 
@@ -4548,7 +4549,7 @@ func Test_Ctx_SendFile_Multiple(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.url, nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.url, http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode)
 		require.Equal(t, tc.contentDisposition, resp.Header.Get(HeaderContentDisposition))
@@ -4597,11 +4598,11 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 		t.Run(endpoint, func(t *testing.T) {
 			t.Parallel()
 			// 1st try
-			resp, err := app.Test(httptest.NewRequest(MethodGet, endpoint, nil))
+			resp, err := app.Test(httptest.NewRequest(MethodGet, endpoint, http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, StatusOK, resp.StatusCode)
 			// 2nd try
-			resp, err = app.Test(httptest.NewRequest(MethodGet, endpoint, nil))
+			resp, err = app.Test(httptest.NewRequest(MethodGet, endpoint, http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, StatusOK, resp.StatusCode)
 		})
@@ -4619,9 +4620,9 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 		return err
 	})
 
-	_, err1 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", nil))
+	_, err1 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", http.NoBody))
 	// second request required to confirm with zero allocation
-	_, err2 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", nil))
+	_, err2 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", http.NoBody))
 
 	require.NoError(t, err1)
 	require.NoError(t, err2)
@@ -4647,16 +4648,16 @@ func Test_SendFile_withRoutes(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/file", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/file", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/file/download", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/file/download", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, "attachment", resp.Header.Get(HeaderContentDisposition))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/file/fs", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/file/fs", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
@@ -5182,7 +5183,7 @@ func Test_Ctx_Next(t *testing.T) {
 		c.Set("X-Next-Result", "Works")
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "Works", resp.Header.Get("X-Next-Result"))
@@ -5197,7 +5198,7 @@ func Test_Ctx_Next_Error(t *testing.T) {
 		return ErrNotFound
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 	require.Equal(t, "Works", resp.Header.Get("X-Next-Result"))
@@ -5285,11 +5286,11 @@ func Test_Ctx_Matched_AfterNext(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/one", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/one", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/missing", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/missing", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
@@ -5307,7 +5308,7 @@ func Test_Ctx_Matched_RouteError(t *testing.T) {
 		return ErrNotFound
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
@@ -5334,11 +5335,11 @@ func Test_Ctx_IsMiddleware(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/route", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/route", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
@@ -5657,7 +5658,7 @@ func Test_Ctx_RestartRouting(t *testing.T) {
 		}
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, 3, calls, "Number of calls")
@@ -5682,7 +5683,7 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.False(t, executedOldHandler, "Executed old handler")
@@ -5705,7 +5706,7 @@ func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 		return ErrNotFound
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -5802,7 +5803,8 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	var err error
 	var location string
 	for b.Loop() {
-		location, err = c.getLocationFromRoute(app.GetRoute("User"), Map{"name": "fiber"})
+		route := app.GetRoute("User")
+		location, err = c.getLocationFromRoute(&route, Map{"name": "fiber"})
 	}
 
 	require.Equal(b, "/user/fiber", location)
@@ -6056,7 +6058,7 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 		})
 	})
 
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	testConfig := TestConfig{
 		// allow enough time for three lines to flush before
 		// the test connection is closed but stop before the
@@ -6777,12 +6779,12 @@ func Test_Ctx_Drop(t *testing.T) {
 	})
 
 	// Test the Drop method
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", http.NoBody))
 	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 	require.Nil(t, resp)
 
 	// Test the no-response handler
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/no-response", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/no-response", http.NoBody))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, StatusOK, resp.StatusCode)
@@ -6808,7 +6810,7 @@ func Test_Ctx_DropWithMiddleware(t *testing.T) {
 	})
 
 	// Test the Drop method
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", http.NoBody))
 	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 	require.Nil(t, resp)
 }
@@ -6822,7 +6824,7 @@ func Test_Ctx_End(t *testing.T) {
 		return c.End()
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, StatusOK, resp.StatusCode)
@@ -6841,7 +6843,7 @@ func Test_Ctx_End_after_timeout(t *testing.T) {
 		return c.End()
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 	require.Nil(t, resp)
 }
@@ -6863,7 +6865,7 @@ func Test_Ctx_End_with_drop_middleware(t *testing.T) {
 		return c.End()
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, StatusOK, resp.StatusCode)
@@ -6885,7 +6887,7 @@ func Test_Ctx_End_after_drop(t *testing.T) {
 		return c.Drop()
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 	require.Nil(t, resp)
 }

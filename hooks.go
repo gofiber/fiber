@@ -137,15 +137,21 @@ func (h *Hooks) OnMount(handler ...OnMountHandler) {
 	h.app.mutex.Unlock()
 }
 
-func (h *Hooks) executeOnRouteHooks(route Route) error {
+func (h *Hooks) executeOnRouteHooks(route *Route) error {
+	if route == nil {
+		return nil
+	}
+
+	cloned := *route
+
 	// Check mounting
 	if h.app.mountFields.mountPath != "" {
-		route.path = h.app.mountFields.mountPath + route.path
-		route.Path = route.path
+		cloned.path = h.app.mountFields.mountPath + cloned.path
+		cloned.Path = cloned.path
 	}
 
 	for _, v := range h.onRoute {
-		if err := v(route); err != nil {
+		if err := v(cloned); err != nil {
 			return err
 		}
 	}
@@ -153,15 +159,21 @@ func (h *Hooks) executeOnRouteHooks(route Route) error {
 	return nil
 }
 
-func (h *Hooks) executeOnNameHooks(route Route) error {
+func (h *Hooks) executeOnNameHooks(route *Route) error {
+	if route == nil {
+		return nil
+	}
+
+	cloned := *route
+
 	// Check mounting
 	if h.app.mountFields.mountPath != "" {
-		route.path = h.app.mountFields.mountPath + route.path
-		route.Path = route.path
+		cloned.path = h.app.mountFields.mountPath + cloned.path
+		cloned.Path = cloned.path
 	}
 
 	for _, v := range h.onName {
-		if err := v(route); err != nil {
+		if err := v(cloned); err != nil {
 			return err
 		}
 	}

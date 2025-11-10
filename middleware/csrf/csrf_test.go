@@ -100,7 +100,7 @@ func TestCSRFStorageGetError(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
 
 	resp, err := app.Test(req)
@@ -134,7 +134,7 @@ func TestCSRFStorageSetError(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 	require.Error(t, captured)
@@ -164,7 +164,7 @@ func TestCSRFStorageDeleteError(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req := httptest.NewRequest(fiber.MethodPost, "/", nil)
+	req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
 	req.Header.Set(HeaderName, "token")
 	req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
 
@@ -606,7 +606,7 @@ func Test_CSRF_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -1487,7 +1487,7 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -1502,13 +1502,13 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 
 	t.Log("token", token)
 
-	getReq := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	getReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	getReq.Header.Set(HeaderName, token)
 	resp, err = app.Test(getReq)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	getReq = httptest.NewRequest(fiber.MethodGet, "/test", nil)
+	getReq = httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
 	getReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	getReq.Header.Set(fiber.HeaderCacheControl, "no")
 	getReq.Header.Set(HeaderName, token)
@@ -1527,7 +1527,7 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	postReq := httptest.NewRequest(fiber.MethodPost, "/", nil)
+	postReq := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
 	postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	postReq.Header.Set(HeaderName, token)
 	postReq.AddCookie(&http.Cookie{
@@ -1675,7 +1675,7 @@ func Test_CSRF_TokenFromContext(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
@@ -1696,7 +1696,7 @@ func Test_CSRF_FromContextMethods(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
@@ -1715,7 +1715,7 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
@@ -1735,7 +1735,8 @@ func Test_deleteTokenFromStorage(t *testing.T) {
 	stm := newStorageManager(nil, true)
 
 	sm.setRaw(ctx, token, dummy, time.Minute)
-	require.NoError(t, deleteTokenFromStorage(ctx, token, Config{Session: store}, sm, stm))
+	cfg := Config{Session: store}
+	require.NoError(t, deleteTokenFromStorage(ctx, token, &cfg, sm, stm))
 	raw := sm.getRaw(ctx, token, dummy)
 	require.Nil(t, raw)
 
@@ -1743,7 +1744,8 @@ func Test_deleteTokenFromStorage(t *testing.T) {
 	stm2 := newStorageManager(nil, true)
 
 	require.NoError(t, stm2.setRaw(context.Background(), token, dummy, time.Minute))
-	require.NoError(t, deleteTokenFromStorage(ctx, token, Config{}, sm2, stm2))
+	cfg = Config{}
+	require.NoError(t, deleteTokenFromStorage(ctx, token, &cfg, sm2, stm2))
 	raw, err := stm2.getRaw(context.Background(), token)
 	require.NoError(t, err)
 	require.Nil(t, raw)

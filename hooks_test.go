@@ -327,7 +327,7 @@ func Test_Hook_OnHook(t *testing.T) {
 		return nil
 	})
 
-	require.NoError(t, app.prefork(":0", nil, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	require.NoError(t, app.prefork(":0", nil, &ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
 func Test_Hook_OnMount(t *testing.T) {
@@ -358,7 +358,7 @@ func Test_executeOnRouteHooks_ErrorWithMount(t *testing.T) {
 		return errors.New("hook error")
 	})
 
-	err := app.hooks.executeOnRouteHooks(Route{Path: "/foo", path: "/foo"})
+	err := app.hooks.executeOnRouteHooks(&Route{Path: "/foo", path: "/foo"})
 	require.Equal(t, testMountPath+"/foo", received)
 	require.EqualError(t, err, "hook error")
 }
@@ -374,7 +374,7 @@ func Test_executeOnNameHooks_ErrorWithMount(t *testing.T) {
 		return errors.New("name error")
 	})
 
-	err := app.hooks.executeOnNameHooks(Route{Path: "/bar", path: "/bar"})
+	err := app.hooks.executeOnNameHooks(&Route{Path: "/bar", path: "/bar"})
 	require.Equal(t, testMountPath+"/bar", received)
 	require.EqualError(t, err, "name error")
 }

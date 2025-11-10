@@ -8,7 +8,10 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-func methodColor(method string, colors fiber.Colors) string {
+func methodColor(method string, colors *fiber.Colors) string {
+	if colors == nil {
+		return ""
+	}
 	switch method {
 	case fiber.MethodGet:
 		return colors.Cyan
@@ -29,7 +32,10 @@ func methodColor(method string, colors fiber.Colors) string {
 	}
 }
 
-func statusColor(code int, colors fiber.Colors) string {
+func statusColor(code int, colors *fiber.Colors) string {
+	if colors == nil {
+		return ""
+	}
 	switch {
 	case code >= fiber.StatusOK && code < fiber.StatusMultipleChoices:
 		return colors.Green

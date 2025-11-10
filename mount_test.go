@@ -7,6 +7,7 @@ package fiber
 import (
 	"errors"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -23,7 +24,7 @@ func Test_App_Mount(t *testing.T) {
 
 	app := New()
 	app.Use("/john", micro)
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, uint32(2), app.handlersCount)
@@ -43,7 +44,7 @@ func Test_App_Mount_RootPath_Nested(t *testing.T) {
 	dynamic.Use("/api", apiserver)
 	app.Use("/", dynamic)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/home", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/home", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, uint32(2), app.handlersCount)
@@ -73,15 +74,15 @@ func Test_App_Mount_Nested(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/one/doe", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/one/doe", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/one/two/nested", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/one/two/nested", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/one/two/three/test", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/one/two/three/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -97,7 +98,7 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 		}
 	}
 	testEndpoint := func(app *App, route, expectedBody string, expectedStatusCode int) {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, route, nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, route, http.NoBody))
 		require.NoError(t, err, "app.Test(req)")
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -141,7 +142,7 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 func Test_App_Mount_RoutePositions(t *testing.T) {
 	t.Parallel()
 	testEndpoint := func(app *App, route, expectedBody string) {
-		resp, err := app.Test(httptest.NewRequest(MethodGet, route, nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, route, http.NoBody))
 		require.NoError(t, err, "app.Test(req)")
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -237,7 +238,7 @@ func Test_App_ErrorHandler_GroupMount(t *testing.T) {
 	v1 := app.Group("/v1")
 	v1.Use("/john", micro)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", http.NoBody))
 	testErrorResponse(t, err, resp, "1: custom error")
 }
 
@@ -257,7 +258,7 @@ func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
 	v1 := app.Group("/v1")
 	v1.Use("/", micro)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", http.NoBody))
 	testErrorResponse(t, err, resp, "1: custom error")
 }
 
@@ -273,7 +274,7 @@ func Test_App_Group_Mount(t *testing.T) {
 	v1 := app.Group("/v1")
 	v1.Use("/john", micro)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, uint32(2), app.handlersCount)
@@ -294,7 +295,7 @@ func Test_App_UseParentErrorHandler(t *testing.T) {
 
 	app.Use("/api", fiber)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", http.NoBody))
 	testErrorResponse(t, err, resp, "hi, i'm a custom error")
 }
 
@@ -313,7 +314,7 @@ func Test_App_UseMountedErrorHandler(t *testing.T) {
 
 	app.Use("/api", fiber)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", http.NoBody))
 	testErrorResponse(t, err, resp, "hi, i'm a custom error")
 }
 
@@ -332,7 +333,7 @@ func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
 
 	app.Use("/", fiber)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", http.NoBody))
 	testErrorResponse(t, err, resp, "hi, i'm a custom error")
 }
 
@@ -374,7 +375,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 
 	app.Use("/api", fiber)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub", http.NoBody))
 	require.NoError(t, err, "/api/sub req")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -382,7 +383,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	require.NoError(t, err, "iotuil.ReadAll()")
 	require.Equal(t, "hi, i'm a custom sub fiber error", string(b), "Response body")
 
-	resp2, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub/third", nil))
+	resp2, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub/third", http.NoBody))
 	require.NoError(t, err, "/api/sub/third req")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -451,14 +452,14 @@ func Test_Mount_Route_Names(t *testing.T) {
 	require.Equal(t, "/app2/users", route.Path)
 
 	// GetRouteURL inside handler
-	req := httptest.NewRequest(MethodGet, "/app1/users", nil)
+	req := httptest.NewRequest(MethodGet, "/app1/users", http.NoBody)
 	resp, err := rootApp.Test(req)
 
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	// ctx.App().GetRoute() inside handler
-	req = httptest.NewRequest(MethodPost, "/app1/users", nil)
+	req = httptest.NewRequest(MethodPost, "/app1/users", http.NoBody)
 	resp, err = rootApp.Test(req)
 
 	require.NoError(t, err, "app.Test(req)")
@@ -486,7 +487,7 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	app := New()
 	app.Use("/hello", sub)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", http.NoBody))
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.NoError(t, err, "app.Test(req)")
 
@@ -542,7 +543,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	sub.Use("/bruh", sub2)
 	app.Use("/hello", sub)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/world/a", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/world/a", http.NoBody))
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.NoError(t, err, "app.Test(req)")
 
@@ -550,7 +551,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "<h1>Hello a!</h1>", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.NoError(t, err, "app.Test(req)")
 
@@ -558,7 +559,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "<h1>Hello, World!</h1>", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/hello/bruh/moment", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/hello/bruh/moment", http.NoBody))
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.NoError(t, err, "app.Test(req)")
 
@@ -588,7 +589,7 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 	v1 := app.Group("/v1")
 	v1.Use("/john", micro)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 

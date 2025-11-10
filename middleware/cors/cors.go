@@ -155,7 +155,7 @@ func New(config ...Config) fiber.Handler {
 				// See https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches
 				c.Vary(fiber.HeaderOrigin)
 			}
-			setSimpleHeaders(c, allowOrigin, cfg)
+			setSimpleHeaders(c, allowOrigin, &cfg)
 			return c.Next()
 		}
 
@@ -173,7 +173,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		c.Vary(fiber.HeaderOrigin)
 
-		setPreflightHeaders(c, allowOrigin, maxAge, cfg)
+		setPreflightHeaders(c, allowOrigin, maxAge, &cfg)
 
 		// Set Preflight headers
 		if len(cfg.AllowMethods) > 0 {
@@ -194,7 +194,11 @@ func New(config ...Config) fiber.Handler {
 }
 
 // Function to set Simple CORS headers
-func setSimpleHeaders(c fiber.Ctx, allowOrigin string, cfg Config) {
+func setSimpleHeaders(c fiber.Ctx, allowOrigin string, cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
 	if cfg.AllowCredentials {
 		// When AllowCredentials is true, set the Access-Control-Allow-Origin to the specific origin instead of '*'
 		if allowOrigin == "*" {
@@ -216,13 +220,13 @@ func setSimpleHeaders(c fiber.Ctx, allowOrigin string, cfg Config) {
 }
 
 // Function to set Preflight CORS headers
-func setPreflightHeaders(c fiber.Ctx, allowOrigin, maxAge string, cfg Config) {
+func setPreflightHeaders(c fiber.Ctx, allowOrigin, maxAge string, cfg *Config) {
 	setSimpleHeaders(c, allowOrigin, cfg)
 
 	// Set MaxAge if set
-	if cfg.MaxAge > 0 {
+	if cfg != nil && cfg.MaxAge > 0 {
 		c.Set(fiber.HeaderAccessControlMaxAge, maxAge)
-	} else if cfg.MaxAge < 0 {
+	} else if cfg != nil && cfg.MaxAge < 0 {
 		c.Set(fiber.HeaderAccessControlMaxAge, "0")
 	}
 }

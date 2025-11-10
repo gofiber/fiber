@@ -626,7 +626,7 @@ func New(config ...Config) *App {
 	app.treeStack = make([]map[int][]*Route, len(app.config.RequestMethods))
 
 	// Override colors
-	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
+	app.config.ColorScheme = defaultColors(&app.config.ColorScheme)
 
 	// Init app
 	app.init()
@@ -737,7 +737,7 @@ func (app *App) Name(name string) Router {
 		}
 	}
 
-	if err := app.hooks.executeOnNameHooks(*app.latestRoute); err != nil {
+	if err := app.hooks.executeOnNameHooks(app.latestRoute); err != nil {
 		panic(err)
 	}
 

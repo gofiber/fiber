@@ -14,7 +14,12 @@ import (
 type SlidingWindow struct{}
 
 // New creates a new sliding window middleware handler
-func (SlidingWindow) New(cfg Config) fiber.Handler {
+func (SlidingWindow) New(cfg *Config) fiber.Handler {
+	if cfg == nil {
+		defaultCfg := configDefault()
+		cfg = &defaultCfg
+	}
+
 	var (
 		// Limiter variables
 		mux        = &sync.RWMutex{}

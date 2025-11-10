@@ -57,7 +57,7 @@ func Test_Extractors_Missing(t *testing.T) {
 
 // newRequest creates a new *http.Request for Fiber's app.Test
 func newRequest(method, target string) *http.Request {
-	req, err := http.NewRequestWithContext(context.Background(), method, target, nil)
+	req, err := http.NewRequestWithContext(context.Background(), method, target, http.NoBody)
 	if err != nil {
 		panic(err)
 	}

@@ -222,7 +222,7 @@ func Test_HTTPHandler_Flush_App_Test(t *testing.T) {
 		fmt.Fprintf(w, "World!")
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	defer resp.Body.Close() //nolint:errcheck // not needed
 
@@ -250,7 +250,7 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 		fmt.Fprintf(w, "World!")
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
 		Timeout:       200 * time.Millisecond,
 		FailOnTimeout: false,
 	})
@@ -342,7 +342,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 	})
 
 	for _, tt := range tests {
-		req, err := http.NewRequestWithContext(context.Background(), tt.method, tt.url, nil)
+		req, err := http.NewRequestWithContext(context.Background(), tt.method, tt.url, http.NoBody)
 		req.Host = expectedHost
 		require.NoError(t, err)
 
@@ -351,7 +351,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 		require.Equal(t, tt.statusCode, resp.StatusCode, "StatusCode")
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", http.NoBody)
 	req.Host = expectedHost
 	require.NoError(t, err)
 
@@ -396,7 +396,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 	// Test case for POST request with cookies
 	t.Run("POST request with cookies", func(t *testing.T) {
 		t.Parallel()
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", http.NoBody)
 		require.NoError(t, err)
 		req.AddCookie(&http.Cookie{Name: cookieOneName, Value: cookieOneValue})
 		req.AddCookie(&http.Cookie{Name: cookieTwoName, Value: cookieTwoValue})
@@ -420,7 +420,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 	// New test case for GET request
 	t.Run("GET request", func(t *testing.T) {
 		t.Parallel()
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/", nil)
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/", http.NoBody)
 		require.NoError(t, err)
 
 		resp, err := app.Test(req)
@@ -431,7 +431,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 	// New test case for request without cookies
 	t.Run("POST request without cookies", func(t *testing.T) {
 		t.Parallel()
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", http.NoBody)
 		require.NoError(t, err)
 
 		resp, err := app.Test(req)
@@ -672,7 +672,7 @@ func Test_ConvertRequest(t *testing.T) {
 			return c.SendString("Request URL: " + httpReq.URL.String())
 		})
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test?hello=world&another=test", nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test?hello=world&another=test", http.NoBody))
 		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
 
@@ -793,7 +793,7 @@ func Test_HTTPMiddleware_ErrorHandling(t *testing.T) {
 	app.Use(HTTPMiddleware(errorMiddleware))
 	app.Get("/error", fiberHandler)
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/error", nil))
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/error", http.NoBody))
 	require.NoError(t, err)
 	// The error should be handled by the error handler
 	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)

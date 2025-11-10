@@ -16,7 +16,7 @@ const (
 // Handler defines a rate-limiting strategy that can produce a middleware
 // handler using the provided configuration.
 type Handler interface {
-	New(config Config) fiber.Handler
+	New(config *Config) fiber.Handler
 }
 
 // New creates a new middleware handler
@@ -25,7 +25,7 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	// Return the specified middleware handler.
-	return cfg.LimiterMiddleware.New(cfg)
+	return cfg.LimiterMiddleware.New(&cfg)
 }
 
 // getEffectiveStatusCode returns the actual status code, considering both the error and response status

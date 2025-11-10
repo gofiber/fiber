@@ -175,13 +175,16 @@ func configDefault(config ...Config) Config {
 		cfg.Extractor = ConfigDefault.Extractor
 	}
 	// Validate extractor security configurations
-	validateExtractorSecurity(cfg)
+	validateExtractorSecurity(&cfg)
 
 	return cfg
 }
 
 // validateExtractorSecurity checks for insecure extractor configurations
-func validateExtractorSecurity(cfg Config) {
+func validateExtractorSecurity(cfg *Config) {
+	if cfg == nil {
+		return
+	}
 	// Check primary extractor
 	if isInsecureCookieExtractor(cfg.Extractor, cfg.CookieName) {
 		panic("CSRF: Extractor reads from the same cookie '" + cfg.CookieName +

@@ -571,7 +571,11 @@ func (r *DefaultRes) ViewBind(vars Map) error {
 }
 
 // getLocationFromRoute get URL location from route using parameters
-func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, error) {
+func (r *DefaultRes) getLocationFromRoute(route *Route, params Map) (string, error) {
+	if route == nil {
+		return "", ErrNotFound
+	}
+
 	app := r.c.app
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
@@ -602,7 +606,8 @@ func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, erro
 
 // GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 func (r *DefaultRes) GetRouteURL(routeName string, params Map) (string, error) {
-	return r.getLocationFromRoute(r.c.app.GetRoute(routeName), params)
+	route := r.c.app.GetRoute(routeName)
+	return r.getLocationFromRoute(&route, params)
 }
 
 // Render a template with data and sends a text/html response.

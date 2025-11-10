@@ -526,7 +526,7 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 
 	startupMessage := captureOutput(func() {
 		New().
-			startupMessage(fmt.Sprintf(":%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
+			startupMessage(fmt.Sprintf(":%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), &cfg)
 	})
 	colors := Colors{}
 	require.Contains(t, startupMessage, fmt.Sprintf("https://127.0.0.1:%d", port))
@@ -551,7 +551,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	require.NoError(t, ln.Close())
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(fmt.Sprintf(":%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
+		app.startupMessage(fmt.Sprintf(":%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), &cfg)
 	})
 	require.Equal(t, "Test App v3.0.0", app.Config().AppName)
 	require.Contains(t, startupMessage, app.Config().AppName)
@@ -574,7 +574,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testi
 	require.NoError(t, ln.Close())
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(fmt.Sprintf(":%d", port), false, "", cfg)
+		app.startupMessage(fmt.Sprintf(":%d", port), false, "", &cfg)
 	})
 	require.Contains(t, startupMessage, "Serveur de vérification des données")
 }
@@ -595,7 +595,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 	require.NoError(t, ln.Close())
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(fmt.Sprintf("server.com:%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 5), cfg)
+		app.startupMessage(fmt.Sprintf("server.com:%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 5), &cfg)
 	})
 	colors := Colors{}
 	require.Contains(t, startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset))
