@@ -31,7 +31,7 @@ func normalizeDomain(input string) string {
 // and normalizes it by removing any path or trailing slash.
 // It returns a boolean indicating whether the origin is valid
 // and the normalized origin.
-func normalizeOrigin(origin string) (valid bool, normalized string) {
+func normalizeOrigin(origin string) (bool, string) {
 	parsedOrigin, err := url.Parse(origin)
 	if err != nil {
 		return false, ""

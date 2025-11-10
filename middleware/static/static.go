@@ -125,7 +125,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				prefixLen--
 			}
 
-			fs := &fasthttp.FS{
+			fileServer := &fasthttp.FS{
 				Root:                   root,
 				FS:                     config.FS,
 				AllowEmptyRoot:         true,
@@ -143,20 +143,20 @@ func New(root string, cfg ...Config) fiber.Handler {
 				},
 			}
 
-			fs.PathRewrite = func(fctx *fasthttp.RequestCtx) []byte {
+			fileServer.PathRewrite = func(fctx *fasthttp.RequestCtx) []byte {
 				path := fctx.Path()
 
 				if len(path) >= prefixLen {
-					checkFile, err := isFile(root, fs.FS)
+					checkFile, err := isFile(root, fileServer.FS)
 					if err != nil {
 						return path
 					}
 
 					// If the root is a file, we need to reset the path to "/" always.
 					switch {
-					case checkFile && fs.FS == nil:
+					case checkFile && fileServer.FS == nil:
 						path = []byte("/")
-					case checkFile && fs.FS != nil:
+					case checkFile && fileServer.FS != nil:
 						path = utils.UnsafeBytes(root)
 					default:
 						path = path[prefixLen:]
@@ -170,7 +170,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 					path = append([]byte("/"), path...)
 				}
 
-				sanitized, err := sanitizePath(path, fs.FS)
+				sanitized, err := sanitizePath(path, fileServer.FS)
 				if err != nil {
 					// return a guaranteed-missing path so fs responds with 404
 					return []byte("/__fiber_invalid__")
@@ -183,7 +183,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
 			}
 
-			fileHandler = fs.NewRequestHandler()
+			fileHandler = fileServer.NewRequestHandler()
 		})
 
 		// Serve file

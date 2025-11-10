@@ -17,7 +17,7 @@ import (
 
 // GetTLSConfigs generates TLS configurations for a test server and client that
 // trust each other using an in-memory certificate authority.
-func GetTLSConfigs() (serverTLSConf *tls.Config, clientTLSConf *tls.Config, err error) {
+func GetTLSConfigs() (serverTLSConf, clientTLSConf *tls.Config, err error) {
 	// set up our CA certificate
 	ca := &x509.Certificate{
 		SerialNumber: big.NewInt(2021),

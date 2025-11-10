@@ -30,28 +30,28 @@ func startServer(app *fiber.App, ln net.Listener) {
 	}()
 }
 
-func createProxyTestServer(t *testing.T, handler fiber.Handler, network, address string) (target *fiber.App, addr string) {
+func createProxyTestServer(t *testing.T, handler fiber.Handler, network, address string) (*fiber.App, string) {
 	t.Helper()
 
-	target = fiber.New()
+	target := fiber.New()
 	target.Get("/", handler)
 
 	ln, err := net.Listen(network, address)
 	require.NoError(t, err)
 
-	addr = ln.Addr().String()
+	addr := ln.Addr().String()
 
 	startServer(target, ln)
 
 	return target, addr
 }
 
-func createProxyTestServerIPv4(t *testing.T, handler fiber.Handler) (target *fiber.App, addr string) {
+func createProxyTestServerIPv4(t *testing.T, handler fiber.Handler) (*fiber.App, string) {
 	t.Helper()
 	return createProxyTestServer(t, handler, fiber.NetworkTCP4, "127.0.0.1:0")
 }
 
-func createProxyTestServerIPv6(t *testing.T, handler fiber.Handler) (target *fiber.App, addr string) {
+func createProxyTestServerIPv6(t *testing.T, handler fiber.Handler) (*fiber.App, string) {
 	t.Helper()
 	return createProxyTestServer(t, handler, fiber.NetworkTCP6, "[::1]:0")
 }

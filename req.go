@@ -84,21 +84,26 @@ func (r *DefaultReq) BodyRaw() []byte {
 func (r *DefaultReq) tryDecodeBodyInOrder(
 	originalBody *[]byte,
 	encodings []string,
-) (body []byte, decodesRealized uint8, err error) {
+) ([]byte, uint8, error) {
 	request := &r.c.fasthttp.Request
+	var (
+		body            []byte
+		decodesRealized uint8
+	)
 	for idx := range encodings {
 		i := len(encodings) - 1 - idx
 		encoding := encodings[i]
 		decodesRealized++
+		var decodeErr error
 		switch encoding {
 		case StrGzip, "x-gzip":
-			body, err = request.BodyGunzip()
+			body, decodeErr = request.BodyGunzip()
 		case StrBr, StrBrotli:
-			body, err = request.BodyUnbrotli()
+			body, decodeErr = request.BodyUnbrotli()
 		case StrDeflate:
-			body, err = request.BodyInflate()
+			body, decodeErr = request.BodyInflate()
 		case StrZstd:
-			body, err = request.BodyUnzstd()
+			body, decodeErr = request.BodyUnzstd()
 		case StrIdentity:
 			body = request.Body()
 		case StrCompress, "x-compress":
@@ -107,8 +112,8 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 			return nil, decodesRealized - 1, ErrUnsupportedMediaType
 		}
 
-		if err != nil {
-			return nil, decodesRealized, err
+		if decodeErr != nil {
+			return nil, decodesRealized, decodeErr
 		}
 
 		if i > 0 && decodesRealized > 0 {

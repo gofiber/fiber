@@ -2832,7 +2832,8 @@ func Test_Ctx_Done(t *testing.T) {
 		return c.Next()
 	})
 	app.Get("/test", func(c Ctx) error {
-		require.Equal(t, (<-chan struct{})(nil), c.Done())
+		var nilChan <-chan struct{}
+		require.Equal(t, nilChan, c.Done())
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))

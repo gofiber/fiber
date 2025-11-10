@@ -70,17 +70,17 @@ func (ts *testServer) dial() func(addr string) (net.Conn, error) {
 	}
 }
 
-func createHelperServer(tb testing.TB) (app *fiber.App, dial func(addr string) (net.Conn, error), start func()) {
+func createHelperServer(tb testing.TB) (*fiber.App, func(addr string) (net.Conn, error), func()) {
 	tb.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app = fiber.New()
+	app := fiber.New()
 
-	dial = func(_ string) (net.Conn, error) {
+	dial := func(_ string) (net.Conn, error) {
 		return ln.Dial()
 	}
-	start = func() {
+	start := func() {
 		require.NoError(tb, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 	}
 

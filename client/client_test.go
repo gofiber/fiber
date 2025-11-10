@@ -26,10 +26,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (app *fiber.App, addr string) {
+func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (*fiber.App, string) {
 	t.Helper()
 
-	app = fiber.New()
+	app := fiber.New()
 
 	if beforeStarting != nil {
 		beforeStarting(app)
@@ -37,8 +37,8 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 
 	addrChan := make(chan string)
 	errChan := make(chan error, 1)
-	go func() {
-		err := app.Listen(":0", fiber.ListenConfig{
+	go func(server *fiber.App) {
+		err := server.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
 			ListenerAddrFunc: func(addr net.Addr) {
 				addrChan <- addr.String()
@@ -47,11 +47,10 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 		if err != nil {
 			errChan <- err
 		}
-	}()
+	}(app)
 
 	select {
-	case received := <-addrChan:
-		addr = received
+	case addr := <-addrChan:
 		return app, addr
 	case err := <-errChan:
 		t.Fatalf("Failed to start test server: %v", err)
