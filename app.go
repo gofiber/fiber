@@ -107,6 +107,8 @@ type App struct {
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
+	// hasCustomCtx tracks whether app uses a custom context implementation
+	hasCustomCtx bool
 }
 
 // Config is a struct holding the server settings.
@@ -690,6 +692,7 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // only customizing existing ones.
 func (app *App) setCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
+	app.hasCustomCtx = function != nil
 
 	if app.server != nil {
 		app.server.Handler = app.requestHandler

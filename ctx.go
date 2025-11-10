@@ -41,7 +41,9 @@ var (
 type contextKey int
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
-const userContextKey contextKey = 0 // __local_user_context__
+const (
+	userContextKey contextKey = iota // __local_user_context__
+)
 
 // DefaultCtx is the default implementation of the Ctx interface
 // generation tool `go install github.com/vburenin/ifacemaker@f30b6f9bdbed4b5c4804ec9ba4a04a999525c202`
@@ -49,6 +51,7 @@ const userContextKey contextKey = 0 // __local_user_context__
 //
 //go:generate ifacemaker --file ctx.go --file req.go --file res.go --struct DefaultCtx --iface Ctx --pkg fiber --promoted --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
+	handlerCtx       CustomCtx            // Active custom context implementation, if any
 	DefaultReq                            // Default request api
 	DefaultRes                            // Default response api
 	app              *App                 // Reference to *App
@@ -226,11 +229,16 @@ func (c *DefaultCtx) Next() error {
 
 	// Did we execute all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
-		// Continue route stack
+		if c.handlerCtx != nil {
+			return c.route.Handlers[c.indexHandler](c.handlerCtx)
+		}
 		return c.route.Handlers[c.indexHandler](c)
 	}
 
-	// Continue handler stack
+	if c.handlerCtx != nil {
+		_, err := c.app.nextCustom(c.handlerCtx)
+		return err
+	}
 	_, err := c.app.next(c)
 	return err
 }
@@ -238,11 +246,25 @@ func (c *DefaultCtx) Next() error {
 // RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
-	var err error
-
 	c.indexRoute = -1
-	_, err = c.app.next(c)
+	if c.handlerCtx != nil {
+		_, err := c.app.nextCustom(c.handlerCtx)
+		return err
+	}
+	_, err := c.app.next(c)
 	return err
+}
+
+func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
+	if ctx == nil {
+		c.handlerCtx = nil
+		return
+	}
+	if defaultCtx, ok := ctx.(*DefaultCtx); ok && defaultCtx == c {
+		c.handlerCtx = nil
+		return
+	}
+	c.handlerCtx = ctx
 }
 
 // OriginalURL contains the original request URL.
@@ -587,6 +609,7 @@ func (c *DefaultCtx) release() {
 		c.redirect = nil
 	}
 	c.skipNonUseRoutes = false
+	c.handlerCtx = nil
 	c.DefaultReq.release()
 	c.DefaultRes.release()
 }
