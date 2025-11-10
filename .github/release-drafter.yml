@@ -64,7 +64,7 @@ autolabeler:
     title: '/(fix|race|bug|missing|correct)/i'
 - label: '🧹 Updates'
   matcher:
-    title: '/(improve|update|refactor|deprecated|remove|unused|test)/i'
+    title: '/(improve|improvements|update|refactor|deprecated|remove|unused|test)/i'
 - label: '🤖 Dependencies'
   matcher:
     title: '/(bump|dependencies)/i'
@@ -74,9 +74,6 @@ autolabeler:
 - label: '📝 Proposal'
   matcher:
     title: '/(proposal|idea|request|suggest)/i'
-- label: '🤔 Question'
-  matcher:
-    title: '/(question|how)/i'
 - label: 'v3'
   branch:
     - '/main/'
