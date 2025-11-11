@@ -35,16 +35,13 @@ exclude-contributors:
 version-resolver:
   major:
     labels:
-      - 'major'
       - '❗ BreakingChange'
   minor:
     labels:
-      - 'minor'
       - '✏️ Feature'
       - '📝 Proposal'
   patch:
     labels:
-      - 'patch'
       - '📒 Documentation'
       - '☢️ Bug'
       - '🤖 Dependencies'
@@ -56,4 +53,30 @@ template: |
 
     **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
 
-    Thank you $CONTRIBUTORS for making this update possible.
+    Thank you $CONTRIBUTORS for making this release possible.
+
+autolabeler:
+- label: '📒 Documentation'
+  matcher:
+    title: '/(docs|doc:|\[doc\]|README|typos|comment|documentation)/i'
+- label: '☢️ Bug'
+  matcher:
+    title: '/(fix|race|bug|missing|correct)/i'
+- label: '🧹 Updates'
+  matcher:
+    title: '/(improve|improvements|update|refactor|deprecated|remove|unused|test)/i'
+- label: '🤖 Dependencies'
+  matcher:
+    title: '/(bump|dependencies)/i'
+- label: '✏️ Feature'
+  matcher:
+    title: '/(feature|feat|create|implement|add)/i'
+- label: '📝 Proposal'
+  matcher:
+    title: '/(proposal|idea|request|suggest)/i'
+- label: 'v3'
+  branch:
+    - '/main/'
+- label: 'v2'
+  branch:
+    - '/v2/'
