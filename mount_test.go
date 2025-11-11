@@ -384,7 +384,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 
 	resp2, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub/third", http.NoBody))
 	require.NoError(t, err, "/api/sub/third req")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, 200, resp2.StatusCode, "Status code")
 
 	b, err = io.ReadAll(resp2.Body)
 	require.NoError(t, err, "iotuil.ReadAll()")
