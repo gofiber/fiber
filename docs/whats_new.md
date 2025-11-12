@@ -1282,6 +1282,8 @@ New `Challenge`, `Error`, `ErrorDescription`, `ErrorURI`, and `Scope` fields all
 
 New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without any extra afford. For example, you can use `zap` with Fiber logger middleware like this:
 
+Custom logger integrations should update any `LoggerFunc` implementations to the new signature that receives a pointer to the middleware config: `func(c fiber.Ctx, data *logger.Data, cfg *logger.Config) error`.
+
 <details>
 <summary>Example</summary>
 
@@ -1443,6 +1445,8 @@ See more in [Logger](./middleware/logger.md#predefined-formats)
 
 The limiter middleware uses a new Fixed Window Rate Limiter implementation.
 
+Custom limiter algorithms should now implement the updated `limiter.Handler` interface, whose `New` method receives a pointer to the active config: `New(cfg *limiter.Config) fiber.Handler`.
+
 Limiter now redacts request keys in error paths by default. A new `DisableValueRedaction` boolean (default `false`) lets you reveal the raw limiter key if diagnostics require it.
 
 :::note
@@ -1458,6 +1462,8 @@ Monitor middleware is migrated to the [Contrib package](https://github.com/gofib
 The proxy middleware has been updated to improve consistency with Go naming conventions. The `TlsConfig` field in the configuration struct has been renamed to `TLSConfig`. Additionally, the `WithTlsConfig` method has been removed; you should now configure TLS directly via the `TLSConfig` property within the `Config` struct.
 
 The new `KeepConnectionHeader` option (default `false`) drops the `Connection` header unless explicitly enabled to retain it.
+
+`proxy.Balancer` now accepts an optional variadic configuration: call `proxy.Balancer()` to use defaults or continue passing a `proxy.Config` value as before.
 
 ### Session
 
@@ -2477,6 +2483,8 @@ proxy.WithClient(&fasthttp.Client{
 // Forward to url
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 ```
+
+`proxy.Balancer` also adopts the common middleware signature pattern and now accepts an optional variadic config: call `proxy.Balancer()` to use the defaults or continue passing a single `proxy.Config` value as in v2.
 
 #### Session
 
