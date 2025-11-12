@@ -165,14 +165,14 @@ func uniqueRouteStack(stack []*Route) []*Route {
 
 // defaultString returns the value or a default value if it is set
 func defaultString(value string, defaultValue []string) string {
-	if len(value) == 0 && len(defaultValue) > 0 {
+	if value == "" && len(defaultValue) > 0 {
 		return defaultValue[0]
 	}
 	return value
 }
 
 func getGroupPath(prefix, path string) string {
-	if len(path) == 0 {
+	if path == "" {
 		return prefix
 	}
 
@@ -613,8 +613,8 @@ func sortAcceptedTypes(at []acceptedType) {
 
 // normalizeEtag validates an entity tag and returns the
 // value without quotes. weak is true if the tag has the "W/" prefix.
-func normalizeEtag(t string) (string, bool, bool) {
-	weak := strings.HasPrefix(t, "W/")
+func normalizeEtag(t string) (value string, weak, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the parsed ETag components
+	weak = strings.HasPrefix(t, "W/")
 	if weak {
 		t = t[2:]
 	}
@@ -686,7 +686,7 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !matchEtag(app.toString(noneMatchBytes[start:end]), etag)
 }
 
-func parseAddr(raw string) (string, string) {
+func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming host and port parts for clarity
 	if raw == "" {
 		return "", ""
 	}
@@ -696,7 +696,7 @@ func parseAddr(raw string) (string, string) {
 	// Handle IPv6 addresses enclosed in brackets as defined by RFC 3986
 	if strings.HasPrefix(raw, "[") {
 		if end := strings.IndexByte(raw, ']'); end != -1 {
-			host := raw[:end+1] // keep the closing ]
+			host = raw[:end+1] // keep the closing ]
 			if len(raw) > end+1 && raw[end+1] == ':' {
 				return host, raw[end+2:]
 			}
@@ -706,7 +706,7 @@ func parseAddr(raw string) (string, string) {
 
 	// Everything else with a colon
 	if i := strings.LastIndexByte(raw, ':'); i != -1 {
-		host, port := raw[:i], raw[i+1:]
+		host, port = raw[:i], raw[i+1:]
 
 		// If “host” still contains ':', we must have hit an un-bracketed IPv6
 		// literal. In that form a port is impossible, so treat the whole thing

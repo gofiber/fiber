@@ -251,7 +251,8 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 	}
 
 	// Get location from route name
-	location, err := r.c.getLocationFromRoute(r.c.App().GetRoute(name), cfg.Params)
+	route := r.c.App().GetRoute(name)
+	location, err := r.c.getLocationFromRoute(&route, cfg.Params)
 	if err != nil {
 		return err
 	}

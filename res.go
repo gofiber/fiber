@@ -140,7 +140,7 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	h := r.c.app.toString(r.c.fasthttp.Response.Header.Peek(field))
 	originalH := h
 	for _, value := range values {
-		if len(h) == 0 {
+		if h == "" {
 			h = value
 		} else if h != value && !strings.HasPrefix(h, value+",") && !strings.HasSuffix(h, " "+value) &&
 			!strings.Contains(h, " "+value+",") {
@@ -571,7 +571,11 @@ func (r *DefaultRes) ViewBind(vars Map) error {
 }
 
 // getLocationFromRoute get URL location from route using parameters
-func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, error) {
+func (r *DefaultRes) getLocationFromRoute(route *Route, params Map) (string, error) {
+	if route == nil || route.Path == "" {
+		return "", ErrNotFound
+	}
+
 	app := r.c.app
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
@@ -602,7 +606,8 @@ func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, erro
 
 // GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 func (r *DefaultRes) GetRouteURL(routeName string, params Map) (string, error) {
-	return r.getLocationFromRoute(r.c.app.GetRoute(routeName), params)
+	route := r.c.app.GetRoute(routeName)
+	return r.getLocationFromRoute(&route, params)
 }
 
 // Render a template with data and sends a text/html response.
@@ -789,9 +794,9 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	}
 
 	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
-	if len(file) == 0 || (!filepath.IsAbs(file) && cfg.FS == nil) {
+	if file == "" || (!filepath.IsAbs(file) && cfg.FS == nil) {
 		// extend relative path to absolute path
-		hasTrailingSlash := len(file) > 0 && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
+		hasTrailingSlash := file != "" && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
 
 		var err error
 		file = filepath.FromSlash(file)
@@ -841,7 +846,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
-		if len(cacheControlValue) > 0 {
+		if cacheControlValue != "" {
 			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 

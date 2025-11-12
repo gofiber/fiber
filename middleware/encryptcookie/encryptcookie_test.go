@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
@@ -127,7 +128,7 @@ func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 	require.ErrorIs(t, captured, expected)
@@ -166,7 +167,7 @@ func Test_Middleware_EncryptionErrorDoesNotMaskNextError(t *testing.T) {
 		return downstreamErr
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 	require.ErrorIs(t, captured, downstreamErr)
@@ -271,7 +272,7 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "SomeThing", resp.Cookies()[0].Value)
 }

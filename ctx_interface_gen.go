@@ -184,7 +184,7 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	BodyRaw() []byte
-	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) ([]byte, uint8, error)
+	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) (body []byte, decodesRealized uint8, err error) //nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
 	// Body contains the raw body submitted in a POST request.
 	// This method will decompress the body if the 'Content-Encoding' header is provided.
 	// It returns the original (or decompressed) body data which is valid only within the handler.
@@ -373,7 +373,7 @@ type Ctx interface {
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)
 	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route, params Map) (string, error)
+	getLocationFromRoute(route *Route, params Map) (string, error)
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.

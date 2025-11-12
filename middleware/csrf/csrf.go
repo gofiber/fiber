@@ -115,7 +115,7 @@ func New(config ...Config) fiber.Handler {
 			cookieToken := c.Cookies(cfg.CookieName)
 
 			if cookieToken != "" {
-				raw, err := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
+				raw, err := getRawFromStorage(c, cookieToken, &cfg, sessionManager, storageManager)
 				if err != nil {
 					return cfg.ErrorHandler(c, err)
 				}
@@ -167,20 +167,20 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
 
-			raw, err := getRawFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+			raw, err := getRawFromStorage(c, extractedToken, &cfg, sessionManager, storageManager)
 			if err != nil {
 				return cfg.ErrorHandler(c, err)
 			}
 
 			if raw == nil {
 				// If token is not in storage, expire the cookie
-				expireCSRFCookie(c, cfg)
+				expireCSRFCookie(c, &cfg)
 				// and return an error
 				return cfg.ErrorHandler(c, ErrTokenNotFound)
 			}
 			if cfg.SingleUseToken {
 				// If token is single use, delete it from storage
-				if err := deleteTokenFromStorage(c, extractedToken, cfg, sessionManager, storageManager); err != nil {
+				if err := deleteTokenFromStorage(c, extractedToken, &cfg, sessionManager, storageManager); err != nil {
 					return cfg.ErrorHandler(c, err)
 				}
 			} else {
@@ -195,12 +195,12 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Create or extend the token in the storage
-		if err := createOrExtendTokenInStorage(c, token, cfg, sessionManager, storageManager); err != nil {
+		if err := createOrExtendTokenInStorage(c, token, &cfg, sessionManager, storageManager); err != nil {
 			return cfg.ErrorHandler(c, err)
 		}
 
 		// Update the CSRF cookie
-		updateCSRFCookie(c, cfg, token)
+		updateCSRFCookie(c, &cfg, token)
 
 		// Tell the browser that a new header value is generated
 		c.Vary(fiber.HeaderCookie)
@@ -235,7 +235,7 @@ func HandlerFromContext(c fiber.Ctx) *Handler {
 
 // getRawFromStorage returns the raw value from the storage for the given token
 // returns nil if the token does not exist, is expired or is invalid
-func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) ([]byte, error) {
+func getRawFromStorage(c fiber.Ctx, token string, cfg *Config, sessionManager *sessionManager, storageManager *storageManager) ([]byte, error) {
 	if cfg.Session != nil {
 		return sessionManager.getRaw(c, token, dummyValue), nil
 	}
@@ -247,7 +247,7 @@ func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *se
 }
 
 // createOrExtendTokenInStorage creates or extends the token in the storage
-func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) error {
+func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg *Config, sessionManager *sessionManager, storageManager *storageManager) error {
 	if cfg.Session != nil {
 		sessionManager.setRaw(c, token, dummyValue, cfg.IdleTimeout)
 		return nil
@@ -258,7 +258,7 @@ func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg Config, session
 	return nil
 }
 
-func deleteTokenFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) error {
+func deleteTokenFromStorage(c fiber.Ctx, token string, cfg *Config, sessionManager *sessionManager, storageManager *storageManager) error {
 	if cfg.Session != nil {
 		sessionManager.delRaw(c)
 		return nil
@@ -271,15 +271,15 @@ func deleteTokenFromStorage(c fiber.Ctx, token string, cfg Config, sessionManage
 
 // Update CSRF cookie
 // if expireCookie is true, the cookie will expire immediately
-func updateCSRFCookie(c fiber.Ctx, cfg Config, token string) {
+func updateCSRFCookie(c fiber.Ctx, cfg *Config, token string) {
 	setCSRFCookie(c, cfg, token, cfg.IdleTimeout)
 }
 
-func expireCSRFCookie(c fiber.Ctx, cfg Config) {
+func expireCSRFCookie(c fiber.Ctx, cfg *Config) {
 	setCSRFCookie(c, cfg, "", -time.Hour)
 }
 
-func setCSRFCookie(c fiber.Ctx, cfg Config, token string, expiry time.Duration) {
+func setCSRFCookie(c fiber.Ctx, cfg *Config, token string, expiry time.Duration) {
 	cookie := &fiber.Cookie{
 		Name:        cfg.CookieName,
 		Value:       token,
@@ -305,11 +305,11 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 		return handler.config.ErrorHandler(c, ErrTokenNotFound)
 	}
 	// Remove the token from storage
-	if err := deleteTokenFromStorage(c, cookieToken, handler.config, handler.sessionManager, handler.storageManager); err != nil {
+	if err := deleteTokenFromStorage(c, cookieToken, &handler.config, handler.sessionManager, handler.storageManager); err != nil {
 		return handler.config.ErrorHandler(c, err)
 	}
 	// Expire the cookie
-	expireCSRFCookie(c, handler.config)
+	expireCSRFCookie(c, &handler.config)
 	return nil
 }
 

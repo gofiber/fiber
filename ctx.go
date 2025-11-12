@@ -405,7 +405,7 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 	hasEncoding := false
 	for raw := range strings.SplitSeq(te, ",") {
 		token := strings.TrimSpace(raw)
-		if len(token) == 0 {
+		if token == "" {
 			continue
 		}
 		if idx := strings.IndexByte(token, ';'); idx >= 0 {

@@ -101,6 +101,8 @@ linters:
     gocritic:
       enabled-tags:
         - diagnostic
+        - style
+        - performance
       settings:
         captLocal:
           paramsOnly: false

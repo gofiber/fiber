@@ -537,7 +537,7 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	})
 
 	// Step 1: Make the initial request to the source route
-	req := httptest.NewRequest(MethodGet, "/source", nil)
+	req := httptest.NewRequest(MethodGet, "/source", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusSeeOther, resp.StatusCode)
@@ -555,7 +555,7 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	require.NotNil(t, flashCookie, "Flash cookie should be set")
 
 	// Step 2: Make the second request to the target route with the cookie
-	req = httptest.NewRequest(MethodGet, "/target", nil)
+	req = httptest.NewRequest(MethodGet, "/target", http.NoBody)
 	req.Header.Set("Cookie", flashCookie.Name+"="+flashCookie.Value)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -603,7 +603,7 @@ func Test_Redirect_FlashMessagesWithSpecialChars(t *testing.T) {
 	})
 
 	// Step 1: Make the initial request
-	req := httptest.NewRequest(MethodGet, "/special-source", nil)
+	req := httptest.NewRequest(MethodGet, "/special-source", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusSeeOther, resp.StatusCode)
@@ -620,7 +620,7 @@ func Test_Redirect_FlashMessagesWithSpecialChars(t *testing.T) {
 	require.NotNil(t, flashCookie, "Flash cookie should be set")
 
 	// Step 2: Make the second request with the cookie
-	req = httptest.NewRequest(MethodGet, "/special-target", nil)
+	req = httptest.NewRequest(MethodGet, "/special-target", http.NoBody)
 	req.Header.Set("Cookie", flashCookie.Name+"="+flashCookie.Value)
 	resp, err = app.Test(req)
 	require.NoError(t, err)

@@ -213,16 +213,16 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		ctx, cancel := context.WithCancel(cfg.GracefulContext)
 		defer cancel()
 
-		go app.gracefulShutdown(ctx, cfg)
+		go app.gracefulShutdown(ctx, &cfg)
 	}
 
 	// Start prefork
 	if cfg.EnablePrefork {
-		return app.prefork(addr, tlsConfig, cfg)
+		return app.prefork(addr, tlsConfig, &cfg)
 	}
 
 	// Configure Listener
-	ln, err := app.createListener(addr, tlsConfig, cfg)
+	ln, err := app.createListener(addr, tlsConfig, &cfg)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
@@ -231,10 +231,10 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	app.startupProcess()
 
 	// run hooks
-	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, cfg))
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, &cfg))
 
 	// Print startup message & routes
-	app.printMessages(cfg, ln)
+	app.printMessages(&cfg, ln)
 
 	// Serve
 	if cfg.BeforeServeFunc != nil {
@@ -256,17 +256,17 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 		ctx, cancel := context.WithCancel(cfg.GracefulContext)
 		defer cancel()
 
-		go app.gracefulShutdown(ctx, cfg)
+		go app.gracefulShutdown(ctx, &cfg)
 	}
 
 	// prepare the server for the start
 	app.startupProcess()
 
 	// run hooks
-	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, cfg))
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, &cfg))
 
 	// Print startup message & routes
-	app.printMessages(cfg, ln)
+	app.printMessages(&cfg, ln)
 
 	// Serve
 	if cfg.BeforeServeFunc != nil {
@@ -284,7 +284,10 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 }
 
 // Create listener function.
-func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig) (net.Listener, error) {
+func (*App) createListener(addr string, tlsConfig *tls.Config, cfg *ListenConfig) (net.Listener, error) {
+	if cfg == nil {
+		cfg = &ListenConfig{}
+	}
 	var listener net.Listener
 	var err error
 
@@ -320,7 +323,10 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 	return listener, nil
 }
 
-func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
+func (app *App) printMessages(cfg *ListenConfig, ln net.Listener) {
+	if cfg == nil {
+		cfg = &ListenConfig{}
+	}
 	// Print startup message
 	if !cfg.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTLSConfig(ln) != nil, "", cfg)
@@ -333,7 +339,10 @@ func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 }
 
 // prepareListenData creates a slice of ListenData
-func (*App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
+func (*App) prepareListenData(addr string, isTLS bool, cfg *ListenConfig) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
+	if cfg == nil {
+		cfg = &ListenConfig{}
+	}
 	host, port := parseAddr(addr)
 	if host == "" {
 		if cfg.ListenerNetwork == NetworkTCP6 {
@@ -351,7 +360,7 @@ func (*App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenD
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenConfig) { //nolint:revive // Accepting a bool param named isTLS if fine here
+func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg *ListenConfig) { //nolint:revive // Accepting a bool param named isTLS if fine here
 	// ignore child processes
 	if IsChild() {
 		return
@@ -406,7 +415,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 		fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
 	}
 
-	app.logServices(app.servicesStartupCtx(), out, colors)
+	app.logServices(app.servicesStartupCtx(), out, &colors)
 
 	fmt.Fprintf(out,
 		"%sINFO%s Total handlers count: \t%s%s%s\n",
@@ -502,12 +511,12 @@ func (app *App) printRoutesMessage() {
 }
 
 // shutdown goroutine
-func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
+func (app *App) gracefulShutdown(ctx context.Context, cfg *ListenConfig) {
 	<-ctx.Done()
 
 	var err error
 
-	if cfg.ShutdownTimeout != 0 {
+	if cfg != nil && cfg.ShutdownTimeout != 0 {
 		err = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:contextcheck // TODO: Implement it
 	} else {
 		err = app.Shutdown() //nolint:contextcheck // TODO: Implement it

@@ -10,7 +10,7 @@ The Proxy middleware forwards requests to one or more upstream servers.
 
 ```go
 // Balancer creates a load balancer among multiple upstream servers.
-func Balancer(config Config) fiber.Handler
+func Balancer(config ...Config) fiber.Handler
 // Forward performs the given http request and fills the given http response.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
 // Do performs the given http request and fills the given http response.
@@ -56,7 +56,7 @@ app.Get("/payments", proxy.DomainForward("docs.gofiber.io", "http://localhost:80
 
 // Forward to a URL using a custom client
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif", &fasthttp.Client{
-    NoDefaultUserAgentHeader: true, 
+    NoDefaultUserAgentHeader: true,
     DisablePathNormalizing:   true,
 }))
 

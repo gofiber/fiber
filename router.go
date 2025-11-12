@@ -93,7 +93,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 		plen := len(r.path)
 		if r.root {
 			// If r.root is '/', it matches everything starting at '/'
-			if len(detectionPath) > 0 && detectionPath[0] == '/' {
+			if detectionPath != "" && detectionPath[0] == '/' {
 				return true
 			}
 		} else if len(detectionPath) >= plen && detectionPath[:plen] == r.path {
@@ -517,7 +517,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 	// No nil handlers allowed
 	for _, h := range handlers {
-		if nil == h {
+		if h == nil {
 			panic(fmt.Sprintf("nil handler in route: %s\n", pathRaw))
 		}
 	}
@@ -613,7 +613,7 @@ func (app *App) addRoute(method string, route *Route) {
 	// Execute onRoute hooks & change latestRoute if not adding mounted route
 	if !route.mount {
 		app.latestRoute = route
-		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
+		if err := app.hooks.executeOnRouteHooks(route); err != nil {
 			panic(err)
 		}
 	}
@@ -676,7 +676,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // Not a concern
 
 		app.latestRoute = headRoute
-		if err := app.hooks.executeOnRouteHooks(*headRoute); err != nil {
+		if err := app.hooks.executeOnRouteHooks(headRoute); err != nil {
 			panic(err)
 		}
 	}

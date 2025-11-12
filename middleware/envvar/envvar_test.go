@@ -40,7 +40,7 @@ func Test_EnvVarHandler(t *testing.T) {
 		ExportVars: map[string]string{"testKey": ""},
 	}))
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", http.NoBody)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -62,7 +62,7 @@ func Test_EnvVarHandlerNotMatched(t *testing.T) {
 		return nil
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/another-path", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/another-path", http.NoBody)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -79,7 +79,7 @@ func Test_EnvVarHandlerDefaultConfig(t *testing.T) {
 	app := fiber.New()
 	app.Use("/envvars", New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", http.NoBody)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -97,7 +97,7 @@ func Test_EnvVarHandlerMethod(t *testing.T) {
 	app := fiber.New()
 	app.Use("/envvars", New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "http://localhost/envvars", http.NoBody)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func Test_EnvVarHandlerHead(t *testing.T) {
 	app := fiber.New()
 	app.Use("/envvars", New())
 
-	req := httptest.NewRequest(fiber.MethodHead, "http://localhost/envvars", nil)
+	req := httptest.NewRequest(fiber.MethodHead, "http://localhost/envvars", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -128,7 +128,7 @@ func Test_EnvVarHandlerSpecialValue(t *testing.T) {
 	app.Use("/envvars/export", New(Config{ExportVars: map[string]string{testEnvKey: ""}}))
 	app.Use("/envvars", New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", http.NoBody)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -141,7 +141,7 @@ func Test_EnvVarHandlerSpecialValue(t *testing.T) {
 	_, exists := envVars.Vars[testEnvKey]
 	require.False(t, exists)
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars/export", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars/export", http.NoBody)
 	require.NoError(t, err)
 	resp, err = app.Test(req)
 	require.NoError(t, err)

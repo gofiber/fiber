@@ -56,7 +56,7 @@ func New(config ...Config) fiber.Handler {
 	errPaddingStr := strconv.Itoa(errPadding)
 
 	// Before handling func
-	cfg.BeforeHandlerFunc(cfg)
+	cfg.BeforeHandlerFunc(&cfg)
 
 	// Logger data
 	// instead of analyzing the template inside(handler) each time, this is done once before
@@ -122,6 +122,6 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Logger instance & update some logger data fields
-		return cfg.LoggerFunc(c, data, cfg)
+		return cfg.LoggerFunc(c, data, &cfg)
 	}
 }

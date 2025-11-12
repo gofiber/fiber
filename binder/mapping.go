@@ -200,11 +200,18 @@ func isStringKeyMap(t reflect.Type) bool {
 	return t.Kind() == reflect.Map && t.Key().Kind() == reflect.String
 }
 
-func isExported(f reflect.StructField) bool {
+func isExported(f *reflect.StructField) bool {
+	if f == nil {
+		return false
+	}
 	return f.PkgPath == ""
 }
 
-func fieldName(f reflect.StructField, aliasTag string) string {
+func fieldName(f *reflect.StructField, aliasTag string) string {
+	if f == nil {
+		return ""
+	}
+
 	name := f.Tag.Get(aliasTag)
 	if name == "" {
 		name = f.Name
@@ -264,16 +271,16 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if !isExported(f) {
+		if !isExported(&f) {
 			continue
 		}
 		fieldType := unwrapType(f.Type)
-		info.names[fieldName(f, aliasTag)] = fieldType.Kind()
+		info.names[fieldName(&f, aliasTag)] = fieldType.Kind()
 
 		if fieldType.Kind() == reflect.Struct {
 			for j := 0; j < fieldType.NumField(); j++ {
 				sf := fieldType.Field(j)
-				if !isExported(sf) {
+				if !isExported(&sf) {
 					continue
 				}
 				nestedType := unwrapType(sf.Type)

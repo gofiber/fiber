@@ -13,7 +13,12 @@ import (
 type FixedWindow struct{}
 
 // New creates a new fixed window middleware handler
-func (FixedWindow) New(cfg Config) fiber.Handler {
+func (FixedWindow) New(cfg *Config) fiber.Handler {
+	if cfg == nil {
+		defaultCfg := configDefault()
+		cfg = &defaultCfg
+	}
+
 	var (
 		// Limiter variables
 		mux        = &sync.RWMutex{}

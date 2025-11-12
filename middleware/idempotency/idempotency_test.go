@@ -81,7 +81,7 @@ func Test_Idempotency(t *testing.T) {
 	})
 
 	doReq := func(method, route, idempotencyKey string) string {
-		req := httptest.NewRequest(method, route, nil)
+		req := httptest.NewRequest(method, route, http.NoBody)
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
@@ -223,16 +223,16 @@ func Test_configDefault_override(t *testing.T) {
 }
 
 // helper to perform request
-func do(app *fiber.App, req *http.Request) (*http.Response, string) {
+func do(app *fiber.App, req *http.Request) (resp *http.Response, body string) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming returned response and body payload for clarity
 	resp, err := app.Test(req, fiber.TestConfig{Timeout: 5 * time.Second})
 	if err != nil {
 		panic(err)
 	}
-	body, err := io.ReadAll(resp.Body)
+	payload, err := io.ReadAll(resp.Body)
 	if err != nil {
 		panic(err)
 	}
-	return resp, string(body)
+	return resp, string(payload)
 }
 
 func Test_New_NextSkip(t *testing.T) {
@@ -247,11 +247,11 @@ func Test_New_NextSkip(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	_, body1 := do(app, req)
 
-	req2 := httptest.NewRequest(http.MethodPost, "/", nil)
+	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
 	_, body2 := do(app, req2)
 
@@ -265,7 +265,7 @@ func Test_New_InvalidKey(t *testing.T) {
 	app.Use(New())
 	app.Post("/", func(_ fiber.Ctx) error { return nil })
 
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req.Header.Set(ConfigDefault.KeyHeader, "bad")
 	resp, body := do(app, req)
 
@@ -280,7 +280,7 @@ func Test_New_StorageGetError(t *testing.T) {
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp, body := do(app, req)
 
@@ -295,7 +295,7 @@ func Test_New_UnmarshalError(t *testing.T) {
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp, body := do(app, req)
 
@@ -321,14 +321,14 @@ func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
 		return c.SendString(fmt.Sprintf("resp%d", count))
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp, body := do(app, req)
 	require.Equal(t, "resp1", body)
 	require.Equal(t, "foo", resp.Header.Get("Foo"))
 	require.Equal(t, "bar", resp.Header.Get("Bar"))
 
-	req2 := httptest.NewRequest(http.MethodPost, "/", nil)
+	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp2, body2 := do(app, req2)
 	require.Equal(t, "resp1", body2)
@@ -345,7 +345,7 @@ func Test_New_HandlerError(t *testing.T) {
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
 	app.Post("/", func(_ fiber.Ctx) error { return errors.New("boom") })
 
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp, body := do(app, req)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
@@ -365,7 +365,7 @@ func Test_New_LockError(t *testing.T) {
 	app.Use(New(Config{Lock: l, Storage: &stubStorage{}}))
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp, body := do(app, req)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
@@ -379,7 +379,7 @@ func Test_New_StorageSetError(t *testing.T) {
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp, body := do(app, req)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
@@ -393,7 +393,7 @@ func Test_New_UnlockError(t *testing.T) {
 	app.Use(New(Config{Lock: l, Storage: &stubStorage{}}))
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp, body := do(app, req)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -408,7 +408,7 @@ func Test_New_SecondPassReadError(t *testing.T) {
 	app.Use(New(Config{Lock: l, Storage: s}))
 	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp, body := do(app, req)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)

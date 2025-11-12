@@ -99,7 +99,7 @@ app.Use(logger.New(logger.Config{
     ForceColors: true,
 }))
 
-// Use predefined formats 
+// Use predefined formats
 app.Use(logger.New(logger.Config{
     Format: logger.FormatCommon,
 }))
@@ -109,11 +109,11 @@ app.Use(logger.New(logger.Config{
 }))
 
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatJSON, 
+    Format: logger.FormatJSON,
 }))
 
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatECS, 
+    Format: logger.FormatECS,
 }))
 ```
 
@@ -172,7 +172,7 @@ Writing to `os.File` is goroutine-safe, but custom streams may require locking t
 | TimeZone      | `string`                                          | TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc                                                     | `"Local"`                                                             |
 | TimeInterval  | `time.Duration`                                   | TimeInterval is the delay before the timestamp is updated.                                                                                    | `500 * time.Millisecond`                                              |
 | Stream        | `io.Writer`                                       | Stream is a writer where logs are written.                                                                                                    | `os.Stdout`                                                           |
-| LoggerFunc    | `func(c fiber.Ctx, data *Data, cfg Config) error` | Custom logger function for integration with logging libraries (Zerolog, Zap, Logrus, etc). Defaults to Fiber's default logger if not defined. | `see default_logger.go defaultLoggerInstance`                         |
+| LoggerFunc    | `func(c fiber.Ctx, data *Data, cfg *Config) error` | Custom logger function for integration with logging libraries (Zerolog, Zap, Logrus, etc). Defaults to Fiber's default logger if not defined. | `see default_logger.go defaultLoggerInstance`                         |
 | DisableColors | `bool`                                            | DisableColors defines if the logs output should be colorized.                                                                                 | `false`                                                               |
 | ForceColors   | `bool`                                            | ForceColors defines if the logs output should be colorized even when the output is not a terminal.                                             | `false`                                                               |
 

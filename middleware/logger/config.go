@@ -39,14 +39,14 @@ type Config struct {
 	// You can define specific things before returning the handler: colors, template, etc.
 	//
 	// Optional. Default: beforeHandlerFunc
-	BeforeHandlerFunc func(Config)
+	BeforeHandlerFunc func(*Config)
 
 	// You can use custom loggers with Fiber by using this field.
 	// This field is really useful if you're using Zerolog, Zap, Logrus, apex/log etc.
 	// If you don't define anything for this field, it'll use default logger of Fiber.
 	//
 	// Optional. Default: defaultLogger
-	LoggerFunc func(c fiber.Ctx, data *Data, cfg Config) error
+	LoggerFunc func(c fiber.Ctx, data *Data, cfg *Config) error
 
 	timeZoneLocation *time.Location
 

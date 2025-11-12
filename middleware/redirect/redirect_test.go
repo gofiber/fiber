@@ -118,7 +118,7 @@ func Test_Redirect(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tt.url, nil)
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tt.url, http.NoBody)
 			require.NoError(t, err)
 			req.Header.Set("Location", "github.com/gofiber/redirect")
 			resp, err := app.Test(req)
@@ -147,7 +147,7 @@ func Test_Next(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -166,7 +166,7 @@ func Test_Next(t *testing.T) {
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	require.NoError(t, err)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func Test_NoRules(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -200,7 +200,7 @@ func Test_NoRules(t *testing.T) {
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	require.NoError(t, err)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -213,7 +213,7 @@ func Test_DefaultConfig(t *testing.T) {
 
 	app.Use(New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
 
@@ -228,7 +228,7 @@ func Test_DefaultConfig(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	require.NoError(t, err)
 	resp, err = app.Test(req)
 
@@ -248,7 +248,7 @@ func Test_RegexRules(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
 
@@ -268,7 +268,7 @@ func Test_RegexRules(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	require.NoError(t, err)
 	resp, err = app.Test(req)
 

@@ -626,7 +626,7 @@ func New(config ...Config) *App {
 	app.treeStack = make([]map[int][]*Route, len(app.config.RequestMethods))
 
 	// Override colors
-	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
+	app.config.ColorScheme = defaultColors(&app.config.ColorScheme)
 
 	// Init app
 	app.init()
@@ -647,7 +647,7 @@ func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *Ap
 // GetString returns s unchanged when Immutable is off or s is read-only (rodata).
 // Otherwise, it returns a detached copy (strings.Clone).
 func (app *App) GetString(s string) string {
-	if !app.config.Immutable || len(s) == 0 {
+	if !app.config.Immutable || s == "" {
 		return s
 	}
 	if isReadOnly(unsafe.Pointer(unsafe.StringData(s))) { //nolint:gosec // pointer check avoids unnecessary copy
@@ -737,7 +737,7 @@ func (app *App) Name(name string) Router {
 		}
 	}
 
-	if err := app.hooks.executeOnNameHooks(*app.latestRoute); err != nil {
+	if err := app.hooks.executeOnNameHooks(app.latestRoute); err != nil {
 		panic(err)
 	}
 

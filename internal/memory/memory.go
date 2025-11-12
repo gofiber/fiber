@@ -26,7 +26,7 @@ import (
 // Storage stores arbitrary values in memory for use in tests and benchmarks.
 type Storage struct {
 	data map[string]item // data
-	sync.RWMutex
+	mu   sync.RWMutex
 }
 
 type item struct {
@@ -51,9 +51,9 @@ func New() *Storage {
 // For []byte values, this returns a defensive copy to prevent callers from
 // mutating the stored data. Other types are returned as-is.
 func (s *Storage) Get(key string) any {
-	s.RLock()
+	s.mu.RLock()
 	v, ok := s.data[key]
-	s.RUnlock()
+	s.mu.RUnlock()
 	if !ok || v.e != 0 && v.e <= utils.Timestamp() {
 		return nil
 	}
@@ -87,24 +87,24 @@ func (s *Storage) Set(key string, val any, ttl time.Duration) {
 	}
 
 	i := item{e: exp, v: val}
-	s.Lock()
+	s.mu.Lock()
 	s.data[keyCopy] = i
-	s.Unlock()
+	s.mu.Unlock()
 }
 
 // Delete removes key and its associated value from the storage.
 func (s *Storage) Delete(key string) {
-	s.Lock()
+	s.mu.Lock()
 	delete(s.data, key)
-	s.Unlock()
+	s.mu.Unlock()
 }
 
 // Reset clears the storage by dropping every stored key.
 func (s *Storage) Reset() {
 	nd := make(map[string]item)
-	s.Lock()
+	s.mu.Lock()
 	s.data = nd
-	s.Unlock()
+	s.mu.Unlock()
 }
 
 func (s *Storage) gc(sleep time.Duration) {
@@ -115,20 +115,20 @@ func (s *Storage) gc(sleep time.Duration) {
 	for range ticker.C {
 		ts := utils.Timestamp()
 		expired = expired[:0]
-		s.RLock()
+		s.mu.RLock()
 		for key, v := range s.data {
 			if v.e != 0 && v.e <= ts {
 				expired = append(expired, key)
 			}
 		}
-		s.RUnlock()
+		s.mu.RUnlock()
 
 		if len(expired) == 0 {
 			// avoid locking if nothing to delete
 			continue
 		}
 
-		s.Lock()
+		s.mu.Lock()
 		// Double-checked locking.
 		// We might have replaced the item in the meantime.
 		for i := range expired {
@@ -137,6 +137,6 @@ func (s *Storage) gc(sleep time.Duration) {
 				delete(s.data, expired[i])
 			}
 		}
-		s.Unlock()
+		s.mu.Unlock()
 	}
 }
