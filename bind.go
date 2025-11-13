@@ -1,7 +1,6 @@
 package fiber
 
 import (
-	"errors"
 	"reflect"
 	"slices"
 	"sync"
@@ -41,7 +40,7 @@ type Bind struct {
 func AcquireBind() *Bind {
 	b, ok := bindPool.Get().(*Bind)
 	if !ok {
-		panic(errors.New("failed to type-assert to *Bind"))
+		panic(errBindPoolTypeAssertion)
 	}
 
 	return b

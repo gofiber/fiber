@@ -96,6 +96,17 @@ func Test_Middleware_InvalidBase64(t *testing.T) {
 	})
 }
 
+func Test_DecryptCookie_InvalidEncryptedValue(t *testing.T) {
+	t.Parallel()
+
+	key := GenerateKey(32)
+	// the decoded value is shorter than the GCM nonce size, so decryption should fail immediately
+	shortValue := base64.StdEncoding.EncodeToString([]byte("short"))
+
+	_, err := DecryptCookie("session", shortValue, key)
+	require.ErrorIs(t, err, ErrInvalidEncryptedValue)
+}
+
 func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
 	t.Parallel()
 

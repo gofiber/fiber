@@ -5,8 +5,6 @@
 package fiber
 
 import (
-	"errors"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -53,7 +51,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 	ctx, ok := app.pool.Get().(CustomCtx)
 
 	if !ok {
-		panic(errors.New("failed to type-assert to CustomCtx"))
+		panic(errCustomCtxTypeAssertion)
 	}
 
 	if app.hasCustomCtx {

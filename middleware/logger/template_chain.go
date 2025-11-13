@@ -2,7 +2,7 @@ package logger
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 
 	"github.com/gofiber/utils/v2"
 )
@@ -47,7 +47,7 @@ func buildLogFuncChain(cfg *Config, tagFunctions map[string]LogFunc) ([][]byte, 
 		if index := bytes.Index(templateB[:currentPos], paramSeparatorB); index != -1 {
 			logFunc, ok := tagFunctions[utils.UnsafeString(templateB[:index+1])]
 			if !ok {
-				return nil, nil, errors.New("No parameter found in \"" + utils.UnsafeString(templateB[:currentPos]) + "\"")
+				return nil, nil, fmt.Errorf("%w: %q", ErrTemplateParameterMissing, utils.UnsafeString(templateB[:currentPos]))
 			}
 			funcChain = append(funcChain, logFunc)
 			// add param to the fixParts

@@ -233,7 +233,7 @@ var responseChanPool = &sync.Pool{
 func acquireResponseChan() chan *Response {
 	ch, ok := responseChanPool.Get().(chan *Response)
 	if !ok {
-		panic(errors.New("failed to type-assert to *Response"))
+		panic(errResponseChanTypeAssertion)
 	}
 	return ch
 }
@@ -258,7 +258,7 @@ var errChanPool = &sync.Pool{
 func acquireErrChan() chan error {
 	ch, ok := errChanPool.Get().(chan error)
 	if !ok {
-		panic(errors.New("failed to type-assert to chan error"))
+		panic(errChanErrorTypeAssertion)
 	}
 	return ch
 }

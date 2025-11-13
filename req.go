@@ -342,7 +342,7 @@ func (r *DefaultReq) Hostname() string {
 func (r *DefaultReq) Port() string {
 	tcpaddr, ok := r.c.fasthttp.RemoteAddr().(*net.TCPAddr)
 	if !ok {
-		panic(errors.New("failed to type-assert to *net.TCPAddr"))
+		panic(errTCPAddrTypeAssertion)
 	}
 	return strconv.Itoa(tcpaddr.Port)
 }

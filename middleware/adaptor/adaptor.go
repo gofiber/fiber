@@ -37,6 +37,11 @@ var bufferPool = sync.Pool{
 	},
 }
 
+var (
+	ErrRemoteAddrEmpty   = errors.New("remote address cannot be empty")
+	ErrRemoteAddrTooLong = errors.New("remote address too long")
+)
+
 // HTTPHandlerFunc wraps net/http handler func to fiber handler
 func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 	return HTTPHandler(h)
@@ -178,7 +183,7 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 
 	// Validate input to prevent malformed addresses
 	if remoteAddr == "" {
-		return nil, errors.New("remote address cannot be empty")
+		return nil, ErrRemoteAddrEmpty
 	}
 
 	resolved, err := net.ResolveTCPAddr("tcp", remoteAddr)
@@ -189,7 +194,7 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	var addrErr *net.AddrError
 	if errors.As(err, &addrErr) && addrErr.Err == "missing port in address" {
 		if len(remoteAddr) > 253 { // Max hostname length
-			return nil, errors.New("remote address too long")
+			return nil, ErrRemoteAddrTooLong
 		}
 		remoteAddr = net.JoinHostPort(remoteAddr, "80")
 		resolved, err2 := net.ResolveTCPAddr("tcp", remoteAddr)

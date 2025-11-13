@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+var errAppendCACert = errors.New("failed to append CA certificate to certificate pool")
+
 // GetTLSConfigs generates TLS configurations for a test server and client that
 // trust each other using an in-memory certificate authority.
 func GetTLSConfigs() (serverTLSConf, clientTLSConf *tls.Config, err error) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming server and client TLS configurations along with the error
@@ -123,7 +125,7 @@ func GetTLSConfigs() (serverTLSConf, clientTLSConf *tls.Config, err error) { //n
 
 	certPool := x509.NewCertPool()
 	if ok := certPool.AppendCertsFromPEM(caPEM.Bytes()); !ok {
-		return nil, nil, errors.New("append CA cert to cert pool")
+		return nil, nil, errAppendCACert
 	}
 	clientTLSConf = &tls.Config{
 		RootCAs:    certPool,
