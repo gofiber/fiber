@@ -15,6 +15,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var ErrInvalidSHA256PasswordLength = errors.New("decode SHA256 password: invalid length")
+
 // Config defines the config for middleware.
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
@@ -188,7 +190,7 @@ func parseHashedPassword(h string) (func(string) bool, error) {
 				return nil, fmt.Errorf("decode SHA256 password: %w", err)
 			}
 			if len(b) != sha256.Size {
-				return nil, errors.New("decode SHA256 password: invalid length")
+				return nil, ErrInvalidSHA256PasswordLength
 			}
 		}
 		return func(p string) bool {

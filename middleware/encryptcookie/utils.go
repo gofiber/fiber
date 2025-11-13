@@ -11,7 +11,10 @@ import (
 	"slices"
 )
 
-var ErrInvalidKeyLength = errors.New("encryption key must be 16, 24, or 32 bytes")
+var (
+	ErrInvalidKeyLength      = errors.New("encryption key must be 16, 24, or 32 bytes")
+	ErrInvalidEncryptedValue = errors.New("encrypted value is not valid")
+)
 
 // decodeKey decodes the provided base64-encoded key and validates its length.
 // It returns the decoded key bytes or an error when invalid.
@@ -86,7 +89,7 @@ func DecryptCookie(name, value, key string) (string, error) {
 	nonceSize := gcm.NonceSize()
 
 	if len(enc) < nonceSize {
-		return "", errors.New("encrypted value is not valid")
+		return "", ErrInvalidEncryptedValue
 	}
 
 	nonce, ciphertext := enc[:nonceSize], enc[nonceSize:]

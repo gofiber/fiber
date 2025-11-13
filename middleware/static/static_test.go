@@ -1175,7 +1175,7 @@ func Test_SanitizePath_Error(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := sanitizePath(tc.input, tc.filesystem)
-			require.Error(t, err, "Expected error for input: %s", tc.input)
+			require.ErrorIs(t, err, ErrInvalidPath, "Expected ErrInvalidPath for input: %s", tc.input)
 		})
 	}
 }

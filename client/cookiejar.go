@@ -3,7 +3,6 @@ package client
 
 import (
 	"bytes"
-	"errors"
 	"net"
 	"strings"
 	"sync"
@@ -23,7 +22,7 @@ var cookieJarPool = sync.Pool{
 func AcquireCookieJar() *CookieJar {
 	jar, ok := cookieJarPool.Get().(*CookieJar)
 	if !ok {
-		panic(errors.New("failed to type-assert to *CookieJar"))
+		panic(errCookieJarTypeAssertion)
 	}
 
 	return jar

@@ -4,11 +4,7 @@
 
 package fiber
 
-import (
-	"errors"
-
-	"github.com/valyala/fasthttp"
-)
+import "github.com/valyala/fasthttp"
 
 // CustomCtx extends Ctx with the additional methods required by Fiber's
 // internals and middleware helpers.
@@ -53,7 +49,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 	ctx, ok := app.pool.Get().(CustomCtx)
 
 	if !ok {
-		panic(errors.New("failed to type-assert to CustomCtx"))
+		panic(errCustomCtxTypeAssertion)
 	}
 
 	if app.hasCustomCtx {

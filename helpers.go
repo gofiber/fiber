@@ -68,7 +68,7 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 				// Cast value to *tls.Config
 				c, ok := reflect.TypeAssert[*tls.Config](elem)
 				if !ok {
-					panic(errors.New("failed to type-assert to *tls.Config"))
+					panic(errTLSConfigTypeAssertion)
 				}
 				return c
 			}
@@ -402,7 +402,7 @@ func unescapeHeaderValue(v []byte) ([]byte, error) {
 		if c == '\\' {
 			// invalid escape at end of string
 			if i == len(v)-1 {
-				return nil, errors.New("invalid escape sequence")
+				return nil, errInvalidEscapeSequence
 			}
 			escaping = true
 			continue
@@ -410,7 +410,7 @@ func unescapeHeaderValue(v []byte) ([]byte, error) {
 		res = append(res, c)
 	}
 	if escaping {
-		return nil, errors.New("invalid escape sequence")
+		return nil, errInvalidEscapeSequence
 	}
 	return res, nil
 }

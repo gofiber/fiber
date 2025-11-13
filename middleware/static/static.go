@@ -19,6 +19,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+var ErrInvalidPath = errors.New("invalid path")
+
 // sanitizePath validates and cleans the requested path.
 // It returns an error if the path attempts to traverse directories.
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
@@ -43,7 +45,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	for strings.IndexByte(s, '%') >= 0 {
 		us, err := url.PathUnescape(s)
 		if err != nil {
-			return nil, errors.New("invalid path")
+			return nil, ErrInvalidPath
 		}
 		if us == s {
 			break
@@ -53,7 +55,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 
 	// reject any null bytes
 	if strings.IndexByte(s, 0) >= 0 {
-		return nil, errors.New("invalid path")
+		return nil, ErrInvalidPath
 	}
 
 	s = pathpkg.Clean("/" + s)
@@ -64,7 +66,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 			return []byte("/"), nil
 		}
 		if !fs.ValidPath(s) {
-			return nil, errors.New("invalid path")
+			return nil, ErrInvalidPath
 		}
 		s = "/" + s
 	}

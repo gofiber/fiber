@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"encoding/hex"
-	"errors"
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
@@ -77,7 +76,7 @@ type RedirectConfig struct {
 func AcquireRedirect() *Redirect {
 	redirect, ok := redirectPool.Get().(*Redirect)
 	if !ok {
-		panic(errors.New("failed to type-assert to *Redirect"))
+		panic(errRedirectTypeAssertion)
 	}
 
 	return redirect

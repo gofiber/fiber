@@ -983,7 +983,7 @@ var requestPool = &sync.Pool{
 func AcquireRequest() *Request {
 	req, ok := requestPool.Get().(*Request)
 	if !ok {
-		panic(errors.New("failed to type-assert to *Request"))
+		panic(errRequestTypeAssertion)
 	}
 	return req
 }
@@ -1034,7 +1034,7 @@ func AcquireFile(setter ...SetFileFunc) *File {
 	if fv != nil {
 		f, ok := fv.(*File)
 		if !ok {
-			panic(errors.New("failed to type-assert to *File"))
+			panic(errFileTypeAssertion)
 		}
 		for _, v := range setter {
 			v(f)

@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"errors"
 	"fmt"
 	"maps"
 	"mime/multipart"
@@ -108,7 +107,7 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 // thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
 func parseToMap(target reflect.Value, data map[string][]string) error {
 	if !target.IsValid() {
-		return errors.New("binder: invalid destination value")
+		return ErrInvalidDestinationValue
 	}
 
 	if target.Kind() == reflect.Interface && !target.IsNil() {
@@ -179,7 +178,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 		if b == ']' {
 			openBracketsCount--
 			if openBracketsCount < 0 {
-				return "", errors.New("unmatched brackets")
+				return "", ErrUnmatchedBrackets
 			}
 			continue
 		}
@@ -190,7 +189,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 	}
 
 	if openBracketsCount > 0 {
-		return "", errors.New("unmatched brackets")
+		return "", ErrUnmatchedBrackets
 	}
 
 	return bb.String(), nil

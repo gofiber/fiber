@@ -1121,6 +1121,7 @@ func Test_resolveRemoteAddr(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
+		expectedErr   error
 		localAddr     any
 		name          string
 		remoteAddr    string
@@ -1164,13 +1165,14 @@ func Test_resolveRemoteAddr(t *testing.T) {
 			remoteAddr:  "",
 			localAddr:   nil,
 			expectError: true,
+			expectedErr: ErrRemoteAddrEmpty,
 		},
 		{
-			name:          "too long address - should fail",
-			remoteAddr:    strings.Repeat("a", 254),
-			localAddr:     nil,
-			expectError:   true,
-			errorContains: "remote address too long",
+			name:        "too long address - should fail",
+			remoteAddr:  strings.Repeat("a", 254),
+			localAddr:   nil,
+			expectError: true,
+			expectedErr: ErrRemoteAddrTooLong,
 		},
 	}
 
@@ -1179,8 +1181,12 @@ func Test_resolveRemoteAddr(t *testing.T) {
 			t.Parallel()
 			addr, err := resolveRemoteAddr(tt.remoteAddr, tt.localAddr)
 
-			if tt.expectError {
+			expectError := tt.expectedErr != nil || tt.errorContains != ""
+			if expectError {
 				require.Error(t, err)
+				if tt.expectedErr != nil {
+					require.ErrorIs(t, err, tt.expectedErr)
+				}
 				if tt.errorContains != "" {
 					require.Contains(t, err.Error(), tt.errorContains)
 				}

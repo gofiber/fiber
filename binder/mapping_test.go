@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"errors"
 	"mime/multipart"
 	"reflect"
 	"strconv"
@@ -91,17 +90,17 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 			expected: "foo.bar.baz",
 		},
 		{
-			err:      errors.New("unmatched brackets"),
+			err:      ErrUnmatchedBrackets,
 			input:    "foo[bar",
 			expected: "",
 		},
 		{
-			err:      errors.New("unmatched brackets"),
+			err:      ErrUnmatchedBrackets,
 			input:    "foo[bar][baz",
 			expected: "",
 		},
 		{
-			err:      errors.New("unmatched brackets"),
+			err:      ErrUnmatchedBrackets,
 			input:    "foo]bar[",
 			expected: "",
 		},
@@ -133,8 +132,7 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 
 			result, err := parseParamSquareBrackets(tt.input)
 			if tt.err != nil {
-				require.Error(t, err)
-				require.EqualError(t, err, tt.err.Error())
+				require.ErrorIs(t, err, tt.err)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expected, result)
