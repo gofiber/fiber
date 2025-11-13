@@ -230,13 +230,13 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	// prepare the server for the start
 	app.startupProcess()
 
-	listenData := app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, cfg, nil)
+	listenData := app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, &cfg, nil)
 
 	// run hooks
-	app.runOnListenHooks(listenData)
+	app.runOnListenHooks(&listenData)
 
 	// Print startup message & routes
-	app.printMessages(cfg, listenData)
+	app.printMessages(&cfg, &listenData)
 
 	// Serve
 	if cfg.BeforeServeFunc != nil {
@@ -264,13 +264,13 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	// prepare the server for the start
 	app.startupProcess()
 
-	listenData := app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, cfg, nil)
+	listenData := app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, &cfg, nil)
 
 	// run hooks
-	app.runOnListenHooks(listenData)
+	app.runOnListenHooks(&listenData)
 
 	// Print startup message & routes
-	app.printMessages(cfg, listenData)
+	app.printMessages(&cfg, &listenData)
 
 	// Serve
 	if cfg.BeforeServeFunc != nil {
@@ -327,7 +327,7 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg *ListenConfig
 	return listener, nil
 }
 
-func (app *App) printMessages(cfg ListenConfig, listenData ListenData) {
+func (app *App) printMessages(cfg *ListenConfig, listenData *ListenData) {
 	app.startupMessage(listenData, cfg)
 
 	if cfg.EnablePrintRoutes {
@@ -336,7 +336,7 @@ func (app *App) printMessages(cfg ListenConfig, listenData ListenData) {
 }
 
 // prepareListenData creates a ListenData instance populated with the application metadata.
-func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig, childPIDs []int) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS is fine here
+func (app *App) prepareListenData(addr string, isTLS bool, cfg *ListenConfig, childPIDs []int) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS is fine here
 	host, port := parseAddr(addr)
 	if host == "" {
 		if cfg.ListenerNetwork == NetworkTCP6 {
@@ -372,7 +372,7 @@ func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig, chi
 }
 
 // startupMessage renders the startup banner using the provided listener metadata and configuration.
-func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
+func (app *App) startupMessage(listenData *ListenData, cfg *ListenConfig) {
 	preData := newPreStartupMessageData(listenData)
 	colors := listenData.ColorScheme
 
@@ -441,7 +441,7 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 		fmt.Fprintln(out, strings.Repeat("-", 50))
 	}
 
-	printStartupEntries(out, colors, preData.entries)
+	printStartupEntries(out, &colors, preData.entries)
 
 	app.logServices(app.servicesStartupCtx(), out, &colors)
 
@@ -468,20 +468,22 @@ func (app *App) startupMessage(listenData ListenData, cfg ListenConfig) {
 	fmt.Fprintf(out, "\n%s", colors.Reset)
 }
 
-func printStartupEntries(out io.Writer, colors Colors, entries []startupMessageEntry) {
+func printStartupEntries(out io.Writer, colors *Colors, entries []startupMessageEntry) {
 	// Sort entries by priority (higher priority first)
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].priority > entries[j].priority
 	})
 
 	for _, entry := range entries {
-		label := "INFO"
-		color := colors.Green
+		var label string
+		var color string
 		switch entry.level {
 		case StartupMessageLevelWarning:
 			label, color = "WARN", colors.Yellow
 		case StartupMessageLevelError:
 			label, color = "ERROR", colors.Red
+		default:
+			label, color = "INFO", colors.Green
 		}
 
 		fmt.Fprintf(out, "%s%s%s %s: \t%s%s%s\n", color, label, colors.Reset, entry.title, colors.Blue, entry.value, colors.Reset)

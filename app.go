@@ -1374,7 +1374,7 @@ func (app *App) startupProcess() {
 }
 
 // Run onListen hooks. If they return an error, panic.
-func (app *App) runOnListenHooks(listenData ListenData) {
+func (app *App) runOnListenHooks(listenData *ListenData) {
 	if err := app.hooks.executeOnListenHooks(listenData); err != nil {
 		panic(err)
 	}

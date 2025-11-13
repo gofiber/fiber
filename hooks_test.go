@@ -297,7 +297,7 @@ func Test_ListenDataMetadata(t *testing.T) {
 
 	cfg := ListenConfig{EnablePrefork: true}
 	childPIDs := []int{11, 22}
-	listenData := app.prepareListenData(":3030", true, cfg, childPIDs)
+	listenData := app.prepareListenData(":3030", true, &cfg, childPIDs)
 
 	app.Hooks().OnListen(func(data ListenData) error {
 		require.Equal(t, globalIpv4Addr, data.Host)
@@ -315,7 +315,7 @@ func Test_ListenDataMetadata(t *testing.T) {
 		return nil
 	})
 
-	app.runOnListenHooks(listenData)
+	app.runOnListenHooks(&listenData)
 
 	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
 		require.Equal(t, globalIpv4Addr, data.Host)
@@ -338,7 +338,7 @@ func Test_ListenDataMetadata(t *testing.T) {
 		return nil
 	})
 
-	pre := newPreStartupMessageData(listenData)
+	pre := newPreStartupMessageData(&listenData)
 	require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
 
 	require.Equal(t, "value", pre.entries[0].value)
@@ -483,7 +483,7 @@ func Test_executeOnListenHooks_Error(t *testing.T) {
 		return errors.New("listen error")
 	})
 
-	err := app.hooks.executeOnListenHooks(ListenData{Host: "127.0.0.1", Port: "0"})
+	err := app.hooks.executeOnListenHooks(&ListenData{Host: "127.0.0.1", Port: "0"})
 	require.EqualError(t, err, "listen error")
 }
 

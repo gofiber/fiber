@@ -142,13 +142,14 @@ func (sm *PreStartupMessageData) addEntry(key, title, value string, priority int
 	}
 
 	for i, entry := range sm.entries {
-		if entry.key == key {
-			sm.entries[i].value = value
-			sm.entries[i].title = title
-			sm.entries[i].level = level
-			sm.entries[i].priority = priority
-			return
+		if entry.key != key {
+			continue
 		}
+
+		sm.entries[i].value = value
+		sm.entries[i].title = title
+		sm.entries[i].level = level
+		sm.entries[i].priority = priority
 	}
 
 	sm.entries = append(sm.entries, startupMessageEntry{key: key, title: title, value: value, level: level, priority: priority})
@@ -167,13 +168,13 @@ func (sm *PreStartupMessageData) DeleteEntry(key string) {
 	}
 }
 
-func newPreStartupMessageData(listenData ListenData) *PreStartupMessageData {
+func newPreStartupMessageData(listenData *ListenData) *PreStartupMessageData {
 	clone := listenData
 	if len(listenData.ChildPIDs) > 0 {
 		clone.ChildPIDs = append([]int(nil), listenData.ChildPIDs...)
 	}
 
-	return &PreStartupMessageData{ListenData: &clone}
+	return &PreStartupMessageData{ListenData: clone}
 }
 
 // PostStartupMessageData contains metadata exposed to OnPostStartupMessage hooks.
@@ -185,14 +186,14 @@ type PostStartupMessageData struct {
 	Prevented bool
 }
 
-func newPostStartupMessageData(listenData ListenData, disabled, isChild, prevented bool) PostStartupMessageData {
+func newPostStartupMessageData(listenData *ListenData, disabled, isChild, prevented bool) PostStartupMessageData {
 	clone := listenData
 	if len(listenData.ChildPIDs) > 0 {
 		clone.ChildPIDs = append([]int(nil), listenData.ChildPIDs...)
 	}
 
 	return PostStartupMessageData{
-		ListenData: &clone,
+		ListenData: clone,
 		Disabled:   disabled,
 		IsChild:    isChild,
 		Prevented:  prevented,
@@ -377,9 +378,9 @@ func (h *Hooks) executeOnGroupNameHooks(group Group) error {
 	return nil
 }
 
-func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
+func (h *Hooks) executeOnListenHooks(listenData *ListenData) error {
 	for _, v := range h.onListen {
-		if err := v(listenData); err != nil {
+		if err := v(*listenData); err != nil {
 			return err
 		}
 	}

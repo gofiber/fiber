@@ -530,10 +530,10 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 	}
 
 	app := New()
-	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, cfg, childPIDs)
+	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, &cfg, childPIDs)
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, cfg)
+		app.startupMessage(&listenData, &cfg)
 	})
 	colors := Colors{}
 	require.Contains(t, startupMessage, fmt.Sprintf("https://127.0.0.1:%d", port))
@@ -563,10 +563,10 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 		childPIDs = append(childPIDs, childTemplate...)
 	}
 
-	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, cfg, childPIDs)
+	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, &cfg, childPIDs)
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, cfg)
+		app.startupMessage(&listenData, &cfg)
 	})
 	require.Equal(t, "Test App v3.0.0", app.Config().AppName)
 	require.Contains(t, startupMessage, app.Config().AppName)
@@ -588,10 +588,10 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testi
 	port := addr.Port
 	require.NoError(t, ln.Close())
 
-	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), false, cfg, nil)
+	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), false, &cfg, nil)
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, cfg)
+		app.startupMessage(&listenData, &cfg)
 	})
 	require.Contains(t, startupMessage, "Serveur de vérification des données")
 }
@@ -611,10 +611,10 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 	port := addr.Port
 	require.NoError(t, ln.Close())
 
-	listenData := app.prepareListenData(fmt.Sprintf("server.com:%d", port), true, cfg, nil)
+	listenData := app.prepareListenData(fmt.Sprintf("server.com:%d", port), true, &cfg, nil)
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, cfg)
+		app.startupMessage(&listenData, &cfg)
 	})
 	colors := Colors{}
 	require.Contains(t, startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset))
@@ -627,7 +627,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 func Test_StartupMessageCustomization(t *testing.T) {
 	cfg := ListenConfig{}
 	app := New()
-	listenData := app.prepareListenData(":8080", false, cfg, nil)
+	listenData := app.prepareListenData(":8080", false, &cfg, nil)
 
 	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
 		data.Header = "FOOBER v98\n-------"
@@ -647,7 +647,7 @@ func Test_StartupMessageCustomization(t *testing.T) {
 	})
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, cfg)
+		app.startupMessage(&listenData, &cfg)
 	})
 
 	require.Contains(t, startupMessage, "FOOBER v98")
@@ -664,7 +664,7 @@ func Test_StartupMessageCustomization(t *testing.T) {
 func Test_StartupMessageDisabledPostHook(t *testing.T) {
 	cfg := ListenConfig{DisableStartupMessage: true}
 	app := New()
-	listenData := app.prepareListenData(":7070", false, cfg, nil)
+	listenData := app.prepareListenData(":7070", false, &cfg, nil)
 
 	var post PostStartupMessageData
 	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) error {
@@ -674,7 +674,7 @@ func Test_StartupMessageDisabledPostHook(t *testing.T) {
 	})
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, cfg)
+		app.startupMessage(&listenData, &cfg)
 	})
 
 	require.Empty(t, startupMessage)
@@ -686,7 +686,7 @@ func Test_StartupMessageDisabledPostHook(t *testing.T) {
 func Test_StartupMessagePreventedByHook(t *testing.T) {
 	cfg := ListenConfig{}
 	app := New()
-	listenData := app.prepareListenData(":9090", false, cfg, nil)
+	listenData := app.prepareListenData(":9090", false, &cfg, nil)
 
 	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
 		data.PreventDefault = true
@@ -702,7 +702,7 @@ func Test_StartupMessagePreventedByHook(t *testing.T) {
 	})
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(listenData, cfg)
+		app.startupMessage(&listenData, &cfg)
 	})
 
 	require.Empty(t, startupMessage)
