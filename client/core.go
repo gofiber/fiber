@@ -258,7 +258,7 @@ var errChanPool = &sync.Pool{
 func acquireErrChan() chan error {
 	ch, ok := errChanPool.Get().(chan error)
 	if !ok {
-		panic(errErrorChanTypeAssertion)
+		panic(errChanErrorTypeAssertion)
 	}
 	return ch
 }

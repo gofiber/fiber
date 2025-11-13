@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-var errAppendCACert = errors.New("append CA cert to cert pool")
+var errAppendCACert = errors.New("failed to append CA certificate to certificate pool")
 
 // GetTLSConfigs generates TLS configurations for a test server and client that
 // trust each other using an in-memory certificate authority.
