@@ -1,9 +1,6 @@
 package fiber
 
 import (
-	"fmt"
-	"sort"
-
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -93,9 +90,9 @@ type ListenData struct {
 type PreStartupMessageData struct {
 	*ListenData
 
-	entries []startupMessageEntry
-
 	Header string
+
+	entries []startupMessageEntry
 
 	PreventDefault bool
 }
@@ -200,26 +197,6 @@ func newPostStartupMessageData(listenData ListenData, disabled, isChild, prevent
 		IsChild:    isChild,
 		Prevented:  prevented,
 	}
-}
-
-func mapToEntries(values Map) ([]startupMessageEntry, bool) {
-	if len(values) == 0 {
-		return nil, false
-	}
-
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-
-	sort.Strings(keys)
-
-	entries := make([]startupMessageEntry, 0, len(values))
-	for _, key := range keys {
-		entries = append(entries, startupMessageEntry{key: key, value: fmt.Sprint(values[key])})
-	}
-
-	return entries, true
 }
 
 func newHooks(app *App) *Hooks {

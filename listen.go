@@ -475,16 +475,16 @@ func printStartupEntries(out io.Writer, colors Colors, entries []startupMessageE
 	})
 
 	for _, entry := range entries {
+		label := "INFO"
+		color := colors.Green
 		switch entry.level {
-		case StartupMessageLevelInfo:
-			fmt.Fprintf(out, "%sINFO%s %s: \t%s%s%s\n", colors.Green, colors.Reset, entry.title, colors.Blue, entry.value, colors.Reset)
 		case StartupMessageLevelWarning:
-			fmt.Fprintf(out, "%sWARN%s %s: \t%s%s%s\n", colors.Yellow, colors.Reset, entry.title, colors.Blue, entry.value, colors.Reset)
+			label, color = "WARN", colors.Yellow
 		case StartupMessageLevelError:
-			fmt.Fprintf(out, "%sERROR%s %s: \t%s%s%s\n", colors.Red, colors.Reset, entry.title, colors.Blue, entry.value, colors.Reset)
-		default:
-			fmt.Fprintf(out, "%sINFO%s %s: \t%s%s%s\n", colors.Green, colors.Reset, entry.title, colors.Blue, entry.value, colors.Reset)
+			label, color = "ERROR", colors.Red
 		}
+
+		fmt.Fprintf(out, "%s%s%s %s: \t%s%s%s\n", color, label, colors.Reset, entry.title, colors.Blue, entry.value, colors.Reset)
 	}
 }
 
