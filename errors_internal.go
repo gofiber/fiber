@@ -1,6 +1,8 @@
 package fiber
 
-import "errors"
+import (
+	"errors"
+)
 
 var (
 	errBindPoolTypeAssertion  = errors.New("failed to type-assert to *Bind")

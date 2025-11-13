@@ -4,7 +4,9 @@
 
 package fiber
 
-import "github.com/valyala/fasthttp"
+import (
+	"github.com/valyala/fasthttp"
+)
 
 // CustomCtx extends Ctx with the additional methods required by Fiber's
 // internals and middleware helpers.

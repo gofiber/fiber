@@ -1,10 +1,12 @@
 package client
 
-import "errors"
+import (
+	"errors"
+)
 
 var (
 	errResponseChanTypeAssertion = errors.New("failed to type-assert to *Response")
-	errErrChanTypeAssertion      = errors.New("failed to type-assert to chan error")
+	errErrorChanTypeAssertion    = errors.New("failed to type-assert to chan error")
 	errRequestTypeAssertion      = errors.New("failed to type-assert to *Request")
 	errFileTypeAssertion         = errors.New("failed to type-assert to *File")
 	errCookieJarTypeAssertion    = errors.New("failed to type-assert to *CookieJar")
