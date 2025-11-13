@@ -48,10 +48,6 @@ version-resolver:
       - '⚡️ Performance'
   default: patch
 template: |
-    ## v$RESOLVED_VERSION
-
-    ## What's Changed
-
     $CHANGES
 
     **📒 Documentation**: https://docs.gofiber.io/next/
