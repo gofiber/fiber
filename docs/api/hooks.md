@@ -186,12 +186,31 @@ func main() {
 | `ChildPIDs` | `[]int` | Child process identifiers when preforking. |
 | `ColorScheme` | [`Colors`](https://github.com/gofiber/fiber/blob/main/color.go) | Active color scheme for the startup message. |
 
-### Startup message customization
+### Startup Message Customization
 
-Use `OnPreStartupMessage` to tweak the banner before Fiber prints it, and `OnPostStartupMessage` to run logic after the banner is printed (or skipped):
+Use `OnPreStartupMessage` to tweak the banner before Fiber prints it, and `OnPostStartupMessage` to run logic after the banner is printed (or skipped). You can use some helper functions to customize the banner inside the `OnPreStartupMessage` hook.
 
-- Assign `sm.Header` to override the ASCII art banner. Leave it empty to use the default.
-- Provide `sm.PrimaryInfo` and/or `sm.SecondaryInfo` maps to replace the primary (server URL, handler counts, etc.) and secondary (prefork status, PID, process count) sections.
+```go title="Signatures"
+// AddInfo adds an informational entry to the startup message with "INFO" label.
+func (sm *PreStartupMessageData) AddInfo(key, title, value string, priority ...int)
+
+// AddWarning adds a warning entry to the startup message with "WARNING" label.
+func (sm *PreStartupMessageData) AddWarning(key, title, value string, priority ...int)
+
+// AddError adds an error entry to the startup message with "ERROR" label.
+func (sm *PreStartupMessageData) AddError(key, title, value string, priority ...int)
+
+// EntryKeys returns all entry keys currently present in the startup message.
+func (sm *PreStartupMessageData) EntryKeys() []string
+
+// ResetEntries removes all existing entries from the startup message.
+func (sm *PreStartupMessageData) ResetEntries()
+
+// DeleteEntry removes a specific entry from the startup message by its key.
+func (sm *PreStartupMessageData) DeleteEntry(key string)
+```
+
+- Assign `sm.BannerHeader` to override the ASCII art banner. Leave it empty to use the default banner provided by Fiber.
 - Set `sm.PreventDefault = true` to suppress the built-in banner without affecting other hooks.
 - `PostStartupMessageData` reports whether the banner was skipped via the `Disabled`, `IsChild`, and `Prevented` flags.
 
@@ -210,8 +229,12 @@ func main() {
 
     app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
         sm.Header = "FOOBER " + sm.Version + "\n-------"
-        sm.PrimaryInfo = fiber.Map{"Git hash": os.Getenv("GIT_HASH")}
-        sm.SecondaryInfo = fiber.Map{"Prefork": sm.Prefork}
+
+        // Optional: you can also remove old entries
+        // sm.ResetEntries()
+
+        sm.AddInfo("git-hash", "Git hash", os.Getenv("GIT_HASH"))
+        sm.AddInfo("prefork", "Prefork", fmt.Sprintf("%v", sm.Prefork), 15)
         return nil
     })
 

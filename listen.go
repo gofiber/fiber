@@ -430,8 +430,8 @@ func (app *App) startupMessage(listenData *ListenData, cfg *ListenConfig) {
 		return
 	}
 
-	if preData.Header != "" {
-		header := preData.Header
+	if preData.BannerHeader != "" {
+		header := preData.BannerHeader
 		fmt.Fprint(out, header)
 		if !strings.HasSuffix(header, "\n") {
 			fmt.Fprintln(out)
@@ -481,7 +481,7 @@ func printStartupEntries(out io.Writer, colors *Colors, entries []startupMessage
 		case StartupMessageLevelWarning:
 			label, color = "WARN", colors.Yellow
 		case StartupMessageLevelError:
-			label, color = "ERROR", colors.Red
+			label, color = errString, colors.Red
 		default:
 			label, color = "INFO", colors.Green
 		}

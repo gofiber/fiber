@@ -59,6 +59,8 @@ const (
 	StartupMessageLevelError
 )
 
+const errString = "ERROR"
+
 // startupMessageEntry represents a single line of startup message information.
 type startupMessageEntry struct {
 	key      string
@@ -90,13 +92,16 @@ type ListenData struct {
 type PreStartupMessageData struct {
 	*ListenData
 
-	Header string
+	// BannerHeader allows overriding the ASCII art banner displayed at startup.
+	BannerHeader string
 
 	entries []startupMessageEntry
 
+	// PreventDefault, when set to true, suppresses the default startup message.
 	PreventDefault bool
 }
 
+// AddInfo adds an informational entry to the startup message with "INFO" label.
 func (sm *PreStartupMessageData) AddInfo(key, title, value string, priority ...int) {
 	pri := -1
 	if len(priority) > 0 {
@@ -106,6 +111,7 @@ func (sm *PreStartupMessageData) AddInfo(key, title, value string, priority ...i
 	sm.addEntry(key, title, value, pri, StartupMessageLevelInfo)
 }
 
+// AddWarning adds a warning entry to the startup message with "WARNING" label.
 func (sm *PreStartupMessageData) AddWarning(key, title, value string, priority ...int) {
 	pri := -1
 	if len(priority) > 0 {
@@ -115,6 +121,7 @@ func (sm *PreStartupMessageData) AddWarning(key, title, value string, priority .
 	sm.addEntry(key, title, value, pri, StartupMessageLevelWarning)
 }
 
+// AddError adds an error entry to the startup message with "ERROR" label.
 func (sm *PreStartupMessageData) AddError(key, title, value string, priority ...int) {
 	pri := -1
 	if len(priority) > 0 {
@@ -124,6 +131,7 @@ func (sm *PreStartupMessageData) AddError(key, title, value string, priority ...
 	sm.addEntry(key, title, value, pri, StartupMessageLevelError)
 }
 
+// EntryKeys returns all entry keys currently present in the startup message.
 func (sm *PreStartupMessageData) EntryKeys() []string {
 	keys := make([]string, 0, len(sm.entries))
 	for _, entry := range sm.entries {
@@ -132,8 +140,23 @@ func (sm *PreStartupMessageData) EntryKeys() []string {
 	return keys
 }
 
+// ResetEntries removes all existing entries from the startup message.
 func (sm *PreStartupMessageData) ResetEntries() {
 	sm.entries = sm.entries[:0]
+}
+
+// DeleteEntry removes a specific entry from the startup message by its key.
+func (sm *PreStartupMessageData) DeleteEntry(key string) {
+	if sm.entries == nil {
+		return
+	}
+
+	for i, entry := range sm.entries {
+		if entry.key == key {
+			sm.entries = append(sm.entries[:i], sm.entries[i+1:]...)
+			return
+		}
+	}
 }
 
 func (sm *PreStartupMessageData) addEntry(key, title, value string, priority int, level StartupMessageLevel) {
@@ -155,19 +178,6 @@ func (sm *PreStartupMessageData) addEntry(key, title, value string, priority int
 	sm.entries = append(sm.entries, startupMessageEntry{key: key, title: title, value: value, level: level, priority: priority})
 }
 
-func (sm *PreStartupMessageData) DeleteEntry(key string) {
-	if sm.entries == nil {
-		return
-	}
-
-	for i, entry := range sm.entries {
-		if entry.key == key {
-			sm.entries = append(sm.entries[:i], sm.entries[i+1:]...)
-			return
-		}
-	}
-}
-
 func newPreStartupMessageData(listenData *ListenData) *PreStartupMessageData {
 	clone := listenData
 	if len(listenData.ChildPIDs) > 0 {
@@ -181,8 +191,13 @@ func newPreStartupMessageData(listenData *ListenData) *PreStartupMessageData {
 type PostStartupMessageData struct {
 	*ListenData
 
-	Disabled  bool
-	IsChild   bool
+	// Disabled indicates whether the startup message was disabled via configuration.
+	Disabled bool
+
+	// IsChild indicates whether the current process is a child in prefork mode.
+	IsChild bool
+
+	// Prevented indicates whether the startup message was suppressed by a pre-startup hook using PreventDefault property.
 	Prevented bool
 }
 

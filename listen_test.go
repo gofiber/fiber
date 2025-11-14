@@ -630,7 +630,7 @@ func Test_StartupMessageCustomization(t *testing.T) {
 	listenData := app.prepareListenData(":8080", false, &cfg, nil)
 
 	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
-		data.Header = "FOOBER v98\n-------"
+		data.BannerHeader = "FOOBER v98\n-------"
 
 		data.ResetEntries()
 		data.AddInfo("git_hash", "Git hash", "abc123", 3)

@@ -295,27 +295,41 @@ app.Listen("app.sock", fiber.ListenerConfig{
 })
 ```
 
-- Expanded `ListenData` with versioning, handler, process, and PID metadata, plus dedicated startup message hooks for customization.
+- Expanded `ListenData` with versioning, handler, process, and PID metadata, plus dedicated startup message hooks for customization. Check out the [Hooks](./api/hooks#startup-message-customization) documentation for further details.
 
-```go
-app := fiber.New()
+```go title="Customize the startup message"
+package main
 
-app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
-    sm.Header = "FOOBER " + sm.Version + "\n-------"
-    sm.PrimaryInfo = fiber.Map{"Git hash": os.Getenv("GIT_HASH")}
-    sm.SecondaryInfo = fiber.Map{"Process count": sm.ProcessCount}
-    // Set sm.PreventDefault = true to suppress the default banner entirely.
-    return nil
-})
+import (
+    "fmt"
+    "os"
 
-app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) error {
-    if !sm.Disabled && !sm.IsChild && !sm.Prevented {
-        log.Println("startup completed")
-    }
-    return nil
-})
+    "github.com/gofiber/fiber/v3"
+)
 
-go app.Listen(":3000")
+func main() {
+    app := fiber.New()
+
+    app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
+        sm.Header = "FOOBER " + sm.Version + "\n-------"
+
+        // Optional: you can also remove old entries
+        // sm.ResetEntries()
+
+        sm.AddInfo("git-hash", "Git hash", os.Getenv("GIT_HASH"))
+        sm.AddInfo("prefork", "Prefork", fmt.Sprintf("%v", sm.Prefork), 15)
+        return nil
+    })
+
+    app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) error {
+        if !sm.Disabled && !sm.IsChild && !sm.Prevented {
+            fmt.Println("startup completed")
+        }
+        return nil
+    })
+
+    app.Listen(":5000")
+}
 ```
 
 ## 🗺 Router
