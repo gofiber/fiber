@@ -174,8 +174,6 @@ func (sm *PreStartupMessageData) addEntry(key, title, value string, priority int
 		sm.entries[i].level = level
 		sm.entries[i].priority = priority
 	}
-
-	sm.entries = append(sm.entries, startupMessageEntry{key: key, title: title, value: value, level: level, priority: priority})
 }
 
 func newPreStartupMessageData(listenData *ListenData) *PreStartupMessageData {
