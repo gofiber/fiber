@@ -7,9 +7,9 @@ on:
   # pull_request event is required only for autolabeler
   pull_request:
     types: [opened, reopened, synchronize]
-
-permissions:
-  contents: read
+  # pull_request_target event is required for outside collaborators
+  pull_request_target:
+    types: [opened, reopened, synchronize]
 
 jobs:
   update_release_draft:
@@ -17,20 +17,12 @@ jobs:
       # write permission is required to create a github release
       contents: write
       # write permission is required for autolabeler
-      # otherwise, read permission is required at least
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      # (Optional) GitHub Enterprise requires GHE_HOST variable set
-      #- name: Set GHE_HOST
-      #  run: |
-      #    echo "GHE_HOST=${GITHUB_SERVER_URL##https:\/\/}" >> $GITHUB_ENV
-
-      # Drafts your next Release notes as Pull Requests are merged into "master"
       - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
-        # (Optional) specify config name to use, relative to .github/. Default: release-drafter.yml
-        # with:
-        #   config-name: my-config.yml
-        #   disable-autolabeler: true
+        with: # allows autolabeler to run without unmerged PRs from being added to draft
+          disable-releaser: ${{ github.ref_name != 'main' }}
+          disable-autolabeler: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

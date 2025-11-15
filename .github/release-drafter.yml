@@ -59,23 +59,23 @@ template: |
     Thank you $CONTRIBUTORS for making this release possible.
 
 autolabeler:
-- label: '📒 Documentation'
-  title: '/(docs|doc:|\[doc\]|README|typos|comment|documentation)/i'
-- label: '☢️ Bug'
-  title: '/(fix|bug)/i'
-- label: '🧹 Updates'
-  title: '/(improve|chore|improvements|missing|update|refactor|deprecated|remove|unused|test)/i'
-- label: '🤖 Dependencies'
-  files:
-    - 'go.mod'
-    - 'go.sum'
-    - '**/go.mod'
-    - '**/go.sum'
-- label: '✏️ Feature'
-  title: '/(feature|feat|create|implement|add|support)/i'
-- label: 'v3'
-  branch:
-    - '/main/'
-- label: 'v2'
-  branch:
-    - '/v2/'
+  - label: '📒 Documentation'
+    title: '/(docs|doc:|\[doc\]|README|typos|comment|documentation)/i'
+  - label: '☢️ Bug'
+    title: '/(fix|bug)/i'
+  - label: '🧹 Updates'
+    title: '/(improve|chore|improvements|missing|update|refactor|deprecated|remove|unused|test)/i'
+  - label: '🤖 Dependencies'
+    files:
+      - 'go.mod'
+      - 'go.sum'
+      - '**/go.mod'
+      - '**/go.sum'
+  - label: '✏️ Feature'
+    title: '/(feature|feat|create|implement|add|support)/i'
+  - label: 'v3'
+    branch:
+      - '/main\/.+/'
+  - label: 'v2'
+    branch:
+      - '/v2\/.+/'
