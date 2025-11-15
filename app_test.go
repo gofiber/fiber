@@ -1134,7 +1134,7 @@ func Test_App_AutoHead_Compliance_SendFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "hello.txt")
 	fileContent := []byte("file-body")
-	require.NoError(t, os.WriteFile(filePath, fileContent, 0o644))
+	require.NoError(t, os.WriteFile(filePath, fileContent, 0o644)) //nolint:gosec // permissions match test fixtures
 
 	app := New()
 	app.Get("/file", func(c Ctx) error {
