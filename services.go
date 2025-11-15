@@ -141,7 +141,7 @@ func (app *App) logServices(ctx context.Context, out io.Writer, colors *Colors) 
 		var stateColor string
 		state, err := srv.State(ctx)
 		if err != nil {
-			state = "ERROR"
+			state = errString
 			stateColor = scheme.Red
 		} else {
 			stateColor = scheme.Blue
