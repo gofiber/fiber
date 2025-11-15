@@ -489,6 +489,33 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 		pre := newPreStartupMessageData(&ListenData{})
 		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
 	})
+
+	t.Run("DeleteEntry", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddInfo("key1", "Title 1", "Value 1", 1)
+			data.AddInfo("key2", "Title 2", "Value 2", 2)
+
+			require.Len(t, data.entries, 2)
+
+			data.DeleteEntry("key1")
+			require.Len(t, data.entries, 1)
+			require.Equal(t, "key2", data.entries[0].key)
+
+			data.DeleteEntry("key-not-exist") // should not panic
+			require.Len(t, data.entries, 1)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
 }
 
 func Test_Hook_OnListenPrefork(t *testing.T) {
@@ -625,6 +652,30 @@ func Test_executeOnListenHooks_Error(t *testing.T) {
 
 	err := app.hooks.executeOnListenHooks(&ListenData{Host: "127.0.0.1", Port: "0"})
 	require.EqualError(t, err, "listen error")
+}
+
+func Test_executeOnPreStartupMessageHooks_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Hooks().OnPreStartupMessage(func(_ *PreStartupMessageData) error {
+		return errors.New("pre startup message error")
+	})
+
+	err := app.hooks.executeOnPreStartupMessageHooks(newPreStartupMessageData(&ListenData{}))
+	require.EqualError(t, err, "pre startup message error")
+}
+
+func Test_executeOnPostStartupMessageHooks_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Hooks().OnPostStartupMessage(func(_ PostStartupMessageData) error {
+		return errors.New("post startup message error")
+	})
+
+	err := app.hooks.executeOnPostStartupMessageHooks(newPostStartupMessageData(&ListenData{}, false, false, false))
+	require.EqualError(t, err, "post startup message error")
 }
 
 func Test_executeOnPreShutdownHooks_Error(t *testing.T) {
