@@ -1,6 +1,8 @@
 package fiber
 
 import (
+	"slices"
+
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -206,7 +208,7 @@ type PostStartupMessageData struct {
 func newPostStartupMessageData(listenData *ListenData, disabled, isChild, prevented bool) PostStartupMessageData {
 	clone := *listenData
 	if len(listenData.ChildPIDs) > 0 {
-		clone.ChildPIDs = clone.ChildPIDs[:] // make a copy
+		clone.ChildPIDs = slices.Clone(listenData.ChildPIDs)
 	}
 
 	return PostStartupMessageData{

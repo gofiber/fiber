@@ -391,7 +391,7 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 			require.Len(t, data.entries, 2)
 
 			data.ResetEntries()
-			require.Len(t, data.entries, 0)
+			require.Empty(t, data.entries)
 
 			return nil
 		})
