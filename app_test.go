@@ -1131,6 +1131,10 @@ func Test_App_AutoHead_Compliance(t *testing.T) {
 func Test_App_AutoHead_Compliance_SendFile(t *testing.T) {
 	t.Parallel()
 
+	if runtime.GOOS == "windows" {
+		t.Skip("SendFile auto-HEAD test is skipped on Windows due to file locking semantics")
+	}
+
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "hello.txt")
 	fileContent := []byte("file-body")
