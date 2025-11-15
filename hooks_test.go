@@ -351,6 +351,146 @@ func Test_ListenDataMetadata(t *testing.T) {
 	require.False(t, pre.PreventDefault)
 }
 
+func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("EntryKeys", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddInfo("key1", "Title 1", "Value 1", 1)
+			data.AddInfo("key2", "Title 2", "Value 2", 2)
+
+			keys := data.EntryKeys()
+			require.Len(t, keys, 2)
+			require.Equal(t, "key1", keys[0])
+			require.Equal(t, "key2", keys[1])
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+
+	t.Run("ResetEntries", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddInfo("key1", "Title 1", "Value 1", 1)
+			data.AddInfo("key2", "Title 2", "Value 2", 2)
+
+			require.Len(t, data.entries, 2)
+
+			data.ResetEntries()
+			require.Len(t, data.entries, 0)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+
+	t.Run("AddInfo", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddInfo("key1", "Title 1", "Value 1", 1)
+			require.Len(t, data.entries, 1)
+			require.Equal(t, "key1", data.entries[0].key)
+			require.Equal(t, "Title 1", data.entries[0].title)
+			require.Equal(t, "Value 1", data.entries[0].value)
+			require.Equal(t, 1, data.entries[0].priority)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+
+	t.Run("AddWarning", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddWarning("key1", "Title 1", "Value 1", 1)
+			require.Len(t, data.entries, 1)
+			require.Equal(t, "key1", data.entries[0].key)
+			require.Equal(t, "Title 1", data.entries[0].title)
+			require.Equal(t, "Value 1", data.entries[0].value)
+			require.Equal(t, 1, data.entries[0].priority)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+
+	t.Run("AddError", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddError("key1", "Title 1", "Value 1", 1)
+			require.Len(t, data.entries, 1)
+			require.Equal(t, "key1", data.entries[0].key)
+			require.Equal(t, "Title 1", data.entries[0].title)
+			require.Equal(t, "Value 1", data.entries[0].value)
+			require.Equal(t, 1, data.entries[0].priority)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+
+	t.Run("AddInfo-UpdateExisting", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddInfo("key1", "Title 1", "Value 1", 1)
+			data.AddInfo("key1", "Updated Title", "Updated Value", 2)
+
+			require.Len(t, data.entries, 1)
+			require.Equal(t, "key1", data.entries[0].key)
+			require.Equal(t, "Updated Title", data.entries[0].title)
+			require.Equal(t, "Updated Value", data.entries[0].value)
+			require.Equal(t, 2, data.entries[0].priority)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+}
+
 func Test_Hook_OnListenPrefork(t *testing.T) {
 	t.Parallel()
 	app := New()

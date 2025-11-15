@@ -186,12 +186,7 @@ func (sm *PreStartupMessageData) addEntry(key, title, value string, priority int
 }
 
 func newPreStartupMessageData(listenData *ListenData) *PreStartupMessageData {
-	clone := listenData
-	if len(listenData.ChildPIDs) > 0 {
-		clone.ChildPIDs = append([]int(nil), listenData.ChildPIDs...)
-	}
-
-	return &PreStartupMessageData{ListenData: clone}
+	return &PreStartupMessageData{ListenData: listenData}
 }
 
 // PostStartupMessageData contains metadata exposed to OnPostStartupMessage hooks.
@@ -209,13 +204,13 @@ type PostStartupMessageData struct {
 }
 
 func newPostStartupMessageData(listenData *ListenData, disabled, isChild, prevented bool) PostStartupMessageData {
-	clone := listenData
+	clone := *listenData
 	if len(listenData.ChildPIDs) > 0 {
-		clone.ChildPIDs = append([]int(nil), listenData.ChildPIDs...)
+		clone.ChildPIDs = clone.ChildPIDs[:] // make a copy
 	}
 
 	return PostStartupMessageData{
-		ListenData: clone,
+		ListenData: &clone,
 		Disabled:   disabled,
 		IsChild:    isChild,
 		Prevented:  prevented,

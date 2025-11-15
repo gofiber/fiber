@@ -311,7 +311,7 @@ func main() {
     app := fiber.New()
 
     app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
-        sm.Header = "FOOBER " + sm.Version + "\n-------"
+        sm.BannerHeader = "FOOBER " + sm.Version + "\n-------"
 
         // Optional: you can also remove old entries
         // sm.ResetEntries()
