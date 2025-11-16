@@ -75,7 +75,7 @@ autolabeler:
     title: '/(feature|feat|create|implement|add|support)/i'
   - label: 'v3'
     branch:
-      - '/main\/.+/'
+      - '/^main$/'
   - label: 'v2'
     branch:
-      - '/v2\/.+/'
+      - '/^v2$/'

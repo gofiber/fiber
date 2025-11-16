@@ -130,6 +130,22 @@ func canceledContextWithMarker(label string) context.Context {
 	return ctx
 }
 
+func TestLimiterDefaultConfigNoPanic(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	require.NotPanics(t, func() {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	})
+}
+
 func TestLimiterFixedStorageGetError(t *testing.T) {
 	t.Parallel()
 
