@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -819,6 +820,23 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// Set new URI for fileHandler
 	request.SetRequestURI(file)
 
+	var (
+		sendFileSize    int
+		hasSendFileSize bool
+	)
+
+	if cfg.ByteRange && len(request.Header.Peek(HeaderRange)) > 0 {
+		sizePath := file
+		if cfg.FS != nil {
+			sizePath = filepath.ToSlash(filename)
+		}
+
+		if size, err := sendFileContentLength(sizePath, cfg); err == nil {
+			sendFileSize = size
+			hasSendFileSize = true
+		}
+	}
+
 	// Save status code
 	response := &r.c.fasthttp.Response
 	status := response.StatusCode()
@@ -846,6 +864,10 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
+		if cfg.ByteRange && hasSendFileSize && response.StatusCode() == StatusRequestedRangeNotSatisfiable && len(response.Header.Peek(HeaderContentRange)) == 0 {
+			response.Header.Set(HeaderContentRange, "bytes */"+strconv.Itoa(sendFileSize))
+		}
+
 		if cacheControlValue != "" {
 			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
@@ -854,6 +876,27 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	}
 
 	return nil
+}
+
+func sendFileContentLength(path string, cfg SendFile) (int, error) {
+	if cfg.FS != nil {
+		cleanPath := utils.TrimLeft(path, '/')
+		for strings.HasPrefix(cleanPath, "./") {
+			cleanPath = strings.TrimPrefix(cleanPath, "./")
+		}
+		info, err := fs.Stat(cfg.FS, cleanPath)
+		if err != nil {
+			return 0, fmt.Errorf("stat %q: %w", cleanPath, err)
+		}
+		return int(info.Size()), nil
+	}
+
+	info, err := os.Stat(filepath.FromSlash(path))
+	if err != nil {
+		return 0, fmt.Errorf("stat %q: %w", path, err)
+	}
+
+	return int(info.Size()), nil
 }
 
 // SendStatus sets the HTTP status code and if the response body is empty,
