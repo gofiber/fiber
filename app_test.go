@@ -1511,6 +1511,78 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 	})
 }
 
+func Test_App_OptionsAsterisk(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Options("/resource", func(c Ctx) error {
+		c.Set(HeaderAllow, "GET")
+		c.Status(StatusNoContent)
+
+		return nil
+	})
+	app.Options("*", func(c Ctx) error {
+		c.Set(HeaderAllow, "GET, POST")
+		c.Status(StatusOK)
+
+		return nil
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	errCh := make(chan error, 1)
+	serverReady := make(chan struct{})
+
+	go func() {
+		serverReady <- struct{}{}
+		errCh <- app.Listener(ln)
+	}()
+
+	<-serverReady
+
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		require.NoError(t, <-errCh)
+	})
+
+	writeRequest := func(conn net.Conn, raw string) {
+		t.Helper()
+		_, err := conn.Write([]byte(raw))
+		require.NoError(t, err)
+	}
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+
+	writeRequest(conn, "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n")
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodOptions})
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "GET, POST", resp.Header.Get(HeaderAllow))
+	require.Zero(t, resp.ContentLength)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Empty(t, body)
+	require.NoError(t, resp.Body.Close())
+	require.NoError(t, conn.Close())
+
+	controlConn, err := ln.Dial()
+	require.NoError(t, err)
+
+	writeRequest(controlConn, "OPTIONS /resource HTTP/1.1\r\nHost: example.com\r\n\r\n")
+
+	controlResp, err := http.ReadResponse(bufio.NewReader(controlConn), &http.Request{Method: http.MethodOptions})
+	require.NoError(t, err)
+	require.Equal(t, StatusNoContent, controlResp.StatusCode)
+	require.Equal(t, "GET", controlResp.Header.Get(HeaderAllow))
+	require.Zero(t, controlResp.ContentLength)
+	controlBody, err := io.ReadAll(controlResp.Body)
+	require.NoError(t, err)
+	require.Empty(t, controlBody)
+	require.NoError(t, controlResp.Body.Close())
+	require.NoError(t, controlConn.Close())
+}
+
 // go test -run Test_App_Mixed_Routes_WithSameLen
 func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	t.Parallel()
