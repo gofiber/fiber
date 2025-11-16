@@ -4657,7 +4657,7 @@ func Test_SendFile_withRoutes(t *testing.T) {
 }
 
 func Test_SendFile_ByteRange(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("SendFile byte-range tests are flaky on Windows")
 	}
 
