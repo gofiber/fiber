@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -880,9 +881,9 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 func sendFileContentLength(path string, cfg SendFile) (int, error) {
 	if cfg.FS != nil {
-		cleanPath := utils.TrimLeft(path, '/')
-		for strings.HasPrefix(cleanPath, "./") {
-			cleanPath = strings.TrimPrefix(cleanPath, "./")
+		cleanPath := pathpkg.Clean(utils.TrimLeft(path, '/'))
+		if cleanPath == "." {
+			cleanPath = ""
 		}
 		info, err := fs.Stat(cfg.FS, cleanPath)
 		if err != nil {

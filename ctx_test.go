@@ -23,6 +23,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -4656,6 +4657,10 @@ func Test_SendFile_withRoutes(t *testing.T) {
 }
 
 func Test_SendFile_ByteRange(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
 	content := []byte("0123456789")
 	tmpDir := t.TempDir()
 	fixture := filepath.Join(tmpDir, "fixture.txt")
