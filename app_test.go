@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -1086,6 +1087,93 @@ func Test_App_Order(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "123", string(body))
+}
+
+func Test_App_AutoHead_Compliance(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/hello", func(c Ctx) error {
+		c.Set("X-Test", "string")
+		return c.SendString("hello")
+	})
+	app.startupProcess()
+
+	getReq := httptest.NewRequest(MethodGet, "/hello", http.NoBody)
+	getResp, err := app.Test(getReq)
+	require.NoError(t, err, "app.Test(get)")
+	defer func() {
+		require.NoError(t, getResp.Body.Close())
+	}()
+
+	body, err := io.ReadAll(getResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "hello", string(body))
+	require.Equal(t, "string", getResp.Header.Get("X-Test"))
+
+	headReq := httptest.NewRequest(MethodHead, "/hello", http.NoBody)
+	headResp, err := app.Test(headReq)
+	require.NoError(t, err, "app.Test(head)")
+	defer func() {
+		require.NoError(t, headResp.Body.Close())
+	}()
+
+	require.Equal(t, getResp.StatusCode, headResp.StatusCode)
+	require.Equal(t, strconv.Itoa(len(body)), headResp.Header.Get(HeaderContentLength))
+	require.Equal(t, getResp.Header.Get(HeaderContentType), headResp.Header.Get(HeaderContentType))
+	require.Equal(t, getResp.Header.Get("X-Test"), headResp.Header.Get("X-Test"))
+
+	headBody, err := io.ReadAll(headResp.Body)
+	require.NoError(t, err)
+	require.Empty(t, headBody)
+}
+
+func Test_App_AutoHead_Compliance_SendFile(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("SendFile auto-HEAD test is skipped on Windows due to file locking semantics")
+	}
+
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "hello.txt")
+	fileContent := []byte("file-body")
+	require.NoError(t, os.WriteFile(filePath, fileContent, 0o644)) //nolint:gosec // permissions match test fixtures
+
+	app := New()
+	app.Get("/file", func(c Ctx) error {
+		c.Set("X-Test", "file")
+		return c.SendFile(filePath)
+	})
+	app.startupProcess()
+
+	getReq := httptest.NewRequest(MethodGet, "/file", http.NoBody)
+	getResp, err := app.Test(getReq)
+	require.NoError(t, err, "app.Test(get)")
+	defer func() {
+		require.NoError(t, getResp.Body.Close())
+	}()
+
+	body, err := io.ReadAll(getResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, fileContent, body)
+	require.Equal(t, "file", getResp.Header.Get("X-Test"))
+
+	headReq := httptest.NewRequest(MethodHead, "/file", http.NoBody)
+	headResp, err := app.Test(headReq)
+	require.NoError(t, err, "app.Test(head)")
+	defer func() {
+		require.NoError(t, headResp.Body.Close())
+	}()
+
+	require.Equal(t, getResp.StatusCode, headResp.StatusCode)
+	require.Equal(t, strconv.Itoa(len(fileContent)), headResp.Header.Get(HeaderContentLength))
+	require.Equal(t, getResp.Header.Get(HeaderContentType), headResp.Header.Get(HeaderContentType))
+	require.Equal(t, getResp.Header.Get("X-Test"), headResp.Header.Get("X-Test"))
+
+	headBody, err := io.ReadAll(headResp.Body)
+	require.NoError(t, err)
+	require.Empty(t, headBody)
 }
 
 func Test_App_Methods(t *testing.T) {
