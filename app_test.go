@@ -1442,10 +1442,14 @@ func Test_App_OptionsAsterisk(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 	errCh := make(chan error, 1)
+	serverReady := make(chan struct{})
 
 	go func() {
+		serverReady <- struct{}{}
 		errCh <- app.Listener(ln)
 	}()
+
+	<-serverReady
 
 	t.Cleanup(func() {
 		require.NoError(t, app.Shutdown())
