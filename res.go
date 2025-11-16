@@ -822,7 +822,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	request.SetRequestURI(file)
 
 	var (
-		sendFileSize    int
+		sendFileSize    int64
 		hasSendFileSize bool
 	)
 
@@ -866,7 +866,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
 		if cfg.ByteRange && hasSendFileSize && response.StatusCode() == StatusRequestedRangeNotSatisfiable && len(response.Header.Peek(HeaderContentRange)) == 0 {
-			response.Header.Set(HeaderContentRange, "bytes */"+strconv.Itoa(sendFileSize))
+			response.Header.Set(HeaderContentRange, "bytes */"+strconv.FormatInt(sendFileSize, 10))
 		}
 
 		if cacheControlValue != "" {
@@ -879,7 +879,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	return nil
 }
 
-func sendFileContentLength(path string, cfg SendFile) (int, error) {
+func sendFileContentLength(path string, cfg SendFile) (int64, error) {
 	if cfg.FS != nil {
 		cleanPath := pathpkg.Clean(utils.TrimLeft(path, '/'))
 		if cleanPath == "." {
@@ -889,7 +889,7 @@ func sendFileContentLength(path string, cfg SendFile) (int, error) {
 		if err != nil {
 			return 0, fmt.Errorf("stat %q: %w", cleanPath, err)
 		}
-		return int(info.Size()), nil
+		return info.Size(), nil
 	}
 
 	info, err := os.Stat(filepath.FromSlash(path))
@@ -897,7 +897,7 @@ func sendFileContentLength(path string, cfg SendFile) (int, error) {
 		return 0, fmt.Errorf("stat %q: %w", path, err)
 	}
 
-	return int(info.Size()), nil
+	return info.Size(), nil
 }
 
 // SendStatus sets the HTTP status code and if the response body is empty,
