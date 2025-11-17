@@ -32,5 +32,5 @@ labels:
         - '/^main$/'
   - label: 'v2'
     matcher:
-      branch:
+      baseBranch:
         - '/^v2$/'
