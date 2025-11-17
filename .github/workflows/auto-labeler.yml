@@ -1,0 +1,27 @@
+name: Auto labeler
+
+on:
+  issues:
+    types: [opened, edited, milestoned]
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  # Setting up permissions in the workflow to limit the scope of what it can do. Optional!
+  contents: read # the config file
+  issues: write # for labeling issues (on: issues)
+  pull-requests: write # for labeling pull requests (on: pull_request_target or on: pull_request)
+  statuses: write # to generate status
+  checks: write # to generate status
+
+jobs:
+  labeler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Labels
+        id: labeler
+        uses: fuxingloh/multi-labeler@b15a54460c38f54043fa75f7b08a0e2aa5b94b5b #v4.0.0
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
