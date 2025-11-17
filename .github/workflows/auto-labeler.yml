@@ -3,7 +3,7 @@ name: Auto labeler
 on:
   issues:
     types: [opened, edited, milestoned]
-  pull_request_target:
+  pull_request:
     types: [opened, edited, reopened, synchronize]
   pull_request_target:
     types: [opened, edited, reopened, synchronize]
