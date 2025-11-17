@@ -5,10 +5,10 @@ labels:
       title: '/(docs|doc:|\[doc\]|README|typos|comment|documentation)/i'
   - label: '☢️ Bug'
     matcher:
-     title: '/(fix|bug)/i'
+      title: '/(fix|bug)/i'
   - label: '🧹 Updates'
     matcher:
-     title: '/(improve|chore|improvements|missing|update|refactor|deprecated|remove|unused|test)/i'
+      title: '/(improve|chore|improvements|missing|update|refactor|deprecated|remove|unused|test)/i'
   - label: '🤖 Dependencies'
     sync: true
     matcher:
