@@ -28,9 +28,7 @@ labels:
       title: '/(question|how)/i'
   - label: 'v3'
     matcher:
-      baseBranch:
-        - 'main'
+      baseBranch: 'main'
   - label: 'v2'
     matcher:
-      baseBranch:
-        - 'v2'
+      baseBranch: 'v2'
