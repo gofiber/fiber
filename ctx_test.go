@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -3603,6 +3604,31 @@ func Test_Ctx_Range(t *testing.T) {
 	testRange("bytes=500-700,601-999", RangeSet{Start: 500, End: 700}, RangeSet{Start: 601, End: 999})
 	testRange("bytes= 0-1", RangeSet{Start: 0, End: 1})
 	testRange("seconds=0-1")
+}
+
+func Test_Ctx_Range_LargeFile(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	size := int64(math.MaxInt32) + 1024
+	start := int64(math.MaxInt32) + 10
+	end := start + 50
+
+	c.Request().Header.Set(HeaderRange, fmt.Sprintf("bytes=%d-%d", start, end))
+	result, err := c.Range(size)
+	require.NoError(t, err)
+	require.Equal(t, "bytes", result.Type)
+	require.Len(t, result.Ranges, 1)
+	require.Equal(t, start, result.Ranges[0].Start)
+	require.Equal(t, end, result.Ranges[0].End)
+
+	c.Request().Header.Set(HeaderRange, "bytes=-200")
+	result, err = c.Range(size)
+	require.NoError(t, err)
+	require.Equal(t, size-200, result.Ranges[0].Start)
+	require.Equal(t, size-1, result.Ranges[0].End)
 }
 
 func Test_Ctx_Range_Unsatisfiable(t *testing.T) {

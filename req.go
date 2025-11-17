@@ -3,6 +3,7 @@ package fiber
 import (
 	"bytes"
 	"errors"
+	"math"
 	"mime/multipart"
 	"net"
 	"strconv"
@@ -21,8 +22,8 @@ type Range struct {
 
 // RangeSet represents a single content range from a request.
 type RangeSet struct {
-	Start int
-	End   int
+	Start int64
+	End   int64
 }
 
 // DefaultReq is the default implementation of Req used by DefaultCtx.
@@ -737,12 +738,23 @@ func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
 }
 
 // Range returns a struct containing the type and a slice of ranges.
-func (r *DefaultReq) Range(size int) (Range, error) {
+func (r *DefaultReq) Range(size int64) (Range, error) {
 	var (
 		rangeData Range
 		ranges    string
 	)
 	rangeStr := utils.Trim(r.Get(HeaderRange), ' ')
+
+	parseBound := func(value string) (int64, error) {
+		parsed, err := utils.ParseUint(value)
+		if err != nil {
+			return 0, err
+		}
+		if parsed > (math.MaxUint64 >> 1) {
+			return 0, ErrRangeMalformed
+		}
+		return int64(parsed), nil
+	}
 
 	i := strings.IndexByte(rangeStr, '=')
 	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
@@ -779,8 +791,11 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 		startStr = utils.Trim(singleRange[:i], ' ')
 		endStr = utils.Trim(singleRange[i+1:], ' ')
 
-		start, startErr := fasthttp.ParseUint(utils.UnsafeBytes(startStr))
-		end, endErr := fasthttp.ParseUint(utils.UnsafeBytes(endStr))
+		start, startErr := parseBound(startStr)
+		end, endErr := parseBound(endStr)
+		if errors.Is(startErr, ErrRangeMalformed) || errors.Is(endErr, ErrRangeMalformed) {
+			return rangeData, ErrRangeMalformed
+		}
 		if startErr != nil { // -nnn
 			start = size - end
 			end = size - 1
@@ -800,7 +815,7 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 	}
 	if len(rangeData.Ranges) < 1 {
 		r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
-		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+strconv.Itoa(size)) //nolint:staticcheck // It is fine to ignore the static check
+		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+strconv.FormatInt(size, 10)) //nolint:staticcheck // It is fine to ignore the static check
 		return rangeData, ErrRequestedRangeNotSatisfiable
 	}
 

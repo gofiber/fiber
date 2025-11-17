@@ -1379,7 +1379,7 @@ sets the HTTP status code to **416 Range Not Satisfiable** and populates the
 `Content-Range` header with the current representation size.
 
 ```go title="Signature"
-func (c fiber.Ctx) Range(size int) (Range, error)
+func (c fiber.Ctx) Range(size int64) (Range, error)
 ```
 
 ```go title="Example"
