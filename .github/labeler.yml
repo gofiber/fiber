@@ -29,8 +29,8 @@ labels:
   - label: 'v3'
     matcher:
       baseBranch:
-        - '/^main$/'
+        - 'main'
   - label: 'v2'
     matcher:
       baseBranch:
-        - '/^v2$/'
+        - 'v2'
