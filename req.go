@@ -3,6 +3,7 @@ package fiber
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"math"
 	"mime/multipart"
 	"net"
@@ -748,7 +749,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	parseBound := func(value string) (int64, error) {
 		parsed, err := utils.ParseUint(value)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("parse range bound %q: %w", value, err)
 		}
 		if parsed > (math.MaxUint64 >> 1) {
 			return 0, ErrRangeMalformed
