@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   assign-v3:
-    if: github.event.label.name == 'v3'
+    if: toLower(trim(github.event.label.name)) == 'v3'
     runs-on: ubuntu-latest
     steps:
       - name: Add item to v3 project
