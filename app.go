@@ -710,6 +710,23 @@ func (app *App) RegisterCustomBinder(customBinder CustomBinder) {
 	app.customBinders = append(app.customBinders, customBinder)
 }
 
+// ReloadViews reloads the configured view engine by invoking its Load method.
+// It returns an error if no view engine is configured or if reloading fails.
+func (app *App) ReloadViews() error {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	if app.config.Views == nil {
+		return ErrNoViewEngineConfigured
+	}
+
+	if err := app.config.Views.Load(); err != nil {
+		return fmt.Errorf("fiber: failed to reload views: %w", err)
+	}
+
+	return nil
+}
+
 // SetTLSHandler Can be used to set ClientHelloInfo when using TLS with Listener.
 func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 	// Attach the tlsHandler to the config

@@ -1986,6 +1986,50 @@ func (invalidView) Load() error { return errors.New("invalid view") }
 
 func (invalidView) Render(io.Writer, string, any, ...string) error { panic("implement me") }
 
+type countingView struct {
+	loadErr error
+	loads   int
+}
+
+func (v *countingView) Load() error {
+	v.loads++
+	return v.loadErr
+}
+
+func (*countingView) Render(io.Writer, string, any, ...string) error { return nil }
+
+func Test_App_ReloadViews_Success(t *testing.T) {
+	t.Parallel()
+	view := &countingView{}
+	app := New(Config{Views: view})
+	initialLoads := view.loads
+
+	require.NoError(t, app.ReloadViews())
+	require.Equal(t, initialLoads+1, view.loads)
+
+	require.NoError(t, app.ReloadViews())
+	require.Equal(t, initialLoads+2, view.loads)
+}
+
+func Test_App_ReloadViews_Error(t *testing.T) {
+	t.Parallel()
+	wantedErr := errors.New("boom")
+	view := &countingView{loadErr: wantedErr}
+	app := New(Config{Views: view})
+
+	err := app.ReloadViews()
+	require.Error(t, err)
+	require.ErrorIs(t, err, wantedErr)
+}
+
+func Test_App_ReloadViews_NoEngine(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	err := app.ReloadViews()
+	require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+}
+
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
 	t.Parallel()
