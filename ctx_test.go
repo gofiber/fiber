@@ -3631,6 +3631,23 @@ func Test_Ctx_Range_LargeFile(t *testing.T) {
 	require.Equal(t, size-1, result.Ranges[0].End)
 }
 
+func Test_Ctx_Range_Overflow(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	tooBig := uint64((math.MaxUint64 >> 1) + 1)
+
+	c.Request().Header.Set(HeaderRange, fmt.Sprintf("bytes=%d-100", tooBig))
+	_, err := c.Range(math.MaxInt64)
+	require.ErrorIs(t, err, ErrRangeMalformed)
+
+	c.Request().Header.Set(HeaderRange, fmt.Sprintf("bytes=0-%d", tooBig))
+	_, err = c.Range(math.MaxInt64)
+	require.ErrorIs(t, err, ErrRangeMalformed)
+}
+
 func Test_Ctx_Range_Unsatisfiable(t *testing.T) {
 	t.Parallel()
 	app := New()
