@@ -20,6 +20,7 @@ const (
 	envPreforkChildKey = "FIBER_PREFORK_CHILD"
 	envPreforkChildVal = "1"
 	sleepDuration      = 100 * time.Millisecond
+	windowsOS          = "windows"
 )
 
 var (
@@ -154,7 +155,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 
 // watchMaster watches child procs
 func watchMaster() {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == windowsOS {
 		// finds parent process,
 		// and waits for it to exit
 		p, err := os.FindProcess(os.Getppid())
@@ -184,7 +185,7 @@ func dummyCmd() *exec.Cmd {
 	if storeCommand := dummyChildCmd.Load(); storeCommand != nil && storeCommand != "" {
 		command = storeCommand.(string) //nolint:forcetypeassert,errcheck // We always store a string in here
 	}
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == windowsOS {
 		return exec.Command("cmd", "/C", command, "version")
 	}
 	return exec.Command(command, "version")

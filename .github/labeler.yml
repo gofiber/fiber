@@ -1,0 +1,36 @@
+version: v1
+labels:
+  - label: '📒 Documentation'
+    matcher:
+      title: '/(docs|doc:|\[doc\]|README|typos|comment|documentation)/i'
+  - label: '☢️ Bug'
+    matcher:
+      title: '/(fix|bug)/i'
+  - label: '🧹 Updates'
+    matcher:
+      title: '/(improve|chore|improvements|missing|update|refactor|deprecated|remove|unused|test)/i'
+  - label: '🤖 Dependencies'
+    matcher:
+      title: '/(bump|dependencies)/i'
+      files: 
+        - 'go.mod'
+        - 'go.sum'
+        - '**/go.mod'
+        - '**/go.sum'
+  - label: '✏️ Feature'
+    matcher:
+      title: '/(feature|feat|create|implement|add|support)/i'
+  - label: '📝 Proposal'
+    matcher:
+      title: '/(proposal|idea|request|suggest)/i'
+  - label: '🤔 Question'
+    matcher:
+      title: '/(question|how)/i'
+  - label: 'v3'
+    matcher:
+      baseBranch: 'main'
+  - label: 'v2'
+    matcher:
+      baseBranch: 'v2'
+
+

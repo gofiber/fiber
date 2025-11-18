@@ -302,7 +302,7 @@ type Ctx interface {
 	// Queries()["filters[status]"] == "pending"
 	Queries() map[string]string
 	// Range returns a struct containing the type and a slice of ranges.
-	Range(size int) (Range, error)
+	Range(size int64) (Range, error)
 	// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
 	// If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
 	// If the offset is zero every label (no trimming) is returned.

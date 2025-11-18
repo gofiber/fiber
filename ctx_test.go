@@ -17,12 +17,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -3604,6 +3606,48 @@ func Test_Ctx_Range(t *testing.T) {
 	testRange("seconds=0-1")
 }
 
+func Test_Ctx_Range_LargeFile(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	size := int64(math.MaxInt32) + 1024
+	start := int64(math.MaxInt32) + 10
+	end := start + 50
+
+	c.Request().Header.Set(HeaderRange, fmt.Sprintf("bytes=%d-%d", start, end))
+	result, err := c.Range(size)
+	require.NoError(t, err)
+	require.Equal(t, "bytes", result.Type)
+	require.Len(t, result.Ranges, 1)
+	require.Equal(t, start, result.Ranges[0].Start)
+	require.Equal(t, end, result.Ranges[0].End)
+
+	c.Request().Header.Set(HeaderRange, "bytes=-200")
+	result, err = c.Range(size)
+	require.NoError(t, err)
+	require.Equal(t, size-200, result.Ranges[0].Start)
+	require.Equal(t, size-1, result.Ranges[0].End)
+}
+
+func Test_Ctx_Range_Overflow(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	tooBig := uint64((math.MaxUint64 >> 1) + 1)
+
+	c.Request().Header.Set(HeaderRange, fmt.Sprintf("bytes=%d-100", tooBig))
+	_, err := c.Range(math.MaxInt64)
+	require.ErrorIs(t, err, ErrRangeMalformed)
+
+	c.Request().Header.Set(HeaderRange, fmt.Sprintf("bytes=0-%d", tooBig))
+	_, err = c.Range(math.MaxInt64)
+	require.ErrorIs(t, err, ErrRangeMalformed)
+}
+
 func Test_Ctx_Range_Unsatisfiable(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4653,6 +4697,199 @@ func Test_SendFile_withRoutes(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/file/fs", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+func Test_SendFile_ByteRange(t *testing.T) {
+	if runtime.GOOS == windowsOS {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
+	content := []byte("0123456789")
+	tmpDir := t.TempDir()
+	fixture := filepath.Join(tmpDir, "fixture.txt")
+	require.NoError(t, os.WriteFile(fixture, content, 0o600))
+
+	app := New()
+
+	app.Get("/range", func(c Ctx) error {
+		return c.SendFile(fixture, SendFile{ByteRange: true})
+	})
+
+	app.Get("/norange", func(c Ctx) error {
+		return c.SendFile(fixture)
+	})
+
+	t.Run("satisfiable single range", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=0-4")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+		require.Equal(t, StatusPartialContent, resp.StatusCode)
+		require.Equal(t, "bytes", resp.Header.Get(HeaderAcceptRanges))
+		require.Equal(t, "bytes 0-4/10", resp.Header.Get(HeaderContentRange))
+		require.EqualValues(t, len(content[:5]), resp.ContentLength)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, content[:5], body)
+	})
+
+	t.Run("single byte range", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=4-4")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+		require.Equal(t, StatusPartialContent, resp.StatusCode)
+		require.Equal(t, "bytes", resp.Header.Get(HeaderAcceptRanges))
+		require.Equal(t, "bytes 4-4/10", resp.Header.Get(HeaderContentRange))
+		require.EqualValues(t, 1, resp.ContentLength)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, content[4:5], body)
+	})
+
+	t.Run("open ended range", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=4-")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+		require.Equal(t, StatusPartialContent, resp.StatusCode)
+		require.Equal(t, "bytes", resp.Header.Get(HeaderAcceptRanges))
+		require.Equal(t, "bytes 4-9/10", resp.Header.Get(HeaderContentRange))
+		require.EqualValues(t, len(content[4:]), resp.ContentLength)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, content[4:], body)
+	})
+
+	t.Run("range exceeding end", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=5-20")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+		require.Equal(t, StatusPartialContent, resp.StatusCode)
+		require.Equal(t, "bytes", resp.Header.Get(HeaderAcceptRanges))
+		require.Equal(t, "bytes 5-9/10", resp.Header.Get(HeaderContentRange))
+		require.EqualValues(t, len(content[5:]), resp.ContentLength)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, content[5:], body)
+	})
+
+	t.Run("suffix range", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=-3")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+		require.Equal(t, StatusPartialContent, resp.StatusCode)
+		require.Equal(t, "bytes", resp.Header.Get(HeaderAcceptRanges))
+		require.Equal(t, "bytes 7-9/10", resp.Header.Get(HeaderContentRange))
+		require.EqualValues(t, len(content[len(content)-3:]), resp.ContentLength)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, content[len(content)-3:], body)
+	})
+
+	t.Run("suffix range exceeding size", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=-20")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+		require.Equal(t, StatusPartialContent, resp.StatusCode)
+		require.Equal(t, "bytes", resp.Header.Get(HeaderAcceptRanges))
+		require.Equal(t, "bytes 0-9/10", resp.Header.Get(HeaderContentRange))
+		require.EqualValues(t, len(content), resp.ContentLength)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, content, body)
+	})
+
+	t.Run("unsatisfiable range", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=1000-2000")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+		require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+		require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
+	})
+
+	t.Run("unsatisfiable reversed range", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=6-5")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+		require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+		require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
+	})
+
+	t.Run("unsatisfiable start past end", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/range", http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=10-")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+		require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+		require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
+	})
+
+	t.Run("range ignored when byte range disabled", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/norange", http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=0-4")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Empty(t, resp.Header.Get(HeaderAcceptRanges))
+		require.Empty(t, resp.Header.Get(HeaderContentRange))
+		require.EqualValues(t, len(content), resp.ContentLength)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, content, body)
+	})
 }
 
 func Benchmark_Ctx_SendFile(b *testing.B) {

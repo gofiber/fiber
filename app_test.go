@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -1088,6 +1089,93 @@ func Test_App_Order(t *testing.T) {
 	require.Equal(t, "123", string(body))
 }
 
+func Test_App_AutoHead_Compliance(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/hello", func(c Ctx) error {
+		c.Set("X-Test", "string")
+		return c.SendString("hello")
+	})
+	app.startupProcess()
+
+	getReq := httptest.NewRequest(MethodGet, "/hello", http.NoBody)
+	getResp, err := app.Test(getReq)
+	require.NoError(t, err, "app.Test(get)")
+	defer func() {
+		require.NoError(t, getResp.Body.Close())
+	}()
+
+	body, err := io.ReadAll(getResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "hello", string(body))
+	require.Equal(t, "string", getResp.Header.Get("X-Test"))
+
+	headReq := httptest.NewRequest(MethodHead, "/hello", http.NoBody)
+	headResp, err := app.Test(headReq)
+	require.NoError(t, err, "app.Test(head)")
+	defer func() {
+		require.NoError(t, headResp.Body.Close())
+	}()
+
+	require.Equal(t, getResp.StatusCode, headResp.StatusCode)
+	require.Equal(t, strconv.Itoa(len(body)), headResp.Header.Get(HeaderContentLength))
+	require.Equal(t, getResp.Header.Get(HeaderContentType), headResp.Header.Get(HeaderContentType))
+	require.Equal(t, getResp.Header.Get("X-Test"), headResp.Header.Get("X-Test"))
+
+	headBody, err := io.ReadAll(headResp.Body)
+	require.NoError(t, err)
+	require.Empty(t, headBody)
+}
+
+func Test_App_AutoHead_Compliance_SendFile(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("SendFile auto-HEAD test is skipped on Windows due to file locking semantics")
+	}
+
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "hello.txt")
+	fileContent := []byte("file-body")
+	require.NoError(t, os.WriteFile(filePath, fileContent, 0o644)) //nolint:gosec // permissions match test fixtures
+
+	app := New()
+	app.Get("/file", func(c Ctx) error {
+		c.Set("X-Test", "file")
+		return c.SendFile(filePath)
+	})
+	app.startupProcess()
+
+	getReq := httptest.NewRequest(MethodGet, "/file", http.NoBody)
+	getResp, err := app.Test(getReq)
+	require.NoError(t, err, "app.Test(get)")
+	defer func() {
+		require.NoError(t, getResp.Body.Close())
+	}()
+
+	body, err := io.ReadAll(getResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, fileContent, body)
+	require.Equal(t, "file", getResp.Header.Get("X-Test"))
+
+	headReq := httptest.NewRequest(MethodHead, "/file", http.NoBody)
+	headResp, err := app.Test(headReq)
+	require.NoError(t, err, "app.Test(head)")
+	defer func() {
+		require.NoError(t, headResp.Body.Close())
+	}()
+
+	require.Equal(t, getResp.StatusCode, headResp.StatusCode)
+	require.Equal(t, strconv.Itoa(len(fileContent)), headResp.Header.Get(HeaderContentLength))
+	require.Equal(t, getResp.Header.Get(HeaderContentType), headResp.Header.Get(HeaderContentType))
+	require.Equal(t, getResp.Header.Get("X-Test"), headResp.Header.Get("X-Test"))
+
+	headBody, err := io.ReadAll(headResp.Body)
+	require.NoError(t, err)
+	require.Empty(t, headBody)
+}
+
 func Test_App_Methods(t *testing.T) {
 	t.Parallel()
 	dummyHandler := testEmptyHandler
@@ -1421,6 +1509,78 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 		err := app.ShutdownWithContext(ctx)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
+}
+
+func Test_App_OptionsAsterisk(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Options("/resource", func(c Ctx) error {
+		c.Set(HeaderAllow, "GET")
+		c.Status(StatusNoContent)
+
+		return nil
+	})
+	app.Options("*", func(c Ctx) error {
+		c.Set(HeaderAllow, "GET, POST")
+		c.Status(StatusOK)
+
+		return nil
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	errCh := make(chan error, 1)
+	serverReady := make(chan struct{})
+
+	go func() {
+		serverReady <- struct{}{}
+		errCh <- app.Listener(ln)
+	}()
+
+	<-serverReady
+
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		require.NoError(t, <-errCh)
+	})
+
+	writeRequest := func(conn net.Conn, raw string) {
+		t.Helper()
+		_, err := conn.Write([]byte(raw))
+		require.NoError(t, err)
+	}
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+
+	writeRequest(conn, "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n")
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodOptions})
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "GET, POST", resp.Header.Get(HeaderAllow))
+	require.Zero(t, resp.ContentLength)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Empty(t, body)
+	require.NoError(t, resp.Body.Close())
+	require.NoError(t, conn.Close())
+
+	controlConn, err := ln.Dial()
+	require.NoError(t, err)
+
+	writeRequest(controlConn, "OPTIONS /resource HTTP/1.1\r\nHost: example.com\r\n\r\n")
+
+	controlResp, err := http.ReadResponse(bufio.NewReader(controlConn), &http.Request{Method: http.MethodOptions})
+	require.NoError(t, err)
+	require.Equal(t, StatusNoContent, controlResp.StatusCode)
+	require.Equal(t, "GET", controlResp.Header.Get(HeaderAllow))
+	require.Zero(t, controlResp.ContentLength)
+	controlBody, err := io.ReadAll(controlResp.Body)
+	require.NoError(t, err)
+	require.Empty(t, controlBody)
+	require.NoError(t, controlResp.Body.Close())
+	require.NoError(t, controlConn.Close())
 }
 
 // go test -run Test_App_Mixed_Routes_WithSameLen
@@ -1825,6 +1985,59 @@ type invalidView struct{}
 func (invalidView) Load() error { return errors.New("invalid view") }
 
 func (invalidView) Render(io.Writer, string, any, ...string) error { panic("implement me") }
+
+type countingView struct {
+	loadErr error
+	loads   int
+}
+
+func (v *countingView) Load() error {
+	v.loads++
+	return v.loadErr
+}
+
+func (*countingView) Render(io.Writer, string, any, ...string) error { return nil }
+
+func Test_App_ReloadViews_Success(t *testing.T) {
+	t.Parallel()
+	view := &countingView{}
+	app := New(Config{Views: view})
+	initialLoads := view.loads
+
+	require.NoError(t, app.ReloadViews())
+	require.Equal(t, initialLoads+1, view.loads)
+
+	require.NoError(t, app.ReloadViews())
+	require.Equal(t, initialLoads+2, view.loads)
+}
+
+func Test_App_ReloadViews_Error(t *testing.T) {
+	t.Parallel()
+	wantedErr := errors.New("boom")
+	view := &countingView{loadErr: wantedErr}
+	app := New(Config{Views: view})
+
+	err := app.ReloadViews()
+	require.Error(t, err)
+	require.ErrorIs(t, err, wantedErr)
+}
+
+func Test_App_ReloadViews_NoEngine(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	err := app.ReloadViews()
+	require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+}
+
+func Test_App_ReloadViews_InterfaceNilPointer(t *testing.T) {
+	t.Parallel()
+	var view *countingView
+	app := &App{config: Config{Views: view}}
+
+	err := app.ReloadViews()
+	require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+}
 
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
