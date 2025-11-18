@@ -720,6 +720,10 @@ func (app *App) ReloadViews() error {
 		return ErrNoViewEngineConfigured
 	}
 
+	if viewValue := reflect.ValueOf(app.config.Views); viewValue.Kind() == reflect.Pointer && viewValue.IsNil() {
+		return ErrNoViewEngineConfigured
+	}
+
 	if err := app.config.Views.Load(); err != nil {
 		return fmt.Errorf("fiber: failed to reload views: %w", err)
 	}

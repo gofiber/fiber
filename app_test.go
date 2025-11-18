@@ -2030,6 +2030,15 @@ func Test_App_ReloadViews_NoEngine(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoViewEngineConfigured)
 }
 
+func Test_App_ReloadViews_InterfaceNilPointer(t *testing.T) {
+	t.Parallel()
+	var view *countingView
+	app := &App{config: Config{Views: view}}
+
+	err := app.ReloadViews()
+	require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+}
+
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
 	t.Parallel()
