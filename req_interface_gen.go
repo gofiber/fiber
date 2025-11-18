@@ -168,7 +168,7 @@ type Req interface {
 	// Queries()["filters[status]"] == "pending"
 	Queries() map[string]string
 	// Range returns a struct containing the type and a slice of ranges.
-	Range(size int) (Range, error)
+	Range(size int64) (Range, error)
 	// Route returns the matched Route struct.
 	Route() *Route
 	// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
