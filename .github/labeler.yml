@@ -10,8 +10,8 @@ labels:
     matcher:
       title: '/(improve|chore|improvements|missing|update|refactor|deprecated|remove|unused|test)/i'
   - label: '🤖 Dependencies'
-    sync: true
     matcher:
+      title: '/(bump|dependencies)/i'
       files: 
         - 'go.mod'
         - 'go.sum'
@@ -32,3 +32,5 @@ labels:
   - label: 'v2'
     matcher:
       baseBranch: 'v2'
+
+
