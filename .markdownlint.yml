@@ -7,7 +7,8 @@ default: true
 extends: null
 
 # MD001/heading-increment : Heading levels should only increment by one level at a time : https://github.com/DavidAnson/markdownlint/blob/v0.34.0/doc/md001.md
-MD001: true
+# NOTE: The docs intentionally jump heading levels for anchor stability, so skip this rule globally.
+MD001: false
 
 # MD003/heading-style : Heading style : https://github.com/DavidAnson/markdownlint/blob/v0.34.0/doc/md003.md
 MD003:
@@ -243,6 +244,10 @@ MD054:
 MD055:
   # Table pipe style
   style: "consistent"
+
+# MD060/table-column-style : Table column style : https://github.com/DavidAnson/markdownlint/blob/v0.34.0/doc/md060.md
+# NOTE: Legacy docs rely on hand-crafted alignment, so disable this rule to avoid noisy warnings.
+MD060: false
 
 # MD056/table-column-count : Table column count : https://github.com/DavidAnson/markdownlint/blob/v0.34.0/doc/md056.md
 MD056: true
