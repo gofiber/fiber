@@ -223,6 +223,8 @@ We have made several changes to the Fiber hooks, including:
 - Added new shutdown hooks to provide better control over the shutdown process:
   - `OnPreShutdown` - Executes before the server starts shutting down
   - `OnPostShutdown` - Executes after the server has shut down, receives any shutdown error
+  - `OnPreStartupMessage` - Executes before the startup message is printed, allowing customization of the banner and info entries
+  - `OnPostStartupMessage` - Executes after the startup message is printed, allowing post-startup logic
 - Deprecated `OnShutdown` in favor of the new pre/post shutdown hooks
 - Improved shutdown hook execution order and reliability
 - Added mutex protection for hook registration and execution
