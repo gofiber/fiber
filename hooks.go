@@ -20,7 +20,7 @@ type (
 	// OnPreStartupMessageHandler runs before Fiber prints the startup banner.
 	OnPreStartupMessageHandler = func(*PreStartupMessageData) error
 	// OnPostStartupMessageHandler runs after Fiber prints (or skips) the startup banner.
-	OnPostStartupMessageHandler = func(PostStartupMessageData) error
+	OnPostStartupMessageHandler = func(*PostStartupMessageData) error
 	// OnPreShutdownHandler runs before the application shuts down.
 	OnPreShutdownHandler = func() error
 	// OnPostShutdownHandler runs after shutdown and receives the shutdown result.
@@ -205,13 +205,13 @@ type PostStartupMessageData struct {
 	Prevented bool
 }
 
-func newPostStartupMessageData(listenData *ListenData, disabled, isChild, prevented bool) PostStartupMessageData {
+func newPostStartupMessageData(listenData *ListenData, disabled, isChild, prevented bool) *PostStartupMessageData {
 	clone := *listenData
 	if len(listenData.ChildPIDs) > 0 {
 		clone.ChildPIDs = slices.Clone(listenData.ChildPIDs)
 	}
 
-	return PostStartupMessageData{
+	return &PostStartupMessageData{
 		ListenData: &clone,
 		Disabled:   disabled,
 		IsChild:    isChild,
@@ -417,7 +417,7 @@ func (h *Hooks) executeOnPreStartupMessageHooks(data *PreStartupMessageData) err
 	return nil
 }
 
-func (h *Hooks) executeOnPostStartupMessageHooks(data PostStartupMessageData) error {
+func (h *Hooks) executeOnPostStartupMessageHooks(data *PostStartupMessageData) error {
 	for _, handler := range h.onPostStartup {
 		if err := handler(data); err != nil {
 			return err

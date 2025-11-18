@@ -14,6 +14,8 @@ Fiber lets you run custom callbacks at specific points in the routing lifecycle.
 - [OnGroup](#ongroup)
 - [OnGroupName](#ongroupname)
 - [OnListen](#onlisten)
+- [OnPreStartupMessage/OnPostStartupMessage](#onprestartupmessageonpoststartupmessage)
+  - [ListenData](#listendata)
 - [OnFork](#onfork)
 - [OnPreShutdown](#onpreshutdown)
 - [OnPostShutdown](#onpostshutdown)
@@ -29,6 +31,8 @@ type OnGroupHandler = func(Group) error
 type OnGroupNameHandler = OnGroupHandler
 type OnListenHandler = func(ListenData) error
 type OnForkHandler = func(int) error
+type OnPreStartupMessageHandler  = func(*PreStartupMessageData) error
+type OnPostStartupMessageHandler = func(*PostStartupMessageData) error
 type OnPreShutdownHandler  = func() error
 type OnPostShutdownHandler = func(error) error
 type OnMountHandler = func(*App) error
@@ -168,25 +172,7 @@ func main() {
 </TabItem>
 </Tabs>
 
-### ListenData
-
-`ListenData` exposes runtime metadata about the listener:
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `Host` | `string` | Resolved hostname or IP address. |
-| `Port` | `string` | The bound port. |
-| `TLS` | `bool` | Indicates whether TLS is enabled. |
-| `Version` | `string` | Fiber version reported in the startup banner. |
-| `AppName` | `string` | Application name from the configuration. |
-| `HandlerCount` | `int` | Total registered handler count. |
-| `ProcessCount` | `int` | Number of processes Fiber will use. |
-| `PID` | `int` | Current process identifier. |
-| `Prefork` | `bool` | Whether prefork is enabled. |
-| `ChildPIDs` | `[]int` | Child process identifiers when preforking. |
-| `ColorScheme` | [`Colors`](https://github.com/gofiber/fiber/blob/main/color.go) | Active color scheme for the startup message. |
-
-### Startup Message Customization
+## OnPreStartupMessage/OnPostStartupMessage
 
 Use `OnPreStartupMessage` to tweak the banner before Fiber prints it, and `OnPostStartupMessage` to run logic after the banner is printed (or skipped). You can use some helper functions to customize the banner inside the `OnPreStartupMessage` hook.
 
@@ -248,6 +234,25 @@ func main() {
     app.Listen(":5000")
 }
 ```
+
+### ListenData
+
+`ListenData` exposes runtime metadata about the listener:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `Host` | `string` | Resolved hostname or IP address. |
+| `Port` | `string` | The bound port. |
+| `TLS` | `bool` | Indicates whether TLS is enabled. |
+| `Version` | `string` | Fiber version reported in the startup banner. |
+| `AppName` | `string` | Application name from the configuration. |
+| `HandlerCount` | `int` | Total registered handler count. |
+| `ProcessCount` | `int` | Number of processes Fiber will use. |
+| `PID` | `int` | Current process identifier. |
+| `Prefork` | `bool` | Whether prefork is enabled. |
+| `ChildPIDs` | `[]int` | Child process identifiers when preforking. |
+| `ColorScheme` | [`Colors`](https://github.com/gofiber/fiber/blob/main/color.go) | Active color scheme for the startup message. |
+
 
 ## OnFork
 

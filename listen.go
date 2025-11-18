@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -233,10 +234,10 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	listenData := app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, &cfg, nil)
 
 	// run hooks
-	app.runOnListenHooks(&listenData)
+	app.runOnListenHooks(listenData)
 
 	// Print startup message & routes
-	app.printMessages(&cfg, &listenData)
+	app.printMessages(&cfg, listenData)
 
 	// Serve
 	if cfg.BeforeServeFunc != nil {
@@ -267,10 +268,10 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	listenData := app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, &cfg, nil)
 
 	// run hooks
-	app.runOnListenHooks(&listenData)
+	app.runOnListenHooks(listenData)
 
 	// Print startup message & routes
-	app.printMessages(&cfg, &listenData)
+	app.printMessages(&cfg, listenData)
 
 	// Serve
 	if cfg.BeforeServeFunc != nil {
@@ -336,7 +337,7 @@ func (app *App) printMessages(cfg *ListenConfig, listenData *ListenData) {
 }
 
 // prepareListenData creates a ListenData instance populated with the application metadata.
-func (app *App) prepareListenData(addr string, isTLS bool, cfg *ListenConfig, childPIDs []int) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS is fine here
+func (app *App) prepareListenData(addr string, isTLS bool, cfg *ListenConfig, childPIDs []int) *ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS is fine here
 	host, port := parseAddr(addr)
 	if host == "" {
 		if cfg.ListenerNetwork == NetworkTCP6 {
@@ -353,10 +354,10 @@ func (app *App) prepareListenData(addr string, isTLS bool, cfg *ListenConfig, ch
 
 	var clonedPIDs []int
 	if len(childPIDs) > 0 {
-		clonedPIDs = append(clonedPIDs, childPIDs...)
+		clonedPIDs = slices.Clone(childPIDs)
 	}
 
-	return ListenData{
+	return &ListenData{
 		Host:         host,
 		Port:         port,
 		Version:      Version,

@@ -533,7 +533,7 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, &cfg, childPIDs)
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(&listenData, &cfg)
+		app.startupMessage(listenData, &cfg)
 	})
 	colors := Colors{}
 	require.Contains(t, startupMessage, fmt.Sprintf("https://127.0.0.1:%d", port))
@@ -566,7 +566,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), true, &cfg, childPIDs)
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(&listenData, &cfg)
+		app.startupMessage(listenData, &cfg)
 	})
 	require.Equal(t, "Test App v3.0.0", app.Config().AppName)
 	require.Contains(t, startupMessage, app.Config().AppName)
@@ -591,7 +591,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testi
 	listenData := app.prepareListenData(fmt.Sprintf(":%d", port), false, &cfg, nil)
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(&listenData, &cfg)
+		app.startupMessage(listenData, &cfg)
 	})
 	require.Contains(t, startupMessage, "Serveur de vérification des données")
 }
@@ -614,7 +614,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 	listenData := app.prepareListenData(fmt.Sprintf("server.com:%d", port), true, &cfg, nil)
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(&listenData, &cfg)
+		app.startupMessage(listenData, &cfg)
 	})
 	colors := Colors{}
 	require.Contains(t, startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset))
@@ -640,14 +640,14 @@ func Test_StartupMessageCustomization(t *testing.T) {
 	})
 
 	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) error {
-		post = data
+	app.Hooks().OnPostStartupMessage(func(data *PostStartupMessageData) error {
+		post = *data
 
 		return nil
 	})
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(&listenData, &cfg)
+		app.startupMessage(listenData, &cfg)
 	})
 
 	require.Contains(t, startupMessage, "FOOBER v98")
@@ -667,14 +667,14 @@ func Test_StartupMessageDisabledPostHook(t *testing.T) {
 	listenData := app.prepareListenData(":7070", false, &cfg, nil)
 
 	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) error {
-		post = data
+	app.Hooks().OnPostStartupMessage(func(data *PostStartupMessageData) error {
+		post = *data
 
 		return nil
 	})
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(&listenData, &cfg)
+		app.startupMessage(listenData, &cfg)
 	})
 
 	require.Empty(t, startupMessage)
@@ -695,14 +695,14 @@ func Test_StartupMessagePreventedByHook(t *testing.T) {
 	})
 
 	var post PostStartupMessageData
-	app.Hooks().OnPostStartupMessage(func(data PostStartupMessageData) error {
-		post = data
+	app.Hooks().OnPostStartupMessage(func(data *PostStartupMessageData) error {
+		post = *data
 
 		return nil
 	})
 
 	startupMessage := captureOutput(func() {
-		app.startupMessage(&listenData, &cfg)
+		app.startupMessage(listenData, &cfg)
 	})
 
 	require.Empty(t, startupMessage)

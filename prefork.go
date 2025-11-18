@@ -140,9 +140,9 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 	// Hooks have to be run here as different as non-prefork mode due to they should run as child or master
 	listenData := app.prepareListenData(addr, tlsConfig != nil, cfg, childPIDs)
 
-	app.runOnListenHooks(&listenData)
+	app.runOnListenHooks(listenData)
 
-	app.startupMessage(&listenData, cfg)
+	app.startupMessage(listenData, cfg)
 
 	if cfg.EnablePrintRoutes {
 		app.printRoutesMessage()

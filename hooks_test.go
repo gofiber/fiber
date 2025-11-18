@@ -315,7 +315,7 @@ func Test_ListenDataMetadata(t *testing.T) {
 		return nil
 	})
 
-	app.runOnListenHooks(&listenData)
+	app.runOnListenHooks(listenData)
 
 	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
 		require.Equal(t, globalIpv4Addr, data.Host)
@@ -338,7 +338,7 @@ func Test_ListenDataMetadata(t *testing.T) {
 		return nil
 	})
 
-	pre := newPreStartupMessageData(&listenData)
+	pre := newPreStartupMessageData(listenData)
 	require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
 
 	require.Equal(t, "value", pre.entries[0].value)
@@ -670,7 +670,7 @@ func Test_executeOnPostStartupMessageHooks_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Hooks().OnPostStartupMessage(func(_ PostStartupMessageData) error {
+	app.Hooks().OnPostStartupMessage(func(_ *PostStartupMessageData) error {
 		return errors.New("post startup message error")
 	})
 
