@@ -18,6 +18,8 @@ var (
 	ErrNotRunning = errors.New("shutdown: server is not running")
 	// ErrHandlerExited is returned by App.Test if a handler panics or calls runtime.Goexit().
 	ErrHandlerExited = errors.New("runtime.Goexit() called in handler or server panic")
+	// ErrNoViewEngineConfigured indicates that a helper requiring a view engine was invoked without one configured.
+	ErrNoViewEngineConfigured = errors.New("fiber: no view engine configured")
 )
 
 // Fiber redirection errors

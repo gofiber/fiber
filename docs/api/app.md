@@ -25,6 +25,25 @@ Returns `b` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `b
 func (app *App) GetBytes(b []byte) []byte
 ```
 
+### ReloadViews
+
+Reloads the configured view engine on demand by calling its `Load` method. Use this helper in development workflows (e.g., file watchers or debug-only routes) to pick up template changes without restarting the server. Returns an error if no view engine is configured or reloading fails.
+
+```go title="Signature"
+func (app *App) ReloadViews() error
+```
+
+```go title="Example"
+app := fiber.New(fiber.Config{Views: engine})
+
+app.Get("/dev/reload", func(c fiber.Ctx) error {
+    if err := app.ReloadViews(); err != nil {
+        return err
+    }
+    return c.SendString("Templates reloaded")
+})
+```
+
 ## Routing
 
 import RoutingHandler from './../partials/routing/handler.md';
