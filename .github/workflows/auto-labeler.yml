@@ -3,8 +3,6 @@ name: Auto labeler
 on:
   issues:
     types: [opened, edited, milestoned]
-  pull_request:
-    types: [opened, edited, reopened, synchronize]
   pull_request_target:
     types: [opened, edited, reopened, synchronize]
 
@@ -27,3 +25,4 @@ jobs:
           # Use a PAT so that applying labels can trigger downstream workflows
           # (GITHUB_TOKEN updates do not emit additional workflow events).
           github-token: ${{ secrets.ISSUE_PR_TOKEN }}
+
