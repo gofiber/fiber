@@ -33,7 +33,7 @@
 
 ## ⚠️ **Attention**
 
-Fiber v3 is currently in beta and under active development. While it offers exciting new features, please note that it may not be stable for production use. We recommend sticking to the latest stable release (v2.x) for mission-critical applications. If you choose to use v3, be prepared for potential bugs and breaking changes. Always check the official documentation and release notes for updates and proceed with caution. Happy coding! 🚀
+Fiber v3 is currently in rc and under active development. While it offers exciting new features, please note that it may not be stable for production use. We recommend sticking to the latest stable release (v2.x) for mission-critical applications. If you choose to use v3, be prepared for potential bugs and breaking changes. Always check the official documentation and release notes for updates and proceed with caution. Happy coding! 🚀
 
 ---
 
