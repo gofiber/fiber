@@ -224,6 +224,8 @@ We have made several changes to the Fiber hooks, including:
 - Added new shutdown hooks to provide better control over the shutdown process:
   - `OnPreShutdown` - Executes before the server starts shutting down
   - `OnPostShutdown` - Executes after the server has shut down, receives any shutdown error
+  - `OnPreStartupMessage` - Executes before the startup message is printed, allowing customization of the banner and info entries
+  - `OnPostStartupMessage` - Executes after the startup message is printed, allowing post-startup logic
 - Deprecated `OnShutdown` in favor of the new pre/post shutdown hooks
 - Improved shutdown hook execution order and reliability
 - Added mutex protection for hook registration and execution
@@ -294,6 +296,43 @@ app.Listen("app.sock", fiber.ListenerConfig{
     ListenerNetwork:    fiber.NetworkUnix,
     UnixSocketFileMode: 0770,
 })
+```
+
+- Expanded `ListenData` with versioning, handler, process, and PID metadata, plus dedicated startup message hooks for customization. Check out the [Hooks](./api/hooks#startup-message-customization) documentation for further details.
+
+```go title="Customize the startup message"
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
+        sm.BannerHeader = "FOOBER " + sm.Version + "\n-------"
+
+        // Optional: you can also remove old entries
+        // sm.ResetEntries()
+
+        sm.AddInfo("git-hash", "Git hash", os.Getenv("GIT_HASH"))
+        sm.AddInfo("prefork", "Prefork", fmt.Sprintf("%v", sm.Prefork), 15)
+        return nil
+    })
+
+    app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) error {
+        if !sm.Disabled && !sm.IsChild && !sm.Prevented {
+            fmt.Println("startup completed")
+        }
+        return nil
+    })
+
+    app.Listen(":5000")
+}
 ```
 
 ## 🗺 Router

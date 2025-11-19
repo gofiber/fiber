@@ -87,7 +87,10 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	os.Stdout = w
 
 	cfg := listenConfigDefault()
-	New().startupProcess().startupMessage(":0", false, "", &cfg)
+	app := New()
+	app.startupProcess()
+	listenData := app.prepareListenData(":0", false, &cfg, nil)
+	app.startupMessage(listenData, &cfg)
 
 	require.NoError(t, w.Close())
 
