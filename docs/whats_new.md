@@ -1841,7 +1841,7 @@ In this example, a new route is defined, and `RebuildTree()` is called to ensure
 
 Note: Use this method with caution. It is **not** thread-safe and can be very performance-intensive. Therefore, it should be used sparingly and primarily in development mode. It should not be invoke concurrently.
 
-## RemoveRoute
+#### RemoveRoute
 
 - **RemoveRoute**: Removes route by path
 
