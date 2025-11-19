@@ -188,7 +188,14 @@ func getGroupPath(prefix, path string) string {
 // Returns true if the offer matches the specification, false otherwise.
 func acceptsOffer(spec, offer string, _ headerParams) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
-		return true
+		prefix := spec[:len(spec)-1]
+		if len(prefix) == 0 {
+			return true
+		}
+		if len(offer) < len(prefix) {
+			return false
+		}
+		return utils.EqualFold(prefix, offer[:len(prefix)])
 	}
 
 	return utils.EqualFold(spec, offer)
