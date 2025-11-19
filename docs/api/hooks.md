@@ -253,7 +253,6 @@ func main() {
 | `ChildPIDs` | `[]int` | Child process identifiers when preforking. |
 | `ColorScheme` | [`Colors`](https://github.com/gofiber/fiber/blob/main/color.go) | Active color scheme for the startup message. |
 
-
 ## OnFork
 
 Runs in the child process after a fork.
