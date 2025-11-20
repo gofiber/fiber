@@ -961,10 +961,10 @@ func (r *DefaultRes) Status(status int) Ctx {
 }
 
 func statusDisallowsBody(status int) bool {
-  // As per RFC 9110, 1xx (Informational) responses cannot have a body.
-  if status >= 100 && status < 200 {
-    return true
-  }
+	// As per RFC 9110, 1xx (Informational) responses cannot have a body.
+	if status >= 100 && status < 200 {
+		return true
+	}
 
 	switch status {
 	case StatusNoContent, StatusResetContent, StatusNotModified:
