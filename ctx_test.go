@@ -6202,6 +6202,52 @@ func Test_Ctx_SendStatus(t *testing.T) {
 	require.Equal(t, "Unsupported Media Type", string(c.Response().Body()))
 }
 
+func Test_Ctx_SendStatusNoBodyResponses(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name   string
+		status int
+	}{
+		{
+			name:   "Informational",
+			status: StatusContinue,
+		},
+		{
+			name:   "Processing",
+			status: StatusProcessing,
+		},
+		{
+			name:   "NoContent",
+			status: StatusNoContent,
+		},
+		{
+			name:   "ResetContent",
+			status: StatusResetContent,
+		},
+		{
+			name:   "NotModified",
+			status: StatusNotModified,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+			c.Response().SetBodyString("preset body")
+
+			err := c.SendStatus(testCase.status)
+			require.NoError(t, err)
+			require.Empty(t, c.Response().Body())
+			require.Equal(t, 0, c.Response().Header.ContentLength())
+		})
+	}
+}
+
 // go test -run Test_Ctx_SendString
 func Test_Ctx_SendString(t *testing.T) {
 	t.Parallel()

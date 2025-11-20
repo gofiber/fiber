@@ -905,6 +905,11 @@ func sendFileContentLength(path string, cfg SendFile) (int64, error) {
 func (r *DefaultRes) SendStatus(status int) error {
 	r.Status(status)
 
+	if statusDisallowsBody(status) {
+		r.c.fasthttp.Response.ResetBody()
+		return nil
+	}
+
 	// Only set status body when there is no response body
 	if len(r.c.fasthttp.Response.Body()) == 0 {
 		return r.SendString(utils.StatusMessage(status))
@@ -953,6 +958,19 @@ func (r *DefaultRes) setCanonical(key, val string) {
 func (r *DefaultRes) Status(status int) Ctx {
 	r.c.fasthttp.Response.SetStatusCode(status)
 	return r.c
+}
+
+func statusDisallowsBody(status int) bool {
+	if status < StatusOK {
+		return true
+	}
+
+	switch status {
+	case StatusNoContent, StatusResetContent, StatusNotModified:
+		return true
+	default:
+		return false
+	}
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
