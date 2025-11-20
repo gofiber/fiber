@@ -5,6 +5,8 @@ on:
     types: [opened, edited, milestoned]
   pull_request_target:
     types: [opened, edited, reopened, synchronize]
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
 
 permissions:
   # Setting up permissions in the workflow to limit the scope of what it can do. Optional!
@@ -25,4 +27,3 @@ jobs:
           # Use a PAT so that applying labels can trigger downstream workflows
           # (GITHUB_TOKEN updates do not emit additional workflow events).
           github-token: ${{ secrets.ISSUE_PR_TOKEN }}
-
