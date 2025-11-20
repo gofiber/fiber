@@ -6213,10 +6213,18 @@ func Test_Ctx_SendStatusNoBodyResponses(t *testing.T) {
 			name:   "Informational",
 			status: StatusContinue,
 		},
-		{
-			name:   "Processing",
-			status: StatusProcessing,
-		},
+    {
+      name:   "Processing",
+      status: StatusProcessing,
+    },
+    {
+      name:   "SwitchingProtocols",
+      status: StatusSwitchingProtocols,
+    },
+    {
+      name:   "EarlyHints",
+      status: StatusEarlyHints,
+    },
 		{
 			name:   "NoContent",
 			status: StatusNoContent,
