@@ -189,9 +189,6 @@ func getGroupPath(prefix, path string) string {
 func acceptsOffer(spec, offer string, _ headerParams) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		prefix := spec[:len(spec)-1]
-		if prefix == "" {
-			return true
-		}
 		if len(offer) < len(prefix) {
 			return false
 		}
