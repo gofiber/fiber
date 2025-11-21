@@ -210,7 +210,6 @@ app.Get("/job", func(c fiber.Ctx) error {
 })
 ```
 
-
 ### Context Cancellation with Goroutines in Fiber
 
 When starting asynchronous work inside a handler, Fiber does not cancel the base `fiber.Ctx` automatically.
@@ -226,6 +225,7 @@ a result from the goroutine, or
 the `context timeout` (which returns a 504 Gateway Timeout)
 
 This pattern ensures that long-running operations (database queries, external API calls, background tasks) do not continue running after the request has ended.
+
 
 ```go 
 func Handler(c *fiber.Ctx) error {
@@ -251,6 +251,7 @@ func Handler(c *fiber.Ctx) error {
     }
 }
 ```
+
 This approach provides safe cancellation semantics for goroutine-based work while allowing you to integrate Fiber handlers with context-aware APIs.
 
 
