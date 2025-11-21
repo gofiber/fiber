@@ -6,7 +6,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/memory"
-	"github.com/gofiber/fiber/v2/utils"
 )
 
 // go:generate msgp
@@ -55,8 +54,8 @@ func (m *storageManager) setRaw(key string, raw []byte, exp time.Duration) {
 	if m.storage != nil {
 		_ = m.storage.Set(key, raw, exp) //nolint:errcheck // TODO: Do not ignore error
 	} else {
-		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
-		m.memory.Set(utils.CopyString(key), raw, exp)
+		// Storage layer handles defensive copying of keys and values
+		m.memory.Set(key, raw, exp)
 	}
 }
 
