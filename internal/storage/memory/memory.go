@@ -43,7 +43,8 @@ func New(config ...Config) *Storage {
 	return store
 }
 
-// Get value by key
+// Get returns the stored value for key, ignoring missing or expired entries by
+// returning nil.
 func (s *Storage) Get(key string) ([]byte, error) {
 	if len(key) <= 0 {
 		return nil, nil
@@ -55,10 +56,12 @@ func (s *Storage) Get(key string) ([]byte, error) {
 		return nil, nil
 	}
 
-	return v.data, nil
+	// Return a copy to prevent callers from mutating stored data
+	return utils.CopyBytes(v.data), nil
 }
 
-// Set key with value
+// Set saves val under key and schedules it to expire after exp. A zero exp keeps
+// the entry indefinitely.
 func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	// Ain't Nobody Got Time For That
 	if len(key) <= 0 || len(val) <= 0 {
@@ -70,14 +73,18 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 		expire = uint32(exp.Seconds()) + atomic.LoadUint32(&utils.Timestamp)
 	}
 
-	e := entry{val, expire}
+	// Copy both key and value to avoid unsafe reuse from sync.Pool
+	keyCopy := utils.CopyString(key)
+	valCopy := utils.CopyBytes(val)
+
+	e := entry{data: valCopy, expiry: expire}
 	s.mux.Lock()
-	s.db[key] = e
+	s.db[keyCopy] = e
 	s.mux.Unlock()
 	return nil
 }
 
-// Delete key by key
+// Delete removes the value stored for key.
 func (s *Storage) Delete(key string) error {
 	// Ain't Nobody Got Time For That
 	if len(key) <= 0 {
@@ -89,7 +96,7 @@ func (s *Storage) Delete(key string) error {
 	return nil
 }
 
-// Reset all keys
+// Reset clears all keys and values from the storage map.
 func (s *Storage) Reset() error {
 	ndb := make(map[string]entry)
 	s.mux.Lock()
@@ -98,7 +105,8 @@ func (s *Storage) Reset() error {
 	return nil
 }
 
-// Close the memory storage
+// Close stops the background garbage collector and releases resources
+// associated with the storage instance.
 func (s *Storage) Close() error {
 	s.done <- struct{}{}
 	return nil
@@ -123,6 +131,12 @@ func (s *Storage) gc() {
 				}
 			}
 			s.mux.RUnlock()
+
+			if len(expired) == 0 {
+				// avoid locking if nothing to delete
+				continue
+			}
+
 			s.mux.Lock()
 			// Double-checked locking.
 			// We might have replaced the item in the meantime.
@@ -137,7 +151,8 @@ func (s *Storage) gc() {
 	}
 }
 
-// Return database client
+// Conn returns the underlying storage map. The map must not be modified by
+// callers.
 func (s *Storage) Conn() map[string]entry {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
