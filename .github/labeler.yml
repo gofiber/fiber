@@ -2,16 +2,16 @@ version: v1
 labels:
   - label: '📒 Documentation'
     matcher:
-      title: '/(docs|doc:|\[doc\]|README|typos|comment|documentation)/i'
+      title: '([Dd]ocs|[Dd]oc:|\[[Dd]oc\]|README|[Tt]ypos|[Cc]omment|[Dd]ocumentation)'
   - label: '☢️ Bug'
     matcher:
-      title: '/(fix|bug)/i'
+      title: '([Ff]ix|[Bb]ug)'
   - label: '🧹 Updates'
     matcher:
-      title: '/(improve|chore|improvements|missing|update|refactor|deprecated|remove|unused|test)/i'
+      title: '([Ii]mprove|[Cc]hore|[Ii]mprovements|[Mm]issing|[Uu]pdate|[Rr]efactor|[Dd]eprecated|[Rr]emove|[Uu]nused|[Tt]est)'
   - label: '🤖 Dependencies'
     matcher:
-      title: '/(bump|dependencies)/i'
+      title: '([Bb]ump|[Dd]ependencies)'
       files: 
         - 'go.mod'
         - 'go.sum'
@@ -19,18 +19,16 @@ labels:
         - '**/go.sum'
   - label: '✏️ Feature'
     matcher:
-      title: '/(feature|feat|create|implement|add|support)/i'
+      title: '([Ff]eature|[Ff]eat|[Cc]reate|[Ii]mplement|[Aa]dd|[Ss]upport)'
   - label: '📝 Proposal'
     matcher:
-      title: '/(proposal|idea|request|suggest)/i'
+      title: '([Pp]roposal|[Ii]dea|[Rr]equest|[Ss]uggest)'
   - label: '🤔 Question'
     matcher:
-      title: '/(question|how)/i'
+      title: '([Qq]uestion|[Hh]ow)'
   - label: 'v3'
     matcher:
       baseBranch: 'main'
   - label: 'v2'
     matcher:
       baseBranch: 'v2'
-
-
