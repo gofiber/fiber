@@ -59,6 +59,18 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.Equal(t, "utf-8", getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer, "utf-8"))
 	require.Equal(t, "iso-8859-1", getOffer([]byte("utf-8;q=0, iso-8859-1;q=0.5"), acceptsOffer, "utf-8", "iso-8859-1"))
 
+	// Accept-Charset wildcard coverage
+	require.Equal(t, "utf-8", getOffer([]byte("utf-*"), acceptsOffer, "utf-8"))
+	require.Equal(t, "UTF-16", getOffer([]byte("utf-*"), acceptsOffer, "UTF-16", "iso-8859-1"))
+	require.Empty(t, getOffer([]byte("utf-*"), acceptsOffer, "iso-8859-1"))
+	require.Empty(t, getOffer([]byte("utf-*"), acceptsOffer, "utf"))
+	require.Empty(t, getOffer([]byte("utf-*"), acceptsOffer, "x-utf-8"))
+
+	// Complex wildcard negotiation
+	require.Equal(t, "utf-16le", getOffer([]byte("utf-8;q=0.4, utf-*;q=0.8, iso-8859-1;q=0.6"), acceptsOffer, "iso-8859-1", "utf-16le"))
+	require.Equal(t, "iso-8859-1", getOffer([]byte("utf-*;q=0.9, iso-8859-1;q=1"), acceptsOffer, "x-utf-16", "iso-8859-1"))
+	require.Empty(t, getOffer([]byte("utf-*;q=0.5, iso-8859-1;q=0.4"), acceptsOffer, "ascii", "us-ascii"))
+
 	require.Equal(t, "deflate", getOffer([]byte("gzip, deflate"), acceptsOffer, "deflate"))
 	require.Empty(t, getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
 
