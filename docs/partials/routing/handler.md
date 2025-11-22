@@ -20,6 +20,9 @@ func (app *App) Trace(path string, handler any, handlers ...any) Router
 func (app *App) Patch(path string, handler any, handlers ...any) Router
 
 // Add allows you to specify multiple methods at once
+// The handlers are executed in the following order:
+//  1. The first provided handler (non-variadic)
+//  2. The handlers in the variadic parameter, in the order they are provided.
 func (app *App) Add(methods []string, path string, handler any, handlers ...any) Router
 
 // All will register the route on all HTTP methods
