@@ -86,9 +86,16 @@ func (c *core) execFunc() (*Response, error) {
 		defer fasthttp.ReleaseRequest(reqv)
 
 		respv := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(respv)
+		defer func() {
+			if respv != nil {
+				fasthttp.ReleaseResponse(respv)
+			}
+		}()
 
 		c.req.RawRequest.CopyTo(reqv)
+		if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
+			reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
+		}
 
 		var err error
 		if cfg != nil {
@@ -115,7 +122,12 @@ func (c *core) execFunc() (*Response, error) {
 		resp := AcquireResponse()
 		resp.setClient(c.client)
 		resp.setRequest(c.req)
-		respv.CopyTo(resp.RawResponse)
+		originalRaw := resp.RawResponse
+		resp.RawResponse = respv
+		respv = nil
+		if originalRaw != nil {
+			fasthttp.ReleaseResponse(originalRaw)
+		}
 		respChan <- resp
 	}()
 

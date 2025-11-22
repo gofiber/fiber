@@ -3843,7 +3843,7 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, TestConfig{Timeout: 5 * time.Second})
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -3885,7 +3885,7 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, TestConfig{Timeout: 5 * time.Second})
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
