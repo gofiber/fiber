@@ -324,7 +324,7 @@ func main() {
         return nil
     })
 
-    app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) error {
+    app.Hooks().OnPostStartupMessage(func(sm *fiber.PostStartupMessageData) error {
         if !sm.Disabled && !sm.IsChild && !sm.Prevented {
             fmt.Println("startup completed")
         }
