@@ -1,9 +1,9 @@
 name: golangci-lint
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - master
       - main
     paths-ignore:
       - "**/*.md"
@@ -24,18 +24,17 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           # NOTE: Keep this in sync with the version from go.mod
           go-version: "1.25.x"
           cache: false
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@0a35821d5c230e903fcfe077583637dea1b27b47 # v9.0.0
         with:
           # NOTE: Keep this in sync with the version from .golangci.yml
-          version: v1.64.7
-          # NOTE(ldez): temporary workaround
+          version: v2.5.0
           install-mode: goinstall

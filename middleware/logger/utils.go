@@ -5,10 +5,13 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	fiberlog "github.com/gofiber/fiber/v3/log"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
-func methodColor(method string, colors fiber.Colors) string {
+func methodColor(method string, colors *fiber.Colors) string {
+	if colors == nil {
+		return ""
+	}
 	switch method {
 	case fiber.MethodGet:
 		return colors.Cyan
@@ -29,7 +32,10 @@ func methodColor(method string, colors fiber.Colors) string {
 	}
 }
 
-func statusColor(code int, colors fiber.Colors) string {
+func statusColor(code int, colors *fiber.Colors) string {
+	if colors == nil {
+		return ""
+	}
 	switch {
 	case code >= fiber.StatusOK && code < fiber.StatusMultipleChoices:
 		return colors.Green
@@ -47,6 +53,7 @@ type customLoggerWriter[T any] struct {
 	level          fiberlog.Level
 }
 
+// Write implements io.Writer and forwards the payload to the configured logger.
 func (cl *customLoggerWriter[T]) Write(p []byte) (int, error) {
 	switch cl.level {
 	case fiberlog.LevelTrace:

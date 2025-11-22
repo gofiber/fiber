@@ -1,7 +1,7 @@
 package binder
 
 import (
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // JSONBinding is the JSON binder for JSON request body.

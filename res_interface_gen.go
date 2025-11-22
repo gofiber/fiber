@@ -99,7 +99,7 @@ type Res interface {
 	// Variables are read by the Render method and may be overwritten.
 	ViewBind(vars Map) error
 	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route, params Map) (string, error)
+	getLocationFromRoute(route *Route, params Map) (string, error)
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
@@ -144,7 +144,7 @@ type Res interface {
 	// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 	Type(extension string, charset ...string) Ctx
 	// Vary adds the given header field to the Vary response header.
-	// This will append the header, if not already listed, otherwise leaves it listed in the current location.
+	// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
 	Vary(fields ...string)
 	// Write appends p into response body.
 	Write(p []byte) (int, error)

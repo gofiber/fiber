@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 📝 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -474,6 +475,9 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 		},
 	}, c.Redirect().OldInputs())
 
+	setCookie := string(c.Response().Header.Peek(HeaderSetCookie))
+	require.True(t, strings.HasPrefix(setCookie, FlashCookieName+"=; expires="))
+
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=test")
 
 	c.Redirect().parseAndClearFlashMessages()
@@ -533,7 +537,7 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	})
 
 	// Step 1: Make the initial request to the source route
-	req := httptest.NewRequest(MethodGet, "/source", nil)
+	req := httptest.NewRequest(MethodGet, "/source", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusSeeOther, resp.StatusCode)
@@ -551,11 +555,13 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	require.NotNil(t, flashCookie, "Flash cookie should be set")
 
 	// Step 2: Make the second request to the target route with the cookie
-	req = httptest.NewRequest(MethodGet, "/target", nil)
+	req = httptest.NewRequest(MethodGet, "/target", http.NoBody)
 	req.Header.Set("Cookie", flashCookie.Name+"="+flashCookie.Value)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
+
+	require.True(t, strings.HasPrefix(resp.Header.Get(HeaderSetCookie), FlashCookieName+"=; expires="))
 
 	// Parse the JSON response and verify flash messages
 	body, err := io.ReadAll(resp.Body)
@@ -597,7 +603,7 @@ func Test_Redirect_FlashMessagesWithSpecialChars(t *testing.T) {
 	})
 
 	// Step 1: Make the initial request
-	req := httptest.NewRequest(MethodGet, "/special-source", nil)
+	req := httptest.NewRequest(MethodGet, "/special-source", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusSeeOther, resp.StatusCode)
@@ -614,11 +620,13 @@ func Test_Redirect_FlashMessagesWithSpecialChars(t *testing.T) {
 	require.NotNil(t, flashCookie, "Flash cookie should be set")
 
 	// Step 2: Make the second request with the cookie
-	req = httptest.NewRequest(MethodGet, "/special-target", nil)
+	req = httptest.NewRequest(MethodGet, "/special-target", http.NoBody)
 	req.Header.Set("Cookie", flashCookie.Name+"="+flashCookie.Value)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
+
+	require.True(t, strings.HasPrefix(resp.Header.Get(HeaderSetCookie), FlashCookieName+"=; expires="))
 
 	// Parse and verify the response
 	body, err := io.ReadAll(resp.Body)

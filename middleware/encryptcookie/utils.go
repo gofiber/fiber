@@ -11,7 +11,10 @@ import (
 	"slices"
 )
 
-var ErrInvalidKeyLength = errors.New("encryption key must be 16, 24, or 32 bytes")
+var (
+	ErrInvalidKeyLength      = errors.New("encryption key must be 16, 24, or 32 bytes")
+	ErrInvalidEncryptedValue = errors.New("encrypted value is not valid")
+)
 
 // decodeKey decodes the provided base64-encoded key and validates its length.
 // It returns the decoded key bytes or an error when invalid.
@@ -36,7 +39,7 @@ func validateKey(key string) error {
 }
 
 // EncryptCookie Encrypts a cookie value with specific encryption key
-func EncryptCookie(value, key string) (string, error) {
+func EncryptCookie(name, value, key string) (string, error) {
 	keyDecoded, err := decodeKey(key)
 	if err != nil {
 		return "", err
@@ -57,12 +60,12 @@ func EncryptCookie(value, key string) (string, error) {
 		return "", fmt.Errorf("failed to read nonce: %w", err)
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, []byte(value), nil)
+	ciphertext := gcm.Seal(nonce, nonce, []byte(value), []byte(name))
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
 // DecryptCookie Decrypts a cookie value with specific encryption key
-func DecryptCookie(value, key string) (string, error) {
+func DecryptCookie(name, value, key string) (string, error) {
 	keyDecoded, err := decodeKey(key)
 	if err != nil {
 		return "", err
@@ -86,11 +89,11 @@ func DecryptCookie(value, key string) (string, error) {
 	nonceSize := gcm.NonceSize()
 
 	if len(enc) < nonceSize {
-		return "", errors.New("encrypted value is not valid")
+		return "", ErrInvalidEncryptedValue
 	}
 
 	nonce, ciphertext := enc[:nonceSize], enc[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, []byte(name))
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt ciphertext: %w", err)
 	}

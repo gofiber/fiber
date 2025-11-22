@@ -7,14 +7,21 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/bytebufferpool"
 )
 
 // default logger for fiber
-func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
+func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
+	if cfg == nil {
+		cfg = &Config{
+			Stream:       os.Stdout,
+			Format:       DefaultFormat,
+			enableColors: true,
+		}
+	}
 	// Check if Skip is defined and call it.
 	// Now, if Skip(c) == true, we SKIP logging:
 	if cfg.Skip != nil && cfg.Skip(c) {
@@ -35,16 +42,15 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			if data.ChainErr != nil {
 				formatErr = colors.Red + " | " + data.ChainErr.Error() + colors.Reset
 			}
-			buf.WriteString(
-				fmt.Sprintf("%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
-					data.Timestamp.Load().(string), //nolint:forcetypeassert,errcheck // Timestamp is always a string
-					statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
-					data.Stop.Sub(data.Start),
-					c.IP(),
-					methodColor(c.Method(), colors), c.Method(), colors.Reset,
-					c.Path(),
-					formatErr,
-				),
+			fmt.Fprintf(buf,
+				"%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
+				data.Timestamp.Load().(string), //nolint:forcetypeassert,errcheck // Timestamp is always a string
+				statusColor(c.Response().StatusCode(), &colors), c.Response().StatusCode(), colors.Reset,
+				data.Stop.Sub(data.Start),
+				c.IP(),
+				methodColor(c.Method(), &colors), c.Method(), colors.Reset,
+				c.Path(),
+				formatErr,
 			)
 		} else {
 			if data.ChainErr != nil {
@@ -144,9 +150,13 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 }
 
 // run something before returning the handler
-func beforeHandlerFunc(cfg Config) {
+func beforeHandlerFunc(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
 	// If colors are enabled, check terminal compatibility
-	if cfg.enableColors {
+	if cfg.enableColors && cfg.Stream == os.Stdout {
 		cfg.Stream = colorable.NewColorableStdout()
 		if !cfg.ForceColors && (os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd()))) {
 			cfg.Stream = colorable.NewNonColorable(os.Stdout)

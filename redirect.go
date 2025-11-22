@@ -1,16 +1,15 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 📝 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
 import (
 	"encoding/hex"
-	"errors"
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 )
 
@@ -77,7 +76,7 @@ type RedirectConfig struct {
 func AcquireRedirect() *Redirect {
 	redirect, ok := redirectPool.Get().(*Redirect)
 	if !ok {
-		panic(errors.New("failed to type-assert to *Redirect"))
+		panic(errRedirectTypeAssertion)
 	}
 
 	return redirect
@@ -85,7 +84,7 @@ func AcquireRedirect() *Redirect {
 
 // ReleaseRedirect returns c acquired via Redirect to redirect pool.
 //
-// It is forbidden accessing req and/or its' members after returning
+// It is forbidden accessing req and/or its members after returning
 // it to redirect pool.
 func ReleaseRedirect(r *Redirect) {
 	r.release()
@@ -251,7 +250,8 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 	}
 
 	// Get location from route name
-	location, err := r.c.getLocationFromRoute(r.c.App().GetRoute(name), cfg.Params)
+	route := r.c.App().GetRoute(name)
+	location, err := r.c.getLocationFromRoute(&route, cfg.Params)
 	if err != nil {
 		return err
 	}
@@ -306,6 +306,8 @@ func (r *Redirect) parseAndClearFlashMessages() {
 	if err != nil {
 		return
 	}
+
+	r.c.Response().Header.DelClientCookie(FlashCookieName)
 }
 
 // processFlashMessages is a helper function to process flash messages and old input data

@@ -14,21 +14,21 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 	zb0001, err = dc.ReadMapHeader()
 	if err != nil {
 		err = msgp.WrapError(err)
-		return err
+		return
 	}
 	for zb0001 > 0 {
 		zb0001--
 		field, err = dc.ReadMapKeyPtr()
 		if err != nil {
 			err = msgp.WrapError(err)
-			return err
+			return
 		}
 		switch msgp.UnsafeString(field) {
 		default:
 			err = dc.Skip()
 			if err != nil {
 				err = msgp.WrapError(err)
-				return err
+				return
 			}
 		}
 	}
@@ -41,7 +41,7 @@ func (z item) EncodeMsg(en *msgp.Writer) (err error) {
 	_ = z
 	err = en.Append(0x80)
 	if err != nil {
-		return err
+		return
 	}
 	return
 }
@@ -52,7 +52,7 @@ func (z item) MarshalMsg(b []byte) (o []byte, err error) {
 	// map header, size 0
 	_ = z
 	o = append(o, 0x80)
-	return o, err
+	return
 }
 
 // UnmarshalMsg implements msgp.Unmarshaler
@@ -63,115 +63,30 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 	zb0001, bts, err = msgp.ReadMapHeaderBytes(bts)
 	if err != nil {
 		err = msgp.WrapError(err)
-		return o, err
+		return
 	}
 	for zb0001 > 0 {
 		zb0001--
 		field, bts, err = msgp.ReadMapKeyZC(bts)
 		if err != nil {
 			err = msgp.WrapError(err)
-			return o, err
+			return
 		}
 		switch msgp.UnsafeString(field) {
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
 				err = msgp.WrapError(err)
-				return o, err
+				return
 			}
 		}
 	}
 	o = bts
-	return o, err
+	return
 }
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
 func (z item) Msgsize() (s int) {
 	s = 1
-	return s
-}
-
-// DecodeMsg implements msgp.Decodable
-func (z *storageManager) DecodeMsg(dc *msgp.Reader) (err error) {
-	var field []byte
-	_ = field
-	var zb0001 uint32
-	zb0001, err = dc.ReadMapHeader()
-	if err != nil {
-		err = msgp.WrapError(err)
-		return err
-	}
-	for zb0001 > 0 {
-		zb0001--
-		field, err = dc.ReadMapKeyPtr()
-		if err != nil {
-			err = msgp.WrapError(err)
-			return err
-		}
-		switch msgp.UnsafeString(field) {
-		default:
-			err = dc.Skip()
-			if err != nil {
-				err = msgp.WrapError(err)
-				return err
-			}
-		}
-	}
 	return
-}
-
-// EncodeMsg implements msgp.Encodable
-func (z storageManager) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 0
-	_ = z
-	err = en.Append(0x80)
-	if err != nil {
-		return err
-	}
-	return
-}
-
-// MarshalMsg implements msgp.Marshaler
-func (z storageManager) MarshalMsg(b []byte) (o []byte, err error) {
-	o = msgp.Require(b, z.Msgsize())
-	// map header, size 0
-	_ = z
-	o = append(o, 0x80)
-	return o, err
-}
-
-// UnmarshalMsg implements msgp.Unmarshaler
-func (z *storageManager) UnmarshalMsg(bts []byte) (o []byte, err error) {
-	var field []byte
-	_ = field
-	var zb0001 uint32
-	zb0001, bts, err = msgp.ReadMapHeaderBytes(bts)
-	if err != nil {
-		err = msgp.WrapError(err)
-		return o, err
-	}
-	for zb0001 > 0 {
-		zb0001--
-		field, bts, err = msgp.ReadMapKeyZC(bts)
-		if err != nil {
-			err = msgp.WrapError(err)
-			return o, err
-		}
-		switch msgp.UnsafeString(field) {
-		default:
-			bts, err = msgp.Skip(bts)
-			if err != nil {
-				err = msgp.WrapError(err)
-				return o, err
-			}
-		}
-	}
-	o = bts
-	return o, err
-}
-
-// Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
-func (z storageManager) Msgsize() (s int) {
-	s = 1
-	return s
 }

@@ -1,18 +1,25 @@
 package limiter
 
 import (
+	"fmt"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
+// SlidingWindow implements the sliding-window rate limiting strategy.
 type SlidingWindow struct{}
 
 // New creates a new sliding window middleware handler
-func (SlidingWindow) New(cfg Config) fiber.Handler {
+func (SlidingWindow) New(cfg *Config) fiber.Handler {
+	if cfg == nil {
+		defaultCfg := configDefault()
+		cfg = &defaultCfg
+	}
+
 	var (
 		// Limiter variables
 		mux        = &sync.RWMutex{}
@@ -20,7 +27,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 	)
 
 	// Create manager to simplify storage operations ( see manager.go )
-	manager := newManager(cfg.Storage)
+	manager := newManager(cfg.Storage, !cfg.DisableValueRedaction)
 
 	// Update timestamp every second
 	utils.StartTimeStampUpdater()
@@ -41,8 +48,14 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// Lock entry
 		mux.Lock()
 
+		reqCtx := c.Context()
+
 		// Get entry from pool and release when finished
-		e := manager.get(c, key)
+		e, err := manager.get(reqCtx, key)
+		if err != nil {
+			mux.Unlock()
+			return err
+		}
 
 		// Get timestamp
 		ts := uint64(utils.Timestamp())
@@ -59,7 +72,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 			e.currHits = 0
 
 			// Check how much into the current window it currently is and sets the
-			// expiry based on that, otherwise this would only reset on
+			// expiry based on that; otherwise, this would only reset on
 			// the next request and not show the correct expiry.
 			elapsed := ts - e.exp
 			if elapsed >= expiration {
@@ -94,9 +107,12 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// duration + expiration = end of next window.
 		// Because we don't want to garbage collect in the middle of a window
 		// we add the expiration to the duration.
-		// Otherwise after the end of "sample window", attackers could launch
+		// Otherwise, after the end of "sample window", attackers could launch
 		// a new request with the full window length.
-		manager.set(c, key, e, time.Duration(resetInSec+expiration)*time.Second) //nolint:gosec // Not a concern
+		if setErr := manager.set(reqCtx, key, e, time.Duration(resetInSec+expiration)*time.Second); setErr != nil { //nolint:gosec // Not a concern
+			mux.Unlock()
+			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+		}
 
 		// Unlock entry
 		mux.Unlock()
@@ -115,7 +131,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 
 		// Continue stack for reaching c.Response().StatusCode()
 		// Store err for returning
-		err := c.Next()
+		err = c.Next()
 
 		// Get the effective status code from either the error or response
 		statusCode := getEffectiveStatusCode(c, err)
@@ -125,10 +141,18 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest) {
 			// Lock entry
 			mux.Lock()
-			e = manager.get(c, key)
+			entry, getErr := manager.get(reqCtx, key)
+			if getErr != nil {
+				mux.Unlock()
+				return getErr
+			}
+			e = entry
 			e.currHits--
 			remaining++
-			manager.set(c, key, e, cfg.Expiration)
+			if setErr := manager.set(reqCtx, key, e, cfg.Expiration); setErr != nil {
+				mux.Unlock()
+				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+			}
 			// Unlock entry
 			mux.Unlock()
 		}

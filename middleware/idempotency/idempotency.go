@@ -6,7 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // Inspired by https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header-02
@@ -21,17 +21,34 @@ const (
 	localsKeyWasPutToCache
 )
 
+const redactedKey = "[redacted]"
+
+// IsFromCache reports whether the middleware served the response from the
+// cache for the current request.
 func IsFromCache(c fiber.Ctx) bool {
 	return c.Locals(localsKeyIsFromCache) != nil
 }
 
+// WasPutToCache reports whether the middleware stored the response produced by
+// the current request in the cache.
 func WasPutToCache(c fiber.Ctx) bool {
 	return c.Locals(localsKeyWasPutToCache) != nil
 }
 
+// New creates idempotency middleware that caches responses keyed by the
+// configured idempotency header.
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
+
+	redactKeys := !cfg.DisableValueRedaction
+
+	maskKey := func(key string) string {
+		if redactKeys {
+			return redactedKey
+		}
+		return key
+	}
 
 	keepResponseHeadersMap := make(map[string]struct{}, len(cfg.KeepResponseHeaders))
 	for _, h := range cfg.KeepResponseHeaders {
@@ -98,7 +115,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		defer func() {
 			if err := cfg.Lock.Unlock(key); err != nil {
-				log.Errorf("[IDEMPOTENCY] failed to unlock key %q: %v", key, err)
+				log.Errorf("[IDEMPOTENCY] failed to unlock key %q: %v", maskKey(key), err)
 			}
 		}()
 
@@ -118,8 +135,7 @@ func New(config ...Config) fiber.Handler {
 		// Construct response
 		res := &response{
 			StatusCode: c.Response().StatusCode(),
-
-			Body: utils.CopyBytes(c.Response().Body()),
+			Body:       c.Response().Body(),
 		}
 		{
 			headers := make(map[string][]string)

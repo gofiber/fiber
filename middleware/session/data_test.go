@@ -140,14 +140,14 @@ func TestData_Len(t *testing.T) {
 func TestData_Get(t *testing.T) {
 	t.Parallel()
 
-	// Test case: Non-existent key
-	t.Run("Non-existent key", func(t *testing.T) {
+	// Test case: Nonexistent key
+	t.Run("Nonexistent key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
 		defer d.Reset()
-		value := d.Get("non-existent-key")
-		require.Nil(t, value, "Expected nil for non-existent key")
+		value := d.Get("nonexistent-key")
+		require.Nil(t, value, "Expected nil for nonexistent key")
 	})
 
 	// Test case: Existing key
@@ -192,13 +192,13 @@ func TestData_Delete(t *testing.T) {
 		require.Nil(t, value, "Expected nil for deleted key")
 	})
 
-	// Test case: Delete non-existent key
-	t.Run("Delete non-existent key", func(t *testing.T) {
+	// Test case: Delete nonexistent key
+	t.Run("Delete nonexistent key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
 		defer d.Reset()
-		d.Delete("non-existent-key")
+		d.Delete("nonexistent-key")
 		// No assertion needed, just ensure no panic or error
 	})
 }

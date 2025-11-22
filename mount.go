@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // Put fields related to mounting.
@@ -95,7 +95,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 	return grp
 }
 
-// The MountPath property contains one or more path patterns on which a sub-app was mounted.
+// MountPath returns the route pattern where the current app instance was mounted as a sub-application.
 func (app *App) MountPath() string {
 	return app.mountFields.mountPath
 }

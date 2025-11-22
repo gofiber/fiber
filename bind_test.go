@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"mime/multipart"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
@@ -72,7 +73,7 @@ func Test_Bind_Query(t *testing.T) {
 	require.NoError(t, c.Bind().Query(q))
 	require.Len(t, q.Hobby, 2)
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=soccer&hobby=basketball,football")
 	q = new(Query)
 	require.NoError(t, c.Bind().Query(q))
 	require.Len(t, q.Hobby, 3)
@@ -148,12 +149,12 @@ func Test_Bind_Query_Map(t *testing.T) {
 	require.NoError(t, c.Bind().Query(&q))
 	require.Len(t, q["hobby"], 2)
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=soccer&hobby=basketball,football")
 	q = make(map[string][]string)
 	require.NoError(t, c.Bind().Query(&q))
 	require.Len(t, q["hobby"], 3)
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=soccer")
 	qq := make(map[string]string)
 	require.NoError(t, c.Bind().Query(&qq))
 	require.Equal(t, "1", qq["id"])
@@ -217,7 +218,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 		Body:  "Existing Body",
 	}
 	require.NoError(t, c.Bind().Query(q))
-	require.Equal(t, "", q.Title)
+	require.Empty(t, q.Title)
 }
 
 // go test -run Test_Bind_Query_Schema -v
@@ -474,7 +475,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 		Body:  "Existing Body",
 	}
 	require.NoError(t, c.Bind().Header(r))
-	require.Equal(t, "", r.Title)
+	require.Empty(t, r.Title)
 }
 
 // go test -run Test_Bind_Header_Schema -v
@@ -1138,7 +1139,7 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 		require.NoError(t, c.Bind().Body(&d))
 		date := fmt.Sprintf("%v", d.Date)
 		require.Equal(t, "{0 63743587200 <nil>}", date)
-		require.Equal(t, "", d.Title)
+		require.Empty(t, d.Title)
 		require.Equal(t, "New Body", d.Body)
 	}
 
@@ -1405,9 +1406,9 @@ func Test_Bind_URI(t *testing.T) {
 		require.Equal(t, uint(222), d.RoleID)
 		return nil
 	})
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", http.NoBody))
 	require.NoError(t, err)
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", http.NoBody))
 	require.NoError(t, err)
 }
 
@@ -1426,9 +1427,9 @@ func Test_Bind_URI_Map(t *testing.T) {
 		require.Equal(t, uint(222), d["roleId"])
 		return nil
 	})
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", http.NoBody))
 	require.NoError(t, err)
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", http.NoBody))
 	require.NoError(t, err)
 }
 
@@ -1657,7 +1658,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 		Body:  "Existing Body",
 	}
 	require.NoError(t, c.Bind().Cookie(r))
-	require.Equal(t, "", r.Title)
+	require.Empty(t, r.Title)
 }
 
 // go test -run Test_Bind_Cookie_Schema -v

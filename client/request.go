@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -47,14 +47,14 @@ type Request struct {
 	ctx context.Context //nolint:containedctx // Context is needed to be stored in the request.
 
 	body    any
-	header  *Header
-	params  *QueryParam
-	cookies *Cookie
-	path    *PathParam
+	header  Header
+	params  QueryParam
+	cookies Cookie
+	path    PathParam
 
 	client *Client
 
-	formData *FormData
+	formData FormData
 
 	RawRequest *fasthttp.Request
 	url        string
@@ -68,6 +68,8 @@ type Request struct {
 	maxRedirects int
 
 	bodyType bodyType
+
+	disablePathNormalizing bool
 }
 
 // Method returns the HTTP method set in the Request.
@@ -134,15 +136,18 @@ type pair struct {
 	v []string
 }
 
+// Len implements sort.Interface and reports the number of tracked keys.
 func (p *pair) Len() int {
 	return len(p.k)
 }
 
+// Swap implements sort.Interface and swaps the entries at the provided indices.
 func (p *pair) Swap(i, j int) {
 	p.k[i], p.k[j] = p.k[j], p.k[i]
 	p.v[i], p.v[j] = p.v[j], p.v[i]
 }
 
+// Less implements sort.Interface and orders entries lexicographically by key.
 func (p *pair) Less(i, j int) bool {
 	return p.k[i] < p.k[j]
 }
@@ -155,17 +160,21 @@ func (p *pair) Less(i, j int) bool {
 func (r *Request) Headers() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		peekKeys := r.header.PeekKeys()
-		keys := make([][]byte, len(peekKeys))
-		copy(keys, peekKeys) // It is necessary to have immutable byte slice.
+
+		// Copy keys to immutable strings to decouple from fasthttp's internal buffers.
+		keys := make([]string, len(peekKeys))
+		for i, key := range peekKeys {
+			keys[i] = utils.UnsafeString(key)
+		}
 
 		for _, key := range keys {
-			vals := r.header.PeekAll(utils.UnsafeString(key))
+			vals := r.header.PeekAll(key)
 			valsStr := make([]string, len(vals))
 			for i, v := range vals {
 				valsStr[i] = utils.UnsafeString(v)
 			}
 
-			if !yield(utils.UnsafeString(key), valsStr) {
+			if !yield(key, valsStr) {
 				return
 			}
 		}
@@ -199,8 +208,8 @@ func (r *Request) SetHeaders(h map[string]string) *Request {
 
 // Param returns all values associated with the given query parameter.
 func (r *Request) Param(key string) []string {
-	var res []string
 	tmp := r.params.PeekMulti(key)
+	res := make([]string, 0, len(tmp))
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
@@ -215,9 +224,13 @@ func (r *Request) Param(key string) []string {
 func (r *Request) Params() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		vals := r.params.Len()
+		if vals == 0 {
+			return
+		}
+		prealloc := make([]string, 2*vals)
 		p := pair{
-			k: make([]string, 0, vals),
-			v: make([]string, 0, vals),
+			k: prealloc[:0:vals],
+			v: prealloc[vals : vals : 2*vals],
 		}
 		for k, v := range r.params.All() {
 			p.k = append(p.k, utils.UnsafeString(k))
@@ -311,7 +324,7 @@ func (r *Request) SetReferer(referer string) *Request {
 // Cookie returns the value of a named cookie.
 // If the cookie does not exist, an empty string is returned.
 func (r *Request) Cookie(key string) string {
-	if val, ok := (*r.cookies)[key]; ok {
+	if val, ok := r.cookies[key]; ok {
 		return val
 	}
 	return ""
@@ -350,7 +363,7 @@ func (r *Request) DelCookies(key ...string) *Request {
 // PathParam returns the value of a named path parameter.
 // If the parameter does not exist, an empty string is returned.
 func (r *Request) PathParam(key string) string {
-	if val, ok := (*r.path)[key]; ok {
+	if val, ok := r.path[key]; ok {
 		return val
 	}
 	return ""
@@ -434,8 +447,8 @@ func (r *Request) resetBody(t bodyType) {
 
 // FormData returns all values associated with a form field.
 func (r *Request) FormData(key string) []string {
-	var res []string
 	tmp := r.formData.PeekMulti(key)
+	res := make([]string, 0, len(tmp))
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
@@ -450,9 +463,13 @@ func (r *Request) FormData(key string) []string {
 func (r *Request) AllFormData() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		vals := r.formData.Len()
+		if vals == 0 {
+			return
+		}
+		prealloc := make([]string, 2*vals)
 		p := pair{
-			k: make([]string, 0, vals),
-			v: make([]string, 0, vals),
+			k: prealloc[:0:vals],
+			v: prealloc[vals : vals : 2*vals],
 		}
 		for k, v := range r.formData.All() {
 			p.k = append(p.k, utils.UnsafeString(k))
@@ -518,12 +535,15 @@ func (r *Request) DelFormData(key ...string) *Request {
 // If no name was provided during addition, it attempts to match by the file's base name.
 func (r *Request) File(name string) *File {
 	for _, v := range r.files {
-		if v.name == "" {
+		switch v.name {
+		case "":
 			if filepath.Base(v.path) == name {
 				return v
 			}
-		} else if v.name == name {
+		case name:
 			return v
+		default:
+			continue
 		}
 	}
 	return nil
@@ -587,6 +607,18 @@ func (r *Request) MaxRedirects() int {
 // SetMaxRedirects sets the maximum number of redirects, overriding any previously set value.
 func (r *Request) SetMaxRedirects(count int) *Request {
 	r.maxRedirects = count
+	return r
+}
+
+// DisablePathNormalizing reports whether path normalizing is disabled for the Request.
+func (r *Request) DisablePathNormalizing() bool {
+	return r.disablePathNormalizing
+}
+
+// SetDisablePathNormalizing configures the Request to disable or enable path normalizing.
+func (r *Request) SetDisablePathNormalizing(disable bool) *Request {
+	r.disablePathNormalizing = disable
+	r.RawRequest.URI().DisablePathNormalizing = disable
 	return r
 }
 
@@ -656,6 +688,7 @@ func (r *Request) Reset() {
 	r.maxRedirects = 0
 	r.bodyType = noBody
 	r.boundary = boundary
+	r.disablePathNormalizing = false
 
 	for len(r.files) != 0 {
 		t := r.files[0]
@@ -680,7 +713,7 @@ type Header struct {
 func (h *Header) PeekMultiple(key string) []string {
 	var res []string
 	byteKey := []byte(key)
-	for k, value := range h.RequestHeader.All() {
+	for k, value := range h.All() {
 		if bytes.EqualFold(k, byteKey) {
 			res = append(res, utils.UnsafeString(value))
 		}
@@ -886,7 +919,7 @@ func (f *FormData) SetWithStruct(v any) {
 // DelData deletes multiple form fields.
 func (f *FormData) DelData(key ...string) {
 	for _, v := range key {
-		f.Args.Del(v)
+		f.Del(v)
 	}
 }
 
@@ -934,12 +967,12 @@ func (f *File) Reset() {
 var requestPool = &sync.Pool{
 	New: func() any {
 		return &Request{
-			header:     &Header{RequestHeader: &fasthttp.RequestHeader{}},
-			params:     &QueryParam{Args: fasthttp.AcquireArgs()},
-			cookies:    &Cookie{},
-			path:       &PathParam{},
-			boundary:   "FiberFormBoundary",
-			formData:   &FormData{Args: fasthttp.AcquireArgs()},
+			header:     Header{RequestHeader: &fasthttp.RequestHeader{}},
+			params:     QueryParam{Args: fasthttp.AcquireArgs()},
+			cookies:    Cookie{},
+			path:       PathParam{},
+			boundary:   boundary,
+			formData:   FormData{Args: fasthttp.AcquireArgs()},
 			files:      make([]*File, 0),
 			RawRequest: fasthttp.AcquireRequest(),
 		}
@@ -950,7 +983,7 @@ var requestPool = &sync.Pool{
 func AcquireRequest() *Request {
 	req, ok := requestPool.Get().(*Request)
 	if !ok {
-		panic(errors.New("failed to type-assert to *Request"))
+		panic(errRequestTypeAssertion)
 	}
 	return req
 }
@@ -1001,7 +1034,7 @@ func AcquireFile(setter ...SetFileFunc) *File {
 	if fv != nil {
 		f, ok := fv.(*File)
 		if !ok {
-			panic(errors.New("failed to type-assert to *File"))
+			panic(errFileTypeAssertion)
 		}
 		for _, v := range setter {
 			v(f)

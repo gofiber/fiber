@@ -2,6 +2,7 @@ package csrf
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,10 +12,168 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/middleware/session"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+type failingCSRFStorage struct {
+	data map[string][]byte
+	errs map[string]error
+}
+
+func newFailingCSRFStorage() *failingCSRFStorage {
+	return &failingCSRFStorage{
+		data: make(map[string][]byte),
+		errs: make(map[string]error),
+	}
+}
+
+func (s *failingCSRFStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
+	if err, ok := s.errs["get|"+key]; ok && err != nil {
+		return nil, err
+	}
+	if val, ok := s.data[key]; ok {
+		return append([]byte(nil), val...), nil
+	}
+	return nil, nil
+}
+
+func (s *failingCSRFStorage) Get(key string) ([]byte, error) {
+	return s.GetWithContext(context.Background(), key)
+}
+
+func (s *failingCSRFStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
+	if err, ok := s.errs["set|"+key]; ok && err != nil {
+		return err
+	}
+	s.data[key] = append([]byte(nil), val...)
+	return nil
+}
+
+func (s *failingCSRFStorage) Set(key string, val []byte, exp time.Duration) error {
+	return s.SetWithContext(context.Background(), key, val, exp)
+}
+
+func (s *failingCSRFStorage) DeleteWithContext(_ context.Context, key string) error {
+	if err, ok := s.errs["del|"+key]; ok && err != nil {
+		return err
+	}
+	delete(s.data, key)
+	return nil
+}
+
+func (s *failingCSRFStorage) Delete(key string) error {
+	return s.DeleteWithContext(context.Background(), key)
+}
+
+func (s *failingCSRFStorage) ResetWithContext(context.Context) error {
+	s.data = make(map[string][]byte)
+	s.errs = make(map[string]error)
+	return nil
+}
+
+func (s *failingCSRFStorage) Reset() error {
+	return s.ResetWithContext(context.Background())
+}
+
+func (*failingCSRFStorage) Close() error { return nil }
+
+func TestCSRFStorageGetError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCSRFStorage()
+	storage.errs["get|token"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Storage: storage,
+		ErrorHandler: func(_ fiber.Ctx, err error) error {
+			captured = err
+			return fiber.ErrTeapot
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "csrf: failed to fetch token from storage")
+}
+
+func TestCSRFStorageSetError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCSRFStorage()
+	storage.errs["set|token"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Storage: storage,
+		KeyGenerator: func() string {
+			return "token"
+		},
+		ErrorHandler: func(_ fiber.Ctx, err error) error {
+			captured = err
+			return fiber.ErrTeapot
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "csrf: failed to store token in storage")
+}
+
+func TestCSRFStorageDeleteError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCSRFStorage()
+	storage.data["token"] = []byte("value")
+	storage.errs["del|token"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Storage:        storage,
+		SingleUseToken: true,
+		ErrorHandler: func(_ fiber.Ctx, err error) error {
+			captured = err
+			return fiber.ErrTeapot
+		},
+	}))
+
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+	req.Header.Set(HeaderName, "token")
+	req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "csrf: failed to delete token from storage")
+}
 
 func Test_CSRF(t *testing.T) {
 	t.Parallel()
@@ -447,7 +606,7 @@ func Test_CSRF_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -1328,7 +1487,7 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -1343,13 +1502,13 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 
 	t.Log("token", token)
 
-	getReq := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	getReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	getReq.Header.Set(HeaderName, token)
 	resp, err = app.Test(getReq)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	getReq = httptest.NewRequest(fiber.MethodGet, "/test", nil)
+	getReq = httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
 	getReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	getReq.Header.Set(fiber.HeaderCacheControl, "no")
 	getReq.Header.Set(HeaderName, token)
@@ -1368,7 +1527,7 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	postReq := httptest.NewRequest(fiber.MethodPost, "/", nil)
+	postReq := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
 	postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	postReq.Header.Set(HeaderName, token)
 	postReq.AddCookie(&http.Cookie{
@@ -1516,7 +1675,7 @@ func Test_CSRF_TokenFromContext(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
@@ -1537,7 +1696,7 @@ func Test_CSRF_FromContextMethods(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
@@ -1556,7 +1715,7 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
@@ -1573,25 +1732,40 @@ func Test_deleteTokenFromStorage(t *testing.T) {
 
 	store := session.NewStore()
 	sm := newSessionManager(store)
-	stm := newStorageManager(nil)
+	stm := newStorageManager(nil, true)
 
 	sm.setRaw(ctx, token, dummy, time.Minute)
-	deleteTokenFromStorage(ctx, token, Config{Session: store}, sm, stm)
-	require.Nil(t, sm.getRaw(ctx, token, dummy))
+	cfg := Config{Session: store}
+	require.NoError(t, deleteTokenFromStorage(ctx, token, &cfg, sm, stm))
+	raw := sm.getRaw(ctx, token, dummy)
+	require.Nil(t, raw)
 
 	sm2 := newSessionManager(nil)
-	stm2 := newStorageManager(nil)
+	stm2 := newStorageManager(nil, true)
 
-	stm2.setRaw(context.Background(), token, dummy, time.Minute)
-	deleteTokenFromStorage(ctx, token, Config{}, sm2, stm2)
-	require.Nil(t, stm2.getRaw(context.Background(), token))
+	require.NoError(t, stm2.setRaw(context.Background(), token, dummy, time.Minute))
+	cfg = Config{}
+	require.NoError(t, deleteTokenFromStorage(ctx, token, &cfg, sm2, stm2))
+	raw, err := stm2.getRaw(context.Background(), token)
+	require.NoError(t, err)
+	require.Nil(t, raw)
+}
+
+func Test_storageManager_logKey(t *testing.T) {
+	t.Parallel()
+
+	redacted := newStorageManager(nil, true)
+	require.Equal(t, redactedKey, redacted.logKey("secret"))
+
+	plain := newStorageManager(nil, false)
+	require.Equal(t, "secret", plain.logKey("secret"))
 }
 
 func Test_CSRF_Chain_Extractor(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Chain extractor: try header first, fallback to form
+	// Chain extractor: try header first, fall back to form
 	chainExtractor := extractors.Chain(
 		extractors.FromHeader("X-Csrf-Token"),
 		extractors.FromForm("_csrf"),
@@ -1977,7 +2151,7 @@ func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 
 			app := fiber.New()
 			requestCtx := &fasthttp.RequestCtx{}
-			tc.setupCtx(requestCtx) // Setup the context properly
+			tc.setupCtx(requestCtx) // Set up the context properly
 
 			ctx := app.AcquireCtx(requestCtx)
 			defer app.ReleaseCtx(ctx)

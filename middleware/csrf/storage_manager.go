@@ -2,12 +2,12 @@ package csrf
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/memory"
-	utils "github.com/gofiber/utils/v2"
 )
 
 // msgp -file="storage_manager.go" -o="storage_manager_msgp.go" -tests=true -unexported
@@ -15,14 +15,18 @@ import (
 //go:generate msgp -o=storage_manager_msgp.go -tests=true -unexported
 type item struct{}
 
+const redactedKey = "[redacted]"
+
 //msgp:ignore manager
+//msgp:ignore storageManager
 type storageManager struct {
-	pool    sync.Pool       `msg:"-"` //nolint:revive // Ignore unexported type
-	memory  *memory.Storage `msg:"-"` //nolint:revive // Ignore unexported type
-	storage fiber.Storage   `msg:"-"` //nolint:revive // Ignore unexported type
+	pool       sync.Pool       `msg:"-"` //nolint:revive // Ignore unexported type
+	memory     *memory.Storage `msg:"-"` //nolint:revive // Ignore unexported type
+	storage    fiber.Storage   `msg:"-"` //nolint:revive // Ignore unexported type
+	redactKeys bool
 }
 
-func newStorageManager(storage fiber.Storage) *storageManager {
+func newStorageManager(storage fiber.Storage, redactKeys bool) *storageManager {
 	// Create new storage handler
 	storageManager := &storageManager{
 		pool: sync.Pool{
@@ -30,43 +34,68 @@ func newStorageManager(storage fiber.Storage) *storageManager {
 				return new(item)
 			},
 		},
+		redactKeys: redactKeys,
 	}
 	if storage != nil {
 		// Use provided storage if provided
 		storageManager.storage = storage
 	} else {
-		// Fallback too memory storage
+		// Fallback to memory storage
 		storageManager.memory = memory.New()
 	}
 	return storageManager
 }
 
 // get raw data from storage or memory
-func (m *storageManager) getRaw(ctx context.Context, key string) []byte {
-	var raw []byte
+func (m *storageManager) getRaw(ctx context.Context, key string) ([]byte, error) {
 	if m.storage != nil {
-		raw, _ = m.storage.GetWithContext(ctx, key) //nolint:errcheck // TODO: Do not ignore error
-	} else {
-		raw, _ = m.memory.Get(key).([]byte) //nolint:errcheck // TODO: Do not ignore error
+		raw, err := m.storage.GetWithContext(ctx, key)
+		if err != nil {
+			return nil, fmt.Errorf("csrf: failed to get value from storage: %w", err)
+		}
+		return raw, nil
 	}
-	return raw
+
+	if value := m.memory.Get(key); value != nil {
+		raw, ok := value.([]byte)
+		if !ok {
+			return nil, fmt.Errorf("csrf: unexpected value type %T in storage", value)
+		}
+		return raw, nil
+	}
+
+	return nil, nil
 }
 
 // set data to storage or memory
-func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) {
+func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) error {
 	if m.storage != nil {
-		_ = m.storage.SetWithContext(ctx, key, raw, exp) //nolint:errcheck // TODO: Do not ignore error
-	} else {
-		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
-		m.memory.Set(utils.CopyString(key), raw, exp)
+		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
+			return fmt.Errorf("csrf: failed to store key %q: %w", m.logKey(key), err)
+		}
+		return nil
 	}
+
+	m.memory.Set(key, raw, exp)
+	return nil
 }
 
 // delete data from storage or memory
-func (m *storageManager) delRaw(ctx context.Context, key string) {
+func (m *storageManager) delRaw(ctx context.Context, key string) error {
 	if m.storage != nil {
-		_ = m.storage.DeleteWithContext(ctx, key) //nolint:errcheck // TODO: Do not ignore error
-	} else {
-		m.memory.Delete(key)
+		if err := m.storage.DeleteWithContext(ctx, key); err != nil {
+			return fmt.Errorf("csrf: failed to delete key %q: %w", m.logKey(key), err)
+		}
+		return nil
 	}
+
+	m.memory.Delete(key)
+	return nil
+}
+
+func (m *storageManager) logKey(key string) string {
+	if m.redactKeys {
+		return redactedKey
+	}
+	return key
 }

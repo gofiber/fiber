@@ -30,10 +30,10 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v3"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
-// Source represents the type of source from which a value is extracted.
+// Source represents the type of source from which an API key is extracted.
 // This is informational metadata that helps developers understand the extractor behavior.
 type Source int
 
@@ -73,15 +73,28 @@ type Extractor struct {
 }
 
 // FromAuthHeader extracts a value from the Authorization header with an optional prefix.
-// This function implements RFC 9110 compliant Authorization header parsing.
+// This function implements RFC 9110 compliant Authorization header parsing with strict token68 validation.
 //
-// The function supports:
-//   - Case-insensitive auth scheme matching
-//   - Empty auth scheme for raw header extraction
+// RFC Compliance:
+//   - Follows RFC 9110 Section 11.6.2 for Authorization header format
+//   - Enforces 1*SP (one or more spaces) between auth-scheme and credentials
+//   - Implements RFC 7235 token68 character validation for extracted tokens
+//   - Case-insensitive auth scheme matching per HTTP standards
+//
+// Token68 Validation:
+//   - Only allows characters: A-Z, a-z, 0-9, -, ., _, ~, +, /, =
+//   - Rejects tokens containing spaces, tabs, or other whitespace
+//   - Validates proper padding: = only at end, no characters after padding starts
+//   - Prevents tokens starting with = (invalid padding)
+//
+// Security Features:
+//   - Strict validation prevents header injection attacks
+//   - Rejects malformed tokens that could bypass authentication
+//   - Consistent error handling for missing or invalid credentials
 //
 // Parameters:
 //   - authScheme: The auth scheme to strip from the header value (e.g., "Bearer", "Basic").
-//     If empty, the entire header value is returned without modification.
+//     If empty, the entire header value is returned without validation.
 //
 // Returns:
 //
@@ -90,12 +103,13 @@ type Extractor struct {
 //
 // Examples:
 //
-//	// Extract Bearer token
+//	// Extract Bearer token with validation
 //	extractor := FromAuthHeader("Bearer")
 //	// Input: "Bearer abc123" -> Output: "abc123"
-//	// Input: "Basic dXNlcjpwYXNz" -> Output: ErrNotFound
+//	// Input: "Bearer abc def" -> Output: ErrNotFound (space in token)
+//	// Input: "Basic dXNlcjpwYXNz" -> Output: ErrNotFound (wrong scheme)
 //
-//	// Extract raw header value
+//	// Extract raw header value (no validation)
 //	extractor := FromAuthHeader("")
 //	// Input: "CustomAuth token123" -> Output: "CustomAuth token123"
 func FromAuthHeader(authScheme string) Extractor {
@@ -107,45 +121,30 @@ func FromAuthHeader(authScheme string) Extractor {
 			}
 
 			// Check if the header starts with the specified auth scheme
-			if authScheme == "" {
-				if authHeader == "" {
+			if authScheme != "" {
+				schemeLen := len(authScheme)
+				if len(authHeader) <= schemeLen || !utils.EqualFold(authHeader[:schemeLen], authScheme) {
 					return "", ErrNotFound
 				}
-				return authHeader, nil
+				rest := authHeader[schemeLen:]
+				if rest == "" || rest[0] != ' ' {
+					return "", ErrNotFound
+				}
+
+				// Extract token after the required space
+				token := rest[1:]
+				if token == "" {
+					return "", ErrNotFound
+				}
+
+				if !isValidToken68(token) {
+					return "", ErrNotFound
+				}
+
+				return token, nil
 			}
 
-			// Early return if header is too short for scheme + space + token
-			if len(authHeader) < len(authScheme)+2 {
-				return "", ErrNotFound
-			}
-
-			// Check if header starts with auth scheme (case-insensitive)
-			if !utils.EqualFold(authHeader[:len(authScheme)], authScheme) {
-				return "", ErrNotFound
-			}
-
-			// While RFC 9110 technically specifies 1*SP, HTTP implementations are generally lenient with whitespace (SP/HTAB)
-			if authHeader[len(authScheme)] != ' ' && authHeader[len(authScheme)] != '\t' {
-				return "", ErrNotFound
-			}
-
-			// Get the part after the scheme and required space
-			rest := authHeader[len(authScheme)+1:]
-
-			// Skip any additional whitespace (SP/HTAB allowed per RFC 9110)
-			i := 0
-			for i < len(rest) && (rest[i] == ' ' || rest[i] == '\t') {
-				i++
-			}
-
-			// Must have some content after whitespace
-			if i == len(rest) {
-				return "", ErrNotFound
-			}
-
-			// Extract the token
-			token := rest[i:]
-			return token, nil
+			return authHeader, nil
 		},
 		Key:        fiber.HeaderAuthorization,
 		Source:     SourceAuthHeader,
@@ -501,4 +500,31 @@ func Chain(extractors ...Extractor) Extractor {
 		Key:    primaryKey,
 		Chain:  append([]Extractor(nil), extractors...), // Defensive copy for introspection
 	}
+}
+
+// isValidToken68 checks if a string is a valid token68 per RFC 7235/9110.
+func isValidToken68(token string) bool {
+	if token == "" {
+		return false
+	}
+	paddingStarted := false
+	for i, c := range []byte(token) {
+		switch {
+		case (c >= 'A' && c <= 'Z') ||
+			(c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') ||
+			c == '-' || c == '.' || c == '_' || c == '~' || c == '+' || c == '/':
+			if paddingStarted {
+				return false // No characters allowed after padding starts
+			}
+		case c == '=':
+			if i == 0 {
+				return false // Cannot start with padding
+			}
+			paddingStarted = true
+		default:
+			return false // Invalid character
+		}
+	}
+	return true
 }

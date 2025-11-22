@@ -4,9 +4,12 @@ package cache
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
@@ -16,10 +19,392 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/middleware/etag"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+type failingCacheStorage struct {
+	data map[string][]byte
+	errs map[string]error
+}
+
+func newFailingCacheStorage() *failingCacheStorage {
+	return &failingCacheStorage{
+		data: make(map[string][]byte),
+		errs: make(map[string]error),
+	}
+}
+
+func (s *failingCacheStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
+	if err, ok := s.errs["get|"+key]; ok && err != nil {
+		return nil, err
+	}
+	if val, ok := s.data[key]; ok {
+		return append([]byte(nil), val...), nil
+	}
+	return nil, nil
+}
+
+func (s *failingCacheStorage) Get(key string) ([]byte, error) {
+	return s.GetWithContext(context.Background(), key)
+}
+
+func (s *failingCacheStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
+	if err, ok := s.errs["set|"+key]; ok && err != nil {
+		return err
+	}
+	s.data[key] = append([]byte(nil), val...)
+	return nil
+}
+
+func (s *failingCacheStorage) Set(key string, val []byte, exp time.Duration) error {
+	return s.SetWithContext(context.Background(), key, val, exp)
+}
+
+func (s *failingCacheStorage) DeleteWithContext(_ context.Context, key string) error {
+	if err, ok := s.errs["del|"+key]; ok && err != nil {
+		return err
+	}
+	delete(s.data, key)
+	return nil
+}
+
+func (s *failingCacheStorage) Delete(key string) error {
+	return s.DeleteWithContext(context.Background(), key)
+}
+
+func (s *failingCacheStorage) ResetWithContext(context.Context) error {
+	s.data = make(map[string][]byte)
+	s.errs = make(map[string]error)
+	return nil
+}
+
+func (s *failingCacheStorage) Reset() error {
+	return s.ResetWithContext(context.Background())
+}
+
+func (*failingCacheStorage) Close() error { return nil }
+
+type contextRecord struct {
+	key      string
+	value    string
+	canceled bool
+}
+
+type contextRecorderStorage struct {
+	*failingCacheStorage
+	deletes []contextRecord
+	gets    []contextRecord
+	sets    []contextRecord
+}
+
+func newContextRecorderStorage() *contextRecorderStorage {
+	return &contextRecorderStorage{failingCacheStorage: newFailingCacheStorage()}
+}
+
+func contextRecordFrom(ctx context.Context, key string) contextRecord {
+	record := contextRecord{
+		key:      key,
+		canceled: errors.Is(ctx.Err(), context.Canceled),
+	}
+	if value, ok := ctx.Value(markerKey).(string); ok {
+		record.value = value
+	}
+	return record
+}
+
+func (s *contextRecorderStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	s.gets = append(s.gets, contextRecordFrom(ctx, key))
+	return s.failingCacheStorage.GetWithContext(ctx, key)
+}
+
+func (s *contextRecorderStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.sets = append(s.sets, contextRecordFrom(ctx, key))
+	return s.failingCacheStorage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s *contextRecorderStorage) DeleteWithContext(ctx context.Context, key string) error {
+	s.deletes = append(s.deletes, contextRecordFrom(ctx, key))
+	return s.failingCacheStorage.DeleteWithContext(ctx, key)
+}
+
+func (s *contextRecorderStorage) recordedGets() []contextRecord {
+	out := make([]contextRecord, len(s.gets))
+	copy(out, s.gets)
+	return out
+}
+
+func (s *contextRecorderStorage) recordedSets() []contextRecord {
+	out := make([]contextRecord, len(s.sets))
+	copy(out, s.sets)
+	return out
+}
+
+func (s *contextRecorderStorage) recordedDeletes() []contextRecord {
+	out := make([]contextRecord, len(s.deletes))
+	copy(out, s.deletes)
+	return out
+}
+
+func TestCacheStorageGetError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	storage.errs["get|/_GET"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Second}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "cache: failed to get key")
+}
+
+func TestCacheStorageSetError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	storage.errs["set|/_GET_body"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Second}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "cache: failed to store raw key")
+}
+
+func TestCacheStorageDeleteError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	storage.errs["del|/_GET"] = errors.New("boom")
+
+	// Use an obviously expired timestamp without relying on time-based conversions
+	expired := &item{exp: 1}
+	raw, err := expired.MarshalMsg(nil)
+	require.NoError(t, err)
+
+	storage.data["/_GET"] = raw
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Second}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "cache: failed to delete expired key")
+}
+
+type contextKey string
+
+const markerKey contextKey = "marker"
+
+func contextWithMarker(label string) context.Context {
+	return context.WithValue(context.Background(), markerKey, label)
+}
+
+func canceledContextWithMarker(label string) context.Context {
+	ctx, cancel := context.WithCancel(contextWithMarker(label))
+	cancel()
+	return ctx
+}
+
+func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
+	t.Parallel()
+
+	storage := newContextRecorderStorage()
+	app := fiber.New()
+
+	app.Use(func(c fiber.Ctx) error {
+		path := c.Path()
+		if path == "/first" {
+			c.SetContext(contextWithMarker("first"))
+		}
+		if path == "/second" {
+			c.SetContext(canceledContextWithMarker("evict"))
+		}
+		return c.Next()
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Minute, MaxBytes: 5}))
+
+	app.Get("/first", func(c fiber.Ctx) error {
+		return c.SendString("aaa")
+	})
+
+	app.Get("/second", func(c fiber.Ctx) error {
+		return c.SendString("bbbb")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/first", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/second", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	records := storage.recordedDeletes()
+	require.Len(t, records, 2)
+
+	var keys []string
+	for _, rec := range records {
+		keys = append(keys, rec.key)
+		require.Equal(t, "evict", rec.value)
+		require.True(t, rec.canceled)
+	}
+
+	require.ElementsMatch(t, []string{"/first_GET", "/first_GET_body"}, keys)
+}
+
+func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
+	t.Parallel()
+
+	storage := newContextRecorderStorage()
+	storage.errs["set|/_GET"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(func(c fiber.Ctx) error {
+		c.SetContext(canceledContextWithMarker("cleanup"))
+		return c.Next()
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Minute}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("payload")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "cache: failed to store key")
+
+	records := storage.recordedDeletes()
+	require.Len(t, records, 1)
+	require.Equal(t, "/_GET_body", records[0].key)
+	require.Equal(t, "cleanup", records[0].value)
+	require.True(t, records[0].canceled)
+}
+
+func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
+	t.Parallel()
+
+	storage := newContextRecorderStorage()
+	app := fiber.New()
+
+	app.Use(func(c fiber.Ctx) error {
+		ctxLabel := string(c.Request().Header.Peek("X-Context"))
+		if ctxLabel == "" {
+			return c.Next()
+		}
+
+		canceled := string(c.Request().Header.Peek("X-Cancel")) == "true"
+		if canceled {
+			c.SetContext(canceledContextWithMarker(ctxLabel))
+		} else {
+			c.SetContext(contextWithMarker(ctxLabel))
+		}
+		return c.Next()
+	})
+
+	app.Use(New(Config{Storage: storage, Expiration: time.Minute}))
+
+	app.Get("/cache", func(c fiber.Ctx) error {
+		return c.SendString("payload")
+	})
+
+	firstReq := httptest.NewRequest(fiber.MethodGet, "/cache", http.NoBody)
+	firstReq.Header.Set("X-Context", "store")
+	firstReq.Header.Set("X-Cancel", "true")
+
+	resp, err := app.Test(firstReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	secondReq := httptest.NewRequest(fiber.MethodGet, "/cache", http.NoBody)
+	secondReq.Header.Set("X-Context", "fetch")
+	secondReq.Header.Set("X-Cancel", "true")
+
+	resp, err = app.Test(secondReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	setRecords := storage.recordedSets()
+	require.Len(t, setRecords, 2)
+	for _, rec := range setRecords {
+		require.Contains(t, []string{"/cache_GET", "/cache_GET_body"}, rec.key)
+		require.Equal(t, "store", rec.value)
+		require.True(t, rec.canceled)
+	}
+
+	getRecords := storage.recordedGets()
+	require.NotEmpty(t, getRecords)
+
+	var fetchEntry, fetchBody bool
+	for _, rec := range getRecords {
+		if rec.value != "fetch" {
+			continue
+		}
+
+		if rec.key == "/cache_GET" {
+			require.True(t, rec.canceled)
+			fetchEntry = true
+		}
+		if rec.key == "/cache_GET_body" {
+			require.True(t, rec.canceled)
+			fetchBody = true
+		}
+	}
+
+	require.True(t, fetchEntry, "expected cached entry retrieval to observe request context")
+	require.True(t, fetchBody, "expected cached body retrieval to observe request context")
+}
 
 func Test_Cache_CacheControl(t *testing.T) {
 	t.Parallel()
@@ -32,10 +417,10 @@ func Test_Cache_CacheControl(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "public, max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
 }
@@ -54,10 +439,10 @@ func Test_Cache_CacheControl_Disabled(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl))
 }
@@ -72,7 +457,7 @@ func Test_Cache_Expired(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -80,7 +465,7 @@ func Test_Cache_Expired(t *testing.T) {
 	// Sleep until the cache is expired
 	time.Sleep(3 * time.Second)
 
-	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
 	require.NoError(t, err)
@@ -90,7 +475,7 @@ func Test_Cache_Expired(t *testing.T) {
 	}
 
 	// Next response should be also cached
-	respCachedNextRound, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	respCachedNextRound, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	bodyCachedNextRound, err := io.ReadAll(respCachedNextRound.Body)
 	require.NoError(t, err)
@@ -112,11 +497,11 @@ func Test_Cache(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 
-	cachedReq := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	cachedReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	cachedResp, err := app.Test(cachedReq)
 	require.NoError(t, err)
 
@@ -140,7 +525,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	})
 
 	// Request id = 1
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
@@ -150,7 +535,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	// Response cached, entry id = 1
 
 	// Request id = 2 without Cache-Control: no-cache
-	cachedReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	cachedReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	cachedResp, err := app.Test(cachedReq)
 	require.NoError(t, err)
 	cachedBody, err := io.ReadAll(cachedResp.Body)
@@ -160,7 +545,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	// Response not cached, returns cached response, entry id = 1
 
 	// Request id = 2 with Cache-Control: no-cache
-	noCacheReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	noCacheReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	noCacheReq.Header.Set(fiber.HeaderCacheControl, noCache)
 	noCacheResp, err := app.Test(noCacheReq)
 	require.NoError(t, err)
@@ -172,7 +557,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 
 	/* Check Test_Cache_WithETagAndNoCacheRequestDirective */
 	// Request id = 2 with Cache-Control: no-cache again
-	noCacheReq1 := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	noCacheReq1 := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	noCacheReq1.Header.Set(fiber.HeaderCacheControl, noCache)
 	noCacheResp1, err := app.Test(noCacheReq1)
 	require.NoError(t, err)
@@ -183,7 +568,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	// Response cached, returns updated response, entry = 2
 
 	// Request id = 3 with Cache-Control: NO-CACHE
-	noCacheReqUpper := httptest.NewRequest(fiber.MethodGet, "/?id=3", nil)
+	noCacheReqUpper := httptest.NewRequest(fiber.MethodGet, "/?id=3", http.NoBody)
 	noCacheReqUpper.Header.Set(fiber.HeaderCacheControl, "NO-CACHE")
 	noCacheRespUpper, err := app.Test(noCacheReqUpper)
 	require.NoError(t, err)
@@ -194,7 +579,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	// Response cached, returns updated response, entry = 3
 
 	// Request id = 4 with Cache-Control: my-no-cache
-	invalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", nil)
+	invalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", http.NoBody)
 	invalidReq.Header.Set(fiber.HeaderCacheControl, "my-no-cache")
 	invalidResp, err := app.Test(invalidReq)
 	require.NoError(t, err)
@@ -205,7 +590,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	// Response served from cache, existing entry = 3
 
 	// Request id = 4 again without Cache-Control: no-cache
-	cachedInvalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", nil)
+	cachedInvalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", http.NoBody)
 	cachedInvalidResp, err := app.Test(cachedInvalidReq)
 	require.NoError(t, err)
 	cachedInvalidBody, err := io.ReadAll(cachedInvalidResp.Body)
@@ -215,7 +600,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	// Response cached, returns cached response, entry id = 3
 
 	// Request id = 1 without Cache-Control: no-cache
-	cachedReq1 := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	cachedReq1 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	cachedResp1, err := app.Test(cachedReq1)
 	require.NoError(t, err)
 	cachedBody1, err := io.ReadAll(cachedResp1.Body)
@@ -240,7 +625,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	})
 
 	// Request id = 1
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
@@ -251,7 +636,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	etagToken := resp.Header.Get("Etag")
 
 	// Request id = 2 with ETag but without Cache-Control: no-cache
-	cachedReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	cachedReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	cachedReq.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
 	cachedResp, err := app.Test(cachedReq)
 	require.NoError(t, err)
@@ -260,7 +645,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	// Response not cached, returns cached response, entry id = 1, status not modified
 
 	// Request id = 2 with ETag and Cache-Control: no-cache
-	noCacheReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	noCacheReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	noCacheReq.Header.Set(fiber.HeaderCacheControl, noCache)
 	noCacheReq.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
 	noCacheResp, err := app.Test(noCacheReq)
@@ -273,7 +658,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	etagToken = noCacheResp.Header.Get("Etag")
 
 	// Request id = 3 with ETag and Cache-Control: NO-CACHE
-	noCacheReqUpper := httptest.NewRequest(fiber.MethodGet, "/?id=3", nil)
+	noCacheReqUpper := httptest.NewRequest(fiber.MethodGet, "/?id=3", http.NoBody)
 	noCacheReqUpper.Header.Set(fiber.HeaderCacheControl, "NO-CACHE")
 	noCacheReqUpper.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
 	noCacheRespUpper, err := app.Test(noCacheReqUpper)
@@ -283,7 +668,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	// Response cached, returns updated response, entry id = 3
 
 	// Request id = 2 with ETag and Cache-Control: no-cache again
-	noCacheReq1 := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	noCacheReq1 := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	noCacheReq1.Header.Set(fiber.HeaderCacheControl, noCache)
 	noCacheReq1.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
 	noCacheResp1, err := app.Test(noCacheReq1)
@@ -293,7 +678,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	// Response cached, returns updated response, entry id = 2, status not modified
 
 	// Request id = 1 without ETag and Cache-Control: no-cache
-	cachedReq1 := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	cachedReq1 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	cachedResp1, err := app.Test(cachedReq1)
 	require.NoError(t, err)
 	require.Equal(t, cacheHit, cachedResp1.Header.Get("X-Cache"))
@@ -313,7 +698,7 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	})
 
 	// Request id = 2
-	noStoreReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	noStoreReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	noStoreReq.Header.Set(fiber.HeaderCacheControl, noStore)
 	noStoreResp, err := app.Test(noStoreReq)
 	require.NoError(t, err)
@@ -323,7 +708,7 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	// Response not cached, returns updated response
 
 	// Request id = 3 with Cache-Control: NO-STORE
-	noStoreReqUpper := httptest.NewRequest(fiber.MethodGet, "/?id=3", nil)
+	noStoreReqUpper := httptest.NewRequest(fiber.MethodGet, "/?id=3", http.NoBody)
 	noStoreReqUpper.Header.Set(fiber.HeaderCacheControl, "NO-STORE")
 	noStoreRespUpper, err := app.Test(noStoreReqUpper)
 	require.NoError(t, err)
@@ -333,7 +718,7 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	// Response not cached, returns updated response
 
 	// Request id = 4 with Cache-Control: my-no-store
-	invalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", nil)
+	invalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", http.NoBody)
 	invalidReq.Header.Set(fiber.HeaderCacheControl, "my-no-store")
 	invalidResp, err := app.Test(invalidReq)
 	require.NoError(t, err)
@@ -344,7 +729,7 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	// Response cached, returns updated response, entry = 4
 
 	// Request id = 4 again without Cache-Control
-	cachedInvalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", nil)
+	cachedInvalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", http.NoBody)
 	cachedInvalidResp, err := app.Test(cachedInvalidReq)
 	require.NoError(t, err)
 	cachedInvalidBody, err := io.ReadAll(cachedInvalidResp.Body)
@@ -370,7 +755,7 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 	for range 10 {
 		for i := range 10 {
 			func(id int) {
-				rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, fmt.Sprintf("/%d", id), nil))
+				rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, fmt.Sprintf("/%d", id), http.NoBody))
 				require.NoError(t, err)
 
 				defer func(body io.ReadCloser) {
@@ -384,7 +769,7 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 				a, err := strconv.Atoi(string(idFromServ))
 				require.NoError(t, err)
 
-				// SomeTimes,The id is not equal with a
+				// Sometimes, the id is not equal to a
 				require.Equal(t, id, a)
 			}(i)
 		}
@@ -404,11 +789,11 @@ func Test_Cache_Invalid_Expiration(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 
-	cachedReq := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	cachedReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	cachedResp, err := app.Test(cachedReq)
 	require.NoError(t, err)
 
@@ -435,25 +820,25 @@ func Test_Cache_Get(t *testing.T) {
 		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", http.NoBody))
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "123", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", http.NoBody))
 	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "12345", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=123", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=123", http.NoBody))
 	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "123", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=12345", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=12345", http.NoBody))
 	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -477,25 +862,25 @@ func Test_Cache_Post(t *testing.T) {
 		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", http.NoBody))
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "123", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", http.NoBody))
 	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "123", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=123", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=123", http.NoBody))
 	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "123", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=12345", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=12345", http.NoBody))
 	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -514,14 +899,14 @@ func Test_Cache_NothingToCache(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
 	time.Sleep(500 * time.Millisecond)
 
-	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
 	require.NoError(t, err)
@@ -554,22 +939,22 @@ func Test_Cache_CustomNext(t *testing.T) {
 		return c.Status(fiber.StatusInternalServerError).SendString(strconv.Itoa(errorCount))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
 	require.NoError(t, err)
 	require.True(t, bytes.Equal(body, bodyCached))
 	require.NotEmpty(t, respCached.Header.Get(fiber.HeaderCacheControl))
 
-	_, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
+	_, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/error", http.NoBody))
 	require.NoError(t, err)
 
-	errRespCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
+	errRespCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/error", http.NoBody))
 	require.NoError(t, err)
 	require.Empty(t, errRespCached.Header.Get(fiber.HeaderCacheControl))
 }
@@ -588,7 +973,7 @@ func Test_CustomKey(t *testing.T) {
 		return c.SendString("hi")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	_, err := app.Test(req)
 	require.NoError(t, err)
 	require.True(t, called)
@@ -614,7 +999,7 @@ func Test_CustomExpiration(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.True(t, called)
 	require.Equal(t, 1, newCacheTime)
@@ -622,7 +1007,7 @@ func Test_CustomExpiration(t *testing.T) {
 	// Sleep until the cache is expired
 	time.Sleep(1*time.Second + 100*time.Millisecond)
 
-	cachedResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	cachedResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 
 	body, err := io.ReadAll(resp.Body)
@@ -635,7 +1020,7 @@ func Test_CustomExpiration(t *testing.T) {
 	}
 
 	// Next response should be cached
-	cachedRespNextRound, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	cachedRespNextRound, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	cachedBodyNextRound, err := io.ReadAll(cachedRespNextRound.Body)
 	require.NoError(t, err)
@@ -658,12 +1043,12 @@ func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 		return c.SendString("hi")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
@@ -696,19 +1081,19 @@ func Test_CacheHeader(t *testing.T) {
 		return c.Status(fiber.StatusInternalServerError).SendString(strconv.Itoa(count))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 
-	errRespCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
+	errRespCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/error", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheUnreachable, errRespCached.Header.Get("X-Cache"))
 }
@@ -726,14 +1111,14 @@ func Test_Cache_WithHead(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	}
 
-	app.Route("/").Get(handler).Head(handler)
+	app.RouteChain("/").Get(handler).Head(handler)
 
-	req := httptest.NewRequest(fiber.MethodHead, "/", nil)
+	req := httptest.NewRequest(fiber.MethodHead, "/", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	cachedReq := httptest.NewRequest(fiber.MethodHead, "/", nil)
+	cachedReq := httptest.NewRequest(fiber.MethodHead, "/", http.NoBody)
 	cachedResp, err := app.Test(cachedReq)
 	require.NoError(t, err)
 	require.Equal(t, cacheHit, cachedResp.Header.Get("X-Cache"))
@@ -755,30 +1140,30 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
 		return c.SendString(fiber.Query[string](c, "cache"))
 	}
-	app.Route("/").Get(handler).Head(handler)
+	app.RouteChain("/").Get(handler).Head(handler)
 
-	headResp, err := app.Test(httptest.NewRequest(fiber.MethodHead, "/?cache=123", nil))
+	headResp, err := app.Test(httptest.NewRequest(fiber.MethodHead, "/?cache=123", http.NoBody))
 	require.NoError(t, err)
 	headBody, err := io.ReadAll(headResp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "", string(headBody))
+	require.Empty(t, string(headBody))
 	require.Equal(t, cacheMiss, headResp.Header.Get("X-Cache"))
 
-	headResp, err = app.Test(httptest.NewRequest(fiber.MethodHead, "/?cache=123", nil))
+	headResp, err = app.Test(httptest.NewRequest(fiber.MethodHead, "/?cache=123", http.NoBody))
 	require.NoError(t, err)
 	headBody, err = io.ReadAll(headResp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "", string(headBody))
+	require.Empty(t, string(headBody))
 	require.Equal(t, cacheHit, headResp.Header.Get("X-Cache"))
 
-	getResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?cache=123", nil))
+	getResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?cache=123", http.NoBody))
 	require.NoError(t, err)
 	getBody, err := io.ReadAll(getResp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "123", string(getBody))
 	require.Equal(t, cacheMiss, getResp.Header.Get("X-Cache"))
 
-	getResp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/?cache=123", nil))
+	getResp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/?cache=123", http.NoBody))
 	require.NoError(t, err)
 	getBody, err = io.ReadAll(getResp.Body)
 	require.NoError(t, err)
@@ -799,7 +1184,7 @@ func Test_CustomCacheHeader(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("Cache-Status"))
 }
@@ -820,19 +1205,19 @@ func Test_CacheInvalidation(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
 	require.NoError(t, err)
 	require.True(t, bytes.Equal(body, bodyCached))
 	require.NotEmpty(t, respCached.Header.Get(fiber.HeaderCacheControl))
 
-	respInvalidate, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?invalidate=true", nil))
+	respInvalidate, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?invalidate=true", http.NoBody))
 	require.NoError(t, err)
 	bodyInvalidate, err := io.ReadAll(respInvalidate.Body)
 	require.NoError(t, err)
@@ -852,7 +1237,7 @@ func Test_CacheInvalidation_noCacheEntry(t *testing.T) {
 			},
 			MaxBytes: 10 * 1024 * 1024,
 		}))
-		_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?invalidate=true", nil))
+		_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?invalidate=true", http.NoBody))
 		require.NoError(t, err)
 		require.False(t, cacheInvalidatorExecuted)
 	})
@@ -876,19 +1261,19 @@ func Test_CacheInvalidation_removeFromHeap(t *testing.T) {
 			return c.SendString(strconv.Itoa(count))
 		})
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		require.NoError(t, err)
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+		respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		require.NoError(t, err)
 		bodyCached, err := io.ReadAll(respCached.Body)
 		require.NoError(t, err)
 		require.True(t, bytes.Equal(body, bodyCached))
 		require.NotEmpty(t, respCached.Header.Get(fiber.HeaderCacheControl))
 
-		respInvalidate, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?invalidate=true", nil))
+		respInvalidate, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?invalidate=true", http.NoBody))
 		require.NoError(t, err)
 		bodyInvalidate, err := io.ReadAll(respInvalidate.Body)
 		require.NoError(t, err)
@@ -910,12 +1295,12 @@ func Test_CacheStorage_CustomHeaders(t *testing.T) {
 		return c.Send([]byte("<xml><value>Test</value></xml>"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
 	require.NoError(t, err)
@@ -924,7 +1309,7 @@ func Test_CacheStorage_CustomHeaders(t *testing.T) {
 }
 
 // Because time points are updated once every X milliseconds, entries in tests can often have
-// equal expiration times and thus be in an random order. This closure hands out increasing
+// equal expiration times and thus be in a random order. This closure hands out increasing
 // time intervals to maintain strong ascending order of expiration
 func stableAscendingExpiration() func(c1 fiber.Ctx, c2 *Config) time.Duration {
 	i := 0
@@ -964,7 +1349,7 @@ func Test_Cache_MaxBytesOrder(t *testing.T) {
 	}
 
 	for idx, tcase := range cases {
-		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], nil))
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, tcase[1], rsp.Header.Get("X-Cache"), "Case %v", idx)
 	}
@@ -998,7 +1383,7 @@ func Test_Cache_MaxBytesSizes(t *testing.T) {
 	}
 
 	for idx, tcase := range cases {
-		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], nil))
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, tcase[1], rsp.Header.Get("X-Cache"), "Case %v", idx)
 	}
@@ -1079,7 +1464,7 @@ func Test_Cache_UncacheableStatusCodes(t *testing.T) {
 		fiber.StatusNetworkAuthenticationRequired,
 	}
 	for _, v := range uncacheableStatusCodes {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, fmt.Sprintf("/%d", v), nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, fmt.Sprintf("/%d", v), http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 		require.Equal(t, v, resp.StatusCode)
@@ -1092,13 +1477,13 @@ func TestCacheAgeHeader(t *testing.T) {
 	app.Use(New(Config{Expiration: 10 * time.Second}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "0", resp.Header.Get(fiber.HeaderAge))
 
 	time.Sleep(4 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	age, err := strconv.Atoi(resp.Header.Get(fiber.HeaderAge))
@@ -1115,13 +1500,13 @@ func TestCacheUpstreamAge(t *testing.T) {
 		return c.SendString("hi")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "5", resp.Header.Get(fiber.HeaderAge))
 
 	time.Sleep(1500 * time.Millisecond)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	age, err := strconv.Atoi(resp.Header.Get(fiber.HeaderAge))
@@ -1138,11 +1523,11 @@ func Test_CacheNoStoreDirective(t *testing.T) {
 		return c.SendString("ok")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 }
@@ -1156,10 +1541,10 @@ func Test_CacheControlNotOverwritten(t *testing.T) {
 		return c.SendString("ok")
 	})
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "private", resp.Header.Get(fiber.HeaderCacheControl))
 }
@@ -1173,12 +1558,12 @@ func Test_CacheMaxAgeDirective(t *testing.T) {
 		return c.SendString("1")
 	})
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 
 	time.Sleep(1500 * time.Millisecond)
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 }
@@ -1238,6 +1623,35 @@ func Benchmark_Cache(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	require.Greater(b, len(fctx.Response.Body()), 30000)
+}
+
+func Benchmark_Cache_Miss(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/*", func(c fiber.Ctx) error {
+		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		return c.Status(fiber.StatusOK).Send(data)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var n int
+	for b.Loop() {
+		n++
+		fctx.Request.SetRequestURI("/demo/" + strconv.Itoa(n))
+		h(fctx)
+	}
+
+	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
 	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 

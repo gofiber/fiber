@@ -3,13 +3,12 @@ package client
 
 import (
 	"bytes"
-	"errors"
 	"net"
 	"strings"
 	"sync"
 	"time"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -23,7 +22,7 @@ var cookieJarPool = sync.Pool{
 func AcquireCookieJar() *CookieJar {
 	jar, ok := cookieJarPool.Get().(*CookieJar)
 	if !ok {
-		panic(errors.New("failed to type-assert to *CookieJar"))
+		panic(errCookieJarTypeAssertion)
 	}
 
 	return jar

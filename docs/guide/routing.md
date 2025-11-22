@@ -16,6 +16,43 @@ import RoutingHandler from './../partials/routing/handler.md';
 
 <RoutingHandler />
 
+## Automatic HEAD routes
+
+Fiber automatically registers a `HEAD` route for every `GET` route you add. The generated handler chain mirrors the `GET` chain, so `HEAD` requests reuse middleware, status codes, and headers while the response body is suppressed.
+
+```go title="GET handlers automatically expose HEAD"
+app := fiber.New()
+
+app.Get("/users/:id", func(c fiber.Ctx) error {
+    c.Set("X-User", c.Params("id"))
+    return c.SendStatus(fiber.StatusOK)
+})
+
+// HEAD /users/:id now returns the same headers and status without a body.
+```
+
+You can still register dedicated `HEAD` handlers—even with auto-registration enabled—and Fiber replaces the generated route so your implementation wins:
+
+```go title="Override the generated HEAD handler"
+app.Head("/users/:id", func(c fiber.Ctx) error {
+    return c.SendStatus(fiber.StatusNoContent)
+})
+```
+
+To opt out globally, start the app with `DisableHeadAutoRegister`:
+
+```go title="Disable automatic HEAD registration"
+handler := func(c fiber.Ctx) error {
+    c.Set("X-User", c.Params("id"))
+    return c.SendStatus(fiber.StatusOK)
+}
+
+app := fiber.New(fiber.Config{DisableHeadAutoRegister: true})
+app.Get("/users/:id", handler) // HEAD /users/:id now returns 405 unless you add it manually.
+```
+
+Auto-generated `HEAD` routes participate in every router scope, including `Group` hierarchies, mounted sub-apps, parameterized and wildcard paths, and static file helpers. They also appear in route listings such as `app.Stack()` so tooling sees both the `GET` and `HEAD` entries.
+
 ## Paths
 
 A route path paired with an HTTP method defines an endpoint. It can be a plain **string** or a **pattern**.
@@ -48,7 +85,7 @@ Place routes with variable parameters after fixed paths to avoid unintended matc
 
 ## Parameters
 
-Route parameters are dynamic segments in a path, either named or unnamed, used to capture values from the URL. Retrieve them with the [Params](https://fiber.wiki/context#params) function using the parameter name or, for unnamed parameters, the wildcard (`*`) or plus (`+`) symbol with an index.
+Route parameters are dynamic segments in a path, either named or unnamed, used to capture values from the URL. Retrieve them with the [Params](../api/ctx.md#params) function using the parameter name or, for unnamed parameters, the wildcard (`*`) or plus (`+`) symbol with an index.
 
 The characters `:`, `+`, and `*` introduce parameters.
 
@@ -323,6 +360,10 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 `Use` method path is a **mount**, or **prefix** path, and limits middleware to only apply to any paths requested that begin with it.
+
+:::note
+Prefix matches must now end at a slash boundary (or be an exact match). For example, `/api` runs for `/api` and `/api/users` but no longer for `/apiv2`. Parameter tokens such as `:name`, `:name?`, `*`, and `+` are still expanded before this boundary check runs.
+:::
 
 ### Constraints on Adding Routes Dynamically
 

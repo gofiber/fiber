@@ -2,7 +2,7 @@
 
 ## Agent Instructions
 
-> **Note for the AI agent:** Before running the startup script, verify that all dependencies and CLI tools are already available. If a `vendor/` directory exists **or** `go list -m -mod=readonly all` succeeds (indicating modules are cached), you may skip the entire startup script—including all `go mod` commands and `go install` steps. Otherwise run the script as listed below.
+> **Note for the AI agent:** Before running the startup script, verify that all dependencies and CLI tools are already available. If a `vendor/` directory exists **or** `go list -m -mod=readonly all` succeeds (indicating modules are cached), you may skip the entire startup script—including all `go mod` commands and `go install` steps. Otherwise, run the script as listed below.
 
 ---
 
@@ -47,7 +47,9 @@ These targets can be invoked via `make <target>` as needed during development an
 
 ## Programmatic checks
 
-Before submitting generated changes for a pull request, run:
+Before presenting final changes or submitting a pull request, run each of the
+following commands and ensure they succeed. Include the command outputs in your
+final response to confirm they were executed:
 
 ```bash
 make audit

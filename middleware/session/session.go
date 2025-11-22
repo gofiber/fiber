@@ -10,7 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -102,7 +102,7 @@ func releaseSession(s *Session) {
 // Fresh returns whether the session is new
 //
 // Returns:
-//   - bool: True if the session is fresh, otherwise false.
+//   - bool: True if the session is fresh; otherwise, false.
 //
 // Usage:
 //
@@ -562,7 +562,7 @@ func (s *Session) absExpiration() time.Time {
 // current time is after the absolute expiration time.
 //
 // Returns:
-//   - bool: True if the session is expired, otherwise false.
+//   - bool: True if the session is expired; otherwise, false.
 func (s *Session) isAbsExpired() bool {
 	absExpiration := s.absExpiration()
 	return !absExpiration.IsZero() && time.Now().After(absExpiration)

@@ -8,6 +8,25 @@ updates:
       - "🤖 Dependencies"
     schedule:
       interval: "daily"
+    allow:
+      # Allow both direct and indirect updates for all packages.
+      - dependency-type: "all"
+    groups:
+      fasthttp-modules:
+          patterns:
+              - "github.com/valyala/fasthttp"
+              - "github.com/valyala/fasthttp/**"
+      golang-modules:
+          patterns:
+              - "golang.org/x/**"
+      valyala-utils-modules:
+          patterns:
+              - "github.com/valyala/bytebufferpool"
+              - "github.com/valyala/tcplisten"
+      google-modules:
+          patterns:
+              - "github.com/google/**"
+              - "google.golang.org/**"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule: 

@@ -42,6 +42,8 @@ app.Use(csrf.New(csrf.Config{
     CookieSessionOnly: true,
     Extractor:         extractors.FromHeader("X-Csrf-Token"),
     Session:           sessionStore,
+    // Redaction is enabled by default. Set DisableValueRedaction when you must expose tokens or storage keys in diagnostics.
+    // DisableValueRedaction: true,
 }))
 ```
 
@@ -264,7 +266,7 @@ forms.Use(csrf.New(csrf.Config{
 
 ### Custom CSRF Extractors
 
-For specialized CSRF token extraction needs, you can create custom extractors. See the [Extractors Guide](../guide/extractors#custom-extractors) for advanced patterns and security notes.
+For specialized CSRF token extraction needs, you can create custom extractors. See the [Extractors Guide](../guide/extractors#custom-extraction-logic) for advanced patterns and security notes.
 
 :::danger Never Extract from Cookies
 **NEVER create custom extractors that read from cookies using the same `CookieName` as your CSRF configuration.** This completely defeats CSRF protection by making the extracted token always match the cookie value, allowing any CSRF attack to succeed.
@@ -291,14 +293,14 @@ The middleware uses the **Double Submit Cookie** pattern – it compares the ext
 
 #### Bearer Token Embedding & Custom Extractors
 
-You can create advanced extractors for use cases like JWT embedding or JSON body parsing. See the [Extractors Guide](../guide/extractors#custom-extractors) for secure implementation patterns and more examples.
+You can create advanced extractors for use cases like JWT embedding or JSON body parsing. See the [Extractors Guide](../guide/extractors#custom-extraction-logic) for secure implementation patterns and more examples.
 
 ### Fallback Extraction
 
 For applications that need to support both AJAX and form submissions:
 
 ```go
-// Try header first (AJAX), fallback to form (traditional forms)
+// Try header first (AJAX), fall back to form (traditional forms)
 app.Use(csrf.New(csrf.Config{
     Extractor: extractors.Chain(
         extractors.FromHeader("X-Csrf-Token"),
@@ -308,7 +310,7 @@ app.Use(csrf.New(csrf.Config{
 ```
 
 :::warning
-Chaining extractors increases complexity. Use only when you need to support multiple client types. See the [Extractors Guide](../guide/extractors#chaining-extractors) for details and security notes.
+Chaining extractors increases complexity. Use only when you need to support multiple client types. See the [Extractors Guide](../guide/extractors#chain-ordering-strategy) for details and security notes.
 :::
 
 ## Advanced Configuration
@@ -403,6 +405,7 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 | KeyGenerator      | `func() string`                    | Token generation function                                                                                                     | `utils.UUIDv4`               |
 | ErrorHandler      | `fiber.ErrorHandler`               | Custom error handler                                                                                                          | `defaultErrorHandler`        |
 | Extractor         | `extractors.Extractor`             | Token extraction method with metadata                                                                                         | `extractors.FromHeader("X-Csrf-Token")` |
+| DisableValueRedaction | `bool`                         | Disables redaction of tokens and storage keys in logs and error messages. | `false`                      |
 | Session           | `*session.Store`                   | Session store (**recommended for production**)                                                                                | `nil`                        |
 | Storage           | `fiber.Storage`                    | Token storage (overridden by Session)                                                                                         | `nil`                        |
 | TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests                                                                                     | `[]`                         |

@@ -18,7 +18,7 @@ it update your project automatically:
 
 ```bash
 go install github.com/gofiber/cli/fiber@latest
-fiber migrate --to v3.0.0-rc.1
+fiber migrate --to v3.0.0-rc.3
 ```
 
 See the [migration guide](#-migration-guide) for more details and options.
@@ -84,6 +84,7 @@ We have made several changes to the Fiber app, including:
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
 - **GetBytes / GetString**: Helpers that detach values only when `Immutable` is enabled and the data still references request or response buffers. Access via `c.App().GetString` and `c.App().GetBytes`.
+- **ReloadViews**: Lets you re-run the configured view engine's `Load()` logic at runtime, including guard rails for missing or nil view engines so development hot-reload hooks can refresh templates safely.
 
 #### Custom Route Constraints
 
@@ -223,6 +224,8 @@ We have made several changes to the Fiber hooks, including:
 - Added new shutdown hooks to provide better control over the shutdown process:
   - `OnPreShutdown` - Executes before the server starts shutting down
   - `OnPostShutdown` - Executes after the server has shut down, receives any shutdown error
+  - `OnPreStartupMessage` - Executes before the startup message is printed, allowing customization of the banner and info entries
+  - `OnPostStartupMessage` - Executes after the startup message is printed, allowing post-startup logic
 - Deprecated `OnShutdown` in favor of the new pre/post shutdown hooks
 - Improved shutdown hook execution order and reliability
 - Added mutex protection for hook registration and execution
@@ -295,51 +298,82 @@ app.Listen("app.sock", fiber.ListenerConfig{
 })
 ```
 
+- Expanded `ListenData` with versioning, handler, process, and PID metadata, plus dedicated startup message hooks for customization. Check out the [Hooks](./api/hooks#startup-message-customization) documentation for further details.
+
+```go title="Customize the startup message"
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
+        sm.BannerHeader = "FOOBER " + sm.Version + "\n-------"
+
+        // Optional: you can also remove old entries
+        // sm.ResetEntries()
+
+        sm.AddInfo("git-hash", "Git hash", os.Getenv("GIT_HASH"))
+        sm.AddInfo("prefork", "Prefork", fmt.Sprintf("%v", sm.Prefork), 15)
+        return nil
+    })
+
+    app.Hooks().OnPostStartupMessage(func(sm *fiber.PostStartupMessageData) error {
+        if !sm.Disabled && !sm.IsChild && !sm.Prevented {
+            fmt.Println("startup completed")
+        }
+        return nil
+    })
+
+    app.Listen(":5000")
+}
+```
+
 ## 🗺 Router
 
 We have slightly adapted our router interface
 
-### HTTP method registration
+### Handler compatibility
 
-In `v2` one handler was already mandatory when the route has been registered, but this was checked at runtime and was not correctly reflected in the signature, this has now been changed in `v3` to make it more explicit.
+Fiber now ships with a routing adapter (see `adapter.go`) that understands native Fiber handlers alongside `net/http` and `fasthttp` handlers. Route registration helpers accept a required `handler` argument plus optional additional `handlers`, all typed as `any`, and the adapter transparently converts supported handler styles so you can keep using the ecosystem functions you're familiar with.
 
-```diff
--    Get(path string, handlers ...Handler) Router
-+    Get(path string, handler Handler, middleware ...Handler) Router
--    Head(path string, handlers ...Handler) Router
-+    Head(path string, handler Handler, middleware ...Handler) Router
--    Post(path string, handlers ...Handler) Router
-+    Post(path string, handler Handler, middleware ...Handler) Router
--    Put(path string, handlers ...Handler) Router
-+    Put(path string, handler Handler, middleware ...Handler) Router
--    Delete(path string, handlers ...Handler) Router
-+    Delete(path string, handler Handler, middleware ...Handler) Router
--    Connect(path string, handlers ...Handler) Router
-+    Connect(path string, handler Handler, middleware ...Handler) Router
--    Options(path string, handlers ...Handler) Router
-+    Options(path string, handler Handler, middleware ...Handler) Router
--    Trace(path string, handlers ...Handler) Router
-+    Trace(path string, handler Handler, middleware ...Handler) Router
--    Patch(path string, handlers ...Handler) Router
-+    Patch(path string, handler Handler, middleware ...Handler) Router
--    All(path string, handlers ...Handler) Router
-+    All(path string, handler Handler, middleware ...Handler) Router
-```
+To align even closer with Express, you can also register handlers that accept the new `fiber.Req` and `fiber.Res` helper interfaces. The adapter understands both two-argument (`func(fiber.Req, fiber.Res)`) and three-argument (`func(fiber.Req, fiber.Res, func() error)`) callbacks, regardless of whether they return an `error`. When you include the optional `next` callback, Fiber wires it to `c.Next()` for you so middleware continues to behave as expected. If your handler returns an `error`, the value returned from the injected `next()` bubbles straight back to the caller. When your handler omits an `error` return, Fiber records the result of `next()` and returns it after your function exits so downstream failures still propagate.
+
+| Case | Handler signature | Notes |
+| ---- | ----------------- | ----- |
+| 1 | `fiber.Handler` | Native Fiber handler. |
+| 2 | `func(fiber.Ctx)` | Fiber handler without an error return. |
+| 3 | `func(fiber.Req, fiber.Res) error` | Express-style request handler with error return. |
+| 4 | `func(fiber.Req, fiber.Res)` | Express-style request handler without error return. |
+| 5 | `func(fiber.Req, fiber.Res, func() error) error` | Express-style middleware with an error-returning `next` callback and handler error return. |
+| 6 | `func(fiber.Req, fiber.Res, func() error)` | Express-style middleware with an error-returning `next` callback. |
+| 7 | `func(fiber.Req, fiber.Res, func()) error` | Express-style middleware with a no-argument `next` callback and handler error return. |
+| 8 | `func(fiber.Req, fiber.Res, func())` | Express-style middleware with a no-argument `next` callback. |
+| 9 | `http.HandlerFunc` | Standard-library handler function adapted through `fasthttpadaptor`. |
+| 10 | `http.Handler` | Standard-library handler implementation; pointer receivers must be non-nil. |
+| 11 | `func(http.ResponseWriter, *http.Request)` | Standard-library function handlers via `fasthttpadaptor`. |
+| 12 | `fasthttp.RequestHandler` | Direct fasthttp handler without error return. |
+| 13 | `func(*fasthttp.RequestCtx) error` | fasthttp handler that returns an error to Fiber. |
 
 ### Route chaining
 
-The route method is now like [`Express`](https://expressjs.com/de/api.html#app.route) which gives you the option of a different notation and allows you to concatenate the route declaration.
+`RouteChain` is a new helper inspired by [`Express`](https://expressjs.com/en/api.html#app.route) that makes it easy to declare a stack of handlers on the same path, while the existing `Route` helper stays available for prefix encapsulation.
 
-```diff
--    Route(prefix string, fn func(router Router), name ...string) Router
-+    Route(path string) Register
+```go
+RouteChain(path string) Register
 ```
 
 <details>
 <summary>Example</summary>
 
 ```go
-app.Route("/api").Route("/user/:id?")
+app.RouteChain("/api").RouteChain("/user/:id?")
     .Get(func(c fiber.Ctx) error {
         // Get user
         return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
@@ -360,11 +394,50 @@ app.Route("/api").Route("/user/:id?")
 
 </details>
 
-You can find more information about `app.Route` in the [API documentation](./api/app#route).
+You can find more information about `app.RouteChain` and `app.Route` in the API documentation ([RouteChain](./api/app#routechain), [Route](./api/app#route)).
+
+### Automatic HEAD routes for GET
+
+Fiber now auto-registers a `HEAD` route whenever you add a `GET` route. The generated handler chain matches the `GET` chain so status codes and headers stay in sync while the response body remains empty, ensuring `HEAD` clients observe the same metadata as a `GET` consumer.
+
+```go title="GET now enables HEAD automatically"
+app := fiber.New()
+
+app.Get("/health", func(c fiber.Ctx) error {
+    c.Set("X-Service", "api")
+    return c.SendString("OK")
+})
+
+// HEAD /health reuses the GET middleware chain and returns headers only.
+```
+
+You can still register explicit `HEAD` handlers for any `GET` route, and they continue to win when you add them:
+
+```go title="Override the generated HEAD handler"
+app.Head("/health", func(c fiber.Ctx) error {
+    return c.SendStatus(fiber.StatusNoContent)
+})
+```
+
+Prefer to manage `HEAD` routes yourself? Disable the feature through `fiber.Config.DisableHeadAutoRegister`:
+
+```go title="Disable automatic HEAD registration"
+handler := func(c fiber.Ctx) error {
+    c.Set("X-Service", "api")
+    return c.SendString("OK")
+}
+
+app := fiber.New(fiber.Config{DisableHeadAutoRegister: true})
+app.Get("/health", handler) // HEAD /health now returns 405 unless you add it manually.
+```
+
+Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
 
 ### Middleware registration
 
-We have aligned our method for middlewares closer to [`Express`](https://expressjs.com/de/api.html#app.use) and now also support the [`Use`](./api/app#use) of multiple prefixes.
+We have aligned our method for middlewares closer to [`Express`](https://expressjs.com/en/api.html#app.use) and now also support the [`Use`](./api/app#use) of multiple prefixes.
+
+Prefix matching is now stricter: partial matches must end at a slash boundary (or be an exact match). This keeps `/api` middleware from running on `/apiv1` while still allowing `/api/:version` style patterns that leverage route parameters, optional segments, or wildcards.
 
 Registering a subapp is now also possible via the [`Use`](./api/app#use) method instead of the old `app.Mount` method.
 
@@ -393,7 +466,7 @@ To enable the routing changes above we had to slightly adjust the signature of t
 
 ```diff
 -    Add(method, path string, handlers ...Handler) Router
-+    Add(methods []string, path string, handler Handler, middleware ...Handler) Router
++    Add(methods []string, path string, handler any, handlers ...any) Router
 ```
 
 ### Test Config
@@ -772,6 +845,12 @@ The default redirect status code has been updated from `302 Found` to `303 See O
 
 The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
 You can take a look to [client docs](./client/rest.md) to see what's new with the client.
+
+### Fasthttp transport integration
+
+- `client.NewWithHostClient` and `client.NewWithLBClient` allow you to plug existing `fasthttp` clients directly into Fiber while keeping retries, redirects, and hook logic consistent.
+- Dialer, TLS, and proxy helpers now update every host client inside a load balancer, so complex pools inherit the same configuration.
+- The Fiber client exposes `Do`, `DoTimeout`, `DoDeadline`, and `CloseIdleConnections`, matching the surface area of the wrapped fasthttp transports.
 
 ## 🧰 Generic functions
 
@@ -1159,6 +1238,8 @@ We are excited to introduce a new option in our caching middleware: Cache Invali
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 Cached responses now include an RFC-compliant Age header, providing a standardized indication of how long a response has been stored in cache since it was originally generated. This enhancement improves HTTP compliance and facilitates better client-side caching strategies.
 
+Cache keys are now redacted in logs and error messages by default, and a `DisableValueRedaction` boolean (default `false`) lets you opt out when you need the raw value for troubleshooting.
+
 :::note
 The deprecated `Store` and `Key` options have been removed in v3. Use `Storage` and `KeyGenerator` instead.
 :::
@@ -1169,7 +1250,7 @@ We've made some changes to the CORS middleware to improve its functionality and 
 
 #### New Struct Fields
 
-- `Config.AllowPrivateNetwork`: This new field is a boolean that allows you to control whether private networks are allowed. This is related to the [Private Network Access (PNA)](https://wicg.github.io/private-network-access/) specification from the Web Incubator Community Group (WICG). When set to `true`, the CORS middleware will allow CORS preflight requests from private networks and respond with the `Access-Control-Allow-Private-Network: true` header. This could be useful in development environments or specific use cases, but should be done with caution due to potential security risks.
+- `Config.AllowPrivateNetwork`: This new field is a boolean that allows you to control whether private networks are allowed. This is related to the [Private Network Access (PNA)](https://wicg.github.io/private-network-access/) specification from the [Web Incubator Community Group (WICG)](https://wicg.io/). When set to `true`, the CORS middleware will allow CORS preflight requests from private networks and respond with the `Access-Control-Allow-Private-Network: true` header. This could be useful in development environments or specific use cases, but should be done with caution due to potential security risks.
 
 #### Updated Struct Fields
 
@@ -1179,6 +1260,8 @@ We've updated several fields from a single string (containing comma-separated va
 - `Config.AllowMethods`: Now accepts a slice of strings, each representing an allowed method.
 - `Config.AllowHeaders`: Now accepts a slice of strings, each representing an allowed header.
 - `Config.ExposeHeaders`: Now accepts a slice of strings, each representing an exposed header.
+
+Additionally, panic messages and logs redact misconfigured origins by default, and a `DisableValueRedaction` flag (default `false`) lets you reveal them when necessary.
 
 ### Compression
 
@@ -1192,9 +1275,27 @@ We've updated several fields from a single string (containing comma-separated va
 
 The `Expiration` field in the CSRF middleware configuration has been renamed to `IdleTimeout` to better describe its functionality. Additionally, the default value has been reduced from 1 hour to 30 minutes.
 
+CSRF now redacts tokens and storage keys by default and exposes a `DisableValueRedaction` toggle (default `false`) if you must surface those values in diagnostics.
+
+### Idempotency
+
+Idempotency middleware now redacts keys by default and offers a `DisableValueRedaction` configuration flag (default `false`) to expose them when debugging.
+
 ### EncryptCookie
 
-Added support for specifying key length when using `encryptcookie.GenerateKey(length)`. Keys must be base64-encoded and may be 16, 24, or 32 bytes when decoded, supporting AES-128, AES-192, and AES-256 (default).
+- Added support for specifying key length when using `encryptcookie.GenerateKey(length)`. Keys must be base64-encoded and may be 16, 24, or 32 bytes when decoded, supporting AES-128, AES-192, and AES-256 (default).
+- Custom encryptor and decryptor callbacks now receive the cookie name. The default AES-GCM helpers bind it as additional authenticated data (AAD) so ciphertext cannot be replayed under a different cookie.
+- **Breaking change:** Custom encryptor/decryptor hooks now accept the cookie name as their first argument. Update overrides like:
+
+  ```go
+  // Before
+  Encryptor func(value, key string) (string, error)
+  Decryptor func(value, key string) (string, error)
+
+  // After
+  Encryptor func(name, value, key string) (string, error)
+  Decryptor func(name, value, key string) (string, error)
+  ```
 
 ### EnvVar
 
@@ -1220,6 +1321,8 @@ New `Challenge`, `Error`, `ErrorDescription`, `ErrorURI`, and `Scope` fields all
 ### Logger
 
 New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without any extra afford. For example, you can use `zap` with Fiber logger middleware like this:
+
+Custom logger integrations should update any `LoggerFunc` implementations to the new signature that receives a pointer to the middleware config: `func(c fiber.Ctx, data *logger.Data, cfg *logger.Config) error`.
 
 <details>
 <summary>Example</summary>
@@ -1382,6 +1485,10 @@ See more in [Logger](./middleware/logger.md#predefined-formats)
 
 The limiter middleware uses a new Fixed Window Rate Limiter implementation.
 
+Custom limiter algorithms should now implement the updated `limiter.Handler` interface, whose `New` method receives a pointer to the active config: `New(cfg *limiter.Config) fiber.Handler`.
+
+Limiter now redacts request keys in error paths by default. A new `DisableValueRedaction` boolean (default `false`) lets you reveal the raw limiter key if diagnostics require it.
+
 :::note
 Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `Expiration`, `Storage`, and `KeyGenerator` instead.
 :::
@@ -1395,6 +1502,8 @@ Monitor middleware is migrated to the [Contrib package](https://github.com/gofib
 The proxy middleware has been updated to improve consistency with Go naming conventions. The `TlsConfig` field in the configuration struct has been renamed to `TLSConfig`. Additionally, the `WithTlsConfig` method has been removed; you should now configure TLS directly via the `TLSConfig` property within the `Config` struct.
 
 The new `KeepConnectionHeader` option (default `false`) drops the `Connection` header unless explicitly enabled to retain it.
+
+`proxy.Balancer` now accepts an optional variadic configuration: call `proxy.Balancer()` to use defaults or continue passing a `proxy.Config` value as before.
 
 ### Session
 
@@ -1486,7 +1595,7 @@ To streamline upgrades between Fiber versions, the Fiber CLI ships with a
 
 ```bash
 go install github.com/gofiber/cli/fiber@latest
-fiber migrate --to v3.0.0-rc.1
+fiber migrate --to v3.0.0-rc.3
 ```
 
 ### Options
@@ -1621,6 +1730,30 @@ app.Listen(":3000", fiber.ListenConfig{
 
 ### 🗺 Router
 
+#### Direct `net/http` handlers
+
+Route registration helpers now accept native `net/http` handlers. Pass an
+`http.Handler`, `http.HandlerFunc`, or compatible function directly to methods
+such as `app.Get`, `Group`, or `RouteChain` and Fiber will adapt it at
+registration time. Manual wrapping through the adaptor middleware is no longer
+required for these common cases.
+
+:::note Compatibility considerations
+Adapted handlers stick to `net/http` semantics. They do not interact with `fiber.Ctx`
+and are slower than native Fiber handlers because of the extra conversion layer. Use
+them to ease migrations, but prefer Fiber handlers in performance-critical paths.
+:::
+
+```go
+httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    if _, err := w.Write([]byte("served by net/http")); err != nil {
+        panic(err)
+    }
+})
+
+app.Get("/", httpHandler)
+```
+
 #### Middleware Registration
 
 The signatures for [`Add`](#middleware-registration) and [`Route`](#route-chaining) have been changed.
@@ -1639,7 +1772,7 @@ app.Add([]string{fiber.MethodPost}, "/api", myHandler)
 
 #### Mounting
 
-In Fiber v3, the `Mount` method has been removed. Instead, you can use the `Use` method to achieve similar functionality.
+In this release, the `Mount` method has been removed. Instead, you can use the `Use` method to achieve similar functionality.
 
 ```go
 // Before
@@ -1653,7 +1786,7 @@ app.Use("/api", apiApp)
 
 #### Route Chaining
 
-Refer to the [route chaining](#route-chaining) section for details on migrating `Route`.
+Refer to the [route chaining](#route-chaining) section for details on the new `RouteChain` helper. The `Route` function now matches its v2 behavior for prefix encapsulation.
 
 ```go
 // Before
@@ -1673,7 +1806,7 @@ app.Route("/api", func(apiGrp Router) {
 
 ```go
 // After
-app.Route("/api").Route("/user/:id?")
+app.RouteChain("/api").RouteChain("/user/:id?")
     .Get(func(c fiber.Ctx) error {
         // Get user
         return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
@@ -1708,7 +1841,7 @@ In this example, a new route is defined, and `RebuildTree()` is called to ensure
 
 Note: Use this method with caution. It is **not** thread-safe and can be very performance-intensive. Therefore, it should be used sparingly and primarily in development mode. It should not be invoke concurrently.
 
-## RemoveRoute
+#### RemoveRoute
 
 - **RemoveRoute**: Removes route by path
 
@@ -2210,6 +2343,7 @@ app.Use(csrf.New(csrf.Config{
 - **Session Key Removal**: The `SessionKey` field has been removed from the CSRF middleware configuration. The session key is now an unexported constant within the middleware to avoid potential key collisions in the session store.
 
 - **KeyLookup Field Removal**: The `KeyLookup` field has been removed from the CSRF middleware configuration. This field was deprecated and is no longer needed as the middleware now uses a more secure approach for token management.
+- **DisableValueRedaction Toggle**: CSRF redacts tokens and storage keys by default; set `DisableValueRedaction` to `true` when diagnostics require the raw values.
 
 ```go
 // Before
@@ -2244,6 +2378,10 @@ app.Use(csrf.New(csrf.Config{
 ```
 
 **Security Note**: The removal of `FromCookie` prevents a common misconfiguration that would completely bypass CSRF protection. The middleware uses the Double Submit Cookie pattern, which requires the token to be submitted through a different channel than the cookie to provide meaningful protection.
+
+#### Idempotency
+
+- **DisableValueRedaction Toggle**: The idempotency middleware now hides keys in logs and error paths by default, with a `DisableValueRedaction` boolean (default `false`) to reveal them when needed.
 
 #### Timeout
 
@@ -2385,6 +2523,8 @@ proxy.WithClient(&fasthttp.Client{
 // Forward to url
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 ```
+
+`proxy.Balancer` also adopts the common middleware signature pattern and now accepts an optional variadic config: call `proxy.Balancer()` to use the defaults or continue passing a single `proxy.Config` value as in v2.
 
 #### Session
 

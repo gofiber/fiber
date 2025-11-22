@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"errors"
 	"fmt"
 	"maps"
 	"mime/multipart"
@@ -9,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 
 	"github.com/gofiber/schema"
@@ -81,7 +80,7 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 
 	// Parse into the map
 	if ptrVal.Kind() == reflect.Map && ptrVal.Type().Key().Kind() == reflect.String {
-		return parseToMap(ptrVal.Interface(), data)
+		return parseToMap(ptrVal, data)
 	}
 
 	// Parse into the struct
@@ -106,19 +105,36 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 
 // Parse data into the map
 // thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
-func parseToMap(ptr any, data map[string][]string) error {
-	elem := reflect.TypeOf(ptr).Elem()
+func parseToMap(target reflect.Value, data map[string][]string) error {
+	if !target.IsValid() {
+		return ErrInvalidDestinationValue
+	}
 
-	switch elem.Kind() {
+	if target.Kind() == reflect.Interface && !target.IsNil() {
+		target = target.Elem()
+	}
+
+	if target.Kind() != reflect.Map || target.Type().Key().Kind() != reflect.String {
+		return nil // nothing to do for non-map destinations
+	}
+
+	if target.IsNil() {
+		if !target.CanSet() {
+			return ErrMapNilDestination
+		}
+		target.Set(reflect.MakeMap(target.Type()))
+	}
+
+	switch target.Type().Elem().Kind() {
 	case reflect.Slice:
-		newMap, ok := ptr.(map[string][]string)
+		newMap, ok := target.Interface().(map[string][]string)
 		if !ok {
 			return ErrMapNotConvertible
 		}
 
 		maps.Copy(newMap, data)
-	case reflect.String, reflect.Interface:
-		newMap, ok := ptr.(map[string]string)
+	case reflect.String:
+		newMap, ok := target.Interface().(map[string]string)
 		if !ok {
 			return ErrMapNotConvertible
 		}
@@ -131,6 +147,10 @@ func parseToMap(ptr any, data map[string][]string) error {
 			newMap[k] = v[len(v)-1]
 		}
 	default:
+		// Interface element maps (e.g. map[string]any) are left untouched because
+		// the binder cannot safely infer element conversions without mutating
+		// caller-provided values. These destinations therefore see a successful
+		// no-op parse.
 		return nil // it's not necessary to check all types
 	}
 
@@ -158,7 +178,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 		if b == ']' {
 			openBracketsCount--
 			if openBracketsCount < 0 {
-				return "", errors.New("unmatched brackets")
+				return "", ErrUnmatchedBrackets
 			}
 			continue
 		}
@@ -169,7 +189,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 	}
 
 	if openBracketsCount > 0 {
-		return "", errors.New("unmatched brackets")
+		return "", ErrUnmatchedBrackets
 	}
 
 	return bb.String(), nil
@@ -179,11 +199,18 @@ func isStringKeyMap(t reflect.Type) bool {
 	return t.Kind() == reflect.Map && t.Key().Kind() == reflect.String
 }
 
-func isExported(f reflect.StructField) bool {
+func isExported(f *reflect.StructField) bool {
+	if f == nil {
+		return false
+	}
 	return f.PkgPath == ""
 }
 
-func fieldName(f reflect.StructField, aliasTag string) string {
+func fieldName(f *reflect.StructField, aliasTag string) string {
+	if f == nil {
+		return ""
+	}
+
 	name := f.Tag.Get(aliasTag)
 	if name == "" {
 		name = f.Name
@@ -197,6 +224,14 @@ func fieldName(f reflect.StructField, aliasTag string) string {
 type fieldInfo struct {
 	names       map[string]reflect.Kind
 	nestedKinds map[reflect.Kind]struct{}
+}
+
+func unwrapType(t reflect.Type) reflect.Type {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	return t
 }
 
 var (
@@ -235,18 +270,20 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if !isExported(f) {
+		if !isExported(&f) {
 			continue
 		}
-		info.names[fieldName(f, aliasTag)] = f.Type.Kind()
+		fieldType := unwrapType(f.Type)
+		info.names[fieldName(&f, aliasTag)] = fieldType.Kind()
 
-		if f.Type.Kind() == reflect.Struct {
-			for j := 0; j < f.Type.NumField(); j++ {
-				sf := f.Type.Field(j)
-				if !isExported(sf) {
+		if fieldType.Kind() == reflect.Struct {
+			for j := 0; j < fieldType.NumField(); j++ {
+				sf := fieldType.Field(j)
+				if !isExported(&sf) {
 					continue
 				}
-				info.nestedKinds[sf.Type.Kind()] = struct{}{}
+				nestedType := unwrapType(sf.Type)
+				info.nestedKinds[nestedType.Kind()] = struct{}{}
 			}
 		}
 	}
@@ -288,7 +325,7 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	return false
 }
 
-// Get content type from content type header
+// FilterFlags returns the media type value by trimming any parameters from a Content-Type header.
 func FilterFlags(content string) string {
 	for i, char := range content {
 		if char == ' ' || char == ';' {

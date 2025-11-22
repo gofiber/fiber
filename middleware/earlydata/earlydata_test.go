@@ -3,6 +3,7 @@ package earlydata
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -89,7 +90,7 @@ func Test_EarlyData(t *testing.T) {
 		t.Helper()
 
 		{
-			req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 
 			resp, err := app.Test(req)
 			require.NoError(t, err)
@@ -107,7 +108,7 @@ func Test_EarlyData(t *testing.T) {
 		}
 
 		{
-			req := httptest.NewRequest(fiber.MethodPost, "/", nil)
+			req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
 
 			resp, err := app.Test(req)
 			require.NoError(t, err)
@@ -129,7 +130,7 @@ func Test_EarlyData(t *testing.T) {
 		t.Helper()
 
 		{
-			req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 
 			resp, err := app.Test(req)
 			require.NoError(t, err)
@@ -147,7 +148,7 @@ func Test_EarlyData(t *testing.T) {
 		}
 
 		{
-			req := httptest.NewRequest(fiber.MethodPost, "/", nil)
+			req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
 
 			resp, err := app.Test(req)
 			require.NoError(t, err)
@@ -211,7 +212,7 @@ func Test_EarlyDataNext(t *testing.T) {
 		return nil
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(headerName, headerValOn)
 	resp, err := app.Test(req)
 	require.NoError(t, err)

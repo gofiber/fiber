@@ -1,3 +1,6 @@
+// Core pipeline scaffolds request execution for Fiber's HTTP client, including
+// hook invocation, retry orchestration, and timeout management around fasthttp
+// transports.
 package client
 
 import (
@@ -7,14 +10,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/addon/retry"
 	"github.com/valyala/fasthttp"
 )
 
-var boundary = "FiberFormBoundary"
+const boundary = "FiberFormBoundary"
 
 // RequestHook is a function invoked before the request is sent.
 // It receives a Client and a Request, allowing you to modify the Request or Client data.
@@ -70,62 +72,66 @@ func (c *core) getRetryConfig() *RetryConfig {
 // execFunc is the core logic to send the request and receive the response.
 // It leverages the fasthttp client, optionally with retries or redirects.
 func (c *core) execFunc() (*Response, error) {
-	resp := AcquireResponse()
-	resp.setClient(c.client)
-	resp.setRequest(c.req)
+	// do not close, these will be returned to the pool
+	errChan := acquireErrChan()
+	respChan := acquireResponseChan()
 
-	done := int32(0)
-	errCh, reqv := acquireErrChan(), fasthttp.AcquireRequest()
-	defer releaseErrChan(errCh)
-
-	c.req.RawRequest.CopyTo(reqv)
 	cfg := c.getRetryConfig()
-
-	var err error
 	go func() {
-		respv := fasthttp.AcquireResponse()
-		defer func() {
-			fasthttp.ReleaseRequest(reqv)
-			fasthttp.ReleaseResponse(respv)
-		}()
+		// retain both channels until they are drained
+		defer releaseErrChan(errChan)
+		defer releaseResponseChan(respChan)
 
+		reqv := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(reqv)
+
+		respv := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseResponse(respv)
+
+		c.req.RawRequest.CopyTo(reqv)
+
+		var err error
 		if cfg != nil {
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-					return c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
+					return c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
-				return c.client.fasthttp.Do(reqv, respv)
+				return c.client.Do(reqv, respv)
 			})
 		} else {
 			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-				err = c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
+				err = c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
-				err = c.client.fasthttp.Do(reqv, respv)
+				err = c.client.Do(reqv, respv)
 			}
 		}
 
-		if atomic.CompareAndSwapInt32(&done, 0, 1) {
-			if err != nil {
-				errCh <- err
-				return
-			}
-			respv.CopyTo(resp.RawResponse)
-			errCh <- nil
+		if err != nil {
+			errChan <- err
+			return
 		}
+
+		resp := AcquireResponse()
+		resp.setClient(c.client)
+		resp.setRequest(c.req)
+		respv.CopyTo(resp.RawResponse)
+		respChan <- resp
 	}()
 
 	select {
-	case err := <-errCh:
-		if err != nil {
-			// Release the response if an error occurs.
-			ReleaseResponse(resp)
-			return nil, err
-		}
+	case err := <-errChan:
+		return nil, err
+	case resp := <-respChan:
 		return resp, nil
 	case <-c.ctx.Done():
-		atomic.SwapInt32(&done, 1)
-		ReleaseResponse(resp)
+		go func() { // drain the channels and release the response
+			select {
+			case resp := <-respChan:
+				ReleaseResponse(resp)
+			case <-errChan:
+			}
+		}()
 		return nil, ErrTimeoutOrCancel
 	}
 }
@@ -216,27 +222,52 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 	return resp, nil
 }
 
-var errChanPool = &sync.Pool{
+var responseChanPool = &sync.Pool{
 	New: func() any {
-		return make(chan error, 1)
+		return make(chan *Response)
 	},
 }
 
-// acquireErrChan returns an empty error channel from the pool.
-//
-// The returned channel may be returned to the pool with releaseErrChan when no longer needed,
-// reducing GC load.
+// acquireResponseChan returns an empty, non-closed *Response channel from the pool.
+// The returned channel may be returned to the pool with releaseResponseChan
+func acquireResponseChan() chan *Response {
+	ch, ok := responseChanPool.Get().(chan *Response)
+	if !ok {
+		panic(errResponseChanTypeAssertion)
+	}
+	return ch
+}
+
+// releaseResponseChan returns the *Response channel to the pool.
+// It's the caller's responsibility to ensure that:
+// - the channel is not closed
+// - the channel is drained before returning it
+// - the channel is not reused after returning it
+func releaseResponseChan(ch chan *Response) {
+	responseChanPool.Put(ch)
+}
+
+var errChanPool = &sync.Pool{
+	New: func() any {
+		return make(chan error)
+	},
+}
+
+// acquireErrChan returns an empty, non-closed error channel from the pool.
+// The returned channel may be returned to the pool with releaseErrChan
 func acquireErrChan() chan error {
 	ch, ok := errChanPool.Get().(chan error)
 	if !ok {
-		panic(errors.New("failed to type-assert to chan error"))
+		panic(errChanErrorTypeAssertion)
 	}
 	return ch
 }
 
 // releaseErrChan returns the error channel to the pool.
-//
-// Do not use the released channel afterward to avoid data races.
+// It's caller's responsibility to ensure that:
+// - the channel is not closed
+// - the channel is drained before returning it
+// - the channel is not reused after returning it
 func releaseErrChan(ch chan error) {
 	errChanPool.Put(ch)
 }
@@ -253,4 +284,5 @@ var (
 	ErrFileNoName           = errors.New("the file should have a name")
 	ErrBodyType             = errors.New("the body type should be []byte")
 	ErrNotSupportSaveMethod = errors.New("only file paths and io.Writer are supported")
+	ErrBodyTypeNotSupported = errors.New("the body type is not supported")
 )

@@ -1,4 +1,3 @@
-//nolint:goconst // Much easier to just ignore memory leaks in tests
 package client
 
 import (
@@ -322,19 +321,44 @@ func Test_Request_QueryParam(t *testing.T) {
 func Test_Request_Params(t *testing.T) {
 	t.Parallel()
 
-	req := AcquireRequest()
-	req.AddParams(map[string][]string{
-		"foo": {"bar", "fiber"},
-		"bar": {"foo"},
+	t.Run("empty iterator", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		called := false
+		req.Params()(func(_ string, _ []string) bool {
+			called = true
+			return true
+		})
+
+		require.False(t, called)
 	})
 
-	pathParams := maps.Collect(req.Params())
+	t.Run("populated iterator", func(t *testing.T) {
+		t.Parallel()
 
-	require.Contains(t, pathParams["foo"], "bar")
-	require.Contains(t, pathParams["foo"], "fiber")
-	require.Contains(t, pathParams["bar"], "foo")
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
 
-	require.Len(t, pathParams, 2)
+		req.AddParams(map[string][]string{
+			"foo": {"bar", "fiber"},
+			"bar": {"foo"},
+		})
+
+		pathParams := maps.Collect(req.Params())
+
+		require.Contains(t, pathParams["foo"], "bar")
+		require.Contains(t, pathParams["foo"], "fiber")
+		require.Contains(t, pathParams["bar"], "foo")
+
+		require.Len(t, pathParams, 2)
+	})
 }
 
 func Benchmark_Request_Params(b *testing.B) {
@@ -431,7 +455,7 @@ func Test_Request_Cookie(t *testing.T) {
 		require.Equal(t, "foo", req.Cookie("bar"))
 
 		req.DelCookies("foo")
-		require.Equal(t, "", req.Cookie("foo"))
+		require.Empty(t, req.Cookie("foo"))
 		require.Equal(t, "foo", req.Cookie("bar"))
 	})
 }
@@ -535,7 +559,7 @@ func Test_Request_PathParam(t *testing.T) {
 		require.Equal(t, "foo", req.PathParam("bar"))
 
 		req.DelPathParams("foo")
-		require.Equal(t, "", req.PathParam("foo"))
+		require.Empty(t, req.PathParam("foo"))
 		require.Equal(t, "foo", req.PathParam("bar"))
 	})
 
@@ -550,8 +574,8 @@ func Test_Request_PathParam(t *testing.T) {
 		require.Equal(t, "foo", req.PathParam("bar"))
 
 		req.ResetPathParams()
-		require.Equal(t, "", req.PathParam("foo"))
-		require.Equal(t, "", req.PathParam("bar"))
+		require.Empty(t, req.PathParam("foo"))
+		require.Empty(t, req.PathParam("bar"))
 	})
 }
 
@@ -897,7 +921,7 @@ func Test_Request_Head(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
-		require.Equal(t, "", resp.String())
+		require.Empty(t, resp.String())
 		resp.Close()
 	}
 }
@@ -951,7 +975,7 @@ func Test_Request_Delete(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-		require.Equal(t, "", resp.String())
+		require.Empty(t, resp.String())
 
 		resp.Close()
 	}
@@ -1373,19 +1397,44 @@ func Test_Request_Body_With_Server(t *testing.T) {
 func Test_Request_AllFormData(t *testing.T) {
 	t.Parallel()
 
-	req := AcquireRequest()
-	req.AddFormDataWithMap(map[string][]string{
-		"foo": {"bar", "fiber"},
-		"bar": {"foo"},
+	t.Run("empty iterator", func(t *testing.T) {
+		t.Parallel()
+
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
+
+		called := false
+		req.AllFormData()(func(_ string, _ []string) bool {
+			called = true
+			return true
+		})
+
+		require.False(t, called)
 	})
 
-	pathParams := maps.Collect(req.AllFormData())
+	t.Run("populated iterator", func(t *testing.T) {
+		t.Parallel()
 
-	require.Contains(t, pathParams["foo"], "bar")
-	require.Contains(t, pathParams["foo"], "fiber")
-	require.Contains(t, pathParams["bar"], "foo")
+		req := AcquireRequest()
+		t.Cleanup(func() {
+			ReleaseRequest(req)
+		})
 
-	require.Len(t, pathParams, 2)
+		req.AddFormDataWithMap(map[string][]string{
+			"foo": {"bar", "fiber"},
+			"bar": {"foo"},
+		})
+
+		pathParams := maps.Collect(req.AllFormData())
+
+		require.Contains(t, pathParams["foo"], "bar")
+		require.Contains(t, pathParams["foo"], "fiber")
+		require.Contains(t, pathParams["bar"], "foo")
+
+		require.Len(t, pathParams, 2)
+	})
 }
 
 func Benchmark_Request_AllFormData(b *testing.B) {
@@ -1572,7 +1621,7 @@ func Test_SetValWithStruct(t *testing.T) {
 			TIntSlice: []int{0, 1, 2},
 		})
 
-		require.Equal(t, "", string(p.Peek("unexport")))
+		require.Empty(t, string(p.Peek("unexport")))
 		require.Equal(t, []byte("5"), p.Peek("TInt"))
 		require.Equal(t, []byte("5"), p.Peek("TUint"))
 		require.Equal(t, []byte("string"), p.Peek("TString"))
@@ -1726,7 +1775,7 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			})
 		}
 
-		require.Equal(b, "", string(p.Peek("unexport")))
+		require.Empty(b, string(p.Peek("unexport")))
 		require.Equal(b, []byte("5"), p.Peek("TInt"))
 		require.Equal(b, []byte("5"), p.Peek("TUint"))
 		require.Equal(b, []byte("string"), p.Peek("TString"))

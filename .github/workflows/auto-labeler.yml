@@ -4,14 +4,15 @@ on:
   issues:
     types: [opened, edited, milestoned]
   pull_request_target:
-    types: [opened]
+    types: [opened, edited, reopened, synchronize]
 
 permissions:
-  contents: read
-  issues: write
-  pull-requests: write
-  statuses: write
-  checks: write
+  # Setting up permissions in the workflow to limit the scope of what it can do. Optional!
+  contents: read # the config file
+  issues: write # for labeling issues (on: issues)
+  pull-requests: write # for labeling pull requests (on: pull_request_target or on: pull_request)
+  statuses: write # to generate status
+  checks: write # to generate status
 
 jobs:
   labeler:
@@ -19,6 +20,9 @@ jobs:
     steps:
       - name: Check Labels
         id: labeler
-        uses: fuxingloh/multi-labeler@v4
+        uses: fuxingloh/multi-labeler@b15a54460c38f54043fa75f7b08a0e2aa5b94b5b #v4.0.0
         with:
-          github-token: ${{secrets.GITHUB_TOKEN}}
+          # Use a PAT so that applying labels can trigger downstream workflows
+          # (GITHUB_TOKEN updates do not emit additional workflow events).
+          github-token: ${{ secrets.ISSUE_PR_TOKEN }}
+

@@ -1,21 +1,25 @@
 name: markdownlint
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - master
       - main
+    paths:
+      - "**/*.md"
   pull_request:
+    paths:
+      - "**/*.md"
 
 jobs:
   markdownlint:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
 
       - name: Run markdownlint-cli2
-        uses: DavidAnson/markdownlint-cli2-action@v20
+        uses: DavidAnson/markdownlint-cli2-action@30a0e04f1870d58f8d717450cc6134995f993c63 # v21.0.0
         with:
           globs: |
             **/*.md

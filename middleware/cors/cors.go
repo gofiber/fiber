@@ -7,8 +7,10 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
+
+const redactedValue = "[redacted]"
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -25,6 +27,15 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
+	redactValues := !cfg.DisableValueRedaction
+
+	maskValue := func(value string) string {
+		if redactValues {
+			return redactedValue
+		}
+		return value
+	}
+
 	// Warning logs if both AllowOrigins and AllowOriginsFunc are set
 	if len(cfg.AllowOrigins) > 0 && cfg.AllowOriginsFunc != nil {
 		log.Warn("[CORS] Both 'AllowOrigins' and 'AllowOriginsFunc' have been defined.")
@@ -33,13 +44,10 @@ func New(config ...Config) fiber.Handler {
 	// allowOrigins is a slice of strings that contains the allowed origins
 	// defined in the 'AllowOrigins' configuration.
 	allowOrigins := []string{}
-	allowSOrigins := []subdomain{}
-	allowAllOrigins := false
+	allowSubOrigins := []subdomain{}
 
 	// Validate and normalize static AllowOrigins
-	if len(cfg.AllowOrigins) == 0 && cfg.AllowOriginsFunc == nil {
-		allowAllOrigins = true
-	}
+	allowAllOrigins := len(cfg.AllowOrigins) == 0 && cfg.AllowOriginsFunc == nil
 	for _, origin := range cfg.AllowOrigins {
 		if origin == "*" {
 			allowAllOrigins = true
@@ -51,15 +59,15 @@ func New(config ...Config) fiber.Handler {
 			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
 			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
 			if !isValid {
-				panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)
+				panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
 			}
 			schemeSep := strings.Index(normalizedOrigin, "://") + len("://")
 			sd := subdomain{prefix: normalizedOrigin[:schemeSep], suffix: normalizedOrigin[schemeSep:]}
-			allowSOrigins = append(allowSOrigins, sd)
+			allowSubOrigins = append(allowSubOrigins, sd)
 		} else {
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
-				panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)
+				panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
 			}
 			allowOrigins = append(allowOrigins, normalizedOrigin)
 		}
@@ -124,7 +132,7 @@ func New(config ...Config) fiber.Handler {
 
 			// Check if the origin is in the list of allowed subdomains
 			if allowOrigin == "" {
-				for _, sOrigin := range allowSOrigins {
+				for _, sOrigin := range allowSubOrigins {
 					if sOrigin.match(originHeader) {
 						allowOrigin = originHeaderRaw
 						break
@@ -147,7 +155,7 @@ func New(config ...Config) fiber.Handler {
 				// See https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches
 				c.Vary(fiber.HeaderOrigin)
 			}
-			setSimpleHeaders(c, allowOrigin, cfg)
+			setSimpleHeaders(c, allowOrigin, &cfg)
 			return c.Next()
 		}
 
@@ -165,7 +173,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		c.Vary(fiber.HeaderOrigin)
 
-		setPreflightHeaders(c, allowOrigin, maxAge, cfg)
+		setPreflightHeaders(c, allowOrigin, maxAge, &cfg)
 
 		// Set Preflight headers
 		if len(cfg.AllowMethods) > 0 {
@@ -186,7 +194,11 @@ func New(config ...Config) fiber.Handler {
 }
 
 // Function to set Simple CORS headers
-func setSimpleHeaders(c fiber.Ctx, allowOrigin string, cfg Config) {
+func setSimpleHeaders(c fiber.Ctx, allowOrigin string, cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
 	if cfg.AllowCredentials {
 		// When AllowCredentials is true, set the Access-Control-Allow-Origin to the specific origin instead of '*'
 		if allowOrigin == "*" {
@@ -208,13 +220,13 @@ func setSimpleHeaders(c fiber.Ctx, allowOrigin string, cfg Config) {
 }
 
 // Function to set Preflight CORS headers
-func setPreflightHeaders(c fiber.Ctx, allowOrigin, maxAge string, cfg Config) {
+func setPreflightHeaders(c fiber.Ctx, allowOrigin, maxAge string, cfg *Config) {
 	setSimpleHeaders(c, allowOrigin, cfg)
 
 	// Set MaxAge if set
-	if cfg.MaxAge > 0 {
+	if cfg != nil && cfg.MaxAge > 0 {
 		c.Set(fiber.HeaderAccessControlMaxAge, maxAge)
-	} else if cfg.MaxAge < 0 {
+	} else if cfg != nil && cfg.MaxAge < 0 {
 		c.Set(fiber.HeaderAccessControlMaxAge, "0")
 	}
 }

@@ -1,7 +1,7 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📄 Github Repository: https://github.com/gofiber/fiber
+// 📄 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
-// ⚠️ This path parser was inspired by ucarion/urlpath (MIT License).
+// ⚠️ This path parser was inspired by https://github.com/ucarion/urlpath
 // 💖 Maintained and modified for Fiber by @renewerner87
 
 package fiber
@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/google/uuid"
 )
 
@@ -59,7 +59,6 @@ const (
 	optionalParam                byte = '?'  // concludes a parameter by name and makes it optional
 	paramStarterChar             byte = ':'  // start character for a parameter with name
 	slashDelimiter               byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
-	slashDelimiterStr            byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
 	escapeChar                   byte = '\\' // escape character
 	paramConstraintStart         byte = '<'  // start of type constraint for a parameter
 	paramConstraintEnd           byte = '>'  // end of type constraint for a parameter
@@ -72,6 +71,8 @@ const (
 // TypeConstraint parameter constraint types
 type TypeConstraint int16
 
+// Constraint describes the validation rules that apply to a dynamic route
+// segment when matching incoming requests.
 type Constraint struct {
 	RegexCompiler     *regexp.Regexp
 	Name              string
@@ -118,11 +119,22 @@ var (
 	// list of greedy parameters
 	greedyParameters = []byte{wildcardParam, plusParam}
 	// list of chars for the parameter recognizing
-	parameterStartChars = []byte{wildcardParam, plusParam, paramStarterChar}
+	parameterStartChars = [256]bool{
+		wildcardParam:    true,
+		plusParam:        true,
+		paramStarterChar: true,
+	}
 	// list of chars of delimiters and the starting parameter name char
 	parameterDelimiterChars = append([]byte{paramStarterChar, escapeChar}, routeDelimiter...)
 	// list of chars to find the end of a parameter
-	parameterEndChars = append([]byte{optionalParam}, parameterDelimiterChars...)
+	parameterEndChars = [256]bool{
+		optionalParam:    true,
+		paramStarterChar: true,
+		escapeChar:       true,
+		slashDelimiter:   true,
+		'-':              true,
+		'.':              true,
+	}
 )
 
 // RoutePatternMatch reports whether path matches the provided Fiber route pattern.
@@ -171,10 +183,8 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	parser.parseRoute(string(patternPretty))
 	defer routerParserPool.Put(parser)
 
-	if string(patternPretty) == "/" && path == "/" {
-		return true
-		// '*' wildcard matches any path
-	} else if string(patternPretty) == "/*" {
+	// '*' wildcard matches any path
+	if (string(patternPretty) == "/" && path == "/") || (string(patternPretty) == "/*") {
 		return true
 	}
 
@@ -202,7 +212,7 @@ func (parser *routeParser) reset() {
 func (parser *routeParser) parseRoute(pattern string, customConstraints ...CustomConstraint) {
 	var n int
 	var seg *routeSegment
-	for len(pattern) > 0 {
+	for pattern != "" {
 		nextParamPosition := findNextParamPosition(pattern)
 		// handle the parameter part
 		if nextParamPosition == 0 {
@@ -243,17 +253,17 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 		} else {
 			comparePart = segs[i].Const
 			if len(comparePart) > 1 {
-				comparePart = utils.TrimRight(comparePart, slashDelimiterStr)
+				comparePart = utils.TrimRight(comparePart, slashDelimiter)
 			}
 		}
 	}
 
-	// loop from begin to end
+	// loop from beginning to end
 	for i := range segLen {
 		// check how often the compare part is in the following const parts
 		if segs[i].IsParam {
-			// check if parameter segments are directly after each other and if one of them is greedy
-			// in case the next parameter or the current parameter is not a wildcard it's not greedy, we only want one character
+			// check if parameter segments are directly after each other;
+			// when neither this parameter nor the next parameter are greedy, we only want one character
 			if segLen > i+1 && !segs[i].IsGreedy && segs[i+1].IsParam && !segs[i+1].IsGreedy {
 				segs[i].Length = 1
 			}
@@ -278,22 +288,23 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 // findNextParamPosition search for the next possible parameter start position
 func findNextParamPosition(pattern string) int {
 	// Find the first parameter position
-	nextParamPosition := findNextNonEscapedCharsetPosition(pattern, parameterStartChars)
-
-	// If pattern contains a parameter and it's not a wildcard
-	if nextParamPosition != -1 && len(pattern) > nextParamPosition && pattern[nextParamPosition] != wildcardParam {
-		// checking the found parameterStartChar is a cluster
-		i := nextParamPosition + 1
-		for i < len(pattern) {
-			if findNextNonEscapedCharsetPosition(pattern[i:i+1], parameterStartChars) != 0 {
-				// It was a single parameter start char or end of cluster
-				break
-			}
-			nextParamPosition++
-			i++
+	next := -1
+	for i := range pattern {
+		if parameterStartChars[pattern[i]] && (i == 0 || pattern[i-1] != escapeChar) {
+			next = i
+			break
 		}
 	}
-	return nextParamPosition
+	if next > 0 && pattern[next] != wildcardParam {
+		// checking the found parameterStartChar is a cluster
+		for i := next + 1; i < len(pattern); i++ {
+			if !parameterStartChars[pattern[i]] {
+				return i - 1
+			}
+		}
+		return len(pattern) - 1
+	}
+	return next
 }
 
 // analyseConstantPart find the end of the constant part and create the route segment
@@ -316,41 +327,52 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
 
-	var parameterEndPosition int
-	if strings.ContainsRune(pattern, rune(paramConstraintStart)) && strings.ContainsRune(pattern, rune(paramConstraintEnd)) {
-		parameterEndPosition = findNextCharsetPositionConstraint(pattern[1:], parameterEndChars)
-	} else {
-		parameterEndPosition = findNextNonEscapedCharsetPosition(pattern[1:], parameterEndChars)
-	}
+	paramEndPosition := 0
+	paramConstraintStartPosition := -1
+	paramConstraintEndPosition := -1
 
-	parameterConstraintStart := -1
-	parameterConstraintEnd := -1
 	// handle wildcard end
-	switch {
-	case isWildCard, isPlusParam:
-		parameterEndPosition = 0
-	case parameterEndPosition == -1:
-		parameterEndPosition = len(pattern) - 1
-	case bytes.IndexByte(parameterDelimiterChars, pattern[parameterEndPosition+1]) == -1:
-		parameterEndPosition++
-	}
+	if !isWildCard && !isPlusParam {
+		paramEndPosition = -1
+		search := pattern[1:]
+		for i := range search {
+			if paramConstraintStartPosition == -1 && search[i] == paramConstraintStart && (i == 0 || search[i-1] != escapeChar) {
+				paramConstraintStartPosition = i + 1
+				continue
+			}
+			if paramConstraintEndPosition == -1 && search[i] == paramConstraintEnd && (i == 0 || search[i-1] != escapeChar) {
+				paramConstraintEndPosition = i + 1
+				continue
+			}
+			if parameterEndChars[search[i]] {
+				if (paramConstraintStartPosition == -1 && paramConstraintEndPosition == -1) ||
+					(paramConstraintStartPosition != -1 && paramConstraintEndPosition != -1) {
+					paramEndPosition = i
+					break
+				}
+			}
+		}
 
-	// find constraint part if exists in the parameter part and remove it
-	if parameterEndPosition > 0 {
-		parameterConstraintStart = findNextNonEscapedCharPosition(pattern[:parameterEndPosition], paramConstraintStart)
-		parameterConstraintEnd = strings.LastIndexByte(pattern[:parameterEndPosition+1], paramConstraintEnd)
+		switch {
+		case paramEndPosition == -1:
+			paramEndPosition = len(pattern) - 1
+		case bytes.IndexByte(parameterDelimiterChars, pattern[paramEndPosition+1]) == -1:
+			paramEndPosition++
+		default:
+			// do nothing
+		}
 	}
 
 	// cut params part
-	processedPart := pattern[0 : parameterEndPosition+1]
-	n := parameterEndPosition + 1
+	processedPart := pattern[0 : paramEndPosition+1]
+	n := paramEndPosition + 1
 	paramName := RemoveEscapeChar(GetTrimmedParam(processedPart))
 
 	// Check has constraint
 	var constraints []*Constraint
 
-	if hasConstraint := parameterConstraintStart != -1 && parameterConstraintEnd != -1; hasConstraint {
-		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd]
+	if hasConstraint := paramConstraintStartPosition != -1 && paramConstraintEndPosition != -1; hasConstraint {
+		constraintString := pattern[paramConstraintStartPosition+1 : paramConstraintEndPosition]
 		userConstraints := splitNonEscaped(constraintString, paramConstraintSeparator)
 		constraints = make([]*Constraint, 0, len(userConstraints))
 
@@ -394,7 +416,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 			}
 		}
 
-		paramName = RemoveEscapeChar(GetTrimmedParam(pattern[0:parameterConstraintStart]))
+		paramName = RemoveEscapeChar(GetTrimmedParam(pattern[0:paramConstraintStartPosition]))
 	}
 
 	// add access iterator to wildcard and plus
@@ -409,7 +431,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 	segment := &routeSegment{
 		ParamName:  paramName,
 		IsParam:    true,
-		IsOptional: isWildCard || pattern[parameterEndPosition] == optionalParam,
+		IsOptional: isWildCard || pattern[paramEndPosition] == optionalParam,
 		IsGreedy:   isWildCard || isPlusParam,
 	}
 
@@ -418,57 +440,6 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 	}
 
 	return n, segment
-}
-
-// findNextCharsetPosition search the next char position from the charset
-func findNextCharsetPosition(search string, charset []byte) int {
-	nextPosition := -1
-	for _, char := range charset {
-		if pos := strings.IndexByte(search, char); pos != -1 && (pos < nextPosition || nextPosition == -1) {
-			nextPosition = pos
-		}
-	}
-
-	return nextPosition
-}
-
-// findNextCharsetPositionConstraint searches the next char position from the charset
-// unlike findNextCharsetPosition, it takes care of constraint start-end chars to parse route pattern
-func findNextCharsetPositionConstraint(search string, charset []byte) int {
-	constraintStart := findNextNonEscapedCharPosition(search, paramConstraintStart)
-	constraintEnd := findNextNonEscapedCharPosition(search, paramConstraintEnd)
-	nextPosition := -1
-
-	for _, char := range charset {
-		pos := strings.IndexByte(search, char)
-
-		if pos != -1 && (pos < nextPosition || nextPosition == -1) {
-			if (pos > constraintStart && pos > constraintEnd) || (pos < constraintStart && pos < constraintEnd) {
-				nextPosition = pos
-			}
-		}
-	}
-
-	return nextPosition
-}
-
-// findNextNonEscapedCharsetPosition searches the next char position from the charset and skips the escaped characters
-func findNextNonEscapedCharsetPosition(search string, charset []byte) int {
-	pos := findNextCharsetPosition(search, charset)
-	for pos > 0 && search[pos-1] == escapeChar {
-		if len(search) == pos+1 {
-			// escaped character is at the end
-			return -1
-		}
-		nextPossiblePos := findNextCharsetPosition(search[pos+1:], charset)
-		if nextPossiblePos == -1 {
-			return -1
-		}
-		// the previous character is taken into consideration
-		pos = nextPossiblePos + pos + 1
-	}
-
-	return pos
 }
 
 // findNextNonEscapedCharPosition searches the next char position and skips the escaped characters
@@ -496,8 +467,29 @@ func splitNonEscaped(s string, sep byte) []string {
 	return append(result, s)
 }
 
+func hasPartialMatchBoundary(path string, matchedLength int) bool {
+	if matchedLength < 0 || matchedLength > len(path) {
+		return false
+	}
+	if matchedLength == len(path) {
+		return true
+	}
+	if matchedLength == 0 {
+		return false
+	}
+	if path[matchedLength-1] == slashDelimiter {
+		return true
+	}
+	if matchedLength < len(path) && path[matchedLength] == slashDelimiter {
+		return true
+	}
+
+	return false
+}
+
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
 func (parser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // Accepting a bool param is fine here
+	originalDetectionPath := detectionPath
 	var i, paramsIterator, partLen int
 	for _, segment := range parser.segs {
 		partLen = len(detectionPath)
@@ -508,7 +500,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			// check if the end of the segment is an optional slash
 			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
 				i--
-			} else if !(i <= partLen && detectionPath[:i] == segment.Const) {
+			} else if i > partLen || detectionPath[:i] != segment.Const {
 				return false
 			}
 		} else {
@@ -520,7 +512,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			// take over the params positions
 			params[paramsIterator] = path[:i]
 
-			if !(segment.IsOptional && i == 0) {
+			if !segment.IsOptional || i != 0 {
 				// check constraint
 				for _, c := range segment.Constraints {
 					if matched := c.CheckConstraint(params[paramsIterator]); !matched {
@@ -537,8 +529,14 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			detectionPath, path = detectionPath[i:], path[i:]
 		}
 	}
-	if detectionPath != "" && !partialCheck {
-		return false
+	if detectionPath != "" {
+		if !partialCheck {
+			return false
+		}
+		consumedLength := len(originalDetectionPath) - len(detectionPath)
+		if !hasPartialMatchBoundary(originalDetectionPath, consumedLength) {
+			return false
+		}
 	}
 
 	return true
@@ -716,7 +714,6 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		}
 	}
 
-	// check constraints
 	switch c.ID {
 	case noConstraint:
 		return true
@@ -793,6 +790,8 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		if match := c.RegexCompiler.MatchString(param); !match {
 			return false
 		}
+	default:
+		return false
 	}
 
 	return err == nil

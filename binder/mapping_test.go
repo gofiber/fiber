@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"errors"
 	"mime/multipart"
 	"reflect"
 	"strconv"
@@ -49,6 +48,27 @@ func Test_EqualFieldType(t *testing.T) {
 	require.True(t, equalFieldType(&user2, reflect.String, "user.Address", "query"))
 	require.True(t, equalFieldType(&user2, reflect.Int, "user.AGE", "query"))
 	require.True(t, equalFieldType(&user2, reflect.Int, "user.age", "query"))
+
+	var pointerUser struct {
+		Tags *[]string `query:"tags"`
+	}
+	require.True(t, equalFieldType(&pointerUser, reflect.Slice, "tags", "query"))
+
+	type nested struct {
+		Values []string `query:"values"`
+	}
+	var nestedWrapper struct {
+		Nested *nested `query:"nested"`
+	}
+	require.True(t, equalFieldType(&nestedWrapper, reflect.Slice, "nested.values", "query"))
+
+	type nestedPointerSlice struct {
+		Values *[]string `query:"values"`
+	}
+	var nestedPointerWrapper struct {
+		Nested *nestedPointerSlice `query:"nested"`
+	}
+	require.True(t, equalFieldType(&nestedPointerWrapper, reflect.Slice, "nested.values", "query"))
 }
 
 func Test_ParseParamSquareBrackets(t *testing.T) {
@@ -70,17 +90,17 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 			expected: "foo.bar.baz",
 		},
 		{
-			err:      errors.New("unmatched brackets"),
+			err:      ErrUnmatchedBrackets,
 			input:    "foo[bar",
 			expected: "",
 		},
 		{
-			err:      errors.New("unmatched brackets"),
+			err:      ErrUnmatchedBrackets,
 			input:    "foo[bar][baz",
 			expected: "",
 		},
 		{
-			err:      errors.New("unmatched brackets"),
+			err:      ErrUnmatchedBrackets,
 			input:    "foo]bar[",
 			expected: "",
 		},
@@ -112,8 +132,7 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 
 			result, err := parseParamSquareBrackets(tt.input)
 			if tt.err != nil {
-				require.Error(t, err)
-				require.EqualError(t, err, tt.err.Error())
+				require.ErrorIs(t, err, tt.err)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expected, result)
@@ -133,7 +152,7 @@ func Test_parseToMap(t *testing.T) {
 
 	// Test map[string]string
 	m := make(map[string]string)
-	err := parseToMap(m, inputMap)
+	err := parseToMap(reflect.ValueOf(m), inputMap)
 	require.NoError(t, err)
 
 	require.Equal(t, "value2", m["key1"])
@@ -142,7 +161,7 @@ func Test_parseToMap(t *testing.T) {
 
 	// Test map[string][]string
 	m2 := make(map[string][]string)
-	err = parseToMap(m2, inputMap)
+	err = parseToMap(reflect.ValueOf(m2), inputMap)
 	require.NoError(t, err)
 
 	require.Len(t, m2["key1"], 2)
@@ -153,8 +172,22 @@ func Test_parseToMap(t *testing.T) {
 
 	// Test map[string]any
 	m3 := make(map[string]any)
-	err = parseToMap(m3, inputMap)
-	require.ErrorIs(t, err, ErrMapNotConvertible)
+	err = parseToMap(reflect.ValueOf(m3), inputMap)
+	require.NoError(t, err)
+	require.Empty(t, m3)
+
+	var zeroStringMap map[string]string
+	err = parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), inputMap)
+	require.NoError(t, err)
+	require.Equal(t, "value2", zeroStringMap["key1"])
+
+	var zeroSliceMap map[string][]string
+	err = parseToMap(reflect.ValueOf(&zeroSliceMap).Elem(), inputMap)
+	require.NoError(t, err)
+	require.Len(t, zeroSliceMap["key1"], 2)
+
+	err = parseToMap(reflect.ValueOf(map[string]string(nil)), inputMap)
+	require.ErrorIs(t, err, ErrMapNilDestination)
 }
 
 func Test_FilterFlags(t *testing.T) {
@@ -384,16 +417,16 @@ func Test_parseToMap_Extended(t *testing.T) {
 	}
 
 	m := make(map[string]string)
-	err := parseToMap(m, data)
+	err := parseToMap(reflect.ValueOf(m), data)
 	require.NoError(t, err)
-	require.Equal(t, "", m["empty"])
+	require.Empty(t, m["empty"])
 
 	m2 := make(map[string][]int)
-	err = parseToMap(m2, data)
+	err = parseToMap(reflect.ValueOf(m2), data)
 	require.ErrorIs(t, err, ErrMapNotConvertible)
 
 	m3 := make(map[string]int)
-	err = parseToMap(m3, data)
+	err = parseToMap(reflect.ValueOf(m3), data)
 	require.NoError(t, err)
 }
 

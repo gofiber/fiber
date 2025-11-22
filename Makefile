@@ -38,7 +38,7 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	GOTOOLCHAIN=$(TOOLCHAIN) go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.7 run ./...
+	GOTOOLCHAIN=$(GOVERSION) go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0 run ./...
 
 ## modernize: 🛠 Run gopls modernize
 .PHONY: modernize
@@ -63,7 +63,7 @@ tidy:
 ## betteralign: 📐 Optimize alignment of fields in structs
 .PHONY: betteralign
 betteralign:
-	GOTOOLCHAIN=$(GOVERSION) go run github.com/dkorunic/betteralign/cmd/betteralign@v0.7.2 -test_files -generated_files -apply ./...
+	GOTOOLCHAIN=$(GOVERSION) go run github.com/dkorunic/betteralign/cmd/betteralign@v0.8.0 -test_files -generated_files -apply ./...
 
 ## generate: ⚡️ Generate msgp && interface implementations
 .PHONY: generate
@@ -71,3 +71,8 @@ generate:
 	go install github.com/tinylib/msgp@latest
 	go install github.com/vburenin/ifacemaker@f30b6f9bdbed4b5c4804ec9ba4a04a999525c202
 	go generate ./...
+
+# actionspin: 🤖 Bulk replace GitHub actions references from version tags to commit hashes
+.PHONY: actionspin
+actionspin:
+	GOTOOLCHAIN=$(GOVERSION) go run github.com/mashiike/actionspin/cmd/actionspin@latest

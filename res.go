@@ -9,12 +9,14 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -97,7 +99,8 @@ func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
 	return true
 }
 
-// Cookie data for c.Cookie
+// Cookie defines the values used when configuring cookies emitted by
+// DefaultRes.Cookie.
 type Cookie struct {
 	Expires     time.Time `json:"expires"`      // The expiration date of the cookie
 	Name        string    `json:"name"`         // The name of the cookie
@@ -118,6 +121,8 @@ type ResFmt struct {
 	MediaType string
 }
 
+// DefaultRes is the default implementation of Res used by DefaultCtx.
+//
 //go:generate ifacemaker --file res.go --struct DefaultRes --iface Res --pkg fiber --output res_interface_gen.go --not-exported true --iface-comment "Res is an interface for response-related Ctx methods."
 type DefaultRes struct {
 	c *DefaultCtx
@@ -137,7 +142,7 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	h := r.c.app.toString(r.c.fasthttp.Response.Header.Peek(field))
 	originalH := h
 	for _, value := range values {
-		if len(h) == 0 {
+		if h == "" {
 			h = value
 		} else if h != value && !strings.HasPrefix(h, value+",") && !strings.HasSuffix(h, " "+value) &&
 			!strings.Contains(h, " "+value+",") {
@@ -339,7 +344,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		}
 		types = append(types, h.MediaType)
 	}
-	accept := r.c.DefaultReq.Accepts(types...)
+	accept := r.c.DefaultReq.Accepts(types...) //nolint:staticcheck // It is fine to ignore the static check
 
 	if accept == "" {
 		if defaultHandler == nil {
@@ -365,7 +370,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
 	// Get accepted content type
-	accept := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor")
+	accept := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor") //nolint:staticcheck // It is fine to ignore the static check
 
 	// Set accepted content type
 	r.Type(accept)
@@ -568,7 +573,11 @@ func (r *DefaultRes) ViewBind(vars Map) error {
 }
 
 // getLocationFromRoute get URL location from route using parameters
-func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, error) {
+func (r *DefaultRes) getLocationFromRoute(route *Route, params Map) (string, error) {
+	if route == nil || route.Path == "" {
+		return "", ErrNotFound
+	}
+
 	app := r.c.app
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
@@ -599,7 +608,8 @@ func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, erro
 
 // GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 func (r *DefaultRes) GetRouteURL(routeName string, params Map) (string, error) {
-	return r.getLocationFromRoute(r.c.app.GetRoute(routeName), params)
+	route := r.c.app.GetRoute(routeName)
+	return r.getLocationFromRoute(&route, params)
 }
 
 // Render a template with data and sends a text/html response.
@@ -786,9 +796,9 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	}
 
 	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
-	if len(file) == 0 || (!filepath.IsAbs(file) && cfg.FS == nil) {
+	if file == "" || (!filepath.IsAbs(file) && cfg.FS == nil) {
 		// extend relative path to absolute path
-		hasTrailingSlash := len(file) > 0 && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
+		hasTrailingSlash := file != "" && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
 
 		var err error
 		file = filepath.FromSlash(file)
@@ -810,6 +820,23 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Set new URI for fileHandler
 	request.SetRequestURI(file)
+
+	var (
+		sendFileSize    int64
+		hasSendFileSize bool
+	)
+
+	if cfg.ByteRange && len(request.Header.Peek(HeaderRange)) > 0 {
+		sizePath := file
+		if cfg.FS != nil {
+			sizePath = filepath.ToSlash(filename)
+		}
+
+		if size, err := sendFileContentLength(sizePath, cfg); err == nil {
+			sendFileSize = size
+			hasSendFileSize = true
+		}
+	}
 
 	// Save status code
 	response := &r.c.fasthttp.Response
@@ -838,7 +865,11 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
-		if len(cacheControlValue) > 0 {
+		if cfg.ByteRange && hasSendFileSize && response.StatusCode() == StatusRequestedRangeNotSatisfiable && len(response.Header.Peek(HeaderContentRange)) == 0 {
+			response.Header.Set(HeaderContentRange, "bytes */"+strconv.FormatInt(sendFileSize, 10))
+		}
+
+		if cacheControlValue != "" {
 			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 
@@ -848,10 +879,36 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	return nil
 }
 
+func sendFileContentLength(path string, cfg SendFile) (int64, error) {
+	if cfg.FS != nil {
+		cleanPath := pathpkg.Clean(utils.TrimLeft(path, '/'))
+		if cleanPath == "." {
+			cleanPath = ""
+		}
+		info, err := fs.Stat(cfg.FS, cleanPath)
+		if err != nil {
+			return 0, fmt.Errorf("stat %q: %w", cleanPath, err)
+		}
+		return info.Size(), nil
+	}
+
+	info, err := os.Stat(filepath.FromSlash(path))
+	if err != nil {
+		return 0, fmt.Errorf("stat %q: %w", path, err)
+	}
+
+	return info.Size(), nil
+}
+
 // SendStatus sets the HTTP status code and if the response body is empty,
 // it sets the correct status message in the body.
 func (r *DefaultRes) SendStatus(status int) error {
 	r.Status(status)
+
+	if statusDisallowsBody(status) {
+		r.c.fasthttp.Response.ResetBody()
+		return nil
+	}
 
 	// Only set status body when there is no response body
 	if len(r.c.fasthttp.Response.Body()) == 0 {
@@ -903,6 +960,20 @@ func (r *DefaultRes) Status(status int) Ctx {
 	return r.c
 }
 
+func statusDisallowsBody(status int) bool {
+	// As per RFC 9110, 1xx (Informational) responses cannot have a body.
+	if status >= 100 && status < 200 {
+		return true
+	}
+
+	switch status {
+	case StatusNoContent, StatusResetContent, StatusNotModified:
+		return true
+	default:
+		return false
+	}
+}
+
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 func (r *DefaultRes) Type(extension string, charset ...string) Ctx {
 	mimeType := utils.GetMIME(extension)
@@ -944,7 +1015,7 @@ func shouldIncludeCharset(mimeType string) bool {
 }
 
 // Vary adds the given header field to the Vary response header.
-// This will append the header, if not already listed, otherwise leaves it listed in the current location.
+// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
 func (r *DefaultRes) Vary(fields ...string) {
 	r.Append(HeaderVary, fields...)
 }

@@ -8,25 +8,28 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/addon/retry"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 
-func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (*fiber.App, string) {
+func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (app *fiber.App, addr string) { //nolint:nonamedreturns // gocritic unnamedResult requires explicit result names for clarity when returning app and address
 	t.Helper()
 
-	app := fiber.New()
+	app = fiber.New()
 
 	if beforeStarting != nil {
 		beforeStarting(app)
@@ -34,8 +37,8 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 
 	addrChan := make(chan string)
 	errChan := make(chan error, 1)
-	go func() {
-		err := app.Listen(":0", fiber.ListenConfig{
+	go func(server *fiber.App) {
+		err := server.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
 			ListenerAddrFunc: func(addr net.Addr) {
 				addrChan <- addr.String()
@@ -44,10 +47,10 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 		if err != nil {
 			errChan <- err
 		}
-	}()
+	}(app)
 
 	select {
-	case addr := <-addrChan:
+	case addr = <-addrChan:
 		return app, addr
 	case err := <-errChan:
 		t.Fatalf("Failed to start test server: %v", err)
@@ -77,6 +80,180 @@ func Test_New_With_Client(t *testing.T) {
 			NewWithClient(nil)
 		})
 	})
+}
+
+func Test_New_With_HostClient(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with valid host client", func(t *testing.T) {
+		t.Parallel()
+
+		hc := &fasthttp.HostClient{Addr: "example.com:80"}
+		client := NewWithHostClient(hc)
+
+		require.NotNil(t, client)
+		require.Equal(t, hc, client.HostClient())
+		require.Nil(t, client.FasthttpClient())
+	})
+
+	t.Run("with nil host client", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fasthttp.HostClient must not be nil", func() {
+			NewWithHostClient(nil)
+		})
+	})
+}
+
+func Test_New_With_LBClient(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with valid lb client", func(t *testing.T) {
+		t.Parallel()
+
+		lb := &fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: "example.com:80"},
+			},
+		}
+
+		client := NewWithLBClient(lb)
+
+		require.NotNil(t, client)
+		require.Equal(t, lb, client.LBClient())
+		require.Nil(t, client.FasthttpClient())
+		require.Nil(t, client.HostClient())
+	})
+
+	t.Run("with nil lb client", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fasthttp.LBClient must not be nil", func() {
+			NewWithLBClient(nil)
+		})
+	})
+}
+
+func TestClientUnderlyingTransports(t *testing.T) {
+	t.Parallel()
+
+	std := New()
+	require.NotNil(t, std.FasthttpClient())
+	require.Nil(t, std.HostClient())
+	require.Nil(t, std.LBClient())
+
+	hostTransport := &fasthttp.HostClient{Addr: "example.com:80"}
+	host := NewWithHostClient(hostTransport)
+	require.Nil(t, host.FasthttpClient())
+	require.Same(t, hostTransport, host.HostClient())
+	require.Nil(t, host.LBClient())
+
+	lbClient := &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hostTransport}}
+	lb := NewWithLBClient(lbClient)
+	require.Nil(t, lb.FasthttpClient())
+	require.Nil(t, lb.HostClient())
+	require.Same(t, lbClient, lb.LBClient())
+}
+
+func TestClientCBORUnmarshalOverride(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	initial := client.CBORUnmarshal()
+	require.NotNil(t, initial)
+
+	called := false
+	custom := func(b []byte, v any) error {
+		_ = b
+		_ = v
+		called = true
+		return nil
+	}
+
+	client.SetCBORUnmarshal(custom)
+	fn := client.CBORUnmarshal()
+	require.NotNil(t, fn)
+
+	var payload []byte
+	require.NoError(t, fn(payload, nil))
+	require.True(t, called)
+}
+
+func TestClientSetRootCertificateErrors(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	require.Panics(t, func() {
+		client.SetRootCertificate("does-not-exist.pem")
+	})
+
+	tmpDir := t.TempDir()
+	badPath := filepath.Join(tmpDir, "invalid.pem")
+	require.NoError(t, os.WriteFile(badPath, []byte("not a pem"), 0o600))
+
+	require.Panics(t, func() {
+		client.SetRootCertificate(badPath)
+	})
+}
+
+func TestClientSetRootCertificateFromStringError(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	require.Panics(t, func() {
+		client.SetRootCertificateFromString("invalid pem data")
+	})
+}
+
+func TestClientLoggerAccessors(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	_ = client.Logger()
+	contextual := log.WithContext(context.Background())
+	client.SetLogger(contextual)
+	require.Equal(t, contextual, client.Logger())
+}
+
+func TestClientResetClearsState(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+
+	jar := AcquireCookieJar()
+	jar.hostCookies = map[string][]*fasthttp.Cookie{"example.com": {}}
+	client.SetCookieJar(jar)
+
+	client.SetBaseURL("http://example.com")
+	client.SetTimeout(2 * time.Second)
+	client.SetUserAgent("reset-agent")
+	client.SetReferer("reset-ref")
+	client.SetRetryConfig(&RetryConfig{MaxRetryCount: 3})
+	client.Debug()
+	client.SetDisablePathNormalizing(true)
+	client.SetHeaders(map[string]string{"X-Test": "value"})
+	client.SetParams(map[string]string{"p": "1"})
+	client.SetCookies(map[string]string{"cookie": "value"})
+	client.SetPathParams(map[string]string{"id": "123"})
+
+	client.Reset()
+
+	require.NotNil(t, client.FasthttpClient())
+	require.Nil(t, client.HostClient())
+	require.Nil(t, client.LBClient())
+	require.Empty(t, client.BaseURL())
+	require.Zero(t, client.timeout)
+	require.Empty(t, client.userAgent)
+	require.Empty(t, client.referer)
+	require.Nil(t, client.retryConfig)
+	require.False(t, client.debug)
+	require.False(t, client.disablePathNormalizing)
+	require.Nil(t, client.cookieJar)
+	require.Nil(t, jar.hostCookies)
+	require.Empty(t, *client.path)
+	require.Empty(t, *client.cookies)
+	require.Equal(t, 0, client.header.Len())
+	require.Equal(t, 0, client.params.Len())
 }
 
 func Test_Client_Add_Hook(t *testing.T) {
@@ -121,6 +298,353 @@ func Test_Client_Add_Hook(t *testing.T) {
 		})
 
 		require.Len(t, client.ResponseHook(), 3)
+	})
+}
+
+func Test_Client_HostClient_Behavior(t *testing.T) {
+	t.Parallel()
+
+	t.Run("do and redirects", func(t *testing.T) {
+		t.Parallel()
+
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Get("/ok", func(c fiber.Ctx) error {
+				return c.SendString("ok")
+			})
+			app.Get("/redirect", func(c fiber.Ctx) error {
+				return c.Redirect().Status(fiber.StatusFound).To("/ok")
+			})
+		})
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := NewWithHostClient(&fasthttp.HostClient{Addr: addr})
+
+		resp, err := client.Get("http://" + addr + "/ok")
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "ok", resp.String())
+
+		resp, err = client.Get("http://"+addr+"/redirect", Config{MaxRedirects: 1})
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "ok", resp.String())
+	})
+
+	t.Run("retries respect dial overrides", func(t *testing.T) {
+		t.Parallel()
+
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("retry")
+			})
+		})
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := NewWithHostClient(&fasthttp.HostClient{Addr: addr})
+		client.SetRetryConfig(&RetryConfig{
+			InitialInterval: time.Millisecond,
+			MaxRetryCount:   2,
+		})
+
+		var attempts int32
+		client.SetDial(func(address string) (net.Conn, error) {
+			if atomic.AddInt32(&attempts, 1) == 1 {
+				return nil, errors.New("dial failure")
+			}
+			return fasthttp.Dial(address)
+		})
+
+		resp, err := client.Get("http://" + addr)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "retry", resp.String())
+		require.EqualValues(t, 2, atomic.LoadInt32(&attempts))
+	})
+
+	t.Run("tls configuration propagates", func(t *testing.T) {
+		t.Parallel()
+
+		serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+		require.NoError(t, err)
+
+		ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+		require.NoError(t, err)
+		ln = tls.NewListener(ln, serverTLSConf)
+
+		app := fiber.New()
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("tls-host")
+		})
+
+		go func() {
+			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
+				DisableStartupMessage: true,
+			}))
+		}()
+		time.Sleep(1 * time.Second)
+
+		client := NewWithHostClient(&fasthttp.HostClient{Addr: ln.Addr().String(), IsTLS: true})
+
+		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
+		require.NoError(t, err)
+		cfg := client.TLSConfig()
+		require.Same(t, clientTLSConf, cfg)
+		require.NotNil(t, cfg.RootCAs)
+		require.Equal(t, clientTLSConf, client.HostClient().TLSConfig)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "tls-host", resp.String())
+
+		require.NoError(t, app.Shutdown())
+	})
+
+	t.Run("proxy overrides and reset", func(t *testing.T) {
+		t.Parallel()
+
+		client := NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80"})
+
+		require.NoError(t, client.SetProxyURL("http://127.0.0.1:8080"))
+		require.NotNil(t, client.HostClient().Dial)
+
+		var called int32
+		customDial := func(addr string) (net.Conn, error) {
+			_ = addr
+			atomic.AddInt32(&called, 1)
+			return nil, errors.New("dial")
+		}
+		client.SetDial(customDial)
+
+		_, err := client.HostClient().Dial("example.com:80")
+		require.Error(t, err)
+		require.EqualValues(t, 1, atomic.LoadInt32(&called))
+
+		client.Reset()
+		require.NotNil(t, client.FasthttpClient())
+		require.Nil(t, client.HostClient())
+		require.Nil(t, client.LBClient())
+	})
+
+	t.Run("timeouts and close idle", func(t *testing.T) {
+		t.Parallel()
+
+		client := NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80"})
+
+		var dialCalls int32
+		dialErr := errors.New("dial failed")
+		client.HostClient().Dial = func(addr string) (net.Conn, error) {
+			_ = addr
+			atomic.AddInt32(&dialCalls, 1)
+			return nil, dialErr
+		}
+
+		req := fasthttp.AcquireRequest()
+		resp := fasthttp.AcquireResponse()
+		req.SetRequestURI("http://example.com/")
+
+		err := client.DoTimeout(req, resp, 5*time.Millisecond)
+		require.ErrorIs(t, err, dialErr)
+
+		req.SetRequestURI("http://example.com/")
+		err = client.DoDeadline(req, resp, time.Now().Add(5*time.Millisecond))
+		require.ErrorIs(t, err, dialErr)
+
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+
+		require.EqualValues(t, 2, atomic.LoadInt32(&dialCalls))
+		require.NotPanics(t, client.CloseIdleConnections)
+	})
+}
+
+func Test_Client_LBClient_Behavior(t *testing.T) {
+	t.Parallel()
+
+	newLBClient := func(addr string) *fasthttp.LBClient {
+		return &fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: addr},
+			},
+		}
+	}
+
+	t.Run("do and redirects", func(t *testing.T) {
+		t.Parallel()
+
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Get("/ok", func(c fiber.Ctx) error {
+				return c.SendString("ok")
+			})
+			app.Get("/redirect", func(c fiber.Ctx) error {
+				return c.Redirect().Status(fiber.StatusFound).To("/ok")
+			})
+		})
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := NewWithLBClient(newLBClient(addr))
+
+		resp, err := client.Get("http://" + addr + "/ok")
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "ok", resp.String())
+
+		resp, err = client.Get("http://"+addr+"/redirect", Config{MaxRedirects: 1})
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "ok", resp.String())
+	})
+
+	t.Run("retries respect dial overrides", func(t *testing.T) {
+		t.Parallel()
+
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("retry")
+			})
+		})
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := NewWithLBClient(newLBClient(addr))
+		client.SetRetryConfig(&RetryConfig{
+			InitialInterval: time.Millisecond,
+			MaxRetryCount:   2,
+		})
+
+		var attempts int32
+		client.SetDial(func(address string) (net.Conn, error) {
+			if atomic.AddInt32(&attempts, 1) == 1 {
+				return nil, errors.New("dial failure")
+			}
+			return fasthttp.Dial(address)
+		})
+
+		resp, err := client.Get("http://" + addr)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "retry", resp.String())
+		require.EqualValues(t, 2, atomic.LoadInt32(&attempts))
+	})
+
+	t.Run("tls configuration propagates", func(t *testing.T) {
+		t.Parallel()
+
+		serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+		require.NoError(t, err)
+
+		ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+		require.NoError(t, err)
+		ln = tls.NewListener(ln, serverTLSConf)
+
+		app := fiber.New()
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("tls-lb")
+		})
+
+		go func() {
+			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
+				DisableStartupMessage: true,
+			}))
+		}()
+		time.Sleep(1 * time.Second)
+
+		lb := newLBClient(ln.Addr().String())
+		host, ok := lb.Clients[0].(*fasthttp.HostClient)
+		require.True(t, ok)
+		host.IsTLS = true
+		client := NewWithLBClient(lb)
+
+		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
+		require.NoError(t, err)
+		cfg := client.TLSConfig()
+		require.Same(t, clientTLSConf, cfg)
+		require.NotNil(t, cfg.RootCAs)
+
+		hc, ok := client.LBClient().Clients[0].(*fasthttp.HostClient)
+		require.True(t, ok)
+		require.Equal(t, clientTLSConf, hc.TLSConfig)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "tls-lb", resp.String())
+
+		require.NoError(t, app.Shutdown())
+	})
+
+	t.Run("proxy overrides and reset", func(t *testing.T) {
+		t.Parallel()
+
+		client := NewWithLBClient(&fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: "example.com:80"},
+			},
+		})
+
+		require.NoError(t, client.SetProxyURL("http://127.0.0.1:8080"))
+
+		hc, ok := client.LBClient().Clients[0].(*fasthttp.HostClient)
+		require.True(t, ok)
+		require.NotNil(t, hc.Dial)
+
+		var called int32
+		customDial := func(addr string) (net.Conn, error) {
+			_ = addr
+			atomic.AddInt32(&called, 1)
+			return nil, errors.New("dial")
+		}
+		client.SetDial(customDial)
+
+		_, err := hc.Dial("example.com:80")
+		require.Error(t, err)
+		require.EqualValues(t, 1, atomic.LoadInt32(&called))
+
+		client.Reset()
+		require.NotNil(t, client.FasthttpClient())
+		require.Nil(t, client.LBClient())
+		require.Nil(t, client.HostClient())
+	})
+
+	t.Run("timeouts and close idle", func(t *testing.T) {
+		t.Parallel()
+
+		client := NewWithLBClient(&fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: "example.com:80"},
+				&fasthttp.HostClient{Addr: "example.org:80"},
+			},
+		})
+
+		var dialCalls int32
+		dialErr := errors.New("dial failed")
+		for _, bc := range client.LBClient().Clients {
+			if hc, ok := bc.(*fasthttp.HostClient); ok {
+				hc.Dial = func(addr string) (net.Conn, error) {
+					_ = addr
+					atomic.AddInt32(&dialCalls, 1)
+					return nil, dialErr
+				}
+			}
+		}
+
+		req := fasthttp.AcquireRequest()
+		resp := fasthttp.AcquireResponse()
+		req.SetRequestURI("http://example.com/")
+
+		err := client.DoTimeout(req, resp, 5*time.Millisecond)
+		require.ErrorIs(t, err, dialErr)
+
+		req.SetRequestURI("http://example.com/")
+		err = client.DoDeadline(req, resp, time.Now().Add(5*time.Millisecond))
+		require.ErrorIs(t, err, dialErr)
+
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+
+		require.GreaterOrEqual(t, atomic.LoadInt32(&dialCalls), int32(2))
+		require.NotPanics(t, client.CloseIdleConnections)
 	})
 }
 
@@ -326,13 +850,12 @@ func Test_Client_ConcurrencyRequests(t *testing.T) {
 	wg := sync.WaitGroup{}
 	for range 5 {
 		for _, method := range []string{"GET", "POST", "PUT", "DELETE", "PATCH"} {
-			wg.Add(1)
-			go func(m string) {
-				defer wg.Done()
+			m := method
+			wg.Go(func() {
 				resp, err := client.Custom("http://example.com", m)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, "example.com "+m, utils.UnsafeString(resp.RawResponse.Body()))
-			}(method)
+			})
 		}
 	}
 
@@ -403,7 +926,7 @@ func Test_Head(t *testing.T) {
 		resp, err := Head("http://" + addr)
 		require.NoError(t, err)
 		require.Equal(t, "7", resp.Header(fiber.HeaderContentLength))
-		require.Equal(t, "", utils.UnsafeString(resp.RawResponse.Body()))
+		require.Empty(t, utils.UnsafeString(resp.RawResponse.Body()))
 	})
 
 	t.Run("client head", func(t *testing.T) {
@@ -417,7 +940,7 @@ func Test_Head(t *testing.T) {
 		resp, err := New().Head("http://" + addr)
 		require.NoError(t, err)
 		require.Equal(t, "7", resp.Header(fiber.HeaderContentLength))
-		require.Equal(t, "", utils.UnsafeString(resp.RawResponse.Body()))
+		require.Empty(t, utils.UnsafeString(resp.RawResponse.Body()))
 	})
 }
 
@@ -567,7 +1090,7 @@ func Test_Delete(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Equal(t, "", resp.String())
+			require.Empty(t, resp.String())
 		}
 	})
 
@@ -588,7 +1111,7 @@ func Test_Delete(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Equal(t, "", resp.String())
+			require.Empty(t, resp.String())
 		}
 	})
 }
@@ -621,7 +1144,7 @@ func Test_Options(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, "GET, POST, PUT, DELETE, PATCH", resp.Header(fiber.HeaderAllow))
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Equal(t, "", resp.String())
+			require.Empty(t, resp.String())
 		}
 	})
 
@@ -639,7 +1162,7 @@ func Test_Options(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, "GET, POST, PUT, DELETE, PATCH", resp.Header(fiber.HeaderAllow))
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
-			require.Equal(t, "", resp.String())
+			require.Empty(t, resp.String())
 		}
 	})
 }
@@ -815,7 +1338,7 @@ func Test_Client_Header(t *testing.T) {
 		require.Equal(t, "foo", res[0])
 	})
 
-	t.Run("set header case insensitive", func(t *testing.T) {
+	t.Run("set header case-insensitive", func(t *testing.T) {
 		t.Parallel()
 		req := New()
 		req.SetHeader("foo", "bar").
@@ -911,7 +1434,7 @@ func Test_Client_Cookie(t *testing.T) {
 		require.Equal(t, "foo", req.Cookie("bar"))
 
 		req.DelCookies("foo")
-		require.Equal(t, "", req.Cookie("foo"))
+		require.Empty(t, req.Cookie("foo"))
 		require.Equal(t, "foo", req.Cookie("bar"))
 	})
 }
@@ -1271,7 +1794,7 @@ func Test_Client_PathParam(t *testing.T) {
 		require.Equal(t, "foo", req.PathParam("bar"))
 
 		req.DelPathParams("foo")
-		require.Equal(t, "", req.PathParam("foo"))
+		require.Empty(t, req.PathParam("foo"))
 		require.Equal(t, "foo", req.PathParam("bar"))
 	})
 }
@@ -1321,7 +1844,8 @@ func Test_Client_TLS(t *testing.T) {
 	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
 
 	require.NoError(t, err)
-	require.Equal(t, clientTLSConf, client.TLSConfig())
+	cfg := client.TLSConfig()
+	require.Same(t, clientTLSConf, cfg)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "tls", resp.String())
 }
@@ -1355,7 +1879,8 @@ func Test_Client_TLS_Error(t *testing.T) {
 	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
 
 	require.Error(t, err)
-	require.Equal(t, clientTLSConf, client.TLSConfig())
+	cfg := client.TLSConfig()
+	require.Same(t, clientTLSConf, cfg)
 	require.Nil(t, resp)
 }
 
@@ -1445,7 +1970,7 @@ func Test_Replace(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "", resp.String())
+	require.Empty(t, resp.String())
 
 	r := New().SetDial(dial).SetHeader("k1", "v1")
 	clean := Replace(r)
@@ -1461,7 +1986,7 @@ func Test_Replace(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "", resp.String())
+	require.Empty(t, resp.String())
 
 	C().SetDial(nil)
 }
@@ -1563,13 +2088,52 @@ func Test_Set_Config_To_Request(t *testing.T) {
 		require.Equal(t, 1, req.MaxRedirects())
 	})
 
-	t.Run("set body", func(t *testing.T) {
+	t.Run("set body string", func(t *testing.T) {
 		t.Parallel()
 		req := AcquireRequest()
 
 		setConfigToRequest(req, Config{Body: "test"})
 
-		require.Equal(t, "test", req.body)
+		body, ok := req.body.([]byte)
+		require.True(t, ok)
+		require.Equal(t, "test", string(body))
+	})
+
+	t.Run("set body byte", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+
+		setConfigToRequest(req, Config{Body: []byte("test")})
+
+		require.Equal(t, []byte("test"), req.body)
+	})
+
+	t.Run("set body json", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+
+		type payload struct {
+			Foo string `json:"foo"`
+		}
+
+		setConfigToRequest(req, Config{Body: payload{Foo: "bar"}})
+
+		payloadBody, ok := req.body.(payload)
+		require.True(t, ok)
+		require.Equal(t, payload{Foo: "bar"}, payloadBody)
+	})
+
+	t.Run("set body map", func(t *testing.T) {
+		t.Parallel()
+		req := AcquireRequest()
+
+		setConfigToRequest(req, Config{Body: map[string]string{
+			"foo": "bar",
+		}})
+
+		require.Equal(t, map[string]string{
+			"foo": "bar",
+		}, req.body)
 	})
 
 	t.Run("set file", func(t *testing.T) {
@@ -1732,4 +2296,50 @@ func Benchmark_Client_Request_Parallel(b *testing.B) {
 		}
 		require.NoError(b, err)
 	})
+}
+
+func Benchmark_Client_Request_Send_ContextCancel(b *testing.B) {
+	app, ln, start := createHelperServer(b)
+
+	startedCh := make(chan struct{})
+	errCh := make(chan error)
+	respCh := make(chan *Response)
+
+	app.Post("/", func(c fiber.Ctx) error {
+		startedCh <- struct{}{}
+		time.Sleep(time.Millisecond) // let cancel be called
+		return c.Status(fiber.StatusOK).SendString("post")
+	})
+
+	go start()
+
+	client := New().SetDial(ln)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		req := AcquireRequest().
+			SetClient(client).
+			SetURL("http://example.com").
+			SetMethod(fiber.MethodPost).
+			SetContext(ctx)
+
+		go func(r *Request) {
+			defer ReleaseRequest(r)
+
+			resp, err := r.Send()
+
+			respCh <- resp
+			errCh <- err
+		}(req)
+
+		<-startedCh // request is made, we can cancel the context now
+		cancel()
+
+		require.Nil(b, <-respCh)
+		require.ErrorIs(b, <-errCh, ErrTimeoutOrCancel)
+	}
 }

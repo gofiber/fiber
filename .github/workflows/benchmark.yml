@@ -1,13 +1,13 @@
 on:
+  workflow_dispatch:
   push:
     branches:
-      - master
       - main
-    paths:
-      - "**.go"
+    paths-ignore:
+      - "**/*.md"
   pull_request:
-    paths:
-      - "**.go"
+    paths-ignore:
+      - "**/*.md"
 
 permissions:
   # deployments permission to deploy GitHub pages website
@@ -23,12 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
       - name: Install Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           # NOTE: Keep this in sync with the version from go.mod
           go-version: "1.25.x"
@@ -68,7 +68,7 @@ jobs:
 
       # NOTE: Benchmarks could change with different CPU types
       - name: Get GitHub Runner System Information
-        uses: kenchan0130/actions-system-info@v1.4.0
+        uses: kenchan0130/actions-system-info@59699597e84e80085a750998045983daa49274c4 # v1.4.0
         id: system-info
 
       - name: Get Main branch SHA
@@ -79,14 +79,14 @@ jobs:
 
       - name: Get Benchmark Results from main branch
         id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ./cache
           key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-benchmark
 
       # This will only run if we have Benchmark Results from main branch
       - name: Compare PR Benchmark Results with main branch
-        uses: benchmark-action/github-action-benchmark@v1.20.7
+        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
         if: steps.cache.outputs.cache-hit == 'true'
         with:
           tool: 'go'
@@ -102,7 +102,7 @@ jobs:
           alert-threshold: "150%"
 
       - name: Store Benchmark Results for main branch
-        uses: benchmark-action/github-action-benchmark@v1.20.7
+        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'
@@ -116,7 +116,7 @@ jobs:
           alert-threshold: "150%"
 
       - name: Publish Benchmark Results to GitHub Pages
-        uses: benchmark-action/github-action-benchmark@v1.20.7
+        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'
@@ -134,7 +134,7 @@ jobs:
           auto-push: false
 
       - name: Update Benchmark Results cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         if: ${{ github.ref_name == 'main' }}
         with:
           path: ./cache

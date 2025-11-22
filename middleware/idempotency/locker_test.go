@@ -114,7 +114,7 @@ func Benchmark_MemoryLock_Parallel(b *testing.B) {
 		b.ResetTimer()
 		b.RunParallel(func(p *testing.PB) {
 			for p.Next() {
-				// Division by 3 ensures that index will be repreated exactly 3 times
+				// Division by 3 ensures that index will be repeated exactly 3 times
 				i := int(keyI.Add(1)) / 3 % len(keys)
 				key := keys[i]
 				if err := lock.Lock(key); err != nil {

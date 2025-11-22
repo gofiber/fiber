@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -41,7 +41,9 @@ var (
 type contextKey int
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
-const userContextKey contextKey = 0 // __local_user_context__
+const (
+	userContextKey contextKey = iota // __local_user_context__
+)
 
 // DefaultCtx is the default implementation of the Ctx interface
 // generation tool `go install github.com/vburenin/ifacemaker@f30b6f9bdbed4b5c4804ec9ba4a04a999525c202`
@@ -49,28 +51,31 @@ const userContextKey contextKey = 0 // __local_user_context__
 //
 //go:generate ifacemaker --file ctx.go --file req.go --file res.go --struct DefaultCtx --iface Ctx --pkg fiber --promoted --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
-	DefaultReq                         // Default request api
-	DefaultRes                         // Default response api
-	app           *App                 // Reference to *App
-	route         *Route               // Reference to *Route
-	fasthttp      *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	bind          *Bind                // Default bind reference
-	redirect      *Redirect            // Default redirect reference
-	values        [maxParams]string    // Route parameter values
-	viewBindMap   sync.Map             // Default view map to bind template engine
-	baseURI       string               // HTTP base uri
-	pathOriginal  string               // Original HTTP path
-	flashMessages redirectionMsgs      // Flash messages
-	path          []byte               // HTTP path with the modifications by the configuration
-	detectionPath []byte               // Route detection path
-	treePathHash  int                  // Hash of the path for the search in the tree
-	indexRoute    int                  // Index of the current route
-	indexHandler  int                  // Index of the current handler
-	methodInt     int                  // HTTP method INT equivalent
-	matched       bool                 // Non use route matched
+	handlerCtx       CustomCtx            // Active custom context implementation, if any
+	DefaultReq                            // Default request api
+	DefaultRes                            // Default response api
+	app              *App                 // Reference to *App
+	route            *Route               // Reference to *Route
+	fasthttp         *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	bind             *Bind                // Default bind reference
+	redirect         *Redirect            // Default redirect reference
+	values           [maxParams]string    // Route parameter values
+	viewBindMap      sync.Map             // Default view map to bind template engine
+	baseURI          string               // HTTP base uri
+	pathOriginal     string               // Original HTTP path
+	flashMessages    redirectionMsgs      // Flash messages
+	path             []byte               // HTTP path with the modifications by the configuration
+	detectionPath    []byte               // Route detection path
+	treePathHash     int                  // Hash of the path for the search in the tree
+	indexRoute       int                  // Index of the current route
+	indexHandler     int                  // Index of the current handler
+	methodInt        int                  // HTTP method INT equivalent
+	matched          bool                 // Non use route matched
+	skipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
 }
 
-// TLSHandler object
+// TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
+// connections, including optional client certificate lookups.
 type TLSHandler struct {
 	clientHelloInfo *tls.ClientHelloInfo
 }
@@ -149,11 +154,7 @@ func (*DefaultCtx) Done() <-chan struct{} {
 	return nil
 }
 
-// If Done is not yet closed, Err returns nil.
-// If Done is closed, Err returns a non-nil error explaining why:
-// context.DeadlineExceeded if the context's deadline passed,
-// or context.Canceled if the context was canceled for some other reason.
-// After Err returns a non-nil error, successive calls to Err return the same error.
+// Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
 //
 // Due to current limitations in how fasthttp works, Err operates as a nop.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
@@ -228,11 +229,16 @@ func (c *DefaultCtx) Next() error {
 
 	// Did we execute all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
-		// Continue route stack
+		if c.handlerCtx != nil {
+			return c.route.Handlers[c.indexHandler](c.handlerCtx)
+		}
 		return c.route.Handlers[c.indexHandler](c)
 	}
 
-	// Continue handler stack
+	if c.handlerCtx != nil {
+		_, err := c.app.nextCustom(c.handlerCtx)
+		return err
+	}
 	_, err := c.app.next(c)
 	return err
 }
@@ -240,11 +246,25 @@ func (c *DefaultCtx) Next() error {
 // RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
-	var err error
-
 	c.indexRoute = -1
-	_, err = c.app.next(c)
+	if c.handlerCtx != nil {
+		_, err := c.app.nextCustom(c.handlerCtx)
+		return err
+	}
+	_, err := c.app.next(c)
 	return err
+}
+
+func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
+	if ctx == nil {
+		c.handlerCtx = nil
+		return
+	}
+	if defaultCtx, ok := ctx.(*DefaultCtx); ok && defaultCtx == c {
+		c.handlerCtx = nil
+		return
+	}
+	c.handlerCtx = ctx
 }
 
 // OriginalURL contains the original request URL.
@@ -320,6 +340,11 @@ func (c *DefaultCtx) Route() *Route {
 	return c.route
 }
 
+// FullPath returns the matched route path, including any group prefixes.
+func (c *DefaultCtx) FullPath() string {
+	return c.Route().Path
+}
+
 // Matched returns true if the current request path was matched by the router.
 func (c *DefaultCtx) Matched() bool {
 	return c.getMatched()
@@ -341,6 +366,7 @@ func (c *DefaultCtx) IsMiddleware() bool {
 func (c *DefaultCtx) HasBody() bool {
 	hdr := &c.fasthttp.Request.Header
 
+	//nolint:revive // switch is exhaustive for all ContentLength() cases
 	switch cl := hdr.ContentLength(); {
 	case cl > 0:
 		return true
@@ -379,7 +405,7 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 	hasEncoding := false
 	for raw := range strings.SplitSeq(te, ",") {
 		token := strings.TrimSpace(raw)
-		if len(token) == 0 {
+		if token == "" {
 			continue
 		}
 		if idx := strings.IndexByte(token, ';'); idx >= 0 {
@@ -443,7 +469,7 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 		return fmt.Errorf("failed to read: %w", err)
 	}
 
-	if err := storage.SetWithContext(c, path, content, 0); err != nil {
+	if err := storage.SetWithContext(c.Context(), path, content, 0); err != nil {
 		return fmt.Errorf("failed to store: %w", err)
 	}
 
@@ -551,6 +577,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.indexHandler = 0
 	// Reset matched flag
 	c.matched = false
+	c.skipNonUseRoutes = false
 	// Set paths
 	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
@@ -581,6 +608,8 @@ func (c *DefaultCtx) release() {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
 	}
+	c.skipNonUseRoutes = false
+	c.handlerCtx = nil
 	c.DefaultReq.release()
 	c.DefaultRes.release()
 }
@@ -653,6 +682,10 @@ func (c *DefaultCtx) getMatched() bool {
 	return c.matched
 }
 
+func (c *DefaultCtx) getSkipNonUseRoutes() bool {
+	return c.skipNonUseRoutes
+}
+
 func (c *DefaultCtx) setIndexHandler(handler int) {
 	c.indexHandler = handler
 }
@@ -663,6 +696,10 @@ func (c *DefaultCtx) setIndexRoute(route int) {
 
 func (c *DefaultCtx) setMatched(matched bool) {
 	c.matched = matched
+}
+
+func (c *DefaultCtx) setSkipNonUseRoutes(skip bool) {
+	c.skipNonUseRoutes = skip
 }
 
 func (c *DefaultCtx) setRoute(route *Route) {

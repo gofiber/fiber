@@ -15,11 +15,13 @@ type countedLock struct {
 	locked int
 }
 
+// MemoryLock coordinates access to idempotency keys using in-memory locks.
 type MemoryLock struct {
 	keys map[string]*countedLock
 	mu   sync.Mutex
 }
 
+// Lock acquires the lock for the provided key, creating it when necessary.
 func (l *MemoryLock) Lock(key string) error {
 	l.mu.Lock()
 	lock, ok := l.keys[key]
@@ -35,6 +37,7 @@ func (l *MemoryLock) Lock(key string) error {
 	return nil
 }
 
+// Unlock releases the lock associated with the provided key.
 func (l *MemoryLock) Unlock(key string) error {
 	l.mu.Lock()
 	lock, ok := l.keys[key]
@@ -59,6 +62,7 @@ func (l *MemoryLock) Unlock(key string) error {
 	return nil
 }
 
+// NewMemoryLock creates a MemoryLock ready for use.
 func NewMemoryLock() *MemoryLock {
 	return &MemoryLock{
 		keys: make(map[string]*countedLock),

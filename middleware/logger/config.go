@@ -36,17 +36,17 @@ type Config struct {
 	// Optional. Default: map[string]LogFunc
 	CustomTags map[string]LogFunc
 
-	// You can define specific things before the returning the handler: colors, template, etc.
+	// You can define specific things before returning the handler: colors, template, etc.
 	//
 	// Optional. Default: beforeHandlerFunc
-	BeforeHandlerFunc func(Config)
+	BeforeHandlerFunc func(*Config)
 
 	// You can use custom loggers with Fiber by using this field.
 	// This field is really useful if you're using Zerolog, Zap, Logrus, apex/log etc.
 	// If you don't define anything for this field, it'll use default logger of Fiber.
 	//
 	// Optional. Default: defaultLogger
-	LoggerFunc func(c fiber.Ctx, data *Data, cfg Config) error
+	LoggerFunc func(c fiber.Ctx, data *Data, cfg *Config) error
 
 	timeZoneLocation *time.Location
 
@@ -104,6 +104,7 @@ const (
 	paramSeparator = ":"
 )
 
+// Buffer abstracts the buffer operations used when rendering log entries.
 type Buffer interface {
 	Len() int
 	ReadFrom(r io.Reader) (int64, error)
@@ -117,6 +118,7 @@ type Buffer interface {
 	String() string
 }
 
+// LogFunc formats logging output using the provided buffer and request data.
 type LogFunc func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error)
 
 // ConfigDefault is the default config

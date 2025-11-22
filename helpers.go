@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -21,7 +21,7 @@ import (
 	"time"
 	"unsafe"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 
 	"github.com/gofiber/fiber/v3/log"
 
@@ -59,16 +59,16 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 		// Get private field from value
 		if field := val.FieldByName("config"); field.IsValid() {
 			// Copy value from pointer field (unsafe)
-			newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
-			if !newval.IsValid() {
+			newValue := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
+			if !newValue.IsValid() {
 				return nil
 			}
 			// Get element from pointer
-			if elem := newval.Elem(); elem.IsValid() {
+			if elem := newValue.Elem(); elem.IsValid() {
 				// Cast value to *tls.Config
 				c, ok := reflect.TypeAssert[*tls.Config](elem)
 				if !ok {
-					panic(errors.New("failed to type-assert to *tls.Config"))
+					panic(errTLSConfigTypeAssertion)
 				}
 				return c
 			}
@@ -165,14 +165,14 @@ func uniqueRouteStack(stack []*Route) []*Route {
 
 // defaultString returns the value or a default value if it is set
 func defaultString(value string, defaultValue []string) string {
-	if len(value) == 0 && len(defaultValue) > 0 {
+	if value == "" && len(defaultValue) > 0 {
 		return defaultValue[0]
 	}
 	return value
 }
 
 func getGroupPath(prefix, path string) string {
-	if len(path) == 0 {
+	if path == "" {
 		return prefix
 	}
 
@@ -188,7 +188,11 @@ func getGroupPath(prefix, path string) string {
 // Returns true if the offer matches the specification, false otherwise.
 func acceptsOffer(spec, offer string, _ headerParams) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
-		return true
+		prefix := spec[:len(spec)-1]
+		if len(offer) < len(prefix) {
+			return false
+		}
+		return utils.EqualFold(prefix, offer[:len(prefix)])
 	}
 
 	return utils.EqualFold(spec, offer)
@@ -233,7 +237,7 @@ func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
 	ts := strings.Split(offer, "-")
 
 	// Step 2: first subtag must match (or be '*')
-	if !(rs[0] == "*" || utils.EqualFold(rs[0], ts[0])) {
+	if rs[0] != "*" && !utils.EqualFold(rs[0], ts[0]) {
 		return false
 	}
 
@@ -308,7 +312,7 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 }
 
 // paramsMatch returns whether offerParams contains all parameters present in specParams.
-// Matching is case insensitive, and surrounding quotes are stripped.
+// Matching is case-insensitive, and surrounding quotes are stripped.
 // To align with the behavior of res.format from Express, the order of parameters is
 // ignored, and if a parameter is specified twice in the incoming Accept, the last
 // provided value is given precedence.
@@ -402,7 +406,7 @@ func unescapeHeaderValue(v []byte) ([]byte, error) {
 		if c == '\\' {
 			// invalid escape at end of string
 			if i == len(v)-1 {
-				return nil, errors.New("invalid escape sequence")
+				return nil, errInvalidEscapeSequence
 			}
 			escaping = true
 			continue
@@ -410,7 +414,7 @@ func unescapeHeaderValue(v []byte) ([]byte, error) {
 		res = append(res, c)
 	}
 	if escaping {
-		return nil, errors.New("invalid escape sequence")
+		return nil, errInvalidEscapeSequence
 	}
 	return res, nil
 }
@@ -444,6 +448,8 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 					if quotes%2 == 1 {
 						escaping = !escaping
 					}
+				default:
+					// all other characters are ignored
 				}
 				n++
 			}
@@ -611,8 +617,8 @@ func sortAcceptedTypes(at []acceptedType) {
 
 // normalizeEtag validates an entity tag and returns the
 // value without quotes. weak is true if the tag has the "W/" prefix.
-func normalizeEtag(t string) (string, bool, bool) {
-	weak := strings.HasPrefix(t, "W/")
+func normalizeEtag(t string) (value string, weak, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the parsed ETag components
+	weak = strings.HasPrefix(t, "W/")
 	if weak {
 		t = t[2:]
 	}
@@ -684,7 +690,7 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !matchEtag(app.toString(noneMatchBytes[start:end]), etag)
 }
 
-func parseAddr(raw string) (string, string) {
+func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming host and port parts for clarity
 	if raw == "" {
 		return "", ""
 	}
@@ -694,7 +700,7 @@ func parseAddr(raw string) (string, string) {
 	// Handle IPv6 addresses enclosed in brackets as defined by RFC 3986
 	if strings.HasPrefix(raw, "[") {
 		if end := strings.IndexByte(raw, ']'); end != -1 {
-			host := raw[:end+1] // keep the closing ]
+			host = raw[:end+1] // keep the closing ]
 			if len(raw) > end+1 && raw[end+1] == ':' {
 				return host, raw[end+2:]
 			}
@@ -704,7 +710,7 @@ func parseAddr(raw string) (string, string) {
 
 	// Everything else with a colon
 	if i := strings.LastIndexByte(raw, ':'); i != -1 {
-		host, port := raw[:i], raw[i+1:]
+		host, port = raw[:i], raw[i+1:]
 
 		// If “host” still contains ':', we must have hit an un-bracketed IPv6
 		// literal. In that form a port is impossible, so treat the whole thing
@@ -750,6 +756,7 @@ type testConn struct {
 	sync.Mutex
 }
 
+// Read implements net.Conn by reading from the buffered input.
 func (c *testConn) Read(b []byte) (int, error) {
 	c.Lock()
 	defer c.Unlock()
@@ -757,6 +764,7 @@ func (c *testConn) Read(b []byte) (int, error) {
 	return c.r.Read(b) //nolint:wrapcheck // This must not be wrapped
 }
 
+// Write implements net.Conn by appending to the buffered output.
 func (c *testConn) Write(b []byte) (int, error) {
 	c.Lock()
 	defer c.Unlock()
@@ -767,6 +775,7 @@ func (c *testConn) Write(b []byte) (int, error) {
 	return c.w.Write(b) //nolint:wrapcheck // This must not be wrapped
 }
 
+// Close marks the connection as closed and prevents further writes.
 func (c *testConn) Close() error {
 	c.Lock()
 	defer c.Unlock()
@@ -775,10 +784,19 @@ func (c *testConn) Close() error {
 	return nil
 }
 
-func (*testConn) LocalAddr() net.Addr                { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
-func (*testConn) RemoteAddr() net.Addr               { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
-func (*testConn) SetDeadline(_ time.Time) error      { return nil }
-func (*testConn) SetReadDeadline(_ time.Time) error  { return nil }
+// LocalAddr implements net.Conn and returns a placeholder address.
+func (*testConn) LocalAddr() net.Addr { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
+
+// RemoteAddr implements net.Conn and returns a placeholder address.
+func (*testConn) RemoteAddr() net.Addr { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
+
+// SetDeadline implements net.Conn but is a no-op for the in-memory connection.
+func (*testConn) SetDeadline(_ time.Time) error { return nil }
+
+// SetReadDeadline implements net.Conn but is a no-op for the in-memory connection.
+func (*testConn) SetReadDeadline(_ time.Time) error { return nil }
+
+// SetWriteDeadline implements net.Conn but is a no-op for the in-memory connection.
 func (*testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
 func toStringImmutable(b []byte) string {
@@ -969,22 +987,28 @@ func genericParseType[V GenericType](str string) (V, error) {
 	}
 }
 
+// GenericType enumerates the values that can be parsed from strings by the
+// generic helper functions.
 type GenericType interface {
 	GenericTypeInteger | GenericTypeFloat | bool | string | []byte
 }
 
+// GenericTypeInteger is the union of all supported integer types.
 type GenericTypeInteger interface {
 	GenericTypeIntegerSigned | GenericTypeIntegerUnsigned
 }
 
+// GenericTypeIntegerSigned is the union of supported signed integer types.
 type GenericTypeIntegerSigned interface {
 	int | int8 | int16 | int32 | int64
 }
 
+// GenericTypeIntegerUnsigned is the union of supported unsigned integer types.
 type GenericTypeIntegerUnsigned interface {
 	uint | uint8 | uint16 | uint32 | uint64
 }
 
+// GenericTypeFloat is the union of supported floating-point types.
 type GenericTypeFloat interface {
 	float32 | float64
 }

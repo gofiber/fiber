@@ -8,21 +8,21 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 
 	"github.com/valyala/fasthttp"
 )
 
 // Balancer creates a load balancer among multiple upstream servers
-func Balancer(config Config) fiber.Handler {
+func Balancer(config ...Config) fiber.Handler {
 	// Set default config
-	cfg := configDefault(config)
+	cfg := configDefault(config...)
 
 	// Load balanced client
 	lbc := &fasthttp.LBClient{}
 	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize and TLSConfig
 	// will not be used if the client are set.
-	if config.Client == nil {
+	if cfg.Client == nil {
 		// Set timeout
 		lbc.Timeout = cfg.Timeout
 		// Scheme must be provided, falls back to http
@@ -41,19 +41,19 @@ func Balancer(config Config) fiber.Handler {
 				DisablePathNormalizing:   true,
 				Addr:                     u.Host,
 
-				ReadBufferSize:  config.ReadBufferSize,
-				WriteBufferSize: config.WriteBufferSize,
+				ReadBufferSize:  cfg.ReadBufferSize,
+				WriteBufferSize: cfg.WriteBufferSize,
 
-				TLSConfig: config.TLSConfig,
+				TLSConfig: cfg.TLSConfig,
 
-				DialDualStack: config.DialDualStack,
+				DialDualStack: cfg.DialDualStack,
 			}
 
 			lbc.Clients = append(lbc.Clients, client)
 		}
 	} else {
 		// Set custom client
-		lbc = config.Client
+		lbc = cfg.Client
 	}
 
 	// Return new handler
@@ -123,7 +123,7 @@ func WithClient(cli *fasthttp.Client) {
 }
 
 // Forward performs the given http request and fills the given http response.
-// This method will return an fiber.Handler
+// This method will return a fiber.Handler
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		return Do(c, addr, clients...)
@@ -210,7 +210,7 @@ func getScheme(uri []byte) []byte {
 }
 
 // DomainForward performs an http request based on the given domain and populates the given http response.
-// This method will return an fiber.Handler
+// This method will return a fiber.Handler
 func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		host := string(c.Request().Host())
@@ -243,7 +243,7 @@ func (r *roundrobin) get() string {
 }
 
 // BalancerForward Forward performs the given http request with round robin algorithm to server and fills the given http response.
-// This method will return an fiber.Handler
+// This method will return a fiber.Handler
 func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler {
 	r := &roundrobin{
 		current: 0,

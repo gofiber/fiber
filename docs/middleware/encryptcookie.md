@@ -67,8 +67,16 @@ Use an encoded key of 16, 24, or 32 bytes to select AES‑128, AES‑192, or AES
 | Next      | `func(fiber.Ctx) bool`                             | A function to skip this middleware when it returns true.                                                | `nil`                        |
 | Except    | `[]string`                                          | Array of cookie keys that should not be encrypted.                                                    | `[]`                         |
 | Key       | `string`                                            | A base64-encoded unique key to encode & decode cookies. Required. Key length should be 16, 24, or 32 bytes. | (No default, required field) |
-| Encryptor | `func(decryptedString, key string) (string, error)` | A custom function to encrypt cookies.                                                                 | `EncryptCookie`              |
-| Decryptor | `func(encryptedString, key string) (string, error)` | A custom function to decrypt cookies.                                                                 | `DecryptCookie`              |
+| Encryptor | `func(name, decryptedString, key string) (string, error)` | A custom function to encrypt cookies.                                                                 | `EncryptCookie`              |
+| Decryptor | `func(name, encryptedString, key string) (string, error)` | A custom function to decrypt cookies.                                                                 | `DecryptCookie`              |
+
+### Encryptor and Decryptor parameters
+
+Custom encryptor and decryptor functions receive three arguments:
+
+- `name`: The cookie name. The default helpers bind this value as additional authenticated data (AAD) so encrypted values can only be decrypted for the same cookie.
+- `string`: The cookie payload. `EncryptCookie` accepts the decrypted value and returns ciphertext, while `DecryptCookie` receives ciphertext and must return the decrypted value.
+- `key`: The base64-encoded key pulled from the middleware configuration. Use it to derive or validate any encryption keys your implementation requires.
 
 ## Default Config
 

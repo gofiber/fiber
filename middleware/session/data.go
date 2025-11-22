@@ -7,6 +7,7 @@ import (
 // msgp -file="data.go" -o="data_msgp.go" -tests=true -unexported
 //
 //go:generate msgp -o=data_msgp.go -tests=true -unexported
+//msgp:ignore data
 type data struct {
 	Data         map[any]any
 	sync.RWMutex `msg:"-"`

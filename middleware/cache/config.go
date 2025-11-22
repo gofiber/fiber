@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // Config defines the config for middleware.
@@ -50,7 +50,7 @@ type Config struct {
 	// Default: []string{fiber.MethodGet, fiber.MethodHead}
 	Methods []string
 
-	// Expiration is the time that an cached response will live
+	// Expiration is the time that a cached response will live
 	//
 	// Optional. Default: 5 * time.Minute
 	Expiration time.Duration
@@ -61,6 +61,11 @@ type Config struct {
 	//
 	// Optional. Default: 1 * 1024 * 1024
 	MaxBytes uint
+
+	// DisableValueRedaction turns off masking cache keys in logs and error messages when set to true.
+	//
+	// Optional. Default: false
+	DisableValueRedaction bool
 
 	// DisableCacheControl disables client side caching if set to true
 	//
@@ -76,11 +81,12 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:                nil,
-	Expiration:          5 * time.Minute,
-	CacheHeader:         "X-Cache",
-	DisableCacheControl: false,
-	CacheInvalidator:    nil,
+	Next:                  nil,
+	Expiration:            5 * time.Minute,
+	CacheHeader:           "X-Cache",
+	DisableCacheControl:   false,
+	CacheInvalidator:      nil,
+	DisableValueRedaction: false,
 	KeyGenerator: func(c fiber.Ctx) string {
 		return utils.CopyString(c.Path())
 	},

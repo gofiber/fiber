@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
@@ -42,7 +43,7 @@ func Test_Compress_Gzip(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
@@ -75,7 +76,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 					return c.Send(filedata)
 				})
 
-				req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 				req.Header.Set("Accept-Encoding", algo)
 
 				resp, err := app.Test(req, testConfig)
@@ -102,7 +103,7 @@ func Test_Compress_Deflate(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "deflate")
 
 	resp, err := app.Test(req, testConfig)
@@ -126,7 +127,7 @@ func Test_Compress_Brotli(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req, testConfig)
@@ -150,7 +151,7 @@ func Test_Compress_Zstd(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "zstd")
 
 	resp, err := app.Test(req, testConfig)
@@ -174,18 +175,18 @@ func Test_Compress_Disabled(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate the file size is not shrunk
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, len(body), len(filedata))
+	require.Len(t, body, len(filedata))
 }
 
 func Test_Compress_Adds_Vary_Header(t *testing.T) {
@@ -198,7 +199,7 @@ func Test_Compress_Adds_Vary_Header(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
@@ -217,7 +218,7 @@ func Test_Compress_Vary_Star(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
@@ -236,7 +237,7 @@ func Test_Compress_Vary_List_Star(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
@@ -255,7 +256,7 @@ func Test_Compress_Vary_Similar_Substring(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
@@ -275,7 +276,7 @@ func Test_Compress_Skip_When_Content_Encoding_Set(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
@@ -300,7 +301,7 @@ func Test_Compress_Skip_When_Content_Encoding_Set_Vary_Star(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
@@ -320,7 +321,7 @@ func Test_Compress_Skip_When_Content_Encoding_Set_Vary_List_Star(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
@@ -340,7 +341,7 @@ func Test_Compress_Skip_When_Content_Encoding_Set_Vary_Similar_Substring(t *test
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
@@ -360,7 +361,7 @@ func Test_Compress_Strong_ETag_Recalculated(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
@@ -384,7 +385,7 @@ func Test_Compress_Weak_ETag_Unchanged(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
@@ -404,12 +405,12 @@ func Test_Compress_Strong_ETag_Unchanged_When_Not_Compressed(t *testing.T) {
 		return c.SendString("tiny")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err)
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "\"abc\"", resp.Header.Get(fiber.HeaderETag))
 	require.Equal(t, "Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
 }
@@ -427,7 +428,7 @@ func Test_Compress_Skip_Head(t *testing.T) {
 	app.Get("/", handler)
 	app.Head("/", handler)
 
-	getReq := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	getReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	getReq.Header.Set("Accept-Encoding", "gzip")
 
 	getResp, err := app.Test(getReq, testConfig)
@@ -437,7 +438,7 @@ func Test_Compress_Skip_Head(t *testing.T) {
 	require.NotEmpty(t, getBody)
 	require.Equal(t, "gzip", getResp.Header.Get(fiber.HeaderContentEncoding))
 
-	headReq := httptest.NewRequest(fiber.MethodHead, "/", nil)
+	headReq := httptest.NewRequest(fiber.MethodHead, "/", http.NoBody)
 	headReq.Header.Set("Accept-Encoding", "gzip")
 
 	headResp, err := app.Test(headReq, testConfig)
@@ -446,7 +447,7 @@ func Test_Compress_Skip_Head(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, headBody)
 
-	require.Equal(t, "", headResp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, headResp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "Accept-Encoding", headResp.Header.Get(fiber.HeaderVary))
 	require.Equal(t, "\"abc\"", headResp.Header.Get(fiber.HeaderETag))
 }
@@ -462,13 +463,13 @@ func Test_Compress_Skip_Status_NoContent(t *testing.T) {
 		return c.SendStatus(fiber.StatusNoContent)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "\"abc\"", resp.Header.Get(fiber.HeaderETag))
 }
 
@@ -484,13 +485,13 @@ func Test_Compress_Skip_Status_NotModified(t *testing.T) {
 		return nil
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "\"abc\"", resp.Header.Get(fiber.HeaderETag))
 }
 
@@ -504,13 +505,13 @@ func Test_Compress_Skip_Range(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("Range", "bytes=0-1")
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
 }
 
@@ -524,12 +525,12 @@ func Test_Compress_Skip_Range_NoAcceptEncoding(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Range", "bytes=0-1")
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
 }
 
@@ -544,13 +545,13 @@ func Test_Compress_Skip_Range_Vary_Star(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("Range", "bytes=0-1")
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "*", resp.Header.Get(fiber.HeaderVary))
 }
 
@@ -565,13 +566,13 @@ func Test_Compress_Skip_Range_Vary_Similar_Substring(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("Range", "bytes=0-1")
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "Accept-Encoding2, Accept-Encoding", resp.Header.Get(fiber.HeaderVary))
 }
 
@@ -586,13 +587,13 @@ func Test_Compress_Skip_Status_PartialContent(t *testing.T) {
 		return c.SendString("hello")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusPartialContent, resp.StatusCode)
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 }
 
 func Test_Compress_Skip_NoTransform(t *testing.T) {
@@ -619,7 +620,7 @@ func Test_Compress_Skip_NoTransform(t *testing.T) {
 				return c.SendString("hello")
 			})
 
-			req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 			req.Header.Set("Accept-Encoding", "gzip")
 			if tt.setRequest {
 				req.Header.Set(fiber.HeaderCacheControl, "no-transform")
@@ -627,7 +628,7 @@ func Test_Compress_Skip_NoTransform(t *testing.T) {
 
 			resp, err := app.Test(req, testConfig)
 			require.NoError(t, err, "app.Test(req)")
-			require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+			require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 		})
 	}
 }
@@ -642,13 +643,13 @@ func Test_Compress_Next_Error(t *testing.T) {
 		return errors.New("next error")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 500, resp.StatusCode, "Status code")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -665,7 +666,7 @@ func Test_Compress_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }

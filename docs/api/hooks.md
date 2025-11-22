@@ -14,6 +14,8 @@ Fiber lets you run custom callbacks at specific points in the routing lifecycle.
 - [OnGroup](#ongroup)
 - [OnGroupName](#ongroupname)
 - [OnListen](#onlisten)
+- [OnPreStartupMessage/OnPostStartupMessage](#onprestartupmessageonpoststartupmessage)
+  - [ListenData](#listendata)
 - [OnFork](#onfork)
 - [OnPreShutdown](#onpreshutdown)
 - [OnPostShutdown](#onpostshutdown)
@@ -29,6 +31,8 @@ type OnGroupHandler = func(Group) error
 type OnGroupNameHandler = OnGroupHandler
 type OnListenHandler = func(ListenData) error
 type OnForkHandler = func(int) error
+type OnPreStartupMessageHandler  = func(*PreStartupMessageData) error
+type OnPostStartupMessageHandler = func(*PostStartupMessageData) error
 type OnPreShutdownHandler  = func() error
 type OnPostShutdownHandler = func(error) error
 type OnMountHandler = func(*App) error
@@ -167,6 +171,87 @@ func main() {
 
 </TabItem>
 </Tabs>
+
+## OnPreStartupMessage/OnPostStartupMessage
+
+Use `OnPreStartupMessage` to tweak the banner before Fiber prints it, and `OnPostStartupMessage` to run logic after the banner is printed (or skipped). You can use some helper functions to customize the banner inside the `OnPreStartupMessage` hook.
+
+```go title="Signatures"
+// AddInfo adds an informational entry to the startup message with "INFO" label.
+func (sm *PreStartupMessageData) AddInfo(key, title, value string, priority ...int)
+
+// AddWarning adds a warning entry to the startup message with "WARNING" label.
+func (sm *PreStartupMessageData) AddWarning(key, title, value string, priority ...int)
+
+// AddError adds an error entry to the startup message with "ERROR" label.
+func (sm *PreStartupMessageData) AddError(key, title, value string, priority ...int)
+
+// EntryKeys returns all entry keys currently present in the startup message.
+func (sm *PreStartupMessageData) EntryKeys() []string
+
+// ResetEntries removes all existing entries from the startup message.
+func (sm *PreStartupMessageData) ResetEntries()
+
+// DeleteEntry removes a specific entry from the startup message by its key.
+func (sm *PreStartupMessageData) DeleteEntry(key string)
+```
+
+- Assign `sm.BannerHeader` to override the ASCII art banner. Leave it empty to use the default banner provided by Fiber.
+- Set `sm.PreventDefault = true` to suppress the built-in banner without affecting other hooks.
+- `PostStartupMessageData` reports whether the banner was skipped via the `Disabled`, `IsChild`, and `Prevented` flags.
+
+```go title="Customize the startup message"
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
+        sm.BannerHeader = "FOOBER " + sm.Version + "\n-------"
+
+        // Optional: you can also remove old entries
+        // sm.ResetEntries()
+
+        sm.AddInfo("git-hash", "Git hash", os.Getenv("GIT_HASH"))
+        sm.AddInfo("prefork", "Prefork", fmt.Sprintf("%v", sm.Prefork), 15)
+        return nil
+    })
+
+    app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) error {
+        if !sm.Disabled && !sm.IsChild && !sm.Prevented {
+            fmt.Println("startup completed")
+        }
+        return nil
+    })
+
+    app.Listen(":5000")
+}
+```
+
+### ListenData
+
+`ListenData` exposes runtime metadata about the listener:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `Host` | `string` | Resolved hostname or IP address. |
+| `Port` | `string` | The bound port. |
+| `TLS` | `bool` | Indicates whether TLS is enabled. |
+| `Version` | `string` | Fiber version reported in the startup banner. |
+| `AppName` | `string` | Application name from the configuration. |
+| `HandlerCount` | `int` | Total registered handler count. |
+| `ProcessCount` | `int` | Number of processes Fiber will use. |
+| `PID` | `int` | Current process identifier. |
+| `Prefork` | `bool` | Whether prefork is enabled. |
+| `ChildPIDs` | `[]int` | Child process identifiers when preforking. |
+| `ColorScheme` | [`Colors`](https://github.com/gofiber/fiber/blob/main/color.go) | Active color scheme for the startup message. |
 
 ## OnFork
 

@@ -1,7 +1,7 @@
 package binder
 
 import (
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -18,19 +18,12 @@ func (*QueryBinding) Name() string {
 // Bind parses the request query and returns the result.
 func (b *QueryBinding) Bind(reqCtx *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
-	var err error
-
 	for key, val := range reqCtx.URI().QueryArgs().All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		err = formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, true)
-		if err != nil {
-			break
+		if err := formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, true); err != nil {
+			return err
 		}
-	}
-
-	if err != nil {
-		return err
 	}
 
 	return parse(b.Name(), out, data)

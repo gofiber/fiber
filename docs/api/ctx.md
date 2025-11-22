@@ -94,7 +94,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ### SetContext
 
 Sets the base `context.Context` used by [`Context`](#context). Use this to
-propagate deadlines, cancelation signals, or values to asynchronous operations.
+propagate deadlines, cancellation signals, or values to asynchronous operations.
 
 ```go title="Signature"
 func (c fiber.Ctx) SetContext(ctx context.Context)
@@ -418,6 +418,35 @@ func MyMiddleware() fiber.Handler {
     return err
   }
 }
+```
+
+### FullPath
+
+Returns the full path of the matched route. This includes any prefixes that were added by [groups](../guide/routing.md#grouping-routes) or mounts.
+
+```go title="Signature"
+func (c fiber.Ctx) FullPath() string
+```
+
+```go title="Example"
+api := app.Group("/api")
+api.Get("/users/:id", func(c fiber.Ctx) error {
+  return c.JSON(fiber.Map{
+    "route": c.FullPath(), // "/api/users/:id"
+  })
+})
+
+app.Use(func(c fiber.Ctx) error {
+  beforeNext := c.FullPath() // "/"
+
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  afterNext := c.FullPath() // "/api/users/:id"
+  // ... react to the downstream handler's route path
+  return nil
+})
 ```
 
 ### Matched
@@ -796,7 +825,7 @@ Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. 
 
 ### Fresh
 
-When the response is still **fresh** in the client's cache **true** is returned, otherwise **false** is returned to indicate that the client cache is now stale and the full response should be sent.
+When the response is still **fresh** in the client's cache **true** is returned; otherwise, **false** is returned to indicate that the client cache is now stale and the full response should be sent.
 
 When a client sends the Cache-Control: no-cache request header to indicate an end-to-end reload request, `Fresh` will return false to make handling these requests transparent.
 
@@ -1350,7 +1379,7 @@ sets the HTTP status code to **416 Range Not Satisfiable** and populates the
 `Content-Range` header with the current representation size.
 
 ```go title="Signature"
-func (c fiber.Ctx) Range(size int) (Range, error)
+func (c fiber.Ctx) Range(size int64) (Range, error)
 ```
 
 ```go title="Example"
@@ -2174,8 +2203,9 @@ before the final response. This allows the browser to start preloading
 resources while the server prepares the full response.
 
 :::caution
-This feature requires HTTP/2 or newer. Some legacy HTTP/1.1 clients may not
+This feature requires HTTP/2 or newer. Some legacy HTTP/1.1 clients may not support sendEarlyHints.
 Early Hints (`103` responses) are supported in HTTP/2 and newer. Older HTTP/1.1 clients may ignore these interim responses or misbehave when receiving them.
+See [Enabling HTTP/2](../guide/reverse-proxy#enabling-http2) for instructions on how to use a reverse proxy (e.g. Nginx or Traefik) to enable HTTP/2 support.
 :::
 
 ```go title="Signature"
