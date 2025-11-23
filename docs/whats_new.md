@@ -1244,6 +1244,12 @@ Cache keys are now redacted in logs and error messages by default, and a `Disabl
 The deprecated `Store` and `Key` options have been removed in v3. Use `Storage` and `KeyGenerator` instead.
 :::
 
+### ResponseTime
+
+A new response time middleware measures how long each request takes to process and adds the duration to the response headers.
+By default it writes the elapsed time to `X-Response-Time`, and you can change the header name or disable it entirely by
+setting `Header` to an empty string. A `Next` hook lets you skip endpoints such as health checks.
+
 ### CORS
 
 We've made some changes to the CORS middleware to improve its functionality and flexibility. Here's what's new:

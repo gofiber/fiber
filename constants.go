@@ -280,6 +280,7 @@ const (
 	HeaderXPingback                          = "X-Pingback"
 	HeaderXRequestID                         = "X-Request-ID"
 	HeaderXRequestedWith                     = "X-Requested-With"
+	HeaderXResponseTime                      = "X-Response-Time"
 	HeaderXRobotsTag                         = "X-Robots-Tag"
 	HeaderXUACompatible                      = "X-UA-Compatible"
 	HeaderAccessControlAllowPrivateNetwork   = "Access-Control-Allow-Private-Network"
