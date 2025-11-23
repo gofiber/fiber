@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"time"
@@ -87,7 +88,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// we add the expiration to the duration.
 		// Otherwise, after the end of "sample window", attackers could launch
 		// a new request with the full window length.
-		if setErr := manager.set(reqCtx, key, e, time.Duration(resetInSec+expiration)*time.Second); setErr != nil { //nolint:gosec // Not a concern
+		if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
 			mux.Unlock()
 			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 		}
@@ -140,7 +141,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 
 		rate = int(float64(e.prevHits)*weight) + e.currHits
 		remaining = maxRequests - rate
-		if setErr := manager.set(reqCtx, key, e, time.Duration(resetInSec+expiration)*time.Second); setErr != nil {
+		if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
 			mux.Unlock()
 			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 		}
@@ -183,4 +184,32 @@ func rotateWindow(e *item, ts, expiration uint64) uint64 {
 
 	// Calculate when it resets in seconds
 	return e.exp - ts
+}
+
+func ttlDuration(resetInSec, expiration uint64) time.Duration {
+	resetDuration, ok := secondsToDuration(resetInSec)
+	if !ok {
+		return time.Duration(math.MaxInt64)
+	}
+
+	expirationDuration, ok := secondsToDuration(expiration)
+	if !ok {
+		return time.Duration(math.MaxInt64)
+	}
+
+	if resetDuration > time.Duration(math.MaxInt64)-expirationDuration {
+		return time.Duration(math.MaxInt64)
+	}
+
+	return resetDuration + expirationDuration
+}
+
+func secondsToDuration(seconds uint64) (time.Duration, bool) {
+	const maxSeconds = math.MaxInt64 / int64(time.Second)
+
+	if seconds > uint64(maxSeconds) {
+		return time.Duration(math.MaxInt64), false
+	}
+
+	return time.Duration(seconds) * time.Second, true
 }
