@@ -72,7 +72,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		weight := float64(resetInSec) / float64(expiration)
 
 		// rate = request count in previous window - weight + request count in current window
-		rate := int(float64(e.prevHits)*weight) + e.currHits
+		rate := int(math.Ceil(float64(e.prevHits)*weight)) + e.currHits
 
 		// Calculate how many hits can be made based on the current rate
 		remaining := maxRequests - rate
@@ -139,7 +139,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 				}
 			}
 
-			rate = int(float64(e.prevHits)*weight) + e.currHits
+			rate = int(math.Ceil(float64(e.prevHits)*weight)) + e.currHits
 			remaining = maxRequests - rate
 			if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
 				mux.Unlock()
