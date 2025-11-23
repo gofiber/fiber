@@ -60,33 +60,11 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// Get timestamp
 		ts := uint64(utils.Timestamp())
 
-		// Set expiration if entry does not exist
-		if e.exp == 0 {
-			e.exp = ts + expiration
-		} else if ts >= e.exp {
-			// The entry has expired, handle the expiration.
-			// Set the prevHits to the current hits and reset the hits to 0.
-			e.prevHits = e.currHits
-
-			// Reset the current hits to 0.
-			e.currHits = 0
-
-			// Check how much into the current window it currently is and sets the
-			// expiry based on that; otherwise, this would only reset on
-			// the next request and not show the correct expiry.
-			elapsed := ts - e.exp
-			if elapsed >= expiration {
-				e.exp = ts + expiration
-			} else {
-				e.exp = ts + expiration - elapsed
-			}
-		}
+		// Rotate window
+		resetInSec := rotateWindow(e, ts, expiration)
 
 		// Increment hits
 		e.currHits++
-
-		// Calculate when it resets in seconds
-		resetInSec := e.exp - ts
 
 		// weight = time until current window reset / total window length
 		weight := float64(resetInSec) / float64(expiration)
@@ -136,27 +114,38 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// Get the effective status code from either the error or response
 		statusCode := getEffectiveStatusCode(c, err)
 
-		// Check for SkipFailedRequests and SkipSuccessfulRequests
-		if (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
-			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest) {
-			// Lock entry
-			mux.Lock()
-			entry, getErr := manager.get(reqCtx, key)
-			if getErr != nil {
-				mux.Unlock()
-				return getErr
-			}
-			e = entry
-			e.currHits--
-			rate = int(float64(e.prevHits)*weight) + e.currHits
-			remaining = maxRequests - rate
-			if setErr := manager.set(reqCtx, key, e, cfg.Expiration); setErr != nil {
-				mux.Unlock()
-				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
-			}
-			// Unlock entry
+		skipHit := (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
+			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest)
+
+		// Lock entry
+		mux.Lock()
+		entry, getErr := manager.get(reqCtx, key)
+		if getErr != nil {
 			mux.Unlock()
+			return getErr
 		}
+		e = entry
+
+		ts = uint64(utils.Timestamp())
+		resetInSec = rotateWindow(e, ts, expiration)
+		weight = float64(resetInSec) / float64(expiration)
+
+		if skipHit {
+			if e.currHits > 0 {
+				e.currHits--
+			} else if e.prevHits > 0 {
+				e.prevHits--
+			}
+		}
+
+		rate = int(float64(e.prevHits)*weight) + e.currHits
+		remaining = maxRequests - rate
+		if setErr := manager.set(reqCtx, key, e, time.Duration(resetInSec+expiration)*time.Second); setErr != nil {
+			mux.Unlock()
+			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+		}
+		// Unlock entry
+		mux.Unlock()
 
 		// We can continue, update RateLimit headers
 		if !cfg.DisableHeaders {
@@ -167,4 +156,31 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 
 		return err
 	}
+}
+
+func rotateWindow(e *item, ts, expiration uint64) uint64 {
+	// Set expiration if entry does not exist
+	if e.exp == 0 {
+		e.exp = ts + expiration
+	} else if ts >= e.exp {
+		// The entry has expired, handle the expiration.
+		// Set the prevHits to the current hits and reset the hits to 0.
+		e.prevHits = e.currHits
+
+		// Reset the current hits to 0.
+		e.currHits = 0
+
+		// Check how much into the current window it currently is and sets the
+		// expiry based on that; otherwise, this would only reset on
+		// the next request and not show the correct expiry.
+		elapsed := ts - e.exp
+		if elapsed >= expiration {
+			e.exp = ts + expiration
+		} else {
+			e.exp = ts + expiration - elapsed
+		}
+	}
+
+	// Calculate when it resets in seconds
+	return e.exp - ts
 }

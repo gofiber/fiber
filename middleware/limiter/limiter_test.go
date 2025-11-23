@@ -769,6 +769,37 @@ func Test_Limiter_Sliding_Window_Custom_Storage_No_Skip_Choices(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode)
 }
 
+func Test_Limiter_Sliding_Window_RecalculatesAfterHandlerDelay(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:               2,
+		Expiration:        time.Second,
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		time.Sleep(600 * time.Millisecond)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	for i := 0; i < 2; i++ {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	}
+
+	time.Sleep(time.Second + 100*time.Millisecond)
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "2", resp.Header.Get(xRateLimitLimit))
+	require.Equal(t, "1", resp.Header.Get(xRateLimitRemaining))
+	require.NotEmpty(t, resp.Header.Get(xRateLimitReset))
+}
+
 // go test -run Test_Limiter_Fixed_Window_Skip_Failed_Requests -v
 func Test_Limiter_Fixed_Window_Skip_Failed_Requests(t *testing.T) {
 	t.Parallel()
