@@ -1247,8 +1247,8 @@ The deprecated `Store` and `Key` options have been removed in v3. Use `Storage` 
 ### ResponseTime
 
 A new response time middleware measures how long each request takes to process and adds the duration to the response headers.
-By default it writes the elapsed time to `X-Response-Time`, and you can change the header name or disable it entirely by
-setting `Header` to an empty string. A `Next` hook lets you skip endpoints such as health checks.
+By default it writes the elapsed time to `X-Response-Time`, and you can change the header name. A `Next` hook lets you skip
+endpoints such as health checks.
 
 ### CORS
 

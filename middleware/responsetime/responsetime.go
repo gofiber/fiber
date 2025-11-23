@@ -22,9 +22,7 @@ func New(config ...Config) fiber.Handler {
 
 		err := c.Next()
 
-		if cfg.Header != "" {
-			c.Set(cfg.Header, time.Since(start).String())
-		}
+		c.Set(cfg.Header, time.Since(start).String())
 
 		return err
 	}

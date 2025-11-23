@@ -52,4 +52,4 @@ app.Use(responsetime.New(responsetime.Config{
 | Property | Type | Description | Default |
 | :------- | :--- | :---------- | :------ |
 | Next | `func(c fiber.Ctx) bool` | Defines a function to skip this middleware when it returns `true`. | `nil` |
-| Header | `string` | Header key used to store the measured response time. Leave empty to disable setting the header. | `"X-Response-Time"` |
+| Header | `string` | Header key used to store the measured response time. If left empty, the default header is used. | `"X-Response-Time"` |
