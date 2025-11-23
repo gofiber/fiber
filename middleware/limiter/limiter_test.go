@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -408,6 +409,40 @@ func Test_Limiter_With_Max_Func_With_Zero_And_Limiter_Sliding(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
+}
+
+func Test_Limiter_Sliding_MaxFuncOverridesStaticMax(t *testing.T) {
+	app := fiber.New()
+	staticMax := 5
+	dynamicMax := 2
+
+	app.Use(New(Config{
+		Max:               staticMax,
+		MaxFunc:           func(fiber.Ctx) int { return dynamicMax },
+		Expiration:        2 * time.Second,
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, strconv.Itoa(dynamicMax), resp.Header.Get("X-RateLimit-Limit"))
+	require.Equal(t, strconv.Itoa(dynamicMax-1), resp.Header.Get("X-RateLimit-Remaining"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, strconv.Itoa(dynamicMax), resp.Header.Get("X-RateLimit-Limit"))
+	require.Equal(t, strconv.Itoa(dynamicMax-2), resp.Header.Get("X-RateLimit-Remaining"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 }
 
 // go test -run Test_Limiter_With_Max_Func_With_Zero -race -v

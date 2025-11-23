@@ -95,7 +95,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		rate := int(float64(e.prevHits)*weight) + e.currHits
 
 		// Calculate how many hits can be made based on the current rate
-		remaining := cfg.Max - rate
+		remaining := maxRequests - rate
 
 		// Update storage. Garbage collect when the next window ends.
 		// |--------------------------|--------------------------|
@@ -117,7 +117,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// Unlock entry
 		mux.Unlock()
 
-		// Check if hits exceed the cfg.Max
+		// Check if hits exceed the allowed maximum for this request
 		if remaining < 0 {
 			// Return response with Retry-After header
 			// https://tools.ietf.org/html/rfc6584
@@ -148,7 +148,8 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 			}
 			e = entry
 			e.currHits--
-			remaining++
+			rate = int(float64(e.prevHits)*weight) + e.currHits
+			remaining = maxRequests - rate
 			if setErr := manager.set(reqCtx, key, e, cfg.Expiration); setErr != nil {
 				mux.Unlock()
 				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
