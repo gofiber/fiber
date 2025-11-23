@@ -800,6 +800,76 @@ func Test_Limiter_Sliding_Window_RecalculatesAfterHandlerDelay(t *testing.T) {
 	require.NotEmpty(t, resp.Header.Get(xRateLimitReset))
 }
 
+func Test_Limiter_Sliding_Window_ExpiresStalePrevHits(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:               1,
+		Expiration:        time.Second,
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	time.Sleep(2500 * time.Millisecond)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "0", resp.Header.Get(xRateLimitRemaining))
+}
+
+func Test_Limiter_Sliding_Window_SkipFailedRequests_DecrementsPreviousWindow(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:                2,
+		Expiration:         200 * time.Millisecond,
+		SkipFailedRequests: true,
+		LimiterMiddleware:  SlidingWindow{},
+	}))
+
+	app.Get("/:mode", func(c fiber.Ctx) error {
+		if c.Params("mode") == "fail" {
+			time.Sleep(300 * time.Millisecond)
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	type respErr struct {
+		resp *http.Response
+		err  error
+	}
+	failCh := make(chan respErr, 1)
+
+	go func() {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
+		failCh <- respErr{resp: resp, err: err}
+	}()
+
+	time.Sleep(220 * time.Millisecond)
+
+	successResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/ok", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, successResp.StatusCode)
+
+	result := <-failCh
+	require.NoError(t, result.err)
+	require.Equal(t, fiber.StatusInternalServerError, result.resp.StatusCode)
+	require.Equal(t, "2", result.resp.Header.Get(xRateLimitLimit))
+	require.Equal(t, "1", result.resp.Header.Get(xRateLimitRemaining))
+	assert.NotEmpty(t, result.resp.Header.Get(xRateLimitReset))
+}
+
 // go test -run Test_Limiter_Fixed_Window_Skip_Failed_Requests -v
 func Test_Limiter_Fixed_Window_Skip_Failed_Requests(t *testing.T) {
 	t.Parallel()

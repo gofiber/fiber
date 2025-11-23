@@ -63,6 +63,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 
 		// Rotate window
 		resetInSec := rotateWindow(e, ts, expiration)
+		windowExpiresAt := e.exp
 
 		// Increment hits
 		e.currHits++
@@ -118,41 +119,47 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		skipHit := (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
 			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest)
 
-		// Lock entry
-		mux.Lock()
-		entry, getErr := manager.get(reqCtx, key)
-		if getErr != nil {
-			mux.Unlock()
-			return getErr
-		}
-		e = entry
-
-		ts = uint64(utils.Timestamp())
-		resetInSec = rotateWindow(e, ts, expiration)
-		weight = float64(resetInSec) / float64(expiration)
-
-		if skipHit {
-			if e.currHits > 0 {
-				e.currHits--
-			} else if e.prevHits > 0 {
-				e.prevHits--
+		if skipHit || !cfg.DisableHeaders {
+			// Lock entry
+			mux.Lock()
+			entry, getErr := manager.get(reqCtx, key)
+			if getErr != nil {
+				mux.Unlock()
+				return getErr
 			}
-		}
+			e = entry
 
-		rate = int(float64(e.prevHits)*weight) + e.currHits
-		remaining = maxRequests - rate
-		if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
+			ts = uint64(utils.Timestamp())
+			resetInSec = rotateWindow(e, ts, expiration)
+			weight = float64(resetInSec) / float64(expiration)
+
+			if skipHit {
+				if ts < windowExpiresAt {
+					if e.currHits > 0 {
+						e.currHits--
+					}
+				} else if ts-windowExpiresAt < expiration {
+					if e.prevHits > 0 {
+						e.prevHits--
+					}
+				}
+			}
+
+			rate = int(float64(e.prevHits)*weight) + e.currHits
+			remaining = maxRequests - rate
+			if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
+				mux.Unlock()
+				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+			}
+			// Unlock entry
 			mux.Unlock()
-			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
-		}
-		// Unlock entry
-		mux.Unlock()
 
-		// We can continue, update RateLimit headers
-		if !cfg.DisableHeaders {
-			c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))
-			c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
-			c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
+			// We can continue, update RateLimit headers
+			if !cfg.DisableHeaders {
+				c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))
+				c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
+				c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
+			}
 		}
 
 		return err
@@ -165,19 +172,16 @@ func rotateWindow(e *item, ts, expiration uint64) uint64 {
 		e.exp = ts + expiration
 	} else if ts >= e.exp {
 		// The entry has expired, handle the expiration.
-		// Set the prevHits to the current hits and reset the hits to 0.
-		e.prevHits = e.currHits
-
 		// Reset the current hits to 0.
-		e.currHits = 0
-
-		// Check how much into the current window it currently is and sets the
-		// expiry based on that; otherwise, this would only reset on
-		// the next request and not show the correct expiry.
 		elapsed := ts - e.exp
 		if elapsed >= expiration {
+			e.prevHits = 0
+			e.currHits = 0
 			e.exp = ts + expiration
 		} else {
+			e.prevHits = e.currHits
+			e.currHits = 0
+
 			e.exp = ts + expiration - elapsed
 		}
 	}
