@@ -372,6 +372,32 @@ func TestLimiterSlidingPropagatesRequestContextToStorage(t *testing.T) {
 	verifyRecords(t, sets, "/rollback", "sliding-rollback", true)
 }
 
+func TestLimiterSlidingSkipsPostUpdateWhenHeadersDisabled(t *testing.T) {
+	t.Parallel()
+
+	storage := newContextRecorderLimiterStorage()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:               1,
+		Expiration:        time.Second,
+		Storage:           storage,
+		DisableHeaders:    true,
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	require.Len(t, storage.recordedGets(), 1)
+	require.Len(t, storage.recordedSets(), 1)
+}
+
 // go test -run Test_Limiter_With_Max_Func_With_Zero -race -v
 func Test_Limiter_With_Max_Func_With_Zero_And_Limiter_Sliding(t *testing.T) {
 	t.Parallel()

@@ -134,14 +134,8 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 			weight = float64(resetInSec) / float64(expiration)
 
 			if skipHit {
-				if ts < windowExpiresAt {
-					if e.currHits > 0 {
-						e.currHits--
-					}
-				} else if ts-windowExpiresAt < expiration {
-					if e.prevHits > 0 {
-						e.prevHits--
-					}
+				if counter := bucketForOriginalHit(e, windowExpiresAt, ts, expiration); counter != nil && *counter > 0 {
+					*counter--
 				}
 			}
 
@@ -188,6 +182,18 @@ func rotateWindow(e *item, ts, expiration uint64) uint64 {
 
 	// Calculate when it resets in seconds
 	return e.exp - ts
+}
+
+func bucketForOriginalHit(e *item, requestExpiration, ts, expiration uint64) *int {
+	if ts < requestExpiration {
+		return &e.currHits
+	}
+
+	if ts-requestExpiration < expiration {
+		return &e.prevHits
+	}
+
+	return nil
 }
 
 func ttlDuration(resetInSec, expiration uint64) time.Duration {
