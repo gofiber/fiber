@@ -910,6 +910,7 @@ func (app *App) Patch(path string, handler any, handlers ...any) Router {
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
+// The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (app *App) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("add", append([]any{handler}, handlers...)...)
 	app.register(methods, path, nil, converted...)
