@@ -3675,8 +3675,8 @@ func Benchmark_Ctx_Range(b *testing.B) {
 
 	testCases := []struct {
 		str   string
-		start int
-		end   int
+		start int64
+		end   int64
 	}{
 		{str: "bytes=-700", start: 300, end: 999},
 		{str: "bytes=500-", start: 500, end: 999},
