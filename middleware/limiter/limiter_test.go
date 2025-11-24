@@ -438,6 +438,7 @@ func Test_Limiter_With_Max_Func_With_Zero_And_Limiter_Sliding(t *testing.T) {
 }
 
 func Test_Limiter_Sliding_MaxFuncOverridesStaticMax(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	staticMax := 5
 	dynamicMax := 2
