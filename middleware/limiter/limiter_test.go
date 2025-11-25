@@ -66,7 +66,7 @@ func (s *recordingStorage) Reset() error {
 	return nil
 }
 
-func (s *recordingStorage) Close() error {
+func (*recordingStorage) Close() error {
 	return nil
 }
 
