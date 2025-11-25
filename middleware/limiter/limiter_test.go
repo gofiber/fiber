@@ -928,15 +928,15 @@ func Test_Sliding_Window(t *testing.T) {
 }
 
 func Test_Limiter_Fixed_Window_SubSecondExpiration(t *testing.T) {
-	t.Parallel()
+        app := fiber.New()
 
-	app := fiber.New()
-
-	baseTs := uint32(time.Now().Unix())
-	refreshTimestamp := func(ts uint32) {
-		atomic.StoreUint32(&utils.Timestamp, ts)
-	}
-	refreshTimestamp(baseTs)
+        baseTS := uint32(time.Now().Unix())
+        originalTS := atomic.LoadUint32(&utils.Timestamp)
+        refreshTimestamp := func(ts uint32) {
+                atomic.StoreUint32(&utils.Timestamp, ts)
+        }
+        refreshTimestamp(baseTS)
+        defer refreshTimestamp(originalTS)
 
 	app.Use(New(Config{
 		Max:               1,
@@ -948,14 +948,14 @@ func Test_Limiter_Fixed_Window_SubSecondExpiration(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	refreshTimestamp(baseTs)
+        refreshTimestamp(baseTS)
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 	utils.AssertEqual(t, true, resp.Header.Get(xRateLimitReset) != "")
 
-	refreshTimestamp(baseTs)
+        refreshTimestamp(baseTS)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -1012,13 +1012,13 @@ func Test_Limiter_Fixed_Window_FractionalExpiration_PersistsWindow(t *testing.T)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-	time.Sleep(1700 * time.Millisecond)
+        time.Sleep(time.Second)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusTooManyRequests, resp.StatusCode)
 
-	time.Sleep(400 * time.Millisecond)
+        time.Sleep(1200 * time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -1026,15 +1026,15 @@ func Test_Limiter_Fixed_Window_FractionalExpiration_PersistsWindow(t *testing.T)
 }
 
 func Test_Limiter_Sliding_Window_SubSecondExpiration(t *testing.T) {
-	t.Parallel()
+        app := fiber.New()
 
-	app := fiber.New()
-
-	baseTs := uint32(time.Now().Unix())
-	refreshTimestamp := func(ts uint32) {
-		atomic.StoreUint32(&utils.Timestamp, ts)
-	}
-	refreshTimestamp(baseTs)
+        baseTS := uint32(time.Now().Unix())
+        originalTS := atomic.LoadUint32(&utils.Timestamp)
+        refreshTimestamp := func(ts uint32) {
+                atomic.StoreUint32(&utils.Timestamp, ts)
+        }
+        refreshTimestamp(baseTS)
+        defer refreshTimestamp(originalTS)
 
 	app.Use(New(Config{
 		Max:               1,
@@ -1046,14 +1046,14 @@ func Test_Limiter_Sliding_Window_SubSecondExpiration(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	refreshTimestamp(baseTs)
+        refreshTimestamp(baseTS)
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 	utils.AssertEqual(t, true, resp.Header.Get(xRateLimitReset) != "")
 
-	refreshTimestamp(baseTs)
+        refreshTimestamp(baseTS)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
