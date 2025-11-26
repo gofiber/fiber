@@ -112,7 +112,7 @@ func configDefault(config ...Config) Config {
 	if cfg.Max <= 0 {
 		cfg.Max = ConfigDefault.Max
 	}
-	if int(cfg.Expiration.Seconds()) <= 0 {
+	if cfg.Expiration <= 0 {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
 	if cfg.KeyGenerator == nil {

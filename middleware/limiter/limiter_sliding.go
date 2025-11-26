@@ -1,6 +1,7 @@
 package limiter
 
 import (
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -18,8 +19,12 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// Limiter variables
 		mux        = &sync.RWMutex{}
 		max        = strconv.Itoa(cfg.Max)
-		expiration = uint64(cfg.Expiration.Seconds())
+		expiration = uint64(math.Ceil(cfg.Expiration.Seconds()))
 	)
+
+	if expiration < 1 {
+		expiration = 1
+	}
 
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
@@ -51,19 +56,18 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 			e.exp = ts + expiration
 		} else if ts >= e.exp {
 			// The entry has expired, handle the expiration.
-			// Set the prevHits to the current hits and reset the hits to 0.
-			e.prevHits = e.currHits
-
-			// Reset the current hits to 0.
-			e.currHits = 0
-
 			// Check how much into the current window it currently is and sets the
 			// expiry based on that, otherwise this would only reset on
 			// the next request and not show the correct expiry.
 			elapsed := ts - e.exp
 			if elapsed >= expiration {
+				e.prevHits = 0
+				e.currHits = 0
 				e.exp = ts + expiration
 			} else {
+				// Set the prevHits to the current hits and reset the hits to 0.
+				e.prevHits = e.currHits
+				e.currHits = 0
 				e.exp = ts + expiration - elapsed
 			}
 		}
@@ -120,9 +124,38 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 			// Lock entry
 			mux.Lock()
 			e = manager.get(key)
-			e.currHits--
-			remaining++
-			manager.set(key, e, cfg.Expiration)
+			ts = uint64(atomic.LoadUint32(&utils.Timestamp))
+			movedToPrev := false
+
+			if e.exp == 0 {
+				e.exp = ts + expiration
+			} else if ts >= e.exp {
+				elapsed := ts - e.exp
+				if elapsed >= expiration {
+					e.prevHits = 0
+					e.currHits = 0
+					e.exp = ts + expiration
+				} else {
+					e.prevHits = e.currHits
+					e.currHits = 0
+					e.exp = ts + expiration - elapsed
+					movedToPrev = true
+				}
+			}
+
+			if movedToPrev {
+				if e.prevHits > 0 {
+					e.prevHits--
+				}
+			} else if e.currHits > 0 {
+				e.currHits--
+			}
+
+			resetInSec = e.exp - ts
+			weight = float64(resetInSec) / float64(expiration)
+			rate = int(float64(e.prevHits)*weight) + e.currHits
+			remaining = cfg.Max - rate
+			manager.set(key, e, time.Duration(resetInSec+expiration)*time.Second)
 			// Unlock entry
 			mux.Unlock()
 		}

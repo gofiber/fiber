@@ -1,9 +1,11 @@
 package limiter
 
 import (
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
@@ -17,8 +19,12 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		// Limiter variables
 		mux        = &sync.RWMutex{}
 		max        = strconv.Itoa(cfg.Max)
-		expiration = uint64(cfg.Expiration.Seconds())
+		expiration = uint64(math.Ceil(cfg.Expiration.Seconds()))
 	)
+
+	if expiration < 1 {
+		expiration = 1
+	}
 
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
@@ -64,7 +70,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		remaining := cfg.Max - e.currHits
 
 		// Update storage
-		manager.set(key, e, cfg.Expiration)
+		manager.set(key, e, time.Duration(expiration)*time.Second)
 
 		// Unlock entry
 		mux.Unlock()
@@ -89,9 +95,22 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 			// Lock entry
 			mux.Lock()
 			e = manager.get(key)
-			e.currHits--
-			remaining++
-			manager.set(key, e, cfg.Expiration)
+			ts = uint64(atomic.LoadUint32(&utils.Timestamp))
+
+			if e.exp == 0 {
+				e.exp = ts + expiration
+			} else if ts >= e.exp {
+				e.currHits = 0
+				e.exp = ts + expiration
+			}
+
+			if e.currHits > 0 {
+				e.currHits--
+			}
+
+			resetInSec = e.exp - ts
+			remaining = cfg.Max - e.currHits
+			manager.set(key, e, time.Duration(expiration)*time.Second)
 			// Unlock entry
 			mux.Unlock()
 		}
