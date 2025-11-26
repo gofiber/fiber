@@ -53,7 +53,7 @@ These targets can be invoked via `make <target>` as needed during development an
 
 ## Pull request guidelines
 
-- PR titles must start with a category prefix describing the change: `bug:`, `feat:`, `docs:`, or `chore:`.
+- PR titles must start with a category prefix describing the change: `🐛 bug:`, `🔥 feat:`, `📒 docs:`, or `🧹 chore:`.
 - Generated PR bodies should contain a **Summary** section that captures all changes included in the PR, not just the latest commit.
 
 ## Programmatic checks
@@ -68,6 +68,7 @@ make generate
 make betteralign
 make modernize
 make format
+make lint
 make test
 ```
 
