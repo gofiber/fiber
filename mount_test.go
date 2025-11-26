@@ -91,6 +91,103 @@ func Test_App_Mount_Nested(t *testing.T) {
 	utils.AssertEqual(t, uint32(6), app.handlersCount)
 }
 
+func Test_App_Mount_NestedHooks(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	child := New()
+	grandchild := New()
+
+	var childParent *App
+	child.Hooks().OnMount(func(parent *App) error {
+		childParent = parent
+		return nil
+	})
+
+	var grandchildParent *App
+	grandchild.Hooks().OnMount(func(parent *App) error {
+		grandchildParent = parent
+		return nil
+	})
+
+	child.Get("/child", func(c *Ctx) error {
+		return c.SendString("child")
+	})
+
+	grandchild.Get("/grandchild", func(c *Ctx) error {
+		return c.SendString("grandchild")
+	})
+
+	child.Mount("/grandchild", grandchild)
+	app.Mount("/child", child)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/child/child", http.NoBody))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "child", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/child/grandchild/grandchild", http.NoBody))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	body, err = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "grandchild", string(body))
+
+	utils.AssertEqual(t, app, childParent)
+	utils.AssertEqual(t, child, grandchildParent)
+}
+
+func Test_Group_Mount_NestedHooks(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	group := app.Group("/api")
+	child := New()
+	grandchild := New()
+
+	var childParent *App
+	child.Hooks().OnMount(func(parent *App) error {
+		childParent = parent
+		return nil
+	})
+
+	var grandchildParent *App
+	grandchild.Hooks().OnMount(func(parent *App) error {
+		grandchildParent = parent
+		return nil
+	})
+
+	child.Get("/child", func(c *Ctx) error {
+		return c.SendString("child")
+	})
+
+	grandchild.Get("/grandchild", func(c *Ctx) error {
+		return c.SendString("grandchild")
+	})
+
+	child.Mount("/grandchild", grandchild)
+	group.Mount("/child", child)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/child/child", http.NoBody))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "child", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/api/child/grandchild/grandchild", http.NoBody))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	body, err = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "grandchild", string(body))
+
+	utils.AssertEqual(t, app, childParent)
+	utils.AssertEqual(t, child, grandchildParent)
+}
+
 // go test -run Test_App_Mount_Express_Behavior
 func Test_App_Mount_Express_Behavior(t *testing.T) {
 	t.Parallel()
