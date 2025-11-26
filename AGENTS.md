@@ -8,7 +8,9 @@
 
 - When adding Go tests, always invoke `t.Parallel()` at the start of each test and subtest to maximize concurrency.
 - Prefer `github.com/gofiber/utils/v2` helpers (for example, `utils.Trim`) when performing common operations such as string manipulation, whenever it is practical and appropriate for the surrounding code.
-- After making changes, run `make lint` **before** running `make test`.
+- Keep all protocol behavior RFC-compliant (e.g., HTTP/1.1 requirements) and document any intentional deviations.
+- Protect hot paths from regressions: profile changes.
+- Apply secure-by-default choices (validation, timeouts, sanitization) and ensure new code hardens attack surfaces.
 
 ---
 
