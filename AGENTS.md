@@ -4,6 +4,12 @@
 
 > **Note for the AI agent:** Before running the startup script, verify that all dependencies and CLI tools are already available. If a `vendor/` directory exists **or** `go list -m -mod=readonly all` succeeds (indicating modules are cached), you may skip the entire startup script—including all `go mod` commands and `go install` steps. Otherwise, run the script as listed below.
 
+### General coding practices
+
+- When adding Go tests, always invoke `t.Parallel()` at the start of each test and subtest to maximize concurrency.
+- Prefer `github.com/gofiber/utils/v2` helpers (for example, `utils.Trim`) when performing common operations such as string manipulation, whenever it is practical and appropriate for the surrounding code.
+- After making changes, run `make lint` **before** running `make test`.
+
 ---
 
 ## Startup script (reference only – do not run)
@@ -44,6 +50,11 @@ Use `make help` to list all available commands. Common targets include:
 - **modernize**: run golps modernize
 
 These targets can be invoked via `make <target>` as needed during development and testing.
+
+## Pull request guidelines
+
+- PR titles must start with a category prefix describing the change: `bug:`, `feat:`, `docs:`, or `chore:`.
+- Generated PR bodies should contain a **Summary** section that captures all changes included in the PR, not just the latest commit.
 
 ## Programmatic checks
 
