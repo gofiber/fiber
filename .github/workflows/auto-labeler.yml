@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Check Labels
         id: labeler
-        uses: gofiber/multi-labeler@v0.2.0
+        uses: gofiber/multi-labeler@v0.3.0
         with:
           github-token: ${{ secrets.ISSUE_PR_TOKEN }}
           config-path: .github/labeler.yml

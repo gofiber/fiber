@@ -1,4 +1,4 @@
-_extends: .github/labeler.yml
+_extends: .github
 labels:
   - label: 'v3'
     matcher:
