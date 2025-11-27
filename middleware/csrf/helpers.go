@@ -32,7 +32,6 @@ func schemeAndHostMatch(schemeA, hostA, schemeB, hostB string) bool {
 }
 
 func normalizeSchemeHost(scheme, host string) string {
-	scheme = utils.ToLower(scheme)
 	host = utils.ToLower(host)
 
 	defaultPort := ""
@@ -45,9 +44,13 @@ func normalizeSchemeHost(scheme, host string) string {
 		return host
 	}
 
-	parsedHost := &url.URL{Scheme: scheme, Host: host}
+	parsedHost, err := url.Parse(scheme + "://" + host)
+	if err != nil {
+		return host
+	}
+
 	if port := parsedHost.Port(); port != "" {
-		return parsedHost.Host
+		return host
 	}
 
 	hostname := parsedHost.Hostname()
