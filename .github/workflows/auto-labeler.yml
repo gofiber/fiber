@@ -1,17 +1,20 @@
 name: auto-labeler
 
 on:
-    issues:
-        types: [opened, edited, milestoned]
-    pull_request_target:
-        types: [opened, edited, reopened, synchronize]
-    workflow_dispatch:
+  issues:
+    types: [opened, edited, milestoned]
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
 
 jobs:
-    auto-labeler:
-        uses: gofiber/.github/.github/workflows/auto-labeler.yml@main
-        secrets:
-            github-token: ${{ secrets.ISSUE_PR_TOKEN }}
+  labeler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Labels
+        id: labeler
+        uses: gofiber/multi-labeler@v0.2.0
         with:
-            config-path: .github/labeler.yml
-            config-repository: gofiber/fiber
+          github-token: ${{ secrets.ISSUE_PR_TOKEN }}
+          config-path: .github/labeler.yml
+          config-repo: gofiber/fiber
+
