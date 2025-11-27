@@ -13,4 +13,4 @@ jobs:
       github-token: ${{ secrets.ISSUE_PR_TOKEN }}
     with:
       config-path: .github/labeler.yml
-      config-repo: gofiber/fiber
+      config-repository: gofiber/fiber
