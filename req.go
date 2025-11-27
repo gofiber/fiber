@@ -798,7 +798,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 			return rangeData, ErrRangeMalformed
 		}
 		if startErr != nil { // -nnn
-			start = size - end
+			start = max(size-end, 0)
 			end = size - 1
 		} else if endErr != nil { // nnn-
 			end = size - 1
