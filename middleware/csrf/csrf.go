@@ -317,7 +317,7 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 // returns an error if the origin header is not present or is invalid
 // returns nil if the origin header is valid
 func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	origin := strings.ToLower(c.Get(fiber.HeaderOrigin))
+	origin := utils.ToLower(c.Get(fiber.HeaderOrigin))
 	if origin == "" || origin == "null" { // "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
 		return errOriginNotFound
 	}
@@ -327,7 +327,12 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 		return ErrOriginInvalid
 	}
 
-	if originURL.Scheme == c.Scheme() && originURL.Host == c.Host() {
+	originScheme := utils.ToLower(originURL.Scheme)
+	reqScheme := utils.ToLower(c.Scheme())
+	originHost := normalizeSchemeHost(originScheme, originURL.Host)
+	reqHost := normalizeSchemeHost(reqScheme, c.Host())
+
+	if originScheme == reqScheme && originHost == reqHost {
 		return nil
 	}
 
@@ -348,7 +353,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
 func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	referer := strings.ToLower(c.Get(fiber.HeaderReferer))
+	referer := utils.ToLower(c.Get(fiber.HeaderReferer))
 	if referer == "" {
 		return ErrRefererNotFound
 	}
@@ -358,7 +363,12 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins 
 		return ErrRefererInvalid
 	}
 
-	if refererURL.Scheme == c.Scheme() && refererURL.Host == c.Host() {
+	refererScheme := utils.ToLower(refererURL.Scheme)
+	reqScheme := utils.ToLower(c.Scheme())
+	refererHost := normalizeSchemeHost(refererScheme, refererURL.Host)
+	reqHost := normalizeSchemeHost(reqScheme, c.Host())
+
+	if refererScheme == reqScheme && refererHost == reqHost {
 		return nil
 	}
 

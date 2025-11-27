@@ -8,6 +8,8 @@ import (
 
 // go test -run -v Test_normalizeOrigin
 func Test_normalizeOrigin(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		origin         string
 		expectedOrigin string
@@ -53,8 +55,53 @@ func Test_normalizeOrigin(t *testing.T) {
 	}
 }
 
+func Test_normalizeSchemeHost(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		scheme       string
+		host         string
+		expectedHost string
+	}{
+		{
+			name:         "http default port added",
+			scheme:       "http",
+			host:         "example.com",
+			expectedHost: "example.com:80",
+		},
+		{
+			name:         "https default port added",
+			scheme:       "https",
+			host:         "example.com",
+			expectedHost: "example.com:443",
+		},
+		{
+			name:         "http custom port preserved",
+			scheme:       "http",
+			host:         "example.com:8080",
+			expectedHost: "example.com:8080",
+		},
+		{
+			name:         "https ipv6 default port added",
+			scheme:       "https",
+			host:         "[::1]",
+			expectedHost: "[::1]:443",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.expectedHost, normalizeSchemeHost(tc.scheme, tc.host))
+		})
+	}
+}
+
 // go test -run -v TestSubdomainMatch
 func TestSubdomainMatch(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		sub      subdomain
@@ -132,6 +179,7 @@ func TestSubdomainMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := tt.sub.match(tt.origin)
 			assert.Equal(t, tt.expected, got, "subdomain.match()")
 		})
