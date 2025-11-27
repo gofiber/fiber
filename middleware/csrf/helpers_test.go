@@ -88,6 +88,18 @@ func Test_normalizeSchemeHost(t *testing.T) {
 			host:         "[::1]",
 			expectedHost: "[::1]:443",
 		},
+		{
+			name:         "unknown scheme preserved",
+			scheme:       "ftp",
+			host:         "example.com",
+			expectedHost: "example.com",
+		},
+		{
+			name:         "https ipv6 custom port preserved",
+			scheme:       "https",
+			host:         "[::1]:8080",
+			expectedHost: "[::1]:8080",
+		},
 	}
 
 	for _, tc := range testCases {

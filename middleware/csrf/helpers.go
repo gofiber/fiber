@@ -21,6 +21,16 @@ func compareStrings(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
+func schemeAndHostMatch(schemeA, hostA, schemeB, hostB string) bool {
+	normalizedSchemeA := utils.ToLower(schemeA)
+	normalizedSchemeB := utils.ToLower(schemeB)
+
+	normalizedHostA := normalizeSchemeHost(normalizedSchemeA, hostA)
+	normalizedHostB := normalizeSchemeHost(normalizedSchemeB, hostB)
+
+	return normalizedSchemeA == normalizedSchemeB && normalizedHostA == normalizedHostB
+}
+
 func normalizeSchemeHost(scheme, host string) string {
 	scheme = utils.ToLower(scheme)
 	host = utils.ToLower(host)

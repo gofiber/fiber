@@ -327,12 +327,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 		return ErrOriginInvalid
 	}
 
-	originScheme := utils.ToLower(originURL.Scheme)
-	reqScheme := utils.ToLower(c.Scheme())
-	originHost := normalizeSchemeHost(originScheme, originURL.Host)
-	reqHost := normalizeSchemeHost(reqScheme, c.Host())
-
-	if originScheme == reqScheme && originHost == reqHost {
+	if schemeAndHostMatch(originURL.Scheme, originURL.Host, c.Scheme(), c.Host()) {
 		return nil
 	}
 
@@ -363,12 +358,7 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins 
 		return ErrRefererInvalid
 	}
 
-	refererScheme := utils.ToLower(refererURL.Scheme)
-	reqScheme := utils.ToLower(c.Scheme())
-	refererHost := normalizeSchemeHost(refererScheme, refererURL.Host)
-	reqHost := normalizeSchemeHost(reqScheme, c.Host())
-
-	if refererScheme == reqScheme && refererHost == reqHost {
+	if schemeAndHostMatch(refererURL.Scheme, refererURL.Host, c.Scheme(), c.Host()) {
 		return nil
 	}
 
