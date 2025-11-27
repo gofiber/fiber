@@ -437,15 +437,23 @@ func parseMaxAge(cc string) (time.Duration, bool) {
 }
 
 func allowsSharedCache(cc string) bool {
+	shareable := false
+
 	for part := range strings.SplitSeq(cc, ",") {
-		part = utils.Trim(utils.ToLower(part), ' ')
+		part = strings.TrimSpace(utils.ToLower(part))
 		switch {
+		case part == "":
+			continue
+		case part == "private":
+			return false
 		case part == "public":
-			return true
+			shareable = true
 		case strings.HasPrefix(part, "s-maxage="):
-			return true
+			shareable = true
+		default:
+			continue
 		}
 	}
 
-	return false
+	return shareable
 }

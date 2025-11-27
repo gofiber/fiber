@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -1597,6 +1598,39 @@ func Test_ParseMaxAge(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_AllowsSharedCache(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		directives string
+		expect     bool
+	}{
+		{"public", true},
+		{"private", false},
+		{"s-maxage=60", true},
+		{"public, max-age=60", true},
+		{"max-age=60", false},
+		{"no-cache", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.directives, func(t *testing.T) {
+			t.Parallel()
+
+			got := allowsSharedCache(tt.directives)
+			require.Equal(t, tt.expect, got, "directives: %q", tt.directives)
+		})
+	}
+
+	t.Run("private overrules public", func(t *testing.T) {
+		t.Parallel()
+
+		got := allowsSharedCache(strings.ToUpper("private, public"))
+		require.False(t, got)
+	})
 }
 
 func TestCacheSkipsAuthorizationByDefault(t *testing.T) {
