@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -387,6 +388,32 @@ func TestLimiterSlidingPropagatesRequestContextToStorage(t *testing.T) {
 	verifyRecords(t, sets, "/rollback", "sliding-rollback", true)
 }
 
+func TestLimiterSlidingSkipsPostUpdateWhenHeadersDisabled(t *testing.T) {
+	t.Parallel()
+
+	storage := newContextRecorderLimiterStorage()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:               1,
+		Expiration:        time.Second,
+		Storage:           storage,
+		DisableHeaders:    true,
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	require.Len(t, storage.recordedGets(), 1)
+	require.Len(t, storage.recordedSets(), 1)
+}
+
 // go test -run Test_Limiter_With_Max_Func_With_Zero -race -v
 func Test_Limiter_With_Max_Func_With_Zero_And_Limiter_Sliding(t *testing.T) {
 	t.Parallel()
@@ -424,6 +451,41 @@ func Test_Limiter_With_Max_Func_With_Zero_And_Limiter_Sliding(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
+}
+
+func Test_Limiter_Sliding_MaxFuncOverridesStaticMax(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	staticMax := 5
+	dynamicMax := 2
+
+	app.Use(New(Config{
+		Max:               staticMax,
+		MaxFunc:           func(fiber.Ctx) int { return dynamicMax },
+		Expiration:        2 * time.Second,
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, strconv.Itoa(dynamicMax), resp.Header.Get("X-RateLimit-Limit"))
+	require.Equal(t, strconv.Itoa(dynamicMax-1), resp.Header.Get("X-RateLimit-Remaining"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, strconv.Itoa(dynamicMax), resp.Header.Get("X-RateLimit-Limit"))
+	require.Equal(t, strconv.Itoa(dynamicMax-2), resp.Header.Get("X-RateLimit-Remaining"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 }
 
 // go test -run Test_Limiter_With_Max_Func_With_Zero -race -v
@@ -748,6 +810,107 @@ func Test_Limiter_Sliding_Window_Custom_Storage_No_Skip_Choices(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
+}
+
+func Test_Limiter_Sliding_Window_RecalculatesAfterHandlerDelay(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:               2,
+		Expiration:        time.Second,
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		time.Sleep(600 * time.Millisecond)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	for i := 0; i < 2; i++ {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	}
+
+	time.Sleep(time.Second + 100*time.Millisecond)
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "2", resp.Header.Get(xRateLimitLimit))
+	require.Equal(t, "1", resp.Header.Get(xRateLimitRemaining))
+	require.NotEmpty(t, resp.Header.Get(xRateLimitReset))
+}
+
+func Test_Limiter_Sliding_Window_ExpiresStalePrevHits(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:               1,
+		Expiration:        time.Second,
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	time.Sleep(2500 * time.Millisecond)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "0", resp.Header.Get(xRateLimitRemaining))
+}
+
+func Test_Limiter_Sliding_Window_SkipFailedRequests_DecrementsPreviousWindow(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:                2,
+		Expiration:         200 * time.Millisecond,
+		SkipFailedRequests: true,
+		LimiterMiddleware:  SlidingWindow{},
+	}))
+
+	app.Get("/:mode", func(c fiber.Ctx) error {
+		if c.Params("mode") == "fail" {
+			time.Sleep(300 * time.Millisecond)
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	type respErr struct {
+		resp *http.Response
+		err  error
+	}
+	failCh := make(chan respErr, 1)
+
+	go func() {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
+		failCh <- respErr{resp: resp, err: err}
+	}()
+
+	time.Sleep(220 * time.Millisecond)
+
+	successResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/ok", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, successResp.StatusCode)
+
+	result := <-failCh
+	require.NoError(t, result.err)
+	require.Equal(t, fiber.StatusInternalServerError, result.resp.StatusCode)
+	require.Equal(t, "2", result.resp.Header.Get(xRateLimitLimit))
+	require.Equal(t, "1", result.resp.Header.Get(xRateLimitRemaining))
+	assert.NotEmpty(t, result.resp.Header.Get(xRateLimitReset))
 }
 
 // go test -run Test_Limiter_Fixed_Window_Skip_Failed_Requests -v

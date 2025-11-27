@@ -3667,6 +3667,111 @@ func Test_Ctx_Range_Unsatisfiable(t *testing.T) {
 	require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
 }
 
+func Test_Ctx_Range_SuffixNormalization(t *testing.T) {
+	t.Parallel()
+
+	body := bytes.Repeat([]byte("x"), 123)
+
+	newApp := func() *App {
+		app := New()
+
+		app.Get("/", func(c Ctx) error {
+			rangesHeader := c.Get(HeaderRange)
+			if rangesHeader == "" {
+				return c.Send(body)
+			}
+
+			rangeData, err := c.Range(int64(len(body)))
+			if err != nil {
+				return err
+			}
+
+			if len(rangeData.Ranges) != 1 {
+				c.Status(StatusRequestedRangeNotSatisfiable)
+				c.Set(HeaderContentRange, fmt.Sprintf("bytes */%d", len(body)))
+				return ErrRequestedRangeNotSatisfiable
+			}
+
+			currentRange := rangeData.Ranges[0]
+			contentRange := fmt.Sprintf("bytes %d-%d/%d", currentRange.Start, currentRange.End, len(body))
+			c.Set(HeaderContentRange, contentRange)
+
+			statusCode := StatusPartialContent
+			if currentRange.Start == 0 && currentRange.End == int64(len(body))-1 {
+				statusCode = StatusOK
+			}
+
+			c.Status(statusCode)
+			return c.Send(body[currentRange.Start : currentRange.End+1])
+		})
+
+		return app
+	}
+
+	testCases := []struct {
+		name             string
+		rangeHeader      string
+		contentRange     string
+		statusCode       int
+		expectedBodySize int
+	}{
+		{
+			name:             "suffix less than size",
+			rangeHeader:      "bytes=-20",
+			contentRange:     "bytes 103-122/123",
+			statusCode:       StatusPartialContent,
+			expectedBodySize: 20,
+		},
+		{
+			name:             "suffix equal to size",
+			rangeHeader:      "bytes=-123",
+			contentRange:     "bytes 0-122/123",
+			statusCode:       StatusOK,
+			expectedBodySize: 123,
+		},
+		{
+			name:             "suffix larger than size",
+			rangeHeader:      "bytes=-9999",
+			contentRange:     "bytes 0-122/123",
+			statusCode:       StatusOK,
+			expectedBodySize: 123,
+		},
+		{
+			name:         "unsatisfiable mixed ranges",
+			rangeHeader:  "bytes=200-400,700-1200",
+			contentRange: "bytes */123",
+			statusCode:   StatusRequestedRangeNotSatisfiable,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := newApp()
+			req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
+			if tc.rangeHeader != "" {
+				req.Header.Set(HeaderRange, tc.rangeHeader)
+			}
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, resp.Body.Close())
+			})
+
+			require.Equal(t, tc.statusCode, resp.StatusCode)
+			require.Equal(t, tc.contentRange, resp.Header.Get(HeaderContentRange))
+
+			if tc.expectedBodySize > 0 {
+				bodyBytes, bodyErr := io.ReadAll(resp.Body)
+				require.NoError(t, bodyErr)
+				require.Len(t, bodyBytes, tc.expectedBodySize)
+			}
+		})
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Range -benchmem -count=4
 func Benchmark_Ctx_Range(b *testing.B) {
 	app := New()
