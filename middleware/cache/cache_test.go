@@ -1611,8 +1611,10 @@ func Test_AllowsSharedCache(t *testing.T) {
 		{"private", false},
 		{"s-maxage=60", true},
 		{"public, max-age=60", true},
+		{"public, must-revalidate", true},
 		{"max-age=60", false},
 		{"no-cache", false},
+		{"no-cache, s-maxage=60", true},
 		{"", false},
 	}
 
@@ -1664,6 +1666,45 @@ func TestCacheSkipsAuthorizationByDefault(t *testing.T) {
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "2", string(body))
+}
+
+func TestCacheBypassesExistingEntryForAuthorization(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+
+	var count int
+	app.Get("/", func(c fiber.Ctx) error {
+		count++
+		return c.SendString(strconv.Itoa(count))
+	})
+
+	nonAuthReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+
+	resp, err := app.Test(nonAuthReq)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "1", string(body))
+
+	authReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	authReq.Header.Set(fiber.HeaderAuthorization, "Bearer token")
+
+	resp, err = app.Test(authReq)
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "2", string(body))
+
+	resp, err = app.Test(nonAuthReq)
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "1", string(body))
 }
 
 func TestCacheAllowsSharedCacheWithAuthorization(t *testing.T) {
