@@ -23,6 +23,7 @@ type item struct {
 	age       uint64
 	exp       uint64
 	ttl       uint64
+	shareable bool
 	// used for finding the item in an indexed heap
 	heapidx int
 }
@@ -77,6 +78,7 @@ func (m *manager) release(e *item) {
 	e.exp = 0
 	e.ttl = 0
 	e.headers = nil
+	e.shareable = false
 	m.pool.Put(e)
 }
 
