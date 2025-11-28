@@ -124,6 +124,8 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
+		hasAuthorization := len(c.Request().Header.Peek(fiber.HeaderAuthorization)) > 0
+
 		// Refrain from caching
 		if hasRequestDirective(c, noStore) {
 			return c.Next()
@@ -178,6 +180,15 @@ func New(config ...Config) fiber.Handler {
 					storedBytes -= size
 				}
 			} else if e.exp != 0 && !hasRequestDirective(c, noCache) {
+				if hasAuthorization && !e.shareable {
+					if cfg.Storage != nil {
+						manager.release(e)
+					}
+					mux.Unlock()
+					c.Set(cfg.CacheHeader, cacheUnreachable)
+					return c.Next()
+				}
+
 				// Separate body value to avoid msgp serialization
 				// We can store raw bytes with Storage 👍
 				if cfg.Storage != nil {
@@ -232,8 +243,16 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
+		cacheControl := string(c.Response().Header.Peek(fiber.HeaderCacheControl))
+
 		// Respect server cache-control: no-store
-		if strings.Contains(utils.ToLower(string(c.Response().Header.Peek(fiber.HeaderCacheControl))), noStore) {
+		if strings.Contains(utils.ToLower(cacheControl), noStore) {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return nil
+		}
+
+		isSharedCacheAllowed := allowsSharedCache(cacheControl)
+		if hasAuthorization && !isSharedCacheAllowed {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return nil
 		}
@@ -288,6 +307,7 @@ func New(config ...Config) fiber.Handler {
 			c.Response().Header.Set(fiber.HeaderAge, "0")
 		}
 		e.age = ageVal
+		e.shareable = isSharedCacheAllowed
 
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
@@ -414,4 +434,26 @@ func parseMaxAge(cc string) (time.Duration, bool) {
 		}
 	}
 	return 0, false
+}
+
+func allowsSharedCache(cc string) bool {
+	shareable := false
+
+	for part := range strings.SplitSeq(cc, ",") {
+		part = strings.TrimSpace(utils.ToLower(part))
+		switch {
+		case part == "":
+			continue
+		case part == "private":
+			return false
+		case part == "public":
+			shareable = true
+		case strings.HasPrefix(part, "s-maxage="):
+			shareable = true
+		default:
+			continue
+		}
+	}
+
+	return shareable
 }

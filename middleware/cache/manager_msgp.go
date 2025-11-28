@@ -94,6 +94,12 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "ttl")
 				return
 			}
+		case "shareable":
+			z.shareable, err = dc.ReadBool()
+			if err != nil {
+				err = msgp.WrapError(err, "shareable")
+				return
+			}
 		case "heapidx":
 			z.heapidx, err = dc.ReadInt()
 			if err != nil {
@@ -113,9 +119,9 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 9
+	// map header, size 10
 	// write "headers"
-	err = en.Append(0x89, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	err = en.Append(0x8a, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	if err != nil {
 		return
 	}
@@ -206,6 +212,16 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "ttl")
 		return
 	}
+	// write "shareable"
+	err = en.Append(0xa9, 0x73, 0x68, 0x61, 0x72, 0x65, 0x61, 0x62, 0x6c, 0x65)
+	if err != nil {
+		return
+	}
+	err = en.WriteBool(z.shareable)
+	if err != nil {
+		err = msgp.WrapError(err, "shareable")
+		return
+	}
 	// write "heapidx"
 	err = en.Append(0xa7, 0x68, 0x65, 0x61, 0x70, 0x69, 0x64, 0x78)
 	if err != nil {
@@ -222,9 +238,9 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 // MarshalMsg implements msgp.Marshaler
 func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 9
+	// map header, size 10
 	// string "headers"
-	o = append(o, 0x89, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	o = append(o, 0x8a, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	o = msgp.AppendMapHeader(o, uint32(len(z.headers)))
 	for za0001, za0002 := range z.headers {
 		o = msgp.AppendString(o, za0001)
@@ -251,6 +267,9 @@ func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "ttl"
 	o = append(o, 0xa3, 0x74, 0x74, 0x6c)
 	o = msgp.AppendUint64(o, z.ttl)
+	// string "shareable"
+	o = append(o, 0xa9, 0x73, 0x68, 0x61, 0x72, 0x65, 0x61, 0x62, 0x6c, 0x65)
+	o = msgp.AppendBool(o, z.shareable)
 	// string "heapidx"
 	o = append(o, 0xa7, 0x68, 0x65, 0x61, 0x70, 0x69, 0x64, 0x78)
 	o = msgp.AppendInt(o, z.heapidx)
@@ -345,6 +364,12 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "ttl")
 				return
 			}
+		case "shareable":
+			z.shareable, bts, err = msgp.ReadBoolBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "shareable")
+				return
+			}
 		case "heapidx":
 			z.heapidx, bts, err = msgp.ReadIntBytes(bts)
 			if err != nil {
@@ -372,6 +397,6 @@ func (z *item) Msgsize() (s int) {
 			s += msgp.StringPrefixSize + len(za0001) + msgp.BytesPrefixSize + len(za0002)
 		}
 	}
-	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 8 + msgp.IntSize
+	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 10 + msgp.BoolSize + 8 + msgp.IntSize
 	return
 }
