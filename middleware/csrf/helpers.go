@@ -4,6 +4,13 @@ import (
 	"crypto/subtle"
 	"net/url"
 	"strings"
+
+	"github.com/gofiber/utils/v2"
+)
+
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
 )
 
 func compareTokens(a, b []byte) bool {
@@ -12,6 +19,50 @@ func compareTokens(a, b []byte) bool {
 
 func compareStrings(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+func schemeAndHostMatch(schemeA, hostA, schemeB, hostB string) bool {
+	normalizedSchemeA := utils.ToLower(schemeA)
+	normalizedSchemeB := utils.ToLower(schemeB)
+
+	normalizedHostA := normalizeSchemeHost(normalizedSchemeA, hostA)
+	normalizedHostB := normalizeSchemeHost(normalizedSchemeB, hostB)
+
+	return normalizedSchemeA == normalizedSchemeB && normalizedHostA == normalizedHostB
+}
+
+func normalizeSchemeHost(scheme, host string) string {
+	host = utils.ToLower(host)
+
+	defaultPort := ""
+	switch scheme {
+	case schemeHTTP:
+		defaultPort = "80"
+	case schemeHTTPS:
+		defaultPort = "443"
+	default:
+		return host
+	}
+
+	parsedHost, err := url.Parse(scheme + "://" + host)
+	if err != nil {
+		return host
+	}
+
+	if port := parsedHost.Port(); port != "" {
+		return host
+	}
+
+	hostname := parsedHost.Hostname()
+	if hostname == "" {
+		return host
+	}
+
+	if strings.Contains(hostname, ":") && !strings.HasPrefix(hostname, "[") {
+		hostname = "[" + hostname + "]"
+	}
+
+	return hostname + ":" + defaultPort
 }
 
 // normalizeOrigin checks if the provided origin is in a correct format
@@ -25,7 +76,7 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 	}
 
 	// Validate the scheme is either http or https
-	if parsedOrigin.Scheme != "http" && parsedOrigin.Scheme != "https" {
+	if parsedOrigin.Scheme != schemeHTTP && parsedOrigin.Scheme != schemeHTTPS {
 		return false, ""
 	}
 
@@ -44,7 +95,7 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 
 	// Normalize the origin by constructing it from the scheme and host.
 	// The path or trailing slash is not included in the normalized origin.
-	return true, strings.ToLower(parsedOrigin.Scheme) + "://" + strings.ToLower(parsedOrigin.Host)
+	return true, utils.ToLower(parsedOrigin.Scheme) + "://" + utils.ToLower(parsedOrigin.Host)
 }
 
 type subdomain struct {
