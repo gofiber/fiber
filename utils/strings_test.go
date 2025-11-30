@@ -215,3 +215,66 @@ func Test_EqualFold(t *testing.T) {
 	res = EqualFold("/MY4/NAME/IS/:PARAM/*", "/my4/nAME/IS/:param/*")
 	AssertEqual(t, true, res)
 }
+
+func Test_AddTrailingSlash(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "already has trailing slash",
+			in:   "path/",
+			want: "path/",
+		},
+		{
+			name: "no trailing slash",
+			in:   "path",
+			want: "path/",
+		},
+		{
+			name: "empty string",
+			in:   "",
+			want: "/",
+		},
+		{
+			name: "root slash",
+			in:   "/",
+			want: "/",
+		},
+		{
+			name: "multi-level path",
+			in:   "a/b/c",
+			want: "a/b/c/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := AddTrailingSlash(tt.in)
+			if got != tt.want {
+				t.Fatalf("AddTrailingSlash(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func Benchmark_AddTrailingSlash(b *testing.B) {
+	cases := map[string]string{
+		"AlreadyHasSlash":     "example/path/",
+		"NoSlash":             "example/path",
+		"Empty":               "",
+		"LongString":          strings.Repeat("a", 10_000),
+		"LongStringWithSlash": strings.Repeat("a", 10_000) + "/",
+	}
+
+	for name, input := range cases {
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = AddTrailingSlash(input)
+			}
+		})
+	}
+}
