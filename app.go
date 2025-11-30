@@ -1301,9 +1301,13 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 		mountedPrefixParts int
 	)
 
+	normalizedPath := utils.AddTrailingSlashString(ctx.Path())
+
 	for _, prefix := range app.mountFields.appListKeys {
 		subApp := app.mountFields.appList[prefix]
-		if prefix != "" && strings.HasPrefix(ctx.Path(), prefix) {
+		normalizedPrefix := utils.AddTrailingSlashString(prefix)
+
+		if prefix != "" && strings.HasPrefix(normalizedPath, normalizedPrefix) {
 			// Count slashes instead of splitting - more efficient
 			parts := strings.Count(prefix, "/") + 1
 			if mountedPrefixParts <= parts {
