@@ -1234,7 +1234,7 @@ The `Authorizer` function now receives the current `fiber.Ctx` as a third argume
 
 ### Cache
 
-We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
+We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define custom conditions for invalidating cache entries.
 
 The middleware now emits `Cache-Control` headers by default via the new `DisableCacheControl` flag, increases the default `Expiration` from `1 minute` to `5 minutes`, and applies a new `MaxBytes` limit of `1 MB` (previously unlimited).
 
