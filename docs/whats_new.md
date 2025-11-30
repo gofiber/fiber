@@ -2311,7 +2311,7 @@ Combine multiple sources with `keyauth.Chain()` when needed.
 The deprecated `Store` and `Key` fields were removed. Use `Storage` and
 `KeyGenerator` instead to configure caching backends and cache keys.
 
-Defaults also changed: the middleware now emits `Cache-Control` headers, the default `Expiration` increased to `5 minutes` (from `1 minute`), and a `MaxBytes` limit of `1 MB` now caps cached payloads.
+Defaults also changed: the middleware now emits `Cache-Control` headers, the default `Expiration` increased to `5 minutes` (from `1 minute`), and a new `MaxBytes` limit of `1 MB` (previously unlimited) now caps cached payloads.
 
 To restore v2 behavior:
 
