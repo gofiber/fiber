@@ -556,17 +556,22 @@ func (c *DefaultCtx) configDependentPaths() {
 		c.detectionPath = utils.ToLowerBytes(c.detectionPath)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
-	if !c.app.config.StrictRouting && len(c.detectionPath) > 1 && c.detectionPath[len(c.detectionPath)-1] == '/' {
-		c.detectionPath = utils.TrimRight(c.detectionPath, '/')
+	// Optimized: check the last character directly before calling TrimRight
+	if !c.app.config.StrictRouting && len(c.detectionPath) > 1 {
+		if c.detectionPath[len(c.detectionPath)-1] == '/' {
+			c.detectionPath = utils.TrimRight(c.detectionPath, '/')
+		}
 	}
 
 	// Define the path for dividing routes into areas for fast tree detection, so that fewer routes need to be traversed,
 	// since the first three characters area select a list of routes
-	c.treePathHash = 0
+	// Inlined hash calculation for better performance
 	if len(c.detectionPath) >= maxDetectionPaths {
 		c.treePathHash = int(c.detectionPath[0])<<16 |
 			int(c.detectionPath[1])<<8 |
 			int(c.detectionPath[2])
+	} else {
+		c.treePathHash = 0
 	}
 }
 

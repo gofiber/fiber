@@ -381,11 +381,19 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 }
 
 func joinHeaderValues(headers [][]byte) []byte {
+	// Optimized: Fast path for common cases
 	switch len(headers) {
 	case 0:
 		return nil
 	case 1:
 		return headers[0]
+	case 2:
+		// Optimized: Avoid bytes.Join for two headers
+		result := make([]byte, 0, len(headers[0])+len(headers[1])+1)
+		result = append(result, headers[0]...)
+		result = append(result, ',')
+		result = append(result, headers[1]...)
+		return result
 	default:
 		return bytes.Join(headers, []byte{','})
 	}
@@ -532,26 +540,32 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 			// Skip this accept type if quality is 0.0
 			// See: https://www.rfc-editor.org/rfc/rfc9110#quality.values
 			if quality == 0.0 {
+				// Clean up params before returning
+				if params != nil {
+					headerParamPool.Put(params)
+				}
 				return
 			}
 		}
 
 		spec = utils.Trim(spec, ' ')
 
-		// Determine specificity
+		// Determine specificity - optimized with early returns
 		var specificity int
+		specLen := len(spec)
 
 		// check for wildcard this could be a mime */* or a wildcard character *
-		switch {
-		case len(spec) == 1 && spec[0] == '*':
+		if specLen == 1 && spec[0] == '*' {
 			specificity = 1
-		case bytes.Equal(spec, []byte("*/*")):
+		} else if specLen == 3 && spec[0] == '*' && spec[1] == '/' && spec[2] == '*' {
+			// Optimized check for */*
 			specificity = 1
-		case bytes.HasSuffix(spec, []byte("/*")):
+		} else if specLen > 2 && spec[specLen-2] == '/' && spec[specLen-1] == '*' {
+			// Optimized suffix check
 			specificity = 2
-		case bytes.IndexByte(spec, '/') != -1:
+		} else if bytes.IndexByte(spec, '/') != -1 {
 			specificity = 3
-		default:
+		} else {
 			specificity = 4
 		}
 

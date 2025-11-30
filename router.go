@@ -96,14 +96,18 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 			if detectionPath != "" && detectionPath[0] == '/' {
 				return true
 			}
-		} else if len(detectionPath) >= plen && detectionPath[:plen] == r.path {
-			if hasPartialMatchBoundary(detectionPath, plen) {
+		} else if len(detectionPath) >= plen {
+			// Optimized: Only compare if lengths allow
+			if detectionPath[:plen] == r.path && hasPartialMatchBoundary(detectionPath, plen) {
 				return true
 			}
 		}
-	} else if len(r.path) == len(detectionPath) && detectionPath == r.path {
-		// Check exact match
-		return true
+	} else {
+		// Optimized: Check length first before string comparison
+		pathLen := len(r.path)
+		if len(detectionPath) == pathLen && detectionPath == r.path {
+			return true
+		}
 	}
 
 	// No match

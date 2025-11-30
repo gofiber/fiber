@@ -468,19 +468,16 @@ func splitNonEscaped(s string, sep byte) []string {
 }
 
 func hasPartialMatchBoundary(path string, matchedLength int) bool {
-	if matchedLength < 0 || matchedLength > len(path) {
-		return false
-	}
-	if matchedLength == len(path) {
+	// Optimized: Common case checks first
+	pathLen := len(path)
+	if matchedLength == pathLen {
 		return true
 	}
-	if matchedLength == 0 {
+	if matchedLength <= 0 || matchedLength > pathLen {
 		return false
 	}
-	if path[matchedLength-1] == slashDelimiter {
-		return true
-	}
-	if matchedLength < len(path) && path[matchedLength] == slashDelimiter {
+	// Optimized: Check both boundary conditions in a single pass
+	if path[matchedLength-1] == slashDelimiter || (matchedLength < pathLen && path[matchedLength] == slashDelimiter) {
 		return true
 	}
 
@@ -498,8 +495,13 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			i = segment.Length
 			// is optional part or the const part must match with the given string
 			// check if the end of the segment is an optional slash
-			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
-				i--
+			// Optimized: Check length first to avoid unnecessary string comparison
+			if segment.HasOptionalSlash && partLen == i-1 {
+				if detectionPath == segment.Const[:i-1] {
+					i--
+				} else {
+					return false
+				}
 			} else if i > partLen || detectionPath[:i] != segment.Const {
 				return false
 			}
@@ -512,10 +514,11 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			// take over the params positions
 			params[paramsIterator] = path[:i]
 
-			if !segment.IsOptional || i != 0 {
+			// Optimized: Only check constraints if we have them and parameter is not empty
+			if len(segment.Constraints) > 0 && (!segment.IsOptional || i != 0) {
 				// check constraint
 				for _, c := range segment.Constraints {
-					if matched := c.CheckConstraint(params[paramsIterator]); !matched {
+					if !c.CheckConstraint(params[paramsIterator]) {
 						return false
 					}
 				}
@@ -529,17 +532,18 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			detectionPath, path = detectionPath[i:], path[i:]
 		}
 	}
-	if detectionPath != "" {
-		if !partialCheck {
-			return false
-		}
-		consumedLength := len(originalDetectionPath) - len(detectionPath)
-		if !hasPartialMatchBoundary(originalDetectionPath, consumedLength) {
-			return false
-		}
+
+	// Optimized: Fast path for complete match
+	if detectionPath == "" {
+		return true
 	}
 
-	return true
+	if !partialCheck {
+		return false
+	}
+
+	consumedLength := len(originalDetectionPath) - len(detectionPath)
+	return hasPartialMatchBoundary(originalDetectionPath, consumedLength)
 }
 
 // findParamLen for the expressjs wildcard behavior (right to left greedy)
@@ -549,9 +553,16 @@ func findParamLen(s string, segment *routeSegment) int {
 		return findParamLenForLastSegment(s, segment)
 	}
 
-	if segment.Length != 0 && len(s) >= segment.Length {
-		return segment.Length
-	} else if segment.IsGreedy {
+	// Optimized: Check fixed length first (most common case)
+	if segment.Length != 0 {
+		if len(s) >= segment.Length {
+			return segment.Length
+		}
+		return len(s)
+	}
+
+	// Handle greedy parameters
+	if segment.IsGreedy {
 		// Search the parameters until the next constant part
 		// special logic for greedy params
 		searchCount := strings.Count(s, segment.ComparePart)
@@ -560,17 +571,21 @@ func findParamLen(s string, segment *routeSegment) int {
 		}
 	}
 
-	if len(segment.ComparePart) == 1 {
+	// Optimized: Single character comparison is more common, check first
+	compareLen := len(segment.ComparePart)
+	if compareLen == 1 {
 		if constPosition := strings.IndexByte(s, segment.ComparePart[0]); constPosition != -1 {
 			return constPosition
 		}
-	} else if constPosition := strings.Index(s, segment.ComparePart); constPosition != -1 {
-		// if the compare part was found, but contains a slash although this part is not greedy, then it must not match
-		// example: /api/:param/fixedEnd -> path: /api/123/456/fixedEnd = no match , /api/123/fixedEnd = match
-		if !segment.IsGreedy && strings.IndexByte(s[:constPosition], slashDelimiter) != -1 {
-			return 0
+	} else if compareLen > 0 {
+		if constPosition := strings.Index(s, segment.ComparePart); constPosition != -1 {
+			// if the compare part was found, but contains a slash although this part is not greedy, then it must not match
+			// example: /api/:param/fixedEnd -> path: /api/123/456/fixedEnd = no match , /api/123/fixedEnd = match
+			if !segment.IsGreedy && strings.IndexByte(s[:constPosition], slashDelimiter) != -1 {
+				return 0
+			}
+			return constPosition
 		}
-		return constPosition
 	}
 
 	return len(s)
