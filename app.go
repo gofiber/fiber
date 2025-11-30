@@ -1041,9 +1041,13 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 		mountedPrefixParts int
 	)
 
+	normalizedPath := utils.AddTrailingSlash(ctx.Path())
+
 	for _, prefix := range app.mountFields.appListKeys {
 		subApp := app.mountFields.appList[prefix]
-		if prefix != "" && strings.HasPrefix(ctx.Path(), prefix) {
+		normalizedPrefix := utils.AddTrailingSlash(prefix)
+
+		if prefix != "" && strings.HasPrefix(normalizedPath, normalizedPrefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
 				if subApp.configured.ErrorHandler != nil {
