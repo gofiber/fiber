@@ -1234,7 +1234,10 @@ The `Authorizer` function now receives the current `fiber.Ctx` as a third argume
 
 ### Cache
 
-We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
+We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define custom conditions for invalidating cache entries.
+
+The middleware now emits `Cache-Control` headers by default via the new `DisableCacheControl` flag, increases the default `Expiration` from `1 minute` to `5 minutes`, and applies a new `MaxBytes` limit of `1 MB` (previously unlimited).
+
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 Cached responses now include an RFC-compliant Age header, providing a standardized indication of how long a response has been stored in cache since it was originally generated. This enhancement improves HTTP compliance and facilitates better client-side caching strategies.
 
@@ -2307,6 +2310,14 @@ Combine multiple sources with `keyauth.Chain()` when needed.
 
 The deprecated `Store` and `Key` fields were removed. Use `Storage` and
 `KeyGenerator` instead to configure caching backends and cache keys.
+
+Defaults also changed: the middleware now emits `Cache-Control` headers, the default `Expiration` increased to `5 minutes` (from `1 minute`), and a new `MaxBytes` limit of `1 MB` (previously unlimited) now caps cached payloads.
+
+To restore v2 behavior:
+
+- Set `DisableCacheControl` to `true` to suppress automatic `Cache-Control` headers.
+- Configure `Expiration` to `1*time.Minute`.
+- Set `MaxBytes` to `0` (or a higher value) when caching large responses.
 
 #### CORS
 
