@@ -256,6 +256,7 @@ const (
 	HeaderTE                                 = "TE"
 	HeaderTrailer                            = "Trailer"
 	HeaderTransferEncoding                   = "Transfer-Encoding"
+	HeaderSecFetchSite                       = "Sec-Fetch-Site"
 	HeaderSecWebSocketAccept                 = "Sec-WebSocket-Accept"
 	HeaderSecWebSocketExtensions             = "Sec-WebSocket-Extensions"
 	HeaderSecWebSocketKey                    = "Sec-WebSocket-Key"

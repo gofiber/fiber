@@ -823,6 +823,94 @@ func Test_CSRF_Extractor_EmptyString(t *testing.T) {
 	require.Equal(t, ErrTokenNotFound.Error(), string(ctx.Response.Body()))
 }
 
+func Test_CSRF_SecFetchSite(t *testing.T) {
+	t.Parallel()
+
+	errorHandler := func(c fiber.Ctx, err error) error {
+		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+	}
+
+	app := fiber.New()
+
+	app.Use(New(Config{ErrorHandler: errorHandler}))
+
+	app.All("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.URI().SetScheme("http")
+	ctx.Request.URI().SetHost("example.com")
+	ctx.Request.Header.SetHost("example.com")
+	h(ctx)
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+
+	tests := []struct {
+		name           string
+		method         string
+		secFetchSite   string
+		origin         string
+		scheme         string
+		expectedStatus int
+	}{
+		{"same-origin allowed", fiber.MethodPost, "same-origin", "http://example.com", "http", http.StatusOK},
+		{"none allowed", fiber.MethodPost, "none", "http://example.com", "http", http.StatusOK},
+		{"cross-site blocked", fiber.MethodPost, "cross-site", "http://example.com", "http", http.StatusForbidden},
+		{"same-site blocked", fiber.MethodPost, "same-site", "http://example.com", "http", http.StatusForbidden},
+
+		{"no header with no origin", fiber.MethodPost, "", "", "http", http.StatusOK},
+		{"no header with matching origin", fiber.MethodPost, "", "http://example.com", "http", http.StatusOK},
+		{"no header with mismatched origin", fiber.MethodPost, "", "https://attacker.example", "http", http.StatusForbidden},
+		{"no header with null origin", fiber.MethodPost, "", "null", "https", http.StatusForbidden},
+
+		{"GET allowed", fiber.MethodGet, "cross-site", "", "http", http.StatusOK},
+		{"HEAD allowed", fiber.MethodHead, "cross-site", "", "http", http.StatusOK},
+		{"OPTIONS allowed", fiber.MethodOptions, "cross-site", "", "http", http.StatusOK},
+		{"PUT blocked", fiber.MethodPut, "cross-site", "http://example.com", "http", http.StatusForbidden},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := &fasthttp.RequestCtx{}
+			scheme := tt.scheme
+			if scheme == "" {
+				scheme = "http"
+			}
+			c.Request.Header.SetMethod(tt.method)
+			c.Request.URI().SetScheme(scheme)
+			c.Request.URI().SetHost("example.com")
+			c.Request.Header.SetHost("example.com")
+			c.Request.Header.SetProtocol(scheme)
+			if scheme == "https" {
+				c.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+			}
+			if tt.origin != "" {
+				c.Request.Header.Set(fiber.HeaderOrigin, tt.origin)
+			}
+			if tt.secFetchSite != "" {
+				c.Request.Header.Set(fiber.HeaderSecFetchSite, tt.secFetchSite)
+			}
+
+			safe := tt.method == fiber.MethodGet || tt.method == fiber.MethodHead || tt.method == fiber.MethodOptions || tt.method == fiber.MethodTrace
+
+			if !safe {
+				c.Request.Header.Set(HeaderName, token)
+				c.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+			}
+
+			h(c)
+			require.Equal(t, tt.expectedStatus, c.Response.StatusCode())
+			if tt.expectedStatus == http.StatusForbidden && tt.secFetchSite != "" && !safe {
+				require.Equal(t, ErrFetchSiteInvalid.Error(), string(c.Response.Body()))
+			}
+		})
+	}
+}
+
 func Test_CSRF_Origin(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
