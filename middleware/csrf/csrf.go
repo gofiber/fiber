@@ -327,7 +327,7 @@ func validateSecFetchSite(c fiber.Ctx) error {
 	}
 
 	switch utils.ToLower(secFetchSite) {
-	case "same-origin", "none":
+	case "same-origin", "none", "cross-site", "same-site":
 		return nil
 	default:
 		return ErrFetchSiteInvalid
