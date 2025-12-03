@@ -173,7 +173,7 @@ The middleware employs a robust, defense-in-depth strategy to protect against CS
 
 ### Fetch Metadata Guardrails
 
-- **Sec-Fetch-Site**: For unsafe methods, the middleware inspects the [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) header when present. Requests with `same-origin` or `none` proceed directly to origin/token validation. Requests with `same-site` or `cross-site` are allowed to continue to the standard origin/trusted-origin checks (and token verification), enabling trusted cross-site clients to function. Any other header value is rejected with `ErrFetchSiteInvalid`. Browsers that omit the header are treated as if it were absent and continue through origin validation normally.
+- **Sec-Fetch-Site**: For unsafe methods, the middleware inspects the [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) header when present. If the header value is not one of "same-origin", "none", "same-site", or "cross-site", the request is rejected with `ErrFetchSiteInvalid`. If the header is valid or absent, the request proceeds to the standard origin and token validation checks. This provides an early check to block requests with invalid `Sec-Fetch-Site` values, while allowing legitimate same-site and cross-site requests to be validated by the existing mechanisms.
 
 ### 1. Token Validation Patterns
 
