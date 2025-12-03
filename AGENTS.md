@@ -75,3 +75,7 @@ make test
 ```
 
 All checks must pass before the generated code can be merged.
+
+After completing the programmatic checks above, confirm that any relevant
+documentation has been updated to reflect the changes made, including PR
+instructions when applicable.
