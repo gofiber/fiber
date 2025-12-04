@@ -76,6 +76,29 @@ func Test_isValidRequestID_VisibleASCII(t *testing.T) {
 	require.True(t, isValidRequestID("request-id-09AZaz ~"))
 }
 
+func Test_isValidRequestID_Boundaries(t *testing.T) {
+	t.Parallel()
+
+	t.Run("allows space and tilde", func(t *testing.T) {
+		t.Parallel()
+
+		require.True(t, isValidRequestID(" ~"))
+	})
+
+	t.Run("rejects out of range", func(t *testing.T) {
+		t.Parallel()
+
+		require.False(t, isValidRequestID(string([]byte{0x1f})))
+		require.False(t, isValidRequestID(string([]byte{0x7f})))
+	})
+
+	t.Run("rejects empty", func(t *testing.T) {
+		t.Parallel()
+
+		require.False(t, isValidRequestID(""))
+	})
+}
+
 func Test_isValidRequestID_RejectsObsText(t *testing.T) {
 	t.Parallel()
 
