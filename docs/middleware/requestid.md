@@ -39,7 +39,9 @@ app.Use(requestid.New(requestid.Config{
 }))
 ```
 
-If the request already includes the configured header, that value is reused instead of generating a new one.
+If the request already includes the configured header, that value is reused instead of generating a new one. The middleware
+rejects IDs containing characters outside the visible ASCII range (for example, control characters or obs-text bytes) and
+will regenerate the value using the configured generator or a UUID to keep headers RFC-compliant across transports.
 
 Retrieve the request ID
 
