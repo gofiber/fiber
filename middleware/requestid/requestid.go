@@ -42,8 +42,9 @@ func New(config ...Config) fiber.Handler {
 }
 
 // sanitizeRequestID returns the provided request ID when it is valid, otherwise
-// it tries up to three values from the configured generator, then three UUIDs,
-// falling back to an empty string when no visible ASCII ID is produced.
+// it tries up to three values from the configured generator (or UUID when no
+// generator is set), then three UUIDs if a custom generator failed, falling
+// back to an empty string when no visible ASCII ID is produced.
 func sanitizeRequestID(rid string, generator func() string) string {
 	if isValidRequestID(rid) {
 		return rid
