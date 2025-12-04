@@ -2221,9 +2221,9 @@ import (
 )
 
 func demo() {
-    b := utils.Trim([]byte(" fiber "))
+    s := utils.TrimSpace(" fiber ")
     id := utils.UUIDv4()
-    s := utils.ToString([]byte("foo"))
+    str := utils.ToString([]byte("foo"))
     t := strings.TrimRight("bar  ", " ")
 }
 ```

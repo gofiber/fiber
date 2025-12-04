@@ -71,7 +71,7 @@ func New(config ...Config) fiber.Handler {
 	trustedSubOrigins := []subdomain{}
 
 	for _, origin := range cfg.TrustedOrigins {
-		trimmedOrigin := utils.Trim(origin, ' ')
+		trimmedOrigin := utils.TrimSpace(origin)
 		if i := strings.Index(trimmedOrigin, "://*."); i != -1 {
 			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
 			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)

@@ -536,7 +536,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 			}
 		}
 
-		spec = utils.Trim(spec, ' ')
+		spec = utils.TrimSpace(spec)
 
 		// Determine specificity
 		var specificity int
@@ -660,7 +660,7 @@ func matchEtagStrong(s, etag string) bool {
 // weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	var start, end int
-	header := utils.Trim(app.toString(noneMatchBytes), ' ')
+	header := utils.TrimSpace(app.toString(noneMatchBytes))
 
 	// Short-circuit the wildcard case: "*" never counts as stale.
 	if header == "*" {
@@ -695,7 +695,7 @@ func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocr
 		return "", ""
 	}
 
-	raw = utils.Trim(raw, ' ')
+	raw = utils.TrimSpace(raw)
 
 	// Handle IPv6 addresses enclosed in brackets as defined by RFC 3986
 	if strings.HasPrefix(raw, "[") {
