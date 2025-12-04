@@ -496,7 +496,7 @@ func (r *DefaultReq) Is(extension string) bool {
 	if i := strings.IndexByte(ct, ';'); i != -1 {
 		ct = ct[:i]
 	}
-	ct = utils.Trim(ct, ' ')
+	ct = utils.TrimSpace(ct)
 	return utils.EqualFold(ct, extensionHeader)
 }
 
@@ -744,7 +744,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		rangeData Range
 		ranges    string
 	)
-	rangeStr := utils.Trim(r.Get(HeaderRange), ' ')
+	rangeStr := utils.TrimSpace(r.Get(HeaderRange))
 
 	parseBound := func(value string) (int64, error) {
 		parsed, err := utils.ParseUint(value)
@@ -761,11 +761,11 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
 		return rangeData, ErrRangeMalformed
 	}
-	rangeData.Type = utils.ToLower(utils.Trim(rangeStr[:i], ' '))
+	rangeData.Type = utils.ToLower(utils.TrimSpace(rangeStr[:i]))
 	if rangeData.Type != "bytes" {
 		return rangeData, ErrRangeMalformed
 	}
-	ranges = utils.Trim(rangeStr[i+1:], ' ')
+	ranges = utils.TrimSpace(rangeStr[i+1:])
 
 	var (
 		singleRange string
@@ -775,12 +775,12 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		singleRange = moreRanges
 		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
 			singleRange = moreRanges[:i]
-			moreRanges = utils.Trim(moreRanges[i+1:], ' ')
+			moreRanges = utils.TrimSpace(moreRanges[i+1:])
 		} else {
 			moreRanges = ""
 		}
 
-		singleRange = utils.Trim(singleRange, ' ')
+		singleRange = utils.TrimSpace(singleRange)
 
 		var (
 			startStr, endStr string
@@ -789,8 +789,8 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		if i = strings.IndexByte(singleRange, '-'); i == -1 {
 			return rangeData, ErrRangeMalformed
 		}
-		startStr = utils.Trim(singleRange[:i], ' ')
-		endStr = utils.Trim(singleRange[i+1:], ' ')
+		startStr = utils.TrimSpace(singleRange[:i])
+		endStr = utils.TrimSpace(singleRange[i+1:])
 
 		start, startErr := parseBound(startStr)
 		end, endErr := parseBound(endStr)

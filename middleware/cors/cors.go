@@ -54,7 +54,7 @@ func New(config ...Config) fiber.Handler {
 			break
 		}
 
-		trimmedOrigin := utils.Trim(origin, ' ')
+		trimmedOrigin := utils.TrimSpace(origin)
 		if i := strings.Index(trimmedOrigin, "://*."); i != -1 {
 			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
 			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)

@@ -91,7 +91,7 @@ func (r *Response) Body() []byte {
 
 // String returns the response body as a trimmed string.
 func (r *Response) String() string {
-	return utils.Trim(string(r.Body()), ' ')
+	return utils.TrimSpace(string(r.Body()))
 }
 
 // JSON unmarshal the response body into the given interface{} using JSON.

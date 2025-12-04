@@ -426,7 +426,7 @@ func cacheBodyFetchError(mask func(string) string, key string, err error) error 
 // parseMaxAge extracts the max-age directive from a Cache-Control header.
 func parseMaxAge(cc string) (time.Duration, bool) {
 	for part := range strings.SplitSeq(cc, ",") {
-		part = utils.Trim(utils.ToLower(part), ' ')
+		part = utils.TrimSpace(utils.ToLower(part))
 		if after, ok := strings.CutPrefix(part, "max-age="); ok {
 			if sec, err := strconv.Atoi(after); err == nil {
 				return time.Duration(sec) * time.Second, true
@@ -440,7 +440,7 @@ func allowsSharedCache(cc string) bool {
 	shareable := false
 
 	for part := range strings.SplitSeq(cc, ",") {
-		part = strings.TrimSpace(utils.ToLower(part))
+		part = utils.TrimSpace(utils.ToLower(part))
 		switch {
 		case part == "":
 			continue

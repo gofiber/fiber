@@ -404,12 +404,12 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 
 	hasEncoding := false
 	for raw := range strings.SplitSeq(te, ",") {
-		token := strings.TrimSpace(raw)
+		token := utils.TrimSpace(raw)
 		if token == "" {
 			continue
 		}
 		if idx := strings.IndexByte(token, ';'); idx >= 0 {
-			token = strings.TrimSpace(token[:idx])
+			token = utils.TrimSpace(token[:idx])
 		}
 		if token == "" {
 			continue
@@ -428,7 +428,7 @@ func (c *DefaultCtx) IsWebSocket() bool {
 	conn := c.fasthttp.Request.Header.Peek(HeaderConnection)
 	var isUpgrade bool
 	for v := range strings.SplitSeq(utils.UnsafeString(conn), ",") {
-		if utils.EqualFold(utils.Trim(v, ' '), "upgrade") {
+		if utils.EqualFold(utils.TrimSpace(v), "upgrade") {
 			isUpgrade = true
 			break
 		}

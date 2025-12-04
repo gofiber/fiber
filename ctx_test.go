@@ -708,7 +708,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 
 			encs := strings.SplitSeq(tCase.contentEncoding, ",")
 			for enc := range encs {
-				enc = strings.TrimSpace(enc)
+				enc = utils.TrimSpace(enc)
 				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
 					continue
 				}
@@ -942,7 +942,7 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 
 			encs := strings.SplitSeq(tCase.contentEncoding, ",")
 			for enc := range encs {
-				enc = strings.TrimSpace(enc)
+				enc = utils.TrimSpace(enc)
 				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
 					continue
 				}

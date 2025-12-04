@@ -304,7 +304,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 		h(ctx)
 		token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 		for header := range strings.SplitSeq(token, ";") {
-			if strings.Split(utils.Trim(header, ' '), "=")[0] == ConfigDefault.CookieName {
+			if strings.Split(utils.TrimSpace(header), "=")[0] == ConfigDefault.CookieName {
 				token = strings.Split(header, "=")[1]
 				break
 			}
@@ -476,7 +476,7 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 	h(ctx)
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 	for header := range strings.SplitSeq(token, ";") {
-		if strings.Split(utils.Trim(header, ' '), "=")[0] == ConfigDefault.CookieName {
+		if strings.Split(utils.TrimSpace(header), "=")[0] == ConfigDefault.CookieName {
 			token = strings.Split(header, "=")[1]
 			break
 		}
