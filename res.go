@@ -154,28 +154,27 @@ func (r *DefaultRes) Append(field string, values ...string) {
 }
 
 // headerContainsValue checks if a header value already contains the given value
-// as a comma-separated element. This avoids multiple string allocations.
+// as a comma-separated element. Per RFC 9110, list elements are separated by commas
+// with optional whitespace (OWS) around them.
 func headerContainsValue(header, value string) bool {
+	// Empty value should never match
+	if value == "" {
+		return false
+	}
+
+	// Exact match (single value header)
 	if header == value {
 		return true
 	}
 
-	vLen := len(value)
-	hLen := len(header)
-
-	// Check prefix: "value," at start
-	if hLen > vLen && header[:vLen] == value && header[vLen] == ',' {
-		return true
+	// Check each comma-separated element, handling optional whitespace (OWS)
+	for part := range strings.SplitSeq(header, ",") {
+		if utils.TrimSpace(part) == value {
+			return true
+		}
 	}
 
-	// Check suffix: " value" at end
-	if hLen > vLen+1 && header[hLen-vLen:] == value && header[hLen-vLen-1] == ' ' {
-		return true
-	}
-
-	// Check middle: " value," anywhere
-	needle := " " + value + ","
-	return strings.Contains(header, needle)
+	return false
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.

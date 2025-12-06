@@ -14,6 +14,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// flashCookieNameBytes is a precomputed byte slice for flash cookie detection
+// to avoid string-to-bytes conversion on every request
+var flashCookieNameBytes = []byte(FlashCookieName)
+
 // Router defines all router handle interface, including app and group router.
 type Router interface {
 	Use(args ...any) Router
@@ -326,7 +330,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 		// Optional: Check flash messages
 		rawHeaders := d.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
 			d.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.next(d)
@@ -339,7 +343,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 		// Optional: Check flash messages
 		rawHeaders := ctx.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
 			ctx.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.nextCustom(ctx)

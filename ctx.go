@@ -534,10 +534,13 @@ func (c *DefaultCtx) Value(key any) any {
 	return c.fasthttp.UserValue(key)
 }
 
+// xmlHTTPRequestBytes is precomputed for XHR detection
+var xmlHTTPRequestBytes = []byte("xmlhttprequest")
+
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFold(c.app.toBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderXRequestedWith), xmlHTTPRequestBytes)
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,

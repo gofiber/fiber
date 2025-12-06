@@ -694,19 +694,24 @@ func Test_HeaderContainsValue(t *testing.T) {
 		// Prefix match (value at start with comma)
 		{header: "gzip, deflate", value: "gzip", expected: true},
 		{header: "gzip,deflate", value: "gzip", expected: true},
-		// Suffix match (value at end with space)
+		// Suffix match (value at end)
 		{header: "deflate, gzip", value: "gzip", expected: true},
+		{header: "deflate,gzip", value: "gzip", expected: true}, // No space - OWS is optional per RFC 9110
 		{header: "br, gzip", value: "gzip", expected: true},
-		// Middle match (value in middle with space and comma)
+		// Middle match (value in middle)
 		{header: "deflate, gzip, br", value: "gzip", expected: true},
-		{header: "deflate,gzip,br", value: "gzip", expected: false}, // No space before gzip
+		{header: "deflate,gzip,br", value: "gzip", expected: true}, // No spaces - OWS is optional per RFC 9110
 		// No match - similar but not equal
 		{header: "gzip2", value: "gzip", expected: false},
 		{header: "2gzip", value: "gzip", expected: false},
 		{header: "gzip2, deflate", value: "gzip", expected: false},
+		// Whitespace handling (OWS per RFC 9110)
+		{header: "  gzip  ,  deflate  ", value: "gzip", expected: true},
+		{header: "deflate,  gzip  ", value: "gzip", expected: true},
 		// Empty cases
 		{header: "", value: "gzip", expected: false},
 		{header: "gzip", value: "", expected: false},
+		{header: "", value: "", expected: false}, // Both empty - should return false
 	}
 
 	for _, tc := range testCases {
