@@ -846,6 +846,30 @@ The default redirect status code has been updated from `302 Found` to `303 See O
 The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
 You can take a look to [client docs](./client/rest.md) to see what's new with the client.
 
+### Configuration improvements
+
+The v3 client centralizes common configuration on the client instance and lets you override it per request with `client.Config`.
+You can define base URLs, defaults (headers, cookies, path parameters, timeouts), and toggle path normalization once, while still
+using axios-style helpers for each call.
+
+```go
+cc := client.New().
+    SetBaseURL("https://api.service.local").
+    AddHeader("Authorization", "Bearer <token>").
+    SetTimeout(5 * time.Second).
+    SetPathParam("tenant", "acme")
+
+resp, err := cc.Get("/users/:tenant/:id", client.Config{
+    PathParam:              map[string]string{"id": "42"},
+    Param:                  map[string]string{"include": "profile"},
+    DisablePathNormalizing: true,
+})
+if err != nil {
+    panic(err)
+}
+fmt.Println(resp.StatusCode(), resp.String())
+```
+
 ### Fasthttp transport integration
 
 - `client.NewWithHostClient` and `client.NewWithLBClient` allow you to plug existing `fasthttp` clients directly into Fiber while keeping retries, redirects, and hook logic consistent.
@@ -2151,6 +2175,106 @@ import "github.com/gofiber/fiber/v3/client"
 ```
 
 </details>
+
+**Common migrations**:
+
+1. **Shared defaults instead of per-call mutation**: Move headers and timeouts into the reusable client and override with `client.Config` when needed.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    status, body, errs := fiber.Get("https://api.example.com/users").
+        Set("Authorization", "Bearer "+token).
+        Timeout(5 * time.Second).
+        String()
+    if len(errs) > 0 {
+        return fmt.Errorf("request failed: %v", errs)
+    }
+    fmt.Println(status, body)
+    ```
+
+    ```go
+    // After
+    cli := client.New().
+        AddHeader("Authorization", "Bearer "+token).
+        SetTimeout(5 * time.Second)
+
+    resp, err := cli.Get("https://api.example.com/users")
+    if err != nil {
+        return err
+    }
+    fmt.Println(resp.StatusCode(), resp.String())
+    ```
+
+    </details>
+
+2. **Body handling**: Replace `Agent.JSON(...).Struct(&dst)` with request bodies through `client.Config` (or `Request.SetJSON`) and decode the response via `Response.JSON`.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    var created user
+    status, _, errs := fiber.Post("https://api.example.com/users").
+        JSON(payload).
+        Struct(&created)
+    if len(errs) > 0 {
+        return fmt.Errorf("request failed: %v", errs)
+    }
+    fmt.Println(status, created)
+    ```
+
+    ```go
+    // After
+    resp, err := client.New().Post("https://api.example.com/users", client.Config{
+        Body: payload,
+    })
+    if err != nil {
+        return err
+    }
+
+    var created user
+    if err := resp.JSON(&created); err != nil {
+        return fmt.Errorf("decode failed: %w", err)
+    }
+    fmt.Println(resp.StatusCode(), created)
+    ```
+
+    </details>
+
+3. **Path and query parameters**: Use the new path/query helpers instead of manually formatting URLs.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    code, body, errs := fiber.Get(fmt.Sprintf("https://api.example.com/users/%s", id)).
+        QueryString("active=true").
+        String()
+    if len(errs) > 0 {
+        return fmt.Errorf("request failed: %v", errs)
+    }
+    fmt.Println(code, body)
+    ```
+
+    ```go
+    // After
+    cli := client.New().SetBaseURL("https://api.example.com")
+    resp, err := cli.Get("/users/:id", client.Config{
+        PathParam: map[string]string{"id": id},
+        Param:     map[string]string{"active": "true"},
+    })
+    if err != nil {
+        return err
+    }
+    fmt.Println(resp.StatusCode(), resp.String())
+    ```
+
+    </details>
 
 ### 🛠️ Utils {#utils-migration}
 
