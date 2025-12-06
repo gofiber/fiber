@@ -70,12 +70,10 @@ func unsafeRandString(n int) (string, error) {
 // parserRequestURL sets options for the hostclient and normalizes the URL.
 // It merges the baseURL with the request URI if needed and applies query and path parameters.
 func parserRequestURL(c *Client, req *Request) error {
-	splitURL := strings.Split(req.url, "?")
-	// Ensure splitURL has at least two elements.
-	splitURL = append(splitURL, "")
+	// Split URL into path and query parts using Cut (avoids allocation)
+	uri, queryPart, _ := strings.Cut(req.url, "?")
 
 	// If the URL doesn't start with http/https, prepend the baseURL.
-	uri := splitURL[0]
 	if !protocolCheck.MatchString(uri) {
 		uri = c.baseURL + uri
 		if !protocolCheck.MatchString(uri) {
@@ -99,13 +97,12 @@ func parserRequestURL(c *Client, req *Request) error {
 		req.RawRequest.URI().SetPathBytes(req.RawRequest.URI().PathOriginal())
 	}
 
-	// Merge query parameters.
-	hashSplit := strings.Split(splitURL[1], "#")
-	hashSplit = append(hashSplit, "")
+	// Merge query parameters (split query from fragment using Cut).
+	queryOnly, hashPart, _ := strings.Cut(queryPart, "#")
 	args := fasthttp.AcquireArgs()
 	defer fasthttp.ReleaseArgs(args)
 
-	args.Parse(hashSplit[0])
+	args.Parse(queryOnly)
 
 	for key, value := range c.params.All() {
 		args.AddBytesKV(key, value)
@@ -115,7 +112,7 @@ func parserRequestURL(c *Client, req *Request) error {
 	}
 
 	req.RawRequest.URI().SetQueryStringBytes(utils.CopyBytes(args.QueryString()))
-	req.RawRequest.URI().SetHash(hashSplit[1])
+	req.RawRequest.URI().SetHash(hashPart)
 
 	return nil
 }

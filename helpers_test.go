@@ -650,6 +650,13 @@ func Test_Utils_IsNoCache(t *testing.T) {
 		{string: "max-age=30, no-cache,public", bool: true},
 		{string: "NO-CACHE", bool: true},
 		{string: "public, NO-CACHE", bool: true},
+		// RFC 9111 §5.2.2.4: no-cache with field-name argument
+		{string: "no-cache=\"Set-Cookie\"", bool: true},
+		{string: "public, no-cache=\"Set-Cookie, Set-Cookie2\"", bool: true},
+		{string: "no-cache=Set-Cookie", bool: true},
+		// Edge cases with spaces
+		{string: "no-cache ,public", bool: true},
+		{string: "public, no-cache =field", bool: true},
 	}
 
 	for _, c := range testCases {
@@ -669,6 +676,61 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 		_ = isNoCache("public,no-cache")
 		_ = isNoCache("no-cache, public")
 		ok = isNoCache("max-age=30, no-cache,public")
+	}
+	require.True(b, ok)
+}
+
+// go test -run Test_HeaderContainsValue
+func Test_HeaderContainsValue(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		header   string
+		value    string
+		expected bool
+	}{
+		// Exact match
+		{header: "gzip", value: "gzip", expected: true},
+		{header: "gzip", value: "deflate", expected: false},
+		// Prefix match (value at start with comma)
+		{header: "gzip, deflate", value: "gzip", expected: true},
+		{header: "gzip,deflate", value: "gzip", expected: true},
+		// Suffix match (value at end)
+		{header: "deflate, gzip", value: "gzip", expected: true},
+		{header: "deflate,gzip", value: "gzip", expected: true}, // No space - OWS is optional per RFC 9110
+		{header: "br, gzip", value: "gzip", expected: true},
+		// Middle match (value in middle)
+		{header: "deflate, gzip, br", value: "gzip", expected: true},
+		{header: "deflate,gzip,br", value: "gzip", expected: true}, // No spaces - OWS is optional per RFC 9110
+		// No match - similar but not equal
+		{header: "gzip2", value: "gzip", expected: false},
+		{header: "2gzip", value: "gzip", expected: false},
+		{header: "gzip2, deflate", value: "gzip", expected: false},
+		// Whitespace handling (OWS per RFC 9110)
+		{header: "  gzip  ,  deflate  ", value: "gzip", expected: true},
+		{header: "deflate,  gzip  ", value: "gzip", expected: true},
+		// Empty cases
+		{header: "", value: "gzip", expected: false},
+		{header: "gzip", value: "", expected: false},
+		{header: "", value: "", expected: false}, // Both empty - should return false
+	}
+
+	for _, tc := range testCases {
+		result := headerContainsValue(tc.header, tc.value)
+		require.Equal(t, tc.expected, result,
+			"headerContainsValue(%q, %q) = %v, want %v",
+			tc.header, tc.value, result, tc.expected)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_HeaderContainsValue -benchmem -count=4
+func Benchmark_HeaderContainsValue(b *testing.B) {
+	var ok bool
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = headerContainsValue("gzip", "gzip")
+		_ = headerContainsValue("gzip, deflate, br", "deflate")
+		_ = headerContainsValue("deflate, gzip", "gzip")
+		ok = headerContainsValue("deflate, gzip, br", "gzip")
 	}
 	require.True(b, ok)
 }

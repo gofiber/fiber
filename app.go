@@ -1304,7 +1304,8 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 
 	for prefix, subApp := range app.mountFields.appList {
 		if prefix != "" && strings.HasPrefix(ctx.Path(), prefix) {
-			parts := len(strings.Split(prefix, "/"))
+			// Count slashes instead of splitting - more efficient
+			parts := strings.Count(prefix, "/") + 1
 			if mountedPrefixParts <= parts {
 				if subApp.configured.ErrorHandler != nil {
 					mountedErrHandler = subApp.config.ErrorHandler

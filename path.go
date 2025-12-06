@@ -621,14 +621,20 @@ func GetTrimmedParam(param string) string {
 
 // RemoveEscapeChar removes escape characters
 func RemoveEscapeChar(word string) string {
+	// Fast path: check if there are any escape characters first
+	escapeIdx := strings.IndexByte(word, '\\')
+	if escapeIdx == -1 {
+		return word // No escape chars, return original string without allocation
+	}
+
+	// Slow path: copy and remove escape characters
 	b := []byte(word)
-	dst := 0
-	for src := range b {
-		if b[src] == '\\' {
-			continue
+	dst := escapeIdx
+	for src := escapeIdx + 1; src < len(b); src++ {
+		if b[src] != '\\' {
+			b[dst] = b[src]
+			dst++
 		}
-		b[dst] = b[src]
-		dst++
 	}
 	return string(b[:dst])
 }
@@ -698,20 +704,18 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		num int
 	)
 
-	// Validate constraint has required data
-	needOneData := []TypeConstraint{minLenConstraint, maxLenConstraint, lenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
-	needTwoData := []TypeConstraint{betweenLenConstraint, rangeConstraint}
-
-	for _, data := range needOneData {
-		if c.ID == data && len(c.Data) == 0 {
+	// Validate constraint has required data using switch instead of slice allocation
+	switch c.ID {
+	case minLenConstraint, maxLenConstraint, lenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint:
+		if len(c.Data) == 0 {
 			return false
 		}
-	}
-
-	for _, data := range needTwoData {
-		if c.ID == data && len(c.Data) < 2 {
+	case betweenLenConstraint, rangeConstraint:
+		if len(c.Data) < 2 {
 			return false
 		}
+	default:
+		// Other constraints don't require data validation
 	}
 
 	switch c.ID {

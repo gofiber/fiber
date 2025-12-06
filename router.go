@@ -14,6 +14,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// flashCookieNameBytes is a precomputed byte slice for flash cookie detection
+// to avoid string-to-bytes conversion on every request
+var flashCookieNameBytes = []byte(FlashCookieName)
+
 // Router defines all router handle interface, including app and group router.
 type Router interface {
 	Use(args ...any) Router
@@ -326,7 +330,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 		// Optional: Check flash messages
 		rawHeaders := d.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
 			d.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.next(d)
@@ -339,7 +343,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 		// Optional: Check flash messages
 		rawHeaders := ctx.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
 			ctx.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.nextCustom(ctx)
@@ -475,7 +479,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 					removedUseRoutes[route.path] = struct{}{}
 				}
 
-				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
+				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
 			}
 
 			if method == MethodGet && !route.use && !route.mount {
@@ -505,7 +509,7 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 
 		app.stack[headIndex] = append(headStack[:i], headStack[i+1:]...)
 		app.routesRefreshed = true
-		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // Not a concern
+		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
 		return
 	}
 }
@@ -570,7 +574,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 
 		// Increment global handler count
-		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // Not a concern
+		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // G115 - handler count is always small
 
 		// Middleware route matches all HTTP methods
 		if isUse {
@@ -673,7 +677,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		app.routesRefreshed = true
 		added = true
 
-		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // Not a concern
+		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
 
 		app.latestRoute = headRoute
 		if err := app.hooks.executeOnRouteHooks(headRoute); err != nil {

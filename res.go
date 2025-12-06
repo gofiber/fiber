@@ -144,14 +144,37 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	for _, value := range values {
 		if h == "" {
 			h = value
-		} else if h != value && !strings.HasPrefix(h, value+",") && !strings.HasSuffix(h, " "+value) &&
-			!strings.Contains(h, " "+value+",") {
+		} else if !headerContainsValue(h, value) {
 			h += ", " + value
 		}
 	}
 	if originalH != h {
 		r.Set(field, h)
 	}
+}
+
+// headerContainsValue checks if a header value already contains the given value
+// as a comma-separated element. Per RFC 9110, list elements are separated by commas
+// with optional whitespace (OWS) around them.
+func headerContainsValue(header, value string) bool {
+	// Empty value should never match
+	if value == "" {
+		return false
+	}
+
+	// Exact match (single value header)
+	if header == value {
+		return true
+	}
+
+	// Check each comma-separated element, handling optional whitespace (OWS)
+	for part := range strings.SplitSeq(header, ",") {
+		if utils.TrimSpace(part) == value {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
@@ -418,8 +441,10 @@ func (r *DefaultRes) Get(key string, defaultValue ...string) string {
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) GetHeaders() map[string][]string {
 	app := r.c.app
-	headers := make(map[string][]string)
-	for k, v := range r.c.fasthttp.Response.Header.All() {
+	respHeader := &r.c.fasthttp.Response.Header
+	// Pre-allocate map with known header count to avoid reallocations
+	headers := make(map[string][]string, respHeader.Len())
+	for k, v := range respHeader.All() {
 		key := app.toString(k)
 		headers[key] = append(headers[key], app.toString(v))
 	}

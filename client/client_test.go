@@ -291,11 +291,13 @@ func Test_Client_Add_Hook(t *testing.T) {
 
 		require.Len(t, client.ResponseHook(), 1)
 
-		client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
+		hook1 := func(_ *Client, _ *Response, _ *Request) error {
 			return nil
-		}, func(_ *Client, _ *Response, _ *Request) error {
+		}
+		hook2 := func(_ *Client, _ *Response, _ *Request) error {
 			return nil
-		})
+		}
+		client.AddResponseHook(hook1, hook2)
 
 		require.Len(t, client.ResponseHook(), 3)
 	})
