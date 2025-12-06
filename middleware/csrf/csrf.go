@@ -14,15 +14,16 @@ import (
 )
 
 var (
-	ErrTokenNotFound   = errors.New("csrf: token not found")
-	ErrTokenInvalid    = errors.New("csrf: token invalid")
-	ErrRefererNotFound = errors.New("csrf: referer header missing")
-	ErrRefererInvalid  = errors.New("csrf: referer header invalid")
-	ErrRefererNoMatch  = errors.New("csrf: referer does not match host or trusted origins")
-	ErrOriginInvalid   = errors.New("csrf: origin header invalid")
-	ErrOriginNoMatch   = errors.New("csrf: origin does not match host or trusted origins")
-	errOriginNotFound  = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
-	dummyValue         = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
+	ErrTokenNotFound    = errors.New("csrf: token not found")
+	ErrTokenInvalid     = errors.New("csrf: token invalid")
+	ErrFetchSiteInvalid = errors.New("csrf: sec-fetch-site header invalid")
+	ErrRefererNotFound  = errors.New("csrf: referer header missing")
+	ErrRefererInvalid   = errors.New("csrf: referer header invalid")
+	ErrRefererNoMatch   = errors.New("csrf: referer does not match host or trusted origins")
+	ErrOriginInvalid    = errors.New("csrf: origin header invalid")
+	ErrOriginNoMatch    = errors.New("csrf: origin does not match host or trusted origins")
+	errOriginNotFound   = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
+	dummyValue          = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
 
 )
 
@@ -126,6 +127,11 @@ func New(config ...Config) fiber.Handler {
 			}
 		default:
 			// Assume that anything not defined as 'safe' by RFC7231 needs protection
+
+			// Evaluate Sec-Fetch-Site to reject cross-site requests earlier when available.
+			if err := validateSecFetchSite(c); err != nil {
+				return cfg.ErrorHandler(c, err)
+			}
 
 			// Enforce an origin check for unsafe requests.
 			err := originMatchesHost(c, trustedOrigins, trustedSubOrigins)
@@ -311,6 +317,21 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 	// Expire the cookie
 	expireCSRFCookie(c, &handler.config)
 	return nil
+}
+
+func validateSecFetchSite(c fiber.Ctx) error {
+	secFetchSite := utils.Trim(c.Get(fiber.HeaderSecFetchSite), ' ')
+
+	if secFetchSite == "" {
+		return nil
+	}
+
+	switch utils.ToLower(secFetchSite) {
+	case "same-origin", "none", "cross-site", "same-site":
+		return nil
+	default:
+		return ErrFetchSiteInvalid
+	}
 }
 
 // originMatchesHost checks that the origin header matches the host header

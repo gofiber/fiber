@@ -56,7 +56,7 @@ These targets can be invoked via `make <target>` as needed during development an
 ## Pull request guidelines
 
 - PR titles must start with a category prefix describing the change: `🐛 bug:`, `🔥 feat:`, `📒 docs:`, or `🧹 chore:`.
-- Generated PR bodies should contain a **Summary** section that captures all changes included in the PR, not just the latest commit.
+- Generated PR titles and bodies must summarize the *entire* set of changes on the branch (for example, based on `git log --oneline <base>..HEAD` or the full diff), **not** just the latest commit. The Summary section should reflect all modifications that will be merged.
 
 ## Programmatic checks
 
@@ -75,3 +75,7 @@ make test
 ```
 
 All checks must pass before the generated code can be merged.
+
+After completing the programmatic checks above, confirm that any relevant
+documentation has been updated to reflect the changes made, including PR
+instructions when applicable.
