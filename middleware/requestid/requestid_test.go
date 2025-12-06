@@ -36,6 +36,76 @@ func Test_RequestID(t *testing.T) {
 	require.Equal(t, reqid, resp.Header.Get(fiber.HeaderXRequestID))
 }
 
+func Test_RequestID_InvalidHeaderValue(t *testing.T) {
+	t.Parallel()
+
+	rid := sanitizeRequestID("bad\r\nid", func() string {
+		return "clean-generated-id"
+	})
+
+	require.Equal(t, "clean-generated-id", rid)
+}
+
+func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return "bad\r\nid"
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	rid := resp.Header.Get(fiber.HeaderXRequestID)
+	require.NotEmpty(t, rid)
+	require.NotContains(t, rid, "\r")
+	require.NotContains(t, rid, "\n")
+	require.Len(t, rid, 36, "Fallback should produce a UUID")
+}
+
+func Test_isValidRequestID_VisibleASCII(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isValidRequestID("request-id-09AZaz ~"))
+}
+
+func Test_isValidRequestID_Boundaries(t *testing.T) {
+	t.Parallel()
+
+	t.Run("allows space and tilde", func(t *testing.T) {
+		t.Parallel()
+
+		require.True(t, isValidRequestID(" ~"))
+	})
+
+	t.Run("rejects out of range", func(t *testing.T) {
+		t.Parallel()
+
+		require.False(t, isValidRequestID(string([]byte{0x1f})))
+		require.False(t, isValidRequestID(string([]byte{0x7f})))
+	})
+
+	t.Run("rejects empty", func(t *testing.T) {
+		t.Parallel()
+
+		require.False(t, isValidRequestID(""))
+	})
+}
+
+func Test_isValidRequestID_RejectsObsText(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, isValidRequestID("valid\xff"))
+}
+
 // go test -run Test_RequestID_Next
 func Test_RequestID_Next(t *testing.T) {
 	t.Parallel()
