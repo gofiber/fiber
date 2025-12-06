@@ -2276,6 +2276,80 @@ import "github.com/gofiber/fiber/v3/client"
 
     </details>
 
+4. **Agent helpers**: `Agent.Bytes`, `AcquireAgent`, and `Agent.Parse` have been removed. Reuse a `client.Client` instance (or pool requests/responses directly) and access response data through the new typed helpers.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    agent := fiber.AcquireAgent()
+    status, body, errs := agent.Get("https://api.example.com/users").Bytes()
+    fiber.ReleaseAgent(agent)
+    if len(errs) > 0 {
+        return fmt.Errorf("request failed: %v", errs)
+    }
+
+    var users []user
+    if err := fiber.Parse(body, &users); err != nil {
+        return fmt.Errorf("parse failed: %w", err)
+    }
+    fmt.Println(status, len(users))
+    ```
+
+    ```go
+    // After
+    cli := client.New()
+    resp, err := cli.Get("https://api.example.com/users")
+    if err != nil {
+        return err
+    }
+    defer resp.Close()
+
+    var users []user
+    if err := resp.JSON(&users); err != nil {
+        return fmt.Errorf("decode failed: %w", err)
+    }
+    fmt.Println(resp.StatusCode(), len(users))
+    ```
+
+    :::tip
+    If you need pooling, use `client.AcquireRequest`, `client.AcquireResponse`, and their corresponding release functions around a long-lived `client.Client` instead of the removed agent pool.
+    :::
+
+    </details>
+
+5. **Fiber-level shortcuts**: The `fiber.Get`, `fiber.Post`, and similar top-level helpers are no longer exposed from the main module. Use the client package equivalents (`client.Get`, `client.Post`, etc.) which call the shared default client (or pass your own client instance for custom defaults).
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    status, body, errs := fiber.Get("https://api.example.com/health").String()
+    if len(errs) > 0 {
+        return fmt.Errorf("request failed: %v", errs)
+    }
+    fmt.Println(status, body)
+    ```
+
+    ```go
+    // After
+    resp, err := client.Get("https://api.example.com/health")
+    if err != nil {
+        return err
+    }
+    defer resp.Close()
+
+    fmt.Println(resp.StatusCode(), resp.String())
+    ```
+
+    :::note
+    The `client.Get`/`client.Post` helpers use `client.C()` (the default shared client). For custom defaults, construct a client with `client.New()` and invoke its methods instead.
+    :::
+
+    </details>
+
 ### 🛠️ Utils {#utils-migration}
 
 Fiber v3 removes the in-repo `utils` package in favor of the external [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module.
