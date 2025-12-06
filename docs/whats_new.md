@@ -867,6 +867,7 @@ resp, err := cc.Get("/users/:tenant/:id", client.Config{
 if err != nil {
     panic(err)
 }
+defer resp.Close()
 fmt.Println(resp.StatusCode(), resp.String())
 ```
 
@@ -2205,6 +2206,7 @@ import "github.com/gofiber/fiber/v3/client"
     if err != nil {
         return err
     }
+    defer resp.Close()
     fmt.Println(resp.StatusCode(), resp.String())
     ```
 
@@ -2237,6 +2239,7 @@ import "github.com/gofiber/fiber/v3/client"
     if err != nil {
         return err
     }
+    defer resp.Close()
 
     var created user
     if err := resp.JSON(&created); err != nil {
@@ -2273,6 +2276,7 @@ import "github.com/gofiber/fiber/v3/client"
     if err != nil {
         return err
     }
+    defer resp.Close()
     fmt.Println(resp.StatusCode(), resp.String())
     ```
 
