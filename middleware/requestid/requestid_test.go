@@ -68,6 +68,7 @@ func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
 	require.NotEmpty(t, rid)
 	require.NotContains(t, rid, "\r")
 	require.NotContains(t, rid, "\n")
+	require.Len(t, rid, 36, "Fallback should produce a UUID")
 }
 
 func Test_isValidRequestID_VisibleASCII(t *testing.T) {
