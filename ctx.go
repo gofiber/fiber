@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"maps"
 	"mime/multipart"
 	"strconv"
 	"strings"
@@ -321,9 +322,7 @@ func (c *DefaultCtx) ViewBind(vars Map) error {
 	if c.viewBindMap == nil {
 		c.viewBindMap = make(Map, len(vars))
 	}
-	for k, v := range vars {
-		c.viewBindMap[k] = v
-	}
+	maps.Copy(c.viewBindMap, vars)
 	return nil
 }
 
