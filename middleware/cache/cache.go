@@ -90,7 +90,7 @@ func New(config ...Config) fiber.Handler {
 	var (
 		// Cache settings
 		mux       = &sync.RWMutex{}
-		timestamp = uint64(time.Now().Unix()) //nolint:gosec //Not a concern
+		timestamp = uint64(time.Now().Unix()) //nolint:gosec // G115 - Unix timestamp fits in uint64
 	)
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, redactKeys)
@@ -104,7 +104,7 @@ func New(config ...Config) fiber.Handler {
 		ticker := time.NewTicker(timestampUpdatePeriod)
 		defer ticker.Stop()
 		for range ticker.C {
-			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix())) //nolint:gosec //Not a concern
+			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix())) //nolint:gosec // G115 - Unix timestamp fits in uint64
 		}
 	}()
 
@@ -301,7 +301,7 @@ func New(config ...Config) fiber.Handler {
 		ageVal := uint64(0)
 		if b := c.Response().Header.Peek(fiber.HeaderAge); len(b) > 0 {
 			if v, err := fasthttp.ParseUint(b); err == nil {
-				ageVal = uint64(v) //nolint:gosec //Not a concern
+				ageVal = uint64(v) //nolint:gosec // G115 - Age header value is always small
 			}
 		} else {
 			c.Response().Header.Set(fiber.HeaderAge, "0")

@@ -475,7 +475,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 					removedUseRoutes[route.path] = struct{}{}
 				}
 
-				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
+				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
 			}
 
 			if method == MethodGet && !route.use && !route.mount {
@@ -505,7 +505,7 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 
 		app.stack[headIndex] = append(headStack[:i], headStack[i+1:]...)
 		app.routesRefreshed = true
-		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // Not a concern
+		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
 		return
 	}
 }
@@ -570,7 +570,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 
 		// Increment global handler count
-		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // Not a concern
+		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // G115 - handler count is always small
 
 		// Middleware route matches all HTTP methods
 		if isUse {
@@ -673,7 +673,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		app.routesRefreshed = true
 		added = true
 
-		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // Not a concern
+		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
 
 		app.latestRoute = headRoute
 		if err := app.hooks.executeOnRouteHooks(headRoute); err != nil {

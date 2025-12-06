@@ -116,9 +116,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 			}
 
 			// Is prefix a partial wildcard?
-			if strings.Contains(prefix, "*") {
+			if idx := strings.Index(prefix, "*"); idx != -1 {
 				// /john* -> /john
-				prefix = strings.Split(prefix, "*")[0]
+				prefix = prefix[:idx]
 			}
 
 			prefixLen := len(prefix)
