@@ -2229,7 +2229,9 @@ import "github.com/gofiber/fiber/v3/client"
 
     ```go
     // After
-    resp, err := client.New().Post("https://api.example.com/users", client.Config{
+    cli := client.New()
+
+    resp, err := cli.Post("https://api.example.com/users", client.Config{
         Body: payload,
     })
     if err != nil {
