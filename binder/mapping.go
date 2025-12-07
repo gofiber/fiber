@@ -214,8 +214,8 @@ func fieldName(f *reflect.StructField, aliasTag string) string {
 	name := f.Tag.Get(aliasTag)
 	if name == "" {
 		name = f.Name
-	} else {
-		name = strings.Split(name, ",")[0]
+	} else if first, _, found := strings.Cut(name, ","); found {
+		name = first
 	}
 
 	return utils.ToLower(name)
@@ -378,8 +378,9 @@ func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key
 
 func assignBindData(aliasTag string, out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
 	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key, aliasTag) {
-		values := strings.Split(value, ",")
-		data[key] = append(data[key], values...)
+		for v := range strings.SplitSeq(value, ",") {
+			data[key] = append(data[key], v)
+		}
 	} else {
 		data[key] = append(data[key], value)
 	}

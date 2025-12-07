@@ -6432,7 +6432,7 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 				fmt.Fprintf(w, "Line %d\n", lineNum)
 
 				if err := w.Flush(); err != nil {
-					flushErrLine.Store(int32(lineNum)) //nolint:gosec // this is a test
+					flushErrLine.Store(int32(lineNum)) //nolint:gosec // G115 - lineNum is 1-5, fits int32
 					return
 				}
 

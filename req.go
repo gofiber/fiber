@@ -301,8 +301,10 @@ func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
 // Make copies or use the Immutable setting instead.
 func (r *DefaultReq) GetHeaders() map[string][]string {
 	app := r.c.app
-	headers := make(map[string][]string)
-	for k, v := range r.c.fasthttp.Request.Header.All() {
+	reqHeader := &r.c.fasthttp.Request.Header
+	// Pre-allocate map with known header count to avoid reallocations
+	headers := make(map[string][]string, reqHeader.Len())
+	for k, v := range reqHeader.All() {
 		key := app.toString(k)
 		headers[key] = append(headers[key], app.toString(v))
 	}
@@ -866,11 +868,21 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 		return []string{}
 	}
 
-	parts := strings.Split(host, ".")
+	// Use stack-allocated array for typical domain names (up to 8 labels)
+	// This avoids heap allocation for most common cases
+	var partsBuf [8]string
+	parts := partsBuf[:0]
+
+	for part := range strings.SplitSeq(host, ".") {
+		parts = append(parts, part)
+	}
 
 	// offset == 0, caller wants everything.
 	if o == 0 {
-		return parts
+		// Need to return a copy since partsBuf is on the stack
+		result := make([]string, len(parts))
+		copy(result, parts)
+		return result
 	}
 
 	// If we trim away the whole slice (or more), nothing remains.
@@ -878,7 +890,10 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 		return []string{}
 	}
 
-	return parts[:len(parts)-o]
+	// Return a heap-allocated copy of the relevant portion
+	result := make([]string, len(parts)-o)
+	copy(result, parts[:len(parts)-o])
+	return result
 }
 
 // Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
