@@ -409,8 +409,8 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 		if token == "" {
 			continue
 		}
-		if idx := strings.IndexByte(token, ';'); idx >= 0 {
-			token = utils.TrimSpace(token[:idx])
+		if before, _, found := strings.Cut(token, ";"); found {
+			token = utils.TrimSpace(before)
 		}
 		if token == "" {
 			continue

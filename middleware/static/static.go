@@ -28,7 +28,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
-	if bytes.IndexByte(p, '\\') >= 0 {
+	if bytes.Contains(p, []byte{'\\'}) {
 		b := make([]byte, len(p))
 		copy(b, p)
 		for i := range b {
@@ -42,7 +42,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	}
 
 	// repeatedly unescape until it no longer changes, catching errors
-	for strings.IndexByte(s, '%') >= 0 {
+	for strings.Contains(s, "%") {
 		us, err := url.PathUnescape(s)
 		if err != nil {
 			return nil, ErrInvalidPath
@@ -54,7 +54,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	}
 
 	// reject any null bytes
-	if strings.IndexByte(s, 0) >= 0 {
+	if strings.Contains(s, "\x00") {
 		return nil, ErrInvalidPath
 	}
 
@@ -116,9 +116,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 			}
 
 			// Is prefix a partial wildcard?
-			if idx := strings.Index(prefix, "*"); idx != -1 {
+			if before, _, found := strings.Cut(prefix, "*"); found {
 				// /john* -> /john
-				prefix = prefix[:idx]
+				prefix = before
 			}
 
 			prefixLen := len(prefix)

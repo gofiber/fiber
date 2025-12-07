@@ -208,7 +208,7 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
 	if spec == "*" {
 		return true
 	}
-	if i := strings.IndexByte(spec, '*'); i != -1 {
+	if strings.Contains(spec, "*") {
 		return false
 	}
 	if utils.EqualFold(spec, offer) {
@@ -310,11 +310,11 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 		return paramsMatch(specParams, offerParams)
 	}
 
-	s := strings.IndexByte(mimetype, '/')
-	specSlash := strings.IndexByte(spec, '/')
+	specBefore, specAfter, specFound := strings.Cut(spec, "/")
+	mimeBefore, mimeAfter, mimeFound := strings.Cut(mimetype, "/")
 	// Accept: <MIME_type>/*
-	if s != -1 && specSlash != -1 {
-		if utils.EqualFold(spec[:specSlash], mimetype[:s]) && (spec[specSlash:] == "/*" || mimetype[s:] == "/*") {
+	if mimeFound && specFound {
+		if utils.EqualFold(specBefore, mimeBefore) && (specAfter == "*" || mimeAfter == "*") {
 			return paramsMatch(specParams, offerParams)
 		}
 	}

@@ -202,11 +202,11 @@ func doAction(
 }
 
 func getScheme(uri []byte) []byte {
-	i := bytes.IndexByte(uri, '/')
-	if i < 1 || uri[i-1] != ':' || i == len(uri)-1 || uri[i+1] != '/' {
+	before, _, found := bytes.Cut(uri, []byte("://"))
+	if !found {
 		return nil
 	}
-	return uri[:i-1]
+	return before
 }
 
 // DomainForward performs an http request based on the given domain and populates the given http response.

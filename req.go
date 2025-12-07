@@ -321,9 +321,8 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
-			commaPos := strings.Index(host, ",")
-			if commaPos != -1 {
-				return host[:commaPos]
+			if before, _, found := strings.Cut(host, ","); found {
+				return before
 			}
 			return host
 		}
@@ -495,8 +494,8 @@ func (r *DefaultReq) Is(extension string) bool {
 	}
 
 	ct := r.c.app.toString(r.c.fasthttp.Request.Header.ContentType())
-	if i := strings.IndexByte(ct, ';'); i != -1 {
-		ct = ct[:i]
+	if before, _, found := strings.Cut(ct, ";"); found {
+		ct = before
 	}
 	ct = utils.TrimSpace(ct)
 	return utils.EqualFold(ct, extensionHeader)
@@ -645,9 +644,8 @@ func (r *DefaultReq) Scheme() string {
 			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
 				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
 				v := app.toString(val)
-				commaPos := strings.Index(v, ",")
-				if commaPos != -1 {
-					scheme = v[:commaPos]
+				if before, _, found := strings.Cut(v, ","); found {
+					scheme = before
 				} else {
 					scheme = v
 				}
@@ -759,15 +757,15 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		return int64(parsed), nil
 	}
 
-	i := strings.IndexByte(rangeStr, '=')
-	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
+	before, after, found := strings.Cut(rangeStr, "=")
+	if !found || strings.Contains(after, "=") {
 		return rangeData, ErrRangeMalformed
 	}
-	rangeData.Type = utils.ToLower(utils.TrimSpace(rangeStr[:i]))
+	rangeData.Type = utils.ToLower(utils.TrimSpace(before))
 	if rangeData.Type != "bytes" {
 		return rangeData, ErrRangeMalformed
 	}
-	ranges = utils.TrimSpace(rangeStr[i+1:])
+	ranges = utils.TrimSpace(after)
 
 	var (
 		singleRange string
@@ -775,24 +773,22 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	)
 	for moreRanges != "" {
 		singleRange = moreRanges
-		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
-			singleRange = moreRanges[:i]
-			moreRanges = utils.TrimSpace(moreRanges[i+1:])
+		if before, after, found := strings.Cut(moreRanges, ","); found {
+			singleRange = before
+			moreRanges = utils.TrimSpace(after)
 		} else {
 			moreRanges = ""
 		}
 
 		singleRange = utils.TrimSpace(singleRange)
 
-		var (
-			startStr, endStr string
-			i                int
-		)
-		if i = strings.IndexByte(singleRange, '-'); i == -1 {
+		var startStr, endStr string
+		before, after, found := strings.Cut(singleRange, "-")
+		if !found {
 			return rangeData, ErrRangeMalformed
 		}
-		startStr = utils.TrimSpace(singleRange[:i])
-		endStr = utils.TrimSpace(singleRange[i+1:])
+		startStr = utils.TrimSpace(before)
+		endStr = utils.TrimSpace(after)
 
 		start, startErr := parseBound(startStr)
 		end, endErr := parseBound(endStr)

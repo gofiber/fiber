@@ -7,9 +7,9 @@ import (
 
 // matchScheme compares the scheme of the domain and pattern
 func matchScheme(domain, pattern string) bool {
-	didx := strings.Index(domain, ":")
-	pidx := strings.Index(pattern, ":")
-	return didx != -1 && pidx != -1 && domain[:didx] == pattern[:pidx]
+	dScheme, _, dFound := strings.Cut(domain, ":")
+	pScheme, _, pFound := strings.Cut(pattern, ":")
+	return dFound && pFound && dScheme == pScheme
 }
 
 // normalizeDomain removes the scheme and port from the input domain
@@ -19,8 +19,8 @@ func normalizeDomain(input string) string {
 
 	// Find and remove port, if present
 	if input != "" && input[0] != '[' {
-		if portIndex := strings.Index(input, ":"); portIndex != -1 {
-			input = input[:portIndex]
+		if before, _, found := strings.Cut(input, ":"); found {
+			input = before
 		}
 	}
 
