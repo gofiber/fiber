@@ -216,30 +216,32 @@ When starting asynchronous work inside a handler, Fiber does not cancel the base
 By wrapping the request context with `context.WithTimeout`, you can create a derived context that honors deadlines and cancellation signals.
 
 The goroutine checks `ctx.Done()` before sending a result.
-If the request times out  or the client disconnects  the goroutine exits early and avoids leaking resources.
+If the request times out or the client disconnects the goroutine exits early and avoids leaking resources.
 
 The handler then waits for either:
 
-a result from the goroutine, or
-
-the `context timeout` (which returns a 504 Gateway Timeout)
+- a result from the goroutine, or
+- the `context timeout` (which returns a 504 Gateway Timeout)
 
 This pattern ensures that long-running operations (database queries, external API calls, background tasks) do not continue running after the request has ended.
 
-
-```go 
-func Handler(c *fiber.Ctx) error {
+```go
+func Handler(c fiber.Ctx) error {
     ctx, cancel := context.WithTimeout(c.Context(), 2*time.Second)
     defer cancel()
 
     resultChan := make(chan string, 1)
 
     go func() {
-        time.Sleep(3 * time.Second)
         select {
+        case <-time.After(3 * time.Second):
+            select {
+            case <-ctx.Done():
+                return
+            case resultChan <- "done":
+            }
         case <-ctx.Done():
             return
-        case resultChan <- "done":
         }
     }()
 
@@ -253,12 +255,6 @@ func Handler(c *fiber.Ctx) error {
 ```
 
 This approach provides safe cancellation semantics for goroutine-based work while allowing you to integrate Fiber handlers with context-aware APIs.
-
-
-The base `fiber.Ctx` never cancels on its own. Wrapping it with helpers
-like `context.WithTimeout` yields a derived context that honors deadlines
-and cancellation for operations started from the handler. This pattern lets
-you coordinate work with external APIs or databases while using Fiber's API.
 
 ## Summary
 
