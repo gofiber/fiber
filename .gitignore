@@ -16,6 +16,7 @@
 .vscode
 .DS_Store
 .idea
+.claude
 
 # Misc
 *.fiber.gz

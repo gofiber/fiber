@@ -2356,6 +2356,221 @@ import "github.com/gofiber/fiber/v3/client"
 
     </details>
 
+#### Complete API Migration Reference
+
+<details>
+<summary>Click to expand full v2 → v3 API mapping tables</summary>
+
+##### Core Concepts
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Import | `github.com/gofiber/fiber/v2` | `github.com/gofiber/fiber/v3/client` |
+| Client Concept | `*fiber.Agent` | `*client.Client` + `*client.Request` |
+| Response Concept | `(code int, body []byte, errs []error)` | `(*client.Response, error)` |
+
+##### Client/Agent Creation
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Create Agent/Client | `fiber.AcquireAgent()` | `client.New()` |
+| Get from pool | `fiber.AcquireAgent()` | `client.AcquireRequest()` |
+| Release | `fiber.ReleaseAgent(a)` | `client.ReleaseRequest(req)` |
+| With fasthttp.Client | - | `client.NewWithClient(c)` |
+| With HostClient | - | `client.NewWithHostClient(hc)` |
+| With LBClient | - | `client.NewWithLBClient(lb)` |
+| Get Request object | `a.Request()` | `c.R()` |
+| Default client | - | `client.C()` |
+| Replace default | - | `client.Replace(c)` |
+
+##### HTTP Methods
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| GET | `fiber.Get(url)` | `c.Get(url, cfg...)` | `req.Get(url)` |
+| POST | `fiber.Post(url)` | `c.Post(url, cfg...)` | `req.Post(url)` |
+| PUT | `fiber.Put(url)` | `c.Put(url, cfg...)` | `req.Put(url)` |
+| PATCH | `fiber.Patch(url)` | `c.Patch(url, cfg...)` | `req.Patch(url)` |
+| DELETE | `fiber.Delete(url)` | `c.Delete(url, cfg...)` | `req.Delete(url)` |
+| HEAD | `fiber.Head(url)` | `c.Head(url, cfg...)` | `req.Head(url)` |
+| OPTIONS | - | `c.Options(url, cfg...)` | `req.Options(url)` |
+| Custom | - | `c.Custom(url, method, cfg...)` | `req.Custom(url, method)` |
+
+##### URL & Method
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Set URL | `req.SetRequestURI(url)` | `req.SetURL(url)` |
+| Get URL | `req.URI().String()` | `req.URL()` |
+| Set Method | `req.Header.SetMethod(method)` | `req.SetMethod(method)` |
+| Set Base URL | - | `c.SetBaseURL(url)` |
+
+##### Request Execution & Response
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Parse Request | `a.Parse()` | Not needed |
+| Execute (bytes) | `a.Bytes()` → `(code, body, errs)` | `req.Send()` → `(*Response, error)` |
+| Execute (string) | `a.String()` | `resp.String()` |
+| Execute (struct) | `a.Struct(&v)` | `resp.JSON(&v)` / `resp.XML(&v)` |
+| Status Code | Return value `code` | `resp.StatusCode()` |
+| Status Text | - | `resp.Status()` |
+| Body (bytes) | Return value `body` | `resp.Body()` |
+| Response Header | `resp.Header.Peek(key)` | `resp.Header(key)` |
+| All Headers | `resp.Header.VisitAll(fn)` | `resp.Headers()` |
+| Cookies | - | `resp.Cookies()` |
+| Save to file | - | `resp.Save(path)` |
+| Close | - | `resp.Close()` |
+
+##### Headers
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| Set Header | `a.Set(k, v)` | `c.SetHeader(k, v)` | `req.SetHeader(k, v)` |
+| Add Header | `a.Add(k, v)` | `c.AddHeader(k, v)` | `req.AddHeader(k, v)` |
+| Multiple Headers | - | `c.SetHeaders(map)` | `req.SetHeaders(map)` |
+| Bytes variants | `a.SetBytesK/V/KV()` | - | - |
+
+##### User-Agent, Referer, Content-Type, Host
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| User-Agent | `a.UserAgent(ua)` | `c.SetUserAgent(ua)` | `req.SetUserAgent(ua)` |
+| Referer | `a.Referer(ref)` | `c.SetReferer(ref)` | `req.SetReferer(ref)` |
+| Content-Type | `a.ContentType(ct)` | - | `req.SetHeader("Content-Type", ct)` |
+| Host | `a.Host(host)` | - | `req.SetHeader("Host", host)` |
+| Connection Close | `a.ConnectionClose()` | - | `req.SetHeader("Connection", "close")` |
+
+##### Cookies
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| Set Cookie | `a.Cookie(k, v)` | `c.SetCookie(k, v)` | `req.SetCookie(k, v)` |
+| Multiple | `a.Cookies(k1, v1, ...)` | `c.SetCookies(map)` | `req.SetCookies(map)` |
+| With Struct | - | `c.SetCookiesWithStruct(v)` | `req.SetCookiesWithStruct(v)` |
+| Cookie Jar | - | `c.SetCookieJar(jar)` | - |
+
+##### Query Parameters
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| Query String | `a.QueryString(qs)` | - | - |
+| Add Param | - | `c.AddParam(k, v)` | `req.AddParam(k, v)` |
+| Set Param | - | `c.SetParam(k, v)` | `req.SetParam(k, v)` |
+| With Struct | - | `c.SetParamsWithStruct(v)` | `req.SetParamsWithStruct(v)` |
+
+##### Path Parameters (NEW)
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| Set Path Param | - | `c.SetPathParam(k, v)` | `req.SetPathParam(k, v)` |
+| Multiple | - | `c.SetPathParams(map)` | `req.SetPathParams(map)` |
+| With Struct | - | `c.SetPathParamsWithStruct(v)` | `req.SetPathParamsWithStruct(v)` |
+
+##### Request Body
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Body (bytes) | `a.Body(body)` | `req.SetRawBody(body)` |
+| Body (string) | `a.BodyString(body)` | `req.SetRawBody([]byte(body))` |
+| Body Stream | `a.BodyStream(r, size)` | - |
+| JSON | `a.JSON(v)` | `req.SetJSON(v)` |
+| XML | `a.XML(v)` | `req.SetXML(v)` |
+| CBOR (NEW) | - | `req.SetCBOR(v)` |
+
+##### Form Data
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Create Args | `fiber.AcquireArgs()` | Direct on Request |
+| Send Form | `a.Form(args)` | `req.SetFormData(k, v)` |
+| Add Form Data | `args.Set(k, v)` | `req.AddFormData(k, v)` |
+| With Map | - | `req.SetFormDataWithMap(map)` |
+| With Struct | - | `req.SetFormDataWithStruct(v)` |
+
+##### File Upload
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Multipart Form | `a.MultipartForm(args)` | Automatic |
+| Boundary | `a.Boundary(b)` | `req.SetBoundary(b)` |
+| Send File | `a.SendFile(f, field...)` | `req.AddFile(path)` |
+| Multiple Files | `a.SendFiles(...)` | `req.AddFiles(files...)` |
+| With Reader | - | `req.AddFileWithReader(name, r)` |
+| FileData | `a.FileData(files...)` | `req.AddFiles(files...)` |
+
+##### Timeout & TLS
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| Timeout | `a.Timeout(d)` | `c.SetTimeout(d)` | `req.SetTimeout(d)` |
+| Max Redirects | `a.MaxRedirectsCount(n)` | Via Config | `req.SetMaxRedirects(n)` |
+| TLS Config | `a.TLSConfig(cfg)` | `c.SetTLSConfig(cfg)` | - |
+| Skip Verify | `a.InsecureSkipVerify()` | Via `tls.Config` | - |
+| Certificates | - | `c.SetCertificates(...)` | - |
+| Root Cert | - | `c.SetRootCertificate(path)` | - |
+
+##### JSON/XML Encoder
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| JSON Encoder | `a.JSONEncoder(fn)` | `c.SetJSONMarshal(fn)` |
+| JSON Decoder | `a.JSONDecoder(fn)` | `c.SetJSONUnmarshal(fn)` |
+| XML Encoder | - | `c.SetXMLMarshal(fn)` |
+| XML Decoder | - | `c.SetXMLUnmarshal(fn)` |
+| CBOR (NEW) | - | `c.SetCBORMarshal/Unmarshal(fn)` |
+
+##### Authentication
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Basic Auth | `a.BasicAuth(user, pass)` | Via Header (Base64) |
+
+##### Debug & Retry
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Debug | `a.Debug(w...)` | `c.Debug()` |
+| Disable Debug | - | `c.DisableDebug()` |
+| Logger | - | `c.SetLogger(logger)` |
+| Retry | `a.RetryIf(fn)` | `c.SetRetryConfig(cfg)` |
+
+##### Reuse & Reset
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Reuse Agent | `a.Reuse()` | Use pool |
+| Reset Client | - | `c.Reset()` |
+| Dest Buffer | `a.Dest(dest)` | - |
+
+##### NEW in v3
+
+| Feature | v3 API |
+|---------|--------|
+| Request Hooks | `c.AddRequestHook(fn)` |
+| Response Hooks | `c.AddResponseHook(fn)` |
+| Proxy | `c.SetProxyURL(url)` |
+| Context | `req.SetContext(ctx)` |
+| Dial Function | `c.SetDial(fn)` |
+| Raw Request | `req.RawRequest` |
+| Raw Response | `resp.RawResponse` |
+
+##### Key Differences
+
+1. **Architecture**: v2 `Agent` → v3 separate `Client`, `Request`, `Response`
+2. **Error Handling**: v2 `[]error` → v3 single `error`
+3. **Response**: v2 tuple `(code, body, errs)` → v3 `*Response` object
+4. **No Parse()**: v3 auto-initializes requests
+5. **Hooks**: v3 adds request/response middleware
+6. **Path Params**: v3 native `:param` support
+7. **Cookie Jar**: v3 built-in session management
+8. **CBOR**: v3 adds CBOR encoding
+9. **Context**: v3 native cancellation support
+10. **Iterators**: v3 uses `iter.Seq2` for collections
+11. **Bytes variants removed**: v2 `*Bytes*` methods gone
+
+</details>
+
 ### 🛠️ Utils {#utils-migration}
 
 Fiber v3 removes the in-repo `utils` package in favor of the external [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module.
