@@ -3953,6 +3953,33 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+func createMultipartFileHeader(t *testing.T, fieldName, filename string, data []byte) *multipart.FileHeader {
+	t.Helper()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	ioWriter, err := writer.CreateFormFile(fieldName, filename)
+	require.NoError(t, err)
+
+	_, err = ioWriter.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	multipartReader := multipart.NewReader(bytes.NewReader(body.Bytes()), writer.Boundary())
+	form, err := multipartReader.ReadForm(int64(len(body.Bytes())))
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, form.RemoveAll())
+	})
+
+	files := form.File[fieldName]
+	require.Len(t, files, 1)
+
+	return files[0]
+}
+
 // go test -run Test_Ctx_SaveFileToStorage
 func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	t.Parallel()
@@ -3993,6 +4020,54 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+func Test_Ctx_SaveFileToStorage_LargeUpload(t *testing.T) {
+	t.Parallel()
+	const (
+		bodyLimit = 8 * 1024 * 1024
+		fileSize  = 5 * 1024 * 1024
+	)
+
+	app := New(Config{BodyLimit: bodyLimit})
+	storage := memory.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "file", "large.bin", bytes.Repeat([]byte{'a'}, fileSize))
+
+	err := ctx.SaveFileToStorage(fileHeader, "test", storage)
+	require.NoError(t, err)
+
+	stored, err := storage.Get("test")
+	require.NoError(t, err)
+	require.Len(t, stored, fileSize)
+}
+
+func Test_Ctx_SaveFileToStorage_LimitExceeded(t *testing.T) {
+	t.Parallel()
+	const (
+		allowedSize = 1024
+		fileSize    = allowedSize + 512
+	)
+
+	app := New(Config{BodyLimit: 8 * 1024 * 1024})
+	app.config.BodyLimit = allowedSize
+
+	storage := memory.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "file", "too-large.bin", bytes.Repeat([]byte{'a'}, fileSize))
+
+	err := ctx.SaveFileToStorage(fileHeader, "test", storage)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 }
 
 type mockContextAwareStorage struct {
