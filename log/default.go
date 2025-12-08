@@ -51,7 +51,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []interface
 	if len(fmtArgs) > 0 {
 		_, _ = fmt.Fprintf(buf, format, fmtArgs...)
 	} else {
-		_, _ = fmt.Fprint(buf, fmtArgs...)
+		_, _ = fmt.Fprint(buf, format)
 	}
 	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	buf.Reset()
