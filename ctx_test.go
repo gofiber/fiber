@@ -3953,13 +3953,13 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
-func createMultipartFileHeader(t *testing.T, fieldName, filename string, data []byte) *multipart.FileHeader {
+func createMultipartFileHeader(t *testing.T, filename string, data []byte) *multipart.FileHeader {
 	t.Helper()
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
-	ioWriter, err := writer.CreateFormFile(fieldName, filename)
+	ioWriter, err := writer.CreateFormFile("file", filename)
 	require.NoError(t, err)
 
 	_, err = ioWriter.Write(data)
@@ -3974,7 +3974,7 @@ func createMultipartFileHeader(t *testing.T, fieldName, filename string, data []
 		require.NoError(t, form.RemoveAll())
 	})
 
-	files := form.File[fieldName]
+	files := form.File["file"]
 	require.Len(t, files, 1)
 
 	return files[0]
@@ -4037,7 +4037,7 @@ func Test_Ctx_SaveFileToStorage_LargeUpload(t *testing.T) {
 		app.ReleaseCtx(ctx)
 	})
 
-	fileHeader := createMultipartFileHeader(t, "file", "large.bin", bytes.Repeat([]byte{'a'}, fileSize))
+	fileHeader := createMultipartFileHeader(t, "large.bin", bytes.Repeat([]byte{'a'}, fileSize))
 
 	err := ctx.SaveFileToStorage(fileHeader, "test", storage)
 	require.NoError(t, err)
@@ -4063,7 +4063,7 @@ func Test_Ctx_SaveFileToStorage_LimitExceeded(t *testing.T) {
 		app.ReleaseCtx(ctx)
 	})
 
-	fileHeader := createMultipartFileHeader(t, "file", "too-large.bin", bytes.Repeat([]byte{'a'}, fileSize))
+	fileHeader := createMultipartFileHeader(t, "too-large.bin", bytes.Repeat([]byte{'a'}, fileSize))
 
 	err := ctx.SaveFileToStorage(fileHeader, "test", storage)
 	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
@@ -4085,11 +4085,111 @@ func Test_Ctx_SaveFileToStorage_LimitExceededUnknownSize(t *testing.T) {
 		app.ReleaseCtx(ctx)
 	})
 
-	fileHeader := createMultipartFileHeader(t, "file", "unknown-size.bin", bytes.Repeat([]byte{'a'}, fileSize))
+	fileHeader := createMultipartFileHeader(t, "unknown-size.bin", bytes.Repeat([]byte{'a'}, fileSize))
 	fileHeader.Size = -1
 
 	err := ctx.SaveFileToStorage(fileHeader, "test", storage)
 	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+}
+
+type captureStorage struct {
+	t    *testing.T
+	data map[string][]byte
+}
+
+func (s *captureStorage) helperFailure(msg string, args ...any) {
+	s.t.Helper()
+	s.t.Fatalf(msg, args...)
+}
+
+func (s *captureStorage) ensureStore(key string, val []byte) {
+	s.t.Helper()
+	if key == "" || len(val) == 0 {
+		return
+	}
+
+	if s.data == nil {
+		s.data = make(map[string][]byte)
+	}
+
+	s.data[key] = val
+}
+
+func (s *captureStorage) GetWithContext(context.Context, string) ([]byte, error) {
+	s.helperFailure("unexpected call to GetWithContext")
+	return nil, nil
+}
+
+func (s *captureStorage) Get(string) ([]byte, error) {
+	s.helperFailure("unexpected call to Get")
+	return nil, nil
+}
+
+func (s *captureStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
+	s.ensureStore(key, val)
+	return nil
+}
+
+func (s *captureStorage) Set(key string, _ []byte, _ time.Duration) error {
+	s.helperFailure("unexpected call to Set for key %q", key)
+	return nil
+}
+
+func (s *captureStorage) DeleteWithContext(context.Context, string) error {
+	s.helperFailure("unexpected call to DeleteWithContext")
+	return nil
+}
+
+func (s *captureStorage) Delete(string) error {
+	s.helperFailure("unexpected call to Delete")
+	return nil
+}
+
+func (s *captureStorage) ResetWithContext(context.Context) error {
+	s.data = nil
+	return nil
+}
+
+func (s *captureStorage) Reset() error {
+	s.data = nil
+	return nil
+}
+
+func (s *captureStorage) Close() error {
+	if s == nil {
+		return nil
+	}
+
+	s.data = nil
+	return nil
+}
+
+func Test_Ctx_SaveFileToStorage_BufferNotReused(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	storage := &captureStorage{t: t}
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	const payloadSize = 1024
+	firstPayload := bytes.Repeat([]byte{'a'}, payloadSize)
+	secondPayload := bytes.Repeat([]byte{'b'}, payloadSize)
+
+	firstHeader := createMultipartFileHeader(t, "first.bin", firstPayload)
+	require.NoError(t, ctx.SaveFileToStorage(firstHeader, "first", storage))
+
+	firstStored := storage.data["first"]
+	require.Equal(t, firstPayload, firstStored)
+
+	secondHeader := createMultipartFileHeader(t, "second.bin", secondPayload)
+	require.NoError(t, ctx.SaveFileToStorage(secondHeader, "second", storage))
+	require.Equal(t, secondPayload, storage.data["second"])
+
+	require.Equal(t, firstPayload, firstStored, "stored data must not rely on pooled buffers")
 }
 
 type mockContextAwareStorage struct {

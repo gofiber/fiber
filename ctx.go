@@ -485,7 +485,9 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 		return fmt.Errorf("failed to read: %w", fasthttp.ErrBodyTooLarge)
 	}
 
-	if err := storage.SetWithContext(c.Context(), path, buf.Bytes(), 0); err != nil {
+	data := append([]byte(nil), buf.Bytes()...)
+
+	if err := storage.SetWithContext(c.Context(), path, data, 0); err != nil {
 		return fmt.Errorf("failed to store: %w", err)
 	}
 
