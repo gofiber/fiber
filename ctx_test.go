@@ -4069,6 +4069,29 @@ func Test_Ctx_SaveFileToStorage_LimitExceeded(t *testing.T) {
 	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 }
 
+func Test_Ctx_SaveFileToStorage_LimitExceededUnknownSize(t *testing.T) {
+	t.Parallel()
+	const (
+		allowedSize = 1024
+		fileSize    = allowedSize + 256
+	)
+
+	app := New(Config{BodyLimit: allowedSize})
+
+	storage := memory.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "file", "unknown-size.bin", bytes.Repeat([]byte{'a'}, fileSize))
+	fileHeader.Size = -1
+
+	err := ctx.SaveFileToStorage(fileHeader, "test", storage)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+}
+
 type mockContextAwareStorage struct {
 	t              *testing.T
 	key            any
