@@ -517,7 +517,6 @@ func DefaultErrorHandler(c Ctx, err error) error {
 // You can pass optional configuration options by passing a Config struct:
 //
 //	app := fiber.New(fiber.Config{
-//	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
 func New(config ...Config) *App {
