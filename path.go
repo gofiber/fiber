@@ -563,7 +563,7 @@ func findParamLen(s string, segment *routeSegment) int {
 	if before, _, found := strings.Cut(s, segment.ComparePart); found {
 		// if the compare part was found, but contains a slash although this part is not greedy, then it must not match
 		// example: /api/:param/fixedEnd -> path: /api/123/456/fixedEnd = no match , /api/123/fixedEnd = match
-		if !segment.IsGreedy && strings.Contains(before, "/") {
+		if !segment.IsGreedy && strings.IndexByte(before, '/') >= 0 {
 			return 0
 		}
 		return len(before)

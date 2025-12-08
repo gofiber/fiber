@@ -2,7 +2,6 @@ package idempotency
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
@@ -52,7 +51,9 @@ func New(config ...Config) fiber.Handler {
 
 	keepResponseHeadersMap := make(map[string]struct{}, len(cfg.KeepResponseHeaders))
 	for _, h := range cfg.KeepResponseHeaders {
-		keepResponseHeadersMap[strings.ToLower(h)] = struct{}{}
+		// CopyString is needed because utils.ToLower uses UnsafeString
+		// and map keys must be immutable
+		keepResponseHeadersMap[utils.CopyString(utils.ToLower(h))] = struct{}{}
 	}
 
 	maybeWriteCachedResponse := func(c fiber.Ctx, key string) (bool, error) {

@@ -208,7 +208,7 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
 	if spec == "*" {
 		return true
 	}
-	if strings.Contains(spec, "*") {
+	if strings.IndexByte(spec, '*') >= 0 {
 		return false
 	}
 	if utils.EqualFold(spec, offer) {
@@ -629,7 +629,7 @@ func sortAcceptedTypes(at []acceptedType) {
 // normalizeEtag validates an entity tag and returns the
 // value without quotes. weak is true if the tag has the "W/" prefix.
 func normalizeEtag(t string) (value string, weak, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the parsed ETag components
-	weak = strings.HasPrefix(t, "W/")
+	weak = len(t) >= 2 && t[0] == 'W' && t[1] == '/'
 	if weak {
 		t = t[2:]
 	}
@@ -709,7 +709,7 @@ func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocr
 	raw = utils.TrimSpace(raw)
 
 	// Handle IPv6 addresses enclosed in brackets as defined by RFC 3986
-	if strings.HasPrefix(raw, "[") {
+	if raw != "" && raw[0] == '[' {
 		if end := strings.IndexByte(raw, ']'); end != -1 {
 			host = raw[:end+1] // keep the closing ]
 			if len(raw) > end+1 && raw[end+1] == ':' {
@@ -726,7 +726,7 @@ func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocr
 		// If “host” still contains ':', we must have hit an un-bracketed IPv6
 		// literal. In that form a port is impossible, so treat the whole thing
 		// as host.
-		if strings.Contains(host, ":") {
+		if strings.IndexByte(host, ':') >= 0 {
 			return raw, ""
 		}
 		return host, port

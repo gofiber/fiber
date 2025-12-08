@@ -670,7 +670,7 @@ func (app *App) GetBytes(b []byte) []byte {
 
 // Adds an ip address to TrustProxyConfig.ranges or TrustProxyConfig.ips based on whether it is an IP range or not
 func (app *App) handleTrustedProxy(ipAddress string) {
-	if strings.Contains(ipAddress, "/") {
+	if strings.IndexByte(ipAddress, '/') >= 0 {
 		_, ipNet, err := net.ParseCIDR(ipAddress)
 		if err != nil {
 			log.Warnf("IP range %q could not be parsed: %v", ipAddress, err)
@@ -1347,9 +1347,9 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
-	case strings.Contains(err.Error(), "unsupported http request method"):
+	case strings.Index(err.Error(), "unsupported http request method") >= 0: //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
 		err = ErrNotImplemented
-	case strings.Contains(err.Error(), "timeout"):
+	case strings.Index(err.Error(), "timeout") >= 0: //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
 		err = ErrRequestTimeout
 	default:
 		err = NewError(StatusBadRequest, err.Error())

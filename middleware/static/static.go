@@ -42,7 +42,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	}
 
 	// repeatedly unescape until it no longer changes, catching errors
-	for strings.Contains(s, "%") {
+	for strings.IndexByte(s, '%') >= 0 {
 		us, err := url.PathUnescape(s)
 		if err != nil {
 			return nil, ErrInvalidPath
@@ -54,7 +54,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	}
 
 	// reject any null bytes
-	if strings.Contains(s, "\x00") {
+	if strings.IndexByte(s, '\x00') >= 0 {
 		return nil, ErrInvalidPath
 	}
 

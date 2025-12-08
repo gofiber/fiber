@@ -758,7 +758,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	}
 
 	before, after, found := strings.Cut(rangeStr, "=")
-	if !found || strings.Contains(after, "=") {
+	if !found || strings.IndexByte(after, '=') >= 0 {
 		return rangeData, ErrRangeMalformed
 	}
 	rangeData.Type = utils.ToLower(utils.TrimSpace(before))
@@ -849,7 +849,7 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 	host = utils.ToLower(host)
 
 	// Decode punycode labels only when necessary
-	if strings.Contains(host, "xn--") {
+	if strings.Index(host, "xn--") >= 0 { //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
 		if u, err := idna.Lookup.ToUnicode(host); err == nil {
 			host = utils.ToLower(u)
 		}
@@ -857,7 +857,7 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 
 	// Return nothing for IP addresses
 	ip := host
-	if strings.HasPrefix(ip, "[") && strings.HasSuffix(ip, "]") {
+	if len(ip) >= 2 && ip[0] == '[' && ip[len(ip)-1] == ']' {
 		ip = ip[1 : len(ip)-1]
 	}
 	if utils.IsIPv4(ip) || utils.IsIPv6(ip) {

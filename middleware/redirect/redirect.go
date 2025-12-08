@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 // New creates a new middleware handler
@@ -44,7 +45,7 @@ func New(config ...Config) fiber.Handler {
 // https://github.com/labstack/echo/blob/master/middleware/rewrite.go
 func captureTokens(pattern *regexp.Regexp, input string) *strings.Replacer {
 	if len(input) > 1 {
-		input = strings.TrimSuffix(input, "/")
+		input = utils.TrimRight(input, '/')
 	}
 	groups := pattern.FindAllStringSubmatch(input, -1)
 	if groups == nil {

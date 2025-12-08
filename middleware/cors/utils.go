@@ -3,6 +3,8 @@ package cors
 import (
 	"net/url"
 	"strings"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // matchScheme compares the scheme of the domain and pattern
@@ -40,7 +42,7 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 	// Don't allow a wildcard with a protocol
 	// wildcards cannot be used within any other value. For example, the following header is not valid:
 	// Access-Control-Allow-Origin: https://*
-	if strings.Contains(parsedOrigin.Host, "*") {
+	if strings.IndexByte(parsedOrigin.Host, '*') >= 0 {
 		return false, ""
 	}
 
@@ -52,7 +54,9 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 
 	// Normalize the origin by constructing it from the scheme and host.
 	// The path or trailing slash is not included in the normalized origin.
-	return true, strings.ToLower(parsedOrigin.Scheme + "://" + parsedOrigin.Host)
+	// CopyString is needed because utils.ToLower uses UnsafeString
+	// and the result may be stored in slices/maps
+	return true, utils.CopyString(utils.ToLower(parsedOrigin.Scheme + "://" + parsedOrigin.Host))
 }
 
 type subdomain struct {
@@ -85,7 +89,7 @@ func (s subdomain) match(o string) bool {
 	// Extract the subdomain part (without the trailing dot) and ensure it
 	// doesn't contain empty labels.
 	sub := o[len(s.prefix) : suffixStartIndex-1]
-	if sub == "" || strings.HasPrefix(sub, ".") || strings.Contains(sub, "..") {
+	if sub == "" || sub[0] == '.' || strings.Index(sub, "..") >= 0 { //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
 		return false
 	}
 

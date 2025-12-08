@@ -657,7 +657,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	for i := len(rootApp.mountFields.appListKeys) - 1; i >= 0; i-- {
 		prefix := rootApp.mountFields.appListKeys[i]
 		app := rootApp.mountFields.appList[prefix]
-		if prefix == "" || strings.Contains(r.c.OriginalURL(), prefix) {
+		if prefix == "" || strings.Index(r.c.OriginalURL(), prefix) >= 0 { //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
 					app.config.ViewsLayout,
@@ -1019,7 +1019,7 @@ func (r *DefaultRes) Type(extension string, charset ...string) Ctx {
 // shouldIncludeCharset determines if a MIME type should include UTF-8 charset by default
 func shouldIncludeCharset(mimeType string) bool {
 	// Everything under text/ gets UTF-8 by default.
-	if strings.HasPrefix(mimeType, "text/") {
+	if len(mimeType) >= 5 && mimeType[:5] == "text/" {
 		return true
 	}
 
@@ -1032,7 +1032,7 @@ func shouldIncludeCharset(mimeType string) bool {
 	}
 
 	// Any application/*+json or application/*+xml.
-	if strings.HasSuffix(mimeType, "+json") || strings.HasSuffix(mimeType, "+xml") {
+	if len(mimeType) >= 5 && (mimeType[len(mimeType)-5:] == "+json" || mimeType[len(mimeType)-4:] == "+xml") {
 		return true
 	}
 
