@@ -42,6 +42,13 @@ type acceptedType struct {
 
 const noCacheValue = "no-cache"
 
+// Pre-allocated byte slices for accept header parsing
+var (
+	semicolonQEquals = []byte(";q=")
+	wildcardAll      = []byte("*/*")
+	wildcardSuffix   = []byte("/*")
+)
+
 type headerParams map[string][]byte
 
 // getTLSConfig returns a net listener's tls config
@@ -514,7 +521,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 
 			// Optimized quality parsing
 			qIndex := i + 3
-			if bytes.HasPrefix(accept[i:], []byte(";q=")) && bytes.IndexByte(accept[qIndex:], ';') == -1 {
+			if bytes.HasPrefix(accept[i:], semicolonQEquals) && bytes.IndexByte(accept[qIndex:], ';') == -1 {
 				if q, err := fasthttp.ParseUfloat(accept[qIndex:]); err == nil {
 					quality = q
 				}
@@ -556,9 +563,9 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 		switch {
 		case len(spec) == 1 && spec[0] == '*':
 			specificity = 1
-		case bytes.Equal(spec, []byte("*/*")):
+		case bytes.Equal(spec, wildcardAll):
 			specificity = 1
-		case bytes.HasSuffix(spec, []byte("/*")):
+		case bytes.HasSuffix(spec, wildcardSuffix):
 			specificity = 2
 		case bytes.IndexByte(spec, '/') != -1:
 			specificity = 3

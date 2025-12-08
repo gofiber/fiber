@@ -391,7 +391,7 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 		te = utils.UnsafeString(teBytes)
 	} else {
 		for key, value := range hdr.All() {
-			if !strings.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
+			if !utils.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
 				continue
 			}
 			te = utils.UnsafeString(value)
@@ -415,7 +415,7 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 		if token == "" {
 			continue
 		}
-		if strings.EqualFold(token, "identity") {
+		if utils.EqualFold(token, "identity") {
 			continue
 		}
 		hasEncoding = true

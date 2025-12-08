@@ -15,6 +15,16 @@ import (
 	"golang.org/x/net/idna"
 )
 
+// Pre-allocated byte slices for common header comparisons to avoid allocations
+var (
+	xForwardedPrefix        = []byte("X-Forwarded-")
+	xForwardedProtoBytes    = []byte(HeaderXForwardedProto)
+	xForwardedProtocolBytes = []byte(HeaderXForwardedProtocol)
+	xForwardedSslBytes      = []byte(HeaderXForwardedSsl)
+	xUrlSchemeBytes         = []byte(HeaderXUrlScheme)
+	onBytes                 = []byte("on")
+)
+
 // Range represents the parsed HTTP Range header extracted by DefaultReq.Range.
 type Range struct {
 	Type   string
@@ -640,20 +650,20 @@ func (r *DefaultReq) Scheme() string {
 			continue // Neither "X-Forwarded-" nor "X-Url-Scheme"
 		}
 		switch {
-		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
-			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
-				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
+		case bytes.HasPrefix(key, xForwardedPrefix):
+			if bytes.Equal(key, xForwardedProtoBytes) ||
+				bytes.Equal(key, xForwardedProtocolBytes) {
 				v := app.toString(val)
 				if before, _, found := strings.Cut(v, ","); found {
 					scheme = before
 				} else {
 					scheme = v
 				}
-			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
+			} else if bytes.Equal(key, xForwardedSslBytes) && bytes.Equal(val, onBytes) {
 				scheme = schemeHTTPS
 			}
 
-		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
+		case bytes.Equal(key, xUrlSchemeBytes):
 			scheme = app.toString(val)
 		default:
 			continue
