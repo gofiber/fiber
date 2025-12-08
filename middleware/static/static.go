@@ -169,7 +169,10 @@ func New(root string, cfg ...Config) fiber.Handler {
 				}
 
 				if len(path) > 0 && path[0] != '/' {
-					path = append([]byte("/"), path...)
+					newPath := make([]byte, len(path)+1)
+					newPath[0] = '/'
+					copy(newPath[1:], path)
+					path = newPath
 				}
 
 				sanitized, err := sanitizePath(path, fileServer.FS)

@@ -246,7 +246,7 @@ func New(config ...Config) fiber.Handler {
 		cacheControl := string(c.Response().Header.Peek(fiber.HeaderCacheControl))
 
 		// Respect server cache-control: no-store
-		if strings.Index(utils.ToLower(cacheControl), noStore) >= 0 { //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
+		if strings.Contains(utils.ToLower(cacheControl), noStore) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return nil
 		}

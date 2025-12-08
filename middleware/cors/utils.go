@@ -17,7 +17,11 @@ func matchScheme(domain, pattern string) bool {
 // normalizeDomain removes the scheme and port from the input domain
 func normalizeDomain(input string) string {
 	// Remove scheme
-	input = strings.TrimPrefix(strings.TrimPrefix(input, "http://"), "https://")
+	if after, found := strings.CutPrefix(input, "https://"); found {
+		input = after
+	} else if after, found := strings.CutPrefix(input, "http://"); found {
+		input = after
+	}
 
 	// Find and remove port, if present
 	if input != "" && input[0] != '[' {
@@ -89,7 +93,7 @@ func (s subdomain) match(o string) bool {
 	// Extract the subdomain part (without the trailing dot) and ensure it
 	// doesn't contain empty labels.
 	sub := o[len(s.prefix) : suffixStartIndex-1]
-	if sub == "" || sub[0] == '.' || strings.Index(sub, "..") >= 0 { //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
+	if sub == "" || sub[0] == '.' || strings.Contains(sub, "..") {
 		return false
 	}
 

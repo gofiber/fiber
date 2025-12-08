@@ -2,7 +2,6 @@ package csrf
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"

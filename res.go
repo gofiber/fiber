@@ -657,7 +657,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	for i := len(rootApp.mountFields.appListKeys) - 1; i >= 0; i-- {
 		prefix := rootApp.mountFields.appListKeys[i]
 		app := rootApp.mountFields.appList[prefix]
-		if prefix == "" || strings.Index(r.c.OriginalURL(), prefix) >= 0 { //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
+		if prefix == "" || strings.Contains(r.c.OriginalURL(), prefix) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
 					app.config.ViewsLayout,

@@ -21,7 +21,7 @@ var (
 	xForwardedProtoBytes    = []byte(HeaderXForwardedProto)
 	xForwardedProtocolBytes = []byte(HeaderXForwardedProtocol)
 	xForwardedSslBytes      = []byte(HeaderXForwardedSsl)
-	xUrlSchemeBytes         = []byte(HeaderXUrlScheme)
+	xURLSchemeBytes         = []byte(HeaderXUrlScheme)
 	onBytes                 = []byte("on")
 )
 
@@ -663,7 +663,7 @@ func (r *DefaultReq) Scheme() string {
 				scheme = schemeHTTPS
 			}
 
-		case bytes.Equal(key, xUrlSchemeBytes):
+		case bytes.Equal(key, xURLSchemeBytes):
 			scheme = app.toString(val)
 		default:
 			continue
@@ -853,13 +853,13 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 	// Normalize host according to RFC 3986
 	host := r.Hostname()
 	// Trim the trailing dot of a fully-qualified domain
-	if strings.HasSuffix(host, ".") {
+	if host != "" && host[len(host)-1] == '.' {
 		host = utils.TrimRight(host, '.')
 	}
 	host = utils.ToLower(host)
 
 	// Decode punycode labels only when necessary
-	if strings.Index(host, "xn--") >= 0 { //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
+	if strings.Contains(host, "xn--") {
 		if u, err := idna.Lookup.ToUnicode(host); err == nil {
 			host = utils.ToLower(u)
 		}

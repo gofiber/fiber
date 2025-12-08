@@ -25,14 +25,14 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Check if format contains latency
-	cfg.enableLatency = strings.Index(cfg.Format, "${"+TagLatency+"}") >= 0 //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
+	cfg.enableLatency = strings.Contains(cfg.Format, "${"+TagLatency+"}")
 
 	var timestamp atomic.Value
 	// Create correct timeformat
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
 	// Update date/time every 500 milliseconds in a separate go routine
-	if strings.Index(cfg.Format, "${"+TagTime+"}") >= 0 { //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
+	if strings.Contains(cfg.Format, "${"+TagTime+"}") {
 		go func() {
 			for {
 				time.Sleep(cfg.TimeInterval)

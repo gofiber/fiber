@@ -1347,9 +1347,9 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
-	case strings.Index(err.Error(), "unsupported http request method") >= 0: //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
+	case strings.Contains(err.Error(), "unsupported http request method"):
 		err = ErrNotImplemented
-	case strings.Index(err.Error(), "timeout") >= 0: //nolint:gocritic,staticcheck // strings.Index is faster than strings.Contains
+	case strings.Contains(err.Error(), "timeout"):
 		err = ErrRequestTimeout
 	default:
 		err = NewError(StatusBadRequest, err.Error())

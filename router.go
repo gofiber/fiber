@@ -330,7 +330,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 		// Optional: Check flash messages
 		rawHeaders := d.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Index(rawHeaders, flashCookieNameBytes) >= 0 { //nolint:gocritic,staticcheck // bytes.Index is faster than bytes.Contains
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
 			d.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.next(d)
@@ -343,7 +343,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 		// Optional: Check flash messages
 		rawHeaders := ctx.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Index(rawHeaders, flashCookieNameBytes) >= 0 { //nolint:gocritic,staticcheck // bytes.Index is faster than bytes.Contains
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
 			ctx.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.nextCustom(ctx)

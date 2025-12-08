@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"hash/crc32"
 	"math"
+	"slices"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/bytebufferpool"
@@ -27,7 +28,7 @@ func Generate(body []byte) []byte {
 	b = append(b, '-')
 	b = appendUint(b, crc32.Checksum(body, crc32q))
 	b = append(b, '"')
-	return append([]byte(nil), b...)
+	return slices.Clone(b)
 }
 
 // GenerateWeak returns a weak ETag for body.
@@ -102,7 +103,7 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		if bytes.Index(clientEtag, etag) >= 0 { //nolint:gocritic,staticcheck // bytes.Index is faster than bytes.Contains
+		if bytes.Contains(clientEtag, etag) {
 			// 1 == 1
 			c.RequestCtx().ResetBody()
 
