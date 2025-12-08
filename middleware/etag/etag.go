@@ -102,7 +102,7 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		if bytes.Contains(clientEtag, etag) {
+		if bytes.Index(clientEtag, etag) >= 0 { //nolint:gocritic,staticcheck // bytes.Index is faster than bytes.Contains
 			// 1 == 1
 			c.RequestCtx().ResetBody()
 

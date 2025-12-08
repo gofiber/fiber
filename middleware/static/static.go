@@ -28,7 +28,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
-	if bytes.Contains(p, []byte{'\\'}) {
+	if bytes.IndexByte(p, '\\') >= 0 {
 		b := make([]byte, len(p))
 		copy(b, p)
 		for i := range b {
