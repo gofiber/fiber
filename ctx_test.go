@@ -4054,8 +4054,7 @@ func Test_Ctx_SaveFileToStorage_LimitExceeded(t *testing.T) {
 		fileSize    = allowedSize + 512
 	)
 
-	app := New(Config{BodyLimit: 8 * 1024 * 1024})
-	app.config.BodyLimit = allowedSize
+	app := New(Config{BodyLimit: allowedSize})
 
 	storage := memory.New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
