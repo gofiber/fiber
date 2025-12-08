@@ -18,7 +18,7 @@ func compareTokens(a, b []byte) bool {
 }
 
 func compareStrings(a, b string) bool {
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+	return subtle.ConstantTimeCompare(utils.UnsafeBytes(a), utils.UnsafeBytes(b)) == 1
 }
 
 func schemeAndHostMatch(schemeA, hostA, schemeB, hostB string) bool {
