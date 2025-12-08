@@ -1977,3 +1977,74 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 		}
 	})
 }
+
+func TestErrorHandler_PicksRightOne(t *testing.T) {
+	t.Parallel()
+	// common handler to be used by all routes,
+	// it will always fail by returning an error since
+	// we need to test that the right ErrorHandler is invoked
+	handler := func(c *Ctx) error {
+		return errors.New("random error")
+	}
+
+	// subapp /api/v1/users [no custom error handler]
+	appAPIV1Users := New()
+	appAPIV1Users.Get("/", handler)
+
+	// subapp /api/v1/use [with custom error handler]
+	appAPIV1UseEH := func(c *Ctx, _ error) error {
+		return c.SendString("/api/v1/use error handler")
+	}
+	appAPIV1Use := New(Config{ErrorHandler: appAPIV1UseEH})
+	appAPIV1Use.Get("/", handler)
+
+	// subapp: /api/v1 [with custom error handler]
+	appV1EH := func(c *Ctx, _ error) error {
+		return c.SendString("/api/v1 error handler")
+	}
+	appV1 := New(Config{ErrorHandler: appV1EH})
+	appV1.Get("/", handler)
+	appV1.Mount("/users", appAPIV1Users)
+	appV1.Mount("/use", appAPIV1Use)
+
+	// root app [no custom error handler]
+	app := New()
+	app.Get("/", handler)
+	app.Mount("/api/v1", appV1)
+
+	testCases := []struct {
+		path     string // the endpoint url to test
+		expected string // the expected error response
+	}{
+		// /api/v1/users mount doesn't have custom ErrorHandler
+		// so it should use the upper-nearest one (/api/v1)
+		{"/api/v1/users", "/api/v1 error handler"},
+
+		// /api/v1/users mount has a custom ErrorHandler
+		{"/api/v1/use", "/api/v1/use error handler"},
+
+		// /api/v1 mount has a custom ErrorHandler
+		{"/api/v1", "/api/v1 error handler"},
+
+		// / mount doesn't have custom ErrorHandler, since is
+		// the root path i will use Fiber's default Error Handler
+		{"/", "random error"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.path, func(t *testing.T) {
+			t.Parallel()
+			resp, err := app.Test(httptest.NewRequest(MethodGet, testCase.path, nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			utils.AssertEqual(t, testCase.expected, string(body))
+		})
+	}
+}

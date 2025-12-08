@@ -4,6 +4,10 @@
 
 package utils
 
+import (
+	"strings"
+)
+
 // ToLower converts ascii string to lower-case
 func ToLower(b string) string {
 	res := make([]byte, len(b))
@@ -72,4 +76,13 @@ func EqualFold(b, s string) bool {
 		}
 	}
 	return true
+}
+
+// AddTrailingSlash appends a trailing '/' to v if it does not already end with one
+func AddTrailingSlash(s string) string {
+	if strings.HasSuffix(s, "/") {
+		return s
+	}
+
+	return s + "/"
 }
