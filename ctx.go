@@ -437,7 +437,7 @@ func (c *DefaultCtx) IsWebSocket() bool {
 	if !isUpgrade {
 		return false
 	}
-	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), []byte("websocket"))
+	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), websocketBytes)
 }
 
 // IsPreflight returns true if the request is a CORS preflight.
@@ -534,8 +534,12 @@ func (c *DefaultCtx) Value(key any) any {
 	return c.fasthttp.UserValue(key)
 }
 
-// xmlHTTPRequestBytes is precomputed for XHR detection
-var xmlHTTPRequestBytes = []byte("xmlhttprequest")
+var (
+	// xmlHTTPRequestBytes is precomputed for XHR detection
+	xmlHTTPRequestBytes = []byte("xmlhttprequest")
+	// websocketBytes is precomputed for WebSocket upgrade detection
+	websocketBytes = []byte("websocket")
+)
 
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).

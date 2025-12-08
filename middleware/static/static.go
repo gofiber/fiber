@@ -19,7 +19,11 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-var ErrInvalidPath = errors.New("invalid path")
+var (
+	ErrInvalidPath  = errors.New("invalid path")
+	rootPathBytes   = []byte("/")
+	invalidPathResp = []byte("/__fiber_invalid__")
+)
 
 // sanitizePath validates and cleans the requested path.
 // It returns an error if the path attempts to traverse directories.
@@ -63,7 +67,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	if filesystem != nil {
 		s = utils.TrimLeft(s, '/')
 		if s == "" {
-			return []byte("/"), nil
+			return rootPathBytes, nil
 		}
 		if !fs.ValidPath(s) {
 			return nil, ErrInvalidPath
@@ -157,7 +161,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 					// If the root is a file, we need to reset the path to "/" always.
 					switch {
 					case checkFile && fileServer.FS == nil:
-						path = []byte("/")
+						path = rootPathBytes
 					case checkFile && fileServer.FS != nil:
 						path = utils.UnsafeBytes(root)
 					default:
@@ -178,7 +182,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				sanitized, err := sanitizePath(path, fileServer.FS)
 				if err != nil {
 					// return a guaranteed-missing path so fs responds with 404
-					return []byte("/__fiber_invalid__")
+					return invalidPathResp
 				}
 				return sanitized
 			}

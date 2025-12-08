@@ -27,7 +27,7 @@ func New(config ...Config) fiber.Handler {
 				if err != nil {
 					c.Request().Header.DelCookieBytes(key)
 				} else {
-					c.Request().Header.SetCookie(string(key), decryptedValue)
+					c.Request().Header.SetCookie(keyString, decryptedValue)
 				}
 			}
 		}

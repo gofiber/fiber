@@ -13,6 +13,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+var schemeSeparator = []byte("://")
+
 // Balancer creates a load balancer among multiple upstream servers
 func Balancer(config ...Config) fiber.Handler {
 	// Set default config
@@ -202,7 +204,7 @@ func doAction(
 }
 
 func getScheme(uri []byte) []byte {
-	before, _, found := bytes.Cut(uri, []byte("://"))
+	before, _, found := bytes.Cut(uri, schemeSeparator)
 	if !found {
 		return nil
 	}
