@@ -114,7 +114,7 @@ app.Post("/api/register", func(c fiber.Ctx) error {
 })
 ```
 
-<Reference id="use">#Use</Reference>
+# Use
 
 Can be used for middleware packages and prefix catchers. Prefixes now require either an exact match or a slash boundary, so `/john` matches `/john` and `/john/doe` but not `/johnnnnn`. Parameter tokens like `:name`, `:name?`, `*`, and `+` are still expanded before the boundary check runs.
 
@@ -148,7 +148,7 @@ app.Use([]string{"/api", "/home"}, func(c fiber.Ctx) error {
     return c.Next()
 })
 
-// Attach multiple handlers 
+// Attach multiple handlers
 app.Use("/api", func(c fiber.Ctx) error {
     c.Set("X-Custom-Header", random.String(32))
     return c.Next()

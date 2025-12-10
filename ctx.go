@@ -465,12 +465,30 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	}
 	defer file.Close() //nolint:errcheck // not needed
 
-	content, err := io.ReadAll(file)
-	if err != nil {
+	maxUploadSize := c.app.config.BodyLimit
+	if maxUploadSize <= 0 {
+		maxUploadSize = DefaultBodyLimit
+	}
+
+	if fileheader.Size > 0 && fileheader.Size > int64(maxUploadSize) {
+		return fmt.Errorf("failed to read: %w", fasthttp.ErrBodyTooLarge)
+	}
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	limitedReader := io.LimitReader(file, int64(maxUploadSize)+1)
+	if _, err = buf.ReadFrom(limitedReader); err != nil {
 		return fmt.Errorf("failed to read: %w", err)
 	}
 
-	if err := storage.SetWithContext(c.Context(), path, content, 0); err != nil {
+	if buf.Len() > maxUploadSize {
+		return fmt.Errorf("failed to read: %w", fasthttp.ErrBodyTooLarge)
+	}
+
+	data := append([]byte(nil), buf.Bytes()...)
+
+	if err := storage.SetWithContext(c.Context(), path, data, 0); err != nil {
 		return fmt.Errorf("failed to store: %w", err)
 	}
 

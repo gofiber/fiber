@@ -517,7 +517,6 @@ func DefaultErrorHandler(c Ctx, err error) error {
 // You can pass optional configuration options by passing a Config struct:
 //
 //	app := fiber.New(fiber.Config{
-//	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
 func New(config ...Config) *App {
@@ -1302,8 +1301,13 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 		mountedPrefixParts int
 	)
 
-	for prefix, subApp := range app.mountFields.appList {
-		if prefix != "" && strings.HasPrefix(ctx.Path(), prefix) {
+	normalizedPath := utils.AddTrailingSlashString(ctx.Path())
+
+	for _, prefix := range app.mountFields.appListKeys {
+		subApp := app.mountFields.appList[prefix]
+		normalizedPrefix := utils.AddTrailingSlashString(prefix)
+
+		if prefix != "" && strings.HasPrefix(normalizedPath, normalizedPrefix) {
 			// Count slashes instead of splitting - more efficient
 			parts := strings.Count(prefix, "/") + 1
 			if mountedPrefixParts <= parts {
