@@ -465,6 +465,10 @@ func (c *DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) err
 		return err
 	}
 
+	if err := os.MkdirAll(filepath.Dir(absolutePath), c.app.config.RootPerms); err != nil {
+		return fmt.Errorf("failed to prepare upload path: %w", err)
+	}
+
 	return fasthttp.SaveMultipartFile(fileheader, absolutePath)
 }
 
@@ -614,8 +618,14 @@ func rejectSymlinkTraversal(uploadFS fs.FS, normalized string) error {
 
 	parts := strings.Split(normalized, "/")
 	current := "."
+
 	for i, part := range parts {
-		entries, err := fs.ReadDir(uploadFS, current)
+		next := part
+		if current != "." {
+			next = pathpkg.Join(current, part)
+		}
+
+		info, err := fs.Stat(uploadFS, next)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				return nil
@@ -623,34 +633,15 @@ func rejectSymlinkTraversal(uploadFS fs.FS, normalized string) error {
 			return fmt.Errorf("invalid upload path: %w", err)
 		}
 
-		var entry fs.DirEntry
-		var found bool
-		for _, e := range entries {
-			if e.Name() == part {
-				entry = e
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			return nil
-		}
-
-		if entry.Type()&fs.ModeSymlink != 0 {
+		if info.Mode()&fs.ModeSymlink != 0 {
 			return errUploadSymlinkPath
 		}
 
-		if i < len(parts)-1 && !entry.IsDir() {
+		if i < len(parts)-1 && !info.IsDir() {
 			return errUploadTraversal
 		}
 
-		if current == "." {
-			current = part
-			continue
-		}
-
-		current = pathpkg.Join(current, part)
+		current = next
 	}
 
 	return nil

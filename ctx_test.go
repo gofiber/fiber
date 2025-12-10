@@ -3919,8 +3919,6 @@ func Test_Ctx_SaveFile(t *testing.T) {
 		require.NoError(t, err)
 
 		relativePath := filepath.Join("uploads", "test-upload")
-		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(uploadRoot, relativePath)), 0o750))
-
 		err = c.SaveFile(fh, relativePath)
 		require.NoError(t, err)
 
