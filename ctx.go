@@ -638,7 +638,7 @@ func rejectSymlinkTraversal(uploadFS fs.FS, normalized string) error {
 		}
 
 		if entry.Type()&fs.ModeSymlink != 0 {
-			return errUploadSymlinkRoute
+			return errUploadSymlinkPath
 		}
 
 		if i < len(parts)-1 && !entry.IsDir() {
