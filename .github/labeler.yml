@@ -3,6 +3,9 @@ labels:
   - label: 'v3'
     matcher:
       baseBranch: 'main'
+      title: '/(v3)/i'
   - label: 'v2'
     matcher:
       baseBranch: 'v2'
+      title: '/(v2)/i'
+
