@@ -1398,6 +1398,11 @@ app.Get("/", func(c fiber.Ctx) error {
 ### SaveFile
 
 Method is used to save **any** multipart file to disk.
+Paths are normalized against the configured upload root (`app.Config.RootDir`,
+default `"."`) and validated using `app.Config.RootFS` (defaults to
+`os.DirFS(RootDir)`). Absolute paths, traversal attempts, and symlink escapes
+are rejected before writing. The upload root will be created with
+`app.Config.RootPerms` (default `0o750`) when needed.
 
 ```go title="Signature"
 func (c fiber.Ctx) SaveFile(fh *multipart.FileHeader, path string) error
@@ -1431,6 +1436,11 @@ app.Post("/", func(c fiber.Ctx) error {
 ### SaveFileToStorage
 
 Method is used to save **any** multipart file to an external storage system.
+Paths are normalized against the configured upload root (`app.Config.RootDir`,
+default `"."`) and validated using `app.Config.RootFS` (defaults to
+`os.DirFS(RootDir)`). Absolute paths, traversal attempts, and symlink escapes
+are rejected before writing. The upload root will be created with
+`app.Config.RootPerms` (default `0o750`) when needed.
 
 ```go title="Signature"
 func (c fiber.Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error

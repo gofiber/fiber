@@ -7,10 +7,16 @@ package fiber
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"mime/multipart"
+	"os"
+	pathpkg "path"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -453,12 +459,22 @@ func (c *DefaultCtx) IsPreflight() bool {
 }
 
 // SaveFile saves any multipart file to disk.
-func (*DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) error {
-	return fasthttp.SaveMultipartFile(fileheader, path)
+func (c *DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) error {
+	_, absolutePath, err := resolveUploadPath(c.app, path)
+	if err != nil {
+		return err
+	}
+
+	return fasthttp.SaveMultipartFile(fileheader, absolutePath)
 }
 
 // SaveFileToStorage saves any multipart file to an external storage system.
 func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
+	safePath, _, err := resolveUploadPath(c.app, path)
+	if err != nil {
+		return err
+	}
+
 	file, err := fileheader.Open()
 	if err != nil {
 		return fmt.Errorf("failed to open: %w", err)
@@ -488,11 +504,169 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 
 	data := append([]byte(nil), buf.Bytes()...)
 
-	if err := storage.SetWithContext(c.Context(), path, data, 0); err != nil {
+	if err := storage.SetWithContext(c.Context(), safePath, data, 0); err != nil {
 		return fmt.Errorf("failed to store: %w", err)
 	}
 
 	return nil
+}
+
+//nolint:nonamedreturns // names clarify path handling through normalization and validation
+func resolveUploadPath(app *App, path string) (normalizedPath, absolutePath string, err error) {
+	if app == nil {
+		return "", "", fmt.Errorf("invalid upload root: %w", errors.New("app is nil"))
+	}
+
+	uploadRoot, err := getRootDir(app)
+	if err != nil {
+		return "", "", err
+	}
+
+	uploadFS := app.config.RootFS
+	if uploadFS == nil {
+		uploadFS = os.DirFS(uploadRoot)
+	}
+
+	normalizedPath, err = sanitizeUploadPath(path, uploadFS)
+	if err != nil {
+		return "", "", err
+	}
+
+	relativePath := filepath.FromSlash(normalizedPath)
+	absolutePath = filepath.Join(uploadRoot, relativePath)
+	if !isWithinRoot(uploadRoot, absolutePath) {
+		return "", "", errUploadOutsideRoot
+	}
+
+	return normalizedPath, absolutePath, nil
+}
+
+func getRootDir(app *App) (string, error) {
+	root := app.config.RootDir
+	if root == "" {
+		root = "."
+	}
+
+	perms := app.config.RootPerms
+	if perms == 0 {
+		perms = 0o750
+	}
+
+	absoluteRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("invalid upload root: %w", err)
+	}
+
+	if err = os.MkdirAll(absoluteRoot, perms); err != nil {
+		return "", fmt.Errorf("invalid upload root: %w", err)
+	}
+
+	resolvedRoot, err := filepath.EvalSymlinks(absoluteRoot)
+	if err == nil {
+		absoluteRoot = resolvedRoot
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("invalid upload root: %w", err)
+	}
+
+	info, err := os.Stat(absoluteRoot)
+	if err != nil {
+		return "", fmt.Errorf("invalid upload root: %w", err)
+	}
+
+	if !info.IsDir() {
+		return "", fmt.Errorf("invalid upload root: %s is not a directory", absoluteRoot)
+	}
+
+	return absoluteRoot, nil
+}
+
+func sanitizeUploadPath(path string, uploadFS fs.FS) (string, error) {
+	if filepath.IsAbs(path) {
+		return "", errUploadAbsolute
+	}
+
+	rawNormalized := strings.ReplaceAll(path, "\\", "/")
+	if containsParentDir(rawNormalized) {
+		return "", errUploadTraversal
+	}
+
+	normalized := pathpkg.Clean(rawNormalized)
+	normalized = utils.TrimLeft(normalized, '/')
+	if normalized == "" || normalized == "." {
+		return "", errUploadTraversal
+	}
+
+	if !fs.ValidPath(normalized) {
+		return "", errUploadTraversal
+	}
+
+	if err := rejectSymlinkTraversal(uploadFS, normalized); err != nil {
+		return "", err
+	}
+
+	return normalized, nil
+}
+
+func rejectSymlinkTraversal(uploadFS fs.FS, normalized string) error {
+	if uploadFS == nil {
+		return nil
+	}
+
+	parts := strings.Split(normalized, "/")
+	current := "."
+	for i, part := range parts {
+		entries, err := fs.ReadDir(uploadFS, current)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return fmt.Errorf("invalid upload path: %w", err)
+		}
+
+		var entry fs.DirEntry
+		var found bool
+		for _, e := range entries {
+			if e.Name() == part {
+				entry = e
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return nil
+		}
+
+		if entry.Type()&fs.ModeSymlink != 0 {
+			return errUploadSymlinkRoute
+		}
+
+		if i < len(parts)-1 && !entry.IsDir() {
+			return errUploadTraversal
+		}
+
+		if current == "." {
+			current = part
+			continue
+		}
+
+		current = pathpkg.Join(current, part)
+	}
+
+	return nil
+}
+
+func containsParentDir(p string) bool {
+	return slices.Contains(strings.Split(p, "/"), "..")
+}
+
+func isWithinRoot(root, target string) bool {
+	rel, err := filepath.Rel(root, target)
+	if err != nil {
+		return false
+	}
+
+	return rel != ".." && !strings.HasPrefix(rel, "../") && rel != "..\\" && !strings.HasPrefix(rel, "..\\")
 }
 
 // Secure returns whether a secure connection was established.

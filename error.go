@@ -22,6 +22,14 @@ var (
 	ErrNoViewEngineConfigured = errors.New("fiber: no view engine configured")
 )
 
+// Upload errors
+var (
+	errUploadAbsolute     = errors.New("upload path must be relative")
+	errUploadTraversal    = errors.New("upload path contains invalid traversal segments")
+	errUploadOutsideRoot  = errors.New("upload path escapes configured upload root")
+	errUploadSymlinkRoute = errors.New("upload path crosses a symlinked directory")
+)
+
 // Fiber redirection errors
 var (
 	ErrRedirectBackNoFallback = NewError(StatusInternalServerError, "Referer not found, you have to enter fallback URL for redirection.")

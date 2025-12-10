@@ -596,6 +596,10 @@ testConfig := fiber.TestConfig{
   specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
   [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
+- **SaveFile / SaveFileToStorage**: Upload targets are normalized against
+  `app.Config.RootDir` (validated with `RootFS`) and the root is created with
+  `RootPerms`; absolute paths, traversal attempts, and symlink escapes are
+  rejected before writing.
 
 ### SendEarlyHints
 
