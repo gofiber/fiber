@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -158,6 +159,22 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: 4 * 1024 * 1024
 	BodyLimit int `json:"body_limit"`
+
+	// RootDir defines the directory where files can be persisted using SaveFile and SaveFileToStorage.
+	// The path must be relative to the current working directory or an absolute path on the host system.
+	//
+	// Default: "."
+	RootDir string `json:"root_dir"`
+
+	// RootFS provides an fs.FS implementation rooted at RootDir used to validate upload targets.
+	//
+	// Default: os.DirFS(RootDir)
+	RootFS fs.FS `json:"-"`
+
+	// RootPerms are the permissions applied when creating RootDir.
+	//
+	// Default: 0o750
+	RootPerms fs.FileMode `json:"root_perms"`
 
 	// Maximum number of concurrent connections.
 	//
@@ -561,6 +578,12 @@ func New(config ...Config) *App {
 	// Override default values
 	if app.config.BodyLimit <= 0 {
 		app.config.BodyLimit = DefaultBodyLimit
+	}
+	if app.config.RootDir == "" {
+		app.config.RootDir = "."
+	}
+	if app.config.RootPerms == 0 {
+		app.config.RootPerms = 0o750
 	}
 	if app.config.Concurrency <= 0 {
 		app.config.Concurrency = DefaultConcurrency

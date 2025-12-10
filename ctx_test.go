@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"mime/multipart"
 	"net"
@@ -3910,25 +3911,20 @@ func Test_Ctx_RouteNormalized(t *testing.T) {
 func Test_Ctx_SaveFile(t *testing.T) {
 	// TODO We should clean this up
 	t.Parallel()
-	app := New()
+	uploadRoot := t.TempDir()
+	app := New(Config{RootDir: uploadRoot})
 
 	app.Post("/test", func(c Ctx) error {
 		fh, err := c.Req().FormFile("file")
 		require.NoError(t, err)
 
-		tempFile, err := os.CreateTemp(os.TempDir(), "test-")
+		relativePath := filepath.Join("uploads", "test-upload")
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(uploadRoot, relativePath)), 0o750))
+
+		err = c.SaveFile(fh, relativePath)
 		require.NoError(t, err)
 
-		defer func(file *os.File) {
-			closeErr := file.Close()
-			require.NoError(t, closeErr)
-			closeErr = os.Remove(file.Name())
-			require.NoError(t, closeErr)
-		}(tempFile)
-		err = c.SaveFile(fh, tempFile.Name())
-		require.NoError(t, err)
-
-		bs, err := os.ReadFile(tempFile.Name())
+		bs, err := os.ReadFile(filepath.Join(uploadRoot, relativePath)) //nolint:gosec // upload path validated before use
 		require.NoError(t, err)
 		require.Equal(t, "hello world", string(bs))
 		return nil
@@ -3951,6 +3947,47 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+func Test_Ctx_SaveFile_PreventTraversal(t *testing.T) {
+	t.Parallel()
+
+	uploadRoot := t.TempDir()
+	app := New(Config{RootDir: uploadRoot})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "blocked.txt", []byte("forbidden"))
+
+	err := ctx.SaveFile(fileHeader, filepath.Join("..", "escape", "blocked.txt"))
+	require.Error(t, err)
+
+	_, statErr := os.Stat(filepath.Join(uploadRoot, "escape", "blocked.txt"))
+	require.ErrorIs(t, statErr, fs.ErrNotExist)
+}
+
+func Test_Ctx_SaveFile_RejectAbsolute(t *testing.T) {
+	t.Parallel()
+
+	uploadRoot := t.TempDir()
+	app := New(Config{RootDir: uploadRoot})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "blocked.txt", []byte("forbidden"))
+
+	absoluteTarget := filepath.Join(t.TempDir(), "outside.txt")
+	err := ctx.SaveFile(fileHeader, absoluteTarget)
+	require.Error(t, err)
+
+	_, statErr := os.Stat(absoluteTarget)
+	require.ErrorIs(t, statErr, fs.ErrNotExist)
 }
 
 func createMultipartFileHeader(t *testing.T, filename string, data []byte) *multipart.FileHeader {
@@ -4020,6 +4057,26 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+func Test_Ctx_SaveFileToStorage_InvalidPath(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	storage := memory.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "blocked.bin", []byte("forbidden"))
+
+	err := ctx.SaveFileToStorage(fileHeader, filepath.Join("..", "escape", "blocked.bin"), storage)
+	require.Error(t, err)
+
+	err = ctx.SaveFileToStorage(fileHeader, filepath.Join(t.TempDir(), "outside.bin"), storage)
+	require.Error(t, err)
 }
 
 func Test_Ctx_SaveFileToStorage_LargeUpload(t *testing.T) {
