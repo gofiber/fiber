@@ -166,36 +166,59 @@ func (r *Redirect) WithInput() *Redirect {
 
 // Messages Get flash messages.
 func (r *Redirect) Messages() []FlashMessage {
-	flashMessages := make([]FlashMessage, 0)
+	if len(r.c.flashMessages) == 0 {
+		return []FlashMessage{}
+	}
+
+	flashMessages := make([]FlashMessage, 0, len(r.c.flashMessages))
+	filtered := make(redirectionMsgs, 0, len(r.c.flashMessages))
 
 	for _, msg := range r.c.flashMessages {
-		if !msg.isOldInput {
-			flashMessages = append(flashMessages, FlashMessage{
-				Key:   msg.key,
-				Value: msg.value,
-				Level: msg.level,
-			})
+		if msg.isOldInput {
+			filtered = append(filtered, msg)
+			continue
 		}
+
+		flashMessages = append(flashMessages, FlashMessage{
+			Key:   msg.key,
+			Value: msg.value,
+			Level: msg.level,
+		})
 	}
+
+	r.c.flashMessages = filtered
 
 	return flashMessages
 }
 
 // Message Get flash message by key.
 func (r *Redirect) Message(key string) FlashMessage {
-	msgs := r.c.flashMessages
+	if len(r.c.flashMessages) == 0 {
+		return FlashMessage{}
+	}
 
-	for _, msg := range msgs {
-		if msg.key == key && !msg.isOldInput {
-			return FlashMessage{
+	var flashMessage FlashMessage
+	found := false
+	filtered := make(redirectionMsgs, 0, len(r.c.flashMessages))
+
+	for _, msg := range r.c.flashMessages {
+		if msg.isOldInput {
+			filtered = append(filtered, msg)
+		} else if !found && msg.key == key {
+			flashMessage = FlashMessage{
 				Key:   msg.key,
 				Value: msg.value,
 				Level: msg.level,
 			}
+			found = true
+		} else {
+			filtered = append(filtered, msg)
 		}
 	}
 
-	return FlashMessage{}
+	r.c.flashMessages = filtered
+
+	return flashMessage
 }
 
 // OldInputs Get old input data.
@@ -307,7 +330,12 @@ func (r *Redirect) parseAndClearFlashMessages() {
 		return
 	}
 
-	r.c.Response().Header.DelClientCookie(FlashCookieName)
+	r.c.Cookie(&Cookie{
+		Name:   FlashCookieName,
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	})
 }
 
 // processFlashMessages is a helper function to process flash messages and old input data
