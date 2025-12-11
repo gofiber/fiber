@@ -171,11 +171,12 @@ func (r *Redirect) Messages() []FlashMessage {
 	}
 
 	flashMessages := make([]FlashMessage, 0, len(r.c.flashMessages))
-	filtered := make(redirectionMsgs, 0, len(r.c.flashMessages))
+	writeIdx := 0
 
 	for _, msg := range r.c.flashMessages {
 		if msg.isOldInput {
-			filtered = append(filtered, msg)
+			r.c.flashMessages[writeIdx] = msg
+			writeIdx++
 			continue
 		}
 
@@ -186,7 +187,11 @@ func (r *Redirect) Messages() []FlashMessage {
 		})
 	}
 
-	r.c.flashMessages = filtered
+	for i := writeIdx; i < len(r.c.flashMessages); i++ {
+		r.c.flashMessages[i] = redirectionMsg{}
+	}
+
+	r.c.flashMessages = r.c.flashMessages[:writeIdx]
 
 	return flashMessages
 }
@@ -199,11 +204,12 @@ func (r *Redirect) Message(key string) FlashMessage {
 
 	var flashMessage FlashMessage
 	found := false
-	filtered := make(redirectionMsgs, 0, len(r.c.flashMessages))
+	writeIdx := 0
 
 	for _, msg := range r.c.flashMessages {
 		if msg.isOldInput {
-			filtered = append(filtered, msg)
+			r.c.flashMessages[writeIdx] = msg
+			writeIdx++
 		} else if !found && msg.key == key {
 			flashMessage = FlashMessage{
 				Key:   msg.key,
@@ -212,11 +218,16 @@ func (r *Redirect) Message(key string) FlashMessage {
 			}
 			found = true
 		} else {
-			filtered = append(filtered, msg)
+			r.c.flashMessages[writeIdx] = msg
+			writeIdx++
 		}
 	}
 
-	r.c.flashMessages = filtered
+	for i := writeIdx; i < len(r.c.flashMessages); i++ {
+		r.c.flashMessages[i] = redirectionMsg{}
+	}
+
+	r.c.flashMessages = r.c.flashMessages[:writeIdx]
 
 	return flashMessage
 }
