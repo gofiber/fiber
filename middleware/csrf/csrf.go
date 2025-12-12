@@ -138,7 +138,7 @@ func New(config ...Config) fiber.Handler {
 
 			// If there's no origin, enforce a referer check for HTTPS connections.
 			if errors.Is(err, errOriginNotFound) {
-				if c.Scheme() == "https" {
+				if c.Scheme() == schemeHTTPS {
 					err = refererMatchesHost(c, trustedOrigins, trustedSubOrigins)
 				} else {
 					// If it's not HTTPS, clear the error to allow the request to proceed.

@@ -41,8 +41,8 @@ app.Use(requestid.New(requestid.Config{
 
 If the request already includes the configured header, that value is reused instead of generating a new one. The middleware
 rejects IDs containing characters outside the visible ASCII range (for example, control characters or obs-text bytes) and
-will regenerate the value using up to three attempts from the configured generator (or UUID when no generator is set). When a
-custom generator fails to produce a valid ID, the middleware falls back to three UUID attempts to keep headers RFC-compliant
+will regenerate the value using up to three attempts from the configured generator (or SecureToken when no generator is set). When a
+custom generator fails to produce a valid ID, the middleware falls back to SecureToken to keep headers RFC-compliant
 across transports.
 
 Retrieve the request ID
@@ -61,18 +61,16 @@ func handler(c fiber.Ctx) error {
 |:----------|:---------------------|:-----------------------------------------|:---------------|
 | Next      | `func(fiber.Ctx) bool` | Skip when the function returns `true`.    | `nil`          |
 | Header    | `string`             | Header key used to store the request ID. | "X-Request-ID" |
-| Generator | `func() string`      | Function that generates the identifier.  | utils.UUID     |
+| Generator | `func() string`      | Function that generates the identifier.  | utils.SecureToken |
 
 ## Default Config
 
-The default config uses a fast UUID generator which will expose the number of
-requests made to the server. To conceal this value for better privacy, use the
-`utils.UUIDv4` generator.
+The default config uses a cryptographically secure token generator for better security and privacy.
 
 ```go
 var ConfigDefault = Config{
     Next:       nil,
     Header:     fiber.HeaderXRequestID,
-    Generator:  utils.UUID,
+    Generator:  utils.SecureToken,
 }
 ```

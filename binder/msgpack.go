@@ -1,12 +1,8 @@
 package binder
 
-import (
-	"github.com/gofiber/utils/v2"
-)
-
 // MsgPackBinding is the MsgPack binder for MsgPack request body.
 type MsgPackBinding struct {
-	MsgPackDecoder utils.MsgPackUnmarshal
+	MsgPackDecoder func([]byte, any) error
 }
 
 // Name returns the binding name.

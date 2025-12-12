@@ -33,7 +33,7 @@ type Config struct {
 
 	// KeyGenerator creates a new CSRF token.
 	//
-	// Optional. Default: utils.UUIDv4
+	// Optional. Default: utils.SecureToken
 	KeyGenerator func() string
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
@@ -133,7 +133,7 @@ var ConfigDefault = Config{
 	CookieName:            "csrf_",
 	CookieSameSite:        "Lax",
 	IdleTimeout:           30 * time.Minute,
-	KeyGenerator:          utils.UUIDv4,
+	KeyGenerator:          utils.SecureToken,
 	ErrorHandler:          defaultErrorHandler,
 	Extractor:             extractors.FromHeader(HeaderName),
 	DisableValueRedaction: false,

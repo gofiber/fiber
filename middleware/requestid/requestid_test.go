@@ -25,7 +25,7 @@ func Test_RequestID(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	reqid := resp.Header.Get(fiber.HeaderXRequestID)
-	require.Len(t, reqid, 36)
+	require.Len(t, reqid, 43)
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add(fiber.HeaderXRequestID, reqid)
@@ -68,7 +68,7 @@ func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
 	require.NotEmpty(t, rid)
 	require.NotContains(t, rid, "\r")
 	require.NotContains(t, rid, "\n")
-	require.Len(t, rid, 36, "Fallback should produce a UUID")
+	require.Len(t, rid, 43, "Fallback should produce a SecureToken")
 }
 
 func Test_isValidRequestID_VisibleASCII(t *testing.T) {

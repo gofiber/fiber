@@ -454,7 +454,7 @@ app.Use(session.New(session.Config{
 
     // Session ID
     Extractor:         extractors.FromCookie("__Host-session_id"),
-    KeyGenerator:      utils.UUIDv4,
+    KeyGenerator:      utils.SecureToken,
 
     // Error Handling
     ErrorHandler: func(c fiber.Ctx, err error) {
@@ -679,7 +679,7 @@ extractors.Chain(extractors ...extractors.Extractor) extractors.Extractor
 | `Store`             | `*session.Store`            | Pre-built session store (use when you need to share/register types) | `nil` (auto-created)                       |
 | `Storage`           | `fiber.Storage`             | Session storage backend (used when creating a store if `Store` is nil) | `memory.New()`                             |
 | `Extractor`         | `extractors.Extractor`      | Session ID extraction       | `extractors.FromCookie("session_id")`     |
-| `KeyGenerator`      | `func() string`             | Session ID generator        | `utils.UUIDv4`                             |
+| `KeyGenerator`      | `func() string`             | Session ID generator        | `utils.SecureToken`                             |
 | `IdleTimeout`       | `time.Duration`             | Inactivity timeout          | `30 * time.Minute`                         |
 | `AbsoluteTimeout`   | `time.Duration`             | Maximum session duration    | `0` (unlimited)                            |
 | `CookieSecure`      | `bool`                      | HTTPS only                  | `false`                                    |
