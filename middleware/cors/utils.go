@@ -58,9 +58,7 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 
 	// Normalize the origin by constructing it from the scheme and host.
 	// The path or trailing slash is not included in the normalized origin.
-	// CopyString is needed because utils.ToLower uses UnsafeString
-	// and the result may be stored in slices/maps
-	return true, utils.CopyString(utils.ToLower(parsedOrigin.Scheme + "://" + parsedOrigin.Host))
+	return true, utils.ToLower(parsedOrigin.Scheme) + "://" + utils.ToLower(parsedOrigin.Host)
 }
 
 type subdomain struct {
