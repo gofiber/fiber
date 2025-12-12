@@ -73,17 +73,14 @@ func New(config ...Config) fiber.Handler {
 
 	for _, origin := range cfg.TrustedOrigins {
 		trimmedOrigin := utils.TrimSpace(origin)
-		if before, after, found := strings.Cut(trimmedOrigin, "://*."); found {
-			withoutWildcard := before + "://" + after
+		if i := strings.Index(trimmedOrigin, "://*."); i != -1 {
+			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
 			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
 			if !isValid {
 				panic("[CSRF] Invalid origin format in configuration:" + maskValue(origin))
 			}
-			scheme, host, ok := strings.Cut(normalizedOrigin, "://")
-			if !ok {
-				panic("[CSRF] Invalid origin format after normalization:" + maskValue(origin))
-			}
-			sd := subdomain{prefix: scheme + "://", suffix: host}
+			schemeSep := strings.Index(normalizedOrigin, "://") + len("://")
+			sd := subdomain{prefix: normalizedOrigin[:schemeSep], suffix: normalizedOrigin[schemeSep:]}
 			trustedSubOrigins = append(trustedSubOrigins, sd)
 		} else {
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)

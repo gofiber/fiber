@@ -58,7 +58,7 @@ func normalizeSchemeHost(scheme, host string) string {
 		return host
 	}
 
-	if strings.IndexByte(hostname, ':') >= 0 && (hostname == "" || hostname[0] != '[') {
+	if strings.IndexByte(hostname, ':') >= 0 && !strings.HasPrefix(hostname, "[") {
 		hostname = "[" + hostname + "]"
 	}
 
@@ -127,7 +127,7 @@ func (s subdomain) match(o string) bool {
 	// Extract the subdomain part (without the trailing dot) and ensure it
 	// doesn't contain empty labels.
 	sub := o[len(s.prefix) : suffixStartIndex-1]
-	if sub == "" || sub[0] == '.' || strings.Contains(sub, "..") {
+	if sub == "" || strings.HasPrefix(sub, ".") || strings.Contains(sub, "..") {
 		return false
 	}
 

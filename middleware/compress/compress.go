@@ -112,9 +112,9 @@ func New(config ...Config) fiber.Handler {
 
 		compressor(c.RequestCtx())
 
-		if tag := c.GetRespHeader(fiber.HeaderETag); tag != "" && (len(tag) < 2 || tag[0] != 'W' || tag[1] != '/') {
+		if tag := c.GetRespHeader(fiber.HeaderETag); tag != "" && !strings.HasPrefix(tag, "W/") {
 			if c.GetRespHeader(fiber.HeaderContentEncoding) != "" {
-				c.Set(fiber.HeaderETag, utils.UnsafeString(etag.Generate(c.Response().Body())))
+				c.Set(fiber.HeaderETag, string(etag.Generate(c.Response().Body())))
 			}
 		}
 
