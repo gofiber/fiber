@@ -3967,6 +3967,33 @@ func Test_Ctx_SaveFile_PreventTraversal(t *testing.T) {
 	require.ErrorIs(t, statErr, fs.ErrNotExist)
 }
 
+func Test_Ctx_SaveFile_RejectSymlinkComponent(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires privileges on windows")
+	}
+
+	uploadRoot := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.Symlink(outside, filepath.Join(uploadRoot, "link")))
+
+	app := New(Config{RootDir: uploadRoot})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "blocked.txt", []byte("forbidden"))
+
+	err := ctx.SaveFile(fileHeader, filepath.Join("link", "blocked.txt"))
+	require.Error(t, err)
+
+	_, statErr := os.Stat(filepath.Join(outside, "blocked.txt"))
+	require.ErrorIs(t, statErr, fs.ErrNotExist)
+}
+
 func Test_Ctx_SaveFile_RejectAbsolute(t *testing.T) {
 	t.Parallel()
 
@@ -4075,6 +4102,34 @@ func Test_Ctx_SaveFileToStorage_InvalidPath(t *testing.T) {
 
 	err = ctx.SaveFileToStorage(fileHeader, filepath.Join(t.TempDir(), "outside.bin"), storage)
 	require.Error(t, err)
+}
+
+func Test_Ctx_SaveFileToStorage_RejectSymlinkComponent(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires privileges on windows")
+	}
+
+	uploadRoot := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.Symlink(outside, filepath.Join(uploadRoot, "link")))
+
+	app := New(Config{RootDir: uploadRoot})
+	storage := memory.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "blocked.bin", []byte("forbidden"))
+
+	err := ctx.SaveFileToStorage(fileHeader, filepath.Join("link", "blocked.bin"), storage)
+	require.Error(t, err)
+
+	_, statErr := os.Stat(filepath.Join(outside, "blocked.bin"))
+	require.ErrorIs(t, statErr, fs.ErrNotExist)
 }
 
 func Test_Ctx_SaveFileToStorage_LargeUpload(t *testing.T) {

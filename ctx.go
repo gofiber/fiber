@@ -617,15 +617,10 @@ func rejectSymlinkTraversal(uploadFS fs.FS, normalized string) error {
 	}
 
 	parts := strings.Split(normalized, "/")
-	current := "."
+	parent := "."
 
 	for i, part := range parts {
-		next := part
-		if current != "." {
-			next = pathpkg.Join(current, part)
-		}
-
-		info, err := fs.Stat(uploadFS, next)
+		entries, err := fs.ReadDir(uploadFS, parent)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				return nil
@@ -633,15 +628,40 @@ func rejectSymlinkTraversal(uploadFS fs.FS, normalized string) error {
 			return fmt.Errorf("invalid upload path: %w", err)
 		}
 
-		if info.Mode()&fs.ModeSymlink != 0 {
+		var entry fs.DirEntry
+
+		for _, e := range entries {
+			if e.Name() == part {
+				entry = e
+				break
+			}
+		}
+
+		if entry == nil {
+			return nil
+		}
+
+		if entry.Type()&fs.ModeSymlink != 0 {
 			return errUploadSymlinkPath
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return fmt.Errorf("invalid upload path: %w", err)
 		}
 
 		if i < len(parts)-1 && !info.IsDir() {
 			return errUploadTraversal
 		}
 
-		current = next
+		if parent == "." {
+			parent = part
+		} else {
+			parent = pathpkg.Join(parent, part)
+		}
 	}
 
 	return nil
