@@ -43,8 +43,7 @@ func New(config ...Config) fiber.Handler {
 
 // sanitizeRequestID returns the provided request ID when it is valid, otherwise
 // it tries up to three values from the configured generator (or SecureToken when no
-// generator is set), then SecureToken if a custom generator failed, falling
-// back to an empty string when no visible ASCII ID is produced.
+// generator is set), then falls back to SecureToken.
 func sanitizeRequestID(rid string, generator func() string) string {
 	if isValidRequestID(rid) {
 		return rid
@@ -62,12 +61,8 @@ func sanitizeRequestID(rid string, generator func() string) string {
 		}
 	}
 
-	if generator != nil {
-		rid = utils.SecureToken()
-		return rid
-	}
-
-	return ""
+	// Final fallback: SecureToken always produces a valid ID
+	return utils.SecureToken()
 }
 
 // isValidRequestID reports whether the request ID contains only visible ASCII
