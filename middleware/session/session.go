@@ -568,14 +568,14 @@ func (s *Session) isAbsExpired() bool {
 	return !absExpiration.IsZero() && time.Now().After(absExpiration)
 }
 
-// setAbsoluteExpiration sets the absolute session expiration time.
+// setAbsExpiration sets the absolute session expiration time.
 //
 // Parameters:
 //   - expiration: The session expiration time.
 //
 // Usage:
 //
-//	s.setExpiration(time.Now().Add(time.Hour))
+//	s.setAbsExpiration(time.Now().Add(time.Hour))
 func (s *Session) setAbsExpiration(absExpiration time.Time) {
 	s.Set(absExpirationKey, absExpiration)
 }

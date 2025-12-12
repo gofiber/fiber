@@ -42,7 +42,7 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	}
 }
 
-// privateLog logs a message at a given level log the default logger.
+// privateLogf logs a formatted message at a given level log the default logger.
 // when the level is fatal, it will exit the program.
 func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	if l.level > lv {
