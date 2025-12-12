@@ -71,6 +71,51 @@ func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
 	require.Len(t, rid, 43, "Fallback should produce a SecureToken")
 }
 
+func Test_RequestID_GeneratorAlwaysInvalid(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return "invalid\x00id" // Always invalid due to null byte
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	rid := resp.Header.Get(fiber.HeaderXRequestID)
+	require.NotEmpty(t, rid)
+	require.Len(t, rid, 43, "Should fall back to SecureToken after 3 invalid attempts")
+}
+
+func Test_RequestID_CustomGenerator(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return "custom-valid-id"
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	rid := resp.Header.Get(fiber.HeaderXRequestID)
+	require.Equal(t, "custom-valid-id", rid)
+}
+
 func Test_isValidRequestID_VisibleASCII(t *testing.T) {
 	t.Parallel()
 
@@ -144,4 +189,20 @@ func Test_RequestID_FromContext(t *testing.T) {
 	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, reqID, ctxVal)
+}
+
+func Test_RequestID_FromContext_Empty(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	// No middleware
+
+	app.Use(func(c fiber.Ctx) error {
+		ctxVal := FromContext(c)
+		require.Empty(t, ctxVal)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
 }

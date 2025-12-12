@@ -45,10 +45,6 @@ func sanitizeRequestID(rid string, generator func() string) string {
 		return rid
 	}
 
-	if generator == nil {
-		return utils.SecureToken()
-	}
-
 	for range 3 {
 		rid = generator()
 		if isValidRequestID(rid) {
