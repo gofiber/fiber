@@ -3,8 +3,9 @@ package encryptcookie
 import (
 	"errors"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 // New creates a new middleware handler
@@ -27,7 +28,7 @@ func New(config ...Config) fiber.Handler {
 				if err != nil {
 					c.Request().Header.DelCookieBytes(key)
 				} else {
-					c.Request().Header.SetCookie(keyString, decryptedValue)
+					c.Request().Header.SetCookie(string(key), decryptedValue)
 				}
 			}
 		}
