@@ -2,7 +2,6 @@ package csrf
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -214,7 +213,7 @@ func isInsecureCookieExtractor(extractor extractors.Extractor, cookieName string
 		}
 
 		// Case-insensitive match - potentially confusing, warn but don't panic
-		if strings.EqualFold(extractor.Key, cookieName) && extractor.Key != cookieName {
+		if utils.EqualFold(extractor.Key, cookieName) && extractor.Key != cookieName {
 			log.Warnf("[CSRF WARNING] Extractor cookie name '%s' is similar to CSRF cookie '%s' - this may be confusing",
 				extractor.Key, cookieName)
 		}

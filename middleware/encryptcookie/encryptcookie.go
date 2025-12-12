@@ -3,8 +3,9 @@ package encryptcookie
 import (
 	"errors"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 // New creates a new middleware handler

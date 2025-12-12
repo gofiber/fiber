@@ -508,7 +508,8 @@ func isValidToken68(token string) bool {
 		return false
 	}
 	paddingStarted := false
-	for i, c := range []byte(token) {
+	for i := 0; i < len(token); i++ {
+		c := token[i]
 		switch {
 		case (c >= 'A' && c <= 'Z') ||
 			(c >= 'a' && c <= 'z') ||

@@ -434,7 +434,7 @@ func (app *App) startupMessage(listenData *ListenData, cfg *ListenConfig) {
 	if preData.BannerHeader != "" {
 		header := preData.BannerHeader
 		fmt.Fprint(out, header)
-		if !strings.HasSuffix(header, "\n") {
+		if header == "" || header[len(header)-1] != '\n' {
 			fmt.Fprintln(out)
 		}
 	} else {

@@ -11,9 +11,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/valyala/fasthttp"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/addon/retry"
-	"github.com/valyala/fasthttp"
 )
 
 const boundary = "FiberFormBoundary"
@@ -33,8 +34,7 @@ type RetryConfig = retry.Config
 // addMissingPort appends the appropriate port number to the given address if it doesn't have one.
 // If isTLS is true, it uses port 443; otherwise, it uses port 80.
 func addMissingPort(addr string, isTLS bool) string { //revive:disable-line:flag-parameter
-	n := strings.Index(addr, ":")
-	if n >= 0 {
+	if strings.IndexByte(addr, ':') != -1 {
 		return addr
 	}
 	port := 80

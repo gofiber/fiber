@@ -19,7 +19,11 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-var ErrInvalidPath = errors.New("invalid path")
+var (
+	ErrInvalidPath  = errors.New("invalid path")
+	rootPathBytes   = []byte("/")
+	invalidPathResp = []byte("/__fiber_invalid__")
+)
 
 // sanitizePath validates and cleans the requested path.
 // It returns an error if the path attempts to traverse directories.
@@ -54,7 +58,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	}
 
 	// reject any null bytes
-	if strings.IndexByte(s, 0) >= 0 {
+	if strings.IndexByte(s, '\x00') >= 0 {
 		return nil, ErrInvalidPath
 	}
 
@@ -63,7 +67,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	if filesystem != nil {
 		s = utils.TrimLeft(s, '/')
 		if s == "" {
-			return []byte("/"), nil
+			return rootPathBytes, nil
 		}
 		if !fs.ValidPath(s) {
 			return nil, ErrInvalidPath
@@ -116,9 +120,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 			}
 
 			// Is prefix a partial wildcard?
-			if idx := strings.Index(prefix, "*"); idx != -1 {
+			if before, _, found := strings.Cut(prefix, "*"); found {
 				// /john* -> /john
-				prefix = prefix[:idx]
+				prefix = before
 			}
 
 			prefixLen := len(prefix)
@@ -157,7 +161,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 					// If the root is a file, we need to reset the path to "/" always.
 					switch {
 					case checkFile && fileServer.FS == nil:
-						path = []byte("/")
+						path = rootPathBytes
 					case checkFile && fileServer.FS != nil:
 						path = utils.UnsafeBytes(root)
 					default:
@@ -169,13 +173,16 @@ func New(root string, cfg ...Config) fiber.Handler {
 				}
 
 				if len(path) > 0 && path[0] != '/' {
-					path = append([]byte("/"), path...)
+					newPath := make([]byte, len(path)+1)
+					newPath[0] = '/'
+					copy(newPath[1:], path)
+					path = newPath
 				}
 
 				sanitized, err := sanitizePath(path, fileServer.FS)
 				if err != nil {
 					// return a guaranteed-missing path so fs responds with 404
-					return []byte("/__fiber_invalid__")
+					return invalidPathResp
 				}
 				return sanitized
 			}

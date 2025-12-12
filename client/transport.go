@@ -14,6 +14,8 @@ import (
 // defaultRedirectLimit mirrors fasthttp's default when callers supply a negative redirect cap.
 const defaultRedirectLimit = 16
 
+var httpScheme = []byte("http")
+
 // httpClientTransport unifies the operations exposed by the Fiber client across
 // the fasthttp.Client, fasthttp.HostClient, and fasthttp.LBClient adapters so
 // helper logic can treat the concrete transports uniformly.
@@ -318,7 +320,7 @@ func composeRedirectURL(base string, location []byte, disablePathNormalizing boo
 	uri.UpdateBytes(location)
 	uri.DisablePathNormalizing = disablePathNormalizing
 
-	if scheme := uri.Scheme(); len(scheme) > 0 && !bytes.EqualFold(scheme, []byte("http")) && !bytes.EqualFold(scheme, []byte("https")) {
+	if scheme := uri.Scheme(); len(scheme) > 0 && !bytes.EqualFold(scheme, httpScheme) && !bytes.EqualFold(scheme, httpsScheme) {
 		return "", fasthttp.ErrorInvalidURI
 	}
 

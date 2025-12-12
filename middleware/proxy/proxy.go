@@ -13,6 +13,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+var schemeSeparator = []byte("://")
+
 // Balancer creates a load balancer among multiple upstream servers
 func Balancer(config ...Config) fiber.Handler {
 	// Set default config
@@ -202,18 +204,18 @@ func doAction(
 }
 
 func getScheme(uri []byte) []byte {
-	i := bytes.IndexByte(uri, '/')
-	if i < 1 || uri[i-1] != ':' || i == len(uri)-1 || uri[i+1] != '/' {
+	before, _, found := bytes.Cut(uri, schemeSeparator)
+	if !found {
 		return nil
 	}
-	return uri[:i-1]
+	return before
 }
 
 // DomainForward performs an http request based on the given domain and populates the given http response.
 // This method will return a fiber.Handler
 func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		host := string(c.Request().Host())
+		host := utils.UnsafeString(c.Request().Host())
 		if host == hostname {
 			return Do(c, addr+c.OriginalURL(), clients...)
 		}

@@ -243,7 +243,7 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
-		cacheControl := string(c.Response().Header.Peek(fiber.HeaderCacheControl))
+		cacheControl := utils.UnsafeString(c.Response().Header.Peek(fiber.HeaderCacheControl))
 
 		// Respect server cache-control: no-store
 		if strings.Contains(utils.ToLower(cacheControl), noStore) {
@@ -324,7 +324,7 @@ func New(config ...Config) fiber.Handler {
 
 		// default cache expiration
 		expiration := cfg.Expiration
-		if v, ok := parseMaxAge(string(c.Response().Header.Peek(fiber.HeaderCacheControl))); ok {
+		if v, ok := parseMaxAge(utils.UnsafeString(c.Response().Header.Peek(fiber.HeaderCacheControl))); ok {
 			expiration = v
 		}
 		// Calculate expiration by response header or other setting

@@ -337,7 +337,7 @@ func FilterFlags(content string) string {
 
 func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key string, value K, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
 	var err error
-	if supportBracketNotation && strings.Contains(key, "[") {
+	if supportBracketNotation && strings.IndexByte(key, '[') >= 0 {
 		key, err = parseParamSquareBrackets(key)
 		if err != nil {
 			return err
@@ -377,7 +377,7 @@ func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key
 }
 
 func assignBindData(aliasTag string, out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
-	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key, aliasTag) {
+	if enableSplitting && strings.IndexByte(value, ',') >= 0 && equalFieldType(out, reflect.Slice, key, aliasTag) {
 		for v := range strings.SplitSeq(value, ",") {
 			data[key] = append(data[key], v)
 		}

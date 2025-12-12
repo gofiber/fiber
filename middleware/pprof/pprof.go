@@ -71,7 +71,7 @@ func New(config ...Config) fiber.Handler {
 			pprofThreadcreate(c.RequestCtx())
 		default:
 			// pprof index only works with trailing slash
-			if strings.HasSuffix(path, "/") {
+			if path != "" && path[len(path)-1] == '/' {
 				path = utils.TrimRight(path, '/')
 			} else {
 				path = prefix + "/"
