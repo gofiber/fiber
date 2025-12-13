@@ -27,6 +27,8 @@ type httpClientTransport interface {
 	SetTLSConfig(config *tls.Config)
 	SetDial(dial fasthttp.DialFunc)
 	Client() any
+	StreamResponseBody() bool
+	SetStreamResponseBody(enable bool)
 }
 
 // standardClientTransport adapts fasthttp.Client to the httpClientTransport
@@ -75,6 +77,14 @@ func (s *standardClientTransport) Client() any {
 	return s.client
 }
 
+func (s *standardClientTransport) StreamResponseBody() bool {
+	return s.client.StreamResponseBody
+}
+
+func (s *standardClientTransport) SetStreamResponseBody(enable bool) {
+	s.client.StreamResponseBody = enable
+}
+
 // hostClientTransport adapts fasthttp.HostClient to the httpClientTransport
 // interface used by Fiber's client helpers.
 type hostClientTransport struct {
@@ -119,6 +129,14 @@ func (h *hostClientTransport) SetDial(dial fasthttp.DialFunc) {
 
 func (h *hostClientTransport) Client() any {
 	return h.client
+}
+
+func (h *hostClientTransport) StreamResponseBody() bool {
+	return h.client.StreamResponseBody
+}
+
+func (h *hostClientTransport) SetStreamResponseBody(enable bool) {
+	h.client.StreamResponseBody = enable
 }
 
 // lbClientTransport adapts fasthttp.LBClient to the httpClientTransport
@@ -177,6 +195,29 @@ func (l *lbClientTransport) SetDial(dial fasthttp.DialFunc) {
 
 func (l *lbClientTransport) Client() any {
 	return l.client
+}
+
+func (l *lbClientTransport) StreamResponseBody() bool {
+	if len(l.client.Clients) == 0 {
+		return false
+	}
+	// Return the StreamResponseBody setting from the first HostClient
+	var streamEnabled bool
+	for _, c := range l.client.Clients {
+		if walkBalancingClientWithBreak(c, func(hc *fasthttp.HostClient) bool {
+			streamEnabled = hc.StreamResponseBody
+			return true
+		}) {
+			break
+		}
+	}
+	return streamEnabled
+}
+
+func (l *lbClientTransport) SetStreamResponseBody(enable bool) {
+	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
+		hc.StreamResponseBody = enable
+	})
 }
 
 // forEachHostClient applies fn to every host client reachable from the provided
