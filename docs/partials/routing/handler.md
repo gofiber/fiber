@@ -114,7 +114,7 @@ app.Post("/api/register", func(c fiber.Ctx) error {
 })
 ```
 
-# Use
+## Use
 
 Can be used for middleware packages and prefix catchers. Prefixes now require either an exact match or a slash boundary, so `/john` matches `/john` and `/john/doe` but not `/johnnnnn`. Parameter tokens like `:name`, `:name?`, `*`, and `+` are still expanded before the boundary check runs.
 

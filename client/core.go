@@ -33,8 +33,8 @@ type RetryConfig = retry.Config
 // addMissingPort appends the appropriate port number to the given address if it doesn't have one.
 // If isTLS is true, it uses port 443; otherwise, it uses port 80.
 func addMissingPort(addr string, isTLS bool) string { //revive:disable-line:flag-parameter
-	n := strings.Index(addr, ":")
-	if n >= 0 {
+	found := strings.Contains(addr, ":")
+	if found {
 		return addr
 	}
 	port := 80

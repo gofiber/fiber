@@ -1,12 +1,8 @@
 package binder
 
-import (
-	"github.com/gofiber/utils/v2"
-)
-
 // CBORBinding is the CBOR binder for CBOR request body.
 type CBORBinding struct {
-	CBORDecoder utils.CBORUnmarshal
+	CBORDecoder func([]byte, any) error
 }
 
 // Name returns the binding name.

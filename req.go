@@ -321,9 +321,9 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
-			commaPos := strings.Index(host, ",")
-			if commaPos != -1 {
-				return host[:commaPos]
+			before, _, ok := strings.Cut(host, ",")
+			if ok {
+				return before
 			}
 			return host
 		}
@@ -645,9 +645,9 @@ func (r *DefaultReq) Scheme() string {
 			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
 				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
 				v := app.toString(val)
-				commaPos := strings.Index(v, ",")
-				if commaPos != -1 {
-					scheme = v[:commaPos]
+				before, _, ok := strings.Cut(v, ",")
+				if ok {
+					scheme = before
 				} else {
 					scheme = v
 				}
@@ -759,15 +759,15 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		return int64(parsed), nil
 	}
 
-	i := strings.IndexByte(rangeStr, '=')
-	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
+	before, after, ok := strings.Cut(rangeStr, "=")
+	if !ok || strings.Contains(after, "=") {
 		return rangeData, ErrRangeMalformed
 	}
-	rangeData.Type = utils.ToLower(utils.TrimSpace(rangeStr[:i]))
+	rangeData.Type = utils.ToLower(utils.TrimSpace(before))
 	if rangeData.Type != "bytes" {
 		return rangeData, ErrRangeMalformed
 	}
-	ranges = utils.TrimSpace(rangeStr[i+1:])
+	ranges = utils.TrimSpace(after)
 
 	var (
 		singleRange string
