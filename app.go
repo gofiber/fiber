@@ -91,6 +91,9 @@ type App struct {
 	mountFields *mountFields
 	// state management
 	state *State
+	// upload root cache
+	uploadRoot    string
+	uploadRootErr error
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -100,7 +103,8 @@ type App struct {
 	// custom binders
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
-	treeStack []map[int][]*Route
+	treeStack      []map[int][]*Route
+	uploadRootOnce sync.Once
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex

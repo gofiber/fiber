@@ -546,42 +546,59 @@ func resolveUploadPath(app *App, path string) (normalizedPath, absolutePath stri
 }
 
 func getRootDir(app *App) (string, error) {
-	root := app.config.RootDir
-	if root == "" {
-		root = "."
+	if app == nil {
+		return "", fmt.Errorf("invalid upload root: %w", errors.New("app is nil"))
 	}
 
-	perms := app.config.RootPerms
-	if perms == 0 {
-		perms = 0o750
+	app.uploadRootOnce.Do(func() {
+		root := app.config.RootDir
+		if root == "" {
+			root = "."
+		}
+
+		perms := app.config.RootPerms
+		if perms == 0 {
+			perms = 0o750
+		}
+
+		absoluteRoot, err := filepath.Abs(root)
+		if err != nil {
+			app.uploadRootErr = fmt.Errorf("invalid upload root: %w", err)
+			return
+		}
+
+		if err = os.MkdirAll(absoluteRoot, perms); err != nil {
+			app.uploadRootErr = fmt.Errorf("invalid upload root: %w", err)
+			return
+		}
+
+		resolvedRoot, err := filepath.EvalSymlinks(absoluteRoot)
+		if err == nil {
+			absoluteRoot = resolvedRoot
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			app.uploadRootErr = fmt.Errorf("invalid upload root: %w", err)
+			return
+		}
+
+		info, err := os.Stat(absoluteRoot)
+		if err != nil {
+			app.uploadRootErr = fmt.Errorf("invalid upload root: %w", err)
+			return
+		}
+
+		if !info.IsDir() {
+			app.uploadRootErr = fmt.Errorf("invalid upload root: %s is not a directory", absoluteRoot)
+			return
+		}
+
+		app.uploadRoot = absoluteRoot
+	})
+
+	if app.uploadRootErr != nil {
+		return "", app.uploadRootErr
 	}
 
-	absoluteRoot, err := filepath.Abs(root)
-	if err != nil {
-		return "", fmt.Errorf("invalid upload root: %w", err)
-	}
-
-	if err = os.MkdirAll(absoluteRoot, perms); err != nil {
-		return "", fmt.Errorf("invalid upload root: %w", err)
-	}
-
-	resolvedRoot, err := filepath.EvalSymlinks(absoluteRoot)
-	if err == nil {
-		absoluteRoot = resolvedRoot
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("invalid upload root: %w", err)
-	}
-
-	info, err := os.Stat(absoluteRoot)
-	if err != nil {
-		return "", fmt.Errorf("invalid upload root: %w", err)
-	}
-
-	if !info.IsDir() {
-		return "", fmt.Errorf("invalid upload root: %s is not a directory", absoluteRoot)
-	}
-
-	return absoluteRoot, nil
+	return app.uploadRoot, nil
 }
 
 func sanitizeUploadPath(path string, uploadFS fs.FS) (string, error) {
