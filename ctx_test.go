@@ -3947,6 +3947,31 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+func Test_Ctx_SaveFile_IntermediateDirPerms(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("windows filesystem permissions differ from unix-style expectations")
+	}
+
+	uploadRoot := t.TempDir()
+	app := New(Config{RootDir: uploadRoot, RootPerms: 0o700})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "file.txt", []byte("data"))
+	relativePath := filepath.Join("nested", "deeper", "file.txt")
+
+	require.NoError(t, ctx.SaveFile(fileHeader, relativePath))
+
+	parentInfo, err := os.Stat(filepath.Join(uploadRoot, "nested"))
+	require.NoError(t, err)
+	require.Equal(t, fs.FileMode(0o755), parentInfo.Mode().Perm())
+}
+
 func Test_Ctx_SaveFile_PreventTraversal(t *testing.T) {
 	t.Parallel()
 

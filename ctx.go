@@ -465,7 +465,7 @@ func (c *DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) err
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(absolutePath), c.app.config.RootPerms); err != nil {
+	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil { //nolint:gosec // upload subdirectories need shared execute permissions for reads
 		return fmt.Errorf("failed to prepare upload path: %w", err)
 	}
 
