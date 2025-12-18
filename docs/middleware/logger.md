@@ -101,19 +101,19 @@ app.Use(logger.New(logger.Config{
 
 // Use predefined formats
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatCommon,
+    Format: logger.CommonFormat,
 }))
 
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatCombined,
+    Format: logger.CombinedFormat,
 }))
 
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatJSON,
+    Format: logger.JSONFormat,
 }))
 
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatECS,
+    Format: logger.ECSFormat,
 }))
 ```
 
