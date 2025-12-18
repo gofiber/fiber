@@ -207,20 +207,18 @@ func (r *Redirect) Message(key string) FlashMessage {
 	writeIdx := 0
 
 	for _, msg := range r.c.flashMessages {
-		if msg.isOldInput {
+		if msg.isOldInput || found || msg.key != key {
 			r.c.flashMessages[writeIdx] = msg
 			writeIdx++
-		} else if !found && msg.key == key {
-			flashMessage = FlashMessage{
-				Key:   msg.key,
-				Value: msg.value,
-				Level: msg.level,
-			}
-			found = true
-		} else {
-			r.c.flashMessages[writeIdx] = msg
-			writeIdx++
+			continue
 		}
+
+		flashMessage = FlashMessage{
+			Key:   msg.key,
+			Value: msg.value,
+			Level: msg.level,
+		}
+		found = true
 	}
 
 	for i := writeIdx; i < len(r.c.flashMessages); i++ {
