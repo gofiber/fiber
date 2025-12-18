@@ -881,9 +881,13 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 
 	var msgs []FlashMessage
 
+	msgTemplate := testredirectionMsgs
+
 	b.ReportAllocs()
 
 	for b.Loop() {
+		c.flashMessages = c.flashMessages[:0]
+		c.flashMessages = append(c.flashMessages, msgTemplate...)
 		msgs = c.Redirect().Messages()
 	}
 
@@ -951,9 +955,13 @@ func Benchmark_Redirect_Message(b *testing.B) {
 
 	var msg FlashMessage
 
+	msgTemplate := testredirectionMsgs
+
 	b.ReportAllocs()
 
 	for b.Loop() {
+		c.flashMessages = c.flashMessages[:0]
+		c.flashMessages = append(c.flashMessages, msgTemplate...)
 		msg = c.Redirect().Message("message")
 	}
 
