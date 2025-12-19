@@ -20,6 +20,15 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+func assertFlashCookieCleared(t *testing.T, setCookie string) {
+	t.Helper()
+
+	setCookie = strings.ToLower(setCookie)
+	require.Contains(t, setCookie, FlashCookieName+"=")
+	require.True(t, strings.Contains(setCookie, "max-age=0") || strings.Contains(setCookie, "max-age=-1"))
+	require.Contains(t, setCookie, "path=/")
+}
+
 // go test -run Test_Redirect_To
 func Test_Redirect_To(t *testing.T) {
 	t.Parallel()
@@ -437,20 +446,10 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 		Level: 0,
 	}, c.Redirect().Message("message"))
 
+	require.Equal(t, FlashMessage{}, c.Redirect().Message("success"))
 	require.Equal(t, FlashMessage{}, c.Redirect().Message("not_message"))
 
-	require.Equal(t, []FlashMessage{
-		{
-			Key:   "success",
-			Value: "1",
-			Level: 0,
-		},
-		{
-			Key:   "message",
-			Value: "test",
-			Level: 0,
-		},
-	}, c.Redirect().Messages())
+	require.Empty(t, c.Redirect().Messages())
 
 	require.Equal(t, OldInputData{
 		Key:   "id",
@@ -475,8 +474,7 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 		},
 	}, c.Redirect().OldInputs())
 
-	setCookie := string(c.Response().Header.Peek(HeaderSetCookie))
-	require.True(t, strings.HasPrefix(setCookie, FlashCookieName+"=; expires="))
+	assertFlashCookieCleared(t, string(c.Response().Header.Peek(HeaderSetCookie)))
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=test")
 
@@ -510,6 +508,47 @@ func Test_Redirect_parseAndClearFlashMessages_InvalidHex(t *testing.T) {
 
 	// Release redirect
 	ReleaseRedirect(r)
+}
+
+func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	defer app.ReleaseCtx(c)
+
+	val, err := testredirectionMsgs.MarshalMsg(nil)
+	require.NoError(t, err)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
+	c.Redirect().parseAndClearFlashMessages()
+
+	require.Equal(t, []FlashMessage{
+		{
+			Key:   "success",
+			Value: "1",
+			Level: 0,
+		},
+		{
+			Key:   "message",
+			Value: "test",
+			Level: 0,
+		},
+	}, c.Redirect().Messages())
+
+	require.Empty(t, c.Redirect().Messages())
+	require.Equal(t, FlashMessage{}, c.Redirect().Message("success"))
+
+	require.Equal(t, []OldInputData{
+		{
+			Key:   "name",
+			Value: "tom",
+		},
+		{
+			Key:   "id",
+			Value: "1",
+		},
+	}, c.Redirect().OldInputs())
 }
 
 func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
@@ -561,7 +600,7 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 
-	require.True(t, strings.HasPrefix(resp.Header.Get(HeaderSetCookie), FlashCookieName+"=; expires="))
+	assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
 
 	// Parse the JSON response and verify flash messages
 	body, err := io.ReadAll(resp.Body)
@@ -626,7 +665,7 @@ func Test_Redirect_FlashMessagesWithSpecialChars(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 
-	require.True(t, strings.HasPrefix(resp.Header.Get(HeaderSetCookie), FlashCookieName+"=; expires="))
+	assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
 
 	// Parse and verify the response
 	body, err := io.ReadAll(resp.Body)
@@ -842,9 +881,13 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 
 	var msgs []FlashMessage
 
+	msgTemplate := testredirectionMsgs
+
 	b.ReportAllocs()
 
 	for b.Loop() {
+		c.flashMessages = c.flashMessages[:0]
+		c.flashMessages = append(c.flashMessages, msgTemplate...)
 		msgs = c.Redirect().Messages()
 	}
 
@@ -912,9 +955,13 @@ func Benchmark_Redirect_Message(b *testing.B) {
 
 	var msg FlashMessage
 
+	msgTemplate := testredirectionMsgs
+
 	b.ReportAllocs()
 
 	for b.Loop() {
+		c.flashMessages = c.flashMessages[:0]
+		c.flashMessages = append(c.flashMessages, msgTemplate...)
 		msg = c.Redirect().Message("message")
 	}
 

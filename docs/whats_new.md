@@ -159,7 +159,7 @@ import (
 )
 
 type CustomCtx struct {
-    fiber.Ctx
+    fiber.DefaultCtx
 }
 
 func (c *CustomCtx) CustomMethod() string {
@@ -167,9 +167,9 @@ func (c *CustomCtx) CustomMethod() string {
 }
 
 func main() {
-    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.Ctx {
+    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
         return &CustomCtx{
-            Ctx: *fiber.NewCtx(app),
+            DefaultCtx: *fiber.NewDefaultCtx(app),
         }
     })
 
