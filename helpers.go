@@ -208,7 +208,7 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
 	if spec == "*" {
 		return true
 	}
-	if found := strings.Contains(spec, "*"); found {
+	if strings.IndexByte(spec, '*') != -1 {
 		return false
 	}
 	if utils.EqualFold(spec, offer) {
