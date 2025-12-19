@@ -6,8 +6,8 @@ github.com/fxamacker/cbor/v2 v2.9.0 h1:NpKPmjDBgUfBms6tr6JZkTHtfFGcMKsw3eGcmD/sa
 github.com/fxamacker/cbor/v2 v2.9.0/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/gofiber/schema v1.6.0 h1:rAgVDFwhndtC+hgV7Vu5ItQCn7eC2mBA4Eu1/ZTiEYY=
 github.com/gofiber/schema v1.6.0/go.mod h1:WNZWpQx8LlPSK7ZaX0OqOh+nQo/eW2OevsXs1VZfs/s=
-github.com/gofiber/utils/v2 v2.0.0-rc.4.0.20251212130842-e22b2a56bb49 h1:tKPuj0DeYa3kIC/FrWvNsGAZqapDJZqsxUuz9ghI7FY=
-github.com/gofiber/utils/v2 v2.0.0-rc.4.0.20251212130842-e22b2a56bb49/go.mod h1:8PuWXERC3IoTmoD2Fp/X7amJntq928Fa2yTHI5Orj2M=
+github.com/gofiber/utils/v2 v2.0.0-rc.5 h1:zosaA+j2jm9yhjuxGkFGWxILH8iL0iCoVYT6U/Qgej8=
+github.com/gofiber/utils/v2 v2.0.0-rc.5/go.mod h1:8PuWXERC3IoTmoD2Fp/X7amJntq928Fa2yTHI5Orj2M=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/klauspost/compress v1.18.2 h1:iiPHWW0YrcFgpBYhsA6D1+fqHssJscY/Tm/y2Uqnapk=
