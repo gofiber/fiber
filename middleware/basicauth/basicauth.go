@@ -91,14 +91,14 @@ func New(config ...Config) fiber.Handler {
 
 		// Check if the credentials are in the correct form
 		// which is "username:password".
-		index := strings.Index(creds, ":")
-		if index == -1 {
+		before, after, ok := strings.Cut(creds, ":")
+		if !ok {
 			return cfg.BadRequest(c)
 		}
 
 		// Get the username and password
-		username := creds[:index]
-		password := creds[index+1:]
+		username := before
+		password := after
 
 		if containsCTL(username) || containsCTL(password) {
 			return cfg.BadRequest(c)
