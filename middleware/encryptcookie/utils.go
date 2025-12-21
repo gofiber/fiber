@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 )
 
@@ -50,17 +49,12 @@ func EncryptCookie(name, value, key string) (string, error) {
 		return "", fmt.Errorf("failed to create AES cipher: %w", err)
 	}
 
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := cipher.NewGCMWithRandomNonce(block)
 	if err != nil {
 		return "", fmt.Errorf("failed to create GCM mode: %w", err)
 	}
 
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("failed to read nonce: %w", err)
-	}
-
-	ciphertext := gcm.Seal(nonce, nonce, []byte(value), []byte(name))
+	ciphertext := gcm.Seal(nil, nil, []byte(value), []byte(name))
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
@@ -81,19 +75,16 @@ func DecryptCookie(name, value, key string) (string, error) {
 		return "", fmt.Errorf("failed to create AES cipher: %w", err)
 	}
 
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := cipher.NewGCMWithRandomNonce(block)
 	if err != nil {
 		return "", fmt.Errorf("failed to create GCM mode: %w", err)
 	}
 
-	nonceSize := gcm.NonceSize()
-
-	if len(enc) < nonceSize {
+	if len(enc) < gcm.NonceSize()+gcm.Overhead() {
 		return "", ErrInvalidEncryptedValue
 	}
 
-	nonce, ciphertext := enc[:nonceSize], enc[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, []byte(name))
+	plaintext, err := gcm.Open(nil, nil, enc, []byte(name))
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt ciphertext: %w", err)
 	}
