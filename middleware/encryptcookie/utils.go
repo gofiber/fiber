@@ -80,7 +80,7 @@ func DecryptCookie(name, value, key string) (string, error) {
 		return "", fmt.Errorf("failed to create GCM mode: %w", err)
 	}
 
-	if len(enc) < gcm.Overhead() {
+	if len(enc) < gcm.NonceSize()+gcm.Overhead() {
 		return "", ErrInvalidEncryptedValue
 	}
 
