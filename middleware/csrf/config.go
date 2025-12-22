@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
+	"github.com/google/uuid"
 )
 
 // Config defines the config for CSRF middleware.
@@ -32,7 +33,7 @@ type Config struct {
 
 	// KeyGenerator creates a new CSRF token.
 	//
-	// Optional. Default: utils.UUIDv4
+	// Optional. Default: uuid.NewStringv4
 	KeyGenerator func() string
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
@@ -132,7 +133,7 @@ var ConfigDefault = Config{
 	CookieName:            "csrf_",
 	CookieSameSite:        "Lax",
 	IdleTimeout:           30 * time.Minute,
-	KeyGenerator:          utils.UUIDv4,
+	KeyGenerator:          uuid.NewString,
 	ErrorHandler:          defaultErrorHandler,
 	Extractor:             extractors.FromHeader(HeaderName),
 	DisableValueRedaction: false,

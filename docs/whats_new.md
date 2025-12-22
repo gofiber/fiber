@@ -2595,8 +2595,8 @@ Fiber v3 removes the in-repo `utils` package in favor of the external [`github.c
 | `TrimLeftBytes` | `utils.TrimLeft` |
 | `TrimBytes` | `utils.Trim` |
 | `EqualFoldBytes` | `utils.EqualFold` |
-| `UUID` | `utils.UUID` |
-| `UUIDv4` | `utils.UUIDv4` |
+| `UUID` | `uuid.NewString` |
+| `UUIDv4` | `uuid.NewString` |
 | `FunctionName` | `utils.FunctionName` |
 | `GetArgument` | `utils.GetArgument` |
 | `IncrementIPRange` | `utils.IncrementIPRange` |
@@ -2631,7 +2631,7 @@ import oldutils "github.com/gofiber/fiber/v2/utils"
 
 func demo() {
     b := oldutils.TrimBytes([]byte(" fiber "))
-    id := oldutils.UUIDv4()
+    id := olduuid.NewString()
     s := oldutils.GetString([]byte("foo"))
 }
 
@@ -2643,7 +2643,7 @@ import (
 
 func demo() {
     s := utils.TrimSpace(" fiber ")
-    id := utils.UUIDv4()
+    id := uuid.NewString()
     str := utils.ToString([]byte("foo"))
     t := strings.TrimRight("bar  ", " ")
 }

@@ -61,18 +61,18 @@ func handler(c fiber.Ctx) error {
 |:----------|:---------------------|:-----------------------------------------|:---------------|
 | Next      | `func(fiber.Ctx) bool` | Skip when the function returns `true`.    | `nil`          |
 | Header    | `string`             | Header key used to store the request ID. | "X-Request-ID" |
-| Generator | `func() string`      | Function that generates the identifier.  | utils.UUID     |
+| Generator | `func() string`      | Function that generates the identifier.  | uuid.NewString     |
 
 ## Default Config
 
 The default config uses a fast UUID generator which will expose the number of
 requests made to the server. To conceal this value for better privacy, use the
-`utils.UUIDv4` generator.
+`uuid.NewString` generator.
 
 ```go
 var ConfigDefault = Config{
     Next:       nil,
     Header:     fiber.HeaderXRequestID,
-    Generator:  utils.UUID,
+    Generator:  uuid.NewString,
 }
 ```

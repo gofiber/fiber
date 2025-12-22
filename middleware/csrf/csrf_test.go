@@ -13,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -663,7 +664,7 @@ func Test_CSRF_From_Query(t *testing.T) {
 
 	// Invalid CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.SetRequestURI("/?_csrf=" + utils.UUIDv4())
+	ctx.Request.SetRequestURI("/?_csrf=" + uuid.NewString())
 	h(ctx)
 	require.Equal(t, 403, ctx.Response.StatusCode())
 
@@ -701,7 +702,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 
 	// Invalid CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.SetRequestURI("/" + utils.UUIDv4())
+	ctx.Request.SetRequestURI("/" + uuid.NewString())
 	h(ctx)
 	require.Equal(t, 403, ctx.Response.StatusCode())
 
@@ -709,7 +710,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
-	ctx.Request.SetRequestURI("/" + utils.UUIDv4())
+	ctx.Request.SetRequestURI("/" + uuid.NewString())
 	h(ctx)
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
@@ -2348,7 +2349,7 @@ func Test_CSRF_Param_Extractor(t *testing.T) {
 
 			// Generate CSRF token
 			ctx.Request.Header.SetMethod(fiber.MethodGet)
-			ctx.Request.SetRequestURI("/" + utils.UUIDv4())
+			ctx.Request.SetRequestURI("/" + uuid.NewString())
 			h(ctx)
 			token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 			token = strings.Split(strings.Split(token, ";")[0], "=")[1]

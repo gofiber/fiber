@@ -2,7 +2,7 @@ package requestid
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
+	"github.com/google/uuid"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -27,7 +27,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		rid := sanitizeRequestID(c.Get(cfg.Header), cfg.Generator)
 		if rid == "" {
-			rid = utils.UUID()
+			rid = uuid.NewString()
 		}
 
 		// Set new id to response header
@@ -52,7 +52,7 @@ func sanitizeRequestID(rid string, generator func() string) string {
 
 	generatorFn := generator
 	if generatorFn == nil {
-		generatorFn = utils.UUID
+		generatorFn = uuid.NewString
 	}
 
 	for range 3 {
@@ -64,7 +64,7 @@ func sanitizeRequestID(rid string, generator func() string) string {
 
 	if generator != nil {
 		for range 3 {
-			rid = utils.UUID()
+			rid = uuid.NewString()
 			if isValidRequestID(rid) {
 				return rid
 			}
