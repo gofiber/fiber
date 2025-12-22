@@ -317,11 +317,11 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 		return paramsMatch(specParams, offerParams)
 	}
 
-	specBefore, specAfter, specFound := strings.Cut(spec, "/")
-	mimeBefore, mimeAfter, mimeFound := strings.Cut(mimetype, "/")
+	s := strings.IndexByte(mimetype, '/')
+	specSlash := strings.IndexByte(spec, '/')
 	// Accept: <MIME_type>/*
-	if mimeFound && specFound {
-		if utils.EqualFold(specBefore, mimeBefore) && (specAfter == "*" || mimeAfter == "*") {
+	if s != -1 && specSlash != -1 {
+		if utils.EqualFold(spec[:specSlash], mimetype[:s]) && (spec[specSlash:] == "/*" || mimetype[s:] == "/*") {
 			return paramsMatch(specParams, offerParams)
 		}
 	}
