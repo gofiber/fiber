@@ -18,9 +18,6 @@ var cookieJarPool = sync.Pool{
 	},
 }
 
-// Pre-allocated byte slice for https scheme comparison
-var httpsScheme = []byte("https")
-
 // AcquireCookieJar returns an empty CookieJar object from the pool.
 func AcquireCookieJar() *CookieJar {
 	jar, ok := cookieJarPool.Get().(*CookieJar)

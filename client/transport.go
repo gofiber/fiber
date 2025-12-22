@@ -14,7 +14,11 @@ import (
 // defaultRedirectLimit mirrors fasthttp's default when callers supply a negative redirect cap.
 const defaultRedirectLimit = 16
 
-var httpScheme = []byte("http")
+var (
+	// Pre-allocated byte slice for http/https scheme comparison
+	httpScheme  = []byte("http")
+	httpsScheme = []byte("https")
+)
 
 // httpClientTransport unifies the operations exposed by the Fiber client across
 // the fasthttp.Client, fasthttp.HostClient, and fasthttp.LBClient adapters so
