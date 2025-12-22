@@ -409,7 +409,7 @@ func (s *Session) setSession() {
 	for _, ext := range relevantExtractors {
 		switch ext.Source {
 		case extractors.SourceHeader:
-			s.ctx.Response().Header.SetBytesV(ext.Key, []byte(s.id))
+			s.ctx.Response().Header.SetBytesV(ext.Key, utils.UnsafeBytes(s.id))
 		case extractors.SourceCookie:
 			fcookie := fasthttp.AcquireCookie()
 

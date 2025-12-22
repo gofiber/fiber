@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -112,7 +113,7 @@ func configDefault(config ...Config) Config {
 	switch {
 	case cfg.Charset == "":
 		cfg.Charset = ConfigDefault.Charset
-	case strings.EqualFold(cfg.Charset, "UTF-8"):
+	case utils.EqualFold(cfg.Charset, "UTF-8"):
 		cfg.Charset = "UTF-8"
 	default:
 		panic("basicauth: charset must be UTF-8")

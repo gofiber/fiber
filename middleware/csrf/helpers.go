@@ -18,7 +18,7 @@ func compareTokens(a, b []byte) bool {
 }
 
 func compareStrings(a, b string) bool {
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+	return subtle.ConstantTimeCompare(utils.UnsafeBytes(a), utils.UnsafeBytes(b)) == 1
 }
 
 func schemeAndHostMatch(schemeA, hostA, schemeB, hostB string) bool {
@@ -58,7 +58,7 @@ func normalizeSchemeHost(scheme, host string) string {
 		return host
 	}
 
-	if strings.Contains(hostname, ":") && !strings.HasPrefix(hostname, "[") {
+	if strings.IndexByte(hostname, ':') >= 0 && !strings.HasPrefix(hostname, "[") {
 		hostname = "[" + hostname + "]"
 	}
 
@@ -83,7 +83,7 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 	// Don't allow a wildcard with a protocol
 	// wildcards cannot be used within any other value. For example, the following header is not valid:
 	// Access-Control-Allow-Origin: https://*
-	if strings.Contains(parsedOrigin.Host, "*") {
+	if strings.IndexByte(parsedOrigin.Host, '*') >= 0 {
 		return false, ""
 	}
 
@@ -127,7 +127,7 @@ func (s subdomain) match(o string) bool {
 	// Extract the subdomain part (without the trailing dot) and ensure it
 	// doesn't contain empty labels.
 	sub := o[len(s.prefix) : suffixStartIndex-1]
-	if sub == "" || strings.HasPrefix(sub, ".") || strings.Contains(sub, "..") {
+	if sub == "" || sub[0] == '.' || strings.Contains(sub, "..") {
 		return false
 	}
 

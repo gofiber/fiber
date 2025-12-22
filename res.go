@@ -616,7 +616,7 @@ func (r *DefaultRes) getLocationFromRoute(route *Route, params Map) (string, err
 
 		for key, val := range params {
 			isSame := key == segment.ParamName || (!app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) != -1
+			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) >= 0
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
