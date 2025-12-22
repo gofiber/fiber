@@ -7,13 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+
+	"github.com/gofiber/fiber/v3"
 
 	"github.com/valyala/fasthttp"
 )
-
-var schemeSeparator = []byte("://")
 
 // Balancer creates a load balancer among multiple upstream servers
 func Balancer(config ...Config) fiber.Handler {
