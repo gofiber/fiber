@@ -91,7 +91,7 @@ func (s subdomain) match(o string) bool {
 	// Extract the subdomain part (without the trailing dot) and ensure it
 	// doesn't contain empty labels.
 	sub := o[len(s.prefix) : suffixStartIndex-1]
-	if sub == "" || sub[0] == '.' || strings.Contains(sub, "..") {
+	if sub == "" || strings.HasPrefix(sub, ".") || strings.Contains(sub, "..") {
 		return false
 	}
 

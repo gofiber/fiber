@@ -1019,7 +1019,7 @@ func (r *DefaultRes) Type(extension string, charset ...string) Ctx {
 // shouldIncludeCharset determines if a MIME type should include UTF-8 charset by default
 func shouldIncludeCharset(mimeType string) bool {
 	// Everything under text/ gets UTF-8 by default.
-	if len(mimeType) >= 5 && mimeType[:5] == "text/" {
+	if strings.HasPrefix(mimeType, "text/") {
 		return true
 	}
 
@@ -1032,7 +1032,7 @@ func shouldIncludeCharset(mimeType string) bool {
 	}
 
 	// Any application/*+json or application/*+xml.
-	if len(mimeType) >= 5 && (mimeType[len(mimeType)-5:] == "+json" || mimeType[len(mimeType)-4:] == "+xml") {
+	if strings.HasSuffix(mimeType, "+json") || strings.HasSuffix(mimeType, "+xml") {
 		return true
 	}
 

@@ -504,8 +504,8 @@ func (r *DefaultReq) Is(extension string) bool {
 	}
 
 	ct := r.c.app.toString(r.c.fasthttp.Request.Header.ContentType())
-	if before, _, found := strings.Cut(ct, ";"); found {
-		ct = before
+	if i := strings.IndexByte(ct, ';'); i != -1 {
+		ct = ct[:i]
 	}
 	ct = utils.TrimSpace(ct)
 	return utils.EqualFold(ct, extensionHeader)
@@ -783,22 +783,24 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	)
 	for moreRanges != "" {
 		singleRange = moreRanges
-		if before, after, found := strings.Cut(moreRanges, ","); found {
-			singleRange = before
-			moreRanges = utils.TrimSpace(after)
+		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
+			singleRange = moreRanges[:i]
+			moreRanges = utils.TrimSpace(moreRanges[i+1:])
 		} else {
 			moreRanges = ""
 		}
 
 		singleRange = utils.TrimSpace(singleRange)
 
-		var startStr, endStr string
-		before, after, found := strings.Cut(singleRange, "-")
-		if !found {
+		var (
+			startStr, endStr string
+			i                int
+		)
+		if i = strings.IndexByte(singleRange, '-'); i == -1 {
 			return rangeData, ErrRangeMalformed
 		}
-		startStr = utils.TrimSpace(before)
-		endStr = utils.TrimSpace(after)
+		startStr = utils.TrimSpace(singleRange[:i])
+		endStr = utils.TrimSpace(singleRange[i+1:])
 
 		start, startErr := parseBound(startStr)
 		end, endErr := parseBound(endStr)
@@ -853,7 +855,7 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 	// Normalize host according to RFC 3986
 	host := r.Hostname()
 	// Trim the trailing dot of a fully-qualified domain
-	if host != "" && host[len(host)-1] == '.' {
+	if strings.HasSuffix(host, ".") {
 		host = utils.TrimRight(host, '.')
 	}
 	host = utils.ToLower(host)
@@ -867,7 +869,7 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 
 	// Return nothing for IP addresses
 	ip := host
-	if len(ip) >= 2 && ip[0] == '[' && ip[len(ip)-1] == ']' {
+	if strings.HasPrefix(ip, "[") && strings.HasSuffix(ip, "]") {
 		ip = ip[1 : len(ip)-1]
 	}
 	if utils.IsIPv4(ip) || utils.IsIPv6(ip) {

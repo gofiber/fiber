@@ -21,10 +21,11 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"golang.org/x/crypto/acme/autocert"
+
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // Figlet text to show Fiber ASCII art on startup message
@@ -434,7 +435,7 @@ func (app *App) startupMessage(listenData *ListenData, cfg *ListenConfig) {
 	if preData.BannerHeader != "" {
 		header := preData.BannerHeader
 		fmt.Fprint(out, header)
-		if header == "" || header[len(header)-1] != '\n' {
+		if !strings.HasSuffix(header, "\n") {
 			fmt.Fprintln(out)
 		}
 	} else {

@@ -4,9 +4,10 @@ import (
 	"net/http/pprof"
 	"strings"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 // New creates a new middleware handler
@@ -71,7 +72,7 @@ func New(config ...Config) fiber.Handler {
 			pprofThreadcreate(c.RequestCtx())
 		default:
 			// pprof index only works with trailing slash
-			if path != "" && path[len(path)-1] == '/' {
+			if strings.HasSuffix(path, "/") {
 				path = utils.TrimRight(path, '/')
 			} else {
 				path = prefix + "/"

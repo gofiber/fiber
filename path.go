@@ -560,13 +560,17 @@ func findParamLen(s string, segment *routeSegment) int {
 		}
 	}
 
-	if before, _, found := strings.Cut(s, segment.ComparePart); found {
+	if len(segment.ComparePart) == 1 {
+		if constPosition := strings.IndexByte(s, segment.ComparePart[0]); constPosition != -1 {
+			return constPosition
+		}
+	} else if constPosition := strings.Index(s, segment.ComparePart); constPosition != -1 {
 		// if the compare part was found, but contains a slash although this part is not greedy, then it must not match
 		// example: /api/:param/fixedEnd -> path: /api/123/456/fixedEnd = no match , /api/123/fixedEnd = match
-		if !segment.IsGreedy && strings.IndexByte(before, '/') >= 0 {
+		if !segment.IsGreedy && strings.IndexByte(s[:constPosition], slashDelimiter) != -1 {
 			return 0
 		}
-		return len(before)
+		return constPosition
 	}
 
 	return len(s)
@@ -575,8 +579,8 @@ func findParamLen(s string, segment *routeSegment) int {
 // findParamLenForLastSegment get the length of the parameter if it is the last segment
 func findParamLenForLastSegment(s string, seg *routeSegment) int {
 	if !seg.IsGreedy {
-		if i, _, ok := strings.Cut(s, "/"); ok {
-			return len(i)
+		if i := strings.IndexByte(s, slashDelimiter); i != -1 {
+			return i
 		}
 	}
 
