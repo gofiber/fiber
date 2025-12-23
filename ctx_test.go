@@ -7483,6 +7483,9 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 	t.Parallel()
 
 	t.Run("route_params", func(t *testing.T) {
+		// a basic request to check if updateparams functions correctly on different scenarios
+		// - Does it change an existing param ( it should )
+		// - Does it set a non-existing param ( it shouldn't )
 		t.Parallel()
 		app := New()
 		app.Get("/user/:name/:id", func(c Ctx) error {
@@ -7511,7 +7514,7 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		require.Contains(t, body, `"id":"123"`)
 	})
 
-	// Nil router test
+	// Nil router test, it should not change values if router is nil
 	t.Run("nil_router", func(t *testing.T) {
 		t.Parallel()
 		app := New()
@@ -8018,6 +8021,5 @@ func Benchmark_Ctx_UpdateParam(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		c.UpdateParam("name", "changed")
-		c.values[0] = "original"
 	}
 }
