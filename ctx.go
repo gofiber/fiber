@@ -391,7 +391,13 @@ func (c *DefaultCtx) UpdateParam(name, value string) {
 		return
 	}
 	for i, param := range c.route.Params {
-		if param == name && i < maxParams {
+		var match bool
+		if c.app.config.CaseSensitive {
+			match = param == name
+		} else {
+			match = utils.EqualFold(utils.UnsafeBytes(param), utils.UnsafeBytes(name))
+		}
+		if match && i < maxParams {
 			c.values[i] = value
 			return
 		}
