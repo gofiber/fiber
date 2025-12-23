@@ -32,7 +32,7 @@ type Config struct {
 
 	// KeyGenerator generates the session key.
 	//
-	// Optional. Default: uuid.NewStringv4
+	// Optional. Default: uuid.NewString
 	KeyGenerator func() string
 
 	// CookieDomain defines the domain of the session cookie.

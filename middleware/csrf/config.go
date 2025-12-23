@@ -33,7 +33,7 @@ type Config struct {
 
 	// KeyGenerator creates a new CSRF token.
 	//
-	// Optional. Default: uuid.NewStringv4
+	// Optional. Default: uuid.NewString
 	KeyGenerator func() string
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
