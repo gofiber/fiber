@@ -32,7 +32,7 @@ type Config struct {
 
 	// KeyGenerator generates the session key.
 	//
-	// Optional. Default: utils.UUIDv4
+	// Optional. Default: utils.SecureToken
 	KeyGenerator func() string
 
 	// CookieDomain defines the domain of the session cookie.
@@ -92,7 +92,7 @@ type Config struct {
 // ConfigDefault provides the default configuration.
 var ConfigDefault = Config{
 	IdleTimeout:    30 * time.Minute,
-	KeyGenerator:   utils.UUIDv4,
+	KeyGenerator:   utils.SecureToken,
 	Extractor:      extractors.FromCookie("session_id"),
 	CookieSameSite: "Lax",
 }
