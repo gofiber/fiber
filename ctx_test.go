@@ -7491,6 +7491,12 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		app.Get("/user/:name/:id", func(c Ctx) error {
 			c.UpdateParam("name", "overridden")
 			c.UpdateParam("existing", "ignored")
+
+			require.Equal(t, "overridden", c.Params("name"))
+			require.Equal(t, "123", c.Params("id"))
+			require.Empty(t, c.Params("existing"))
+			require.Equal(t, []string{"name", "id"}, c.Route().Params)
+
 			return c.JSON(map[string]any{
 				"name": c.Params("name"),
 				"id":   c.Params("id"),
@@ -7504,14 +7510,6 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 		require.Equal(t, StatusOK, resp.StatusCode)
-
-		bodyBytes, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		body := string(bodyBytes)
-
-		require.Contains(t, body, `"name":"overridden"`)
-		require.NotContains(t, body, "existing")
-		require.Contains(t, body, `"id":"123"`)
 	})
 
 	// Nil router test, it should not change values if router is nil
