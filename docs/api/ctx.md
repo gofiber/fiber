@@ -501,6 +501,21 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
+### UpdateParam
+Updates the given parameter if already exists in the context
+```go title="Signature"
+func (c *DefaultCtx) UpdateParam(name, value string)
+```
+
+```go title="Example"
+app.Get("/user/:name", func(c fiber.Ctx) error {
+  // mutate parameter
+  c.UpdateParam("name", "overwritten name")
+
+  return c.SendString(c.Params("name"))
+})
+```
+
 ### IsWebSocket
 
 Returns `true` if the request includes a WebSocket upgrade handshake.
