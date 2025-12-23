@@ -510,7 +510,7 @@ func (c *DefaultCtx) UpdateParam(name, value string)
 ```go title="Example"
 app.Get("/user/:name", func(c fiber.Ctx) error {
   // mutate parameter
-  c.UpdateParam("name", "overwritten name")
+  c.UpdateParam("name", "new value")
 
   return c.SendString(c.Params("name"))
 })
