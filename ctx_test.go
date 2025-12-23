@@ -8006,12 +8006,16 @@ func Benchmark_Ctx_IsFromLocalhost(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_UpdateParam -benchmem -count=4
 func Benchmark_Ctx_UpdateParam(b *testing.B) {
-	app := New(Config{
-		CBOREncoder: cbor.Marshal,
-		CBORDecoder: cbor.Unmarshal,
-	})
+	app := New()
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c, ok := ctx.(*DefaultCtx)
+	if !ok {
+		b.Fatal("AcquireCtx did not return *DefaultCtx")
+	}
+
+	defer app.ReleaseCtx(c)
+
 	c.values = [maxParams]string{"original", "12345"}
 	c.route = &Route{Params: []string{"name", "id"}}
 
