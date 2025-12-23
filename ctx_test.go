@@ -7478,6 +7478,51 @@ func Test_Ctx_End_after_drop(t *testing.T) {
 	require.Nil(t, resp)
 }
 
+// go test -run Test_Ctx_UpdateParam
+func Test_Ctx_UpdateParam(t *testing.T) {
+	t.Parallel()
+
+	t.Run("route_params", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/user/:name/:id", func(c Ctx) error {
+			c.UpdateParam("name", "overridden")
+			c.UpdateParam("existing", "ignored")
+			return c.JSON(map[string]any{
+				"name": c.Params("name"),
+				"id":   c.Params("id"),
+				"all":  c.Route().Params,
+			})
+		})
+
+		req, err := http.NewRequest(http.MethodGet, "/user/original/123", http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+		require.Equal(t, StatusOK, resp.StatusCode)
+
+		bodyBytes, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		body := string(bodyBytes)
+
+		require.Contains(t, body, `"name":"overridden"`)
+		require.NotContains(t, body, "existing")
+		require.Contains(t, body, `"id":"123"`)
+	})
+
+	// Nil router test
+	t.Run("nil_router", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		c.UpdateParam("test", "value") // Should not change
+		require.Empty(t, c.Params("test"))
+	})
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_IsProxyTrusted -benchmem -count=4
 func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario without trusted proxy check
@@ -7956,4 +8001,27 @@ func Benchmark_Ctx_IsFromLocalhost(b *testing.B) {
 			app.ReleaseCtx(c)
 		})
 	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_UpdateParam -benchmem -count=4
+func Benchmark_Ctx_UpdateParam(b *testing.B) {
+	app := New(Config{
+		CBOREncoder: cbor.Marshal,
+		CBORDecoder: cbor.Unmarshal,
+	})
+
+	app.Get("/user/:name/:id", func(c Ctx) error {
+		c.UpdateParam("name", "overridden")
+		return nil
+	})
+
+	req, err := http.NewRequest(http.MethodGet, "/user/original/123", http.NoBody)
+	require.NoError(b, err)
+
+	b.ReportAllocs()
+	for b.Loop() {
+		resp, err := app.Test(req)
+		require.NoError(b, err)
+		require.NoError(b, resp.Body.Close())
+	}
 }
