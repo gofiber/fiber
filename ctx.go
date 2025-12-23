@@ -397,7 +397,7 @@ func (c *DefaultCtx) UpdateParam(name, value string) {
 		} else {
 			match = utils.EqualFold(utils.UnsafeBytes(param), utils.UnsafeBytes(name))
 		}
-		if match && i < maxParams {
+		if match {
 			c.values[i] = value
 			return
 		}
