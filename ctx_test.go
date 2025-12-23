@@ -7512,6 +7512,27 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
 
+	t.Run("case_insensitive", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+
+		app.Get("/user/:NAME", func(c Ctx) error {
+			c.UpdateParam("name", "overridden")
+			require.Equal(t, "overridden", c.Params("name"))
+			require.Equal(t, "overridden", c.Params("NAME"))
+			return c.SendStatus(StatusOK)
+		})
+
+		req, err := http.NewRequest(http.MethodGet, "/user/original", http.NoBody)
+		require.NoError(t, err)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
 	// Nil router test, it should not change values if router is nil
 	t.Run("nil_router", func(t *testing.T) {
 		t.Parallel()
