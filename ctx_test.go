@@ -8010,18 +8010,14 @@ func Benchmark_Ctx_UpdateParam(b *testing.B) {
 		CBORDecoder: cbor.Unmarshal,
 	})
 
-	app.Get("/user/:name/:id", func(c Ctx) error {
-		c.UpdateParam("name", "overridden")
-		return nil
-	})
-
-	req, err := http.NewRequest(http.MethodGet, "/user/original/123", http.NoBody)
-	require.NoError(b, err)
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c.values = [maxParams]string{"original", "12345"}
+	c.route = &Route{Params: []string{"name", "id"}}
 
 	b.ReportAllocs()
+	b.ResetTimer()
 	for b.Loop() {
-		resp, err := app.Test(req)
-		require.NoError(b, err)
-		require.NoError(b, resp.Body.Close())
+		c.UpdateParam("name", "changed")
+		c.values[0] = "original"
 	}
 }
