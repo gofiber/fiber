@@ -70,7 +70,8 @@ func (s *State) Reset() {
 
 // Keys returns a slice containing all keys present in the State.
 func (s *State) Keys() []string {
-	keys := make([]string, 0)
+	// Pre-allocate with estimated capacity to reduce allocations
+	keys := make([]string, 0, 8)
 	s.dependencies.Range(func(key, _ any) bool {
 		keyStr, ok := key.(string)
 		if !ok {
@@ -255,7 +256,8 @@ func (s *State) deleteService(srv Service) {
 
 // serviceKeys returns a slice containing all keys present for services in the application's State.
 func (s *State) serviceKeys() []string {
-	keys := make([]string, 0)
+	// Pre-allocate with estimated capacity to reduce allocations
+	keys := make([]string, 0, 8)
 	s.dependencies.Range(func(key, _ any) bool {
 		keyStr, ok := key.(string)
 		if !ok {

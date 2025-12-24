@@ -246,7 +246,7 @@ func New(config ...Config) fiber.Handler {
 		cacheControl := utils.UnsafeString(c.Response().Header.Peek(fiber.HeaderCacheControl))
 
 		// Respect server cache-control: no-store
-		if strings.Contains(utils.ToLower(cacheControl), noStore) {
+		if hasDirective(cacheControl, noStore) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return nil
 		}
@@ -393,9 +393,8 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// Check if request has directive
-func hasRequestDirective(c fiber.Ctx, directive string) bool {
-	cc := c.Get(fiber.HeaderCacheControl)
+// hasDirective checks if a cache-control header contains a directive (case-insensitive)
+func hasDirective(cc, directive string) bool {
 	ccLen := len(cc)
 	dirLen := len(directive)
 	for i := 0; i <= ccLen-dirLen; i++ {
@@ -414,6 +413,11 @@ func hasRequestDirective(c fiber.Ctx, directive string) bool {
 	}
 
 	return false
+}
+
+// Check if request has directive
+func hasRequestDirective(c fiber.Ctx, directive string) bool {
+	return hasDirective(c.Get(fiber.HeaderCacheControl), directive)
 }
 
 func cacheBodyFetchError(mask func(string) string, key string, err error) error {

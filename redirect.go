@@ -167,7 +167,7 @@ func (r *Redirect) WithInput() *Redirect {
 // Messages Get flash messages.
 func (r *Redirect) Messages() []FlashMessage {
 	if len(r.c.flashMessages) == 0 {
-		return []FlashMessage{}
+		return nil
 	}
 
 	flashMessages := make([]FlashMessage, 0, len(r.c.flashMessages))
@@ -232,7 +232,11 @@ func (r *Redirect) Message(key string) FlashMessage {
 
 // OldInputs Get old input data.
 func (r *Redirect) OldInputs() []OldInputData {
-	inputs := make([]OldInputData, 0)
+	if len(r.c.flashMessages) == 0 {
+		return nil
+	}
+
+	inputs := make([]OldInputData, 0, len(r.c.flashMessages))
 
 	for _, msg := range r.c.flashMessages {
 		if msg.isOldInput {

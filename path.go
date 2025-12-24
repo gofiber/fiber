@@ -180,11 +180,12 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 
 	parser, _ := routerParserPool.Get().(*routeParser) //nolint:errcheck // only contains routeParser
 	parser.reset()
-	parser.parseRoute(string(patternPretty))
+	patternStr := string(patternPretty)
+	parser.parseRoute(patternStr)
 	defer routerParserPool.Put(parser)
 
 	// '*' wildcard matches any path
-	if (string(patternPretty) == "/" && path == "/") || (string(patternPretty) == "/*") {
+	if (patternStr == "/" && path == "/") || patternStr == "/*" {
 		return true
 	}
 
