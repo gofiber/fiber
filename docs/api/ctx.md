@@ -506,7 +506,7 @@ app.Post("/", func(c fiber.Ctx) error {
 Overwrites the value of an existing route parameter. If the parameter does not exist, this method does nothing.
 
 :::info
-For wildcard parameters (e.g., `*` or `+`), `UpdateParam` normalizes them to their internal representation (e.g., `*1`, `+1`). To update the first wildcard parameter, you can use `*`. For subsequent wildcards, you must use their numbered representation (e.g., `*2`).
+For wildcard parameters (both `*` and `+`), `UpdateParam` normalizes each to its internal numbered representation (e.g., `*1`, `+1`). To update the first `*` wildcard parameter, you can use either `*` or `*1`; to update the first `+` wildcard parameter, you can use either `+` or `+1`. For subsequent wildcards of each type, you must use their numbered representation (e.g., `*2`, `+2`).
 :::
 
 ```go title="Signature"
