@@ -502,7 +502,9 @@ app.Post("/", func(c fiber.Ctx) error {
 ```
 
 ### UpdateParam
+
 Overwrites the value of an existing route parameter. If the parameter does not exist, this method does nothing.
+
 ```go title="Signature"
 func (c fiber.Ctx) UpdateParam(name, value string)
 ```
