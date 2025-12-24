@@ -387,7 +387,7 @@ func (c *DefaultCtx) HasBody() bool {
 // If the parameter name does not exist in the route, this method does nothing.
 func (c *DefaultCtx) UpdateParam(name, value string) {
 	// If no route is matched, there are no parameters to update
-	if c.route == nil {
+	if !c.Matched() {
 		return
 	}
 
@@ -407,14 +407,9 @@ func (c *DefaultCtx) UpdateParam(name, value string) {
 				c.values[i] = value
 				return
 			}
-		} else {
-			if len(param) != len(name) {
-				continue
-			}
-			if utils.EqualFold(utils.UnsafeBytes(param), utils.UnsafeBytes(name)) {
-				c.values[i] = value
-				return
-			}
+		} else if utils.EqualFold(utils.UnsafeBytes(param), utils.UnsafeBytes(name)) {
+			c.values[i] = value
+			return
 		}
 	}
 }
