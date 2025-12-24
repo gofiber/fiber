@@ -7531,8 +7531,8 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 
 		app := New()
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c, err := ctx.(*DefaultCtx)
-		require.True(t, err)
+		c, ok := ctx.(*DefaultCtx)
+		require.True(t, ok)
 		defer app.ReleaseCtx(c)
 
 		// Manually simulate a route exceeding maxParams to test boundary limits
