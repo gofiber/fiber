@@ -40,10 +40,11 @@ var (
 func getDecoderPool(tag string) *sync.Pool {
 	decoderPoolMu.RLock()
 	pool := decoderPoolMap[tag]
-	decoderPoolMu.RUnlock()
 	if pool == nil {
+		decoderPoolMu.RUnlock()
 		panic(fmt.Sprintf("decoder pool not initialized for tag %q", tag))
 	}
+	decoderPoolMu.RUnlock()
 
 	return pool
 }
