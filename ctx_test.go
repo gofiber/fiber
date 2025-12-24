@@ -7526,6 +7526,24 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
 
+	t.Run("multi_wildcard_params", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/files/*/*", func(c Ctx) error {
+			c.UpdateParam("*", "changed")
+			c.UpdateParam("*2", "changed2")
+			require.Equal(t, "changed", c.Params("*"))
+			require.Equal(t, "changed2", c.Params("*2"))
+			return nil
+		})
+		req, err := http.NewRequest(http.MethodGet, "/files/testing/testing", http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
 	t.Run("exceeds_max_params", func(t *testing.T) {
 		t.Parallel()
 
