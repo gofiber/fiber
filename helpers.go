@@ -158,8 +158,8 @@ func (*App) isASCII(s string) bool {
 
 // uniqueRouteStack drop all not unique routes from the slice
 func uniqueRouteStack(stack []*Route) []*Route {
-	var unique []*Route
-	m := make(map[*Route]struct{})
+	m := make(map[*Route]struct{}, len(stack))
+	unique := make([]*Route, 0, len(stack))
 	for _, v := range stack {
 		if _, ok := m[v]; !ok {
 			m[v] = struct{}{}

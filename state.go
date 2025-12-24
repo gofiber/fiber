@@ -278,9 +278,10 @@ func (s *State) serviceKeys() []string {
 // Services returns a map containing all services present in the State.
 // The key is the hash of the service String() value and the value is the service itself.
 func (s *State) Services() map[string]Service {
-	services := make(map[string]Service)
+	keys := s.serviceKeys()
+	services := make(map[string]Service, len(keys))
 
-	for _, key := range s.serviceKeys() {
+	for _, key := range keys {
 		services[key] = MustGetState[Service](s, key)
 	}
 
