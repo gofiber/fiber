@@ -1,9 +1,11 @@
 package binder
 
 import (
+	"fmt"
 	"mime/multipart"
 	"reflect"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/gofiber/schema"
@@ -431,11 +433,86 @@ func Test_parseToMap_Extended(t *testing.T) {
 }
 
 func Test_decoderPoolMapInit(t *testing.T) {
+	t.Parallel()
+
 	for _, tag := range tags {
-		decAny := decoderPoolMap[tag].Get()
+		decAny := getDecoderPool(tag).Get()
 		dec, ok := decAny.(*schema.Decoder)
 		require.True(t, ok)
 		require.NotNil(t, dec)
+		getDecoderPool(tag).Put(decAny)
+	}
+}
+
+func TestSetParserDecoderConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
+	t.Cleanup(func() {
+		SetParserDecoder(ParserConfig{
+			IgnoreUnknownKeys: true,
+			ZeroEmpty:         true,
+		})
+	})
+
+	type queryUser struct {
+		Name string `query:"name"`
+	}
+
+	data := map[string][]string{
+		"name": {"fiber"},
+	}
+	parserConfig := ParserConfig{
+		IgnoreUnknownKeys: true,
+		ZeroEmpty:         true,
+	}
+
+	start := make(chan struct{})
+	const workers = 25
+	errCh := make(chan error, workers*2)
+	var wg sync.WaitGroup
+
+	runWorker := func(fn func() error) {
+		wg.Go(func() {
+			<-start
+
+			defer func() {
+				if r := recover(); r != nil {
+					errCh <- fmt.Errorf("panic: %v", r)
+				}
+			}()
+
+			if err := fn(); err != nil {
+				errCh <- err
+			}
+		})
+	}
+
+	for i := 0; i < workers; i++ {
+		runWorker(func() error {
+			SetParserDecoder(parserConfig)
+			return nil
+		})
+
+		runWorker(func() error {
+			var out queryUser
+			if err := parseToStruct("query", &out, data); err != nil {
+				return err
+			}
+
+			if out.Name != "fiber" {
+				return fmt.Errorf("unexpected name %q", out.Name)
+			}
+
+			return nil
+		})
+	}
+
+	close(start)
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
 	}
 }
 
