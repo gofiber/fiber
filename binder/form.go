@@ -94,7 +94,6 @@ func acquireFormMap() map[string][]string {
 	if !ok {
 		m = make(map[string][]string)
 	}
-	clearFormMap(m)
 	return m
 }
 
