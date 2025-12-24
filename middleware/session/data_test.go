@@ -178,66 +178,79 @@ func TestData_Reset(t *testing.T) {
 	})
 }
 
-func TestData_ResetReuseMap(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Reuse cleared map across pool cycles", func(t *testing.T) {
-		t.Parallel()
-
-		d := acquireData()
-		originalPtr := mapPointer(d.Data)
-
-		d.Set("key1", "value1")
-		d.Set("key2", "value2")
-		require.Equal(t, originalPtr, mapPointer(d.Data), "Expected map pointer to stay constant after writes")
-
-		d.Reset()
-		require.Empty(t, d.Data, "Expected data map to be empty after reset")
-		require.Equal(t, originalPtr, mapPointer(d.Data), "Expected reset to preserve underlying map")
-
-		d.Set("key3", "value3")
-		require.Nil(t, d.Get("key1"), "Expected cleared key not to leak after reset")
-
-		d.Reset()
-		dataPool.Put(d)
-
-		acquired := make([]*data, 0, 3)
-		defer func() {
-			for _, item := range acquired {
-				item.Reset()
-				dataPool.Put(item)
-			}
-		}()
-
-		var reused *data
-		for i := 0; i < 5; i++ {
-			candidate := acquireData()
-			acquired = append(acquired, candidate)
-			if candidate == d {
-				reused = candidate
-				break
-			}
-
-			require.Empty(t, candidate.Data, "Expected pooled data to be empty when new instance is returned")
-			require.Nil(t, candidate.Get("key2"), "Expected no leakage of prior entries on alternate pooled instance")
-		}
-
-		if reused == nil {
-			t.Skip("sync.Pool returned a different instance; map reuse verified via in-place reset")
-			return
-		}
-
-		require.Equal(t, originalPtr, mapPointer(reused.Data), "Expected pooled data to reuse cleared map")
-		require.Empty(t, reused.Data, "Expected pooled data to be empty after reuse")
-		require.Nil(t, reused.Get("key2"), "Expected no leakage of prior entries on reuse")
-
-		reused.Set("key4", "value4")
-		require.Equal(t, "value4", reused.Get("key4"), "Expected pooled map to accept new values")
-	})
-}
-
 func mapPointer(m map[any]any) uintptr {
 	return reflect.ValueOf(m).Pointer()
+}
+
+func TestData_ResetPreservesAllocation(t *testing.T) {
+	t.Parallel()
+
+	d := acquireData()
+	t.Cleanup(func() {
+		d.Reset()
+		dataPool.Put(d)
+	})
+
+	originalPtr := mapPointer(d.Data)
+
+	d.Set("key1", "value1")
+	d.Set("key2", "value2")
+	require.Equal(t, originalPtr, mapPointer(d.Data), "Expected map pointer to stay constant after writes")
+
+	d.Reset()
+	require.Empty(t, d.Data, "Expected data map to be empty after reset")
+	require.Equal(t, originalPtr, mapPointer(d.Data), "Expected reset to preserve underlying map")
+
+	d.Set("key3", "value3")
+	require.Nil(t, d.Get("key1"), "Expected cleared key not to leak after reset")
+	require.Equal(t, originalPtr, mapPointer(d.Data), "Expected map pointer to remain stable after further writes")
+}
+
+func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
+	t.Parallel()
+
+	acquired := make([]*data, 0, 6)
+	t.Cleanup(func() {
+		for _, item := range acquired {
+			item.Reset()
+			dataPool.Put(item)
+		}
+	})
+
+	acquireWithCleanup := func() *data {
+		d := acquireData()
+		acquired = append(acquired, d)
+		return d
+	}
+
+	first := acquireWithCleanup()
+	first.Set("key1", "value1")
+	first.Set("key2", "value2")
+	first.Reset()
+
+	originalPtr := mapPointer(first.Data)
+
+	var reused *data
+	for i := 0; i < 5; i++ {
+		candidate := acquireWithCleanup()
+		if mapPointer(candidate.Data) == originalPtr {
+			reused = candidate
+			break
+		}
+		require.Empty(t, candidate.Data, "Expected pooled data to be empty when new instance is returned")
+		require.Nil(t, candidate.Get("key2"), "Expected no leakage of prior entries on alternate pooled instance")
+	}
+
+	if reused == nil {
+		t.Skip("sync.Pool returned a different instance; reuse cannot be asserted")
+	}
+
+	require.Equal(t, originalPtr, mapPointer(reused.Data), "Expected pooled data to reuse cleared map")
+	require.Empty(t, reused.Data, "Expected pooled data to be empty after reuse")
+	require.Nil(t, reused.Get("key2"), "Expected no leakage of prior entries on reuse")
+
+	reused.Set("key4", "value4")
+	require.Equal(t, "value4", reused.Get("key4"), "Expected pooled map to accept new values")
 }
 
 func TestData_Delete(t *testing.T) {
