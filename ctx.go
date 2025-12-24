@@ -384,7 +384,7 @@ func (c *DefaultCtx) HasBody() bool {
 }
 
 // UpdateParam overwrites a route parameter value by name in c.values.
-// Ignores non-defined values.
+// If the parameter name does not exist in the route, this method does nothing.
 func (c *DefaultCtx) UpdateParam(name, value string) {
 	// return if no route matched ( no params available )
 	if c.route == nil {

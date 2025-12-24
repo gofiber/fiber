@@ -120,8 +120,8 @@ type Ctx interface {
 	// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
 	HasBody() bool
 	// UpdateParam overwrites a route parameter value by name in c.values.
-	// Ignores non-defined values.
-	UpdateParam(name string, value string)
+	// If the parameter name does not exist in the route, this method does nothing.
+	UpdateParam(name, value string)
 	// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
 	IsWebSocket() bool
 	// IsPreflight returns true if the request is a CORS preflight.
