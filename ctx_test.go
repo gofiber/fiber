@@ -7483,7 +7483,7 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 	t.Parallel()
 
 	t.Run("route_params", func(t *testing.T) {
-		// a basic request to check if updateparams functions correctly on different scenarios
+		// a basic request to check if UpdateParam functions correctly on different scenarios
 		// - Does it change an existing param ( it should )
 		// - Does it set a non-existing param ( it shouldn't )
 		t.Parallel()
