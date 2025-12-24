@@ -7578,8 +7578,11 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		t.Parallel()
 		// Ensure UpdateParam handles nil route context gracefully
 		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c, ok := ctx.(*DefaultCtx)
+		require.True(t, ok)
 		defer app.ReleaseCtx(c)
+		c.route = nil
 
 		c.UpdateParam("test", "value") // Should not change
 		require.Empty(t, c.Params("test"))
