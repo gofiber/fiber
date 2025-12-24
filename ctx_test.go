@@ -7512,6 +7512,32 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
 
+	t.Run("case_sensitive", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{
+			CaseSensitive: true,
+		})
+
+		app.Get("/user/:NAME", func(c Ctx) error {
+			c.UpdateParam("name", "overridden")
+
+			require.Equal(t, "original", c.Params("NAME"))
+			require.Empty(t, c.Params("name"))
+
+			return c.SendStatus(StatusOK)
+		})
+
+		req, err := http.NewRequest(http.MethodGet, "/user/original", http.NoBody)
+		require.NoError(t, err)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
 	t.Run("case_insensitive", func(t *testing.T) {
 		t.Parallel()
 		app := New()
