@@ -7574,6 +7574,33 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
 
+	t.Run("case_insensitive", func(t *testing.T) {
+		t.Parallel()
+
+		// CaseInsensitive mode (default)
+		app := New(Config{
+			CaseSensitive: false,
+		})
+
+		app.Get("/user/:name", func(c Ctx) error {
+			c.UpdateParam("NAME", "overridden")
+
+			require.Equal(t, "overridden", c.Params("name"))
+			require.Equal(t, "overridden", c.Params("NAME"))
+
+			return c.SendStatus(StatusOK)
+		})
+
+		req, err := http.NewRequest(http.MethodGet, "/user/original", http.NoBody)
+		require.NoError(t, err)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
 	t.Run("nil_router", func(t *testing.T) {
 		t.Parallel()
 		// Ensure UpdateParam handles nil route context gracefully
