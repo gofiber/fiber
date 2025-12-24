@@ -1,6 +1,7 @@
 package session
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -175,6 +176,48 @@ func TestData_Reset(t *testing.T) {
 		d.Reset()
 		require.Empty(t, d.Data, "Expected data map to be empty after reset")
 	})
+}
+
+func TestData_ResetReuseMap(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Reuse cleared map across pool cycles", func(t *testing.T) {
+		t.Parallel()
+
+		d := acquireData()
+		originalPtr := mapPointer(d.Data)
+
+		d.Set("key1", "value1")
+		d.Set("key2", "value2")
+		require.Equal(t, originalPtr, mapPointer(d.Data), "Expected map pointer to stay constant after writes")
+
+		d.Reset()
+		require.Empty(t, d.Data, "Expected data map to be empty after reset")
+		require.Equal(t, originalPtr, mapPointer(d.Data), "Expected reset to preserve underlying map")
+
+		d.Set("key3", "value3")
+		require.Nil(t, d.Get("key1"), "Expected cleared key not to leak after reset")
+
+		d.Reset()
+		dataPool.Put(d)
+
+		reused := acquireData()
+		t.Cleanup(func() {
+			reused.Reset()
+			dataPool.Put(reused)
+		})
+
+		require.Equal(t, originalPtr, mapPointer(reused.Data), "Expected pooled data to reuse cleared map")
+		require.Empty(t, reused.Data, "Expected pooled data to be empty after reuse")
+		require.Nil(t, reused.Get("key2"), "Expected no leakage of prior entries on reuse")
+
+		reused.Set("key4", "value4")
+		require.Equal(t, "value4", reused.Get("key4"), "Expected pooled map to accept new values")
+	})
+}
+
+func mapPointer(m map[any]any) uintptr {
+	return reflect.ValueOf(m).Pointer()
 }
 
 func TestData_Delete(t *testing.T) {
