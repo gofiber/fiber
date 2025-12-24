@@ -232,12 +232,19 @@ func (r *Redirect) Message(key string) FlashMessage {
 
 // OldInputs Get old input data.
 func (r *Redirect) OldInputs() []OldInputData {
-	if len(r.c.flashMessages) == 0 {
+	// Count old inputs first to avoid allocation if none exist
+	count := 0
+	for _, msg := range r.c.flashMessages {
+		if msg.isOldInput {
+			count++
+		}
+	}
+
+	if count == 0 {
 		return nil
 	}
 
-	inputs := make([]OldInputData, 0, len(r.c.flashMessages))
-
+	inputs := make([]OldInputData, 0, count)
 	for _, msg := range r.c.flashMessages {
 		if msg.isOldInput {
 			inputs = append(inputs, OldInputData{
