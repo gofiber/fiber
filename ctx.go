@@ -386,17 +386,19 @@ func (c *DefaultCtx) HasBody() bool {
 // UpdateParam overwrites a route parameter value by name.
 // If the parameter name does not exist in the route, this method does nothing.
 func (c *DefaultCtx) UpdateParam(name, value string) {
-	// return if no route matched (no params available)
+	// If no route is matched, there are no parameters to update
 	if c.route == nil {
 		return
 	}
 
-	// from Params(key string, defaultValue ...string)
+	// Normalize wildcard (*) and plus (+) tokens to their internal
+	// representations (*1, +1) used by the router.
 	if name == "*" || name == "+" {
 		name += "1"
 	}
 
 	for i, param := range c.route.Params {
+		// Prevent out-of-bounds access if route params exceed allocated values
 		if i >= maxParams {
 			return
 		}
@@ -405,9 +407,14 @@ func (c *DefaultCtx) UpdateParam(name, value string) {
 				c.values[i] = value
 				return
 			}
-		} else if utils.EqualFold(utils.UnsafeBytes(param), utils.UnsafeBytes(name)) {
-			c.values[i] = value
-			return
+		} else {
+			if len(param) != len(name) {
+				continue
+			}
+			if utils.EqualFold(utils.UnsafeBytes(param), utils.UnsafeBytes(name)) {
+				c.values[i] = value
+				return
+			}
 		}
 	}
 }

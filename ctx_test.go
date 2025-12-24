@@ -7481,7 +7481,6 @@ func Test_Ctx_End_after_drop(t *testing.T) {
 // go test -run Test_Ctx_UpdateParam
 func Test_Ctx_UpdateParam(t *testing.T) {
 	t.Parallel()
-
 	t.Run("route_params", func(t *testing.T) {
 		// a basic request to check if UpdateParam functions correctly on different scenarios
 		// - Does it change an existing param (it should)
@@ -7491,7 +7490,6 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		app.Get("/user/:name/:id", func(c Ctx) error {
 			c.UpdateParam("name", "overridden")
 			c.UpdateParam("existing", "ignored")
-
 			require.Equal(t, "overridden", c.Params("name"))
 			require.Equal(t, "123", c.Params("id"))
 			require.Empty(t, c.Params("existing"))
@@ -7523,7 +7521,6 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 		require.Equal(t, StatusOK, resp.StatusCode)
-
 	})
 
 	t.Run("case_sensitive", func(t *testing.T) {
