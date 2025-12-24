@@ -390,14 +390,22 @@ func (c *DefaultCtx) UpdateParam(name, value string) {
 	if c.route == nil {
 		return
 	}
+
+	// from Params(key string, defaultValue ...string)
+	if name == "*" || name == "+" {
+		name += "1"
+	}
+
 	for i, param := range c.route.Params {
-		var match bool
-		if c.app.config.CaseSensitive {
-			match = param == name
-		} else {
-			match = utils.EqualFold(utils.UnsafeBytes(param), utils.UnsafeBytes(name))
+		if i >= maxParams {
+			return
 		}
-		if match {
+		if c.app.config.CaseSensitive {
+			if param == name {
+				c.values[i] = value
+				return
+			}
+		} else if utils.EqualFold(utils.UnsafeBytes(param), utils.UnsafeBytes(name)) {
 			c.values[i] = value
 			return
 		}
