@@ -122,15 +122,16 @@ func (c *core) execFunc() (*Response, error) {
 		resp := AcquireResponse()
 		resp.setClient(c.client)
 		resp.setRequest(c.req)
-		// Assign the raw fasthttp response to the Fiber response's RawResponse field
-		// without consuming the response body stream, allowing lazy reading and preserving
-		// the stream for subsequent access.
-		originalRaw := resp.RawResponse
-		resp.RawResponse = respv
-		respv = nil
-		if originalRaw != nil {
-			fasthttp.ReleaseResponse(originalRaw)
+		// Copy the fasthttp response into the Fiber response's RawResponse field
+		// instead of taking ownership of the pooled fasthttp.Response (respv). This
+		// allows respv to be safely released back to the fasthttp pool by the
+		// deferred cleanup above, avoiding resource leaks.
+		targetRaw := resp.RawResponse
+		if targetRaw == nil {
+			targetRaw = fasthttp.AcquireResponse()
 		}
+		respv.CopyTo(targetRaw)
+		resp.RawResponse = targetRaw
 		respChan <- resp
 	}()
 
