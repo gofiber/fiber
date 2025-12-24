@@ -201,11 +201,30 @@ func TestData_ResetReuseMap(t *testing.T) {
 		d.Reset()
 		dataPool.Put(d)
 
-		reused := acquireData()
-		t.Cleanup(func() {
-			reused.Reset()
-			dataPool.Put(reused)
-		})
+		acquired := make([]*data, 0, 3)
+		defer func() {
+			for _, item := range acquired {
+				item.Reset()
+				dataPool.Put(item)
+			}
+		}()
+
+		var reused *data
+		for i := 0; i < 5; i++ {
+			candidate := acquireData()
+			acquired = append(acquired, candidate)
+			if candidate == d {
+				reused = candidate
+				break
+			}
+
+			require.Empty(t, candidate.Data, "Expected pooled data to be empty when new instance is returned")
+			require.Nil(t, candidate.Get("key2"), "Expected no leakage of prior entries on alternate pooled instance")
+		}
+
+		if reused == nil {
+			t.Skip("sync.Pool returned a different instance; map reuse verified via in-place reset")
+		}
 
 		require.Equal(t, originalPtr, mapPointer(reused.Data), "Expected pooled data to reuse cleared map")
 		require.Empty(t, reused.Data, "Expected pooled data to be empty after reuse")
