@@ -8138,6 +8138,7 @@ func Benchmark_Ctx_UpdateParam(b *testing.B) {
 
 	c.values = [maxParams]string{"original", "12345"}
 	c.route = &Route{Params: []string{"name", "id"}}
+	c.setMatched(true)
 
 	b.ReportAllocs()
 	b.ResetTimer()
