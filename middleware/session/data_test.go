@@ -224,6 +224,7 @@ func TestData_ResetReuseMap(t *testing.T) {
 
 		if reused == nil {
 			t.Skip("sync.Pool returned a different instance; map reuse verified via in-place reset")
+			return
 		}
 
 		require.Equal(t, originalPtr, mapPointer(reused.Data), "Expected pooled data to reuse cleared map")
