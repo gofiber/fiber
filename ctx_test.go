@@ -7516,6 +7516,14 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 			require.Equal(t, "changed", c.Params("*"))
 			return nil
 		})
+
+		req, err = http.NewRequest(http.MethodGet, "/files/testing", http.NoBody)
+		require.NoError(t, err)
+		resp, err = app.Test(req)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+		require.Equal(t, StatusOK, resp.StatusCode)
+
 	})
 
 	t.Run("case_sensitive", func(t *testing.T) {
