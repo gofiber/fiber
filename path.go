@@ -69,7 +69,7 @@ const (
 )
 
 // TypeConstraint parameter constraint types
-type TypeConstraint int16
+type TypeConstraint uint16
 
 // Constraint describes the validation rules that apply to a dynamic route
 // segment when matching incoming requests.
@@ -95,7 +95,7 @@ type CustomConstraint interface {
 }
 
 const (
-	noConstraint TypeConstraint = iota + 1
+	noConstraint TypeConstraint = 1 << iota
 	intConstraint
 	boolConstraint
 	floatConstraint
@@ -110,6 +110,11 @@ const (
 	maxConstraint
 	rangeConstraint
 	regexConstraint
+)
+
+const (
+	needOneData = minLenConstraint | maxLenConstraint | lenConstraint | minConstraint | maxConstraint | datetimeConstraint | regexConstraint
+	needTwoData = betweenLenConstraint | rangeConstraint
 )
 
 // list of possible parameter and segment delimiter
@@ -704,18 +709,13 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		num int
 	)
 
-	// Validate constraint has required data using switch instead of slice allocation
-	switch c.ID {
-	case minLenConstraint, maxLenConstraint, lenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint:
-		if len(c.Data) == 0 {
-			return false
-		}
-	case betweenLenConstraint, rangeConstraint:
-		if len(c.Data) < 2 {
-			return false
-		}
-	default:
-		// Other constraints don't require data validation
+	// Validate constraint has required data
+	if c.ID&needOneData != 0 && len(c.Data) == 0 {
+		return false
+	}
+
+	if c.ID&needTwoData != 0 && len(c.Data) < 2 {
+		return false
 	}
 
 	switch c.ID {
