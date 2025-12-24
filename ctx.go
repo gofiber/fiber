@@ -383,10 +383,10 @@ func (c *DefaultCtx) HasBody() bool {
 	return len(c.fasthttp.Request.Body()) > 0
 }
 
-// UpdateParam overwrites a route parameter value by name in c.values.
+// UpdateParam overwrites a route parameter value by name.
 // If the parameter name does not exist in the route, this method does nothing.
 func (c *DefaultCtx) UpdateParam(name, value string) {
-	// return if no route matched ( no params available )
+	// return if no route matched (no params available)
 	if c.route == nil {
 		return
 	}
