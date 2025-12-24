@@ -167,7 +167,7 @@ func (r *Redirect) WithInput() *Redirect {
 // Messages Get flash messages.
 func (r *Redirect) Messages() []FlashMessage {
 	if len(r.c.flashMessages) == 0 {
-		return []FlashMessage{}
+		return nil
 	}
 
 	flashMessages := make([]FlashMessage, 0, len(r.c.flashMessages))
@@ -232,8 +232,19 @@ func (r *Redirect) Message(key string) FlashMessage {
 
 // OldInputs Get old input data.
 func (r *Redirect) OldInputs() []OldInputData {
-	inputs := make([]OldInputData, 0)
+	// Count old inputs first to avoid allocation if none exist
+	count := 0
+	for _, msg := range r.c.flashMessages {
+		if msg.isOldInput {
+			count++
+		}
+	}
 
+	if count == 0 {
+		return nil
+	}
+
+	inputs := make([]OldInputData, 0, count)
 	for _, msg := range r.c.flashMessages {
 		if msg.isOldInput {
 			inputs = append(inputs, OldInputData{
@@ -293,14 +304,15 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		queryText := bytebufferpool.Get()
 		defer bytebufferpool.Put(queryText)
 
-		i := 1
+		first := true
 		for k, v := range cfg.Queries {
-			queryText.WriteString(k + "=" + v)
-
-			if i != len(cfg.Queries) {
-				queryText.WriteString("&")
+			if !first {
+				queryText.WriteByte('&')
 			}
-			i++
+			first = false
+			queryText.WriteString(k)
+			queryText.WriteByte('=')
+			queryText.WriteString(v)
 		}
 
 		return r.To(location + "?" + r.c.app.toString(queryText.Bytes()))
