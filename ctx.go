@@ -397,17 +397,27 @@ func (c *DefaultCtx) UpdateParam(name, value string) {
 		name += "1"
 	}
 
+	if c.app.config.CaseSensitive {
+		for i, param := range c.route.Params {
+			// Prevent out-of-bounds access if route params exceed allocated values
+			if i >= maxParams {
+				return
+			}
+			if param == name {
+				c.values[i] = value
+				return
+			}
+		}
+		return
+	}
+
+	nameBytes := utils.UnsafeBytes(name)
 	for i, param := range c.route.Params {
 		// Prevent out-of-bounds access if route params exceed allocated values
 		if i >= maxParams {
 			return
 		}
-		if c.app.config.CaseSensitive {
-			if param == name {
-				c.values[i] = value
-				return
-			}
-		} else if utils.EqualFold(utils.UnsafeBytes(param), utils.UnsafeBytes(name)) {
+		if utils.EqualFold(utils.UnsafeBytes(param), nameBytes) {
 			c.values[i] = value
 			return
 		}
