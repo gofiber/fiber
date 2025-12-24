@@ -416,7 +416,7 @@ func (c *Client) StreamResponseBody() bool
 
 ## SetStreamResponseBody
 
-Sets whether the response body should be streamed directly to the caller instead of being fully buffered in memory. This is useful for downloading large files or handling streaming responses.
+Sets whether the response body should be streamed directly to the caller instead of being fully buffered in memory. This is useful for handling large responses or streaming responses.
 
 ```go title="Signature"
 func (c *Client) SetStreamResponseBody(stream bool) *Client
