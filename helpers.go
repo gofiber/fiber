@@ -42,6 +42,13 @@ type acceptedType struct {
 
 const noCacheValue = "no-cache"
 
+// Pre-allocated byte slices for accept header parsing
+var (
+	semicolonQEquals = []byte(";q=")
+	wildcardAll      = []byte("*/*")
+	wildcardSuffix   = []byte("/*")
+)
+
 type headerParams map[string][]byte
 
 // getTLSConfig returns a net listener's tls config
@@ -151,8 +158,8 @@ func (*App) isASCII(s string) bool {
 
 // uniqueRouteStack drop all not unique routes from the slice
 func uniqueRouteStack(stack []*Route) []*Route {
-	var unique []*Route
-	m := make(map[*Route]struct{})
+	m := make(map[*Route]struct{}, len(stack))
+	unique := make([]*Route, 0, len(stack))
 	for _, v := range stack {
 		if _, ok := m[v]; !ok {
 			m[v] = struct{}{}
@@ -208,7 +215,7 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
 	if spec == "*" {
 		return true
 	}
-	if i := strings.IndexByte(spec, '*'); i != -1 {
+	if strings.IndexByte(spec, '*') >= 0 {
 		return false
 	}
 	if utils.EqualFold(spec, offer) {
@@ -514,7 +521,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 
 			// Optimized quality parsing
 			qIndex := i + 3
-			if bytes.HasPrefix(accept[i:], []byte(";q=")) && bytes.IndexByte(accept[qIndex:], ';') == -1 {
+			if bytes.HasPrefix(accept[i:], semicolonQEquals) && bytes.IndexByte(accept[qIndex:], ';') == -1 {
 				if q, err := fasthttp.ParseUfloat(accept[qIndex:]); err == nil {
 					quality = q
 				}
@@ -556,9 +563,9 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 		switch {
 		case len(spec) == 1 && spec[0] == '*':
 			specificity = 1
-		case bytes.Equal(spec, []byte("*/*")):
+		case bytes.Equal(spec, wildcardAll):
 			specificity = 1
-		case bytes.HasSuffix(spec, []byte("/*")):
+		case bytes.HasSuffix(spec, wildcardSuffix):
 			specificity = 2
 		case bytes.IndexByte(spec, '/') != -1:
 			specificity = 3
@@ -726,7 +733,7 @@ func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocr
 		// If “host” still contains ':', we must have hit an un-bracketed IPv6
 		// literal. In that form a port is impossible, so treat the whole thing
 		// as host.
-		if strings.Contains(host, ":") {
+		if strings.IndexByte(host, ':') >= 0 {
 			return raw, ""
 		}
 		return host, port

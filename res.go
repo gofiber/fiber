@@ -523,19 +523,25 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 		return err
 	}
 
-	var result, cb string
-
+	cb := "callback"
 	if len(callback) > 0 {
 		cb = callback[0]
-	} else {
-		cb = "callback"
 	}
 
-	result = cb + "(" + r.c.app.toString(raw) + ");"
+	// Build JSONP response: callback(data);
+	// Use bytebufferpool to avoid string concatenation allocations
+	buf := bytebufferpool.Get()
+	buf.WriteString(cb)
+	buf.WriteByte('(')
+	buf.Write(raw)
+	buf.WriteString(");")
 
 	r.setCanonical(HeaderXContentTypeOptions, "nosniff")
 	r.c.fasthttp.Response.Header.SetContentType(MIMETextJavaScriptCharsetUTF8)
-	return r.SendString(result)
+	// Use SetBody (not SetBodyRaw) to copy the bytes before returning buffer to pool
+	r.c.fasthttp.Response.SetBody(buf.Bytes())
+	bytebufferpool.Put(buf)
+	return nil
 }
 
 // XML converts any interface or string to XML.
@@ -564,7 +570,9 @@ func (r *DefaultRes) Links(link ...string) {
 			bb.WriteString(link[i])
 			bb.WriteByte('>')
 		} else {
-			bb.WriteString(`; rel="` + link[i] + `",`)
+			bb.WriteString(`; rel="`)
+			bb.WriteString(link[i])
+			bb.WriteString(`",`)
 		}
 	}
 	r.setCanonical(HeaderLink, utils.TrimRight(r.c.app.toString(bb.Bytes()), ','))
@@ -616,7 +624,7 @@ func (r *DefaultRes) getLocationFromRoute(route *Route, params Map) (string, err
 
 		for key, val := range params {
 			isSame := key == segment.ParamName || (!app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) != -1
+			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) >= 0
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {

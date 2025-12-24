@@ -159,7 +159,7 @@ import (
 )
 
 type CustomCtx struct {
-    fiber.Ctx
+    fiber.DefaultCtx
 }
 
 func (c *CustomCtx) CustomMethod() string {
@@ -167,9 +167,9 @@ func (c *CustomCtx) CustomMethod() string {
 }
 
 func main() {
-    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.Ctx {
+    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
         return &CustomCtx{
-            Ctx: *fiber.NewCtx(app),
+            DefaultCtx: *fiber.NewDefaultCtx(app),
         }
     })
 
@@ -1563,6 +1563,8 @@ The session middleware has undergone significant improvements in v3, focusing on
 
 - **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
 
+- **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
+
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
 ### Timeout
@@ -2782,6 +2784,8 @@ app.Use(csrf.New(csrf.Config{
 
 - **KeyLookup Field Removal**: The `KeyLookup` field has been removed from the CSRF middleware configuration. This field was deprecated and is no longer needed as the middleware now uses a more secure approach for token management.
 - **DisableValueRedaction Toggle**: CSRF redacts tokens and storage keys by default; set `DisableValueRedaction` to `true` when diagnostics require the raw values.
+
+- **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
 
 ```go
 // Before

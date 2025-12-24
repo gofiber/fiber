@@ -3,24 +3,30 @@ package cors
 import (
 	"net/url"
 	"strings"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // matchScheme compares the scheme of the domain and pattern
 func matchScheme(domain, pattern string) bool {
-	didx := strings.Index(domain, ":")
-	pidx := strings.Index(pattern, ":")
-	return didx != -1 && pidx != -1 && domain[:didx] == pattern[:pidx]
+	dScheme, _, dFound := strings.Cut(domain, ":")
+	pScheme, _, pFound := strings.Cut(pattern, ":")
+	return dFound && pFound && dScheme == pScheme
 }
 
 // normalizeDomain removes the scheme and port from the input domain
 func normalizeDomain(input string) string {
 	// Remove scheme
-	input = strings.TrimPrefix(strings.TrimPrefix(input, "http://"), "https://")
+	if after, found := strings.CutPrefix(input, "https://"); found {
+		input = after
+	} else if after, found := strings.CutPrefix(input, "http://"); found {
+		input = after
+	}
 
 	// Find and remove port, if present
 	if input != "" && input[0] != '[' {
-		if portIndex := strings.Index(input, ":"); portIndex != -1 {
-			input = input[:portIndex]
+		if before, _, found := strings.Cut(input, ":"); found {
+			input = before
 		}
 	}
 
@@ -40,7 +46,7 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 	// Don't allow a wildcard with a protocol
 	// wildcards cannot be used within any other value. For example, the following header is not valid:
 	// Access-Control-Allow-Origin: https://*
-	if strings.Contains(parsedOrigin.Host, "*") {
+	if strings.IndexByte(parsedOrigin.Host, '*') >= 0 {
 		return false, ""
 	}
 
@@ -52,7 +58,7 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 
 	// Normalize the origin by constructing it from the scheme and host.
 	// The path or trailing slash is not included in the normalized origin.
-	return true, strings.ToLower(parsedOrigin.Scheme + "://" + parsedOrigin.Host)
+	return true, utils.ToLower(parsedOrigin.Scheme) + "://" + utils.ToLower(parsedOrigin.Host)
 }
 
 type subdomain struct {

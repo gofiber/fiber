@@ -406,7 +406,7 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 | CookieSameSite    | `string`                           | SameSite attribute (**use "Lax" or "Strict"**)                                                                                | `"Lax"`                      |
 | CookieSessionOnly | `bool`                             | Session-only cookie (expires on browser close)                                                                                | `false`                      |
 | IdleTimeout       | `time.Duration`                    | Token expiration time                                                                                                         | `30 * time.Minute`           |
-| KeyGenerator      | `func() string`                    | Token generation function                                                                                                     | `utils.UUIDv4`               |
+| KeyGenerator      | `func() string`                    | Token generation function                                                                                                     | `utils.SecureToken`               |
 | ErrorHandler      | `fiber.ErrorHandler`               | Custom error handler                                                                                                          | `defaultErrorHandler`        |
 | Extractor         | `extractors.Extractor`             | Token extraction method with metadata                                                                                         | `extractors.FromHeader("X-Csrf-Token")` |
 | DisableValueRedaction | `bool`                         | Disables redaction of tokens and storage keys in logs and error messages. | `false`                      |

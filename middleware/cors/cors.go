@@ -55,14 +55,17 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		trimmedOrigin := utils.TrimSpace(origin)
-		if i := strings.Index(trimmedOrigin, "://*."); i != -1 {
-			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
+		if before, after, found := strings.Cut(trimmedOrigin, "://*."); found {
+			withoutWildcard := before + "://" + after
 			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
 			if !isValid {
 				panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
 			}
-			schemeSep := strings.Index(normalizedOrigin, "://") + len("://")
-			sd := subdomain{prefix: normalizedOrigin[:schemeSep], suffix: normalizedOrigin[schemeSep:]}
+			scheme, host, ok := strings.Cut(normalizedOrigin, "://")
+			if !ok {
+				panic("[CORS] Invalid origin format after normalization:" + maskValue(trimmedOrigin))
+			}
+			sd := subdomain{prefix: scheme + "://", suffix: host}
 			allowSubOrigins = append(allowSubOrigins, sd)
 		} else {
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
@@ -95,7 +98,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Get origin header preserving the original case for the response
 		originHeaderRaw := c.Get(fiber.HeaderOrigin)
-		originHeader := strings.ToLower(originHeaderRaw)
+		originHeader := utils.ToLower(originHeaderRaw)
 
 		// If the request does not have Origin header, the request is outside the scope of CORS
 		if originHeader == "" {

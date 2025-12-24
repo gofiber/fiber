@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // Service is an interface that defines the methods for a service.
@@ -145,8 +146,8 @@ func (app *App) logServices(ctx context.Context, out io.Writer, colors *Colors) 
 			stateColor = scheme.Red
 		} else {
 			stateColor = scheme.Blue
-			state = strings.ToUpper(state)
+			state = utils.ToUpper(state)
 		}
-		fmt.Fprintf(out, "%sINFO%s    🥡 %s[ %s ] %s%s\n", scheme.Green, scheme.Reset, stateColor, strings.ToUpper(state), srv.String(), scheme.Reset)
+		fmt.Fprintf(out, "%sINFO%s    🥡 %s[ %s ] %s%s\n", scheme.Green, scheme.Reset, stateColor, utils.ToUpper(state), srv.String(), scheme.Reset)
 	}
 }

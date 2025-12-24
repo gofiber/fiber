@@ -15,6 +15,16 @@ import (
 	"golang.org/x/net/idna"
 )
 
+// Pre-allocated byte slices for common header comparisons to avoid allocations
+var (
+	xForwardedPrefix        = []byte("X-Forwarded-")
+	xForwardedProtoBytes    = []byte(HeaderXForwardedProto)
+	xForwardedProtocolBytes = []byte(HeaderXForwardedProtocol)
+	xForwardedSslBytes      = []byte(HeaderXForwardedSsl)
+	xURLSchemeBytes         = []byte(HeaderXUrlScheme)
+	onBytes                 = []byte("on")
+)
+
 // Range represents the parsed HTTP Range header extracted by DefaultReq.Range.
 type Range struct {
 	Type   string
@@ -321,9 +331,8 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
-			commaPos := strings.Index(host, ",")
-			if commaPos != -1 {
-				return host[:commaPos]
+			if before, _, found := strings.Cut(host, ","); found {
+				return before
 			}
 			return host
 		}
@@ -641,21 +650,20 @@ func (r *DefaultReq) Scheme() string {
 			continue // Neither "X-Forwarded-" nor "X-Url-Scheme"
 		}
 		switch {
-		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
-			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
-				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
+		case bytes.HasPrefix(key, xForwardedPrefix):
+			if bytes.Equal(key, xForwardedProtoBytes) ||
+				bytes.Equal(key, xForwardedProtocolBytes) {
 				v := app.toString(val)
-				commaPos := strings.Index(v, ",")
-				if commaPos != -1 {
-					scheme = v[:commaPos]
+				if before, _, found := strings.Cut(v, ","); found {
+					scheme = before
 				} else {
 					scheme = v
 				}
-			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
+			} else if bytes.Equal(key, xForwardedSslBytes) && bytes.Equal(val, onBytes) {
 				scheme = schemeHTTPS
 			}
 
-		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
+		case bytes.Equal(key, xURLSchemeBytes):
 			scheme = app.toString(val)
 		default:
 			continue
@@ -759,15 +767,15 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		return int64(parsed), nil
 	}
 
-	i := strings.IndexByte(rangeStr, '=')
-	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
+	before, after, found := strings.Cut(rangeStr, "=")
+	if !found || strings.IndexByte(after, '=') >= 0 {
 		return rangeData, ErrRangeMalformed
 	}
-	rangeData.Type = utils.ToLower(utils.TrimSpace(rangeStr[:i]))
+	rangeData.Type = utils.ToLower(utils.TrimSpace(before))
 	if rangeData.Type != "bytes" {
 		return rangeData, ErrRangeMalformed
 	}
-	ranges = utils.TrimSpace(rangeStr[i+1:])
+	ranges = utils.TrimSpace(after)
 
 	var (
 		singleRange string
