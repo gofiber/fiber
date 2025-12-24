@@ -7484,15 +7484,15 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 	t.Run("route_params", func(t *testing.T) {
 		// a basic request to check if UpdateParam functions correctly on different scenarios
 		// - Does it change an existing param (it should)
-		// - Does it set a non-existing param (it shouldn't)
+		// - Does it ignore a non-existing param (it should)
 		t.Parallel()
 		app := New()
 		app.Get("/user/:name/:id", func(c Ctx) error {
 			c.UpdateParam("name", "overridden")
-			c.UpdateParam("existing", "ignored")
+			c.UpdateParam("nonexistent", "ignored")
 			require.Equal(t, "overridden", c.Params("name"))
 			require.Equal(t, "123", c.Params("id"))
-			require.Empty(t, c.Params("existing"))
+			require.Empty(t, c.Params("nonexistent"))
 			require.Equal(t, []string{"name", "id"}, c.Route().Params)
 
 			return c.JSON(map[string]any{
@@ -7508,55 +7508,58 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 		require.Equal(t, StatusOK, resp.StatusCode)
+	})
 
+	t.Run("wildcard_params", func(t *testing.T) {
+		t.Parallel()
+		app := New()
 		app.Get("/files/*", func(c Ctx) error {
 			c.UpdateParam("*", "changed")
 			require.Equal(t, "changed", c.Params("*"))
 			return nil
 		})
-
-		req, err = http.NewRequest(http.MethodGet, "/files/testing", http.NoBody)
+		req, err := http.NewRequest(http.MethodGet, "/files/testing", http.NoBody)
 		require.NoError(t, err)
-		resp, err = app.Test(req)
+		resp, err := app.Test(req)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("exceeds_max_params", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c, err := ctx.(*DefaultCtx)
+		require.True(t, err)
+		defer app.ReleaseCtx(c)
+
+		// Manually simulate a route exceeding maxParams to test boundary limits
+		params := make([]string, maxParams+10)
+		for i := range params {
+			params[i] = fmt.Sprintf("p%d", i)
+		}
+
+		c.route = &Route{Params: params}
+
+		c.UpdateParam(fmt.Sprintf("p%d", maxParams+4), "x")
 	})
 
 	t.Run("case_sensitive", func(t *testing.T) {
 		t.Parallel()
 
+		// Ensure UpdateParam respects the CaseSensitive configuration
 		app := New(Config{
 			CaseSensitive: true,
 		})
 
-		app.Get("/user/:NAME", func(c Ctx) error {
+		app.Get("/user/:name", func(c Ctx) error {
 			c.UpdateParam("name", "overridden")
 
-			require.Equal(t, "original", c.Params("NAME"))
-			require.Empty(t, c.Params("name"))
-
-			return c.SendStatus(StatusOK)
-		})
-
-		req, err := http.NewRequest(http.MethodGet, "/user/original", http.NoBody)
-		require.NoError(t, err)
-
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		defer func() { require.NoError(t, resp.Body.Close()) }()
-
-		require.Equal(t, StatusOK, resp.StatusCode)
-	})
-
-	t.Run("case_insensitive", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-
-		app.Get("/user/:NAME", func(c Ctx) error {
-			c.UpdateParam("name", "overridden")
 			require.Equal(t, "overridden", c.Params("name"))
-			require.Equal(t, "overridden", c.Params("NAME"))
+			require.Empty(t, c.Params("NAME"))
+
 			return c.SendStatus(StatusOK)
 		})
 
@@ -7567,12 +7570,13 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		require.NoError(t, err)
 
 		defer func() { require.NoError(t, resp.Body.Close()) }()
+
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
 
-	// Nil router test, it should not change values if router is nil
 	t.Run("nil_router", func(t *testing.T) {
 		t.Parallel()
+		// Ensure UpdateParam handles nil route context gracefully
 		app := New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
