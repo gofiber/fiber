@@ -297,14 +297,15 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		queryText := bytebufferpool.Get()
 		defer bytebufferpool.Put(queryText)
 
-		i := 1
+		first := true
 		for k, v := range cfg.Queries {
-			queryText.WriteString(k + "=" + v)
-
-			if i != len(cfg.Queries) {
-				queryText.WriteString("&")
+			if !first {
+				queryText.WriteByte('&')
 			}
-			i++
+			first = false
+			queryText.WriteString(k)
+			queryText.WriteByte('=')
+			queryText.WriteString(v)
 		}
 
 		return r.To(location + "?" + r.c.app.toString(queryText.Bytes()))
