@@ -538,7 +538,8 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 
 	r.setCanonical(HeaderXContentTypeOptions, "nosniff")
 	r.c.fasthttp.Response.Header.SetContentType(MIMETextJavaScriptCharsetUTF8)
-	r.c.fasthttp.Response.SetBodyRaw(buf.Bytes())
+	// Use SetBody (not SetBodyRaw) to copy the bytes before returning buffer to pool
+	r.c.fasthttp.Response.SetBody(buf.Bytes())
 	bytebufferpool.Put(buf)
 	return nil
 }
