@@ -395,6 +395,26 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	})
 }
 
+func Test_Redirect_WithInput_ReusesClearedMap(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	defer app.ReleaseCtx(c)
+
+	c.Request().URI().SetQueryString("first=1")
+	c.Redirect().WithInput()
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "first", value: "1", isOldInput: true})
+
+	c.redirect.messages = c.redirect.messages[:0]
+
+	c.Request().URI().SetQueryString("second=2")
+	c.Redirect().WithInput()
+
+	require.Len(t, c.redirect.messages, 1)
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "second", value: "2", isOldInput: true})
+}
+
 // go test -run Test_Redirect_parseAndClearFlashMessages
 func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	t.Parallel()
