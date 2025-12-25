@@ -24,7 +24,8 @@ var (
 
 	sanitizeBufPool = sync.Pool{
 		New: func() any {
-			return make([]byte, 0, 64)
+			buf := make([]byte, 0, 64)
+			return &buf
 		},
 	}
 )
@@ -33,19 +34,17 @@ var (
 // It returns an error if the path attempts to traverse directories.
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	var (
-		buf    []byte
-		bufPtr *[]byte
-		s      string
+		buf []byte
+		s   string
 	)
 
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
 	if bytes.IndexByte(p, '\\') >= 0 {
-		item, ok := sanitizeBufPool.Get().(*[]byte)
-		if !ok || item == nil {
-			item = new([]byte)
+		bufPtr, ok := sanitizeBufPool.Get().(*[]byte)
+		if !ok || bufPtr == nil {
+			bufPtr = new([]byte)
 		}
-		bufPtr = item
 		buf = *bufPtr
 		if cap(buf) < len(p) {
 			buf = make([]byte, len(p))
