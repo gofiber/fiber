@@ -745,7 +745,7 @@ func Test_Router_Register_Param_Max_Exceed(t *testing.T) {
 	path := "/" + strings.Join(parts, "/")
 
 	require.Panics(t, func() {
-		app.register([]string{"GET"}, path, nil, func(ctx Ctx) error { return nil })
+		app.register([]string{"GET"}, path, nil, func(_ Ctx) error { return nil })
 	})
 }
 
