@@ -30,6 +30,8 @@ var (
 	}
 )
 
+const maxPoolableMapSize = 64
+
 // Cookie name to send flash messages when to use redirection.
 const (
 	FlashCookieName     = "fiber_flash"
@@ -114,6 +116,10 @@ func acquireOldInput() map[string]string {
 }
 
 func releaseOldInput(oldInput map[string]string) {
+	if len(oldInput) > maxPoolableMapSize {
+		return
+	}
+
 	clear(oldInput)
 	oldInputPool.Put(oldInput)
 }
