@@ -2345,3 +2345,65 @@ func Benchmark_Client_Request_Send_ContextCancel(b *testing.B) {
 		require.ErrorIs(b, <-errCh, ErrTimeoutOrCancel)
 	}
 }
+
+func Test_Client_StreamResponseBody(t *testing.T) {
+	t.Parallel()
+
+	t.Run("default value", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		require.False(t, client.StreamResponseBody())
+	})
+
+	t.Run("enable streaming", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		result := client.SetStreamResponseBody(true)
+		require.True(t, client.StreamResponseBody())
+		require.Equal(t, client, result)
+	})
+
+	t.Run("disable streaming", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		client.SetStreamResponseBody(true)
+		require.True(t, client.StreamResponseBody())
+		client.SetStreamResponseBody(false)
+		require.False(t, client.StreamResponseBody())
+	})
+
+	t.Run("with standard client", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		client.SetStreamResponseBody(true)
+		require.True(t, client.StreamResponseBody())
+	})
+
+	t.Run("with host client", func(t *testing.T) {
+		t.Parallel()
+		hostClient := &fasthttp.HostClient{}
+		client := NewWithHostClient(hostClient)
+		client.SetStreamResponseBody(true)
+		require.True(t, client.StreamResponseBody())
+		require.True(t, hostClient.StreamResponseBody)
+	})
+
+	t.Run("with lb client", func(t *testing.T) {
+		t.Parallel()
+		lbClient := &fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{
+				&fasthttp.HostClient{Addr: "example.com:80"},
+			},
+		}
+		client := NewWithLBClient(lbClient)
+		client.SetStreamResponseBody(true)
+		require.True(t, client.StreamResponseBody())
+	})
+
+	t.Run("getter with standard client without setter", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		// Test getter directly without calling setter
+		require.False(t, client.StreamResponseBody())
+	})
+}

@@ -86,9 +86,16 @@ func (c *core) execFunc() (*Response, error) {
 		defer fasthttp.ReleaseRequest(reqv)
 
 		respv := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(respv)
+		defer func() {
+			if respv != nil {
+				fasthttp.ReleaseResponse(respv)
+			}
+		}()
 
 		c.req.RawRequest.CopyTo(reqv)
+		if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
+			reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
+		}
 
 		var err error
 		if cfg != nil {
@@ -115,7 +122,16 @@ func (c *core) execFunc() (*Response, error) {
 		resp := AcquireResponse()
 		resp.setClient(c.client)
 		resp.setRequest(c.req)
-		respv.CopyTo(resp.RawResponse)
+		// Copy the fasthttp response into the Fiber response's RawResponse field
+		// instead of taking ownership of the pooled fasthttp.Response (respv). This
+		// allows respv to be safely released back to the fasthttp pool by the
+		// deferred cleanup above, avoiding resource leaks.
+		targetRaw := resp.RawResponse
+		if targetRaw == nil {
+			targetRaw = fasthttp.AcquireResponse()
+		}
+		respv.CopyTo(targetRaw)
+		resp.RawResponse = targetRaw
 		respChan <- resp
 	}()
 
