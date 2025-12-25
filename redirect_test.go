@@ -413,6 +413,7 @@ func Test_Redirect_WithInput_ReusesClearedMap(t *testing.T) {
 
 	require.Len(t, c.redirect.messages, 1)
 	require.Contains(t, c.redirect.messages, redirectionMsg{key: "second", value: "2", isOldInput: true})
+	require.NotContains(t, c.redirect.messages, redirectionMsg{key: "first", value: "1", isOldInput: true})
 }
 
 // go test -run Test_Redirect_parseAndClearFlashMessages
