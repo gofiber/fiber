@@ -400,9 +400,6 @@ func (c *DefaultCtx) UpdateParam(name, value string) {
 	if c.app.config.CaseSensitive {
 		for i, param := range c.route.Params {
 			// Prevent out-of-bounds access if route params exceed allocated values
-			if i >= maxParams {
-				return
-			}
 			if param == name {
 				c.values[i] = value
 				return
@@ -414,9 +411,6 @@ func (c *DefaultCtx) UpdateParam(name, value string) {
 	nameBytes := utils.UnsafeBytes(name)
 	for i, param := range c.route.Params {
 		// Prevent out-of-bounds access if route params exceed allocated values
-		if i >= maxParams {
-			return
-		}
 		if utils.EqualFold(utils.UnsafeBytes(param), nameBytes) {
 			c.values[i] = value
 			return
