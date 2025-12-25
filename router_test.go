@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -729,6 +730,22 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 		require.PanicsWithValue(t, "nil handler in route: /doe\n", func() {
 			app.register([]string{"USE"}, "/doe", nil, nil)
 		})
+	})
+}
+
+func Test_Router_Register_Param_Max_Exceed(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	parts := make([]string, maxParams+1)
+	for i := range parts {
+		parts[i] = fmt.Sprintf(":p%d", i)
+	}
+	path := "/" + strings.Join(parts, "/")
+
+	require.Panics(t, func() {
+		app.register([]string{"GET"}, path, nil, func(ctx Ctx) error { return nil })
 	})
 }
 
