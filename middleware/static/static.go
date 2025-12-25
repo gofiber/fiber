@@ -24,8 +24,7 @@ var (
 
 	sanitizeBufPool = sync.Pool{
 		New: func() any {
-			buf := make([]byte, 0, 64)
-			return &buf
+			return make([]byte, 0, 64)
 		},
 	}
 )
@@ -35,17 +34,17 @@ var (
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	var (
 		buf []byte
+		ok  bool
 		s   string
 	)
 
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
 	if bytes.IndexByte(p, '\\') >= 0 {
-		bufPtr, ok := sanitizeBufPool.Get().(*[]byte)
-		if !ok || bufPtr == nil {
-			bufPtr = new([]byte)
+		buf, ok = sanitizeBufPool.Get().([]byte)
+		if !ok {
+			buf = nil
 		}
-		buf = *bufPtr
 		if cap(buf) < len(p) {
 			buf = make([]byte, len(p))
 		}
@@ -56,9 +55,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 				buf[i] = '/'
 			}
 		}
-		s = string(buf)
-		*bufPtr = buf[:0]
-		sanitizeBufPool.Put(bufPtr)
+		s = utils.UnsafeString(buf)
 	} else {
 		s = utils.UnsafeString(p)
 	}
@@ -95,6 +92,11 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 
 	if hasTrailingSlash && len(s) > 1 && s[len(s)-1] != '/' {
 		s += "/"
+	}
+
+	if buf != nil {
+		s = string([]byte(s))        // detach from pooled storage before reuse
+		sanitizeBufPool.Put(buf[:0]) //nolint:staticcheck // []byte reuse is intentional
 	}
 
 	return utils.UnsafeBytes(s), nil
