@@ -33,9 +33,10 @@ var (
 // It returns an error if the path attempts to traverse directories.
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	var (
-		buf []byte
-		ok  bool
-		s   string
+		buf       []byte
+		pooledBuf []byte
+		ok        bool
+		s         string
 	)
 
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
@@ -44,8 +45,14 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 		buf, ok = sanitizeBufPool.Get().([]byte)
 		if !ok {
 			buf = nil
+		} else {
+			pooledBuf = buf
 		}
 		if cap(buf) < len(p) {
+			if pooledBuf != nil {
+				sanitizeBufPool.Put(pooledBuf[:0]) //nolint:staticcheck // []byte reuse is intentional
+				pooledBuf = nil
+			}
 			buf = make([]byte, len(p))
 		}
 		buf = buf[:len(p)]
