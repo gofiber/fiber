@@ -396,6 +396,25 @@ func Test_Static_Trailing_Slash(t *testing.T) {
 	require.Equal(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 }
 
+func Test_Static_BackslashRequests(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/*", New("../../.github/testdata/fs"))
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(fiber.MethodGet, "/css\\style.css", http.NoBody)
+		resp, err := app.Test(req)
+		require.NoError(t, err, "iteration %d", i)
+		require.Equal(t, 200, resp.StatusCode, "Status code")
+		require.Equal(t, fiber.MIMETextCSSCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "color")
+		require.NoError(t, resp.Body.Close())
+	}
+}
+
 func Test_Static_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -1121,6 +1140,25 @@ func Benchmark_SanitizePath(b *testing.B) {
 	bench("nilFS - urlencoded chars", nil, []byte("/foo%2Fbar/../baz%20qux/index.html"))
 	bench("dirFS - urlencoded chars", os.DirFS("."), []byte("/foo%2Fbar/../baz%20qux/index.html"))
 	bench("nilFS - slashes", nil, []byte("\\foo%2Fbar\\baz%20qux\\index.html"))
+}
+
+func Benchmark_Static_BackslashRequests(b *testing.B) {
+	app := fiber.New()
+	app.Get("/*", New("../../.github/testdata/fs"))
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		req := httptest.NewRequest(fiber.MethodGet, "/css\\style.css", http.NoBody)
+		resp, err := app.Test(req)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err = resp.Body.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func Test_SanitizePath(t *testing.T) {

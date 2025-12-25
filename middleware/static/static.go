@@ -19,24 +19,47 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-var ErrInvalidPath = errors.New("invalid path")
+var (
+	ErrInvalidPath = errors.New("invalid path")
+
+	sanitizeBufPool = sync.Pool{
+		New: func() any {
+			return make([]byte, 0, 64)
+		},
+	}
+)
 
 // sanitizePath validates and cleans the requested path.
 // It returns an error if the path attempts to traverse directories.
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
-	var s string
+	var (
+		buf    []byte
+		bufPtr *[]byte
+		s      string
+	)
 
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
 	if bytes.IndexByte(p, '\\') >= 0 {
-		b := make([]byte, len(p))
-		copy(b, p)
-		for i := range b {
-			if b[i] == '\\' {
-				b[i] = '/'
+		item, ok := sanitizeBufPool.Get().(*[]byte)
+		if !ok || item == nil {
+			item = new([]byte)
+		}
+		bufPtr = item
+		buf = *bufPtr
+		if cap(buf) < len(p) {
+			buf = make([]byte, len(p))
+		}
+		buf = buf[:len(p)]
+		copy(buf, p)
+		for i := range buf {
+			if buf[i] == '\\' {
+				buf[i] = '/'
 			}
 		}
-		s = utils.UnsafeString(b)
+		s = string(buf)
+		*bufPtr = buf[:0]
+		sanitizeBufPool.Put(bufPtr)
 	} else {
 		s = utils.UnsafeString(p)
 	}
