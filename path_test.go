@@ -266,3 +266,64 @@ func Benchmark_RoutePatternMatch(t *testing.B) {
 		benchCaseFn(testCollection)
 	}
 }
+
+func Test_Route_TooManyParams_Panic(t *testing.T) {
+	t.Parallel()
+
+	// Test with exactly maxParams (30) - should work
+	t.Run("exactly_maxParams", func(t *testing.T) {
+		t.Parallel()
+		route := "/:p1/:p2/:p3/:p4/:p5/:p6/:p7/:p8/:p9/:p10/:p11/:p12/:p13/:p14/:p15/:p16/:p17/:p18/:p19/:p20/:p21/:p22/:p23/:p24/:p25/:p26/:p27/:p28/:p29/:p30"
+		require.NotPanics(t, func() {
+			parseRoute(route)
+		})
+	})
+
+	// Test with maxParams + 1 (31) - should panic
+	t.Run("maxParams_plus_one", func(t *testing.T) {
+		t.Parallel()
+		route := "/:p1/:p2/:p3/:p4/:p5/:p6/:p7/:p8/:p9/:p10/:p11/:p12/:p13/:p14/:p15/:p16/:p17/:p18/:p19/:p20/:p21/:p22/:p23/:p24/:p25/:p26/:p27/:p28/:p29/:p30/:p31"
+		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
+			parseRoute(route)
+		})
+	})
+
+	// Test with 35 params - should panic
+	t.Run("35_params", func(t *testing.T) {
+		t.Parallel()
+		route := "/:p1/:p2/:p3/:p4/:p5/:p6/:p7/:p8/:p9/:p10/:p11/:p12/:p13/:p14/:p15/:p16/:p17/:p18/:p19/:p20/:p21/:p22/:p23/:p24/:p25/:p26/:p27/:p28/:p29/:p30/:p31/:p32/:p33/:p34/:p35"
+		require.PanicsWithValue(t, "Route '"+route+"' has 35 parameters, which exceeds the maximum of 30", func() {
+			parseRoute(route)
+		})
+	})
+}
+
+func Test_App_Register_TooManyParams_Panic(t *testing.T) {
+	t.Parallel()
+
+	// Test registering a route with too many params via app
+	t.Run("register_via_Get", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		route := "/:p1/:p2/:p3/:p4/:p5/:p6/:p7/:p8/:p9/:p10/:p11/:p12/:p13/:p14/:p15/:p16/:p17/:p18/:p19/:p20/:p21/:p22/:p23/:p24/:p25/:p26/:p27/:p28/:p29/:p30/:p31"
+
+		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
+			app.Get(route, func(c Ctx) error {
+				return c.SendString("test")
+			})
+		})
+	})
+
+	// Test registering a route with maxParams works
+	t.Run("register_maxParams_works", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		route := "/:p1/:p2/:p3/:p4/:p5/:p6/:p7/:p8/:p9/:p10/:p11/:p12/:p13/:p14/:p15/:p16/:p17/:p18/:p19/:p20/:p21/:p22/:p23/:p24/:p25/:p26/:p27/:p28/:p29/:p30"
+
+		require.NotPanics(t, func() {
+			app.Get(route, func(c Ctx) error {
+				return c.SendString("test")
+			})
+		})
+	})
+}

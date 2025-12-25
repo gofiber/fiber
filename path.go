@@ -7,6 +7,7 @@
 package fiber
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -213,6 +214,12 @@ func parseRoute(pattern string) routeParser {
 		parser.segs[len(parser.segs)-1].IsLast = true
 	}
 	parser.segs = addParameterMetaInfo(parser.segs)
+
+	// Check if the route has too many parameters
+	if len(parser.params) > maxParams {
+		panic(fmt.Sprintf("Route '%s' has %d parameters, which exceeds the maximum of %d",
+			pattern, len(parser.params), maxParams))
+	}
 
 	return parser
 }
