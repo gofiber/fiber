@@ -238,6 +238,89 @@ func Test_FormBinder_BindMultipart_FileError(t *testing.T) {
 	require.Contains(t, err.Error(), "unmatched brackets")
 }
 
+func Test_FormBinder_Bind_MapClearedBetweenRequests(t *testing.T) {
+	t.Parallel()
+
+	b := &FormBinding{}
+
+	type payload struct {
+		Name string `form:"name"`
+		Age  int    `form:"age"`
+	}
+
+	firstReq := fasthttp.AcquireRequest()
+	firstReq.SetBodyString("name=john&age=21")
+	firstReq.Header.SetContentType("application/x-www-form-urlencoded")
+	t.Cleanup(func() { fasthttp.ReleaseRequest(firstReq) })
+
+	var first payload
+	require.NoError(t, b.Bind(firstReq, &first))
+	require.Equal(t, "john", first.Name)
+	require.Equal(t, 21, first.Age)
+
+	secondReq := fasthttp.AcquireRequest()
+	secondReq.SetBodyString("age=42")
+	secondReq.Header.SetContentType("application/x-www-form-urlencoded")
+	t.Cleanup(func() { fasthttp.ReleaseRequest(secondReq) })
+
+	var second payload
+	require.NoError(t, b.Bind(secondReq, &second))
+	require.Empty(t, second.Name)
+	require.Equal(t, 42, second.Age)
+}
+
+func Test_FormBinder_BindMultipart_MapsClearedBetweenRequests(t *testing.T) {
+	t.Parallel()
+
+	b := &FormBinding{}
+
+	type payload struct { // betteralign:ignore - test payload prioritizes readability over alignment
+		Avatar *multipart.FileHeader `form:"avatar"`
+		Name   string                `form:"name"`
+		Age    int                   `form:"age"`
+	}
+
+	firstReq := fasthttp.AcquireRequest()
+	firstBuffer := &bytes.Buffer{}
+	firstWriter := multipart.NewWriter(firstBuffer)
+
+	require.NoError(t, firstWriter.WriteField("name", "john"))
+	require.NoError(t, firstWriter.WriteField("age", "21"))
+
+	firstFile, err := firstWriter.CreateFormFile("avatar", "avatar.txt")
+	require.NoError(t, err)
+	_, err = firstFile.Write([]byte("avatar-content"))
+	require.NoError(t, err)
+	require.NoError(t, firstWriter.Close())
+
+	firstReq.Header.SetContentType(firstWriter.FormDataContentType())
+	firstReq.SetBody(firstBuffer.Bytes())
+	t.Cleanup(func() { fasthttp.ReleaseRequest(firstReq) })
+
+	var first payload
+	require.NoError(t, b.Bind(firstReq, &first))
+	require.Equal(t, "john", first.Name)
+	require.Equal(t, 21, first.Age)
+	require.NotNil(t, first.Avatar)
+	require.Equal(t, "avatar.txt", first.Avatar.Filename)
+
+	secondReq := fasthttp.AcquireRequest()
+	secondBuffer := &bytes.Buffer{}
+	secondWriter := multipart.NewWriter(secondBuffer)
+	require.NoError(t, secondWriter.WriteField("age", "42"))
+	require.NoError(t, secondWriter.Close())
+
+	secondReq.Header.SetContentType(secondWriter.FormDataContentType())
+	secondReq.SetBody(secondBuffer.Bytes())
+	t.Cleanup(func() { fasthttp.ReleaseRequest(secondReq) })
+
+	var second payload
+	require.NoError(t, b.Bind(secondReq, &second))
+	require.Empty(t, second.Name)
+	require.Equal(t, 42, second.Age)
+	require.Nil(t, second.Avatar)
+}
+
 func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	b.ReportAllocs()
 
