@@ -29,6 +29,14 @@ var (
 	}
 )
 
+const sanitizeBufPoolMaxSize = 8 * 1024
+
+func putSanitizeBuf(b []byte) {
+	if cap(b) <= sanitizeBufPoolMaxSize {
+		sanitizeBufPool.Put(b[:0]) //nolint:staticcheck // []byte reuse is intentional
+	}
+}
+
 // sanitizePath validates and cleans the requested path.
 // It returns an error if the path attempts to traverse directories.
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
@@ -50,8 +58,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 		}
 		if cap(buf) < len(p) {
 			if pooledBuf != nil {
-				sanitizeBufPool.Put(pooledBuf[:0]) //nolint:staticcheck // []byte reuse is intentional
-				pooledBuf = nil
+				putSanitizeBuf(pooledBuf)
 			}
 			buf = make([]byte, len(p))
 		}
@@ -101,9 +108,9 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 		s += "/"
 	}
 
-	if buf != nil {
-		s = string([]byte(s))        // detach from pooled storage before reuse
-		sanitizeBufPool.Put(buf[:0]) //nolint:staticcheck // []byte reuse is intentional
+	if buf != nil && cap(buf) <= sanitizeBufPoolMaxSize {
+		s = string([]byte(s)) // detach from pooled storage before reuse
+		putSanitizeBuf(buf)
 	}
 
 	return utils.UnsafeBytes(s), nil
