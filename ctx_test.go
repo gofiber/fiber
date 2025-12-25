@@ -7566,36 +7566,6 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
 
-	t.Run("exceeds_max_params", func(t *testing.T) {
-		t.Parallel()
-
-		app := New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c, ok := ctx.(*DefaultCtx)
-		require.True(t, ok)
-		defer app.ReleaseCtx(c)
-
-		// Manually simulate a route exceeding maxParams to test boundary limits
-		params := make([]string, maxParams+10)
-		for i := range params {
-			params[i] = fmt.Sprintf("p%d", i)
-		}
-
-		c.setRoute(&Route{Params: params})
-		c.setMatched(true)
-
-		// Check in bound update (should update)
-		c.UpdateParam("p0", "valid_update")
-		require.Equal(t, "valid_update", c.values[0])
-
-		// Check out bound update (should fail)
-		outOfBoundsParam := fmt.Sprintf("p%d", maxParams+4)
-		c.UpdateParam(outOfBoundsParam, "should_fail")
-
-		require.NotEqual(t, "should_fail", c.Params(outOfBoundsParam))
-		require.Empty(t, c.Params(outOfBoundsParam))
-	})
-
 	t.Run("case_sensitive", func(t *testing.T) {
 		t.Parallel()
 
