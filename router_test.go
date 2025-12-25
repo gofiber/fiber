@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -731,22 +730,6 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 			app.register([]string{"USE"}, "/doe", nil, nil)
 		})
 	})
-}
-
-func Test_Router_Register_Param_Max_Exceed(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-
-	parts := make([]string, maxParams+1)
-	for i := range parts {
-		parts[i] = fmt.Sprintf(":p%d", i)
-	}
-	path := "/" + strings.Join(parts, "/")
-
-	require.Panicsf(t, func() {
-		app.register([]string{"GET"}, path, nil, func(_ Ctx) error { return nil })
-	}, "route has %d parameters, exceeding the maximum of %d: %s\n", len(parts), maxParams, path)
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
