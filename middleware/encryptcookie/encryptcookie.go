@@ -26,7 +26,7 @@ func New(config ...Config) fiber.Handler {
 			if !isDisabled(keyString, cfg.Except) {
 				decryptedValue, err := cfg.Decryptor(keyString, string(value), cfg.Key)
 				if err != nil {
-					c.Request().Header.DelCookieBytes(key)
+					c.Request().Header.SetCookie(string(key), "")
 				} else {
 					c.Request().Header.SetCookie(string(key), decryptedValue)
 				}

@@ -107,6 +107,38 @@ func Test_DecryptCookie_InvalidEncryptedValue(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidEncryptedValue)
 }
 
+func Test_Middleware_Decrypt_Invalid_Cookie_Does_Not_Panic(t *testing.T) {
+	t.Parallel()
+
+	testKey := GenerateKey(32)
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Key: testKey,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("value=" + c.Cookies("test"))
+	})
+
+	// Send a request with an unencrypted/invalid cookie value
+	// This should not panic and should clear the cookie value
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.AddCookie(&http.Cookie{
+		Name:  "test",
+		Value: "plaintext-unencrypted-value",
+	})
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	// The cookie value should be empty since decryption failed
+	body := make([]byte, 64)
+	n, _ := resp.Body.Read(body)
+	require.Equal(t, "value=", string(body[:n]))
+}
+
 func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
 	t.Parallel()
 
