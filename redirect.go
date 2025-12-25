@@ -110,8 +110,6 @@ func acquireOldInput() map[string]string {
 		return make(map[string]string)
 	}
 
-	clear(oldInput)
-
 	return oldInput
 }
 
