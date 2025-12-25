@@ -547,6 +547,10 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 
 	isMount := group != nil && group.app != app
 
+	if len(parsedRaw.params) > maxParams {
+		panic(fmt.Sprintf("route has %d parameters, exceeding the maximum of %d: %s\n", len(parsedRaw.params), maxParams, pathRaw))
+	}
+
 	for _, method := range methods {
 		method = utils.ToUpper(method)
 		if method != methodUse && app.methodInt(method) == -1 {
