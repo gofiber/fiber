@@ -108,7 +108,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 		s += "/"
 	}
 
-	if buf != nil && cap(buf) <= sanitizeBufPoolMaxSize {
+	if buf != nil {
 		s = string([]byte(s)) // detach from pooled storage before reuse
 		putSanitizeBuf(buf)
 	}
