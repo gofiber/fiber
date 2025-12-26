@@ -49,10 +49,10 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	var s string
 	if bytes.IndexByte(p, '\\') >= 0 {
 		if pooled, ok := sanitizeBufPool.Get().([]byte); ok {
+			defer putSanitizeBuf(pooled)
 			buf = pooled
 		}
 		if buf != nil && cap(buf) < len(p) {
-			putSanitizeBuf(buf)
 			buf = make([]byte, len(p))
 		}
 		buf = buf[:len(p)]
@@ -103,7 +103,6 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 
 	if buf != nil {
 		s = string([]byte(s)) // detach from pooled storage before reuse
-		putSanitizeBuf(buf)
 	}
 
 	return utils.UnsafeBytes(s), nil
