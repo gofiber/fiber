@@ -50,12 +50,8 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
 	if bytes.IndexByte(p, '\\') >= 0 {
-		buf, ok = sanitizeBufPool.Get().([]byte)
-		if !ok {
-			buf = nil
-		} else {
-			pooledBuf = buf
-		}
+		buf = sanitizeBufPool.Get().([]byte)
+		pooledBuf = buf
 		if cap(buf) < len(p) {
 			if pooledBuf != nil {
 				putSanitizeBuf(pooledBuf)
