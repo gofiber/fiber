@@ -29,6 +29,8 @@ var (
 	}
 )
 
+// Limit pooled buffers to 8 KiB to cover typical URL/path lengths while avoiding
+// holding onto rare, very large allocations in sync.Pool (which does not shrink).
 const sanitizeBufPoolMaxSize = 8 * 1024
 
 func putSanitizeBuf(b []byte) {
@@ -43,14 +45,19 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	var (
 		buf       []byte
 		pooledBuf []byte
-		ok        bool
 		s         string
 	)
 
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
 	if bytes.IndexByte(p, '\\') >= 0 {
-		buf = sanitizeBufPool.Get().([]byte)
+		bufAny := sanitizeBufPool.Get()
+		switch b := bufAny.(type) {
+		case []byte:
+			buf = b
+		default:
+			buf = nil
+		}
 		pooledBuf = buf
 		if cap(buf) < len(p) {
 			if pooledBuf != nil {
