@@ -42,27 +42,17 @@ func putSanitizeBuf(b []byte) {
 // sanitizePath validates and cleans the requested path.
 // It returns an error if the path attempts to traverse directories.
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
-	var (
-		buf       []byte
-		pooledBuf []byte
-		s         string
-	)
+	var buf []byte
 
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
+	var s string
 	if bytes.IndexByte(p, '\\') >= 0 {
-		bufAny := sanitizeBufPool.Get()
-		switch b := bufAny.(type) {
-		case []byte:
-			buf = b
-		default:
-			buf = nil
+		if pooled, ok := sanitizeBufPool.Get().([]byte); ok {
+			buf = pooled
 		}
-		pooledBuf = buf
-		if cap(buf) < len(p) {
-			if pooledBuf != nil {
-				putSanitizeBuf(pooledBuf)
-			}
+		if buf != nil && cap(buf) < len(p) {
+			putSanitizeBuf(buf)
 			buf = make([]byte, len(p))
 		}
 		buf = buf[:len(p)]
