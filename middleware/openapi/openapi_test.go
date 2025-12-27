@@ -62,12 +62,11 @@ func Test_OpenAPI_JSONEquality(t *testing.T) {
 		}
 		lower := strings.ToLower(m)
 		upper := strings.ToUpper(m)
+		status, resp := defaultResponseForMethod(m, fiber.MIMETextPlain)
 		op := operation{
 			Summary:     upper + " /",
 			Description: "",
-			Responses: map[string]response{
-				"200": {Description: "OK", Content: map[string]map[string]any{fiber.MIMETextPlain: {}}},
-			},
+			Responses:   map[string]response{status: resp},
 		}
 		switch m {
 		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
@@ -121,12 +120,11 @@ func Test_OpenAPI_RawJSON(t *testing.T) {
 		}
 		lower := strings.ToLower(m)
 		upper := strings.ToUpper(m)
+		status, resp := defaultResponseForMethod(m, fiber.MIMETextPlain)
 		op := operation{
 			Summary:     upper + " /",
 			Description: "",
-			Responses: map[string]response{
-				"200": {Description: "OK", Content: map[string]map[string]any{fiber.MIMETextPlain: {}}},
-			},
+			Responses:   map[string]response{status: resp},
 		}
 		switch m {
 		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
@@ -230,7 +228,7 @@ func Test_OpenAPI_OperationConfig(t *testing.T) {
 	require.Equal(t, "Returns all users", op.Description)
 	require.ElementsMatch(t, []string{"users"}, op.Tags)
 	require.True(t, op.Deprecated)
-	require.Contains(t, op.Responses["200"].Content, fiber.MIMEApplicationJSON)
+	require.Len(t, op.Responses, 1)
 	require.Contains(t, op.Responses, "201")
 	require.Contains(t, op.Responses["201"].Content, fiber.MIMEApplicationJSON)
 	require.NotNil(t, op.RequestBody)
@@ -296,8 +294,49 @@ func Test_OpenAPI_RouteRequestBodyAndResponses(t *testing.T) {
 	require.Contains(t, op.Responses, "201")
 	require.Equal(t, "Created", op.Responses["201"].Description)
 	require.Contains(t, op.Responses["201"].Content, fiber.MIMEApplicationJSON)
-	require.Contains(t, op.Responses, "200")
-	require.Equal(t, "OK", op.Responses["200"].Description)
+}
+
+func Test_OpenAPI_DefaultResponses(t *testing.T) {
+	t.Run("delete defaults to 204 with no content", func(t *testing.T) {
+		app := fiber.New()
+		app.Delete("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
+
+		paths := getPaths(t, app)
+		op := requireMap(t, paths["/users/{id}"]["delete"])
+		responses := requireMap(t, op["responses"])
+		require.Len(t, responses, 1)
+		r204 := requireMap(t, responses["204"])
+		require.Equal(t, "No Content", r204["description"])
+		require.NotContains(t, r204, "content")
+	})
+
+	t.Run("post with explicit 201 does not add default 200", func(t *testing.T) {
+		app := fiber.New()
+		app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
+			Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON)
+
+		paths := getPaths(t, app)
+		op := requireMap(t, paths["/users"]["post"])
+		responses := requireMap(t, op["responses"])
+		require.Len(t, responses, 1)
+		r201 := requireMap(t, responses["201"])
+		require.Equal(t, "Created", r201["description"])
+		require.Contains(t, requireMap(t, r201["content"]), fiber.MIMEApplicationJSON)
+	})
+
+	t.Run("non-200 responses remain untouched", func(t *testing.T) {
+		app := fiber.New()
+		app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNotFound) }).
+			Response(fiber.StatusNotFound, "Not Found", fiber.MIMETextPlain)
+
+		paths := getPaths(t, app)
+		op := requireMap(t, paths["/users"]["get"])
+		responses := requireMap(t, op["responses"])
+		require.Len(t, responses, 1)
+		r404 := requireMap(t, responses["404"])
+		require.Equal(t, "Not Found", r404["description"])
+		require.Contains(t, requireMap(t, r404["content"]), fiber.MIMETextPlain)
+	})
 }
 
 // getPaths is a helper that mounts the middleware, performs the request and

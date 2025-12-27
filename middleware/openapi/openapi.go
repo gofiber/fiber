@@ -181,19 +181,10 @@ func generateSpec(app *fiber.App, cfg Config) openAPISpec {
 			}
 
 			responses := mergeResponses(r.Responses, meta.Responses)
-			if responses == nil {
-				responses = make(map[string]response)
+			if len(responses) == 0 {
+				status, defaultResp := defaultResponseForMethod(r.Method, respType)
+				responses = map[string]response{status: defaultResp}
 			}
-			defaultResp, exists := responses["200"]
-			if defaultResp.Description == "" {
-				defaultResp.Description = "OK"
-			}
-			if !exists && respType != "" {
-				defaultResp.Content = map[string]map[string]any{
-					respType: {},
-				}
-			}
-			responses["200"] = defaultResp
 
 			reqBody := buildRequestBody(r.RequestBody, meta.RequestBody)
 			if reqBody == nil {
@@ -435,4 +426,23 @@ func shouldIncludeRequestBody(reqType string, meta Operation, route *fiber.Route
 	default:
 		return true
 	}
+}
+
+func defaultResponseForMethod(method, mediaType string) (string, response) {
+	status := "200"
+	description := "OK"
+
+	switch method {
+	case fiber.MethodDelete, fiber.MethodHead:
+		status = "204"
+		description = "No Content"
+	}
+
+	resp := response{Description: description}
+	if mediaType != "" && status != "204" {
+		resp.Content = map[string]map[string]any{
+			mediaType: {},
+		}
+	}
+	return status, resp
 }

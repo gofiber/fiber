@@ -64,7 +64,7 @@ app.Post("/users", createUser).
 // Consumes and Produces will panic if provided an invalid media type.
 ```
 
-Each documented route automatically includes a `200` response with the description `OK` to satisfy the minimum OpenAPI requirements. Additional responses can be declared via the `Response` helper or the middleware configuration.
+If no responses are declared, the middleware adds a sensible default: `200 OK` for most methods and `204 No Content` for `DELETE` and `HEAD`. When any responses are provided (either via route helpers or middleware configuration), no automatic default is added.
 
 `CONNECT` routes are ignored because the OpenAPI specification does not define a `connect` operation.
 
