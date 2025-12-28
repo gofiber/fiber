@@ -661,11 +661,13 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		responseTS := max(ts, nowUnix)
+
 		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)
 		var ageDuration time.Duration
 		apparentAge := e.age
-		if e.date > 0 && ts > e.date {
-			dateAge := ts - e.date
+		if e.date > 0 && responseTS > e.date {
+			dateAge := responseTS - e.date
 			if dateAge > apparentAge {
 				apparentAge = dateAge
 			}
@@ -692,7 +694,7 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		e.exp = ts + uint64(remainingExpiration.Seconds())
+		e.exp = responseTS + uint64(remainingExpiration.Seconds())
 		e.ttl = uint64(expiration.Seconds())
 		if expiresParseError {
 			e.exp = ts + 1
