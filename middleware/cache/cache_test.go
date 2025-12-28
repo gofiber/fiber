@@ -2322,7 +2322,11 @@ func Test_CacheStaleResponseAddsWarning110(t *testing.T) {
 		resp, err = app.Test(req)
 		require.NoError(t, err)
 		if resp.Header.Get("X-Cache") == cacheHit {
-			break
+			ageVal, err := strconv.Atoi(resp.Header.Get(fiber.HeaderAge))
+			require.NoError(t, err)
+			if ageVal >= 1 {
+				break
+			}
 		}
 		require.True(t, time.Now().Before(deadline), "response did not become stale before deadline")
 		time.Sleep(50 * time.Millisecond)
