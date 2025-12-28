@@ -1070,11 +1070,18 @@ func Test_CustomExpiration(t *testing.T) {
 	require.True(t, called)
 	require.Equal(t, 1, newCacheTime)
 
-	// Sleep until the cache is expired
-	time.Sleep(1*time.Second + 100*time.Millisecond)
-
-	cachedResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+	// Wait until the cache expires (timestamp tick can delay expiry detection slightly).
+	expireDeadline := time.Now().Add(3 * time.Second)
+	var cachedResp *http.Response
+	for {
+		cachedResp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		if cachedResp.Header.Get(fiber.HeaderXCache) != cacheHit {
+			break
+		}
+		require.True(t, time.Now().Before(expireDeadline), "response remained cached beyond expected expiration")
+		time.Sleep(50 * time.Millisecond)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
