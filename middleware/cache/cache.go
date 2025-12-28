@@ -847,7 +847,7 @@ func parseRequestCacheControl(cc string) requestCacheDirectives {
 }
 
 func cachedResponseAge(e *item, now uint64) uint64 {
-	e.date = clampDateSeconds(e.date, now)
+	clampedDate := clampDateSeconds(e.date, now)
 
 	resident := uint64(0)
 	if e.exp != 0 {
@@ -859,8 +859,8 @@ func cachedResponseAge(e *item, now uint64) uint64 {
 	}
 
 	dateAge := uint64(0)
-	if e.date != 0 && now > e.date {
-		dateAge = now - e.date
+	if clampedDate != 0 && now > clampedDate {
+		dateAge = now - clampedDate
 	}
 
 	currentAge := max(dateAge, max(resident, e.age))
