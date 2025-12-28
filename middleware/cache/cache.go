@@ -228,6 +228,20 @@ func New(config ...Config) fiber.Handler {
 		entryAge := uint64(0)
 		revalidate := false
 
+		handleMinFresh := func(now uint64) {
+			if e == nil || !reqDirectives.minFreshSet {
+				return
+			}
+			remainingFreshness := remainingFreshness(e, now)
+			if remainingFreshness < reqDirectives.minFresh {
+				revalidate = true
+				if cfg.Storage != nil {
+					manager.release(e)
+				}
+				e = nil
+			}
+		}
+
 		// Lock entry
 		mux.Lock()
 		// Get timestamp
@@ -244,17 +258,7 @@ func New(config ...Config) fiber.Handler {
 				e = nil
 			}
 
-			remainingFreshness := uint64(0)
-			if e != nil && e.exp != 0 && ts < e.exp {
-				remainingFreshness = e.exp - ts
-			}
-			if e != nil && reqDirectives.minFreshSet && remainingFreshness < reqDirectives.minFresh {
-				revalidate = true
-				if cfg.Storage != nil {
-					manager.release(e)
-				}
-				e = nil
-			}
+			handleMinFresh(ts)
 		}
 
 		if e != nil && e.ttl == 0 && e.forceRevalidate {
@@ -321,17 +325,7 @@ func New(config ...Config) fiber.Handler {
 				e = nil
 			}
 
-			remainingFreshness := uint64(0)
-			if e != nil && entryHasExpiration && ts < e.exp {
-				remainingFreshness = e.exp - ts
-			}
-			if e != nil && reqDirectives.minFreshSet && remainingFreshness < reqDirectives.minFresh {
-				revalidate = true
-				if cfg.Storage != nil {
-					manager.release(e)
-				}
-				e = nil
-			}
+			handleMinFresh(ts)
 
 			if revalidate {
 				mux.Unlock()
@@ -882,6 +876,14 @@ func appendWarningHeaders(h *fasthttp.ResponseHeader, servedStale, heuristicFres
 	if heuristicFreshness {
 		h.Add(fiber.HeaderWarning, `113 - "Heuristic expiration"`)
 	}
+}
+
+func remainingFreshness(e *item, now uint64) uint64 {
+	if e == nil || e.exp == 0 || now >= e.exp {
+		return 0
+	}
+
+	return e.exp - now
 }
 
 func isHeuristicFreshness(e *item, cfg *Config, entryAge uint64) bool {
