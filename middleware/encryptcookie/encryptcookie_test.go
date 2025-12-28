@@ -135,7 +135,8 @@ func Test_Middleware_Decrypt_Invalid_Cookie_Does_Not_Panic(t *testing.T) {
 
 	// The cookie value should be empty since decryption failed
 	body := make([]byte, 64)
-	n, _ := resp.Body.Read(body)
+	n, err := resp.Body.Read(body)
+	require.NoError(t, err)
 	require.Equal(t, "value=", string(body[:n]))
 }
 
