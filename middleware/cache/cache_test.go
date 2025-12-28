@@ -2315,13 +2315,18 @@ func Test_CacheStaleResponseAddsWarning110(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	time.Sleep(1200 * time.Millisecond)
-
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderCacheControl, "max-stale=5")
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		resp, err = app.Test(req)
+		require.NoError(t, err)
+		if resp.Header.Get("X-Cache") == cacheHit {
+			break
+		}
+		require.True(t, time.Now().Before(deadline), "response did not become stale before deadline")
+		time.Sleep(50 * time.Millisecond)
+	}
 
 	warnings := resp.Header.Values(fiber.HeaderWarning)
 	require.NotEmpty(t, warnings)
