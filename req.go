@@ -910,12 +910,12 @@ func (r *DefaultReq) Stale() bool {
 }
 
 // IsProxyTrusted checks trustworthiness of remote ip.
-// If Config.TrustProxy false, it returns true
+// If Config.TrustProxy false, it returns false.
 // IsProxyTrusted can check remote ip by proxy ranges and ip map.
 func (r *DefaultReq) IsProxyTrusted() bool {
 	config := r.c.app.config
 	if !config.TrustProxy {
-		return true
+		return false
 	}
 
 	ip := r.c.fasthttp.RemoteIP()
