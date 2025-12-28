@@ -383,9 +383,9 @@ func (c *DefaultCtx) HasBody() bool {
 	return len(c.fasthttp.Request.Body()) > 0
 }
 
-// UpdateParam overwrites a route parameter value by name.
+// OverrideParam overwrites a route parameter value by name.
 // If the parameter name does not exist in the route, this method does nothing.
-func (c *DefaultCtx) UpdateParam(name, value string) {
+func (c *DefaultCtx) OverrideParam(name, value string) {
 	// If no route is matched, there are no parameters to update
 	if !c.Matched() {
 		return

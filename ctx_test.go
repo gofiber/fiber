@@ -7478,18 +7478,18 @@ func Test_Ctx_End_after_drop(t *testing.T) {
 	require.Nil(t, resp)
 }
 
-// go test -run Test_Ctx_UpdateParam
-func Test_Ctx_UpdateParam(t *testing.T) {
+// go test -run Test_Ctx_OverrideParam
+func Test_Ctx_OverrideParam(t *testing.T) {
 	t.Parallel()
 	t.Run("route_params", func(t *testing.T) {
-		// a basic request to check if UpdateParam functions correctly on different scenarios
+		// a basic request to check if OverrideParam functions correctly on different scenarios
 		// - Does it change an existing param (it should)
 		// - Does it ignore a non-existing param (it should)
 		t.Parallel()
 		app := New()
 		app.Get("/user/:name/:id", func(c Ctx) error {
-			c.UpdateParam("name", "overridden")
-			c.UpdateParam("nonexistent", "ignored")
+			c.OverrideParam("name", "overridden")
+			c.OverrideParam("nonexistent", "ignored")
 			require.Equal(t, "overridden", c.Params("name"))
 			require.Equal(t, "123", c.Params("id"))
 			require.Empty(t, c.Params("nonexistent"))
@@ -7515,8 +7515,8 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		app := New()
 		app.Get("/files+/+",
 			func(c Ctx) error {
-				c.UpdateParam("+", "changed")
-				c.UpdateParam("+2", "changed2")
+				c.OverrideParam("+", "changed")
+				c.OverrideParam("+2", "changed2")
 
 				require.Equal(t, "changed", c.Params("+"))
 				require.Equal(t, "changed2", c.Params("+2"))
@@ -7536,7 +7536,7 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		t.Parallel()
 		app := New()
 		app.Get("/files/*", func(c Ctx) error {
-			c.UpdateParam("*", "changed")
+			c.OverrideParam("*", "changed")
 			require.Equal(t, "changed", c.Params("*"))
 			return nil
 		})
@@ -7552,8 +7552,8 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		t.Parallel()
 		app := New()
 		app.Get("/files/*/*", func(c Ctx) error {
-			c.UpdateParam("*", "changed")
-			c.UpdateParam("*2", "changed2")
+			c.OverrideParam("*", "changed")
+			c.OverrideParam("*2", "changed2")
 			require.Equal(t, "changed", c.Params("*"))
 			require.Equal(t, "changed2", c.Params("*2"))
 			return nil
@@ -7569,13 +7569,13 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 	t.Run("case_sensitive", func(t *testing.T) {
 		t.Parallel()
 
-		// Ensure UpdateParam respects the CaseSensitive configuration
+		// Ensure OverrideParam respects the CaseSensitive configuration
 		app := New(Config{
 			CaseSensitive: true,
 		})
 
 		app.Get("/user/:name", func(c Ctx) error {
-			c.UpdateParam("name", "overridden")
+			c.OverrideParam("name", "overridden")
 
 			require.Equal(t, "overridden", c.Params("name"))
 			require.Empty(t, c.Params("NAME"))
@@ -7603,7 +7603,7 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		})
 
 		app.Get("/user/:name", func(c Ctx) error {
-			c.UpdateParam("NAME", "overridden")
+			c.OverrideParam("NAME", "overridden")
 
 			require.Equal(t, "overridden", c.Params("name"))
 			require.Equal(t, "overridden", c.Params("NAME"))
@@ -7623,7 +7623,7 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 
 	t.Run("nil_router", func(t *testing.T) {
 		t.Parallel()
-		// Ensure UpdateParam handles nil route context gracefully
+		// Ensure OverrideParam handles nil route context gracefully
 		app := New()
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c, ok := ctx.(*DefaultCtx)
@@ -7631,7 +7631,7 @@ func Test_Ctx_UpdateParam(t *testing.T) {
 		defer app.ReleaseCtx(c)
 		c.route = nil
 
-		c.UpdateParam("test", "value") // Should not change
+		c.OverrideParam("test", "value") // Should not change
 		require.Empty(t, c.Params("test"))
 	})
 }
@@ -8116,8 +8116,8 @@ func Benchmark_Ctx_IsFromLocalhost(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_UpdateParam -benchmem -count=4
-func Benchmark_Ctx_UpdateParam(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Ctx_OverrideParam -benchmem -count=4
+func Benchmark_Ctx_OverrideParam(b *testing.B) {
 	app := New()
 
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -8135,6 +8135,6 @@ func Benchmark_Ctx_UpdateParam(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		c.UpdateParam("name", "changed")
+		c.OverrideParam("name", "changed")
 	}
 }

@@ -119,9 +119,9 @@ type Ctx interface {
 	IsMiddleware() bool
 	// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
 	HasBody() bool
-	// UpdateParam overwrites a route parameter value by name.
+	// OverrideParam overwrites a route parameter value by name.
 	// If the parameter name does not exist in the route, this method does nothing.
-	UpdateParam(name, value string)
+	OverrideParam(name, value string)
 	// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
 	IsWebSocket() bool
 	// IsPreflight returns true if the request is a CORS preflight.
