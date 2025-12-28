@@ -963,11 +963,12 @@ func parseVary(vary string) ([]string, bool) {
 
 func buildVaryKey(names []string, hdr *fasthttp.RequestHeader) string {
 	sum := sha256.New()
+	// hash.Hash.Write never returns an error for standard hashes; ignore to satisfy linters.
 	for _, name := range names {
-		_, _ = sum.Write(utils.UnsafeBytes(name))
-		_, _ = sum.Write([]byte{0})
-		_, _ = sum.Write(hdr.Peek(name))
-		_, _ = sum.Write([]byte{0})
+		_ = sum.Write(utils.UnsafeBytes(name)) //nolint:errcheck
+		_ = sum.Write([]byte{0})               //nolint:errcheck
+		_ = sum.Write(hdr.Peek(name))          //nolint:errcheck
+		_ = sum.Write([]byte{0})               //nolint:errcheck
 	}
 	return "|vary|" + hex.EncodeToString(sum.Sum(nil))
 }
