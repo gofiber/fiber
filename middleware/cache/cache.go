@@ -964,18 +964,10 @@ func parseVary(vary string) ([]string, bool) {
 func buildVaryKey(names []string, hdr *fasthttp.RequestHeader) string {
 	sum := sha256.New()
 	for _, name := range names {
-		if _, err := sum.Write(utils.UnsafeBytes(name)); err != nil {
-			return ""
-		}
-		if _, err := sum.Write([]byte{0}); err != nil {
-			return ""
-		}
-		if _, err := sum.Write(hdr.Peek(name)); err != nil {
-			return ""
-		}
-		if _, err := sum.Write([]byte{0}); err != nil {
-			return ""
-		}
+		sum.Write(utils.UnsafeBytes(name))
+		sum.Write([]byte{0})
+		sum.Write(hdr.Peek(name))
+		sum.Write([]byte{0})
 	}
 	return "|vary|" + hex.EncodeToString(sum.Sum(nil))
 }
