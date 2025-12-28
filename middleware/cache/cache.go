@@ -472,11 +472,9 @@ func New(config ...Config) fiber.Handler {
 
 		cacheControl := utils.UnsafeString(c.Response().Header.Peek(fiber.HeaderCacheControl))
 		varyHeader := utils.UnsafeString(c.Response().Header.Peek(fiber.HeaderVary))
-		hasExpires := len(c.Response().Header.Peek(fiber.HeaderExpires)) > 0
 		hasPrivate := hasDirective(cacheControl, privateDirective)
 		hasNoCache := hasDirective(cacheControl, noCache)
-		varyNames, varyHasStar, releaseVaryNames := parseVary(varyHeader)
-		defer releaseVaryNames()
+		varyNames, varyHasStar := parseVary(varyHeader)
 
 		// Respect server cache-control: no-store
 		if hasDirective(cacheControl, noStore) {
@@ -523,7 +521,7 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		isSharedCacheAllowed := allowsSharedCache(cacheControl, hasExpires)
+		isSharedCacheAllowed := allowsSharedCache(cacheControl)
 		if hasAuthorization && !isSharedCacheAllowed {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return nil
@@ -942,42 +940,25 @@ func secondsToTime(sec uint64) time.Time {
 	return time.Unix(clamped, 0).UTC()
 }
 
-var varyNamesPool = sync.Pool{
-	New: func() any {
-		names := make([]string, 0, 8)
-		return &names
-	},
-}
-
-//nolint:nonamedreturns // gocritic unnamedResult prefers naming vary parsing results for clarity
-func parseVary(vary string) (names []string, hasStar bool, release func()) {
-	namesPtr, ok := varyNamesPool.Get().(*[]string)
-	if !ok {
-		fresh := make([]string, 0, 8)
-		namesPtr = &fresh
-	}
-	names = (*namesPtr)[:0]
-	release = func() {
-		*namesPtr = (*namesPtr)[:0]
-		varyNamesPool.Put(namesPtr)
-	}
+func parseVary(vary string) ([]string, bool) {
+	names := make([]string, 0, 8)
 	for part := range strings.SplitSeq(vary, ",") {
 		name := utils.TrimSpace(utils.ToLower(part))
 		if name == "" {
 			continue
 		}
 		if name == "*" {
-			return nil, true, release
+			return nil, true
 		}
 		names = append(names, name)
 	}
 
 	if len(names) == 0 {
-		return nil, false, release
+		return nil, false
 	}
 
 	sort.Strings(names)
-	return names, false, release
+	return names, false
 }
 
 func buildVaryKey(names []string, hdr *fasthttp.RequestHeader) string {
@@ -1017,15 +998,14 @@ func loadVaryManifest(ctx context.Context, manager *manager, manifestKey string)
 		return nil, false, err
 	}
 	manifest := utils.UnsafeString(raw)
-	names, hasStar, releaseNames := parseVary(manifest)
-	defer releaseNames()
+	names, hasStar := parseVary(manifest)
 	if hasStar {
 		return nil, false, nil
 	}
 	return names, len(names) > 0, nil
 }
 
-func allowsSharedCache(cc string, _ bool) bool {
+func allowsSharedCache(cc string) bool {
 	shareable := false
 
 	for part := range strings.SplitSeq(cc, ",") {

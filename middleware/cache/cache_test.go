@@ -1906,7 +1906,6 @@ func Test_CacheOnlyIfCachedStaleNotServed(t *testing.T) {
 	app.Use(New())
 
 	var count int
-	t.Logf("request directives: %+v", parseRequestCacheControl("max-stale=5"))
 	app.Get("/", func(c fiber.Ctx) error {
 		count++
 		c.Set(fiber.HeaderCacheControl, "public, max-age=1")
@@ -2484,7 +2483,6 @@ func Test_CacheMinFreshForcesRevalidation(t *testing.T) {
 	app.Use(New())
 
 	var count int
-	t.Logf("request directives: %+v", parseRequestCacheControl("min-fresh=10"))
 	app.Get("/", func(c fiber.Ctx) error {
 		count++
 		c.Set(fiber.HeaderCacheControl, "public, max-age=5")
@@ -3000,7 +2998,7 @@ func Test_AllowsSharedCache(t *testing.T) {
 		t.Run(tt.directives, func(t *testing.T) {
 			t.Parallel()
 
-			got := allowsSharedCache(tt.directives, false)
+			got := allowsSharedCache(tt.directives)
 			require.Equal(t, tt.expect, got, "directives: %q", tt.directives)
 		})
 	}
@@ -3008,7 +3006,7 @@ func Test_AllowsSharedCache(t *testing.T) {
 	t.Run("private overrules public", func(t *testing.T) {
 		t.Parallel()
 
-		got := allowsSharedCache(strings.ToUpper("private, public"), false)
+		got := allowsSharedCache(strings.ToUpper("private, public"))
 		require.False(t, got)
 	})
 }
