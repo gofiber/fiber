@@ -1076,7 +1076,7 @@ func Test_CustomExpiration(t *testing.T) {
 	for {
 		cachedResp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		require.NoError(t, err)
-		if cachedResp.Header.Get(fiber.HeaderXCache) != cacheHit {
+		if cachedResp.Header.Get("X-Cache") != cacheHit {
 			break
 		}
 		require.True(t, time.Now().Before(expireDeadline), "response remained cached beyond expected expiration")
