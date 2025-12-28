@@ -567,6 +567,7 @@ testConfig := fiber.TestConfig{
 - **Matched**: Detects when the current request path matched a registered route.
 - **IsMiddleware**: Indicates if the current handler was registered as middleware.
 - **HasBody**: Quickly checks whether the request includes a body.
+- **OverrideParam**: Overwrites the value of an existing route parameter, or does nothing if the parameter does not exist
 - **IsWebSocket**: Reports if the request attempts a WebSocket upgrade.
 - **IsPreflight**: Identifies CORS preflight requests before handlers run.
 
