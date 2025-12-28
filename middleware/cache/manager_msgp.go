@@ -70,6 +70,30 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "cencoding")
 				return
 			}
+		case "cacheControl":
+			z.cacheControl, err = dc.ReadBytes(z.cacheControl)
+			if err != nil {
+				err = msgp.WrapError(err, "cacheControl")
+				return
+			}
+		case "expires":
+			z.expires, err = dc.ReadBytes(z.expires)
+			if err != nil {
+				err = msgp.WrapError(err, "expires")
+				return
+			}
+		case "etag":
+			z.etag, err = dc.ReadBytes(z.etag)
+			if err != nil {
+				err = msgp.WrapError(err, "etag")
+				return
+			}
+		case "date":
+			z.date, err = dc.ReadUint64()
+			if err != nil {
+				err = msgp.WrapError(err, "date")
+				return
+			}
 		case "status":
 			z.status, err = dc.ReadInt()
 			if err != nil {
@@ -94,10 +118,28 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "ttl")
 				return
 			}
+		case "forceRevalidate":
+			z.forceRevalidate, err = dc.ReadBool()
+			if err != nil {
+				err = msgp.WrapError(err, "forceRevalidate")
+				return
+			}
+		case "revalidate":
+			z.revalidate, err = dc.ReadBool()
+			if err != nil {
+				err = msgp.WrapError(err, "revalidate")
+				return
+			}
 		case "shareable":
 			z.shareable, err = dc.ReadBool()
 			if err != nil {
 				err = msgp.WrapError(err, "shareable")
+				return
+			}
+		case "private":
+			z.private, err = dc.ReadBool()
+			if err != nil {
+				err = msgp.WrapError(err, "private")
 				return
 			}
 		case "heapidx":
@@ -119,9 +161,9 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 10
+	// map header, size 17
 	// write "headers"
-	err = en.Append(0x8a, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	err = en.Append(0xde, 0x0, 0x11, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	if err != nil {
 		return
 	}
@@ -172,6 +214,46 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "cencoding")
 		return
 	}
+	// write "cacheControl"
+	err = en.Append(0xac, 0x63, 0x61, 0x63, 0x68, 0x65, 0x43, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c)
+	if err != nil {
+		return
+	}
+	err = en.WriteBytes(z.cacheControl)
+	if err != nil {
+		err = msgp.WrapError(err, "cacheControl")
+		return
+	}
+	// write "expires"
+	err = en.Append(0xa7, 0x65, 0x78, 0x70, 0x69, 0x72, 0x65, 0x73)
+	if err != nil {
+		return
+	}
+	err = en.WriteBytes(z.expires)
+	if err != nil {
+		err = msgp.WrapError(err, "expires")
+		return
+	}
+	// write "etag"
+	err = en.Append(0xa4, 0x65, 0x74, 0x61, 0x67)
+	if err != nil {
+		return
+	}
+	err = en.WriteBytes(z.etag)
+	if err != nil {
+		err = msgp.WrapError(err, "etag")
+		return
+	}
+	// write "date"
+	err = en.Append(0xa4, 0x64, 0x61, 0x74, 0x65)
+	if err != nil {
+		return
+	}
+	err = en.WriteUint64(z.date)
+	if err != nil {
+		err = msgp.WrapError(err, "date")
+		return
+	}
 	// write "status"
 	err = en.Append(0xa6, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73)
 	if err != nil {
@@ -212,6 +294,26 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "ttl")
 		return
 	}
+	// write "forceRevalidate"
+	err = en.Append(0xaf, 0x66, 0x6f, 0x72, 0x63, 0x65, 0x52, 0x65, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65)
+	if err != nil {
+		return
+	}
+	err = en.WriteBool(z.forceRevalidate)
+	if err != nil {
+		err = msgp.WrapError(err, "forceRevalidate")
+		return
+	}
+	// write "revalidate"
+	err = en.Append(0xaa, 0x72, 0x65, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65)
+	if err != nil {
+		return
+	}
+	err = en.WriteBool(z.revalidate)
+	if err != nil {
+		err = msgp.WrapError(err, "revalidate")
+		return
+	}
 	// write "shareable"
 	err = en.Append(0xa9, 0x73, 0x68, 0x61, 0x72, 0x65, 0x61, 0x62, 0x6c, 0x65)
 	if err != nil {
@@ -220,6 +322,16 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 	err = en.WriteBool(z.shareable)
 	if err != nil {
 		err = msgp.WrapError(err, "shareable")
+		return
+	}
+	// write "private"
+	err = en.Append(0xa7, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65)
+	if err != nil {
+		return
+	}
+	err = en.WriteBool(z.private)
+	if err != nil {
+		err = msgp.WrapError(err, "private")
 		return
 	}
 	// write "heapidx"
@@ -238,9 +350,9 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 // MarshalMsg implements msgp.Marshaler
 func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 10
+	// map header, size 17
 	// string "headers"
-	o = append(o, 0x8a, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	o = append(o, 0xde, 0x0, 0x11, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	o = msgp.AppendMapHeader(o, uint32(len(z.headers)))
 	for za0001, za0002 := range z.headers {
 		o = msgp.AppendString(o, za0001)
@@ -255,6 +367,18 @@ func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "cencoding"
 	o = append(o, 0xa9, 0x63, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67)
 	o = msgp.AppendBytes(o, z.cencoding)
+	// string "cacheControl"
+	o = append(o, 0xac, 0x63, 0x61, 0x63, 0x68, 0x65, 0x43, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c)
+	o = msgp.AppendBytes(o, z.cacheControl)
+	// string "expires"
+	o = append(o, 0xa7, 0x65, 0x78, 0x70, 0x69, 0x72, 0x65, 0x73)
+	o = msgp.AppendBytes(o, z.expires)
+	// string "etag"
+	o = append(o, 0xa4, 0x65, 0x74, 0x61, 0x67)
+	o = msgp.AppendBytes(o, z.etag)
+	// string "date"
+	o = append(o, 0xa4, 0x64, 0x61, 0x74, 0x65)
+	o = msgp.AppendUint64(o, z.date)
 	// string "status"
 	o = append(o, 0xa6, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73)
 	o = msgp.AppendInt(o, z.status)
@@ -267,9 +391,18 @@ func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "ttl"
 	o = append(o, 0xa3, 0x74, 0x74, 0x6c)
 	o = msgp.AppendUint64(o, z.ttl)
+	// string "forceRevalidate"
+	o = append(o, 0xaf, 0x66, 0x6f, 0x72, 0x63, 0x65, 0x52, 0x65, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65)
+	o = msgp.AppendBool(o, z.forceRevalidate)
+	// string "revalidate"
+	o = append(o, 0xaa, 0x72, 0x65, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65)
+	o = msgp.AppendBool(o, z.revalidate)
 	// string "shareable"
 	o = append(o, 0xa9, 0x73, 0x68, 0x61, 0x72, 0x65, 0x61, 0x62, 0x6c, 0x65)
 	o = msgp.AppendBool(o, z.shareable)
+	// string "private"
+	o = append(o, 0xa7, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65)
+	o = msgp.AppendBool(o, z.private)
 	// string "heapidx"
 	o = append(o, 0xa7, 0x68, 0x65, 0x61, 0x70, 0x69, 0x64, 0x78)
 	o = msgp.AppendInt(o, z.heapidx)
@@ -340,6 +473,30 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "cencoding")
 				return
 			}
+		case "cacheControl":
+			z.cacheControl, bts, err = msgp.ReadBytesBytes(bts, z.cacheControl)
+			if err != nil {
+				err = msgp.WrapError(err, "cacheControl")
+				return
+			}
+		case "expires":
+			z.expires, bts, err = msgp.ReadBytesBytes(bts, z.expires)
+			if err != nil {
+				err = msgp.WrapError(err, "expires")
+				return
+			}
+		case "etag":
+			z.etag, bts, err = msgp.ReadBytesBytes(bts, z.etag)
+			if err != nil {
+				err = msgp.WrapError(err, "etag")
+				return
+			}
+		case "date":
+			z.date, bts, err = msgp.ReadUint64Bytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "date")
+				return
+			}
 		case "status":
 			z.status, bts, err = msgp.ReadIntBytes(bts)
 			if err != nil {
@@ -364,10 +521,28 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "ttl")
 				return
 			}
+		case "forceRevalidate":
+			z.forceRevalidate, bts, err = msgp.ReadBoolBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "forceRevalidate")
+				return
+			}
+		case "revalidate":
+			z.revalidate, bts, err = msgp.ReadBoolBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "revalidate")
+				return
+			}
 		case "shareable":
 			z.shareable, bts, err = msgp.ReadBoolBytes(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "shareable")
+				return
+			}
+		case "private":
+			z.private, bts, err = msgp.ReadBoolBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "private")
 				return
 			}
 		case "heapidx":
@@ -390,13 +565,13 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
 func (z *item) Msgsize() (s int) {
-	s = 1 + 8 + msgp.MapHeaderSize
+	s = 3 + 8 + msgp.MapHeaderSize
 	if z.headers != nil {
 		for za0001, za0002 := range z.headers {
 			_ = za0002
 			s += msgp.StringPrefixSize + len(za0001) + msgp.BytesPrefixSize + len(za0002)
 		}
 	}
-	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 10 + msgp.BoolSize + 8 + msgp.IntSize
+	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 13 + msgp.BytesPrefixSize + len(z.cacheControl) + 8 + msgp.BytesPrefixSize + len(z.expires) + 5 + msgp.BytesPrefixSize + len(z.etag) + 5 + msgp.Uint64Size + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 16 + msgp.BoolSize + 11 + msgp.BoolSize + 10 + msgp.BoolSize + 8 + msgp.BoolSize + 8 + msgp.IntSize
 	return
 }

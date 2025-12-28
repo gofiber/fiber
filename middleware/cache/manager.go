@@ -15,15 +15,22 @@ import (
 //
 //go:generate msgp -o=manager_msgp.go -tests=true -unexported
 type item struct {
-	headers   map[string][]byte
-	body      []byte
-	ctype     []byte
-	cencoding []byte
-	status    int
-	age       uint64
-	exp       uint64
-	ttl       uint64
-	shareable bool
+	headers         map[string][]byte
+	body            []byte
+	ctype           []byte
+	cencoding       []byte
+	cacheControl    []byte
+	expires         []byte
+	etag            []byte
+	date            uint64
+	status          int
+	age             uint64
+	exp             uint64
+	ttl             uint64
+	forceRevalidate bool
+	revalidate      bool
+	shareable       bool
+	private         bool
 	// used for finding the item in an indexed heap
 	heapidx int
 }
@@ -72,13 +79,21 @@ func (m *manager) release(e *item) {
 		return
 	}
 	e.body = nil
+	e.cacheControl = nil
+	e.expires = nil
+	e.etag = nil
 	e.ctype = nil
+	e.date = 0
 	e.status = 0
 	e.age = 0
 	e.exp = 0
 	e.ttl = 0
+	e.forceRevalidate = false
+	e.revalidate = false
 	e.headers = nil
 	e.shareable = false
+	e.private = false
+	e.heapidx = 0
 	m.pool.Put(e)
 }
 
