@@ -965,10 +965,10 @@ func buildVaryKey(names []string, hdr *fasthttp.RequestHeader) string {
 	sum := sha256.New()
 	// hash.Hash.Write never returns an error for standard hashes; ignore to satisfy linters.
 	for _, name := range names {
-		_, _ = sum.Write(utils.UnsafeBytes(name)) //nolint:errcheck
-		_, _ = sum.Write([]byte{0})               //nolint:errcheck
-		_, _ = sum.Write(hdr.Peek(name))          //nolint:errcheck
-		_, _ = sum.Write([]byte{0})               //nolint:errcheck
+		_, _ = sum.Write(utils.UnsafeBytes(name)) //nolint:errcheck // hash.Hash.Write for std hashes never errors
+		_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
+		_, _ = sum.Write(hdr.Peek(name))          //nolint:errcheck // hash.Hash.Write for std hashes never errors
+		_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
 	}
 	return "|vary|" + hex.EncodeToString(sum.Sum(nil))
 }
