@@ -1,6 +1,7 @@
 package adaptor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -29,7 +30,9 @@ var ctxPool = sync.Pool{
 	},
 }
 
-const ctxKey = "__local_context__"
+type localCtxKey struct{}
+
+var LocalContextKey = localCtxKey{}
 
 const bufferSize = 32 * 1024
 
@@ -53,8 +56,9 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 func HTTPHandler(h http.Handler) fiber.Handler {
 	handler := fasthttpadaptor.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
-		// add the local context inside of request context with the key `ctxKey`
-		c.RequestCtx().SetUserValue(ctxKey, c.Context())
+		// add the local context inside of request context with the key `LocalContextKey`
+		ctx := context.WithValue(c.Context(), LocalContextKey, c)
+		c.RequestCtx().SetUserValue(LocalContextKey, ctx)
 
 		handler(c.RequestCtx())
 		return nil
