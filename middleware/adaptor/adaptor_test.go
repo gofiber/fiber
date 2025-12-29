@@ -287,16 +287,14 @@ func Test_HTTPHandler_local_context(t *testing.T) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 
-		ctx, ok := r.Context().Value("__local_context__").(context.Context)
+		ctx, ok := r.Context().Value(LocalContextKey).(context.Context)
 		if !ok {
-			http.Error(w, "Context not found", http.StatusInternalServerError)
-			return
+			t.Fatal("local context not found in request context")
 		}
 
 		val, ok := ctx.Value(testKey).(string)
 		if !ok {
-			http.Error(w, "Test value not found", http.StatusInternalServerError)
-			return
+			t.Fatal("test value not found in local context")
 		}
 
 		if _, err := w.Write([]byte(val)); err != nil {
