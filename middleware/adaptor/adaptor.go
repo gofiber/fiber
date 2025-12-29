@@ -53,7 +53,9 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 func HTTPHandler(h http.Handler) fiber.Handler {
 	handler := fasthttpadaptor.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
+		// add the local context inside of request context with the key `ctxKey`
 		c.RequestCtx().SetUserValue(ctxKey, c.Context())
+
 		handler(c.RequestCtx())
 		return nil
 	}

@@ -269,17 +269,20 @@ func Test_HTTPHandler_local_context(t *testing.T) {
 
 	app := fiber.New()
 
+	// unique type for avoiding collisions in context
 	type key struct{}
 	var testKey key
 
 	const testVal string = "test-value"
 
+	// a middleware to add a value to the local context
 	app.Use(func(c fiber.Ctx) error {
 		ctx := context.WithValue(c, testKey, testVal)
 		c.SetContext(ctx)
 		return c.Next()
 	})
 
+	// a handler that checks if the value has been appended to the local context
 	app.Get("/", HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
@@ -309,8 +312,6 @@ func Test_HTTPHandler_local_context(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	defer resp.Body.Close() //nolint:errcheck // no need
-
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
