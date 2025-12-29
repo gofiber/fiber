@@ -29,6 +29,8 @@ var ctxPool = sync.Pool{
 	},
 }
 
+const ctxKey = "__local_context__"
+
 const bufferSize = 32 * 1024
 
 var bufferPool = sync.Pool{
@@ -51,6 +53,7 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 func HTTPHandler(h http.Handler) fiber.Handler {
 	handler := fasthttpadaptor.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
+		c.RequestCtx().SetUserValue(ctxKey, c.Context())
 		handler(c.RequestCtx())
 		return nil
 	}

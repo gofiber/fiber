@@ -264,6 +264,59 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 	require.Equal(t, "Hello ", string(body))
 }
 
+func Test_HTTPHandler_local_context(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	type key struct{}
+	var testKey key
+
+	const testVal string = "test-value"
+
+	app.Use(func(c fiber.Ctx) error {
+		ctx := context.WithValue(c, testKey, testVal)
+		c.SetContext(ctx)
+		return c.Next()
+	})
+
+	app.Get("/", HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+
+		ctx, ok := r.Context().Value("__local_context__").(context.Context)
+		if !ok {
+			http.Error(w, "Context not found", http.StatusInternalServerError)
+			return
+		}
+
+		val, ok := ctx.Value(testKey).(string)
+		if !ok {
+			http.Error(w, "Test value not found", http.StatusInternalServerError)
+			return
+		}
+
+		if _, err := w.Write([]byte(val)); err != nil {
+			t.Logf("write failed: %v", err)
+		}
+	})))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+		Timeout:       200 * time.Millisecond,
+		FailOnTimeout: false,
+	})
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	defer resp.Body.Close() //nolint:errcheck // no need
+
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, testVal, string(body))
+}
+
 type contextKey string
 
 func (c contextKey) String() string {
