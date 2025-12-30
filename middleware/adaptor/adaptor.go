@@ -31,7 +31,7 @@ var ctxPool = sync.Pool{
 
 // LocalContextKey is the key used to store the user's context.Context in the fasthttp request context.
 // Adapted http.Handler functions can retrieve this context using r.Context().Value(adaptor.LocalContextKey)
-var LocalContextKey any = "__local_context__"
+var LocalContextKey = &struct{ name string }{"__local_context__"}
 
 const bufferSize = 32 * 1024
 
