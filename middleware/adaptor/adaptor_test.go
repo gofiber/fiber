@@ -284,21 +284,22 @@ func Test_HTTPHandler_local_context(t *testing.T) {
 
 	// a handler that checks if the value has been appended to the local context
 	app.Get("/", HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-
-		ctx, ok := r.Context().Value(LocalContextKey).(context.Context)
-		if !ok {
-			t.Fatal("local context not found in request context")
-		}
-
-		val, ok := ctx.Value(testKey).(string)
-		if !ok {
-			t.Fatal("test value not found in local context")
-		}
-
-		if _, err := w.Write([]byte(val)); err != nil {
-			t.Logf("write failed: %v", err)
+		ctx := r.Context().Value(LocalContextKey)
+		if ctxVal, ok := ctx.(context.Context); !ok {
+			http.Error(w, "local context not found", http.StatusInternalServerError)
+			return
+		} else {
+			val := ctxVal.Value(testKey)
+			if valStr, ok := val.(string); !ok {
+				http.Error(w, "invalid context value", http.StatusInternalServerError)
+				return
+			} else {
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.WriteHeader(http.StatusOK)
+				if _, err := w.Write([]byte(valStr)); err != nil {
+					t.Logf("write failed: %v", err)
+				}
+			}
 		}
 	})))
 
@@ -307,13 +308,14 @@ func Test_HTTPHandler_local_context(t *testing.T) {
 		FailOnTimeout: false,
 	})
 	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	defer resp.Body.Close() //nolint:errcheck // no need
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
+
 	require.Equal(t, testVal, string(body))
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
 type contextKey string
