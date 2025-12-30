@@ -277,7 +277,7 @@ func Test_HTTPHandler_local_context(t *testing.T) {
 
 	// a middleware to add a value to the local context
 	app.Use(func(c fiber.Ctx) error {
-		ctx := context.WithValue(c, testKey, testVal)
+		ctx := context.WithValue(c.Context(), testKey, testVal)
 		c.SetContext(ctx)
 		return c.Next()
 	})
