@@ -284,22 +284,20 @@ func Test_HTTPHandler_local_context(t *testing.T) {
 
 	// a handler that checks if the value has been appended to the local context
 	app.Get("/", HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context().Value(LocalContextKey)
-		if ctxVal, ok := ctx.(context.Context); !ok {
+		ctx, ok := r.Context().Value(LocalContextKey).(context.Context)
+		if !ok {
 			http.Error(w, "local context not found", http.StatusInternalServerError)
 			return
-		} else {
-			val := ctxVal.Value(testKey)
-			if valStr, ok := val.(string); !ok {
-				http.Error(w, "invalid context value", http.StatusInternalServerError)
-				return
-			} else {
-				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-				w.WriteHeader(http.StatusOK)
-				if _, err := w.Write([]byte(valStr)); err != nil {
-					t.Logf("write failed: %v", err)
-				}
-			}
+		}
+		val, ok := ctx.Value(testKey).(string)
+		if !ok {
+			http.Error(w, "invalid context value", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(val)); err != nil {
+			t.Logf("write failed: %v", err)
 		}
 	})))
 
