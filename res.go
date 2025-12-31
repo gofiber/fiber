@@ -201,6 +201,9 @@ func (r *DefaultRes) Attachment(filename ...string) {
 
 // ClearCookie expires a specific cookie by key on the client side.
 // If no key is provided it expires all cookies that came with the request.
+//
+// Note: This method does not work for cookies with a specific Domain or Path.
+// For those cases, use ExpireCookie to specify the matching attributes.
 func (r *DefaultRes) ClearCookie(key ...string) {
 	request := &r.c.fasthttp.Request
 	response := &r.c.fasthttp.Response
@@ -213,6 +216,34 @@ func (r *DefaultRes) ClearCookie(key ...string) {
 	for k := range request.Header.Cookies() {
 		response.Header.DelClientCookieBytes(k)
 	}
+}
+
+// ExpireCookie expires a cookie by its cookie definition.
+// This is useful when you need to expire a cookie that was set with a specific
+// Path or Domain. The browser will only clear the cookie if the Path and Domain
+// attributes match the original cookie.
+//
+// Only the Name, Path, Domain, Secure, and HTTPOnly fields are used.
+// The Value and Expires fields are overwritten to expire the cookie.
+func (r *DefaultRes) ExpireCookie(cookie *Cookie) {
+	fcookie := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(fcookie)
+
+	fcookie.SetKey(cookie.Name)
+	fcookie.SetValue("")
+	fcookie.SetExpire(fasthttp.CookieExpireDelete)
+
+	if cookie.Path != "" {
+		fcookie.SetPath(cookie.Path)
+	}
+	if cookie.Domain != "" {
+		fcookie.SetDomain(cookie.Domain)
+	}
+
+	fcookie.SetSecure(cookie.Secure)
+	fcookie.SetHTTPOnly(cookie.HTTPOnly)
+
+	r.c.fasthttp.Response.Header.SetCookie(fcookie)
 }
 
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline

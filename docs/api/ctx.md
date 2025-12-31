@@ -1770,6 +1770,47 @@ app.Get("/delete", func(c fiber.Ctx) error {
 })
 ```
 
+Alternatively, use `ExpireCookie` for a cleaner approach (see below).
+
+### ExpireCookie
+
+Expires a cookie by its cookie definition. This is useful when you need to expire a cookie that was set with a specific `Path` or `Domain`. The browser will only clear the cookie if the `Path` and `Domain` attributes match the original cookie.
+
+```go title="Signature"
+func (c fiber.Ctx) ExpireCookie(cookie *Cookie)
+```
+
+```go title="Example"
+app.Get("/logout", func(c fiber.Ctx) error {
+    // Expire a cookie with specific path
+    c.Res().ExpireCookie(&fiber.Cookie{
+        Name: "session",
+        Path: "/admin",
+    })
+
+    // Expire a cookie with specific domain
+    c.Res().ExpireCookie(&fiber.Cookie{
+        Name:   "auth",
+        Domain: "example.com",
+    })
+
+    // Expire a cookie with path, domain, and security flags
+    c.Res().ExpireCookie(&fiber.Cookie{
+        Name:     "token",
+        Path:     "/api",
+        Domain:   "example.com",
+        Secure:   true,
+        HTTPOnly: true,
+    })
+
+    return c.SendStatus(fiber.StatusOK)
+})
+```
+
+:::note
+Only the `Name`, `Path`, `Domain`, `Secure`, and `HTTPOnly` fields are used from the Cookie struct. The `Value` and `Expires` fields are overwritten to expire the cookie.
+:::
+
 ### Cookie
 
 Sets a cookie.
