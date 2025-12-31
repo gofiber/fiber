@@ -4545,6 +4545,64 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 	require.Contains(t, string(c.Response().Header.Peek(HeaderSetCookie)), "test2=; expires=")
 }
 
+// go test -run Test_Ctx_ExpireCookie
+func Test_Ctx_ExpireCookie(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// Test ExpireCookie with path
+	c.Res().ExpireCookie(&Cookie{
+		Name: "session",
+		Path: "/admin",
+	})
+	setCookie := string(c.Response().Header.Peek(HeaderSetCookie))
+	require.Contains(t, setCookie, "session=;")
+	require.Contains(t, setCookie, "path=/admin")
+	require.Contains(t, setCookie, "expires=")
+
+	// Reset for next test
+	c.Response().Header.Del(HeaderSetCookie)
+
+	// Test ExpireCookie with domain
+	c.Res().ExpireCookie(&Cookie{
+		Name:   "auth",
+		Domain: "example.com",
+	})
+	setCookie = string(c.Response().Header.Peek(HeaderSetCookie))
+	require.Contains(t, setCookie, "auth=;")
+	require.Contains(t, setCookie, "domain=example.com")
+
+	// Reset for next test
+	c.Response().Header.Del(HeaderSetCookie)
+
+	// Test ExpireCookie with path and domain
+	c.Res().ExpireCookie(&Cookie{
+		Name:   "token",
+		Path:   "/api",
+		Domain: "example.com",
+	})
+	setCookie = string(c.Response().Header.Peek(HeaderSetCookie))
+	require.Contains(t, setCookie, "token=;")
+	require.Contains(t, setCookie, "path=/api")
+	require.Contains(t, setCookie, "domain=example.com")
+
+	// Reset for next test
+	c.Response().Header.Del(HeaderSetCookie)
+
+	// Test ExpireCookie with secure and httponly flags
+	c.Res().ExpireCookie(&Cookie{
+		Name:     "secure_cookie",
+		Path:     "/",
+		Secure:   true,
+		HTTPOnly: true,
+	})
+	setCookie = string(c.Response().Header.Peek(HeaderSetCookie))
+	require.Contains(t, setCookie, "secure_cookie=;")
+	require.Contains(t, setCookie, "secure")
+	require.Contains(t, setCookie, "HttpOnly")
+}
+
 // go test -race -run Test_Ctx_Download
 func Test_Ctx_Download(t *testing.T) {
 	t.Parallel()
