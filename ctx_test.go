@@ -4550,8 +4550,8 @@ func Test_Ctx_ExpireCookie(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name         string
 		cookie       Cookie
+		name         string
 		expectedStrs []string
 	}{
 		{
