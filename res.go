@@ -223,7 +223,7 @@ func (r *DefaultRes) ClearCookie(key ...string) {
 // Path or Domain. The browser will only clear the cookie if the Path and Domain
 // attributes match the original cookie.
 //
-// Only the Name, Path, Domain, Secure, and HTTPOnly fields are used.
+// Only the Name, Path, Domain, Secure, HTTPOnly, SameSite, and Partitioned fields are used.
 // The Value and Expires fields are overwritten to expire the cookie.
 func (r *DefaultRes) ExpireCookie(cookie *Cookie) {
 	fcookie := fasthttp.AcquireCookie()
@@ -240,7 +240,25 @@ func (r *DefaultRes) ExpireCookie(cookie *Cookie) {
 		fcookie.SetDomain(cookie.Domain)
 	}
 
-	fcookie.SetSecure(cookie.Secure)
+	// Handle SameSite attribute
+	isSecure := cookie.Secure
+	switch {
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteStrictMode):
+		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteNoneMode):
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+		isSecure = true // SameSite=None requires Secure
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteLaxMode):
+		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	}
+
+	// Handle Partitioned attribute
+	if cookie.Partitioned {
+		fcookie.SetPartitioned(true)
+		isSecure = true // Partitioned requires Secure
+	}
+
+	fcookie.SetSecure(isSecure)
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
 
 	r.c.fasthttp.Response.Header.SetCookie(fcookie)

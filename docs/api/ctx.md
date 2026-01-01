@@ -1803,12 +1803,24 @@ app.Get("/logout", func(c fiber.Ctx) error {
         HTTPOnly: true,
     })
 
+    // Expire a cookie with SameSite attribute
+    c.Res().ExpireCookie(&fiber.Cookie{
+        Name:     "csrf",
+        SameSite: "Strict",
+    })
+
+    // Expire a partitioned cookie (CHIPS)
+    c.Res().ExpireCookie(&fiber.Cookie{
+        Name:        "embedded",
+        Partitioned: true,
+    })
+
     return c.SendStatus(fiber.StatusOK)
 })
 ```
 
 :::note
-Only the `Name`, `Path`, `Domain`, `Secure`, and `HTTPOnly` fields are used from the Cookie struct. The `Value` and `Expires` fields are overwritten to expire the cookie.
+Only the `Name`, `Path`, `Domain`, `Secure`, `HTTPOnly`, `SameSite`, and `Partitioned` fields are used from the Cookie struct. The `Value` and `Expires` fields are overwritten to expire the cookie.
 :::
 
 ### Cookie
