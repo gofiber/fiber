@@ -250,6 +250,8 @@ func (r *DefaultRes) ExpireCookie(cookie *Cookie) {
 		isSecure = true // SameSite=None requires Secure
 	case utils.EqualFold(cookie.SameSite, CookieSameSiteLaxMode):
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	default:
+		// No SameSite attribute set
 	}
 
 	// Handle Partitioned attribute
