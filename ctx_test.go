@@ -4548,59 +4548,95 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 // go test -run Test_Ctx_ExpireCookie
 func Test_Ctx_ExpireCookie(t *testing.T) {
 	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	// Test ExpireCookie with path
-	c.Res().ExpireCookie(&Cookie{
-		Name: "session",
-		Path: "/admin",
-	})
-	setCookie := string(c.Response().Header.Peek(HeaderSetCookie))
-	require.Contains(t, setCookie, "session=;")
-	require.Contains(t, setCookie, "path=/admin")
-	require.Contains(t, setCookie, "expires=")
+	testCases := []struct {
+		name         string
+		cookie       Cookie
+		expectedStrs []string
+	}{
+		{
+			name: "with path",
+			cookie: Cookie{
+				Name: "session",
+				Path: "/admin",
+			},
+			expectedStrs: []string{"session=;", "path=/admin", "expires="},
+		},
+		{
+			name: "with domain",
+			cookie: Cookie{
+				Name:   "auth",
+				Domain: "example.com",
+			},
+			expectedStrs: []string{"auth=;", "domain=example.com", "expires="},
+		},
+		{
+			name: "with path and domain",
+			cookie: Cookie{
+				Name:   "token",
+				Path:   "/api",
+				Domain: "example.com",
+			},
+			expectedStrs: []string{"token=;", "path=/api", "domain=example.com", "expires="},
+		},
+		{
+			name: "with secure and httponly",
+			cookie: Cookie{
+				Name:     "secure_cookie",
+				Path:     "/",
+				Secure:   true,
+				HTTPOnly: true,
+			},
+			expectedStrs: []string{"secure_cookie=;", "secure", "HttpOnly", "expires="},
+		},
+		{
+			name: "with SameSite Strict",
+			cookie: Cookie{
+				Name:     "csrf",
+				SameSite: CookieSameSiteStrictMode,
+			},
+			expectedStrs: []string{"csrf=;", "SameSite=Strict", "expires="},
+		},
+		{
+			name: "with SameSite Lax",
+			cookie: Cookie{
+				Name:     "lax_cookie",
+				SameSite: CookieSameSiteLaxMode,
+			},
+			expectedStrs: []string{"lax_cookie=;", "SameSite=Lax", "expires="},
+		},
+		{
+			name: "with SameSite None (should set Secure)",
+			cookie: Cookie{
+				Name:     "cross_site",
+				SameSite: CookieSameSiteNoneMode,
+			},
+			expectedStrs: []string{"cross_site=;", "SameSite=None", "secure", "expires="},
+		},
+		{
+			name: "with Partitioned (should set Secure)",
+			cookie: Cookie{
+				Name:        "partitioned_cookie",
+				Partitioned: true,
+			},
+			expectedStrs: []string{"partitioned_cookie=;", "Partitioned", "secure", "expires="},
+		},
+	}
 
-	// Reset for next test
-	c.Response().Header.Del(HeaderSetCookie)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	// Test ExpireCookie with domain
-	c.Res().ExpireCookie(&Cookie{
-		Name:   "auth",
-		Domain: "example.com",
-	})
-	setCookie = string(c.Response().Header.Peek(HeaderSetCookie))
-	require.Contains(t, setCookie, "auth=;")
-	require.Contains(t, setCookie, "domain=example.com")
+			c.Res().ExpireCookie(&tc.cookie)
+			setCookie := string(c.Response().Header.Peek(HeaderSetCookie))
 
-	// Reset for next test
-	c.Response().Header.Del(HeaderSetCookie)
-
-	// Test ExpireCookie with path and domain
-	c.Res().ExpireCookie(&Cookie{
-		Name:   "token",
-		Path:   "/api",
-		Domain: "example.com",
-	})
-	setCookie = string(c.Response().Header.Peek(HeaderSetCookie))
-	require.Contains(t, setCookie, "token=;")
-	require.Contains(t, setCookie, "path=/api")
-	require.Contains(t, setCookie, "domain=example.com")
-
-	// Reset for next test
-	c.Response().Header.Del(HeaderSetCookie)
-
-	// Test ExpireCookie with secure and httponly flags
-	c.Res().ExpireCookie(&Cookie{
-		Name:     "secure_cookie",
-		Path:     "/",
-		Secure:   true,
-		HTTPOnly: true,
-	})
-	setCookie = string(c.Response().Header.Peek(HeaderSetCookie))
-	require.Contains(t, setCookie, "secure_cookie=;")
-	require.Contains(t, setCookie, "secure")
-	require.Contains(t, setCookie, "HttpOnly")
+			for _, expected := range tc.expectedStrs {
+				require.Contains(t, setCookie, expected)
+			}
+		})
+	}
 }
 
 // go test -race -run Test_Ctx_Download

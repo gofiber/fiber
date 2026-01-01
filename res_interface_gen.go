@@ -29,7 +29,7 @@ type Res interface {
 	// Path or Domain. The browser will only clear the cookie if the Path and Domain
 	// attributes match the original cookie.
 	//
-	// Only the Name, Path, Domain, Secure, and HTTPOnly fields are used.
+	// Only the Name, Path, Domain, Secure, HTTPOnly, SameSite, and Partitioned fields are used.
 	// The Value and Expires fields are overwritten to expire the cookie.
 	ExpireCookie(cookie *Cookie)
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
