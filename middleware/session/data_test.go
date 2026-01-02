@@ -229,6 +229,7 @@ func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
 	first.Reset()
 
 	originalPtr := mapPointer(first.Data)
+	dataPool.Put(first)
 
 	var reused *data
 	for i := 0; i < 5; i++ {
