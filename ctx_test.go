@@ -2230,14 +2230,14 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 		app := New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		require.True(t, c.IsProxyTrusted())
+		require.False(t, c.IsProxyTrusted())
 	}
 	{
 		app := New(Config{
 			TrustProxy: false,
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		require.True(t, c.IsProxyTrusted())
+		require.False(t, c.IsProxyTrusted())
 	}
 
 	{
@@ -2488,8 +2488,16 @@ func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 	proxyHeaderNames := []string{"Real-Ip", HeaderXForwardedFor}
 
 	for _, proxyHeaderName := range proxyHeaderNames {
-		app := New(Config{ProxyHeader: proxyHeaderName})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		app := New(Config{
+			ProxyHeader: proxyHeaderName,
+			TrustProxy:  true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0"},
+			},
+		})
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+		c := app.AcquireCtx(fastCtx)
 
 		c.Request().Header.Set(proxyHeaderName, "0.0.0.1")
 		require.Equal(t, "0.0.0.1", c.IP())
@@ -2520,8 +2528,17 @@ func Test_Ctx_IP_ProxyHeader_With_IP_Validation(t *testing.T) {
 	proxyHeaderNames := []string{"Real-Ip", HeaderXForwardedFor}
 
 	for _, proxyHeaderName := range proxyHeaderNames {
-		app := New(Config{EnableIPValidation: true, ProxyHeader: proxyHeaderName})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		app := New(Config{
+			EnableIPValidation: true,
+			ProxyHeader:        proxyHeaderName,
+			TrustProxy:         true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0"},
+			},
+		})
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+		c := app.AcquireCtx(fastCtx)
 
 		// when proxy header & validation is enabled and the value is a valid IP, we return it
 		c.Request().Header.Set(proxyHeaderName, "0.0.0.1")
@@ -3384,9 +3401,17 @@ func Benchmark_Ctx_Protocol(b *testing.B) {
 
 // go test -run Test_Ctx_Scheme
 func Test_Ctx_Scheme(t *testing.T) {
-	app := New()
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
 
 	freq := &fasthttp.RequestCtx{}
+	freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
 	freq.Request.Header.Set("X-Forwarded", "invalid")
 
 	c := app.AcquireCtx(freq)
