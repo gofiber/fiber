@@ -18,9 +18,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 // timestampUpdatePeriod is the period which is used to check the cache expiration.
@@ -131,7 +132,7 @@ func New(config ...Config) fiber.Handler {
 	var storedBytes uint
 	// Pool for hex encoding buffers
 	hexBufPool := &sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			buf := make([]byte, sha256.Size*2)
 			return &buf
 		},
@@ -279,10 +280,10 @@ func New(config ...Config) fiber.Handler {
 			e = nil
 		}
 
-			if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
-				if err := deleteKey(reqCtx, key); err != nil {
-					if cfg.Storage != nil {
-						manager.release(e)
+		if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
+			if err := deleteKey(reqCtx, key); err != nil {
+				if cfg.Storage != nil {
+					manager.release(e)
 				}
 				mux.Unlock()
 				return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
@@ -290,14 +291,14 @@ func New(config ...Config) fiber.Handler {
 			removeHeapEntry(key, e.heapidx)
 			if cfg.Storage != nil {
 				manager.release(e)
-				}
-				e = nil
-				mux.Unlock()
-				c.Set(cfg.CacheHeader, cacheUnreachable)
-				goto continueRequest
 			}
+			e = nil
+			mux.Unlock()
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			goto continueRequest
+		}
 
-			if e != nil {
+		if e != nil {
 			entryHasPrivate := e != nil && e.private
 			if !entryHasPrivate && cfg.StoreResponseHeaders && len(e.headers) > 0 {
 				if cc, ok := e.headers[fiber.HeaderCacheControl]; ok && hasDirective(utils.UnsafeString(cc), privateDirective) {
