@@ -129,6 +129,15 @@ func New(config ...Config) fiber.Handler {
 	heap := &indexedHeap{}
 	// count stored bytes (sizes of response bodies)
 	var storedBytes uint
+	// Pool for hex encoding buffers
+	hexBufPool := &sync.Pool{
+		New: func() interface{} {
+			buf := make([]byte, sha256.Size*2)
+			return &buf
+		},
+	}
+	hashAuthorization := makeHashAuthFunc(hexBufPool)
+	buildVaryKey := makeBuildVaryKeyFunc(hexBufPool)
 
 	// Update timestamp in the configured interval
 	go func() {
@@ -202,12 +211,13 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get key from request
-		// TODO(allocation optimization): try to minimize the allocation from 2 to 1
 		baseKey := cfg.KeyGenerator(c) + "_" + requestMethod
-		if hasAuthorization {
-			baseKey += "_auth_" + hashAuthorization(c.Request().Header.Peek(fiber.HeaderAuthorization))
-		}
 		manifestKey := baseKey + "|vary"
+		if hasAuthorization {
+			authHash := hashAuthorization(c.Request().Header.Peek(fiber.HeaderAuthorization))
+			baseKey += "_auth_" + authHash
+			manifestKey = baseKey + "|vary"
+		}
 		key := baseKey
 
 		reqCtx := c.Context()
@@ -953,16 +963,26 @@ func parseVary(vary string) ([]string, bool) {
 	return names, false
 }
 
-func buildVaryKey(names []string, hdr *fasthttp.RequestHeader) string {
-	sum := sha256.New()
-	// hash.Hash.Write never returns an error for standard hashes; ignore to satisfy linters.
-	for _, name := range names {
-		_, _ = sum.Write(utils.UnsafeBytes(name)) //nolint:errcheck // hash.Hash.Write for std hashes never errors
-		_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
-		_, _ = sum.Write(hdr.Peek(name))          //nolint:errcheck // hash.Hash.Write for std hashes never errors
-		_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
+func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.RequestHeader) string {
+	return func(names []string, hdr *fasthttp.RequestHeader) string {
+		sum := sha256.New()
+		// hash.Hash.Write never returns an error for standard hashes; ignore to satisfy linters.
+		for _, name := range names {
+			_, _ = sum.Write(utils.UnsafeBytes(name)) //nolint:errcheck // hash.Hash.Write for std hashes never errors
+			_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
+			_, _ = sum.Write(hdr.Peek(name))          //nolint:errcheck // hash.Hash.Write for std hashes never errors
+			_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
+		}
+		var hashBytes [sha256.Size]byte
+		sum.Sum(hashBytes[:0])
+
+		bufPtr := hexBufPool.Get().(*[]byte)
+		buf := *bufPtr
+		hex.Encode(buf, hashBytes[:])
+		result := "|vary|" + string(buf)
+		hexBufPool.Put(bufPtr)
+		return result
 	}
-	return "|vary|" + hex.EncodeToString(sum.Sum(nil))
 }
 
 func storeVaryManifest(ctx context.Context, manager *manager, manifestKey string, names []string, exp time.Duration) error {
@@ -1023,7 +1043,14 @@ func allowsSharedCache(cc string) bool {
 	return false
 }
 
-func hashAuthorization(authHeader []byte) string {
-	sum := sha256.Sum256(authHeader)
-	return hex.EncodeToString(sum[:])
+func makeHashAuthFunc(hexBufPool *sync.Pool) func([]byte) string {
+	return func(authHeader []byte) string {
+		sum := sha256.Sum256(authHeader)
+		bufPtr := hexBufPool.Get().(*[]byte)
+		buf := *bufPtr
+		hex.Encode(buf, sum[:])
+		result := string(buf)
+		hexBufPool.Put(bufPtr)
+		return result
+	}
 }
