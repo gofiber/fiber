@@ -243,6 +243,7 @@ func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
 
 	if reused == nil {
 		t.Skip("sync.Pool returned a different instance; reuse cannot be asserted")
+		return
 	}
 
 	require.Equal(t, originalPtr, mapPointer(reused.Data), "Expected pooled data to reuse cleared map")
