@@ -3,6 +3,7 @@ package csrf
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,6 +38,24 @@ func (s *failingCSRFStorage) GetWithContext(_ context.Context, key string) ([]by
 		return append([]byte(nil), val...), nil
 	}
 	return nil, nil
+}
+
+var trustedProxyConfig = fiber.Config{
+	TrustProxy: true,
+	TrustProxyConfig: fiber.TrustProxyConfig{
+		Proxies: []string{"0.0.0.0"},
+	},
+}
+
+func newTrustedApp() *fiber.App {
+	return fiber.New(trustedProxyConfig)
+}
+
+func newTrustedRequestCtx() *fasthttp.RequestCtx {
+	ctx := &fasthttp.RequestCtx{}
+	ctx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+
+	return ctx
 }
 
 func (s *failingCSRFStorage) Get(key string) ([]byte, error) {
@@ -830,7 +849,7 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
 
-	app := fiber.New()
+	app := newTrustedApp()
 
 	app.Use(New(Config{ErrorHandler: errorHandler}))
 
@@ -839,7 +858,7 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 	})
 
 	h := app.Handler()
-	ctx := &fasthttp.RequestCtx{}
+	ctx := newTrustedRequestCtx()
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.URI().SetScheme("http")
 	ctx.Request.URI().SetHost("example.com")
@@ -1001,7 +1020,7 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 
 func Test_CSRF_Origin(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
+	app := newTrustedApp()
 
 	app.Use(New(Config{CookieSecure: true}))
 
@@ -1010,7 +1029,7 @@ func Test_CSRF_Origin(t *testing.T) {
 	})
 
 	h := app.Handler()
-	ctx := &fasthttp.RequestCtx{}
+	ctx := newTrustedRequestCtx()
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "http")
 	h(ctx)
@@ -1164,7 +1183,7 @@ func Test_CSRF_Origin(t *testing.T) {
 
 func Test_CSRF_TrustedOrigins(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
+	app := newTrustedApp()
 
 	app.Use(New(Config{
 		CookieSecure: true,
@@ -1181,7 +1200,7 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	})
 
 	h := app.Handler()
-	ctx := &fasthttp.RequestCtx{}
+	ctx := newTrustedRequestCtx()
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
 	h(ctx)
@@ -1352,7 +1371,7 @@ func Test_CSRF_TrustedOrigins_InvalidOrigins(t *testing.T) {
 
 func Test_CSRF_Referer(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
+	app := newTrustedApp()
 
 	app.Use(New(Config{CookieSecure: true}))
 
@@ -1361,7 +1380,7 @@ func Test_CSRF_Referer(t *testing.T) {
 	})
 
 	h := app.Handler()
-	ctx := &fasthttp.RequestCtx{}
+	ctx := newTrustedRequestCtx()
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
 	h(ctx)
@@ -1696,7 +1715,7 @@ func Test_CSRF_ErrorHandler_EmptyToken(t *testing.T) {
 
 func Test_CSRF_ErrorHandler_MissingReferer(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
+	app := newTrustedApp()
 
 	errHandler := func(ctx fiber.Ctx, err error) error {
 		require.Equal(t, ErrRefererNotFound, err)
@@ -1713,7 +1732,7 @@ func Test_CSRF_ErrorHandler_MissingReferer(t *testing.T) {
 	})
 
 	h := app.Handler()
-	ctx := &fasthttp.RequestCtx{}
+	ctx := newTrustedRequestCtx()
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
 	h(ctx)
@@ -1903,7 +1922,7 @@ func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 
 func Test_CSRF_InvalidURLHeaders(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
+	app := newTrustedApp()
 
 	errHandler := func(ctx fiber.Ctx, err error) error {
 		return ctx.Status(419).Send([]byte(err.Error()))
@@ -1916,7 +1935,7 @@ func Test_CSRF_InvalidURLHeaders(t *testing.T) {
 	})
 
 	h := app.Handler()
-	ctx := &fasthttp.RequestCtx{}
+	ctx := newTrustedRequestCtx()
 
 	// Generate CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
