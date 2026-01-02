@@ -46,7 +46,7 @@ func acquireData() *data {
 func (d *data) Reset() {
 	d.Lock()
 	defer d.Unlock()
-	d.Data = make(map[any]any)
+	clear(d.Data)
 }
 
 // Get retrieves a value from the data map by key.
