@@ -264,7 +264,7 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 	require.Equal(t, "Hello ", string(body))
 }
 
-func Test_HTTPHandler_local_context(t *testing.T) {
+func Test_HTTPHandlerWithContext_local_context(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -283,8 +283,8 @@ func Test_HTTPHandler_local_context(t *testing.T) {
 	})
 
 	// a handler that checks if the value has been appended to the local context
-	app.Get("/", HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, ok := r.Context().Value(LocalContextKey).(context.Context)
+	app.Get("/", HTTPHandlerWithContext(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, ok := LocalContextFromHTTPRequest(r)
 		if !ok {
 			http.Error(w, "local context not found", http.StatusInternalServerError)
 			return

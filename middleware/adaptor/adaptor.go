@@ -1,6 +1,7 @@
 package adaptor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -31,7 +32,7 @@ var ctxPool = sync.Pool{
 
 // LocalContextKey is the key used to store the user's context.Context in the fasthttp request context.
 // Adapted http.Handler functions can retrieve this context using r.Context().Value(adaptor.LocalContextKey)
-var LocalContextKey = &struct{ name string }{"__local_context__"}
+var localContextKey = &struct{}{}
 
 const bufferSize = 32 * 1024
 
@@ -55,13 +56,28 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 func HTTPHandler(h http.Handler) fiber.Handler {
 	handler := fasthttpadaptor.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
+		handler(c.RequestCtx())
+		return nil
+	}
+}
+
+// HTTPHandlerWithContext is like HTTPHandler, but additionally stores Fiber’s user context in the request context
+func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
+	handler := fasthttpadaptor.NewFastHTTPHandler(h)
+	return func(c fiber.Ctx) error {
 		// Store the Fiber user context (c.Context()) in the fasthttp request context
-		// so adapted net/http handlers can retrieve it via r.Context().Value(LocalContextKey)
-		c.RequestCtx().SetUserValue(LocalContextKey, c.Context())
+		// so adapted net/http handlers can retrieve it via adaptor.LocalContextFromHTTPRequest(r)
+		c.RequestCtx().SetUserValue(localContextKey, c.Context())
 
 		handler(c.RequestCtx())
 		return nil
 	}
+}
+
+// LocalContextFromHTTPRequest extracts the Fiber user context previously stored into r.Context() by the adaptor.
+func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
+	ctx, err := r.Context().Value(localContextKey).(context.Context)
+	return ctx, err
 }
 
 // ConvertRequest converts a fiber.Ctx to a http.Request.
