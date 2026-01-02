@@ -4508,9 +4508,9 @@ func Test_Ctx_ExpireCookie(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		cookie       Cookie
-		name         string
 		expectedStrs []string
+		name         string
+		cookie       Cookie
 	}{
 		{
 			name: "with path",
@@ -4586,6 +4586,7 @@ func Test_Ctx_ExpireCookie(t *testing.T) {
 			t.Parallel()
 			app := New()
 			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
 
 			c.Res().ExpireCookie(&tc.cookie)
 			setCookie := string(c.Response().Header.Peek(HeaderSetCookie))
