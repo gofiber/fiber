@@ -30,14 +30,30 @@ type ParserType struct {
 }
 
 var (
+	decoderPoolMu sync.RWMutex
 	// decoderPoolMap helps to improve binders
 	decoderPoolMap = map[string]*sync.Pool{}
 	// tags is used to classify parser's pool
 	tags = []string{"header", "respHeader", "cookie", "query", "form", "uri"}
 )
 
+func getDecoderPool(tag string) *sync.Pool {
+	decoderPoolMu.RLock()
+	pool := decoderPoolMap[tag]
+	if pool == nil {
+		decoderPoolMu.RUnlock()
+		panic(fmt.Sprintf("decoder pool not initialized for tag %q", tag))
+	}
+	decoderPoolMu.RUnlock()
+
+	return pool
+}
+
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
 func SetParserDecoder(parserConfig ParserConfig) {
+	decoderPoolMu.Lock()
+	defer decoderPoolMu.Unlock()
+
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() any {
 			return decoderBuilder(parserConfig)
@@ -59,6 +75,9 @@ func decoderBuilder(parserConfig ParserConfig) any {
 }
 
 func init() {
+	decoderPoolMu.Lock()
+	defer decoderPoolMu.Unlock()
+
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() any {
 			return decoderBuilder(ParserConfig{
@@ -90,8 +109,9 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 // Parse data into the struct with gofiber/schema
 func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
 	// Get decoder from pool
-	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
-	defer decoderPoolMap[aliasTag].Put(schemaDecoder)
+	pool := getDecoderPool(aliasTag)
+	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
+	defer pool.Put(schemaDecoder)
 
 	// Set alias tag
 	schemaDecoder.SetAliasTag(aliasTag)
