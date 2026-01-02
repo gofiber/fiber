@@ -1188,7 +1188,9 @@ func Benchmark_HTTPHandlerWithContext(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	ctx.SetContext(context.WithValue(ctx.Context(), "username", "gofiber"))
+	type key struct{}
+	var testKey key
+	ctx.SetContext(context.WithValue(ctx.Context(), testKey, "gofiber"))
 
 	fiberHandler := HTTPHandlerWithContext(handler)
 
