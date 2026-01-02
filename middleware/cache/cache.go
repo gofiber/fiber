@@ -417,19 +417,21 @@ func New(config ...Config) fiber.Handler {
 				for k, v := range e.headers {
 					c.Response().Header.SetBytesV(k, v)
 				}
-				if len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 && !cfg.DisableCacheControl {
+				// Set Cache-Control header if not disabled and not already set
+				if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
 					remaining := uint64(0)
 					if e.exp > ts {
 						remaining = e.exp - ts
 					}
-					maxAge := strconv.FormatUint(remaining, 10)
+					maxAge := utils.FormatUint(remaining)
 					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 				}
 
 				const maxDeltaSeconds = uint64(math.MaxInt32)
 				ageSeconds := min(entryAge, maxDeltaSeconds)
 
-				age := strconv.FormatUint(ageSeconds, 10)
+				// RFC-compliant Age header (RFC 9111)
+				age := utils.FormatUint(ageSeconds)
 				c.Response().Header.Set(fiber.HeaderAge, age)
 				appendWarningHeaders(&c.Response().Header, servedStale, isHeuristicFreshness(e, &cfg, entryAge))
 
