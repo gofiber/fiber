@@ -119,6 +119,9 @@ type Ctx interface {
 	IsMiddleware() bool
 	// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
 	HasBody() bool
+	// OverrideParam overwrites a route parameter value by name.
+	// If the parameter name does not exist in the route, this method does nothing.
+	OverrideParam(name, value string)
 	// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
 	IsWebSocket() bool
 	// IsPreflight returns true if the request is a CORS preflight.
@@ -310,7 +313,7 @@ type Ctx interface {
 	// Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
 	Stale() bool
 	// IsProxyTrusted checks trustworthiness of remote ip.
-	// If Config.TrustProxy false, it returns true
+	// If Config.TrustProxy false, it returns false.
 	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
 	IsProxyTrusted() bool
 	// IsFromLocal will return true if request came from local.

@@ -501,6 +501,50 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
+### OverrideParam
+
+Overwrites the value of an existing route parameter.
+
+:::note
+If the parameter does not exist, this method does nothing.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) OverrideParam(name, value string)
+```
+
+```go title="Example"
+// GET http://example.com/user
+app.Get("/user/:name", func(c fiber.Ctx) error {
+  // mutate parameter
+  c.OverrideParam("name", "new value")
+  return c.SendString(c.Params("name")) // sends "new value"
+})
+// GET http://example.com/shop/tech/1
+app.Get("/shop/*", func(c fiber.Ctx) error {
+  // mutate parameter
+  c.OverrideParam("*", "new tech") // replaces "tech/1" with "new tech"
+  return c.SendString(c.Params("*")) // sends "new tech"
+})
+
+```
+
+Unnamed route parameters can be accessed by their character (`*` or `+`) followed by their position index (e.g., `*1` for the first wildcard, `*2` for the second).
+
+```go title="Example"
+// GET /v1/brand/4/shop/blue/xs
+app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
+  // mutate parameter
+  c.OverrideParam("*1", "updated brand")
+  c.OverrideParam("*2", "updated data")
+  
+  param1 := c.Params("*1") // "updated brand"
+  param2 := c.Params("*2") // "updated data"
+
+  // ...
+})
+```
+
 ### IsWebSocket
 
 Returns `true` if the request includes a WebSocket upgrade handshake.

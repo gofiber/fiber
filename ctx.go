@@ -383,6 +383,39 @@ func (c *DefaultCtx) HasBody() bool {
 	return len(c.fasthttp.Request.Body()) > 0
 }
 
+// OverrideParam overwrites a route parameter value by name.
+// If the parameter name does not exist in the route, this method does nothing.
+func (c *DefaultCtx) OverrideParam(name, value string) {
+	// If no route is matched, there are no parameters to update
+	if !c.Matched() {
+		return
+	}
+
+	// Normalize wildcard (*) and plus (+) tokens to their internal
+	// representations (*1, +1) used by the router.
+	if name == "*" || name == "+" {
+		name += "1"
+	}
+
+	if c.app.config.CaseSensitive {
+		for i, param := range c.route.Params {
+			if param == name {
+				c.values[i] = value
+				return
+			}
+		}
+		return
+	}
+
+	nameBytes := utils.UnsafeBytes(name)
+	for i, param := range c.route.Params {
+		if utils.EqualFold(utils.UnsafeBytes(param), nameBytes) {
+			c.values[i] = value
+			return
+		}
+	}
+}
+
 func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 	teBytes := hdr.Peek(HeaderTransferEncoding)
 	var te string

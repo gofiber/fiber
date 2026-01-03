@@ -14,14 +14,23 @@ import (
 )
 
 // Pool for redirection
-var redirectPool = sync.Pool{
-	New: func() any {
-		return &Redirect{
-			status:   StatusSeeOther,
-			messages: make(redirectionMsgs, 0),
-		}
-	},
-}
+var (
+	redirectPool = sync.Pool{
+		New: func() any {
+			return &Redirect{
+				status:   StatusSeeOther,
+				messages: make(redirectionMsgs, 0),
+			}
+		},
+	}
+	oldInputPool = sync.Pool{
+		New: func() any {
+			return make(map[string]string)
+		},
+	}
+)
+
+const maxPoolableMapSize = 64
 
 // Cookie name to send flash messages when to use redirection.
 const (
@@ -97,6 +106,24 @@ func (r *Redirect) release() {
 	r.c = nil
 }
 
+func acquireOldInput() map[string]string {
+	oldInput, ok := oldInputPool.Get().(map[string]string)
+	if !ok {
+		return make(map[string]string)
+	}
+
+	return oldInput
+}
+
+func releaseOldInput(oldInput map[string]string) {
+	if len(oldInput) > maxPoolableMapSize {
+		return
+	}
+
+	clear(oldInput)
+	oldInputPool.Put(oldInput)
+}
+
 // Status sets the status code of redirection.
 // If status is not specified, status defaults to 303 See Other.
 func (r *Redirect) Status(code int) *Redirect {
@@ -144,7 +171,9 @@ func (r *Redirect) WithInput() *Redirect {
 	ctype := utils.ToLower(utils.UnsafeString(r.c.RequestCtx().Request.Header.ContentType()))
 	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))
 
-	oldInput := make(map[string]string)
+	oldInput := acquireOldInput()
+	defer releaseOldInput(oldInput)
+
 	switch ctype {
 	case MIMEApplicationForm, MIMEMultipartForm:
 		_ = r.c.Bind().Form(oldInput) //nolint:errcheck // not needed

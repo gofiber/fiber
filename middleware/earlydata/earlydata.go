@@ -30,14 +30,14 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Abort if we can't trust the early-data header
-		if !c.IsProxyTrusted() {
-			return cfg.Error
-		}
-
 		// Continue stack if request is not an early-data request
 		if !cfg.IsEarlyData(c) {
 			return c.Next()
+		}
+
+		// Abort if we can't trust the early-data header
+		if !c.IsProxyTrusted() {
+			return cfg.Error
 		}
 
 		// Continue stack if we allow early-data for this request
