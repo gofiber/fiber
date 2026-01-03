@@ -300,6 +300,11 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 		sameSite = http.SameSiteLaxMode
 	}
 
+	// Partitioned requires Secure=true per CHIPS spec
+	if cookie.Partitioned {
+		cookie.Secure = true
+	}
+
 	// create/validate cookie using net/http
 	hc := &http.Cookie{
 		Name:        cookie.Name,
