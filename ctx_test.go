@@ -2713,7 +2713,7 @@ func Benchmark_Ctx_IPs_v6_With_IP_Validation(b *testing.B) {
 }
 
 func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
-	app := New(Config{ProxyHeader: HeaderXForwardedFor})
+	app := New(Config{ProxyHeader: HeaderXForwardedFor, TrustProxy: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
 	var res string
@@ -2725,7 +2725,7 @@ func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
 }
 
 func Benchmark_Ctx_IP_With_ProxyHeader_and_IP_Validation(b *testing.B) {
-	app := New(Config{ProxyHeader: HeaderXForwardedFor, EnableIPValidation: true})
+	app := New(Config{ProxyHeader: HeaderXForwardedFor, TrustProxy: true, EnableIPValidation: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
 	var res string
