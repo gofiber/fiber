@@ -29,6 +29,9 @@ import (
 // time it should not be too short to avoid overwhelming of the system
 const timestampUpdatePeriod = 300 * time.Millisecond
 
+// buffer size for hexpool
+const hexLen = sha256.Size*2
+
 // cache status
 // unreachable: when cache is bypass, or invalid
 // hit: cache is served
@@ -133,7 +136,7 @@ func New(config ...Config) fiber.Handler {
 	// Pool for hex encoding buffers
 	hexBufPool := &sync.Pool{
 		New: func() any {
-			buf := make([]byte, sha256.Size*2)
+			buf := make([]byte, hexLen)
 			return &buf
 		},
 	}
@@ -969,20 +972,35 @@ func parseVary(vary string) ([]string, bool) {
 func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.RequestHeader) string {
 	return func(names []string, hdr *fasthttp.RequestHeader) string {
 		sum := sha256.New()
-		// hash.Hash.Write never returns an error for standard hashes; ignore to satisfy linters.
 		for _, name := range names {
 			_, _ = sum.Write(utils.UnsafeBytes(name)) //nolint:errcheck // hash.Hash.Write for std hashes never errors
 			_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
 			_, _ = sum.Write(hdr.Peek(name))          //nolint:errcheck // hash.Hash.Write for std hashes never errors
 			_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
 		}
+
 		var hashBytes [sha256.Size]byte
 		sum.Sum(hashBytes[:0])
 
-		bufPtr := hexBufPool.Get().(*[]byte)
+		v := hexBufPool.Get()
+		bufPtr, ok := v.(*[]byte)
+		if !ok || bufPtr == nil {
+			b := make([]byte, hexLen)
+			bufPtr = &b
+		}
+
 		buf := *bufPtr
+		// Defensive in case someone changed Pool.New or Put a different sized buffer.
+		if cap(buf) < hexLen {
+			buf = make([]byte, hexLen)
+		} else {
+			buf = buf[:hexLen]
+		}
+		*bufPtr = buf
+
 		hex.Encode(buf, hashBytes[:])
 		result := "|vary|" + string(buf)
+
 		hexBufPool.Put(bufPtr)
 		return result
 	}
