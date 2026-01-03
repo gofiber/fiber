@@ -416,7 +416,7 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 	require.Equal(t, "Not Found", string(c.Response.Body()))
 }
 
-func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
+func registerTreeManipulationRoutes(app *App, middleware ...any) {
 	app.Get("/test", func(c Ctx) error {
 		app.Get("/dynamically-defined", func(c Ctx) error {
 			return c.SendStatus(StatusOK)
@@ -1485,6 +1485,23 @@ func Test_App_RequestBody(t *testing.T) {
 	require.Equal(t, MIMEApplicationJSON, route.Consumes)
 }
 
+func Test_App_RequestBodyWithExample(t *testing.T) {
+	t.Parallel()
+	examples := map[string]any{
+		"sample": map[string]any{"name": "john"},
+	}
+	app := New()
+	app.Post("/users", testEmptyHandler).
+		RequestBodyWithExample("payload", true, map[string]any{"type": "object"}, "#/components/schemas/User", map[string]any{"name": "doe"}, examples, MIMEApplicationJSON)
+
+	route := app.stack[app.methodInt(MethodPost)][0]
+	require.NotNil(t, route.RequestBody)
+	require.Equal(t, "#/components/schemas/User", route.RequestBody.SchemaRef)
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/User"}, route.RequestBody.Schema)
+	require.Equal(t, map[string]any{"name": "doe"}, route.RequestBody.Example)
+	require.Equal(t, examples, route.RequestBody.Examples)
+}
+
 func Test_App_Parameter(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1508,6 +1525,26 @@ func Test_App_Parameter(t *testing.T) {
 	require.True(t, queryParam.Required)
 	require.Equal(t, "string", queryParam.Schema["type"])
 	require.Equal(t, "Filter results", queryParam.Description)
+}
+
+func Test_App_ParameterWithExample(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/:id", testEmptyHandler).
+		ParameterWithExample("id", "path", false, nil, "#/components/schemas/ID", "identifier", "123", map[string]any{"sample": 123})
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.Len(t, route.Parameters, 1)
+
+	param := route.Parameters[0]
+	require.Equal(t, "id", param.Name)
+	require.Equal(t, "path", param.In)
+	require.True(t, param.Required)
+	require.Equal(t, "#/components/schemas/ID", param.SchemaRef)
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/ID"}, param.Schema)
+	require.Equal(t, "identifier", param.Description)
+	require.Equal(t, "123", param.Example)
+	require.Equal(t, map[string]any{"sample": 123}, param.Examples)
 }
 
 func Test_App_Response(t *testing.T) {
@@ -1535,6 +1572,24 @@ func Test_App_Response(t *testing.T) {
 	defResp, ok := route.Responses["default"]
 	require.True(t, ok)
 	require.Equal(t, "Default fallback", defResp.Description)
+}
+
+func Test_App_ResponseWithExample(t *testing.T) {
+	t.Parallel()
+	examples := map[string]any{"sample": map[string]any{"id": 2}}
+	app := New()
+	app.Get("/", testEmptyHandler).
+		ResponseWithExample(StatusOK, "user response", nil, "#/components/schemas/User", map[string]any{"id": 1}, examples, MIMEApplicationJSON)
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	resp, ok := route.Responses["200"]
+	require.True(t, ok)
+	require.Equal(t, "#/components/schemas/User", resp.SchemaRef)
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/User"}, resp.Schema)
+	require.Equal(t, map[string]any{"id": 1}, resp.Example)
+	require.Equal(t, examples, resp.Examples)
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
 }
 
 func Test_App_Response_InvalidStatus(t *testing.T) {

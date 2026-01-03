@@ -6,18 +6,18 @@ package fiber
 
 // Register defines all router handle interface generate by Route().
 type Register interface {
-	All(handler Handler, handlers ...Handler) Register
-	Get(handler Handler, handlers ...Handler) Register
-	Head(handler Handler, handlers ...Handler) Register
-	Post(handler Handler, handlers ...Handler) Register
-	Put(handler Handler, handlers ...Handler) Register
-	Delete(handler Handler, handlers ...Handler) Register
-	Connect(handler Handler, handlers ...Handler) Register
-	Options(handler Handler, handlers ...Handler) Register
-	Trace(handler Handler, handlers ...Handler) Register
-	Patch(handler Handler, handlers ...Handler) Register
+	All(handler any, handlers ...any) Register
+	Get(handler any, handlers ...any) Register
+	Head(handler any, handlers ...any) Register
+	Post(handler any, handlers ...any) Register
+	Put(handler any, handlers ...any) Register
+	Delete(handler any, handlers ...any) Register
+	Connect(handler any, handlers ...any) Register
+	Options(handler any, handlers ...any) Register
+	Trace(handler any, handlers ...any) Register
+	Patch(handler any, handlers ...any) Register
 
-	Add(methods []string, handler Handler, handlers ...Handler) Register
+	Add(methods []string, handler any, handlers ...any) Register
 
 	Route(path string) Register
 }
@@ -45,68 +45,68 @@ type Registering struct {
 //	})
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (r *Registering) All(handler Handler, handlers ...Handler) Register {
-	r.app.register([]string{methodUse}, r.path, nil, append([]Handler{handler}, handlers...)...)
+func (r *Registering) All(handler any, handlers ...any) Register {
+	r.app.register([]string{methodUse}, r.path, nil, append([]any{handler}, handlers...)...)
 	return r
 }
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (r *Registering) Get(handler Handler, handlers ...Handler) Register {
+func (r *Registering) Get(handler any, handlers ...any) Register {
 	r.app.Add([]string{MethodGet}, r.path, handler, handlers...)
 	return r
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (r *Registering) Head(handler Handler, handlers ...Handler) Register {
+func (r *Registering) Head(handler any, handlers ...any) Register {
 	return r.Add([]string{MethodHead}, handler, handlers...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (r *Registering) Post(handler Handler, handlers ...Handler) Register {
+func (r *Registering) Post(handler any, handlers ...any) Register {
 	return r.Add([]string{MethodPost}, handler, handlers...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (r *Registering) Put(handler Handler, handlers ...Handler) Register {
+func (r *Registering) Put(handler any, handlers ...any) Register {
 	return r.Add([]string{MethodPut}, handler, handlers...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (r *Registering) Delete(handler Handler, handlers ...Handler) Register {
+func (r *Registering) Delete(handler any, handlers ...any) Register {
 	return r.Add([]string{MethodDelete}, handler, handlers...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (r *Registering) Connect(handler Handler, handlers ...Handler) Register {
+func (r *Registering) Connect(handler any, handlers ...any) Register {
 	return r.Add([]string{MethodConnect}, handler, handlers...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (r *Registering) Options(handler Handler, handlers ...Handler) Register {
+func (r *Registering) Options(handler any, handlers ...any) Register {
 	return r.Add([]string{MethodOptions}, handler, handlers...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the r.Path to the target resource.
-func (r *Registering) Trace(handler Handler, handlers ...Handler) Register {
+func (r *Registering) Trace(handler any, handlers ...any) Register {
 	return r.Add([]string{MethodTrace}, handler, handlers...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (r *Registering) Patch(handler Handler, handlers ...Handler) Register {
+func (r *Registering) Patch(handler any, handlers ...any) Register {
 	return r.Add([]string{MethodPatch}, handler, handlers...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (r *Registering) Add(methods []string, handler Handler, handlers ...Handler) Register {
-	r.app.register(methods, r.path, nil, append([]Handler{handler}, handlers...)...)
+func (r *Registering) Add(methods []string, handler any, handlers ...any) Register {
+	r.app.register(methods, r.path, nil, append([]any{handler}, handlers...)...)
 	return r
 }
 

@@ -339,6 +339,43 @@ func Test_OpenAPI_DefaultResponses(t *testing.T) {
 	})
 }
 
+func Test_OpenAPI_SchemaRefsAndExamples(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
+		ParameterWithExample("q", "query", false, nil, "#/components/schemas/Query", "search query", "abc", map[string]any{"sample": "abc"}).
+		RequestBodyWithExample("user body", true, nil, "#/components/schemas/User", map[string]any{"name": "john"}, map[string]any{"sample": map[string]any{"name": "doe"}}, fiber.MIMEApplicationJSON).
+		ResponseWithExample(fiber.StatusCreated, "Created", nil, "#/components/schemas/UserResponse", map[string]any{"id": 1}, map[string]any{"sample": map[string]any{"id": 2}}, fiber.MIMEApplicationJSON)
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/users"]["post"])
+
+	params := requireSlice(t, op["parameters"])
+	require.Len(t, params, 1)
+	param := requireMap(t, params[0])
+	require.Equal(t, "search query", param["description"])
+	require.Equal(t, "abc", param["example"])
+	require.Equal(t, map[string]any{"sample": "abc"}, requireMap(t, param["examples"]))
+	paramSchema := requireMap(t, param["schema"])
+	require.Equal(t, "#/components/schemas/Query", paramSchema["$ref"])
+
+	body := requireMap(t, op["requestBody"])
+	bodyContent := requireMap(t, body["content"])
+	jsonContent := requireMap(t, bodyContent[fiber.MIMEApplicationJSON])
+	bodySchema := requireMap(t, jsonContent["schema"])
+	require.Equal(t, "#/components/schemas/User", bodySchema["$ref"])
+	require.Equal(t, map[string]any{"name": "john"}, jsonContent["example"])
+	require.Equal(t, map[string]any{"sample": map[string]any{"name": "doe"}}, requireMap(t, jsonContent["examples"]))
+
+	resp := requireMap(t, requireMap(t, op["responses"])["201"])
+	respContent := requireMap(t, resp["content"])
+	respJSON := requireMap(t, respContent[fiber.MIMEApplicationJSON])
+	respSchema := requireMap(t, respJSON["schema"])
+	require.Equal(t, "#/components/schemas/UserResponse", respSchema["$ref"])
+	require.Equal(t, map[string]any{"id": float64(1)}, respJSON["example"])
+	require.Equal(t, map[string]any{"sample": map[string]any{"id": float64(2)}}, requireMap(t, respJSON["examples"]))
+}
+
 // getPaths is a helper that mounts the middleware, performs the request and
 // decodes the resulting OpenAPI specification paths.
 func getPaths(t *testing.T, app *fiber.App) map[string]map[string]any {

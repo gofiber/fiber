@@ -19,20 +19,20 @@ import (
 type Router interface {
 	Use(args ...any) Router
 
-	Get(path string, handler Handler, handlers ...Handler) Router
-	Head(path string, handler Handler, handlers ...Handler) Router
-	Post(path string, handler Handler, handlers ...Handler) Router
-	Put(path string, handler Handler, handlers ...Handler) Router
-	Delete(path string, handler Handler, handlers ...Handler) Router
-	Connect(path string, handler Handler, handlers ...Handler) Router
-	Options(path string, handler Handler, handlers ...Handler) Router
-	Trace(path string, handler Handler, handlers ...Handler) Router
-	Patch(path string, handler Handler, handlers ...Handler) Router
+	Get(path string, handler any, handlers ...any) Router
+	Head(path string, handler any, handlers ...any) Router
+	Post(path string, handler any, handlers ...any) Router
+	Put(path string, handler any, handlers ...any) Router
+	Delete(path string, handler any, handlers ...any) Router
+	Connect(path string, handler any, handlers ...any) Router
+	Options(path string, handler any, handlers ...any) Router
+	Trace(path string, handler any, handlers ...any) Router
+	Patch(path string, handler any, handlers ...any) Router
 
-	Add(methods []string, path string, handler Handler, handlers ...Handler) Router
-	All(path string, handler Handler, handlers ...Handler) Router
+	Add(methods []string, path string, handler any, handlers ...any) Router
+	All(path string, handler any, handlers ...any) Router
 
-	Group(prefix string, handlers ...Handler) Router
+	Group(prefix string, handlers ...any) Router
 
 	Route(path string) Register
 
@@ -51,12 +51,21 @@ type Router interface {
 	// RequestBody documents the request body for the most recently
 	// registered route.
 	RequestBody(description string, required bool, mediaTypes ...string) Router
+	// RequestBodyWithExample documents the request body for the most recently
+	// registered route with schema references and examples.
+	RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
 	// Parameter documents an input parameter for the most recently
 	// registered route.
 	Parameter(name, in string, required bool, schema map[string]any, description string) Router
+	// ParameterWithExample documents an input parameter for the most recently
+	// registered route, including schema references and examples.
+	ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef string, description string, example any, examples map[string]any) Router
 	// Response documents an HTTP response for the most recently
 	// registered route.
 	Response(status int, description string, mediaTypes ...string) Router
+	// ResponseWithExample documents an HTTP response for the most recently
+	// registered route, including schema references and examples.
+	ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
 	// Tags sets the tags for the most recently registered route.
 	Tags(tags ...string) Router
 	// Deprecated marks the most recently registered route as deprecated.
@@ -99,6 +108,9 @@ type Route struct {
 // RouteParameter describes an input captured by a route.
 type RouteParameter struct {
 	Schema      map[string]any `json:"schema"`
+	SchemaRef   string         `json:"schemaRef,omitempty"`
+	Example     any            `json:"example,omitempty"`
+	Examples    map[string]any `json:"examples,omitempty"`
 	Description string         `json:"description"`
 	Name        string         `json:"name"`
 	In          string         `json:"in"`
@@ -107,15 +119,23 @@ type RouteParameter struct {
 
 // RouteResponse describes a response emitted by a route.
 type RouteResponse struct {
-	MediaTypes  []string `json:"mediaTypes"` //nolint:tagliatelle
-	Description string   `json:"description"`
+	MediaTypes  []string       `json:"mediaTypes"` //nolint:tagliatelle
+	Schema      map[string]any `json:"schema,omitempty"`
+	SchemaRef   string         `json:"schemaRef,omitempty"`
+	Example     any            `json:"example,omitempty"`
+	Examples    map[string]any `json:"examples,omitempty"`
+	Description string         `json:"description"`
 }
 
 // RouteRequestBody describes the request payload accepted by a route.
 type RouteRequestBody struct {
-	MediaTypes  []string `json:"mediaTypes"` //nolint:tagliatelle
-	Description string   `json:"description"`
-	Required    bool     `json:"required"`
+	MediaTypes  []string       `json:"mediaTypes"` //nolint:tagliatelle
+	Schema      map[string]any `json:"schema,omitempty"`
+	SchemaRef   string         `json:"schemaRef,omitempty"`
+	Example     any            `json:"example,omitempty"`
+	Examples    map[string]any `json:"examples,omitempty"`
+	Description string         `json:"description"`
+	Required    bool           `json:"required"`
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
@@ -456,6 +476,14 @@ func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {
 		Description: body.Description,
 		Required:    body.Required,
 	}
+	if len(body.Schema) > 0 {
+		clone.Schema = copyAnyMap(body.Schema)
+	}
+	clone.SchemaRef = body.SchemaRef
+	if len(body.Examples) > 0 {
+		clone.Examples = copyAnyMap(body.Examples)
+	}
+	clone.Example = body.Example
 	if len(body.MediaTypes) > 0 {
 		clone.MediaTypes = append([]string(nil), body.MediaTypes...)
 	}
@@ -474,11 +502,10 @@ func cloneRouteParameters(params []RouteParameter) []RouteParameter {
 			Required:    p.Required,
 			Description: p.Description,
 		}
-		if len(p.Schema) > 0 {
-			schemaCopy := make(map[string]any, len(p.Schema))
-			maps.Copy(schemaCopy, p.Schema)
-			cloned[i].Schema = schemaCopy
-		}
+		cloned[i].Schema = copyAnyMap(p.Schema)
+		cloned[i].SchemaRef = p.SchemaRef
+		cloned[i].Examples = copyAnyMap(p.Examples)
+		cloned[i].Example = p.Example
 	}
 	return cloned
 }
@@ -489,13 +516,28 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 	}
 	cloned := make(map[string]RouteResponse, len(responses))
 	for code, resp := range responses {
-		copyResp := RouteResponse{Description: resp.Description}
+		copyResp := RouteResponse{
+			Description: resp.Description,
+			Schema:      copyAnyMap(resp.Schema),
+			SchemaRef:   resp.SchemaRef,
+			Examples:    copyAnyMap(resp.Examples),
+			Example:     resp.Example,
+		}
 		if len(resp.MediaTypes) > 0 {
 			copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
 		}
 		cloned[code] = copyResp
 	}
 	return cloned
+}
+
+func copyAnyMap(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	maps.Copy(dst, src)
+	return dst
 }
 
 func (app *App) normalizePath(path string) string {
@@ -584,17 +626,13 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	}
 }
 
-func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
+func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...any) {
 	// A regular route requires at least one ctx handler
 	if len(handlers) == 0 && group == nil {
 		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
 	}
-	// No nil handlers allowed
-	for _, h := range handlers {
-		if nil == h {
-			panic(fmt.Sprintf("nil handler in route: %s\n", pathRaw))
-		}
-	}
+
+	ctxHandlers := adaptHandlers(pathRaw, handlers...)
 
 	// Precompute path normalization ONCE
 	if pathRaw == "" {
@@ -640,7 +678,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 
 			Path:        pathRaw,
 			Method:      method,
-			Handlers:    handlers,
+			Handlers:    ctxHandlers,
 			Summary:     "",
 			Description: "",
 			Consumes:    MIMETextPlain,
@@ -648,7 +686,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 
 		// Increment global handler count
-		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // Not a concern
+		atomic.AddUint32(&app.handlersCount, uint32(len(ctxHandlers))) //nolint:gosec // Not a concern
 
 		// Middleware route matches all HTTP methods
 		if isUse {

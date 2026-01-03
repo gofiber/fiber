@@ -54,8 +54,27 @@ app.Post("/users", createUser).
     Summary("Create user").
     Description("Creates a new user").
     RequestBody("User payload", true, fiber.MIMEApplicationJSON).
+    // Use *WithExample helpers to attach schemas and examples (including $ref).
+    RequestBodyWithExample(
+        "User payload", true,
+        nil, "#/components/schemas/User",
+        map[string]any{"name": "alice"},
+        map[string]any{"sample": map[string]any{"name": "bob"}},
+        fiber.MIMEApplicationJSON,
+    ).
     Parameter("trace-id", "header", true, nil, "Tracing identifier").
+    ParameterWithExample(
+        "trace-id", "header", true, nil, "",
+        "Tracing identifier", "abc-123", map[string]any{"sample": "xyz-789"},
+    ).
     Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON).
+    ResponseWithExample(
+        fiber.StatusCreated, "Created",
+        nil, "#/components/schemas/UserResponse",
+        map[string]any{"id": 1},
+        map[string]any{"sample": map[string]any{"id": 2}},
+        fiber.MIMEApplicationJSON,
+    ).
     Tags("users", "admin").
     Produces(fiber.MIMEApplicationJSON)
 
@@ -117,6 +136,9 @@ type Operation struct {
 
 type Parameter struct {
     Schema      map[string]any
+    SchemaRef   string
+    Examples    map[string]any
+    Example     any
     Name        string
     In          string
     Description string
@@ -124,19 +146,30 @@ type Parameter struct {
 }
 
 type Media struct {
-    Schema map[string]any
+    Schema    map[string]any
+    SchemaRef string
+    Examples  map[string]any
+    Example   any
 }
 
 type Response struct {
     Content     map[string]Media
+    Examples    map[string]any
+    Example     any
+    SchemaRef   string
     Description string
 }
 
 type RequestBody struct {
     Content     map[string]Media
+    Examples    map[string]any
+    Example     any
+    SchemaRef   string
     Description string
     Required    bool
 }
 ```
 
 Refer to the type definitions above when customizing OpenAPI operations in your configuration.
+
+Schema references (`SchemaRef`) are emitted as `$ref` entries in the generated JSON and can point to components such as `#/components/schemas/User`. `Example` and `Examples` are forwarded verbatim into operation parameters, request bodies, and responses so that client generators can surface realistic payloads.

@@ -103,7 +103,10 @@ type Operation struct {
 
 // Parameter describes a single OpenAPI parameter.
 type Parameter struct {
-	Schema map[string]any
+	Schema    map[string]any
+	SchemaRef string
+	Examples  map[string]any
+	Example   any
 
 	Name        string
 	In          string
@@ -113,18 +116,27 @@ type Parameter struct {
 
 // Media describes the schema payload for a request or response media type.
 type Media struct {
-	Schema map[string]any
+	Schema    map[string]any
+	SchemaRef string
+	Examples  map[string]any
+	Example   any
 }
 
 // Response describes an OpenAPI response object.
 type Response struct {
 	Content     map[string]Media
+	Examples    map[string]any
+	Example     any
+	SchemaRef   string
 	Description string
 }
 
 // RequestBody describes the request body configuration for an operation.
 type RequestBody struct {
 	Content     map[string]Media
+	Examples    map[string]any
+	Example     any
+	SchemaRef   string
 	Description string
 	Required    bool
 }

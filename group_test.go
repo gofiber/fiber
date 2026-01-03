@@ -57,6 +57,19 @@ func Test_Group_OpenAPI_Helpers(t *testing.T) {
 		require.Equal(t, []string{MIMEApplicationJSON}, route.RequestBody.MediaTypes)
 	})
 
+	t.Run("RequestBodyWithExample", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		grp := app.Group("/api")
+		grp.Post("/users", testEmptyHandler).
+			RequestBodyWithExample("User", true, map[string]any{"type": "object"}, "#/components/schemas/User", map[string]any{"name": "doe"}, map[string]any{"sample": map[string]any{"name": "john"}}, MIMEApplicationJSON)
+		route := app.stack[app.methodInt(MethodPost)][0]
+		require.NotNil(t, route.RequestBody)
+		require.Equal(t, "#/components/schemas/User", route.RequestBody.SchemaRef)
+		require.Equal(t, map[string]any{"$ref": "#/components/schemas/User"}, route.RequestBody.Schema)
+		require.Equal(t, map[string]any{"name": "doe"}, route.RequestBody.Example)
+	})
+
 	t.Run("Parameter", func(t *testing.T) {
 		t.Parallel()
 		app := New()
@@ -69,6 +82,19 @@ func Test_Group_OpenAPI_Helpers(t *testing.T) {
 		require.Equal(t, "integer", route.Parameters[0].Schema["type"])
 	})
 
+	t.Run("ParameterWithExample", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		grp := app.Group("/api")
+		grp.Get("/users/:id", testEmptyHandler).
+			ParameterWithExample("id", "path", false, nil, "#/components/schemas/ID", "identifier", "123", map[string]any{"sample": "value"})
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Len(t, route.Parameters, 1)
+		require.Equal(t, "#/components/schemas/ID", route.Parameters[0].SchemaRef)
+		require.Equal(t, "123", route.Parameters[0].Example)
+		require.Equal(t, map[string]any{"sample": "value"}, route.Parameters[0].Examples)
+	})
+
 	t.Run("Response", func(t *testing.T) {
 		t.Parallel()
 		app := New()
@@ -77,6 +103,20 @@ func Test_Group_OpenAPI_Helpers(t *testing.T) {
 		route := app.stack[app.methodInt(MethodGet)][0]
 		require.Contains(t, route.Responses, "201")
 		require.Equal(t, []string{MIMEApplicationJSON}, route.Responses["201"].MediaTypes)
+	})
+
+	t.Run("ResponseWithExample", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		grp := app.Group("/api")
+		grp.Get("/users", testEmptyHandler).
+			ResponseWithExample(StatusCreated, "Created", nil, "#/components/schemas/User", map[string]any{"id": 1}, map[string]any{"sample": map[string]any{"id": 2}}, MIMEApplicationJSON)
+		route := app.stack[app.methodInt(MethodGet)][0]
+		resp := route.Responses["201"]
+		require.Equal(t, "#/components/schemas/User", resp.SchemaRef)
+		require.Equal(t, map[string]any{"$ref": "#/components/schemas/User"}, resp.Schema)
+		require.Equal(t, map[string]any{"id": 1}, resp.Example)
+		require.Equal(t, map[string]any{"sample": map[string]any{"id": 2}}, resp.Examples)
 	})
 
 	t.Run("Tags", func(t *testing.T) {

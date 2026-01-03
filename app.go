@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"mime"
 	"net"
 	"net/http"
@@ -752,14 +751,29 @@ func (app *App) Produces(typ string) Router {
 
 // RequestBody documents the request payload for the most recently added route.
 func (app *App) RequestBody(description string, required bool, mediaTypes ...string) Router {
+	return app.RequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...)
+}
+
+// RequestBodyWithExample documents the request payload with schema references and examples.
+func (app *App) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	sanitized := sanitizeRequiredMediaTypes(mediaTypes)
 
-	app.mutex.Lock()
-	app.latestRoute.RequestBody = &RouteRequestBody{
+	body := &RouteRequestBody{
 		Description: description,
 		Required:    required,
 		MediaTypes:  append([]string(nil), sanitized...),
+		SchemaRef:   schemaRef,
+		Example:     example,
+		Examples:    copyAnyMap(examples),
 	}
+	if schemaRef != "" {
+		body.Schema = map[string]any{"$ref": schemaRef}
+	} else if len(schema) > 0 {
+		body.Schema = copyAnyMap(schema)
+	}
+
+	app.mutex.Lock()
+	app.latestRoute.RequestBody = body
 	if len(sanitized) > 0 {
 		app.latestRoute.Consumes = sanitized[0]
 	}
@@ -770,6 +784,15 @@ func (app *App) RequestBody(description string, required bool, mediaTypes ...str
 
 // Parameter documents an input parameter for the most recently added route.
 func (app *App) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+	return app.addParameter(name, in, required, schema, "", description, nil, nil)
+}
+
+// ParameterWithExample documents an input parameter, including schema references and examples.
+func (app *App) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef string, description string, example any, examples map[string]any) Router {
+	return app.addParameter(name, in, required, schema, schemaRef, description, example, examples)
+}
+
+func (app *App) addParameter(name, in string, required bool, schema map[string]any, schemaRef string, description string, example any, examples map[string]any) Router {
 	if strings.TrimSpace(name) == "" {
 		panic("parameter name is required")
 	}
@@ -781,14 +804,20 @@ func (app *App) Parameter(name, in string, required bool, schema map[string]any,
 		panic("invalid parameter location: " + in)
 	}
 
-	if schema == nil {
+	if schemaRef != "" {
+		schema = map[string]any{"$ref": schemaRef}
+	} else if schema == nil {
 		schema = map[string]any{"type": "string"}
 	}
 
-	schemaCopy := make(map[string]any, len(schema))
-	maps.Copy(schemaCopy, schema)
-	if _, ok := schemaCopy["type"]; !ok {
-		schemaCopy["type"] = "string"
+	schemaCopy := copyAnyMap(schema)
+	if schemaCopy == nil {
+		schemaCopy = map[string]any{"type": "string"}
+	}
+	if schemaRef == "" {
+		if _, ok := schemaCopy["type"]; !ok {
+			schemaCopy["type"] = "string"
+		}
 	}
 
 	if location == "path" {
@@ -801,6 +830,9 @@ func (app *App) Parameter(name, in string, required bool, schema map[string]any,
 		Required:    required,
 		Description: description,
 		Schema:      schemaCopy,
+		SchemaRef:   schemaRef,
+		Example:     example,
+		Examples:    copyAnyMap(examples),
 	}
 
 	app.mutex.Lock()
@@ -812,6 +844,15 @@ func (app *App) Parameter(name, in string, required bool, schema map[string]any,
 
 // Response documents an HTTP response for the most recently added route.
 func (app *App) Response(status int, description string, mediaTypes ...string) Router {
+	return app.addResponse(status, description, nil, "", nil, nil, mediaTypes...)
+}
+
+// ResponseWithExample documents an HTTP response with schema references and examples.
+func (app *App) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	return app.addResponse(status, description, schema, schemaRef, example, examples, mediaTypes...)
+}
+
+func (app *App) addResponse(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	if status != 0 && (status < 100 || status > 599) {
 		panic("invalid status code")
 	}
@@ -837,6 +878,14 @@ func (app *App) Response(status int, description string, mediaTypes ...string) R
 	if len(sanitized) > 0 {
 		resp.MediaTypes = append([]string(nil), sanitized...)
 	}
+	if schemaRef != "" {
+		resp.SchemaRef = schemaRef
+		resp.Schema = map[string]any{"$ref": schemaRef}
+	} else if len(schema) > 0 {
+		resp.Schema = copyAnyMap(schema)
+	}
+	resp.Example = example
+	resp.Examples = copyAnyMap(examples)
 
 	app.mutex.Lock()
 	if app.latestRoute.Responses == nil {
@@ -958,7 +1007,7 @@ func (app *App) Use(args ...any) Router {
 	var prefix string
 	var subApp *App
 	var prefixes []string
-	var handlers []Handler
+	var handlers []any
 
 	for i := range args {
 		switch arg := args[i].(type) {
@@ -968,7 +1017,7 @@ func (app *App) Use(args ...any) Router {
 			subApp = arg
 		case []string:
 			prefixes = arg
-		case Handler:
+		case Handler, []Handler, []any:
 			handlers = append(handlers, arg)
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
@@ -993,66 +1042,66 @@ func (app *App) Use(args ...any) Router {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App) Get(path string, handler Handler, handlers ...Handler) Router {
+func (app *App) Get(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodGet}, path, handler, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App) Head(path string, handler Handler, handlers ...Handler) Router {
+func (app *App) Head(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodHead}, path, handler, handlers...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App) Post(path string, handler Handler, handlers ...Handler) Router {
+func (app *App) Post(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodPost}, path, handler, handlers...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App) Put(path string, handler Handler, handlers ...Handler) Router {
+func (app *App) Put(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodPut}, path, handler, handlers...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App) Delete(path string, handler Handler, handlers ...Handler) Router {
+func (app *App) Delete(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodDelete}, path, handler, handlers...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App) Connect(path string, handler Handler, handlers ...Handler) Router {
+func (app *App) Connect(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodConnect}, path, handler, handlers...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App) Options(path string, handler Handler, handlers ...Handler) Router {
+func (app *App) Options(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodOptions}, path, handler, handlers...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App) Trace(path string, handler Handler, handlers ...Handler) Router {
+func (app *App) Trace(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodTrace}, path, handler, handlers...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App) Patch(path string, handler Handler, handlers ...Handler) Router {
+func (app *App) Patch(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodPatch}, path, handler, handlers...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (app *App) Add(methods []string, path string, handler Handler, handlers ...Handler) Router {
-	app.register(methods, path, nil, append([]Handler{handler}, handlers...)...)
+func (app *App) Add(methods []string, path string, handler any, handlers ...any) Router {
+	app.register(methods, path, nil, append([]any{handler}, handlers...)...)
 
 	return app
 }
 
 // All will register the handler on all HTTP methods
-func (app *App) All(path string, handler Handler, handlers ...Handler) Router {
+func (app *App) All(path string, handler any, handlers ...any) Router {
 	return app.Add(app.config.RequestMethods, path, handler, handlers...)
 }
 
@@ -1060,7 +1109,7 @@ func (app *App) All(path string, handler Handler, handlers ...Handler) Router {
 //
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
-func (app *App) Group(prefix string, handlers ...Handler) Router {
+func (app *App) Group(prefix string, handlers ...any) Router {
 	grp := &Group{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
 		app.register([]string{methodUse}, prefix, grp, handlers...)

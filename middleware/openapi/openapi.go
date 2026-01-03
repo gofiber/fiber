@@ -113,6 +113,8 @@ type response struct {
 
 type parameter struct {
 	Schema      map[string]any `json:"schema,omitempty"`
+	Example     any            `json:"example,omitempty"`
+	Examples    map[string]any `json:"examples,omitempty"`
 	Description string         `json:"description,omitempty"`
 	Name        string         `json:"name"`
 	In          string         `json:"in"`
@@ -254,10 +256,9 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 			In:          location,
 			Description: extra.Description,
 			Required:    extra.Required,
-			Schema:      copyAnyMap(extra.Schema),
-		}
-		if param.Schema == nil {
-			param.Schema = map[string]any{"type": "string"}
+			Schema:      schemaFrom(extra.Schema, extra.SchemaRef, "string"),
+			Example:     extra.Example,
+			Examples:    copyAnyMap(extra.Examples),
 		}
 		if param.In == "path" {
 			param.Required = true
@@ -284,10 +285,9 @@ func mergeConfigParameters(params []parameter, index map[string]int, extras []Pa
 			In:          location,
 			Description: extra.Description,
 			Required:    extra.Required,
-			Schema:      copyAnyMap(extra.Schema),
-		}
-		if param.Schema == nil {
-			param.Schema = map[string]any{"type": "string"}
+			Schema:      schemaFrom(extra.Schema, extra.SchemaRef, "string"),
+			Example:     extra.Example,
+			Examples:    copyAnyMap(extra.Examples),
 		}
 		if param.In == "path" {
 			param.Required = true
@@ -319,6 +319,40 @@ func copyAnyMap(src map[string]any) map[string]any {
 	return dst
 }
 
+func schemaFrom(schema map[string]any, schemaRef string, defaultType string) map[string]any {
+	if schemaRef != "" {
+		return map[string]any{"$ref": schemaRef}
+	}
+
+	copied := copyAnyMap(schema)
+	if copied == nil {
+		copied = map[string]any{}
+	}
+	if _, ok := copied["type"]; !ok && defaultType != "" {
+		copied["type"] = defaultType
+	}
+	if len(copied) == 0 {
+		return nil
+	}
+	return copied
+}
+
+func contentEntry(schema map[string]any, schemaRef string, example any, examples map[string]any) map[string]any {
+	entry := map[string]any{}
+	if schemaRef != "" {
+		entry["schema"] = map[string]any{"$ref": schemaRef}
+	} else if copy := copyAnyMap(schema); len(copy) > 0 {
+		entry["schema"] = copy
+	}
+	if example != nil {
+		entry["example"] = example
+	}
+	if ex := copyAnyMap(examples); len(ex) > 0 {
+		entry["examples"] = ex
+	}
+	return entry
+}
+
 func mergeResponses(routeResponses map[string]fiber.RouteResponse, cfgResponses map[string]Response) map[string]response {
 	var merged map[string]response
 	if len(routeResponses) > 0 {
@@ -326,7 +360,7 @@ func mergeResponses(routeResponses map[string]fiber.RouteResponse, cfgResponses 
 		for code, resp := range routeResponses {
 			merged[code] = response{
 				Description: resp.Description,
-				Content:     mediaTypesToContent(resp.MediaTypes),
+				Content:     mediaTypesToContent(resp.MediaTypes, resp.Schema, resp.SchemaRef, resp.Example, resp.Examples),
 			}
 		}
 	}
@@ -337,29 +371,45 @@ func mergeResponses(routeResponses map[string]fiber.RouteResponse, cfgResponses 
 		for code, resp := range cfgResponses {
 			merged[code] = response{
 				Description: resp.Description,
-				Content:     convertMediaContent(resp.Content),
+				Content:     convertMediaContent(resp.Content, nil, resp.SchemaRef, resp.Example, resp.Examples),
 			}
 		}
 	}
 	return merged
 }
 
-func convertMediaContent(content map[string]Media) map[string]map[string]any {
+func convertMediaContent(content map[string]Media, defaultSchema map[string]any, defaultSchemaRef string, defaultExample any, defaultExamples map[string]any) map[string]map[string]any {
 	if len(content) == 0 {
 		return nil
 	}
 	converted := make(map[string]map[string]any, len(content))
 	for mediaType, media := range content {
-		entry := map[string]any{}
-		if schema := copyAnyMap(media.Schema); len(schema) > 0 {
-			entry["schema"] = schema
+		entry := contentEntry(media.Schema, media.SchemaRef, media.Example, media.Examples)
+		if len(entry) == 0 && (len(defaultSchema) > 0 || defaultSchemaRef != "" || defaultExample != nil || len(defaultExamples) > 0) {
+			entry = contentEntry(defaultSchema, defaultSchemaRef, defaultExample, defaultExamples)
+		} else {
+			if _, ok := entry["schema"]; !ok {
+				if defaultSchemaRef != "" {
+					entry["schema"] = map[string]any{"$ref": defaultSchemaRef}
+				} else if schema := copyAnyMap(defaultSchema); len(schema) > 0 {
+					entry["schema"] = schema
+				}
+			}
+			if _, ok := entry["example"]; !ok && defaultExample != nil {
+				entry["example"] = defaultExample
+			}
+			if _, ok := entry["examples"]; !ok {
+				if ex := copyAnyMap(defaultExamples); len(ex) > 0 {
+					entry["examples"] = ex
+				}
+			}
 		}
 		converted[mediaType] = entry
 	}
 	return converted
 }
 
-func mediaTypesToContent(mediaTypes []string) map[string]map[string]any {
+func mediaTypesToContent(mediaTypes []string, schema map[string]any, schemaRef string, example any, examples map[string]any) map[string]map[string]any {
 	if len(mediaTypes) == 0 {
 		return nil
 	}
@@ -368,7 +418,11 @@ func mediaTypesToContent(mediaTypes []string) map[string]map[string]any {
 		if mediaType == "" {
 			continue
 		}
-		content[mediaType] = map[string]any{}
+		entry := contentEntry(schema, schemaRef, example, examples)
+		if len(entry) == 0 {
+			entry = map[string]any{}
+		}
+		content[mediaType] = entry
 	}
 	if len(content) == 0 {
 		return nil
@@ -382,14 +436,14 @@ func buildRequestBody(routeBody *fiber.RouteRequestBody, cfgBody *RequestBody) *
 		merged = &requestBody{
 			Description: routeBody.Description,
 			Required:    routeBody.Required,
-			Content:     mediaTypesToContent(routeBody.MediaTypes),
+			Content:     mediaTypesToContent(routeBody.MediaTypes, routeBody.Schema, routeBody.SchemaRef, routeBody.Example, routeBody.Examples),
 		}
 	}
 	if cfgBody != nil {
 		cfgReq := &requestBody{
 			Description: cfgBody.Description,
 			Required:    cfgBody.Required,
-			Content:     convertMediaContent(cfgBody.Content),
+			Content:     convertMediaContent(cfgBody.Content, nil, cfgBody.SchemaRef, cfgBody.Example, cfgBody.Examples),
 		}
 		if merged == nil {
 			merged = cfgReq
