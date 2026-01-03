@@ -15,7 +15,7 @@ import (
 //
 //go:generate msgp -o=manager_msgp.go -tests=true -unexported
 type item struct {
-	headers         map[string][]byte
+	headers         []cachedHeader
 	body            []byte
 	ctype           []byte
 	cencoding       []byte
@@ -33,6 +33,11 @@ type item struct {
 	private         bool
 	// used for finding the item in an indexed heap
 	heapidx int
+}
+
+type cachedHeader struct {
+	key   []byte
+	value []byte
 }
 
 //msgp:ignore manager
