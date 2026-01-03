@@ -83,6 +83,7 @@ func (m *manager) release(e *item) {
 	e.expires = nil
 	e.etag = nil
 	e.ctype = nil
+	e.cencoding = nil
 	e.date = 0
 	e.status = 0
 	e.age = 0
