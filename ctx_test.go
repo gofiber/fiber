@@ -2713,8 +2713,16 @@ func Benchmark_Ctx_IPs_v6_With_IP_Validation(b *testing.B) {
 }
 
 func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
-	app := New(Config{ProxyHeader: HeaderXForwardedFor, TrustProxy: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	app := New(Config{
+		ProxyHeader: HeaderXForwardedFor,
+		TrustProxy:  true,
+		TrustProxyConfig: TrustProxyConfig{
+			Loopback: true,
+		},
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")}))
+	c := app.AcquireCtx(fastCtx)
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
 	var res string
 	b.ReportAllocs()
@@ -2725,8 +2733,17 @@ func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
 }
 
 func Benchmark_Ctx_IP_With_ProxyHeader_and_IP_Validation(b *testing.B) {
-	app := New(Config{ProxyHeader: HeaderXForwardedFor, TrustProxy: true, EnableIPValidation: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	app := New(Config{
+		ProxyHeader: HeaderXForwardedFor,
+		TrustProxy:  true,
+		TrustProxyConfig: TrustProxyConfig{
+			Loopback: true,
+		},
+		EnableIPValidation: true,
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")}))
+	c := app.AcquireCtx(fastCtx)
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
 	var res string
 	b.ReportAllocs()
