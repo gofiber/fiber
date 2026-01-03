@@ -30,7 +30,7 @@ import (
 const timestampUpdatePeriod = 300 * time.Millisecond
 
 // buffer size for hexpool
-const hexLen = sha256.Size*2
+const hexLen = sha256.Size * 2
 
 // cache status
 // unreachable: when cache is bypass, or invalid
@@ -1067,10 +1067,25 @@ func allowsSharedCache(cc string) bool {
 func makeHashAuthFunc(hexBufPool *sync.Pool) func([]byte) string {
 	return func(authHeader []byte) string {
 		sum := sha256.Sum256(authHeader)
-		bufPtr := hexBufPool.Get().(*[]byte)
+
+		v := hexBufPool.Get()
+		bufPtr, ok := v.(*[]byte)
+		if !ok || bufPtr == nil {
+			b := make([]byte, hexLen)
+			bufPtr = &b
+		}
+
 		buf := *bufPtr
+		if cap(buf) < hexLen {
+			buf = make([]byte, hexLen)
+		} else {
+			buf = buf[:hexLen]
+		}
+		*bufPtr = buf
+
 		hex.Encode(buf, sum[:])
 		result := string(buf)
+
 		hexBufPool.Put(bufPtr)
 		return result
 	}
