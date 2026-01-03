@@ -305,8 +305,6 @@ func New(config ...Config) fiber.Handler {
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
-				relock()
-				unlock()
 				return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
 			}
 			relock()
@@ -370,8 +368,6 @@ func New(config ...Config) fiber.Handler {
 					if e != nil {
 						manager.release(e)
 					}
-					relock()
-					unlock()
 					return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
 				}
 				relock()
@@ -385,8 +381,6 @@ func New(config ...Config) fiber.Handler {
 					if e != nil {
 						manager.release(e)
 					}
-					relock()
-					unlock()
 					return fmt.Errorf("cache: failed to delete private response for key %q: %w", maskKey(key), err)
 				}
 				relock()
