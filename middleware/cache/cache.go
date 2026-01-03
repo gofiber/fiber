@@ -9,10 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/http"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -74,7 +72,14 @@ type requestCacheDirectives struct {
 }
 
 var ignoreHeaders = map[string]struct{}{
+	"Age":                 {},
+	"Cache-Control":       {}, // already stored explicitly by the cache manager
 	"Connection":          {},
+	"Content-Encoding":    {}, // already stored explicitly by the cache manager
+	"Content-Type":        {}, // already stored explicitly by the cache manager
+	"Date":                {},
+	"ETag":                {}, // already stored explicitly by the cache manager
+	"Expires":             {}, // already stored explicitly by the cache manager
 	"Keep-Alive":          {},
 	"Proxy-Authenticate":  {},
 	"Proxy-Authorization": {},
@@ -82,8 +87,6 @@ var ignoreHeaders = map[string]struct{}{
 	"Trailers":            {},
 	"Transfer-Encoding":   {},
 	"Upgrade":             {},
-	"Content-Type":        {}, // already stored explicitly by the cache manager
-	"Content-Encoding":    {}, // already stored explicitly by the cache manager
 }
 
 var cacheableStatusCodes = map[int]struct{}{
@@ -192,7 +195,7 @@ func New(config ...Config) fiber.Handler {
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		hasAuthorization := len(c.Request().Header.Peek(fiber.HeaderAuthorization)) > 0
-		reqCacheControl := utils.UnsafeString(c.Request().Header.Peek(fiber.HeaderCacheControl))
+		reqCacheControl := c.Request().Header.Peek(fiber.HeaderCacheControl)
 		reqDirectives := parseRequestCacheControl(reqCacheControl)
 		if !reqDirectives.noCache {
 			reqPragma := utils.UnsafeString(c.Request().Header.Peek(fiber.HeaderPragma))
@@ -258,6 +261,19 @@ func New(config ...Config) fiber.Handler {
 
 		// Lock entry
 		mux.Lock()
+		locked := true
+		unlock := func() {
+			if locked {
+				mux.Unlock()
+				locked = false
+			}
+		}
+		relock := func() {
+			if !locked {
+				mux.Lock()
+				locked = true
+			}
+		}
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
@@ -284,19 +300,20 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
+			unlock()
 			if err := deleteKey(reqCtx, key); err != nil {
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
-				mux.Unlock()
 				return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
 			}
+			relock()
 			removeHeapEntry(key, e.heapidx)
 			if cfg.Storage != nil {
 				manager.release(e)
 			}
 			e = nil
-			mux.Unlock()
+			unlock()
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			goto continueRequest
 		}
@@ -304,7 +321,7 @@ func New(config ...Config) fiber.Handler {
 		if e != nil {
 			entryHasPrivate := e != nil && e.private
 			if !entryHasPrivate && cfg.StoreResponseHeaders && len(e.headers) > 0 {
-				if cc, ok := e.headers[fiber.HeaderCacheControl]; ok && hasDirective(utils.UnsafeString(cc), privateDirective) {
+				if cc, ok := lookupCachedHeader(e.headers, fiber.HeaderCacheControl); ok && hasDirective(utils.UnsafeString(cc), privateDirective) {
 					entryHasPrivate = true
 				}
 			}
@@ -334,7 +351,7 @@ func New(config ...Config) fiber.Handler {
 			handleMinFresh(ts)
 
 			if revalidate {
-				mux.Unlock()
+				unlock()
 				c.Set(cfg.CacheHeader, cacheUnreachable)
 				if reqDirectives.onlyIfCached {
 					return c.SendStatus(fiber.StatusGatewayTimeout)
@@ -346,31 +363,33 @@ func New(config ...Config) fiber.Handler {
 
 			switch {
 			case entryExpired && !allowStale:
+				unlock()
 				if err := deleteKey(reqCtx, key); err != nil {
 					if e != nil {
 						manager.release(e)
 					}
-					mux.Unlock()
 					return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
 				}
+				relock()
 				idx := e.heapidx
 				manager.release(e)
 				removeHeapEntry(key, idx)
 				e = nil
 			case entryHasPrivate:
+				unlock()
 				if err := deleteKey(reqCtx, key); err != nil {
 					if e != nil {
 						manager.release(e)
 					}
-					mux.Unlock()
 					return fmt.Errorf("cache: failed to delete private response for key %q: %w", maskKey(key), err)
 				}
+				relock()
 				removeHeapEntry(key, e.heapidx)
 				if cfg.Storage != nil && e != nil {
 					manager.release(e)
 				}
 				e = nil
-				mux.Unlock()
+				unlock()
 				c.Set(cfg.CacheHeader, cacheUnreachable)
 				if reqDirectives.onlyIfCached {
 					return c.SendStatus(fiber.StatusGatewayTimeout)
@@ -382,7 +401,7 @@ func New(config ...Config) fiber.Handler {
 					if cfg.Storage != nil {
 						manager.release(e)
 					}
-					mux.Unlock()
+					unlock()
 					c.Set(cfg.CacheHeader, cacheUnreachable)
 					return c.Next()
 				}
@@ -390,13 +409,15 @@ func New(config ...Config) fiber.Handler {
 				// Separate body value to avoid msgp serialization
 				// We can store raw bytes with Storage 👍
 				if cfg.Storage != nil {
+					unlock()
 					rawBody, err := manager.getRaw(reqCtx, key+"_body")
 					if err != nil {
 						manager.release(e)
-						mux.Unlock()
 						return cacheBodyFetchError(maskKey, key, err)
 					}
 					e.body = rawBody
+				} else {
+					unlock()
 				}
 				// Set response headers from cache
 				c.Response().SetBodyRaw(e.body)
@@ -415,10 +436,11 @@ func New(config ...Config) fiber.Handler {
 					c.Response().Header.SetBytesV(fiber.HeaderETag, e.etag)
 				}
 				e.date = clampDateSeconds(e.date, ts)
-				dateStr := secondsToTime(e.date).Format(http.TimeFormat)
-				c.Response().Header.Set(fiber.HeaderDate, dateStr)
-				for k, v := range e.headers {
-					c.Response().Header.SetBytesV(k, v)
+				dateValue := fasthttp.AppendHTTPDate(nil, secondsToTime(e.date))
+				c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
+				for i := range e.headers {
+					h := e.headers[i]
+					c.Response().Header.SetBytesKV(h.key, h.value)
 				}
 				// Set Cache-Control header if not disabled and not already set
 				if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
@@ -445,8 +467,6 @@ func New(config ...Config) fiber.Handler {
 					manager.release(e)
 				}
 
-				mux.Unlock()
-
 				// Return response
 				return nil
 			default:
@@ -455,7 +475,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if e == nil && revalidate {
-			mux.Unlock()
+			unlock()
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			if reqDirectives.onlyIfCached {
 				return c.SendStatus(fiber.StatusGatewayTimeout)
@@ -464,13 +484,13 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if e == nil && reqDirectives.onlyIfCached {
-			mux.Unlock()
+			unlock()
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.SendStatus(fiber.StatusGatewayTimeout)
 		}
 
 		// make sure we're not blocking concurrent requests - do unlock
-		mux.Unlock()
+		unlock()
 
 	continueRequest:
 		// Continue stack, return err to Fiber if exist
@@ -478,28 +498,28 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
-		cacheControl := utils.UnsafeString(c.Response().Header.Peek(fiber.HeaderCacheControl))
+		cacheControlBytes := c.Response().Header.Peek(fiber.HeaderCacheControl)
+		respCacheControl := parseResponseCacheControl(cacheControlBytes)
 		varyHeader := utils.UnsafeString(c.Response().Header.Peek(fiber.HeaderVary))
-		hasPrivate := hasDirective(cacheControl, privateDirective)
-		hasNoCache := hasDirective(cacheControl, noCache)
+		hasPrivate := respCacheControl.hasPrivate
+		hasNoCache := respCacheControl.hasNoCache
 		varyNames, varyHasStar := parseVary(varyHeader)
 
 		// Respect server cache-control: no-store
-		if hasDirective(cacheControl, noStore) {
+		if respCacheControl.hasNoStore {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return nil
 		}
 
 		if hasPrivate || hasNoCache || varyHasStar {
 			if e != nil {
-				mux.Lock()
 				if err := deleteKey(reqCtx, key); err != nil {
 					if cfg.Storage != nil {
 						manager.release(e)
 					}
-					mux.Unlock()
 					return fmt.Errorf("cache: failed to delete cached response for key %q: %w", maskKey(key), err)
 				}
+				mux.Lock()
 				removeHeapEntry(key, e.heapidx)
 				if cfg.Storage != nil {
 					manager.release(e)
@@ -529,7 +549,7 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		isSharedCacheAllowed := allowsSharedCache(cacheControl)
+		isSharedCacheAllowed := allowsSharedCacheDirectives(respCacheControl)
 		if hasAuthorization && !isSharedCacheAllowed {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return nil
@@ -542,10 +562,6 @@ func New(config ...Config) fiber.Handler {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return nil
 		}
-
-		// lock entry back and unlock on finish
-		mux.Lock()
-		defer mux.Unlock()
 
 		// Don't cache response if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
@@ -560,14 +576,21 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		// Remove oldest to make room for new
+		// Remove oldest to make room for new without holding the lock during storage I/O.
 		if cfg.MaxBytes > 0 {
-			for storedBytes+bodySize > cfg.MaxBytes {
+			for {
+				mux.Lock()
+				if storedBytes+bodySize <= cfg.MaxBytes {
+					mux.Unlock()
+					break
+				}
 				keyToRemove, size := heap.removeFirst()
+				storedBytes -= size
+				mux.Unlock()
+
 				if err := deleteKey(reqCtx, keyToRemove); err != nil {
 					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), err)
 				}
-				storedBytes -= size
 			}
 		}
 
@@ -578,7 +601,7 @@ func New(config ...Config) fiber.Handler {
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 		e.private = false
-		e.cacheControl = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderCacheControl))
+		e.cacheControl = utils.CopyBytes(cacheControlBytes)
 		e.expires = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderExpires))
 		e.etag = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderETag))
 		e.date = 0
@@ -600,36 +623,39 @@ func New(config ...Config) fiber.Handler {
 		dateHeader := c.Response().Header.Peek(fiber.HeaderDate)
 		parsedDate, _ := parseHTTPDate(dateHeader)
 		e.date = clampDateSeconds(parsedDate, nowUnix)
-		dateStr := secondsToTime(e.date).Format(http.TimeFormat)
-		c.Response().Header.Set(fiber.HeaderDate, dateStr)
+		dateBytes := fasthttp.AppendHTTPDate(nil, secondsToTime(e.date))
+		c.Response().Header.SetBytesV(fiber.HeaderDate, dateBytes)
 
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
 		if cfg.StoreResponseHeaders {
-			e.headers = make(map[string][]byte)
-			for key, value := range c.Response().Header.All() {
-				// create real copy
-				keyS := string(key)
-				if _, ok := ignoreHeaders[keyS]; !ok {
-					e.headers[keyS] = utils.CopyBytes(value)
+			allHeaders := c.Response().Header.All()
+			e.headers = e.headers[:0]
+			for key, value := range allHeaders {
+				keyStr := string(key)
+				if _, ok := ignoreHeaders[keyStr]; ok {
+					continue
 				}
+
+				e.headers = append(e.headers, cachedHeader{
+					key:   utils.CopyBytes(utils.UnsafeBytes(keyStr)),
+					value: utils.CopyBytes(value),
+				})
 			}
 		}
 
 		expirationSource := expirationSourceConfig
 		expiresParseError := false
-		mustRevalidate := false
+		mustRevalidate := respCacheControl.mustRevalidate || respCacheControl.proxyRevalidate
 		// default cache expiration
 		expiration := cfg.Expiration
-		if sharedCacheMode {
-			if v, ok := parseSMaxAge(cacheControl); ok {
-				expiration = v
-				expirationSource = expirationSourceSMaxAge
-			}
+		if sharedCacheMode && respCacheControl.sMaxAgeSet {
+			expiration = secondsToDuration(respCacheControl.sMaxAge)
+			expirationSource = expirationSourceSMaxAge
 		}
 		if expirationSource == expirationSourceConfig {
-			if v, ok := parseMaxAge(cacheControl); ok {
-				expiration = v
+			if respCacheControl.maxAgeSet {
+				expiration = secondsToDuration(respCacheControl.maxAge)
 				expirationSource = expirationSourceMaxAge
 			} else if expiresBytes := c.Response().Header.Peek(fiber.HeaderExpires); len(expiresBytes) > 0 {
 				expiresAt, err := fasthttp.ParseHTTPDate(expiresBytes)
@@ -642,7 +668,6 @@ func New(config ...Config) fiber.Handler {
 				expirationSource = expirationSourceExpires
 			}
 		}
-		mustRevalidate = hasDirective(cacheControl, "must-revalidate") || hasDirective(cacheControl, "proxy-revalidate")
 		// Calculate expiration by response header or other setting
 		if cfg.ExpirationGenerator != nil {
 			expiration = cfg.ExpirationGenerator(c, &cfg)
@@ -661,6 +686,7 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		ts = atomic.LoadUint64(&timestamp)
 		responseTS := max(ts, nowUnix)
 
 		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)
@@ -703,16 +729,20 @@ func New(config ...Config) fiber.Handler {
 		// Store entry in heap
 		var heapIdx int
 		if cfg.MaxBytes > 0 {
+			mux.Lock()
 			heapIdx = heap.put(key, e.exp, bodySize)
 			e.heapidx = heapIdx
 			storedBytes += bodySize
+			mux.Unlock()
 		}
 
 		cleanupOnStoreError := func(ctx context.Context, releaseEntry, rawStored bool) error {
 			var cleanupErr error
 			if cfg.MaxBytes > 0 {
+				mux.Lock()
 				_, size := heap.remove(heapIdx)
 				storedBytes -= size
+				mux.Unlock()
 			}
 			if releaseEntry {
 				manager.release(e)
@@ -788,70 +818,162 @@ func cacheBodyFetchError(mask func(string) string, key string, err error) error 
 	return err
 }
 
+func parseUintDirective(val []byte) (uint64, bool) {
+	if len(val) == 0 {
+		return 0, false
+	}
+	parsed, err := fasthttp.ParseUint(val)
+	if err != nil || parsed < 0 {
+		return 0, false
+	}
+	return uint64(parsed), true
+}
+
+func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
+	for i := 0; i < len(cc); {
+		// skip leading separators/spaces
+		for i < len(cc) && (cc[i] == ' ' || cc[i] == ',') {
+			i++
+		}
+		if i >= len(cc) {
+			break
+		}
+
+		start := i
+		for i < len(cc) && cc[i] != ',' {
+			i++
+		}
+		partEnd := i
+		for partEnd > start && cc[partEnd-1] == ' ' {
+			partEnd--
+		}
+
+		keyStart := start
+		for keyStart < partEnd && cc[keyStart] == ' ' {
+			keyStart++
+		}
+		if keyStart >= partEnd {
+			continue
+		}
+
+		keyEnd := keyStart
+		for keyEnd < partEnd && cc[keyEnd] != '=' {
+			keyEnd++
+		}
+		key := cc[keyStart:keyEnd]
+
+		var value []byte
+		if keyEnd < partEnd && cc[keyEnd] == '=' {
+			valueStart := keyEnd + 1
+			for valueStart < partEnd && cc[valueStart] == ' ' {
+				valueStart++
+			}
+			valueEnd := partEnd
+			for valueEnd > valueStart && cc[valueEnd-1] == ' ' {
+				valueEnd--
+			}
+			if valueStart <= valueEnd {
+				value = cc[valueStart:valueEnd]
+			}
+		}
+
+		fn(key, value)
+		i++ // skip comma
+	}
+}
+
+type responseCacheControl struct {
+	maxAge          uint64
+	sMaxAge         uint64
+	maxAgeSet       bool
+	sMaxAgeSet      bool
+	hasNoCache      bool
+	hasNoStore      bool
+	hasPrivate      bool
+	hasPublic       bool
+	mustRevalidate  bool
+	proxyRevalidate bool
+}
+
+func parseResponseCacheControl(cc []byte) responseCacheControl {
+	parsed := responseCacheControl{}
+	parseCacheControlDirectives(cc, func(key, value []byte) {
+		switch {
+		case utils.EqualFold(utils.UnsafeString(key), noStore):
+			parsed.hasNoStore = true
+		case utils.EqualFold(utils.UnsafeString(key), noCache):
+			parsed.hasNoCache = true
+		case utils.EqualFold(utils.UnsafeString(key), privateDirective):
+			parsed.hasPrivate = true
+		case utils.EqualFold(utils.UnsafeString(key), "public"):
+			parsed.hasPublic = true
+		case utils.EqualFold(utils.UnsafeString(key), "max-age"):
+			if v, ok := parseUintDirective(value); ok {
+				parsed.maxAgeSet = true
+				parsed.maxAge = v
+			}
+		case utils.EqualFold(utils.UnsafeString(key), "s-maxage"):
+			if v, ok := parseUintDirective(value); ok {
+				parsed.sMaxAgeSet = true
+				parsed.sMaxAge = v
+			}
+		case utils.EqualFold(utils.UnsafeString(key), "must-revalidate"):
+			parsed.mustRevalidate = true
+		case utils.EqualFold(utils.UnsafeString(key), "proxy-revalidate"):
+			parsed.proxyRevalidate = true
+		default:
+			// ignore unknown directives
+		}
+	})
+	return parsed
+}
+
 // parseMaxAge extracts the max-age directive from a Cache-Control header.
 func parseMaxAge(cc string) (time.Duration, bool) {
-	for part := range strings.SplitSeq(cc, ",") {
-		part = utils.TrimSpace(utils.ToLower(part))
-		if after, ok := strings.CutPrefix(part, "max-age="); ok {
-			if sec, err := strconv.Atoi(after); err == nil {
-				return time.Duration(sec) * time.Second, true
-			}
-		}
+	parsed := parseResponseCacheControl(utils.UnsafeBytes(cc))
+	if !parsed.maxAgeSet {
+		return 0, false
 	}
-	return 0, false
+	return secondsToDuration(parsed.maxAge), true
 }
 
-func parseSMaxAge(cc string) (time.Duration, bool) {
-	for part := range strings.SplitSeq(cc, ",") {
-		part = utils.TrimSpace(utils.ToLower(part))
-		if after, ok := strings.CutPrefix(part, "s-maxage="); ok {
-			if sec, err := strconv.Atoi(after); err == nil {
-				return time.Duration(sec) * time.Second, true
-			}
-		}
-	}
-
-	return 0, false
-}
-
-func parseRequestCacheControl(cc string) requestCacheDirectives {
+func parseRequestCacheControl(cc []byte) requestCacheDirectives {
 	directives := requestCacheDirectives{}
-
-	for part := range strings.SplitSeq(cc, ",") {
-		part = utils.TrimSpace(utils.ToLower(part))
+	parseCacheControlDirectives(cc, func(key, value []byte) {
 		switch {
-		case part == "":
-			continue
-		case part == noStore:
+		case utils.EqualFold(utils.UnsafeString(key), noStore):
 			directives.noStore = true
-		case part == noCache:
+		case utils.EqualFold(utils.UnsafeString(key), noCache):
 			directives.noCache = true
-		case part == "only-if-cached":
+		case utils.EqualFold(utils.UnsafeString(key), "only-if-cached"):
 			directives.onlyIfCached = true
-		case strings.HasPrefix(part, "max-age="):
-			if sec, err := strconv.Atoi(strings.TrimPrefix(part, "max-age=")); err == nil && sec >= 0 {
+		case utils.EqualFold(utils.UnsafeString(key), "max-age"):
+			if sec, ok := parseUintDirective(value); ok {
 				directives.maxAgeSet = true
-				directives.maxAge = uint64(sec)
+				directives.maxAge = sec
 			}
-		case part == "max-stale":
+		case utils.EqualFold(utils.UnsafeString(key), "max-stale"):
 			directives.maxStaleSet = true
-			directives.maxStaleAny = true
-		case strings.HasPrefix(part, "max-stale="):
-			if sec, err := strconv.Atoi(strings.TrimPrefix(part, "max-stale=")); err == nil && sec >= 0 {
-				directives.maxStaleSet = true
-				directives.maxStale = uint64(sec)
+			directives.maxStaleAny = len(value) == 0
+			if !directives.maxStaleAny {
+				if sec, ok := parseUintDirective(value); ok {
+					directives.maxStale = sec
+				}
 			}
-		case strings.HasPrefix(part, "min-fresh="):
-			if sec, err := strconv.Atoi(strings.TrimPrefix(part, "min-fresh=")); err == nil && sec >= 0 {
+		case utils.EqualFold(utils.UnsafeString(key), "min-fresh"):
+			if sec, ok := parseUintDirective(value); ok {
 				directives.minFreshSet = true
-				directives.minFresh = uint64(sec)
+				directives.minFresh = sec
 			}
 		default:
-			continue
+			// ignore unknown directives
 		}
-	}
-
+	})
 	return directives
+}
+
+func parseRequestCacheControlString(cc string) requestCacheDirectives {
+	return parseRequestCacheControl(utils.UnsafeBytes(cc))
 }
 
 func cachedResponseAge(e *item, now uint64) uint64 {
@@ -910,8 +1032,20 @@ func isHeuristicFreshness(e *item, cfg *Config, entryAge uint64) bool {
 	return cfg.Expiration > 0
 }
 
+func lookupCachedHeader(headers []cachedHeader, name string) ([]byte, bool) {
+	for i := range headers {
+		if utils.EqualFold(utils.UnsafeString(headers[i].key), name) {
+			return headers[i].value, true
+		}
+	}
+	return nil, false
+}
+
 func parseHTTPDate(dateBytes []byte) (uint64, bool) {
-	parsedDate, err := http.ParseTime(utils.UnsafeString(dateBytes))
+	if len(dateBytes) == 0 {
+		return 0, false
+	}
+	parsedDate, err := fasthttp.ParseHTTPDate(dateBytes)
 	if err != nil {
 		return 0, false
 	}
@@ -946,6 +1080,14 @@ func secondsToTime(sec uint64) time.Time {
 	}
 
 	return time.Unix(clamped, 0).UTC()
+}
+
+func secondsToDuration(sec uint64) time.Duration {
+	const maxSeconds = uint64(math.MaxInt64) / uint64(time.Second)
+	if sec > maxSeconds {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Duration(sec) * time.Second
 }
 
 func parseVary(vary string) ([]string, bool) {
@@ -1031,30 +1173,11 @@ func loadVaryManifest(ctx context.Context, manager *manager, manifestKey string)
 	return names, len(names) > 0, nil
 }
 
-func allowsSharedCache(cc string) bool {
-	shareable := false
-
-	for part := range strings.SplitSeq(cc, ",") {
-		part = utils.TrimSpace(utils.ToLower(part))
-		switch {
-		case part == "":
-			continue
-		case part == "private":
-			return false
-		case part == "public":
-			shareable = true
-		case strings.HasPrefix(part, "s-maxage="):
-			shareable = true
-		case part == "must-revalidate":
-			shareable = true
-		case part == "proxy-revalidate":
-			shareable = true
-		default:
-			continue
-		}
+func allowsSharedCacheDirectives(cc responseCacheControl) bool {
+	if cc.hasPrivate {
+		return false
 	}
-
-	if shareable {
+	if cc.hasPublic || cc.sMaxAgeSet || cc.mustRevalidate || cc.proxyRevalidate {
 		return true
 	}
 
@@ -1062,6 +1185,10 @@ func allowsSharedCache(cc string) bool {
 	// authenticated requests §3.6 requires an explicit shared-cache directive. Therefore,
 	// an Expires header alone MUST NOT allow sharing when Authorization is present.
 	return false
+}
+
+func allowsSharedCache(cc string) bool {
+	return allowsSharedCacheDirectives(parseResponseCacheControl(utils.UnsafeBytes(cc)))
 }
 
 func makeHashAuthFunc(hexBufPool *sync.Pool) func([]byte) string {
