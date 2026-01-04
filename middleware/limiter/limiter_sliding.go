@@ -21,10 +21,8 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		cfg = &defaultCfg
 	}
 
-	var (
-		// Limiter variables
-		mux = &sync.RWMutex{}
-	)
+	// Limiter variables
+	mux := &sync.RWMutex{}
 
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, !cfg.DisableValueRedaction)
