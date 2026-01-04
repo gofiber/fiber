@@ -23,8 +23,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 
 	var (
 		// Limiter variables
-		mux        = &sync.RWMutex{}
-		expiration = uint64(cfg.Expiration.Seconds())
+		mux = &sync.RWMutex{}
 	)
 
 	// Create manager to simplify storage operations ( see manager.go )
@@ -42,6 +41,10 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		if (cfg.Next != nil && cfg.Next(c)) || maxRequests == 0 {
 			return c.Next()
 		}
+
+		// Generate expiration from generator
+		expirationDuration := cfg.ExpirationFunc(c)
+		expiration := uint64(expirationDuration.Seconds())
 
 		// Get key from request
 		key := cfg.KeyGenerator(c)

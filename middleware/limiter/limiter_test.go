@@ -571,6 +571,76 @@ func Test_Limiter_With_Max_Func(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode)
 }
 
+// go test -run Test_Limiter_Fixed_ExpirationFuncOverridesStaticExpiration -race -v
+func Test_Limiter_Fixed_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:               2,
+		Expiration:        10 * time.Second,                                         // Static expiration (should be ignored)
+		ExpirationFunc:    func(fiber.Ctx) time.Duration { return 2 * time.Second }, // Dynamic expiration
+		LimiterMiddleware: FixedWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+
+	time.Sleep(3 * time.Second)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// go test -run Test_Limiter_Sliding_ExpirationFuncOverridesStaticExpiration -race -v
+func Test_Limiter_Sliding_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:               2,
+		Expiration:        10 * time.Second,                                         // Static expiration (should be ignored)
+		ExpirationFunc:    func(fiber.Ctx) time.Duration { return 2 * time.Second }, // Dynamic expiration
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+
+	time.Sleep(5 * time.Second)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 // go test -run Test_Limiter_Concurrency_Store -race -v
 func Test_Limiter_Concurrency_Store(t *testing.T) {
 	t.Parallel()
