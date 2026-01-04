@@ -244,6 +244,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		entryAge := uint64(0)
 		revalidate := false
+		oldHeapIdx := -1 // Track old heap index for replacement during revalidation
 
 		handleMinFresh := func(now uint64) {
 			if e == nil || !reqDirectives.minFreshSet {
@@ -252,7 +253,7 @@ func New(config ...Config) fiber.Handler {
 			remainingFreshness := remainingFreshness(e, now)
 			if remainingFreshness < reqDirectives.minFresh {
 				revalidate = true
-				removeHeapEntry(key, e.heapidx)
+				oldHeapIdx = e.heapidx
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
@@ -283,7 +284,7 @@ func New(config ...Config) fiber.Handler {
 			entryAge = cachedResponseAge(e, ts)
 			if reqDirectives.maxAgeSet && (reqDirectives.maxAge == 0 || entryAge > reqDirectives.maxAge) {
 				revalidate = true
-				removeHeapEntry(key, e.heapidx)
+				oldHeapIdx = e.heapidx
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
@@ -295,7 +296,7 @@ func New(config ...Config) fiber.Handler {
 
 		if e != nil && e.ttl == 0 && e.forceRevalidate {
 			revalidate = true
-			removeHeapEntry(key, e.heapidx)
+			oldHeapIdx = e.heapidx
 			if cfg.Storage != nil {
 				manager.release(e)
 			}
@@ -345,7 +346,7 @@ func New(config ...Config) fiber.Handler {
 
 			if entryExpired && e.revalidate {
 				revalidate = true
-				removeHeapEntry(key, e.heapidx)
+				oldHeapIdx = e.heapidx
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
@@ -734,6 +735,10 @@ func New(config ...Config) fiber.Handler {
 		var heapIdx int
 		if cfg.MaxBytes > 0 {
 			mux.Lock()
+			// If revalidating, remove old heap entry before adding new one
+			if revalidate && oldHeapIdx >= 0 {
+				removeHeapEntry(key, oldHeapIdx)
+			}
 			heapIdx = heap.put(key, e.exp, bodySize)
 			e.heapidx = heapIdx
 			storedBytes += bodySize
