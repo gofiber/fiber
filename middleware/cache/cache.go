@@ -252,6 +252,7 @@ func New(config ...Config) fiber.Handler {
 			remainingFreshness := remainingFreshness(e, now)
 			if remainingFreshness < reqDirectives.minFresh {
 				revalidate = true
+				removeHeapEntry(key, e.heapidx)
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
@@ -282,6 +283,7 @@ func New(config ...Config) fiber.Handler {
 			entryAge = cachedResponseAge(e, ts)
 			if reqDirectives.maxAgeSet && (reqDirectives.maxAge == 0 || entryAge > reqDirectives.maxAge) {
 				revalidate = true
+				removeHeapEntry(key, e.heapidx)
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
@@ -293,6 +295,7 @@ func New(config ...Config) fiber.Handler {
 
 		if e != nil && e.ttl == 0 && e.forceRevalidate {
 			revalidate = true
+			removeHeapEntry(key, e.heapidx)
 			if cfg.Storage != nil {
 				manager.release(e)
 			}
@@ -342,6 +345,7 @@ func New(config ...Config) fiber.Handler {
 
 			if entryExpired && e.revalidate {
 				revalidate = true
+				removeHeapEntry(key, e.heapidx)
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
