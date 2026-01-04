@@ -589,7 +589,7 @@ func New(config ...Config) fiber.Handler {
 		// 4. Track reservation with a flag; unreserve on early return via defer
 		var spaceReserved bool
 		defer func() {
-			// If we reserved space but never added to heap, unreserve it
+			// If we reserved space but the entry was not successfully added to heap, unreserve it
 			if cfg.MaxBytes > 0 && spaceReserved {
 				mux.Lock()
 				storedBytes -= bodySize
@@ -784,7 +784,8 @@ func New(config ...Config) fiber.Handler {
 			mux.Lock()
 			heapIdx = heap.put(key, e.exp, bodySize)
 			e.heapidx = heapIdx
-			// Note: storedBytes already incremented during eviction phase
+			// Note: storedBytes was incremented during reservation (line 603), and evictions
+			// have already been accounted for (line 621), so no additional increment is needed
 			spaceReserved = false // Clear flag to prevent defer from unreserving
 			mux.Unlock()
 		}

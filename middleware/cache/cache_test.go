@@ -3779,3 +3779,57 @@ func Test_unquoteCacheDirective(t *testing.T) {
 		})
 	}
 }
+
+// Test_Cache_MaxBytes_InsufficientSpace tests the "insufficient space" error path
+// when an entry is larger than MaxBytes (addresses review comment 2659976215)
+func Test_Cache_MaxBytes_InsufficientSpace(t *testing.T) {
+	t.Parallel()
+
+	t.Run("entry larger than MaxBytes with empty cache", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		app.Use(New(Config{
+			MaxBytes:   10, // Very small cache
+			Expiration: 1 * time.Hour,
+		}))
+
+		app.Get("/large", func(c fiber.Ctx) error {
+			// Return data larger than MaxBytes
+			return c.Send(make([]byte, 20))
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/large", http.NoBody))
+		require.NoError(t, err)
+		// Should be unreachable because entry is too large
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("entry larger than MaxBytes after eviction", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		app.Use(New(Config{
+			MaxBytes:            15,
+			ExpirationGenerator: stableAscendingExpiration(),
+		}))
+
+		app.Get("/*", func(c fiber.Ctx) error {
+			path := c.Path()
+			if path == "/small" {
+				return c.Send(make([]byte, 5))
+			}
+			return c.Send(make([]byte, 20))
+		})
+
+		// Cache a small entry first
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/small", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		// Try to cache a large entry - should return unreachable since it won't fit even after eviction
+		rsp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/large", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+}
