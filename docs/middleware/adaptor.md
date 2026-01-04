@@ -28,7 +28,7 @@ scenarios, but prefer Fiber handlers when performance or Fiber-specific APIs mat
 - Convert a Fiber context (`fiber.Ctx`) into an `http.Request`
 - Copy values stored in a `context.Context` onto a `fasthttp.RequestCtx`
 
-:::note Body size limits when wrapping Fiber
+:::note Body size limits when running Fiber from net/http
 When Fiber is executed from a `net/http` server through `FiberHandler`, `FiberHandlerFunc`,
 or `FiberApp`, the adaptor caps incoming request bodies at **10 MiB** to prevent unbounded
 reads. Requests exceeding this limit receive `413 Request Entity Too Large`.
