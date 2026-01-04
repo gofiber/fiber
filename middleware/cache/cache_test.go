@@ -3450,7 +3450,8 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		req2.Header.Set(fiber.HeaderCacheControl, "max-age=0")
 		resp2, err := app.Test(req2)
 		require.NoError(t, err)
-		body2, _ := io.ReadAll(resp2.Body)
+		body2, err := io.ReadAll(resp2.Body)
+		require.NoError(t, err)
 		require.Equal(t, "response-2", string(body2))
 
 		// Next request should serve the NEW cached entry
@@ -3458,7 +3459,8 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		resp3, err := app.Test(req3)
 		require.NoError(t, err)
 		require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
-		body3, _ := io.ReadAll(resp3.Body)
+		body3, err := io.ReadAll(resp3.Body)
+		require.NoError(t, err)
 		require.Equal(t, "response-2", string(body3), "New entry should be cached")
 	})
 
@@ -3492,7 +3494,8 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		req2.Header.Set(fiber.HeaderCacheControl, "min-fresh=5")
 		resp2, err := app.Test(req2)
 		require.NoError(t, err)
-		body2, _ := io.ReadAll(resp2.Body)
+		body2, err := io.ReadAll(resp2.Body)
+		require.NoError(t, err)
 		require.Equal(t, "response-2", string(body2))
 
 		// Next request should serve the NEW cached entry
@@ -3500,7 +3503,8 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		resp3, err := app.Test(req3)
 		require.NoError(t, err)
 		require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
-		body3, _ := io.ReadAll(resp3.Body)
+		body3, err := io.ReadAll(resp3.Body)
+		require.NoError(t, err)
 		require.Equal(t, "response-2", string(body3))
 	})
 
@@ -3586,7 +3590,8 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		resp1, err := app.Test(req1)
 		require.NoError(t, err)
 		require.Equal(t, cacheMiss, resp1.Header.Get("X-Cache"))
-		body1, _ := io.ReadAll(resp1.Body)
+		body1, err := io.ReadAll(resp1.Body)
+		require.NoError(t, err)
 		require.Equal(t, "cacheable", string(body1))
 
 		// Request with max-age=0 to force revalidation
@@ -3595,7 +3600,8 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		req2.Header.Set(fiber.HeaderCacheControl, "max-age=0")
 		resp2, err := app.Test(req2)
 		require.NoError(t, err)
-		body2, _ := io.ReadAll(resp2.Body)
+		body2, err := io.ReadAll(resp2.Body)
+		require.NoError(t, err)
 		require.Equal(t, "not-cacheable", string(body2))
 
 		// Next request should still serve the OLD cached entry
@@ -3604,7 +3610,8 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		resp3, err := app.Test(req3)
 		require.NoError(t, err)
 		require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
-		body3, _ := io.ReadAll(resp3.Body)
+		body3, err := io.ReadAll(resp3.Body)
+		require.NoError(t, err)
 		require.Equal(t, "cacheable", string(body3), "Old entry should still be cached")
 	})
 }
