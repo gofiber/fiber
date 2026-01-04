@@ -735,10 +735,6 @@ func New(config ...Config) fiber.Handler {
 		var heapIdx int
 		if cfg.MaxBytes > 0 {
 			mux.Lock()
-			// If revalidating, remove old heap entry before adding new one
-			if revalidate && oldHeapIdx >= 0 {
-				removeHeapEntry(key, oldHeapIdx)
-			}
 			heapIdx = heap.put(key, e.exp, bodySize)
 			e.heapidx = heapIdx
 			storedBytes += bodySize
@@ -789,6 +785,13 @@ func New(config ...Config) fiber.Handler {
 				}
 				return err
 			}
+		}
+
+		// If revalidating, remove old heap entry now that replacement is successfully stored
+		if cfg.MaxBytes > 0 && revalidate && oldHeapIdx >= 0 {
+			mux.Lock()
+			removeHeapEntry(key, oldHeapIdx)
+			mux.Unlock()
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)
