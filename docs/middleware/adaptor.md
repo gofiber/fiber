@@ -232,55 +232,6 @@ func handleRequest(c fiber.Ctx) error {
     return c.SendString("Converted Request URL: " + httpReq.URL.String())
 }
 ```
-
-### 7. Copying context values onto `fasthttp.RequestCtx` (`CopyContextToFiberContext`)
-
-`CopyContextToFiberContext` copies values stored in a `context.Context` onto a
-`fasthttp.RequestCtx`. The function is marked deprecated in code because it uses
-reflection and unsafe operations—prefer explicit parameter passing when possible.
-When you do need it, call it immediately after you add values to the `net/http`
-context so Fiber can read them via `c.Context()`:
-
-```go
-package main
-
-import (
-    "context"
-    "net/http"
-    "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/fiber/v3/middleware/adaptor"
-)
-
-type contextKey string
-
-func main() {
-    app := fiber.New()
-
-    app.Use(func(c fiber.Ctx) error {
-        // Convert the Fiber context to an http.Request so we can attach context values.
-        httpReq, err := adaptor.ConvertRequest(c, true)
-        if err != nil {
-            return err
-        }
-
-        // Add context data and push it back to the Fiber context.
-        enriched := httpReq.WithContext(context.WithValue(httpReq.Context(), contextKey("requestID"), "req-123"))
-        adaptor.CopyContextToFiberContext(enriched.Context(), c.RequestCtx())
-
-        return c.Next()
-    })
-
-    app.Get("/", func(c fiber.Ctx) error {
-        if id, ok := c.Context().Value(contextKey("requestID")).(string); ok {
-            return c.SendString("Request ID: " + id)
-        }
-        return c.SendStatus(fiber.StatusNotFound)
-    })
-
-    app.Listen(":3000")
-}
-```
-
 ---
 
 ## Summary
