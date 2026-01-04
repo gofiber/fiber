@@ -199,9 +199,13 @@ func main() {
 
 ### 6. Converting `fiber.Ctx` to `*http.Request` (`ConvertRequest`)
 
-Create an `*http.Request` from a `fiber.Ctx`. Set `forServer` to `true` when the
-converted request will be passed into a `net/http` handler so the adaptor sets
-server-oriented fields correctly:
+Create an `*http.Request` from a `fiber.Ctx`. The `forServer` parameter determines how
+server-oriented fields are populated:
+
+- Use `forServer = true` when the converted request will be passed into a `net/http` handler
+  (sets `RequestURI`, `RemoteAddr`, and `TLS` fields for server-side handling)
+- Use `forServer = false` when creating a request for client-side use (e.g., making an
+  outbound HTTP request with `http.Client`)
 
 ```go
 package main
@@ -220,6 +224,7 @@ func main() {
 }
 
 func handleRequest(c fiber.Ctx) error {
+    // Use forServer = true when passing to a net/http handler
     httpReq, err := adaptor.ConvertRequest(c, true)
     if err != nil {
         return err
