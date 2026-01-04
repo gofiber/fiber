@@ -581,20 +581,67 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		// Remove oldest to make room for new without holding the lock during storage I/O.
-		if cfg.MaxBytes > 0 {
-			for {
+		// Eviction loop: atomically reserve space for new entry and evict old entries.
+		// Strategy:
+		// 1. Under lock: reserve space by pre-incrementing storedBytes, then collect entries to evict
+		// 2. Outside lock: perform I/O deletions
+		// 3. On deletion failure: restore storedBytes and return error
+		// 4. Track reservation with a flag; unreserve on early return via defer
+		var spaceReserved bool
+		defer func() {
+			// If we reserved space but never added to heap, unreserve it
+			if cfg.MaxBytes > 0 && spaceReserved {
 				mux.Lock()
-				if storedBytes+bodySize <= cfg.MaxBytes {
+				storedBytes -= bodySize
+				mux.Unlock()
+			}
+		}()
+
+		if cfg.MaxBytes > 0 {
+			mux.Lock()
+			// Reserve space for the new entry first
+			storedBytes += bodySize
+			spaceReserved = true
+
+			// Now evict entries until we're under the limit
+			var keysToRemove []string
+			var sizesToRemove []uint
+
+			for storedBytes > cfg.MaxBytes {
+				if heap.Len() == 0 {
+					// Can't evict more, unreserve space and fail
+					storedBytes -= bodySize
+					spaceReserved = false
 					mux.Unlock()
-					break
+					return errors.New("cache: insufficient space and no entries to evict")
 				}
 				keyToRemove, size := heap.removeFirst()
+				keysToRemove = append(keysToRemove, keyToRemove)
+				sizesToRemove = append(sizesToRemove, size)
 				storedBytes -= size
-				mux.Unlock()
+			}
+			mux.Unlock()
 
-				if err := deleteKey(reqCtx, keyToRemove); err != nil {
-					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), err)
+			// Perform deletions outside the lock
+			if len(keysToRemove) > 0 {
+				for i, keyToRemove := range keysToRemove {
+					delErr := deleteKey(reqCtx, keyToRemove)
+					if delErr == nil {
+						continue
+					}
+
+					// Deletion failed: restore storedBytes for failed deletions
+					mux.Lock()
+					// Restore sizes of entries we failed to delete
+					for j := i; j < len(sizesToRemove); j++ {
+						storedBytes += sizesToRemove[j]
+					}
+					// Unreserve space for the new entry
+					storedBytes -= bodySize
+					spaceReserved = false
+					mux.Unlock()
+
+					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), delErr)
 				}
 			}
 		}
@@ -731,13 +778,14 @@ func New(config ...Config) fiber.Handler {
 			e.exp = ts + 1
 		}
 
-		// Store entry in heap
+		// Store entry in heap (space already reserved in eviction phase)
 		var heapIdx int
 		if cfg.MaxBytes > 0 {
 			mux.Lock()
 			heapIdx = heap.put(key, e.exp, bodySize)
 			e.heapidx = heapIdx
-			storedBytes += bodySize
+			// Note: storedBytes already incremented during eviction phase
+			spaceReserved = false // Clear flag to prevent defer from unreserving
 			mux.Unlock()
 		}
 
