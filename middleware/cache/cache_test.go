@@ -3421,191 +3421,190 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 }
 
 func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
-t.Parallel()
+	t.Parallel()
 
+	t.Run("max-age=0 revalidation removes old entry on storage success", func(t *testing.T) {
+		t.Parallel()
 
-t.Run("max-age=0 revalidation removes old entry on storage success", func(t *testing.T) {
-t.Parallel()
+		app := fiber.New()
 
-app := fiber.New()
+		app.Use(New(Config{
+			MaxBytes: 100,
+		}))
 
-app.Use(New(Config{
-MaxBytes: 100,
-}))
+		requestCount := 0
+		app.Get("/test", func(c fiber.Ctx) error {
+			requestCount++
+			c.Set(fiber.HeaderCacheControl, "max-age=60")
+			return c.SendString(fmt.Sprintf("response-%d", requestCount))
+		})
 
-requestCount := 0
-app.Get("/test", func(c fiber.Ctx) error {
-requestCount++
-c.Set(fiber.HeaderCacheControl, "max-age=60")
-return c.SendString(fmt.Sprintf("response-%d", requestCount))
-})
+		// First request - cache the response
+		req1 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		resp1, err := app.Test(req1)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp1.Header.Get("X-Cache"))
 
-// First request - cache the response
-req1 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
-resp1, err := app.Test(req1)
-require.NoError(t, err)
-require.Equal(t, cacheMiss, resp1.Header.Get("X-Cache"))
+		// Request with max-age=0 to force revalidation
+		req2 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req2.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+		resp2, err := app.Test(req2)
+		require.NoError(t, err)
+		body2, _ := io.ReadAll(resp2.Body)
+		require.Equal(t, "response-2", string(body2))
 
-// Request with max-age=0 to force revalidation
-req2 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
-req2.Header.Set(fiber.HeaderCacheControl, "max-age=0")
-resp2, err := app.Test(req2)
-require.NoError(t, err)
-body2, _ := io.ReadAll(resp2.Body)
-require.Equal(t, "response-2", string(body2))
+		// Next request should serve the NEW cached entry
+		req3 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		resp3, err := app.Test(req3)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
+		body3, _ := io.ReadAll(resp3.Body)
+		require.Equal(t, "response-2", string(body3), "New entry should be cached")
+	})
 
-// Next request should serve the NEW cached entry
-req3 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
-resp3, err := app.Test(req3)
-require.NoError(t, err)
-require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
-body3, _ := io.ReadAll(resp3.Body)
-require.Equal(t, "response-2", string(body3), "New entry should be cached")
-})
+	t.Run("min-fresh revalidation with MaxBytes", func(t *testing.T) {
+		t.Parallel()
 
-t.Run("min-fresh revalidation with MaxBytes", func(t *testing.T) {
-t.Parallel()
+		app := fiber.New()
 
-app := fiber.New()
+		app.Use(New(Config{
+			MaxBytes: 100,
+		}))
 
-app.Use(New(Config{
-MaxBytes: 100,
-}))
+		requestCount := 0
+		app.Get("/test", func(c fiber.Ctx) error {
+			requestCount++
+			c.Set(fiber.HeaderCacheControl, "max-age=2")
+			return c.SendString(fmt.Sprintf("response-%d", requestCount))
+		})
 
-requestCount := 0
-app.Get("/test", func(c fiber.Ctx) error {
-requestCount++
-c.Set(fiber.HeaderCacheControl, "max-age=2")
-return c.SendString(fmt.Sprintf("response-%d", requestCount))
-})
+		// First request - cache the response
+		req1 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		resp1, err := app.Test(req1)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp1.Header.Get("X-Cache"))
 
-// First request - cache the response
-req1 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
-resp1, err := app.Test(req1)
-require.NoError(t, err)
-require.Equal(t, cacheMiss, resp1.Header.Get("X-Cache"))
+		// Wait a bit so the entry has aged
+		time.Sleep(1 * time.Second)
 
-// Wait a bit so the entry has aged
-time.Sleep(1 * time.Second)
+		// Request with min-fresh that exceeds remaining freshness
+		req2 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req2.Header.Set(fiber.HeaderCacheControl, "min-fresh=5")
+		resp2, err := app.Test(req2)
+		require.NoError(t, err)
+		body2, _ := io.ReadAll(resp2.Body)
+		require.Equal(t, "response-2", string(body2))
 
-// Request with min-fresh that exceeds remaining freshness
-req2 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
-req2.Header.Set(fiber.HeaderCacheControl, "min-fresh=5")
-resp2, err := app.Test(req2)
-require.NoError(t, err)
-body2, _ := io.ReadAll(resp2.Body)
-require.Equal(t, "response-2", string(body2))
+		// Next request should serve the NEW cached entry
+		req3 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		resp3, err := app.Test(req3)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
+		body3, _ := io.ReadAll(resp3.Body)
+		require.Equal(t, "response-2", string(body3))
+	})
 
-// Next request should serve the NEW cached entry
-req3 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
-resp3, err := app.Test(req3)
-require.NoError(t, err)
-require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
-body3, _ := io.ReadAll(resp3.Body)
-require.Equal(t, "response-2", string(body3))
-})
+	t.Run("revalidation respects MaxBytes eviction", func(t *testing.T) {
+		t.Parallel()
 
-t.Run("revalidation respects MaxBytes eviction", func(t *testing.T) {
-t.Parallel()
+		app := fiber.New()
 
-app := fiber.New()
+		app.Use(New(Config{
+			MaxBytes:            20, // Only room for 2 responses of 10 bytes each
+			ExpirationGenerator: stableAscendingExpiration(),
+		}))
 
-app.Use(New(Config{
-MaxBytes:            20, // Only room for 2 responses of 10 bytes each
-ExpirationGenerator: stableAscendingExpiration(),
-}))
+		app.Get("/*", func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderCacheControl, "max-age=60")
+			return c.SendString("1234567890") // 10 bytes
+		})
 
-app.Get("/*", func(c fiber.Ctx) error {
-c.Set(fiber.HeaderCacheControl, "max-age=60")
-return c.SendString("1234567890") // 10 bytes
-})
+		// Cache /a and /b
+		req1 := httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody)
+		resp1, err := app.Test(req1)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp1.Header.Get("X-Cache"))
 
-// Cache /a and /b
-req1 := httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody)
-resp1, err := app.Test(req1)
-require.NoError(t, err)
-require.Equal(t, cacheMiss, resp1.Header.Get("X-Cache"))
+		req2 := httptest.NewRequest(fiber.MethodGet, "/b", http.NoBody)
+		resp2, err := app.Test(req2)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp2.Header.Get("X-Cache"))
 
-req2 := httptest.NewRequest(fiber.MethodGet, "/b", http.NoBody)
-resp2, err := app.Test(req2)
-require.NoError(t, err)
-require.Equal(t, cacheMiss, resp2.Header.Get("X-Cache"))
+		// Both should be cached
+		req3 := httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody)
+		resp3, err := app.Test(req3)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
 
-// Both should be cached
-req3 := httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody)
-resp3, err := app.Test(req3)
-require.NoError(t, err)
-require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
+		req4 := httptest.NewRequest(fiber.MethodGet, "/b", http.NoBody)
+		resp4, err := app.Test(req4)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp4.Header.Get("X-Cache"))
 
-req4 := httptest.NewRequest(fiber.MethodGet, "/b", http.NoBody)
-resp4, err := app.Test(req4)
-require.NoError(t, err)
-require.Equal(t, cacheHit, resp4.Header.Get("X-Cache"))
+		// Revalidate /a with max-age=0
+		req5 := httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody)
+		req5.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+		_, err = app.Test(req5)
+		require.NoError(t, err)
 
-// Revalidate /a with max-age=0
-req5 := httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody)
-req5.Header.Set(fiber.HeaderCacheControl, "max-age=0")
-_, err = app.Test(req5)
-require.NoError(t, err)
+		// /a should be revalidated and cached again
+		req6 := httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody)
+		resp6, err := app.Test(req6)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp6.Header.Get("X-Cache"))
 
-// /a should be revalidated and cached again
-req6 := httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody)
-resp6, err := app.Test(req6)
-require.NoError(t, err)
-require.Equal(t, cacheHit, resp6.Header.Get("X-Cache"))
+		// /b should still be cached (heap accounting should be correct)
+		req7 := httptest.NewRequest(fiber.MethodGet, "/b", http.NoBody)
+		resp7, err := app.Test(req7)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp7.Header.Get("X-Cache"))
+	})
 
-// /b should still be cached (heap accounting should be correct)
-req7 := httptest.NewRequest(fiber.MethodGet, "/b", http.NoBody)
-resp7, err := app.Test(req7)
-require.NoError(t, err)
-require.Equal(t, cacheHit, resp7.Header.Get("X-Cache"))
-})
+	t.Run("revalidation with non-cacheable response preserves old entry", func(t *testing.T) {
+		t.Parallel()
 
-t.Run("revalidation with non-cacheable response preserves old entry", func(t *testing.T) {
-t.Parallel()
+		app := fiber.New()
 
-app := fiber.New()
+		app.Use(New(Config{
+			MaxBytes: 100,
+		}))
 
-app.Use(New(Config{
-MaxBytes: 100,
-}))
+		requestCount := 0
+		app.Get("/test", func(c fiber.Ctx) error {
+			requestCount++
+			if requestCount == 1 {
+				c.Set(fiber.HeaderCacheControl, "max-age=60")
+				return c.SendString("cacheable")
+			}
+			// Second request returns no-store
+			c.Set(fiber.HeaderCacheControl, "no-store")
+			return c.SendString("not-cacheable")
+		})
 
-requestCount := 0
-app.Get("/test", func(c fiber.Ctx) error {
-requestCount++
-if requestCount == 1 {
-c.Set(fiber.HeaderCacheControl, "max-age=60")
-return c.SendString("cacheable")
-}
-// Second request returns no-store
-c.Set(fiber.HeaderCacheControl, "no-store")
-return c.SendString("not-cacheable")
-})
+		// First request - cache the response
+		req1 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		resp1, err := app.Test(req1)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp1.Header.Get("X-Cache"))
+		body1, _ := io.ReadAll(resp1.Body)
+		require.Equal(t, "cacheable", string(body1))
 
-// First request - cache the response
-req1 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
-resp1, err := app.Test(req1)
-require.NoError(t, err)
-require.Equal(t, cacheMiss, resp1.Header.Get("X-Cache"))
-body1, _ := io.ReadAll(resp1.Body)
-require.Equal(t, "cacheable", string(body1))
+		// Request with max-age=0 to force revalidation
+		// The new response will be no-store (not cacheable)
+		req2 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req2.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+		resp2, err := app.Test(req2)
+		require.NoError(t, err)
+		body2, _ := io.ReadAll(resp2.Body)
+		require.Equal(t, "not-cacheable", string(body2))
 
-// Request with max-age=0 to force revalidation
-// The new response will be no-store (not cacheable)
-req2 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
-req2.Header.Set(fiber.HeaderCacheControl, "max-age=0")
-resp2, err := app.Test(req2)
-require.NoError(t, err)
-body2, _ := io.ReadAll(resp2.Body)
-require.Equal(t, "not-cacheable", string(body2))
-
-// Next request should still serve the OLD cached entry
-// because the new response was not cacheable and old entry should remain tracked
-req3 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
-resp3, err := app.Test(req3)
-require.NoError(t, err)
-require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
-body3, _ := io.ReadAll(resp3.Body)
-require.Equal(t, "cacheable", string(body3), "Old entry should still be cached")
-})
+		// Next request should still serve the OLD cached entry
+		// because the new response was not cacheable and old entry should remain tracked
+		req3 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		resp3, err := app.Test(req3)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
+		body3, _ := io.ReadAll(resp3.Body)
+		require.Equal(t, "cacheable", string(body3), "Old entry should still be cached")
+	})
 }
