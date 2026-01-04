@@ -244,6 +244,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		entryAge := uint64(0)
 		revalidate := false
+		oldHeapIdx := -1 // Track old heap index for replacement during revalidation
 
 		handleMinFresh := func(now uint64) {
 			if e == nil || !reqDirectives.minFreshSet {
@@ -252,6 +253,7 @@ func New(config ...Config) fiber.Handler {
 			remainingFreshness := remainingFreshness(e, now)
 			if remainingFreshness < reqDirectives.minFresh {
 				revalidate = true
+				oldHeapIdx = e.heapidx
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
@@ -282,6 +284,7 @@ func New(config ...Config) fiber.Handler {
 			entryAge = cachedResponseAge(e, ts)
 			if reqDirectives.maxAgeSet && (reqDirectives.maxAge == 0 || entryAge > reqDirectives.maxAge) {
 				revalidate = true
+				oldHeapIdx = e.heapidx
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
@@ -293,6 +296,7 @@ func New(config ...Config) fiber.Handler {
 
 		if e != nil && e.ttl == 0 && e.forceRevalidate {
 			revalidate = true
+			oldHeapIdx = e.heapidx
 			if cfg.Storage != nil {
 				manager.release(e)
 			}
@@ -342,6 +346,7 @@ func New(config ...Config) fiber.Handler {
 
 			if entryExpired && e.revalidate {
 				revalidate = true
+				oldHeapIdx = e.heapidx
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
@@ -435,8 +440,8 @@ func New(config ...Config) fiber.Handler {
 				if len(e.etag) > 0 {
 					c.Response().Header.SetBytesV(fiber.HeaderETag, e.etag)
 				}
-				e.date = clampDateSeconds(e.date, ts)
-				dateValue := fasthttp.AppendHTTPDate(nil, secondsToTime(e.date))
+				clampedDate := clampDateSeconds(e.date, ts)
+				dateValue := fasthttp.AppendHTTPDate(nil, secondsToTime(clampedDate))
 				c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
 				for i := range e.headers {
 					h := e.headers[i]
@@ -780,6 +785,13 @@ func New(config ...Config) fiber.Handler {
 				}
 				return err
 			}
+		}
+
+		// If revalidating, remove old heap entry now that replacement is successfully stored
+		if cfg.MaxBytes > 0 && revalidate && oldHeapIdx >= 0 {
+			mux.Lock()
+			removeHeapEntry(key, oldHeapIdx)
+			mux.Unlock()
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)
