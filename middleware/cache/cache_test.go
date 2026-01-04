@@ -3615,3 +3615,167 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		require.Equal(t, "cacheable", string(body3), "Old entry should still be cached")
 	})
 }
+
+// Test_parseCacheControlDirectives_QuotedStrings tests RFC 9111 Section 5.2 compliance
+// for quoted-string values in Cache-Control directives
+func Test_parseCacheControlDirectives_QuotedStrings(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		expected map[string]string
+		input    string
+	}{
+		{
+			name:  "simple quoted value",
+			input: `community="UCI"`,
+			expected: map[string]string{
+				"community": "UCI",
+			},
+		},
+		{
+			name:  "multiple directives with quoted values",
+			input: `max-age=3600, community="UCI", custom="value"`,
+			expected: map[string]string{
+				"max-age":   "3600",
+				"community": "UCI",
+				"custom":    "value",
+			},
+		},
+		{
+			name:  "quoted value with spaces",
+			input: `custom="value with spaces"`,
+			expected: map[string]string{
+				"custom": "value with spaces",
+			},
+		},
+		{
+			name:  "quoted value with escaped quote",
+			input: `custom="value with \"quotes\""`,
+			expected: map[string]string{
+				"custom": `value with "quotes"`,
+			},
+		},
+		{
+			name:  "quoted value with escaped backslash",
+			input: `custom="value with \\ backslash"`,
+			expected: map[string]string{
+				"custom": `value with \ backslash`,
+			},
+		},
+		{
+			name:  "mixed quoted and unquoted values",
+			input: `max-age=3600, community="UCI", no-cache, custom="test"`,
+			expected: map[string]string{
+				"max-age":   "3600",
+				"community": "UCI",
+				"no-cache":  "",
+				"custom":    "test",
+			},
+		},
+		{
+			name:  "quoted empty value",
+			input: `custom=""`,
+			expected: map[string]string{
+				"custom": "",
+			},
+		},
+		{
+			name:  "spaces around quoted value",
+			input: `custom = "value" , another="test"`,
+			expected: map[string]string{
+				"custom":  "value",
+				"another": "test",
+			},
+		},
+		{
+			name:  "unquoted token value",
+			input: `max-age=3600`,
+			expected: map[string]string{
+				"max-age": "3600",
+			},
+		},
+		{
+			name:  "complex mixed case",
+			input: `max-age=3600, s-maxage=7200, community="UCI", no-store, custom="value with \"escaped\" quotes"`,
+			expected: map[string]string{
+				"max-age":   "3600",
+				"s-maxage":  "7200",
+				"community": "UCI",
+				"no-store":  "",
+				"custom":    `value with "escaped" quotes`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := make(map[string]string)
+			parseCacheControlDirectives([]byte(tt.input), func(key, value []byte) {
+				result[string(key)] = string(value)
+			})
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// Test_unquoteCacheDirective tests the unquoting logic for quoted-string values
+func Test_unquoteCacheDirective(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    []byte
+		expected []byte
+	}{
+		{
+			name:     "simple quoted string",
+			input:    []byte(`"value"`),
+			expected: []byte("value"),
+		},
+		{
+			name:     "empty quoted string",
+			input:    []byte(`""`),
+			expected: []byte(""),
+		},
+		{
+			name:     "quoted string with spaces",
+			input:    []byte(`"value with spaces"`),
+			expected: []byte("value with spaces"),
+		},
+		{
+			name:     "quoted string with escaped quote",
+			input:    []byte(`"value with \"quote\""`),
+			expected: []byte(`value with "quote"`),
+		},
+		{
+			name:     "quoted string with escaped backslash",
+			input:    []byte(`"value with \\ backslash"`),
+			expected: []byte(`value with \ backslash`),
+		},
+		{
+			name:     "quoted string with multiple escapes",
+			input:    []byte(`"a\"b\\c\"d"`),
+			expected: []byte(`a"b\c"d`),
+		},
+		{
+			name:     "too short input",
+			input:    []byte(`"`),
+			expected: []byte(`"`),
+		},
+		{
+			name:     "empty input",
+			input:    []byte(``),
+			expected: []byte(``),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := unquoteCacheDirective(tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
