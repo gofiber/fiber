@@ -578,8 +578,8 @@ func Test_Limiter_Fixed_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
 
 	app.Use(New(Config{
 		Max:               2,
-		Expiration:        10 * time.Second,                                         // Static expiration (should be ignored)
-		ExpirationFunc:    func(fiber.Ctx) time.Duration { return 2 * time.Second }, // Dynamic expiration
+		Expiration:        10 * time.Second,
+		ExpirationFunc:    func(fiber.Ctx) time.Duration { return 2 * time.Second },
 		LimiterMiddleware: FixedWindow{},
 	}))
 
@@ -613,8 +613,8 @@ func Test_Limiter_Sliding_ExpirationFuncOverridesStaticExpiration(t *testing.T) 
 
 	app.Use(New(Config{
 		Max:               2,
-		Expiration:        10 * time.Second,                                         // Static expiration (should be ignored)
-		ExpirationFunc:    func(fiber.Ctx) time.Duration { return 2 * time.Second }, // Dynamic expiration
+		Expiration:        10 * time.Second,
+		ExpirationFunc:    func(fiber.Ctx) time.Duration { return 2 * time.Second },
 		LimiterMiddleware: SlidingWindow{},
 	}))
 
