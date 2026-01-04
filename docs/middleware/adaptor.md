@@ -239,7 +239,7 @@ func handleRequest(c fiber.Ctx) error {
 `fasthttp.RequestCtx`. The function is marked deprecated in code because it uses
 reflection and unsafe operations—prefer explicit parameter passing when possible.
 When you do need it, call it immediately after you add values to the `net/http`
-context so Fiber can read them via `c.UserContext()`:
+context so Fiber can read them via `c.Context()`:
 
 ```go
 package main
@@ -271,7 +271,7 @@ func main() {
     })
 
     app.Get("/", func(c fiber.Ctx) error {
-        if id, ok := c.UserContext().Value(contextKey("requestID")).(string); ok {
+        if id, ok := c.Context().Value(contextKey("requestID")).(string); ok {
             return c.SendString("Request ID: " + id)
         }
         return c.SendStatus(fiber.StatusNotFound)
