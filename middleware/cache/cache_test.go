@@ -4112,3 +4112,245 @@ func Test_Cache_DateAndCacheControl(t *testing.T) {
 		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
 	})
 }
+
+// Test_Cache_CacheControlCombinations tests common cache control directive combinations
+func Test_Cache_CacheControlCombinations(t *testing.T) {
+	t.Parallel()
+
+	t.Run("max-age with public", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "public, max-age=3600")
+			return c.SendString("public content")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("max-age with private", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "private, max-age=3600")
+			return c.SendString("private content")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("s-maxage overrides max-age", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "public, max-age=60, s-maxage=3600")
+			return c.SendString("content")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("no-store prevents caching", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "no-store")
+			return c.SendString("no store content")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("no-cache with etag", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "no-cache")
+			c.Response().Header.Set("ETag", `"123456"`)
+			return c.SendString("no-cache content")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("must-revalidate with max-age", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "must-revalidate, max-age=3600")
+			return c.SendString("must revalidate content")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("proxy-revalidate with max-age", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "public, proxy-revalidate, max-age=3600")
+			return c.SendString("proxy revalidate content")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("immutable with max-age", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "public, max-age=31536000, immutable")
+			return c.SendString("immutable content")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("max-age=0 with must-revalidate", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=0, must-revalidate")
+			return c.SendString("always revalidate")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("public with no explicit max-age", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "public")
+			return c.SendString("public no max-age")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("multiple cache directives with extensions", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", `public, max-age=3600, custom="value"`)
+			return c.SendString("content")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("private overrides public", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "public, private, max-age=3600")
+			return c.SendString("conflicting directives")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("stale-while-revalidate with max-age", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=60, stale-while-revalidate=120")
+			return c.SendString("stale while revalidate")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("stale-if-error with max-age", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=60, stale-if-error=3600")
+			return c.SendString("stale if error")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+}
