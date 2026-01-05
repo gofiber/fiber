@@ -109,6 +109,13 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
+	type evictionCandidate struct {
+		key     string
+		size    uint
+		exp     uint64
+		heapIdx int
+	}
+
 	redactKeys := !cfg.DisableValueRedaction
 
 	maskKey := func(key string) string {
@@ -190,6 +197,30 @@ func New(config ...Config) fiber.Handler {
 
 		_, size := heap.remove(heapIdx)
 		storedBytes -= size
+	}
+
+	refreshHeapIndex := func(ctx context.Context, candidate evictionCandidate) error {
+		entry, err := manager.get(ctx, candidate.key)
+		if err != nil {
+			if errors.Is(err, errCacheMiss) {
+				return nil
+			}
+			return fmt.Errorf("cache: failed to reload key %q after eviction failure: %w", maskKey(candidate.key), err)
+		}
+
+		if cfg.Storage == nil {
+			entry.heapidx = candidate.heapIdx
+			return nil
+		}
+
+		entry.heapidx = candidate.heapIdx
+		remainingTTL := max(time.Until(secondsToTime(entry.exp)), 0)
+
+		if err := manager.set(ctx, candidate.key, entry, remainingTTL); err != nil {
+			return fmt.Errorf("cache: failed to restore heap index for key %q: %w", maskKey(candidate.key), err)
+		}
+
+		return nil
 	}
 
 	// Return new handler
@@ -606,6 +637,7 @@ func New(config ...Config) fiber.Handler {
 			// Now evict entries until we're under the limit
 			var keysToRemove []string
 			var sizesToRemove []uint
+			var candidates []evictionCandidate
 
 			for storedBytes > cfg.MaxBytes {
 				if heap.Len() == 0 {
@@ -615,9 +647,15 @@ func New(config ...Config) fiber.Handler {
 					mux.Unlock()
 					return errors.New("cache: insufficient space and no entries to evict")
 				}
+				next := heap.entries[0]
 				keyToRemove, size := heap.removeFirst()
 				keysToRemove = append(keysToRemove, keyToRemove)
 				sizesToRemove = append(sizesToRemove, size)
+				candidates = append(candidates, evictionCandidate{
+					key:  keyToRemove,
+					size: size,
+					exp:  next.exp,
+				})
 				storedBytes -= size
 			}
 			mux.Unlock()
@@ -639,16 +677,27 @@ func New(config ...Config) fiber.Handler {
 					// Unreserve space for the new entry
 					storedBytes -= bodySize
 					spaceReserved = false
+
+					// Re-add entries to the heap to keep expiration tracking consistent
+					var restored []evictionCandidate
+					for j := i; j < len(candidates); j++ {
+						candidate := candidates[j]
+						candidate.heapIdx = heap.put(candidate.key, candidate.exp, candidate.size)
+						restored = append(restored, candidate)
+					}
 					mux.Unlock()
 
-					// NOTE: This creates a documented "zombie entry" state: the entries we failed to delete have
-					// already been removed from the heap but remain in storage. Importantly, storedBytes accounting
-					// is restored above for all failed deletions, so the MaxBytes guarantee remains correct; the
-					// trade-off is that these zombie entries are no longer tracked by the heap and will instead be
-					// cleaned up when they expire. Avoiding this trade-off would require either:
-					// 1. Re-adding failed entries back to the heap, or
-					// 2. Not removing from the heap until deletion succeeds (which would mean holding the lock
-					//    during I/O)
+					var restoreErr error
+					for _, candidate := range restored {
+						if err := refreshHeapIndex(reqCtx, candidate); err != nil {
+							restoreErr = errors.Join(restoreErr, err)
+						}
+					}
+
+					if restoreErr != nil {
+						return errors.Join(fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), delErr), restoreErr)
+					}
+
 					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), delErr)
 				}
 			}

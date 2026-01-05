@@ -3835,6 +3835,58 @@ func Test_Cache_MaxBytes_InsufficientSpace(t *testing.T) {
 	})
 }
 
+func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		MaxBytes:   4,
+		Expiration: 1 * time.Hour,
+		Storage:    storage,
+	}))
+
+	app.Get("/:name", func(c fiber.Ctx) error {
+		return c.SendString("data")
+	})
+
+	// Seed the cache with a single entry
+	rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/first", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+	var storedKeys []string
+	for key := range storage.data {
+		storedKeys = append(storedKeys, key)
+		if strings.Contains(key, "/first") {
+			storage.errs["del|"+key] = errors.New("delete failed")
+		}
+	}
+	t.Logf("stored keys after first cache: %v", storedKeys)
+
+	// Next request triggers eviction; deletion failure should surface an error
+	rsp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/second", http.NoBody))
+	require.NoError(t, err)
+	body, err := io.ReadAll(rsp.Body)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, rsp.StatusCode)
+	require.Contains(t, string(body), "failed to delete key")
+	require.NoError(t, rsp.Body.Close())
+	var remainingKeys []string
+	for key := range storage.data {
+		remainingKeys = append(remainingKeys, key)
+	}
+	t.Logf("stored keys after deletion failure: %v", remainingKeys)
+	storage.errs = make(map[string]error)
+
+	// Another request should succeed and be cacheable after restoring heap tracking
+	rsp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/third", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+	require.NoError(t, rsp.Body.Close())
+}
+
 // Test_Cache_MaxBytes_ConcurrencyAndRaceConditions tests that the race condition fix works correctly
 // under concurrent load, verifying that storedBytes never exceeds MaxBytes even with multiple
 // goroutines making simultaneous requests
