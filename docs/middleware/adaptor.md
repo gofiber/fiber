@@ -240,7 +240,7 @@ func handleRequest(c fiber.Ctx) error {
 }
 ```
 
-### 6. Passing Fiber user context into `net/http`
+### 7. Passing Fiber user context into `net/http`
 
 This example shows a realistic flow: a Fiber middleware sets a request-scoped `context.Context` (with a `request_id`) on the Fiber context, then an adapted `net/http` handler retrieves it via `LocalContextFromHTTPRequest`.
 
@@ -291,7 +291,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-### 7. Copying context values onto `fasthttp.RequestCtx` (`CopyContextToFiberContext`)
+### 8. Copying context values onto `fasthttp.RequestCtx` (`CopyContextToFiberContext`)
 
 `CopyContextToFiberContext` copies values stored in a `context.Context` onto a
 `fasthttp.RequestCtx`. The function is marked deprecated in code because it uses
@@ -348,5 +348,6 @@ The `adaptor` package lets Fiber and `net/http` interoperate so you can:
 - Convert handlers and middleware in both directions
 - Run Fiber apps inside `net/http`
 - Convert `fiber.Ctx` to `http.Request`
+- Propagate Fiber's user context into adapted `net/http` handlers
 
 This makes it straightforward to integrate Fiber with existing Go projects or migrate between frameworks.
