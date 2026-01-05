@@ -300,6 +300,8 @@ When you do need it, call it immediately after you add values to the `net/http`
 context so Fiber can read them via `c.Context()`:
 
 ```go
+package main
+
 import (
     "context"
     "net/http"
