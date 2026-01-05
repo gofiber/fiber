@@ -3865,8 +3865,8 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 
 		for i := 0; i < numGoroutines; i++ {
 			id := i
+			wg.Add(1)
 			go func() {
-				wg.Add(1)
 				defer wg.Done()
 				for j := 0; j < requestsPerGoroutine; j++ {
 					path := fmt.Sprintf("/test-%d-%d", id, j)
@@ -3911,8 +3911,8 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 		var wg sync.WaitGroup
 		for i := 0; i < numRequests; i++ {
 			id := i
+			wg.Add(1)
 			go func() {
-				wg.Add(1)
 				defer wg.Done()
 				path := fmt.Sprintf("/item-%d", id)
 				req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
