@@ -21,7 +21,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Decrypt request cookies
-		var cookiesToDelete [][]byte
+		cookiesToDelete := make([][]byte, 0, 4)
 
 		for key, value := range c.Request().Header.Cookies() {
 			keyString := string(key)
