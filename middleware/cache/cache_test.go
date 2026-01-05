@@ -28,6 +28,7 @@ import (
 )
 
 type failingCacheStorage struct {
+	mu   sync.RWMutex
 	data map[string][]byte
 	errs map[string]error
 }
@@ -104,6 +105,8 @@ func (s *mutatingStorage) Close() error {
 }
 
 func (s *failingCacheStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if err, ok := s.errs["get|"+key]; ok && err != nil {
 		return nil, err
 	}
@@ -118,6 +121,8 @@ func (s *failingCacheStorage) Get(key string) ([]byte, error) {
 }
 
 func (s *failingCacheStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err, ok := s.errs["set|"+key]; ok && err != nil {
 		return err
 	}
@@ -130,6 +135,8 @@ func (s *failingCacheStorage) Set(key string, val []byte, exp time.Duration) err
 }
 
 func (s *failingCacheStorage) DeleteWithContext(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err, ok := s.errs["del|"+key]; ok && err != nil {
 		return err
 	}
@@ -142,6 +149,8 @@ func (s *failingCacheStorage) Delete(key string) error {
 }
 
 func (s *failingCacheStorage) ResetWithContext(context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.data = make(map[string][]byte)
 	s.errs = make(map[string]error)
 	return nil
@@ -3857,12 +3866,14 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 	require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
 
 	var storedKeys []string
+	storage.mu.RLock()
 	for key := range storage.data {
 		storedKeys = append(storedKeys, key)
 		if strings.Contains(key, "/first") {
 			storage.errs["del|"+key] = errors.New("delete failed")
 		}
 	}
+	storage.mu.RUnlock()
 	t.Logf("stored keys after first cache: %v", storedKeys)
 
 	// Next request triggers eviction; deletion failure should surface an error
@@ -3874,11 +3885,15 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 	require.Contains(t, string(body), "failed to delete key")
 	require.NoError(t, rsp.Body.Close())
 	var remainingKeys []string
+	storage.mu.RLock()
 	for key := range storage.data {
 		remainingKeys = append(remainingKeys, key)
 	}
+	storage.mu.RUnlock()
 	t.Logf("stored keys after deletion failure: %v", remainingKeys)
+	storage.mu.Lock()
 	storage.errs = make(map[string]error)
+	storage.mu.Unlock()
 
 	// Another request should succeed and be cacheable after restoring heap tracking
 	rsp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/third", http.NoBody))
@@ -4746,12 +4761,14 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 
 		// Verify body key is stored
 		hasBodyKey := false
+		storage.mu.RLock()
 		for k := range storage.data {
 			if strings.Contains(k, "_body") {
 				hasBodyKey = true
 				break
 			}
 		}
+		storage.mu.RUnlock()
 		require.True(t, hasBodyKey)
 	})
 

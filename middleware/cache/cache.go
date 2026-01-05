@@ -208,12 +208,11 @@ func New(config ...Config) fiber.Handler {
 			return fmt.Errorf("cache: failed to reload key %q after eviction failure: %w", maskKey(candidate.key), err)
 		}
 
+		entry.heapidx = candidate.heapIdx
 		if cfg.Storage == nil {
-			entry.heapidx = candidate.heapIdx
 			return nil
 		}
 
-		entry.heapidx = candidate.heapIdx
 		remainingTTL := max(time.Until(secondsToTime(entry.exp)), 0)
 
 		if err := manager.set(ctx, candidate.key, entry, remainingTTL); err != nil {
@@ -643,6 +642,7 @@ func New(config ...Config) fiber.Handler {
 				if heap.Len() == 0 {
 					// Can't evict more, unreserve space and fail
 					storedBytes -= bodySize
+					// Set spaceReserved to false so the deferred cleanup does not unreserve again
 					spaceReserved = false
 					mux.Unlock()
 					return errors.New("cache: insufficient space and no entries to evict")
