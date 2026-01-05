@@ -3865,7 +3865,7 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 
 		for i := 0; i < numGoroutines; i++ {
 			id := i
-			wg.Add(1)
+			wg.Add(1) //nolint:revive // Standard WaitGroup pattern is appropriate here
 			go func() {
 				defer wg.Done()
 				for j := 0; j < requestsPerGoroutine; j++ {
@@ -3911,7 +3911,7 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 		var wg sync.WaitGroup
 		for i := 0; i < numRequests; i++ {
 			id := i
-			wg.Add(1)
+			wg.Add(1) //nolint:revive // Standard WaitGroup pattern is appropriate here
 			go func() {
 				defer wg.Done()
 				path := fmt.Sprintf("/item-%d", id)
