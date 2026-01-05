@@ -28,9 +28,9 @@ import (
 )
 
 type failingCacheStorage struct {
-	mu   sync.RWMutex
 	data map[string][]byte
 	errs map[string]error
+	mu   sync.RWMutex
 }
 
 type mutatingStorage struct {
