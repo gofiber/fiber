@@ -30,9 +30,7 @@ scenarios, but prefer Fiber handlers when performance or Fiber-specific APIs mat
 
 :::note Body size limits when running Fiber from net/http
 When Fiber is executed from a `net/http` server through `FiberHandler`, `FiberHandlerFunc`,
-or `FiberApp`, the adaptor enforces the app's configured `BodyLimit`. If the app's
-configuration sets a non-positive `BodyLimit`, the adaptor falls back to Fiber's
-default of **4 MiB**. Requests exceeding the active limit receive `413 Request Entity Too Large`.
+or `FiberApp`, the adaptor enforces the app's configured `BodyLimit`. The app's `BodyLimit` defaults to **4 MiB** if a non-positive value is provided during configuration. Requests exceeding the active limit receive `413 Request Entity Too Large`.
 :::
 
 ## API Reference
