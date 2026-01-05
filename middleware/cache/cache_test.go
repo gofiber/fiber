@@ -4828,7 +4828,7 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 	})
 }
 
-// Test_Cache_AdditionalEdgeCasesFor80 tests more edge cases to reach 80%
+// Test_Cache_ConfigurationAndResponseHandling tests cache behavior for specific configuration and response edge cases.
 func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 	t.Parallel()
 
