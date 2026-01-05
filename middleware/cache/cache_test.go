@@ -38,6 +38,11 @@ type mutatingStorage struct {
 	mutate func(key string, value []byte) []byte
 }
 
+type mutatingStorage struct {
+	data   map[string][]byte
+	mutate func(key string, value []byte) []byte
+}
+
 func newFailingCacheStorage() *failingCacheStorage {
 	return &failingCacheStorage{
 		data: make(map[string][]byte),
