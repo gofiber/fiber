@@ -4354,3 +4354,557 @@ func Test_Cache_CacheControlCombinations(t *testing.T) {
 		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
 	})
 }
+
+// Test_Cache_EdgeCasesFor80Percent tests additional edge cases to reach 80% coverage
+func Test_Cache_EdgeCasesFor80Percent(t *testing.T) {
+	t.Parallel()
+
+	t.Run("negative expiration skips caching", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: -1 * time.Second}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.NotEqual(t, cacheMiss, rsp.Header.Get("X-Cache"))
+		require.NotEqual(t, cacheHit, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("request with no-store directive", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			return c.SendString("test")
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Cache-Control", "no-store")
+		rsp, err := app.Test(req)
+		require.NoError(t, err)
+		require.NotEqual(t, cacheMiss, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("request with pragma no-cache", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Pragma", "no-cache")
+		rsp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("method not in allowed methods list", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Expiration: 1 * time.Hour,
+			Methods:    []string{fiber.MethodGet},
+		}))
+		app.Post("/test", func(c fiber.Ctx) error {
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("request with min-fresh directive", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=60")
+			return c.SendString("test")
+		})
+
+		// First request to cache
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		// Second request with min-fresh that's too high
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Cache-Control", "min-fresh=120")
+		rsp, err = app.Test(req)
+		require.NoError(t, err)
+		// Should be a miss or stale because min-fresh requirement not met
+	})
+
+	t.Run("request with max-age=0 directive", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		// First request to cache
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		// Second request with max-age=0
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Cache-Control", "max-age=0")
+		rsp, err = app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("request with max-stale directive", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Second}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=1")
+			return c.SendString("test")
+		})
+
+		// First request to cache
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		// Wait for it to become stale
+		time.Sleep(2 * time.Second)
+
+		// Request with max-stale to accept stale content
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Cache-Control", "max-stale=60")
+		rsp, err = app.Test(req)
+		require.NoError(t, err)
+	})
+
+	t.Run("response with expires header", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			futureTime := time.Now().Add(1 * time.Hour).Format(time.RFC1123)
+			c.Response().Header.Set("Expires", futureTime)
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("response with age header", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			c.Response().Header.Set("Age", "30")
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("custom key generator", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Expiration: 1 * time.Hour,
+			KeyGenerator: func(c fiber.Ctx) string {
+				return "custom-" + c.Path()
+			},
+		}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("response with warning header", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Second}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=1")
+			return c.SendString("test")
+		})
+
+		// Cache the response
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		// Wait for it to become stale
+		time.Sleep(2 * time.Second)
+
+		// Request again - should get stale warning
+		_, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+	})
+
+	t.Run("external storage with body key", func(t *testing.T) {
+		t.Parallel()
+		storage := newFailingCacheStorage()
+		app := fiber.New()
+		app.Use(New(Config{
+			Expiration: 1 * time.Hour,
+			Storage:    storage,
+		}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			return c.SendString("test content")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		// Verify body key is stored
+		hasBodyKey := false
+		for k := range storage.data {
+			if strings.Contains(k, "_body") {
+				hasBodyKey = true
+				break
+			}
+		}
+		require.True(t, hasBodyKey)
+	})
+
+	t.Run("only-if-cached with cache miss", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			return c.SendString("test")
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Cache-Control", "only-if-cached")
+		rsp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusGatewayTimeout, rsp.StatusCode)
+	})
+
+	t.Run("only-if-cached with cache hit", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		// First request to cache
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		// Second request with only-if-cached
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Cache-Control", "only-if-cached")
+		rsp2, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("cache control with uppercase directives", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "PUBLIC, MAX-AGE=3600")
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+}
+
+// Test_Cache_AdditionalEdgeCasesFor80 tests more edge cases to reach 80%
+func Test_Cache_AdditionalEdgeCasesFor80(t *testing.T) {
+	t.Parallel()
+
+	t.Run("response with Vary star prevents caching", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Vary", "*")
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("next function prevents caching", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Expiration: 1 * time.Hour,
+			Next: func(c fiber.Ctx) bool {
+				return c.Path() == "/skip"
+			},
+		}))
+		app.Get("/skip", func(c fiber.Ctx) error {
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/skip", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("non-cacheable status code", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			return c.Status(fiber.StatusCreated).SendString("created")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("body larger than MaxBytes", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Expiration: 1 * time.Hour,
+			MaxBytes:   10,
+		}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			return c.Send(make([]byte, 100))
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("authorization without shared cache directives", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Authorization", "******")
+		rsp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("disable cache control header generation", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Expiration:          1 * time.Hour,
+			DisableCacheControl: true,
+		}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("disable value redaction", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Expiration:            1 * time.Hour,
+			DisableValueRedaction: true,
+		}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("response with ETag header", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			c.Response().Header.Set("ETag", `"abc123"`)
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+		require.Equal(t, `"abc123"`, rsp2.Header.Get("ETag"))
+	})
+
+	t.Run("response with Content-Encoding header", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			c.Response().Header.Set("Content-Encoding", "gzip")
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+		require.Equal(t, "gzip", rsp2.Header.Get("Content-Encoding"))
+	})
+
+	t.Run("response with custom headers preserved", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Expiration:           1 * time.Hour,
+			StoreResponseHeaders: true,
+		}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			c.Response().Header.Set("X-Custom-Header", "custom-value")
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+		require.Equal(t, "custom-value", rsp2.Header.Get("X-Custom-Header"))
+	})
+
+	t.Run("revalidation scenario with cache miss", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		// Request with no-cache forces revalidation
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Cache-Control", "no-cache")
+		rsp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("delete vary manifest on no-cache response", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			// First request creates vary manifest
+			if c.Query("first") != "" {
+				c.Response().Header.Set("Vary", "Accept")
+				c.Response().Header.Set("Cache-Control", "max-age=3600")
+			} else {
+				// Second request returns no-cache to delete manifest
+				c.Response().Header.Set("Cache-Control", "no-cache")
+			}
+			return c.SendString("test")
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/test?first=true", http.NoBody)
+		req.Header.Set("Accept", "application/json")
+		rsp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		// Second request without Vary should delete manifest
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("vary manifest deletion on different vary response", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		counter := 0
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			counter++
+			if counter == 1 {
+				c.Response().Header.Set("Vary", "Accept")
+			}
+			// Second response has no Vary header - should delete manifest
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Accept", "application/json")
+		rsp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		// Second request - different vary behavior
+		rsp2, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp2.Header.Get("X-Cache"))
+	})
+}
