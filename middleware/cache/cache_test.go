@@ -3988,7 +3988,7 @@ func Test_Cache_VaryAndAuth(t *testing.T) {
 		storage := newFailingCacheStorage()
 		storage.errs["set|manifest"] = errors.New("storage fail")
 		manager := &manager{storage: storage}
-		err := storeVaryManifest(context.TODO(), manager, "manifest", []string{"Accept"}, 3600*time.Second)
+		err := storeVaryManifest(context.Background(), manager, "manifest", []string{"Accept"}, 3600*time.Second)
 		require.Error(t, err)
 	})
 
@@ -3996,7 +3996,7 @@ func Test_Cache_VaryAndAuth(t *testing.T) {
 		t.Parallel()
 		storage := newFailingCacheStorage()
 		manager := &manager{storage: storage}
-		varyNames, found, err := loadVaryManifest(context.TODO(), manager, "nonexistent")
+		varyNames, found, err := loadVaryManifest(context.Background(), manager, "nonexistent")
 		require.NoError(t, err)
 		require.False(t, found)
 		require.Nil(t, varyNames)

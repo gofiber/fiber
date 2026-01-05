@@ -784,8 +784,8 @@ func New(config ...Config) fiber.Handler {
 			mux.Lock()
 			heapIdx = heap.put(key, e.exp, bodySize)
 			e.heapidx = heapIdx
-			// Note: storedBytes was incremented during reservation (line 603), and evictions
-			// have already been accounted for (line 621), so no additional increment is needed
+			// Note: storedBytes was incremented during reservation, and evictions
+			// have already been accounted for, so no additional increment is needed
 			spaceReserved = false // Clear flag to prevent defer from unreserving
 			mux.Unlock()
 		}
