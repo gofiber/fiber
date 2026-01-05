@@ -4518,7 +4518,7 @@ func Test_Cache_CacheControlCombinations(t *testing.T) {
 	})
 }
 
-// Test_Cache_EdgeCasesFor80Percent tests additional edge cases to reach 80% coverage
+// Test_Cache_RequestResponseDirectives tests caching behavior with various request/response cache-control directives
 func Test_Cache_RequestResponseDirectives(t *testing.T) {
 	t.Parallel()
 
