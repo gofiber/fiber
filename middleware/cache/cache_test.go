@@ -3856,7 +3856,7 @@ func Test_Cache_HelperFunctions(t *testing.T) {
 		t.Parallel()
 		result, ok := parseHTTPDate([]byte("Mon, 02 Jan 2006 15:04:05 GMT"))
 		require.True(t, ok)
-		require.Greater(t, result, uint64(0))
+		require.Positive(t, result)
 	})
 
 	t.Run("safeUnixSeconds negative", func(t *testing.T) {
@@ -3964,7 +3964,7 @@ func Test_Cache_HelperFunctions(t *testing.T) {
 
 	t.Run("cacheBodyFetchError miss", func(t *testing.T) {
 		t.Parallel()
-		mask := func(s string) string { return "***" }
+		mask := func(_ string) string { return "***" }
 		err := cacheBodyFetchError(mask, "key", errCacheMiss)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "no cached body")
@@ -3972,7 +3972,7 @@ func Test_Cache_HelperFunctions(t *testing.T) {
 
 	t.Run("cacheBodyFetchError other", func(t *testing.T) {
 		t.Parallel()
-		mask := func(s string) string { return "***" }
+		mask := func(_ string) string { return "***" }
 		originalErr := errors.New("storage error")
 		err := cacheBodyFetchError(mask, "key", originalErr)
 		require.Equal(t, originalErr, err)
@@ -3988,7 +3988,7 @@ func Test_Cache_VaryAndAuth(t *testing.T) {
 		storage := newFailingCacheStorage()
 		storage.errs["set|manifest"] = errors.New("storage fail")
 		manager := &manager{storage: storage}
-		err := storeVaryManifest(nil, manager, "manifest", []string{"Accept"}, 3600*time.Second)
+		err := storeVaryManifest(context.TODO(), manager, "manifest", []string{"Accept"}, 3600*time.Second)
 		require.Error(t, err)
 	})
 
@@ -3996,7 +3996,7 @@ func Test_Cache_VaryAndAuth(t *testing.T) {
 		t.Parallel()
 		storage := newFailingCacheStorage()
 		manager := &manager{storage: storage}
-		varyNames, found, err := loadVaryManifest(nil, manager, "nonexistent")
+		varyNames, found, err := loadVaryManifest(context.TODO(), manager, "nonexistent")
 		require.NoError(t, err)
 		require.False(t, found)
 		require.Nil(t, varyNames)
@@ -4356,7 +4356,7 @@ func Test_Cache_CacheControlCombinations(t *testing.T) {
 }
 
 // Test_Cache_EdgeCasesFor80Percent tests additional edge cases to reach 80% coverage
-func Test_Cache_EdgeCasesFor80Percent(t *testing.T) {
+func Test_Cache_RequestResponseDirectives(t *testing.T) {
 	t.Parallel()
 
 	t.Run("negative expiration skips caching", func(t *testing.T) {
@@ -4437,7 +4437,7 @@ func Test_Cache_EdgeCasesFor80Percent(t *testing.T) {
 		// Second request with min-fresh that's too high
 		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
 		req.Header.Set("Cache-Control", "min-fresh=120")
-		rsp, err = app.Test(req)
+		_, err = app.Test(req)
 		require.NoError(t, err)
 		// Should be a miss or stale because min-fresh requirement not met
 	})
@@ -4484,7 +4484,7 @@ func Test_Cache_EdgeCasesFor80Percent(t *testing.T) {
 		// Request with max-stale to accept stale content
 		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
 		req.Header.Set("Cache-Control", "max-stale=60")
-		rsp, err = app.Test(req)
+		_, err = app.Test(req)
 		require.NoError(t, err)
 	})
 
@@ -4654,7 +4654,7 @@ func Test_Cache_EdgeCasesFor80Percent(t *testing.T) {
 }
 
 // Test_Cache_AdditionalEdgeCasesFor80 tests more edge cases to reach 80%
-func Test_Cache_AdditionalEdgeCasesFor80(t *testing.T) {
+func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 	t.Parallel()
 
 	t.Run("response with Vary star prevents caching", func(t *testing.T) {
