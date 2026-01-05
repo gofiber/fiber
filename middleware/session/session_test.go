@@ -331,7 +331,9 @@ func Test_Session_Store_Reset(t *testing.T) {
 }
 
 func Test_Session_KeyTypes(t *testing.T) {
-	t.Parallel()
+	// Note: This test cannot run in parallel because it registers types
+	// in the global gob registry via store.RegisterType(), which would
+	// cause race conditions with other parallel tests.
 
 	// session store
 	store := NewStore()
@@ -377,6 +379,14 @@ func Test_Session_KeyTypes(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, sess.Reset())
+
+	// Release session before continuing
+	sess.Release()
+
+	// Get a new session after reset
+	sess, err = store.Get(ctx)
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
 
 	var (
 		kbool                     = true
