@@ -1188,7 +1188,7 @@ func isHeuristicFreshness(e *item, cfg *Config, entryAge uint64) bool {
 	}
 
 	cacheControl := utils.UnsafeString(e.cacheControl)
-	if hasDirective(cacheControl, "max-age") || hasDirective(cacheControl, "s-maxage") {
+	if parsedCC := parseResponseCacheControl(utils.UnsafeBytes(cacheControl)); parsedCC.maxAgeSet || parsedCC.sMaxAgeSet {
 		return false
 	}
 
