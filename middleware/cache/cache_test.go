@@ -3833,3 +3833,282 @@ func Test_Cache_MaxBytes_InsufficientSpace(t *testing.T) {
 		require.Equal(t, cacheUnreachable, rsp.Header.Get("X-Cache"))
 	})
 }
+
+// Test_Cache_HelperFunctions tests various helper functions for better coverage
+func Test_Cache_HelperFunctions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("parseHTTPDate empty", func(t *testing.T) {
+		t.Parallel()
+		result, ok := parseHTTPDate([]byte{})
+		require.False(t, ok)
+		require.Equal(t, uint64(0), result)
+	})
+
+	t.Run("parseHTTPDate invalid", func(t *testing.T) {
+		t.Parallel()
+		result, ok := parseHTTPDate([]byte("invalid"))
+		require.False(t, ok)
+		require.Equal(t, uint64(0), result)
+	})
+
+	t.Run("parseHTTPDate valid", func(t *testing.T) {
+		t.Parallel()
+		result, ok := parseHTTPDate([]byte("Mon, 02 Jan 2006 15:04:05 GMT"))
+		require.True(t, ok)
+		require.Greater(t, result, uint64(0))
+	})
+
+	t.Run("safeUnixSeconds negative", func(t *testing.T) {
+		t.Parallel()
+		result := safeUnixSeconds(time.Unix(-1, 0))
+		require.Equal(t, uint64(0), result)
+	})
+
+	t.Run("safeUnixSeconds positive", func(t *testing.T) {
+		t.Parallel()
+		result := safeUnixSeconds(time.Unix(1234567890, 0))
+		require.Equal(t, uint64(1234567890), result)
+	})
+
+	t.Run("remainingFreshness nil", func(t *testing.T) {
+		t.Parallel()
+		result := remainingFreshness(nil, 100)
+		require.Equal(t, uint64(0), result)
+	})
+
+	t.Run("remainingFreshness zero exp", func(t *testing.T) {
+		t.Parallel()
+		e := &item{exp: 0}
+		result := remainingFreshness(e, 100)
+		require.Equal(t, uint64(0), result)
+	})
+
+	t.Run("remainingFreshness expired", func(t *testing.T) {
+		t.Parallel()
+		e := &item{exp: 100}
+		result := remainingFreshness(e, 200)
+		require.Equal(t, uint64(0), result)
+	})
+
+	t.Run("remainingFreshness valid", func(t *testing.T) {
+		t.Parallel()
+		e := &item{exp: 200}
+		result := remainingFreshness(e, 100)
+		require.Equal(t, uint64(100), result)
+	})
+
+	t.Run("lookupCachedHeader not found", func(t *testing.T) {
+		t.Parallel()
+		headers := []cachedHeader{{key: []byte("Content-Type"), value: []byte("text/html")}}
+		value, found := lookupCachedHeader(headers, "Authorization")
+		require.False(t, found)
+		require.Nil(t, value)
+	})
+
+	t.Run("lookupCachedHeader case insensitive", func(t *testing.T) {
+		t.Parallel()
+		headers := []cachedHeader{{key: []byte("Authorization"), value: []byte("Bearer token")}}
+		value, found := lookupCachedHeader(headers, "authorization")
+		require.True(t, found)
+		require.Equal(t, []byte("Bearer token"), value)
+	})
+
+	t.Run("secondsToDuration zero", func(t *testing.T) {
+		t.Parallel()
+		result := secondsToDuration(0)
+		require.Equal(t, time.Duration(0), result)
+	})
+
+	t.Run("secondsToDuration large", func(t *testing.T) {
+		t.Parallel()
+		result := secondsToDuration(9223372036)
+		require.Greater(t, result, time.Duration(0))
+	})
+
+	t.Run("secondsToTime zero", func(t *testing.T) {
+		t.Parallel()
+		result := secondsToTime(0)
+		require.Equal(t, time.Unix(0, 0).UTC(), result)
+	})
+
+	t.Run("secondsToTime value", func(t *testing.T) {
+		t.Parallel()
+		result := secondsToTime(1234567890)
+		require.Equal(t, time.Unix(1234567890, 0).UTC(), result)
+	})
+
+	t.Run("isHeuristicFreshness short age", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Expiration: 1 * time.Hour}
+		e := &item{cacheControl: []byte("public")}
+		result := isHeuristicFreshness(e, cfg, 3600)
+		require.False(t, result)
+	})
+
+	t.Run("isHeuristicFreshness with expires", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Expiration: 1 * time.Hour}
+		e := &item{cacheControl: []byte("public"), expires: []byte("Wed, 21 Oct 2015 07:28:00 GMT")}
+		result := isHeuristicFreshness(e, cfg, uint64(25*time.Hour/time.Second))
+		require.False(t, result)
+	})
+
+	t.Run("isHeuristicFreshness true", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Expiration: 1 * time.Hour}
+		e := &item{cacheControl: []byte("public")}
+		result := isHeuristicFreshness(e, cfg, uint64(25*time.Hour/time.Second))
+		require.True(t, result)
+	})
+
+	t.Run("cacheBodyFetchError miss", func(t *testing.T) {
+		t.Parallel()
+		mask := func(s string) string { return "***" }
+		err := cacheBodyFetchError(mask, "key", errCacheMiss)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "no cached body")
+	})
+
+	t.Run("cacheBodyFetchError other", func(t *testing.T) {
+		t.Parallel()
+		mask := func(s string) string { return "***" }
+		originalErr := errors.New("storage error")
+		err := cacheBodyFetchError(mask, "key", originalErr)
+		require.Equal(t, originalErr, err)
+	})
+}
+
+// Test_Cache_VaryAndAuth tests vary and auth functionality
+func Test_Cache_VaryAndAuth(t *testing.T) {
+	t.Parallel()
+
+	t.Run("storeVaryManifest failure", func(t *testing.T) {
+		t.Parallel()
+		storage := newFailingCacheStorage()
+		storage.errs["set|manifest"] = errors.New("storage fail")
+		manager := &manager{storage: storage}
+		err := storeVaryManifest(nil, manager, "manifest", []string{"Accept"}, 3600*time.Second)
+		require.Error(t, err)
+	})
+
+	t.Run("loadVaryManifest not found", func(t *testing.T) {
+		t.Parallel()
+		storage := newFailingCacheStorage()
+		manager := &manager{storage: storage}
+		varyNames, found, err := loadVaryManifest(nil, manager, "nonexistent")
+		require.NoError(t, err)
+		require.False(t, found)
+		require.Nil(t, varyNames)
+	})
+
+	t.Run("vary with multiple headers", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Vary", "Accept, Accept-Encoding")
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Accept-Encoding", "gzip")
+		rsp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		req2 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req2.Header.Set("Accept", "application/json")
+		req2.Header.Set("Accept-Encoding", "gzip")
+		rsp2, err := app.Test(req2)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+
+	t.Run("auth with must-revalidate", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "must-revalidate, max-age=3600")
+			return c.SendString("content")
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Authorization", "Bearer token1")
+		rsp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+
+		req2 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req2.Header.Set("Authorization", "Bearer token1")
+		rsp2, err := app.Test(req2)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, rsp2.Header.Get("X-Cache"))
+	})
+}
+
+// Test_Cache_DateAndCacheControl tests date parsing and cache control
+func Test_Cache_DateAndCacheControl(t *testing.T) {
+	t.Parallel()
+
+	t.Run("date header parsing", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Date", "Mon, 02 Jan 2006 15:04:05 GMT")
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("invalid date header", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Date", "invalid")
+			c.Response().Header.Set("Cache-Control", "max-age=3600")
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("cache control with quoted values", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", `max-age=3600, ext="value, with, commas"`)
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+	})
+
+	t.Run("cache control with spaces", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
+		app.Get("/test", func(c fiber.Ctx) error {
+			c.Response().Header.Set("Cache-Control", "max-age=3600  ,  public  ,  must-revalidate")
+			return c.SendString("test")
+		})
+
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
+	})
+}
