@@ -3861,28 +3861,29 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 
 		// Launch multiple goroutines making concurrent requests
 		var wg sync.WaitGroup
-		errors := make(chan error, numGoroutines*requestsPerGoroutine)
+		errChan := make(chan error, numGoroutines*requestsPerGoroutine)
 
 		for i := 0; i < numGoroutines; i++ {
-			wg.Add(1)
-			go func(id int) {
+			id := i
+			go func() {
+				wg.Add(1)
 				defer wg.Done()
 				for j := 0; j < requestsPerGoroutine; j++ {
 					path := fmt.Sprintf("/test-%d-%d", id, j)
 					req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
 					_, err := app.Test(req)
 					if err != nil {
-						errors <- err
+						errChan <- err
 					}
 				}
-			}(i)
+			}()
 		}
 
 		wg.Wait()
-		close(errors)
+		close(errChan)
 
 		// Check for errors
-		for err := range errors {
+		for err := range errChan {
 			require.NoError(t, err, "concurrent request failed")
 		}
 
@@ -3909,13 +3910,17 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 		// Make concurrent requests that will trigger evictions
 		var wg sync.WaitGroup
 		for i := 0; i < numRequests; i++ {
-			wg.Add(1)
-			go func(id int) {
+			id := i
+			go func() {
+				wg.Add(1)
 				defer wg.Done()
 				path := fmt.Sprintf("/item-%d", id)
 				req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
-				_, _ = app.Test(req)
-			}(i)
+				_, err := app.Test(req)
+				if err != nil {
+					t.Logf("request error: %v", err)
+				}
+			}()
 		}
 
 		wg.Wait()
