@@ -3866,14 +3866,14 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 	require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
 
 	var storedKeys []string
-	storage.mu.RLock()
+	storage.mu.Lock()
 	for key := range storage.data {
 		storedKeys = append(storedKeys, key)
 		if strings.Contains(key, "/first") {
 			storage.errs["del|"+key] = errors.New("delete failed")
 		}
 	}
-	storage.mu.RUnlock()
+	storage.mu.Unlock()
 	t.Logf("stored keys after first cache: %v", storedKeys)
 
 	// Next request triggers eviction; deletion failure should surface an error

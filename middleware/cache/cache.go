@@ -209,9 +209,6 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		entry.heapidx = candidate.heapIdx
-		if cfg.Storage == nil {
-			return nil
-		}
 
 		remainingTTL := max(time.Until(secondsToTime(entry.exp)), 0)
 
