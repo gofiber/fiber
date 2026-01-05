@@ -241,54 +241,56 @@ func handleRequest(c fiber.Ctx) error {
 ```
 
 ### 6. Passing Fiber user context into `net/http`
+
 This example shows a realistic flow: a Fiber middleware sets a request-scoped `context.Context` (with a `request_id`) on the Fiber context, then an adapted `net/http` handler retrieves it via `LocalContextFromHTTPRequest`.
 
 ```go
 package main
 
 import (
-	"context"
-	"fmt"
-	"net/http"
+    "context"
+    "fmt"
+    "net/http"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/adaptor"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 type ctxKey string
 const requestIDKey ctxKey = "request_id"
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	// Create a request-scoped context in Fiber (e.g., request id, auth claims, trace span).
-	app.Use(func(c fiber.Ctx) error {
-		reqID := c.Get("X-Request-ID")
+    // Create a request-scoped context in Fiber (e.g., request id, auth claims, trace span).
+    app.Use(func(c fiber.Ctx) error {
+        reqID := c.Get("X-Request-ID")
 
-		ctx := context.WithValue(context.Background(), requestIDKey, reqID)
+        ctx := context.WithValue(context.Background(), requestIDKey, reqID)
 
-		// Fiber stores request-scoped context as "user context".
-		c.SetUserContext(ctx)
-		return c.Next()
-	})
+        // Fiber stores request-scoped context as "user context".
+        c.SetUserContext(ctx)
+        return c.Next()
+    })
 
-	// 2) Run a standard net/http handler that includes Fiber's user context propagated.
-	app.Get("/hello", adaptor.HTTPHandlerWithContext(http.HandlerFunc(handleRequest)))
+    // 2) Run a standard net/http handler that includes Fiber's user context propagated.
+    app.Get("/hello", adaptor.HTTPHandlerWithContext(http.HandlerFunc(handleRequest)))
 
-	app.Listen(":3000")
+    app.Listen(":3000")
 }
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
-	ctx, ok := adaptor.LocalContextFromHTTPRequest(r)
-	if !ok || ctx == nil {
-		http.Error(w, "missing propagated context", http.StatusInternalServerError)
-		return
-	}
+    ctx, ok := adaptor.LocalContextFromHTTPRequest(r)
+    if !ok || ctx == nil {
+        http.Error(w, "missing propagated context", http.StatusInternalServerError)
+        return
+    }
 
-	reqID, _ := ctx.Value(requestIDKey).(string)
-	fmt.Fprintf(w, "Hello from net/http (request_id=%s)\n", reqID)
+    reqID, _ := ctx.Value(requestIDKey).(string)
+    fmt.Fprintf(w, "Hello from net/http (request_id=%s)\n", reqID)
 }
 ```
+
 ### 7. Copying context values onto `fasthttp.RequestCtx` (`CopyContextToFiberContext`)
 
 `CopyContextToFiberContext` copies values stored in a `context.Context` onto a
@@ -296,6 +298,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 reflection and unsafe operations—prefer explicit parameter passing when possible.
 When you do need it, call it immediately after you add values to the `net/http`
 context so Fiber can read them via `c.Context()`:
+
 ```go
 import (
     "context"
