@@ -4990,11 +4990,10 @@ func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 	t.Run("vary manifest deletion on different vary response", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
-		counter := 0
+		var counter atomic.Int32
 		app.Use(New(Config{Expiration: 1 * time.Hour}))
 		app.Get("/test", func(c fiber.Ctx) error {
-			counter++
-			if counter == 1 {
+			if counter.Add(1) == 1 {
 				c.Response().Header.Set("Vary", "Accept")
 			}
 			// Second response has no Vary header - should delete manifest

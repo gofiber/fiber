@@ -641,11 +641,14 @@ func New(config ...Config) fiber.Handler {
 					spaceReserved = false
 					mux.Unlock()
 
-					// TODO: Known limitation - failed entries were already removed from heap but remain in storage,
-					// creating "zombie entries" that are counted in storedBytes but not tracked in the heap.
-					// These will be cleaned up when they expire. A complete fix would require either:
+					// NOTE: This creates a documented "zombie entry" state: the entries we failed to delete have
+					// already been removed from the heap but remain in storage. Importantly, storedBytes accounting
+					// is restored above for all failed deletions, so the MaxBytes guarantee remains correct; the
+					// trade-off is that these zombie entries are no longer tracked by the heap and will instead be
+					// cleaned up when they expire. Avoiding this trade-off would require either:
 					// 1. Re-adding failed entries back to the heap, or
-					// 2. Not removing from heap until deletion succeeds (requires holding lock during I/O)
+					// 2. Not removing from the heap until deletion succeeds (which would mean holding the lock
+					//    during I/O)
 					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), delErr)
 				}
 			}
