@@ -2334,11 +2334,11 @@ func Test_CacheStaleResponseAddsWarning110(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderCacheControl, "max-stale=5")
-	
+
 	// Wait for the cached response to become stale (max-age=1)
 	// Add extra time to ensure the entry has expired
 	time.Sleep(1200 * time.Millisecond)
-	
+
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		resp, err = app.Test(req)

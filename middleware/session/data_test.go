@@ -15,6 +15,7 @@ func TestKeys(t *testing.T) {
 	t.Run("Empty data", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		keys := d.Keys()
@@ -25,6 +26,7 @@ func TestKeys(t *testing.T) {
 	t.Run("Single key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		d.Set("key1", "value1")
@@ -37,6 +39,7 @@ func TestKeys(t *testing.T) {
 	t.Run("Multiple keys", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		d.Set("key1", "value1")
@@ -53,6 +56,7 @@ func TestKeys(t *testing.T) {
 	t.Run("Concurrent access", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		d.Set("key1", "value1")
@@ -82,6 +86,7 @@ func TestData_Len(t *testing.T) {
 	t.Run("Empty data", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		length := d.Len()
@@ -92,6 +97,7 @@ func TestData_Len(t *testing.T) {
 	t.Run("Single key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		d.Set("key1", "value1")
@@ -103,6 +109,7 @@ func TestData_Len(t *testing.T) {
 	t.Run("Multiple keys", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		d.Set("key1", "value1")
@@ -116,6 +123,7 @@ func TestData_Len(t *testing.T) {
 	t.Run("Concurrent access", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		d.Set("key1", "value1")
@@ -145,6 +153,7 @@ func TestData_Get(t *testing.T) {
 	t.Run("Nonexistent key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		value := d.Get("nonexistent-key")
@@ -155,6 +164,7 @@ func TestData_Get(t *testing.T) {
 	t.Run("Existing key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		d.Set("key1", "value1")
@@ -170,6 +180,7 @@ func TestData_Reset(t *testing.T) {
 	t.Run("Reset data", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		d.Set("key1", "value1")
 		d.Set("key2", "value2")
@@ -186,6 +197,7 @@ func TestData_ResetPreservesAllocation(t *testing.T) {
 	t.Parallel()
 
 	d := acquireData()
+	d.Reset() // Ensure clean state from pool
 	t.Cleanup(func() {
 		d.Reset()
 		dataPool.Put(d)
@@ -262,6 +274,7 @@ func TestData_Delete(t *testing.T) {
 	t.Run("Delete existing key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		d.Set("key1", "value1")
@@ -274,6 +287,7 @@ func TestData_Delete(t *testing.T) {
 	t.Run("Delete nonexistent key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
+		d.Reset() // Ensure clean state from pool
 		defer dataPool.Put(d)
 		defer d.Reset()
 		d.Delete("nonexistent-key")
