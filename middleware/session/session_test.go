@@ -741,10 +741,13 @@ func Test_Session_Save_IdleTimeout(t *testing.T) {
 		ctx.Request().Header.SetCookie("session_id", token)
 		sess, err = store.Get(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "john", sess.Get("name"))
+		require.Equal(t, token, sess.ID(), "session ID should match before expiration")
+		name := sess.Get("name")
+		require.Equal(t, "john", name, "session should contain the saved value before expiration")
 
 		// just to make sure the session has been expired
-		time.Sleep(sessionDuration + (10 * time.Millisecond))
+		// Add extra buffer time to ensure expiration is processed
+		time.Sleep(sessionDuration + (100 * time.Millisecond))
 
 		sess.Release()
 
