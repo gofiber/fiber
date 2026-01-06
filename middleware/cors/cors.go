@@ -124,6 +124,9 @@ func New(config ...Config) fiber.Handler {
 		// Set default allowOrigin to empty string
 		allowOrigin := ""
 
+		originIsSerialized, serializedOrigin := normalizeOrigin(originHeaderRaw)
+		originIsNull := originHeader == "null"
+
 		// Check allowed origins
 		if allowAllOrigins {
 			allowOrigin = "*"
@@ -148,7 +151,11 @@ func New(config ...Config) fiber.Handler {
 		// handling the value in 'AllowOrigins' does
 		// not result in allowOrigin being set.
 		if allowOrigin == "" && cfg.AllowOriginsFunc != nil && cfg.AllowOriginsFunc(originHeaderRaw) {
-			allowOrigin = originHeaderRaw
+			if originIsSerialized {
+				allowOrigin = serializedOrigin
+			} else if originIsNull {
+				allowOrigin = "null"
+			}
 		}
 
 		// Simple request
