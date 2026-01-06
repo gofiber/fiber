@@ -42,6 +42,9 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 
 		// Generate expiration from generator
 		expirationDuration := cfg.ExpirationFunc(c)
+		if expirationDuration <= 0 {
+			expirationDuration = ConfigDefault.Expiration
+		}
 		expiration := uint64(expirationDuration.Seconds())
 
 		// Get key from request

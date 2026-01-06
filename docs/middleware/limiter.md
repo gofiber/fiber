@@ -54,6 +54,10 @@ app.Use(limiter.New(limiter.Config{
     },
     Expiration:     30 * time.Second,
     ExpirationFunc: func(c fiber.Ctx) time.Duration {
+      // Use longer expiration for sensitive endpoints
+      if c.Path() == "/login" {
+        return 60 * time.Second
+      }
       return 30 * time.Second
     },
     KeyGenerator:          func(c fiber.Ctx) string {
@@ -148,9 +152,7 @@ var ConfigDefault = Config{
       return 5
     },
     Expiration: 1 * time.Minute,
-    ExpirationFunc: func(c fiber.Ctx) time.Duration {
-      return 1 * time.Minute
-    },
+    // ExpirationFunc defaults to nil and is set dynamically to return cfg.Expiration
     KeyGenerator: func(c fiber.Ctx) string {
         return c.IP()
     },

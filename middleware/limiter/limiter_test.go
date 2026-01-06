@@ -579,7 +579,7 @@ func Test_Limiter_Fixed_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
 	app.Use(New(Config{
 		Max:               2,
 		Expiration:        10 * time.Second,
-		ExpirationFunc:    func(fiber.Ctx) time.Duration { return 2 * time.Second },
+		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return 2 * time.Second },
 		LimiterMiddleware: FixedWindow{},
 	}))
 
@@ -614,7 +614,7 @@ func Test_Limiter_Sliding_ExpirationFuncOverridesStaticExpiration(t *testing.T) 
 	app.Use(New(Config{
 		Max:               2,
 		Expiration:        10 * time.Second,
-		ExpirationFunc:    func(fiber.Ctx) time.Duration { return 2 * time.Second },
+		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return 2 * time.Second },
 		LimiterMiddleware: SlidingWindow{},
 	}))
 
@@ -634,7 +634,8 @@ func Test_Limiter_Sliding_ExpirationFuncOverridesStaticExpiration(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 
-	time.Sleep(5 * time.Second)
+	// Sliding window needs ~2x expiration to fully reset (considers previous window)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
