@@ -269,7 +269,7 @@ func main() {
         ctx := context.WithValue(context.Background(), requestIDKey, reqID)
 
         // Fiber stores request-scoped context as "user context".
-        c.SetUserContext(ctx)
+        c.SetContext(ctx)
         return c.Next()
     })
 
