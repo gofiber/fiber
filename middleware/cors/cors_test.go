@@ -791,6 +791,16 @@ func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
 			Origin: "http://example.com#section",
 			Method: fiber.MethodGet,
 		},
+		{
+			Name:   "WildcardHost",
+			Origin: "http://*.example.com",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:   "NullOriginAllowed",
+			Origin: "null",
+			Method: fiber.MethodGet,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -817,10 +827,16 @@ func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
 
 			handler(ctx)
 
-			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			if tc.Name == "NullOriginAllowed" {
+				require.Equal(t, "null", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			} else {
+				require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			}
 
 			if tc.Method == fiber.MethodOptions {
 				require.Equal(t, fiber.StatusNoContent, ctx.Response.StatusCode())
+			} else {
+				require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 			}
 		})
 	}
