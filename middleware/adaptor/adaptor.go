@@ -213,7 +213,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		defer fasthttp.ReleaseRequest(req)
 
 		// Convert net/http -> fasthttp request with size limit
-		const maxBodySize = 10 * 1024 * 1024 // 10MB limit
+		maxBodySize := int64(app.Config().BodyLimit)
 		if r.Body != nil {
 			if r.ContentLength > maxBodySize {
 				http.Error(w, utils.StatusMessage(fiber.StatusRequestEntityTooLarge), fiber.StatusRequestEntityTooLarge)

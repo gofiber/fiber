@@ -447,6 +447,65 @@ func Test_FiberHandler(t *testing.T) {
 	testFiberToHandlerFunc(t, false)
 }
 
+func Test_FiberHandler_BodyLimit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		bodyLimit      int
+		bodySize       int
+		expectedStatus int
+	}{
+		{
+			name:           "DefaultLimitExceededReturns413",
+			bodySize:       fiber.DefaultBodyLimit + 1024,
+			expectedStatus: fiber.StatusRequestEntityTooLarge,
+		},
+		{
+			name:           "CustomLimitExceededReturns413",
+			bodyLimit:      1 * 1024 * 1024,
+			bodySize:       (1 * 1024 * 1024) + 1,
+			expectedStatus: fiber.StatusRequestEntityTooLarge,
+		},
+		{
+			name:           "CustomLimitAllowsLargerPayload",
+			bodyLimit:      2 * fiber.DefaultBodyLimit,
+			bodySize:       fiber.DefaultBodyLimit + 512,
+			expectedStatus: fiber.StatusOK,
+		},
+		{
+			name:           "ZeroLimitConfigFallsBackToDefault",
+			bodyLimit:      0,
+			bodySize:       fiber.DefaultBodyLimit - 256,
+			expectedStatus: fiber.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{
+				BodyLimit: tt.bodyLimit,
+			})
+
+			app.Post("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			handlerFunc := FiberApp(app)
+			body := bytes.Repeat([]byte("a"), tt.bodySize)
+			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+			req.ContentLength = int64(len(body))
+			resp := httptest.NewRecorder()
+
+			handlerFunc.ServeHTTP(resp, req)
+
+			require.Equal(t, tt.expectedStatus, resp.Code)
+		})
+	}
+}
+
 func Test_FiberApp(t *testing.T) {
 	t.Parallel()
 
