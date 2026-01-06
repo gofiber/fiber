@@ -2334,6 +2334,11 @@ func Test_CacheStaleResponseAddsWarning110(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderCacheControl, "max-stale=5")
+
+	// Wait for the cached response to become stale (max-age=1)
+	// Add extra time to ensure the entry has expired
+	time.Sleep(1200 * time.Millisecond)
+
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		resp, err = app.Test(req)
@@ -2342,7 +2347,11 @@ func Test_CacheStaleResponseAddsWarning110(t *testing.T) {
 			ageVal, err := strconv.Atoi(resp.Header.Get(fiber.HeaderAge))
 			require.NoError(t, err)
 			if ageVal >= 1 {
-				break
+				// Check that Warning header is present before breaking
+				warnings := resp.Header.Values(fiber.HeaderWarning)
+				if len(warnings) > 0 {
+					break
+				}
 			}
 		}
 		require.True(t, time.Now().Before(deadline), "response did not become stale before deadline")
@@ -2350,7 +2359,7 @@ func Test_CacheStaleResponseAddsWarning110(t *testing.T) {
 	}
 
 	warnings := resp.Header.Values(fiber.HeaderWarning)
-	require.NotEmpty(t, warnings)
+	require.NotEmpty(t, warnings, "Warning header should be present when serving stale response")
 	found := false
 	for _, w := range warnings {
 		if strings.Contains(w, "110") {
