@@ -35,16 +35,18 @@ or `FiberApp`, the adaptor enforces the app's configured `BodyLimit`. The app's 
 
 ## API Reference
 
-| Name                        | Signature                                                                     | Description                                                      |
-|-----------------------------|-------------------------------------------------------------------------------|------------------------------------------------------------------|
-| `HTTPHandler`               | `HTTPHandler(h http.Handler) fiber.Handler`                                   | Converts `http.Handler` to `fiber.Handler`                       |
-| `HTTPHandlerFunc`           | `HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler`                           | Converts `http.HandlerFunc` to `fiber.Handler`                   |
-| `HTTPMiddleware`            | `HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler`            | Converts `http.Handler` middleware to `fiber.Handler` middleware |
-| `FiberHandler`              | `FiberHandler(h fiber.Handler) http.Handler`                                  | Converts `fiber.Handler` to `http.Handler`                       |
-| `FiberHandlerFunc`          | `FiberHandlerFunc(h fiber.Handler) http.HandlerFunc`                          | Converts `fiber.Handler` to `http.HandlerFunc`                   |
-| `FiberApp`                  | `FiberApp(app *fiber.App) http.HandlerFunc`                                   | Converts an entire Fiber app to a `http.HandlerFunc`             |
-| `ConvertRequest`            | `ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error)`          | Converts `fiber.Ctx` into a `http.Request`                       |
-| `CopyContextToFiberContext` | `CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx)` | Copies `context.Context` to `fasthttp.RequestCtx`                |
+| Name                          | Signature                                                                     | Description                                                                   |
+|-------------------------------|-------------------------------------------------------------------------------|-------------------------------------------------------------------------------|
+| `HTTPHandler`                 | `HTTPHandler(h http.Handler) fiber.Handler`                                   | Converts `http.Handler` to `fiber.Handler`                                    |
+| `HTTPHandlerWithContext`      | `HTTPHandlerWithContext(h http.Handler) fiber.Handler`                        | Converts `http.Handler` to `fiber.Handler`, propagating Fiber's local context |
+| `HTTPHandlerFunc`             | `HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler`                           | Converts `http.HandlerFunc` to `fiber.Handler`                                |
+| `HTTPMiddleware`              | `HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler`            | Converts `http.Handler` middleware to `fiber.Handler` middleware              |
+| `FiberHandler`                | `FiberHandler(h fiber.Handler) http.Handler`                                  | Converts `fiber.Handler` to `http.Handler`                                    |
+| `FiberHandlerFunc`            | `FiberHandlerFunc(h fiber.Handler) http.HandlerFunc`                          | Converts `fiber.Handler` to `http.HandlerFunc`                                |
+| `FiberApp`                    | `FiberApp(app *fiber.App) http.HandlerFunc`                                   | Converts an entire Fiber app to a `http.HandlerFunc`                          |
+| `ConvertRequest`              | `ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error)`          | Converts `fiber.Ctx` into a `http.Request`                                    |
+| `LocalContextFromHTTPRequest` | `LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool)`        | Extracts the propagated `context.Context` from an adapted `http.Request`      |
+| `CopyContextToFiberContext`   | `CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx)` | Copies `context.Context` to `fasthttp.RequestCtx`                             |
 
 ---
 
@@ -237,7 +239,58 @@ func handleRequest(c fiber.Ctx) error {
 }
 ```
 
-### 7. Copying context values onto `fasthttp.RequestCtx` (`CopyContextToFiberContext`)
+### 7. Passing Fiber user context into `net/http`
+
+This example shows a realistic flow: a Fiber middleware sets a request-scoped `context.Context` (with a `request_id`) on the Fiber context, then an adapted `net/http` handler retrieves it via `LocalContextFromHTTPRequest`.
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "net/http"
+
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/adaptor"
+)
+
+type ctxKey string
+const requestIDKey ctxKey = "request_id"
+
+func main() {
+    app := fiber.New()
+
+    // Create a request-scoped context in Fiber (e.g., request id, auth claims, trace span).
+    app.Use(func(c fiber.Ctx) error {
+        reqID := c.Get("X-Request-ID")
+
+        ctx := context.WithValue(context.Background(), requestIDKey, reqID)
+
+        // Fiber stores request-scoped context as "user context".
+        c.SetContext(ctx)
+        return c.Next()
+    })
+
+    // 2) Run a standard net/http handler that includes Fiber's user context propagated.
+    app.Get("/hello", adaptor.HTTPHandlerWithContext(http.HandlerFunc(handleRequest)))
+
+    app.Listen(":3000")
+}
+
+func handleRequest(w http.ResponseWriter, r *http.Request) {
+    ctx, ok := adaptor.LocalContextFromHTTPRequest(r)
+    if !ok || ctx == nil {
+        http.Error(w, "missing propagated context", http.StatusInternalServerError)
+        return
+    }
+
+    reqID, _ := ctx.Value(requestIDKey).(string)
+    fmt.Fprintf(w, "Hello from net/http (request_id=%s)\n", reqID)
+}
+```
+
+### 8. Copying context values onto `fasthttp.RequestCtx` (`CopyContextToFiberContext`)
 
 `CopyContextToFiberContext` copies values stored in a `context.Context` onto a
 `fasthttp.RequestCtx`. The function is marked deprecated in code because it uses
@@ -294,5 +347,6 @@ The `adaptor` package lets Fiber and `net/http` interoperate so you can:
 - Convert handlers and middleware in both directions
 - Run Fiber apps inside `net/http`
 - Convert `fiber.Ctx` to `http.Request`
+- Propagate Fiber's user context into adapted `net/http` handlers
 
 This makes it straightforward to integrate Fiber with existing Go projects or migrate between frameworks.
