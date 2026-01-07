@@ -154,7 +154,7 @@ func New(config ...Config) fiber.Handler {
 			if originIsSerialized {
 				allowOrigin = originHeaderRaw
 			} else if originIsNull {
-				allowOrigin = "null"
+				allowOrigin = originHeaderRaw
 			}
 		}
 
