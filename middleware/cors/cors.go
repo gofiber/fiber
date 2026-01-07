@@ -12,6 +12,17 @@ import (
 
 const redactedValue = "[redacted]"
 
+// isOriginSerializedOrNull checks if the origin is a serialized origin or the literal "null".
+// It returns two booleans: (isSerialized, isNull).
+func isOriginSerializedOrNull(originHeaderRaw string) (isSerialized, isNull bool) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming serialization and null status results
+	if originHeaderRaw == "null" {
+		return false, true
+	}
+
+	originIsSerialized, _ := normalizeOrigin(originHeaderRaw)
+	return originIsSerialized, false
+}
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -124,16 +135,6 @@ func New(config ...Config) fiber.Handler {
 		// Set default allowOrigin to empty string
 		allowOrigin := ""
 
-		isOriginSerializedOrNull := func() (bool, bool) {
-			if originHeaderRaw == "null" {
-				return false, true
-			}
-
-			originIsSerialized, _ := normalizeOrigin(originHeaderRaw)
-			return originIsSerialized, false
-		}
-
-		originIsSerialized, originIsNull := isOriginSerializedOrNull()
 		// Check allowed origins
 		if allowAllOrigins {
 			allowOrigin = "*"
@@ -158,9 +159,8 @@ func New(config ...Config) fiber.Handler {
 		// handling the value in 'AllowOrigins' does
 		// not result in allowOrigin being set.
 		if allowOrigin == "" && cfg.AllowOriginsFunc != nil && cfg.AllowOriginsFunc(originHeaderRaw) {
-			if originIsSerialized {
-				allowOrigin = originHeaderRaw
-			} else if originIsNull {
+			originIsSerialized, originIsNull := isOriginSerializedOrNull(originHeaderRaw)
+			if originIsSerialized || originIsNull {
 				allowOrigin = originHeaderRaw
 			}
 		}
