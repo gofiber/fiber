@@ -14,7 +14,7 @@ const redactedValue = "[redacted]"
 
 // isOriginSerializedOrNull checks if the origin is a serialized origin or the literal "null".
 // It returns two booleans: (isSerialized, isNull).
-func isOriginSerializedOrNull(originHeaderRaw string) (isSerialized, isNull bool) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming validity results
+func isOriginSerializedOrNull(originHeaderRaw string) (isSerialized, isNull bool) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming serialization and null status results
 	if originHeaderRaw == "null" {
 		return false, true
 	}
