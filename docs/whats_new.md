@@ -1228,6 +1228,8 @@ When used with the Logger middleware, the recommended approach is to use the `Cu
 
 The adaptor middleware has been significantly optimized for performance and efficiency. Key improvements include reduced response times, lower memory usage, and fewer memory allocations. These changes make the middleware more reliable and capable of handling higher loads effectively. Enhancements include the introduction of a `sync.Pool` for managing `fasthttp.RequestCtx` instances and better HTTP request and response handling between net/http and fasthttp contexts.
 
+Incoming body sizes now respect the Fiber app's configured `BodyLimit` (falling back to the default when unset) when running Fiber from `net/http` through the adaptor, returning `413 Request Entity Too Large` for oversized payloads.
+
 | Payload Size | Metric         | V2           | V3          | Percent Change |
 | ------------ | -------------- | ------------ | ----------- | -------------- |
 | 100KB        | Execution Time | 1056 ns/op   | 588.6 ns/op | -44.25%        |

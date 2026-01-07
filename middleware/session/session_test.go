@@ -331,7 +331,9 @@ func Test_Session_Store_Reset(t *testing.T) {
 }
 
 func Test_Session_KeyTypes(t *testing.T) {
-	t.Parallel()
+	// Note: This test cannot run in parallel because it registers types
+	// in the global gob registry via store.RegisterType(), which would
+	// cause race conditions with other parallel tests.
 
 	// session store
 	store := NewStore()
@@ -377,6 +379,14 @@ func Test_Session_KeyTypes(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, sess.Reset())
+
+	// Release session before continuing
+	sess.Release()
+
+	// Get a new session after reset
+	sess, err = store.Get(ctx)
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
 
 	var (
 		kbool                     = true
@@ -731,10 +741,13 @@ func Test_Session_Save_IdleTimeout(t *testing.T) {
 		ctx.Request().Header.SetCookie("session_id", token)
 		sess, err = store.Get(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "john", sess.Get("name"))
+		require.Equal(t, token, sess.ID(), "session ID should match before expiration")
+		name := sess.Get("name")
+		require.Equal(t, "john", name, "session should contain the saved value before expiration")
 
 		// just to make sure the session has been expired
-		time.Sleep(sessionDuration + (10 * time.Millisecond))
+		// Add extra buffer time to ensure expiration is processed
+		time.Sleep(sessionDuration + (100 * time.Millisecond))
 
 		sess.Release()
 
