@@ -768,6 +768,7 @@ func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
 		Origin             string
 		Method             string
 		SetPreflightMethod bool
+		ExpectAllowed      bool
 	}{
 		{
 			Name:   "UserInfoPresent",
@@ -797,9 +798,25 @@ func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
 			Method: fiber.MethodGet,
 		},
 		{
-			Name:   "NullOriginAllowed",
-			Origin: "null",
+			Name:   "StandaloneWildcard",
+			Origin: "*",
 			Method: fiber.MethodGet,
+		},
+		{
+			Name:   "NullOriginUppercase",
+			Origin: "NULL",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:   "NullOriginMixedCase",
+			Origin: "Null",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:          "NullOriginLowercase",
+			Origin:        "null",
+			Method:        fiber.MethodGet,
+			ExpectAllowed: true,
 		},
 	}
 
@@ -827,7 +844,7 @@ func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
 
 			handler(ctx)
 
-			if tc.Name == "NullOriginAllowed" {
+			if tc.ExpectAllowed {
 				require.Equal(t, "null", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 			} else {
 				require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
