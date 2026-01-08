@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/storage/memory"
 )
 
 type failingLimiterStorage struct {
@@ -30,6 +31,30 @@ func newFailingLimiterStorage() *failingLimiterStorage {
 		data: make(map[string][]byte),
 		errs: make(map[string]error),
 	}
+}
+
+// countingFailStorage fails set operations after a specified number of successful calls
+type countingFailStorage struct {
+	*failingLimiterStorage
+	setFailErr error
+	setCount   int
+	failAfterN int
+}
+
+func newCountingFailStorage(failAfterN int, err error) *countingFailStorage {
+	return &countingFailStorage{
+		failingLimiterStorage: newFailingLimiterStorage(),
+		failAfterN:            failAfterN,
+		setFailErr:            err,
+	}
+}
+
+func (s *countingFailStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.setCount++
+	if s.setCount > s.failAfterN {
+		return s.setFailErr
+	}
+	return s.failingLimiterStorage.SetWithContext(ctx, key, val, exp)
 }
 
 type contextRecord struct {
@@ -320,6 +345,37 @@ func TestLimiterFixedStorageSetErrorDisableRedaction(t *testing.T) {
 	require.Error(t, captured)
 	require.ErrorContains(t, captured, testLimiterClientKey)
 	require.NotContains(t, captured.Error(), "[redacted]")
+}
+
+func TestLimiterFixedStorageSetErrorOnSkipSuccessfulRequests(t *testing.T) {
+	t.Parallel()
+
+	storage := newCountingFailStorage(1, errors.New("second set failed"))
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+		},
+	})
+
+	app.Use(New(Config{
+		Storage:                storage,
+		Max:                    10,
+		Expiration:             time.Second,
+		SkipSuccessfulRequests: true,
+		KeyGenerator:           func(fiber.Ctx) string { return testLimiterClientKey },
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Error(t, captured)
+	require.ErrorContains(t, captured, "limiter: failed to persist state")
 }
 
 func TestLimiterSlidingPropagatesRequestContextToStorage(t *testing.T) {
