@@ -642,8 +642,8 @@ func Test_Limiter_Sliding_ExpirationFuncOverridesStaticExpiration(t *testing.T) 
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
-// go test -run Test_Limiter_Fixed_ExpirationFunc_FallbackOnInvalidDuration -race -v
-func Test_Limiter_Fixed_ExpirationFunc_FallbackOnInvalidDuration(t *testing.T) {
+// go test -run Test_Limiter_Fixed_ExpirationFunc_FallbackOnZeroDuration -race -v
+func Test_Limiter_Fixed_ExpirationFunc_FallbackOnZeroDuration(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -666,8 +666,56 @@ func Test_Limiter_Fixed_ExpirationFunc_FallbackOnInvalidDuration(t *testing.T) {
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 }
 
-// go test -run Test_Limiter_Sliding_ExpirationFunc_FallbackOnInvalidDuration -race -v
-func Test_Limiter_Sliding_ExpirationFunc_FallbackOnInvalidDuration(t *testing.T) {
+// go test -run Test_Limiter_Fixed_ExpirationFunc_FallbackOnNegativeDuration -race -v
+func Test_Limiter_Fixed_ExpirationFunc_FallbackOnNegativeDuration(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:               1,
+		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return -1 * time.Second },
+		LimiterMiddleware: FixedWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+}
+
+// go test -run Test_Limiter_Sliding_ExpirationFunc_FallbackOnZeroDuration -race -v
+func Test_Limiter_Sliding_ExpirationFunc_FallbackOnZeroDuration(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:               1,
+		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return 0 },
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+}
+
+// go test -run Test_Limiter_Sliding_ExpirationFunc_FallbackOnNegativeDuration -race -v
+func Test_Limiter_Sliding_ExpirationFunc_FallbackOnNegativeDuration(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
