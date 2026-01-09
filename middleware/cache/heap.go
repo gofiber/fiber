@@ -26,24 +26,29 @@ type indexedHeap struct {
 	maxidx int
 }
 
+// Len implements heap.Interface by reporting the number of entries in the heap.
 func (h indexedHeap) Len() int {
 	return len(h.entries)
 }
 
+// Less implements heap.Interface and orders entries by expiration time.
 func (h indexedHeap) Less(i, j int) bool {
 	return h.entries[i].exp < h.entries[j].exp
 }
 
+// Swap implements heap.Interface and swaps the entries at the provided indices.
 func (h indexedHeap) Swap(i, j int) {
 	h.entries[i], h.entries[j] = h.entries[j], h.entries[i]
 	h.indices[h.entries[i].idx] = i
 	h.indices[h.entries[j].idx] = j
 }
 
+// Push implements heap.Interface and inserts a new entry into the heap.
 func (h *indexedHeap) Push(x any) {
 	h.pushInternal(x.(heapEntry)) //nolint:forcetypeassert,errcheck // Forced type assertion required to implement the heap.Interface interface
 }
 
+// Pop implements heap.Interface and removes the last entry from the heap.
 func (h *indexedHeap) Pop() any {
 	n := len(h.entries)
 	h.entries = h.entries[0 : n-1]
@@ -76,17 +81,17 @@ func (h *indexedHeap) put(key string, exp uint64, bytes uint) int {
 	return idx
 }
 
-func (h *indexedHeap) removeInternal(realIdx int) (string, uint) {
+func (h *indexedHeap) removeInternal(realIdx int) (key string, size uint) { //nolint:nonamedreturns // gocritic unnamedResult prefers named key and size when removing heap entries
 	x := heap.Remove(h, realIdx).(heapEntry) //nolint:forcetypeassert,errcheck // Forced type assertion required to implement the heap.Interface interface
 	return x.key, x.bytes
 }
 
 // Remove entry by index
-func (h *indexedHeap) remove(idx int) (string, uint) {
+func (h *indexedHeap) remove(idx int) (key string, size uint) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming returned key and size pair
 	return h.removeInternal(h.indices[idx])
 }
 
 // Remove entry with lowest expiration time
-func (h *indexedHeap) removeFirst() (string, uint) {
+func (h *indexedHeap) removeFirst() (key string, size uint) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming returned key and size pair
 	return h.removeInternal(0)
 }

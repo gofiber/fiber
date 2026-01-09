@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -18,11 +19,11 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 	t.Run("SecureConfigurations", func(t *testing.T) {
 		t.Parallel()
 		secureConfigs := []Config{
-			{Extractor: FromHeader("X-Csrf-Token")},
-			{Extractor: FromForm("_csrf")},
-			{Extractor: FromQuery("csrf_token")},
-			{Extractor: FromParam("csrf")},
-			{Extractor: Chain(FromHeader("X-Csrf-Token"), FromForm("_csrf"))},
+			{Extractor: extractors.FromHeader("X-Csrf-Token")},
+			{Extractor: extractors.FromForm("_csrf")},
+			{Extractor: extractors.FromQuery("csrf_token")},
+			{Extractor: extractors.FromParam("csrf")},
+			{Extractor: extractors.Chain(extractors.FromHeader("X-Csrf-Token"), extractors.FromForm("_csrf"))},
 		}
 
 		for i, cfg := range secureConfigs {
@@ -38,11 +39,11 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 	t.Run("InsecureCookieExtractor", func(t *testing.T) {
 		t.Parallel()
 		// Create a custom extractor that reads from cookie (simulating dangerous behavior)
-		insecureCookieExtractor := Extractor{
+		insecureCookieExtractor := extractors.Extractor{
 			Extract: func(c fiber.Ctx) (string, error) {
 				return c.Cookies("csrf_"), nil
 			},
-			Source: SourceCookie,
+			Source: extractors.SourceCookie,
 			Key:    "csrf_",
 		}
 
@@ -59,16 +60,16 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 	// Test insecure chained extractors
 	t.Run("InsecureChainedExtractor", func(t *testing.T) {
 		t.Parallel()
-		insecureCookieExtractor := Extractor{
+		insecureCookieExtractor := extractors.Extractor{
 			Extract: func(c fiber.Ctx) (string, error) {
 				return c.Cookies("csrf_"), nil
 			},
-			Source: SourceCookie,
+			Source: extractors.SourceCookie,
 			Key:    "csrf_",
 		}
 
-		chainedExtractor := Chain(
-			FromHeader("X-Csrf-Token"),
+		chainedExtractor := extractors.Chain(
+			extractors.FromHeader("X-Csrf-Token"),
 			insecureCookieExtractor, // This should trigger panic
 		)
 
@@ -85,11 +86,11 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 	// Test different cookie names - should be secure
 	t.Run("DifferentCookieNames", func(t *testing.T) {
 		t.Parallel()
-		cookieExtractor := Extractor{
+		cookieExtractor := extractors.Extractor{
 			Extract: func(c fiber.Ctx) (string, error) {
 				return c.Cookies("different_cookie"), nil
 			},
-			Source: SourceCookie,
+			Source: extractors.SourceCookie,
 			Key:    "different_cookie",
 		}
 
@@ -111,31 +112,31 @@ func Test_CSRF_Extractor_Metadata(t *testing.T) {
 	testCases := []struct {
 		name           string
 		expectedKey    string
-		extractor      Extractor
-		expectedSource Source
+		extractor      extractors.Extractor
+		expectedSource extractors.Source
 	}{
 		{
 			name:           "FromHeader",
-			extractor:      FromHeader("X-Custom-Token"),
-			expectedSource: SourceHeader,
+			extractor:      extractors.FromHeader("X-Custom-Token"),
+			expectedSource: extractors.SourceHeader,
 			expectedKey:    "X-Custom-Token",
 		},
 		{
 			name:           "FromForm",
-			extractor:      FromForm("_token"),
-			expectedSource: SourceForm,
+			extractor:      extractors.FromForm("_token"),
+			expectedSource: extractors.SourceForm,
 			expectedKey:    "_token",
 		},
 		{
 			name:           "FromQuery",
-			extractor:      FromQuery("token"),
-			expectedSource: SourceQuery,
+			extractor:      extractors.FromQuery("token"),
+			expectedSource: extractors.SourceQuery,
 			expectedKey:    "token",
 		},
 		{
 			name:           "FromParam",
-			extractor:      FromParam("id"),
-			expectedSource: SourceParam,
+			extractor:      extractors.FromParam("id"),
+			expectedSource: extractors.SourceParam,
 			expectedKey:    "id",
 		},
 	}
@@ -156,29 +157,29 @@ func Test_CSRF_Chain_Extractor_Metadata(t *testing.T) {
 
 	t.Run("EmptyChain", func(t *testing.T) {
 		t.Parallel()
-		chained := Chain()
-		require.Equal(t, SourceCustom, chained.Source)
-		require.Equal(t, "", chained.Key)
+		chained := extractors.Chain()
+		require.Equal(t, extractors.SourceCustom, chained.Source)
+		require.Empty(t, chained.Key)
 		require.Empty(t, chained.Chain)
 	})
 
 	t.Run("SingleExtractor", func(t *testing.T) {
 		t.Parallel()
-		header := FromHeader("X-Token")
-		chained := Chain(header)
-		require.Equal(t, SourceHeader, chained.Source)
+		header := extractors.FromHeader("X-Token")
+		chained := extractors.Chain(header)
+		require.Equal(t, extractors.SourceHeader, chained.Source)
 		require.Equal(t, "X-Token", chained.Key)
 		require.Len(t, chained.Chain, 1)
 	})
 
 	t.Run("MultipleExtractors", func(t *testing.T) {
 		t.Parallel()
-		header := FromHeader("X-Token")
-		form := FromForm("_csrf")
-		chained := Chain(header, form)
+		header := extractors.FromHeader("X-Token")
+		form := extractors.FromForm("_csrf")
+		chained := extractors.Chain(header, form)
 
 		// Should use first extractor's metadata
-		require.Equal(t, SourceHeader, chained.Source)
+		require.Equal(t, extractors.SourceHeader, chained.Source)
 		require.Equal(t, "X-Token", chained.Key)
 		require.Len(t, chained.Chain, 2)
 		require.Equal(t, header.Source, chained.Chain[0].Source)
@@ -192,16 +193,16 @@ func Test_CSRF_Custom_Extractor_Struct(t *testing.T) {
 	app := fiber.New()
 
 	// Custom extractor using new struct pattern
-	customExtractor := Extractor{
+	customExtractor := extractors.Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
 			// Extract from custom header
 			token := c.Get("X-Custom-CSRF")
 			if token == "" {
-				return "", ErrMissingHeader
+				return "", extractors.ErrNotFound
 			}
 			return token, nil
 		},
-		Source: SourceCustom,
+		Source: extractors.SourceCustom,
 		Key:    "X-Custom-CSRF",
 	}
 
@@ -246,42 +247,42 @@ func Test_CSRF_Extractor_Error_Types(t *testing.T) {
 		expectedError error
 		setupRequest  func(*fasthttp.RequestCtx)
 		name          string
-		extractor     Extractor
+		extractor     extractors.Extractor
 	}{
 		{
 			name:      "MissingHeader",
-			extractor: FromHeader("X-Missing"),
+			extractor: extractors.FromHeader("X-Missing"),
 			setupRequest: func(_ *fasthttp.RequestCtx) {
 				// Don't set the header
 			},
-			expectedError: ErrMissingHeader,
+			expectedError: extractors.ErrNotFound,
 		},
 		{
 			name:      "MissingForm",
-			extractor: FromForm("_missing"),
+			extractor: extractors.FromForm("_missing"),
 			setupRequest: func(ctx *fasthttp.RequestCtx) {
 				ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
 				// Don't set form data
 			},
-			expectedError: ErrMissingForm,
+			expectedError: extractors.ErrNotFound,
 		},
 		{
 			name:      "MissingQuery",
-			extractor: FromQuery("missing"),
+			extractor: extractors.FromQuery("missing"),
 			setupRequest: func(ctx *fasthttp.RequestCtx) {
 				ctx.Request.SetRequestURI("/")
 				// Don't set query param
 			},
-			expectedError: ErrMissingQuery,
+			expectedError: extractors.ErrNotFound,
 		},
 		{
 			name:      "MissingParam",
-			extractor: FromParam("missing"),
+			extractor: extractors.FromParam("missing"),
 			setupRequest: func(_ *fasthttp.RequestCtx) {
 				// This would need special route setup to test properly
 				// For now, we'll test the extractor directly
 			},
-			expectedError: ErrMissingParam,
+			expectedError: extractors.ErrNotFound,
 		},
 	}
 
@@ -312,8 +313,8 @@ func Test_CSRF_Security_Warnings(t *testing.T) {
 	// For now, we just test that the configuration doesn't panic
 
 	insecureConfigs := []Config{
-		{Extractor: FromQuery("csrf_token")},
-		{Extractor: FromParam("csrf")},
+		{Extractor: extractors.FromQuery("csrf_token")},
+		{Extractor: extractors.FromParam("csrf")},
 	}
 
 	for i, cfg := range insecureConfigs {
@@ -333,13 +334,13 @@ func Test_isInsecureCookieExtractor(t *testing.T) {
 	testCases := []struct {
 		name       string
 		cookieName string
-		extractor  Extractor
+		extractor  extractors.Extractor
 		expected   bool
 	}{
 		{
 			name: "SecureHeaderExtractor",
-			extractor: Extractor{
-				Source: SourceHeader,
+			extractor: extractors.Extractor{
+				Source: extractors.SourceHeader,
 				Key:    "X-Csrf-Token",
 			},
 			cookieName: "csrf_",
@@ -347,8 +348,8 @@ func Test_isInsecureCookieExtractor(t *testing.T) {
 		},
 		{
 			name: "InsecureCookieExtractor",
-			extractor: Extractor{
-				Source: SourceCookie,
+			extractor: extractors.Extractor{
+				Source: extractors.SourceCookie,
 				Key:    "csrf_",
 			},
 			cookieName: "csrf_",
@@ -356,8 +357,8 @@ func Test_isInsecureCookieExtractor(t *testing.T) {
 		},
 		{
 			name: "CookieExtractorDifferentName",
-			extractor: Extractor{
-				Source: SourceCookie,
+			extractor: extractors.Extractor{
+				Source: extractors.SourceCookie,
 				Key:    "different_cookie",
 			},
 			cookieName: "csrf_",
@@ -365,8 +366,8 @@ func Test_isInsecureCookieExtractor(t *testing.T) {
 		},
 		{
 			name: "CustomExtractorSafeName",
-			extractor: Extractor{
-				Source: SourceCustom,
+			extractor: extractors.Extractor{
+				Source: extractors.SourceCustom,
 				Key:    "safe_key",
 			},
 			cookieName: "csrf_",
@@ -387,11 +388,11 @@ func Test_CSRF_CookieName_CaseInsensitive_Warning(t *testing.T) {
 	t.Parallel()
 
 	// Extractor uses "CSRF_" (uppercase), config uses "csrf_" (lowercase)
-	extractor := Extractor{
+	extractor := extractors.Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
 			return c.Cookies("CSRF_"), nil
 		},
-		Source: SourceCookie,
+		Source: extractors.SourceCookie,
 		Key:    "CSRF_",
 	}
 

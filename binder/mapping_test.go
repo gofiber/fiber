@@ -1,11 +1,14 @@
 package binder
 
 import (
-	"errors"
+	"fmt"
 	"mime/multipart"
 	"reflect"
+	"strconv"
+	"sync"
 	"testing"
 
+	"github.com/gofiber/schema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,6 +50,27 @@ func Test_EqualFieldType(t *testing.T) {
 	require.True(t, equalFieldType(&user2, reflect.String, "user.Address", "query"))
 	require.True(t, equalFieldType(&user2, reflect.Int, "user.AGE", "query"))
 	require.True(t, equalFieldType(&user2, reflect.Int, "user.age", "query"))
+
+	var pointerUser struct {
+		Tags *[]string `query:"tags"`
+	}
+	require.True(t, equalFieldType(&pointerUser, reflect.Slice, "tags", "query"))
+
+	type nested struct {
+		Values []string `query:"values"`
+	}
+	var nestedWrapper struct {
+		Nested *nested `query:"nested"`
+	}
+	require.True(t, equalFieldType(&nestedWrapper, reflect.Slice, "nested.values", "query"))
+
+	type nestedPointerSlice struct {
+		Values *[]string `query:"values"`
+	}
+	var nestedPointerWrapper struct {
+		Nested *nestedPointerSlice `query:"nested"`
+	}
+	require.True(t, equalFieldType(&nestedPointerWrapper, reflect.Slice, "nested.values", "query"))
 }
 
 func Test_ParseParamSquareBrackets(t *testing.T) {
@@ -68,17 +92,17 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 			expected: "foo.bar.baz",
 		},
 		{
-			err:      errors.New("unmatched brackets"),
+			err:      ErrUnmatchedBrackets,
 			input:    "foo[bar",
 			expected: "",
 		},
 		{
-			err:      errors.New("unmatched brackets"),
+			err:      ErrUnmatchedBrackets,
 			input:    "foo[bar][baz",
 			expected: "",
 		},
 		{
-			err:      errors.New("unmatched brackets"),
+			err:      ErrUnmatchedBrackets,
 			input:    "foo]bar[",
 			expected: "",
 		},
@@ -110,8 +134,7 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 
 			result, err := parseParamSquareBrackets(tt.input)
 			if tt.err != nil {
-				require.Error(t, err)
-				require.EqualError(t, err, tt.err.Error())
+				require.ErrorIs(t, err, tt.err)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expected, result)
@@ -131,7 +154,7 @@ func Test_parseToMap(t *testing.T) {
 
 	// Test map[string]string
 	m := make(map[string]string)
-	err := parseToMap(m, inputMap)
+	err := parseToMap(reflect.ValueOf(m), inputMap)
 	require.NoError(t, err)
 
 	require.Equal(t, "value2", m["key1"])
@@ -140,7 +163,7 @@ func Test_parseToMap(t *testing.T) {
 
 	// Test map[string][]string
 	m2 := make(map[string][]string)
-	err = parseToMap(m2, inputMap)
+	err = parseToMap(reflect.ValueOf(m2), inputMap)
 	require.NoError(t, err)
 
 	require.Len(t, m2["key1"], 2)
@@ -151,8 +174,22 @@ func Test_parseToMap(t *testing.T) {
 
 	// Test map[string]any
 	m3 := make(map[string]any)
-	err = parseToMap(m3, inputMap)
-	require.ErrorIs(t, err, ErrMapNotConvertible)
+	err = parseToMap(reflect.ValueOf(m3), inputMap)
+	require.NoError(t, err)
+	require.Empty(t, m3)
+
+	var zeroStringMap map[string]string
+	err = parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), inputMap)
+	require.NoError(t, err)
+	require.Equal(t, "value2", zeroStringMap["key1"])
+
+	var zeroSliceMap map[string][]string
+	err = parseToMap(reflect.ValueOf(&zeroSliceMap).Elem(), inputMap)
+	require.NoError(t, err)
+	require.Len(t, zeroSliceMap["key1"], 2)
+
+	err = parseToMap(reflect.ValueOf(map[string]string(nil)), inputMap)
+	require.ErrorIs(t, err, ErrMapNilDestination)
 }
 
 func Test_FilterFlags(t *testing.T) {
@@ -342,6 +379,205 @@ func Test_formatBindData_ErrorCases(t *testing.T) {
 		require.Error(t, err)
 		require.EqualError(t, err, "unsupported value type: int")
 	})
+}
+
+func Test_decoderBuilder(t *testing.T) {
+	t.Parallel()
+	type customInt int
+	conv := func(s string) reflect.Value {
+		i, err := strconv.Atoi(s)
+		if err != nil {
+			panic(err)
+		}
+		return reflect.ValueOf(customInt(i))
+	}
+	parserConfig := ParserConfig{
+		SetAliasTag: "custom",
+		ParserType: []ParserType{{
+			CustomType: customInt(0),
+			Converter:  conv,
+		}},
+		IgnoreUnknownKeys: false,
+		ZeroEmpty:         false,
+	}
+	decAny := decoderBuilder(parserConfig)
+	dec, ok := decAny.(*schema.Decoder)
+	require.True(t, ok)
+	var out struct {
+		X customInt `custom:"x"`
+	}
+	err := dec.Decode(&out, map[string][]string{"x": {"7"}})
+	require.NoError(t, err)
+	require.Equal(t, customInt(7), out.X)
+}
+
+func Test_parseToMap_Extended(t *testing.T) {
+	t.Parallel()
+	data := map[string][]string{
+		"empty": {},
+		"key1":  {"value1"},
+	}
+
+	m := make(map[string]string)
+	err := parseToMap(reflect.ValueOf(m), data)
+	require.NoError(t, err)
+	require.Empty(t, m["empty"])
+
+	m2 := make(map[string][]int)
+	err = parseToMap(reflect.ValueOf(m2), data)
+	require.ErrorIs(t, err, ErrMapNotConvertible)
+
+	m3 := make(map[string]int)
+	err = parseToMap(reflect.ValueOf(m3), data)
+	require.NoError(t, err)
+}
+
+func Test_decoderPoolMapInit(t *testing.T) {
+	t.Parallel()
+
+	for _, tag := range tags {
+		decAny := getDecoderPool(tag).Get()
+		dec, ok := decAny.(*schema.Decoder)
+		require.True(t, ok)
+		require.NotNil(t, dec)
+		getDecoderPool(tag).Put(decAny)
+	}
+}
+
+func TestSetParserDecoderConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
+	t.Cleanup(func() {
+		SetParserDecoder(ParserConfig{
+			IgnoreUnknownKeys: true,
+			ZeroEmpty:         true,
+		})
+	})
+
+	type queryUser struct {
+		Name string `query:"name"`
+	}
+
+	data := map[string][]string{
+		"name": {"fiber"},
+	}
+	parserConfig := ParserConfig{
+		IgnoreUnknownKeys: true,
+		ZeroEmpty:         true,
+	}
+
+	start := make(chan struct{})
+	const workers = 25
+	errCh := make(chan error, workers*2)
+	var wg sync.WaitGroup
+
+	runWorker := func(fn func() error) {
+		wg.Go(func() {
+			<-start
+
+			defer func() {
+				if r := recover(); r != nil {
+					errCh <- fmt.Errorf("panic: %v", r)
+				}
+			}()
+
+			if err := fn(); err != nil {
+				errCh <- err
+			}
+		})
+	}
+
+	for i := 0; i < workers; i++ {
+		runWorker(func() error {
+			SetParserDecoder(parserConfig)
+			return nil
+		})
+
+		runWorker(func() error {
+			var out queryUser
+			if err := parseToStruct("query", &out, data); err != nil {
+				return err
+			}
+
+			if out.Name != "fiber" {
+				return fmt.Errorf("unexpected name %q", out.Name)
+			}
+
+			return nil
+		})
+	}
+
+	close(start)
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+}
+
+func Test_getFieldCache(t *testing.T) {
+	t.Parallel()
+	require.NotNil(t, getFieldCache("header"))
+	require.NotNil(t, getFieldCache("respHeader"))
+	require.NotNil(t, getFieldCache("cookie"))
+	require.NotNil(t, getFieldCache("form"))
+	require.NotNil(t, getFieldCache("uri"))
+	require.NotNil(t, getFieldCache("query"))
+	require.Panics(t, func() { getFieldCache("unknown") })
+}
+
+func Test_EqualFieldType_Map(t *testing.T) {
+	t.Parallel()
+	m := map[string]int{}
+	require.True(t, equalFieldType(&m, reflect.Int, "any", "query"))
+}
+
+func Test_equalFieldType_CacheTypeMismatch(t *testing.T) {
+	type Sample struct {
+		Field string `query:"field"`
+	}
+	cache := getFieldCache("query")
+	typ := reflect.TypeOf(Sample{})
+	cache.Store(typ, 1)
+	defer cache.Delete(typ)
+	var s Sample
+	require.False(t, equalFieldType(&s, reflect.String, "field", "query"))
+}
+
+func Test_buildFieldInfo_Unexported(t *testing.T) {
+	t.Parallel()
+	type nested struct {
+		export   int
+		Exported int
+	}
+	_ = nested{export: 0}
+	type outer struct {
+		Name   string
+		Nested nested
+	}
+	info := buildFieldInfo(reflect.TypeOf(outer{}), "query")
+	require.Contains(t, info.names, "name")
+	_, ok := info.nestedKinds[reflect.Int]
+	require.True(t, ok)
+}
+
+func Test_formatBindData_BracketNotationSuccess(t *testing.T) {
+	t.Parallel()
+	out := struct{}{}
+	data := make(map[string][]string)
+	err := formatBindData("query", out, data, "user[name]", "john", false, true)
+	require.NoError(t, err)
+	require.Equal(t, "john", data["user.name"][0])
+}
+
+func Test_formatBindData_FileHeaderTypeMismatch(t *testing.T) {
+	t.Parallel()
+	out := struct{}{}
+	data := map[string][]int{}
+	files := []*multipart.FileHeader{{Filename: "file1.txt"}}
+	err := formatBindData("query", out, data, "file", files, false, false)
+	require.EqualError(t, err, "unsupported value type: []*multipart.FileHeader")
 }
 
 func Benchmark_equalFieldType(b *testing.B) {

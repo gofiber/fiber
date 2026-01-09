@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
@@ -31,7 +32,7 @@ type Config struct {
 
 	// KeyGenerator generates the session key.
 	//
-	// Optional. Default: utils.UUIDv4
+	// Optional. Default: utils.SecureToken
 	KeyGenerator func() string
 
 	// CookieDomain defines the domain of the session cookie.
@@ -50,9 +51,10 @@ type Config struct {
 	CookieSameSite string
 
 	// Extractor is used to extract the session ID from the request.
+	// See: https://docs.gofiber.io/guide/extractors
 	//
-	// Optional. Default: FromCookie("session_id")
-	Extractor Extractor
+	// Optional. Default: extractors.FromCookie("session_id")
+	Extractor extractors.Extractor
 
 	// IdleTimeout defines the maximum duration of inactivity before the session expires.
 	//
@@ -90,8 +92,8 @@ type Config struct {
 // ConfigDefault provides the default configuration.
 var ConfigDefault = Config{
 	IdleTimeout:    30 * time.Minute,
-	KeyGenerator:   utils.UUIDv4,
-	Extractor:      FromCookie("session_id"),
+	KeyGenerator:   utils.SecureToken,
+	Extractor:      extractors.FromCookie("session_id"),
 	CookieSameSite: "Lax",
 }
 

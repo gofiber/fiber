@@ -99,7 +99,7 @@ type Res interface {
 	// Variables are read by the Render method and may be overwritten.
 	ViewBind(vars Map) error
 	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route, params Map) (string, error)
+	getLocationFromRoute(route *Route, params Map) (string, error)
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
@@ -109,6 +109,17 @@ type Res interface {
 	// Send sets the HTTP response body without copying it.
 	// From this point onward the body argument must not be changed.
 	Send(body []byte) error
+	// SendEarlyHints allows the server to hint to the browser what resources a page would need
+	// so the browser can preload them while waiting for the server's full response. Only Link
+	// headers already written to the response will be transmitted as Early Hints.
+	//
+	// This is a HTTP/2+ feature but all browsers will either understand it or safely ignore it.
+	//
+	// NOTE: Older HTTP/1.1 non-browser clients may face compatibility issues.
+	//
+	// See: https://developer.chrome.com/docs/web-platform/early-hints and
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Link#syntax
+	SendEarlyHints(hints []string) error
 	// SendFile transfers the file from the specified path.
 	// By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
 	// The Content-Type response HTTP header field is set based on the file's extension.
@@ -133,7 +144,7 @@ type Res interface {
 	// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 	Type(extension string, charset ...string) Ctx
 	// Vary adds the given header field to the Vary response header.
-	// This will append the header, if not already listed, otherwise leaves it listed in the current location.
+	// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
 	Vary(fields ...string)
 	// Write appends p into response body.
 	Write(p []byte) (int, error)

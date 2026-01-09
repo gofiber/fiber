@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 📝 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -18,21 +18,21 @@ import (
 
 func Test_Utils_GetOffer(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "", getOffer([]byte("hello"), acceptsOffer))
+	require.Empty(t, getOffer([]byte("hello"), acceptsOffer))
 	require.Equal(t, "1", getOffer([]byte(""), acceptsOffer, "1"))
-	require.Equal(t, "", getOffer([]byte("2"), acceptsOffer, "1"))
+	require.Empty(t, getOffer([]byte("2"), acceptsOffer, "1"))
 
-	require.Equal(t, "", getOffer([]byte(""), acceptsOfferType))
-	require.Equal(t, "", getOffer([]byte("text/html"), acceptsOfferType))
-	require.Equal(t, "", getOffer([]byte("text/html"), acceptsOfferType, "application/json"))
-	require.Equal(t, "", getOffer([]byte("text/html;q=0"), acceptsOfferType, "text/html"))
-	require.Equal(t, "", getOffer([]byte("application/json, */*; q=0"), acceptsOfferType, "image/png"))
+	require.Empty(t, getOffer([]byte(""), acceptsOfferType))
+	require.Empty(t, getOffer([]byte("text/html"), acceptsOfferType))
+	require.Empty(t, getOffer([]byte("text/html"), acceptsOfferType, "application/json"))
+	require.Empty(t, getOffer([]byte("text/html;q=0"), acceptsOfferType, "text/html"))
+	require.Empty(t, getOffer([]byte("application/json, */*; q=0"), acceptsOfferType, "image/png"))
 	require.Equal(t, "application/xml", getOffer([]byte("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"), acceptsOfferType, "application/xml", "application/json"))
 	require.Equal(t, "text/html", getOffer([]byte("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"), acceptsOfferType, "text/html"))
 	require.Equal(t, "application/pdf", getOffer([]byte("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000"), acceptsOfferType, "application/pdf", "application/json"))
 	require.Equal(t, "application/pdf", getOffer([]byte("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000"), acceptsOfferType, "application/pdf", "application/json"))
 	require.Equal(t, "text/plain;a=1", getOffer([]byte("text/plain;a=1"), acceptsOfferType, "text/plain;a=1"))
-	require.Equal(t, "", getOffer([]byte("text/plain;a=1;b=2"), acceptsOfferType, "text/plain;b=2"))
+	require.Empty(t, getOffer([]byte("text/plain;a=1;b=2"), acceptsOfferType, "text/plain;b=2"))
 
 	// Spaces, quotes, out of order params, and case insensitivity
 	require.Equal(t, "text/plain", getOffer([]byte("text/plain  "), acceptsOfferType, "text/plain"))
@@ -54,13 +54,25 @@ func Test_Utils_GetOffer(t *testing.T) {
 	// Takes the last value specified
 	require.Equal(t, "text/plain;a=1;b=2", getOffer([]byte("text/plain;a=1;b=1;B=2"), acceptsOfferType, "text/plain;a=1;b=1", "text/plain;a=1;b=2"))
 
-	require.Equal(t, "", getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer))
-	require.Equal(t, "", getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer, "ascii"))
+	require.Empty(t, getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer))
+	require.Empty(t, getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer, "ascii"))
 	require.Equal(t, "utf-8", getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer, "utf-8"))
 	require.Equal(t, "iso-8859-1", getOffer([]byte("utf-8;q=0, iso-8859-1;q=0.5"), acceptsOffer, "utf-8", "iso-8859-1"))
 
+	// Accept-Charset wildcard coverage
+	require.Equal(t, "utf-8", getOffer([]byte("utf-*"), acceptsOffer, "utf-8"))
+	require.Equal(t, "UTF-16", getOffer([]byte("utf-*"), acceptsOffer, "UTF-16", "iso-8859-1"))
+	require.Empty(t, getOffer([]byte("utf-*"), acceptsOffer, "iso-8859-1"))
+	require.Empty(t, getOffer([]byte("utf-*"), acceptsOffer, "utf"))
+	require.Empty(t, getOffer([]byte("utf-*"), acceptsOffer, "x-utf-8"))
+
+	// Complex wildcard negotiation
+	require.Equal(t, "utf-16le", getOffer([]byte("utf-8;q=0.4, utf-*;q=0.8, iso-8859-1;q=0.6"), acceptsOffer, "iso-8859-1", "utf-16le"))
+	require.Equal(t, "iso-8859-1", getOffer([]byte("utf-*;q=0.9, iso-8859-1;q=1"), acceptsOffer, "x-utf-16", "iso-8859-1"))
+	require.Empty(t, getOffer([]byte("utf-*;q=0.5, iso-8859-1;q=0.4"), acceptsOffer, "ascii", "us-ascii"))
+
 	require.Equal(t, "deflate", getOffer([]byte("gzip, deflate"), acceptsOffer, "deflate"))
-	require.Equal(t, "", getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
+	require.Empty(t, getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
 
 	// Accept-Language Basic Filtering
 	require.True(t, acceptsLanguageOfferBasic("en", "en-US", nil))
@@ -68,7 +80,7 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.True(t, acceptsLanguageOfferBasic("EN", "en-us", nil))
 	require.False(t, acceptsLanguageOfferBasic("en", "en_US", nil))
 	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOfferBasic, "en-US", "fr-CA"))
-	require.Equal(t, "", getOffer([]byte("xx"), acceptsLanguageOfferBasic, "en"))
+	require.Empty(t, getOffer([]byte("xx"), acceptsLanguageOfferBasic, "en"))
 	require.False(t, acceptsLanguageOfferBasic("en-*", "en-US", nil))
 	require.True(t, acceptsLanguageOfferBasic("*", "en-US", nil))
 
@@ -222,7 +234,7 @@ func Test_Utils_ParamsMatch(t *testing.T) {
 			match:       true,
 		},
 		{
-			description: "case insensitive",
+			description: "case-insensitive",
 			accept:      headerParams{"ParaM": []byte("FoO")},
 			offer:       ";pAram=foO",
 			match:       true,
@@ -638,6 +650,13 @@ func Test_Utils_IsNoCache(t *testing.T) {
 		{string: "max-age=30, no-cache,public", bool: true},
 		{string: "NO-CACHE", bool: true},
 		{string: "public, NO-CACHE", bool: true},
+		// RFC 9111 §5.2.2.4: no-cache with field-name argument
+		{string: "no-cache=\"Set-Cookie\"", bool: true},
+		{string: "public, no-cache=\"Set-Cookie, Set-Cookie2\"", bool: true},
+		{string: "no-cache=Set-Cookie", bool: true},
+		// Edge cases with spaces
+		{string: "no-cache ,public", bool: true},
+		{string: "public, no-cache =field", bool: true},
 	}
 
 	for _, c := range testCases {
@@ -657,6 +676,61 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 		_ = isNoCache("public,no-cache")
 		_ = isNoCache("no-cache, public")
 		ok = isNoCache("max-age=30, no-cache,public")
+	}
+	require.True(b, ok)
+}
+
+// go test -run Test_HeaderContainsValue
+func Test_HeaderContainsValue(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		header   string
+		value    string
+		expected bool
+	}{
+		// Exact match
+		{header: "gzip", value: "gzip", expected: true},
+		{header: "gzip", value: "deflate", expected: false},
+		// Prefix match (value at start with comma)
+		{header: "gzip, deflate", value: "gzip", expected: true},
+		{header: "gzip,deflate", value: "gzip", expected: true},
+		// Suffix match (value at end)
+		{header: "deflate, gzip", value: "gzip", expected: true},
+		{header: "deflate,gzip", value: "gzip", expected: true}, // No space - OWS is optional per RFC 9110
+		{header: "br, gzip", value: "gzip", expected: true},
+		// Middle match (value in middle)
+		{header: "deflate, gzip, br", value: "gzip", expected: true},
+		{header: "deflate,gzip,br", value: "gzip", expected: true}, // No spaces - OWS is optional per RFC 9110
+		// No match - similar but not equal
+		{header: "gzip2", value: "gzip", expected: false},
+		{header: "2gzip", value: "gzip", expected: false},
+		{header: "gzip2, deflate", value: "gzip", expected: false},
+		// Whitespace handling (OWS per RFC 9110)
+		{header: "  gzip  ,  deflate  ", value: "gzip", expected: true},
+		{header: "deflate,  gzip  ", value: "gzip", expected: true},
+		// Empty cases
+		{header: "", value: "gzip", expected: false},
+		{header: "gzip", value: "", expected: false},
+		{header: "", value: "", expected: false}, // Both empty - should return false
+	}
+
+	for _, tc := range testCases {
+		result := headerContainsValue(tc.header, tc.value)
+		require.Equal(t, tc.expected, result,
+			"headerContainsValue(%q, %q) = %v, want %v",
+			tc.header, tc.value, result, tc.expected)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_HeaderContainsValue -benchmem -count=4
+func Benchmark_HeaderContainsValue(b *testing.B) {
+	var ok bool
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = headerContainsValue("gzip", "gzip")
+		_ = headerContainsValue("gzip, deflate, br", "deflate")
+		_ = headerContainsValue("deflate, gzip", "gzip")
+		ok = headerContainsValue("deflate, gzip, br", "gzip")
 	}
 	require.True(b, ok)
 }

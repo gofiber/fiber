@@ -7,6 +7,7 @@ import (
 // msgp -file="data.go" -o="data_msgp.go" -tests=true -unexported
 //
 //go:generate msgp -o=data_msgp.go -tests=true -unexported
+//msgp:ignore data
 type data struct {
 	Data         map[any]any
 	sync.RWMutex `msg:"-"`
@@ -45,7 +46,7 @@ func acquireData() *data {
 func (d *data) Reset() {
 	d.Lock()
 	defer d.Unlock()
-	d.Data = make(map[any]any)
+	clear(d.Data)
 }
 
 // Get retrieves a value from the data map by key.

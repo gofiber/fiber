@@ -1,6 +1,8 @@
 package limiter
 
 import (
+	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"time"
@@ -9,10 +11,16 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
+// SlidingWindow implements the sliding-window rate limiting strategy.
 type SlidingWindow struct{}
 
 // New creates a new sliding window middleware handler
-func (SlidingWindow) New(cfg Config) fiber.Handler {
+func (SlidingWindow) New(cfg *Config) fiber.Handler {
+	if cfg == nil {
+		defaultCfg := configDefault()
+		cfg = &defaultCfg
+	}
+
 	var (
 		// Limiter variables
 		mux        = &sync.RWMutex{}
@@ -20,7 +28,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 	)
 
 	// Create manager to simplify storage operations ( see manager.go )
-	manager := newManager(cfg.Storage)
+	manager := newManager(cfg.Storage, !cfg.DisableValueRedaction)
 
 	// Update timestamp every second
 	utils.StartTimeStampUpdater()
@@ -41,48 +49,33 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// Lock entry
 		mux.Lock()
 
+		reqCtx := c.Context()
+
 		// Get entry from pool and release when finished
-		e := manager.get(c, key)
+		e, err := manager.get(reqCtx, key)
+		if err != nil {
+			mux.Unlock()
+			return err
+		}
 
 		// Get timestamp
 		ts := uint64(utils.Timestamp())
 
-		// Set expiration if entry does not exist
-		if e.exp == 0 {
-			e.exp = ts + expiration
-		} else if ts >= e.exp {
-			// The entry has expired, handle the expiration.
-			// Set the prevHits to the current hits and reset the hits to 0.
-			e.prevHits = e.currHits
-
-			// Reset the current hits to 0.
-			e.currHits = 0
-
-			// Check how much into the current window it currently is and sets the
-			// expiry based on that, otherwise this would only reset on
-			// the next request and not show the correct expiry.
-			elapsed := ts - e.exp
-			if elapsed >= expiration {
-				e.exp = ts + expiration
-			} else {
-				e.exp = ts + expiration - elapsed
-			}
-		}
+		// Rotate window
+		resetInSec := rotateWindow(e, ts, expiration)
+		windowExpiresAt := e.exp
 
 		// Increment hits
 		e.currHits++
-
-		// Calculate when it resets in seconds
-		resetInSec := e.exp - ts
 
 		// weight = time until current window reset / total window length
 		weight := float64(resetInSec) / float64(expiration)
 
 		// rate = request count in previous window - weight + request count in current window
-		rate := int(float64(e.prevHits)*weight) + e.currHits
+		rate := int(math.Ceil(float64(e.prevHits)*weight)) + e.currHits
 
 		// Calculate how many hits can be made based on the current rate
-		remaining := cfg.Max - rate
+		remaining := maxRequests - rate
 
 		// Update storage. Garbage collect when the next window ends.
 		// |--------------------------|--------------------------|
@@ -94,14 +87,17 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// duration + expiration = end of next window.
 		// Because we don't want to garbage collect in the middle of a window
 		// we add the expiration to the duration.
-		// Otherwise after the end of "sample window", attackers could launch
+		// Otherwise, after the end of "sample window", attackers could launch
 		// a new request with the full window length.
-		manager.set(c, key, e, time.Duration(resetInSec+expiration)*time.Second) //nolint:gosec // Not a concern
+		if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
+			mux.Unlock()
+			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+		}
 
 		// Unlock entry
 		mux.Unlock()
 
-		// Check if hits exceed the cfg.Max
+		// Check if hits exceed the allowed maximum for this request
 		if remaining < 0 {
 			// Return response with Retry-After header
 			// https://tools.ietf.org/html/rfc6584
@@ -115,31 +111,115 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 
 		// Continue stack for reaching c.Response().StatusCode()
 		// Store err for returning
-		err := c.Next()
+		err = c.Next()
 
 		// Get the effective status code from either the error or response
 		statusCode := getEffectiveStatusCode(c, err)
 
-		// Check for SkipFailedRequests and SkipSuccessfulRequests
-		if (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
-			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest) {
+		skipHit := (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
+			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest)
+
+		if skipHit || !cfg.DisableHeaders {
 			// Lock entry
 			mux.Lock()
-			e = manager.get(c, key)
-			e.currHits--
-			remaining++
-			manager.set(c, key, e, cfg.Expiration)
+			entry, getErr := manager.get(reqCtx, key)
+			if getErr != nil {
+				mux.Unlock()
+				return getErr
+			}
+			e = entry
+
+			ts = uint64(utils.Timestamp())
+			resetInSec = rotateWindow(e, ts, expiration)
+			weight = float64(resetInSec) / float64(expiration)
+
+			if skipHit {
+				if counter := bucketForOriginalHit(e, windowExpiresAt, ts, expiration); counter != nil && *counter > 0 {
+					*counter--
+				}
+			}
+
+			rate = int(math.Ceil(float64(e.prevHits)*weight)) + e.currHits
+			remaining = maxRequests - rate
+			if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
+				mux.Unlock()
+				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+			}
 			// Unlock entry
 			mux.Unlock()
-		}
 
-		// We can continue, update RateLimit headers
-		if !cfg.DisableHeaders {
-			c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))
-			c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
-			c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
+			// We can continue, update RateLimit headers
+			if !cfg.DisableHeaders {
+				c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))
+				c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
+				c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
+			}
 		}
 
 		return err
 	}
+}
+
+func rotateWindow(e *item, ts, expiration uint64) uint64 {
+	// Set expiration if entry does not exist
+	if e.exp == 0 {
+		e.exp = ts + expiration
+	} else if ts >= e.exp {
+		// The entry has expired, handle the expiration.
+		// Reset the current hits to 0.
+		elapsed := ts - e.exp
+		if elapsed >= expiration {
+			e.prevHits = 0
+			e.currHits = 0
+			e.exp = ts + expiration
+		} else {
+			e.prevHits = e.currHits
+			e.currHits = 0
+
+			e.exp = ts + expiration - elapsed
+		}
+	}
+
+	// Calculate when it resets in seconds
+	return e.exp - ts
+}
+
+func bucketForOriginalHit(e *item, requestExpiration, ts, expiration uint64) *int {
+	if ts < requestExpiration {
+		return &e.currHits
+	}
+
+	if ts-requestExpiration < expiration {
+		return &e.prevHits
+	}
+
+	return nil
+}
+
+func ttlDuration(resetInSec, expiration uint64) time.Duration {
+	resetDuration, ok := secondsToDuration(resetInSec)
+	if !ok {
+		return time.Duration(math.MaxInt64)
+	}
+
+	expirationDuration, ok := secondsToDuration(expiration)
+	if !ok {
+		return time.Duration(math.MaxInt64)
+	}
+
+	if resetDuration > time.Duration(math.MaxInt64)-expirationDuration {
+		return time.Duration(math.MaxInt64)
+	}
+
+	return resetDuration + expirationDuration
+}
+
+func secondsToDuration(seconds uint64) (time.Duration, bool) {
+	const maxSeconds = math.MaxInt64 / int64(time.Second)
+
+	if seconds > uint64(maxSeconds) {
+		return time.Duration(math.MaxInt64), false
+	}
+
+	return time.Duration(seconds) * time.Second, true
 }

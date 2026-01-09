@@ -1,10 +1,10 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
-// Register defines all router handle interface generate by Route().
+// Register defines all router handle interface generate by RouteChain().
 type Register interface {
 	All(handler any, handlers ...any) Register
 	Get(handler any, handlers ...any) Register
@@ -19,14 +19,16 @@ type Register interface {
 
 	Add(methods []string, handler any, handlers ...any) Register
 
-	Route(path string) Register
+	RouteChain(path string) Register
 }
 
-var _ (Register) = (*Registering)(nil)
+var _ Register = (*Registering)(nil)
 
-// Registering struct
+// Registering provides route registration helpers for a specific path on the
+// application instance.
 type Registering struct {
-	app *App
+	app   *App
+	group *Group
 
 	path string
 }
@@ -34,27 +36,27 @@ type Registering struct {
 // All registers a middleware route that will match requests
 // with the provided path which is stored in register struct.
 //
-//	app.Route("/").All(func(c fiber.Ctx) error {
+//	app.RouteChain("/").All(func(c fiber.Ctx) error {
 //	     return c.Next()
 //	})
-//	app.Route("/api").All(func(c fiber.Ctx) error {
+//	app.RouteChain("/api").All(func(c fiber.Ctx) error {
 //	     return c.Next()
 //	})
-//	app.Route("/api").All(handler, func(c fiber.Ctx) error {
+//	app.RouteChain("/api").All(handler, func(c fiber.Ctx) error {
 //	     return c.Next()
 //	})
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (r *Registering) All(handler any, handlers ...any) Register {
-	r.app.register([]string{methodUse}, r.path, nil, append([]any{handler}, handlers...)...)
+	converted := collectHandlers("register", append([]any{handler}, handlers...)...)
+	r.app.register([]string{methodUse}, r.path, r.group, converted...)
 	return r
 }
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (r *Registering) Get(handler any, handlers ...any) Register {
-	r.app.Add([]string{MethodGet}, r.path, handler, handlers...)
-	return r
+	return r.Add([]string{MethodGet}, handler, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -105,16 +107,18 @@ func (r *Registering) Patch(handler any, handlers ...any) Register {
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
+// The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (r *Registering) Add(methods []string, handler any, handlers ...any) Register {
-	r.app.register(methods, r.path, nil, append([]any{handler}, handlers...)...)
+	converted := collectHandlers("register", append([]any{handler}, handlers...)...)
+	r.app.register(methods, r.path, r.group, converted...)
 	return r
 }
 
-// Route returns a new Register instance whose route path takes
+// RouteChain returns a new Register instance whose route path takes
 // the path in the current instance as its prefix.
-func (r *Registering) Route(path string) Register {
+func (r *Registering) RouteChain(path string) Register {
 	// Create new group
-	route := &Registering{app: r.app, path: getGroupPath(r.path, path)}
+	route := &Registering{app: r.app, group: r.group, path: getGroupPath(r.path, path)}
 
 	return route
 }

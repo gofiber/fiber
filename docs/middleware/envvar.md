@@ -4,7 +4,7 @@ id: envvar
 
 # EnvVar
 
-EnvVar middleware for [Fiber](https://github.com/gofiber/fiber) that can be used to expose environment variables with various options.
+EnvVar middleware for [Fiber](https://github.com/gofiber/fiber) exposes environment variables with configurable options.
 
 ## Signatures
 
@@ -14,7 +14,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package:
 
 ```go
 import (
@@ -23,7 +23,7 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Once your Fiber app is initialized, configure the middleware as shown:
 
 ```go
 // Initialize default config (exports no variables)
@@ -38,18 +38,18 @@ app.Use("/expose/envvars", envvar.New(
 ```
 
 :::note
-You will need to provide a path to use the envvar middleware.
+Mount the middleware on a path; it cannot be used without one.
 :::
 
 ## Response
 
-Http response contract:
+Sample response:
 
 ```json
 {
   "vars": {
     "someEnvVariable": "someValue",
-    "anotherEnvVariable": "anotherValue",
+    "anotherEnvVariable": "anotherValue"
   }
 }
 
@@ -59,7 +59,7 @@ Http response contract:
 
 | Property    | Type                | Description                                                                  | Default |
 |:------------|:--------------------|:-----------------------------------------------------------------------------|:--------|
-| ExportVars  | `map[string]string` | ExportVars specifies the environment variables that should be exported. | `nil` |
+| ExportVars  | `map[string]string` | ExportVars lists the environment variables to expose. | `nil` |
 
 ## Default Config
 

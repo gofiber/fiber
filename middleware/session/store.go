@@ -27,11 +27,12 @@ const (
 	sessionIDContextKey sessionIDKey = iota
 )
 
+// Store manages session data using the configured storage backend.
 type Store struct {
 	Config
 }
 
-// New creates a new session store with the provided configuration.
+// NewStore creates a new session store with the provided configuration.
 //
 // Parameters:
 //   - config: Variadic parameter to override default config.
@@ -41,7 +42,7 @@ type Store struct {
 //
 // Usage:
 //
-//	store := session.New()
+//	store := session.NewStore()
 func NewStore(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)
@@ -127,7 +128,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		id = s.getSessionID(c)
 	}
 
-	fresh := ok // Assume the session is fresh if the ID is found in locals
+	fresh := false // Session is not fresh initially; only set to true if we generate a new ID
 
 	// Attempt to fetch session data if an ID is provided
 	if id != "" {
@@ -185,6 +186,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 }
 
 // getSessionID returns the session ID using the configured extractor.
+// The extractor is provided by the shared extractors package.
 //
 // Parameters:
 //   - c: The Fiber context.
@@ -264,7 +266,7 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 //   - id: The unique identifier of the session.
 //
 // Returns:
-//   - *Session: The session object if found, otherwise nil.
+//   - *Session: The session object if found; otherwise, nil.
 //   - error: An error if the session retrieval fails or if the session ID is empty.
 //
 // Usage:

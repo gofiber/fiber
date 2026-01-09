@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 📝 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -248,7 +248,7 @@ func init() {
 					{url: "/fooba", params: nil, match: false},
 				},
 			},
-			// chars in front of an parameter
+			// chars in front of a parameter
 			{
 				pattern: "/name::name",
 				testCases: []routeTestCase{
@@ -336,12 +336,38 @@ func init() {
 				},
 			},
 			{
+				pattern: "/partialCheck/foo/",
+				testCases: []routeTestCase{
+					{url: "/partialCheck/foo/", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foo/bar", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foo/bar/baz", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foobar", params: nil, match: false, partialCheck: true},
+				},
+			},
+			{
 				pattern: "/partialCheck/foo/bar/:param",
 				testCases: []routeTestCase{
 					{url: "/partialCheck/foo/bar/test", params: []string{"test"}, match: true, partialCheck: true},
 					{url: "/partialCheck/foo/bar/test/test2", params: []string{"test"}, match: true, partialCheck: true},
 					{url: "/partialCheck/foo/bar", params: nil, match: false, partialCheck: true},
-					{url: "/partiaFoo", params: nil, match: false, partialCheck: true},
+					{url: "/partialFoo", params: nil, match: false, partialCheck: true},
+				},
+			},
+			{
+				pattern: "/partialCheck/foo",
+				testCases: []routeTestCase{
+					{url: "/partialCheck/foo", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foo/", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foo/bar", params: nil, match: true, partialCheck: true},
+					{url: "/partialCheck/foobar", params: nil, match: false, partialCheck: true},
+				},
+			},
+			{
+				pattern: "/partialCheck/:param",
+				testCases: []routeTestCase{
+					{url: "/partialCheck/value", params: []string{"value"}, match: true, partialCheck: true},
+					{url: "/partialCheck/value/", params: []string{"value"}, match: true, partialCheck: true},
+					{url: "/partialCheck/value/next", params: []string{"value"}, match: true, partialCheck: true},
 				},
 			},
 			{

@@ -446,7 +446,7 @@ func Test_LogServices(t *testing.T) {
 		Red:   "\033[31m",
 	}
 
-	app.logServices(context.Background(), &buf, colors)
+	app.logServices(context.Background(), &buf, &colors)
 
 	output := buf.String()
 

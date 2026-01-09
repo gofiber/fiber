@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -66,42 +66,48 @@ var DefaultColors = Colors{
 }
 
 // defaultColors is a function to override default colors to config
-func defaultColors(colors Colors) Colors {
-	if colors.Black == "" {
-		colors.Black = DefaultColors.Black
+func defaultColors(colors *Colors) Colors {
+	if colors == nil {
+		return DefaultColors
 	}
 
-	if colors.Red == "" {
-		colors.Red = DefaultColors.Red
+	cfg := *colors
+
+	if cfg.Black == "" {
+		cfg.Black = DefaultColors.Black
 	}
 
-	if colors.Green == "" {
-		colors.Green = DefaultColors.Green
+	if cfg.Red == "" {
+		cfg.Red = DefaultColors.Red
 	}
 
-	if colors.Yellow == "" {
-		colors.Yellow = DefaultColors.Yellow
+	if cfg.Green == "" {
+		cfg.Green = DefaultColors.Green
 	}
 
-	if colors.Blue == "" {
-		colors.Blue = DefaultColors.Blue
+	if cfg.Yellow == "" {
+		cfg.Yellow = DefaultColors.Yellow
 	}
 
-	if colors.Magenta == "" {
-		colors.Magenta = DefaultColors.Magenta
+	if cfg.Blue == "" {
+		cfg.Blue = DefaultColors.Blue
 	}
 
-	if colors.Cyan == "" {
-		colors.Cyan = DefaultColors.Cyan
+	if cfg.Magenta == "" {
+		cfg.Magenta = DefaultColors.Magenta
 	}
 
-	if colors.White == "" {
-		colors.White = DefaultColors.White
+	if cfg.Cyan == "" {
+		cfg.Cyan = DefaultColors.Cyan
 	}
 
-	if colors.Reset == "" {
-		colors.Reset = DefaultColors.Reset
+	if cfg.White == "" {
+		cfg.White = DefaultColors.White
 	}
 
-	return colors
+	if cfg.Reset == "" {
+		cfg.Reset = DefaultColors.Reset
+	}
+
+	return cfg
 }

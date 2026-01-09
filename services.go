@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // Service is an interface that defines the methods for a service.
@@ -123,25 +124,30 @@ func (app *App) shutdownServices(ctx context.Context) error {
 }
 
 // logServices logs information about services
-func (app *App) logServices(ctx context.Context, out io.Writer, colors Colors) {
+func (app *App) logServices(ctx context.Context, out io.Writer, colors *Colors) {
 	if !app.hasConfiguredServices() {
 		return
 	}
 
+	scheme := colors
+	if scheme == nil {
+		scheme = &DefaultColors
+	}
+
 	fmt.Fprintf(out,
 		"%sINFO%s Services: \t%s%d%s\n",
-		colors.Green, colors.Reset, colors.Blue, app.state.ServicesLen(), colors.Reset)
+		scheme.Green, scheme.Reset, scheme.Blue, app.state.ServicesLen(), scheme.Reset)
 	for _, srv := range app.state.Services() {
 		var state string
 		var stateColor string
 		state, err := srv.State(ctx)
 		if err != nil {
-			state = "ERROR"
-			stateColor = colors.Red
+			state = errString
+			stateColor = scheme.Red
 		} else {
-			stateColor = colors.Blue
-			state = strings.ToUpper(state)
+			stateColor = scheme.Blue
+			state = utils.ToUpper(state)
 		}
-		fmt.Fprintf(out, "%sINFO%s    🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), srv.String(), colors.Reset)
+		fmt.Fprintf(out, "%sINFO%s    🥡 %s[ %s ] %s%s\n", scheme.Green, scheme.Reset, stateColor, utils.ToUpper(state), srv.String(), scheme.Reset)
 	}
 }

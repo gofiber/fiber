@@ -8,7 +8,10 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-func methodColor(method string, colors fiber.Colors) string {
+func methodColor(method string, colors *fiber.Colors) string {
+	if colors == nil {
+		return ""
+	}
 	switch method {
 	case fiber.MethodGet:
 		return colors.Cyan
@@ -29,7 +32,10 @@ func methodColor(method string, colors fiber.Colors) string {
 	}
 }
 
-func statusColor(code int, colors fiber.Colors) string {
+func statusColor(code int, colors *fiber.Colors) string {
+	if colors == nil {
+		return ""
+	}
 	switch {
 	case code >= fiber.StatusOK && code < fiber.StatusMultipleChoices:
 		return colors.Green
@@ -42,12 +48,13 @@ func statusColor(code int, colors fiber.Colors) string {
 	}
 }
 
-type customLoggerWriter struct {
-	loggerInstance fiberlog.AllLogger
+type customLoggerWriter[T any] struct {
+	loggerInstance fiberlog.AllLogger[T]
 	level          fiberlog.Level
 }
 
-func (cl *customLoggerWriter) Write(p []byte) (int, error) {
+// Write implements io.Writer and forwards the payload to the configured logger.
+func (cl *customLoggerWriter[T]) Write(p []byte) (int, error) {
 	switch cl.level {
 	case fiberlog.LevelTrace:
 		cl.loggerInstance.Trace(utils.UnsafeString(p))
@@ -70,7 +77,7 @@ func (cl *customLoggerWriter) Write(p []byte) (int, error) {
 // You can integrate 3rd party loggers such as zerolog, logrus, etc. to logger middleware using this function.
 //
 // Valid levels: fiberlog.LevelInfo, fiberlog.LevelTrace, fiberlog.LevelWarn, fiberlog.LevelDebug, fiberlog.LevelError
-func LoggerToWriter(logger fiberlog.AllLogger, level fiberlog.Level) io.Writer {
+func LoggerToWriter[T any](logger fiberlog.AllLogger[T], level fiberlog.Level) io.Writer {
 	// Check if customLogger is nil
 	if logger == nil {
 		fiberlog.Panic("LoggerToWriter: customLogger must not be nil")
@@ -81,7 +88,7 @@ func LoggerToWriter(logger fiberlog.AllLogger, level fiberlog.Level) io.Writer {
 		fiberlog.Panic("LoggerToWriter: invalid level")
 	}
 
-	return &customLoggerWriter{
+	return &customLoggerWriter[T]{
 		level:          level,
 		loggerInstance: logger,
 	}

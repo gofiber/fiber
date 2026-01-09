@@ -4,7 +4,7 @@ id: redirect
 
 # Redirect
 
-Redirection middleware for Fiber.
+Redirect middleware maps old URLs to new ones using simple rules.
 
 ## Signatures
 
@@ -24,7 +24,7 @@ import (
 
 func main() {
     app := fiber.New()
-    
+
     app.Use(redirect.New(redirect.Config{
       Rules: map[string]string{
         "/old":   "/new",
@@ -32,14 +32,14 @@ func main() {
       },
       StatusCode: fiber.StatusMovedPermanently,
     }))
-    
+
     app.Get("/new", func(c fiber.Ctx) error {
       return c.SendString("Hello, World!")
     })
     app.Get("/new/*", func(c fiber.Ctx) error {
       return c.SendString("Wildcard: " + c.Params("*"))
     })
-    
+
     app.Listen(":3000")
 }
 ```
@@ -53,11 +53,11 @@ curl http://localhost:3000/old/hello
 
 ## Config
 
-| Property   | Type                    | Description                                                                                                                | Default                |
-|:-----------|:------------------------|:---------------------------------------------------------------------------------------------------------------------------|:-----------------------|
-| Next       | `func(fiber.Ctx) bool` | Filter defines a function to skip middleware.                                                                              | `nil`                  |
-| Rules      | `map[string]string`     | Rules defines the URL path rewrite rules. The values captured in asterisk can be retrieved by index e.g. $1, $2 and so on. | Required               |
-| StatusCode | `int`                   | The status code when redirecting. This is ignored if Redirect is disabled.                                                 | 302 Temporary Redirect |
+| Property   | Type                | Description                               | Default                |
+|:-----------|:--------------------|:------------------------------------------|:-----------------------|
+| Next       | `func(fiber.Ctx) bool` | Skip when function returns true.          | nil                    |
+| Rules      | `map[string]string`   | Map paths to new ones; `$1`, `$2` insert params. | Required               |
+| StatusCode | `int`                 | HTTP code for redirects.                  | 302 Temporary Redirect |
 
 ## Default Config
 

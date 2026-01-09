@@ -17,7 +17,7 @@ type Config struct {
 	// Required. Example:
 	// "/old":              "/new",
 	// "/api/*":            "/$1",
-	// "/js/*":             "/public/javascripts/$1",
+	// "/js/*":             "/public/javascript/$1",
 	// "/users/*/orders/*": "/user/$1/order/$2",
 	Rules map[string]string
 

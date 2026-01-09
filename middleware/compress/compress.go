@@ -1,9 +1,54 @@
 package compress
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/etag"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
+
+func hasToken(header, token string) bool {
+	for part := range strings.SplitSeq(header, ",") {
+		if utils.EqualFold(utils.TrimSpace(part), token) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldSkip(c fiber.Ctx) bool {
+	if c.Method() == fiber.MethodHead {
+		return true
+	}
+
+	status := c.Response().StatusCode()
+	if status < 200 ||
+		status == fiber.StatusNoContent ||
+		status == fiber.StatusResetContent ||
+		status == fiber.StatusNotModified ||
+		status == fiber.StatusPartialContent ||
+		len(c.Response().Body()) == 0 ||
+		c.Get(fiber.HeaderRange) != "" ||
+		hasToken(c.Get(fiber.HeaderCacheControl), "no-transform") ||
+		hasToken(c.GetRespHeader(fiber.HeaderCacheControl), "no-transform") {
+		return true
+	}
+	return false
+}
+
+func appendVaryAcceptEncoding(c fiber.Ctx) {
+	vary := c.GetRespHeader(fiber.HeaderVary)
+	if vary == "" {
+		c.Set(fiber.HeaderVary, fiber.HeaderAcceptEncoding)
+		return
+	}
+	if hasToken(vary, "*") || hasToken(vary, fiber.HeaderAcceptEncoding) {
+		return
+	}
+	c.Set(fiber.HeaderVary, vary+", "+fiber.HeaderAcceptEncoding)
+}
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -55,10 +100,26 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
-		// Compress response
+		if shouldSkip(c) {
+			appendVaryAcceptEncoding(c)
+			return nil
+		}
+
+		if c.GetRespHeader(fiber.HeaderContentEncoding) != "" {
+			appendVaryAcceptEncoding(c)
+			return nil
+		}
+
 		compressor(c.RequestCtx())
 
-		// Return from handler
+		if tag := c.GetRespHeader(fiber.HeaderETag); tag != "" && !strings.HasPrefix(tag, "W/") {
+			if c.GetRespHeader(fiber.HeaderContentEncoding) != "" {
+				c.Set(fiber.HeaderETag, string(etag.Generate(c.Response().Body())))
+			}
+		}
+
+		appendVaryAcceptEncoding(c)
+
 		return nil
 	}
 }

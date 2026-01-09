@@ -33,13 +33,13 @@
 
 ## ⚠️ **Attention**
 
-Fiber v3 is currently in beta and under active development. While it offers exciting new features, please note that it may not be stable for production use. We recommend sticking to the latest stable release (v2.x) for mission-critical applications. If you choose to use v3, be prepared for potential bugs and breaking changes. Always check the official documentation and release notes for updates and proceed with caution. Happy coding! 🚀
+Fiber v3 is currently in rc and under active development. While it offers exciting new features, please note that it may not be stable for production use. We recommend sticking to the latest stable release (v2.x) for mission-critical applications. If you choose to use v3, be prepared for potential bugs and breaking changes. Always check the official documentation and release notes for updates and proceed with caution. Happy coding! 🚀
 
 ---
 
 ## ⚙️ Installation
 
-Fiber requires **Go version `1.24` or higher** to run. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/). To start setting up your project, create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
+Fiber requires **Go version `1.25` or higher** to run. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/). To start setting up your project, create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
 
 ```bash
 go mod init github.com/your/repo
@@ -125,11 +125,67 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 ## ⚠️ Limitations
 
 - Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.24 or higher.
-- Fiber does not natively expose the `net/http` interfaces. When you need to integrate with that ecosystem, use the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/) to bridge handlers and middlewares between Fiber and `net/http`.
+- Fiber automatically adapts common `net/http` handler shapes when you register them on the router, and you can still use the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/) when you need to bridge entire apps or `net/http` middleware.
 
 ### net/http compatibility
 
-Fiber can run side by side with the standard library by using the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/). It converts handlers and middlewares in both directions and even lets you mount a Fiber app in a `net/http` server.
+Fiber can run side by side with the standard library. The router accepts existing `net/http` handlers directly and even works with native `fasthttp.RequestHandler` callbacks, so you can plug in legacy endpoints without wrapping them manually:
+
+```go
+package main
+
+import (
+    "log"
+    "net/http"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if _, err := w.Write([]byte("served by net/http")); err != nil {
+            panic(err)
+        }
+    })
+
+    app := fiber.New()
+    app.Get("/", httpHandler)
+
+    // Start the server on port 3000
+    log.Fatal(app.Listen(":3000"))
+}
+```
+
+When you need to convert entire applications or re-use `net/http` middleware chains, rely on the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/). It converts handlers and middlewares in both directions and even lets you mount a Fiber app in a `net/http` server.
+
+### Express-style handlers
+
+Fiber also adapts Express-style callbacks that operate on the lightweight `fiber.Req` and `fiber.Res` helper interfaces. This lets you port middleware and route handlers from Express-inspired codebases while keeping Fiber's router features:
+
+```go
+// Request/response handlers (2-argument)
+app.Get("/", func(req fiber.Req, res fiber.Res) error {
+    return res.SendString("Hello from Express-style handlers!")
+})
+
+// Middleware with an error-returning next callback (3-argument)
+app.Use(func(req fiber.Req, res fiber.Res, next func() error) error {
+    if req.IP() == "192.168.1.254" {
+        return res.SendStatus(fiber.StatusForbidden)
+    }
+    return next()
+})
+
+// Middleware with a no-arg next callback (3-argument)
+app.Use(func(req fiber.Req, res fiber.Res, next func()) {
+    if req.Get("X-Skip") == "true" {
+        return // stop the chain without calling next
+    }
+    next()
+})
+```
+
+> **Note:** Adapted `net/http` handlers continue to operate with the standard-library semantics. They don't get access to `fiber.Ctx` features and incur the overhead of the compatibility layer, so native `fiber.Handler` callbacks still provide the best performance.
 
 ## 👀 Examples
 
@@ -698,6 +754,7 @@ Here is a list of middleware that are included within the Fiber framework.
 | [recover](https://github.com/gofiber/fiber/tree/main/middleware/recover)             | Recovers from panics anywhere in the stack chain and handles the control to the centralized ErrorHandler.                                                               |
 | [redirect](https://github.com/gofiber/fiber/tree/main/middleware/redirect)           | Redirect middleware.                                                                                                                                                    |
 | [requestid](https://github.com/gofiber/fiber/tree/main/middleware/requestid)         | Adds a request ID to every request.                                                                                                                                     |
+| [responsetime](https://github.com/gofiber/fiber/tree/main/middleware/responsetime)   | Measures request handling duration and writes it to a configurable response header.                          |
 | [rewrite](https://github.com/gofiber/fiber/tree/main/middleware/rewrite)             | Rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links.                        |
 | [session](https://github.com/gofiber/fiber/tree/main/middleware/session)             | Session middleware. NOTE: This middleware uses our Storage package.                                                                                                     |
 | [skip](https://github.com/gofiber/fiber/tree/main/middleware/skip)                   | Skip middleware that skips a wrapped handler if a predicate is true.                                                                                                    |

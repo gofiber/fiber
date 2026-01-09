@@ -3,13 +3,16 @@ package encryptcookie
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 func Test_Middleware_Panics(t *testing.T) {
@@ -51,7 +54,7 @@ func Test_Middleware_InvalidKeys(t *testing.T) {
 			require.NoError(t, err)
 			keyString := base64.StdEncoding.EncodeToString(key)
 
-			_, err = EncryptCookie("SomeThing", keyString)
+			_, err = EncryptCookie("test", "SomeThing", keyString)
 			require.Error(t, err)
 		})
 
@@ -62,7 +65,7 @@ func Test_Middleware_InvalidKeys(t *testing.T) {
 			require.NoError(t, err)
 			keyString := base64.StdEncoding.EncodeToString(key)
 
-			_, err = DecryptCookie("SomeThing", keyString)
+			_, err = DecryptCookie("test", "SomeThing", keyString)
 			require.Error(t, err)
 		})
 	}
@@ -74,24 +77,113 @@ func Test_Middleware_InvalidBase64(t *testing.T) {
 
 	t.Run("encryptor", func(t *testing.T) {
 		t.Parallel()
-		_, err := EncryptCookie("SomeText", invalidBase64)
+		_, err := EncryptCookie("test", "SomeText", invalidBase64)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "failed to base64-decode key")
 	})
 
 	t.Run("decryptor_key", func(t *testing.T) {
 		t.Parallel()
-		_, err := DecryptCookie("SomeText", invalidBase64)
+		_, err := DecryptCookie("test", "SomeText", invalidBase64)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "failed to base64-decode key")
 	})
 
 	t.Run("decryptor_value", func(t *testing.T) {
 		t.Parallel()
-		_, err := DecryptCookie(invalidBase64, GenerateKey(32))
+		_, err := DecryptCookie("test", invalidBase64, GenerateKey(32))
 		require.Error(t, err)
 		require.ErrorContains(t, err, "failed to base64-decode value")
 	})
+}
+
+func Test_DecryptCookie_InvalidEncryptedValue(t *testing.T) {
+	t.Parallel()
+
+	key := GenerateKey(32)
+	// the decoded value is shorter than the GCM nonce size, so decryption should fail immediately
+	shortValue := base64.StdEncoding.EncodeToString([]byte("short"))
+
+	_, err := DecryptCookie("session", shortValue, key)
+	require.ErrorIs(t, err, ErrInvalidEncryptedValue)
+}
+
+func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
+	t.Parallel()
+
+	testKey := GenerateKey(32)
+	expected := errors.New("encrypt failed")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusTeapot).SendString("encryption error")
+		},
+	})
+
+	app.Use(New(Config{
+		Key: testKey,
+		Encryptor: func(name, value, _ string) (string, error) {
+			if name == "test" {
+				return "", expected
+			}
+			return value, nil
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Cookie(&fiber.Cookie{
+			Name:  "test",
+			Value: "value",
+		})
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.ErrorIs(t, captured, expected)
+}
+
+func Test_Middleware_EncryptionErrorDoesNotMaskNextError(t *testing.T) {
+	t.Parallel()
+
+	testKey := GenerateKey(32)
+	encryptErr := errors.New("encrypt failed")
+	downstreamErr := errors.New("downstream failed")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusTeapot).SendString("combined error")
+		},
+	})
+
+	app.Use(New(Config{
+		Key: testKey,
+		Encryptor: func(name, value, _ string) (string, error) {
+			if name == "test" {
+				return "", encryptErr
+			}
+			return value, nil
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Cookie(&fiber.Cookie{
+			Name:  "test",
+			Value: "value",
+		})
+		return downstreamErr
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.ErrorIs(t, captured, downstreamErr)
+	require.ErrorIs(t, captured, encryptErr)
 }
 
 func Test_Middleware_Encrypt_Cookie(t *testing.T) {
@@ -144,7 +236,7 @@ func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 	encryptedCookie := fasthttp.Cookie{}
 	encryptedCookie.SetKey("test")
 	require.True(t, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
-	decryptedCookieValue, err := DecryptCookie(string(encryptedCookie.Value()), testKey)
+	decryptedCookieValue, err := DecryptCookie("test", string(encryptedCookie.Value()), testKey)
 	require.NoError(t, err)
 	require.Equal(t, "SomeThing", decryptedCookieValue)
 
@@ -154,6 +246,22 @@ func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 	h(ctx)
 	require.Equal(t, 200, ctx.Response.StatusCode())
 	require.Equal(t, "value=SomeThing", string(ctx.Response.Body()))
+}
+
+func Test_EncryptCookie_Rejects_Swapped_Names(t *testing.T) {
+	t.Parallel()
+	testKey := GenerateKey(32)
+
+	encryptedValue, err := EncryptCookie("cookieA", "ValueA", testKey)
+	require.NoError(t, err)
+
+	decryptedValue, err := DecryptCookie("cookieA", encryptedValue, testKey)
+	require.NoError(t, err)
+	require.Equal(t, "ValueA", decryptedValue)
+
+	_, err = DecryptCookie("cookieB", encryptedValue, testKey)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to decrypt ciphertext")
 }
 
 func Test_Encrypt_Cookie_Next(t *testing.T) {
@@ -176,7 +284,7 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "SomeThing", resp.Cookies()[0].Value)
 }
@@ -221,7 +329,7 @@ func Test_Encrypt_Cookie_Except(t *testing.T) {
 	encryptedCookie := fasthttp.Cookie{}
 	encryptedCookie.SetKey("test2")
 	require.True(t, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
-	decryptedCookieValue, err := DecryptCookie(string(encryptedCookie.Value()), testKey)
+	decryptedCookieValue, err := DecryptCookie("test2", string(encryptedCookie.Value()), testKey)
 	require.NoError(t, err)
 	require.Equal(t, "SomeThing", decryptedCookieValue)
 }
@@ -233,10 +341,10 @@ func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 
 	app.Use(New(Config{
 		Key: testKey,
-		Encryptor: func(decryptedString, _ string) (string, error) {
+		Encryptor: func(_, decryptedString, _ string) (string, error) {
 			return base64.StdEncoding.EncodeToString([]byte(decryptedString)), nil
 		},
-		Decryptor: func(encryptedString, _ string) (string, error) {
+		Decryptor: func(_, encryptedString, _ string) (string, error) {
 			decodedBytes, err := base64.StdEncoding.DecodeString(encryptedString)
 			return string(decodedBytes), err
 		},
@@ -428,10 +536,10 @@ func Benchmark_Encrypt_Cookie_Custom_Encryptor(b *testing.B) {
 
 	app.Use(New(Config{
 		Key: testKey,
-		Encryptor: func(decryptedString, _ string) (string, error) {
+		Encryptor: func(_, decryptedString, _ string) (string, error) {
 			return base64.StdEncoding.EncodeToString([]byte(decryptedString)), nil
 		},
-		Decryptor: func(encryptedString, _ string) (string, error) {
+		Decryptor: func(_, encryptedString, _ string) (string, error) {
 			decodedBytes, err := base64.StdEncoding.DecodeString(encryptedString)
 			return string(decodedBytes), err
 		},
@@ -611,10 +719,10 @@ func Benchmark_Encrypt_Cookie_Custom_Encryptor_Parallel(b *testing.B) {
 
 	app.Use(New(Config{
 		Key: testKey,
-		Encryptor: func(decryptedString, _ string) (string, error) {
+		Encryptor: func(_, decryptedString, _ string) (string, error) {
 			return base64.StdEncoding.EncodeToString([]byte(decryptedString)), nil
 		},
-		Decryptor: func(encryptedString, _ string) (string, error) {
+		Decryptor: func(_, encryptedString, _ string) (string, error) {
 			decodedBytes, err := base64.StdEncoding.DecodeString(encryptedString)
 			return string(decodedBytes), err
 		},
@@ -692,4 +800,48 @@ func Benchmark_GenerateKey_Parallel(b *testing.B) {
 			})
 		})
 	}
+}
+
+// Test_Middleware_Mixed_Valid_Invalid_Cookies tests that the middleware correctly handles
+// a mix of valid and invalid cookies during iteration
+func Test_Middleware_Mixed_Valid_Invalid_Cookies(t *testing.T) {
+	t.Parallel()
+	testKey := GenerateKey(32)
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Key: testKey,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		valid1 := c.Cookies("valid1")
+		valid2 := c.Cookies("valid2")
+		invalid := c.Cookies("invalid")
+		return c.SendString("valid1=" + valid1 + ",valid2=" + valid2 + ",invalid=" + invalid)
+	})
+
+	h := app.Handler()
+
+	// First, create some valid encrypted cookies
+	encryptedValue1, err := EncryptCookie("valid1", "value1", testKey)
+	require.NoError(t, err)
+	encryptedValue2, err := EncryptCookie("valid2", "value2", testKey)
+	require.NoError(t, err)
+
+	// Test with a mix of valid and invalid cookies
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetCookie("valid1", encryptedValue1)
+	ctx.Request.Header.SetCookie("invalid", "thisisnotvalid")
+	ctx.Request.Header.SetCookie("valid2", encryptedValue2)
+
+	h(ctx)
+
+	require.Equal(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, "valid1=value1,valid2=value2,invalid=", string(ctx.Response.Body()))
+
+	// Verify the invalid cookie was deleted but valid ones remain
+	require.NotEmpty(t, ctx.Request.Header.Cookie("valid1"))
+	require.Empty(t, ctx.Request.Header.Cookie("invalid"))
+	require.NotEmpty(t, ctx.Request.Header.Cookie("valid2"))
 }

@@ -62,7 +62,7 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString("Rewrite Successful")
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", http.NoBody)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -89,7 +89,7 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString("Rewrite Successful")
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", http.NoBody)
 	require.NoError(t, err)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -113,7 +113,7 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString(fmt.Sprintf("User ID: %s, Order ID: %s", c.Params("userID"), c.Params("orderID")))
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/users/123/orders/456", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/users/123/orders/456", http.NoBody)
 	require.NoError(t, err)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -141,7 +141,7 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", http.NoBody)
 	require.NoError(t, err)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -165,7 +165,7 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString(fmt.Sprintf("User ID: %s, Order ID: %s", c.Params("userID"), c.Params("orderID")))
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", http.NoBody)
 	require.NoError(t, err)
 	resp, err = app.Test(req)
 	require.NoError(t, err)

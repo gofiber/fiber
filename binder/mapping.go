@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"errors"
 	"fmt"
 	"maps"
 	"mime/multipart"
@@ -31,14 +30,30 @@ type ParserType struct {
 }
 
 var (
+	decoderPoolMu sync.RWMutex
 	// decoderPoolMap helps to improve binders
 	decoderPoolMap = map[string]*sync.Pool{}
 	// tags is used to classify parser's pool
 	tags = []string{"header", "respHeader", "cookie", "query", "form", "uri"}
 )
 
+func getDecoderPool(tag string) *sync.Pool {
+	decoderPoolMu.RLock()
+	pool := decoderPoolMap[tag]
+	if pool == nil {
+		decoderPoolMu.RUnlock()
+		panic(fmt.Sprintf("decoder pool not initialized for tag %q", tag))
+	}
+	decoderPoolMu.RUnlock()
+
+	return pool
+}
+
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
 func SetParserDecoder(parserConfig ParserConfig) {
+	decoderPoolMu.Lock()
+	defer decoderPoolMu.Unlock()
+
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() any {
 			return decoderBuilder(parserConfig)
@@ -60,6 +75,9 @@ func decoderBuilder(parserConfig ParserConfig) any {
 }
 
 func init() {
+	decoderPoolMu.Lock()
+	defer decoderPoolMu.Unlock()
+
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() any {
 			return decoderBuilder(ParserConfig{
@@ -81,7 +99,7 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 
 	// Parse into the map
 	if ptrVal.Kind() == reflect.Map && ptrVal.Type().Key().Kind() == reflect.String {
-		return parseToMap(ptrVal.Interface(), data)
+		return parseToMap(ptrVal, data)
 	}
 
 	// Parse into the struct
@@ -91,8 +109,9 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 // Parse data into the struct with gofiber/schema
 func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
 	// Get decoder from pool
-	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
-	defer decoderPoolMap[aliasTag].Put(schemaDecoder)
+	pool := getDecoderPool(aliasTag)
+	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
+	defer pool.Put(schemaDecoder)
 
 	// Set alias tag
 	schemaDecoder.SetAliasTag(aliasTag)
@@ -106,19 +125,36 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 
 // Parse data into the map
 // thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
-func parseToMap(ptr any, data map[string][]string) error {
-	elem := reflect.TypeOf(ptr).Elem()
+func parseToMap(target reflect.Value, data map[string][]string) error {
+	if !target.IsValid() {
+		return ErrInvalidDestinationValue
+	}
 
-	switch elem.Kind() {
+	if target.Kind() == reflect.Interface && !target.IsNil() {
+		target = target.Elem()
+	}
+
+	if target.Kind() != reflect.Map || target.Type().Key().Kind() != reflect.String {
+		return nil // nothing to do for non-map destinations
+	}
+
+	if target.IsNil() {
+		if !target.CanSet() {
+			return ErrMapNilDestination
+		}
+		target.Set(reflect.MakeMap(target.Type()))
+	}
+
+	switch target.Type().Elem().Kind() {
 	case reflect.Slice:
-		newMap, ok := ptr.(map[string][]string)
+		newMap, ok := target.Interface().(map[string][]string)
 		if !ok {
 			return ErrMapNotConvertible
 		}
 
 		maps.Copy(newMap, data)
-	case reflect.String, reflect.Interface:
-		newMap, ok := ptr.(map[string]string)
+	case reflect.String:
+		newMap, ok := target.Interface().(map[string]string)
 		if !ok {
 			return ErrMapNotConvertible
 		}
@@ -131,6 +167,10 @@ func parseToMap(ptr any, data map[string][]string) error {
 			newMap[k] = v[len(v)-1]
 		}
 	default:
+		// Interface element maps (e.g. map[string]any) are left untouched because
+		// the binder cannot safely infer element conversions without mutating
+		// caller-provided values. These destinations therefore see a successful
+		// no-op parse.
 		return nil // it's not necessary to check all types
 	}
 
@@ -158,7 +198,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 		if b == ']' {
 			openBracketsCount--
 			if openBracketsCount < 0 {
-				return "", errors.New("unmatched brackets")
+				return "", ErrUnmatchedBrackets
 			}
 			continue
 		}
@@ -169,7 +209,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 	}
 
 	if openBracketsCount > 0 {
-		return "", errors.New("unmatched brackets")
+		return "", ErrUnmatchedBrackets
 	}
 
 	return bb.String(), nil
@@ -179,16 +219,23 @@ func isStringKeyMap(t reflect.Type) bool {
 	return t.Kind() == reflect.Map && t.Key().Kind() == reflect.String
 }
 
-func isExported(f reflect.StructField) bool {
+func isExported(f *reflect.StructField) bool {
+	if f == nil {
+		return false
+	}
 	return f.PkgPath == ""
 }
 
-func fieldName(f reflect.StructField, aliasTag string) string {
+func fieldName(f *reflect.StructField, aliasTag string) string {
+	if f == nil {
+		return ""
+	}
+
 	name := f.Tag.Get(aliasTag)
 	if name == "" {
 		name = f.Name
-	} else {
-		name = strings.Split(name, ",")[0]
+	} else if first, _, found := strings.Cut(name, ","); found {
+		name = first
 	}
 
 	return utils.ToLower(name)
@@ -197,6 +244,14 @@ func fieldName(f reflect.StructField, aliasTag string) string {
 type fieldInfo struct {
 	names       map[string]reflect.Kind
 	nestedKinds map[reflect.Kind]struct{}
+}
+
+func unwrapType(t reflect.Type) reflect.Type {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	return t
 }
 
 var (
@@ -235,18 +290,20 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if !isExported(f) {
+		if !isExported(&f) {
 			continue
 		}
-		info.names[fieldName(f, aliasTag)] = f.Type.Kind()
+		fieldType := unwrapType(f.Type)
+		info.names[fieldName(&f, aliasTag)] = fieldType.Kind()
 
-		if f.Type.Kind() == reflect.Struct {
-			for j := 0; j < f.Type.NumField(); j++ {
-				sf := f.Type.Field(j)
-				if !isExported(sf) {
+		if fieldType.Kind() == reflect.Struct {
+			for j := 0; j < fieldType.NumField(); j++ {
+				sf := fieldType.Field(j)
+				if !isExported(&sf) {
 					continue
 				}
-				info.nestedKinds[sf.Type.Kind()] = struct{}{}
+				nestedType := unwrapType(sf.Type)
+				info.nestedKinds[nestedType.Kind()] = struct{}{}
 			}
 		}
 	}
@@ -288,7 +345,7 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	return false
 }
 
-// Get content type from content type header
+// FilterFlags returns the media type value by trimming any parameters from a Content-Type header.
 func FilterFlags(content string) string {
 	for i, char := range content {
 		if char == ' ' || char == ';' {
@@ -300,7 +357,7 @@ func FilterFlags(content string) string {
 
 func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key string, value K, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
 	var err error
-	if supportBracketNotation && strings.Contains(key, "[") {
+	if supportBracketNotation && strings.IndexByte(key, '[') >= 0 {
 		key, err = parseParamSquareBrackets(key)
 		if err != nil {
 			return err
@@ -340,9 +397,10 @@ func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key
 }
 
 func assignBindData(aliasTag string, out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
-	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key, aliasTag) {
-		values := strings.Split(value, ",")
-		data[key] = append(data[key], values...)
+	if enableSplitting && strings.IndexByte(value, ',') >= 0 && equalFieldType(out, reflect.Slice, key, aliasTag) {
+		for v := range strings.SplitSeq(value, ",") {
+			data[key] = append(data[key], v)
+		}
 	} else {
 		data[key] = append(data[key], value)
 	}

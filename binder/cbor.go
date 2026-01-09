@@ -24,10 +24,14 @@ func (b *CBORBinding) Reset() {
 	b.CBORDecoder = nil
 }
 
+// UnimplementedCborMarshal panics to signal that a CBOR marshaler must be
+// configured before CBOR support can be used.
 func UnimplementedCborMarshal(_ any) ([]byte, error) {
 	panic("Must explicitly setup CBOR, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
 }
 
+// UnimplementedCborUnmarshal panics to signal that a CBOR unmarshaler must be
+// configured before CBOR support can be used.
 func UnimplementedCborUnmarshal(_ []byte, _ any) error {
 	panic("Must explicitly setup CBOR, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
 }

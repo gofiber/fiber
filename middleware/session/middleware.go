@@ -88,7 +88,7 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 
 		// Acquire session middleware
 		m := acquireMiddleware()
-		m.initialize(c, cfg)
+		m.initialize(c, &cfg)
 
 		stackErr := c.Next()
 
@@ -108,7 +108,7 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 }
 
 // initialize sets up middleware for the request.
-func (m *Middleware) initialize(c fiber.Ctx, cfg Config) {
+func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -117,7 +117,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg Config) {
 		panic(err) // handle or log this error appropriately in production
 	}
 
-	m.config = cfg
+	m.config = *cfg
 	m.Session = session
 	m.ctx = c
 
@@ -170,7 +170,7 @@ func releaseMiddleware(m *Middleware) {
 //   - c: The Fiber context.
 //
 // Returns:
-//   - *Middleware: The middleware object if found, otherwise nil.
+//   - *Middleware: The middleware object if found; otherwise, nil.
 //
 // Usage:
 //
@@ -267,7 +267,7 @@ func (m *Middleware) Destroy() error {
 // Fresh checks if the session is fresh.
 //
 // Returns:
-//   - bool: True if the session is fresh, otherwise false.
+//   - bool: True if the session is fresh; otherwise, false.
 //
 // Usage:
 //

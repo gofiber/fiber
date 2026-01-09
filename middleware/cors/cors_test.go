@@ -2,6 +2,7 @@ package cors
 
 import (
 	"bytes"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -48,7 +49,7 @@ func Test_CORS_WildcardHeaders(t *testing.T) {
 	h(ctx)
 
 	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)))
 	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
 	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
@@ -80,7 +81,7 @@ func Test_CORS_MaxAge_NotSetOnSimpleRequest(t *testing.T) {
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	app.Handler()(ctx)
 
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 }
 
 func Test_CORS_Preserve_Origin_Case(t *testing.T) {
@@ -112,8 +113,8 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	h(ctx)
 
 	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
 
 	// Test default OPTIONS (preflight) response headers
 	ctx = &fasthttp.RequestCtx{}
@@ -123,8 +124,8 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	h(ctx)
 
 	require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)))
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 }
 
 func Test_CORS_AllowOrigins_Vary(t *testing.T) {
@@ -181,7 +182,7 @@ func Test_CORS_Wildcard(t *testing.T) {
 	// Check result
 	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin))) // Validates request is not reflecting origin in the response
 	require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin, "Vary header should be set")
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	require.Equal(t, "3600", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 	require.Equal(t, "Authentication", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
 
@@ -192,7 +193,7 @@ func Test_CORS_Wildcard(t *testing.T) {
 	handler(ctx)
 
 	require.NotContains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin, "Vary header should not be set")
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	require.Equal(t, "X-Request-ID", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
 }
 
@@ -260,7 +261,7 @@ func Test_CORS_Wildcard_AllowCredentials_Panic(t *testing.T) {
 	}()
 
 	if !didPanic {
-		t.Errorf("Expected a panic when AllowOrigins is '*' and AllowCredentials is true")
+		t.Error("Expected a panic when AllowOrigins is '*' and AllowCredentials is true")
 	}
 }
 
@@ -319,6 +320,24 @@ func Test_CORS_Invalid_Origins_Panic(t *testing.T) {
 	}
 }
 
+func Test_CORS_DisableValueRedaction(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t, "[CORS] Invalid origin format in configuration: [redacted]", func() {
+		New(Config{
+			AllowOrigins:          []string{"http://"},
+			DisableValueRedaction: false,
+		})
+	})
+
+	require.PanicsWithValue(t, "[CORS] Invalid origin format in configuration: http://", func() {
+		New(Config{
+			AllowOrigins:          []string{"http://"},
+			DisableValueRedaction: true,
+		})
+	})
+}
+
 // go test -run -v Test_CORS_Subdomain
 func Test_CORS_Subdomain(t *testing.T) {
 	t.Parallel()
@@ -343,7 +362,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 	handler(ctx)
 
 	// Allow-Origin header should be "" because http://google.com does not satisfy http://*.example.com
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 
 	ctx.Request.Reset()
 	ctx.Response.Reset()
@@ -356,7 +375,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 
 	handler(ctx)
 
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 
 	ctx.Request.Reset()
 	ctx.Response.Reset()
@@ -369,7 +388,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 
 	handler(ctx)
 
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 
 	ctx.Request.Reset()
 	ctx.Response.Reset()
@@ -511,7 +530,7 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 		if tt.shouldAllowOrigin {
 			require.Equal(t, tt.reqOrigin, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 		} else {
-			require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 		}
 	}
 }
@@ -555,7 +574,7 @@ func Test_CORS_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -590,7 +609,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			ctx.Request.SetRequestURI("https://example.com/")
 			handler(ctx)
 			require.Equal(t, 200, ctx.Response.StatusCode(), "Status code should be 200")
-			require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should not be set")
+			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should not be set")
 		}
 	})
 
@@ -607,7 +626,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			require.Equal(t, 204, ctx.Response.StatusCode(), "Status code should be 204")
 			require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should be set")
 			require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should be set (preflight request)")
-			require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should be set (preflight request)")
+			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should be set (preflight request)")
 		}
 	})
 
@@ -622,8 +641,8 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			handler(ctx)
 			require.Equal(t, 200, ctx.Response.StatusCode(), "Status code should be 200")
 			require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should be set")
-			require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should not be set (non-preflight request)")
-			require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should not be set (non-preflight request)")
+			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should not be set (non-preflight request)")
+			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should not be set (non-preflight request)")
 		}
 	})
 
@@ -671,7 +690,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc(t *testing.T) {
 	handler(ctx)
 
 	// Allow-Origin header should be "" because http://google.com does not satisfy http://example-1.com or 'strings.Contains(origin, "example-2")'
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 
 	ctx.Request.Reset()
 	ctx.Response.Reset()
@@ -724,7 +743,7 @@ func Test_CORS_AllowOriginsFunc(t *testing.T) {
 
 	// Allow-Origin header should be empty because http://google.com does not satisfy 'strings.Contains(origin, "example-2")'
 	// and AllowOrigins has not been set
-	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 
 	ctx.Request.Reset()
 	ctx.Response.Reset()
@@ -739,6 +758,105 @@ func Test_CORS_AllowOriginsFunc(t *testing.T) {
 
 	// Allow-Origin header should be "http://example-2.com"
 	require.Equal(t, "http://example-2.com", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+}
+
+func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		Name               string
+		Origin             string
+		Method             string
+		SetPreflightMethod bool
+		ExpectAllowed      bool
+	}{
+		{
+			Name:   "UserInfoPresent",
+			Origin: "http://user:pass@example.com",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:               "PathPresent",
+			Origin:             "http://example.com/path",
+			Method:             fiber.MethodOptions,
+			SetPreflightMethod: true,
+		},
+		{
+			Name:               "QueryPresent",
+			Origin:             "http://example.com?query=1",
+			Method:             fiber.MethodOptions,
+			SetPreflightMethod: true,
+		},
+		{
+			Name:   "FragmentPresent",
+			Origin: "http://example.com#section",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:   "WildcardHost",
+			Origin: "http://*.example.com",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:   "StandaloneWildcard",
+			Origin: "*",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:   "NullOriginUppercase",
+			Origin: "NULL",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:   "NullOriginMixedCase",
+			Origin: "Null",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:          "NullOriginLowercase",
+			Origin:        "null",
+			Method:        fiber.MethodGet,
+			ExpectAllowed: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use("/", New(Config{
+				AllowOriginsFunc: func(string) bool { return true },
+			}))
+			app.All("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			handler := app.Handler()
+
+			ctx := &fasthttp.RequestCtx{}
+			ctx.Request.SetRequestURI("/")
+			ctx.Request.Header.SetMethod(tc.Method)
+			ctx.Request.Header.Set(fiber.HeaderOrigin, tc.Origin)
+			if tc.SetPreflightMethod {
+				ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+			}
+
+			handler(ctx)
+
+			if tc.ExpectAllowed {
+				require.Equal(t, "null", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			} else {
+				require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			}
+
+			if tc.Method == fiber.MethodOptions {
+				require.Equal(t, fiber.StatusNoContent, ctx.Response.StatusCode())
+			} else {
+				require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+			}
+		})
+	}
 }
 
 func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
@@ -918,8 +1036,8 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 				},
 			},
 			RequestOrigin:  "*",
-			ResponseOrigin: "*",
-			// Middleware will validate that wildcard won't set credentials to true
+			ResponseOrigin: "",
+			// Middleware will validate that wildcard won't set credentials to true and reject non-serialized origins
 			ResponseCredentials: "",
 		},
 		{
@@ -1008,10 +1126,10 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "true")
 	handler(ctx)
 
-	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
+	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
 
 	// Non-preflight GET request should not have Access-Control-Allow-Private-Network header
-	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
+	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
 
 	// Non-preflight OPTIONS request should not have Access-Control-Allow-Private-Network header
 	ctx.Request.Reset()
@@ -1021,7 +1139,7 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "true")
 	handler(ctx)
 
-	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
+	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
 
 	// Reset ctx for next test
 	ctx = &fasthttp.RequestCtx{}
@@ -1036,7 +1154,7 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 	handler(ctx)
 
 	// Verify the Access-Control-Allow-Private-Network header is not present
-	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
+	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
 
 	// Test scenario where AllowPrivateNetwork is disabled but client sends header
 	app = fiber.New()
@@ -1051,7 +1169,7 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 	handler(ctx)
 
 	// Verify the Access-Control-Allow-Private-Network header is not present
-	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
+	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
 
 	// Test scenario where AllowPrivateNetwork is enabled and client does NOT send header
 	app = fiber.New()
@@ -1067,7 +1185,7 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 	handler(ctx)
 
 	// Verify the Access-Control-Allow-Private-Network header is not present
-	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
+	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
 
 	// Test scenario where AllowPrivateNetwork is enabled and client sends header with false value
 	app = fiber.New()
@@ -1084,7 +1202,7 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 	handler(ctx)
 
 	// Verify the Access-Control-Allow-Private-Network header is not present
-	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
+	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
 }
 
 // go test -v -run=^$ -bench=Benchmark_CORS_NewHandler -benchmem -count=4

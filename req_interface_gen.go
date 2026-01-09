@@ -30,7 +30,8 @@ type Req interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	BodyRaw() []byte
-	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) ([]byte, uint8, error)
+	//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
+	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) (body []byte, decodesRealized uint8, err error)
 	// Body contains the raw body submitted in a POST request.
 	// This method will decompress the body if the 'Content-Encoding' header is provided.
 	// It returns the original (or decompressed) body data which is valid only within the handler.
@@ -81,19 +82,19 @@ type Req interface {
 	// while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
 	// Example: URL: https://example.com:8080 -> Host: example.com:8080
 	// Make copies or use the Immutable setting instead.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	Host() string
 	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Example: URL: https://example.com:8080 -> Hostname: example.com
 	// Make copies or use the Immutable setting instead.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	Hostname() string
 	// Port returns the remote port of the request.
 	Port() string
 	// IP returns the remote IP address of the request.
 	// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	IP() string
 	// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
 	// When IP validation is enabled, any invalid IPs will be omitted.
@@ -121,7 +122,7 @@ type Req interface {
 	// Otherwise, it updates the context's method and returns the overridden method as a string.
 	Method(override ...string) string
 	// MultipartForm parse form entries from binary.
-	// This returns a map[string][]string, so given a key the value will be a string slice.
+	// This returns a map[string][]string, so given a key, the value will be a string slice.
 	MultipartForm() (*multipart.Form, error)
 	// OriginalURL contains the original request URL.
 	// Returned value is only valid within the handler. Do not store any references.
@@ -134,7 +135,7 @@ type Req interface {
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Params(key string, defaultValue ...string) string
 	// Scheme contains the request protocol string: http or https for TLS requests.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	Scheme() string
 	// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 	Protocol() string
@@ -167,7 +168,7 @@ type Req interface {
 	// Queries()["filters[status]"] == "pending"
 	Queries() map[string]string
 	// Range returns a struct containing the type and a slice of ranges.
-	Range(size int) (Range, error)
+	Range(size int64) (Range, error)
 	// Route returns the matched Route struct.
 	Route() *Route
 	// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
@@ -177,7 +178,7 @@ type Req interface {
 	// Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
 	Stale() bool
 	// IsProxyTrusted checks trustworthiness of remote ip.
-	// If Config.TrustProxy false, it returns true
+	// If Config.TrustProxy false, it returns false.
 	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
 	IsProxyTrusted() bool
 	// IsFromLocal will return true if request came from local.

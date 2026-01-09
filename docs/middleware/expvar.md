@@ -4,7 +4,7 @@ id: expvar
 
 # ExpVar
 
-Expvar middleware for [Fiber](https://github.com/gofiber/fiber) that serves via its HTTP server runtime exposed variants in the JSON format. The package is typically only imported for the side effect of registering its HTTP handlers. The handled path is `/debug/vars`.
+The ExpVar middleware exposes runtime variables over HTTP in JSON. Using it (e.g., `app.Use(expvarmw.New())`) registers handlers on `/debug/vars`.
 
 ## Signatures
 
@@ -14,7 +14,7 @@ func New() fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package:
 
 ```go
 import (
@@ -23,7 +23,7 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Once your Fiber app is initialized, use the middleware as shown:
 
 ```go
 var count = expvar.NewInt("count")
@@ -36,7 +36,7 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-Visit path `/debug/vars` to see all vars and use query `r=key` to filter exposed variables.
+Visit `/debug/vars` to see all variables, and append `?r=key` to filter the output.
 
 ```bash
 curl 127.0.0.1:3000
@@ -62,7 +62,7 @@ curl 127.0.0.1:3000/debug/vars?r=c
 
 | Property | Type                    | Description                                                         | Default |
 |:---------|:------------------------|:--------------------------------------------------------------------|:--------|
-| Next     | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`   |
+| Next     | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when it returns true. | `nil`   |
 
 ## Default Config
 

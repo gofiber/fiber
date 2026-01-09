@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -97,7 +99,8 @@ func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
 	return true
 }
 
-// Cookie data for c.Cookie
+// Cookie defines the values used when configuring cookies emitted by
+// DefaultRes.Cookie.
 type Cookie struct {
 	Expires     time.Time `json:"expires"`      // The expiration date of the cookie
 	Name        string    `json:"name"`         // The name of the cookie
@@ -118,6 +121,8 @@ type ResFmt struct {
 	MediaType string
 }
 
+// DefaultRes is the default implementation of Res used by DefaultCtx.
+//
 //go:generate ifacemaker --file res.go --struct DefaultRes --iface Res --pkg fiber --output res_interface_gen.go --not-exported true --iface-comment "Res is an interface for response-related Ctx methods."
 type DefaultRes struct {
 	c *DefaultCtx
@@ -134,19 +139,42 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := r.c.app.getString(r.c.fasthttp.Response.Header.Peek(field))
+	h := r.c.app.toString(r.c.fasthttp.Response.Header.Peek(field))
 	originalH := h
 	for _, value := range values {
-		if len(h) == 0 {
+		if h == "" {
 			h = value
-		} else if h != value && !strings.HasPrefix(h, value+",") && !strings.HasSuffix(h, " "+value) &&
-			!strings.Contains(h, " "+value+",") {
+		} else if !headerContainsValue(h, value) {
 			h += ", " + value
 		}
 	}
 	if originalH != h {
 		r.Set(field, h)
 	}
+}
+
+// headerContainsValue checks if a header value already contains the given value
+// as a comma-separated element. Per RFC 9110, list elements are separated by commas
+// with optional whitespace (OWS) around them.
+func headerContainsValue(header, value string) bool {
+	// Empty value should never match
+	if value == "" {
+		return false
+	}
+
+	// Exact match (single value header)
+	if header == value {
+		return true
+	}
+
+	// Check each comma-separated element, handling optional whitespace (OWS)
+	for part := range strings.SplitSeq(header, ",") {
+		if utils.TrimSpace(part) == value {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
@@ -339,7 +367,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		}
 		types = append(types, h.MediaType)
 	}
-	accept := r.c.DefaultReq.Accepts(types...)
+	accept := r.c.DefaultReq.Accepts(types...) //nolint:staticcheck // It is fine to ignore the static check
 
 	if accept == "" {
 		if defaultHandler == nil {
@@ -365,7 +393,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
 	// Get accepted content type
-	accept := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor")
+	accept := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor") //nolint:staticcheck // It is fine to ignore the static check
 
 	// Set accepted content type
 	r.Type(accept)
@@ -375,7 +403,7 @@ func (r *DefaultRes) AutoFormat(body any) error {
 	case string:
 		b = val
 	case []byte:
-		b = r.c.app.getString(val)
+		b = r.c.app.toString(val)
 	default:
 		b = fmt.Sprintf("%v", val)
 	}
@@ -405,7 +433,7 @@ func (r *DefaultRes) AutoFormat(body any) error {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) Get(key string, defaultValue ...string) string {
-	return defaultString(r.c.app.getString(r.c.fasthttp.Response.Header.Peek(key)), defaultValue)
+	return defaultString(r.c.app.toString(r.c.fasthttp.Response.Header.Peek(key)), defaultValue)
 }
 
 // GetHeaders (a.k.a GetRespHeaders) returns the HTTP response headers.
@@ -413,10 +441,12 @@ func (r *DefaultRes) Get(key string, defaultValue ...string) string {
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) GetHeaders() map[string][]string {
 	app := r.c.app
-	headers := make(map[string][]string)
-	for k, v := range r.c.fasthttp.Response.Header.All() {
-		key := app.getString(k)
-		headers[key] = append(headers[key], app.getString(v))
+	respHeader := &r.c.fasthttp.Response.Header
+	// Pre-allocate map with known header count to avoid reallocations
+	headers := make(map[string][]string, respHeader.Len())
+	for k, v := range respHeader.All() {
+		key := app.toString(k)
+		headers[key] = append(headers[key], app.toString(v))
 	}
 	return headers
 }
@@ -493,19 +523,25 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 		return err
 	}
 
-	var result, cb string
-
+	cb := "callback"
 	if len(callback) > 0 {
 		cb = callback[0]
-	} else {
-		cb = "callback"
 	}
 
-	result = cb + "(" + r.c.app.getString(raw) + ");"
+	// Build JSONP response: callback(data);
+	// Use bytebufferpool to avoid string concatenation allocations
+	buf := bytebufferpool.Get()
+	buf.WriteString(cb)
+	buf.WriteByte('(')
+	buf.Write(raw)
+	buf.WriteString(");")
 
 	r.setCanonical(HeaderXContentTypeOptions, "nosniff")
 	r.c.fasthttp.Response.Header.SetContentType(MIMETextJavaScriptCharsetUTF8)
-	return r.SendString(result)
+	// Use SetBody (not SetBodyRaw) to copy the bytes before returning buffer to pool
+	r.c.fasthttp.Response.SetBody(buf.Bytes())
+	bytebufferpool.Put(buf)
+	return nil
 }
 
 // XML converts any interface or string to XML.
@@ -534,10 +570,12 @@ func (r *DefaultRes) Links(link ...string) {
 			bb.WriteString(link[i])
 			bb.WriteByte('>')
 		} else {
-			bb.WriteString(`; rel="` + link[i] + `",`)
+			bb.WriteString(`; rel="`)
+			bb.WriteString(link[i])
+			bb.WriteString(`",`)
 		}
 	}
-	r.setCanonical(HeaderLink, utils.TrimRight(r.c.app.getString(bb.Bytes()), ','))
+	r.setCanonical(HeaderLink, utils.TrimRight(r.c.app.toString(bb.Bytes()), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -568,7 +606,11 @@ func (r *DefaultRes) ViewBind(vars Map) error {
 }
 
 // getLocationFromRoute get URL location from route using parameters
-func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, error) {
+func (r *DefaultRes) getLocationFromRoute(route *Route, params Map) (string, error) {
+	if route == nil || route.Path == "" {
+		return "", ErrNotFound
+	}
+
 	app := r.c.app
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
@@ -582,7 +624,7 @@ func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, erro
 
 		for key, val := range params {
 			isSame := key == segment.ParamName || (!app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) != -1
+			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) >= 0
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
@@ -599,7 +641,8 @@ func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, erro
 
 // GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 func (r *DefaultRes) GetRouteURL(routeName string, params Map) (string, error) {
-	return r.getLocationFromRoute(r.c.app.GetRoute(routeName), params)
+	route := r.c.app.GetRoute(routeName)
+	return r.getLocationFromRoute(&route, params)
 }
 
 // Render a template with data and sends a text/html response.
@@ -648,7 +691,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 			return err
 		}
 		// Parse template
-		tmpl, err := template.New("").Parse(rootApp.getString(buf.Bytes()))
+		tmpl, err := template.New("").Parse(rootApp.toString(buf.Bytes()))
 		if err != nil {
 			return fmt.Errorf("failed to parse: %w", err)
 		}
@@ -679,6 +722,26 @@ func (r *DefaultRes) Send(body []byte) error {
 	// Write response body
 	r.c.fasthttp.Response.SetBodyRaw(body)
 	return nil
+}
+
+// SendEarlyHints allows the server to hint to the browser what resources a page would need
+// so the browser can preload them while waiting for the server's full response. Only Link
+// headers already written to the response will be transmitted as Early Hints.
+//
+// This is a HTTP/2+ feature but all browsers will either understand it or safely ignore it.
+//
+// NOTE: Older HTTP/1.1 non-browser clients may face compatibility issues.
+//
+// See: https://developer.chrome.com/docs/web-platform/early-hints and
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Link#syntax
+func (r *DefaultRes) SendEarlyHints(hints []string) error {
+	if len(hints) == 0 {
+		return nil
+	}
+	for _, h := range hints {
+		r.c.fasthttp.Response.Header.Add("Link", h)
+	}
+	return r.c.fasthttp.EarlyHints()
 }
 
 // SendFile transfers the file from the specified path.
@@ -766,9 +829,9 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	}
 
 	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
-	if len(file) == 0 || (!filepath.IsAbs(file) && cfg.FS == nil) {
+	if file == "" || (!filepath.IsAbs(file) && cfg.FS == nil) {
 		// extend relative path to absolute path
-		hasTrailingSlash := len(file) > 0 && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
+		hasTrailingSlash := file != "" && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
 
 		var err error
 		file = filepath.FromSlash(file)
@@ -790,6 +853,23 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Set new URI for fileHandler
 	request.SetRequestURI(file)
+
+	var (
+		sendFileSize    int64
+		hasSendFileSize bool
+	)
+
+	if cfg.ByteRange && len(request.Header.Peek(HeaderRange)) > 0 {
+		sizePath := file
+		if cfg.FS != nil {
+			sizePath = filepath.ToSlash(filename)
+		}
+
+		if size, err := sendFileContentLength(sizePath, cfg); err == nil {
+			sendFileSize = size
+			hasSendFileSize = true
+		}
+	}
 
 	// Save status code
 	response := &r.c.fasthttp.Response
@@ -818,7 +898,11 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
-		if len(cacheControlValue) > 0 {
+		if cfg.ByteRange && hasSendFileSize && response.StatusCode() == StatusRequestedRangeNotSatisfiable && len(response.Header.Peek(HeaderContentRange)) == 0 {
+			response.Header.Set(HeaderContentRange, "bytes */"+strconv.FormatInt(sendFileSize, 10))
+		}
+
+		if cacheControlValue != "" {
 			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 
@@ -828,10 +912,36 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	return nil
 }
 
+func sendFileContentLength(path string, cfg SendFile) (int64, error) {
+	if cfg.FS != nil {
+		cleanPath := pathpkg.Clean(utils.TrimLeft(path, '/'))
+		if cleanPath == "." {
+			cleanPath = ""
+		}
+		info, err := fs.Stat(cfg.FS, cleanPath)
+		if err != nil {
+			return 0, fmt.Errorf("stat %q: %w", cleanPath, err)
+		}
+		return info.Size(), nil
+	}
+
+	info, err := os.Stat(filepath.FromSlash(path))
+	if err != nil {
+		return 0, fmt.Errorf("stat %q: %w", path, err)
+	}
+
+	return info.Size(), nil
+}
+
 // SendStatus sets the HTTP status code and if the response body is empty,
 // it sets the correct status message in the body.
 func (r *DefaultRes) SendStatus(status int) error {
 	r.Status(status)
+
+	if statusDisallowsBody(status) {
+		r.c.fasthttp.Response.ResetBody()
+		return nil
+	}
 
 	// Only set status body when there is no response body
 	if len(r.c.fasthttp.Response.Body()) == 0 {
@@ -883,6 +993,20 @@ func (r *DefaultRes) Status(status int) Ctx {
 	return r.c
 }
 
+func statusDisallowsBody(status int) bool {
+	// As per RFC 9110, 1xx (Informational) responses cannot have a body.
+	if status >= 100 && status < 200 {
+		return true
+	}
+
+	switch status {
+	case StatusNoContent, StatusResetContent, StatusNotModified:
+		return true
+	default:
+		return false
+	}
+}
+
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 func (r *DefaultRes) Type(extension string, charset ...string) Ctx {
 	mimeType := utils.GetMIME(extension)
@@ -924,7 +1048,7 @@ func shouldIncludeCharset(mimeType string) bool {
 }
 
 // Vary adds the given header field to the Vary response header.
-// This will append the header, if not already listed, otherwise leaves it listed in the current location.
+// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
 func (r *DefaultRes) Vary(fields ...string) {
 	r.Append(HeaderVary, fields...)
 }

@@ -2,7 +2,7 @@ package logger
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 
 	"github.com/gofiber/utils/v2"
 )
@@ -25,18 +25,18 @@ func buildLogFuncChain(cfg *Config, tagFunctions map[string]LogFunc) ([][]byte, 
 	var funcChain []LogFunc
 
 	for {
-		currentPos := bytes.Index(templateB, startTagB)
-		if currentPos < 0 {
+		before, after, found := bytes.Cut(templateB, startTagB)
+		if !found {
 			// no starting tag found in the existing template part
 			break
 		}
 		// add fixed part
 		funcChain = append(funcChain, nil)
-		fixParts = append(fixParts, templateB[:currentPos])
+		fixParts = append(fixParts, before)
 
-		templateB = templateB[currentPos+len(startTagB):]
-		currentPos = bytes.Index(templateB, endTagB)
-		if currentPos < 0 {
+		templateB = after
+		before, after, found = bytes.Cut(templateB, endTagB)
+		if !found {
 			// cannot find end tag - just write it to the output.
 			funcChain = append(funcChain, nil)
 			fixParts = append(fixParts, startTagB)
@@ -44,15 +44,16 @@ func buildLogFuncChain(cfg *Config, tagFunctions map[string]LogFunc) ([][]byte, 
 		}
 		// ## function block ##
 		// first check for tags with parameters
-		if index := bytes.Index(templateB[:currentPos], paramSeparatorB); index != -1 {
-			logFunc, ok := tagFunctions[utils.UnsafeString(templateB[:index+1])]
+		tag, param, foundParam := bytes.Cut(before, paramSeparatorB)
+		if foundParam {
+			logFunc, ok := tagFunctions[utils.UnsafeString(tag)+paramSeparator]
 			if !ok {
-				return nil, nil, errors.New("No parameter found in \"" + utils.UnsafeString(templateB[:currentPos]) + "\"")
+				return nil, nil, fmt.Errorf("%w: %q", ErrTemplateParameterMissing, utils.UnsafeString(before))
 			}
 			funcChain = append(funcChain, logFunc)
 			// add param to the fixParts
-			fixParts = append(fixParts, templateB[index+1:currentPos])
-		} else if logFunc, ok := tagFunctions[utils.UnsafeString(templateB[:currentPos])]; ok {
+			fixParts = append(fixParts, param)
+		} else if logFunc, ok := tagFunctions[utils.UnsafeString(before)]; ok {
 			// add functions without parameter
 			funcChain = append(funcChain, logFunc)
 			fixParts = append(fixParts, nil)
@@ -60,7 +61,7 @@ func buildLogFuncChain(cfg *Config, tagFunctions map[string]LogFunc) ([][]byte, 
 		// ## function block end ##
 
 		// reduce the template string
-		templateB = templateB[currentPos+len(endTagB):]
+		templateB = after
 	}
 	// set the rest
 	funcChain = append(funcChain, nil)

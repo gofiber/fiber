@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -14,6 +14,10 @@ import (
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
+
+// flashCookieNameBytes is a precomputed byte slice for flash cookie detection
+// to avoid string-to-bytes conversion on every request
+var flashCookieNameBytes = []byte(FlashCookieName)
 
 // Router defines all router handle interface, including app and group router.
 type Router interface {
@@ -34,7 +38,8 @@ type Router interface {
 
 	Group(prefix string, handlers ...any) Router
 
-	Route(path string) Register
+	RouteChain(path string) Register
+	Route(prefix string, fn func(router Router), name ...string) Router
 
 	Name(name string) Router
 	// Summary sets a short summary for the most recently registered route.
@@ -98,11 +103,17 @@ type Route struct {
 	Consumes    string `json:"consumes"`
 	Produces    string `json:"produces"`
 	Deprecated  bool   `json:"deprecated"`
+	Path        string      `json:"path"`   // Original registered route path
+	Params      []string    `json:"params"` // Case-sensitive param keys
+	Handlers    []Handler   `json:"-"`      // Ctx handlers
+	routeParser routeParser // Parameter parser
+
 	// Data for routing
-	use   bool // USE matches path prefixes
-	mount bool // Indicated a mounted app on a specific route
-	star  bool // Path equals '*'
-	root  bool // Path equals '/'
+	use      bool // USE matches path prefixes
+	mount    bool // Indicated a mounted app on a specific route
+	star     bool // Path equals '*'
+	root     bool // Path equals '/'
+	autoHead bool // Automatically generated HEAD route
 }
 
 // RouteParameter describes an input captured by a route.
@@ -168,11 +179,13 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 		plen := len(r.path)
 		if r.root {
 			// If r.root is '/', it matches everything starting at '/'
-			if len(detectionPath) > 0 && detectionPath[0] == '/' {
+			if detectionPath != "" && detectionPath[0] == '/' {
 				return true
 			}
 		} else if len(detectionPath) >= plen && detectionPath[:plen] == r.path {
-			return true
+			if hasPartialMatchBoundary(detectionPath, plen) {
+				return true
+			}
 		}
 	} else if len(r.path) == len(detectionPath) && detectionPath == r.path {
 		// Check exact match
@@ -209,6 +222,10 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 
 		// Check if it matches the request path
 		if !route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values) {
+			continue
+		}
+
+		if c.skipNonUseRoutes && !route.use {
 			continue
 		}
 
@@ -308,6 +325,10 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		if !route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
 			continue
 		}
+		if c.getSkipNonUseRoutes() && !route.use {
+			continue
+		}
+
 		// Pass route reference and param values
 		c.setRoute(route)
 		// Non use handler matched
@@ -391,7 +412,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 		// Optional: Check flash messages
 		rawHeaders := d.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
 			d.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.next(d)
@@ -404,7 +425,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 		// Optional: Check flash messages
 		rawHeaders := ctx.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
 			ctx.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.nextCustom(ctx)
@@ -441,10 +462,11 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 func (*App) copyRoute(route *Route) *Route {
 	return &Route{
 		// Router booleans
-		use:   route.use,
-		mount: route.mount,
-		star:  route.star,
-		root:  route.root,
+		use:      route.use,
+		mount:    route.mount,
+		star:     route.star,
+		root:     route.root,
+		autoHead: route.autoHead,
 
 		// Path data
 		path:        route.path,
@@ -620,19 +642,52 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 					removedUseRoutes[route.path] = struct{}{}
 				}
 
-				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
+				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
+			}
+
+			if method == MethodGet && !route.use && !route.mount {
+				app.pruneAutoHeadRouteLocked(route.path)
 			}
 		}
 	}
 }
 
-func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...any) {
+// pruneAutoHeadRouteLocked removes an automatically generated HEAD route so a
+// later explicit registration can take its place without duplicating handler
+// chains. The caller must already hold app.mutex.
+func (app *App) pruneAutoHeadRouteLocked(path string) {
+	headIndex := app.methodInt(MethodHead)
+	if headIndex == -1 {
+		return
+	}
+
+	norm := app.normalizePath(path)
+
+	headStack := app.stack[headIndex]
+	for i := len(headStack) - 1; i >= 0; i-- {
+		headRoute := headStack[i]
+		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead {
+			continue
+		}
+
+		app.stack[headIndex] = append(headStack[:i], headStack[i+1:]...)
+		app.routesRefreshed = true
+		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
+		return
+	}
+}
+
+func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
 	// A regular route requires at least one ctx handler
 	if len(handlers) == 0 && group == nil {
 		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
 	}
-
-	ctxHandlers := adaptHandlers(pathRaw, handlers...)
+	// No nil handlers allowed
+	for _, h := range handlers {
+		if h == nil {
+			panic(fmt.Sprintf("nil handler in route: %s\n", pathRaw))
+		}
+	}
 
 	// Precompute path normalization ONCE
 	if pathRaw == "" {
@@ -686,7 +741,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 
 		// Increment global handler count
-		atomic.AddUint32(&app.handlersCount, uint32(len(ctxHandlers))) //nolint:gosec // Not a concern
+		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // G115 - handler count is always small
 
 		// Middleware route matches all HTTP methods
 		if isUse {
@@ -710,6 +765,10 @@ func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
 
+	if method == MethodHead && !route.mount && !route.use {
+		app.pruneAutoHeadRouteLocked(route.path)
+	}
+
 	// prevent identically route registration
 	l := len(app.stack[m])
 	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount {
@@ -725,13 +784,80 @@ func (app *App) addRoute(method string, route *Route) {
 	// Execute onRoute hooks & change latestRoute if not adding mounted route
 	if !route.mount {
 		app.latestRoute = route
-		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
+		if err := app.hooks.executeOnRouteHooks(route); err != nil {
 			panic(err)
 		}
 	}
 }
 
-// BuildTree rebuilds the prefix tree from the previously registered routes.
+func (app *App) ensureAutoHeadRoutes() {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	app.ensureAutoHeadRoutesLocked()
+}
+
+func (app *App) ensureAutoHeadRoutesLocked() {
+	if app.config.DisableHeadAutoRegister {
+		return
+	}
+
+	headIndex := app.methodInt(MethodHead)
+	getIndex := app.methodInt(MethodGet)
+	if headIndex == -1 || getIndex == -1 {
+		return
+	}
+
+	headStack := app.stack[headIndex]
+	existing := make(map[string]struct{}, len(headStack))
+	for _, route := range headStack {
+		if route.mount || route.use {
+			continue
+		}
+		existing[route.path] = struct{}{}
+	}
+
+	if len(app.stack[getIndex]) == 0 {
+		return
+	}
+
+	var added bool
+
+	for _, route := range app.stack[getIndex] {
+		if route.mount || route.use {
+			continue
+		}
+		if _, ok := existing[route.path]; ok {
+			continue
+		}
+
+		headRoute := app.copyRoute(route)
+		headRoute.group = route.group
+		headRoute.Method = MethodHead
+		headRoute.autoHead = true
+		// Fasthttp automatically omits response bodies when transmitting
+		// HEAD responses, so the copied GET handler stack can execute
+		// unchanged while still producing an empty body on the wire.
+
+		headStack = append(headStack, headRoute)
+		existing[route.path] = struct{}{}
+		app.routesRefreshed = true
+		added = true
+
+		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
+
+		app.latestRoute = headRoute
+		if err := app.hooks.executeOnRouteHooks(headRoute); err != nil {
+			panic(err)
+		}
+	}
+
+	if added {
+		app.stack[headIndex] = headStack
+	}
+}
+
+// RebuildTree rebuilds the prefix tree from the previously registered routes.
 // This method is useful when you want to register routes dynamically after the app has started.
 // It is not recommended to use this method on production environments because rebuilding
 // the tree is performance-intensive and not thread-safe in runtime. Since building the tree
@@ -755,52 +881,47 @@ func (app *App) buildTree() *App {
 
 	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
 	for method := range app.config.RequestMethods {
-		prefixSet := map[int]struct{}{
-			0: {},
-		}
-		for _, route := range app.stack[method] {
+		routes := app.stack[method]
+		treePaths := make([]int, len(routes))
+
+		globalCount := 0
+		prefixCounts := make(map[int]int, len(routes))
+
+		for i, route := range routes {
 			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths {
-				prefix := int(route.routeParser.segs[0].Const[0])<<16 |
+				treePaths[i] = int(route.routeParser.segs[0].Const[0])<<16 |
 					int(route.routeParser.segs[0].Const[1])<<8 |
 					int(route.routeParser.segs[0].Const[2])
-				prefixSet[prefix] = struct{}{}
 			}
+
+			if treePaths[i] == 0 {
+				globalCount++
+				continue
+			}
+
+			prefixCounts[treePaths[i]]++
 		}
-		tsMap := make(map[int][]*Route, len(prefixSet))
-		for prefix := range prefixSet {
-			tsMap[prefix] = nil
+
+		tsMap := make(map[int][]*Route, len(prefixCounts)+1)
+		tsMap[0] = make([]*Route, 0, globalCount)
+		for treePath, count := range prefixCounts {
+			tsMap[treePath] = make([]*Route, 0, count+globalCount)
 		}
+
+		for i, route := range routes {
+			treePath := treePaths[i]
+
+			if treePath == 0 {
+				for bucket := range tsMap {
+					tsMap[bucket] = append(tsMap[bucket], route)
+				}
+				continue
+			}
+
+			tsMap[treePath] = append(tsMap[treePath], route)
+		}
+
 		app.treeStack[method] = tsMap
-	}
-
-	// 2) Second loop: for each method and each discovered treePath, assign matching routes
-	for method := range app.config.RequestMethods {
-		// get the map of buckets for this method
-		tsMap := app.treeStack[method]
-
-		// for every treePath key (including the empty one)
-		for treePath := range tsMap {
-			// iterate all routes of this method
-			for _, route := range app.stack[method] {
-				// compute this route's own prefix ("" or first 3 chars)
-				routePath := 0
-				if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
-					routePath = int(route.routeParser.segs[0].Const[0])<<16 |
-						int(route.routeParser.segs[0].Const[1])<<8 |
-						int(route.routeParser.segs[0].Const[2])
-				}
-
-				// if it's a global route, assign to every bucket
-				// If the route path is 0 (global route) or matches the current tree path,
-				// append this route to the current bucket
-				if routePath == 0 || routePath == treePath {
-					tsMap[treePath] = append(tsMap[treePath], route)
-				}
-			}
-
-			// after collecting, dedupe the bucket if it's not the global one
-			tsMap[treePath] = uniqueRouteStack(tsMap[treePath])
-		}
 	}
 
 	// reset the flag and return

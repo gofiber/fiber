@@ -8,42 +8,9 @@ description: >-
 sidebar_position: 3
 ---
 
-### App
+### context.Context
 
-Returns the [\*App](app.md) reference so you can easily access all application settings.
-
-```go title="Signature"
-func (c fiber.Ctx) App() *App
-```
-
-```go title="Example"
-app.Get("/stack", func(c fiber.Ctx) error {
-  return c.JSON(c.App().Stack())
-})
-```
-
-### Bind
-
-Bind is a method that supports bindings for the request/response body, query parameters, URL parameters, cookies, and much more.
-It returns a pointer to the [Bind](./bind.md) struct which contains all the methods to bind the request/response data.
-
-For detailed information, check the [Bind](./bind.md) documentation.
-
-```go title="Signature"
-func (c fiber.Ctx) Bind() *Bind
-```
-
-```go title="Example"
-app.Post("/", func(c fiber.Ctx) error {
-  user := new(User)
-  // Bind the request body to a struct:
-  return c.Bind().Body(user)
-})
-```
-
-### Context
-
-`Context` implements `context.Context`. However due to [current limitations in how fasthttp](https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945) works, `Deadline()`, `Done()` and `Err()` operate as a nop.
+`Ctx` implements `context.Context`. However due to [current limitations in how fasthttp](https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945) works, `Deadline()`, `Done()` and `Err()` are no-ops. The `fiber.Ctx` instance is reused after the handler returns and must not be used for asynchronous operations once the handler has completed. Call [`Context`](#context) within the handler to obtain a `context.Context` that can be used outside the handler.
 
 ```go title="Signature"
 func (c fiber.Ctx) Deadline() (deadline time.Time, ok bool)
@@ -74,6 +41,74 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### App
+
+Returns the [\*App](app.md) reference so you can easily access all application settings.
+
+```go title="Signature"
+func (c fiber.Ctx) App() *App
+```
+
+```go title="Example"
+app.Get("/stack", func(c fiber.Ctx) error {
+  return c.JSON(c.App().Stack())
+})
+```
+
+### Bind
+
+Bind returns a helper for decoding the request body, query string, headers, cookies, and more.
+
+For full details, see the [Bind](./bind.md) documentation.
+
+```go title="Signature"
+func (c fiber.Ctx) Bind() *Bind
+```
+
+```go title="Example"
+app.Post("/", func(c fiber.Ctx) error {
+  user := new(User)
+  // Bind the request body to a struct:
+  return c.Bind().Body(user)
+})
+```
+
+### Context
+
+Returns a `context.Context` that was previously set with [`SetContext`](#setcontext).
+If no context was set, it returns `context.Background()`. Unlike `fiber.Ctx` itself,
+the returned context is safe to use after the handler completes.
+
+```go title="Signature"
+func (c fiber.Ctx) Context() context.Context
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  ctx := c.Context()
+  go doWork(ctx)
+  return nil
+})
+```
+
+### SetContext
+
+Sets the base `context.Context` used by [`Context`](#context). Use this to
+propagate deadlines, cancellation signals, or values to asynchronous operations.
+
+```go title="Signature"
+func (c fiber.Ctx) SetContext(ctx context.Context)
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.SetContext(context.WithValue(context.Background(), "user", "alice"))
+  ctx := c.Context()
+  go doWork(ctx)
+  return nil
+})
+```
+
 ### Drop
 
 Terminates the client connection silently without sending any HTTP headers or response body.
@@ -97,15 +132,15 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### GetReqHeaders
 
-Returns the HTTP request headers as a map. Since a header can be set multiple times in a single request, the values of the map are slices of strings containing all the different values of the header.
+Returns the HTTP request headers as a map. Because a header can appear multiple times in a request, each key maps to a slice with all values for that header.
 
 ```go title="Signature"
 func (c fiber.Ctx) GetReqHeaders() map[string][]string
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### GetRespHeader
@@ -130,8 +165,8 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### GetRespHeaders
@@ -143,8 +178,8 @@ func (c fiber.Ctx) GetRespHeaders() map[string][]string
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### GetRouteURL
@@ -174,7 +209,7 @@ app.Get("/test", func(c fiber.Ctx) error {
 
 ### Locals
 
-A method that stores variables scoped to the request and, therefore, are available only to the routes that match the request. The stored variables are removed after the request is handled. If any of the stored data implements the `io.Closer` interface, its `Close` method will be called before it's removed.
+Stores variables scoped to the request, making them available only to matching routes. The variables are removed after the request completes. If a stored value implements `io.Closer`, Fiber calls its `Close` method before removal.
 
 :::tip
 This is useful if you want to pass some **specific** data to the next middleware. Remember to perform type assertions when retrieving the data to ensure it is of the expected type. You can also use a non-exported type as a key to avoid collisions.
@@ -235,7 +270,7 @@ Make sure to understand and correctly implement the `Locals` method in both its 
 
 ### Next
 
-When **Next** is called, it executes the next method in the stack that matches the current route. You can pass an error struct within the method that will end the chaining and call the [error handler](https://docs.gofiber.io/guide/error-handling).
+When **Next** is called, it executes the next method in the stack that matches the current route. You can pass an error struct within the method that will end the chaining and call the [error handler](../guide/error-handling).
 
 ```go title="Signature"
 func (c fiber.Ctx) Next() error
@@ -385,6 +420,165 @@ func MyMiddleware() fiber.Handler {
 }
 ```
 
+### FullPath
+
+Returns the full path of the matched route. This includes any prefixes that were added by [groups](../guide/routing.md#grouping-routes) or mounts.
+
+```go title="Signature"
+func (c fiber.Ctx) FullPath() string
+```
+
+```go title="Example"
+api := app.Group("/api")
+api.Get("/users/:id", func(c fiber.Ctx) error {
+  return c.JSON(fiber.Map{
+    "route": c.FullPath(), // "/api/users/:id"
+  })
+})
+
+app.Use(func(c fiber.Ctx) error {
+  beforeNext := c.FullPath() // "/"
+
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  afterNext := c.FullPath() // "/api/users/:id"
+  // ... react to the downstream handler's route path
+  return nil
+})
+```
+
+### Matched
+
+Returns `true` if the current request path was matched by the router.
+
+```go title="Signature"
+func (c fiber.Ctx) Matched() bool
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if c.Matched() {
+    return c.Next()
+  }
+  return c.Status(fiber.StatusNotFound).SendString("Not Found")
+})
+```
+
+### IsMiddleware
+
+Returns `true` if the current request handler was registered as middleware.
+
+```go title="Signature"
+func (c fiber.Ctx) IsMiddleware() bool
+```
+
+```go title="Example"
+app.Get("/route", func(c fiber.Ctx) error {
+  fmt.Println(c.IsMiddleware()) // true
+  return c.Next()
+}, func(c fiber.Ctx) error {
+  fmt.Println(c.IsMiddleware()) // false
+  return c.SendStatus(fiber.StatusOK)
+})
+```
+
+### HasBody
+
+Returns `true` if the incoming request contains a body or a `Content-Length` header greater than zero.
+
+```go title="Signature"
+func (c fiber.Ctx) HasBody() bool
+```
+
+```go title="Example"
+app.Post("/", func(c fiber.Ctx) error {
+  if !c.HasBody() {
+    return c.SendStatus(fiber.StatusBadRequest)
+  }
+  return c.SendString("OK")
+})
+```
+
+### OverrideParam
+
+Overwrites the value of an existing route parameter.
+
+:::note
+If the parameter does not exist, this method does nothing.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) OverrideParam(name, value string)
+```
+
+```go title="Example"
+// GET http://example.com/user
+app.Get("/user/:name", func(c fiber.Ctx) error {
+  // mutate parameter
+  c.OverrideParam("name", "new value")
+  return c.SendString(c.Params("name")) // sends "new value"
+})
+// GET http://example.com/shop/tech/1
+app.Get("/shop/*", func(c fiber.Ctx) error {
+  // mutate parameter
+  c.OverrideParam("*", "new tech") // replaces "tech/1" with "new tech"
+  return c.SendString(c.Params("*")) // sends "new tech"
+})
+
+```
+
+Unnamed route parameters can be accessed by their character (`*` or `+`) followed by their position index (e.g., `*1` for the first wildcard, `*2` for the second).
+
+```go title="Example"
+// GET /v1/brand/4/shop/blue/xs
+app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
+  // mutate parameter
+  c.OverrideParam("*1", "updated brand")
+  c.OverrideParam("*2", "updated data")
+  
+  param1 := c.Params("*1") // "updated brand"
+  param2 := c.Params("*2") // "updated data"
+
+  // ...
+})
+```
+
+### IsWebSocket
+
+Returns `true` if the request includes a WebSocket upgrade handshake.
+
+```go title="Signature"
+func (c fiber.Ctx) IsWebSocket() bool
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  if c.IsWebSocket() {
+    // handle websocket
+  }
+  return c.Next()
+})
+```
+
+### IsPreflight
+
+Returns `true` if the request is a CORS preflight (`OPTIONS` + `Access-Control-Request-Method` + `Origin`).
+
+```go title="Signature"
+func (c fiber.Ctx) IsPreflight() bool
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if c.IsPreflight() {
+    return c.SendStatus(fiber.StatusNoContent)
+  }
+  return c.Next()
+})
+```
+
 ### String
 
 Returns a unique string representation of the context.
@@ -479,7 +673,7 @@ Media-Type parameters are supported.
 app.Get("/", func(c fiber.Ctx) error {
   // Extra parameters in the accept are ignored
   c.Accepts("text/plain;format=flowed") // "text/plain;format=flowed"
-  
+
   // An offer must contain all parameters present in the Accept type
   c.Accepts("application/json") // ""
 
@@ -565,8 +759,8 @@ app.Post("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### BodyRaw
@@ -587,14 +781,14 @@ app.Post("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### ClientHelloInfo
 
-`ClientHelloInfo` contains information from a ClientHello message in order to guide application logic in the `GetCertificate` and `GetConfigForClient` callbacks.
-You can refer to the [ClientHelloInfo](https://golang.org/pkg/crypto/tls/#ClientHelloInfo) struct documentation for more information on the returned struct.
+`ClientHelloInfo` contains information from a ClientHello message to guide application logic in the `GetCertificate` and `GetConfigForClient` callbacks.
+Refer to the [ClientHelloInfo](https://golang.org/pkg/crypto/tls/#ClientHelloInfo) struct documentation for details on the returned struct.
 
 ```go title="Signature"
 func (c fiber.Ctx) ClientHelloInfo() *tls.ClientHelloInfo
@@ -626,8 +820,8 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Use [`App.GetString`](./app.md#getstring) or [`App.GetBytes`](./app.md#getbytes) when immutability is enabled, or manually copy values (for example with [`utils.CopyString`](https://github.com/gofiber/utils) / `utils.CopyBytes`) when it's disabled. [Read more...](../#zero-allocation)
 :::
 
 ### FormFile
@@ -668,14 +862,14 @@ app.Post("/", func(c fiber.Ctx) error {
 
 :::info
 
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 
 :::
 
 ### Fresh
 
-When the response is still **fresh** in the client's cache **true** is returned, otherwise **false** is returned to indicate that the client cache is now stale and the full response should be sent.
+When the response is still **fresh** in the client's cache **true** is returned; otherwise, **false** is returned to indicate that the client cache is now stale and the full response should be sent.
 
 When a client sends the Cache-Control: no-cache request header to indicate an end-to-end reload request, `Fresh` will return false to make handling these requests transparent.
 
@@ -707,8 +901,8 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### Host
@@ -733,8 +927,8 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### Hostname
@@ -756,8 +950,8 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### IP
@@ -954,8 +1148,8 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### Params
@@ -1005,8 +1199,8 @@ app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 In certain scenarios, it can be useful to have an alternative approach to handle different types of parameters, not
@@ -1182,8 +1376,8 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+The returned value is valid only within the handler. Do not store references.
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not
@@ -1229,7 +1423,7 @@ sets the HTTP status code to **416 Range Not Satisfiable** and populates the
 `Content-Range` header with the current representation size.
 
 ```go title="Signature"
-func (c fiber.Ctx) Range(size int) (Range, error)
+func (c fiber.Ctx) Range(size int64) (Range, error)
 ```
 
 ```go title="Example"
@@ -1364,7 +1558,7 @@ func (c fiber.Ctx) Stale() bool
 
 Returns a slice with the host’s sub-domain labels. The dot-separated parts that precede the registrable domain (`example`) and the top-level domain (ex: `com`).
 
-The `subdomain offset` (default `2`) tells Fiber how many labels, counting from the right-hand side, are always discarded.  
+The `subdomain offset` (default `2`) tells Fiber how many labels, counting from the right-hand side, are always discarded.
 Passing an `offset` argument lets you override that value for a single call.
 
 ```go
@@ -1700,7 +1894,7 @@ when they regain control after calling `c.Next()`.
 // Error Logging/Responding middleware
 app.Use(func(c fiber.Ctx) error {
     err := c.Next()
-  
+
     // Log errors & write the error to the response
     if err != nil {
         log.Printf("Got error in middleware: %v", err)
@@ -2042,6 +2236,33 @@ app.Get("/", func(c fiber.Ctx) error {
 
   return c.SendStream(bytes.NewReader([]byte("Hello, World!")))
   // => "Hello, World!"
+})
+```
+
+### SendEarlyHints
+
+Sends an informational `103 Early Hints` response with one or more
+[`Link` headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Link)
+before the final response. This allows the browser to start preloading
+resources while the server prepares the full response.
+
+:::caution
+This feature requires HTTP/2 or newer. Some legacy HTTP/1.1 clients may not support sendEarlyHints.
+Early Hints (`103` responses) are supported in HTTP/2 and newer. Older HTTP/1.1 clients may ignore these interim responses or misbehave when receiving them.
+See [Enabling HTTP/2](../guide/reverse-proxy#enabling-http2) for instructions on how to use a reverse proxy (e.g. Nginx or Traefik) to enable HTTP/2 support.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) SendEarlyHints(hints []string) error
+```
+
+```go title="Example"
+hints := []string{"<https://cdn.com/app.js>; rel=preload; as=script"}
+app.Get("/early", func(c fiber.Ctx) error {
+  if err := c.SendEarlyHints(hints); err != nil {
+    return err
+  }
+  return c.SendString("done")
 })
 ```
 

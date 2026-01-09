@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 // Package fiber is an Express inspired web framework built on top of Fasthttp,
@@ -25,15 +25,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
+
+	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/log"
-	"github.com/gofiber/utils/v2"
-	"github.com/valyala/fasthttp"
 )
 
 // Version of current fiber package
-const Version = "3.0.0-beta.5"
+const Version = "3.0.0-rc.3"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
@@ -74,9 +76,9 @@ type App struct {
 	// Fasthttp server
 	server *fasthttp.Server
 	// Converts string to a byte slice
-	getBytes func(s string) (b []byte)
+	toBytes func(s string) (b []byte)
 	// Converts byte slice to a string
-	getString func(b []byte) string
+	toString func(b []byte) string
 	// Hooks
 	hooks *Hooks
 	// Latest route & group
@@ -106,6 +108,8 @@ type App struct {
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
+	// hasCustomCtx tracks whether app uses a custom context implementation
+	hasCustomCtx bool
 }
 
 // Config is a struct holding the server settings.
@@ -127,6 +131,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: false
 	CaseSensitive bool `json:"case_sensitive"`
+
+	// When set to true, disables automatic registration of HEAD routes for
+	// every GET route.
+	//
+	// Default: false
+	DisableHeadAutoRegister bool `json:"disable_head_auto_register"`
 
 	// When set to true, this relinquishes the 0-allocation promise in certain
 	// cases in order to access the handler values (e.g. request bodies) in an
@@ -487,6 +497,9 @@ var DefaultMethods = []string{
 	methodPatch:   MethodPatch,
 }
 
+// httpReadResponse - Used for test mocking http.ReadResponse
+var httpReadResponse = http.ReadResponse
+
 // DefaultErrorHandler that process return errors from handlers
 func DefaultErrorHandler(c Ctx, err error) error {
 	code := StatusInternalServerError
@@ -505,7 +518,6 @@ func DefaultErrorHandler(c Ctx, err error) error {
 // You can pass optional configuration options by passing a Config struct:
 //
 //	app := fiber.New(fiber.Config{
-//	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
 func New(config ...Config) *App {
@@ -513,8 +525,8 @@ func New(config ...Config) *App {
 	app := &App{
 		// Create config
 		config:        Config{},
-		getBytes:      utils.UnsafeBytes,
-		getString:     utils.UnsafeString,
+		toBytes:       utils.UnsafeBytes,
+		toString:      utils.UnsafeString,
 		latestRoute:   &Route{},
 		customBinders: []CustomBinder{},
 		sendfiles:     []*sendFileStore{},
@@ -569,7 +581,7 @@ func New(config ...Config) *App {
 	}
 
 	if app.config.Immutable {
-		app.getBytes, app.getString = getBytesImmutable, getStringImmutable
+		app.toBytes, app.toString = toBytesImmutable, toStringImmutable
 	}
 
 	if app.config.ErrorHandler == nil {
@@ -614,7 +626,7 @@ func New(config ...Config) *App {
 	app.treeStack = make([]map[int][]*Route, len(app.config.RequestMethods))
 
 	// Override colors
-	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
+	app.config.ColorScheme = defaultColors(&app.config.ColorScheme)
 
 	// Init app
 	app.init()
@@ -632,9 +644,33 @@ func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *Ap
 	return app
 }
 
+// GetString returns s unchanged when Immutable is off or s is read-only (rodata).
+// Otherwise, it returns a detached copy (strings.Clone).
+func (app *App) GetString(s string) string {
+	if !app.config.Immutable || s == "" {
+		return s
+	}
+	if isReadOnly(unsafe.Pointer(unsafe.StringData(s))) { //nolint:gosec // pointer check avoids unnecessary copy
+		return s // literal / rodata → safe to return as-is
+	}
+	return strings.Clone(s) // heap-backed / aliased → detach
+}
+
+// GetBytes returns b unchanged when Immutable is off or b is read-only (rodata).
+// Otherwise, it returns a detached copy.
+func (app *App) GetBytes(b []byte) []byte {
+	if !app.config.Immutable || len(b) == 0 {
+		return b
+	}
+	if isReadOnly(unsafe.Pointer(unsafe.SliceData(b))) { //nolint:gosec // pointer check avoids unnecessary copy
+		return b // rodata → safe to return as-is
+	}
+	return utils.CopyBytes(b) // detach when backed by request/response memory
+}
+
 // Adds an ip address to TrustProxyConfig.ranges or TrustProxyConfig.ips based on whether it is an IP range or not
 func (app *App) handleTrustedProxy(ipAddress string) {
-	if strings.Contains(ipAddress, "/") {
+	if strings.IndexByte(ipAddress, '/') >= 0 {
 		_, ipNet, err := net.ParseCIDR(ipAddress)
 		if err != nil {
 			log.Warnf("IP range %q could not be parsed: %v", ipAddress, err)
@@ -656,6 +692,7 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // only customizing existing ones.
 func (app *App) setCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
+	app.hasCustomCtx = function != nil
 
 	if app.server != nil {
 		app.server.Handler = app.requestHandler
@@ -671,6 +708,27 @@ func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
 // They should be compatible with CustomBinder interface.
 func (app *App) RegisterCustomBinder(customBinder CustomBinder) {
 	app.customBinders = append(app.customBinders, customBinder)
+}
+
+// ReloadViews reloads the configured view engine by invoking its Load method.
+// It returns an error if no view engine is configured or if reloading fails.
+func (app *App) ReloadViews() error {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	if app.config.Views == nil {
+		return ErrNoViewEngineConfigured
+	}
+
+	if viewValue := reflect.ValueOf(app.config.Views); viewValue.Kind() == reflect.Pointer && viewValue.IsNil() {
+		return ErrNoViewEngineConfigured
+	}
+
+	if err := app.config.Views.Load(); err != nil {
+		return fmt.Errorf("fiber: failed to reload views: %w", err)
+	}
+
+	return nil
 }
 
 // SetTLSHandler Can be used to set ClientHelloInfo when using TLS with Listener.
@@ -700,7 +758,7 @@ func (app *App) Name(name string) Router {
 		}
 	}
 
-	if err := app.hooks.executeOnNameHooks(*app.latestRoute); err != nil {
+	if err := app.hooks.executeOnNameHooks(app.latestRoute); err != nil {
 		panic(err)
 	}
 
@@ -1017,10 +1075,12 @@ func (app *App) Use(args ...any) Router {
 			subApp = arg
 		case []string:
 			prefixes = arg
-		case Handler, []Handler, []any:
-			handlers = append(handlers, arg)
 		default:
-			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
+			handler, ok := toFiberHandler(arg)
+			if !ok {
+				panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
+			}
+			handlers = append(handlers, handler)
 		}
 	}
 
@@ -1094,8 +1154,10 @@ func (app *App) Patch(path string, handler any, handlers ...any) Router {
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
+// The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (app *App) Add(methods []string, path string, handler any, handlers ...any) Router {
-	app.register(methods, path, nil, append([]any{handler}, handlers...)...)
+	converted := collectHandlers("add", append([]any{handler}, handlers...)...)
+	app.register(methods, path, nil, converted...)
 
 	return app
 }
@@ -1112,7 +1174,8 @@ func (app *App) All(path string, handler any, handlers ...any) Router {
 func (app *App) Group(prefix string, handlers ...any) Router {
 	grp := &Group{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
-		app.register([]string{methodUse}, prefix, grp, handlers...)
+		converted := collectHandlers("group", handlers...)
+		app.register([]string{methodUse}, prefix, grp, converted...)
 	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
 		panic(err)
@@ -1121,13 +1184,33 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 	return grp
 }
 
-// Route is used to define routes with a common prefix inside the common function.
-// Uses Group method to define new sub-router.
-func (app *App) Route(path string) Register {
+// RouteChain creates a Registering instance that lets you declare a stack of
+// handlers for the same route. Handlers defined via the returned Register are
+// scoped to the provided path.
+func (app *App) RouteChain(path string) Register {
 	// Create new route
 	route := &Registering{app: app, path: path}
 
 	return route
+}
+
+// Route is used to define routes with a common prefix inside the supplied
+// function. It mirrors the legacy helper and reuses the Group method to create
+// a sub-router.
+func (app *App) Route(prefix string, fn func(router Router), name ...string) Router {
+	if fn == nil {
+		panic("route handler 'fn' cannot be nil")
+	}
+	// Create new group
+	group := app.Group(prefix)
+	if len(name) > 0 {
+		group.Name(name[0])
+	}
+
+	// Define routes
+	fn(group)
+
+	return group
 }
 
 // Error makes it compatible with the `error` interface.
@@ -1207,7 +1290,7 @@ func (app *App) HandlersCount() uint32 {
 //
 // Make sure the program doesn't exit and waits instead for Shutdown to return.
 //
-// Important: app.Listen() must be called in a separate goroutine, otherwise shutdown hooks will not work
+// Important: app.Listen() must be called in a separate goroutine; otherwise, shutdown hooks will not work
 // as Listen() is a blocking operation. Example:
 //
 //	go app.Listen(":3000")
@@ -1357,16 +1440,34 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 		return nil, err
 	}
 
-	// Read response
+	// Read response(s)
 	buffer := bufio.NewReader(&conn.w)
 
-	// Convert raw http response to *http.Response
-	res, err := http.ReadResponse(buffer, req)
-	if err != nil {
-		if errors.Is(err, io.ErrUnexpectedEOF) {
-			return nil, ErrTestGotEmptyResponse
+	var res *http.Response
+	for {
+		// Convert raw http response to *http.Response
+		res, err = httpReadResponse(buffer, req)
+		if err != nil {
+			if errors.Is(err, io.ErrUnexpectedEOF) {
+				return nil, ErrTestGotEmptyResponse
+			}
+			return nil, fmt.Errorf("failed to read response: %w", err)
 		}
-		return nil, fmt.Errorf("failed to read response: %w", err)
+
+		// Break if this response is non-1xx or there are no more responses
+		if res.StatusCode >= http.StatusOK || buffer.Buffered() == 0 {
+			break
+		}
+
+		// Discard interim response body before reading the next one
+		if res.Body != nil {
+			if _, errCopy := io.Copy(io.Discard, res.Body); errCopy != nil {
+				return nil, fmt.Errorf("failed to discard interim response body: %w", errCopy)
+			}
+			if errClose := res.Body.Close(); errClose != nil {
+				return nil, fmt.Errorf("failed to close interim response body: %w", errClose)
+			}
+		}
 	}
 
 	return res, nil
@@ -1374,6 +1475,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 
 type disableLogger struct{}
 
+// Printf implements the fasthttp Logger interface and discards log output.
 func (*disableLogger) Printf(string, ...any) {
 }
 
@@ -1436,7 +1538,7 @@ func (app *App) init() *App {
 // ErrorHandler is the application's method in charge of finding the
 // appropriate handler for the given request. It searches any mounted
 // sub fibers by their prefixes and if it finds a match, it uses that
-// error handler. Otherwise it uses the configured error handler for
+// error handler. Otherwise, it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	var (
@@ -1444,9 +1546,15 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 		mountedPrefixParts int
 	)
 
-	for prefix, subApp := range app.mountFields.appList {
-		if prefix != "" && strings.HasPrefix(ctx.Path(), prefix) {
-			parts := len(strings.Split(prefix, "/"))
+	normalizedPath := utils.AddTrailingSlashString(ctx.Path())
+
+	for _, prefix := range app.mountFields.appListKeys {
+		subApp := app.mountFields.appList[prefix]
+		normalizedPrefix := utils.AddTrailingSlashString(prefix)
+
+		if prefix != "" && strings.HasPrefix(normalizedPath, normalizedPrefix) {
+			// Count slashes instead of splitting - more efficient
+			parts := strings.Count(prefix, "/") + 1
 			if mountedPrefixParts <= parts {
 				if subApp.configured.ErrorHandler != nil {
 					mountedErrHandler = subApp.config.ErrorHandler
@@ -1488,10 +1596,28 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
+	case strings.Contains(err.Error(), "unsupported http request method"):
+		err = ErrNotImplemented
 	case strings.Contains(err.Error(), "timeout"):
 		err = ErrRequestTimeout
 	default:
 		err = NewError(StatusBadRequest, err.Error())
+	}
+
+	if c.getMethodInt() != -1 {
+		c.setSkipNonUseRoutes(true)
+		defer c.setSkipNonUseRoutes(false)
+
+		var nextErr error
+		if d, isDefault := c.(*DefaultCtx); isDefault {
+			_, nextErr = app.next(d)
+		} else {
+			_, nextErr = app.nextCustom(c)
+		}
+
+		if nextErr != nil && !errors.Is(nextErr, ErrNotFound) && !errors.Is(nextErr, ErrMethodNotAllowed) {
+			log.Errorf("serverErrorHandler: middleware traversal failed: %v", nextErr)
+		}
 	}
 
 	if catch := app.ErrorHandler(c, err); catch != nil {
@@ -1502,20 +1628,25 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 }
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
-func (app *App) startupProcess() *App {
+func (app *App) startupProcess() {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
+	app.ensureAutoHeadRoutesLocked()
+	for prefix, subApp := range app.mountFields.appList {
+		if prefix == "" {
+			continue
+		}
+		subApp.ensureAutoHeadRoutes()
+	}
 	app.mountStartupProcess()
 
 	// build route tree stack
 	app.buildTree()
-
-	return app
 }
 
 // Run onListen hooks. If they return an error, panic.
-func (app *App) runOnListenHooks(listenData ListenData) {
+func (app *App) runOnListenHooks(listenData *ListenData) {
 	if err := app.hooks.executeOnListenHooks(listenData); err != nil {
 		panic(err)
 	}

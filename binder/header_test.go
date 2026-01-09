@@ -85,3 +85,16 @@ func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	require.Contains(b, user.Posts, "post2")
 	require.Contains(b, user.Posts, "post3")
 }
+
+func Test_HeaderBinder_Bind_ParseError(t *testing.T) {
+	b := &HeaderBinding{}
+	type User struct {
+		Age int `header:"Age"`
+	}
+	var user User
+	req := fasthttp.AcquireRequest()
+	req.Header.Set("age", "invalid")
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	err := b.Bind(req, &user)
+	require.Error(t, err)
+}

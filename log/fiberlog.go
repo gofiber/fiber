@@ -117,14 +117,16 @@ func Panicw(msg string, keysAndValues ...any) {
 	logger.Panicw(msg, keysAndValues...)
 }
 
+// WithContext binds the default logger to the provided context and returns the
+// contextualized logger.
 func WithContext(ctx context.Context) CommonLogger {
 	return logger.WithContext(ctx)
 }
 
 // SetLogger sets the default logger and the system logger.
 // Note that this method is not concurrent-safe and must not be called
-// after the use of DefaultLogger and global functions privateLog this package.
-func SetLogger(v AllLogger) {
+// after the use of DefaultLogger and global functions from this package.
+func SetLogger[T any](v AllLogger[T]) {
 	logger = v
 }
 

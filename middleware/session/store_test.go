@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -27,7 +28,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		defer app.ReleaseCtx(ctx)
 
 		// set cookie
-		ctx.Request().Header.SetCookie(store.Config.Extractor.Key, expectedID)
+		ctx.Request().Header.SetCookie(store.Extractor.Key, expectedID)
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -36,14 +37,14 @@ func Test_Store_getSessionID(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			Extractor: FromHeader("session_id"),
+			Extractor: extractors.FromHeader("session_id"),
 		})
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
 		// set header
-		ctx.Request().Header.Set(store.Config.Extractor.Key, expectedID)
+		ctx.Request().Header.Set(store.Extractor.Key, expectedID)
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -52,14 +53,14 @@ func Test_Store_getSessionID(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			Extractor: FromQuery("session_id"),
+			Extractor: extractors.FromQuery("session_id"),
 		})
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
 		// set url parameter
-		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.Config.Extractor.Key, expectedID))
+		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.Extractor.Key, expectedID))
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -83,7 +84,7 @@ func Test_Store_Get(t *testing.T) {
 		defer app.ReleaseCtx(ctx)
 
 		// set cookie
-		ctx.Request().Header.SetCookie(store.Config.Extractor.Key, unexpectedID)
+		ctx.Request().Header.SetCookie(store.Extractor.Key, unexpectedID)
 
 		acquiredSession, err := store.Get(ctx)
 		require.NoError(t, err)
@@ -175,9 +176,9 @@ func Test_Store_GetByID(t *testing.T) {
 		require.Equal(t, ErrEmptySessionID, err)
 	})
 
-	t.Run("non-existent session ID", func(t *testing.T) {
+	t.Run("nonexistent session ID", func(t *testing.T) {
 		t.Parallel()
-		sess, err := store.GetByID(context.Background(), "non-existent-session-id")
+		sess, err := store.GetByID(context.Background(), "nonexistent-session-id")
 		require.Error(t, err)
 		require.Nil(t, sess)
 		require.Equal(t, ErrSessionIDNotFoundInStore, err)

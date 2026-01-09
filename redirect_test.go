@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 📝 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -13,11 +13,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+func assertFlashCookieCleared(t *testing.T, setCookie string) {
+	t.Helper()
+
+	setCookie = strings.ToLower(setCookie)
+	require.Contains(t, setCookie, FlashCookieName+"=")
+	require.True(t, strings.Contains(setCookie, "max-age=0") || strings.Contains(setCookie, "max-age=-1"))
+	require.Contains(t, setCookie, "path=/")
+}
 
 // go test -run Test_Redirect_To
 func Test_Redirect_To(t *testing.T) {
@@ -385,6 +395,27 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	})
 }
 
+func Test_Redirect_WithInput_ReusesClearedMap(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	defer app.ReleaseCtx(c)
+
+	c.Request().URI().SetQueryString("first=1")
+	c.Redirect().WithInput()
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "first", value: "1", isOldInput: true})
+
+	c.redirect.messages = c.redirect.messages[:0]
+
+	c.Request().URI().SetQueryString("second=2")
+	c.Redirect().WithInput()
+
+	require.Len(t, c.redirect.messages, 1)
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "second", value: "2", isOldInput: true})
+	require.NotContains(t, c.redirect.messages, redirectionMsg{key: "first", value: "1", isOldInput: true})
+}
+
 // go test -run Test_Redirect_parseAndClearFlashMessages
 func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	t.Parallel()
@@ -436,20 +467,10 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 		Level: 0,
 	}, c.Redirect().Message("message"))
 
+	require.Equal(t, FlashMessage{}, c.Redirect().Message("success"))
 	require.Equal(t, FlashMessage{}, c.Redirect().Message("not_message"))
 
-	require.Equal(t, []FlashMessage{
-		{
-			Key:   "success",
-			Value: "1",
-			Level: 0,
-		},
-		{
-			Key:   "message",
-			Value: "test",
-			Level: 0,
-		},
-	}, c.Redirect().Messages())
+	require.Empty(t, c.Redirect().Messages())
 
 	require.Equal(t, OldInputData{
 		Key:   "id",
@@ -473,6 +494,8 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 			Value: "1",
 		},
 	}, c.Redirect().OldInputs())
+
+	assertFlashCookieCleared(t, string(c.Response().Header.Peek(HeaderSetCookie)))
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=test")
 
@@ -508,6 +531,47 @@ func Test_Redirect_parseAndClearFlashMessages_InvalidHex(t *testing.T) {
 	ReleaseRedirect(r)
 }
 
+func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	defer app.ReleaseCtx(c)
+
+	val, err := testredirectionMsgs.MarshalMsg(nil)
+	require.NoError(t, err)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
+	c.Redirect().parseAndClearFlashMessages()
+
+	require.Equal(t, []FlashMessage{
+		{
+			Key:   "success",
+			Value: "1",
+			Level: 0,
+		},
+		{
+			Key:   "message",
+			Value: "test",
+			Level: 0,
+		},
+	}, c.Redirect().Messages())
+
+	require.Empty(t, c.Redirect().Messages())
+	require.Equal(t, FlashMessage{}, c.Redirect().Message("success"))
+
+	require.Equal(t, []OldInputData{
+		{
+			Key:   "name",
+			Value: "tom",
+		},
+		{
+			Key:   "id",
+			Value: "1",
+		},
+	}, c.Redirect().OldInputs())
+}
+
 func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	t.Parallel()
 
@@ -533,7 +597,7 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	})
 
 	// Step 1: Make the initial request to the source route
-	req := httptest.NewRequest(MethodGet, "/source", nil)
+	req := httptest.NewRequest(MethodGet, "/source", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusSeeOther, resp.StatusCode)
@@ -551,11 +615,13 @@ func Test_Redirect_CompleteFlowWithFlashMessages(t *testing.T) {
 	require.NotNil(t, flashCookie, "Flash cookie should be set")
 
 	// Step 2: Make the second request to the target route with the cookie
-	req = httptest.NewRequest(MethodGet, "/target", nil)
+	req = httptest.NewRequest(MethodGet, "/target", http.NoBody)
 	req.Header.Set("Cookie", flashCookie.Name+"="+flashCookie.Value)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
+
+	assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
 
 	// Parse the JSON response and verify flash messages
 	body, err := io.ReadAll(resp.Body)
@@ -597,7 +663,7 @@ func Test_Redirect_FlashMessagesWithSpecialChars(t *testing.T) {
 	})
 
 	// Step 1: Make the initial request
-	req := httptest.NewRequest(MethodGet, "/special-source", nil)
+	req := httptest.NewRequest(MethodGet, "/special-source", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusSeeOther, resp.StatusCode)
@@ -614,11 +680,13 @@ func Test_Redirect_FlashMessagesWithSpecialChars(t *testing.T) {
 	require.NotNil(t, flashCookie, "Flash cookie should be set")
 
 	// Step 2: Make the second request with the cookie
-	req = httptest.NewRequest(MethodGet, "/special-target", nil)
+	req = httptest.NewRequest(MethodGet, "/special-target", http.NoBody)
 	req.Header.Set("Cookie", flashCookie.Name+"="+flashCookie.Value)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
+
+	assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
 
 	// Parse and verify the response
 	body, err := io.ReadAll(resp.Body)
@@ -834,9 +902,13 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 
 	var msgs []FlashMessage
 
+	msgTemplate := testredirectionMsgs
+
 	b.ReportAllocs()
 
 	for b.Loop() {
+		c.flashMessages = c.flashMessages[:0]
+		c.flashMessages = append(c.flashMessages, msgTemplate...)
 		msgs = c.Redirect().Messages()
 	}
 
@@ -904,9 +976,13 @@ func Benchmark_Redirect_Message(b *testing.B) {
 
 	var msg FlashMessage
 
+	msgTemplate := testredirectionMsgs
+
 	b.ReportAllocs()
 
 	for b.Loop() {
+		c.flashMessages = c.flashMessages[:0]
+		c.flashMessages = append(c.flashMessages, msgTemplate...)
 		msg = c.Redirect().Message("message")
 	}
 

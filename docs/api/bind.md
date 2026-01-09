@@ -6,11 +6,11 @@ sidebar_position: 4
 toc_max_heading_level: 4
 ---
 
-Bindings are used to parse the request/response body, query parameters, cookies, and much more into a struct.
+Bindings parse request and response bodies, query parameters, cookies, and more into structs.
 
 :::info
-All binder returned values are only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Binder-returned values are valid only within the handler. To keep them, copy the data
+or enable the [**`Immutable`**](./ctx.md) setting. [Read more...](../#zero-allocation)
 :::
 
 ## Binders
@@ -30,7 +30,7 @@ Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more..
 
 ### All
 
-The `All` function binds data from various sources (URL parameters, request body, query parameters, headers, and cookies) into the provided struct pointer `out`. It processes each source in a predefined order, applying data to the struct fields based on their tags.
+The `All` function binds data from URL parameters, the request body, query parameters, headers, and cookies into `out`. Sources are applied in the following order using struct field tags.
 
 #### Precedence Order
 
@@ -71,7 +71,7 @@ app.Post("/users", func(c fiber.Ctx) error {
 
 Binds the request body to a struct.
 
-It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a JSON body with a field called `Pass`, you would use a struct field with `json:"pass"`.
+Use tags that match the content type. For example, to parse a JSON body with a `Pass` field, declare `json:"pass"`.
 
 | Content-Type                        | Struct Tag |
 | ----------------------------------- | ---------- |
@@ -106,7 +106,7 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
-Run tests with the following `curl` commands:
+Test the handler with these `curl` commands:
 
 ```bash
 # JSON
@@ -158,7 +158,7 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
-Run tests with the following `curl` command:
+Test the defaults with this `curl` command:
 
 ```bash
 curl -X POST -H "Content-Type: application/cbor" --data "\xa2dnamedjohndpasscdoe" localhost:3000

@@ -85,3 +85,16 @@ func Benchmark_CookieBinder_Bind(b *testing.B) {
 	require.Contains(b, user.Posts, "post2")
 	require.Contains(b, user.Posts, "post3")
 }
+
+func Test_CookieBinder_Bind_ParseError(t *testing.T) {
+	b := &CookieBinding{}
+	type User struct {
+		Age int `cookie:"age"`
+	}
+	var user User
+	req := fasthttp.AcquireRequest()
+	req.Header.SetCookie("age", "invalid")
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	err := b.Bind(req, &user)
+	require.Error(t, err)
+}

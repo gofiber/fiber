@@ -35,16 +35,12 @@ exclude-contributors:
 version-resolver:
   major:
     labels:
-      - 'major'
       - '❗ BreakingChange'
   minor:
     labels:
-      - 'minor'
       - '✏️ Feature'
-      - '📝 Proposal'
   patch:
     labels:
-      - 'patch'
       - '📒 Documentation'
       - '☢️ Bug'
       - '🤖 Dependencies'
@@ -54,6 +50,10 @@ version-resolver:
 template: |
     $CHANGES
 
+    **📒 Documentation**: https://docs.gofiber.io/next/
+
+    **💬 Discord**: https://gofiber.io/discord
+
     **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
 
-    Thank you $CONTRIBUTORS for making this update possible.
+    Thank you $CONTRIBUTORS for making this release possible.

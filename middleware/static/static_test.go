@@ -4,6 +4,7 @@ import (
 	"embed"
 	"io"
 	"io/fs"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -41,7 +42,7 @@ func Test_Static_Index_Default(t *testing.T) {
 		IndexNames: []string{"index.html"},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
@@ -51,7 +52,7 @@ func Test_Static_Index_Default(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(body), "Hello, World!")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/not-found", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/not-found", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
@@ -69,7 +70,7 @@ func Test_Static_Direct(t *testing.T) {
 
 	app.Get("/*", New("../../.github"))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/index.html", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/index.html", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
@@ -79,18 +80,18 @@ func Test_Static_Direct(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(body), "Hello, World!")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/index.html", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/index.html", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 405, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/testdata/testRoutes.json", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/testdata/testRoutes.json", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMEApplicationJSON, resp.Header.Get("Content-Type"))
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -106,7 +107,7 @@ func Test_Static_MaxAge(t *testing.T) {
 		MaxAge: 100,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/index.html", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/index.html", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
@@ -128,13 +129,13 @@ func Test_Static_Custom_CacheControl(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/index.html", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/index.html", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "no-cache, no-store, must-revalidate", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 
-	normalResp, normalErr := app.Test(httptest.NewRequest(fiber.MethodGet, "/config.yml", nil))
+	normalResp, normalErr := app.Test(httptest.NewRequest(fiber.MethodGet, "/config.yml", http.NoBody))
 	require.NoError(t, normalErr, "app.Test(req)")
-	require.Equal(t, "", normalResp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.Empty(t, normalResp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
 func Test_Static_Disable_Cache(t *testing.T) {
@@ -162,9 +163,9 @@ func Test_Static_Disable_Cache(t *testing.T) {
 		CacheDuration: -1,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test.txt", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test.txt", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -172,9 +173,9 @@ func Test_Static_Disable_Cache(t *testing.T) {
 
 	require.NoError(t, os.Remove("../../.github/test.txt"))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test.txt", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test.txt", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -191,7 +192,7 @@ func Test_Static_NotFoundHandler(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/not-found", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/not-found", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
@@ -211,7 +212,7 @@ func Test_Static_Download(t *testing.T) {
 		Download: true,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fiber.png", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fiber.png", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
@@ -235,7 +236,7 @@ func Test_Static_Download_NonASCII(t *testing.T) {
 	app := fiber.New()
 	app.Get("/file", New(path, Config{Download: true}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/file", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/file", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	expect := "attachment; filename=\"" + fname + "\"; filename*=UTF-8''" + url.PathEscape(fname)
@@ -254,7 +255,7 @@ func Test_Static_Group(t *testing.T) {
 
 	grp.Get("/v2*", New("../../.github/index.html"))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/v1/v2", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/v1/v2", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -265,7 +266,7 @@ func Test_Static_Group(t *testing.T) {
 	grp = app.Group("/v2")
 	grp.Get("/v3*", New("../../.github/index.html"))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/v2/v3/john/doe", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/v2/v3/john/doe", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -279,7 +280,7 @@ func Test_Static_Wildcard(t *testing.T) {
 
 	app.Get("*", New("../../.github/index.html"))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/yesyes/john/doe", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/yesyes/john/doe", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -297,7 +298,7 @@ func Test_Static_Prefix_Wildcard(t *testing.T) {
 
 	app.Get("/test*", New("../../.github/index.html"))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/test/john/doe", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/test/john/doe", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -306,7 +307,7 @@ func Test_Static_Prefix_Wildcard(t *testing.T) {
 
 	app.Get("/my/nameisjohn*", New("../../.github/index.html"))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/my/nameisjohn/no/its/not", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/my/nameisjohn/no/its/not", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
@@ -322,7 +323,7 @@ func Test_Static_Prefix(t *testing.T) {
 	app := fiber.New()
 	app.Get("/john*", New("../../.github"))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/john/index.html", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/john/index.html", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -331,7 +332,7 @@ func Test_Static_Prefix(t *testing.T) {
 
 	app.Get("/prefix*", New("../../.github/testdata"))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/prefix/index.html", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/prefix/index.html", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -340,7 +341,7 @@ func Test_Static_Prefix(t *testing.T) {
 
 	app.Get("/single*", New("../../.github/testdata/testRoutes.json"))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/single", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/single", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -353,7 +354,7 @@ func Test_Static_Trailing_Slash(t *testing.T) {
 	app := fiber.New()
 	app.Get("/john*", New("../../.github"))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/john/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/john/", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -362,7 +363,7 @@ func Test_Static_Trailing_Slash(t *testing.T) {
 
 	app.Get("/john_without_index*", New(testCSSDir))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/john_without_index/", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/john_without_index/", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
@@ -371,14 +372,14 @@ func Test_Static_Trailing_Slash(t *testing.T) {
 
 	app.Use("/john", New("../../.github"))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/john/", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/john/", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/john", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/john", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -387,7 +388,7 @@ func Test_Static_Trailing_Slash(t *testing.T) {
 
 	app.Use("/john_without_index/", New(testCSSDir))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/john_without_index/", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/john_without_index/", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
@@ -411,7 +412,7 @@ func Test_Static_Next(t *testing.T) {
 
 	t.Run("app.Static is skipped: invoking Get handler", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set("X-Custom-Header", "skip")
 		resp, err := app.Test(req)
 		require.NoError(t, err)
@@ -426,7 +427,7 @@ func Test_Static_Next(t *testing.T) {
 
 	t.Run("app.Static is not skipped: serving index.html", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set("X-Custom-Header", "don't skip")
 		resp, err := app.Test(req)
 		require.NoError(t, err)
@@ -449,11 +450,11 @@ func Test_Route_Static_Root(t *testing.T) {
 		Browse: true,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/style.css", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -464,11 +465,11 @@ func Test_Route_Static_Root(t *testing.T) {
 	app = fiber.New()
 	app.Get("/*", New(dir))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/style.css", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -486,15 +487,15 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 		Browse: true,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/static", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/static", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -507,34 +508,15 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 		Browse: true,
 	}))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, string(body), "color")
-
-	app = fiber.New()
-	app.Get("/static*", New(dir))
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -545,15 +527,34 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	app = fiber.New()
 	app.Get("/static*", New(dir))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, string(body), "color")
+
+	app = fiber.New()
+	app.Get("/static*", New(dir))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -571,12 +572,12 @@ func Test_Static_FS(t *testing.T) {
 		Browse: true,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/css/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/css/style.css", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -633,7 +634,7 @@ func Test_Static_FS_Browse(t *testing.T) {
 		Browse: true,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -642,7 +643,7 @@ func Test_Static_FS_Browse(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Contains(t, string(body), "style.css")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs/style.css", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -651,12 +652,12 @@ func Test_Static_FS_Browse(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Contains(t, string(body), "color")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs/test", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs/test/style2.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs/test/style2.css", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -665,7 +666,7 @@ func Test_Static_FS_Browse(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Contains(t, string(body), "color")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/embed", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/embed", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -684,7 +685,7 @@ func Test_Static_FS_Prefix_Wildcard(t *testing.T) {
 		IndexNames: []string{"not_index.html"},
 	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/test/john/doe", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/test/john/doe", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -773,7 +774,7 @@ func Test_isFile(t *testing.T) {
 
 func Test_Static_Compress(t *testing.T) {
 	t.Parallel()
-	dir := "../../.github/testdata/fs" //nolint:goconst // test
+	dir := "../../.github/testdata/fs"
 	app := fiber.New()
 	app.Get("/*", New(dir, Config{
 		Compress: true,
@@ -786,17 +787,17 @@ func Test_Static_Compress(t *testing.T) {
 		t.Run(algo+"_compression", func(t *testing.T) {
 			t.Parallel()
 			// request non-compressible file (less than 200 bytes), Content Length will remain the same
-			req := httptest.NewRequest(fiber.MethodGet, "/css/style.css", nil)
+			req := httptest.NewRequest(fiber.MethodGet, "/css/style.css", http.NoBody)
 			req.Header.Set("Accept-Encoding", algo)
 			resp, err := app.Test(req, testConfig)
 
 			require.NoError(t, err, "app.Test(req)")
 			require.Equal(t, 200, resp.StatusCode, "Status code")
-			require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+			require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 			require.Equal(t, "46", resp.Header.Get(fiber.HeaderContentLength))
 
 			// request compressible file, ContentLength will change
-			req = httptest.NewRequest(fiber.MethodGet, "/index.html", nil)
+			req = httptest.NewRequest(fiber.MethodGet, "/index.html", http.NoBody)
 			req.Header.Set("Accept-Encoding", algo)
 			resp, err = app.Test(req, testConfig)
 
@@ -818,12 +819,12 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 	}))
 
 	// request compressible file without encoding
-	req := httptest.NewRequest(fiber.MethodGet, "/index.html", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/index.html", http.NoBody)
 	resp, err := app.Test(req, testConfig)
 
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "299", resp.Header.Get(fiber.HeaderContentLength))
 
 	// request compressible file with different encodings
@@ -840,7 +841,7 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 		fileName := "index.html"
 		compressedFileName := dir + "/index.html" + fileSuffixes[algo]
 
-		req = httptest.NewRequest(fiber.MethodGet, "/"+fileName, nil)
+		req = httptest.NewRequest(fiber.MethodGet, "/"+fileName, http.NoBody)
 		req.Header.Set("Accept-Encoding", algo)
 		resp, err = app.Test(req, testConfig)
 
@@ -881,7 +882,7 @@ func Test_Static_Compress_WithFileSuffixes(t *testing.T) {
 		fileName := "index.html"
 		compressedFileName := dir + "/index.html" + fileSuffixes[algo]
 
-		req := httptest.NewRequest(fiber.MethodGet, "/"+fileName, nil)
+		req := httptest.NewRequest(fiber.MethodGet, "/"+fileName, http.NoBody)
 		req.Header.Set("Accept-Encoding", algo)
 		resp, err := app.Test(req, testConfig)
 
@@ -916,7 +917,7 @@ func Test_Router_Mount_n_Static(t *testing.T) {
 		return c.Status(fiber.StatusNotFound).SendString("Not Found")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 }
@@ -936,7 +937,7 @@ func Test_Static_PathTraversal(t *testing.T) {
 	app.Get("/*", New(rootDir))
 
 	// A valid request: should succeed
-	validReq := httptest.NewRequest(fiber.MethodGet, "/style.css", nil)
+	validReq := httptest.NewRequest(fiber.MethodGet, "/style.css", http.NoBody)
 	validResp, err := app.Test(validReq)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, validResp.StatusCode, "Status code")
@@ -951,7 +952,7 @@ func Test_Static_PathTraversal(t *testing.T) {
 	// - 404 is the expected blocked response in most cases.
 	// - 400 might occur if fasthttp rejects the request before it's even processed (e.g., null bytes).
 	assertTraversalBlocked := func(path string) {
-		req := httptest.NewRequest(fiber.MethodGet, path, nil)
+		req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
 		resp, err := app.Test(req)
 		require.NoError(t, err, "app.Test(req)")
 
@@ -1047,7 +1048,7 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 	app.Get("/*", New(rootDir))
 
 	// A valid request (relative path without backslash):
-	validReq := httptest.NewRequest(fiber.MethodGet, "/style.css", nil)
+	validReq := httptest.NewRequest(fiber.MethodGet, "/style.css", http.NoBody)
 	validResp, err := app.Test(validReq)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, validResp.StatusCode, "Status code for valid file on Windows")
@@ -1057,7 +1058,7 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 
 	// Helper to test blocked responses
 	assertTraversalBlocked := func(path string) {
-		req := httptest.NewRequest(fiber.MethodGet, path, nil)
+		req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
 		resp, err := app.Test(req)
 		require.NoError(t, err, "app.Test(req)")
 
@@ -1097,7 +1098,7 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 	// Attempt that includes a null-byte on Windows
 	assertTraversalBlocked("/index.html%00.txt")
 
-	// Check behavior on an obviously non-existent and suspicious file
+	// Check behavior on an obviously nonexistent and suspicious file
 	assertTraversalBlocked("/\\this\\path\\does\\not\\exist\\..")
 
 	// Attempts involving relative traversal and current directory reference
@@ -1174,7 +1175,7 @@ func Test_SanitizePath_Error(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := sanitizePath(tc.input, tc.filesystem)
-			require.Error(t, err, "Expected error for input: %s", tc.input)
+			require.ErrorIs(t, err, ErrInvalidPath, "Expected ErrInvalidPath for input: %s", tc.input)
 		})
 	}
 }

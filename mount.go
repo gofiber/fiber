@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -95,7 +95,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 	return grp
 }
 
-// The MountPath property contains one or more path patterns on which a sub-app was mounted.
+// MountPath returns the route pattern where the current app instance was mounted as a sub-application.
 func (app *App) MountPath() string {
 	return app.mountFields.mountPath
 }
@@ -184,7 +184,7 @@ func (app *App) processSubAppsRoutes() {
 			// Check if the route has a mounted app
 			if !route.mount {
 				if !route.use || (route.use && m == 0) {
-					handlersCount += uint32(len(route.Handlers)) //nolint:gosec // Not a concern
+					handlersCount += uint32(len(route.Handlers)) //nolint:gosec // G115 - handler count is always small
 				}
 				continue
 			}

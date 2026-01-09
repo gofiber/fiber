@@ -18,6 +18,8 @@ var (
 	ErrNotRunning = errors.New("shutdown: server is not running")
 	// ErrHandlerExited is returned by App.Test if a handler panics or calls runtime.Goexit().
 	ErrHandlerExited = errors.New("runtime.Goexit() called in handler or server panic")
+	// ErrNoViewEngineConfigured indicates that a helper requiring a view engine was invoked without one configured.
+	ErrNoViewEngineConfigured = errors.New("fiber: no view engine configured")
 )
 
 // Fiber redirection errors
@@ -54,23 +56,24 @@ type (
 
 // encoding/json errors
 type (
-	// An InvalidUnmarshalError describes an invalid argument passed to Unmarshal.
+	// InvalidUnmarshalError describes an invalid argument passed to Unmarshal.
 	// (The argument to Unmarshal must be a non-nil pointer.)
 	InvalidUnmarshalError = json.InvalidUnmarshalError
 
-	// A MarshalerError represents an error from calling a MarshalJSON or MarshalText method.
+	// MarshalerError represents an error from calling a MarshalJSON or MarshalText method.
 	MarshalerError = json.MarshalerError
 
-	// A SyntaxError is a description of a JSON syntax error.
+	// SyntaxError is a description of a JSON syntax error.
 	SyntaxError = json.SyntaxError
 
-	// An UnmarshalTypeError describes a JSON value that was
+	// UnmarshalTypeError describes a JSON value that was
 	// not appropriate for a value of a specific Go type.
 	UnmarshalTypeError = json.UnmarshalTypeError
 
-	// An UnsupportedTypeError is returned by Marshal when attempting
+	// UnsupportedTypeError is returned by Marshal when attempting
 	// to encode an unsupported value type.
 	UnsupportedTypeError = json.UnsupportedTypeError
 
+	// UnsupportedValueError exposes json.UnsupportedValueError to describe unsupported values encountered during encoding.
 	UnsupportedValueError = json.UnsupportedValueError
 )

@@ -18,10 +18,13 @@ func Test_MemoryLock(t *testing.T) {
 
 	l := idempotency.NewMemoryLock()
 
+	// Test that a lock can be acquired
 	{
 		err := l.Lock("a")
 		require.NoError(t, err)
 	}
+
+	// Test that the same lock cannot be acquired again while held
 	{
 		done := make(chan struct{})
 		go func() {
@@ -35,9 +38,17 @@ func Test_MemoryLock(t *testing.T) {
 		case <-done:
 			t.Fatal("lock acquired again")
 		case <-time.After(time.Second):
+			// Expected: goroutine should still be blocked
 		}
 	}
 
+	// Release lock "a" to prevent goroutine leak
+	{
+		err := l.Unlock("a")
+		require.NoError(t, err)
+	}
+
+	// Test lock and unlock sequence
 	{
 		err := l.Lock("b")
 		require.NoError(t, err)
@@ -50,14 +61,24 @@ func Test_MemoryLock(t *testing.T) {
 		err := l.Lock("b")
 		require.NoError(t, err)
 	}
+	{
+		err := l.Unlock("b")
+		require.NoError(t, err)
+	}
 
+	// Test unlocking non-existent lock (should succeed)
 	{
 		err := l.Unlock("c")
 		require.NoError(t, err)
 	}
 
+	// Test another lock
 	{
 		err := l.Lock("d")
+		require.NoError(t, err)
+	}
+	{
+		err := l.Unlock("d")
 		require.NoError(t, err)
 	}
 }
@@ -114,7 +135,7 @@ func Benchmark_MemoryLock_Parallel(b *testing.B) {
 		b.ResetTimer()
 		b.RunParallel(func(p *testing.PB) {
 			for p.Next() {
-				// Division by 3 ensures that index will be repreated exactly 3 times
+				// Division by 3 ensures that index will be repeated exactly 3 times
 				i := int(keyI.Add(1)) / 3 % len(keys)
 				key := keys[i]
 				if err := lock.Lock(key); err != nil {

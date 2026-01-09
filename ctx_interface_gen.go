@@ -4,6 +4,7 @@ package fiber
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"io"
 	"mime/multipart"
@@ -22,6 +23,11 @@ type Ctx interface {
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
 	RequestCtx() *fasthttp.RequestCtx
+	// Context returns a context implementation that was set by
+	// user earlier or returns a non-nil, empty context, if it was not set earlier.
+	Context() context.Context
+	// SetContext sets a context implementation by user.
+	SetContext(ctx context.Context)
 	// Deadline returns the time when work done on behalf of this context
 	// should be canceled. Deadline returns ok==false when no deadline is
 	// set. Successive calls to Deadline return the same results.
@@ -38,11 +44,7 @@ type Ctx interface {
 	// Due to current limitations in how fasthttp works, Done operates as a nop.
 	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
 	Done() <-chan struct{}
-	// If Done is not yet closed, Err returns nil.
-	// If Done is closed, Err returns a non-nil error explaining why:
-	// context.DeadlineExceeded if the context's deadline passed,
-	// or context.Canceled if the context was canceled for some other reason.
-	// After Err returns a non-nil error, successive calls to Err return the same error.
+	// Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
 	//
 	// Due to current limitations in how fasthttp works, Err operates as a nop.
 	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
@@ -84,6 +86,7 @@ type Ctx interface {
 	// RestartRouting instead of going to the next handler. This may be useful after
 	// changing the request path. Note that handlers might be executed again.
 	RestartRouting() error
+	setHandlerCtx(ctx CustomCtx)
 	// OriginalURL contains the original request URL.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
@@ -108,6 +111,21 @@ type Ctx interface {
 	ViewBind(vars Map) error
 	// Route returns the matched Route struct.
 	Route() *Route
+	// FullPath returns the matched route path, including any group prefixes.
+	FullPath() string
+	// Matched returns true if the current request path was matched by the router.
+	Matched() bool
+	// IsMiddleware returns true if the current request handler was registered as middleware.
+	IsMiddleware() bool
+	// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
+	HasBody() bool
+	// OverrideParam overwrites a route parameter value by name.
+	// If the parameter name does not exist in the route, this method does nothing.
+	OverrideParam(name, value string)
+	// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
+	IsWebSocket() bool
+	// IsPreflight returns true if the request is a CORS preflight.
+	IsPreflight() bool
 	// SaveFile saves any multipart file to disk.
 	SaveFile(fileheader *multipart.FileHeader, path string) error
 	// SaveFileToStorage saves any multipart file to an external storage system.
@@ -146,9 +164,11 @@ type Ctx interface {
 	getDetectionPath() string
 	getValues() *[maxParams]string
 	getMatched() bool
+	getSkipNonUseRoutes() bool
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
+	setSkipNonUseRoutes(skip bool)
 	setRoute(route *Route)
 	getPathOriginal() string
 	// Accepts checks if the specified extensions or content types are acceptable.
@@ -167,7 +187,8 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	BodyRaw() []byte
-	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) ([]byte, uint8, error)
+	//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
+	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) (body []byte, decodesRealized uint8, err error)
 	// Body contains the raw body submitted in a POST request.
 	// This method will decompress the body if the 'Content-Encoding' header is provided.
 	// It returns the original (or decompressed) body data which is valid only within the handler.
@@ -202,19 +223,19 @@ type Ctx interface {
 	// while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
 	// Example: URL: https://example.com:8080 -> Host: example.com:8080
 	// Make copies or use the Immutable setting instead.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	Host() string
 	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Example: URL: https://example.com:8080 -> Hostname: example.com
 	// Make copies or use the Immutable setting instead.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	Hostname() string
 	// Port returns the remote port of the request.
 	Port() string
 	// IP returns the remote IP address of the request.
 	// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	IP() string
 	// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
 	// When IP validation is enabled, any invalid IPs will be omitted.
@@ -242,7 +263,7 @@ type Ctx interface {
 	// Otherwise, it updates the context's method and returns the overridden method as a string.
 	Method(override ...string) string
 	// MultipartForm parse form entries from binary.
-	// This returns a map[string][]string, so given a key the value will be a string slice.
+	// This returns a map[string][]string, so given a key, the value will be a string slice.
 	MultipartForm() (*multipart.Form, error)
 	// Params is used to get the route parameters.
 	// Defaults to empty string "" if the param doesn't exist.
@@ -251,7 +272,7 @@ type Ctx interface {
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Params(key string, defaultValue ...string) string
 	// Scheme contains the request protocol string: http or https for TLS requests.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
 	Scheme() string
 	// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 	Protocol() string
@@ -284,7 +305,7 @@ type Ctx interface {
 	// Queries()["filters[status]"] == "pending"
 	Queries() map[string]string
 	// Range returns a struct containing the type and a slice of ranges.
-	Range(size int) (Range, error)
+	Range(size int64) (Range, error)
 	// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
 	// If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
 	// If the offset is zero every label (no trimming) is returned.
@@ -292,7 +313,7 @@ type Ctx interface {
 	// Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
 	Stale() bool
 	// IsProxyTrusted checks trustworthiness of remote ip.
-	// If Config.TrustProxy false, it returns true
+	// If Config.TrustProxy false, it returns false.
 	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
 	IsProxyTrusted() bool
 	// IsFromLocal will return true if request came from local.
@@ -356,7 +377,7 @@ type Ctx interface {
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)
 	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route, params Map) (string, error)
+	getLocationFromRoute(route *Route, params Map) (string, error)
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
@@ -365,6 +386,17 @@ type Ctx interface {
 	// Send sets the HTTP response body without copying it.
 	// From this point onward the body argument must not be changed.
 	Send(body []byte) error
+	// SendEarlyHints allows the server to hint to the browser what resources a page would need
+	// so the browser can preload them while waiting for the server's full response. Only Link
+	// headers already written to the response will be transmitted as Early Hints.
+	//
+	// This is a HTTP/2+ feature but all browsers will either understand it or safely ignore it.
+	//
+	// NOTE: Older HTTP/1.1 non-browser clients may face compatibility issues.
+	//
+	// See: https://developer.chrome.com/docs/web-platform/early-hints and
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Link#syntax
+	SendEarlyHints(hints []string) error
 	// SendFile transfers the file from the specified path.
 	// By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
 	// The Content-Type response HTTP header field is set based on the file's extension.
@@ -386,7 +418,7 @@ type Ctx interface {
 	// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 	Type(extension string, charset ...string) Ctx
 	// Vary adds the given header field to the Vary response header.
-	// This will append the header, if not already listed, otherwise leaves it listed in the current location.
+	// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
 	Vary(fields ...string)
 	// Write appends p into response body.
 	Write(p []byte) (int, error)

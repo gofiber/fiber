@@ -1,6 +1,7 @@
 package limiter
 
 import (
+	"fmt"
 	"strconv"
 	"sync"
 
@@ -8,10 +9,16 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
+// FixedWindow implements a fixed-window rate limiting strategy.
 type FixedWindow struct{}
 
 // New creates a new fixed window middleware handler
-func (FixedWindow) New(cfg Config) fiber.Handler {
+func (FixedWindow) New(cfg *Config) fiber.Handler {
+	if cfg == nil {
+		defaultCfg := configDefault()
+		cfg = &defaultCfg
+	}
+
 	var (
 		// Limiter variables
 		mux        = &sync.RWMutex{}
@@ -19,7 +26,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 	)
 
 	// Create manager to simplify storage operations ( see manager.go )
-	manager := newManager(cfg.Storage)
+	manager := newManager(cfg.Storage, !cfg.DisableValueRedaction)
 
 	// Update timestamp every second
 	utils.StartTimeStampUpdater()
@@ -40,8 +47,14 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		// Lock entry
 		mux.Lock()
 
+		reqCtx := c.Context()
+
 		// Get entry from pool and release when finished
-		e := manager.get(c, key)
+		e, err := manager.get(reqCtx, key)
+		if err != nil {
+			mux.Unlock()
+			return err
+		}
 
 		// Get timestamp
 		ts := uint64(utils.Timestamp())
@@ -65,7 +78,10 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		remaining := maxRequests - e.currHits
 
 		// Update storage
-		manager.set(c, key, e, cfg.Expiration)
+		if setErr := manager.set(reqCtx, key, e, cfg.Expiration); setErr != nil {
+			mux.Unlock()
+			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+		}
 
 		// Unlock entry
 		mux.Unlock()
@@ -84,7 +100,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 
 		// Continue stack for reaching c.Response().StatusCode()
 		// Store err for returning
-		err := c.Next()
+		err = c.Next()
 
 		// Get the effective status code from either the error or response
 		statusCode := getEffectiveStatusCode(c, err)
@@ -94,10 +110,18 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest) {
 			// Lock entry
 			mux.Lock()
-			e = manager.get(c, key)
+			entry, getErr := manager.get(reqCtx, key)
+			if getErr != nil {
+				mux.Unlock()
+				return getErr
+			}
+			e = entry
 			e.currHits--
 			remaining++
-			manager.set(c, key, e, cfg.Expiration)
+			if setErr := manager.set(reqCtx, key, e, cfg.Expiration); setErr != nil {
+				mux.Unlock()
+				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+			}
 			// Unlock entry
 			mux.Unlock()
 		}

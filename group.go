@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -9,7 +9,8 @@ import (
 	"reflect"
 )
 
-// Group struct
+// Group represents a collection of routes that share middleware and a common
+// path prefix.
 type Group struct {
 	app         *App
 	parentGroup *Group
@@ -152,10 +153,12 @@ func (grp *Group) Use(args ...any) Router {
 			subApp = arg
 		case []string:
 			prefixes = arg
-		case Handler, []Handler, []any:
-			handlers = append(handlers, arg)
 		default:
-			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
+			handler, ok := toFiberHandler(arg)
+			if !ok {
+				panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
+			}
+			handlers = append(handlers, handler)
 		}
 	}
 
@@ -233,8 +236,10 @@ func (grp *Group) Patch(path string, handler any, handlers ...any) Router {
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
+// The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (grp *Group) Add(methods []string, path string, handler any, handlers ...any) Router {
-	grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, append([]any{handler}, handlers...)...)
+	converted := collectHandlers("group", append([]any{handler}, handlers...)...)
+	grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, converted...)
 	if !grp.anyRouteDefined {
 		grp.anyRouteDefined = true
 	}
@@ -255,7 +260,8 @@ func (grp *Group) All(path string, handler any, handlers ...any) Router {
 func (grp *Group) Group(prefix string, handlers ...any) Router {
 	prefix = getGroupPath(grp.Prefix, prefix)
 	if len(handlers) > 0 {
-		grp.app.register([]string{methodUse}, prefix, grp, handlers...)
+		converted := collectHandlers("group", handlers...)
+		grp.app.register([]string{methodUse}, prefix, grp, converted...)
 	}
 
 	// Create new group
@@ -267,11 +273,30 @@ func (grp *Group) Group(prefix string, handlers ...any) Router {
 	return newGrp
 }
 
-// Route is used to define routes with a common prefix inside the common function.
-// Uses Group method to define new sub-router.
-func (grp *Group) Route(path string) Register {
+// RouteChain creates a Registering instance scoped to the group's prefix,
+// allowing chained route declarations for the same path.
+func (grp *Group) RouteChain(path string) Register {
 	// Create new group
-	register := &Registering{app: grp.app, path: getGroupPath(grp.Prefix, path)}
+	register := &Registering{app: grp.app, group: grp, path: getGroupPath(grp.Prefix, path)}
 
 	return register
+}
+
+// Route is used to define routes with a common prefix inside the supplied
+// function. It mirrors the legacy helper and reuses the Group method to create
+// a sub-router.
+func (grp *Group) Route(prefix string, fn func(router Router), name ...string) Router {
+	if fn == nil {
+		panic("route handler 'fn' cannot be nil")
+	}
+	// Create new group
+	group := grp.Group(prefix)
+	if len(name) > 0 {
+		group.Name(name[0])
+	}
+
+	// Define routes
+	fn(group)
+
+	return group
 }

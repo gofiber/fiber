@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -42,13 +43,13 @@ func TestTimeout_Success(t *testing.T) {
 	// Our middleware wraps a handler that sleeps for 10ms, well under the 50ms limit.
 	app.Get("/fast", New(func(c fiber.Ctx) error {
 		// Simulate some work
-		if err := sleepWithContext(c, 10*time.Millisecond, context.DeadlineExceeded); err != nil {
+		if err := sleepWithContext(c.Context(), 10*time.Millisecond, context.DeadlineExceeded); err != nil {
 			return err
 		}
 		return c.SendString("OK")
 	}, Config{Timeout: 50 * time.Millisecond}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/fast", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/fast", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK for fast requests")
@@ -61,16 +62,19 @@ func TestTimeout_Exceeded(t *testing.T) {
 
 	// This handler sleeps 200ms, exceeding the 100ms limit.
 	app.Get("/slow", New(func(c fiber.Ctx) error {
-		if err := sleepWithContext(c, 200*time.Millisecond, context.DeadlineExceeded); err != nil {
+		if err := sleepWithContext(c.Context(), 200*time.Millisecond, context.DeadlineExceeded); err != nil {
 			return err
 		}
 		return c.SendString("Should never get here")
 	}, Config{Timeout: 100 * time.Millisecond}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/slow", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody)
+	start := time.Now()
 	resp, err := app.Test(req)
+	elapsed := time.Since(start)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Expected 408 Request Timeout")
+	require.Less(t, elapsed, 150*time.Millisecond, "context did not cancel within timeout")
 }
 
 // TestTimeout_CustomError tests that returning a user-defined error is also treated as a timeout.
@@ -82,13 +86,13 @@ func TestTimeout_CustomError(t *testing.T) {
 	app.Get("/custom", New(func(c fiber.Ctx) error {
 		// Sleep might time out, or might return early. If the context is canceled,
 		// we treat errCustomTimeout as a 'timeout-like' condition.
-		if err := sleepWithContext(c, 200*time.Millisecond, errCustomTimeout); err != nil {
+		if err := sleepWithContext(c.Context(), 200*time.Millisecond, errCustomTimeout); err != nil {
 			return fmt.Errorf("wrapped: %w", err)
 		}
 		return c.SendString("Should never get here")
 	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/custom", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/custom", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Expected 408 for custom timeout error")
@@ -105,7 +109,7 @@ func TestTimeout_UnmatchedError(t *testing.T) {
 		return errUnrelated // Not in the custom error list
 	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/unmatched", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/unmatched", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode,
@@ -124,7 +128,7 @@ func TestTimeout_ZeroDuration(t *testing.T) {
 		return c.SendString("No timeout used")
 	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/zero", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/zero", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
@@ -140,7 +144,7 @@ func TestTimeout_NegativeDuration(t *testing.T) {
 		return c.SendString("No timeout used")
 	}, Config{Timeout: -100 * time.Millisecond}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/negative", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/negative", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
@@ -150,23 +154,26 @@ func TestTimeout_NegativeDuration(t *testing.T) {
 func TestTimeout_CustomHandler(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
+	called := 0
 
 	app.Get("/custom-handler", New(func(c fiber.Ctx) error {
-		if err := sleepWithContext(c, 100*time.Millisecond, context.DeadlineExceeded); err != nil {
+		if err := sleepWithContext(c.Context(), 100*time.Millisecond, context.DeadlineExceeded); err != nil {
 			return err
 		}
 		return c.SendString("should not reach")
 	}, Config{
 		Timeout: 20 * time.Millisecond,
 		OnTimeout: func(c fiber.Ctx) error {
+			called++
 			return c.Status(408).JSON(fiber.Map{"error": "timeout"})
 		},
 	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/custom-handler", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/custom-handler", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	require.Equal(t, 1, called)
 }
 
 // TestRunHandler_DefaultOnTimeout ensures context.DeadlineExceeded triggers ErrRequestTimeout.

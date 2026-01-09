@@ -4,7 +4,7 @@ id: requestid
 
 # RequestID
 
-RequestID middleware for [Fiber](https://github.com/gofiber/fiber) that generates or propagates a request identifier. The ID is added to the response headers and stored in the request context.
+The RequestID middleware generates or propagates a request identifier, adding it to the response headers and request context.
 
 ## Signatures
 
@@ -15,7 +15,7 @@ func FromContext(c fiber.Ctx) string
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package:
 
 ```go
 import (
@@ -24,7 +24,7 @@ import (
 )
 ```
 
-After initializing your Fiber app, you can use the middleware in the following ways:
+Once your Fiber app is initialized, add the middleware like this:
 
 ```go
 // Initialize default config
@@ -39,9 +39,13 @@ app.Use(requestid.New(requestid.Config{
 }))
 ```
 
-If the incoming request already contains the configured header, its value is reused instead of generating a new one.
+If the request already includes the configured header, that value is reused instead of generating a new one. The middleware
+rejects IDs containing characters outside the visible ASCII range (for example, control characters or obs-text bytes) and
+will regenerate the value using up to three attempts from the configured generator (or SecureToken when no generator is set). When a
+custom generator fails to produce a valid ID, the middleware falls back to SecureToken to keep headers RFC-compliant
+across transports.
 
-Getting the request ID
+Retrieve the request ID
 
 ```go
 func handler(c fiber.Ctx) error {
@@ -53,22 +57,20 @@ func handler(c fiber.Ctx) error {
 
 ## Config
 
-| Property   | Type                    | Description                                                                                       | Default        |
-|:-----------|:------------------------|:--------------------------------------------------------------------------------------------------|:---------------|
-| Next       | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                               | `nil`          |
-| Header     | `string`                | Header is the header key where to get/set the unique request ID.                                  | "X-Request-ID" |
-| Generator  | `func() string`         | Generator defines a function to generate the unique identifier.                                   | utils.UUID     |
+| Property  | Type                 | Description                              | Default        |
+|:----------|:---------------------|:-----------------------------------------|:---------------|
+| Next      | `func(fiber.Ctx) bool` | Skip when the function returns `true`.    | `nil`          |
+| Header    | `string`             | Header key used to store the request ID. | "X-Request-ID" |
+| Generator | `func() string`      | Function that generates the identifier.  | utils.SecureToken |
 
 ## Default Config
 
-The default config uses a fast UUID generator which will expose the number of
-requests made to the server. To conceal this value for better privacy, use the
-`utils.UUIDv4` generator.
+The default config uses a cryptographically secure token generator for better security and privacy.
 
 ```go
 var ConfigDefault = Config{
     Next:       nil,
     Header:     fiber.HeaderXRequestID,
-    Generator:  utils.UUID,
+    Generator:  utils.SecureToken,
 }
 ```

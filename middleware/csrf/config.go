@@ -2,10 +2,10 @@ package csrf
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
@@ -32,7 +32,7 @@ type Config struct {
 
 	// KeyGenerator creates a new CSRF token.
 	//
-	// Optional. Default: utils.UUIDv4
+	// Optional. Default: utils.SecureToken
 	KeyGenerator func() string
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
@@ -75,23 +75,31 @@ type Config struct {
 
 	// Extractor returns the CSRF token from the request.
 	//
-	// Optional. Default: FromHeader("X-Csrf-Token")
+	// Optional. Default: extractors.FromHeader("X-Csrf-Token")
 	//
-	// Available extractors:
-	//   - FromHeader: Most secure, recommended for APIs
-	//   - FromForm: Secure, recommended for form submissions
-	//   - FromQuery: Less secure, URLs may be logged
-	//   - FromParam: Less secure, URLs may be logged
-	//   - Chain: Advanced chaining of multiple extractors
+	// Available extractors from github.com/gofiber/fiber/v3/extractors:
+	//   - extractors.FromHeader("X-Csrf-Token"): Most secure, recommended for APIs
+	//   - extractors.FromForm("_csrf"): Secure, recommended for form submissions
+	//   - extractors.FromQuery("csrf_token"): Less secure, URLs may be logged
+	//   - extractors.FromParam("csrf"): Less secure, URLs may be logged
+	//   - extractors.Chain(...): Advanced chaining of multiple extractors
+	//
+	// See the Extractors Guide for complete documentation:
+	// https://docs.gofiber.io/guide/extractors
 	//
 	// WARNING: Never create custom extractors that read from cookies with the same
 	// CookieName as this defeats CSRF protection entirely.
-	Extractor Extractor
+	Extractor extractors.Extractor
 
 	// IdleTimeout is the duration of time the CSRF token is valid.
 	//
 	// Optional. Default: 30 * time.Minute
 	IdleTimeout time.Duration
+
+	// DisableValueRedaction turns off masking CSRF tokens and storage keys in logs and errors.
+	//
+	// Optional. Default: false
+	DisableValueRedaction bool
 
 	// CookieSecure indicates if CSRF cookie is secure.
 	//
@@ -121,12 +129,13 @@ const HeaderName = "X-Csrf-Token"
 
 // ConfigDefault is the default config for CSRF middleware.
 var ConfigDefault = Config{
-	CookieName:     "csrf_",
-	CookieSameSite: "Lax",
-	IdleTimeout:    30 * time.Minute,
-	KeyGenerator:   utils.UUIDv4,
-	ErrorHandler:   defaultErrorHandler,
-	Extractor:      FromHeader(HeaderName),
+	CookieName:            "csrf_",
+	CookieSameSite:        "Lax",
+	IdleTimeout:           30 * time.Minute,
+	KeyGenerator:          utils.SecureToken,
+	ErrorHandler:          defaultErrorHandler,
+	Extractor:             extractors.FromHeader(HeaderName),
+	DisableValueRedaction: false,
 }
 
 // defaultErrorHandler is the default error handler that processes errors from fiber.Handler.
@@ -165,13 +174,16 @@ func configDefault(config ...Config) Config {
 		cfg.Extractor = ConfigDefault.Extractor
 	}
 	// Validate extractor security configurations
-	validateExtractorSecurity(cfg)
+	validateExtractorSecurity(&cfg)
 
 	return cfg
 }
 
 // validateExtractorSecurity checks for insecure extractor configurations
-func validateExtractorSecurity(cfg Config) {
+func validateExtractorSecurity(cfg *Config) {
+	if cfg == nil {
+		return
+	}
 	// Check primary extractor
 	if isInsecureCookieExtractor(cfg.Extractor, cfg.CookieName) {
 		panic("CSRF: Extractor reads from the same cookie '" + cfg.CookieName +
@@ -187,21 +199,21 @@ func validateExtractorSecurity(cfg Config) {
 	}
 
 	// Additional security warnings (non-fatal)
-	if cfg.Extractor.Source == SourceQuery || cfg.Extractor.Source == SourceParam {
+	if cfg.Extractor.Source == extractors.SourceQuery || cfg.Extractor.Source == extractors.SourceParam {
 		log.Warnf("[CSRF WARNING] Using %v extractor - URLs may be logged", cfg.Extractor.Source)
 	}
 }
 
 // isInsecureCookieExtractor checks if an extractor unsafely reads from the CSRF cookie
-func isInsecureCookieExtractor(extractor Extractor, cookieName string) bool {
-	if extractor.Source == SourceCookie {
+func isInsecureCookieExtractor(extractor extractors.Extractor, cookieName string) bool {
+	if extractor.Source == extractors.SourceCookie {
 		// Exact match - definitely insecure
 		if extractor.Key == cookieName {
 			return true
 		}
 
 		// Case-insensitive match - potentially confusing, warn but don't panic
-		if strings.EqualFold(extractor.Key, cookieName) && extractor.Key != cookieName {
+		if utils.EqualFold(extractor.Key, cookieName) && extractor.Key != cookieName {
 			log.Warnf("[CSRF WARNING] Extractor cookie name '%s' is similar to CSRF cookie '%s' - this may be confusing",
 				extractor.Key, cookieName)
 		}

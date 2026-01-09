@@ -4,7 +4,7 @@ id: logger
 
 # Logger
 
-Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP request/response details.
+Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP requests and responses.
 
 ## Signatures
 
@@ -14,7 +14,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the package:
 
 ```go
 import (
@@ -24,18 +24,17 @@ import (
 ```
 
 :::tip
-The order of registration plays a role. Only all routes that are registered after this one will be logged.
-The middleware should therefore be one of the first to be registered.
+Registration order matters: only routes added after the logger are logged, so register it early.
 :::
 
-After you initiate your Fiber app, you can use the following possibilities:
+Once your Fiber app is initialized, use the middleware like this:
 
 ```go
 // Initialize default config
 app.Use(logger.New())
 
 // Or extend your config for customization
-// Logging remote IP and Port
+// Log remote IP and port
 app.Use(logger.New(logger.Config{
     Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
 }))
@@ -100,27 +99,27 @@ app.Use(logger.New(logger.Config{
     ForceColors: true,
 }))
 
-// Use predefined formats 
+// Use predefined formats
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatCommon,
+    Format: logger.CommonFormat,
 }))
 
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatCombined,
+    Format: logger.CombinedFormat,
 }))
 
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatJSON, 
+    Format: logger.JSONFormat,
 }))
 
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatECS, 
+    Format: logger.ECSFormat,
 }))
 ```
 
 ### Use Logger Middleware with Other Loggers
 
-In order to use Fiber logger middleware with other loggers such as zerolog, zap, logrus; you can use `LoggerToWriter` helper which converts Fiber logger to a writer, which is compatible with the middleware.
+To combine the logger middleware with loggers like Zerolog, Zap, or Logrus, use the `LoggerToWriter` helper to adapt them to an `io.Writer`.
 
 ```go
 package main
@@ -141,7 +140,7 @@ func main() {
         ExtraKeys: []string{"request_id"},
     })
 
-    // Use the logger middleware with zerolog logger
+    // Use the logger middleware with the zap logger
     app.Use(logger.New(logger.Config{
         Stream: logger.LoggerToWriter(zap, log.LevelDebug),
     }))
@@ -157,16 +156,14 @@ func main() {
 ```
 
 :::tip
-Writing to os.File is goroutine-safe, but if you are using a custom Stream that is not goroutine-safe, make sure to implement locking to properly serialize writes.
+Writing to `os.File` is goroutine-safe, but custom streams may require locking to serialize writes.
 :::
 
 ## Config
 
-### Config
-
 | Property      | Type                                              | Description                                                                                                                                   | Default                                                               |
 | :------------ | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- |
-| Next          | `func(fiber.Ctx) bool`                            | Next defines a function to skip this middleware when returned true.                                                                           | `nil`                                                                 |
+| Next          | `func(fiber.Ctx) bool`                            | Next defines a function to skip this middleware when it returns true.                                                                           | `nil`                                                                 |
 | Skip          | `func(fiber.Ctx) bool`                            | Skip is a function to determine if logging is skipped or written to Stream.                                                                   | `nil`                                                                 |
 | Done          | `func(fiber.Ctx, []byte)`                         | Done is a function that is called after the log string for a request is written to Stream, and pass the log string as parameter.              | `nil`                                                                 |
 | CustomTags    | `map[string]LogFunc`                              | tagFunctions defines the custom tag action.                                                                                                   | `map[string]LogFunc`                                                  |
@@ -175,7 +172,7 @@ Writing to os.File is goroutine-safe, but if you are using a custom Stream that 
 | TimeZone      | `string`                                          | TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc                                                     | `"Local"`                                                             |
 | TimeInterval  | `time.Duration`                                   | TimeInterval is the delay before the timestamp is updated.                                                                                    | `500 * time.Millisecond`                                              |
 | Stream        | `io.Writer`                                       | Stream is a writer where logs are written.                                                                                                    | `os.Stdout`                                                           |
-| LoggerFunc    | `func(c fiber.Ctx, data *Data, cfg Config) error` | Custom logger function for integration with logging libraries (Zerolog, Zap, Logrus, etc). Defaults to Fiber's default logger if not defined. | `see default_logger.go defaultLoggerInstance`                         |
+| LoggerFunc    | `func(c fiber.Ctx, data *Data, cfg *Config) error` | Custom logger function for integration with logging libraries (Zerolog, Zap, Logrus, etc). Defaults to Fiber's default logger if not defined. | `see default_logger.go defaultLoggerInstance`                         |
 | DisableColors | `bool`                                            | DisableColors defines if the logs output should be colorized.                                                                                 | `false`                                                               |
 | ForceColors   | `bool`                                            | ForceColors defines if the logs output should be colorized even when the output is not a terminal.                                             | `false`                                                               |
 

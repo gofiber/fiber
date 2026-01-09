@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 🤖 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -9,9 +9,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"maps"
 	"mime/multipart"
 	"strconv"
-	"sync"
+	"strings"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -37,7 +38,12 @@ var (
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
 // other packages.
-type contextKey int //nolint:unused // need for future (nolintlint)
+type contextKey int
+
+// userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
+const (
+	userContextKey contextKey = iota // __local_user_context__
+)
 
 // DefaultCtx is the default implementation of the Ctx interface
 // generation tool `go install github.com/vburenin/ifacemaker@f30b6f9bdbed4b5c4804ec9ba4a04a999525c202`
@@ -45,28 +51,31 @@ type contextKey int //nolint:unused // need for future (nolintlint)
 //
 //go:generate ifacemaker --file ctx.go --file req.go --file res.go --struct DefaultCtx --iface Ctx --pkg fiber --promoted --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
-	DefaultReq                         // Default request api
-	DefaultRes                         // Default response api
-	app           *App                 // Reference to *App
-	route         *Route               // Reference to *Route
-	fasthttp      *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	bind          *Bind                // Default bind reference
-	redirect      *Redirect            // Default redirect reference
-	values        [maxParams]string    // Route parameter values
-	viewBindMap   sync.Map             // Default view map to bind template engine
-	baseURI       string               // HTTP base uri
-	pathOriginal  string               // Original HTTP path
-	flashMessages redirectionMsgs      // Flash messages
-	path          []byte               // HTTP path with the modifications by the configuration
-	detectionPath []byte               // Route detection path
-	treePathHash  int                  // Hash of the path for the search in the tree
-	indexRoute    int                  // Index of the current route
-	indexHandler  int                  // Index of the current handler
-	methodInt     int                  // HTTP method INT equivalent
-	matched       bool                 // Non use route matched
+	handlerCtx       CustomCtx            // Active custom context implementation, if any
+	DefaultReq                            // Default request api
+	DefaultRes                            // Default response api
+	app              *App                 // Reference to *App
+	route            *Route               // Reference to *Route
+	fasthttp         *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	bind             *Bind                // Default bind reference
+	redirect         *Redirect            // Default redirect reference
+	values           [maxParams]string    // Route parameter values
+	viewBindMap      Map                  // Default view map to bind template engine
+	baseURI          string               // HTTP base uri
+	pathOriginal     string               // Original HTTP path
+	flashMessages    redirectionMsgs      // Flash messages
+	path             []byte               // HTTP path with the modifications by the configuration
+	detectionPath    []byte               // Route detection path
+	treePathHash     int                  // Hash of the path for the search in the tree
+	indexRoute       int                  // Index of the current route
+	indexHandler     int                  // Index of the current handler
+	methodInt        int                  // HTTP method INT equivalent
+	matched          bool                 // Non use route matched
+	skipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
 }
 
-// TLSHandler object
+// TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
+// connections, including optional client certificate lookups.
 type TLSHandler struct {
 	clientHelloInfo *tls.ClientHelloInfo
 }
@@ -107,6 +116,22 @@ func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 	return c.fasthttp
 }
 
+// Context returns a context implementation that was set by
+// user earlier or returns a non-nil, empty context, if it was not set earlier.
+func (c *DefaultCtx) Context() context.Context {
+	if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
+		return ctx
+	}
+	ctx := context.Background()
+	c.SetContext(ctx)
+	return ctx
+}
+
+// SetContext sets a context implementation by user.
+func (c *DefaultCtx) SetContext(ctx context.Context) {
+	c.fasthttp.SetUserValue(userContextKey, ctx)
+}
+
 // Deadline returns the time when work done on behalf of this context
 // should be canceled. Deadline returns ok==false when no deadline is
 // set. Successive calls to Deadline return the same results.
@@ -129,11 +154,7 @@ func (*DefaultCtx) Done() <-chan struct{} {
 	return nil
 }
 
-// If Done is not yet closed, Err returns nil.
-// If Done is closed, Err returns a non-nil error explaining why:
-// context.DeadlineExceeded if the context's deadline passed,
-// or context.Canceled if the context was canceled for some other reason.
-// After Err returns a non-nil error, successive calls to Err return the same error.
+// Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
 //
 // Due to current limitations in how fasthttp works, Err operates as a nop.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
@@ -208,11 +229,16 @@ func (c *DefaultCtx) Next() error {
 
 	// Did we execute all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
-		// Continue route stack
+		if c.handlerCtx != nil {
+			return c.route.Handlers[c.indexHandler](c.handlerCtx)
+		}
 		return c.route.Handlers[c.indexHandler](c)
 	}
 
-	// Continue handler stack
+	if c.handlerCtx != nil {
+		_, err := c.app.nextCustom(c.handlerCtx)
+		return err
+	}
 	_, err := c.app.next(c)
 	return err
 }
@@ -220,18 +246,32 @@ func (c *DefaultCtx) Next() error {
 // RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
-	var err error
-
 	c.indexRoute = -1
-	_, err = c.app.next(c)
+	if c.handlerCtx != nil {
+		_, err := c.app.nextCustom(c.handlerCtx)
+		return err
+	}
+	_, err := c.app.next(c)
 	return err
+}
+
+func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
+	if ctx == nil {
+		c.handlerCtx = nil
+		return
+	}
+	if defaultCtx, ok := ctx.(*DefaultCtx); ok && defaultCtx == c {
+		c.handlerCtx = nil
+		return
+	}
+	c.handlerCtx = ctx
 }
 
 // OriginalURL contains the original request URL.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) OriginalURL() string {
-	return c.app.getString(c.fasthttp.Request.Header.RequestURI())
+	return c.app.toString(c.fasthttp.Request.Header.RequestURI())
 }
 
 // Path returns the path part of the request URL.
@@ -247,7 +287,7 @@ func (c *DefaultCtx) Path(override ...string) string {
 		// Prettify path
 		c.configDependentPaths()
 	}
-	return c.app.getString(c.path)
+	return c.app.toString(c.path)
 }
 
 // Req returns a convenience type whose API is limited to operations
@@ -279,9 +319,10 @@ func (c *DefaultCtx) Redirect() *Redirect {
 // Variables are read by the Render method and may be overwritten.
 func (c *DefaultCtx) ViewBind(vars Map) error {
 	// init viewBindMap - lazy map
-	for k, v := range vars {
-		c.viewBindMap.Store(k, v)
+	if c.viewBindMap == nil {
+		c.viewBindMap = make(Map, len(vars))
 	}
+	maps.Copy(c.viewBindMap, vars)
 	return nil
 }
 
@@ -300,6 +341,150 @@ func (c *DefaultCtx) Route() *Route {
 	return c.route
 }
 
+// FullPath returns the matched route path, including any group prefixes.
+func (c *DefaultCtx) FullPath() string {
+	return c.Route().Path
+}
+
+// Matched returns true if the current request path was matched by the router.
+func (c *DefaultCtx) Matched() bool {
+	return c.getMatched()
+}
+
+// IsMiddleware returns true if the current request handler was registered as middleware.
+func (c *DefaultCtx) IsMiddleware() bool {
+	if c.route == nil {
+		return false
+	}
+	if c.route.use {
+		return true
+	}
+	// For route-level middleware, there will be a next handler in the chain
+	return c.indexHandler+1 < len(c.route.Handlers)
+}
+
+// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
+func (c *DefaultCtx) HasBody() bool {
+	hdr := &c.fasthttp.Request.Header
+
+	//nolint:revive // switch is exhaustive for all ContentLength() cases
+	switch cl := hdr.ContentLength(); {
+	case cl > 0:
+		return true
+	case cl == -1:
+		// fasthttp reports -1 for Transfer-Encoding: chunked bodies.
+		return true
+	case cl == 0:
+		if hasTransferEncodingBody(hdr) {
+			return true
+		}
+	}
+
+	return len(c.fasthttp.Request.Body()) > 0
+}
+
+// OverrideParam overwrites a route parameter value by name.
+// If the parameter name does not exist in the route, this method does nothing.
+func (c *DefaultCtx) OverrideParam(name, value string) {
+	// If no route is matched, there are no parameters to update
+	if !c.Matched() {
+		return
+	}
+
+	// Normalize wildcard (*) and plus (+) tokens to their internal
+	// representations (*1, +1) used by the router.
+	if name == "*" || name == "+" {
+		name += "1"
+	}
+
+	if c.app.config.CaseSensitive {
+		for i, param := range c.route.Params {
+			if param == name {
+				c.values[i] = value
+				return
+			}
+		}
+		return
+	}
+
+	nameBytes := utils.UnsafeBytes(name)
+	for i, param := range c.route.Params {
+		if utils.EqualFold(utils.UnsafeBytes(param), nameBytes) {
+			c.values[i] = value
+			return
+		}
+	}
+}
+
+func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
+	teBytes := hdr.Peek(HeaderTransferEncoding)
+	var te string
+
+	if len(teBytes) > 0 {
+		te = utils.UnsafeString(teBytes)
+	} else {
+		for key, value := range hdr.All() {
+			if !utils.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
+				continue
+			}
+			te = utils.UnsafeString(value)
+			break
+		}
+	}
+
+	if te == "" {
+		return false
+	}
+
+	hasEncoding := false
+	for raw := range strings.SplitSeq(te, ",") {
+		token := utils.TrimSpace(raw)
+		if token == "" {
+			continue
+		}
+		if idx := strings.IndexByte(token, ';'); idx >= 0 {
+			token = utils.TrimSpace(token[:idx])
+		}
+		if token == "" {
+			continue
+		}
+		if utils.EqualFold(token, "identity") {
+			continue
+		}
+		hasEncoding = true
+	}
+
+	return hasEncoding
+}
+
+// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
+func (c *DefaultCtx) IsWebSocket() bool {
+	conn := c.fasthttp.Request.Header.Peek(HeaderConnection)
+	var isUpgrade bool
+	for v := range strings.SplitSeq(utils.UnsafeString(conn), ",") {
+		if utils.EqualFold(utils.TrimSpace(v), "upgrade") {
+			isUpgrade = true
+			break
+		}
+	}
+	if !isUpgrade {
+		return false
+	}
+	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), websocketBytes)
+}
+
+// IsPreflight returns true if the request is a CORS preflight.
+func (c *DefaultCtx) IsPreflight() bool {
+	if c.Method() != MethodOptions {
+		return false
+	}
+	hdr := &c.fasthttp.Request.Header
+	if len(hdr.Peek(HeaderAccessControlRequestMethod)) == 0 {
+		return false
+	}
+	return len(hdr.Peek(HeaderOrigin)) > 0
+}
+
 // SaveFile saves any multipart file to disk.
 func (*DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) error {
 	return fasthttp.SaveMultipartFile(fileheader, path)
@@ -313,12 +498,30 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	}
 	defer file.Close() //nolint:errcheck // not needed
 
-	content, err := io.ReadAll(file)
-	if err != nil {
+	maxUploadSize := c.app.config.BodyLimit
+	if maxUploadSize <= 0 {
+		maxUploadSize = DefaultBodyLimit
+	}
+
+	if fileheader.Size > 0 && fileheader.Size > int64(maxUploadSize) {
+		return fmt.Errorf("failed to read: %w", fasthttp.ErrBodyTooLarge)
+	}
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	limitedReader := io.LimitReader(file, int64(maxUploadSize)+1)
+	if _, err = buf.ReadFrom(limitedReader); err != nil {
 		return fmt.Errorf("failed to read: %w", err)
 	}
 
-	if err := storage.SetWithContext(c, path, content, 0); err != nil {
+	if buf.Len() > maxUploadSize {
+		return fmt.Errorf("failed to read: %w", fasthttp.ErrBodyTooLarge)
+	}
+
+	data := append([]byte(nil), buf.Bytes()...)
+
+	if err := storage.SetWithContext(c.Context(), path, data, 0); err != nil {
 		return fmt.Errorf("failed to store: %w", err)
 	}
 
@@ -382,10 +585,17 @@ func (c *DefaultCtx) Value(key any) any {
 	return c.fasthttp.UserValue(key)
 }
 
+var (
+	// xmlHTTPRequestBytes is precomputed for XHR detection
+	xmlHTTPRequestBytes = []byte("xmlhttprequest")
+	// websocketBytes is precomputed for WebSocket upgrade detection
+	websocketBytes = []byte("websocket")
+)
+
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFold(c.app.getBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderXRequestedWith), xmlHTTPRequestBytes)
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,
@@ -426,8 +636,9 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.indexHandler = 0
 	// Reset matched flag
 	c.matched = false
+	c.skipNonUseRoutes = false
 	// Set paths
-	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
+	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
 	c.methodInt = c.app.methodInt(utils.UnsafeString(fctx.Request.Header.Method()))
 	// Attach *fasthttp.RequestCtx to ctx
@@ -439,6 +650,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 	c.DefaultReq.c = c
 	c.DefaultRes.c = c
+	c.fasthttp.SetUserValue(userContextKey, nil)
 }
 
 // Release is a method to reset context fields when to use ReleaseCtx()
@@ -450,11 +662,14 @@ func (c *DefaultCtx) release() {
 		c.bind = nil
 	}
 	c.flashMessages = c.flashMessages[:0]
-	c.viewBindMap = sync.Map{}
+	// Clear viewBindMap by deleting all keys (reuse underlying map if possible)
+	clear(c.viewBindMap)
 	if c.redirect != nil {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
 	}
+	c.skipNonUseRoutes = false
+	c.handlerCtx = nil
 	c.DefaultReq.release()
 	c.DefaultRes.release()
 }
@@ -462,25 +677,20 @@ func (c *DefaultCtx) release() {
 func (c *DefaultCtx) renderExtensions(bind any) {
 	if bindMap, ok := bind.(Map); ok {
 		// Bind view map
-		c.viewBindMap.Range(func(key, value any) bool {
-			keyValue, ok := key.(string)
-			if !ok {
-				return true
+		for key, value := range c.viewBindMap {
+			if _, ok := bindMap[key]; !ok {
+				bindMap[key] = value
 			}
-			if _, ok := bindMap[keyValue]; !ok {
-				bindMap[keyValue] = value
-			}
-			return true
-		})
+		}
 
 		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
 		if c.app.config.PassLocalsToViews {
 			// Loop through each local and set it in the map
 			c.fasthttp.VisitUserValues(func(key []byte, val any) {
 				// check if bindMap doesn't contain the key
-				if _, ok := bindMap[c.app.getString(key)]; !ok {
+				if _, ok := bindMap[c.app.toString(key)]; !ok {
 					// Set the key and value in the bindMap
-					bindMap[c.app.getString(key)] = val
+					bindMap[c.app.toString(key)] = val
 				}
 			})
 		}
@@ -516,7 +726,7 @@ func (c *DefaultCtx) getTreePathHash() int {
 }
 
 func (c *DefaultCtx) getDetectionPath() string {
-	return c.app.getString(c.detectionPath)
+	return c.app.toString(c.detectionPath)
 }
 
 func (c *DefaultCtx) getValues() *[maxParams]string {
@@ -525,6 +735,10 @@ func (c *DefaultCtx) getValues() *[maxParams]string {
 
 func (c *DefaultCtx) getMatched() bool {
 	return c.matched
+}
+
+func (c *DefaultCtx) getSkipNonUseRoutes() bool {
+	return c.skipNonUseRoutes
 }
 
 func (c *DefaultCtx) setIndexHandler(handler int) {
@@ -537,6 +751,10 @@ func (c *DefaultCtx) setIndexRoute(route int) {
 
 func (c *DefaultCtx) setMatched(matched bool) {
 	c.matched = matched
+}
+
+func (c *DefaultCtx) setSkipNonUseRoutes(skip bool) {
+	c.skipNonUseRoutes = skip
 }
 
 func (c *DefaultCtx) setRoute(route *Route) {

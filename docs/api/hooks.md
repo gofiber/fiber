@@ -7,13 +7,15 @@ sidebar_position: 7
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-With Fiber you can execute custom user functions at specific method execution points. Here is a list of these hooks:
+Fiber lets you run custom callbacks at specific points in the routing lifecycle. Available hooks include:
 
 - [OnRoute](#onroute)
 - [OnName](#onname)
 - [OnGroup](#ongroup)
 - [OnGroupName](#ongroupname)
 - [OnListen](#onlisten)
+- [OnPreStartupMessage/OnPostStartupMessage](#onprestartupmessageonpoststartupmessage)
+  - [ListenData](#listendata)
 - [OnFork](#onfork)
 - [OnPreShutdown](#onpreshutdown)
 - [OnPostShutdown](#onpostshutdown)
@@ -29,6 +31,8 @@ type OnGroupHandler = func(Group) error
 type OnGroupNameHandler = OnGroupHandler
 type OnListenHandler = func(ListenData) error
 type OnForkHandler = func(int) error
+type OnPreStartupMessageHandler  = func(*PreStartupMessageData) error
+type OnPostStartupMessageHandler = func(*PostStartupMessageData) error
 type OnPreShutdownHandler  = func() error
 type OnPostShutdownHandler = func(error) error
 type OnMountHandler = func(*App) error
@@ -36,7 +40,7 @@ type OnMountHandler = func(*App) error
 
 ## OnRoute
 
-`OnRoute` is a hook to execute user functions on each route registration. You can access route properties via the **route** parameter.
+Runs after each route is registered. The callback receives the route so you can inspect its properties.
 
 ```go title="Signature"
 func (h *Hooks) OnRoute(handler ...OnRouteHandler)
@@ -44,7 +48,7 @@ func (h *Hooks) OnRoute(handler ...OnRouteHandler)
 
 ## OnName
 
-`OnName` is a hook to execute user functions on each route naming. You can access route properties via the **route** parameter.
+Runs when a route is named. The callback receives the route.
 
 :::caution
 `OnName` only works with named routes, not groups.
@@ -104,7 +108,7 @@ func main() {
 
 ## OnGroup
 
-`OnGroup` is a hook to execute user functions on each group registration. You can access group properties via the **group** parameter.
+Runs after each group is registered. The callback receives the group.
 
 ```go title="Signature"
 func (h *Hooks) OnGroup(handler ...OnGroupHandler)
@@ -112,7 +116,7 @@ func (h *Hooks) OnGroup(handler ...OnGroupHandler)
 
 ## OnGroupName
 
-`OnGroupName` is a hook to execute user functions on each group naming. You can access group properties via the **group** parameter.
+Runs when a group is named. The callback receives the group.
 
 :::caution
 `OnGroupName` only works with named groups, not routes.
@@ -124,7 +128,7 @@ func (h *Hooks) OnGroupName(handler ...OnGroupNameHandler)
 
 ## OnListen
 
-`OnListen` is a hook to execute user functions on `Listen`, `ListenTLS`, and `Listener`.
+Runs when the app starts listening via `Listen`, `ListenTLS`, or `Listener`.
 
 ```go title="Signature"
 func (h *Hooks) OnListen(handler ...OnListenHandler)
@@ -168,9 +172,90 @@ func main() {
 </TabItem>
 </Tabs>
 
+## OnPreStartupMessage/OnPostStartupMessage
+
+Use `OnPreStartupMessage` to tweak the banner before Fiber prints it, and `OnPostStartupMessage` to run logic after the banner is printed (or skipped). You can use some helper functions to customize the banner inside the `OnPreStartupMessage` hook.
+
+```go title="Signatures"
+// AddInfo adds an informational entry to the startup message with "INFO" label.
+func (sm *PreStartupMessageData) AddInfo(key, title, value string, priority ...int)
+
+// AddWarning adds a warning entry to the startup message with "WARNING" label.
+func (sm *PreStartupMessageData) AddWarning(key, title, value string, priority ...int)
+
+// AddError adds an error entry to the startup message with "ERROR" label.
+func (sm *PreStartupMessageData) AddError(key, title, value string, priority ...int)
+
+// EntryKeys returns all entry keys currently present in the startup message.
+func (sm *PreStartupMessageData) EntryKeys() []string
+
+// ResetEntries removes all existing entries from the startup message.
+func (sm *PreStartupMessageData) ResetEntries()
+
+// DeleteEntry removes a specific entry from the startup message by its key.
+func (sm *PreStartupMessageData) DeleteEntry(key string)
+```
+
+- Assign `sm.BannerHeader` to override the ASCII art banner. Leave it empty to use the default banner provided by Fiber.
+- Set `sm.PreventDefault = true` to suppress the built-in banner without affecting other hooks.
+- `PostStartupMessageData` reports whether the banner was skipped via the `Disabled`, `IsChild`, and `Prevented` flags.
+
+```go title="Customize the startup message"
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
+        sm.BannerHeader = "FOOBER " + sm.Version + "\n-------"
+
+        // Optional: you can also remove old entries
+        // sm.ResetEntries()
+
+        sm.AddInfo("git-hash", "Git hash", os.Getenv("GIT_HASH"))
+        sm.AddInfo("prefork", "Prefork", fmt.Sprintf("%v", sm.Prefork), 15)
+        return nil
+    })
+
+    app.Hooks().OnPostStartupMessage(func(sm fiber.PostStartupMessageData) error {
+        if !sm.Disabled && !sm.IsChild && !sm.Prevented {
+            fmt.Println("startup completed")
+        }
+        return nil
+    })
+
+    app.Listen(":5000")
+}
+```
+
+### ListenData
+
+`ListenData` exposes runtime metadata about the listener:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `Host` | `string` | Resolved hostname or IP address. |
+| `Port` | `string` | The bound port. |
+| `TLS` | `bool` | Indicates whether TLS is enabled. |
+| `Version` | `string` | Fiber version reported in the startup banner. |
+| `AppName` | `string` | Application name from the configuration. |
+| `HandlerCount` | `int` | Total registered handler count. |
+| `ProcessCount` | `int` | Number of processes Fiber will use. |
+| `PID` | `int` | Current process identifier. |
+| `Prefork` | `bool` | Whether prefork is enabled. |
+| `ChildPIDs` | `[]int` | Child process identifiers when preforking. |
+| `ColorScheme` | [`Colors`](https://github.com/gofiber/fiber/blob/main/color.go) | Active color scheme for the startup message. |
+
 ## OnFork
 
-`OnFork` is a hook to execute user functions on fork.
+Runs in the child process after a fork.
 
 ```go title="Signature"
 func (h *Hooks) OnFork(handler ...OnForkHandler)
@@ -178,7 +263,7 @@ func (h *Hooks) OnFork(handler ...OnForkHandler)
 
 ## OnPreShutdown
 
-`OnPreShutdown` is a hook to execute user functions before shutdown.
+Runs before the server shuts down.
 
 ```go title="Signature"
 func (h *Hooks) OnPreShutdown(handler ...OnPreShutdownHandler)
@@ -186,7 +271,7 @@ func (h *Hooks) OnPreShutdown(handler ...OnPreShutdownHandler)
 
 ## OnPostShutdown
 
-`OnPostShutdown` is a hook to execute user functions after shutdown.
+Runs after the server shuts down.
 
 ```go title="Signature"
 func (h *Hooks) OnPostShutdown(handler ...OnPostShutdownHandler)
@@ -194,7 +279,7 @@ func (h *Hooks) OnPostShutdown(handler ...OnPostShutdownHandler)
 
 ## OnMount
 
-`OnMount` is a hook to execute user functions after the mounting process. The mount event is fired when a sub-app is mounted on a parent app. The parent app is passed as a parameter. It works for both app and group mounting.
+Fires after a sub-app is mounted on a parent. The parent app is passed to the callback and it works for both app and group mounts.
 
 ```go title="Signature"
 func (h *Hooks) OnMount(handler ...OnMountHandler)
@@ -240,4 +325,5 @@ func testSimpleHandler(c fiber.Ctx) error {
 </Tabs>
 
 :::caution
-OnName/OnRoute/OnGroup/OnGroupName hooks are mount-sensitive. If you use one of these routes on sub app, and you mount it; paths of routes and groups will start with mount prefix.
+OnName, OnRoute, OnGroup, and OnGroupName are mount-sensitive. When you mount a sub-app that registers these hooks, route and group paths include the mount prefix.
+:::
