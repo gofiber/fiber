@@ -31,6 +31,11 @@ type Config struct {
 	// }
 	MaxFunc func(c fiber.Ctx) int
 
+	// A function to dynamically calculate the expiration time for rate limiter entries
+	//
+	// Default: A function that returns the static `Expiration` value from the config.
+	ExpirationFunc func(c fiber.Ctx) time.Duration
+
 	// KeyGenerator allows you to generate custom keys, by default c.IP() is used
 	//
 	// Default: func(c fiber.Ctx) string {
@@ -83,6 +88,8 @@ var ConfigDefault = Config{
 	MaxFunc: func(_ fiber.Ctx) int {
 		return defaultLimiterMax
 	},
+	// Note: ExpirationFunc is intentionally nil here so that configDefault()
+	// can create a proper closure that references the configured Expiration value.
 	KeyGenerator: func(c fiber.Ctx) string {
 		return c.IP()
 	},
@@ -98,13 +105,13 @@ var ConfigDefault = Config{
 
 // Helper function to set default values
 func configDefault(config ...Config) Config {
-	// Return default config if nothing provided
+	// Use default config if nothing provided
+	var cfg Config
 	if len(config) < 1 {
-		return ConfigDefault
+		cfg = ConfigDefault
+	} else {
+		cfg = config[0]
 	}
-
-	// Override default config
-	cfg := config[0]
 
 	// Set default values
 	if cfg.Next == nil {
@@ -128,6 +135,11 @@ func configDefault(config ...Config) Config {
 	if cfg.MaxFunc == nil {
 		cfg.MaxFunc = func(_ fiber.Ctx) int {
 			return cfg.Max
+		}
+	}
+	if cfg.ExpirationFunc == nil {
+		cfg.ExpirationFunc = func(_ fiber.Ctx) time.Duration {
+			return cfg.Expiration
 		}
 	}
 	return cfg
