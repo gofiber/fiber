@@ -760,6 +760,105 @@ func Test_CORS_AllowOriginsFunc(t *testing.T) {
 	require.Equal(t, "http://example-2.com", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }
 
+func Test_CORS_AllowOriginsFuncRejectsNonSerializedOrigins(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		Name               string
+		Origin             string
+		Method             string
+		SetPreflightMethod bool
+		ExpectAllowed      bool
+	}{
+		{
+			Name:   "UserInfoPresent",
+			Origin: "http://user:pass@example.com",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:               "PathPresent",
+			Origin:             "http://example.com/path",
+			Method:             fiber.MethodOptions,
+			SetPreflightMethod: true,
+		},
+		{
+			Name:               "QueryPresent",
+			Origin:             "http://example.com?query=1",
+			Method:             fiber.MethodOptions,
+			SetPreflightMethod: true,
+		},
+		{
+			Name:   "FragmentPresent",
+			Origin: "http://example.com#section",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:   "WildcardHost",
+			Origin: "http://*.example.com",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:   "StandaloneWildcard",
+			Origin: "*",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:   "NullOriginUppercase",
+			Origin: "NULL",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:   "NullOriginMixedCase",
+			Origin: "Null",
+			Method: fiber.MethodGet,
+		},
+		{
+			Name:          "NullOriginLowercase",
+			Origin:        "null",
+			Method:        fiber.MethodGet,
+			ExpectAllowed: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use("/", New(Config{
+				AllowOriginsFunc: func(string) bool { return true },
+			}))
+			app.All("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			handler := app.Handler()
+
+			ctx := &fasthttp.RequestCtx{}
+			ctx.Request.SetRequestURI("/")
+			ctx.Request.Header.SetMethod(tc.Method)
+			ctx.Request.Header.Set(fiber.HeaderOrigin, tc.Origin)
+			if tc.SetPreflightMethod {
+				ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+			}
+
+			handler(ctx)
+
+			if tc.ExpectAllowed {
+				require.Equal(t, "null", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			} else {
+				require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+			}
+
+			if tc.Method == fiber.MethodOptions {
+				require.Equal(t, fiber.StatusNoContent, ctx.Response.StatusCode())
+			} else {
+				require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+			}
+		})
+	}
+}
+
 func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 	testCases := []struct {
 		Name           string
@@ -937,8 +1036,8 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 				},
 			},
 			RequestOrigin:  "*",
-			ResponseOrigin: "*",
-			// Middleware will validate that wildcard won't set credentials to true
+			ResponseOrigin: "",
+			// Middleware will validate that wildcard won't set credentials to true and reject non-serialized origins
 			ResponseCredentials: "",
 		},
 		{
