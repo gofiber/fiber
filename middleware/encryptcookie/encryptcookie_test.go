@@ -9,9 +9,10 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 func Test_Middleware_Panics(t *testing.T) {
@@ -799,4 +800,48 @@ func Benchmark_GenerateKey_Parallel(b *testing.B) {
 			})
 		})
 	}
+}
+
+// Test_Middleware_Mixed_Valid_Invalid_Cookies tests that the middleware correctly handles
+// a mix of valid and invalid cookies during iteration
+func Test_Middleware_Mixed_Valid_Invalid_Cookies(t *testing.T) {
+	t.Parallel()
+	testKey := GenerateKey(32)
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Key: testKey,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		valid1 := c.Cookies("valid1")
+		valid2 := c.Cookies("valid2")
+		invalid := c.Cookies("invalid")
+		return c.SendString("valid1=" + valid1 + ",valid2=" + valid2 + ",invalid=" + invalid)
+	})
+
+	h := app.Handler()
+
+	// First, create some valid encrypted cookies
+	encryptedValue1, err := EncryptCookie("valid1", "value1", testKey)
+	require.NoError(t, err)
+	encryptedValue2, err := EncryptCookie("valid2", "value2", testKey)
+	require.NoError(t, err)
+
+	// Test with a mix of valid and invalid cookies
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetCookie("valid1", encryptedValue1)
+	ctx.Request.Header.SetCookie("invalid", "thisisnotvalid")
+	ctx.Request.Header.SetCookie("valid2", encryptedValue2)
+
+	h(ctx)
+
+	require.Equal(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, "valid1=value1,valid2=value2,invalid=", string(ctx.Response.Body()))
+
+	// Verify the invalid cookie was deleted but valid ones remain
+	require.NotEmpty(t, ctx.Request.Header.Cookie("valid1"))
+	require.Empty(t, ctx.Request.Header.Cookie("invalid"))
+	require.NotEmpty(t, ctx.Request.Header.Cookie("valid2"))
 }

@@ -2230,14 +2230,14 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 		app := New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		require.True(t, c.IsProxyTrusted())
+		require.False(t, c.IsProxyTrusted())
 	}
 	{
 		app := New(Config{
 			TrustProxy: false,
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		require.True(t, c.IsProxyTrusted())
+		require.False(t, c.IsProxyTrusted())
 	}
 
 	{
@@ -2488,8 +2488,16 @@ func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 	proxyHeaderNames := []string{"Real-Ip", HeaderXForwardedFor}
 
 	for _, proxyHeaderName := range proxyHeaderNames {
-		app := New(Config{ProxyHeader: proxyHeaderName})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		app := New(Config{
+			ProxyHeader: proxyHeaderName,
+			TrustProxy:  true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0"},
+			},
+		})
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+		c := app.AcquireCtx(fastCtx)
 
 		c.Request().Header.Set(proxyHeaderName, "0.0.0.1")
 		require.Equal(t, "0.0.0.1", c.IP())
@@ -2520,8 +2528,17 @@ func Test_Ctx_IP_ProxyHeader_With_IP_Validation(t *testing.T) {
 	proxyHeaderNames := []string{"Real-Ip", HeaderXForwardedFor}
 
 	for _, proxyHeaderName := range proxyHeaderNames {
-		app := New(Config{EnableIPValidation: true, ProxyHeader: proxyHeaderName})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		app := New(Config{
+			EnableIPValidation: true,
+			ProxyHeader:        proxyHeaderName,
+			TrustProxy:         true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0"},
+			},
+		})
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+		c := app.AcquireCtx(fastCtx)
 
 		// when proxy header & validation is enabled and the value is a valid IP, we return it
 		c.Request().Header.Set(proxyHeaderName, "0.0.0.1")
@@ -2696,8 +2713,16 @@ func Benchmark_Ctx_IPs_v6_With_IP_Validation(b *testing.B) {
 }
 
 func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
-	app := New(Config{ProxyHeader: HeaderXForwardedFor})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	app := New(Config{
+		ProxyHeader: HeaderXForwardedFor,
+		TrustProxy:  true,
+		TrustProxyConfig: TrustProxyConfig{
+			Loopback: true,
+		},
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")}))
+	c := app.AcquireCtx(fastCtx)
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
 	var res string
 	b.ReportAllocs()
@@ -2708,8 +2733,17 @@ func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
 }
 
 func Benchmark_Ctx_IP_With_ProxyHeader_and_IP_Validation(b *testing.B) {
-	app := New(Config{ProxyHeader: HeaderXForwardedFor, EnableIPValidation: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	app := New(Config{
+		ProxyHeader: HeaderXForwardedFor,
+		TrustProxy:  true,
+		TrustProxyConfig: TrustProxyConfig{
+			Loopback: true,
+		},
+		EnableIPValidation: true,
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")}))
+	c := app.AcquireCtx(fastCtx)
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
 	var res string
 	b.ReportAllocs()
@@ -3384,9 +3418,17 @@ func Benchmark_Ctx_Protocol(b *testing.B) {
 
 // go test -run Test_Ctx_Scheme
 func Test_Ctx_Scheme(t *testing.T) {
-	app := New()
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
 
 	freq := &fasthttp.RequestCtx{}
+	freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
 	freq.Request.Header.Set("X-Forwarded", "invalid")
 
 	c := app.AcquireCtx(freq)
@@ -7478,6 +7520,164 @@ func Test_Ctx_End_after_drop(t *testing.T) {
 	require.Nil(t, resp)
 }
 
+// go test -run Test_Ctx_OverrideParam
+func Test_Ctx_OverrideParam(t *testing.T) {
+	t.Parallel()
+	t.Run("route_params", func(t *testing.T) {
+		// a basic request to check if OverrideParam functions correctly on different scenarios
+		// - Does it change an existing param (it should)
+		// - Does it ignore a non-existing param (it should)
+		t.Parallel()
+		app := New()
+		app.Get("/user/:name/:id", func(c Ctx) error {
+			c.OverrideParam("name", "overridden")
+			c.OverrideParam("nonexistent", "ignored")
+			require.Equal(t, "overridden", c.Params("name"))
+			require.Equal(t, "123", c.Params("id"))
+			require.Empty(t, c.Params("nonexistent"))
+			require.Equal(t, []string{"name", "id"}, c.Route().Params)
+
+			return c.JSON(map[string]any{
+				"name": c.Params("name"),
+				"id":   c.Params("id"),
+				"all":  c.Route().Params,
+			})
+		})
+
+		req, err := http.NewRequest(http.MethodGet, "/user/original/123", http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("plus_wildcard_params", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/files+/+",
+			func(c Ctx) error {
+				c.OverrideParam("+", "changed")
+				c.OverrideParam("+2", "changed2")
+
+				require.Equal(t, "changed", c.Params("+"))
+				require.Equal(t, "changed2", c.Params("+2"))
+				return nil
+			},
+		)
+
+		req, err := http.NewRequest(http.MethodGet, "/filesoriginal/original2", http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("wildcard_params", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/files/*", func(c Ctx) error {
+			c.OverrideParam("*", "changed")
+			require.Equal(t, "changed", c.Params("*"))
+			return nil
+		})
+		req, err := http.NewRequest(http.MethodGet, "/files/testing", http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("multi_wildcard_params", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/files/*/*", func(c Ctx) error {
+			c.OverrideParam("*", "changed")
+			c.OverrideParam("*2", "changed2")
+			require.Equal(t, "changed", c.Params("*"))
+			require.Equal(t, "changed2", c.Params("*2"))
+			return nil
+		})
+		req, err := http.NewRequest(http.MethodGet, "/files/testing/testing", http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("case_sensitive", func(t *testing.T) {
+		t.Parallel()
+
+		// Ensure OverrideParam respects the CaseSensitive configuration
+		app := New(Config{
+			CaseSensitive: true,
+		})
+
+		app.Get("/user/:name", func(c Ctx) error {
+			c.OverrideParam("name", "overridden")
+
+			require.Equal(t, "overridden", c.Params("name"))
+			require.Empty(t, c.Params("NAME"))
+
+			return c.SendStatus(StatusOK)
+		})
+
+		req, err := http.NewRequest(http.MethodGet, "/user/original", http.NoBody)
+		require.NoError(t, err)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("case_insensitive", func(t *testing.T) {
+		t.Parallel()
+
+		// CaseInsensitive mode (default)
+		app := New(Config{
+			CaseSensitive: false,
+		})
+
+		app.Get("/user/:name", func(c Ctx) error {
+			c.OverrideParam("NAME", "overridden")
+
+			require.Equal(t, "overridden", c.Params("name"))
+			require.Equal(t, "overridden", c.Params("NAME"))
+
+			return c.SendStatus(StatusOK)
+		})
+
+		req, err := http.NewRequest(http.MethodGet, "/user/original", http.NoBody)
+		require.NoError(t, err)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("nil_router", func(t *testing.T) {
+		t.Parallel()
+		// Ensure OverrideParam handles nil route context gracefully
+		app := New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c, ok := ctx.(*DefaultCtx)
+		require.True(t, ok)
+		defer app.ReleaseCtx(c)
+		c.route = nil
+
+		c.OverrideParam("test", "value") // Should not change
+		require.Empty(t, c.Params("test"))
+	})
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_IsProxyTrusted -benchmem -count=4
 func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario without trusted proxy check
@@ -7956,4 +8156,27 @@ func Benchmark_Ctx_IsFromLocalhost(b *testing.B) {
 			app.ReleaseCtx(c)
 		})
 	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_OverrideParam -benchmem -count=4
+func Benchmark_Ctx_OverrideParam(b *testing.B) {
+	app := New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c, ok := ctx.(*DefaultCtx)
+	if !ok {
+		b.Fatal("AcquireCtx did not return *DefaultCtx")
+	}
+
+	defer app.ReleaseCtx(c)
+
+	c.values = [maxParams]string{"original", "12345"}
+	c.route = &Route{Params: []string{"name", "id"}}
+	c.setMatched(true)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		c.OverrideParam("name", "changed")
+	}
 }

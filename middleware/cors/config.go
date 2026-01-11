@@ -16,6 +16,13 @@ type Config struct {
 	// dynamic evaluation of allowed origins. Note if AllowCredentials is true, wildcard origins
 	// will be not have the 'Access-Control-Allow-Credentials' header set to 'true'.
 	//
+	// The function receives serialized origins (scheme + host) or the literal "null" string.
+	// According to the CORS specification (https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS#origin),
+	// browsers send "null" for privacy-sensitive contexts like sandboxed iframes or file:// URLs.
+	//
+	// Origins with userinfo, paths, queries, fragments, or wildcards are rejected and will not
+	// be passed to this function.
+	//
 	// Optional. Default: nil
 	AllowOriginsFunc func(origin string) bool
 
