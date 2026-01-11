@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,7 +60,7 @@ func Benchmark_Memory(b *testing.B) {
 	keyLength := 1000
 	keys := make([]string, keyLength)
 	for i := range keyLength {
-		keys[i] = utils.UUID()
+		keys[i] = utils.UUIDv4()
 	}
 	value := []byte("joe")
 

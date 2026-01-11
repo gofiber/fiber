@@ -21,7 +21,7 @@ import (
 	"time"
 	"unsafe"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 
 	"github.com/gofiber/fiber/v3/log"
 
@@ -42,6 +42,13 @@ type acceptedType struct {
 
 const noCacheValue = "no-cache"
 
+// Pre-allocated byte slices for accept header parsing
+var (
+	semicolonQEquals = []byte(";q=")
+	wildcardAll      = []byte("*/*")
+	wildcardSuffix   = []byte("/*")
+)
+
 type headerParams map[string][]byte
 
 // getTLSConfig returns a net listener's tls config
@@ -59,16 +66,16 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 		// Get private field from value
 		if field := val.FieldByName("config"); field.IsValid() {
 			// Copy value from pointer field (unsafe)
-			newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
-			if !newval.IsValid() {
+			newValue := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
+			if !newValue.IsValid() {
 				return nil
 			}
 			// Get element from pointer
-			if elem := newval.Elem(); elem.IsValid() {
+			if elem := newValue.Elem(); elem.IsValid() {
 				// Cast value to *tls.Config
 				c, ok := reflect.TypeAssert[*tls.Config](elem)
 				if !ok {
-					panic(errors.New("failed to type-assert to *tls.Config"))
+					panic(errTLSConfigTypeAssertion)
 				}
 				return c
 			}
@@ -151,8 +158,8 @@ func (*App) isASCII(s string) bool {
 
 // uniqueRouteStack drop all not unique routes from the slice
 func uniqueRouteStack(stack []*Route) []*Route {
-	var unique []*Route
-	m := make(map[*Route]struct{})
+	m := make(map[*Route]struct{}, len(stack))
+	unique := make([]*Route, 0, len(stack))
 	for _, v := range stack {
 		if _, ok := m[v]; !ok {
 			m[v] = struct{}{}
@@ -165,14 +172,14 @@ func uniqueRouteStack(stack []*Route) []*Route {
 
 // defaultString returns the value or a default value if it is set
 func defaultString(value string, defaultValue []string) string {
-	if len(value) == 0 && len(defaultValue) > 0 {
+	if value == "" && len(defaultValue) > 0 {
 		return defaultValue[0]
 	}
 	return value
 }
 
 func getGroupPath(prefix, path string) string {
-	if len(path) == 0 {
+	if path == "" {
 		return prefix
 	}
 
@@ -188,7 +195,11 @@ func getGroupPath(prefix, path string) string {
 // Returns true if the offer matches the specification, false otherwise.
 func acceptsOffer(spec, offer string, _ headerParams) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
-		return true
+		prefix := spec[:len(spec)-1]
+		if len(offer) < len(prefix) {
+			return false
+		}
+		return utils.EqualFold(prefix, offer[:len(prefix)])
 	}
 
 	return utils.EqualFold(spec, offer)
@@ -204,7 +215,7 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
 	if spec == "*" {
 		return true
 	}
-	if i := strings.IndexByte(spec, '*'); i != -1 {
+	if strings.IndexByte(spec, '*') >= 0 {
 		return false
 	}
 	if utils.EqualFold(spec, offer) {
@@ -218,7 +229,7 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
 // acceptsLanguageOfferExtended determines if a language tag offer matches a
 // range according to RFC 4647 Extended Filtering (§3.3.2).
 // - Case-insensitive comparisons
-// - '*' matches zero or more subtags (can “slide”)
+// - '*' matches zero or more subtags (can "slide")
 // - Unspecified subtags are treated like '*' (so trailing/extraneous tag subtags are fine)
 // - Matching fails if sliding encounters a singleton (incl. 'x')
 func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
@@ -229,8 +240,19 @@ func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
 		return false
 	}
 
-	rs := strings.Split(spec, "-")
-	ts := strings.Split(offer, "-")
+	// Use stack-allocated arrays to avoid heap allocations for typical language tags
+	var rsBuf, tsBuf [8]string
+	rs := rsBuf[:0]
+	ts := tsBuf[:0]
+
+	// Parse spec subtags without allocation for typical cases
+	for s := range strings.SplitSeq(spec, "-") {
+		rs = append(rs, s)
+	}
+	// Parse offer subtags without allocation for typical cases
+	for s := range strings.SplitSeq(offer, "-") {
+		ts = append(ts, s)
+	}
 
 	// Step 2: first subtag must match (or be '*')
 	if rs[0] != "*" && !utils.EqualFold(rs[0], ts[0]) {
@@ -402,7 +424,7 @@ func unescapeHeaderValue(v []byte) ([]byte, error) {
 		if c == '\\' {
 			// invalid escape at end of string
 			if i == len(v)-1 {
-				return nil, errors.New("invalid escape sequence")
+				return nil, errInvalidEscapeSequence
 			}
 			escaping = true
 			continue
@@ -410,7 +432,7 @@ func unescapeHeaderValue(v []byte) ([]byte, error) {
 		res = append(res, c)
 	}
 	if escaping {
-		return nil, errors.New("invalid escape sequence")
+		return nil, errInvalidEscapeSequence
 	}
 	return res, nil
 }
@@ -499,7 +521,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 
 			// Optimized quality parsing
 			qIndex := i + 3
-			if bytes.HasPrefix(accept[i:], []byte(";q=")) && bytes.IndexByte(accept[qIndex:], ';') == -1 {
+			if bytes.HasPrefix(accept[i:], semicolonQEquals) && bytes.IndexByte(accept[qIndex:], ';') == -1 {
 				if q, err := fasthttp.ParseUfloat(accept[qIndex:]); err == nil {
 					quality = q
 				}
@@ -532,7 +554,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 			}
 		}
 
-		spec = utils.Trim(spec, ' ')
+		spec = utils.TrimSpace(spec)
 
 		// Determine specificity
 		var specificity int
@@ -541,9 +563,9 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 		switch {
 		case len(spec) == 1 && spec[0] == '*':
 			specificity = 1
-		case bytes.Equal(spec, []byte("*/*")):
+		case bytes.Equal(spec, wildcardAll):
 			specificity = 1
-		case bytes.HasSuffix(spec, []byte("/*")):
+		case bytes.HasSuffix(spec, wildcardSuffix):
 			specificity = 2
 		case bytes.IndexByte(spec, '/') != -1:
 			specificity = 3
@@ -613,8 +635,8 @@ func sortAcceptedTypes(at []acceptedType) {
 
 // normalizeEtag validates an entity tag and returns the
 // value without quotes. weak is true if the tag has the "W/" prefix.
-func normalizeEtag(t string) (string, bool, bool) {
-	weak := strings.HasPrefix(t, "W/")
+func normalizeEtag(t string) (value string, weak, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the parsed ETag components
+	weak = strings.HasPrefix(t, "W/")
 	if weak {
 		t = t[2:]
 	}
@@ -656,7 +678,7 @@ func matchEtagStrong(s, etag string) bool {
 // weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	var start, end int
-	header := utils.Trim(app.toString(noneMatchBytes), ' ')
+	header := utils.TrimSpace(app.toString(noneMatchBytes))
 
 	// Short-circuit the wildcard case: "*" never counts as stale.
 	if header == "*" {
@@ -686,17 +708,17 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !matchEtag(app.toString(noneMatchBytes[start:end]), etag)
 }
 
-func parseAddr(raw string) (string, string) {
+func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming host and port parts for clarity
 	if raw == "" {
 		return "", ""
 	}
 
-	raw = utils.Trim(raw, ' ')
+	raw = utils.TrimSpace(raw)
 
 	// Handle IPv6 addresses enclosed in brackets as defined by RFC 3986
 	if strings.HasPrefix(raw, "[") {
 		if end := strings.IndexByte(raw, ']'); end != -1 {
-			host := raw[:end+1] // keep the closing ]
+			host = raw[:end+1] // keep the closing ]
 			if len(raw) > end+1 && raw[end+1] == ':' {
 				return host, raw[end+2:]
 			}
@@ -706,12 +728,12 @@ func parseAddr(raw string) (string, string) {
 
 	// Everything else with a colon
 	if i := strings.LastIndexByte(raw, ':'); i != -1 {
-		host, port := raw[:i], raw[i+1:]
+		host, port = raw[:i], raw[i+1:]
 
 		// If “host” still contains ':', we must have hit an un-bracketed IPv6
 		// literal. In that form a port is impossible, so treat the whole thing
 		// as host.
-		if strings.Contains(host, ":") {
+		if strings.IndexByte(host, ':') >= 0 {
 			return raw, ""
 		}
 		return host, port
@@ -721,7 +743,11 @@ func parseAddr(raw string) (string, string) {
 	return raw, ""
 }
 
-// isNoCache checks if the cacheControl header value is a `no-cache`.
+// isNoCache checks if the cacheControl header value contains a `no-cache` directive.
+// Per RFC 9111 §5.2.2.4, no-cache can appear as either:
+// - "no-cache" (applies to entire response)
+// - "no-cache=field-name" (applies to specific header field)
+// Both forms indicate the response should not be served from cache without revalidation.
 func isNoCache(cacheControl string) bool {
 	n := len(cacheControl)
 	ncLen := len(noCacheValue)
@@ -735,7 +761,13 @@ func isNoCache(cacheControl string) bool {
 				continue
 			}
 		}
-		if i+ncLen == n || cacheControl[i+ncLen] == ',' {
+		// Check for end of string, comma, equals sign, or space after no-cache
+		// This handles: "no-cache", "no-cache, ...", "no-cache=...", "no-cache ,"
+		if i+ncLen == n {
+			return true
+		}
+		next := cacheControl[i+ncLen]
+		if next == ',' || next == '=' || next == ' ' {
 			return true
 		}
 	}

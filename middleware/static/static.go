@@ -13,11 +13,13 @@ import (
 	"strings"
 	"sync"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
 )
+
+var ErrInvalidPath = errors.New("invalid path")
 
 // sanitizePath validates and cleans the requested path.
 // It returns an error if the path attempts to traverse directories.
@@ -43,7 +45,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	for strings.IndexByte(s, '%') >= 0 {
 		us, err := url.PathUnescape(s)
 		if err != nil {
-			return nil, errors.New("invalid path")
+			return nil, ErrInvalidPath
 		}
 		if us == s {
 			break
@@ -52,8 +54,8 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	}
 
 	// reject any null bytes
-	if strings.IndexByte(s, 0) >= 0 {
-		return nil, errors.New("invalid path")
+	if strings.IndexByte(s, '\x00') >= 0 {
+		return nil, ErrInvalidPath
 	}
 
 	s = pathpkg.Clean("/" + s)
@@ -64,7 +66,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 			return []byte("/"), nil
 		}
 		if !fs.ValidPath(s) {
-			return nil, errors.New("invalid path")
+			return nil, ErrInvalidPath
 		}
 		s = "/" + s
 	}
@@ -114,9 +116,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 			}
 
 			// Is prefix a partial wildcard?
-			if strings.Contains(prefix, "*") {
+			if before, _, found := strings.Cut(prefix, "*"); found {
 				// /john* -> /john
-				prefix = strings.Split(prefix, "*")[0]
+				prefix = before
 			}
 
 			prefixLen := len(prefix)
@@ -125,7 +127,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				prefixLen--
 			}
 
-			fs := &fasthttp.FS{
+			fileServer := &fasthttp.FS{
 				Root:                   root,
 				FS:                     config.FS,
 				AllowEmptyRoot:         true,
@@ -143,20 +145,20 @@ func New(root string, cfg ...Config) fiber.Handler {
 				},
 			}
 
-			fs.PathRewrite = func(fctx *fasthttp.RequestCtx) []byte {
+			fileServer.PathRewrite = func(fctx *fasthttp.RequestCtx) []byte {
 				path := fctx.Path()
 
 				if len(path) >= prefixLen {
-					checkFile, err := isFile(root, fs.FS)
+					checkFile, err := isFile(root, fileServer.FS)
 					if err != nil {
 						return path
 					}
 
 					// If the root is a file, we need to reset the path to "/" always.
 					switch {
-					case checkFile && fs.FS == nil:
+					case checkFile && fileServer.FS == nil:
 						path = []byte("/")
-					case checkFile && fs.FS != nil:
+					case checkFile && fileServer.FS != nil:
 						path = utils.UnsafeBytes(root)
 					default:
 						path = path[prefixLen:]
@@ -170,7 +172,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 					path = append([]byte("/"), path...)
 				}
 
-				sanitized, err := sanitizePath(path, fs.FS)
+				sanitized, err := sanitizePath(path, fileServer.FS)
 				if err != nil {
 					// return a guaranteed-missing path so fs responds with 404
 					return []byte("/__fiber_invalid__")
@@ -183,7 +185,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
 			}
 
-			fileHandler = fs.NewRequestHandler()
+			fileHandler = fileServer.NewRequestHandler()
 		})
 
 		// Serve file
@@ -202,7 +204,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 		status := c.RequestCtx().Response.StatusCode()
 
 		if status != fiber.StatusNotFound && status != fiber.StatusForbidden {
-			if len(cacheControlValue) > 0 {
+			if cacheControlValue != "" {
 				c.RequestCtx().Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)
 			}
 

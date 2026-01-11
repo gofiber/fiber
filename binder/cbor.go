@@ -1,7 +1,7 @@
 package binder
 
 import (
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // CBORBinding is the CBOR binder for CBOR request body.

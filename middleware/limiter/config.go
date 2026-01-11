@@ -6,6 +6,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+const defaultLimiterMax = 5
+
 // Config defines the config for middleware.
 type Config struct {
 	// Store is used to store the state of the middleware
@@ -76,8 +78,11 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Max:        5,
+	Max:        defaultLimiterMax,
 	Expiration: 1 * time.Minute,
+	MaxFunc: func(_ fiber.Ctx) int {
+		return defaultLimiterMax
+	},
 	KeyGenerator: func(c fiber.Ctx) string {
 		return c.IP()
 	},

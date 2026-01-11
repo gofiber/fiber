@@ -9,7 +9,12 @@ import (
 var (
 	ErrSuitableContentNotFound = errors.New("binder: suitable content not found to parse body")
 	ErrMapNotConvertible       = errors.New("binder: map is not convertible to map[string]string or map[string][]string")
+	ErrMapNilDestination       = errors.New("binder: map destination is nil and cannot be initialized")
+	ErrInvalidDestinationValue = errors.New("binder: invalid destination value")
+	ErrUnmatchedBrackets       = errors.New("unmatched brackets")
 )
+
+var errPoolTypeAssertion = errors.New("failed to type-assert to T")
 
 var HeaderBinderPool = sync.Pool{
 	New: func() any {
@@ -76,7 +81,7 @@ var MsgPackBinderPool = sync.Pool{
 func GetFromThePool[T any](pool *sync.Pool) T {
 	binder, ok := pool.Get().(T)
 	if !ok {
-		panic(errors.New("failed to type-assert to T"))
+		panic(errPoolTypeAssertion)
 	}
 
 	return binder

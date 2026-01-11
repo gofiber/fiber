@@ -9,13 +9,13 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"maps"
 	"mime/multipart"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -41,7 +41,9 @@ var (
 type contextKey int
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
-const userContextKey contextKey = 0 // __local_user_context__
+const (
+	userContextKey contextKey = iota // __local_user_context__
+)
 
 // DefaultCtx is the default implementation of the Ctx interface
 // generation tool `go install github.com/vburenin/ifacemaker@f30b6f9bdbed4b5c4804ec9ba4a04a999525c202`
@@ -49,25 +51,27 @@ const userContextKey contextKey = 0 // __local_user_context__
 //
 //go:generate ifacemaker --file ctx.go --file req.go --file res.go --struct DefaultCtx --iface Ctx --pkg fiber --promoted --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
-	DefaultReq                         // Default request api
-	DefaultRes                         // Default response api
-	app           *App                 // Reference to *App
-	route         *Route               // Reference to *Route
-	fasthttp      *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	bind          *Bind                // Default bind reference
-	redirect      *Redirect            // Default redirect reference
-	values        [maxParams]string    // Route parameter values
-	viewBindMap   sync.Map             // Default view map to bind template engine
-	baseURI       string               // HTTP base uri
-	pathOriginal  string               // Original HTTP path
-	flashMessages redirectionMsgs      // Flash messages
-	path          []byte               // HTTP path with the modifications by the configuration
-	detectionPath []byte               // Route detection path
-	treePathHash  int                  // Hash of the path for the search in the tree
-	indexRoute    int                  // Index of the current route
-	indexHandler  int                  // Index of the current handler
-	methodInt     int                  // HTTP method INT equivalent
-	matched       bool                 // Non use route matched
+	handlerCtx       CustomCtx            // Active custom context implementation, if any
+	DefaultReq                            // Default request api
+	DefaultRes                            // Default response api
+	app              *App                 // Reference to *App
+	route            *Route               // Reference to *Route
+	fasthttp         *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	bind             *Bind                // Default bind reference
+	redirect         *Redirect            // Default redirect reference
+	values           [maxParams]string    // Route parameter values
+	viewBindMap      Map                  // Default view map to bind template engine
+	baseURI          string               // HTTP base uri
+	pathOriginal     string               // Original HTTP path
+	flashMessages    redirectionMsgs      // Flash messages
+	path             []byte               // HTTP path with the modifications by the configuration
+	detectionPath    []byte               // Route detection path
+	treePathHash     int                  // Hash of the path for the search in the tree
+	indexRoute       int                  // Index of the current route
+	indexHandler     int                  // Index of the current handler
+	methodInt        int                  // HTTP method INT equivalent
+	matched          bool                 // Non use route matched
+	skipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -225,11 +229,16 @@ func (c *DefaultCtx) Next() error {
 
 	// Did we execute all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
-		// Continue route stack
+		if c.handlerCtx != nil {
+			return c.route.Handlers[c.indexHandler](c.handlerCtx)
+		}
 		return c.route.Handlers[c.indexHandler](c)
 	}
 
-	// Continue handler stack
+	if c.handlerCtx != nil {
+		_, err := c.app.nextCustom(c.handlerCtx)
+		return err
+	}
 	_, err := c.app.next(c)
 	return err
 }
@@ -237,11 +246,25 @@ func (c *DefaultCtx) Next() error {
 // RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
-	var err error
-
 	c.indexRoute = -1
-	_, err = c.app.next(c)
+	if c.handlerCtx != nil {
+		_, err := c.app.nextCustom(c.handlerCtx)
+		return err
+	}
+	_, err := c.app.next(c)
 	return err
+}
+
+func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
+	if ctx == nil {
+		c.handlerCtx = nil
+		return
+	}
+	if defaultCtx, ok := ctx.(*DefaultCtx); ok && defaultCtx == c {
+		c.handlerCtx = nil
+		return
+	}
+	c.handlerCtx = ctx
 }
 
 // OriginalURL contains the original request URL.
@@ -296,9 +319,10 @@ func (c *DefaultCtx) Redirect() *Redirect {
 // Variables are read by the Render method and may be overwritten.
 func (c *DefaultCtx) ViewBind(vars Map) error {
 	// init viewBindMap - lazy map
-	for k, v := range vars {
-		c.viewBindMap.Store(k, v)
+	if c.viewBindMap == nil {
+		c.viewBindMap = make(Map, len(vars))
 	}
+	maps.Copy(c.viewBindMap, vars)
 	return nil
 }
 
@@ -315,6 +339,11 @@ func (c *DefaultCtx) Route() *Route {
 		}
 	}
 	return c.route
+}
+
+// FullPath returns the matched route path, including any group prefixes.
+func (c *DefaultCtx) FullPath() string {
+	return c.Route().Path
 }
 
 // Matched returns true if the current request path was matched by the router.
@@ -354,6 +383,39 @@ func (c *DefaultCtx) HasBody() bool {
 	return len(c.fasthttp.Request.Body()) > 0
 }
 
+// OverrideParam overwrites a route parameter value by name.
+// If the parameter name does not exist in the route, this method does nothing.
+func (c *DefaultCtx) OverrideParam(name, value string) {
+	// If no route is matched, there are no parameters to update
+	if !c.Matched() {
+		return
+	}
+
+	// Normalize wildcard (*) and plus (+) tokens to their internal
+	// representations (*1, +1) used by the router.
+	if name == "*" || name == "+" {
+		name += "1"
+	}
+
+	if c.app.config.CaseSensitive {
+		for i, param := range c.route.Params {
+			if param == name {
+				c.values[i] = value
+				return
+			}
+		}
+		return
+	}
+
+	nameBytes := utils.UnsafeBytes(name)
+	for i, param := range c.route.Params {
+		if utils.EqualFold(utils.UnsafeBytes(param), nameBytes) {
+			c.values[i] = value
+			return
+		}
+	}
+}
+
 func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 	teBytes := hdr.Peek(HeaderTransferEncoding)
 	var te string
@@ -362,7 +424,7 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 		te = utils.UnsafeString(teBytes)
 	} else {
 		for key, value := range hdr.All() {
-			if !strings.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
+			if !utils.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
 				continue
 			}
 			te = utils.UnsafeString(value)
@@ -376,17 +438,17 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 
 	hasEncoding := false
 	for raw := range strings.SplitSeq(te, ",") {
-		token := strings.TrimSpace(raw)
-		if len(token) == 0 {
+		token := utils.TrimSpace(raw)
+		if token == "" {
 			continue
 		}
 		if idx := strings.IndexByte(token, ';'); idx >= 0 {
-			token = strings.TrimSpace(token[:idx])
+			token = utils.TrimSpace(token[:idx])
 		}
 		if token == "" {
 			continue
 		}
-		if strings.EqualFold(token, "identity") {
+		if utils.EqualFold(token, "identity") {
 			continue
 		}
 		hasEncoding = true
@@ -400,7 +462,7 @@ func (c *DefaultCtx) IsWebSocket() bool {
 	conn := c.fasthttp.Request.Header.Peek(HeaderConnection)
 	var isUpgrade bool
 	for v := range strings.SplitSeq(utils.UnsafeString(conn), ",") {
-		if utils.EqualFold(utils.Trim(v, ' '), "upgrade") {
+		if utils.EqualFold(utils.TrimSpace(v), "upgrade") {
 			isUpgrade = true
 			break
 		}
@@ -408,7 +470,7 @@ func (c *DefaultCtx) IsWebSocket() bool {
 	if !isUpgrade {
 		return false
 	}
-	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), []byte("websocket"))
+	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), websocketBytes)
 }
 
 // IsPreflight returns true if the request is a CORS preflight.
@@ -436,12 +498,30 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	}
 	defer file.Close() //nolint:errcheck // not needed
 
-	content, err := io.ReadAll(file)
-	if err != nil {
+	maxUploadSize := c.app.config.BodyLimit
+	if maxUploadSize <= 0 {
+		maxUploadSize = DefaultBodyLimit
+	}
+
+	if fileheader.Size > 0 && fileheader.Size > int64(maxUploadSize) {
+		return fmt.Errorf("failed to read: %w", fasthttp.ErrBodyTooLarge)
+	}
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	limitedReader := io.LimitReader(file, int64(maxUploadSize)+1)
+	if _, err = buf.ReadFrom(limitedReader); err != nil {
 		return fmt.Errorf("failed to read: %w", err)
 	}
 
-	if err := storage.SetWithContext(c.Context(), path, content, 0); err != nil {
+	if buf.Len() > maxUploadSize {
+		return fmt.Errorf("failed to read: %w", fasthttp.ErrBodyTooLarge)
+	}
+
+	data := append([]byte(nil), buf.Bytes()...)
+
+	if err := storage.SetWithContext(c.Context(), path, data, 0); err != nil {
 		return fmt.Errorf("failed to store: %w", err)
 	}
 
@@ -505,10 +585,17 @@ func (c *DefaultCtx) Value(key any) any {
 	return c.fasthttp.UserValue(key)
 }
 
+var (
+	// xmlHTTPRequestBytes is precomputed for XHR detection
+	xmlHTTPRequestBytes = []byte("xmlhttprequest")
+	// websocketBytes is precomputed for WebSocket upgrade detection
+	websocketBytes = []byte("websocket")
+)
+
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFold(c.app.toBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderXRequestedWith), xmlHTTPRequestBytes)
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,
@@ -549,6 +636,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.indexHandler = 0
 	// Reset matched flag
 	c.matched = false
+	c.skipNonUseRoutes = false
 	// Set paths
 	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
@@ -574,11 +662,14 @@ func (c *DefaultCtx) release() {
 		c.bind = nil
 	}
 	c.flashMessages = c.flashMessages[:0]
-	c.viewBindMap = sync.Map{}
+	// Clear viewBindMap by deleting all keys (reuse underlying map if possible)
+	clear(c.viewBindMap)
 	if c.redirect != nil {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
 	}
+	c.skipNonUseRoutes = false
+	c.handlerCtx = nil
 	c.DefaultReq.release()
 	c.DefaultRes.release()
 }
@@ -586,16 +677,11 @@ func (c *DefaultCtx) release() {
 func (c *DefaultCtx) renderExtensions(bind any) {
 	if bindMap, ok := bind.(Map); ok {
 		// Bind view map
-		c.viewBindMap.Range(func(key, value any) bool {
-			keyValue, ok := key.(string)
-			if !ok {
-				return true
+		for key, value := range c.viewBindMap {
+			if _, ok := bindMap[key]; !ok {
+				bindMap[key] = value
 			}
-			if _, ok := bindMap[keyValue]; !ok {
-				bindMap[keyValue] = value
-			}
-			return true
-		})
+		}
 
 		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
 		if c.app.config.PassLocalsToViews {
@@ -651,6 +737,10 @@ func (c *DefaultCtx) getMatched() bool {
 	return c.matched
 }
 
+func (c *DefaultCtx) getSkipNonUseRoutes() bool {
+	return c.skipNonUseRoutes
+}
+
 func (c *DefaultCtx) setIndexHandler(handler int) {
 	c.indexHandler = handler
 }
@@ -661,6 +751,10 @@ func (c *DefaultCtx) setIndexRoute(route int) {
 
 func (c *DefaultCtx) setMatched(matched bool) {
 	c.matched = matched
+}
+
+func (c *DefaultCtx) setSkipNonUseRoutes(skip bool) {
+	c.skipNonUseRoutes = skip
 }
 
 func (c *DefaultCtx) setRoute(route *Route) {

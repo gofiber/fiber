@@ -2,11 +2,10 @@ package idempotency
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // Inspired by https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header-02
@@ -52,7 +51,9 @@ func New(config ...Config) fiber.Handler {
 
 	keepResponseHeadersMap := make(map[string]struct{}, len(cfg.KeepResponseHeaders))
 	for _, h := range cfg.KeepResponseHeaders {
-		keepResponseHeadersMap[strings.ToLower(h)] = struct{}{}
+		// CopyString is needed because utils.ToLower uses UnsafeString
+		// and map keys must be immutable
+		keepResponseHeadersMap[utils.CopyString(utils.ToLower(h))] = struct{}{}
 	}
 
 	maybeWriteCachedResponse := func(c fiber.Ctx, key string) (bool, error) {
@@ -135,8 +136,7 @@ func New(config ...Config) fiber.Handler {
 		// Construct response
 		res := &response{
 			StatusCode: c.Response().StatusCode(),
-
-			Body: utils.CopyBytes(c.Response().Body()),
+			Body:       c.Response().Body(),
 		}
 		{
 			headers := make(map[string][]string)

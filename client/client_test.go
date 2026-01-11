@@ -19,17 +19,17 @@ import (
 	"github.com/gofiber/fiber/v3/addon/retry"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/fiber/v3/log"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 
-func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (*fiber.App, string) {
+func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (app *fiber.App, addr string) { //nolint:nonamedreturns // gocritic unnamedResult requires explicit result names for clarity when returning app and address
 	t.Helper()
 
-	app := fiber.New()
+	app = fiber.New()
 
 	if beforeStarting != nil {
 		beforeStarting(app)
@@ -37,8 +37,8 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 
 	addrChan := make(chan string)
 	errChan := make(chan error, 1)
-	go func() {
-		err := app.Listen(":0", fiber.ListenConfig{
+	go func(server *fiber.App) {
+		err := server.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
 			ListenerAddrFunc: func(addr net.Addr) {
 				addrChan <- addr.String()
@@ -47,10 +47,10 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 		if err != nil {
 			errChan <- err
 		}
-	}()
+	}(app)
 
 	select {
-	case addr := <-addrChan:
+	case addr = <-addrChan:
 		return app, addr
 	case err := <-errChan:
 		t.Fatalf("Failed to start test server: %v", err)
@@ -291,11 +291,13 @@ func Test_Client_Add_Hook(t *testing.T) {
 
 		require.Len(t, client.ResponseHook(), 1)
 
-		client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
+		hook1 := func(_ *Client, _ *Response, _ *Request) error {
 			return nil
-		}, func(_ *Client, _ *Response, _ *Request) error {
+		}
+		hook2 := func(_ *Client, _ *Response, _ *Request) error {
 			return nil
-		})
+		}
+		client.AddResponseHook(hook1, hook2)
 
 		require.Len(t, client.ResponseHook(), 3)
 	})
@@ -2296,4 +2298,50 @@ func Benchmark_Client_Request_Parallel(b *testing.B) {
 		}
 		require.NoError(b, err)
 	})
+}
+
+func Benchmark_Client_Request_Send_ContextCancel(b *testing.B) {
+	app, ln, start := createHelperServer(b)
+
+	startedCh := make(chan struct{})
+	errCh := make(chan error)
+	respCh := make(chan *Response)
+
+	app.Post("/", func(c fiber.Ctx) error {
+		startedCh <- struct{}{}
+		time.Sleep(time.Millisecond) // let cancel be called
+		return c.Status(fiber.StatusOK).SendString("post")
+	})
+
+	go start()
+
+	client := New().SetDial(ln)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		req := AcquireRequest().
+			SetClient(client).
+			SetURL("http://example.com").
+			SetMethod(fiber.MethodPost).
+			SetContext(ctx)
+
+		go func(r *Request) {
+			defer ReleaseRequest(r)
+
+			resp, err := r.Send()
+
+			respCh <- resp
+			errCh <- err
+		}(req)
+
+		<-startedCh // request is made, we can cancel the context now
+		cancel()
+
+		require.Nil(b, <-respCh)
+		require.ErrorIs(b, <-errCh, ErrTimeoutOrCancel)
+	}
 }

@@ -8,14 +8,18 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
+	"fmt"
 	"math/big"
 	"net"
 	"time"
 )
 
+var errAppendCACert = errors.New("failed to append CA certificate to certificate pool")
+
 // GetTLSConfigs generates TLS configurations for a test server and client that
 // trust each other using an in-memory certificate authority.
-func GetTLSConfigs() (serverTLSConf, clientTLSConf *tls.Config, err error) {
+func GetTLSConfigs() (serverTLSConf, clientTLSConf *tls.Config, err error) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming server and client TLS configurations along with the error
 	// set up our CA certificate
 	ca := &x509.Certificate{
 		SerialNumber: big.NewInt(2021),
@@ -38,27 +42,31 @@ func GetTLSConfigs() (serverTLSConf, clientTLSConf *tls.Config, err error) {
 	// create our private and public key
 	caPrivateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("generate CA key: %w", err)
 	}
 
 	// create the CA
 	caBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, &caPrivateKey.PublicKey, caPrivateKey)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("create CA certificate: %w", err)
 	}
 
 	// pem encode
 	var caPEM bytes.Buffer
-	_ = pem.Encode(&caPEM, &pem.Block{
+	if err = pem.Encode(&caPEM, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: caBytes,
-	})
+	}); err != nil {
+		return nil, nil, fmt.Errorf("encode CA cert: %w", err)
+	}
 
 	var caPrivKeyPEM bytes.Buffer
-	_ = pem.Encode(&caPrivKeyPEM, &pem.Block{
+	if err = pem.Encode(&caPrivKeyPEM, &pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(caPrivateKey),
-	})
+	}); err != nil {
+		return nil, nil, fmt.Errorf("encode CA private key: %w", err)
+	}
 
 	// set up our server certificate
 	cert := &x509.Certificate{
@@ -81,39 +89,47 @@ func GetTLSConfigs() (serverTLSConf, clientTLSConf *tls.Config, err error) {
 
 	certPrivateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("generate server key: %w", err)
 	}
 
 	certBytes, err := x509.CreateCertificate(rand.Reader, cert, ca, &certPrivateKey.PublicKey, caPrivateKey)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("create server certificate: %w", err)
 	}
 
 	var certPEM bytes.Buffer
-	_ = pem.Encode(&certPEM, &pem.Block{
+	if err = pem.Encode(&certPEM, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: certBytes,
-	})
+	}); err != nil {
+		return nil, nil, fmt.Errorf("encode server cert: %w", err)
+	}
 
 	var certPrivateKeyPEM bytes.Buffer
-	_ = pem.Encode(&certPrivateKeyPEM, &pem.Block{
+	if err = pem.Encode(&certPrivateKeyPEM, &pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(certPrivateKey),
-	})
+	}); err != nil {
+		return nil, nil, fmt.Errorf("encode server private key: %w", err)
+	}
 
 	serverCert, err := tls.X509KeyPair(certPEM.Bytes(), certPrivateKeyPEM.Bytes())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("load server key pair: %w", err)
 	}
 
 	serverTLSConf = &tls.Config{
 		Certificates: []tls.Certificate{serverCert},
+		MinVersion:   tls.VersionTLS12,
 	}
 
 	certPool := x509.NewCertPool()
-	certPool.AppendCertsFromPEM(caPEM.Bytes())
+	if ok := certPool.AppendCertsFromPEM(caPEM.Bytes()); !ok {
+		return nil, nil, errAppendCACert
+	}
 	clientTLSConf = &tls.Config{
-		RootCAs: certPool,
+		RootCAs:    certPool,
+		MinVersion: tls.VersionTLS12,
 	}
 
 	return serverTLSConf, clientTLSConf, nil

@@ -793,7 +793,7 @@ func Benchmark_Parser_Request_Body_File(b *testing.B) {
 func newBenchmarkRequest(formValues map[string]string, fileContents [][]byte) *Request {
 	req := &Request{
 		boundary:   "FiberBenchmarkBoundary",
-		formData:   &FormData{Args: fasthttp.AcquireArgs()},
+		formData:   FormData{Args: fasthttp.AcquireArgs()},
 		RawRequest: fasthttp.AcquireRequest(),
 		files:      make([]*File, len(fileContents)),
 	}

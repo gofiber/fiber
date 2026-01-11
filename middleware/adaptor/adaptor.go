@@ -1,6 +1,7 @@
 package adaptor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,7 +12,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/fiber/v3"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
@@ -29,6 +30,10 @@ var ctxPool = sync.Pool{
 	},
 }
 
+// LocalContextKey is the key used to store the user's context.Context in the fasthttp request context.
+// Adapted http.Handler functions can retrieve this context using r.Context().Value(adaptor.LocalContextKey)
+var localContextKey = &struct{}{}
+
 const bufferSize = 32 * 1024
 
 var bufferPool = sync.Pool{
@@ -36,6 +41,11 @@ var bufferPool = sync.Pool{
 		return new([bufferSize]byte)
 	},
 }
+
+var (
+	ErrRemoteAddrEmpty   = errors.New("remote address cannot be empty")
+	ErrRemoteAddrTooLong = errors.New("remote address too long")
+)
 
 // HTTPHandlerFunc wraps net/http handler func to fiber handler
 func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
@@ -51,6 +61,25 @@ func HTTPHandler(h http.Handler) fiber.Handler {
 	}
 }
 
+// HTTPHandlerWithContext is like HTTPHandler, but additionally stores Fiber’s user context in the request context
+func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
+	handler := fasthttpadaptor.NewFastHTTPHandler(h)
+	return func(c fiber.Ctx) error {
+		// Store the Fiber user context (c.Context()) in the fasthttp request context
+		// so adapted net/http handlers can retrieve it via adaptor.LocalContextFromHTTPRequest(r)
+		c.RequestCtx().SetUserValue(localContextKey, c.Context())
+
+		handler(c.RequestCtx())
+		return nil
+	}
+}
+
+// LocalContextFromHTTPRequest extracts the Fiber user context previously stored into r.Context() by the adaptor.
+func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
+	ctx, err := r.Context().Value(localContextKey).(context.Context)
+	return ctx, err
+}
+
 // ConvertRequest converts a fiber.Ctx to a http.Request.
 // forServer should be set to true when the http.Request is going to be passed to a http.Handler.
 func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
@@ -63,6 +92,7 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 
 // CopyContextToFiberContext copies the values of context.Context to a fasthttp.RequestCtx.
 // This function safely handles struct fields, using unsafe operations only when necessary for unexported fields.
+//
 // Deprecated: This function uses reflection and unsafe pointers; consider using explicit context passing.
 func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 	v := reflect.ValueOf(src)
@@ -178,7 +208,7 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 
 	// Validate input to prevent malformed addresses
 	if remoteAddr == "" {
-		return nil, errors.New("remote address cannot be empty")
+		return nil, ErrRemoteAddrEmpty
 	}
 
 	resolved, err := net.ResolveTCPAddr("tcp", remoteAddr)
@@ -189,7 +219,7 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	var addrErr *net.AddrError
 	if errors.As(err, &addrErr) && addrErr.Err == "missing port in address" {
 		if len(remoteAddr) > 253 { // Max hostname length
-			return nil, errors.New("remote address too long")
+			return nil, ErrRemoteAddrTooLong
 		}
 		remoteAddr = net.JoinHostPort(remoteAddr, "80")
 		resolved, err2 := net.ResolveTCPAddr("tcp", remoteAddr)
@@ -207,7 +237,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		defer fasthttp.ReleaseRequest(req)
 
 		// Convert net/http -> fasthttp request with size limit
-		const maxBodySize = 10 * 1024 * 1024 // 10MB limit
+		maxBodySize := int64(app.Config().BodyLimit)
 		if r.Body != nil {
 			if r.ContentLength > maxBodySize {
 				http.Error(w, utils.StatusMessage(fiber.StatusRequestEntityTooLarge), fiber.StatusRequestEntityTooLarge)
@@ -239,7 +269,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 
 		// New fasthttp Ctx from pool
-		fctx := ctxPool.Get().(*fasthttp.RequestCtx) //nolint:forcetypeassert,errcheck // overlinting
+		fctx := ctxPool.Get().(*fasthttp.RequestCtx) //nolint:forcetypeassert,errcheck // not needed
 		fctx.Response.Reset()
 		fctx.Request.Reset()
 		defer ctxPool.Put(fctx)

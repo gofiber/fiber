@@ -5,8 +5,6 @@
 package fiber
 
 import (
-	"errors"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -26,9 +24,11 @@ type CustomCtx interface {
 	getPathOriginal() string
 	getValues() *[maxParams]string
 	getMatched() bool
+	getSkipNonUseRoutes() bool
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
+	setSkipNonUseRoutes(skip bool)
 	setRoute(route *Route)
 }
 
@@ -51,8 +51,15 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 	ctx, ok := app.pool.Get().(CustomCtx)
 
 	if !ok {
-		panic(errors.New("failed to type-assert to CustomCtx"))
+		panic(errCustomCtxTypeAssertion)
 	}
+
+	if app.hasCustomCtx {
+		if setter, ok := ctx.(interface{ setHandlerCtx(CustomCtx) }); ok {
+			setter.setHandlerCtx(ctx)
+		}
+	}
+
 	ctx.Reset(fctx)
 
 	return ctx

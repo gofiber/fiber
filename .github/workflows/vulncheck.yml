@@ -1,9 +1,9 @@
 name: Run govulncheck
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - master
       - main
     paths-ignore:
       - "**/*.md"
@@ -18,10 +18,10 @@ jobs:
       GO111MODULE: on
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
       - name: Install Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           go-version: "stable"
           check-latest: true

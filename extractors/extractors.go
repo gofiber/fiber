@@ -30,7 +30,7 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v3"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // Source represents the type of source from which an API key is extracted.
@@ -127,7 +127,7 @@ func FromAuthHeader(authScheme string) Extractor {
 					return "", ErrNotFound
 				}
 				rest := authHeader[schemeLen:]
-				if len(rest) == 0 || rest[0] != ' ' {
+				if rest == "" || rest[0] != ' ' {
 					return "", ErrNotFound
 				}
 
@@ -508,7 +508,8 @@ func isValidToken68(token string) bool {
 		return false
 	}
 	paddingStarted := false
-	for i, c := range []byte(token) {
+	for i := 0; i < len(token); i++ {
+		c := token[i]
 		switch {
 		case (c >= 'A' && c <= 'Z') ||
 			(c >= 'a' && c <= 'z') ||

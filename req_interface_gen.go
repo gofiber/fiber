@@ -30,7 +30,8 @@ type Req interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	BodyRaw() []byte
-	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) ([]byte, uint8, error)
+	//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
+	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) (body []byte, decodesRealized uint8, err error)
 	// Body contains the raw body submitted in a POST request.
 	// This method will decompress the body if the 'Content-Encoding' header is provided.
 	// It returns the original (or decompressed) body data which is valid only within the handler.
@@ -167,7 +168,7 @@ type Req interface {
 	// Queries()["filters[status]"] == "pending"
 	Queries() map[string]string
 	// Range returns a struct containing the type and a slice of ranges.
-	Range(size int) (Range, error)
+	Range(size int64) (Range, error)
 	// Route returns the matched Route struct.
 	Route() *Route
 	// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
@@ -177,7 +178,7 @@ type Req interface {
 	// Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
 	Stale() bool
 	// IsProxyTrusted checks trustworthiness of remote ip.
-	// If Config.TrustProxy false, it returns true
+	// If Config.TrustProxy false, it returns false.
 	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
 	IsProxyTrusted() bool
 	// IsFromLocal will return true if request came from local.

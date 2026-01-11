@@ -193,6 +193,14 @@ In all cases above, except the **Wildcard origin**, the middleware will either a
 
 - **Programmatic origin validation:**: The middleware also handles the `AllowOriginsFunc` option, which allows you to programmatically determine if an origin is allowed. If `AllowOriginsFunc` returns `true` for an origin, the middleware sets the `Access-Control-Allow-Origin` header to that origin.
 
+- **Null origin handling:** The middleware accepts the special literal value `"null"` as a valid origin. According to the [CORS specification](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS#origin), browsers send `"null"` as the origin for certain privacy-sensitive contexts, such as:
+  - Requests from sandboxed iframes
+  - Requests from `file://` URLs
+  - Requests from `data:` URLs
+  - Cross-origin redirects
+
+  When using `AllowOriginsFunc`, if the function returns `true` for the literal string `"null"`, the middleware will set `Access-Control-Allow-Origin: null` in the response. The `"null"` origin is case-sensitive and must be lowercase.
+
 The `AllowMethods` option controls which HTTP methods are allowed. For example, if `AllowMethods` is set to `"GET, POST"`, the middleware adds the header `Access-Control-Allow-Methods: GET, POST` to the response.
 
 The `AllowHeaders` option specifies which headers are allowed in the actual request. The middleware sets the Access-Control-Allow-Headers response header to the value of `AllowHeaders`. This informs the client which headers it can use in the actual request.

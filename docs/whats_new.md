@@ -18,7 +18,7 @@ it update your project automatically:
 
 ```bash
 go install github.com/gofiber/cli/fiber@latest
-fiber migrate --to v3.0.0-rc.2
+fiber migrate --to v3.0.0-rc.3
 ```
 
 See the [migration guide](#-migration-guide) for more details and options.
@@ -84,6 +84,7 @@ We have made several changes to the Fiber app, including:
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
 - **GetBytes / GetString**: Helpers that detach values only when `Immutable` is enabled and the data still references request or response buffers. Access via `c.App().GetString` and `c.App().GetBytes`.
+- **ReloadViews**: Lets you re-run the configured view engine's `Load()` logic at runtime, including guard rails for missing or nil view engines so development hot-reload hooks can refresh templates safely.
 
 #### Custom Route Constraints
 
@@ -158,7 +159,7 @@ import (
 )
 
 type CustomCtx struct {
-    fiber.Ctx
+    fiber.DefaultCtx
 }
 
 func (c *CustomCtx) CustomMethod() string {
@@ -166,9 +167,9 @@ func (c *CustomCtx) CustomMethod() string {
 }
 
 func main() {
-    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.Ctx {
+    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
         return &CustomCtx{
-            Ctx: *fiber.NewCtx(app),
+            DefaultCtx: *fiber.NewDefaultCtx(app),
         }
     })
 
@@ -223,6 +224,8 @@ We have made several changes to the Fiber hooks, including:
 - Added new shutdown hooks to provide better control over the shutdown process:
   - `OnPreShutdown` - Executes before the server starts shutting down
   - `OnPostShutdown` - Executes after the server has shut down, receives any shutdown error
+  - `OnPreStartupMessage` - Executes before the startup message is printed, allowing customization of the banner and info entries
+  - `OnPostStartupMessage` - Executes after the startup message is printed, allowing post-startup logic
 - Deprecated `OnShutdown` in favor of the new pre/post shutdown hooks
 - Improved shutdown hook execution order and reliability
 - Added mutex protection for hook registration and execution
@@ -295,6 +298,43 @@ app.Listen("app.sock", fiber.ListenerConfig{
 })
 ```
 
+- Expanded `ListenData` with versioning, handler, process, and PID metadata, plus dedicated startup message hooks for customization. Check out the [Hooks](./api/hooks#startup-message-customization) documentation for further details.
+
+```go title="Customize the startup message"
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    app.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
+        sm.BannerHeader = "FOOBER " + sm.Version + "\n-------"
+
+        // Optional: you can also remove old entries
+        // sm.ResetEntries()
+
+        sm.AddInfo("git-hash", "Git hash", os.Getenv("GIT_HASH"))
+        sm.AddInfo("prefork", "Prefork", fmt.Sprintf("%v", sm.Prefork), 15)
+        return nil
+    })
+
+    app.Hooks().OnPostStartupMessage(func(sm *fiber.PostStartupMessageData) error {
+        if !sm.Disabled && !sm.IsChild && !sm.Prevented {
+            fmt.Println("startup completed")
+        }
+        return nil
+    })
+
+    app.Listen(":5000")
+}
+```
+
 ## 🗺 Router
 
 We have slightly adapted our router interface
@@ -355,6 +395,43 @@ app.RouteChain("/api").RouteChain("/user/:id?")
 </details>
 
 You can find more information about `app.RouteChain` and `app.Route` in the API documentation ([RouteChain](./api/app#routechain), [Route](./api/app#route)).
+
+### Automatic HEAD routes for GET
+
+Fiber now auto-registers a `HEAD` route whenever you add a `GET` route. The generated handler chain matches the `GET` chain so status codes and headers stay in sync while the response body remains empty, ensuring `HEAD` clients observe the same metadata as a `GET` consumer.
+
+```go title="GET now enables HEAD automatically"
+app := fiber.New()
+
+app.Get("/health", func(c fiber.Ctx) error {
+    c.Set("X-Service", "api")
+    return c.SendString("OK")
+})
+
+// HEAD /health reuses the GET middleware chain and returns headers only.
+```
+
+You can still register explicit `HEAD` handlers for any `GET` route, and they continue to win when you add them:
+
+```go title="Override the generated HEAD handler"
+app.Head("/health", func(c fiber.Ctx) error {
+    return c.SendStatus(fiber.StatusNoContent)
+})
+```
+
+Prefer to manage `HEAD` routes yourself? Disable the feature through `fiber.Config.DisableHeadAutoRegister`:
+
+```go title="Disable automatic HEAD registration"
+handler := func(c fiber.Ctx) error {
+    c.Set("X-Service", "api")
+    return c.SendString("OK")
+}
+
+app := fiber.New(fiber.Config{DisableHeadAutoRegister: true})
+app.Get("/health", handler) // HEAD /health now returns 405 unless you add it manually.
+```
+
+Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
 
 ### Middleware registration
 
@@ -490,6 +567,7 @@ testConfig := fiber.TestConfig{
 - **Matched**: Detects when the current request path matched a registered route.
 - **IsMiddleware**: Indicates if the current handler was registered as middleware.
 - **HasBody**: Quickly checks whether the request includes a body.
+- **OverrideParam**: Overwrites the value of an existing route parameter, or does nothing if the parameter does not exist
 - **IsWebSocket**: Reports if the request attempts a WebSocket upgrade.
 - **IsPreflight**: Identifies CORS preflight requests before handlers run.
 
@@ -768,6 +846,31 @@ The default redirect status code has been updated from `302 Found` to `303 See O
 
 The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
 You can take a look to [client docs](./client/rest.md) to see what's new with the client.
+
+### Configuration improvements
+
+The v3 client centralizes common configuration on the client instance and lets you override it per request with `client.Config`.
+You can define base URLs, defaults (headers, cookies, path parameters, timeouts), and toggle path normalization once, while still
+using axios-style helpers for each call.
+
+```go
+cc := client.New().
+    SetBaseURL("https://api.service.local").
+    AddHeader("Authorization", "Bearer <token>").
+    SetTimeout(5 * time.Second).
+    SetPathParam("tenant", "acme")
+
+resp, err := cc.Get("/users/:tenant/:id", client.Config{
+    PathParam:              map[string]string{"id": "42"},
+    Param:                  map[string]string{"include": "profile"},
+    DisablePathNormalizing: true,
+})
+if err != nil {
+    panic(err)
+}
+defer resp.Close()
+fmt.Println(resp.StatusCode(), resp.String())
+```
 
 ### Fasthttp transport integration
 
@@ -1125,6 +1228,8 @@ When used with the Logger middleware, the recommended approach is to use the `Cu
 
 The adaptor middleware has been significantly optimized for performance and efficiency. Key improvements include reduced response times, lower memory usage, and fewer memory allocations. These changes make the middleware more reliable and capable of handling higher loads effectively. Enhancements include the introduction of a `sync.Pool` for managing `fasthttp.RequestCtx` instances and better HTTP request and response handling between net/http and fasthttp contexts.
 
+Incoming body sizes now respect the Fiber app's configured `BodyLimit` (falling back to the default when unset) when running Fiber from `net/http` through the adaptor, returning `413 Request Entity Too Large` for oversized payloads.
+
 | Payload Size | Metric         | V2           | V3          | Percent Change |
 | ------------ | -------------- | ------------ | ----------- | -------------- |
 | 100KB        | Execution Time | 1056 ns/op   | 588.6 ns/op | -44.25%        |
@@ -1157,7 +1262,10 @@ The `Authorizer` function now receives the current `fiber.Ctx` as a third argume
 
 ### Cache
 
-We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
+We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define custom conditions for invalidating cache entries.
+
+The middleware now emits `Cache-Control` headers by default via the new `DisableCacheControl` flag, increases the default `Expiration` from `1 minute` to `5 minutes`, and applies a new `MaxBytes` limit of `1 MB` (previously unlimited).
+
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 Cached responses now include an RFC-compliant Age header, providing a standardized indication of how long a response has been stored in cache since it was originally generated. This enhancement improves HTTP compliance and facilitates better client-side caching strategies.
 
@@ -1166,6 +1274,12 @@ Cache keys are now redacted in logs and error messages by default, and a `Disabl
 :::note
 The deprecated `Store` and `Key` options have been removed in v3. Use `Storage` and `KeyGenerator` instead.
 :::
+
+### ResponseTime
+
+A new response time middleware measures how long each request takes to process and adds the duration to the response headers.
+By default it writes the elapsed time to `X-Response-Time`, and you can change the header name. A `Next` hook lets you skip
+endpoints such as health checks.
 
 ### CORS
 
@@ -1199,6 +1313,8 @@ Additionally, panic messages and logs redact misconfigured origins by default, a
 The `Expiration` field in the CSRF middleware configuration has been renamed to `IdleTimeout` to better describe its functionality. Additionally, the default value has been reduced from 1 hour to 30 minutes.
 
 CSRF now redacts tokens and storage keys by default and exposes a `DisableValueRedaction` toggle (default `false`) if you must surface those values in diagnostics.
+
+The CSRF middleware now validates the [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) header for unsafe HTTP methods. When present, requests with invalid `Sec-Fetch-Site` values (not one of "same-origin", "none", "same-site", or "cross-site") are rejected with `ErrFetchSiteInvalid`. Valid or absent headers proceed to standard origin and token validation checks, providing an early gate to catch malformed requests while maintaining compatibility with legitimate cross-site traffic.
 
 ### Idempotency
 
@@ -1244,6 +1360,8 @@ New `Challenge`, `Error`, `ErrorDescription`, `ErrorURI`, and `Scope` fields all
 ### Logger
 
 New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without any extra afford. For example, you can use `zap` with Fiber logger middleware like this:
+
+Custom logger integrations should update any `LoggerFunc` implementations to the new signature that receives a pointer to the middleware config: `func(c fiber.Ctx, data *logger.Data, cfg *logger.Config) error`.
 
 <details>
 <summary>Example</summary>
@@ -1406,6 +1524,8 @@ See more in [Logger](./middleware/logger.md#predefined-formats)
 
 The limiter middleware uses a new Fixed Window Rate Limiter implementation.
 
+Custom limiter algorithms should now implement the updated `limiter.Handler` interface, whose `New` method receives a pointer to the active config: `New(cfg *limiter.Config) fiber.Handler`.
+
 Limiter now redacts request keys in error paths by default. A new `DisableValueRedaction` boolean (default `false`) lets you reveal the raw limiter key if diagnostics require it.
 
 :::note
@@ -1421,6 +1541,8 @@ Monitor middleware is migrated to the [Contrib package](https://github.com/gofib
 The proxy middleware has been updated to improve consistency with Go naming conventions. The `TlsConfig` field in the configuration struct has been renamed to `TLSConfig`. Additionally, the `WithTlsConfig` method has been removed; you should now configure TLS directly via the `TLSConfig` property within the `Config` struct.
 
 The new `KeepConnectionHeader` option (default `false`) drops the `Connection` header unless explicitly enabled to retain it.
+
+`proxy.Balancer` now accepts an optional variadic configuration: call `proxy.Balancer()` to use defaults or continue passing a `proxy.Config` value as before.
 
 ### Session
 
@@ -1443,6 +1565,8 @@ The session middleware has undergone significant improvements in v3, focusing on
 - **Idle Timeout**: The `Expiration` field has been replaced with `IdleTimeout`, which handles session inactivity. If the session is idle for the specified duration, it will expire. The idle timeout is updated when the session is saved. If you are using the middleware handler, the idle timeout will be updated automatically.
 
 - **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
+
+- **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
@@ -1512,7 +1636,7 @@ To streamline upgrades between Fiber versions, the Fiber CLI ships with a
 
 ```bash
 go install github.com/gofiber/cli/fiber@latest
-fiber migrate --to v3.0.0-rc.2
+fiber migrate --to v3.0.0-rc.3
 ```
 
 ### Options
@@ -1758,7 +1882,7 @@ In this example, a new route is defined, and `RebuildTree()` is called to ensure
 
 Note: Use this method with caution. It is **not** thread-safe and can be very performance-intensive. Therefore, it should be used sparingly and primarily in development mode. It should not be invoke concurrently.
 
-## RemoveRoute
+#### RemoveRoute
 
 - **RemoveRoute**: Removes route by path
 
@@ -2060,6 +2184,400 @@ import "github.com/gofiber/fiber/v3/client"
 
 </details>
 
+**Common migrations**:
+
+1. **Shared defaults instead of per-call mutation**: Move headers and timeouts into the reusable client and override with `client.Config` when needed.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    status, body, errs := fiber.Get("https://api.example.com/users").
+        Set("Authorization", "Bearer "+token).
+        Timeout(5 * time.Second).
+        String()
+    if len(errs) > 0 {
+        return fmt.Errorf("request failed: %v", errs)
+    }
+    fmt.Println(status, body)
+    ```
+
+    ```go
+    // After
+    cli := client.New().
+        AddHeader("Authorization", "Bearer "+token).
+        SetTimeout(5 * time.Second)
+
+    resp, err := cli.Get("https://api.example.com/users")
+    if err != nil {
+        return err
+    }
+    defer resp.Close()
+    fmt.Println(resp.StatusCode(), resp.String())
+    ```
+
+    </details>
+
+2. **Body handling**: Replace `Agent.JSON(...).Struct(&dst)` with request bodies through `client.Config` (or `Request.SetJSON`) and decode the response via `Response.JSON`.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    var created user
+    status, _, errs := fiber.Post("https://api.example.com/users").
+        JSON(payload).
+        Struct(&created)
+    if len(errs) > 0 {
+        return fmt.Errorf("request failed: %v", errs)
+    }
+    fmt.Println(status, created)
+    ```
+
+    ```go
+    // After
+    cli := client.New()
+
+    resp, err := cli.Post("https://api.example.com/users", client.Config{
+        Body: payload,
+    })
+    if err != nil {
+        return err
+    }
+    defer resp.Close()
+
+    var created user
+    if err := resp.JSON(&created); err != nil {
+        return fmt.Errorf("decode failed: %w", err)
+    }
+    fmt.Println(resp.StatusCode(), created)
+    ```
+
+    </details>
+
+3. **Path and query parameters**: Use the new path/query helpers instead of manually formatting URLs.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    code, body, errs := fiber.Get(fmt.Sprintf("https://api.example.com/users/%s", id)).
+        QueryString("active=true").
+        String()
+    if len(errs) > 0 {
+        return fmt.Errorf("request failed: %v", errs)
+    }
+    fmt.Println(code, body)
+    ```
+
+    ```go
+    // After
+    cli := client.New().SetBaseURL("https://api.example.com")
+    resp, err := cli.Get("/users/:id", client.Config{
+        PathParam: map[string]string{"id": id},
+        Param:     map[string]string{"active": "true"},
+    })
+    if err != nil {
+        return err
+    }
+    defer resp.Close()
+    fmt.Println(resp.StatusCode(), resp.String())
+    ```
+
+    </details>
+
+4. **Agent helpers**: `Agent.Bytes`, `AcquireAgent`, and `Agent.Parse` have been removed. Reuse a `client.Client` instance (or pool requests/responses directly) and access response data through the new typed helpers.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    agent := fiber.AcquireAgent()
+    status, body, errs := agent.Get("https://api.example.com/users").Bytes()
+    fiber.ReleaseAgent(agent)
+    if len(errs) > 0 {
+        return fmt.Errorf("request failed: %v", errs)
+    }
+
+    var users []user
+    if err := fiber.Parse(body, &users); err != nil {
+        return fmt.Errorf("parse failed: %w", err)
+    }
+    fmt.Println(status, len(users))
+    ```
+
+    ```go
+    // After
+    cli := client.New()
+    resp, err := cli.Get("https://api.example.com/users")
+    if err != nil {
+        return err
+    }
+    defer resp.Close()
+
+    var users []user
+    if err := resp.JSON(&users); err != nil {
+        return fmt.Errorf("decode failed: %w", err)
+    }
+    fmt.Println(resp.StatusCode(), len(users))
+    ```
+
+    :::tip
+    If you need pooling, use `client.AcquireRequest`, `client.AcquireResponse`, and their corresponding release functions around a long-lived `client.Client` instead of the removed agent pool.
+    :::
+
+    </details>
+
+5. **Fiber-level shortcuts**: The `fiber.Get`, `fiber.Post`, and similar top-level helpers are no longer exposed from the main module. Use the client package equivalents (`client.Get`, `client.Post`, etc.) which call the shared default client (or pass your own client instance for custom defaults).
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    status, body, errs := fiber.Get("https://api.example.com/health").String()
+    if len(errs) > 0 {
+        return fmt.Errorf("request failed: %v", errs)
+    }
+    fmt.Println(status, body)
+    ```
+
+    ```go
+    // After
+    resp, err := client.Get("https://api.example.com/health")
+    if err != nil {
+        return err
+    }
+    defer resp.Close()
+
+    fmt.Println(resp.StatusCode(), resp.String())
+    ```
+
+    :::note
+    The `client.Get`/`client.Post` helpers use `client.C()` (the default shared client). For custom defaults, construct a client with `client.New()` and invoke its methods instead.
+    :::
+
+    </details>
+
+#### Complete API Migration Reference
+
+<details>
+<summary>Click to expand full v2 → v3 API mapping tables</summary>
+
+##### Core Concepts
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Import | `github.com/gofiber/fiber/v2` | `github.com/gofiber/fiber/v3/client` |
+| Client Concept | `*fiber.Agent` | `*client.Client` + `*client.Request` |
+| Response Concept | `(code int, body []byte, errs []error)` | `(*client.Response, error)` |
+
+##### Client/Agent Creation
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Create Agent/Client | `fiber.AcquireAgent()` | `client.New()` |
+| Get from pool | `fiber.AcquireAgent()` | `client.AcquireRequest()` |
+| Release | `fiber.ReleaseAgent(a)` | `client.ReleaseRequest(req)` |
+| With fasthttp.Client | - | `client.NewWithClient(c)` |
+| With HostClient | - | `client.NewWithHostClient(hc)` |
+| With LBClient | - | `client.NewWithLBClient(lb)` |
+| Get Request object | `a.Request()` | `c.R()` |
+| Default client | - | `client.C()` |
+| Replace default | - | `client.Replace(c)` |
+
+##### HTTP Methods
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| GET | `fiber.Get(url)` | `c.Get(url, cfg...)` | `req.Get(url)` |
+| POST | `fiber.Post(url)` | `c.Post(url, cfg...)` | `req.Post(url)` |
+| PUT | `fiber.Put(url)` | `c.Put(url, cfg...)` | `req.Put(url)` |
+| PATCH | `fiber.Patch(url)` | `c.Patch(url, cfg...)` | `req.Patch(url)` |
+| DELETE | `fiber.Delete(url)` | `c.Delete(url, cfg...)` | `req.Delete(url)` |
+| HEAD | `fiber.Head(url)` | `c.Head(url, cfg...)` | `req.Head(url)` |
+| OPTIONS | - | `c.Options(url, cfg...)` | `req.Options(url)` |
+| Custom | - | `c.Custom(url, method, cfg...)` | `req.Custom(url, method)` |
+
+##### URL & Method
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Set URL | `req.SetRequestURI(url)` | `req.SetURL(url)` |
+| Get URL | `req.URI().String()` | `req.URL()` |
+| Set Method | `req.Header.SetMethod(method)` | `req.SetMethod(method)` |
+| Set Base URL | - | `c.SetBaseURL(url)` |
+
+##### Request Execution & Response
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Parse Request | `a.Parse()` | Not needed |
+| Execute (bytes) | `a.Bytes()` → `(code, body, errs)` | `req.Send()` → `(*Response, error)` |
+| Execute (string) | `a.String()` | `resp.String()` |
+| Execute (struct) | `a.Struct(&v)` | `resp.JSON(&v)` / `resp.XML(&v)` |
+| Status Code | Return value `code` | `resp.StatusCode()` |
+| Status Text | - | `resp.Status()` |
+| Body (bytes) | Return value `body` | `resp.Body()` |
+| Response Header | `resp.Header.Peek(key)` | `resp.Header(key)` |
+| All Headers | `resp.Header.VisitAll(fn)` | `resp.Headers()` |
+| Cookies | - | `resp.Cookies()` |
+| Save to file | - | `resp.Save(path)` |
+| Close | - | `resp.Close()` |
+
+##### Headers
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| Set Header | `a.Set(k, v)` | `c.SetHeader(k, v)` | `req.SetHeader(k, v)` |
+| Add Header | `a.Add(k, v)` | `c.AddHeader(k, v)` | `req.AddHeader(k, v)` |
+| Multiple Headers | - | `c.SetHeaders(map)` | `req.SetHeaders(map)` |
+| Bytes variants | `a.SetBytesK/V/KV()` | - | - |
+
+##### User-Agent, Referer, Content-Type, Host
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| User-Agent | `a.UserAgent(ua)` | `c.SetUserAgent(ua)` | `req.SetUserAgent(ua)` |
+| Referer | `a.Referer(ref)` | `c.SetReferer(ref)` | `req.SetReferer(ref)` |
+| Content-Type | `a.ContentType(ct)` | - | `req.SetHeader("Content-Type", ct)` |
+| Host | `a.Host(host)` | - | `req.SetHeader("Host", host)` |
+| Connection Close | `a.ConnectionClose()` | - | `req.SetHeader("Connection", "close")` |
+
+##### Cookies
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| Set Cookie | `a.Cookie(k, v)` | `c.SetCookie(k, v)` | `req.SetCookie(k, v)` |
+| Multiple | `a.Cookies(k1, v1, ...)` | `c.SetCookies(map)` | `req.SetCookies(map)` |
+| With Struct | - | `c.SetCookiesWithStruct(v)` | `req.SetCookiesWithStruct(v)` |
+| Cookie Jar | - | `c.SetCookieJar(jar)` | - |
+
+##### Query Parameters
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| Query String | `a.QueryString(qs)` | - | - |
+| Add Param | - | `c.AddParam(k, v)` | `req.AddParam(k, v)` |
+| Set Param | - | `c.SetParam(k, v)` | `req.SetParam(k, v)` |
+| With Struct | - | `c.SetParamsWithStruct(v)` | `req.SetParamsWithStruct(v)` |
+
+##### Path Parameters (NEW)
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| Set Path Param | - | `c.SetPathParam(k, v)` | `req.SetPathParam(k, v)` |
+| Multiple | - | `c.SetPathParams(map)` | `req.SetPathParams(map)` |
+| With Struct | - | `c.SetPathParamsWithStruct(v)` | `req.SetPathParamsWithStruct(v)` |
+
+##### Request Body
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Body (bytes) | `a.Body(body)` | `req.SetRawBody(body)` |
+| Body (string) | `a.BodyString(body)` | `req.SetRawBody([]byte(body))` |
+| Body Stream | `a.BodyStream(r, size)` | - |
+| JSON | `a.JSON(v)` | `req.SetJSON(v)` |
+| XML | `a.XML(v)` | `req.SetXML(v)` |
+| CBOR (NEW) | - | `req.SetCBOR(v)` |
+
+##### Form Data
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Create Args | `fiber.AcquireArgs()` | Direct on Request |
+| Send Form | `a.Form(args)` | `req.SetFormData(k, v)` |
+| Add Form Data | `args.Set(k, v)` | `req.AddFormData(k, v)` |
+| With Map | - | `req.SetFormDataWithMap(map)` |
+| With Struct | - | `req.SetFormDataWithStruct(v)` |
+
+##### File Upload
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Multipart Form | `a.MultipartForm(args)` | Automatic |
+| Boundary | `a.Boundary(b)` | `req.SetBoundary(b)` |
+| Send File | `a.SendFile(f, field...)` | `req.AddFile(path)` |
+| Multiple Files | `a.SendFiles(...)` | `req.AddFiles(files...)` |
+| With Reader | - | `req.AddFileWithReader(name, r)` |
+| FileData | `a.FileData(files...)` | `req.AddFiles(files...)` |
+
+##### Timeout & TLS
+
+| Description | v2 | v3 (Client) | v3 (Request) |
+|-------------|----|----|--------------|
+| Timeout | `a.Timeout(d)` | `c.SetTimeout(d)` | `req.SetTimeout(d)` |
+| Max Redirects | `a.MaxRedirectsCount(n)` | Via Config | `req.SetMaxRedirects(n)` |
+| TLS Config | `a.TLSConfig(cfg)` | `c.SetTLSConfig(cfg)` | - |
+| Skip Verify | `a.InsecureSkipVerify()` | Via `tls.Config` | - |
+| Certificates | - | `c.SetCertificates(...)` | - |
+| Root Cert | - | `c.SetRootCertificate(path)` | - |
+
+##### JSON/XML Encoder
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| JSON Encoder | `a.JSONEncoder(fn)` | `c.SetJSONMarshal(fn)` |
+| JSON Decoder | `a.JSONDecoder(fn)` | `c.SetJSONUnmarshal(fn)` |
+| XML Encoder | - | `c.SetXMLMarshal(fn)` |
+| XML Decoder | - | `c.SetXMLUnmarshal(fn)` |
+| CBOR (NEW) | - | `c.SetCBORMarshal/Unmarshal(fn)` |
+
+##### Authentication
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Basic Auth | `a.BasicAuth(user, pass)` | Via Header (Base64) |
+
+##### Debug & Retry
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Debug | `a.Debug(w...)` | `c.Debug()` |
+| Disable Debug | - | `c.DisableDebug()` |
+| Logger | - | `c.SetLogger(logger)` |
+| Retry | `a.RetryIf(fn)` | `c.SetRetryConfig(cfg)` |
+
+##### Reuse & Reset
+
+| Description | v2 | v3 |
+|-------------|----|----|
+| Reuse Agent | `a.Reuse()` | Use pool |
+| Reset Client | - | `c.Reset()` |
+| Dest Buffer | `a.Dest(dest)` | - |
+
+##### NEW in v3
+
+| Feature | v3 API |
+|---------|--------|
+| Request Hooks | `c.AddRequestHook(fn)` |
+| Response Hooks | `c.AddResponseHook(fn)` |
+| Proxy | `c.SetProxyURL(url)` |
+| Context | `req.SetContext(ctx)` |
+| Dial Function | `c.SetDial(fn)` |
+| Raw Request | `req.RawRequest` |
+| Raw Response | `resp.RawResponse` |
+
+##### Key Differences
+
+1. **Architecture**: v2 `Agent` → v3 separate `Client`, `Request`, `Response`
+2. **Error Handling**: v2 `[]error` → v3 single `error`
+3. **Response**: v2 tuple `(code, body, errs)` → v3 `*Response` object
+4. **No Parse()**: v3 auto-initializes requests
+5. **Hooks**: v3 adds request/response middleware
+6. **Path Params**: v3 native `:param` support
+7. **Cookie Jar**: v3 built-in session management
+8. **CBOR**: v3 adds CBOR encoding
+9. **Context**: v3 native cancellation support
+10. **Iterators**: v3 uses `iter.Seq2` for collections
+11. **Bytes variants removed**: v2 `*Bytes*` methods gone
+
+</details>
+
 ### 🛠️ Utils {#utils-migration}
 
 Fiber v3 removes the in-repo `utils` package in favor of the external [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module.
@@ -2129,9 +2647,9 @@ import (
 )
 
 func demo() {
-    b := utils.Trim([]byte(" fiber "))
+    s := utils.TrimSpace(" fiber ")
     id := utils.UUIDv4()
-    s := utils.ToString([]byte("foo"))
+    str := utils.ToString([]byte("foo"))
     t := strings.TrimRight("bar  ", " ")
 }
 ```
@@ -2219,6 +2737,14 @@ Combine multiple sources with `keyauth.Chain()` when needed.
 The deprecated `Store` and `Key` fields were removed. Use `Storage` and
 `KeyGenerator` instead to configure caching backends and cache keys.
 
+Defaults also changed: the middleware now emits `Cache-Control` headers, the default `Expiration` increased to `5 minutes` (from `1 minute`), and a new `MaxBytes` limit of `1 MB` (previously unlimited) now caps cached payloads.
+
+To restore v2 behavior:
+
+- Set `DisableCacheControl` to `true` to suppress automatic `Cache-Control` headers.
+- Configure `Expiration` to `1*time.Minute`.
+- Set `MaxBytes` to `0` (or a higher value) when caching large responses.
+
 #### CORS
 
 The CORS middleware has been updated to use slices instead of strings for the `AllowOrigins`, `AllowMethods`, `AllowHeaders`, and `ExposeHeaders` fields. Here's how you can update your code:
@@ -2261,6 +2787,8 @@ app.Use(csrf.New(csrf.Config{
 
 - **KeyLookup Field Removal**: The `KeyLookup` field has been removed from the CSRF middleware configuration. This field was deprecated and is no longer needed as the middleware now uses a more secure approach for token management.
 - **DisableValueRedaction Toggle**: CSRF redacts tokens and storage keys by default; set `DisableValueRedaction` to `true` when diagnostics require the raw values.
+
+- **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
 
 ```go
 // Before
@@ -2440,6 +2968,8 @@ proxy.WithClient(&fasthttp.Client{
 // Forward to url
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 ```
+
+`proxy.Balancer` also adopts the common middleware signature pattern and now accepts an optional variadic config: call `proxy.Balancer()` to use the defaults or continue passing a single `proxy.Config` value as in v2.
 
 #### Session
 

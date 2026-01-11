@@ -8,12 +8,6 @@ import (
 
 const hAllow = fiber.MethodGet + ", " + fiber.MethodHead
 
-// Config defines the config for middleware.
-type Config struct {
-	// ExportVars specifies the environment variables that should export
-	ExportVars map[string]string
-}
-
 // EnvVar captures environment variables that are exposed through the
 // middleware response.
 type EnvVar struct {
@@ -27,10 +21,7 @@ func (envVar *EnvVar) set(key, val string) {
 // New creates a handler that returns configured environment variables as a
 // JSON response.
 func New(config ...Config) fiber.Handler {
-	var cfg Config
-	if len(config) > 0 {
-		cfg = config[0]
-	}
+	cfg := configDefault(config...)
 
 	return func(c fiber.Ctx) error {
 		method := c.Method()

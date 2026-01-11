@@ -12,8 +12,11 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	"golang.org/x/crypto/bcrypt"
 )
+
+var ErrInvalidSHA256PasswordLength = errors.New("decode SHA256 password: invalid length")
 
 // Config defines the config for middleware.
 type Config struct {
@@ -110,7 +113,7 @@ func configDefault(config ...Config) Config {
 	switch {
 	case cfg.Charset == "":
 		cfg.Charset = ConfigDefault.Charset
-	case strings.EqualFold(cfg.Charset, "UTF-8"):
+	case utils.EqualFold(cfg.Charset, "UTF-8"):
 		cfg.Charset = "UTF-8"
 	default:
 		panic("basicauth: charset must be UTF-8")
@@ -188,7 +191,7 @@ func parseHashedPassword(h string) (func(string) bool, error) {
 				return nil, fmt.Errorf("decode SHA256 password: %w", err)
 			}
 			if len(b) != sha256.Size {
-				return nil, errors.New("decode SHA256 password: invalid length")
+				return nil, ErrInvalidSHA256PasswordLength
 			}
 		}
 		return func(p string) bool {

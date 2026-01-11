@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -24,9 +24,9 @@ const (
 const basicScheme = "Basic"
 
 // New creates a new middleware handler
-func New(config Config) fiber.Handler {
+func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg := configDefault(config)
+	cfg := configDefault(config...)
 
 	var cerr base64.CorruptInputError
 
@@ -91,14 +91,10 @@ func New(config Config) fiber.Handler {
 
 		// Check if the credentials are in the correct form
 		// which is "username:password".
-		index := strings.Index(creds, ":")
-		if index == -1 {
+		username, password, found := strings.Cut(creds, ":")
+		if !found {
 			return cfg.BadRequest(c)
 		}
-
-		// Get the username and password
-		username := creds[:index]
-		password := creds[index+1:]
 
 		if containsCTL(username) || containsCTL(password) {
 			return cfg.BadRequest(c)

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 )
 
 // Put fields related to mounting.
@@ -184,7 +184,7 @@ func (app *App) processSubAppsRoutes() {
 			// Check if the route has a mounted app
 			if !route.mount {
 				if !route.use || (route.use && m == 0) {
-					handlersCount += uint32(len(route.Handlers)) //nolint:gosec // Not a concern
+					handlersCount += uint32(len(route.Handlers)) //nolint:gosec // G115 - handler count is always small
 				}
 				continue
 			}

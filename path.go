@@ -1,7 +1,7 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
 // 📄 GitHub Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
-// ⚠️ This path parser was inspired by ucarion/urlpath (MIT License).
+// ⚠️ This path parser was inspired by https://github.com/ucarion/urlpath
 // 💖 Maintained and modified for Fiber by @renewerner87
 
 package fiber
@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode"
 
-	utils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/google/uuid"
 )
 
@@ -69,7 +69,7 @@ const (
 )
 
 // TypeConstraint parameter constraint types
-type TypeConstraint int16
+type TypeConstraint uint16
 
 // Constraint describes the validation rules that apply to a dynamic route
 // segment when matching incoming requests.
@@ -95,7 +95,7 @@ type CustomConstraint interface {
 }
 
 const (
-	noConstraint TypeConstraint = iota + 1
+	noConstraint TypeConstraint = 1 << iota
 	intConstraint
 	boolConstraint
 	floatConstraint
@@ -110,6 +110,11 @@ const (
 	maxConstraint
 	rangeConstraint
 	regexConstraint
+)
+
+const (
+	needOneData = minLenConstraint | maxLenConstraint | lenConstraint | minConstraint | maxConstraint | datetimeConstraint | regexConstraint
+	needTwoData = betweenLenConstraint | rangeConstraint
 )
 
 // list of possible parameter and segment delimiter
@@ -180,11 +185,12 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 
 	parser, _ := routerParserPool.Get().(*routeParser) //nolint:errcheck // only contains routeParser
 	parser.reset()
-	parser.parseRoute(string(patternPretty))
+	patternStr := string(patternPretty)
+	parser.parseRoute(patternStr)
 	defer routerParserPool.Put(parser)
 
 	// '*' wildcard matches any path
-	if (string(patternPretty) == "/" && path == "/") || (string(patternPretty) == "/*") {
+	if (patternStr == "/" && path == "/") || patternStr == "/*" {
 		return true
 	}
 
@@ -212,7 +218,7 @@ func (parser *routeParser) reset() {
 func (parser *routeParser) parseRoute(pattern string, customConstraints ...CustomConstraint) {
 	var n int
 	var seg *routeSegment
-	for len(pattern) > 0 {
+	for pattern != "" {
 		nextParamPosition := findNextParamPosition(pattern)
 		// handle the parameter part
 		if nextParamPosition == 0 {
@@ -621,14 +627,20 @@ func GetTrimmedParam(param string) string {
 
 // RemoveEscapeChar removes escape characters
 func RemoveEscapeChar(word string) string {
+	// Fast path: check if there are any escape characters first
+	escapeIdx := strings.IndexByte(word, '\\')
+	if escapeIdx == -1 {
+		return word // No escape chars, return original string without allocation
+	}
+
+	// Slow path: copy and remove escape characters
 	b := []byte(word)
-	dst := 0
-	for src := range b {
-		if b[src] == '\\' {
-			continue
+	dst := escapeIdx
+	for src := escapeIdx + 1; src < len(b); src++ {
+		if b[src] != '\\' {
+			b[dst] = b[src]
+			dst++
 		}
-		b[dst] = b[src]
-		dst++
 	}
 	return string(b[:dst])
 }
@@ -699,19 +711,12 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	)
 
 	// Validate constraint has required data
-	needOneData := []TypeConstraint{minLenConstraint, maxLenConstraint, lenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
-	needTwoData := []TypeConstraint{betweenLenConstraint, rangeConstraint}
-
-	for _, data := range needOneData {
-		if c.ID == data && len(c.Data) == 0 {
-			return false
-		}
+	if c.ID&needOneData != 0 && len(c.Data) == 0 {
+		return false
 	}
 
-	for _, data := range needTwoData {
-		if c.ID == data && len(c.Data) < 2 {
-			return false
-		}
+	if c.ID&needTwoData != 0 && len(c.Data) < 2 {
+		return false
 	}
 
 	switch c.ID {

@@ -3,6 +3,8 @@ package fiber
 import (
 	"bytes"
 	"errors"
+	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -287,6 +289,235 @@ func Test_Hook_OnListen(t *testing.T) {
 	require.Equal(t, "ready", buf.String())
 }
 
+func Test_ListenDataMetadata(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{AppName: "meta"})
+	app.handlersCount = 42
+
+	cfg := ListenConfig{EnablePrefork: true}
+	childPIDs := []int{11, 22}
+	listenData := app.prepareListenData(":3030", true, &cfg, childPIDs)
+
+	app.Hooks().OnListen(func(data ListenData) error {
+		require.Equal(t, globalIpv4Addr, data.Host)
+		require.Equal(t, "3030", data.Port)
+		require.True(t, data.TLS)
+		require.Equal(t, Version, data.Version)
+		require.Equal(t, "meta", data.AppName)
+		require.Equal(t, 42, data.HandlerCount)
+		require.Equal(t, runtime.GOMAXPROCS(0), data.ProcessCount)
+		require.Equal(t, os.Getpid(), data.PID)
+		require.True(t, data.Prefork)
+		require.Equal(t, childPIDs, data.ChildPIDs)
+		require.Equal(t, app.config.ColorScheme, data.ColorScheme)
+
+		return nil
+	})
+
+	app.runOnListenHooks(listenData)
+
+	app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+		require.Equal(t, globalIpv4Addr, data.Host)
+		require.Equal(t, "3030", data.Port)
+		require.True(t, data.TLS)
+		require.Equal(t, Version, data.Version)
+		require.Equal(t, "meta", data.AppName)
+		require.Equal(t, 42, data.HandlerCount)
+		require.Equal(t, runtime.GOMAXPROCS(0), data.ProcessCount)
+		require.Equal(t, os.Getpid(), data.PID)
+		require.True(t, data.Prefork)
+		require.Equal(t, childPIDs, data.ChildPIDs)
+		require.Equal(t, app.config.ColorScheme, data.ColorScheme)
+
+		data.ResetEntries()
+
+		data.AddInfo("custom", "Custom Info", "value", 3)
+		data.AddInfo("other", "Other Info", "value", 2)
+
+		return nil
+	})
+
+	pre := newPreStartupMessageData(listenData)
+	require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+
+	require.Equal(t, "value", pre.entries[0].value)
+	require.Equal(t, "Custom Info", pre.entries[0].title)
+	require.Equal(t, 3, pre.entries[0].priority)
+
+	require.Equal(t, "value", pre.entries[1].value)
+	require.Equal(t, "Other Info", pre.entries[1].title)
+	require.Equal(t, 2, pre.entries[1].priority)
+	require.False(t, pre.PreventDefault)
+}
+
+func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("EntryKeys", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddInfo("key1", "Title 1", "Value 1", 1)
+			data.AddInfo("key2", "Title 2", "Value 2", 2)
+
+			keys := data.EntryKeys()
+			require.Len(t, keys, 2)
+			require.Equal(t, "key1", keys[0])
+			require.Equal(t, "key2", keys[1])
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+
+	t.Run("ResetEntries", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddInfo("key1", "Title 1", "Value 1", 1)
+			data.AddInfo("key2", "Title 2", "Value 2", 2)
+
+			require.Len(t, data.entries, 2)
+
+			data.ResetEntries()
+			require.Empty(t, data.entries)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+
+	t.Run("AddInfo", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddInfo("key1", "Title 1", "Value 1", 1)
+			require.Len(t, data.entries, 1)
+			require.Equal(t, "key1", data.entries[0].key)
+			require.Equal(t, "Title 1", data.entries[0].title)
+			require.Equal(t, "Value 1", data.entries[0].value)
+			require.Equal(t, 1, data.entries[0].priority)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+
+	t.Run("AddWarning", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddWarning("key1", "Title 1", "Value 1", 1)
+			require.Len(t, data.entries, 1)
+			require.Equal(t, "key1", data.entries[0].key)
+			require.Equal(t, "Title 1", data.entries[0].title)
+			require.Equal(t, "Value 1", data.entries[0].value)
+			require.Equal(t, 1, data.entries[0].priority)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+
+	t.Run("AddError", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddError("key1", "Title 1", "Value 1", 1)
+			require.Len(t, data.entries, 1)
+			require.Equal(t, "key1", data.entries[0].key)
+			require.Equal(t, "Title 1", data.entries[0].title)
+			require.Equal(t, "Value 1", data.entries[0].value)
+			require.Equal(t, 1, data.entries[0].priority)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+
+	t.Run("AddInfo-UpdateExisting", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddInfo("key1", "Title 1", "Value 1", 1)
+			data.AddInfo("key1", "Updated Title", "Updated Value", 2)
+
+			require.Len(t, data.entries, 1)
+			require.Equal(t, "key1", data.entries[0].key)
+			require.Equal(t, "Updated Title", data.entries[0].title)
+			require.Equal(t, "Updated Value", data.entries[0].value)
+			require.Equal(t, 2, data.entries[0].priority)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+
+	t.Run("DeleteEntry", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		app.Hooks().OnPreStartupMessage(func(data *PreStartupMessageData) error {
+			data.ResetEntries()
+
+			data.AddInfo("key1", "Title 1", "Value 1", 1)
+			data.AddInfo("key2", "Title 2", "Value 2", 2)
+
+			require.Len(t, data.entries, 2)
+
+			data.DeleteEntry("key1")
+			require.Len(t, data.entries, 1)
+			require.Equal(t, "key2", data.entries[0].key)
+
+			data.DeleteEntry("key-not-exist") // should not panic
+			require.Len(t, data.entries, 1)
+
+			return nil
+		})
+
+		pre := newPreStartupMessageData(&ListenData{})
+		require.NoError(t, app.hooks.executeOnPreStartupMessageHooks(pre))
+	})
+}
+
 func Test_Hook_OnListenPrefork(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -327,7 +558,7 @@ func Test_Hook_OnHook(t *testing.T) {
 		return nil
 	})
 
-	require.NoError(t, app.prefork(":0", nil, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	require.NoError(t, app.prefork(":0", nil, &ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
 func Test_Hook_OnMount(t *testing.T) {
@@ -358,7 +589,7 @@ func Test_executeOnRouteHooks_ErrorWithMount(t *testing.T) {
 		return errors.New("hook error")
 	})
 
-	err := app.hooks.executeOnRouteHooks(Route{Path: "/foo", path: "/foo"})
+	err := app.hooks.executeOnRouteHooks(&Route{Path: "/foo", path: "/foo"})
 	require.Equal(t, testMountPath+"/foo", received)
 	require.EqualError(t, err, "hook error")
 }
@@ -374,7 +605,7 @@ func Test_executeOnNameHooks_ErrorWithMount(t *testing.T) {
 		return errors.New("name error")
 	})
 
-	err := app.hooks.executeOnNameHooks(Route{Path: "/bar", path: "/bar"})
+	err := app.hooks.executeOnNameHooks(&Route{Path: "/bar", path: "/bar"})
 	require.Equal(t, testMountPath+"/bar", received)
 	require.EqualError(t, err, "name error")
 }
@@ -419,8 +650,32 @@ func Test_executeOnListenHooks_Error(t *testing.T) {
 		return errors.New("listen error")
 	})
 
-	err := app.hooks.executeOnListenHooks(ListenData{Host: "127.0.0.1", Port: "0"})
+	err := app.hooks.executeOnListenHooks(&ListenData{Host: "127.0.0.1", Port: "0"})
 	require.EqualError(t, err, "listen error")
+}
+
+func Test_executeOnPreStartupMessageHooks_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Hooks().OnPreStartupMessage(func(_ *PreStartupMessageData) error {
+		return errors.New("pre startup message error")
+	})
+
+	err := app.hooks.executeOnPreStartupMessageHooks(newPreStartupMessageData(&ListenData{}))
+	require.EqualError(t, err, "pre startup message error")
+}
+
+func Test_executeOnPostStartupMessageHooks_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Hooks().OnPostStartupMessage(func(_ *PostStartupMessageData) error {
+		return errors.New("post startup message error")
+	})
+
+	err := app.hooks.executeOnPostStartupMessageHooks(newPostStartupMessageData(&ListenData{}, false, false, false))
+	require.EqualError(t, err, "post startup message error")
 }
 
 func Test_executeOnPreShutdownHooks_Error(t *testing.T) {

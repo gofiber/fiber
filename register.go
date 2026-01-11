@@ -22,7 +22,7 @@ type Register interface {
 	RouteChain(path string) Register
 }
 
-var _ (Register) = (*Registering)(nil)
+var _ Register = (*Registering)(nil)
 
 // Registering provides route registration helpers for a specific path on the
 // application instance.
@@ -107,6 +107,7 @@ func (r *Registering) Patch(handler any, handlers ...any) Register {
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
+// The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (r *Registering) Add(methods []string, handler any, handlers ...any) Register {
 	converted := collectHandlers("register", append([]any{handler}, handlers...)...)
 	r.app.register(methods, r.path, r.group, converted...)

@@ -1,9 +1,9 @@
 name: "Sync docs"
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - master
       - main
     paths:
       - "docs/**"
@@ -15,15 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
 
       - name: Setup Node.js environment
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
         with:
-          node-version: "22"
+          node-version: "22.x"
 
       - name: Sync docs
         run: ./.github/scripts/sync_docs.sh

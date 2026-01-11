@@ -128,7 +128,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		id = s.getSessionID(c)
 	}
 
-	fresh := ok // Assume the session is fresh if the ID is found in locals
+	fresh := false // Session is not fresh initially; only set to true if we generate a new ID
 
 	// Attempt to fetch session data if an ID is provided
 	if id != "" {

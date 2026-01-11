@@ -101,6 +101,8 @@ linters:
     gocritic:
       enabled-tags:
         - diagnostic
+        - style
+        - performance
       settings:
         captLocal:
           paramsOnly: false
@@ -241,7 +243,6 @@ linters:
     paths:
       - _msgp\.go
       - _msgp_test\.go
-      - internal
       - third_party$
       - builtin$
       - examples$
@@ -270,7 +271,6 @@ formatters:
     paths:
       - _msgp\.go
       - _msgp_test\.go
-      - internal
       - third_party$
       - builtin$
       - examples$

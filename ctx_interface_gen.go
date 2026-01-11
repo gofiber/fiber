@@ -86,6 +86,7 @@ type Ctx interface {
 	// RestartRouting instead of going to the next handler. This may be useful after
 	// changing the request path. Note that handlers might be executed again.
 	RestartRouting() error
+	setHandlerCtx(ctx CustomCtx)
 	// OriginalURL contains the original request URL.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
@@ -110,12 +111,17 @@ type Ctx interface {
 	ViewBind(vars Map) error
 	// Route returns the matched Route struct.
 	Route() *Route
+	// FullPath returns the matched route path, including any group prefixes.
+	FullPath() string
 	// Matched returns true if the current request path was matched by the router.
 	Matched() bool
 	// IsMiddleware returns true if the current request handler was registered as middleware.
 	IsMiddleware() bool
 	// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
 	HasBody() bool
+	// OverrideParam overwrites a route parameter value by name.
+	// If the parameter name does not exist in the route, this method does nothing.
+	OverrideParam(name, value string)
 	// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
 	IsWebSocket() bool
 	// IsPreflight returns true if the request is a CORS preflight.
@@ -158,9 +164,11 @@ type Ctx interface {
 	getDetectionPath() string
 	getValues() *[maxParams]string
 	getMatched() bool
+	getSkipNonUseRoutes() bool
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
+	setSkipNonUseRoutes(skip bool)
 	setRoute(route *Route)
 	getPathOriginal() string
 	// Accepts checks if the specified extensions or content types are acceptable.
@@ -179,7 +187,8 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	BodyRaw() []byte
-	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) ([]byte, uint8, error)
+	//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
+	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) (body []byte, decodesRealized uint8, err error)
 	// Body contains the raw body submitted in a POST request.
 	// This method will decompress the body if the 'Content-Encoding' header is provided.
 	// It returns the original (or decompressed) body data which is valid only within the handler.
@@ -296,7 +305,7 @@ type Ctx interface {
 	// Queries()["filters[status]"] == "pending"
 	Queries() map[string]string
 	// Range returns a struct containing the type and a slice of ranges.
-	Range(size int) (Range, error)
+	Range(size int64) (Range, error)
 	// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
 	// If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
 	// If the offset is zero every label (no trimming) is returned.
@@ -304,7 +313,7 @@ type Ctx interface {
 	// Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
 	Stale() bool
 	// IsProxyTrusted checks trustworthiness of remote ip.
-	// If Config.TrustProxy false, it returns true
+	// If Config.TrustProxy false, it returns false.
 	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
 	IsProxyTrusted() bool
 	// IsFromLocal will return true if request came from local.
@@ -368,7 +377,7 @@ type Ctx interface {
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)
 	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route, params Map) (string, error)
+	getLocationFromRoute(route *Route, params Map) (string, error)
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.

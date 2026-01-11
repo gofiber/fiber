@@ -94,7 +94,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ### SetContext
 
 Sets the base `context.Context` used by [`Context`](#context). Use this to
-propagate deadlines, cancelation signals, or values to asynchronous operations.
+propagate deadlines, cancellation signals, or values to asynchronous operations.
 
 ```go title="Signature"
 func (c fiber.Ctx) SetContext(ctx context.Context)
@@ -420,6 +420,35 @@ func MyMiddleware() fiber.Handler {
 }
 ```
 
+### FullPath
+
+Returns the full path of the matched route. This includes any prefixes that were added by [groups](../guide/routing.md#grouping-routes) or mounts.
+
+```go title="Signature"
+func (c fiber.Ctx) FullPath() string
+```
+
+```go title="Example"
+api := app.Group("/api")
+api.Get("/users/:id", func(c fiber.Ctx) error {
+  return c.JSON(fiber.Map{
+    "route": c.FullPath(), // "/api/users/:id"
+  })
+})
+
+app.Use(func(c fiber.Ctx) error {
+  beforeNext := c.FullPath() // "/"
+
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  afterNext := c.FullPath() // "/api/users/:id"
+  // ... react to the downstream handler's route path
+  return nil
+})
+```
+
 ### Matched
 
 Returns `true` if the current request path was matched by the router.
@@ -469,6 +498,50 @@ app.Post("/", func(c fiber.Ctx) error {
     return c.SendStatus(fiber.StatusBadRequest)
   }
   return c.SendString("OK")
+})
+```
+
+### OverrideParam
+
+Overwrites the value of an existing route parameter.
+
+:::note
+If the parameter does not exist, this method does nothing.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) OverrideParam(name, value string)
+```
+
+```go title="Example"
+// GET http://example.com/user
+app.Get("/user/:name", func(c fiber.Ctx) error {
+  // mutate parameter
+  c.OverrideParam("name", "new value")
+  return c.SendString(c.Params("name")) // sends "new value"
+})
+// GET http://example.com/shop/tech/1
+app.Get("/shop/*", func(c fiber.Ctx) error {
+  // mutate parameter
+  c.OverrideParam("*", "new tech") // replaces "tech/1" with "new tech"
+  return c.SendString(c.Params("*")) // sends "new tech"
+})
+
+```
+
+Unnamed route parameters can be accessed by their character (`*` or `+`) followed by their position index (e.g., `*1` for the first wildcard, `*2` for the second).
+
+```go title="Example"
+// GET /v1/brand/4/shop/blue/xs
+app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
+  // mutate parameter
+  c.OverrideParam("*1", "updated brand")
+  c.OverrideParam("*2", "updated data")
+  
+  param1 := c.Params("*1") // "updated brand"
+  param2 := c.Params("*2") // "updated data"
+
+  // ...
 })
 ```
 
@@ -1350,7 +1423,7 @@ sets the HTTP status code to **416 Range Not Satisfiable** and populates the
 `Content-Range` header with the current representation size.
 
 ```go title="Signature"
-func (c fiber.Ctx) Range(size int) (Range, error)
+func (c fiber.Ctx) Range(size int64) (Range, error)
 ```
 
 ```go title="Example"

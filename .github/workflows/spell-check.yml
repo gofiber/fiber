@@ -1,0 +1,69 @@
+name: Spell check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  cspell:
+    name: cspell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: "20.x"
+
+      - name: Install cspell dictionaries
+        run: |
+          npm install --no-save \
+            @cspell/dict-en_us \
+            @cspell/dict-en-gb \
+            @cspell/dict-software-terms \
+            @cspell/dict-golang \
+            @cspell/dict-fullstack \
+            @cspell/dict-docker \
+            @cspell/dict-k8s \
+            @cspell/dict-node \
+            @cspell/dict-npm \
+            @cspell/dict-typescript \
+            @cspell/dict-html \
+            @cspell/dict-css \
+            @cspell/dict-shell \
+            @cspell/dict-python \
+            @cspell/dict-redis \
+            @cspell/dict-sql \
+            @cspell/dict-filetypes \
+            @cspell/dict-companies \
+            @cspell/dict-markdown \
+            @cspell/dict-en-common-misspellings \
+            @cspell/dict-people-names \
+            @cspell/dict-data-science
+
+      - name: Run cspell
+        uses: streetsidesoftware/cspell-action@24fa8d3096a314ce263f39578744e9d9f8d80acf # v8.1.2
+        with:
+          incremental_files_only: false
+          check_dot_files: explicit
+          report: typos
+          verbose: true
+
+      - name: Run codespell
+        uses: codespell-project/actions-codespell@8f01853be192eb0f849a5c7d721450e7a467c579 # v2.2
+        with:
+          skip: ./.git,./node_modules,./**/*.go,./*.go,./.github/workflows/spell-check.yml
+          ignore_words_list: TE,te

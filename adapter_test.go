@@ -370,7 +370,7 @@ func TestToFiberHandler_ExpressNextNoArgMiddleware(t *testing.T) {
 		return c.SendStatus(http.StatusOK)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -497,7 +497,7 @@ func TestWrapHTTPHandler_Flush_App_Test(t *testing.T) {
 		fmt.Fprintf(w, "World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	defer resp.Body.Close() //nolint:errcheck // not needed
 
@@ -525,7 +525,7 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 		fmt.Fprintf(w, "World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{
 		Timeout:       200 * time.Millisecond,
 		FailOnTimeout: false,
 	})

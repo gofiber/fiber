@@ -124,7 +124,7 @@ func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 
 	result, err := testStore.Get(key)
 	require.NoError(t, err)
-	require.Zero(t, len(result))
+	require.Empty(t, result)
 
 	keys, err := testStore.Keys()
 	require.NoError(t, err)
@@ -156,7 +156,7 @@ func Test_Storage_Memory_Set_Long_Expiration_with_Keys(t *testing.T) {
 	time.Sleep(4000 * time.Millisecond)
 	result, err := testStore.Get(key)
 	require.NoError(t, err)
-	require.Zero(t, len(result))
+	require.Empty(t, result)
 
 	keys, err = testStore.Keys()
 	require.NoError(t, err)
@@ -168,7 +168,7 @@ func Test_Storage_Memory_Get_NotExist(t *testing.T) {
 	testStore := New()
 	result, err := testStore.Get("notexist")
 	require.NoError(t, err)
-	require.Zero(t, len(result))
+	require.Empty(t, result)
 
 	keys, err := testStore.Keys()
 	require.NoError(t, err)
@@ -195,7 +195,7 @@ func Test_Storage_Memory_Delete(t *testing.T) {
 
 	result, err := testStore.Get(key)
 	require.NoError(t, err)
-	require.Zero(t, len(result))
+	require.Empty(t, result)
 
 	keys, err = testStore.Keys()
 	require.NoError(t, err)
@@ -248,11 +248,11 @@ func Test_Storage_Memory_Reset(t *testing.T) {
 
 	result, err := testStore.Get("john1")
 	require.NoError(t, err)
-	require.Zero(t, len(result))
+	require.Empty(t, result)
 
 	result, err = testStore.Get("john2")
 	require.NoError(t, err)
-	require.Zero(t, len(result))
+	require.Empty(t, result)
 
 	keys, err = testStore.Keys()
 	require.NoError(t, err)

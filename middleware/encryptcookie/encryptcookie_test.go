@@ -3,13 +3,16 @@ package encryptcookie
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 func Test_Middleware_Panics(t *testing.T) {
@@ -92,6 +95,95 @@ func Test_Middleware_InvalidBase64(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorContains(t, err, "failed to base64-decode value")
 	})
+}
+
+func Test_DecryptCookie_InvalidEncryptedValue(t *testing.T) {
+	t.Parallel()
+
+	key := GenerateKey(32)
+	// the decoded value is shorter than the GCM nonce size, so decryption should fail immediately
+	shortValue := base64.StdEncoding.EncodeToString([]byte("short"))
+
+	_, err := DecryptCookie("session", shortValue, key)
+	require.ErrorIs(t, err, ErrInvalidEncryptedValue)
+}
+
+func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
+	t.Parallel()
+
+	testKey := GenerateKey(32)
+	expected := errors.New("encrypt failed")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusTeapot).SendString("encryption error")
+		},
+	})
+
+	app.Use(New(Config{
+		Key: testKey,
+		Encryptor: func(name, value, _ string) (string, error) {
+			if name == "test" {
+				return "", expected
+			}
+			return value, nil
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Cookie(&fiber.Cookie{
+			Name:  "test",
+			Value: "value",
+		})
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.ErrorIs(t, captured, expected)
+}
+
+func Test_Middleware_EncryptionErrorDoesNotMaskNextError(t *testing.T) {
+	t.Parallel()
+
+	testKey := GenerateKey(32)
+	encryptErr := errors.New("encrypt failed")
+	downstreamErr := errors.New("downstream failed")
+
+	var captured error
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.Status(fiber.StatusTeapot).SendString("combined error")
+		},
+	})
+
+	app.Use(New(Config{
+		Key: testKey,
+		Encryptor: func(name, value, _ string) (string, error) {
+			if name == "test" {
+				return "", encryptErr
+			}
+			return value, nil
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Cookie(&fiber.Cookie{
+			Name:  "test",
+			Value: "value",
+		})
+		return downstreamErr
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.ErrorIs(t, captured, downstreamErr)
+	require.ErrorIs(t, captured, encryptErr)
 }
 
 func Test_Middleware_Encrypt_Cookie(t *testing.T) {
@@ -192,7 +284,7 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "SomeThing", resp.Cookies()[0].Value)
 }
@@ -708,4 +800,48 @@ func Benchmark_GenerateKey_Parallel(b *testing.B) {
 			})
 		})
 	}
+}
+
+// Test_Middleware_Mixed_Valid_Invalid_Cookies tests that the middleware correctly handles
+// a mix of valid and invalid cookies during iteration
+func Test_Middleware_Mixed_Valid_Invalid_Cookies(t *testing.T) {
+	t.Parallel()
+	testKey := GenerateKey(32)
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Key: testKey,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		valid1 := c.Cookies("valid1")
+		valid2 := c.Cookies("valid2")
+		invalid := c.Cookies("invalid")
+		return c.SendString("valid1=" + valid1 + ",valid2=" + valid2 + ",invalid=" + invalid)
+	})
+
+	h := app.Handler()
+
+	// First, create some valid encrypted cookies
+	encryptedValue1, err := EncryptCookie("valid1", "value1", testKey)
+	require.NoError(t, err)
+	encryptedValue2, err := EncryptCookie("valid2", "value2", testKey)
+	require.NoError(t, err)
+
+	// Test with a mix of valid and invalid cookies
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetCookie("valid1", encryptedValue1)
+	ctx.Request.Header.SetCookie("invalid", "thisisnotvalid")
+	ctx.Request.Header.SetCookie("valid2", encryptedValue2)
+
+	h(ctx)
+
+	require.Equal(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, "valid1=value1,valid2=value2,invalid=", string(ctx.Response.Body()))
+
+	// Verify the invalid cookie was deleted but valid ones remain
+	require.NotEmpty(t, ctx.Request.Header.Cookie("valid1"))
+	require.Empty(t, ctx.Request.Header.Cookie("invalid"))
+	require.NotEmpty(t, ctx.Request.Header.Cookie("valid2"))
 }

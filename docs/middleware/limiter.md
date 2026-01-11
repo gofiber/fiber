@@ -20,6 +20,10 @@ This module does not share state with other processes/servers by default.
 
 ```go
 func New(config ...Config) fiber.Handler
+
+type Handler interface {
+    New(config *Config) fiber.Handler
+}
 ```
 
 ## Examples
@@ -110,7 +114,7 @@ app.Use(limiter.New(limiter.Config{
 | DisableHeaders         | `bool`                    | When set to `true`, the middleware omits rate limit headers (`X-RateLimit-*` and `Retry-After`). | false                                    |
 | DisableValueRedaction  | `bool`                    | Disables redaction of limiter keys in error messages and logs.                                 | false                                    |
 | Storage                | `fiber.Storage`           | Persists middleware state.                                         | An in-memory store for this process only |
-| LimiterMiddleware      | `LimiterHandler`          | Selects the algorithm implementation.                       | A new Fixed Window Rate Limiter          |
+| LimiterMiddleware      | `limiter.Handler`         | Selects the algorithm implementation. Implementations now receive a pointer to the active config when their `New` method is invoked. | A new Fixed Window Rate Limiter          |
 
 :::note
 A custom store can be used if it implements the `Storage` interface - more details and an example can be found in `store.go`.

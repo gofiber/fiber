@@ -100,16 +100,16 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.Write(c.Response().Body())
 		},
 		TagReqHeaders: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			out := make(map[string][]string, 0)
+			out := make(map[string][]string)
 			if err := c.Bind().Header(&out); err != nil {
 				return 0, err
 			}
 
-			reqHeaders := make([]string, 0)
+			reqHeaders := make([]string, 0, len(out))
 			for k, v := range out {
 				reqHeaders = append(reqHeaders, k+"="+strings.Join(v, ","))
 			}
-			return output.Write([]byte(strings.Join(reqHeaders, "&")))
+			return output.WriteString(strings.Join(reqHeaders, "&"))
 		},
 		TagQueryStringParams: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.WriteString(c.Request().URI().QueryArgs().String())
@@ -182,14 +182,14 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		TagStatus: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			if cfg.enableColors {
 				colors := c.App().Config().ColorScheme
-				return fmt.Fprintf(output, "%s%3d%s", statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset)
+				return fmt.Fprintf(output, "%s%3d%s", statusColor(c.Response().StatusCode(), &colors), c.Response().StatusCode(), colors.Reset)
 			}
 			return appendInt(output, c.Response().StatusCode())
 		},
 		TagMethod: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			if cfg.enableColors {
 				colors := c.App().Config().ColorScheme
-				return fmt.Fprintf(output, "%s%s%s", methodColor(c.Method(), colors), c.Method(), colors.Reset)
+				return fmt.Fprintf(output, "%s%s%s", methodColor(c.Method(), &colors), c.Method(), colors.Reset)
 			}
 			return output.WriteString(c.Method())
 		},

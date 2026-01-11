@@ -72,14 +72,19 @@ func Test_GetFieldCache_Panic(t *testing.T) {
 func Test_parseToMap_defaultCase(t *testing.T) {
 	t.Parallel()
 	m := map[string]int{}
-	err := parseToMap(m, map[string][]string{"a": {"1"}})
+	err := parseToMap(reflect.ValueOf(m), map[string][]string{"a": {"1"}})
 	require.NoError(t, err)
 	require.Empty(t, m)
 
 	m2 := map[string]string{}
-	err = parseToMap(m2, map[string][]string{"empty": {}})
+	err = parseToMap(reflect.ValueOf(m2), map[string][]string{"empty": {}})
 	require.NoError(t, err)
 	require.Empty(t, m2["empty"])
+
+	var zeroStringMap map[string]string
+	err = parseToMap(reflect.ValueOf(&zeroStringMap).Elem(), map[string][]string{"name": {"john"}})
+	require.NoError(t, err)
+	require.Equal(t, "john", zeroStringMap["name"])
 }
 
 func Test_parse_function_maps(t *testing.T) {
@@ -94,6 +99,16 @@ func Test_parse_function_maps(t *testing.T) {
 	err = parse("query", &m2, map[string][]string{"a": {"b"}})
 	require.NoError(t, err)
 	require.Equal(t, "b", m2["a"])
+
+	var zeroStringMap map[string]string
+	err = parse("query", &zeroStringMap, map[string][]string{"foo": {"bar", "baz"}})
+	require.NoError(t, err)
+	require.Equal(t, "baz", zeroStringMap["foo"])
+
+	var zeroSliceMap map[string][]string
+	err = parse("query", &zeroSliceMap, map[string][]string{"foo": {"bar", "baz"}})
+	require.NoError(t, err)
+	require.Equal(t, []string{"bar", "baz"}, zeroSliceMap["foo"])
 }
 
 func Test_SetParserDecoder_UnknownKeys(t *testing.T) {
