@@ -36,7 +36,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
 - [🛠️ Utils](#utils)
-- [🥡 Services](#-services)
+- [🧩 Services](#-services)
 - [📃 Log](#-log)
 - [📦 Storage Interface](#-storage-interface)
 - [🧬 Middlewares](#-middlewares)
@@ -1074,7 +1074,7 @@ Fiber v3 removes the built-in `utils` directory and now imports utility helpers 
 
 The `github.com/gofiber/utils` module also introduces new helpers like `ParseInt`, `ParseUint`, `Walk`, `ReadFile`, and `Timestamp`.
 
-## 🥡 Services
+## 🧩 Services
 
 Fiber v3 introduces a new feature called Services. This feature allows developers to quickly start services that the application depends on, removing the need to manually provision things like database servers, caches, or message brokers, to name a few.
 
@@ -1149,8 +1149,8 @@ $ go run . -v
 --------------------------------------------------
 INFO Server started on:         http://127.0.0.1:3000 (bound on host 0.0.0.0 and port 3000)
 INFO Services:     2
-INFO   🥡 [ RUNNING ] postgres:latest
-INFO   🥡 [ RUNNING ] redis:latest
+INFO   🧩 [ RUNNING ] postgres:latest
+INFO   🧩 [ RUNNING ] redis:latest
 INFO Total handlers count:      2
 INFO Prefork:                   Disabled
 INFO PID:                       12279

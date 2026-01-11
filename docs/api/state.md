@@ -6,6 +6,10 @@ sidebar_position: 8
 
 State management provides a global key–value store for application dependencies and runtime data. The store is shared across the entire application and persists between requests. It's commonly used to store [Services](../api/services), which you can retrieve with the `GetService` or `MustGetService` functions.
 
+:::warning
+When prefork is enabled, each process has its own state store. State is not shared across preforked workers.
+:::
+
 ## State Type
 
 `State` is a key–value store built on top of `sync.Map` to ensure safe concurrent access. It allows storage and retrieval of dependencies and configurations in a Fiber application as well as thread–safe access to runtime data.
