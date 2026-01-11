@@ -1,6 +1,6 @@
 ---
 id: services
-title: 🥡 Services
+title: 🧩 Services
 sidebar_position: 9
 ---
 
