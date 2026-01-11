@@ -7,7 +7,7 @@ sidebar_position: 8
 State management provides a global key–value store for application dependencies and runtime data. The store is shared across the entire application and persists between requests. It's commonly used to store [Services](../api/services), which you can retrieve with the `GetService` or `MustGetService` functions.
 
 :::warning
-When prefork is enabled, each process has its own state store. State is not shared across preforked workers.
+When prefork is enabled, each worker process has an independent state store, meaning state is not shared between them.
 :::
 
 ## State Type

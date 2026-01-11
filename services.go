@@ -148,6 +148,6 @@ func (app *App) logServices(ctx context.Context, out io.Writer, colors *Colors) 
 			stateColor = scheme.Blue
 			state = utils.ToUpper(state)
 		}
-		fmt.Fprintf(out, "%sINFO%s    🥡 %s[ %s ] %s%s\n", scheme.Green, scheme.Reset, stateColor, utils.ToUpper(state), srv.String(), scheme.Reset)
+		fmt.Fprintf(out, "%sINFO%s    🧩 %s[ %s ] %s%s\n", scheme.Green, scheme.Reset, stateColor, utils.ToUpper(state), srv.String(), scheme.Reset)
 	}
 }
