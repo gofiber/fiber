@@ -50,7 +50,7 @@ func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie {
 		return nil
 	}
 
-	secure := bytes.Equal(uri.Scheme(), []byte("https"))
+	secure := bytes.Equal(uri.Scheme(), httpsScheme)
 	return cj.getByHostAndPath(uri.Host(), uri.Path(), secure)
 }
 
@@ -212,7 +212,7 @@ func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
 // dumpCookiesToReq writes the stored cookies to the given request.
 func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 	uri := req.URI()
-	secure := bytes.Equal(uri.Scheme(), []byte("https"))
+	secure := bytes.Equal(uri.Scheme(), httpsScheme)
 	cookies := cj.getByHostAndPath(uri.Host(), uri.Path(), secure)
 	for _, cookie := range cookies {
 		req.Header.SetCookieBytesKV(cookie.Key(), cookie.Value())

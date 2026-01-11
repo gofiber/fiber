@@ -1,34 +1,11 @@
-version: v1
+_extends: .github
 labels:
-  - label: '📒 Documentation'
-    matcher:
-      title: '([Dd]ocs|[Dd]oc:|\[[Dd]oc\]|README|[Tt]ypos|[Cc]omment|[Dd]ocumentation)'
-  - label: '☢️ Bug'
-    matcher:
-      title: '([Ff]ix|[Bb]ug)'
-  - label: '🧹 Updates'
-    matcher:
-      title: '([Ii]mprove|[Cc]hore|[Ii]mprovements|[Mm]issing|[Uu]pdate|[Rr]efactor|[Dd]eprecated|[Rr]emove|[Uu]nused|[Tt]est)'
-  - label: '🤖 Dependencies'
-    matcher:
-      title: '([Bb]ump|[Dd]ependencies)'
-      files: 
-        - 'go.mod'
-        - 'go.sum'
-        - '**/go.mod'
-        - '**/go.sum'
-  - label: '✏️ Feature'
-    matcher:
-      title: '([Ff]eature|[Ff]eat|[Cc]reate|[Ii]mplement|[Aa]dd|[Ss]upport)'
-  - label: '📝 Proposal'
-    matcher:
-      title: '([Pp]roposal|[Ii]dea|[Rr]equest|[Ss]uggest)'
-  - label: '🤔 Question'
-    matcher:
-      title: '([Qq]uestion|[Hh]ow)'
   - label: 'v3'
     matcher:
       baseBranch: 'main'
+      title: '/(v3)/i'
   - label: 'v2'
     matcher:
       baseBranch: 'v2'
+      title: '/(v2)/i'
+

@@ -100,12 +100,12 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.Write(c.Response().Body())
 		},
 		TagReqHeaders: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			out := make(map[string][]string, 0)
+			out := make(map[string][]string)
 			if err := c.Bind().Header(&out); err != nil {
 				return 0, err
 			}
 
-			reqHeaders := make([]string, 0)
+			reqHeaders := make([]string, 0, len(out))
 			for k, v := range out {
 				reqHeaders = append(reqHeaders, k+"="+strings.Join(v, ","))
 			}

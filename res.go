@@ -144,14 +144,37 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	for _, value := range values {
 		if h == "" {
 			h = value
-		} else if h != value && !strings.HasPrefix(h, value+",") && !strings.HasSuffix(h, " "+value) &&
-			!strings.Contains(h, " "+value+",") {
+		} else if !headerContainsValue(h, value) {
 			h += ", " + value
 		}
 	}
 	if originalH != h {
 		r.Set(field, h)
 	}
+}
+
+// headerContainsValue checks if a header value already contains the given value
+// as a comma-separated element. Per RFC 9110, list elements are separated by commas
+// with optional whitespace (OWS) around them.
+func headerContainsValue(header, value string) bool {
+	// Empty value should never match
+	if value == "" {
+		return false
+	}
+
+	// Exact match (single value header)
+	if header == value {
+		return true
+	}
+
+	// Check each comma-separated element, handling optional whitespace (OWS)
+	for part := range strings.SplitSeq(header, ",") {
+		if utils.TrimSpace(part) == value {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
@@ -418,8 +441,10 @@ func (r *DefaultRes) Get(key string, defaultValue ...string) string {
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) GetHeaders() map[string][]string {
 	app := r.c.app
-	headers := make(map[string][]string)
-	for k, v := range r.c.fasthttp.Response.Header.All() {
+	respHeader := &r.c.fasthttp.Response.Header
+	// Pre-allocate map with known header count to avoid reallocations
+	headers := make(map[string][]string, respHeader.Len())
+	for k, v := range respHeader.All() {
 		key := app.toString(k)
 		headers[key] = append(headers[key], app.toString(v))
 	}
@@ -498,19 +523,25 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 		return err
 	}
 
-	var result, cb string
-
+	cb := "callback"
 	if len(callback) > 0 {
 		cb = callback[0]
-	} else {
-		cb = "callback"
 	}
 
-	result = cb + "(" + r.c.app.toString(raw) + ");"
+	// Build JSONP response: callback(data);
+	// Use bytebufferpool to avoid string concatenation allocations
+	buf := bytebufferpool.Get()
+	buf.WriteString(cb)
+	buf.WriteByte('(')
+	buf.Write(raw)
+	buf.WriteString(");")
 
 	r.setCanonical(HeaderXContentTypeOptions, "nosniff")
 	r.c.fasthttp.Response.Header.SetContentType(MIMETextJavaScriptCharsetUTF8)
-	return r.SendString(result)
+	// Use SetBody (not SetBodyRaw) to copy the bytes before returning buffer to pool
+	r.c.fasthttp.Response.SetBody(buf.Bytes())
+	bytebufferpool.Put(buf)
+	return nil
 }
 
 // XML converts any interface or string to XML.
@@ -539,7 +570,9 @@ func (r *DefaultRes) Links(link ...string) {
 			bb.WriteString(link[i])
 			bb.WriteByte('>')
 		} else {
-			bb.WriteString(`; rel="` + link[i] + `",`)
+			bb.WriteString(`; rel="`)
+			bb.WriteString(link[i])
+			bb.WriteString(`",`)
 		}
 	}
 	r.setCanonical(HeaderLink, utils.TrimRight(r.c.app.toString(bb.Bytes()), ','))
@@ -591,7 +624,7 @@ func (r *DefaultRes) getLocationFromRoute(route *Route, params Map) (string, err
 
 		for key, val := range params {
 			isSame := key == segment.ParamName || (!app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) != -1
+			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) >= 0
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {

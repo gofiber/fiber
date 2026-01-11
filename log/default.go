@@ -42,7 +42,7 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	}
 }
 
-// privateLog logs a message at a given level log the default logger.
+// privateLogf logs a formatted message at a given level log the default logger.
 // when the level is fatal, it will exit the program.
 func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	if l.level > lv {
@@ -55,7 +55,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	if len(fmtArgs) > 0 {
 		_, _ = fmt.Fprintf(buf, format, fmtArgs...)
 	} else {
-		_, _ = fmt.Fprint(buf, fmtArgs...)
+		_, _ = fmt.Fprint(buf, format)
 	}
 
 	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error

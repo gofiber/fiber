@@ -14,6 +14,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// flashCookieNameBytes is a precomputed byte slice for flash cookie detection
+// to avoid string-to-bytes conversion on every request
+var flashCookieNameBytes = []byte(FlashCookieName)
+
 // Router defines all router handle interface, including app and group router.
 type Router interface {
 	Use(args ...any) Router
@@ -326,7 +330,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 		// Optional: Check flash messages
 		rawHeaders := d.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
 			d.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.next(d)
@@ -339,7 +343,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 		// Optional: Check flash messages
 		rawHeaders := ctx.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
 			ctx.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.nextCustom(ctx)
@@ -475,7 +479,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 					removedUseRoutes[route.path] = struct{}{}
 				}
 
-				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
+				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
 			}
 
 			if method == MethodGet && !route.use && !route.mount {
@@ -505,7 +509,7 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 
 		app.stack[headIndex] = append(headStack[:i], headStack[i+1:]...)
 		app.routesRefreshed = true
-		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // Not a concern
+		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
 		return
 	}
 }
@@ -570,7 +574,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 
 		// Increment global handler count
-		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // Not a concern
+		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // G115 - handler count is always small
 
 		// Middleware route matches all HTTP methods
 		if isUse {
@@ -673,7 +677,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		app.routesRefreshed = true
 		added = true
 
-		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // Not a concern
+		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
 
 		app.latestRoute = headRoute
 		if err := app.hooks.executeOnRouteHooks(headRoute); err != nil {
@@ -710,52 +714,47 @@ func (app *App) buildTree() *App {
 
 	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
 	for method := range app.config.RequestMethods {
-		prefixSet := map[int]struct{}{
-			0: {},
-		}
-		for _, route := range app.stack[method] {
+		routes := app.stack[method]
+		treePaths := make([]int, len(routes))
+
+		globalCount := 0
+		prefixCounts := make(map[int]int, len(routes))
+
+		for i, route := range routes {
 			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths {
-				prefix := int(route.routeParser.segs[0].Const[0])<<16 |
+				treePaths[i] = int(route.routeParser.segs[0].Const[0])<<16 |
 					int(route.routeParser.segs[0].Const[1])<<8 |
 					int(route.routeParser.segs[0].Const[2])
-				prefixSet[prefix] = struct{}{}
 			}
+
+			if treePaths[i] == 0 {
+				globalCount++
+				continue
+			}
+
+			prefixCounts[treePaths[i]]++
 		}
-		tsMap := make(map[int][]*Route, len(prefixSet))
-		for prefix := range prefixSet {
-			tsMap[prefix] = nil
+
+		tsMap := make(map[int][]*Route, len(prefixCounts)+1)
+		tsMap[0] = make([]*Route, 0, globalCount)
+		for treePath, count := range prefixCounts {
+			tsMap[treePath] = make([]*Route, 0, count+globalCount)
 		}
+
+		for i, route := range routes {
+			treePath := treePaths[i]
+
+			if treePath == 0 {
+				for bucket := range tsMap {
+					tsMap[bucket] = append(tsMap[bucket], route)
+				}
+				continue
+			}
+
+			tsMap[treePath] = append(tsMap[treePath], route)
+		}
+
 		app.treeStack[method] = tsMap
-	}
-
-	// 2) Second loop: for each method and each discovered treePath, assign matching routes
-	for method := range app.config.RequestMethods {
-		// get the map of buckets for this method
-		tsMap := app.treeStack[method]
-
-		// for every treePath key (including the empty one)
-		for treePath := range tsMap {
-			// iterate all routes of this method
-			for _, route := range app.stack[method] {
-				// compute this route's own prefix ("" or first 3 chars)
-				routePath := 0
-				if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
-					routePath = int(route.routeParser.segs[0].Const[0])<<16 |
-						int(route.routeParser.segs[0].Const[1])<<8 |
-						int(route.routeParser.segs[0].Const[2])
-				}
-
-				// if it's a global route, assign to every bucket
-				// If the route path is 0 (global route) or matches the current tree path,
-				// append this route to the current bucket
-				if routePath == 0 || routePath == treePath {
-					tsMap[treePath] = append(tsMap[treePath], route)
-				}
-			}
-
-			// after collecting, dedupe the bucket if it's not the global one
-			tsMap[treePath] = uniqueRouteStack(tsMap[treePath])
-		}
 	}
 
 	// reset the flag and return

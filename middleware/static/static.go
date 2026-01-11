@@ -54,7 +54,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	}
 
 	// reject any null bytes
-	if strings.IndexByte(s, 0) >= 0 {
+	if strings.IndexByte(s, '\x00') >= 0 {
 		return nil, ErrInvalidPath
 	}
 
@@ -116,9 +116,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 			}
 
 			// Is prefix a partial wildcard?
-			if strings.Contains(prefix, "*") {
+			if before, _, found := strings.Cut(prefix, "*"); found {
 				// /john* -> /john
-				prefix = strings.Split(prefix, "*")[0]
+				prefix = before
 			}
 
 			prefixLen := len(prefix)

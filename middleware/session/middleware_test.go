@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -131,7 +132,7 @@ func Test_Session_Middleware(t *testing.T) {
 		// get a value from the body
 		value := c.FormValue("keys")
 		for rawKey := range strings.SplitSeq(value, ",") {
-			key := strings.TrimSpace(rawKey)
+			key := utils.TrimSpace(rawKey)
 			if key == "" {
 				continue
 			}

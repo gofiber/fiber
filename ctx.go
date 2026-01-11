@@ -9,10 +9,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"maps"
 	"mime/multipart"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -60,7 +60,7 @@ type DefaultCtx struct {
 	bind             *Bind                // Default bind reference
 	redirect         *Redirect            // Default redirect reference
 	values           [maxParams]string    // Route parameter values
-	viewBindMap      sync.Map             // Default view map to bind template engine
+	viewBindMap      Map                  // Default view map to bind template engine
 	baseURI          string               // HTTP base uri
 	pathOriginal     string               // Original HTTP path
 	flashMessages    redirectionMsgs      // Flash messages
@@ -319,9 +319,10 @@ func (c *DefaultCtx) Redirect() *Redirect {
 // Variables are read by the Render method and may be overwritten.
 func (c *DefaultCtx) ViewBind(vars Map) error {
 	// init viewBindMap - lazy map
-	for k, v := range vars {
-		c.viewBindMap.Store(k, v)
+	if c.viewBindMap == nil {
+		c.viewBindMap = make(Map, len(vars))
 	}
+	maps.Copy(c.viewBindMap, vars)
 	return nil
 }
 
@@ -382,6 +383,39 @@ func (c *DefaultCtx) HasBody() bool {
 	return len(c.fasthttp.Request.Body()) > 0
 }
 
+// OverrideParam overwrites a route parameter value by name.
+// If the parameter name does not exist in the route, this method does nothing.
+func (c *DefaultCtx) OverrideParam(name, value string) {
+	// If no route is matched, there are no parameters to update
+	if !c.Matched() {
+		return
+	}
+
+	// Normalize wildcard (*) and plus (+) tokens to their internal
+	// representations (*1, +1) used by the router.
+	if name == "*" || name == "+" {
+		name += "1"
+	}
+
+	if c.app.config.CaseSensitive {
+		for i, param := range c.route.Params {
+			if param == name {
+				c.values[i] = value
+				return
+			}
+		}
+		return
+	}
+
+	nameBytes := utils.UnsafeBytes(name)
+	for i, param := range c.route.Params {
+		if utils.EqualFold(utils.UnsafeBytes(param), nameBytes) {
+			c.values[i] = value
+			return
+		}
+	}
+}
+
 func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 	teBytes := hdr.Peek(HeaderTransferEncoding)
 	var te string
@@ -390,7 +424,7 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 		te = utils.UnsafeString(teBytes)
 	} else {
 		for key, value := range hdr.All() {
-			if !strings.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
+			if !utils.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
 				continue
 			}
 			te = utils.UnsafeString(value)
@@ -404,17 +438,17 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 
 	hasEncoding := false
 	for raw := range strings.SplitSeq(te, ",") {
-		token := strings.TrimSpace(raw)
+		token := utils.TrimSpace(raw)
 		if token == "" {
 			continue
 		}
 		if idx := strings.IndexByte(token, ';'); idx >= 0 {
-			token = strings.TrimSpace(token[:idx])
+			token = utils.TrimSpace(token[:idx])
 		}
 		if token == "" {
 			continue
 		}
-		if strings.EqualFold(token, "identity") {
+		if utils.EqualFold(token, "identity") {
 			continue
 		}
 		hasEncoding = true
@@ -428,7 +462,7 @@ func (c *DefaultCtx) IsWebSocket() bool {
 	conn := c.fasthttp.Request.Header.Peek(HeaderConnection)
 	var isUpgrade bool
 	for v := range strings.SplitSeq(utils.UnsafeString(conn), ",") {
-		if utils.EqualFold(utils.Trim(v, ' '), "upgrade") {
+		if utils.EqualFold(utils.TrimSpace(v), "upgrade") {
 			isUpgrade = true
 			break
 		}
@@ -436,7 +470,7 @@ func (c *DefaultCtx) IsWebSocket() bool {
 	if !isUpgrade {
 		return false
 	}
-	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), []byte("websocket"))
+	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), websocketBytes)
 }
 
 // IsPreflight returns true if the request is a CORS preflight.
@@ -464,12 +498,30 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	}
 	defer file.Close() //nolint:errcheck // not needed
 
-	content, err := io.ReadAll(file)
-	if err != nil {
+	maxUploadSize := c.app.config.BodyLimit
+	if maxUploadSize <= 0 {
+		maxUploadSize = DefaultBodyLimit
+	}
+
+	if fileheader.Size > 0 && fileheader.Size > int64(maxUploadSize) {
+		return fmt.Errorf("failed to read: %w", fasthttp.ErrBodyTooLarge)
+	}
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	limitedReader := io.LimitReader(file, int64(maxUploadSize)+1)
+	if _, err = buf.ReadFrom(limitedReader); err != nil {
 		return fmt.Errorf("failed to read: %w", err)
 	}
 
-	if err := storage.SetWithContext(c.Context(), path, content, 0); err != nil {
+	if buf.Len() > maxUploadSize {
+		return fmt.Errorf("failed to read: %w", fasthttp.ErrBodyTooLarge)
+	}
+
+	data := append([]byte(nil), buf.Bytes()...)
+
+	if err := storage.SetWithContext(c.Context(), path, data, 0); err != nil {
 		return fmt.Errorf("failed to store: %w", err)
 	}
 
@@ -533,10 +585,17 @@ func (c *DefaultCtx) Value(key any) any {
 	return c.fasthttp.UserValue(key)
 }
 
+var (
+	// xmlHTTPRequestBytes is precomputed for XHR detection
+	xmlHTTPRequestBytes = []byte("xmlhttprequest")
+	// websocketBytes is precomputed for WebSocket upgrade detection
+	websocketBytes = []byte("websocket")
+)
+
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFold(c.app.toBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderXRequestedWith), xmlHTTPRequestBytes)
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,
@@ -603,7 +662,8 @@ func (c *DefaultCtx) release() {
 		c.bind = nil
 	}
 	c.flashMessages = c.flashMessages[:0]
-	c.viewBindMap = sync.Map{}
+	// Clear viewBindMap by deleting all keys (reuse underlying map if possible)
+	clear(c.viewBindMap)
 	if c.redirect != nil {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
@@ -617,16 +677,11 @@ func (c *DefaultCtx) release() {
 func (c *DefaultCtx) renderExtensions(bind any) {
 	if bindMap, ok := bind.(Map); ok {
 		// Bind view map
-		c.viewBindMap.Range(func(key, value any) bool {
-			keyValue, ok := key.(string)
-			if !ok {
-				return true
+		for key, value := range c.viewBindMap {
+			if _, ok := bindMap[key]; !ok {
+				bindMap[key] = value
 			}
-			if _, ok := bindMap[keyValue]; !ok {
-				bindMap[keyValue] = value
-			}
-			return true
-		})
+		}
 
 		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
 		if c.app.config.PassLocalsToViews {

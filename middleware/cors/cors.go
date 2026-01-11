@@ -12,6 +12,17 @@ import (
 
 const redactedValue = "[redacted]"
 
+// isOriginSerializedOrNull checks if the origin is a serialized origin or the literal "null".
+// It returns two booleans: (isSerialized, isNull).
+func isOriginSerializedOrNull(originHeaderRaw string) (isSerialized, isNull bool) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming serialization and null status results
+	if originHeaderRaw == "null" {
+		return false, true
+	}
+
+	originIsSerialized, _ := normalizeOrigin(originHeaderRaw)
+	return originIsSerialized, false
+}
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -54,15 +65,18 @@ func New(config ...Config) fiber.Handler {
 			break
 		}
 
-		trimmedOrigin := utils.Trim(origin, ' ')
-		if i := strings.Index(trimmedOrigin, "://*."); i != -1 {
-			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
+		trimmedOrigin := utils.TrimSpace(origin)
+		if before, after, found := strings.Cut(trimmedOrigin, "://*."); found {
+			withoutWildcard := before + "://" + after
 			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
 			if !isValid {
 				panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
 			}
-			schemeSep := strings.Index(normalizedOrigin, "://") + len("://")
-			sd := subdomain{prefix: normalizedOrigin[:schemeSep], suffix: normalizedOrigin[schemeSep:]}
+			scheme, host, ok := strings.Cut(normalizedOrigin, "://")
+			if !ok {
+				panic("[CORS] Invalid origin format after normalization:" + maskValue(trimmedOrigin))
+			}
+			sd := subdomain{prefix: scheme + "://", suffix: host}
 			allowSubOrigins = append(allowSubOrigins, sd)
 		} else {
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
@@ -95,7 +109,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Get origin header preserving the original case for the response
 		originHeaderRaw := c.Get(fiber.HeaderOrigin)
-		originHeader := strings.ToLower(originHeaderRaw)
+		originHeader := utils.ToLower(originHeaderRaw)
 
 		// If the request does not have Origin header, the request is outside the scope of CORS
 		if originHeader == "" {
@@ -145,7 +159,10 @@ func New(config ...Config) fiber.Handler {
 		// handling the value in 'AllowOrigins' does
 		// not result in allowOrigin being set.
 		if allowOrigin == "" && cfg.AllowOriginsFunc != nil && cfg.AllowOriginsFunc(originHeaderRaw) {
-			allowOrigin = originHeaderRaw
+			originIsSerialized, originIsNull := isOriginSerializedOrNull(originHeaderRaw)
+			if originIsSerialized || originIsNull {
+				allowOrigin = originHeaderRaw
+			}
 		}
 
 		// Simple request

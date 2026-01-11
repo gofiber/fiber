@@ -11,7 +11,7 @@ import (
 
 func hasToken(header, token string) bool {
 	for part := range strings.SplitSeq(header, ",") {
-		if utils.EqualFold(utils.Trim(part, ' '), token) {
+		if utils.EqualFold(utils.TrimSpace(part), token) {
 			return true
 		}
 	}

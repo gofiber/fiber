@@ -7,8 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+
+	"github.com/gofiber/fiber/v3"
 
 	"github.com/valyala/fasthttp"
 )
@@ -213,7 +214,7 @@ func getScheme(uri []byte) []byte {
 // This method will return a fiber.Handler
 func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		host := string(c.Request().Host())
+		host := utils.UnsafeString(c.Request().Host())
 		if host == hostname {
 			return Do(c, addr+c.OriginalURL(), clients...)
 		}

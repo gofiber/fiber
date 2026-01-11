@@ -14,15 +14,16 @@ import (
 )
 
 var (
-	ErrTokenNotFound   = errors.New("csrf: token not found")
-	ErrTokenInvalid    = errors.New("csrf: token invalid")
-	ErrRefererNotFound = errors.New("csrf: referer header missing")
-	ErrRefererInvalid  = errors.New("csrf: referer header invalid")
-	ErrRefererNoMatch  = errors.New("csrf: referer does not match host or trusted origins")
-	ErrOriginInvalid   = errors.New("csrf: origin header invalid")
-	ErrOriginNoMatch   = errors.New("csrf: origin does not match host or trusted origins")
-	errOriginNotFound  = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
-	dummyValue         = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
+	ErrTokenNotFound    = errors.New("csrf: token not found")
+	ErrTokenInvalid     = errors.New("csrf: token invalid")
+	ErrFetchSiteInvalid = errors.New("csrf: sec-fetch-site header invalid")
+	ErrRefererNotFound  = errors.New("csrf: referer header missing")
+	ErrRefererInvalid   = errors.New("csrf: referer header invalid")
+	ErrRefererNoMatch   = errors.New("csrf: referer does not match host or trusted origins")
+	ErrOriginInvalid    = errors.New("csrf: origin header invalid")
+	ErrOriginNoMatch    = errors.New("csrf: origin does not match host or trusted origins")
+	errOriginNotFound   = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
+	dummyValue          = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
 
 )
 
@@ -71,7 +72,7 @@ func New(config ...Config) fiber.Handler {
 	trustedSubOrigins := []subdomain{}
 
 	for _, origin := range cfg.TrustedOrigins {
-		trimmedOrigin := utils.Trim(origin, ' ')
+		trimmedOrigin := utils.TrimSpace(origin)
 		if i := strings.Index(trimmedOrigin, "://*."); i != -1 {
 			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
 			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
@@ -127,12 +128,17 @@ func New(config ...Config) fiber.Handler {
 		default:
 			// Assume that anything not defined as 'safe' by RFC7231 needs protection
 
+			// Evaluate Sec-Fetch-Site to reject cross-site requests earlier when available.
+			if err := validateSecFetchSite(c); err != nil {
+				return cfg.ErrorHandler(c, err)
+			}
+
 			// Enforce an origin check for unsafe requests.
 			err := originMatchesHost(c, trustedOrigins, trustedSubOrigins)
 
 			// If there's no origin, enforce a referer check for HTTPS connections.
 			if errors.Is(err, errOriginNotFound) {
-				if c.Scheme() == "https" {
+				if c.Scheme() == schemeHTTPS {
 					err = refererMatchesHost(c, trustedOrigins, trustedSubOrigins)
 				} else {
 					// If it's not HTTPS, clear the error to allow the request to proceed.
@@ -313,11 +319,26 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 	return nil
 }
 
+func validateSecFetchSite(c fiber.Ctx) error {
+	secFetchSite := utils.Trim(c.Get(fiber.HeaderSecFetchSite), ' ')
+
+	if secFetchSite == "" {
+		return nil
+	}
+
+	switch utils.ToLower(secFetchSite) {
+	case "same-origin", "none", "cross-site", "same-site":
+		return nil
+	default:
+		return ErrFetchSiteInvalid
+	}
+}
+
 // originMatchesHost checks that the origin header matches the host header
 // returns an error if the origin header is not present or is invalid
 // returns nil if the origin header is valid
 func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	origin := strings.ToLower(c.Get(fiber.HeaderOrigin))
+	origin := utils.ToLower(c.Get(fiber.HeaderOrigin))
 	if origin == "" || origin == "null" { // "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
 		return errOriginNotFound
 	}
@@ -327,7 +348,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 		return ErrOriginInvalid
 	}
 
-	if originURL.Scheme == c.Scheme() && originURL.Host == c.Host() {
+	if schemeAndHostMatch(originURL.Scheme, originURL.Host, c.Scheme(), c.Host()) {
 		return nil
 	}
 
@@ -348,7 +369,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
 func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	referer := strings.ToLower(c.Get(fiber.HeaderReferer))
+	referer := utils.ToLower(c.Get(fiber.HeaderReferer))
 	if referer == "" {
 		return ErrRefererNotFound
 	}
@@ -358,7 +379,7 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins 
 		return ErrRefererInvalid
 	}
 
-	if refererURL.Scheme == c.Scheme() && refererURL.Host == c.Host() {
+	if schemeAndHostMatch(refererURL.Scheme, refererURL.Host, c.Scheme(), c.Host()) {
 		return nil
 	}
 

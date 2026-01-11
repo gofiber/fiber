@@ -15,6 +15,16 @@ import (
 	"golang.org/x/net/idna"
 )
 
+// Pre-allocated byte slices for common header comparisons to avoid allocations
+var (
+	xForwardedPrefix        = []byte("X-Forwarded-")
+	xForwardedProtoBytes    = []byte(HeaderXForwardedProto)
+	xForwardedProtocolBytes = []byte(HeaderXForwardedProtocol)
+	xForwardedSslBytes      = []byte(HeaderXForwardedSsl)
+	xURLSchemeBytes         = []byte(HeaderXUrlScheme)
+	onBytes                 = []byte("on")
+)
+
 // Range represents the parsed HTTP Range header extracted by DefaultReq.Range.
 type Range struct {
 	Type   string
@@ -301,8 +311,10 @@ func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
 // Make copies or use the Immutable setting instead.
 func (r *DefaultReq) GetHeaders() map[string][]string {
 	app := r.c.app
-	headers := make(map[string][]string)
-	for k, v := range r.c.fasthttp.Request.Header.All() {
+	reqHeader := &r.c.fasthttp.Request.Header
+	// Pre-allocate map with known header count to avoid reallocations
+	headers := make(map[string][]string, reqHeader.Len())
+	for k, v := range reqHeader.All() {
 		key := app.toString(k)
 		headers[key] = append(headers[key], app.toString(v))
 	}
@@ -319,9 +331,8 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
-			commaPos := strings.Index(host, ",")
-			if commaPos != -1 {
-				return host[:commaPos]
+			if before, _, found := strings.Cut(host, ","); found {
+				return before
 			}
 			return host
 		}
@@ -496,7 +507,7 @@ func (r *DefaultReq) Is(extension string) bool {
 	if i := strings.IndexByte(ct, ';'); i != -1 {
 		ct = ct[:i]
 	}
-	ct = utils.Trim(ct, ' ')
+	ct = utils.TrimSpace(ct)
 	return utils.EqualFold(ct, extensionHeader)
 }
 
@@ -639,21 +650,20 @@ func (r *DefaultReq) Scheme() string {
 			continue // Neither "X-Forwarded-" nor "X-Url-Scheme"
 		}
 		switch {
-		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
-			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
-				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
+		case bytes.HasPrefix(key, xForwardedPrefix):
+			if bytes.Equal(key, xForwardedProtoBytes) ||
+				bytes.Equal(key, xForwardedProtocolBytes) {
 				v := app.toString(val)
-				commaPos := strings.Index(v, ",")
-				if commaPos != -1 {
-					scheme = v[:commaPos]
+				if before, _, found := strings.Cut(v, ","); found {
+					scheme = before
 				} else {
 					scheme = v
 				}
-			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
+			} else if bytes.Equal(key, xForwardedSslBytes) && bytes.Equal(val, onBytes) {
 				scheme = schemeHTTPS
 			}
 
-		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
+		case bytes.Equal(key, xURLSchemeBytes):
 			scheme = app.toString(val)
 		default:
 			continue
@@ -744,7 +754,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		rangeData Range
 		ranges    string
 	)
-	rangeStr := utils.Trim(r.Get(HeaderRange), ' ')
+	rangeStr := utils.TrimSpace(r.Get(HeaderRange))
 
 	parseBound := func(value string) (int64, error) {
 		parsed, err := utils.ParseUint(value)
@@ -757,15 +767,15 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		return int64(parsed), nil
 	}
 
-	i := strings.IndexByte(rangeStr, '=')
-	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
+	before, after, found := strings.Cut(rangeStr, "=")
+	if !found || strings.IndexByte(after, '=') >= 0 {
 		return rangeData, ErrRangeMalformed
 	}
-	rangeData.Type = utils.ToLower(utils.Trim(rangeStr[:i], ' '))
+	rangeData.Type = utils.ToLower(utils.TrimSpace(before))
 	if rangeData.Type != "bytes" {
 		return rangeData, ErrRangeMalformed
 	}
-	ranges = utils.Trim(rangeStr[i+1:], ' ')
+	ranges = utils.TrimSpace(after)
 
 	var (
 		singleRange string
@@ -775,12 +785,12 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		singleRange = moreRanges
 		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
 			singleRange = moreRanges[:i]
-			moreRanges = utils.Trim(moreRanges[i+1:], ' ')
+			moreRanges = utils.TrimSpace(moreRanges[i+1:])
 		} else {
 			moreRanges = ""
 		}
 
-		singleRange = utils.Trim(singleRange, ' ')
+		singleRange = utils.TrimSpace(singleRange)
 
 		var (
 			startStr, endStr string
@@ -789,8 +799,8 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		if i = strings.IndexByte(singleRange, '-'); i == -1 {
 			return rangeData, ErrRangeMalformed
 		}
-		startStr = utils.Trim(singleRange[:i], ' ')
-		endStr = utils.Trim(singleRange[i+1:], ' ')
+		startStr = utils.TrimSpace(singleRange[:i])
+		endStr = utils.TrimSpace(singleRange[i+1:])
 
 		start, startErr := parseBound(startStr)
 		end, endErr := parseBound(endStr)
@@ -798,7 +808,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 			return rangeData, ErrRangeMalformed
 		}
 		if startErr != nil { // -nnn
-			start = size - end
+			start = max(size-end, 0)
 			end = size - 1
 		} else if endErr != nil { // nnn-
 			end = size - 1
@@ -866,11 +876,21 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 		return []string{}
 	}
 
-	parts := strings.Split(host, ".")
+	// Use stack-allocated array for typical domain names (up to 8 labels)
+	// This avoids heap allocation for most common cases
+	var partsBuf [8]string
+	parts := partsBuf[:0]
+
+	for part := range strings.SplitSeq(host, ".") {
+		parts = append(parts, part)
+	}
 
 	// offset == 0, caller wants everything.
 	if o == 0 {
-		return parts
+		// Need to return a copy since partsBuf is on the stack
+		result := make([]string, len(parts))
+		copy(result, parts)
+		return result
 	}
 
 	// If we trim away the whole slice (or more), nothing remains.
@@ -878,7 +898,10 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 		return []string{}
 	}
 
-	return parts[:len(parts)-o]
+	// Return a heap-allocated copy of the relevant portion
+	result := make([]string, len(parts)-o)
+	copy(result, parts[:len(parts)-o])
+	return result
 }
 
 // Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
@@ -887,12 +910,12 @@ func (r *DefaultReq) Stale() bool {
 }
 
 // IsProxyTrusted checks trustworthiness of remote ip.
-// If Config.TrustProxy false, it returns true
+// If Config.TrustProxy false, it returns false.
 // IsProxyTrusted can check remote ip by proxy ranges and ip map.
 func (r *DefaultReq) IsProxyTrusted() bool {
 	config := r.c.app.config
 	if !config.TrustProxy {
-		return true
+		return false
 	}
 
 	ip := r.c.fasthttp.RemoteIP()

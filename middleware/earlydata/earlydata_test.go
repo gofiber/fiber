@@ -19,9 +19,13 @@ const (
 	headerValOff = "0"
 )
 
+const (
+	trustedRemoteAddr   = "0.0.0.0:1234"
+	untrustedRemoteAddr = "203.0.113.1:1234"
+)
+
 func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 	t.Helper()
-	t.Parallel()
 
 	var app *fiber.App
 	if c == nil {
@@ -82,106 +86,70 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 	return app
 }
 
+type requestExpectation struct {
+	method string
+	header string
+	status int
+}
+
+func executeExpectations(t *testing.T, app *fiber.App, remoteAddr string, expectations []requestExpectation) {
+	t.Helper()
+
+	for _, expectation := range expectations {
+		req := httptest.NewRequest(expectation.method, "/", http.NoBody)
+		req.RemoteAddr = remoteAddr
+		if expectation.header != "" {
+			req.Header.Set(headerName, expectation.header)
+		}
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, expectation.status, resp.StatusCode)
+	}
+}
+
 // go test -run Test_EarlyData
 func Test_EarlyData(t *testing.T) {
 	t.Parallel()
 
-	trustedRun := func(t *testing.T, app *fiber.App) {
-		t.Helper()
-
-		{
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-			req.Header.Set(headerName, headerValOff)
-			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-			req.Header.Set(headerName, headerValOn)
-			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
-		}
-
-		{
-			req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
-
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-			req.Header.Set(headerName, headerValOff)
-			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-			req.Header.Set(headerName, headerValOn)
-			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
-		}
+	untrustedExpectations := []requestExpectation{
+		{method: fiber.MethodGet, status: fiber.StatusOK},
+		{method: fiber.MethodGet, header: headerValOff, status: fiber.StatusOK},
+		{method: fiber.MethodGet, header: headerValOn, status: fiber.StatusTooEarly},
+		{method: fiber.MethodPost, status: fiber.StatusOK},
+		{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusOK},
+		{method: fiber.MethodPost, header: headerValOn, status: fiber.StatusTooEarly},
 	}
 
-	untrustedRun := func(t *testing.T, app *fiber.App) {
-		t.Helper()
-
-		{
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
-
-			req.Header.Set(headerName, headerValOff)
-			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
-
-			req.Header.Set(headerName, headerValOn)
-			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
-		}
-
-		{
-			req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
-
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
-
-			req.Header.Set(headerName, headerValOff)
-			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
-
-			req.Header.Set(headerName, headerValOn)
-			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
-		}
+	trustedExpectations := []requestExpectation{
+		{method: fiber.MethodGet, status: fiber.StatusOK},
+		{method: fiber.MethodGet, header: headerValOff, status: fiber.StatusOK},
+		{method: fiber.MethodGet, header: headerValOn, status: fiber.StatusOK},
+		{method: fiber.MethodPost, status: fiber.StatusOK},
+		{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusOK},
+		{method: fiber.MethodPost, header: headerValOn, status: fiber.StatusTooEarly},
 	}
 
 	t.Run("empty config", func(t *testing.T) {
+		t.Parallel()
 		app := appWithConfig(t, nil)
-		trustedRun(t, app)
+		executeExpectations(t, app, untrustedRemoteAddr, untrustedExpectations)
 	})
 	t.Run("default config", func(t *testing.T) {
+		t.Parallel()
 		app := appWithConfig(t, &fiber.Config{})
-		trustedRun(t, app)
+		executeExpectations(t, app, untrustedRemoteAddr, untrustedExpectations)
 	})
 
-	t.Run("config with TrustProxy", func(t *testing.T) {
+	t.Run("config with TrustProxy and untrusted remote", func(t *testing.T) {
+		t.Parallel()
 		app := appWithConfig(t, &fiber.Config{
 			TrustProxy: true,
 		})
-		untrustedRun(t, app)
+		executeExpectations(t, app, untrustedRemoteAddr, untrustedExpectations)
 	})
 	t.Run("config with TrustProxy and trusted TrustProxyConfig.Proxies", func(t *testing.T) {
+		t.Parallel()
 		app := appWithConfig(t, &fiber.Config{
 			TrustProxy: true,
 			TrustProxyConfig: fiber.TrustProxyConfig{
@@ -190,7 +158,7 @@ func Test_EarlyData(t *testing.T) {
 				},
 			},
 		})
-		trustedRun(t, app)
+		executeExpectations(t, app, trustedRemoteAddr, trustedExpectations)
 	})
 }
 

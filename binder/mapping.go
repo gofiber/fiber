@@ -30,14 +30,30 @@ type ParserType struct {
 }
 
 var (
+	decoderPoolMu sync.RWMutex
 	// decoderPoolMap helps to improve binders
 	decoderPoolMap = map[string]*sync.Pool{}
 	// tags is used to classify parser's pool
 	tags = []string{"header", "respHeader", "cookie", "query", "form", "uri"}
 )
 
+func getDecoderPool(tag string) *sync.Pool {
+	decoderPoolMu.RLock()
+	pool := decoderPoolMap[tag]
+	if pool == nil {
+		decoderPoolMu.RUnlock()
+		panic(fmt.Sprintf("decoder pool not initialized for tag %q", tag))
+	}
+	decoderPoolMu.RUnlock()
+
+	return pool
+}
+
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
 func SetParserDecoder(parserConfig ParserConfig) {
+	decoderPoolMu.Lock()
+	defer decoderPoolMu.Unlock()
+
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() any {
 			return decoderBuilder(parserConfig)
@@ -59,6 +75,9 @@ func decoderBuilder(parserConfig ParserConfig) any {
 }
 
 func init() {
+	decoderPoolMu.Lock()
+	defer decoderPoolMu.Unlock()
+
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() any {
 			return decoderBuilder(ParserConfig{
@@ -90,8 +109,9 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 // Parse data into the struct with gofiber/schema
 func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
 	// Get decoder from pool
-	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
-	defer decoderPoolMap[aliasTag].Put(schemaDecoder)
+	pool := getDecoderPool(aliasTag)
+	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
+	defer pool.Put(schemaDecoder)
 
 	// Set alias tag
 	schemaDecoder.SetAliasTag(aliasTag)
@@ -214,8 +234,8 @@ func fieldName(f *reflect.StructField, aliasTag string) string {
 	name := f.Tag.Get(aliasTag)
 	if name == "" {
 		name = f.Name
-	} else {
-		name = strings.Split(name, ",")[0]
+	} else if first, _, found := strings.Cut(name, ","); found {
+		name = first
 	}
 
 	return utils.ToLower(name)
@@ -337,7 +357,7 @@ func FilterFlags(content string) string {
 
 func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key string, value K, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
 	var err error
-	if supportBracketNotation && strings.Contains(key, "[") {
+	if supportBracketNotation && strings.IndexByte(key, '[') >= 0 {
 		key, err = parseParamSquareBrackets(key)
 		if err != nil {
 			return err
@@ -377,9 +397,10 @@ func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key
 }
 
 func assignBindData(aliasTag string, out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
-	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key, aliasTag) {
-		values := strings.Split(value, ",")
-		data[key] = append(data[key], values...)
+	if enableSplitting && strings.IndexByte(value, ',') >= 0 && equalFieldType(out, reflect.Slice, key, aliasTag) {
+		for v := range strings.SplitSeq(value, ",") {
+			data[key] = append(data[key], v)
+		}
 	} else {
 		data[key] = append(data[key], value)
 	}

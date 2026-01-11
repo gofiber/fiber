@@ -1454,6 +1454,20 @@ func registerDummyRoutes(app *App) {
 	}
 }
 
+// go test -v -run=^$ -bench=Benchmark_App_RebuildTree -benchmem -count=4
+func Benchmark_App_RebuildTree(b *testing.B) {
+	app := New()
+	registerDummyRoutes(app)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		app.routesRefreshed = true
+		app.RebuildTree()
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_App_MethodNotAllowed -benchmem -count=4
 func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	app := New()

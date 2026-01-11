@@ -2,7 +2,6 @@ package csrf
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -33,7 +32,7 @@ type Config struct {
 
 	// KeyGenerator creates a new CSRF token.
 	//
-	// Optional. Default: utils.UUIDv4
+	// Optional. Default: utils.SecureToken
 	KeyGenerator func() string
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
@@ -133,7 +132,7 @@ var ConfigDefault = Config{
 	CookieName:            "csrf_",
 	CookieSameSite:        "Lax",
 	IdleTimeout:           30 * time.Minute,
-	KeyGenerator:          utils.UUIDv4,
+	KeyGenerator:          utils.SecureToken,
 	ErrorHandler:          defaultErrorHandler,
 	Extractor:             extractors.FromHeader(HeaderName),
 	DisableValueRedaction: false,
@@ -214,7 +213,7 @@ func isInsecureCookieExtractor(extractor extractors.Extractor, cookieName string
 		}
 
 		// Case-insensitive match - potentially confusing, warn but don't panic
-		if strings.EqualFold(extractor.Key, cookieName) && extractor.Key != cookieName {
+		if utils.EqualFold(extractor.Key, cookieName) && extractor.Key != cookieName {
 			log.Warnf("[CSRF WARNING] Extractor cookie name '%s' is similar to CSRF cookie '%s' - this may be confusing",
 				extractor.Key, cookieName)
 		}

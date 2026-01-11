@@ -264,6 +264,58 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 	require.Equal(t, "Hello ", string(body))
 }
 
+func Test_HTTPHandlerWithContext_local_context(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	// unique type for avoiding collisions in context
+	type key struct{}
+	var testKey key
+
+	const testVal string = "test-value"
+
+	// a middleware to add a value to the local context
+	app.Use(func(c fiber.Ctx) error {
+		ctx := context.WithValue(c.Context(), testKey, testVal)
+		c.SetContext(ctx)
+		return c.Next()
+	})
+
+	// a handler that checks if the value has been appended to the local context
+	app.Get("/", HTTPHandlerWithContext(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, ok := LocalContextFromHTTPRequest(r)
+		if !ok {
+			http.Error(w, "local context not found", http.StatusInternalServerError)
+			return
+		}
+		val, ok := ctx.Value(testKey).(string)
+		if !ok {
+			http.Error(w, "invalid context value", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(val)); err != nil {
+			t.Logf("write failed: %v", err)
+		}
+	})))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+		Timeout:       200 * time.Millisecond,
+		FailOnTimeout: false,
+	})
+	require.NoError(t, err)
+
+	defer resp.Body.Close() //nolint:errcheck // no need
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, testVal, string(body))
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 type contextKey string
 
 func (c contextKey) String() string {
@@ -445,6 +497,65 @@ func Test_FiberHandler(t *testing.T) {
 	t.Parallel()
 
 	testFiberToHandlerFunc(t, false)
+}
+
+func Test_FiberHandler_BodyLimit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		bodyLimit      int
+		bodySize       int
+		expectedStatus int
+	}{
+		{
+			name:           "DefaultLimitExceededReturns413",
+			bodySize:       fiber.DefaultBodyLimit + 1024,
+			expectedStatus: fiber.StatusRequestEntityTooLarge,
+		},
+		{
+			name:           "CustomLimitExceededReturns413",
+			bodyLimit:      1 * 1024 * 1024,
+			bodySize:       (1 * 1024 * 1024) + 1,
+			expectedStatus: fiber.StatusRequestEntityTooLarge,
+		},
+		{
+			name:           "CustomLimitAllowsLargerPayload",
+			bodyLimit:      2 * fiber.DefaultBodyLimit,
+			bodySize:       fiber.DefaultBodyLimit + 512,
+			expectedStatus: fiber.StatusOK,
+		},
+		{
+			name:           "ZeroLimitConfigFallsBackToDefault",
+			bodyLimit:      0,
+			bodySize:       fiber.DefaultBodyLimit - 256,
+			expectedStatus: fiber.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{
+				BodyLimit: tt.bodyLimit,
+			})
+
+			app.Post("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			handlerFunc := FiberApp(app)
+			body := bytes.Repeat([]byte("a"), tt.bodySize)
+			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+			req.ContentLength = int64(len(body))
+			resp := httptest.NewRecorder()
+
+			handlerFunc.ServeHTTP(resp, req)
+
+			require.Equal(t, tt.expectedStatus, resp.Code)
+		})
+	}
 }
 
 func Test_FiberApp(t *testing.T) {
@@ -1102,6 +1213,7 @@ func Benchmark_HTTPHandler(b *testing.B) {
 	}()
 
 	b.ReportAllocs()
+	b.ResetTimer()
 
 	fiberHandler := HTTPHandler(handler)
 
@@ -1114,6 +1226,41 @@ func Benchmark_HTTPHandler(b *testing.B) {
 		err = fiberHandler(ctx)
 	}
 
+	require.NoError(b, err)
+}
+
+func Benchmark_HTTPHandlerWithContext(b *testing.B) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok")) //nolint:errcheck // not needed
+	})
+
+	var err error
+	app := fiber.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	defer func() {
+		app.ReleaseCtx(ctx)
+	}()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	type key struct{}
+	var testKey key
+	ctx.SetContext(context.WithValue(ctx.Context(), testKey, "gofiber"))
+
+	fiberHandler := HTTPHandlerWithContext(handler)
+
+	for b.Loop() {
+		ctx.Request().Reset()
+		ctx.Response().Reset()
+		ctx.Request().SetRequestURI("/test")
+		ctx.Request().Header.SetMethod("GET")
+
+		err = fiberHandler(ctx)
+	}
 	require.NoError(b, err)
 }
 
