@@ -4550,9 +4550,10 @@ func Test_Ctx_ExpireCookie(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		expectedStrs []string
-		name         string
-		cookie       Cookie
+		expectedStrs    []string
+		notExpectedStrs []string
+		name            string
+		cookie          Cookie
 	}{
 		{
 			name: "with path",
@@ -4621,6 +4622,15 @@ func Test_Ctx_ExpireCookie(t *testing.T) {
 			},
 			expectedStrs: []string{"partitioned_cookie=;", "Partitioned", "secure", "expires="},
 		},
+		{
+			name: "with SameSite Disabled (should not set SameSite)",
+			cookie: Cookie{
+				Name:     "disabled_samesite",
+				SameSite: CookieSameSiteDisabled,
+			},
+			expectedStrs:    []string{"disabled_samesite=;", "expires="},
+			notExpectedStrs: []string{"SameSite"},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -4635,6 +4645,9 @@ func Test_Ctx_ExpireCookie(t *testing.T) {
 
 			for _, expected := range tc.expectedStrs {
 				require.Contains(t, setCookie, expected)
+			}
+			for _, notExpected := range tc.notExpectedStrs {
+				require.NotContains(t, setCookie, notExpected)
 			}
 		})
 	}

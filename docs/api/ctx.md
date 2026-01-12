@@ -1777,7 +1777,7 @@ Alternatively, use `ExpireCookie` for a cleaner approach (see below).
 Expires a cookie by its cookie definition. This is useful when you need to expire a cookie that was set with a specific `Path` or `Domain`. The browser will only clear the cookie if the `Path` and `Domain` attributes match the original cookie.
 
 ```go title="Signature"
-func (c fiber.Ctx) ExpireCookie(cookie *Cookie)
+func (r fiber.Res) ExpireCookie(cookie *fiber.Cookie)
 ```
 
 ```go title="Example"
