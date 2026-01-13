@@ -53,6 +53,13 @@ app.Use(limiter.New(limiter.Config{
       return 20
     },
     Expiration:     30 * time.Second,
+    ExpirationFunc: func(c fiber.Ctx) time.Duration {
+      // Use longer expiration for sensitive endpoints
+      if c.Path() == "/login" {
+        return 60 * time.Second
+      }
+      return 30 * time.Second
+    },
     KeyGenerator:          func(c fiber.Ctx) string {
         return c.Get("x-forwarded-for")
     },
@@ -99,6 +106,21 @@ app.Use(limiter.New(limiter.Config{
 }))
 ```
 
+## Dynamic expiration
+
+You can also calculate the expiration dynamically using the `ExpirationFunc` parameter. It receives the request context and allows you to set a different expiration window for each request.
+
+Example:
+
+```go
+app.Use(limiter.New(limiter.Config{
+    Max:     20,
+    ExpirationFunc: func(c fiber.Ctx) time.Duration {
+      return getExpirationForRoute(c.Path())
+    },
+}))
+```
+
 ## Config
 
 | Property               | Type                      | Description                                                                                 | Default                                  |
@@ -108,6 +130,7 @@ app.Use(limiter.New(limiter.Config{
 | MaxFunc                | `func(fiber.Ctx) int`     | Function that calculates the maximum number of recent connections within `Expiration` seconds before sending a 429 response. | A function that returns `cfg.Max`    |
 | KeyGenerator           | `func(fiber.Ctx) string` | Function to generate custom keys; uses `c.IP()` by default.                 | A function using `c.IP()` as the default   |
 | Expiration             | `time.Duration`           | Duration to keep request records in memory.                   | 1 * time.Minute                          |
+| ExpirationFunc         | `func(fiber.Ctx) time.Duration` | Function that calculates the expiration duration dynamically. | A function that returns `cfg.Expiration` |
 | LimitReached           | `fiber.Handler`           | Called when a request exceeds the limit.                                       | A function sending a 429 response          |
 | SkipFailedRequests     | `bool`                    | When set to `true`, requests with status code ≥ 400 aren't counted.                         | false                                    |
 | SkipSuccessfulRequests | `bool`                    | When set to `true`, requests with status code < 400 aren't counted.                          | false                                    |
@@ -129,6 +152,7 @@ var ConfigDefault = Config{
       return 5
     },
     Expiration: 1 * time.Minute,
+    // ExpirationFunc defaults to nil and is set dynamically to return cfg.Expiration
     KeyGenerator: func(c fiber.Ctx) string {
         return c.IP()
     },
