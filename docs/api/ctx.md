@@ -724,6 +724,29 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### Accept helpers
+
+Convenience helpers for common `Accept` header checks.
+
+```go title="Signature"
+func (c fiber.Ctx) AcceptsJSON() bool
+func (c fiber.Ctx) AcceptsHTML() bool
+func (c fiber.Ctx) AcceptsXML() bool
+func (c fiber.Ctx) AcceptsEventStream() bool
+```
+
+```go title="Example"
+// Accept: text/html, application/json;q=0.9
+
+app.Get("/", func(c fiber.Ctx) error {
+  c.AcceptsHTML()        // true
+  c.AcceptsJSON()        // true
+  c.AcceptsXML()         // false
+  c.AcceptsEventStream() // false
+  return nil
+})
+```
+
 ### BaseURL
 
 Returns the base URL (**protocol** + **host**) as a `string`.
@@ -738,6 +761,23 @@ func (c fiber.Ctx) BaseURL() string
 app.Get("/", func(c fiber.Ctx) error {
   c.BaseURL() // "https://example.com"
   // ...
+})
+```
+
+### URL and host helpers
+
+Helpers for working with the request URL.
+
+```go title="Signature"
+func (c fiber.Ctx) FullURL() string
+```
+
+```go title="Example"
+// GET http://example.com/search?q=fiber
+
+app.Get("/", func(c fiber.Ctx) error {
+  c.FullURL() // "http://example.com/search?q=fiber"
+  return nil
 })
 ```
 
@@ -905,6 +945,29 @@ The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
+### Header and content helpers
+
+Convenience helpers for frequently used request headers.
+
+```go title="Signature"
+func (c fiber.Ctx) UserAgent() string
+func (c fiber.Ctx) Referer() string
+func (c fiber.Ctx) AcceptLanguage() string
+func (c fiber.Ctx) AcceptEncoding() string
+func (c fiber.Ctx) HasHeader(key string) bool
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.UserAgent()      // "Mozilla/5.0 ..."
+  c.Referer()        // "https://example.com"
+  c.AcceptLanguage() // "en-US,en;q=0.9"
+  c.AcceptEncoding() // "gzip, br"
+  c.HasHeader("X-Trace-Id")
+  return nil
+})
+```
+
 ### Host
 
 Returns the host derived from the [Host](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Host) HTTP header.
@@ -978,6 +1041,21 @@ app := fiber.New(fiber.Config{
 })
 ```
 
+### Request identity helpers
+
+Helpers for identifying the request.
+
+```go title="Signature"
+func (c fiber.Ctx) RequestID() string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.RequestID() // "8d7ad5e3-aaf3-450b-a241-2beb887efd54"
+  return nil
+})
+```
+
 ### IPs
 
 Returns an array of IP addresses specified in the [X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) request header.
@@ -1021,6 +1099,31 @@ app.Get("/", func(c fiber.Ctx) error {
   c.Is("json")  // false
 
   // ...
+})
+```
+
+### Content-Type helpers
+
+Helpers for working with the request `Content-Type` header.
+
+```go title="Signature"
+func (c fiber.Ctx) MediaType() string
+func (c fiber.Ctx) Charset() string
+func (c fiber.Ctx) IsJSON() bool
+func (c fiber.Ctx) IsForm() bool
+func (c fiber.Ctx) IsMultipart() bool
+```
+
+```go title="Example"
+// Content-Type: application/json; charset=utf-8
+
+app.Post("/", func(c fiber.Ctx) error {
+  c.MediaType()   // "application/json"
+  c.Charset()     // "utf-8"
+  c.IsJSON()      // true
+  c.IsForm()      // false
+  c.IsMultipart() // false
+  return nil
 })
 ```
 

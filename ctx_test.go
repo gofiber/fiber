@@ -82,6 +82,124 @@ func Test_Ctx_Accepts(t *testing.T) {
 	require.Equal(t, "application/json", c.Accepts("application/json", "text/html"))
 }
 
+// go test -run Test_Ctx_AcceptsHelpers
+func Test_Ctx_AcceptsHelpers(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set(HeaderAccept, "text/html,application/json;q=0.9")
+	require.True(t, c.AcceptsHTML())
+	require.True(t, c.AcceptsJSON())
+	require.False(t, c.AcceptsXML())
+	require.False(t, c.AcceptsEventStream())
+
+	c.Request().Header.Set(HeaderAccept, "application/xml")
+	require.True(t, c.AcceptsXML())
+	require.False(t, c.AcceptsJSON())
+
+	c.Request().Header.Set(HeaderAccept, "text/event-stream")
+	require.True(t, c.AcceptsEventStream())
+}
+
+// go test -run Test_Ctx_ContentTypeHelpers
+func Test_Ctx_ContentTypeHelpers(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	require.Empty(t, c.MediaType())
+	require.Empty(t, c.Charset())
+	require.False(t, c.IsJSON())
+
+	c.Request().Header.Set(HeaderContentType, "application/json; charset=utf-8")
+	//nolint:testifylint // This is a MIME type string, not JSON payload.
+	require.Equal(t, MIMEApplicationJSON, c.MediaType())
+	require.Equal(t, "utf-8", c.Charset())
+	require.True(t, c.IsJSON())
+	require.False(t, c.IsForm())
+	require.False(t, c.IsMultipart())
+
+	c.Request().Header.Set(HeaderContentType, "text/html ; charset=\"UTF-8\"")
+	require.Equal(t, MIMETextHTML, c.MediaType())
+	require.Equal(t, "UTF-8", c.Charset())
+
+	c.Request().Header.Set(HeaderContentType, MIMEApplicationForm)
+	require.Equal(t, MIMEApplicationForm, c.MediaType())
+	require.Empty(t, c.Charset())
+	require.True(t, c.IsForm())
+	require.False(t, c.IsMultipart())
+
+	c.Request().Header.Set(HeaderContentType, MIMEMultipartForm+"; boundary=abc123")
+	require.Equal(t, MIMEMultipartForm, c.MediaType())
+	require.Empty(t, c.Charset())
+	require.True(t, c.IsMultipart())
+	require.False(t, c.IsForm())
+}
+
+// go test -run Test_Ctx_HeaderHelpers
+func Test_Ctx_HeaderHelpers(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.SetHost("example.com")
+	c.Request().SetRequestURI("/search?q=fiber")
+	require.Equal(t, "http://example.com/search?q=fiber", c.FullURL())
+
+	c.Request().Header.Set(HeaderUserAgent, "fiber-agent")
+	c.Request().Header.Set(HeaderReferer, "https://example.com")
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-US,en;q=0.9")
+	c.Request().Header.Set(HeaderAcceptEncoding, "gzip, br")
+	c.Request().Header.Set("X-Trace-Id", "trace")
+	require.True(t, c.HasHeader("X-Trace-Id"))
+	require.True(t, c.HasHeader("x-trace-id"))
+	require.Equal(t, "fiber-agent", c.UserAgent())
+	require.Equal(t, "https://example.com", c.Referer())
+	require.Equal(t, "en-US,en;q=0.9", c.AcceptLanguage())
+	require.Equal(t, "gzip, br", c.AcceptEncoding())
+
+	c.Request().Header.Set(HeaderXRequestID, "request-id")
+	c.Response().Header.Set(HeaderXRequestID, "response-id")
+	require.Equal(t, "response-id", c.RequestID())
+	c.Response().Header.Del(HeaderXRequestID)
+	require.Equal(t, "request-id", c.RequestID())
+
+	c.Request().Header.Del("X-Trace-Id")
+	require.False(t, c.HasHeader("X-Trace-Id"))
+}
+
+// go test -run Test_Ctx_TypedParsingDefaults
+func Test_Ctx_TypedParsingDefaults(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/:id", func(c Ctx) error {
+		require.Equal(t, 5, Query[int](c, "count", 1))
+		require.Equal(t, 9, Query[int](c, "missing", 9))
+		require.Equal(t, 3, Query[int](c, "bad", 3))
+
+		require.Equal(t, 42, Params[int](c, "id", 7))
+		require.Equal(t, 7, Params[int](c, "missing", 7))
+
+		require.Equal(t, 11, GetReqHeader[int](c, "X-Limit", 4))
+		require.Equal(t, 4, GetReqHeader[int](c, "X-Bad", 4))
+
+		return c.SendStatus(StatusOK)
+	})
+
+	req := httptest.NewRequest(MethodGet, "/42?count=5&bad=oops", http.NoBody)
+	req.Header.Set("X-Limit", "11")
+	req.Header.Set("X-Bad", "oops")
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Accepts -benchmem -count=4
 func Benchmark_Ctx_Accepts(b *testing.B) {
 	app := New(Config{
