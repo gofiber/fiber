@@ -326,18 +326,7 @@ type Ctx interface {
 	Attachment(filename ...string)
 	// ClearCookie expires a specific cookie by key on the client side.
 	// If no key is provided it expires all cookies that came with the request.
-	//
-	// Note: This method does not work for cookies with a specific Domain or Path.
-	// For those cases, use ExpireCookie to specify the matching attributes.
 	ClearCookie(key ...string)
-	// ExpireCookie expires a cookie by its cookie definition.
-	// This is useful when you need to expire a cookie that was set with a specific
-	// Path or Domain. The browser will only clear the cookie if the Path and Domain
-	// attributes match the original cookie.
-	//
-	// Only the Name, Path, Domain, Secure, HTTPOnly, SameSite, and Partitioned fields are used.
-	// The Value and Expires fields are overwritten to expire the cookie.
-	ExpireCookie(cookie *Cookie)
 	// Cookie sets a cookie by passing a cookie struct.
 	Cookie(cookie *Cookie)
 	// Download transfers the file from path as an attachment.

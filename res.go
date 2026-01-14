@@ -201,9 +201,6 @@ func (r *DefaultRes) Attachment(filename ...string) {
 
 // ClearCookie expires a specific cookie by key on the client side.
 // If no key is provided it expires all cookies that came with the request.
-//
-// Note: This method does not work for cookies with a specific Domain or Path.
-// For those cases, use ExpireCookie to specify the matching attributes.
 func (r *DefaultRes) ClearCookie(key ...string) {
 	request := &r.c.fasthttp.Request
 	response := &r.c.fasthttp.Response
@@ -216,56 +213,6 @@ func (r *DefaultRes) ClearCookie(key ...string) {
 	for k := range request.Header.Cookies() {
 		response.Header.DelClientCookieBytes(k)
 	}
-}
-
-// ExpireCookie expires a cookie by its cookie definition.
-// This is useful when you need to expire a cookie that was set with a specific
-// Path or Domain. The browser will only clear the cookie if the Path and Domain
-// attributes match the original cookie.
-//
-// Only the Name, Path, Domain, Secure, HTTPOnly, SameSite, and Partitioned fields are used.
-// The Value and Expires fields are overwritten to expire the cookie.
-func (r *DefaultRes) ExpireCookie(cookie *Cookie) {
-	fcookie := fasthttp.AcquireCookie()
-	defer fasthttp.ReleaseCookie(fcookie)
-
-	fcookie.SetKey(cookie.Name)
-	fcookie.SetValue("")
-	fcookie.SetExpire(fasthttp.CookieExpireDelete)
-
-	if cookie.Path != "" {
-		fcookie.SetPath(cookie.Path)
-	}
-	if cookie.Domain != "" {
-		fcookie.SetDomain(cookie.Domain)
-	}
-
-	// Handle SameSite attribute
-	isSecure := cookie.Secure
-	switch {
-	case utils.EqualFold(cookie.SameSite, CookieSameSiteStrictMode):
-		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-	case utils.EqualFold(cookie.SameSite, CookieSameSiteNoneMode):
-		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-		isSecure = true // SameSite=None requires Secure
-	case utils.EqualFold(cookie.SameSite, CookieSameSiteLaxMode):
-		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
-	case utils.EqualFold(cookie.SameSite, CookieSameSiteDisabled):
-		// SameSite explicitly disabled: do not set SameSite attribute
-	default:
-		// No SameSite attribute set
-	}
-
-	// Handle Partitioned attribute
-	if cookie.Partitioned {
-		fcookie.SetPartitioned(true)
-		isSecure = true // Partitioned requires Secure
-	}
-
-	fcookie.SetSecure(isSecure)
-	fcookie.SetHTTPOnly(cookie.HTTPOnly)
-
-	r.c.fasthttp.Response.Header.SetCookie(fcookie)
 }
 
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
@@ -300,11 +247,6 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 		sameSite = http.SameSiteLaxMode
 	default:
 		sameSite = http.SameSiteLaxMode
-	}
-
-	// Partitioned requires Secure=true per CHIPS spec
-	if cookie.Partitioned {
-		cookie.Secure = true
 	}
 
 	// create/validate cookie using net/http

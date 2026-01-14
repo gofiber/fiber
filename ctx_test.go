@@ -1211,7 +1211,7 @@ func Test_Ctx_Cookie_Invalid(t *testing.T) {
 		{Name: "i", Value: "b", Domain: "2001:db8::1"},                                // ipv6 not allowed
 		{Name: "p", Value: "b", Path: "\x00"},                                         // invalid path byte
 		{Name: "e", Value: "b", Expires: time.Date(1500, 1, 1, 0, 0, 0, 0, time.UTC)}, // invalid expires
-		// Note: Partitioned without Secure is auto-fixed (Secure=true set automatically per CHIPS spec)
+		{Name: "s", Value: "b", Partitioned: true},                                    // partitioned but not secure
 	}
 
 	for _, invalid := range cases {
@@ -4543,114 +4543,6 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 	c.ClearCookie()
 	require.Contains(t, string(c.Response().Header.Peek(HeaderSetCookie)), "test1=; expires=")
 	require.Contains(t, string(c.Response().Header.Peek(HeaderSetCookie)), "test2=; expires=")
-}
-
-// go test -run Test_Ctx_ExpireCookie
-func Test_Ctx_ExpireCookie(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		expectedStrs    []string
-		notExpectedStrs []string
-		name            string
-		cookie          Cookie
-	}{
-		{
-			name: "with path",
-			cookie: Cookie{
-				Name: "session",
-				Path: "/admin",
-			},
-			expectedStrs: []string{"session=;", "path=/admin", "expires="},
-		},
-		{
-			name: "with domain",
-			cookie: Cookie{
-				Name:   "auth",
-				Domain: "example.com",
-			},
-			expectedStrs: []string{"auth=;", "domain=example.com", "expires="},
-		},
-		{
-			name: "with path and domain",
-			cookie: Cookie{
-				Name:   "token",
-				Path:   "/api",
-				Domain: "example.com",
-			},
-			expectedStrs: []string{"token=;", "path=/api", "domain=example.com", "expires="},
-		},
-		{
-			name: "with secure and httponly",
-			cookie: Cookie{
-				Name:     "secure_cookie",
-				Path:     "/",
-				Secure:   true,
-				HTTPOnly: true,
-			},
-			expectedStrs: []string{"secure_cookie=;", "secure", "HttpOnly", "expires="},
-		},
-		{
-			name: "with SameSite Strict",
-			cookie: Cookie{
-				Name:     "csrf",
-				SameSite: CookieSameSiteStrictMode,
-			},
-			expectedStrs: []string{"csrf=;", "SameSite=Strict", "expires="},
-		},
-		{
-			name: "with SameSite Lax",
-			cookie: Cookie{
-				Name:     "lax_cookie",
-				SameSite: CookieSameSiteLaxMode,
-			},
-			expectedStrs: []string{"lax_cookie=;", "SameSite=Lax", "expires="},
-		},
-		{
-			name: "with SameSite None (should set Secure)",
-			cookie: Cookie{
-				Name:     "cross_site",
-				SameSite: CookieSameSiteNoneMode,
-			},
-			expectedStrs: []string{"cross_site=;", "SameSite=None", "secure", "expires="},
-		},
-		{
-			name: "with Partitioned (should set Secure)",
-			cookie: Cookie{
-				Name:        "partitioned_cookie",
-				Partitioned: true,
-			},
-			expectedStrs: []string{"partitioned_cookie=;", "Partitioned", "secure", "expires="},
-		},
-		{
-			name: "with SameSite Disabled (should not set SameSite)",
-			cookie: Cookie{
-				Name:     "disabled_samesite",
-				SameSite: CookieSameSiteDisabled,
-			},
-			expectedStrs:    []string{"disabled_samesite=;", "expires="},
-			notExpectedStrs: []string{"SameSite"},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			app := New()
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(c)
-
-			c.Res().ExpireCookie(&tc.cookie)
-			setCookie := string(c.Response().Header.Peek(HeaderSetCookie))
-
-			for _, expected := range tc.expectedStrs {
-				require.Contains(t, setCookie, expected)
-			}
-			for _, notExpected := range tc.notExpectedStrs {
-				require.NotContains(t, setCookie, notExpected)
-			}
-		})
-	}
 }
 
 // go test -race -run Test_Ctx_Download

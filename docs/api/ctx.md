@@ -1760,8 +1760,7 @@ app.Get("/set", func(c fiber.Ctx) error {
 app.Get("/delete", func(c fiber.Ctx) error {
     c.Cookie(&fiber.Cookie{
         Name:     "token",
-        // Set expiry date to the past
-        Expires:  time.Now().Add(-(time.Hour * 2)),
+        Expires:  fasthttp.CookieExpireDelete, // Use fasthttp's built-in constant
         HTTPOnly: true,
         SameSite: "Lax",
     })
@@ -1770,58 +1769,21 @@ app.Get("/delete", func(c fiber.Ctx) error {
 })
 ```
 
-Alternatively, use `ExpireCookie` for a cleaner approach (see below).
-
-### ExpireCookie
-
-Expires a cookie by its cookie definition. This is useful when you need to expire a cookie that was set with a specific `Path` or `Domain`. The browser will only clear the cookie if the `Path` and `Domain` attributes match the original cookie.
-
-```go title="Signature"
-func (r fiber.Res) ExpireCookie(cookie *fiber.Cookie)
-```
+You can also use `c.Cookie()` to expire cookies with specific `Path` or `Domain` attributes:
 
 ```go title="Example"
 app.Get("/logout", func(c fiber.Ctx) error {
-    // Expire a cookie with specific path
-    c.Res().ExpireCookie(&fiber.Cookie{
-        Name: "session",
-        Path: "/admin",
-    })
-
-    // Expire a cookie with specific domain
-    c.Res().ExpireCookie(&fiber.Cookie{
-        Name:   "auth",
-        Domain: "example.com",
-    })
-
-    // Expire a cookie with path, domain, and security flags
-    c.Res().ExpireCookie(&fiber.Cookie{
-        Name:     "token",
-        Path:     "/api",
-        Domain:   "example.com",
-        Secure:   true,
-        HTTPOnly: true,
-    })
-
-    // Expire a cookie with SameSite attribute
-    c.Res().ExpireCookie(&fiber.Cookie{
-        Name:     "csrf",
-        SameSite: "Strict",
-    })
-
-    // Expire a partitioned cookie (CHIPS)
-    c.Res().ExpireCookie(&fiber.Cookie{
-        Name:        "embedded",
-        Partitioned: true,
+    // Expire a cookie with path and domain
+    c.Cookie(&fiber.Cookie{
+        Name:    "token",
+        Path:    "/api",
+        Domain:  "example.com",
+        Expires: fasthttp.CookieExpireDelete,
     })
 
     return c.SendStatus(fiber.StatusOK)
 })
 ```
-
-:::note
-Only the `Name`, `Path`, `Domain`, `Secure`, `HTTPOnly`, `SameSite`, and `Partitioned` fields are used from the Cookie struct. The `Value` and `Expires` fields are overwritten to expire the cookie.
-:::
 
 ### Cookie
 
