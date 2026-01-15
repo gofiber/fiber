@@ -290,19 +290,6 @@ func (c *DefaultCtx) Path(override ...string) string {
 	return c.app.toString(c.path)
 }
 
-// FullURL returns the full request URL (protocol + host + original URL).
-func (c *DefaultCtx) FullURL() string {
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	buf.WriteString(c.Scheme())
-	buf.WriteString("://")
-	buf.WriteString(c.Host())
-	buf.WriteString(c.OriginalURL())
-
-	return c.app.toString(buf.Bytes())
-}
-
 // RequestID returns the request identifier from the response header or request header.
 func (c *DefaultCtx) RequestID() string {
 	if requestID := c.GetRespHeader(HeaderXRequestID); requestID != "" {

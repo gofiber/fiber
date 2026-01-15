@@ -95,8 +95,6 @@ type Ctx interface {
 	// Optionally, you could override the path.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Path(override ...string) string
-	// FullURL returns the full request URL (protocol + host + original URL).
-	FullURL() string
 	// RequestID returns the request identifier from the response header or request header.
 	RequestID() string
 	// Req returns a convenience type whose API is limited to operations
@@ -175,6 +173,8 @@ type Ctx interface {
 	setSkipNonUseRoutes(skip bool)
 	setRoute(route *Route)
 	getPathOriginal() string
+	// FullURL returns the full request URL (protocol + host + original URL).
+	FullURL() string
 	// UserAgent returns the User-Agent request header.
 	UserAgent() string
 	// Referer returns the Referer request header.

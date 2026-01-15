@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
 )
@@ -197,6 +198,19 @@ func (r *DefaultReq) Body() []byte {
 // a cancellation signal, and other values across API boundaries.
 func (r *DefaultReq) RequestCtx() *fasthttp.RequestCtx {
 	return r.c.fasthttp
+}
+
+// FullURL returns the full request URL (protocol + host + original URL).
+func (c *DefaultCtx) FullURL() string {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	buf.WriteString(c.Scheme())
+	buf.WriteString("://")
+	buf.WriteString(c.Host())
+	buf.WriteString(c.OriginalURL())
+
+	return c.app.toString(buf.Bytes())
 }
 
 // UserAgent returns the User-Agent request header.
