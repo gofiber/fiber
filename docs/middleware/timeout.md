@@ -12,6 +12,10 @@ Handlers can detect the timeout by listening on `c.Context().Done()` and return
 early. When the handler returns after a timeout (either by checking the context
 or returning a timeout-related error), the middleware returns `408 Request Timeout`.
 
+The middleware waits for the handler to complete to avoid race conditions with
+Fiber's context pooling. For fast timeouts, handlers should check `c.Context().Done()`
+and return early when the context is canceled.
+
 If a handler panics, the middleware catches it and returns `500 Internal Server Error`.
 
 :::caution

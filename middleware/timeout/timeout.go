@@ -12,6 +12,10 @@ import (
 // c.Context(). Handlers can detect the timeout by listening on c.Context().Done()
 // and return early. If the handler returns a timeout-related error or the context
 // deadline is exceeded, fiber.ErrRequestTimeout is returned.
+//
+// Note: The middleware waits for the handler to complete to avoid race conditions
+// with Fiber's context pooling. Handlers should check c.Context().Done() to
+// return early when a timeout occurs.
 func New(h fiber.Handler, config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
@@ -57,7 +61,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			panicked = true
 		}
 
-		// Check if timeout occurred BEFORE cancelling (cancel() would set Err())
+		// Check if timeout occurred BEFORE canceling (cancel() would set Err())
 		contextTimedOut := errors.Is(tCtx.Err(), context.DeadlineExceeded)
 
 		// Restore parent context and cancel timeout context
@@ -69,7 +73,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			return fiber.ErrInternalServerError
 		}
 
-		// Check if timeout occurred (handler returned because context was cancelled)
+		// Check if timeout occurred (handler returned because context was canceled)
 		// or if handler returned a timeout-like error
 		if contextTimedOut || (err != nil && isTimeoutError(err, cfg.Errors)) {
 			if cfg.OnTimeout != nil {
