@@ -61,13 +61,13 @@ func TestTimeout_Exceeded(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// This handler sleeps 200ms, exceeding the 100ms limit.
+	// This handler listens for context cancellation and returns early when timeout occurs.
 	app.Get("/slow", New(func(c fiber.Ctx) error {
 		if err := sleepWithContext(c.Context(), 200*time.Millisecond, context.DeadlineExceeded); err != nil {
 			return err
 		}
 		return c.SendString("Should never get here")
-	}, Config{Timeout: 100 * time.Millisecond}))
+	}, Config{Timeout: 50 * time.Millisecond}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody)
 	start := time.Now()
@@ -75,35 +75,8 @@ func TestTimeout_Exceeded(t *testing.T) {
 	elapsed := time.Since(start)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Expected 408 Request Timeout")
-	require.Less(t, elapsed, 150*time.Millisecond, "context did not cancel within timeout")
-}
-
-// TestTimeout_ImmediateReturn verifies that the middleware returns immediately
-// when timeout is reached, even if handler doesn't check context (Issue #3394).
-func TestTimeout_ImmediateReturn(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	var handlerFinished atomic.Bool
-
-	// Handler that ignores context and blocks - should still timeout
-	app.Get("/blocking", New(func(_ fiber.Ctx) error {
-		time.Sleep(500 * time.Millisecond) // Block without checking context
-		handlerFinished.Store(true)
-		return nil
-	}, Config{Timeout: 50 * time.Millisecond}))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/blocking", http.NoBody)
-	start := time.Now()
-	resp, err := app.Test(req)
-	elapsed := time.Since(start)
-
-	require.NoError(t, err, "app.Test(req) should not fail")
-	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Expected 408 Request Timeout")
-	// Response should come back quickly, not after 500ms
-	require.Less(t, elapsed, 150*time.Millisecond, "Response should return immediately on timeout")
-	// Handler may still be running at this point - that's expected behavior
-	require.False(t, handlerFinished.Load(), "Handler should still be running when response is sent")
+	// Handler should return shortly after timeout (not wait full 200ms)
+	require.Less(t, elapsed, 150*time.Millisecond, "handler should return early on context cancellation")
 }
 
 // TestTimeout_ContextPropagation verifies that the timeout context is properly
@@ -130,10 +103,37 @@ func TestTimeout_ContextPropagation(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-
-	// Give handler a moment to process context cancellation
-	time.Sleep(20 * time.Millisecond)
 	require.True(t, contextCanceled.Load(), "Handler should have detected context cancellation")
+}
+
+// TestTimeout_HandlerReturnsEarlyOnCancel verifies that handlers checking context
+// can return early, making the overall request faster than the handler's work time.
+func TestTimeout_HandlerReturnsEarlyOnCancel(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/early-return", New(func(c fiber.Ctx) error {
+		// Handler that would take 500ms but checks context
+		for i := 0; i < 50; i++ {
+			select {
+			case <-c.Context().Done():
+				return c.Context().Err()
+			case <-time.After(10 * time.Millisecond):
+				// Continue work
+			}
+		}
+		return c.SendString("completed")
+	}, Config{Timeout: 30 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/early-return", http.NoBody)
+	start := time.Now()
+	resp, err := app.Test(req)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	// Should complete much faster than 500ms because handler checks context
+	require.Less(t, elapsed, 100*time.Millisecond)
 }
 
 // TestTimeout_CustomError tests that returning a user-defined error is also treated as a timeout.
@@ -149,7 +149,7 @@ func TestTimeout_CustomError(t *testing.T) {
 			return fmt.Errorf("wrapped: %w", err)
 		}
 		return c.SendString("Should never get here")
-	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
+	}, Config{Timeout: 50 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/custom", http.NoBody)
 	resp, err := app.Test(req)
@@ -251,23 +251,6 @@ func TestTimeout_PanicInHandler(t *testing.T) {
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 }
 
-// TestTimeout_PanicAfterTimeout verifies that panics after timeout don't affect response.
-func TestTimeout_PanicAfterTimeout(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Get("/panic-late", New(func(_ fiber.Ctx) error {
-		time.Sleep(100 * time.Millisecond)
-		panic("late panic") // This happens after timeout response is sent
-	}, Config{Timeout: 20 * time.Millisecond}))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/panic-late", http.NoBody)
-	resp, err := app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-}
-
 // TestIsTimeoutError_DeadlineExceeded ensures context.DeadlineExceeded triggers timeout.
 func TestIsTimeoutError_DeadlineExceeded(t *testing.T) {
 	t.Parallel()
@@ -331,4 +314,23 @@ func TestTimeout_Next(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Middleware should be skipped")
+}
+
+// TestTimeout_ContextDeadlineDetection verifies that context deadline is detected
+// even if handler doesn't return an error.
+func TestTimeout_ContextDeadlineDetection(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/deadline", New(func(c fiber.Ctx) error {
+		// Wait for context to be done, then return nil (not an error)
+		<-c.Context().Done()
+		return nil
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/deadline", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	// Should still be 408 because context deadline was exceeded
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
 }

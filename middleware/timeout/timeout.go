@@ -9,9 +9,9 @@ import (
 
 // New enforces a timeout for each incoming request. It replaces the request's
 // context with one that has the configured deadline, which is exposed through
-// c.Context(). If the timeout expires, the middleware returns immediately with
-// fiber.ErrRequestTimeout, even if the handler is still running. The handler
-// can detect the timeout via c.Context().Done().
+// c.Context(). Handlers can detect the timeout by listening on c.Context().Done()
+// and return early. If the handler returns a timeout-related error or the context
+// deadline is exceeded, fiber.ErrRequestTimeout is returned.
 func New(h fiber.Handler, config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
@@ -34,7 +34,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		done := make(chan error, 1)
 		panicChan := make(chan any, 1)
 
-		// Run handler in goroutine
+		// Run handler in goroutine so it can be interrupted by context cancellation
 		go func() {
 			defer func() {
 				if p := recover(); p != nil {
@@ -44,41 +44,43 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			done <- h(ctx)
 		}()
 
-		// Wait for handler completion or timeout
+		// Wait for handler completion or panic
+		// We must wait for handler to finish to avoid race conditions with ctx
+		var err error
+		var panicked bool
+
 		select {
-		case err := <-done:
-			// Handler finished - cleanup and handle errors
-			cancel()
-			ctx.SetContext(parent)
-
-			if err != nil && isTimeoutError(err, cfg.Errors) {
-				if cfg.OnTimeout != nil {
-					if toErr := cfg.OnTimeout(ctx); toErr != nil {
-						return toErr
-					}
-				}
-				return fiber.ErrRequestTimeout
-			}
-			return err
-
+		case err = <-done:
+			// Handler finished
 		case <-panicChan:
-			// Handler panicked - treat as internal server error
-			// We don't re-panic because we're in a different goroutine context
-			cancel()
-			ctx.SetContext(parent)
+			// Handler panicked
+			panicked = true
+		}
+
+		// Check if timeout occurred BEFORE cancelling (cancel() would set Err())
+		contextTimedOut := errors.Is(tCtx.Err(), context.DeadlineExceeded)
+
+		// Restore parent context and cancel timeout context
+		cancel()
+		ctx.SetContext(parent)
+
+		// Handle panic
+		if panicked {
 			return fiber.ErrInternalServerError
+		}
 
-		case <-tCtx.Done():
-			// Timeout reached - return immediately
-			// Note: handler goroutine may still be running but we return immediately
-			cancel()
-			ctx.SetContext(parent)
-
+		// Check if timeout occurred (handler returned because context was cancelled)
+		// or if handler returned a timeout-like error
+		if contextTimedOut || (err != nil && isTimeoutError(err, cfg.Errors)) {
 			if cfg.OnTimeout != nil {
-				return cfg.OnTimeout(ctx)
+				if toErr := cfg.OnTimeout(ctx); toErr != nil {
+					return toErr
+				}
 			}
 			return fiber.ErrRequestTimeout
 		}
+
+		return err
 	}
 }
 
