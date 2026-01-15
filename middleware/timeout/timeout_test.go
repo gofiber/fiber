@@ -304,6 +304,7 @@ func TestTimeout_HandlerHung_ReturnsWithinTimeout(t *testing.T) {
 	block := make(chan struct{})
 	handlerDone := make(chan struct{})
 	app.Get("/hung", New(func(_ fiber.Ctx) error {
+		// Intentionally ignore context cancellation to simulate a stuck handler.
 		defer close(handlerDone)
 		<-block // Ignore context cancellation to simulate a hung handler
 		return nil
@@ -317,7 +318,7 @@ func TestTimeout_HandlerHung_ReturnsWithinTimeout(t *testing.T) {
 	close(block) // Unblock goroutine to avoid leaks in the test process
 	select {
 	case <-handlerDone:
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(200 * time.Millisecond):
 		t.Fatal("handler did not exit after timeout")
 	}
 

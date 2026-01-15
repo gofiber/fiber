@@ -59,12 +59,13 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		// this middleware forever.
 		var err error
 		var panicked bool
+		var panicVal any
 		var timedOut bool
 
 		select {
 		case err = <-done:
 			// Handler finished
-		case <-panicChan:
+		case panicVal = <-panicChan:
 			// Handler panicked
 			panicked = true
 		case <-tCtx.Done():
@@ -76,14 +77,18 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			// Give the handler a bounded grace period to exit after cancellation.
 			// This avoids blocking forever on a misbehaving handler, while still
 			// reducing the chance of racing with context reuse.
-			grace := cfg.Timeout
-			if grace <= 0 {
+			grace := cfg.Timeout / 2
+			switch {
+			case grace <= 0:
 				grace = 50 * time.Millisecond
+			case grace > 100*time.Millisecond:
+				grace = 100 * time.Millisecond
+			default:
 			}
 			select {
 			case err = <-done:
 				// Handler finished after timeout
-			case <-panicChan:
+			case panicVal = <-panicChan:
 				panicked = true
 			case <-time.After(grace):
 				// Handler still stuck; proceed with timeout response.
@@ -100,6 +105,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 
 		// Handle panic
 		if panicked {
+			_ = panicVal // captured for potential logging/debugging
 			return fiber.ErrInternalServerError
 		}
 
@@ -107,9 +113,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		// or if handler returned a timeout-like error
 		if contextTimedOut || (err != nil && isTimeoutError(err, cfg.Errors)) {
 			if cfg.OnTimeout != nil {
-				if toErr := cfg.OnTimeout(ctx); toErr != nil {
-					return toErr
-				}
+				return cfg.OnTimeout(ctx)
 			}
 			return fiber.ErrRequestTimeout
 		}
