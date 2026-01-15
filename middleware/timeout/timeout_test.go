@@ -327,6 +327,68 @@ func TestTimeout_HandlerHung_ReturnsWithinTimeout(t *testing.T) {
 	require.Less(t, elapsed, 150*time.Millisecond, "timeout middleware should respond even if handler is stuck")
 }
 
+// TestTimeout_PanicAfterTimeout ensures panics after a timeout are handled.
+func TestTimeout_PanicAfterTimeout(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/panic-after-timeout", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		panic("panic after timeout")
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/panic-after-timeout", http.NoBody)
+	resp, err := app.Test(req)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+}
+
+// TestTimeout_GracePeriodCapped ensures the grace period is bounded to avoid long waits.
+func TestTimeout_GracePeriodCapped(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	block := make(chan struct{})
+	app.Get("/grace-cap", New(func(_ fiber.Ctx) error {
+		<-block // ignore cancellation to force timeout path
+		return nil
+	}, Config{Timeout: time.Nanosecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/grace-cap", http.NoBody)
+	start := time.Now()
+	resp, err := app.Test(req)
+	elapsed := time.Since(start)
+	close(block)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	require.Less(t, elapsed, 300*time.Millisecond, "grace period should be capped")
+}
+
+// TestTimeout_GracePeriodUpperBound ensures large timeouts do not add an excessive grace period.
+func TestTimeout_GracePeriodUpperBound(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	block := make(chan struct{})
+	app.Get("/grace-max", New(func(_ fiber.Ctx) error {
+		<-block // ignore cancellation to force timeout path
+		return nil
+	}, Config{Timeout: 400 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/grace-max", http.NoBody)
+	start := time.Now()
+	resp, err := app.Test(req)
+	elapsed := time.Since(start)
+	close(block)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	require.GreaterOrEqual(t, elapsed, 400*time.Millisecond, "should wait for timeout before grace period")
+	require.Less(t, elapsed, 700*time.Millisecond, "grace period should be capped at 100ms")
+}
+
 // TestTimeout_Next verifies the Next function skips the middleware.
 func TestTimeout_Next(t *testing.T) {
 	t.Parallel()
