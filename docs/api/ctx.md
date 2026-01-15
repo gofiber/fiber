@@ -724,6 +724,74 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### AcceptsEventStream
+
+Returns `true` when the `Accept` header allows `text/event-stream`.
+
+```go title="Signature"
+func (c fiber.Ctx) AcceptsEventStream() bool
+```
+
+```go title="Example"
+// Accept: text/html, application/json;q=0.9
+
+app.Get("/", func(c fiber.Ctx) error {
+  c.AcceptsEventStream() // false
+  return nil
+})
+```
+
+### AcceptsHTML
+
+Returns `true` when the `Accept` header allows HTML.
+
+```go title="Signature"
+func (c fiber.Ctx) AcceptsHTML() bool
+```
+
+```go title="Example"
+// Accept: text/html, application/json;q=0.9
+
+app.Get("/", func(c fiber.Ctx) error {
+  c.AcceptsHTML() // true
+  return nil
+})
+```
+
+### AcceptsJSON
+
+Returns `true` when the `Accept` header allows JSON.
+
+```go title="Signature"
+func (c fiber.Ctx) AcceptsJSON() bool
+```
+
+```go title="Example"
+// Accept: text/html, application/json;q=0.9
+
+app.Get("/", func(c fiber.Ctx) error {
+  c.AcceptsJSON() // true
+  return nil
+})
+```
+
+### AcceptsXML
+
+Returns `true` when the `Accept` header allows XML.
+
+```go title="Signature"
+func (c fiber.Ctx) AcceptsXML() bool
+```
+
+```go title="Example"
+// Accept: text/html, application/json;q=0.9
+
+app.Get("/", func(c fiber.Ctx) error {
+  c.AcceptsXML() // false
+  return nil
+})
+```
+
 ### BaseURL
 
 Returns the base URL (**protocol** + **host**) as a `string`.
@@ -738,6 +806,23 @@ func (c fiber.Ctx) BaseURL() string
 app.Get("/", func(c fiber.Ctx) error {
   c.BaseURL() // "https://example.com"
   // ...
+})
+```
+
+### FullURL
+
+Returns the full request URL (protocol + host + original URL).
+
+```go title="Signature"
+func (c fiber.Ctx) FullURL() string
+```
+
+```go title="Example"
+// GET http://example.com/search?q=fiber
+
+app.Get("/", func(c fiber.Ctx) error {
+  c.FullURL() // "http://example.com/search?q=fiber"
+  return nil
 })
 ```
 
@@ -905,6 +990,81 @@ The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
+### AcceptEncoding
+
+Returns the `Accept-Encoding` request header.
+
+```go title="Signature"
+func (c fiber.Ctx) AcceptEncoding() string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.AcceptEncoding() // "gzip, br"
+  return nil
+})
+```
+
+### AcceptLanguage
+
+Returns the `Accept-Language` request header.
+
+```go title="Signature"
+func (c fiber.Ctx) AcceptLanguage() string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.AcceptLanguage() // "en-US,en;q=0.9"
+  return nil
+})
+```
+
+### HasHeader
+
+Reports whether the request includes a header with the given key.
+
+```go title="Signature"
+func (c fiber.Ctx) HasHeader(key string) bool
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.HasHeader("X-Trace-Id")
+  return nil
+})
+```
+
+### Referer
+
+Returns the `Referer` request header.
+
+```go title="Signature"
+func (c fiber.Ctx) Referer() string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.Referer() // "https://example.com"
+  return nil
+})
+```
+
+### UserAgent
+
+Returns the `User-Agent` request header.
+
+```go title="Signature"
+func (c fiber.Ctx) UserAgent() string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.UserAgent() // "Mozilla/5.0 ..."
+  return nil
+})
+```
+
 ### Host
 
 Returns the host derived from the [Host](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Host) HTTP header.
@@ -978,6 +1138,19 @@ app := fiber.New(fiber.Config{
 })
 ```
 
+### RequestID
+
+```go title="Signature"
+func (c fiber.Ctx) RequestID() string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.RequestID() // "8d7ad5e3-aaf3-450b-a241-2beb887efd54"
+  return nil
+})
+```
+
 ### IPs
 
 Returns an array of IP addresses specified in the [X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) request header.
@@ -1021,6 +1194,91 @@ app.Get("/", func(c fiber.Ctx) error {
   c.Is("json")  // false
 
   // ...
+})
+```
+
+### Charset
+
+Returns the `charset` parameter from the `Content-Type` header.
+
+```go title="Signature"
+func (c fiber.Ctx) Charset() string
+```
+
+```go title="Example"
+// Content-Type: application/json; charset=utf-8
+
+app.Post("/", func(c fiber.Ctx) error {
+  c.Charset() // "utf-8"
+  return nil
+})
+```
+
+### IsForm
+
+Reports whether the `Content-Type` header is form-encoded.
+
+```go title="Signature"
+func (c fiber.Ctx) IsForm() bool
+```
+
+```go title="Example"
+// Content-Type: application/x-www-form-urlencoded
+
+app.Post("/", func(c fiber.Ctx) error {
+  c.IsForm() // true
+  return nil
+})
+```
+
+### IsJSON
+
+Reports whether the `Content-Type` header is JSON.
+
+```go title="Signature"
+func (c fiber.Ctx) IsJSON() bool
+```
+
+```go title="Example"
+// Content-Type: application/json; charset=utf-8
+
+app.Post("/", func(c fiber.Ctx) error {
+  c.IsJSON() // true
+  return nil
+})
+```
+
+### IsMultipart
+
+Reports whether the `Content-Type` header is multipart form data.
+
+```go title="Signature"
+func (c fiber.Ctx) IsMultipart() bool
+```
+
+```go title="Example"
+// Content-Type: multipart/form-data; boundary=abc123
+
+app.Post("/", func(c fiber.Ctx) error {
+  c.IsMultipart() // true
+  return nil
+})
+```
+
+### MediaType
+
+Returns the MIME type from the `Content-Type` header without parameters.
+
+```go title="Signature"
+func (c fiber.Ctx) MediaType() string
+```
+
+```go title="Example"
+// Content-Type: application/json; charset=utf-8
+
+app.Post("/", func(c fiber.Ctx) error {
+  c.MediaType() // "application/json"
+  return nil
 })
 ```
 
