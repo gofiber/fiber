@@ -271,6 +271,7 @@ func TestIsTimeoutError_CustomErrors(t *testing.T) {
 
 // TestIsTimeoutError_WithOnTimeout verifies that custom OnTimeout is called for custom errors.
 func TestIsTimeoutError_WithOnTimeout(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
@@ -293,6 +294,36 @@ func TestIsTimeoutError_WithOnTimeout(t *testing.T) {
 	err := handler(ctx)
 	require.True(t, called)
 	require.EqualError(t, err, "handled")
+}
+
+// TestTimeout_HandlerHung_ReturnsWithinTimeout ensures we still respond when the handler never exits.
+func TestTimeout_HandlerHung_ReturnsWithinTimeout(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	block := make(chan struct{})
+	handlerDone := make(chan struct{})
+	app.Get("/hung", New(func(_ fiber.Ctx) error {
+		defer close(handlerDone)
+		<-block // Ignore context cancellation to simulate a hung handler
+		return nil
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/hung", http.NoBody)
+	start := time.Now()
+	resp, err := app.Test(req)
+	elapsed := time.Since(start)
+
+	close(block) // Unblock goroutine to avoid leaks in the test process
+	select {
+	case <-handlerDone:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("handler did not exit after timeout")
+	}
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	require.Less(t, elapsed, 150*time.Millisecond, "timeout middleware should respond even if handler is stuck")
 }
 
 // TestTimeout_Next verifies the Next function skips the middleware.

@@ -3,6 +3,7 @@ package timeout
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -34,7 +35,11 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		tCtx, cancel := context.WithTimeout(parent, timeout)
 		ctx.SetContext(tCtx)
 
-		// Channels for handler result and panics
+		// Channels for handler result and panics.
+		// Both channels are buffered (size 1) so the handler goroutine can report
+		// even if the timeout fires. We still wait for the goroutine to finish
+		// (see select below) to avoid leaking it or accessing a pooled context
+		// after the middleware returns.
 		done := make(chan error, 1)
 		panicChan := make(chan any, 1)
 
@@ -48,10 +53,13 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			done <- h(ctx)
 		}()
 
-		// Wait for handler completion or panic
-		// We must wait for handler to finish to avoid race conditions with ctx
+		// Wait for handler completion, panic, or timeout.
+		// We still try to wait for the handler to finish to avoid races with Fiber's
+		// context pooling, but we bound that wait so a hung handler cannot block
+		// this middleware forever.
 		var err error
 		var panicked bool
+		var timedOut bool
 
 		select {
 		case err = <-done:
@@ -59,10 +67,32 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		case <-panicChan:
 			// Handler panicked
 			panicked = true
+		case <-tCtx.Done():
+			// Timeout fired before handler returned
+			timedOut = true
+		}
+
+		if timedOut && !panicked && err == nil {
+			// Give the handler a bounded grace period to exit after cancellation.
+			// This avoids blocking forever on a misbehaving handler, while still
+			// reducing the chance of racing with context reuse.
+			grace := cfg.Timeout
+			if grace <= 0 {
+				grace = 50 * time.Millisecond
+			}
+			select {
+			case err = <-done:
+				// Handler finished after timeout
+			case <-panicChan:
+				panicked = true
+			case <-time.After(grace):
+				// Handler still stuck; proceed with timeout response.
+				err = context.DeadlineExceeded
+			}
 		}
 
 		// Check if timeout occurred BEFORE canceling (cancel() would set Err())
-		contextTimedOut := errors.Is(tCtx.Err(), context.DeadlineExceeded)
+		contextTimedOut := timedOut || errors.Is(tCtx.Err(), context.DeadlineExceeded)
 
 		// Restore parent context and cancel timeout context
 		cancel()
