@@ -99,34 +99,6 @@ type Ctx interface {
 	FullURL() string
 	// RequestID returns the request identifier from the response header or request header.
 	RequestID() string
-	// UserAgent returns the User-Agent request header.
-	UserAgent() string
-	// Referer returns the Referer request header.
-	Referer() string
-	// AcceptLanguage returns the Accept-Language request header.
-	AcceptLanguage() string
-	// AcceptEncoding returns the Accept-Encoding request header.
-	AcceptEncoding() string
-	// HasHeader reports whether the request includes a header with the given key.
-	HasHeader(key string) bool
-	// MediaType returns the MIME type from the Content-Type header without parameters.
-	MediaType() string
-	// Charset returns the charset parameter from the Content-Type header.
-	Charset() string
-	// IsJSON reports whether the Content-Type header is JSON.
-	IsJSON() bool
-	// IsForm reports whether the Content-Type header is form-encoded.
-	IsForm() bool
-	// IsMultipart reports whether the Content-Type header is multipart form data.
-	IsMultipart() bool
-	// AcceptsJSON reports whether the Accept header allows JSON.
-	AcceptsJSON() bool
-	// AcceptsHTML reports whether the Accept header allows HTML.
-	AcceptsHTML() bool
-	// AcceptsXML reports whether the Accept header allows XML.
-	AcceptsXML() bool
-	// AcceptsEventStream reports whether the Accept header allows text/event-stream.
-	AcceptsEventStream() bool
 	// Req returns a convenience type whose API is limited to operations
 	// on the incoming request.
 	Req() Req
@@ -203,6 +175,34 @@ type Ctx interface {
 	setSkipNonUseRoutes(skip bool)
 	setRoute(route *Route)
 	getPathOriginal() string
+	// UserAgent returns the User-Agent request header.
+	UserAgent() string
+	// Referer returns the Referer request header.
+	Referer() string
+	// AcceptLanguage returns the Accept-Language request header.
+	AcceptLanguage() string
+	// AcceptEncoding returns the Accept-Encoding request header.
+	AcceptEncoding() string
+	// HasHeader reports whether the request includes a header with the given key.
+	HasHeader(key string) bool
+	// MediaType returns the MIME type from the Content-Type header without parameters.
+	MediaType() string
+	// Charset returns the charset parameter from the Content-Type header.
+	Charset() string
+	// IsJSON reports whether the Content-Type header is JSON.
+	IsJSON() bool
+	// IsForm reports whether the Content-Type header is form-encoded.
+	IsForm() bool
+	// IsMultipart reports whether the Content-Type header is multipart form data.
+	IsMultipart() bool
+	// AcceptsJSON reports whether the Accept header allows JSON.
+	AcceptsJSON() bool
+	// AcceptsHTML reports whether the Accept header allows HTML.
+	AcceptsHTML() bool
+	// AcceptsXML reports whether the Accept header allows XML.
+	AcceptsXML() bool
+	// AcceptsEventStream reports whether the Accept header allows text/event-stream.
+	AcceptsEventStream() bool
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
 	// AcceptsCharsets checks if the specified charset is acceptable.

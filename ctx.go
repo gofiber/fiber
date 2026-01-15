@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -310,124 +309,6 @@ func (c *DefaultCtx) RequestID() string {
 		return requestID
 	}
 	return c.Get(HeaderXRequestID)
-}
-
-// UserAgent returns the User-Agent request header.
-func (c *DefaultCtx) UserAgent() string {
-	return c.app.toString(c.fasthttp.Request.Header.UserAgent())
-}
-
-// Referer returns the Referer request header.
-func (c *DefaultCtx) Referer() string {
-	return c.app.toString(c.fasthttp.Request.Header.Referer())
-}
-
-// AcceptLanguage returns the Accept-Language request header.
-func (c *DefaultCtx) AcceptLanguage() string {
-	return c.app.toString(c.fasthttp.Request.Header.Peek(HeaderAcceptLanguage))
-}
-
-// AcceptEncoding returns the Accept-Encoding request header.
-func (c *DefaultCtx) AcceptEncoding() string {
-	return c.app.toString(c.fasthttp.Request.Header.Peek(HeaderAcceptEncoding))
-}
-
-// HasHeader reports whether the request includes a header with the given key.
-func (c *DefaultCtx) HasHeader(key string) bool {
-	return len(c.fasthttp.Request.Header.Peek(key)) > 0
-}
-
-// MediaType returns the MIME type from the Content-Type header without parameters.
-func (c *DefaultCtx) MediaType() string {
-	contentType := utils.TrimSpace(c.fasthttp.Request.Header.ContentType())
-	if len(contentType) == 0 {
-		return ""
-	}
-	if idx := bytes.IndexByte(contentType, ';'); idx != -1 {
-		contentType = contentType[:idx]
-	}
-	contentType = utils.TrimSpace(contentType)
-	return c.app.toString(contentType)
-}
-
-// Charset returns the charset parameter from the Content-Type header.
-func (c *DefaultCtx) Charset() string {
-	contentType := c.fasthttp.Request.Header.ContentType()
-	if len(contentType) == 0 {
-		return ""
-	}
-	_, after, ok := bytes.Cut(contentType, []byte{';'})
-	if !ok {
-		return ""
-	}
-	params := after
-	for len(params) > 0 {
-		params = utils.TrimSpace(params)
-		if len(params) == 0 {
-			return ""
-		}
-		param := params
-		if idx := bytes.IndexByte(params, ';'); idx != -1 {
-			param = params[:idx]
-			params = params[idx+1:]
-		} else {
-			params = nil
-		}
-
-		param = utils.TrimSpace(param)
-		if len(param) == 0 {
-			continue
-		}
-		before, after, ok := bytes.Cut(param, []byte{'='})
-		if !ok {
-			continue
-		}
-		name := utils.TrimSpace(before)
-		if !bytes.EqualFold(name, []byte("charset")) {
-			continue
-		}
-		value := utils.TrimSpace(after)
-		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-			value = value[1 : len(value)-1]
-		}
-		return c.app.toString(value)
-	}
-	return ""
-}
-
-// IsJSON reports whether the Content-Type header is JSON.
-func (c *DefaultCtx) IsJSON() bool {
-	return utils.EqualFold(c.MediaType(), MIMEApplicationJSON)
-}
-
-// IsForm reports whether the Content-Type header is form-encoded.
-func (c *DefaultCtx) IsForm() bool {
-	return utils.EqualFold(c.MediaType(), MIMEApplicationForm)
-}
-
-// IsMultipart reports whether the Content-Type header is multipart form data.
-func (c *DefaultCtx) IsMultipart() bool {
-	return utils.EqualFold(c.MediaType(), MIMEMultipartForm)
-}
-
-// AcceptsJSON reports whether the Accept header allows JSON.
-func (c *DefaultCtx) AcceptsJSON() bool {
-	return c.Accepts(MIMEApplicationJSON) != ""
-}
-
-// AcceptsHTML reports whether the Accept header allows HTML.
-func (c *DefaultCtx) AcceptsHTML() bool {
-	return c.Accepts(MIMETextHTML) != ""
-}
-
-// AcceptsXML reports whether the Accept header allows XML.
-func (c *DefaultCtx) AcceptsXML() bool {
-	return c.Accepts(MIMEApplicationXML, MIMETextXML) != ""
-}
-
-// AcceptsEventStream reports whether the Accept header allows text/event-stream.
-func (c *DefaultCtx) AcceptsEventStream() bool {
-	return c.Accepts("text/event-stream") != ""
 }
 
 // Req returns a convenience type whose API is limited to operations
