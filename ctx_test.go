@@ -139,6 +139,79 @@ func Test_Ctx_ContentTypeHelpers(t *testing.T) {
 	require.False(t, c.IsForm())
 }
 
+// go test -run Test_Ctx_Charset
+func Test_Ctx_Charset(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		contentType string
+		expected    string
+	}{
+		{
+			name:        "no_parameters",
+			contentType: "text/plain",
+			expected:    "",
+		},
+		{
+			name:        "trailing_semicolon",
+			contentType: "text/plain;",
+			expected:    "",
+		},
+		{
+			name:        "empty_param_before_charset",
+			contentType: "text/plain; ; charset=utf-8",
+			expected:    "utf-8",
+		},
+		{
+			name:        "charset_with_spaces",
+			contentType: "text/plain; charset = utf-8",
+			expected:    "utf-8",
+		},
+		{
+			name:        "charset_in_middle",
+			contentType: "text/plain; foo=bar; charset=iso-8859-1; baz=qux",
+			expected:    "iso-8859-1",
+		},
+		{
+			name:        "charset_quoted",
+			contentType: "text/plain; charset=\"utf-8\"; foo=bar",
+			expected:    "utf-8",
+		},
+		{
+			name:        "non_charset_only",
+			contentType: "text/plain; foo=bar",
+			expected:    "",
+		},
+		{
+			name:        "missing_equals",
+			contentType: "text/plain; charset",
+			expected:    "",
+		},
+		{
+			name:        "empty_charset_value",
+			contentType: "text/plain; charset=",
+			expected:    "",
+		},
+		{
+			name:        "case_insensitive_charset",
+			contentType: "text/plain; chArSet=Shift_JIS",
+			expected:    "Shift_JIS",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().Header.Set(HeaderContentType, testCase.contentType)
+			require.Equal(t, testCase.expected, c.Charset())
+		})
+	}
+}
+
 // go test -run Test_Ctx_HeaderHelpers
 func Test_Ctx_HeaderHelpers(t *testing.T) {
 	t.Parallel()
