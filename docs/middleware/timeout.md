@@ -8,6 +8,12 @@ The timeout middleware aborts handlers that run too long. It wraps them with
 `context.WithTimeout`, exposes the derived context through `c.Context()`, and
 returns `408 Request Timeout` when the deadline is exceeded.
 
+The middleware returns **immediately** when the timeout expires—even if the
+handler is still running. This ensures clients receive a timely response.
+Handlers can detect the timeout by listening on `c.Context().Done()`.
+
+If a handler panics, the middleware catches it and returns `500 Internal Server Error`.
+
 :::caution
 `timeout.New` wraps your final handler and can't be added with `app.Use` or
 used in a middleware chain. Register it per route and avoid calling

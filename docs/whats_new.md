@@ -1574,6 +1574,12 @@ For more details on these changes and migration instructions, check the [Session
 
 The timeout middleware is now configurable. A new `Config` struct allows customizing the timeout duration, defining a handler that runs when a timeout occurs, and specifying errors to treat as timeouts. The `New` function now accepts a `Config` value instead of a duration.
 
+**Behavioral changes:**
+
+- **Immediate response on timeout**: The middleware now returns immediately when the timeout expires, even if the handler is still running. Previously, it waited for the handler to complete before returning the timeout error.
+- **Context propagation**: The timeout context is properly propagated to the handler. Handlers can detect timeouts by listening on `c.Context().Done()`.
+- **Panic handling**: Panics in the handler are caught and converted to `500 Internal Server Error` responses.
+
 **Migration:** Replace calls like `timeout.New(handler, 2*time.Second)` with `timeout.New(handler, timeout.Config{Timeout: 2 * time.Second})`.
 
 ## 🔌 Addons
@@ -2840,6 +2846,12 @@ app.Use(timeout.New(handler, 2*time.Second))
 // After
 app.Use(timeout.New(handler, timeout.Config{Timeout: 2 * time.Second}))
 ```
+
+**Important behavioral changes:**
+
+- The middleware now returns **immediately** when the timeout expires, even if the handler is still running. This ensures clients receive timely responses.
+- Handlers can detect timeouts by listening on `c.Context().Done()`.
+- Panics in the handler are caught and converted to `500 Internal Server Error`.
 
 #### Filesystem
 

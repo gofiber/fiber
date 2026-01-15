@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -75,6 +76,64 @@ func TestTimeout_Exceeded(t *testing.T) {
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Expected 408 Request Timeout")
 	require.Less(t, elapsed, 150*time.Millisecond, "context did not cancel within timeout")
+}
+
+// TestTimeout_ImmediateReturn verifies that the middleware returns immediately
+// when timeout is reached, even if handler doesn't check context (Issue #3394).
+func TestTimeout_ImmediateReturn(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	var handlerFinished atomic.Bool
+
+	// Handler that ignores context and blocks - should still timeout
+	app.Get("/blocking", New(func(_ fiber.Ctx) error {
+		time.Sleep(500 * time.Millisecond) // Block without checking context
+		handlerFinished.Store(true)
+		return nil
+	}, Config{Timeout: 50 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/blocking", http.NoBody)
+	start := time.Now()
+	resp, err := app.Test(req)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err, "app.Test(req) should not fail")
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Expected 408 Request Timeout")
+	// Response should come back quickly, not after 500ms
+	require.Less(t, elapsed, 150*time.Millisecond, "Response should return immediately on timeout")
+	// Handler may still be running at this point - that's expected behavior
+	require.False(t, handlerFinished.Load(), "Handler should still be running when response is sent")
+}
+
+// TestTimeout_ContextPropagation verifies that the timeout context is properly
+// passed to the handler so it can detect cancellation (Issue #3671).
+func TestTimeout_ContextPropagation(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	var contextCanceled atomic.Bool
+
+	app.Get("/context-aware", New(func(c fiber.Ctx) error {
+		// Handler that properly listens for context cancellation
+		select {
+		case <-c.Context().Done():
+			contextCanceled.Store(true)
+			return c.Context().Err()
+		case <-time.After(500 * time.Millisecond):
+			return c.SendString("completed")
+		}
+	}, Config{Timeout: 50 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/context-aware", http.NoBody)
+	resp, err := app.Test(req)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+
+	// Give handler a moment to process context cancellation
+	time.Sleep(20 * time.Millisecond)
+	require.True(t, contextCanceled.Load(), "Handler should have detected context cancellation")
 }
 
 // TestTimeout_CustomError tests that returning a user-defined error is also treated as a timeout.
@@ -154,7 +213,7 @@ func TestTimeout_NegativeDuration(t *testing.T) {
 func TestTimeout_CustomHandler(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	called := 0
+	var called atomic.Int32
 
 	app.Get("/custom-handler", New(func(c fiber.Ctx) error {
 		if err := sleepWithContext(c.Context(), 100*time.Millisecond, context.DeadlineExceeded); err != nil {
@@ -164,7 +223,7 @@ func TestTimeout_CustomHandler(t *testing.T) {
 	}, Config{
 		Timeout: 20 * time.Millisecond,
 		OnTimeout: func(c fiber.Ctx) error {
-			called++
+			called.Add(1)
 			return c.Status(408).JSON(fiber.Map{"error": "timeout"})
 		},
 	}))
@@ -173,41 +232,103 @@ func TestTimeout_CustomHandler(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-	require.Equal(t, 1, called)
+	require.Equal(t, int32(1), called.Load())
 }
 
-// TestRunHandler_DefaultOnTimeout ensures context.DeadlineExceeded triggers ErrRequestTimeout.
-func TestRunHandler_DefaultOnTimeout(t *testing.T) {
+// TestTimeout_PanicInHandler verifies that panics in the handler return 500.
+func TestTimeout_PanicInHandler(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
 
-	err := runHandler(ctx, func(_ fiber.Ctx) error {
-		return context.DeadlineExceeded
-	}, Config{})
+	app.Get("/panic", New(func(_ fiber.Ctx) error {
+		panic("test panic")
+	}, Config{Timeout: 100 * time.Millisecond}))
 
-	require.Equal(t, fiber.ErrRequestTimeout, err)
+	req := httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	// Panic in handler results in 500 Internal Server Error
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 }
 
-// TestRunHandler_CustomOnTimeout verifies that a custom error and OnTimeout handler are used.
-func TestRunHandler_CustomOnTimeout(t *testing.T) {
+// TestTimeout_PanicAfterTimeout verifies that panics after timeout don't affect response.
+func TestTimeout_PanicAfterTimeout(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/panic-late", New(func(_ fiber.Ctx) error {
+		time.Sleep(100 * time.Millisecond)
+		panic("late panic") // This happens after timeout response is sent
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/panic-late", http.NoBody)
+	resp, err := app.Test(req)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+}
+
+// TestIsTimeoutError_DeadlineExceeded ensures context.DeadlineExceeded triggers timeout.
+func TestIsTimeoutError_DeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isTimeoutError(context.DeadlineExceeded, nil))
+	require.True(t, isTimeoutError(fmt.Errorf("wrap: %w", context.DeadlineExceeded), nil))
+}
+
+// TestIsTimeoutError_CustomErrors verifies custom errors are detected.
+func TestIsTimeoutError_CustomErrors(t *testing.T) {
+	t.Parallel()
+
+	customErr := errors.New("custom timeout")
+	require.True(t, isTimeoutError(customErr, []error{customErr}))
+	require.True(t, isTimeoutError(fmt.Errorf("wrap: %w", customErr), []error{customErr}))
+	require.False(t, isTimeoutError(errUnrelated, []error{customErr}))
+}
+
+// TestIsTimeoutError_WithOnTimeout verifies that custom OnTimeout is called for custom errors.
+func TestIsTimeoutError_WithOnTimeout(t *testing.T) {
 	app := fiber.New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 
 	called := false
 	cfg := Config{
-		Errors: []error{errCustomTimeout},
+		Timeout: 100 * time.Millisecond,
+		Errors:  []error{errCustomTimeout},
 		OnTimeout: func(_ fiber.Ctx) error {
 			called = true
 			return errors.New("handled")
 		},
 	}
 
-	err := runHandler(ctx, func(_ fiber.Ctx) error {
+	// Test via full middleware to ensure OnTimeout is called
+	handler := New(func(_ fiber.Ctx) error {
 		return fmt.Errorf("wrap: %w", errCustomTimeout)
 	}, cfg)
 
+	err := handler(ctx)
 	require.True(t, called)
 	require.EqualError(t, err, "handled")
+}
+
+// TestTimeout_Next verifies the Next function skips the middleware.
+func TestTimeout_Next(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/skip", New(func(c fiber.Ctx) error {
+		time.Sleep(100 * time.Millisecond)
+		return c.SendString("OK")
+	}, Config{
+		Timeout: 10 * time.Millisecond,
+		Next: func(_ fiber.Ctx) bool {
+			return true // Always skip
+		},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/skip", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Middleware should be skipped")
 }
