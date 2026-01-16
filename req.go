@@ -466,7 +466,7 @@ func (r *DefaultReq) Host() string {
 			if before, _, found := strings.Cut(host, ","); found {
 				return utils.TrimSpace(before)
 			}
-			return host
+			return utils.TrimSpace(host)
 		}
 	}
 	return r.c.app.toString(r.c.fasthttp.Request.URI().Host())
