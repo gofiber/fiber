@@ -464,7 +464,7 @@ func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
 			if before, _, found := strings.Cut(host, ","); found {
-				return before
+				return utils.TrimSpace(before)
 			}
 			return host
 		}

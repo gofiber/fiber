@@ -2374,6 +2374,15 @@ func Test_Ctx_Host_TrustedProxy(t *testing.T) {
 		require.Equal(t, "google1.com", c.Host())
 		app.ReleaseCtx(c)
 	}
+	t.Run("TrimLeadingWhitespace", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0", "0.8.0.1"}}})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, " google1.com, proxy")
+		require.Equal(t, "google1.com", c.Host())
+		app.ReleaseCtx(c)
+	})
 }
 
 // go test -run Test_Ctx_Host_TrustedProxyRange
