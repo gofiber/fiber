@@ -796,7 +796,7 @@ func (r *DefaultReq) Scheme() string {
 			}
 
 		case utils.EqualFold(key, xURLSchemeBytes):
-			scheme = app.toString(val)
+			scheme = utils.TrimSpace(app.toString(val))
 		default:
 			continue
 		}
