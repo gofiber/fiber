@@ -791,7 +791,7 @@ func (r *DefaultReq) Scheme() string {
 				} else {
 					scheme = utils.TrimSpace(v)
 				}
-			} else if utils.EqualFold(key, xForwardedSslBytes) && bytes.Equal(val, onBytes) {
+			} else if utils.EqualFold(key, xForwardedSslBytes) && utils.EqualFold(val, onBytes) {
 				scheme = schemeHTTPS
 			}
 
