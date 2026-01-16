@@ -36,7 +36,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
 - [🛠️ Utils](#utils)
-- [🥡 Services](#-services)
+- [🧩 Services](#-services)
 - [📃 Log](#-log)
 - [📦 Storage Interface](#-storage-interface)
 - [🧬 Middlewares](#-middlewares)
@@ -564,6 +564,22 @@ testConfig := fiber.TestConfig{
 - **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
 - **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 - **AcceptsLanguagesExtended**: Matches language ranges using RFC 4647 Extended Filtering with wildcard subtags.
+- **FullURL**: Returns the full request URL (scheme + host + original URL).
+- **RequestID**: Returns the request identifier from the response or request headers.
+- **UserAgent**: Returns the `User-Agent` request header.
+- **Referer**: Returns the `Referer` request header.
+- **AcceptLanguage**: Returns the `Accept-Language` request header.
+- **AcceptEncoding**: Returns the `Accept-Encoding` request header.
+- **HasHeader**: Reports whether the request includes a header with the given key.
+- **MediaType**: Returns the MIME type from the `Content-Type` header without parameters.
+- **Charset**: Returns the `charset` parameter from the `Content-Type` header.
+- **IsJSON**: Reports whether the `Content-Type` header is JSON.
+- **IsForm**: Reports whether the `Content-Type` header is form-encoded.
+- **IsMultipart**: Reports whether the `Content-Type` header is multipart form data.
+- **AcceptsJSON**: Reports whether the `Accept` header allows JSON.
+- **AcceptsHTML**: Reports whether the `Accept` header allows HTML.
+- **AcceptsXML**: Reports whether the `Accept` header allows XML.
+- **AcceptsEventStream**: Reports whether the `Accept` header allows `text/event-stream`.
 - **Matched**: Detects when the current request path matched a registered route.
 - **IsMiddleware**: Indicates if the current handler was registered as middleware.
 - **HasBody**: Quickly checks whether the request includes a body.
@@ -1074,7 +1090,7 @@ Fiber v3 removes the built-in `utils` directory and now imports utility helpers 
 
 The `github.com/gofiber/utils` module also introduces new helpers like `ParseInt`, `ParseUint`, `Walk`, `ReadFile`, and `Timestamp`.
 
-## 🥡 Services
+## 🧩 Services
 
 Fiber v3 introduces a new feature called Services. This feature allows developers to quickly start services that the application depends on, removing the need to manually provision things like database servers, caches, or message brokers, to name a few.
 
@@ -1149,8 +1165,8 @@ $ go run . -v
 --------------------------------------------------
 INFO Server started on:         http://127.0.0.1:3000 (bound on host 0.0.0.0 and port 3000)
 INFO Services:     2
-INFO   🥡 [ RUNNING ] postgres:latest
-INFO   🥡 [ RUNNING ] redis:latest
+INFO   🧩 [ RUNNING ] postgres:latest
+INFO   🧩 [ RUNNING ] redis:latest
 INFO Total handlers count:      2
 INFO Prefork:                   Disabled
 INFO PID:                       12279

@@ -290,6 +290,14 @@ func (c *DefaultCtx) Path(override ...string) string {
 	return c.app.toString(c.path)
 }
 
+// RequestID returns the request identifier from the response header or request header.
+func (c *DefaultCtx) RequestID() string {
+	if requestID := c.GetRespHeader(HeaderXRequestID); requestID != "" {
+		return requestID
+	}
+	return c.Get(HeaderXRequestID)
+}
+
 // Req returns a convenience type whose API is limited to operations
 // on the incoming request.
 func (c *DefaultCtx) Req() Req {

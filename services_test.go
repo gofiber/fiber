@@ -458,7 +458,7 @@ func Test_LogServices(t *testing.T) {
 			state = "ERROR"
 		}
 
-		expected := fmt.Sprintf("%sINFO%s    🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), srv.String(), colors.Reset)
+		expected := fmt.Sprintf("%sINFO%s    🧩 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), srv.String(), colors.Reset)
 		require.Contains(t, output, expected)
 	}
 }

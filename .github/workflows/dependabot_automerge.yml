@@ -1,0 +1,40 @@
+name: Dependabot auto-merge
+on:
+  workflow_dispatch:
+  pull_request_target:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  wait_for_checks:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    steps:
+      - name: Wait for check is finished
+        uses: lewagon/wait-on-check-action@v1.4.1
+        id: wait_for_checks
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          running-workflow-name: wait_for_checks
+          check-regexp: unit
+          repo-token: ${{ secrets.PR_TOKEN }}
+          wait-interval: 10
+  dependabot:
+    needs: [wait_for_checks]
+    name: Dependabot auto-merge
+    runs-on: ubuntu-latest
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    steps:
+      - name: Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2.5.0
+        with:
+          github-token: "${{ secrets.PR_TOKEN }}"
+      - name: Enable auto-merge for Dependabot PRs
+        if: ${{steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'}}
+        run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --auto --merge "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.PR_TOKEN}}

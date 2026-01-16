@@ -19,11 +19,8 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		cfg = &defaultCfg
 	}
 
-	var (
-		// Limiter variables
-		mux        = &sync.RWMutex{}
-		expiration = uint64(cfg.Expiration.Seconds())
-	)
+	// Limiter variables
+	mux := &sync.RWMutex{}
 
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, !cfg.DisableValueRedaction)
@@ -40,6 +37,13 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		if (cfg.Next != nil && cfg.Next(c)) || maxRequests == 0 {
 			return c.Next()
 		}
+
+		// Generate expiration from generator
+		expirationDuration := cfg.ExpirationFunc(c)
+		if expirationDuration <= 0 {
+			expirationDuration = ConfigDefault.Expiration
+		}
+		expiration := uint64(expirationDuration.Seconds())
 
 		// Get key from request
 		key := cfg.KeyGenerator(c)
@@ -78,7 +82,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		remaining := maxRequests - e.currHits
 
 		// Update storage
-		if setErr := manager.set(reqCtx, key, e, cfg.Expiration); setErr != nil {
+		if setErr := manager.set(reqCtx, key, e, expirationDuration); setErr != nil {
 			mux.Unlock()
 			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 		}
@@ -118,7 +122,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 			e = entry
 			e.currHits--
 			remaining++
-			if setErr := manager.set(reqCtx, key, e, cfg.Expiration); setErr != nil {
+			if setErr := manager.set(reqCtx, key, e, expirationDuration); setErr != nil {
 				mux.Unlock()
 				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 			}
