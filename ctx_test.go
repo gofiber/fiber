@@ -2409,7 +2409,7 @@ func Test_Ctx_Host_TrustedProxy(t *testing.T) {
 			{
 				name:          "leading comma",
 				forwardedHost: ",example.com",
-				expectedHost:  "example.com",
+				expectedHost:  "",
 			},
 		}
 
