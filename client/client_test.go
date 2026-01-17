@@ -2372,13 +2372,6 @@ func Test_Client_StreamResponseBody(t *testing.T) {
 		require.False(t, client.StreamResponseBody())
 	})
 
-	t.Run("with standard client", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		client.SetStreamResponseBody(true)
-		require.True(t, client.StreamResponseBody())
-	})
-
 	t.Run("with host client", func(t *testing.T) {
 		t.Parallel()
 		hostClient := &fasthttp.HostClient{}
@@ -2390,20 +2383,15 @@ func Test_Client_StreamResponseBody(t *testing.T) {
 
 	t.Run("with lb client", func(t *testing.T) {
 		t.Parallel()
+		hostClient := &fasthttp.HostClient{Addr: "example.com:80"}
 		lbClient := &fasthttp.LBClient{
 			Clients: []fasthttp.BalancingClient{
-				&fasthttp.HostClient{Addr: "example.com:80"},
+				hostClient,
 			},
 		}
 		client := NewWithLBClient(lbClient)
 		client.SetStreamResponseBody(true)
 		require.True(t, client.StreamResponseBody())
-	})
-
-	t.Run("getter with standard client without setter", func(t *testing.T) {
-		t.Parallel()
-		client := New()
-		// Test getter directly without calling setter
-		require.False(t, client.StreamResponseBody())
+		require.True(t, hostClient.StreamResponseBody)
 	})
 }

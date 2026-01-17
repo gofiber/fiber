@@ -165,6 +165,10 @@ func (r *Response) Save(v any) error {
 		if _, err := io.Copy(p, r.BodyStream()); err != nil {
 			return fmt.Errorf("failed to write response body to writer: %w", err)
 		}
+		// Close the writer if it implements io.WriteCloser
+		if pc, ok := p.(io.WriteCloser); ok {
+			_ = pc.Close() //nolint:errcheck // not needed
+		}
 
 		return nil
 

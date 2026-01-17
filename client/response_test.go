@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gofiber/fiber/v3/internal/tlstest"
@@ -675,4 +676,119 @@ func Test_Response_IsStreaming(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "test content", string(data2))
 	})
+}
+
+func Test_Response_Save_Streaming(t *testing.T) {
+	t.Parallel()
+
+	t.Run("save streaming response to file", func(t *testing.T) {
+		t.Parallel()
+
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/stream", func(c fiber.Ctx) error {
+				return c.SendStream(bytes.NewReader([]byte("streaming file content")))
+			})
+		})
+		defer server.stop()
+
+		client := New().SetDial(server.dial()).SetStreamResponseBody(true)
+
+		resp, err := client.Get("http://example.com/stream")
+		require.NoError(t, err)
+		defer resp.Close()
+
+		testFile := filepath.Join(t.TempDir(), "stream_test.txt")
+		err = resp.Save(testFile)
+		require.NoError(t, err)
+
+		data, err := os.ReadFile(testFile) //nolint:gosec // test file is created in a temp directory
+		require.NoError(t, err)
+		require.Equal(t, "streaming file content", string(data))
+	})
+
+	t.Run("save streaming response to io.Writer", func(t *testing.T) {
+		t.Parallel()
+
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/stream", func(c fiber.Ctx) error {
+				return c.SendStream(bytes.NewReader([]byte("streaming writer content")))
+			})
+		})
+		defer server.stop()
+
+		client := New().SetDial(server.dial()).SetStreamResponseBody(true)
+
+		resp, err := client.Get("http://example.com/stream")
+		require.NoError(t, err)
+		defer resp.Close()
+
+		var buf bytes.Buffer
+		err = resp.Save(&buf)
+		require.NoError(t, err)
+		require.Equal(t, "streaming writer content", buf.String())
+	})
+
+	t.Run("save non-streaming response to file using BodyStream", func(t *testing.T) {
+		t.Parallel()
+
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/regular", func(c fiber.Ctx) error {
+				return c.SendString("regular file content")
+			})
+		})
+		defer server.stop()
+
+		client := New().SetDial(server.dial())
+
+		resp, err := client.Get("http://example.com/regular")
+		require.NoError(t, err)
+		defer resp.Close()
+
+		testFile := filepath.Join(t.TempDir(), "regular_test.txt")
+		err = resp.Save(testFile)
+		require.NoError(t, err)
+
+		data, err := os.ReadFile(testFile) //nolint:gosec // test file is created in a temp directory
+		require.NoError(t, err)
+		require.Equal(t, "regular file content", string(data))
+	})
+
+	t.Run("save to io.WriteCloser closes writer", func(t *testing.T) {
+		t.Parallel()
+
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/test", func(c fiber.Ctx) error {
+				return c.SendString("test content")
+			})
+		})
+		defer server.stop()
+
+		client := New().SetDial(server.dial())
+
+		resp, err := client.Get("http://example.com/test")
+		require.NoError(t, err)
+		defer resp.Close()
+
+		// Create a mock WriteCloser to verify Close is called
+		mockWriter := &mockWriteCloser{}
+		err = resp.Save(mockWriter)
+		require.NoError(t, err)
+		require.True(t, mockWriter.closed, "Save() should close io.WriteCloser")
+		require.Equal(t, "test content", mockWriter.buf.String())
+	})
+}
+
+// mockWriteCloser is a helper to verify that Save() closes io.WriteCloser
+type mockWriteCloser struct {
+	buf    bytes.Buffer
+	closed bool
+}
+
+func (m *mockWriteCloser) Write(p []byte) (int, error) {
+	return m.buf.Write(p) //nolint:wrapcheck // propagate buffer write error directly for test helper
+}
+
+func (m *mockWriteCloser) Close() error {
+	m.closed = true
+	return nil
 }

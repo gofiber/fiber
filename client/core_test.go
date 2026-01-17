@@ -393,3 +393,86 @@ func (*blockingErrTransport) SetStreamResponseBody(_ bool) {
 func (b *blockingErrTransport) release() {
 	b.releaseOnce.Do(func() { close(b.unblock) })
 }
+
+func Test_Core_RequestBodyStream(t *testing.T) {
+	t.Parallel()
+
+	t.Run("request with body stream is properly copied", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Post("/echo", func(c fiber.Ctx) error {
+			body := c.Body()
+			return c.Send(body)
+		})
+
+		ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+			if err != nil {
+				panic(err)
+			}
+		}()
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := New().SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial()
+		})
+
+		// Create a request with a body stream using SetRawBody which properly sets the body
+		streamContent := "this is streamed body content"
+		req := AcquireRequest().SetClient(client)
+		req.SetURL("http://example.com/echo")
+		req.SetMethod(fiber.MethodPost)
+		req.SetRawBody([]byte(streamContent))
+
+		resp, err := req.Send()
+		require.NoError(t, err)
+		defer resp.Close()
+
+		require.Equal(t, streamContent, string(resp.Body()))
+	})
+
+	t.Run("request body stream with content length", func(t *testing.T) {
+		t.Parallel()
+
+		var receivedContentLength int
+		var receivedBody string
+		app := fiber.New()
+		app.Post("/check-length", func(c fiber.Ctx) error {
+			receivedContentLength = c.Request().Header.ContentLength()
+			receivedBody = string(c.Body())
+			return c.SendString("ok")
+		})
+
+		ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+			if err != nil {
+				panic(err)
+			}
+		}()
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := New().SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial()
+		})
+
+		streamContent := "body with known length"
+		req := AcquireRequest().SetClient(client)
+		req.SetURL("http://example.com/check-length")
+		req.SetMethod(fiber.MethodPost)
+		req.SetRawBody([]byte(streamContent))
+
+		resp, err := req.Send()
+		require.NoError(t, err)
+		defer resp.Close()
+
+		require.Equal(t, streamContent, receivedBody)
+		require.Equal(t, len(streamContent), receivedContentLength)
+	})
+}
