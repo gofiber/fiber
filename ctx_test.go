@@ -2374,14 +2374,57 @@ func Test_Ctx_Host_TrustedProxy(t *testing.T) {
 		require.Equal(t, "google1.com", c.Host())
 		app.ReleaseCtx(c)
 	}
-	t.Run("TrimLeadingWhitespace", func(t *testing.T) {
+	t.Run("TrimWhitespaceFromForwardedHost", func(t *testing.T) {
 		t.Parallel()
+		testCases := []struct {
+			name          string
+			forwardedHost string
+			expectedHost  string
+		}{
+			{
+				name:          "leading whitespace with comma",
+				forwardedHost: " example.com, proxy1",
+				expectedHost:  "example.com",
+			},
+			{
+				name:          "trailing whitespace with comma",
+				forwardedHost: "example.com , proxy1",
+				expectedHost:  "example.com",
+			},
+			{
+				name:          "leading and trailing whitespace with comma",
+				forwardedHost: "  example.com  , proxy1",
+				expectedHost:  "example.com",
+			},
+			{
+				name:          "no whitespace with comma",
+				forwardedHost: "example.com, proxy1",
+				expectedHost:  "example.com",
+			},
+			{
+				name:          "single value with whitespace",
+				forwardedHost: "  example.com  ",
+				expectedHost:  "example.com",
+			},
+			{
+				name:          "leading comma",
+				forwardedHost: ",example.com",
+				expectedHost:  "example.com",
+			},
+		}
+
 		app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0", "0.8.0.1"}}})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().SetRequestURI("http://google.com/test")
-		c.Request().Header.Set(HeaderXForwardedHost, " google1.com, proxy")
-		require.Equal(t, "google1.com", c.Host())
-		app.ReleaseCtx(c)
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				defer app.ReleaseCtx(c)
+				c.Request().SetRequestURI("http://google.com/test")
+				c.Request().Header.Set(HeaderXForwardedHost, tc.forwardedHost)
+				require.Equal(t, tc.expectedHost, c.Host())
+			})
+		}
 	})
 }
 
