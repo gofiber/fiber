@@ -56,6 +56,7 @@ type DefaultCtx struct {
 	DefaultRes                            // Default response api
 	app              *App                 // Reference to *App
 	route            *Route               // Reference to *Route
+	matchedRoute     *Route               // Cached non-middleware route match
 	fasthttp         *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind             *Bind                // Default bind reference
 	redirect         *Redirect            // Default redirect reference
@@ -281,6 +282,7 @@ func (c *DefaultCtx) Path(override ...string) string {
 	if len(override) != 0 && string(c.path) != override[0] {
 		// Set new path to context
 		c.pathOriginal = override[0]
+		c.matchedRoute = nil
 
 		// Set new path to request context
 		c.fasthttp.Request.URI().SetPath(c.pathOriginal)
@@ -347,6 +349,42 @@ func (c *DefaultCtx) Route() *Route {
 		}
 	}
 	return c.route
+}
+
+// MatchedRoute returns the next non-middleware route that matches the current
+// request without advancing the handler chain. It is useful inside global
+// middleware when you need to inspect the target route before calling Next.
+func (c *DefaultCtx) MatchedRoute() *Route {
+	if c.route != nil && !c.route.use && !c.route.mount {
+		return c.route
+	}
+	if c.matchedRoute != nil {
+		return c.matchedRoute
+	}
+	if c.methodInt == -1 {
+		return nil
+	}
+
+	tree, ok := c.app.treeStack[c.methodInt][c.treePathHash]
+	if !ok {
+		tree = c.app.treeStack[c.methodInt][0]
+	}
+
+	detectionPath := utils.UnsafeString(c.detectionPath)
+	path := utils.UnsafeString(c.path)
+
+	for i := c.indexRoute + 1; i < len(tree); i++ {
+		route := tree[i]
+		if route.mount || route.use {
+			continue
+		}
+		if route.match(detectionPath, path, &c.values) {
+			c.matchedRoute = route
+			return route
+		}
+	}
+
+	return nil
 }
 
 // FullPath returns the matched route path, including any group prefixes.
@@ -609,6 +647,7 @@ func (c *DefaultCtx) XHR() bool {
 // configDependentPaths set paths for route recognition and prepared paths for the user,
 // here the features for caseSensitive, decoded paths, strict paths are evaluated
 func (c *DefaultCtx) configDependentPaths() {
+	c.matchedRoute = nil
 	c.path = append(c.path[:0], c.pathOriginal...)
 	// If UnescapePath enabled, we decode the path and save it for the framework user
 	if c.app.config.UnescapePath {
@@ -642,6 +681,8 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Reset route and handler index
 	c.indexRoute = -1
 	c.indexHandler = 0
+	c.route = nil
+	c.matchedRoute = nil
 	// Reset matched flag
 	c.matched = false
 	c.skipNonUseRoutes = false
@@ -664,6 +705,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 // Release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
 	c.route = nil
+	c.matchedRoute = nil
 	c.fasthttp = nil
 	if c.bind != nil {
 		ReleaseBind(c.bind)

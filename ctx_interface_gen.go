@@ -113,6 +113,10 @@ type Ctx interface {
 	ViewBind(vars Map) error
 	// Route returns the matched Route struct.
 	Route() *Route
+	// MatchedRoute returns the next non-middleware route that matches the current
+	// request without advancing the handler chain. It is useful inside global
+	// middleware when you need to inspect the target route before calling Next.
+	MatchedRoute() *Route
 	// FullPath returns the matched route path, including any group prefixes.
 	FullPath() string
 	// Matched returns true if the current request path was matched by the router.

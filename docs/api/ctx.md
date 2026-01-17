@@ -406,7 +406,7 @@ app.Get("/hello/:name", func(c fiber.Ctx) error {
 ```
 
 :::caution
-Do not rely on `c.Route()` in middlewares **before** calling `c.Next()` - `c.Route()` returns the **last executed route**.
+`c.Route()` returns the **last executed route**. Inside middleware that run before your handler it reflects the middleware route itself. Use `c.MatchedRoute()` to look up the downstream handler without advancing the chain.
 :::
 
 ```go title="Example"
@@ -418,6 +418,25 @@ func MyMiddleware() fiber.Handler {
     return err
   }
 }
+```
+
+### MatchedRoute
+
+Returns the next non-middleware route that matches the current request without advancing the handler chain. This is useful inside global middleware when you need to inspect the target handler (for logging or access control) before calling `Next`.
+
+```go title="Signature"
+func (c fiber.Ctx) MatchedRoute() *Route
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  route := c.MatchedRoute() // "/api/users/:id"
+  if route == nil {
+    return fiber.ErrNotFound
+  }
+  // enforce access control using route.Path or route.Name
+  return c.Next()
+})
 ```
 
 ### FullPath
