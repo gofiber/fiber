@@ -538,3 +538,141 @@ func Test_Response_Save(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func Test_Response_BodyStream(t *testing.T) {
+	t.Parallel()
+
+	t.Run("basic streaming", func(t *testing.T) {
+		t.Parallel()
+
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/stream", func(c fiber.Ctx) error {
+				return c.SendStream(bytes.NewReader([]byte("streaming data")))
+			})
+		})
+		defer server.stop()
+
+		client := New().SetDial(server.dial()).SetStreamResponseBody(true)
+
+		resp, err := client.Get("http://example.com/stream")
+		require.NoError(t, err)
+		defer resp.Close()
+		bodyStream := resp.BodyStream()
+		require.NotNil(t, bodyStream)
+		data, err := io.ReadAll(bodyStream)
+		require.NoError(t, err)
+		require.Equal(t, "streaming data", string(data))
+	})
+
+	t.Run("large response streaming", func(t *testing.T) {
+		t.Parallel()
+
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/large", func(c fiber.Ctx) error {
+				data := make([]byte, 1024)
+				for i := range data {
+					data[i] = byte('A' + i%26)
+				}
+				return c.SendStream(bytes.NewReader(data))
+			})
+		})
+		defer server.stop()
+
+		client := New().SetDial(server.dial()).SetStreamResponseBody(true)
+		resp, err := client.Get("http://example.com/large")
+		require.NoError(t, err)
+		defer resp.Close()
+		bodyStream := resp.BodyStream()
+		require.NotNil(t, bodyStream)
+		buffer := make([]byte, 256)
+		var totalRead []byte
+		for {
+			n, err := bodyStream.Read(buffer)
+			if n > 0 {
+				totalRead = append(totalRead, buffer[:n]...)
+			}
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+		}
+		require.Len(t, totalRead, 1024)
+	})
+}
+
+func Test_Response_BodyStream_Fallback(t *testing.T) {
+	t.Parallel()
+	t.Run("non-streaming response fallback to bytes.Reader", func(t *testing.T) {
+		t.Parallel()
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/regular", func(c fiber.Ctx) error {
+				return c.SendString("regular response body")
+			})
+		})
+		defer server.stop()
+		client := New().SetDial(server.dial())
+		resp, err := client.Get("http://example.com/regular")
+		require.NoError(t, err)
+		defer resp.Close()
+		require.False(t, resp.IsStreaming())
+		bodyStream := resp.BodyStream()
+		require.NotNil(t, bodyStream)
+		data, err := io.ReadAll(bodyStream)
+		require.NoError(t, err)
+		require.Equal(t, "regular response body", string(data))
+	})
+}
+
+func Test_Response_IsStreaming(t *testing.T) {
+	t.Parallel()
+
+	t.Run("streaming disabled", func(t *testing.T) {
+		t.Parallel()
+
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/regular", func(c fiber.Ctx) error {
+				return c.SendString("regular content")
+			})
+		})
+		defer server.stop()
+		client := New().SetDial(server.dial())
+		resp, err := client.Get("http://example.com/regular")
+		require.NoError(t, err)
+		defer resp.Close()
+		require.False(t, resp.IsStreaming())
+	})
+
+	t.Run("bodystream always works regardless of streaming state", func(t *testing.T) {
+		t.Parallel()
+
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/test", func(c fiber.Ctx) error {
+				return c.SendString("test content")
+			})
+		})
+		defer server.stop()
+
+		// Test with streaming enabled
+		client1 := New().SetDial(server.dial()).SetStreamResponseBody(true)
+		resp1, err := client1.Get("http://example.com/test")
+		require.NoError(t, err)
+		defer resp1.Close()
+		bodyStream1 := resp1.BodyStream()
+		require.NotNil(t, bodyStream1)
+		data1, err := io.ReadAll(bodyStream1)
+		require.NoError(t, err)
+		require.Equal(t, "test content", string(data1))
+
+		// Test with streaming disabled
+		client2 := New().SetDial(server.dial()).SetStreamResponseBody(false)
+		resp2, err := client2.Get("http://example.com/test")
+		require.NoError(t, err)
+		defer resp2.Close()
+		require.False(t, resp2.IsStreaming())
+		bodyStream2 := resp2.BodyStream()
+		require.NotNil(t, bodyStream2)
+		data2, err := io.ReadAll(bodyStream2)
+		require.NoError(t, err)
+		require.Equal(t, "test content", string(data2))
+	})
+}

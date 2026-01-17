@@ -86,9 +86,16 @@ func (c *core) execFunc() (*Response, error) {
 		defer fasthttp.ReleaseRequest(reqv)
 
 		respv := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseResponse(respv)
+		defer func() {
+			if respv != nil {
+				fasthttp.ReleaseResponse(respv)
+			}
+		}()
 
 		c.req.RawRequest.CopyTo(reqv)
+		if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
+			reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
+		}
 
 		var err error
 		if cfg != nil {
@@ -115,7 +122,16 @@ func (c *core) execFunc() (*Response, error) {
 		resp := AcquireResponse()
 		resp.setClient(c.client)
 		resp.setRequest(c.req)
-		respv.CopyTo(resp.RawResponse)
+
+		// Swap the fasthttp response with the Fiber response's RawResponse field.
+		// This is required, as (*fasthttp.Response).CopyTo() explicitly does not
+		// copy body streams.
+		//
+		// See: https://github.com/valyala/fasthttp/blob/v1.69.0/http.go#L909-L923
+		//
+		// The defer statement above ensures that the original RawResponse
+		// (now stored in respv) will be properly released.
+		resp.RawResponse, respv = respv, resp.RawResponse
 		respChan <- resp
 	}()
 
