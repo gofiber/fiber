@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/xml"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -521,6 +522,31 @@ func Test_Response_Save(t *testing.T) {
 		require.JSONEq(t, "{\"status\":\"success\"}", buf.String())
 	})
 
+	t.Run("io.Copy error when saving to file is surfaced", func(t *testing.T) {
+		t.Parallel()
+
+		resp := AcquireResponse()
+		defer ReleaseResponse(resp)
+
+		resp.RawResponse.SetBodyStream(&errorReader{err: errors.New("copy failure")}, -1)
+
+		target := filepath.Join(t.TempDir(), "out.txt")
+		err := resp.Save(target)
+		require.ErrorContains(t, err, "failed to write response body to file: copy failure")
+	})
+
+	t.Run("io.Copy error when saving to writer is surfaced", func(t *testing.T) {
+		t.Parallel()
+
+		resp := AcquireResponse()
+		defer ReleaseResponse(resp)
+
+		resp.RawResponse.SetBodyStream(bytes.NewBufferString("data"), len("data"))
+
+		err := resp.Save(&errorWriter{err: errors.New("sink closed")})
+		require.ErrorContains(t, err, "failed to write response body to writer: sink closed")
+	})
+
 	t.Run("error type", func(t *testing.T) {
 		t.Parallel()
 
@@ -782,6 +808,22 @@ func Test_Response_Save_Streaming(t *testing.T) {
 type mockWriteCloser struct {
 	buf    bytes.Buffer
 	closed bool
+}
+
+type errorReader struct {
+	err error
+}
+
+func (m *errorReader) Read(_ []byte) (int, error) {
+	return 0, m.err
+}
+
+type errorWriter struct {
+	err error
+}
+
+func (m *errorWriter) Write(_ []byte) (int, error) {
+	return 0, m.err
 }
 
 func (m *mockWriteCloser) Write(p []byte) (int, error) {

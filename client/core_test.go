@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -473,6 +474,54 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 		defer resp.Close()
 
 		require.Equal(t, streamContent, receivedBody)
+		require.Equal(t, len(streamContent), receivedContentLength)
+	})
+
+	t.Run("raw body stream survives CopyTo", func(t *testing.T) {
+		t.Parallel()
+
+		const streamContent = "streaming raw request body"
+
+		var receivedContent string
+		var receivedContentLength int
+
+		app := fiber.New()
+		app.Post("/copy-to-body-stream", func(c fiber.Ctx) error {
+			receivedContent = string(c.Body())
+			receivedContentLength = c.Request().Header.ContentLength()
+			return c.SendString(receivedContent)
+		})
+
+		ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+			if err != nil {
+				panic(err)
+			}
+		}()
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		core, client, req := newCore(), New(), AcquireRequest()
+		core.ctx = context.Background()
+		core.client = client
+		core.req = req
+
+		client.SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial()
+		})
+
+		req.RawRequest.SetRequestURI("http://example.com/copy-to-body-stream")
+		req.RawRequest.Header.SetMethod(fiber.MethodPost)
+		req.RawRequest.SetBodyStream(bytes.NewBufferString(streamContent), len(streamContent))
+
+		resp, err := core.execFunc()
+		require.NoError(t, err)
+		defer resp.Close()
+
+		require.Equal(t, streamContent, string(resp.Body()))
+		require.Equal(t, streamContent, receivedContent)
 		require.Equal(t, len(streamContent), receivedContentLength)
 	})
 }
