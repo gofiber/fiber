@@ -439,12 +439,19 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 	t.Run("request body stream with content length", func(t *testing.T) {
 		t.Parallel()
 
-		var receivedContentLength int
-		var receivedBody string
+		resultCh := make(chan struct {
+			body   string
+			length int
+		}, 1)
 		app := fiber.New()
 		app.Post("/check-length", func(c fiber.Ctx) error {
-			receivedContentLength = c.Request().Header.ContentLength()
-			receivedBody = string(c.Body())
+			resultCh <- struct {
+				body   string
+				length int
+			}{
+				body:   string(c.Body()),
+				length: c.Request().Header.ContentLength(),
+			}
 			return c.SendString("ok")
 		})
 
@@ -473,8 +480,9 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Close()
 
-		require.Equal(t, streamContent, receivedBody)
-		require.Equal(t, len(streamContent), receivedContentLength)
+		result := <-resultCh
+		require.Equal(t, streamContent, result.body)
+		require.Equal(t, len(streamContent), result.length)
 	})
 
 	t.Run("raw body stream survives CopyTo", func(t *testing.T) {
@@ -482,14 +490,22 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 
 		const streamContent = "streaming raw request body"
 
-		var receivedContent string
-		var receivedContentLength int
+		resultCh := make(chan struct {
+			body   string
+			length int
+		}, 1)
 
 		app := fiber.New()
 		app.Post("/copy-to-body-stream", func(c fiber.Ctx) error {
-			receivedContent = string(c.Body())
-			receivedContentLength = c.Request().Header.ContentLength()
-			return c.SendString(receivedContent)
+			body := string(c.Body())
+			resultCh <- struct {
+				body   string
+				length int
+			}{
+				body:   body,
+				length: c.Request().Header.ContentLength(),
+			}
+			return c.SendString(body)
 		})
 
 		ln := fasthttputil.NewInmemoryListener()
@@ -520,8 +536,9 @@ func Test_Core_RequestBodyStream(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Close()
 
+		result := <-resultCh
 		require.Equal(t, streamContent, string(resp.Body()))
-		require.Equal(t, streamContent, receivedContent)
-		require.Equal(t, len(streamContent), receivedContentLength)
+		require.Equal(t, streamContent, result.body)
+		require.Equal(t, len(streamContent), result.length)
 	})
 }
