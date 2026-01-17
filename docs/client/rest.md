@@ -406,6 +406,85 @@ Sets a proxy URL for the client. All subsequent requests will use this proxy.
 func (c *Client) SetProxyURL(proxyURL string) error
 ```
 
+## Response Streaming
+
+### StreamResponseBody
+
+Returns whether response body streaming is enabled. When enabled, the response body is not fully loaded into memory and can be read as a stream using `Response.BodyStream()`. This is useful for handling large responses or server-sent events (SSE).
+
+```go title="Signature"
+func (c *Client) StreamResponseBody() bool
+```
+
+### SetStreamResponseBody
+
+Enables or disables response body streaming. When enabled, responses can be consumed incrementally without loading the entire body into memory.
+
+```go title="Signature"
+func (c *Client) SetStreamResponseBody(enable bool) *Client
+```
+
+**Example:**
+
+```go title="Example"
+cc := client.New()
+cc.SetStreamResponseBody(true)
+
+resp, err := cc.Get("https://example.com/large-file")
+if err != nil {
+    panic(err)
+}
+defer resp.Close()
+
+// Check if response is streaming
+if resp.IsStreaming() {
+    // Read body incrementally
+    reader := resp.BodyStream()
+    buf := make([]byte, 4096)
+    for {
+        n, err := reader.Read(buf)
+        if n > 0 {
+            // Process chunk...
+        }
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            panic(err)
+        }
+    }
+} else {
+    // Regular body access
+    body := resp.Body()
+    fmt.Println(string(body))
+}
+```
+
+**Server-Sent Events Example:**
+
+```go title="SSE Example"
+cc := client.New()
+cc.SetStreamResponseBody(true)
+
+resp, err := cc.Get("https://example.com/events")
+if err != nil {
+    panic(err)
+}
+defer resp.Close()
+
+reader := bufio.NewReader(resp.BodyStream())
+for {
+    line, err := reader.ReadString('\n')
+    if err == io.EOF {
+        break
+    }
+    if err != nil {
+        panic(err)
+    }
+    fmt.Print(line) // Process SSE event
+}
+```
+
 ## RetryConfig
 
 Returns the retry configuration of the client.
