@@ -13,6 +13,7 @@
 **/*.out
 
 .cache
+.gocache
 
 # IDE files
 .vscode
