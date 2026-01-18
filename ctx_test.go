@@ -3703,6 +3703,39 @@ func Test_Ctx_Scheme(t *testing.T) {
 	require.Equal(t, schemeHTTP, c.Scheme())
 }
 
+// go test -run Test_Ctx_Scheme_HeaderNormalization
+func Test_Ctx_Scheme_HeaderNormalization(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+
+	freq := &fasthttp.RequestCtx{}
+	freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+
+	c := app.AcquireCtx(freq)
+
+	c.Request().Header.Set("x-forwarded-proto", " HTTPS , http")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set("X-FORWARDED-PROTOCOL", " HTTPS")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set("x-url-scheme", " HTTPS ")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set("x-Forwarded-ProToCol", " HTTPS ")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
 func Benchmark_Ctx_Scheme(b *testing.B) {
 	app := New()
