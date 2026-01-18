@@ -185,12 +185,25 @@ func TestData_Reset(t *testing.T) {
 		d.Set("key1", "value1")
 		d.Set("key2", "value2")
 		d.Reset()
-		require.Empty(t, d.Data, "Expected data map to be empty after reset")
+		requireDataEmpty(t, d, "Expected data map to be empty after reset")
 	})
 }
 
 func mapPointer(m map[any]any) uintptr {
 	return reflect.ValueOf(m).Pointer()
+}
+
+func lockedMapPointer(d *data) uintptr {
+	d.RLock()
+	defer d.RUnlock()
+	return mapPointer(d.Data)
+}
+
+func requireDataEmpty(t *testing.T, d *data, msg string) {
+	t.Helper()
+	d.RLock()
+	defer d.RUnlock()
+	require.Empty(t, d.Data, msg)
 }
 
 func TestData_ResetPreservesAllocation(t *testing.T) {
@@ -203,19 +216,19 @@ func TestData_ResetPreservesAllocation(t *testing.T) {
 		dataPool.Put(d)
 	})
 
-	originalPtr := mapPointer(d.Data)
+	originalPtr := lockedMapPointer(d)
 
 	d.Set("key1", "value1")
 	d.Set("key2", "value2")
-	require.Equal(t, originalPtr, mapPointer(d.Data), "Expected map pointer to stay constant after writes")
+	require.Equal(t, originalPtr, lockedMapPointer(d), "Expected map pointer to stay constant after writes")
 
 	d.Reset()
-	require.Empty(t, d.Data, "Expected data map to be empty after reset")
-	require.Equal(t, originalPtr, mapPointer(d.Data), "Expected reset to preserve underlying map")
+	requireDataEmpty(t, d, "Expected data map to be empty after reset")
+	require.Equal(t, originalPtr, lockedMapPointer(d), "Expected reset to preserve underlying map")
 
 	d.Set("key3", "value3")
 	require.Nil(t, d.Get("key1"), "Expected cleared key not to leak after reset")
-	require.Equal(t, originalPtr, mapPointer(d.Data), "Expected map pointer to remain stable after further writes")
+	require.Equal(t, originalPtr, lockedMapPointer(d), "Expected map pointer to remain stable after further writes")
 }
 
 func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
@@ -240,17 +253,17 @@ func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
 	first.Set("key2", "value2")
 	first.Reset()
 
-	originalPtr := mapPointer(first.Data)
+	originalPtr := lockedMapPointer(first)
 	dataPool.Put(first)
 
 	var reused *data
 	for i := 0; i < 5; i++ {
 		candidate := acquireWithCleanup()
-		if mapPointer(candidate.Data) == originalPtr {
+		if lockedMapPointer(candidate) == originalPtr {
 			reused = candidate
 			break
 		}
-		require.Empty(t, candidate.Data, "Expected pooled data to be empty when new instance is returned")
+		requireDataEmpty(t, candidate, "Expected pooled data to be empty when new instance is returned")
 		require.Nil(t, candidate.Get("key2"), "Expected no leakage of prior entries on alternate pooled instance")
 	}
 
@@ -259,8 +272,8 @@ func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
 		return
 	}
 
-	require.Equal(t, originalPtr, mapPointer(reused.Data), "Expected pooled data to reuse cleared map")
-	require.Empty(t, reused.Data, "Expected pooled data to be empty after reuse")
+	require.Equal(t, originalPtr, lockedMapPointer(reused), "Expected pooled data to reuse cleared map")
+	requireDataEmpty(t, reused, "Expected pooled data to be empty after reuse")
 	require.Nil(t, reused.Get("key2"), "Expected no leakage of prior entries on reuse")
 
 	reused.Set("key4", "value4")

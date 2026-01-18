@@ -464,9 +464,9 @@ func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
 			if before, _, found := strings.Cut(host, ","); found {
-				return before
+				return utils.TrimSpace(before)
 			}
-			return host
+			return utils.TrimSpace(host)
 		}
 	}
 	return r.c.app.toString(r.c.fasthttp.Request.URI().Host())
@@ -782,26 +782,26 @@ func (r *DefaultReq) Scheme() string {
 			continue // Neither "X-Forwarded-" nor "X-Url-Scheme"
 		}
 		switch {
-		case bytes.HasPrefix(key, xForwardedPrefix):
-			if bytes.Equal(key, xForwardedProtoBytes) ||
-				bytes.Equal(key, xForwardedProtocolBytes) {
+		case utils.EqualFold(key[:len(xForwardedPrefix)], xForwardedPrefix):
+			if utils.EqualFold(key, xForwardedProtoBytes) ||
+				utils.EqualFold(key, xForwardedProtocolBytes) {
 				v := app.toString(val)
 				if before, _, found := strings.Cut(v, ","); found {
-					scheme = before
+					scheme = utils.TrimSpace(before)
 				} else {
-					scheme = v
+					scheme = utils.TrimSpace(v)
 				}
-			} else if bytes.Equal(key, xForwardedSslBytes) && bytes.Equal(val, onBytes) {
+			} else if utils.EqualFold(key, xForwardedSslBytes) && utils.EqualFold(val, onBytes) {
 				scheme = schemeHTTPS
 			}
 
-		case bytes.Equal(key, xURLSchemeBytes):
-			scheme = app.toString(val)
+		case utils.EqualFold(key, xURLSchemeBytes):
+			scheme = utils.TrimSpace(app.toString(val))
 		default:
 			continue
 		}
 	}
-	return scheme
+	return utils.ToLower(utils.TrimSpace(scheme))
 }
 
 // Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
