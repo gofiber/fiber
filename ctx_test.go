@@ -7869,6 +7869,44 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 	})
 }
 
+func Test_Ctx_AbandonSkipsReleaseCtx(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // controlled test setup
+	ctx.route = &Route{}
+
+	t.Cleanup(func() {
+		ctx.ForceRelease()
+	})
+
+	require.False(t, ctx.IsAbandoned())
+
+	ctx.Abandon()
+	require.True(t, ctx.IsAbandoned())
+
+	app.ReleaseCtx(ctx)
+
+	require.True(t, ctx.IsAbandoned(), "ReleaseCtx must not pool abandoned contexts")
+	require.NotNil(t, ctx.fasthttp, "ReleaseCtx should not reset fasthttp on abandoned ctx")
+	require.NotNil(t, ctx.route, "ReleaseCtx should not reset route on abandoned ctx")
+}
+
+func Test_Ctx_ForceReleaseClearsAbandon(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // controlled test setup
+	ctx.route = &Route{}
+
+	ctx.Abandon()
+	ctx.ForceRelease()
+
+	require.False(t, ctx.IsAbandoned(), "ForceRelease should clear abandon flag")
+	require.Nil(t, ctx.fasthttp, "ForceRelease should release fasthttp reference")
+	require.Nil(t, ctx.route, "ForceRelease should reset route before pooling")
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_IsProxyTrusted -benchmem -count=4
 func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario without trusted proxy check

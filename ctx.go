@@ -679,7 +679,7 @@ func (c *DefaultCtx) release() {
 		c.redirect = nil
 	}
 	c.skipNonUseRoutes = false
-	c.abandoned.Store(false)
+	// performance: no need for using c.abandoned.Store(false) here, as it is always set to false when it was true in ForceRelease
 	c.handlerCtx = nil
 	c.DefaultReq.release()
 	c.DefaultRes.release()
