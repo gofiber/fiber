@@ -464,9 +464,9 @@ func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
 			if before, _, found := strings.Cut(host, ","); found {
-				return before
+				return utils.TrimSpace(before)
 			}
-			return host
+			return utils.TrimSpace(host)
 		}
 	}
 	return r.c.app.toString(r.c.fasthttp.Request.URI().Host())
