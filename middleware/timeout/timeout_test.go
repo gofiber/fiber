@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 var (
@@ -61,7 +62,7 @@ func TestTimeout_Exceeded(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// This handler listens for context cancellation and returns early when timeout occurs.
+	// This handler listens for context cancelation and returns early when timeout occurs.
 	app.Get("/slow", New(func(c fiber.Ctx) error {
 		if err := sleepWithContext(c.Context(), 200*time.Millisecond, context.DeadlineExceeded); err != nil {
 			return err
@@ -76,11 +77,11 @@ func TestTimeout_Exceeded(t *testing.T) {
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Expected 408 Request Timeout")
 	// Handler should return shortly after timeout (not wait full 200ms)
-	require.Less(t, elapsed, 150*time.Millisecond, "handler should return early on context cancellation")
+	require.Less(t, elapsed, 150*time.Millisecond, "handler should return early on context cancelation")
 }
 
 // TestTimeout_ContextPropagation verifies that the timeout context is properly
-// passed to the handler so it can detect cancellation (Issue #3671).
+// passed to the handler so it can detect cancelation (Issue #3671).
 func TestTimeout_ContextPropagation(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -88,7 +89,7 @@ func TestTimeout_ContextPropagation(t *testing.T) {
 	var contextCanceled atomic.Bool
 
 	app.Get("/context-aware", New(func(c fiber.Ctx) error {
-		// Handler that properly listens for context cancellation
+		// Handler that properly listens for context cancelation
 		select {
 		case <-c.Context().Done():
 			contextCanceled.Store(true)
@@ -103,7 +104,7 @@ func TestTimeout_ContextPropagation(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-	require.True(t, contextCanceled.Load(), "Handler should have detected context cancellation")
+	require.True(t, contextCanceled.Load(), "Handler should have detected context cancelation")
 }
 
 // TestTimeout_HandlerReturnsEarlyOnCancel verifies that handlers checking context
@@ -296,7 +297,8 @@ func TestIsTimeoutError_WithOnTimeout(t *testing.T) {
 	require.EqualError(t, err, "handled")
 }
 
-// TestTimeout_HandlerHung_ReturnsWithinTimeout ensures we still respond when the handler never exits.
+// TestTimeout_HandlerHung_ReturnsWithinTimeout ensures we still respond when the handler never exits
+// (when GracePeriod is configured).
 func TestTimeout_HandlerHung_ReturnsWithinTimeout(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -304,11 +306,11 @@ func TestTimeout_HandlerHung_ReturnsWithinTimeout(t *testing.T) {
 	block := make(chan struct{})
 	handlerDone := make(chan struct{})
 	app.Get("/hung", New(func(_ fiber.Ctx) error {
-		// Intentionally ignore context cancellation to simulate a stuck handler.
+		// Intentionally ignore context cancelation to simulate a stuck handler.
 		defer close(handlerDone)
-		<-block // Ignore context cancellation to simulate a hung handler
+		<-block // Ignore context cancelation to simulate a hung handler
 		return nil
-	}, Config{Timeout: 20 * time.Millisecond}))
+	}, Config{Timeout: 20 * time.Millisecond, GracePeriod: 50 * time.Millisecond}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/hung", http.NoBody)
 	start := time.Now()
@@ -344,18 +346,18 @@ func TestTimeout_PanicAfterTimeout(t *testing.T) {
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 }
 
-// TestTimeout_GracePeriodCapped ensures the grace period is bounded to avoid long waits.
-func TestTimeout_GracePeriodCapped(t *testing.T) {
+// TestTimeout_GracePeriodConfigured tests that a configured GracePeriod is respected.
+func TestTimeout_GracePeriodConfigured(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
 	block := make(chan struct{})
-	app.Get("/grace-cap", New(func(_ fiber.Ctx) error {
-		<-block // ignore cancellation to force timeout path
+	app.Get("/grace-configured", New(func(_ fiber.Ctx) error {
+		<-block // ignore cancelation to force timeout path
 		return nil
-	}, Config{Timeout: time.Nanosecond}))
+	}, Config{Timeout: 10 * time.Millisecond, GracePeriod: 30 * time.Millisecond}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/grace-cap", http.NoBody)
+	req := httptest.NewRequest(fiber.MethodGet, "/grace-configured", http.NoBody)
 	start := time.Now()
 	resp, err := app.Test(req)
 	elapsed := time.Since(start)
@@ -363,30 +365,40 @@ func TestTimeout_GracePeriodCapped(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-	require.Less(t, elapsed, 300*time.Millisecond, "grace period should be capped")
+	// Should take roughly Timeout + GracePeriod (10ms + 30ms = ~40ms)
+	require.GreaterOrEqual(t, elapsed, 30*time.Millisecond, "should wait at least GracePeriod")
+	require.Less(t, elapsed, 150*time.Millisecond, "should not wait too long")
 }
 
-// TestTimeout_GracePeriodUpperBound ensures large timeouts do not add an excessive grace period.
-func TestTimeout_GracePeriodUpperBound(t *testing.T) {
+// TestTimeout_DefaultWaitsForHandler ensures that by default (GracePeriod == 0)
+// the middleware waits indefinitely for the handler to finish.
+func TestTimeout_DefaultWaitsForHandler(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	block := make(chan struct{})
-	app.Get("/grace-max", New(func(_ fiber.Ctx) error {
-		<-block // ignore cancellation to force timeout path
-		return nil
-	}, Config{Timeout: 400 * time.Millisecond}))
+	handlerDelay := 100 * time.Millisecond
+	app.Get("/wait-default", New(func(c fiber.Ctx) error {
+		// Handler that takes longer than timeout but respects context cancelation
+		select {
+		case <-c.Context().Done():
+			// Simulate some cleanup time after cancelation
+			time.Sleep(handlerDelay)
+			return c.Context().Err()
+		case <-time.After(500 * time.Millisecond):
+			return c.SendString("completed")
+		}
+	}, Config{Timeout: 20 * time.Millisecond})) // No GracePeriod = wait indefinitely
 
-	req := httptest.NewRequest(fiber.MethodGet, "/grace-max", http.NoBody)
+	req := httptest.NewRequest(fiber.MethodGet, "/wait-default", http.NoBody)
 	start := time.Now()
 	resp, err := app.Test(req)
 	elapsed := time.Since(start)
-	close(block)
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-	require.GreaterOrEqual(t, elapsed, 400*time.Millisecond, "should wait for timeout before grace period")
-	require.Less(t, elapsed, 700*time.Millisecond, "grace period should be capped at 100ms")
+	// Should wait for handler to finish (timeout + handlerDelay)
+	require.GreaterOrEqual(t, elapsed, handlerDelay, "should wait for handler to finish")
+	require.Less(t, elapsed, 300*time.Millisecond, "should not wait too long")
 }
 
 // TestTimeout_Next verifies the Next function skips the middleware.

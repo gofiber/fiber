@@ -23,14 +23,29 @@ type Config struct {
 	// Timeout defines the timeout duration for all routes.
 	// Optional. Default: 0 (no timeout)
 	Timeout time.Duration
+
+	// GracePeriod is the maximum time to wait for the handler to finish after
+	// a timeout occurs. If 0 (default), the middleware waits indefinitely for
+	// the handler to complete to avoid race conditions with Fiber's context
+	// pooling. If > 0, the middleware returns after GracePeriod even if the
+	// handler is still running.
+	//
+	// Warning: Setting GracePeriod > 0 may cause race conditions if the handler
+	// continues to access the Fiber context after the middleware returns.
+	// Only use this if you understand the implications and your handlers are
+	// designed to handle context cancelation properly.
+	//
+	// Optional. Default: 0 (wait indefinitely)
+	GracePeriod time.Duration
 }
 
 // ConfigDefault is the default configuration.
 var ConfigDefault = Config{
-	Next:      nil,
-	Timeout:   0,
-	OnTimeout: nil,
-	Errors:    nil,
+	Next:        nil,
+	Timeout:     0,
+	OnTimeout:   nil,
+	Errors:      nil,
+	GracePeriod: 0,
 }
 
 // configDefault returns the first Config value or ConfigDefault.
@@ -52,6 +67,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
+	}
+	if cfg.GracePeriod < 0 {
+		cfg.GracePeriod = ConfigDefault.GracePeriod
 	}
 	return cfg
 }

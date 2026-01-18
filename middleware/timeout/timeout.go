@@ -14,9 +14,9 @@ import (
 // and return early. If the handler returns a timeout-related error or the context
 // deadline is exceeded, fiber.ErrRequestTimeout is returned.
 //
-// Note: The middleware waits for the handler to complete to avoid race conditions
-// with Fiber's context pooling. Handlers should check c.Context().Done() to
-// return early when a timeout occurs.
+// Note: By default (GracePeriod == 0), the middleware waits for the handler to
+// complete to avoid race conditions with Fiber's context pooling. Handlers should
+// check c.Context().Done() to return early when a timeout occurs.
 func New(h fiber.Handler, config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
@@ -43,7 +43,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		done := make(chan error, 1)
 		panicChan := make(chan any, 1)
 
-		// Run handler in goroutine so it can be interrupted by context cancellation
+		// Run handler in goroutine so it can be interrupted by context cancelation
 		go func() {
 			defer func() {
 				if p := recover(); p != nil {
@@ -54,9 +54,6 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		}()
 
 		// Wait for handler completion, panic, or timeout.
-		// We still try to wait for the handler to finish to avoid races with Fiber's
-		// context pooling, but we bound that wait so a hung handler cannot block
-		// this middleware forever.
 		var err error
 		var panicked bool
 		var panicVal any
@@ -74,25 +71,27 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		}
 
 		if timedOut && !panicked && err == nil {
-			// Give the handler a bounded grace period to exit after cancellation.
-			// This avoids blocking forever on a misbehaving handler, while still
-			// reducing the chance of racing with context reuse.
-			grace := cfg.Timeout / 2
-			switch {
-			case grace <= 0:
-				grace = 50 * time.Millisecond
-			case grace > 100*time.Millisecond:
-				grace = 100 * time.Millisecond
-			default:
-			}
-			select {
-			case err = <-done:
-				// Handler finished after timeout
-			case panicVal = <-panicChan:
-				panicked = true
-			case <-time.After(grace):
-				// Handler still stuck; proceed with timeout response.
-				err = context.DeadlineExceeded
+			// Wait for the handler to finish to avoid race conditions with Fiber's
+			// context pooling. If GracePeriod is configured, limit the wait time.
+			if cfg.GracePeriod > 0 {
+				select {
+				case err = <-done:
+					// Handler finished after timeout
+				case panicVal = <-panicChan:
+					panicked = true
+				case <-time.After(cfg.GracePeriod):
+					// Handler still stuck; proceed with timeout response.
+					// Warning: This may cause race conditions.
+					err = context.DeadlineExceeded
+				}
+			} else {
+				// GracePeriod == 0: wait indefinitely for handler to finish (race-free)
+				select {
+				case err = <-done:
+					// Handler finished after timeout
+				case panicVal = <-panicChan:
+					panicked = true
+				}
 			}
 		}
 
