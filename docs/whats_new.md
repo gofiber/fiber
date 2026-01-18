@@ -1686,7 +1686,7 @@ fiber migrate --to v3.0.0-rc.3
   - [CSRF](#csrf-1)
   - [Filesystem](#filesystem-1)
   - [EnvVar](#envvar-1)
-  - [Favicon](#favicon-1)
+  - [Favicon](#favicon)
   - [Healthcheck](#healthcheck-1)
   - [Monitor](#monitor-1)
   - [Proxy](#proxy-1)
