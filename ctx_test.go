@@ -3730,6 +3730,14 @@ func Test_Ctx_Scheme_HeaderNormalization(t *testing.T) {
 	c.Request().Header.Set("x-url-scheme", " HTTPS ")
 	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
+
+	c.Request().Header.Set("X-FORWARDED-SSL", " HTTPS ")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set("x-forwarded-ssl", " HTTPS ")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
