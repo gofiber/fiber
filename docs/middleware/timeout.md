@@ -19,7 +19,7 @@ handler to finish. This is achieved through Fiber's **Abandon mechanism**:
 4. A background cleanup goroutine waits for the handler to finish and performs context cleanup
 
 Handlers can detect the timeout by listening on `c.Context().Done()` and return early.
-This is the recommended pattern for cooperative cancelation.
+This is the recommended pattern for cooperative cancellation.
 
 If a handler panics, the middleware catches it and returns `500 Internal Server Error`.
 
