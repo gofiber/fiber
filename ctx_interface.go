@@ -83,7 +83,9 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 
 // ReleaseCtx releases the ctx back into the pool.
 // If the context was abandoned (e.g., by timeout middleware), this is a no-op.
-// The abandoning code must call ForceRelease when the handler finishes.
+// Call ForceRelease only when you can guarantee no goroutines (including the
+// requestHandler and ErrorHandler) still touch the context; the timeout
+// middleware intentionally leaves abandoned contexts unreleased to avoid races.
 func (app *App) ReleaseCtx(c CustomCtx) {
 	if c.IsAbandoned() {
 		return

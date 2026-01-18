@@ -23,6 +23,15 @@ This is the recommended pattern for cooperative cancellation.
 
 If a handler panics, the middleware catches it and returns `500 Internal Server Error`.
 
+## Known limitations
+
+- Timed-out requests abandon their `fiber.Ctx` to avoid data races with the core
+  request handler (including the `ErrorHandler`). These contexts are **not**
+  returned to the pool, so each timed-out request leaks a context. Calling
+  `ForceRelease` is only safe if you can guarantee that no goroutine (including
+  Fiber internals) will touch the context anymore; the timeout middleware
+  intentionally does not call it.
+
 :::caution
 `timeout.New` wraps your final handler and can't be added with `app.Use` or
 used in a middleware chain. Register it per route and avoid calling

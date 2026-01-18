@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -234,6 +235,10 @@ func TestTimeout_CustomHandler(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
 	require.Equal(t, int32(1), called.Load())
+
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, readErr)
+	require.JSONEq(t, `{"error":"timeout"}`, string(body))
 }
 
 // TestTimeout_PanicInHandler verifies that panics in the handler return 500.
@@ -418,6 +423,7 @@ func TestTimeout_AbandonMechanism(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(ctx.ForceRelease)
 
 	// Initially not abandoned
 	require.False(t, ctx.IsAbandoned())

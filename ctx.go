@@ -691,8 +691,11 @@ func (c *DefaultCtx) release() {
 // This is used by the timeout middleware to return immediately while the
 // handler goroutine continues using the context safely.
 //
-// After calling Abandon, the caller MUST eventually call ForceRelease when
-// the handler goroutine finishes, to return resources to the pool.
+// Only call ForceRelease after Abandon if you can guarantee no other goroutine
+// (including Fiber's requestHandler and ErrorHandler) will touch the context.
+// The timeout middleware intentionally does NOT call ForceRelease to avoid
+// races, which means timed-out requests leak their contexts until a safe
+// reclamation strategy exists.
 func (c *DefaultCtx) Abandon() {
 	c.abandoned.Store(true)
 }
@@ -703,8 +706,9 @@ func (c *DefaultCtx) IsAbandoned() bool {
 }
 
 // ForceRelease releases an abandoned context back to the pool.
-// This MUST only be called after the handler goroutine has completely finished
-// using this context. Calling it while the handler is still running causes races.
+// This MUST only be called after all goroutines (including requestHandler and
+// ErrorHandler) have completely finished using this context. Calling it while
+// any goroutine is still running causes races.
 func (c *DefaultCtx) ForceRelease() {
 	c.abandoned.Store(false)
 	c.app.ReleaseCtx(c)

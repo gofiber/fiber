@@ -3,8 +3,10 @@ package timeout
 import (
 	"context"
 	"errors"
+	"runtime/debug"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // New enforces a timeout for each incoming request. It replaces the request's
@@ -42,6 +44,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		go func() {
 			defer func() {
 				if p := recover(); p != nil {
+					log.Errorw("panic recovered in timeout handler", "panic", p, "stack", string(debug.Stack()))
 					select {
 					case panicChan <- p:
 					default:
@@ -65,16 +68,16 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			ctx.SetContext(parent)
 			return handleResult(err, ctx, cfg)
 
-		case p := <-panicChan:
+		case <-panicChan:
 			// Handler panicked - cleanup and return error
 			cancel()
 			ctx.SetContext(parent)
-			_ = p // TODO: consider logging
 			return fiber.ErrInternalServerError
 
 		case <-tCtx.Done():
 			// Timeout occurred - abandon context and return immediately
-			// The cleanup goroutine will release ctx when handler finishes
+			// The cleanup goroutine will cancel the timeout context once the handler finishes;
+			// the abandoned fiber.Ctx stays out of the pool.
 			return handleTimeout(parent, ctx, cancel, done, panicChan, cfg)
 		}
 	}
@@ -107,15 +110,29 @@ func handleTimeout(
 	// if timeoutResponse is set).
 	ctx.Abandon()
 
+	// Prepare the timeout response before marking the RequestCtx as timed out so
+	// custom OnTimeout handlers can shape the response body.
+	timeoutErr := invokeOnTimeout(ctx, cfg)
+
+	// If no OnTimeout handler is configured or the response is still the default
+	// 200/empty, ensure a sensible timeout response is captured for fasthttp to send.
+	if cfg.OnTimeout == nil || (ctx.Response().StatusCode() == fiber.StatusOK && len(ctx.Response().Body()) == 0) {
+		ctx.Response().SetStatusCode(fiber.StatusRequestTimeout)
+		if len(ctx.Response().Body()) == 0 {
+			ctx.Response().SetBodyString(fiber.ErrRequestTimeout.Message)
+		}
+	}
+
 	// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
-	// for the response. This prevents race conditions where the handler goroutine
-	// still accesses the RequestCtx while fasthttp tries to reset it.
-	ctx.RequestCtx().TimeoutErrorWithCode("Request Timeout", fiber.StatusRequestTimeout)
+	// for the response and send the captured payload (either default or from
+	// OnTimeout). All ctx mutations after this call are ignored by fasthttp.
+	ctx.RequestCtx().TimeoutErrorWithResponse(&ctx.RequestCtx().Response)
 
 	// Spawn cleanup goroutine that waits for handler to finish.
 	// This only does context cleanup (cancel + restore parent), NOT ctx release.
 	// The fiber.Ctx is intentionally NOT released to avoid races with requestHandler
 	// which may still access ctx (e.g., ErrorHandler) after this function returns.
+	// ForceRelease cannot be called safely here for the same reason.
 	go func() {
 		select {
 		case <-done:
@@ -134,7 +151,7 @@ func handleTimeout(
 		// for non-timeout cases.
 	}()
 
-	return invokeOnTimeout(ctx, cfg)
+	return timeoutErr
 }
 
 // invokeOnTimeout calls the OnTimeout handler if configured
