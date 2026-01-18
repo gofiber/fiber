@@ -2374,6 +2374,58 @@ func Test_Ctx_Host_TrustedProxy(t *testing.T) {
 		require.Equal(t, "google1.com", c.Host())
 		app.ReleaseCtx(c)
 	}
+	t.Run("TrimWhitespaceFromForwardedHost", func(t *testing.T) {
+		t.Parallel()
+		testCases := []struct {
+			name          string
+			forwardedHost string
+			expectedHost  string
+		}{
+			{
+				name:          "leading whitespace with comma",
+				forwardedHost: " example.com, proxy1",
+				expectedHost:  "example.com",
+			},
+			{
+				name:          "trailing whitespace with comma",
+				forwardedHost: "example.com , proxy1",
+				expectedHost:  "example.com",
+			},
+			{
+				name:          "leading and trailing whitespace with comma",
+				forwardedHost: "  example.com  , proxy1",
+				expectedHost:  "example.com",
+			},
+			{
+				name:          "no whitespace with comma",
+				forwardedHost: "example.com, proxy1",
+				expectedHost:  "example.com",
+			},
+			{
+				name:          "single value with whitespace",
+				forwardedHost: "  example.com  ",
+				expectedHost:  "example.com",
+			},
+			{
+				name:          "leading comma",
+				forwardedHost: ",example.com",
+				expectedHost:  "",
+			},
+		}
+
+		app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0", "0.8.0.1"}}})
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				defer app.ReleaseCtx(c)
+				c.Request().SetRequestURI("http://google.com/test")
+				c.Request().Header.Set(HeaderXForwardedHost, tc.forwardedHost)
+				require.Equal(t, tc.expectedHost, c.Host())
+			})
+		}
+	})
 }
 
 // go test -run Test_Ctx_Host_TrustedProxyRange
@@ -3649,6 +3701,39 @@ func Test_Ctx_Scheme(t *testing.T) {
 	c.Request().Header.Reset()
 
 	require.Equal(t, schemeHTTP, c.Scheme())
+}
+
+// go test -run Test_Ctx_Scheme_HeaderNormalization
+func Test_Ctx_Scheme_HeaderNormalization(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+
+	freq := &fasthttp.RequestCtx{}
+	freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+
+	c := app.AcquireCtx(freq)
+
+	c.Request().Header.Set("x-forwarded-proto", " HTTPS , http")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set("X-FORWARDED-PROTOCOL", " HTTPS")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set("x-url-scheme", " HTTPS ")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set("x-Forwarded-ProToCol", " HTTPS ")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
