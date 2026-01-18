@@ -1059,7 +1059,6 @@ func Test_Session_Cookie_SameSite(t *testing.T) {
 // go test -run Test_Session_Cookie_In_Response
 // Regression: https://github.com/gofiber/fiber/pull/1191
 func Test_Session_Cookie_In_Middleware_Chain(t *testing.T) {
-	t.Parallel()
 	store := NewStore()
 	app := fiber.New()
 
@@ -1424,7 +1423,6 @@ func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 
 // go test -v -race -run Test_Session_Concurrency ./...
 func Test_Session_Concurrency(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 	store := NewStore()
 
