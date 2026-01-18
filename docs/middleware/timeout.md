@@ -4,17 +4,22 @@ id: timeout
 
 # Timeout
 
-The timeout middleware aborts handlers that run too long. It wraps them with
+The timeout middleware enforces a deadline on handler execution. It wraps handlers with
 `context.WithTimeout`, exposes the derived context through `c.Context()`, and
 returns `408 Request Timeout` when the deadline is exceeded.
 
-Handlers can detect the timeout by listening on `c.Context().Done()` and return
-early. When the handler returns after a timeout (either by checking the context
-or returning a timeout-related error), the middleware returns `408 Request Timeout`.
+## How It Works
 
-The middleware waits for the handler to complete to avoid race conditions with
-Fiber's context pooling. For fast timeouts, handlers should check `c.Context().Done()`
-and return early when the context is canceled.
+When a timeout occurs, the middleware **returns immediately** without waiting for the
+handler to finish. This is achieved through Fiber's **Abandon mechanism**:
+
+1. The handler runs in a goroutine with a timeout context
+2. On timeout, the middleware marks the context as "abandoned" and returns `408` immediately
+3. The handler goroutine can continue safely (e.g., for cleanup) without blocking the response
+4. A background cleanup goroutine waits for the handler to finish and performs context cleanup
+
+Handlers can detect the timeout by listening on `c.Context().Done()` and return early.
+This is the recommended pattern for cooperative cancellation.
 
 If a handler panics, the middleware catches it and returns `500 Internal Server Error`.
 
@@ -94,17 +99,6 @@ curl -i http://localhost:3000/sleep/3000   # returns 408 Request Timeout
 | Timeout     | `time.Duration`    | Timeout duration for requests. `0` or a negative value disables the timeout. | `0`    |
 | OnTimeout   | `fiber.Handler`    | Handler executed when a timeout occurs. Defaults to returning `fiber.ErrRequestTimeout`. | `nil`  |
 | Errors      | `[]error`          | Custom errors treated as timeout errors.                            | `nil`  |
-| GracePeriod | `time.Duration`    | Maximum time to wait for handler after timeout. See note below.      | `0`    |
-
-### GracePeriod behavior
-
-By default (`GracePeriod: 0`), the middleware waits indefinitely for the handler to finish after a timeout occurs. This ensures no race conditions with Fiber's context pooling, but requires handlers to check `c.Context().Done()` and return early.
-
-If you set `GracePeriod > 0`, the middleware returns after the grace period even if the handler is still running. This allows faster responses but may cause race conditions if the handler continues to access the Fiber context.
-
-:::caution
-Setting `GracePeriod > 0` may cause race conditions if your handler doesn't properly handle context cancellation. Only use this if you understand the implications.
-:::
 
 ### Use with a custom error
 

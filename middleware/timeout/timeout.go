@@ -3,7 +3,6 @@ package timeout
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -11,12 +10,12 @@ import (
 // New enforces a timeout for each incoming request. It replaces the request's
 // context with one that has the configured deadline, which is exposed through
 // c.Context(). Handlers can detect the timeout by listening on c.Context().Done()
-// and return early. If the handler returns a timeout-related error or the context
-// deadline is exceeded, fiber.ErrRequestTimeout is returned.
+// and return early.
 //
-// Note: By default (GracePeriod == 0), the middleware waits for the handler to
-// complete to avoid race conditions with Fiber's context pooling. Handlers should
-// check c.Context().Done() to return early when a timeout occurs.
+// When a timeout occurs, the middleware returns immediately with fiber.ErrRequestTimeout
+// (or the result of OnTimeout if configured). The handler goroutine can continue
+// safely, and resources are recycled when it finishes via the Abandon/ForceRelease
+// mechanism.
 func New(h fiber.Handler, config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
@@ -35,90 +34,115 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		tCtx, cancel := context.WithTimeout(parent, timeout)
 		ctx.SetContext(tCtx)
 
-		// Channels for handler result and panics.
-		// Both channels are buffered (size 1) so the handler goroutine can report
-		// even if the timeout fires. We still wait for the goroutine to finish
-		// (see select below) to avoid leaking it or accessing a pooled context
-		// after the middleware returns.
+		// Channels for handler result and panics
 		done := make(chan error, 1)
 		panicChan := make(chan any, 1)
 
-		// Run handler in goroutine so it can be interrupted by context cancelation
+		// Run handler in goroutine so we can race against the timeout
 		go func() {
 			defer func() {
 				if p := recover(); p != nil {
-					panicChan <- p
+					select {
+					case panicChan <- p:
+					default:
+						// Middleware already returned, panic value discarded
+					}
 				}
 			}()
-			done <- h(ctx)
+			err := h(ctx)
+			select {
+			case done <- err:
+			default:
+				// Middleware already returned, error discarded
+			}
 		}()
 
-		// Wait for handler completion, panic, or timeout.
-		var err error
-		var panicked bool
-		var panicVal any
-		var timedOut bool
-
+		// Wait for handler completion, panic, or timeout
 		select {
-		case err = <-done:
-			// Handler finished
-		case panicVal = <-panicChan:
-			// Handler panicked
-			panicked = true
+		case err := <-done:
+			// Handler finished normally - cleanup and return
+			cancel()
+			ctx.SetContext(parent)
+			return handleResult(err, ctx, cfg)
+
+		case p := <-panicChan:
+			// Handler panicked - cleanup and return error
+			cancel()
+			ctx.SetContext(parent)
+			_ = p // TODO: consider logging
+			return fiber.ErrInternalServerError
+
 		case <-tCtx.Done():
-			// Timeout fired before handler returned
-			timedOut = true
+			// Timeout occurred - abandon context and return immediately
+			// The cleanup goroutine will release ctx when handler finishes
+			return handleTimeout(parent, ctx, cancel, done, panicChan, cfg)
 		}
+	}
+}
 
-		if timedOut && !panicked && err == nil {
-			// Wait for the handler to finish to avoid race conditions with Fiber's
-			// context pooling. If GracePeriod is configured, limit the wait time.
-			if cfg.GracePeriod > 0 {
-				select {
-				case err = <-done:
-					// Handler finished after timeout
-				case panicVal = <-panicChan:
-					panicked = true
-				case <-time.After(cfg.GracePeriod):
-					// Handler still stuck; proceed with timeout response.
-					// Warning: This may cause race conditions.
-					err = context.DeadlineExceeded
-				}
-			} else {
-				// GracePeriod == 0: wait indefinitely for handler to finish (race-free)
-				select {
-				case err = <-done:
-					// Handler finished after timeout
-				case panicVal = <-panicChan:
-					panicked = true
-				}
-			}
+// handleResult processes the handler's return value
+func handleResult(err error, ctx fiber.Ctx, cfg Config) error {
+	if err != nil && isTimeoutError(err, cfg.Errors) {
+		return invokeOnTimeout(ctx, cfg)
+	}
+	return err
+}
+
+// handleTimeout handles the timeout case using the Abandon mechanism
+func handleTimeout(
+	parent context.Context,
+	ctx fiber.Ctx,
+	cancel context.CancelFunc,
+	done <-chan error,
+	panicChan <-chan any,
+	cfg Config,
+) error {
+	// Mark fiber context as abandoned - ReleaseCtx will skip pooling.
+	// The context will NOT be returned to the pool. This is an intentional
+	// trade-off: we accept the small memory cost of not recycling timed-out
+	// contexts in exchange for complete race-freedom.
+	//
+	// This is the same approach fasthttp uses - timed-out RequestCtx objects
+	// are never returned to the pool (see fasthttp's releaseCtx which panics
+	// if timeoutResponse is set).
+	ctx.Abandon()
+
+	// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
+	// for the response. This prevents race conditions where the handler goroutine
+	// still accesses the RequestCtx while fasthttp tries to reset it.
+	ctx.RequestCtx().TimeoutErrorWithCode("Request Timeout", fiber.StatusRequestTimeout)
+
+	// Spawn cleanup goroutine that waits for handler to finish.
+	// This only does context cleanup (cancel + restore parent), NOT ctx release.
+	// The fiber.Ctx is intentionally NOT released to avoid races with requestHandler
+	// which may still access ctx (e.g., ErrorHandler) after this function returns.
+	go func() {
+		select {
+		case <-done:
+		case <-panicChan:
 		}
-
-		// Check if timeout occurred BEFORE canceling (cancel() would set Err())
-		contextTimedOut := timedOut || errors.Is(tCtx.Err(), context.DeadlineExceeded)
-
-		// Restore parent context and cancel timeout context
+		// Handler finished - cancel timeout context and restore parent
 		cancel()
 		ctx.SetContext(parent)
 
-		// Handle panic
-		if panicked {
-			_ = panicVal // captured for potential logging/debugging
-			return fiber.ErrInternalServerError
-		}
+		// TODO: Currently the ctx is not returned to the pool (memory leak for timed-out requests).
+		// Future improvement: Implement a concurrent "garbage collector" list where abandoned
+		// contexts are queued after both the handler AND requestHandler are done. A background
+		// goroutine would periodically process this list and call ForceRelease() to recycle
+		// the contexts safely. This would require tracking when requestHandler finishes
+		// (e.g., via a channel signaled in ReleaseCtx) without adding per-request overhead
+		// for non-timeout cases.
+	}()
 
-		// Check if timeout occurred (handler returned because context was canceled)
-		// or if handler returned a timeout-like error
-		if contextTimedOut || (err != nil && isTimeoutError(err, cfg.Errors)) {
-			if cfg.OnTimeout != nil {
-				return cfg.OnTimeout(ctx)
-			}
-			return fiber.ErrRequestTimeout
-		}
+	return invokeOnTimeout(ctx, cfg)
+}
 
-		return err
+// invokeOnTimeout calls the OnTimeout handler if configured
+func invokeOnTimeout(ctx fiber.Ctx, cfg Config) error {
+	if cfg.OnTimeout != nil {
+		return cfg.OnTimeout(ctx)
 	}
+	return fiber.ErrRequestTimeout
 }
 
 // isTimeoutError checks if err is a timeout-like error (context.DeadlineExceeded

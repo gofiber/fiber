@@ -13,6 +13,7 @@ import (
 	"mime/multipart"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -59,8 +60,8 @@ type DefaultCtx struct {
 	fasthttp         *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind             *Bind                // Default bind reference
 	redirect         *Redirect            // Default redirect reference
-	values           [maxParams]string    // Route parameter values
 	viewBindMap      Map                  // Default view map to bind template engine
+	values           [maxParams]string    // Route parameter values
 	baseURI          string               // HTTP base uri
 	pathOriginal     string               // Original HTTP path
 	flashMessages    redirectionMsgs      // Flash messages
@@ -70,6 +71,7 @@ type DefaultCtx struct {
 	indexRoute       int                  // Index of the current route
 	indexHandler     int                  // Index of the current handler
 	methodInt        int                  // HTTP method INT equivalent
+	abandoned        atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
 	matched          bool                 // Non use route matched
 	skipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
 }
@@ -661,7 +663,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.fasthttp.SetUserValue(userContextKey, nil)
 }
 
-// Release is a method to reset context fields when to use ReleaseCtx()
+// release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
@@ -677,9 +679,35 @@ func (c *DefaultCtx) release() {
 		c.redirect = nil
 	}
 	c.skipNonUseRoutes = false
+	c.abandoned.Store(false)
 	c.handlerCtx = nil
 	c.DefaultReq.release()
 	c.DefaultRes.release()
+}
+
+// Abandon marks this context as abandoned. An abandoned context will not be
+// returned to the pool when ReleaseCtx is called.
+//
+// This is used by the timeout middleware to return immediately while the
+// handler goroutine continues using the context safely.
+//
+// After calling Abandon, the caller MUST eventually call ForceRelease when
+// the handler goroutine finishes, to return resources to the pool.
+func (c *DefaultCtx) Abandon() {
+	c.abandoned.Store(true)
+}
+
+// IsAbandoned returns true if Abandon() was called on this context.
+func (c *DefaultCtx) IsAbandoned() bool {
+	return c.abandoned.Load()
+}
+
+// ForceRelease releases an abandoned context back to the pool.
+// This MUST only be called after the handler goroutine has completely finished
+// using this context. Calling it while the handler is still running causes races.
+func (c *DefaultCtx) ForceRelease() {
+	c.abandoned.Store(false)
+	c.app.ReleaseCtx(c)
 }
 
 func (c *DefaultCtx) renderExtensions(bind any) {

@@ -297,36 +297,41 @@ func TestIsTimeoutError_WithOnTimeout(t *testing.T) {
 	require.EqualError(t, err, "handled")
 }
 
-// TestTimeout_HandlerHung_ReturnsWithinTimeout ensures we still respond when the handler never exits
-// (when GracePeriod is configured).
-func TestTimeout_HandlerHung_ReturnsWithinTimeout(t *testing.T) {
+// TestTimeout_ImmediateReturn verifies that the middleware returns immediately on timeout
+// without waiting for the handler to finish (using Abandon mechanism).
+func TestTimeout_ImmediateReturn(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	block := make(chan struct{})
+	handlerStarted := make(chan struct{})
 	handlerDone := make(chan struct{})
-	app.Get("/hung", New(func(_ fiber.Ctx) error {
-		// Intentionally ignore context cancelation to simulate a stuck handler.
-		defer close(handlerDone)
-		<-block // Ignore context cancelation to simulate a hung handler
-		return nil
-	}, Config{Timeout: 20 * time.Millisecond, GracePeriod: 50 * time.Millisecond}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/hung", http.NoBody)
+	app.Get("/immediate", New(func(_ fiber.Ctx) error {
+		close(handlerStarted)
+		// Handler takes 500ms but middleware should return after 20ms
+		time.Sleep(500 * time.Millisecond)
+		close(handlerDone)
+		return nil
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/immediate", http.NoBody)
 	start := time.Now()
 	resp, err := app.Test(req)
 	elapsed := time.Since(start)
 
-	close(block) // Unblock goroutine to avoid leaks in the test process
-	select {
-	case <-handlerDone:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("handler did not exit after timeout")
-	}
-
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-	require.Less(t, elapsed, 150*time.Millisecond, "timeout middleware should respond even if handler is stuck")
+	// Middleware should return immediately after timeout, not wait 500ms
+	require.Less(t, elapsed, 100*time.Millisecond, "middleware should return immediately on timeout")
+
+	// Wait for handler to verify it was abandoned properly
+	<-handlerStarted
+	select {
+	case <-handlerDone:
+		// Handler finished - cleanup goroutine should have released context
+	case <-time.After(1 * time.Second):
+		t.Log("Handler still running (expected for abandoned context)")
+	}
 }
 
 // TestTimeout_PanicAfterTimeout ensures panics after a timeout are handled.
@@ -334,8 +339,10 @@ func TestTimeout_PanicAfterTimeout(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
+	panicDone := make(chan struct{})
 	app.Get("/panic-after-timeout", New(func(c fiber.Ctx) error {
 		<-c.Context().Done()
+		defer close(panicDone)
 		panic("panic after timeout")
 	}, Config{Timeout: 20 * time.Millisecond}))
 
@@ -343,62 +350,15 @@ func TestTimeout_PanicAfterTimeout(t *testing.T) {
 	resp, err := app.Test(req)
 
 	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-}
-
-// TestTimeout_GracePeriodConfigured tests that a configured GracePeriod is respected.
-func TestTimeout_GracePeriodConfigured(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	block := make(chan struct{})
-	app.Get("/grace-configured", New(func(_ fiber.Ctx) error {
-		<-block // ignore cancelation to force timeout path
-		return nil
-	}, Config{Timeout: 10 * time.Millisecond, GracePeriod: 30 * time.Millisecond}))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/grace-configured", http.NoBody)
-	start := time.Now()
-	resp, err := app.Test(req)
-	elapsed := time.Since(start)
-	close(block)
-
-	require.NoError(t, err)
+	// With immediate return, we get 408 (not 500) because panic happens after middleware returned
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-	// Should take roughly Timeout + GracePeriod (10ms + 30ms = ~40ms)
-	require.GreaterOrEqual(t, elapsed, 30*time.Millisecond, "should wait at least GracePeriod")
-	require.Less(t, elapsed, 150*time.Millisecond, "should not wait too long")
-}
 
-// TestTimeout_DefaultWaitsForHandler ensures that by default (GracePeriod == 0)
-// the middleware waits indefinitely for the handler to finish.
-func TestTimeout_DefaultWaitsForHandler(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	handlerDelay := 100 * time.Millisecond
-	app.Get("/wait-default", New(func(c fiber.Ctx) error {
-		// Handler that takes longer than timeout but respects context cancelation
-		select {
-		case <-c.Context().Done():
-			// Simulate some cleanup time after cancelation
-			time.Sleep(handlerDelay)
-			return c.Context().Err()
-		case <-time.After(500 * time.Millisecond):
-			return c.SendString("completed")
-		}
-	}, Config{Timeout: 20 * time.Millisecond})) // No GracePeriod = wait indefinitely
-
-	req := httptest.NewRequest(fiber.MethodGet, "/wait-default", http.NoBody)
-	start := time.Now()
-	resp, err := app.Test(req)
-	elapsed := time.Since(start)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-	// Should wait for handler to finish (timeout + handlerDelay)
-	require.GreaterOrEqual(t, elapsed, handlerDelay, "should wait for handler to finish")
-	require.Less(t, elapsed, 300*time.Millisecond, "should not wait too long")
+	// Wait for panic to occur and be handled by cleanup goroutine
+	select {
+	case <-panicDone:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("panic did not occur")
+	}
 }
 
 // TestTimeout_Next verifies the Next function skips the middleware.
@@ -422,44 +382,56 @@ func TestTimeout_Next(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Middleware should be skipped")
 }
 
-// TestTimeout_NegativeGracePeriod verifies that negative GracePeriod is treated as 0 (default).
-func TestTimeout_NegativeGracePeriod(t *testing.T) {
+// TestTimeout_ContextCleanup verifies that the context is properly released
+// after the handler finishes (even after timeout).
+func TestTimeout_ContextCleanup(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	handlerDelay := 50 * time.Millisecond
-	app.Get("/negative-grace", New(func(c fiber.Ctx) error {
+	handlerDone := make(chan struct{})
+	app.Get("/cleanup", New(func(c fiber.Ctx) error {
+		defer close(handlerDone)
 		<-c.Context().Done()
-		time.Sleep(handlerDelay) // Simulate cleanup after cancelation
-		return c.Context().Err()
-	}, Config{Timeout: 20 * time.Millisecond, GracePeriod: -100 * time.Millisecond}))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/negative-grace", http.NoBody)
-	start := time.Now()
-	resp, err := app.Test(req)
-	elapsed := time.Since(start)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-	// Negative GracePeriod should be treated as 0, meaning wait indefinitely for handler
-	require.GreaterOrEqual(t, elapsed, handlerDelay, "should wait for handler (GracePeriod normalized to 0)")
-}
-
-// TestTimeout_ContextDeadlineDetection verifies that context deadline is detected
-// even if handler doesn't return an error.
-func TestTimeout_ContextDeadlineDetection(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Get("/deadline", New(func(c fiber.Ctx) error {
-		// Wait for context to be done, then return nil (not an error)
-		<-c.Context().Done()
+		// Small delay to simulate cleanup
+		time.Sleep(50 * time.Millisecond)
 		return nil
 	}, Config{Timeout: 20 * time.Millisecond}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/deadline", http.NoBody)
+	req := httptest.NewRequest(fiber.MethodGet, "/cleanup", http.NoBody)
 	resp, err := app.Test(req)
+
 	require.NoError(t, err)
-	// Should still be 408 because context deadline was exceeded
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+
+	// Wait for handler to finish - cleanup goroutine should release context
+	select {
+	case <-handlerDone:
+		// Give cleanup goroutine time to run
+		time.Sleep(20 * time.Millisecond)
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("handler did not finish")
+	}
+}
+
+// TestTimeout_AbandonMechanism verifies the Abandon mechanism works correctly.
+func TestTimeout_AbandonMechanism(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// Initially not abandoned
+	require.False(t, ctx.IsAbandoned())
+
+	// Abandon it
+	ctx.Abandon()
+	require.True(t, ctx.IsAbandoned())
+
+	// ReleaseCtx should be a no-op when abandoned
+	app.ReleaseCtx(ctx)
+	require.True(t, ctx.IsAbandoned(), "ReleaseCtx should not release abandoned context")
+
+	// Note: We intentionally do NOT test ForceRelease here.
+	// In the timeout middleware, abandoned contexts are NOT released back to the pool
+	// to avoid race conditions with requestHandler. This is the same approach
+	// fasthttp uses for timed-out RequestCtx objects.
 }

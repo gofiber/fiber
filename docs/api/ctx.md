@@ -8,6 +8,26 @@ description: >-
 sidebar_position: 3
 ---
 
+### Abandon
+
+Marks the context as abandoned. An abandoned context will not be returned to the pool when `ReleaseCtx` is called. This is used internally by the [timeout middleware](../middleware/timeout.md) to return immediately while the handler goroutine continues safely.
+
+```go title="Signature"
+func (c fiber.Ctx) Abandon()
+func (c fiber.Ctx) IsAbandoned() bool
+func (c fiber.Ctx) ForceRelease()
+```
+
+| Method         | Description                                                                 |
+|:---------------|:----------------------------------------------------------------------------|
+| `Abandon()`    | Marks the context as abandoned. ReleaseCtx becomes a no-op for this context. |
+| `IsAbandoned()`| Returns `true` if `Abandon()` was called on this context.                   |
+| `ForceRelease()`| Releases an abandoned context back to the pool. Must only be called after the handler has completely finished. |
+
+:::caution
+These methods are primarily for internal use and advanced middleware development. Most applications should not need to call them directly.
+:::
+
 ### App
 
 Returns the [\*App](app.md) reference so you can easily access all application settings.

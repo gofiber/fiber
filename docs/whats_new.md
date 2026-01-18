@@ -1592,8 +1592,16 @@ The timeout middleware is now configurable. A new `Config` struct allows customi
 
 **Behavioral changes:**
 
-- **Context propagation**: The timeout context is properly propagated to the handler. Handlers can detect timeouts by listening on `c.Context().Done()` and return early, making requests complete faster when timeouts occur.
+- **Immediate return on timeout**: The middleware now returns immediately when a timeout occurs, without waiting for the handler to finish. This is achieved through the new **Abandon mechanism** which marks the context as abandoned so it won't be returned to the pool while the handler is still running.
+- **Context propagation**: The timeout context is properly propagated to the handler. Handlers can detect timeouts by listening on `c.Context().Done()` and return early.
 - **Panic handling**: Panics in the handler are caught and converted to `500 Internal Server Error` responses.
+- **Race-free design**: The implementation uses fasthttp's `TimeoutErrorWithCode` combined with Fiber's Abandon mechanism to ensure complete race-freedom between the middleware, handler goroutine, and context pooling.
+
+**New Ctx methods for the Abandon mechanism:**
+
+- `Abandon()`: Marks the context as abandoned
+- `IsAbandoned()`: Returns true if the context was abandoned
+- `ForceRelease()`: Releases an abandoned context back to the pool (for advanced use)
 
 **Migration:** Replace calls like `timeout.New(handler, 2*time.Second)` with `timeout.New(handler, timeout.Config{Timeout: 2 * time.Second})`.
 
@@ -2864,6 +2872,7 @@ app.Use(timeout.New(handler, timeout.Config{Timeout: 2 * time.Second}))
 
 **Important behavioral changes:**
 
+- The middleware now returns immediately on timeout without waiting for the handler (using the new Abandon mechanism).
 - Handlers can detect timeouts by listening on `c.Context().Done()` and return early.
 - Panics in the handler are caught and converted to `500 Internal Server Error`.
 
