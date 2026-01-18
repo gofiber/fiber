@@ -1,6 +1,7 @@
 package favicon
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -54,6 +55,26 @@ func Test_Middleware_Favicon_Not_Found(t *testing.T) {
 
 	fiber.New().Use(New(Config{
 		File: "non-exist.ico",
+	}))
+}
+
+// go test -run Test_Middleware_Favicon_MaxBytes
+func Test_Middleware_Favicon_MaxBytes(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if err := recover(); err == nil {
+			t.Error("should cache panic")
+		}
+	}()
+
+	dir := t.TempDir()
+	path := dir + "/favicon.ico"
+	err := os.WriteFile(path, bytes.Repeat([]byte("a"), 11), 0o600)
+	require.NoError(t, err)
+
+	fiber.New().Use(New(Config{
+		File:     path,
+		MaxBytes: 10,
 	}))
 }
 

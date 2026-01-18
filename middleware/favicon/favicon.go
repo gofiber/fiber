@@ -1,6 +1,7 @@
 package favicon
 
 import (
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -43,11 +44,20 @@ func New(config ...Config) fiber.Handler {
 			defer func() {
 				_ = f.Close() //nolint:errcheck // not needed
 			}()
-			if iconData, err = io.ReadAll(f); err != nil {
+			if iconData, err = readLimited(f, cfg.MaxBytes); err != nil {
 				panic(err)
 			}
-		} else if iconData, err = os.ReadFile(cfg.File); err != nil {
-			panic(err)
+		} else {
+			f, err = os.Open(cfg.File)
+			if err != nil {
+				panic(err)
+			}
+			defer func() {
+				_ = f.Close() //nolint:errcheck // not needed
+			}()
+			if iconData, err = readLimited(f, cfg.MaxBytes); err != nil {
+				panic(err)
+			}
 		}
 
 		iconLenHeader = strconv.Itoa(len(iconData))
@@ -88,4 +98,16 @@ func New(config ...Config) fiber.Handler {
 
 		return c.SendStatus(fiber.StatusNoContent)
 	}
+}
+
+func readLimited(reader io.Reader, maxBytes int64) ([]byte, error) {
+	limit := maxBytes + 1
+	data, err := io.ReadAll(io.LimitReader(reader, limit))
+	if err != nil {
+		return nil, fmt.Errorf("favicon: read limited: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("favicon: file size exceeds max bytes %d", maxBytes)
+	}
+	return data, nil
 }
