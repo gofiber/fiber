@@ -422,6 +422,29 @@ func TestTimeout_Next(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Middleware should be skipped")
 }
 
+// TestTimeout_NegativeGracePeriod verifies that negative GracePeriod is treated as 0 (default).
+func TestTimeout_NegativeGracePeriod(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	handlerDelay := 50 * time.Millisecond
+	app.Get("/negative-grace", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		time.Sleep(handlerDelay) // Simulate cleanup after cancelation
+		return c.Context().Err()
+	}, Config{Timeout: 20 * time.Millisecond, GracePeriod: -100 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/negative-grace", http.NoBody)
+	start := time.Now()
+	resp, err := app.Test(req)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	// Negative GracePeriod should be treated as 0, meaning wait indefinitely for handler
+	require.GreaterOrEqual(t, elapsed, handlerDelay, "should wait for handler (GracePeriod normalized to 0)")
+}
+
 // TestTimeout_ContextDeadlineDetection verifies that context deadline is detected
 // even if handler doesn't return an error.
 func TestTimeout_ContextDeadlineDetection(t *testing.T) {
