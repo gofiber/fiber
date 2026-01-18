@@ -3731,11 +3731,7 @@ func Test_Ctx_Scheme_HeaderNormalization(t *testing.T) {
 	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
-	c.Request().Header.Set("X-FORWARDED-SSL", " HTTPS ")
-	require.Equal(t, schemeHTTPS, c.Scheme())
-	c.Request().Header.Reset()
-
-	c.Request().Header.Set("x-forwarded-ssl", " HTTPS ")
+	c.Request().Header.Set("x-Forwarded-ProToCol", " HTTPS ")
 	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 }
