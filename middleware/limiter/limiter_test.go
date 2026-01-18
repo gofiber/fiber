@@ -69,6 +69,30 @@ type contextRecorderLimiterStorage struct {
 	sets []contextRecord
 }
 
+func sleepForRetryAfter(t *testing.T, resp *http.Response) {
+	t.Helper()
+
+	retryAfter := resp.Header.Get(fiber.HeaderRetryAfter)
+	if retryAfter == "" {
+		time.Sleep(500 * time.Millisecond)
+		return
+	}
+
+	seconds, err := strconv.Atoi(retryAfter)
+	require.NoError(t, err)
+
+	delay := time.Duration(seconds) * time.Second
+	// Sliding window needs roughly 2x the reported delay for the previous window to expire.
+	if doubled := 2 * delay; doubled > delay {
+		delay = doubled
+	}
+	if minDelay := 4 * time.Second; delay < minDelay {
+		delay = minDelay
+	}
+
+	time.Sleep(delay + 500*time.Millisecond)
+}
+
 func newContextRecorderLimiterStorage() *contextRecorderLimiterStorage {
 	return &contextRecorderLimiterStorage{failingLimiterStorage: newFailingLimiterStorage()}
 }
@@ -691,7 +715,7 @@ func Test_Limiter_Sliding_ExpirationFuncOverridesStaticExpiration(t *testing.T) 
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 
 	// Sliding window needs ~2x expiration to fully reset (considers previous window)
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	sleepForRetryAfter(t, resp)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
@@ -988,7 +1012,7 @@ func Test_Limiter_Sliding_Window_No_Skip_Choices(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	sleepForRetryAfter(t, resp)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
@@ -1028,7 +1052,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_No_Skip_Choices(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	sleepForRetryAfter(t, resp)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
@@ -1244,7 +1268,7 @@ func Test_Limiter_Sliding_Window_Skip_Failed_Requests(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	sleepForRetryAfter(t, resp)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
@@ -1283,7 +1307,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Failed_Requests(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	sleepForRetryAfter(t, resp)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
@@ -1398,7 +1422,7 @@ func Test_Limiter_Sliding_Window_Skip_Successful_Requests(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	sleepForRetryAfter(t, resp)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
@@ -1437,7 +1461,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Successful_Requests(t *test
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	sleepForRetryAfter(t, resp)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
