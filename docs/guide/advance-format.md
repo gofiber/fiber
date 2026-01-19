@@ -16,7 +16,7 @@ Fiber lets you use MessagePack for efficient binary serialization. Use one of th
 ### Recommended Libraries
 
 - [github.com/vmihailenco/msgpack](https://pkg.go.dev/github.com/vmihailenco/msgpack) — A widely used, feature-rich MsgPack library.
-- [github.com/shamaton/msgpack/v2](https://pkg.go.dev/github.com/shamaton/msgpack/v2) — High-performance MsgPack library.
+- [github.com/shamaton/msgpack/v3](https://pkg.go.dev/github.com/shamaton/msgpack/v3) — High-performance MsgPack library.
 
 ### Installation
 
@@ -25,17 +25,17 @@ Install either library using:
 ```bash
 go get github.com/vmihailenco/msgpack
 # or
-go get github.com/shamaton/msgpack/v2
+go get github.com/shamaton/msgpack/v3
 ```
 
 > **Note:** Fiber doesn't bundle a MsgPack implementation because it's outside the Go standard library. Pick one of the popular libraries in the ecosystem; the two below are widely used and well maintained.
 
-### Example: Using `shamaton/msgpack/v2`
+### Example: Using `shamaton/msgpack/v3`
 
 ```go
 import (
     "github.com/gofiber/fiber/v3"
-    "github.com/shamaton/msgpack/v2"
+    "github.com/shamaton/msgpack/v3"
 )
 
 type User struct {
