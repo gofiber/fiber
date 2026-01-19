@@ -97,7 +97,7 @@ func (r *Response) Header(key string) string
 **Headers** returns an iterator over all response headers. Use `maps.Collect()` to convert them into a map if desired. The returned values are only valid until the response is released, so make copies if needed.
 
 ```go title="Signature"
-func (r *Response) Headers() iter.Seq2[string, []string] 
+func (r *Response) Headers() iter.Seq2[string, []string]
 ```
 
 <details>
@@ -217,19 +217,10 @@ if err != nil {
 }
 defer resp.Close()
 
-reader := resp.BodyStream()
 buf := make([]byte, 256)
-var total int
-
-for {
-    n, err := reader.Read(buf)
-    total += n
-    if err == io.EOF {
-        break
-    }
-    if err != nil {
-        panic(err)
-    }
+total, err := io.CopyBuffer(io.Discard, resp.BodyStream(), buf)
+if err != nil {
+    panic(err)
 }
 
 fmt.Printf("Read %d bytes\n", total)
