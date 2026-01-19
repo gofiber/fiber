@@ -31,7 +31,14 @@ func IsFromCache(c fiber.Ctx) bool {
 // WasPutToCache reports whether the middleware stored the response produced by
 // the current request in the cache.
 func WasPutToCache(c fiber.Ctx) bool {
-	return c.Locals(localsKeyWasPutToCache) != nil
+	val := c.Locals(localsKeyWasPutToCache)
+	if val == nil {
+		return false
+	}
+	if wasPut, ok := val.(bool); ok {
+		return wasPut
+	}
+	return true
 }
 
 // New creates idempotency middleware that caches responses keyed by the
@@ -156,6 +163,12 @@ func New(config ...Config) fiber.Handler {
 					}
 				}
 			}
+		}
+
+		bodyLimit := c.App().Config().BodyLimit
+		if bodyLimit > 0 && len(res.Body) > bodyLimit {
+			_ = c.Locals(localsKeyWasPutToCache, false)
+			return nil
 		}
 
 		// Marshal response
