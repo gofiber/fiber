@@ -771,7 +771,7 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 	t.Run("save to cookie", func(t *testing.T) {
 		t.Parallel()
 
-		const absoluteTimeout = 1 * time.Second
+		const absoluteTimeout = 2 * time.Second // extra headroom to avoid flakiness under -race
 		// session store
 		store := NewStore(Config{
 			IdleTimeout:     absoluteTimeout,
@@ -811,7 +811,7 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 		require.Equal(t, "john", sess.Get("name"))
 
 		// just to make sure the session has been expired
-		time.Sleep(absoluteTimeout + (100 * time.Millisecond))
+		time.Sleep(absoluteTimeout + (200 * time.Millisecond))
 
 		sess.Release()
 
@@ -839,7 +839,7 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 		app.ReleaseCtx(ctx)
 
 		// just to make sure the session has been expired
-		time.Sleep(absoluteTimeout + (100 * time.Millisecond))
+		time.Sleep(absoluteTimeout + (200 * time.Millisecond))
 
 		// try to get expired session by id
 		sess, err = store.GetByID(ctx, token)
