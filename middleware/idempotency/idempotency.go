@@ -32,13 +32,10 @@ func IsFromCache(c fiber.Ctx) bool {
 // the current request in the cache.
 func WasPutToCache(c fiber.Ctx) bool {
 	val := c.Locals(localsKeyWasPutToCache)
-	if val == nil {
-		return false
-	}
 	if wasPut, ok := val.(bool); ok {
 		return wasPut
 	}
-	return true
+	return val != nil
 }
 
 // New creates idempotency middleware that caches responses keyed by the
