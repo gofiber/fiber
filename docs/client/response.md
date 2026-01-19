@@ -97,7 +97,7 @@ func (r *Response) Header(key string) string
 **Headers** returns an iterator over all response headers. Use `maps.Collect()` to convert them into a map if desired. The returned values are only valid until the response is released, so make copies if needed.
 
 ```go title="Signature"
-func (r *Response) Headers() iter.Seq2[string, []string] 
+func (r *Response) Headers() iter.Seq2[string, []string]
 ```
 
 <details>
@@ -189,6 +189,82 @@ go => fiber
 ```go title="Signature"
 func (r *Response) Body() []byte
 ```
+
+## BodyStream
+
+**BodyStream** returns the response body as an `io.Reader`, allowing incremental reading without loading the entire body into memory. This is particularly useful when `Client.SetStreamResponseBody(true)` is enabled.
+
+When streaming is enabled, the underlying stream from fasthttp is returned directly. When streaming is not enabled, a `bytes.Reader` wrapping the body is returned as a fallback.
+
+:::note
+When using `BodyStream()`, the response body is consumed as you read. Calling `Body()` afterward may return an empty slice if the stream has been fully read.
+:::
+
+```go title="Signature"
+func (r *Response) BodyStream() io.Reader
+```
+
+<details>
+<summary>Example</summary>
+
+```go title="Example"
+cc := client.New()
+cc.SetStreamResponseBody(true)
+
+resp, err := cc.Get("https://httpbin.org/bytes/1024")
+if err != nil {
+    panic(err)
+}
+defer resp.Close()
+
+buf := make([]byte, 256)
+total, err := io.CopyBuffer(io.Discard, resp.BodyStream(), buf)
+if err != nil {
+    panic(err)
+}
+
+fmt.Printf("Read %d bytes\n", total)
+```
+
+**Output:**
+
+```text
+Read 1024 bytes
+```
+
+</details>
+
+## IsStreaming
+
+**IsStreaming** returns `true` if the response body is being streamed (i.e., when `Client.SetStreamResponseBody(true)` was set and the underlying transport provided a stream).
+
+```go title="Signature"
+func (r *Response) IsStreaming() bool
+```
+
+<details>
+<summary>Example</summary>
+
+```go title="Example"
+cc := client.New()
+cc.SetStreamResponseBody(true)
+
+resp, err := cc.Get("https://httpbin.org/get")
+if err != nil {
+    panic(err)
+}
+defer resp.Close()
+
+if resp.IsStreaming() {
+    fmt.Println("Response is streaming")
+    // Use resp.BodyStream() to read incrementally
+} else {
+    fmt.Println("Response is buffered")
+    // Use resp.Body() for direct access
+}
+```
+
+</details>
 
 ## String
 

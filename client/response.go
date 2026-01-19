@@ -89,6 +89,22 @@ func (r *Response) Body() []byte {
 	return r.RawResponse.Body()
 }
 
+// BodyStream returns the response body as a stream reader.
+// Note: When using BodyStream(), the response body is not copied to memory,
+// so calling Body() afterwards may return an empty slice.
+func (r *Response) BodyStream() io.Reader {
+	if stream := r.RawResponse.BodyStream(); stream != nil {
+		return stream
+	}
+	// If streaming is not enabled, return a bytes.Reader from the regular body
+	return bytes.NewReader(r.RawResponse.Body())
+}
+
+// IsStreaming returns true if the response body is being streamed.
+func (r *Response) IsStreaming() bool {
+	return r.RawResponse.BodyStream() != nil
+}
+
 // String returns the response body as a trimmed string.
 func (r *Response) String() string {
 	return utils.TrimSpace(string(r.Body()))
@@ -112,6 +128,7 @@ func (r *Response) XML(v any) error {
 // Save writes the response body to a file or io.Writer.
 // If a string path is provided, it creates directories if needed, then writes to a file.
 // If an io.Writer is provided, it writes directly to it.
+// When streaming is enabled, the body is read directly from the stream.
 func (r *Response) Save(v any) error {
 	switch p := v.(type) {
 	case string:
@@ -136,21 +153,23 @@ func (r *Response) Save(v any) error {
 		}
 		defer func() { _ = outFile.Close() }() //nolint:errcheck // not needed
 
-		if _, err = io.Copy(outFile, bytes.NewReader(r.Body())); err != nil {
+		// Use BodyStream() which handles both streaming and non-streaming cases
+		if _, err = io.Copy(outFile, r.BodyStream()); err != nil {
 			return fmt.Errorf("failed to write response body to file: %w", err)
 		}
 
 		return nil
 
 	case io.Writer:
-		if _, err := io.Copy(p, bytes.NewReader(r.Body())); err != nil {
-			return fmt.Errorf("failed to write response body to io.Writer: %w", err)
+		// Use BodyStream() which handles both streaming and non-streaming cases
+		if _, err := io.Copy(p, r.BodyStream()); err != nil {
+			return fmt.Errorf("failed to write response body to writer: %w", err)
 		}
-		defer func() {
-			if pc, ok := p.(io.WriteCloser); ok {
-				_ = pc.Close() //nolint:errcheck // not needed
-			}
-		}()
+		// Close the writer if it implements io.WriteCloser
+		if pc, ok := p.(io.WriteCloser); ok {
+			_ = pc.Close() //nolint:errcheck // not needed
+		}
+
 		return nil
 
 	default:

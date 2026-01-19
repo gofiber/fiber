@@ -346,3 +346,161 @@ func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {
 	require.ErrorIs(t, err, fasthttp.ErrTooManyRedirects)
 	require.Equal(t, defaultRedirectLimit+1, client.CallCount())
 }
+
+func Test_StandardClientTransport_StreamResponseBody(t *testing.T) {
+	t.Parallel()
+
+	t.Run("default value", func(t *testing.T) {
+		t.Parallel()
+		transport := newStandardClientTransport(&fasthttp.Client{})
+		require.False(t, transport.StreamResponseBody())
+	})
+
+	t.Run("enable streaming", func(t *testing.T) {
+		t.Parallel()
+		client := &fasthttp.Client{}
+		transport := newStandardClientTransport(client)
+		transport.SetStreamResponseBody(true)
+		require.True(t, transport.StreamResponseBody())
+		require.True(t, client.StreamResponseBody)
+	})
+
+	t.Run("disable streaming", func(t *testing.T) {
+		t.Parallel()
+		client := &fasthttp.Client{}
+		transport := newStandardClientTransport(client)
+		transport.SetStreamResponseBody(true)
+		require.True(t, transport.StreamResponseBody())
+		transport.SetStreamResponseBody(false)
+		require.False(t, transport.StreamResponseBody())
+		require.False(t, client.StreamResponseBody)
+	})
+}
+
+func Test_HostClientTransport_StreamResponseBody(t *testing.T) {
+	t.Parallel()
+
+	t.Run("default value", func(t *testing.T) {
+		t.Parallel()
+		hostClient := &fasthttp.HostClient{}
+		transport := newHostClientTransport(hostClient)
+		require.False(t, transport.StreamResponseBody())
+	})
+
+	t.Run("enable streaming", func(t *testing.T) {
+		t.Parallel()
+		hostClient := &fasthttp.HostClient{}
+		transport := newHostClientTransport(hostClient)
+		transport.SetStreamResponseBody(true)
+		require.True(t, transport.StreamResponseBody())
+		require.True(t, hostClient.StreamResponseBody)
+	})
+
+	t.Run("disable streaming", func(t *testing.T) {
+		t.Parallel()
+		hostClient := &fasthttp.HostClient{}
+		transport := newHostClientTransport(hostClient)
+		transport.SetStreamResponseBody(true)
+		require.True(t, transport.StreamResponseBody())
+		transport.SetStreamResponseBody(false)
+		require.False(t, transport.StreamResponseBody())
+		require.False(t, hostClient.StreamResponseBody)
+	})
+}
+
+func Test_LBClientTransport_StreamResponseBody(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty clients", func(t *testing.T) {
+		t.Parallel()
+		lbClient := &fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{},
+		}
+		transport := newLBClientTransport(lbClient)
+		require.False(t, transport.StreamResponseBody())
+	})
+
+	t.Run("single host client", func(t *testing.T) {
+		t.Parallel()
+		hostClient := &fasthttp.HostClient{Addr: "example.com:80"}
+		lbClient := &fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{hostClient},
+		}
+		transport := newLBClientTransport(lbClient)
+
+		// Test default
+		require.False(t, transport.StreamResponseBody())
+
+		// Enable streaming
+		transport.SetStreamResponseBody(true)
+		require.True(t, transport.StreamResponseBody())
+		require.True(t, hostClient.StreamResponseBody)
+
+		// Disable streaming
+		transport.SetStreamResponseBody(false)
+		require.False(t, transport.StreamResponseBody())
+		require.False(t, hostClient.StreamResponseBody)
+	})
+
+	t.Run("multiple host clients", func(t *testing.T) {
+		t.Parallel()
+		hostClient1 := &fasthttp.HostClient{Addr: "example1.com:80"}
+		hostClient2 := &fasthttp.HostClient{Addr: "example2.com:80"}
+		lbClient := &fasthttp.LBClient{
+			Clients: []fasthttp.BalancingClient{hostClient1, hostClient2},
+		}
+		transport := newLBClientTransport(lbClient)
+
+		// Enable streaming on all clients
+		transport.SetStreamResponseBody(true)
+		require.True(t, transport.StreamResponseBody())
+		require.True(t, hostClient1.StreamResponseBody)
+		require.True(t, hostClient2.StreamResponseBody)
+
+		// Disable streaming on all clients
+		transport.SetStreamResponseBody(false)
+		require.False(t, transport.StreamResponseBody())
+		require.False(t, hostClient1.StreamResponseBody)
+		require.False(t, hostClient2.StreamResponseBody)
+	})
+}
+
+func Test_httpClientTransport_Interface(t *testing.T) {
+	t.Parallel()
+
+	transports := []struct {
+		transport httpClientTransport
+		name      string
+	}{
+		{
+			name:      "standardClientTransport",
+			transport: newStandardClientTransport(&fasthttp.Client{}),
+		},
+		{
+			name:      "hostClientTransport",
+			transport: newHostClientTransport(&fasthttp.HostClient{}),
+		},
+		{
+			name: "lbClientTransport",
+			transport: newLBClientTransport(&fasthttp.LBClient{
+				Clients: []fasthttp.BalancingClient{
+					&fasthttp.HostClient{Addr: "example.com:80"},
+				},
+			}),
+		},
+	}
+
+	for _, tt := range transports {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			transport := tt.transport
+			require.NotNil(t, transport.Client())
+			initialStream := transport.StreamResponseBody()
+			transport.SetStreamResponseBody(!initialStream)
+			require.Equal(t, !initialStream, transport.StreamResponseBody())
+			transport.SetStreamResponseBody(initialStream)
+			require.Equal(t, initialStream, transport.StreamResponseBody())
+		})
+	}
+}
