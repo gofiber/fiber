@@ -12,6 +12,9 @@
 # Output of the go coverage tool
 **/*.out
 
+.cache
+.gocache
+
 # IDE files
 .vscode
 .DS_Store
