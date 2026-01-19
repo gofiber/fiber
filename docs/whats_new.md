@@ -121,10 +121,10 @@ app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
 ### Removed Methods
 
 - **Mount**: Use `app.Use()` instead.
-- **ListenTLS**: Use `app.Listen()` with `tls.Config`.
-- **ListenTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
-- **ListenMutualTLS**: Use `app.Listen()` with `tls.Config`.
-- **ListenMutualTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
+- **ListenTLS**: Use `app.Listen()` with `ServerTLSProvider`.
+- **ListenTLSWithCertificate**: Use `app.Listen()` with `ServerTLSProvider`.
+- **ListenMutualTLS**: Use `app.Listen()` with `ServerTLSProvider` and `ServerTLSCustomizer`.
+- **ListenMutualTLSWithCertificate**: Use `app.Listen()` with `ServerTLSProvider` and `ServerTLSCustomizer`.
 
 ### Method Changes
 
@@ -187,12 +187,60 @@ This example creates a `CustomCtx` with an extra `CustomMethod` and initializes 
 
 </details>
 
-### Configurable TLS Minimum Version
+### Externalized TLS configuration
+
+We provide now two interfaces and implementations to let you configure TLS in `ListenConfig`:
+
+- `ServerTLSProvider` : Create the `*tls.Config` object
+  ```go title="Signature"
+  type ServerTLSProvider interface {
+	    ProvideServerTLS() (*tls.Config, error)
+  }
+  ```
+
+- `ServerTLSCustomizer` : Add functionality to the `*tls.Config` object, like MutualTLS.
+  ```go title="Signature"
+  type ServerTLSCustomizer interface {
+	    CustomizeServerTLS(config *tls.Config) error
+  }
+  ```
+
+#### Certificate configuration
+
+We have modified the certificate configuration to use only one file for the server's certificate and key (and additional intermediate certificate).
+
+It can be a string to file or its content directly :
+
+```go
+app.Listen(":444", fiber.ListenConfig{
+    TLSProvider: &fiber.ServerCertificateProvider{
+        Certificate: "./certificate.pem",
+    },
+})
+```
+
+Also, but deprecated, You can still use separate files like that :
+
+```go
+app.Listen(":444", fiber.ListenConfig{
+    TLSProvider: &fiber.ServerCertificateProvider{
+        CertFile: "./cert.pem",
+        CertKeyFile: "./key.pem",
+    },
+})
+```
+
+#### Configurable TLS Minimum Version
 
 We have added support for configuring the TLS minimum version. This field allows you to set the TLS minimum version for TLSAutoCert and the server listener.
 
 ```go
-app.Listen(":444", fiber.ListenConfig{TLSMinVersion: tls.VersionTLS12})
+app.Listen(":444", fiber.ListenConfig{
+    TLSProvider: &fiber.ServerCertificateProvider{
+        Certificate: "./certificate.pem",
+        TLSMinVersion: tls.VersionTLS12,
+    },
+})
 ```
 
 #### TLS AutoCert support (ACME / Let's Encrypt)
@@ -210,9 +258,31 @@ certManager := &autocert.Manager{
 }
 
 app.Listen(":444", fiber.ListenConfig{
-    AutoCertManager:    certManager,
+    TLSProvider: &fiber.ACMECertificateProvider{
+        AutoCertManager:    certManager,
+        TLSMinVersion: tls.VersionTLS12,
+    },
 })
 ```
+
+#### MutualTLS
+
+We moved the MutualTLS code to the new package `fiber/addon/verifypeer` and use the `ServerTLSCustomizer` interface.
+
+```go title="Examples"
+app.Listen(":443",
+    fiber.ListenConfig{
+        TLSProvider: &fiber.ServerCertificateProvider{
+            Certificate: "./certificate.pem",
+        },
+        TLSCustomizer: &verifypeer.MutualTLSCustomizer{
+            Certificate: "./ca-cert.pem",
+        },
+    },
+)
+```
+
+Other implementations in [Addon/VerifyPeer](addon/verifypeer) include Certificate Revocation List and OCSP-Stapling.
 
 ### MIME Constants
 

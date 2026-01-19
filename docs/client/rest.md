@@ -359,8 +359,7 @@ func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client
 
 ### TLSConfig
 
-Returns the client's TLS configuration. If none is set, it initializes a new
-configuration with `MinVersion` defaulting to TLS 1.2.
+Returns the client's TLS configuration. If none is set, `nil` will be returned.
 
 ```go title="Signature"
 func (c *Client) TLSConfig() *tls.Config
@@ -374,29 +373,38 @@ Sets the TLS configuration for the client.
 func (c *Client) SetTLSConfig(config *tls.Config) *Client
 ```
 
-### SetCertificates
+### SetTLSProvider
 
-Adds client certificates to the TLS configuration.
-
-```go title="Signature"
-func (c *Client) SetCertificates(certs ...tls.Certificate) *Client
-```
-
-### SetRootCertificate
-
-Adds one or more root certificates to the client's trust store.
+Sets the TLS configuration for the client, using the `ClientTLSProvider` interface.
 
 ```go title="Signature"
-func (c *Client) SetRootCertificate(path string) *Client
+type ClientTLSProvider interface {
+    ProvideClientTLS() (*tls.Config, error)
+}
+
+func (c *Client) SetTLSProvider(provider ClientTLSProvider) *Client
 ```
 
-### SetRootCertificateFromString
+Default implementation `ClientCertificateProvider` lets you configure a client
+certificate and/or root certificates to authenticate the server with.
 
-Adds one or more root certificates from a string.
-
-```go title="Signature"
-func (c *Client) SetRootCertificateFromString(pem string) *Client
+```go title="Examples"
+provider := &client.ClientCertificateProvider{
+    Certificate: "./certificate.pem",
+    RootCertificates: "./cacerts.pem",
+}
+cl := client.New().SetTLSProvider(provider)
 ```
+
+If the server can be authenticated using one of the system root certificates, you can also load them :
+
+```go title="Examples"
+provider := &client.ClientCertificateProvider{
+    IncludeSystemCertificates: true,
+}
+cl := client.New().SetTLSProvider(provider)
+```
+
 
 ## SetProxyURL
 

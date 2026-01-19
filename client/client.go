@@ -8,13 +8,9 @@ package client
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"io"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -231,18 +227,12 @@ func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client {
 	return c
 }
 
-// TLSConfig returns the client's TLS configuration.
-// If none is set, it initializes a new one.
+// TLSConfig returns the client's TLS configuration or nil if none is configured.
 func (c *Client) TLSConfig() *tls.Config {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if cfg := c.currentTLSConfig(); cfg != nil {
-		return cfg
-	}
-	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
-	c.applyTLSConfig(cfg)
-	return cfg
+	return c.currentTLSConfig()
 }
 
 // SetTLSConfig sets the TLS configuration for the client.
@@ -254,55 +244,17 @@ func (c *Client) SetTLSConfig(config *tls.Config) *Client {
 	return c
 }
 
-// SetCertificates adds certificates to the client's TLS configuration.
-func (c *Client) SetCertificates(certs ...tls.Certificate) *Client {
-	config := c.TLSConfig()
-	config.Certificates = append(config.Certificates, certs...)
-	return c
-}
-
-// SetRootCertificate adds one or more root certificates to the client's TLS configuration.
-func (c *Client) SetRootCertificate(path string) *Client {
-	cleanPath := filepath.Clean(path)
-	file, err := os.Open(cleanPath)
-	if err != nil {
-		c.logger.Panicf("client: %v", err)
-	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			c.logger.Panicf("client: failed to close file: %v", closeErr)
+// SetTLSProvider lets you configure TLS through a [ClientTLSProvider]
+func (c *Client) SetTLSProvider(provider ClientTLSProvider) *Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if provider != nil {
+		if config, err := provider.ProvideClientTLS(); err != nil {
+			c.logger.Panicf("client: unable to set tlsConfig: %v", err)
+		} else {
+			c.applyTLSConfig(config)
 		}
-	}()
-
-	pem, err := io.ReadAll(file)
-	if err != nil {
-		c.logger.Panicf("client: %v", err)
 	}
-
-	config := c.TLSConfig()
-	if config.RootCAs == nil {
-		config.RootCAs = x509.NewCertPool()
-	}
-
-	if !config.RootCAs.AppendCertsFromPEM(pem) {
-		c.logger.Panicf("client: %v", ErrFailedToAppendCert)
-	}
-
-	return c
-}
-
-// SetRootCertificateFromString adds one or more root certificates from a string to the client's TLS configuration.
-func (c *Client) SetRootCertificateFromString(pem string) *Client {
-	config := c.TLSConfig()
-
-	if config.RootCAs == nil {
-		config.RootCAs = x509.NewCertPool()
-	}
-
-	if !config.RootCAs.AppendCertsFromPEM([]byte(pem)) {
-		c.logger.Panicf("client: %v", ErrFailedToAppendCert)
-	}
-
 	return c
 }
 

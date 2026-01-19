@@ -5,10 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"errors"
-	"io"
 	"net"
-	"os"
-	"path/filepath"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -177,32 +174,6 @@ func TestClientCBORUnmarshalOverride(t *testing.T) {
 	var payload []byte
 	require.NoError(t, fn(payload, nil))
 	require.True(t, called)
-}
-
-func TestClientSetRootCertificateErrors(t *testing.T) {
-	t.Parallel()
-
-	client := New()
-	require.Panics(t, func() {
-		client.SetRootCertificate("does-not-exist.pem")
-	})
-
-	tmpDir := t.TempDir()
-	badPath := filepath.Join(tmpDir, "invalid.pem")
-	require.NoError(t, os.WriteFile(badPath, []byte("not a pem"), 0o600))
-
-	require.Panics(t, func() {
-		client.SetRootCertificate(badPath)
-	})
-}
-
-func TestClientSetRootCertificateFromStringError(t *testing.T) {
-	t.Parallel()
-
-	client := New()
-	require.Panics(t, func() {
-		client.SetRootCertificateFromString("invalid pem data")
-	})
 }
 
 func TestClientLoggerAccessors(t *testing.T) {
@@ -1915,37 +1886,6 @@ func Test_Client_TLS_Empty_TLSConfig(t *testing.T) {
 	require.Error(t, err)
 	require.NotEqual(t, clientTLSConf, client.TLSConfig())
 	require.Nil(t, resp)
-}
-
-func Test_Client_SetCertificates(t *testing.T) {
-	t.Parallel()
-
-	serverTLSConf, _, err := tlstest.GetTLSConfigs()
-	require.NoError(t, err)
-
-	client := New().SetCertificates(serverTLSConf.Certificates...)
-	require.Len(t, client.TLSConfig().Certificates, 1)
-}
-
-func Test_Client_SetRootCertificate(t *testing.T) {
-	t.Parallel()
-
-	client := New().SetRootCertificate("../.github/testdata/ssl.pem")
-	require.NotNil(t, client.TLSConfig().RootCAs)
-}
-
-func Test_Client_SetRootCertificateFromString(t *testing.T) {
-	t.Parallel()
-
-	file, err := os.Open("../.github/testdata/ssl.pem")
-	defer func() { require.NoError(t, file.Close()) }()
-	require.NoError(t, err)
-
-	pem, err := io.ReadAll(file)
-	require.NoError(t, err)
-
-	client := New().SetRootCertificateFromString(string(pem))
-	require.NotNil(t, client.TLSConfig().RootCAs)
 }
 
 func Test_Client_R(t *testing.T) {

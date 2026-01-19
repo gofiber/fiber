@@ -171,143 +171,6 @@ func Test_Listen_Prefork(t *testing.T) {
 	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
-// go test -run Test_Listen_TLSMinVersion
-func Test_Listen_TLSMinVersion(t *testing.T) {
-	testPreforkMaster = true
-
-	app := New()
-
-	// Invalid TLSMinVersion
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
-	})
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
-	})
-
-	// Prefork
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
-	})
-	require.Panics(t, func() {
-		_ = app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
-	})
-
-	// Valid TLSMinVersion
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-	require.NoError(t, app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS13}))
-
-	// Valid TLSMinVersion with Prefork
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS13}))
-}
-
-// go test -run Test_Listen_TLS
-func Test_Listen_TLS(t *testing.T) {
-	app := New()
-
-	// invalid port
-	require.Error(t, app.Listen(":99999", ListenConfig{
-		CertFile:    "./.github/testdata/ssl.pem",
-		CertKeyFile: "./.github/testdata/ssl.key",
-	}))
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		CertFile:    "./.github/testdata/ssl.pem",
-		CertKeyFile: "./.github/testdata/ssl.key",
-	}))
-}
-
-// go test -run Test_Listen_TLS_Prefork
-func Test_Listen_TLS_Prefork(t *testing.T) {
-	testPreforkMaster = true
-
-	app := New()
-
-	// invalid key file content
-	require.Error(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		EnablePrefork:         true,
-		CertFile:              "./.github/testdata/ssl.pem",
-		CertKeyFile:           "./.github/testdata/template.tmpl",
-	}))
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		EnablePrefork:         true,
-		CertFile:              "./.github/testdata/ssl.pem",
-		CertKeyFile:           "./.github/testdata/ssl.key",
-	}))
-}
-
-// go test -run Test_Listen_MutualTLS
-func Test_Listen_MutualTLS(t *testing.T) {
-	app := New()
-
-	// invalid port
-	require.Error(t, app.Listen(":99999", ListenConfig{
-		CertFile:       "./.github/testdata/ssl.pem",
-		CertKeyFile:    "./.github/testdata/ssl.key",
-		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
-	}))
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		CertFile:       "./.github/testdata/ssl.pem",
-		CertKeyFile:    "./.github/testdata/ssl.key",
-		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
-	}))
-}
-
-// go test -run Test_Listen_MutualTLS_Prefork
-func Test_Listen_MutualTLS_Prefork(t *testing.T) {
-	testPreforkMaster = true
-
-	app := New()
-
-	// invalid key file content
-	require.Error(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		EnablePrefork:         true,
-		CertFile:              "./.github/testdata/ssl.pem",
-		CertKeyFile:           "./.github/testdata/template.html",
-		CertClientFile:        "./.github/testdata/ca-chain.cert.pem",
-	}))
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		EnablePrefork:         true,
-		CertFile:              "./.github/testdata/ssl.pem",
-		CertKeyFile:           "./.github/testdata/ssl.key",
-		CertClientFile:        "./.github/testdata/ca-chain.cert.pem",
-	}))
-}
-
 // go test -run Test_Listener
 func Test_Listener(t *testing.T) {
 	app := New()
@@ -323,7 +186,7 @@ func Test_Listener(t *testing.T) {
 
 func Test_App_Listener_TLS_Listener(t *testing.T) {
 	// Create tls certificate
-	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	cer, err := tls.LoadX509KeyPair("./.github/testdata/pki/intermediate/server/cert.pem", "./.github/testdata/pki/intermediate/server/key.pem")
 	if err != nil {
 		require.NoError(t, err)
 	}
@@ -344,30 +207,10 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 	require.NoError(t, app.Listener(ln))
 }
 
-// go test -run Test_Listen_TLSConfigFunc
-func Test_Listen_TLSConfigFunc(t *testing.T) {
-	var callTLSConfig bool
-	app := New()
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		TLSConfigFunc: func(_ *tls.Config) {
-			callTLSConfig = true
-		},
-		CertFile:    "./.github/testdata/ssl.pem",
-		CertKeyFile: "./.github/testdata/ssl.key",
-	}))
-
-	require.True(t, callTLSConfig)
-}
-
 // go test -run Test_Listen_ListenerAddrFunc
 func Test_Listen_ListenerAddrFunc(t *testing.T) {
+	t.Parallel()
+
 	var network string
 	app := New()
 
@@ -381,8 +224,9 @@ func Test_Listen_ListenerAddrFunc(t *testing.T) {
 		ListenerAddrFunc: func(addr net.Addr) {
 			network = addr.Network()
 		},
-		CertFile:    "./.github/testdata/ssl.pem",
-		CertKeyFile: "./.github/testdata/ssl.key",
+		TLSProvider: &ServerCertificateProvider{
+			Certificate: "./.github/testdata/pki/intermediate/server/fullchain.pem",
+		},
 	}))
 
 	require.Equal(t, "tcp", network)

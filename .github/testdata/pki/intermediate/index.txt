@@ -1,0 +1,4 @@
+V	351207184906Z		1000	unknown	/C=DE/ST=Berlin/O=Fiber/CN=Fiber Test Server certificate/emailAddress=test@test.gofiber.io
+V	351207184908Z		1001	unknown	/C=DE/ST=Berlin/O=Fiber/CN=Fiber Test Client certificate/emailAddress=test@test.gofiber.io
+R	351207184909Z	251209184909Z	1002	unknown	/C=DE/ST=Berlin/O=Fiber/CN=Fiber Revoked Client certificate/emailAddress=test@test.gofiber.io
+V	251209184905Z		1003	unknown	/C=DE/ST=Berlin/O=Fiber/CN=Fiber Expired Client certificate/emailAddress=test@test.gofiber.io

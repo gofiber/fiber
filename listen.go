@@ -7,12 +7,10 @@ package fiber
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"slices"
@@ -23,7 +21,6 @@ import (
 
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
-	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -47,7 +44,19 @@ type ListenConfig struct {
 	// Default: nil
 	GracefulContext context.Context `json:"graceful_context"` //nolint:containedctx // It's needed to set context inside Listen.
 
-	// TLSConfigFunc allows customizing tls.Config as you want.
+	// TLSProvider adds an external interface to provide a *tls.Config object for this ListenConfig
+	//
+	// Default: nil
+	TLSProvider ServerTLSProvider `json:"tls_provider"`
+
+	// TLSCustomizer provides a way to customize the *tls.Config.
+	//
+	// It uses an interface instead of a func to have predefined struct, with additional parameters.
+	TLSCustomizer ServerTLSCustomizer `json:"tls_customizer"`
+
+	// TLSConfigFunc allows reviewing tls.Config, provided by TLSProvider as you want.
+	// NOTE: tlsConfig may be nil, as TLSProvider may return a nil pointer.
+	// This lets you react to this.
 	//
 	// Default: nil
 	TLSConfigFunc func(tlsConfig *tls.Config) `json:"tls_config_func"`
@@ -62,35 +71,11 @@ type ListenConfig struct {
 	// Default: nil
 	BeforeServeFunc func(app *App) error `json:"before_serve_func"`
 
-	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
-	// Enables integration with Let's Encrypt or other ACME-compatible providers.
-	//
-	// Default: nil
-	AutoCertManager *autocert.Manager `json:"auto_cert_manager"`
-
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), "unix" (Unix Domain Sockets)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 	//
 	// Default: NetworkTCP4
 	ListenerNetwork string `json:"listener_network"`
-
-	// CertFile is a path of certificate file.
-	// If you want to use TLS, you have to enter this field.
-	//
-	// Default : ""
-	CertFile string `json:"cert_file"`
-
-	// KeyFile is a path of certificate's private key.
-	// If you want to use TLS, you have to enter this field.
-	//
-	// Default : ""
-	CertKeyFile string `json:"cert_key_file"`
-
-	// CertClientFile is a path of client certificate.
-	// If you want to use mTLS, you have to enter this field.
-	//
-	// Default : ""
-	CertClientFile string `json:"cert_client_file"`
 
 	// When the graceful shutdown begins, use this field to set the timeout
 	// duration. If the timeout is reached, OnPostShutdown will be called with the error.
@@ -103,12 +88,6 @@ type ListenConfig struct {
 	//
 	// Default: 0770
 	UnixSocketFileMode os.FileMode `json:"unix_socket_file_mode"`
-
-	// TLSMinVersion allows to set TLS minimum version.
-	//
-	// Default: tls.VersionTLS12
-	// WARNING: TLS1.0 and TLS1.1 versions are not supported.
-	TLSMinVersion uint16 `json:"tls_min_version"`
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
 	//
@@ -130,7 +109,6 @@ type ListenConfig struct {
 func listenConfigDefault(config ...ListenConfig) ListenConfig {
 	if len(config) < 1 {
 		return ListenConfig{
-			TLSMinVersion:      tls.VersionTLS12,
 			ListenerNetwork:    NetworkTCP4,
 			UnixSocketFileMode: 0o770,
 			ShutdownTimeout:    10 * time.Second,
@@ -144,14 +122,6 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 
 	if cfg.UnixSocketFileMode == 0 {
 		cfg.UnixSocketFileMode = 0o770
-	}
-
-	if cfg.TLSMinVersion == 0 {
-		cfg.TLSMinVersion = tls.VersionTLS12
-	}
-
-	if cfg.TLSMinVersion != tls.VersionTLS12 && cfg.TLSMinVersion != tls.VersionTLS13 {
-		panic("unsupported TLS version, please use tls.VersionTLS12 or tls.VersionTLS13")
 	}
 
 	return cfg
@@ -168,45 +138,23 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 	// Configure TLS
 	var tlsConfig *tls.Config
-	if cfg.CertFile != "" && cfg.CertKeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.CertKeyFile)
+
+	if cfg.TLSProvider != nil {
+		tc, err := cfg.TLSProvider.ProvideServerTLS()
 		if err != nil {
-			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", cfg.CertFile, cfg.CertKeyFile, err)
+			return err
 		}
-
-		tlsHandler := &TLSHandler{}
-		tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
-			MinVersion: cfg.TLSMinVersion,
-			Certificates: []tls.Certificate{
-				cert,
-			},
-			GetCertificate: tlsHandler.GetClientInfo,
-		}
-
-		if cfg.CertClientFile != "" {
-			clientCACert, err := os.ReadFile(filepath.Clean(cfg.CertClientFile))
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
+		tlsConfig = tc
+	}
+	if tlsConfig != nil {
+		if cfg.TLSCustomizer != nil {
+			if err := cfg.TLSCustomizer.CustomizeServerTLS(tlsConfig); err != nil {
+				return err
 			}
-
-			clientCertPool := x509.NewCertPool()
-			clientCertPool.AppendCertsFromPEM(clientCACert)
-
-			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
-			tlsConfig.ClientCAs = clientCertPool
-		}
-
-		// Attach the tlsHandler to the config
-		app.SetTLSHandler(tlsHandler)
-	} else if cfg.AutoCertManager != nil {
-		tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
-			MinVersion:     cfg.TLSMinVersion,
-			GetCertificate: cfg.AutoCertManager.GetCertificate,
-			NextProtos:     []string{"http/1.1", "acme-tls/1"},
 		}
 	}
 
-	if tlsConfig != nil && cfg.TLSConfigFunc != nil {
+	if cfg.TLSProvider != nil && cfg.TLSConfigFunc != nil {
 		cfg.TLSConfigFunc(tlsConfig)
 	}
 

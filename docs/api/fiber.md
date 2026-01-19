@@ -107,9 +107,6 @@ app.Listen(":8080", fiber.ListenConfig{
 | Property                                                                | Type                          | Description                                                                                                                                                                                                                                                                                                                  | Default            |
 |-------------------------------------------------------------------------|-------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------|
 | <Reference id="beforeservefunc">BeforeServeFunc</Reference>             | `func(app *App) error`        | Allows customizing and accessing fiber app before serving the app.                                                                                                                                                                                                                                                           | `nil`              |
-| <Reference id="certclientfile">CertClientFile</Reference>               | `string`                      | Path of the client certificate. If you want to use mTLS, you must enter this field.                                                                                                                                                                                                                                          | `""`               |
-| <Reference id="certfile">CertFile</Reference>                           | `string`                      | Path of the certificate file. If you want to use TLS, you must enter this field.                                                                                                                                                                                                                                             | `""`               |
-| <Reference id="certkeyfile">CertKeyFile</Reference>                     | `string`                      | Path of the certificate's private key. If you want to use TLS, you must enter this field.                                                                                                                                                                                                                                    | `""`               |
 | <Reference id="disablestartupmessage">DisableStartupMessage</Reference> | `bool`                        | When set to true, it will not print out the «Fiber» ASCII art and listening address.                                                                                                                                                                                                                                         | `false`            |
 | <Reference id="enableprefork">EnablePrefork</Reference>                 | `bool`                        | When set to true, this will spawn multiple Go processes listening on the same port.                                                                                                                                                                                                                                          | `false`            |
 | <Reference id="enableprintroutes">EnablePrintRoutes</Reference>         | `bool`                        | If set to true, will print all routes with their method, path, and handler.                                                                                                                                                                                                                                                  | `false`            |
@@ -118,9 +115,9 @@ app.Listen(":8080", fiber.ListenConfig{
 | <Reference id="listeneraddrfunc">ListenerAddrFunc</Reference>           | `func(addr net.Addr)`         | Allows accessing and customizing `net.Listener`.                                                                                                                                                                                                                                                                             | `nil`              |
 | <Reference id="listenernetwork">ListenerNetwork</Reference>             | `string`                      | Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), "unix" (Unix Domain Sockets). WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.                                                                                                                                                  | `tcp4`             |
 | <Reference id="unixsocketfilemode">UnixSocketFileMode</Reference>       | `os.FileMode`                 | FileMode to set for Unix Domain Socket (ListenerNetwork must be "unix")                                                                                                                                                                                                                                                      | `0770`             |
-| <Reference id="tlsconfigfunc">TLSConfigFunc</Reference>                 | `func(tlsConfig *tls.Config)` | Allows customizing `tls.Config` as you want.                                                                                                                                                                                                                                                                                 | `nil`              |
-| <Reference id="autocertmanager">AutoCertManager</Reference>             | `*autocert.Manager`           | Manages TLS certificates automatically using the ACME protocol. Enables integration with Let's Encrypt or other ACME-compatible providers.                                                                                                                                                                                   | `nil`              |
-| <Reference id="tlsminversion">TLSMinVersion</Reference>                 | `uint16`                      | Allows customizing the TLS minimum version.                                                                                                                                                                                                                                                                                  | `tls.VersionTLS12` |
+| <Reference id="tlsprovider">TLSProvider</Reference>                     | `ServerTLSProvider`           | Specify a `ServerTLSProvider` from which to try obtaining a `*tls.Config` object to configure this Listener with.                                                                                                                                                                                                            | `nil`              |
+| <Reference id="tlscustomizer">TLSCustomizer</Reference>                 | `ServerTLSCustomizer`         | Specify a `ServerTLSCustomizer` from which to customize a  `tls.Config` object returned from `TLSProvider`.                                                                                                                                                                                                                  | `nil`              |
+| <Reference id="tlsconfigfunc">TLSConfigFunc</Reference>                 | `func(tlsConfig *tls.Config)` | Allows reviewing and customizing `tls.Config` returned from `TLSProvider` as you want. `tlsConfig` may be `nil` if none is returned from `TLSProvider`                                                                                                                                                                       | `nil`              |
 
 ### Listen
 
@@ -153,25 +150,47 @@ This distributes the incoming connections between the spawned processes and allo
 
 #### TLS
 
-TLS serves HTTPs requests from the given address using certFile and keyFile paths to as TLS certificate and key file.
+TLS serves HTTPs requests from the given address using a `*tls.Config` object returned from a specific interface.
 
-```go title="Examples"
-app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key"})
+```go title="Signature"
+type ServerTLSProvider interface {
+    ProvideServerTLS() (*tls.Config, error)
+}
 ```
 
-#### TLS with certificate
+There is already default implementations of this interface to use, namely `ServerCertificateProvider` and `ACMECertificateProvider`
+
+##### TLS from ServerCertificateProvider
+
+You can initialize a TLS server using a file or a string.
+
+If you have a file containing in PEM format a certificate and key and possibly intermediate certificates, you can initialize TLS like this :
 
 ```go title="Examples"
-app.Listen(":443", fiber.ListenConfig{CertClientFile: "./ca-chain-cert.pem"})
+app.Listen(":443", fiber.ListenConfig{TLSProvider: &fiber.ServerCertificateProvider{Certificate: "./certificate.pem"} } )
 ```
 
-#### TLS with certFile, keyFile and clientCertFile
+`Certificate` can also be a string containing what that file should contain.
 
 ```go title="Examples"
-app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key", CertClientFile: "./ca-chain-cert.pem"})
+certificate, _ := os.ReadFile(filepath.Clean("./certificate.pem"))
+app.Listen(":443", fiber.ListenConfig{TLSProvider: &ServerCertificateProvider{Certificate: string(certificate)} } )
 ```
 
-#### TLS AutoCert support (ACME / Let's Encrypt)
+**Note:** `CertFile` and `CertKeyFile` are still available but deprecated.
+
+```go title="Examples"
+app.Listen(":443",
+    fiber.ListenConfig{
+        TLSProvider: &fiber.ServerCertificateProvider{
+            CertFile: "./cert.pem",
+            CertKeyFile: "./cert.key",
+        },
+    },
+)
+```
+
+##### TLS AutoCert support (ACME / Let's Encrypt) with ACMECertificateProvider
 
 Provides automatic access to certificates management from Let's Encrypt and any other ACME-based providers.
 
@@ -186,9 +205,40 @@ certManager := &autocert.Manager{
 }
 
 app.Listen(":444", fiber.ListenConfig{
-    AutoCertManager:    certManager,
+    TLSProvider: &ACMECertificateProvider{
+        AutoCertManager:    certManager,
+    }
 })
 ```
+
+#### TLS with client certificate (MutualTLS)
+
+Another interface `ServerTLSCustomizer` is provided to customize a `*tls.Config` object.
+
+```go title="Signature"
+type ServerTLSCustomizer interface {
+	  CustomizeServerTLS(config *tls.Config) error
+}
+```
+
+Default implementations are provided in the [Addon/VerifyPeer](../addon/verifypeer) package to provide Mutual TLS configuration in ListenConfig.
+
+It must be used along side a `ServerTLSProvider`.
+
+```go title="Examples"
+app.Listen(":443",
+    fiber.ListenConfig{
+        TLSProvider: &fiber.ServerCertificateProvider{
+            Certificate: "./certificate.pem",
+        },
+        TLSCustomizer: &verifypeer.MutualTLSCustomizer{
+            Certificate: "./ca-cert.pem",
+        },
+    },
+)
+```
+
+Other implementations are provided in [Addon/VerifyPeer](../addon/verifypeer) to offer Certificate Revocation List or OCSP-Stapling certificate verification.
 
 ### Listener
 
