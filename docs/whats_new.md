@@ -48,6 +48,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [CSRF](#csrf)
   - [Compression](#compression)
   - [EncryptCookie](#encryptcookie)
+  - [Favicon](#favicon)
   - [Filesystem](#filesystem)
   - [Healthcheck](#healthcheck)
   - [KeyAuth](#keyauth)
@@ -1352,6 +1353,10 @@ Idempotency middleware now redacts keys by default and offers a `DisableValueRed
   Decryptor func(name, value, key string) (string, error)
   ```
 
+### Favicon
+
+The favicon middleware now caps cached favicon assets with a configurable `MaxBytes` limit (default `1 MiB`) and uses a limited reader to guard against oversized files when loading from disk.
+
 ### EnvVar
 
 The `ExcludeVars` field has been removed from the EnvVar middleware configuration. When upgrading, remove any references to this field and explicitly list the variables you wish to expose using `ExportVars`.
@@ -1681,6 +1686,7 @@ fiber migrate --to v3.0.0-rc.3
   - [CSRF](#csrf-1)
   - [Filesystem](#filesystem-1)
   - [EnvVar](#envvar-1)
+  - [Favicon](#favicon)
   - [Healthcheck](#healthcheck-1)
   - [Monitor](#monitor-1)
   - [Proxy](#proxy-1)
