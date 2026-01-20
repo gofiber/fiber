@@ -3167,7 +3167,8 @@ func Test_Ctx_Context(t *testing.T) {
 
 	t.Run("ValueContext", func(t *testing.T) {
 		t.Parallel()
-		testKey := struct{}{}
+		type ContextKey struct{}
+		var testKey ContextKey
 		testValue := "Test Value"
 		ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
 		require.Equal(t, testValue, ctx.Value(testKey))
@@ -3212,7 +3213,8 @@ func Test_Ctx_SetContext(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	testKey := struct{}{}
+	type ContextKey struct{}
+	var testKey ContextKey
 	testValue := "Test Value"
 	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
 	c.SetContext(ctx)
@@ -3222,7 +3224,8 @@ func Test_Ctx_SetContext(t *testing.T) {
 // go test -run Test_Ctx_Context_Multiple_Requests
 func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 	t.Parallel()
-	testKey := struct{}{}
+	type ContextKey struct{}
+	var testKey ContextKey
 	testValue := "foobar-value"
 
 	app := New()
