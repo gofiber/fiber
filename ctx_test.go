@@ -3170,7 +3170,7 @@ func Test_Ctx_Context(t *testing.T) {
 		type ContextKey struct{}
 		var testKey ContextKey
 		testValue := "Test Value"
-		ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
+		ctx := context.WithValue(context.Background(), testKey, testValue) 
 		require.Equal(t, testValue, ctx.Value(testKey))
 	})
 }
@@ -3216,7 +3216,7 @@ func Test_Ctx_SetContext(t *testing.T) {
 	type ContextKey struct{}
 	var testKey ContextKey
 	testValue := "Test Value"
-	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
+	ctx := context.WithValue(context.Background(), testKey, testValue) 
 	c.SetContext(ctx)
 	require.Equal(t, testValue, c.Context().Value(testKey))
 }
@@ -3237,7 +3237,7 @@ func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 		}
 
 		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
-		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint:staticcheck // not needed for tests
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) 
 		c.SetContext(ctx)
 
 		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
