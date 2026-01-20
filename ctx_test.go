@@ -44,6 +44,8 @@ import (
 
 const epsilon = 0.001
 
+type testContextKey struct{}
+
 // go test -run Test_Ctx_Accepts
 func Test_Ctx_Accepts(t *testing.T) {
 	t.Parallel()
@@ -3167,10 +3169,9 @@ func Test_Ctx_Context(t *testing.T) {
 
 	t.Run("ValueContext", func(t *testing.T) {
 		t.Parallel()
-		type ContextKey struct{}
-		var testKey ContextKey
+		var testKey testContextKey
 		testValue := "Test Value"
-		ctx := context.WithValue(context.Background(), testKey, testValue) 
+		ctx := context.WithValue(context.Background(), testKey, testValue)
 		require.Equal(t, testValue, ctx.Value(testKey))
 	})
 }
@@ -3213,10 +3214,9 @@ func Test_Ctx_SetContext(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	type ContextKey struct{}
-	var testKey ContextKey
+	var testKey testContextKey
 	testValue := "Test Value"
-	ctx := context.WithValue(context.Background(), testKey, testValue) 
+	ctx := context.WithValue(context.Background(), testKey, testValue)
 	c.SetContext(ctx)
 	require.Equal(t, testValue, c.Context().Value(testKey))
 }
@@ -3224,8 +3224,7 @@ func Test_Ctx_SetContext(t *testing.T) {
 // go test -run Test_Ctx_Context_Multiple_Requests
 func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 	t.Parallel()
-	type ContextKey struct{}
-	var testKey ContextKey
+	var testKey testContextKey
 	testValue := "foobar-value"
 
 	app := New()
@@ -3237,7 +3236,7 @@ func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 		}
 
 		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
-		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) 
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input))
 		c.SetContext(ctx)
 
 		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
