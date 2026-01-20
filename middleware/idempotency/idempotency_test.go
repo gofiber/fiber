@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -336,6 +337,48 @@ func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
 	require.Empty(t, resp2.Header.Get("Bar"))
 	require.Equal(t, 1, count)
 	require.Equal(t, 1, s.setCount)
+}
+
+func Test_New_SkipCache_WhenBodyTooLarge(t *testing.T) {
+	t.Parallel()
+	bodyLimit := 8
+	app := fiber.New(fiber.Config{BodyLimit: bodyLimit})
+	s := &stubStorage{}
+	var wasPut []bool
+
+	app.Use(func(c fiber.Ctx) error {
+		if err := c.Next(); err != nil {
+			return err
+		}
+		wasPut = append(wasPut, WasPutToCache(c))
+		return nil
+	})
+	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+
+	var count int
+	oversized := strings.Repeat("a", bodyLimit+1)
+	app.Post("/", func(c fiber.Ctx) error {
+		count++
+		return c.SendString(oversized)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req.Header.Set(ConfigDefault.KeyHeader, validKey)
+	resp1, body1 := do(app, req)
+	require.Equal(t, fiber.StatusOK, resp1.StatusCode)
+	require.Equal(t, oversized, body1)
+
+	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
+	resp2, body2 := do(app, req2)
+	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
+	require.Equal(t, oversized, body2)
+
+	require.Equal(t, 2, count)
+	require.Equal(t, 0, s.setCount)
+	require.Len(t, wasPut, 2)
+	require.False(t, wasPut[0])
+	require.False(t, wasPut[1])
 }
 
 func Test_New_HandlerError(t *testing.T) {
