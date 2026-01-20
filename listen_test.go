@@ -30,8 +30,6 @@ type tlsPEM struct {
 func readTLSPEM(t *testing.T, certPath, keyPath string) tlsPEM {
 	t.Helper()
 
-	var err error
-
 	certPEM, err := os.ReadFile(filepath.Clean(certPath))
 	require.NoError(t, err)
 

@@ -224,10 +224,6 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		}
 	}
 
-	if (hasCertPEM || hasCertKeyPEM) && (hasCertFile || hasCertKeyFile) && (!hasServerPEM || !hasServerFile) {
-		return errors.New("tls: provide either CertPEM/CertKeyPEM or CertFile/CertKeyFile, not a mix")
-	}
-
 	if hasClientPEM && hasClientFile {
 		clientFileBytes, err := os.ReadFile(filepath.Clean(cfg.CertClientFile))
 		if err != nil {
