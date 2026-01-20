@@ -5,9 +5,11 @@
 package fiber
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -80,17 +82,35 @@ type ListenConfig struct {
 	// Default : ""
 	CertFile string `json:"cert_file"`
 
+	// CertPEM is a PEM-encoded certificate.
+	// If you want to use TLS from in-memory data, you have to enter this field.
+	//
+	// Default: nil
+	CertPEM []byte `json:"cert_pem"`
+
 	// KeyFile is a path of certificate's private key.
 	// If you want to use TLS, you have to enter this field.
 	//
 	// Default : ""
 	CertKeyFile string `json:"cert_key_file"`
 
+	// CertKeyPEM is a PEM-encoded certificate private key.
+	// If you want to use TLS from in-memory data, you have to enter this field.
+	//
+	// Default: nil
+	CertKeyPEM []byte `json:"cert_key_pem"`
+
 	// CertClientFile is a path of client certificate.
 	// If you want to use mTLS, you have to enter this field.
 	//
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
+
+	// CertClientPEM is a PEM-encoded client certificate chain.
+	// If you want to use mTLS from in-memory data, you have to enter this field.
+	//
+	// Default: nil
+	CertClientPEM []byte `json:"cert_client_pem"`
 
 	// When the graceful shutdown begins, use this field to set the timeout
 	// duration. If the timeout is reached, OnPostShutdown will be called with the error.
@@ -166,9 +186,84 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 func (app *App) Listen(addr string, config ...ListenConfig) error {
 	cfg := listenConfigDefault(config...)
 
+	hasCertPEM := len(cfg.CertPEM) > 0
+	hasCertKeyPEM := len(cfg.CertKeyPEM) > 0
+	hasCertFile := cfg.CertFile != ""
+	hasCertKeyFile := cfg.CertKeyFile != ""
+	hasClientPEM := len(cfg.CertClientPEM) > 0
+	hasClientFile := cfg.CertClientFile != ""
+	hasServerPEM := hasCertPEM && hasCertKeyPEM
+	hasServerFile := hasCertFile && hasCertKeyFile
+	hasTLSConfigSource := hasServerPEM || hasServerFile || cfg.AutoCertManager != nil
+
+	if hasCertPEM != hasCertKeyPEM {
+		return errors.New("tls: CertPEM and CertKeyPEM must both be set to enable TLS")
+	}
+
+	if hasCertFile != hasCertKeyFile {
+		return errors.New("tls: CertFile and CertKeyFile must both be set to enable TLS")
+	}
+
+	if (hasCertPEM || hasCertKeyPEM) && (hasCertFile || hasCertKeyFile) {
+		if !hasServerPEM || !hasServerFile {
+			return errors.New("tls: provide either CertPEM/CertKeyPEM or CertFile/CertKeyFile, not a mix")
+		}
+
+		certFileBytes, err := os.ReadFile(filepath.Clean(cfg.CertFile))
+		if err != nil {
+			return fmt.Errorf("tls: cannot read certFile=%q to compare with CertPEM: %w", cfg.CertFile, err)
+		}
+
+		if !bytes.Equal(certFileBytes, cfg.CertPEM) {
+			return fmt.Errorf("tls: CertPEM does not match certFile=%q", cfg.CertFile)
+		}
+
+		certKeyFileBytes, err := os.ReadFile(filepath.Clean(cfg.CertKeyFile))
+		if err != nil {
+			return fmt.Errorf("tls: cannot read keyFile=%q to compare with CertKeyPEM: %w", cfg.CertKeyFile, err)
+		}
+
+		if !bytes.Equal(certKeyFileBytes, cfg.CertKeyPEM) {
+			return fmt.Errorf("tls: CertKeyPEM does not match keyFile=%q", cfg.CertKeyFile)
+		}
+	}
+
+	if hasClientPEM && hasClientFile {
+		clientFileBytes, err := os.ReadFile(filepath.Clean(cfg.CertClientFile))
+		if err != nil {
+			return fmt.Errorf("tls: cannot read certClientFile=%q to compare with CertClientPEM: %w", cfg.CertClientFile, err)
+		}
+
+		if !bytes.Equal(clientFileBytes, cfg.CertClientPEM) {
+			return fmt.Errorf("tls: CertClientPEM does not match certClientFile=%q", cfg.CertClientFile)
+		}
+	}
+
+	if (hasClientPEM || hasClientFile) && !hasTLSConfigSource {
+		return errors.New("tls: CertClientPEM or CertClientFile requires TLS certificate configuration")
+	}
+
 	// Configure TLS
 	var tlsConfig *tls.Config
-	if cfg.CertFile != "" && cfg.CertKeyFile != "" {
+	switch {
+	case hasServerPEM:
+		cert, err := tls.X509KeyPair(cfg.CertPEM, cfg.CertKeyPEM)
+		if err != nil {
+			return fmt.Errorf("tls: cannot load TLS key pair from CertPEM and CertKeyPEM: %w", err)
+		}
+
+		tlsHandler := &TLSHandler{}
+		tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
+			MinVersion: cfg.TLSMinVersion,
+			Certificates: []tls.Certificate{
+				cert,
+			},
+			GetCertificate: tlsHandler.GetClientInfo,
+		}
+
+		// Attach the tlsHandler to the config
+		app.SetTLSHandler(tlsHandler)
+	case hasServerFile:
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.CertKeyFile)
 		if err != nil {
 			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", cfg.CertFile, cfg.CertKeyFile, err)
@@ -183,27 +278,34 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 			GetCertificate: tlsHandler.GetClientInfo,
 		}
 
-		if cfg.CertClientFile != "" {
-			clientCACert, err := os.ReadFile(filepath.Clean(cfg.CertClientFile))
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-
-			clientCertPool := x509.NewCertPool()
-			clientCertPool.AppendCertsFromPEM(clientCACert)
-
-			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
-			tlsConfig.ClientCAs = clientCertPool
-		}
-
 		// Attach the tlsHandler to the config
 		app.SetTLSHandler(tlsHandler)
-	} else if cfg.AutoCertManager != nil {
+	case cfg.AutoCertManager != nil:
 		tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
 			MinVersion:     cfg.TLSMinVersion,
 			GetCertificate: cfg.AutoCertManager.GetCertificate,
 			NextProtos:     []string{"http/1.1", "acme-tls/1"},
 		}
+	default:
+	}
+
+	if tlsConfig != nil && (hasClientPEM || hasClientFile) {
+		clientCACert := cfg.CertClientPEM
+		if !hasClientPEM {
+			var err error
+			clientCACert, err = os.ReadFile(filepath.Clean(cfg.CertClientFile))
+			if err != nil {
+				return fmt.Errorf("tls: cannot read certClientFile=%q: %w", cfg.CertClientFile, err)
+			}
+		}
+
+		clientCertPool := x509.NewCertPool()
+		if !clientCertPool.AppendCertsFromPEM(clientCACert) {
+			return errors.New("tls: failed to parse client CA certificate")
+		}
+
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+		tlsConfig.ClientCAs = clientCertPool
 	}
 
 	if tlsConfig != nil && cfg.TLSConfigFunc != nil {

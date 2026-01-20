@@ -22,6 +22,28 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
+type tlsPEM struct {
+	cert []byte
+	key  []byte
+}
+
+func readTLSPEM(t *testing.T, certPath, keyPath string) tlsPEM {
+	t.Helper()
+
+	var err error
+
+	certPEM, err := os.ReadFile(filepath.Clean(certPath))
+	require.NoError(t, err)
+
+	keyPEM, err := os.ReadFile(filepath.Clean(keyPath))
+	require.NoError(t, err)
+
+	return tlsPEM{
+		cert: certPEM,
+		key:  keyPEM,
+	}
+}
+
 // go test -run Test_Listen
 func Test_Listen(t *testing.T) {
 	app := New()
@@ -227,6 +249,96 @@ func Test_Listen_TLS(t *testing.T) {
 		CertFile:    "./.github/testdata/ssl.pem",
 		CertKeyFile: "./.github/testdata/ssl.key",
 	}))
+}
+
+// go test -run Test_Listen_TLS_PEM
+func Test_Listen_TLS_PEM(t *testing.T) {
+	t.Parallel()
+
+	creds := readTLSPEM(t, "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	clientPEM, err := os.ReadFile(filepath.Clean("./.github/testdata/ca-chain.cert.pem"))
+	require.NoError(t, err)
+
+	t.Run("ServerCertOnly", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		go func() {
+			time.Sleep(1000 * time.Millisecond)
+			assert.NoError(t, app.Shutdown())
+		}()
+
+		require.NoError(t, app.Listen(":0", ListenConfig{
+			CertPEM:    creds.cert,
+			CertKeyPEM: creds.key,
+		}))
+	})
+
+	t.Run("WithClientCA", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		go func() {
+			time.Sleep(1000 * time.Millisecond)
+			assert.NoError(t, app.Shutdown())
+		}()
+
+		require.NoError(t, app.Listen(":0", ListenConfig{
+			CertPEM:       creds.cert,
+			CertKeyPEM:    creds.key,
+			CertClientPEM: clientPEM,
+		}))
+	})
+}
+
+// go test -run Test_Listen_TLS_PEM_Validation
+func Test_Listen_TLS_PEM_Validation(t *testing.T) {
+	t.Parallel()
+
+	creds := readTLSPEM(t, "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	clientPEM, err := os.ReadFile(filepath.Clean("./.github/testdata/ca-chain.cert.pem"))
+	require.NoError(t, err)
+
+	t.Run("MissingKey", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		err := app.Listen(":0", ListenConfig{
+			CertPEM: creds.cert,
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: CertPEM and CertKeyPEM must both be set to enable TLS")
+	})
+
+	t.Run("ClientCAWithoutServerTLS", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		err := app.Listen(":0", ListenConfig{
+			CertClientPEM: clientPEM,
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: CertClientPEM or CertClientFile requires TLS certificate configuration")
+	})
+
+	t.Run("MismatchedPEMAndFile", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		err := app.Listen(":0", ListenConfig{
+			CertPEM:     creds.cert,
+			CertKeyPEM:  creds.key,
+			CertFile:    "./.github/testdata/template.tmpl",
+			CertKeyFile: "./.github/testdata/ssl.key",
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: CertPEM does not match certFile")
+	})
 }
 
 // go test -run Test_Listen_TLS_Prefork

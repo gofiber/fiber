@@ -108,8 +108,11 @@ app.Listen(":8080", fiber.ListenConfig{
 |-------------------------------------------------------------------------|-------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------|
 | <Reference id="beforeservefunc">BeforeServeFunc</Reference>             | `func(app *App) error`        | Allows customizing and accessing fiber app before serving the app.                                                                                                                                                                                                                                                           | `nil`              |
 | <Reference id="certclientfile">CertClientFile</Reference>               | `string`                      | Path of the client certificate. If you want to use mTLS, you must enter this field.                                                                                                                                                                                                                                          | `""`               |
+| <Reference id="certclientpem">CertClientPEM</Reference>                 | `[]byte`                      | PEM-encoded client certificate chain. If you want to use mTLS from in-memory data, you must enter this field.                                                                                                                                                                                                                 | `nil`              |
 | <Reference id="certfile">CertFile</Reference>                           | `string`                      | Path of the certificate file. If you want to use TLS, you must enter this field.                                                                                                                                                                                                                                             | `""`               |
+| <Reference id="certpem">CertPEM</Reference>                             | `[]byte`                      | PEM-encoded certificate. If you want to use TLS from in-memory data, you must enter this field.                                                                                                                                                                                                                              | `nil`              |
 | <Reference id="certkeyfile">CertKeyFile</Reference>                     | `string`                      | Path of the certificate's private key. If you want to use TLS, you must enter this field.                                                                                                                                                                                                                                    | `""`               |
+| <Reference id="certkeypem">CertKeyPEM</Reference>                       | `[]byte`                      | PEM-encoded certificate private key. If you want to use TLS from in-memory data, you must enter this field.                                                                                                                                                                                                                   | `nil`              |
 | <Reference id="disablestartupmessage">DisableStartupMessage</Reference> | `bool`                        | When set to true, it will not print out the «Fiber» ASCII art and listening address.                                                                                                                                                                                                                                         | `false`            |
 | <Reference id="enableprefork">EnablePrefork</Reference>                 | `bool`                        | When set to true, this will spawn multiple Go processes listening on the same port.                                                                                                                                                                                                                                          | `false`            |
 | <Reference id="enableprintroutes">EnablePrintRoutes</Reference>         | `bool`                        | If set to true, will print all routes with their method, path, and handler.                                                                                                                                                                                                                                                  | `false`            |
@@ -157,6 +160,15 @@ TLS serves HTTPs requests from the given address using certFile and keyFile path
 
 ```go title="Examples"
 app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key"})
+```
+
+#### TLS with PEM data
+
+```go title="Examples"
+app.Listen(":443", fiber.ListenConfig{
+    CertPEM:    []byte(os.Getenv("TLS_CERT_PEM")),
+    CertKeyPEM: []byte(os.Getenv("TLS_KEY_PEM")),
+})
 ```
 
 #### TLS with certificate

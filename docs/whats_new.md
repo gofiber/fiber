@@ -1791,6 +1791,15 @@ app.Listen(":3000", fiber.ListenConfig{
 })
 ```
 
+ListenConfig now also accepts PEM-encoded certificate data, allowing TLS setup without file paths.
+
+```go
+app.Listen(":3000", fiber.ListenConfig{
+    CertPEM:    []byte(os.Getenv("TLS_CERT_PEM")),
+    CertKeyPEM: []byte(os.Getenv("TLS_KEY_PEM")),
+})
+```
+
 ### 🗺 Router
 
 #### Direct `net/http` handlers
