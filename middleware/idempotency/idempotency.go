@@ -98,12 +98,12 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Don't execute middleware if the idempotency key is empty
-		key := utils.CopyString(c.Get(cfg.KeyHeader))
-		if key == "" {
+		if len(c.Get(cfg.KeyHeader)) == 0 {
 			return c.Next()
 		}
 
 		// Validate key
+		key := utils.CopyString(c.Get(cfg.KeyHeader))
 		if err := cfg.KeyHeaderValidate(key); err != nil {
 			return err
 		}
