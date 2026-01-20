@@ -256,7 +256,7 @@ func Test_Listen_TLS_PEM(t *testing.T) {
 	t.Parallel()
 
 	creds := readTLSPEM(t, "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	clientPEM, err := os.ReadFile(filepath.Clean("./.github/testdata/ca-chain.cert.pem"))
+	clientPEM, err := os.ReadFile(filepath.Clean("./.github/testdata/client.pem"))
 	require.NoError(t, err)
 
 	t.Run("ServerCertOnly", func(t *testing.T) {
@@ -298,7 +298,7 @@ func Test_Listen_TLS_PEM_Validation(t *testing.T) {
 	t.Parallel()
 
 	creds := readTLSPEM(t, "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	clientPEM, err := os.ReadFile(filepath.Clean("./.github/testdata/ca-chain.cert.pem"))
+	clientPEM, err := os.ReadFile(filepath.Clean("./.github/testdata/client.pem"))
 	require.NoError(t, err)
 
 	t.Run("MissingKey", func(t *testing.T) {
@@ -441,7 +441,7 @@ func Test_Listen_TLS_PEM_Validation(t *testing.T) {
 			CertPEM:        creds.cert,
 			CertKeyPEM:     creds.key,
 			CertClientPEM:  badClientPEM,
-			CertClientFile: "./.github/testdata/ca-chain.cert.pem",
+			CertClientFile: "./.github/testdata/client.pem",
 		})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "tls: CertClientPEM does not match certClientFile")
@@ -529,7 +529,7 @@ func Test_Listen_MutualTLS(t *testing.T) {
 	require.Error(t, app.Listen(":99999", ListenConfig{
 		CertFile:       "./.github/testdata/ssl.pem",
 		CertKeyFile:    "./.github/testdata/ssl.key",
-		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
+		CertClientFile: "./.github/testdata/client.pem",
 	}))
 
 	go func() {
@@ -540,7 +540,7 @@ func Test_Listen_MutualTLS(t *testing.T) {
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		CertFile:       "./.github/testdata/ssl.pem",
 		CertKeyFile:    "./.github/testdata/ssl.key",
-		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
+		CertClientFile: "./.github/testdata/client.pem",
 	}))
 }
 
@@ -556,7 +556,7 @@ func Test_Listen_MutualTLS_Prefork(t *testing.T) {
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
 		CertKeyFile:           "./.github/testdata/template.html",
-		CertClientFile:        "./.github/testdata/ca-chain.cert.pem",
+		CertClientFile:        "./.github/testdata/client.pem",
 	}))
 
 	go func() {
@@ -569,7 +569,7 @@ func Test_Listen_MutualTLS_Prefork(t *testing.T) {
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
 		CertKeyFile:           "./.github/testdata/ssl.key",
-		CertClientFile:        "./.github/testdata/ca-chain.cert.pem",
+		CertClientFile:        "./.github/testdata/client.pem",
 	}))
 }
 
