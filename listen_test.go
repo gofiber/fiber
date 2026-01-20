@@ -336,7 +336,7 @@ func Test_Listen_TLS_PEM_Validation(t *testing.T) {
 			CertFile:   "./.github/testdata/ssl.pem",
 		})
 		require.Error(t, err)
-		require.ErrorContains(t, err, "tls: provide either CertPEM/CertKeyPEM or CertFile/CertKeyFile, not a mix")
+		require.ErrorContains(t, err, "tls: CertFile and CertKeyFile must both be set to enable TLS")
 	})
 
 	t.Run("CertFileCompareReadError", func(t *testing.T) {
