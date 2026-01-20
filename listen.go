@@ -200,10 +200,6 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		return errors.New("tls: CertPEM and CertKeyPEM must both be set to enable TLS")
 	}
 
-	if hasCertFile != hasCertKeyFile {
-		return errors.New("tls: CertFile and CertKeyFile must both be set to enable TLS")
-	}
-
 	if (hasCertPEM || hasCertKeyPEM) && (hasCertFile || hasCertKeyFile) {
 		if !hasServerPEM || !hasServerFile {
 			return errors.New("tls: provide either CertPEM/CertKeyPEM or CertFile/CertKeyFile, not a mix")
@@ -226,6 +222,10 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		if !bytes.Equal(certKeyFileBytes, cfg.CertKeyPEM) {
 			return fmt.Errorf("tls: CertKeyPEM does not match keyFile=%q", cfg.CertKeyFile)
 		}
+	}
+
+	if hasCertFile != hasCertKeyFile {
+		return errors.New("tls: CertFile and CertKeyFile must both be set to enable TLS")
 	}
 
 	if hasClientPEM && hasClientFile {

@@ -313,6 +313,64 @@ func Test_Listen_TLS_PEM_Validation(t *testing.T) {
 		require.ErrorContains(t, err, "tls: CertPEM and CertKeyPEM must both be set to enable TLS")
 	})
 
+	t.Run("MissingFileKeyPair", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		err := app.Listen(":0", ListenConfig{
+			CertFile: "./.github/testdata/ssl.pem",
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: CertFile and CertKeyFile must both be set to enable TLS")
+	})
+
+	t.Run("MixedPEMAndFile", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		err := app.Listen(":0", ListenConfig{
+			CertPEM:    creds.cert,
+			CertKeyPEM: creds.key,
+			CertFile:   "./.github/testdata/ssl.pem",
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: provide either CertPEM/CertKeyPEM or CertFile/CertKeyFile, not a mix")
+	})
+
+	t.Run("CertFileCompareReadError", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		missingPath := filepath.Join(t.TempDir(), "missing.pem")
+
+		err := app.Listen(":0", ListenConfig{
+			CertPEM:     creds.cert,
+			CertKeyPEM:  creds.key,
+			CertFile:    missingPath,
+			CertKeyFile: "./.github/testdata/ssl.key",
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: cannot read certFile=")
+	})
+
+	t.Run("CertKeyCompareReadError", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		missingPath := filepath.Join(t.TempDir(), "missing.key")
+
+		err := app.Listen(":0", ListenConfig{
+			CertPEM:     creds.cert,
+			CertKeyPEM:  creds.key,
+			CertFile:    "./.github/testdata/ssl.pem",
+			CertKeyFile: missingPath,
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: cannot read keyFile=")
+	})
+
 	t.Run("ClientCAWithoutServerTLS", func(t *testing.T) {
 		t.Parallel()
 
@@ -338,6 +396,101 @@ func Test_Listen_TLS_PEM_Validation(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "tls: CertPEM does not match certFile")
+	})
+
+	t.Run("CertKeyMismatch", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		err := app.Listen(":0", ListenConfig{
+			CertPEM:     creds.cert,
+			CertKeyPEM:  creds.key,
+			CertFile:    "./.github/testdata/ssl.pem",
+			CertKeyFile: "./.github/testdata/template.tmpl",
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: CertKeyPEM does not match keyFile")
+	})
+
+	t.Run("ClientCertCompareReadError", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		missingPath := filepath.Join(t.TempDir(), "missing-client.pem")
+
+		err := app.Listen(":0", ListenConfig{
+			CertPEM:        creds.cert,
+			CertKeyPEM:     creds.key,
+			CertClientPEM:  clientPEM,
+			CertClientFile: missingPath,
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: cannot read certClientFile=")
+	})
+
+	t.Run("ClientCertMismatch", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		badClientPEM, err := os.ReadFile(filepath.Clean("./.github/testdata/template.tmpl"))
+		require.NoError(t, err)
+
+		err = app.Listen(":0", ListenConfig{
+			CertPEM:        creds.cert,
+			CertKeyPEM:     creds.key,
+			CertClientPEM:  badClientPEM,
+			CertClientFile: "./.github/testdata/ca-chain.cert.pem",
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: CertClientPEM does not match certClientFile")
+	})
+
+	t.Run("PEMKeyPairError", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		invalidKey, err := os.ReadFile(filepath.Clean("./.github/testdata/template.tmpl"))
+		require.NoError(t, err)
+
+		err = app.Listen(":0", ListenConfig{
+			CertPEM:    creds.cert,
+			CertKeyPEM: invalidKey,
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: cannot load TLS key pair from CertPEM and CertKeyPEM")
+	})
+
+	t.Run("FileKeyPairError", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		err := app.Listen(":0", ListenConfig{
+			CertFile:    "./.github/testdata/ssl.pem",
+			CertKeyFile: "./.github/testdata/template.tmpl",
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: cannot load TLS key pair from certFile=")
+	})
+
+	t.Run("ClientCertParseError", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		invalidClientPEM, err := os.ReadFile(filepath.Clean("./.github/testdata/template.tmpl"))
+		require.NoError(t, err)
+
+		err = app.Listen(":0", ListenConfig{
+			CertPEM:       creds.cert,
+			CertKeyPEM:    creds.key,
+			CertClientPEM: invalidClientPEM,
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "tls: failed to parse client CA certificate")
 	})
 }
 
