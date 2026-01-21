@@ -526,6 +526,20 @@ func (c *Client) DisableDebug() *Client {
 	return c
 }
 
+// StreamResponseBody returns the current StreamResponseBody setting.
+func (c *Client) StreamResponseBody() bool {
+	return c.transport.StreamResponseBody()
+}
+
+// SetStreamResponseBody enables or disables response body streaming.
+// When enabled, the response body can be read as a stream using BodyStream()
+// instead of being fully loaded into memory. This is useful for large responses
+// or server-sent events.
+func (c *Client) SetStreamResponseBody(enable bool) *Client {
+	c.transport.SetStreamResponseBody(enable)
+	return c
+}
+
 // SetCookieJar sets the cookie jar for the client.
 func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client {
 	c.cookieJar = cookieJar

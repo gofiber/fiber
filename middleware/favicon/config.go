@@ -38,6 +38,11 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Data []byte `json:"-"`
+
+	// MaxBytes limits the maximum size of the cached favicon asset.
+	//
+	// Optional. Default: 1048576
+	MaxBytes int64 `json:"max_bytes"`
 }
 
 // ConfigDefault is the default config
@@ -46,6 +51,7 @@ var ConfigDefault = Config{
 	File:         "",
 	URL:          fPath,
 	CacheControl: "public, max-age=31536000",
+	MaxBytes:     1024 * 1024,
 }
 
 func configDefault(config ...Config) Config {
@@ -66,6 +72,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.CacheControl == "" {
 		cfg.CacheControl = ConfigDefault.CacheControl
+	}
+	if cfg.MaxBytes <= 0 {
+		cfg.MaxBytes = ConfigDefault.MaxBytes
 	}
 
 	return cfg

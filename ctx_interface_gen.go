@@ -152,8 +152,27 @@ type Ctx interface {
 	configDependentPaths()
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
-	// Release is a method to reset context fields when to use ReleaseCtx()
+	// release is a method to reset context fields when to use ReleaseCtx()
 	release()
+	// Abandon marks this context as abandoned. An abandoned context will not be
+	// returned to the pool when ReleaseCtx is called.
+	//
+	// This is used by the timeout middleware to return immediately while the
+	// handler goroutine continues using the context safely.
+	//
+	// Only call ForceRelease after Abandon if you can guarantee no other goroutine
+	// (including Fiber's requestHandler and ErrorHandler) will touch the context.
+	// The timeout middleware intentionally does NOT call ForceRelease to avoid
+	// races, which means timed-out requests leak their contexts until a safe
+	// reclamation strategy exists.
+	Abandon()
+	// IsAbandoned returns true if Abandon() was called on this context.
+	IsAbandoned() bool
+	// ForceRelease releases an abandoned context back to the pool.
+	// This MUST only be called after all goroutines (including requestHandler and
+	// ErrorHandler) have completely finished using this context. Calling it while
+	// any goroutine is still running causes races.
+	ForceRelease()
 	renderExtensions(bind any)
 	// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
 	// It gives custom binding support, detailed binding options and more.

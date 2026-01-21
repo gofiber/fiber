@@ -52,6 +52,7 @@ app.Use(favicon.New(favicon.Config{
 | URL          | `string`                | URL for favicon handler.                                                         | "/favicon.ico"             |
 | FileSystem   | `fs.FS`                 | FileSystem is an optional alternate filesystem from which to load the favicon file (e.g. using `os.DirFS` or an `embed.FS`). | `nil`                      |
 | CacheControl | `string`                | CacheControl defines how the Cache-Control header in the response should be set. | "public, max-age=31536000" |
+| MaxBytes     | `int64`                 | MaxBytes limits the maximum size of the cached favicon asset.                    | `1048576`                  |
 
 ## Default Config
 
@@ -61,5 +62,6 @@ var ConfigDefault = Config{
     File:         "",
     URL:          fPath,
     CacheControl: "public, max-age=31536000",
+    MaxBytes:     1024 * 1024,
 }
 ```

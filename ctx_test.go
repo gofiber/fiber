@@ -34,7 +34,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/utils/v2"
-	"github.com/shamaton/msgpack/v2"
+	"github.com/shamaton/msgpack/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -43,6 +43,8 @@ import (
 )
 
 const epsilon = 0.001
+
+type testContextKey struct{}
 
 // go test -run Test_Ctx_Accepts
 func Test_Ctx_Accepts(t *testing.T) {
@@ -1402,7 +1404,7 @@ func Test_Ctx_Cookie_Invalid(t *testing.T) {
 		{Name: "i", Value: "b", Domain: "2001:db8::1"},                                // ipv6 not allowed
 		{Name: "p", Value: "b", Path: "\x00"},                                         // invalid path byte
 		{Name: "e", Value: "b", Expires: time.Date(1500, 1, 1, 0, 0, 0, 0, time.UTC)}, // invalid expires
-		{Name: "s", Value: "b", Partitioned: true},                                    // partitioned but not secure
+		// Note: Partitioned without Secure is auto-fixed (Secure=true set automatically per CHIPS spec)
 	}
 
 	for _, invalid := range cases {
@@ -3167,9 +3169,9 @@ func Test_Ctx_Context(t *testing.T) {
 
 	t.Run("ValueContext", func(t *testing.T) {
 		t.Parallel()
-		testKey := struct{}{}
+		var testKey testContextKey
 		testValue := "Test Value"
-		ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
+		ctx := context.WithValue(context.Background(), testKey, testValue)
 		require.Equal(t, testValue, ctx.Value(testKey))
 	})
 }
@@ -3212,9 +3214,9 @@ func Test_Ctx_SetContext(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	testKey := struct{}{}
+	var testKey testContextKey
 	testValue := "Test Value"
-	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
+	ctx := context.WithValue(context.Background(), testKey, testValue)
 	c.SetContext(ctx)
 	require.Equal(t, testValue, c.Context().Value(testKey))
 }
@@ -3222,7 +3224,7 @@ func Test_Ctx_SetContext(t *testing.T) {
 // go test -run Test_Ctx_Context_Multiple_Requests
 func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 	t.Parallel()
-	testKey := struct{}{}
+	var testKey testContextKey
 	testValue := "foobar-value"
 
 	app := New()
@@ -3234,7 +3236,7 @@ func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 		}
 
 		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
-		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint:staticcheck // not needed for tests
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input))
 		c.SetContext(ctx)
 
 		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
@@ -7952,6 +7954,44 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 		c.OverrideParam("test", "value") // Should not change
 		require.Empty(t, c.Params("test"))
 	})
+}
+
+func Test_Ctx_AbandonSkipsReleaseCtx(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // controlled test setup
+	ctx.route = &Route{}
+
+	t.Cleanup(func() {
+		ctx.ForceRelease()
+	})
+
+	require.False(t, ctx.IsAbandoned())
+
+	ctx.Abandon()
+	require.True(t, ctx.IsAbandoned())
+
+	app.ReleaseCtx(ctx)
+
+	require.True(t, ctx.IsAbandoned(), "ReleaseCtx must not pool abandoned contexts")
+	require.NotNil(t, ctx.fasthttp, "ReleaseCtx should not reset fasthttp on abandoned ctx")
+	require.NotNil(t, ctx.route, "ReleaseCtx should not reset route on abandoned ctx")
+}
+
+func Test_Ctx_ForceReleaseClearsAbandon(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // controlled test setup
+	ctx.route = &Route{}
+
+	ctx.Abandon()
+	ctx.ForceRelease()
+
+	require.False(t, ctx.IsAbandoned(), "ForceRelease should clear abandon flag")
+	require.Nil(t, ctx.fasthttp, "ForceRelease should release fasthttp reference")
+	require.Nil(t, ctx.route, "ForceRelease should reset route before pooling")
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_IsProxyTrusted -benchmem -count=4

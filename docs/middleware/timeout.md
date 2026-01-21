@@ -4,9 +4,33 @@ id: timeout
 
 # Timeout
 
-The timeout middleware aborts handlers that run too long. It wraps them with
+The timeout middleware enforces a deadline on handler execution. It wraps handlers with
 `context.WithTimeout`, exposes the derived context through `c.Context()`, and
 returns `408 Request Timeout` when the deadline is exceeded.
+
+## How It Works
+
+When a timeout occurs, the middleware **returns immediately** without waiting for the
+handler to finish. This is achieved through Fiber's **Abandon mechanism**:
+
+1. The handler runs in a goroutine with a timeout context
+2. On timeout, the middleware marks the context as "abandoned" and returns `408` immediately
+3. The handler goroutine can continue safely (e.g., for cleanup) without blocking the response
+4. A background cleanup goroutine waits for the handler to finish and performs context cleanup
+
+Handlers can detect the timeout by listening on `c.Context().Done()` and return early.
+This is the recommended pattern for cooperative cancellation.
+
+If a handler panics, the middleware catches it and returns `500 Internal Server Error`.
+
+## Known limitations
+
+- Timed-out requests abandon their `fiber.Ctx` to avoid data races with the core
+  request handler (including the `ErrorHandler`). These contexts are **not**
+  returned to the pool, so each timed-out request leaks a context. Calling
+  `ForceRelease` is only safe if you can guarantee that no goroutine (including
+  Fiber internals) will touch the context anymore; the timeout middleware
+  intentionally does not call it.
 
 :::caution
 `timeout.New` wraps your final handler and can't be added with `app.Use` or
@@ -78,12 +102,12 @@ curl -i http://localhost:3000/sleep/3000   # returns 408 Request Timeout
 
 ## Config
 
-| Property  | Type               | Description                                                          | Default |
-|:----------|:-------------------|:---------------------------------------------------------------------|:-------|
-| Next      | `func(fiber.Ctx) bool` | Function to skip this middleware when it returns `true`.            | `nil`  |
-| Timeout   | `time.Duration`    | Timeout duration for requests. `0` or a negative value disables the timeout. | `0`    |
-| OnTimeout | `fiber.Handler`    | Handler executed when a timeout occurs. Defaults to returning `fiber.ErrRequestTimeout`. | `nil`  |
-| Errors    | `[]error`          | Custom errors treated as timeout errors.                            | `nil`  |
+| Property    | Type               | Description                                                          | Default |
+|:------------|:-------------------|:---------------------------------------------------------------------|:-------|
+| Next        | `func(fiber.Ctx) bool` | Function to skip this middleware when it returns `true`.            | `nil`  |
+| Timeout     | `time.Duration`    | Timeout duration for requests. `0` or a negative value disables the timeout. | `0`    |
+| OnTimeout   | `fiber.Handler`    | Handler executed when a timeout occurs. Defaults to returning `fiber.ErrRequestTimeout`. | `nil`  |
+| Errors      | `[]error`          | Custom errors treated as timeout errors.                            | `nil`  |
 
 ### Use with a custom error
 
@@ -127,11 +151,11 @@ func main() {
 
     handler := func(ctx fiber.Ctx) error {
         tran := db.WithContext(ctx.Context()).Begin()
-        
+
         if tran = tran.Exec("SELECT pg_sleep(50)"); tran.Error != nil {
             return tran.Error
         }
-        
+
         if tran = tran.Commit(); tran.Error != nil {
             return tran.Error
         }

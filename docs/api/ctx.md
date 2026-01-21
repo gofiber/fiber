@@ -8,6 +8,26 @@ description: >-
 sidebar_position: 3
 ---
 
+### Abandon
+
+Marks the context as abandoned. An abandoned context will not be returned to the pool when `ReleaseCtx` is called. This is used internally by the [timeout middleware](../middleware/timeout.md) to return immediately while the handler goroutine continues safely.
+
+```go title="Signature"
+func (c fiber.Ctx) Abandon()
+func (c fiber.Ctx) IsAbandoned() bool
+func (c fiber.Ctx) ForceRelease()
+```
+
+| Method         | Description                                                                 |
+|:---------------|:----------------------------------------------------------------------------|
+| `Abandon()`    | Marks the context as abandoned. ReleaseCtx becomes a no-op for this context. |
+| `IsAbandoned()`| Returns `true` if `Abandon()` was called on this context.                   |
+| `ForceRelease()`| Releases an abandoned context back to the pool. Must only be called after the handler has completely finished. |
+
+:::caution
+These methods are primarily for internal use and advanced middleware development. Most applications should not need to call them directly.
+:::
+
 ### App
 
 Returns the [\*App](app.md) reference so you can easily access all application settings.
@@ -2068,13 +2088,28 @@ app.Get("/set", func(c fiber.Ctx) error {
 app.Get("/delete", func(c fiber.Ctx) error {
     c.Cookie(&fiber.Cookie{
         Name:     "token",
-        // Set expiry date to the past
-        Expires:  time.Now().Add(-(time.Hour * 2)),
+        Expires:  fasthttp.CookieExpireDelete, // Use fasthttp's built-in constant
         HTTPOnly: true,
         SameSite: "Lax",
     })
 
     // ...
+})
+```
+
+You can also use `c.Cookie()` to expire cookies with specific `Path` or `Domain` attributes:
+
+```go title="Example"
+app.Get("/logout", func(c fiber.Ctx) error {
+    // Expire a cookie with path and domain
+    c.Cookie(&fiber.Cookie{
+        Name:    "token",
+        Path:    "/api",
+        Domain:  "example.com",
+        Expires: fasthttp.CookieExpireDelete,
+    })
+
+    return c.SendStatus(fiber.StatusOK)
 })
 ```
 
@@ -2407,7 +2442,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 A compact binary alternative to [JSON](#json) for efficient data transfer between micro-services or from server to client. MessagePack serializes faster and yields smaller payloads than plain JSON.
 
-Converts any **interface** or **string** to MsgPack using the [shamaton/msgpack](https://pkg.go.dev/github.com/shamaton/msgpack/v2) package.
+Converts any **interface** or **string** to MsgPack using the [shamaton/msgpack](https://pkg.go.dev/github.com/shamaton/msgpack/v3) package.
 
 :::info
 MsgPack also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/vnd.msgpack`.

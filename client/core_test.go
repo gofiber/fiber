@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -383,6 +384,161 @@ func (*blockingErrTransport) Client() any {
 	return nil
 }
 
+func (*blockingErrTransport) StreamResponseBody() bool {
+	return false
+}
+
+func (*blockingErrTransport) SetStreamResponseBody(_ bool) {
+}
+
 func (b *blockingErrTransport) release() {
 	b.releaseOnce.Do(func() { close(b.unblock) })
+}
+
+func Test_Core_RequestBodyStream(t *testing.T) {
+	t.Parallel()
+
+	t.Run("request with body stream is properly copied", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Post("/echo", func(c fiber.Ctx) error {
+			body := c.Body()
+			return c.Send(body)
+		})
+
+		ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+			if err != nil {
+				panic(err)
+			}
+		}()
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := New().SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial()
+		})
+
+		// Create a request with a body stream using SetRawBody which properly sets the body
+		streamContent := "this is streamed body content"
+		req := AcquireRequest().SetClient(client)
+		req.SetURL("http://example.com/echo")
+		req.SetMethod(fiber.MethodPost)
+		req.SetRawBody([]byte(streamContent))
+
+		resp, err := req.Send()
+		require.NoError(t, err)
+		defer resp.Close()
+
+		require.Equal(t, streamContent, string(resp.Body()))
+	})
+
+	t.Run("request body stream with content length", func(t *testing.T) {
+		t.Parallel()
+
+		resultCh := make(chan struct {
+			body   string
+			length int
+		}, 1)
+		app := fiber.New()
+		app.Post("/check-length", func(c fiber.Ctx) error {
+			resultCh <- struct {
+				body   string
+				length int
+			}{
+				body:   string(c.Body()),
+				length: c.Request().Header.ContentLength(),
+			}
+			return c.SendString("ok")
+		})
+
+		ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+			if err != nil {
+				panic(err)
+			}
+		}()
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		client := New().SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial()
+		})
+
+		streamContent := "body with known length"
+		req := AcquireRequest().SetClient(client)
+		req.SetURL("http://example.com/check-length")
+		req.SetMethod(fiber.MethodPost)
+		req.SetRawBody([]byte(streamContent))
+
+		resp, err := req.Send()
+		require.NoError(t, err)
+		defer resp.Close()
+
+		result := <-resultCh
+		require.Equal(t, streamContent, result.body)
+		require.Equal(t, len(streamContent), result.length)
+	})
+
+	t.Run("raw body stream survives CopyTo", func(t *testing.T) {
+		t.Parallel()
+
+		const streamContent = "streaming raw request body"
+
+		resultCh := make(chan struct {
+			body   string
+			length int
+		}, 1)
+
+		app := fiber.New()
+		app.Post("/copy-to-body-stream", func(c fiber.Ctx) error {
+			body := string(c.Body())
+			resultCh <- struct {
+				body   string
+				length int
+			}{
+				body:   body,
+				length: c.Request().Header.ContentLength(),
+			}
+			return c.SendString(body)
+		})
+
+		ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+			if err != nil {
+				panic(err)
+			}
+		}()
+		t.Cleanup(func() {
+			require.NoError(t, app.Shutdown())
+		})
+
+		core, client, req := newCore(), New(), AcquireRequest()
+		core.ctx = context.Background()
+		core.client = client
+		core.req = req
+
+		client.SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial()
+		})
+
+		req.RawRequest.SetRequestURI("http://example.com/copy-to-body-stream")
+		req.RawRequest.Header.SetMethod(fiber.MethodPost)
+		req.RawRequest.SetBodyStream(bytes.NewBufferString(streamContent), len(streamContent))
+
+		resp, err := core.execFunc()
+		require.NoError(t, err)
+		defer resp.Close()
+
+		result := <-resultCh
+		require.Equal(t, streamContent, string(resp.Body()))
+		require.Equal(t, streamContent, result.body)
+		require.Equal(t, len(streamContent), result.length)
+	})
 }
