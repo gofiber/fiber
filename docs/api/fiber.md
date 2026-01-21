@@ -160,10 +160,16 @@ TLS serves HTTPs requests from the given address using certFile and keyFile path
 app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key"})
 ```
 
-#### TLS with certificate
+#### TLS with client CA certificate
+
+`CertClientFile` only configures the client CA for mTLS. You still need to provide a server TLS source via `TLSConfig` or `CertFile`/`CertKeyFile`.
 
 ```go title="TLS with client CA certificate"
-app.Listen(":443", fiber.ListenConfig{CertClientFile: "./ca-chain-cert.pem"})
+app.Listen(":443", fiber.ListenConfig{
+    CertFile:       "./cert.pem",
+    CertKeyFile:    "./cert.key",
+    CertClientFile: "./ca-chain-cert.pem",
+})
 ```
 
 #### TLS with certFile, keyFile and clientCertFile
