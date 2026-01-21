@@ -191,7 +191,7 @@ app.Listen(":444", fiber.ListenConfig{
 })
 ```
 
-**Precedence and conflicts**
+#### Precedence and conflicts
 
 - `TLSConfig` cannot be combined with `CertFile`/`CertKeyFile` or `AutoCertManager`.
 - `AutoCertManager` cannot be combined with `CertFile`/`CertKeyFile`.
