@@ -172,55 +172,50 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 func (app *App) Listen(addr string, config ...ListenConfig) error {
 	cfg := listenConfigDefault(config...)
 
-	switch {
-	case cfg.TLSConfig != nil && (cfg.CertFile != "" || cfg.CertKeyFile != ""):
-		return ErrTLSConfigWithCertFile
-	case cfg.TLSConfig != nil && cfg.AutoCertManager != nil:
-		return ErrTLSConfigWithAutoCert
-	case cfg.AutoCertManager != nil && (cfg.CertFile != "" || cfg.CertKeyFile != ""):
-		return ErrAutoCertWithCertFile
-	}
-
 	// Configure TLS
 	var tlsConfig *tls.Config
-	switch {
-	case cfg.TLSConfig != nil:
+	if cfg.TLSConfig != nil {
 		tlsConfig = cfg.TLSConfig.Clone()
-	case cfg.CertFile != "" && cfg.CertKeyFile != "":
-		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.CertKeyFile)
-		if err != nil {
-			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", cfg.CertFile, cfg.CertKeyFile, err)
+	} else {
+		switch {
+		case cfg.AutoCertManager != nil && (cfg.CertFile != "" || cfg.CertKeyFile != ""):
+			return ErrAutoCertWithCertFile
+		case cfg.CertFile != "" && cfg.CertKeyFile != "":
+			cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.CertKeyFile)
+			if err != nil {
+				return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", cfg.CertFile, cfg.CertKeyFile, err)
+			}
+
+			tlsHandler := &TLSHandler{}
+			tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
+				MinVersion: cfg.TLSMinVersion,
+				Certificates: []tls.Certificate{
+					cert,
+				},
+				GetCertificate: tlsHandler.GetClientInfo,
+			}
+
+			// Attach the tlsHandler to the config
+			app.SetTLSHandler(tlsHandler)
+		case cfg.AutoCertManager != nil:
+			tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
+				MinVersion:     cfg.TLSMinVersion,
+				GetCertificate: cfg.AutoCertManager.GetCertificate,
+				NextProtos:     []string{"http/1.1", "acme-tls/1"},
+			}
+		default:
 		}
 
-		tlsHandler := &TLSHandler{}
-		tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
-			MinVersion: cfg.TLSMinVersion,
-			Certificates: []tls.Certificate{
-				cert,
-			},
-			GetCertificate: tlsHandler.GetClientInfo,
+		if tlsConfig != nil && (tlsConfig.MinVersion == 0 || tlsConfig.MinVersion < cfg.TLSMinVersion) {
+			tlsConfig.MinVersion = cfg.TLSMinVersion
+		}
+		if err := applyClientCert(tlsConfig, cfg.CertClientFile); err != nil {
+			return err
 		}
 
-		// Attach the tlsHandler to the config
-		app.SetTLSHandler(tlsHandler)
-	case cfg.AutoCertManager != nil:
-		tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
-			MinVersion:     cfg.TLSMinVersion,
-			GetCertificate: cfg.AutoCertManager.GetCertificate,
-			NextProtos:     []string{"http/1.1", "acme-tls/1"},
+		if tlsConfig != nil && cfg.TLSConfigFunc != nil {
+			cfg.TLSConfigFunc(tlsConfig)
 		}
-	default:
-	}
-
-	if tlsConfig != nil && (tlsConfig.MinVersion == 0 || tlsConfig.MinVersion < cfg.TLSMinVersion) {
-		tlsConfig.MinVersion = cfg.TLSMinVersion
-	}
-	if err := applyClientCert(tlsConfig, cfg.CertClientFile); err != nil {
-		return err
-	}
-
-	if tlsConfig != nil && cfg.TLSConfigFunc != nil {
-		cfg.TLSConfigFunc(tlsConfig)
 	}
 
 	// Graceful shutdown

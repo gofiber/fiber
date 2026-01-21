@@ -299,7 +299,7 @@ app.Listen("app.sock", fiber.ListenerConfig{
 })
 ```
 
-- Added `TLSConfig` to `ListenConfig` so external providers can supply certificates via `GetCertificate`. `TLSConfig` is cloned and cannot be combined with `CertFile`/`CertKeyFile` or `AutoCertManager`.
+- Added `TLSConfig` to `ListenConfig` so external providers can supply certificates via `GetCertificate`. When set, `TLSConfig` is cloned and takes precedence over other TLS fields.
 
 ```go
 app := fiber.New()

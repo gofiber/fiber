@@ -415,62 +415,20 @@ func Test_Listen_TLSConfig(t *testing.T) {
 		},
 		CertClientFile: "./.github/testdata/ssl.pem",
 	})
-}
 
-// go test -run Test_Listen_TLSConfig_Conflicts
-func Test_Listen_TLSConfig_Conflicts(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		config        func() ListenConfig
-		expectedError error
-		name          string
-	}{
-		{
-			name: "TLSConfig with cert files",
-			config: func() ListenConfig {
-				return ListenConfig{
-					TLSConfig:   &tls.Config{MinVersion: tls.VersionTLS12},
-					CertFile:    "./.github/testdata/ssl.pem",
-					CertKeyFile: "./.github/testdata/ssl.key",
-				}
-			},
-			expectedError: ErrTLSConfigWithCertFile,
+	run("TLSConfig ignores other TLS fields", ListenConfig{
+		DisableStartupMessage: true,
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
 		},
-		{
-			name: "TLSConfig with AutoCertManager",
-			config: func() ListenConfig {
-				return ListenConfig{
-					TLSConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
-					AutoCertManager: &autocert.Manager{},
-				}
-			},
-			expectedError: ErrTLSConfigWithAutoCert,
+		CertFile:       "./.github/testdata/does-not-exist.pem",
+		CertKeyFile:    "./.github/testdata/does-not-exist.key",
+		CertClientFile: "./.github/testdata/does-not-exist-ca.pem",
+		AutoCertManager: &autocert.Manager{
+			Prompt: autocert.AcceptTOS,
 		},
-		{
-			name: "AutoCertManager with cert files",
-			config: func() ListenConfig {
-				return ListenConfig{
-					AutoCertManager: &autocert.Manager{},
-					CertFile:        "./.github/testdata/ssl.pem",
-					CertKeyFile:     "./.github/testdata/ssl.key",
-				}
-			},
-			expectedError: ErrAutoCertWithCertFile,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			app := New()
-
-			err := app.Listen(":0", tc.config())
-			require.Error(t, err)
-			require.ErrorIs(t, err, tc.expectedError)
-		})
-	}
+	})
 }
 
 // go test -run Test_Listen_TLSConfig_WithTLSConfigFunc
@@ -480,7 +438,7 @@ func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
 	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	require.NoError(t, err)
 
-	var minVersion uint16
+	var calledTLSConfigFunc bool
 	app := New()
 
 	go func() {
@@ -490,17 +448,30 @@ func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
-		TLSMinVersion:         tls.VersionTLS13,
 		TLSConfig: &tls.Config{
 			MinVersion:   tls.VersionTLS12,
 			Certificates: []tls.Certificate{cert},
 		},
-		TLSConfigFunc: func(cfg *tls.Config) {
-			minVersion = cfg.MinVersion
+		TLSConfigFunc: func(_ *tls.Config) {
+			calledTLSConfigFunc = true
 		},
 	}))
 
-	require.Equal(t, uint16(tls.VersionTLS13), minVersion)
+	require.False(t, calledTLSConfigFunc)
+}
+
+// go test -run Test_Listen_AutoCert_Conflicts
+func Test_Listen_AutoCert_Conflicts(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	err := app.Listen(":0", ListenConfig{
+		AutoCertManager: &autocert.Manager{},
+		CertFile:        "./.github/testdata/ssl.pem",
+		CertKeyFile:     "./.github/testdata/ssl.key",
+	})
+	require.ErrorIs(t, err, ErrAutoCertWithCertFile)
 }
 
 // go test -run Test_Listen_ListenerAddrFunc

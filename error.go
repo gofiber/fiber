@@ -20,10 +20,6 @@ var (
 	ErrHandlerExited = errors.New("runtime.Goexit() called in handler or server panic")
 	// ErrNoViewEngineConfigured indicates that a helper requiring a view engine was invoked without one configured.
 	ErrNoViewEngineConfigured = errors.New("fiber: no view engine configured")
-	// ErrTLSConfigWithCertFile indicates TLSConfig cannot be used with CertFile/CertKeyFile.
-	ErrTLSConfigWithCertFile = errors.New("tls: TLSConfig cannot be combined with CertFile/CertKeyFile")
-	// ErrTLSConfigWithAutoCert indicates TLSConfig cannot be used with AutoCertManager.
-	ErrTLSConfigWithAutoCert = errors.New("tls: TLSConfig cannot be combined with AutoCertManager")
 	// ErrAutoCertWithCertFile indicates AutoCertManager cannot be used with CertFile/CertKeyFile.
 	ErrAutoCertWithCertFile = errors.New("tls: AutoCertManager cannot be combined with CertFile/CertKeyFile")
 	// ErrTLSClientCertsNotAppended indicates no CA certificates were appended from CertClientFile.
