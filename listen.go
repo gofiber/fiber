@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -175,11 +174,11 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 	switch {
 	case cfg.TLSConfig != nil && (cfg.CertFile != "" || cfg.CertKeyFile != ""):
-		return errors.New("tls: TLSConfig cannot be combined with CertFile/CertKeyFile")
+		return ErrTLSConfigWithCertFile
 	case cfg.TLSConfig != nil && cfg.AutoCertManager != nil:
-		return errors.New("tls: TLSConfig cannot be combined with AutoCertManager")
+		return ErrTLSConfigWithAutoCert
 	case cfg.AutoCertManager != nil && (cfg.CertFile != "" || cfg.CertKeyFile != ""):
-		return errors.New("tls: AutoCertManager cannot be combined with CertFile/CertKeyFile")
+		return ErrAutoCertWithCertFile
 	}
 
 	// Configure TLS

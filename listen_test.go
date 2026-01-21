@@ -371,16 +371,10 @@ func Test_Listen_TLSConfigFunc(t *testing.T) {
 func Test_Listen_TLSConfig_Conflicts(t *testing.T) {
 	t.Parallel()
 
-	errorMessages := []string{
-		"TLSConfig cannot be combined with CertFile/CertKeyFile",
-		"TLSConfig cannot be combined with AutoCertManager",
-		"AutoCertManager cannot be combined with CertFile/CertKeyFile",
-	}
-
 	testCases := []struct {
-		config             func() ListenConfig
-		name               string
-		expectedErrorIndex int
+		config        func() ListenConfig
+		expectedError error
+		name          string
 	}{
 		{
 			name: "TLSConfig with cert files",
@@ -391,7 +385,7 @@ func Test_Listen_TLSConfig_Conflicts(t *testing.T) {
 					CertKeyFile: "./.github/testdata/ssl.key",
 				}
 			},
-			expectedErrorIndex: 0,
+			expectedError: ErrTLSConfigWithCertFile,
 		},
 		{
 			name: "TLSConfig with AutoCertManager",
@@ -401,7 +395,7 @@ func Test_Listen_TLSConfig_Conflicts(t *testing.T) {
 					AutoCertManager: &autocert.Manager{},
 				}
 			},
-			expectedErrorIndex: 1,
+			expectedError: ErrTLSConfigWithAutoCert,
 		},
 		{
 			name: "AutoCertManager with cert files",
@@ -412,7 +406,7 @@ func Test_Listen_TLSConfig_Conflicts(t *testing.T) {
 					CertKeyFile:     "./.github/testdata/ssl.key",
 				}
 			},
-			expectedErrorIndex: 2,
+			expectedError: ErrAutoCertWithCertFile,
 		},
 	}
 
@@ -424,7 +418,7 @@ func Test_Listen_TLSConfig_Conflicts(t *testing.T) {
 
 			err := app.Listen(":0", tc.config())
 			require.Error(t, err)
-			require.Contains(t, err.Error(), errorMessages[tc.expectedErrorIndex])
+			require.ErrorIs(t, err, tc.expectedError)
 		})
 	}
 }
