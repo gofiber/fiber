@@ -2088,13 +2088,28 @@ app.Get("/set", func(c fiber.Ctx) error {
 app.Get("/delete", func(c fiber.Ctx) error {
     c.Cookie(&fiber.Cookie{
         Name:     "token",
-        // Set expiry date to the past
-        Expires:  time.Now().Add(-(time.Hour * 2)),
+        Expires:  fasthttp.CookieExpireDelete, // Use fasthttp's built-in constant
         HTTPOnly: true,
         SameSite: "Lax",
     })
 
     // ...
+})
+```
+
+You can also use `c.Cookie()` to expire cookies with specific `Path` or `Domain` attributes:
+
+```go title="Example"
+app.Get("/logout", func(c fiber.Ctx) error {
+    // Expire a cookie with path and domain
+    c.Cookie(&fiber.Cookie{
+        Name:    "token",
+        Path:    "/api",
+        Domain:  "example.com",
+        Expires: fasthttp.CookieExpireDelete,
+    })
+
+    return c.SendStatus(fiber.StatusOK)
 })
 ```
 

@@ -1404,7 +1404,7 @@ func Test_Ctx_Cookie_Invalid(t *testing.T) {
 		{Name: "i", Value: "b", Domain: "2001:db8::1"},                                // ipv6 not allowed
 		{Name: "p", Value: "b", Path: "\x00"},                                         // invalid path byte
 		{Name: "e", Value: "b", Expires: time.Date(1500, 1, 1, 0, 0, 0, 0, time.UTC)}, // invalid expires
-		{Name: "s", Value: "b", Partitioned: true},                                    // partitioned but not secure
+		// Note: Partitioned without Secure is auto-fixed (Secure=true set automatically per CHIPS spec)
 	}
 
 	for _, invalid := range cases {
