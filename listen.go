@@ -195,6 +195,19 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 				GetCertificate: tlsHandler.GetClientInfo,
 			}
 
+			if cfg.CertClientFile != "" {
+				clientCACert, err := os.ReadFile(filepath.Clean(cfg.CertClientFile))
+				if err != nil {
+					return fmt.Errorf("failed to read file: %w", err)
+				}
+
+				clientCertPool := x509.NewCertPool()
+				clientCertPool.AppendCertsFromPEM(clientCACert)
+
+				tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+				tlsConfig.ClientCAs = clientCertPool
+			}
+
 			// Attach the tlsHandler to the config
 			app.SetTLSHandler(tlsHandler)
 		case cfg.AutoCertManager != nil:
@@ -204,13 +217,6 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 				NextProtos:     []string{"http/1.1", "acme-tls/1"},
 			}
 		default:
-		}
-
-		if tlsConfig != nil && (tlsConfig.MinVersion == 0 || tlsConfig.MinVersion < cfg.TLSMinVersion) {
-			tlsConfig.MinVersion = cfg.TLSMinVersion
-		}
-		if err := applyClientCert(tlsConfig, cfg.CertClientFile); err != nil {
-			return err
 		}
 
 		if tlsConfig != nil && cfg.TLSConfigFunc != nil {
@@ -343,30 +349,6 @@ func (app *App) printMessages(cfg *ListenConfig, listenData *ListenData) {
 	if cfg.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
-}
-
-func applyClientCert(tlsConfig *tls.Config, certClientFile string) error {
-	if tlsConfig == nil || certClientFile == "" {
-		return nil
-	}
-
-	clientCACert, err := os.ReadFile(filepath.Clean(certClientFile))
-	if err != nil {
-		return fmt.Errorf("failed to read file: %w", err)
-	}
-
-	clientCertPool := tlsConfig.ClientCAs
-	if clientCertPool == nil {
-		clientCertPool = x509.NewCertPool()
-	}
-	if !clientCertPool.AppendCertsFromPEM(clientCACert) {
-		return fmt.Errorf("%w: %s", ErrTLSClientCertsNotAppended, certClientFile)
-	}
-
-	tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
-	tlsConfig.ClientCAs = clientCertPool
-
-	return nil
 }
 
 // prepareListenData creates a ListenData instance populated with the application metadata.

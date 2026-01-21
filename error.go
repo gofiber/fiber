@@ -22,8 +22,6 @@ var (
 	ErrNoViewEngineConfigured = errors.New("fiber: no view engine configured")
 	// ErrAutoCertWithCertFile indicates AutoCertManager cannot be used with CertFile/CertKeyFile.
 	ErrAutoCertWithCertFile = errors.New("tls: AutoCertManager cannot be combined with CertFile/CertKeyFile")
-	// ErrTLSClientCertsNotAppended indicates no CA certificates were appended from CertClientFile.
-	ErrTLSClientCertsNotAppended = errors.New("tls: failed to append client certs from PEM file")
 )
 
 // Fiber redirection errors
