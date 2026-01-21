@@ -367,6 +367,56 @@ func Test_Listen_TLSConfigFunc(t *testing.T) {
 	require.True(t, callTLSConfig)
 }
 
+// go test -run Test_Listen_TLSConfig
+func Test_Listen_TLSConfig(t *testing.T) {
+	t.Parallel()
+
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	run := func(name string, cfg ListenConfig) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+
+			go func() {
+				time.Sleep(1000 * time.Millisecond)
+				assert.NoError(t, app.Shutdown())
+			}()
+
+			require.NoError(t, app.Listen(":0", cfg))
+		})
+	}
+
+	run("TLSConfig with certificates", ListenConfig{
+		DisableStartupMessage: true,
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+		},
+	})
+
+	run("TLSConfig with GetCertificate", ListenConfig{
+		DisableStartupMessage: true,
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+				return &cert, nil
+			},
+		},
+	})
+
+	run("TLSConfig with CertClientFile", ListenConfig{
+		DisableStartupMessage: true,
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+		},
+		CertClientFile: "./.github/testdata/ssl.pem",
+	})
+}
+
 // go test -run Test_Listen_TLSConfig_Conflicts
 func Test_Listen_TLSConfig_Conflicts(t *testing.T) {
 	t.Parallel()
