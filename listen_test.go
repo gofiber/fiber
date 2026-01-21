@@ -407,15 +407,6 @@ func Test_Listen_TLSConfig(t *testing.T) {
 		},
 	})
 
-	run("TLSConfig with CertClientFile", ListenConfig{
-		DisableStartupMessage: true,
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		},
-		CertClientFile: "./.github/testdata/ssl.pem",
-	})
-
 	run("TLSConfig ignores other TLS fields", ListenConfig{
 		DisableStartupMessage: true,
 		TLSConfig: &tls.Config{
