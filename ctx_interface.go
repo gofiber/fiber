@@ -16,6 +16,22 @@ type CustomCtx interface {
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
 
+	// release is called before returning the context to the pool.
+	release()
+
+	// Abandon marks the context as abandoned. An abandoned context will not be
+	// returned to the pool when ReleaseCtx is called. This is used by the timeout
+	// middleware to return immediately while the handler goroutine continues.
+	// The cleanup goroutine must call ForceRelease when the handler finishes.
+	Abandon()
+
+	// IsAbandoned returns true if the context has been abandoned.
+	IsAbandoned() bool
+
+	// ForceRelease releases an abandoned context back to the pool.
+	// Must only be called after the handler goroutine has completely finished.
+	ForceRelease()
+
 	// Methods to use with next stack.
 	getMethodInt() int
 	getIndexRoute() int
@@ -66,7 +82,14 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 }
 
 // ReleaseCtx releases the ctx back into the pool.
+// If the context was abandoned (e.g., by timeout middleware), this is a no-op.
+// Call ForceRelease only when you can guarantee no goroutines (including the
+// requestHandler and ErrorHandler) still touch the context; the timeout
+// middleware intentionally leaves abandoned contexts unreleased to avoid races.
 func (app *App) ReleaseCtx(c CustomCtx) {
+	if c.IsAbandoned() {
+		return
+	}
 	c.release()
 	app.pool.Put(c)
 }

@@ -1595,6 +1595,19 @@ For more details on these changes and migration instructions, check the [Session
 
 The timeout middleware is now configurable. A new `Config` struct allows customizing the timeout duration, defining a handler that runs when a timeout occurs, and specifying errors to treat as timeouts. The `New` function now accepts a `Config` value instead of a duration.
 
+**Behavioral changes:**
+
+- **Immediate return on timeout**: The middleware now returns immediately when a timeout occurs, without waiting for the handler to finish. This is achieved through the new **Abandon mechanism** which marks the context as abandoned so it won't be returned to the pool while the handler is still running.
+- **Context propagation**: The timeout context is properly propagated to the handler. Handlers can detect timeouts by listening on `c.Context().Done()` and return early.
+- **Panic handling**: Panics in the handler are caught and converted to `500 Internal Server Error` responses.
+- **Race-free design**: The implementation uses fasthttp's `TimeoutErrorWithCode` combined with Fiber's Abandon mechanism to ensure complete race-freedom between the middleware, handler goroutine, and context pooling.
+
+**New Ctx methods for the Abandon mechanism:**
+
+- `Abandon()`: Marks the context as abandoned
+- `IsAbandoned()`: Returns true if the context was abandoned
+- `ForceRelease()`: Releases an abandoned context back to the pool (for advanced use)
+
 **Migration:** Replace calls like `timeout.New(handler, 2*time.Second)` with `timeout.New(handler, timeout.Config{Timeout: 2 * time.Second})`.
 
 ## 🔌 Addons
@@ -2862,6 +2875,12 @@ app.Use(timeout.New(handler, 2*time.Second))
 // After
 app.Use(timeout.New(handler, timeout.Config{Timeout: 2 * time.Second}))
 ```
+
+**Important behavioral changes:**
+
+- The middleware now returns immediately on timeout without waiting for the handler (using the new Abandon mechanism).
+- Handlers can detect timeouts by listening on `c.Context().Done()` and return early.
+- Panics in the handler are caught and converted to `500 Internal Server Error`.
 
 #### Filesystem
 
