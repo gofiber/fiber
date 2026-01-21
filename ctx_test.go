@@ -34,7 +34,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/utils/v2"
-	"github.com/shamaton/msgpack/v2"
+	"github.com/shamaton/msgpack/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"

@@ -3,7 +3,7 @@ package binder
 import (
 	"testing"
 
-	"github.com/shamaton/msgpack/v2"
+	"github.com/shamaton/msgpack/v3"
 	"github.com/stretchr/testify/require"
 )
 
