@@ -131,7 +131,7 @@ Listen serves HTTP requests from the given address.
 func (app *App) Listen(addr string, config ...ListenConfig) error
 ```
 
-```go title="Examples"
+```go title="Basic Listen usage"
 // Listen on port :8080
 app.Listen(":8080")
 
@@ -146,7 +146,7 @@ app.Listen("127.0.0.1:8080")
 
 Prefork is a feature that allows you to spawn multiple Go processes listening on the same port. This can be useful for scaling across multiple CPU cores.
 
-```go title="Examples"
+```go title="Prefork listener"
 app.Listen(":8080", fiber.ListenConfig{EnablePrefork: true})
 ```
 
@@ -156,19 +156,19 @@ This distributes the incoming connections between the spawned processes and allo
 
 TLS serves HTTPs requests from the given address using certFile and keyFile paths to as TLS certificate and key file.
 
-```go title="Examples"
+```go title="TLS with cert and key files"
 app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key"})
 ```
 
 #### TLS with certificate
 
-```go title="Examples"
+```go title="TLS with client CA certificate"
 app.Listen(":443", fiber.ListenConfig{CertClientFile: "./ca-chain-cert.pem"})
 ```
 
 #### TLS with certFile, keyFile and clientCertFile
 
-```go title="Examples"
+```go title="TLS with cert, key, and client CA"
 app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key", CertClientFile: "./ca-chain-cert.pem"})
 ```
 
@@ -176,7 +176,7 @@ app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./ce
 
 Provides automatic access to certificates management from Let's Encrypt and any other ACME-based providers.
 
-```go title="Examples"
+```go title="AutoCert (ACME) configuration"
 // Certificate manager
 certManager := &autocert.Manager{
     Prompt: autocert.AcceptTOS,
@@ -201,7 +201,7 @@ app.Listen(":444", fiber.ListenConfig{
 
 Use `TLSConfig` to supply a base `tls.Config` that can fetch certificates at runtime. `TLSConfig` is cloned before defaults are applied. `TLSConfigFunc` runs last for final adjustments.
 
-```go title="Examples"
+```go title="TLSConfig with dynamic certificate provider"
 app.Listen(":443", fiber.ListenConfig{
     TLSConfig: &tls.Config{
         GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -213,7 +213,7 @@ app.Listen(":443", fiber.ListenConfig{
 
 Load certificates from memory or environment variables and provide them via `TLSConfig`.
 
-```go title="Examples"
+```go title="TLSConfig with in-memory certificate"
 certPEM := []byte(certPEMString)
 keyPEM := []byte(keyPEMString)
 
@@ -229,7 +229,7 @@ app.Listen(":443", fiber.ListenConfig{
 })
 ```
 
-```go title="Examples"
+```go title="TLSConfig with certificate from environment"
 certPEM := []byte(os.Getenv("TLS_CERT_PEM"))
 keyPEM := []byte(os.Getenv("TLS_KEY_PEM"))
 
