@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 // go test -run Test_Listen
@@ -364,6 +365,98 @@ func Test_Listen_TLSConfigFunc(t *testing.T) {
 	}))
 
 	require.True(t, callTLSConfig)
+}
+
+// go test -run Test_Listen_TLSConfig_Conflicts
+func Test_Listen_TLSConfig_Conflicts(t *testing.T) {
+	t.Parallel()
+
+	errorMessages := []string{
+		"TLSConfig cannot be combined with CertFile/CertKeyFile",
+		"TLSConfig cannot be combined with AutoCertManager",
+		"AutoCertManager cannot be combined with CertFile/CertKeyFile",
+	}
+
+	testCases := []struct {
+		config             func() ListenConfig
+		name               string
+		expectedErrorIndex int
+	}{
+		{
+			name: "TLSConfig with cert files",
+			config: func() ListenConfig {
+				return ListenConfig{
+					TLSConfig:   &tls.Config{MinVersion: tls.VersionTLS12},
+					CertFile:    "./.github/testdata/ssl.pem",
+					CertKeyFile: "./.github/testdata/ssl.key",
+				}
+			},
+			expectedErrorIndex: 0,
+		},
+		{
+			name: "TLSConfig with AutoCertManager",
+			config: func() ListenConfig {
+				return ListenConfig{
+					TLSConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
+					AutoCertManager: &autocert.Manager{},
+				}
+			},
+			expectedErrorIndex: 1,
+		},
+		{
+			name: "AutoCertManager with cert files",
+			config: func() ListenConfig {
+				return ListenConfig{
+					AutoCertManager: &autocert.Manager{},
+					CertFile:        "./.github/testdata/ssl.pem",
+					CertKeyFile:     "./.github/testdata/ssl.key",
+				}
+			},
+			expectedErrorIndex: 2,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+
+			err := app.Listen(":0", tc.config())
+			require.Error(t, err)
+			require.Contains(t, err.Error(), errorMessages[tc.expectedErrorIndex])
+		})
+	}
+}
+
+// go test -run Test_Listen_TLSConfig_WithTLSConfigFunc
+func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
+	t.Parallel()
+
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	var minVersion uint16
+	app := New()
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	require.NoError(t, app.Listen(":0", ListenConfig{
+		DisableStartupMessage: true,
+		TLSMinVersion:         tls.VersionTLS13,
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+		},
+		TLSConfigFunc: func(cfg *tls.Config) {
+			minVersion = cfg.MinVersion
+		},
+	}))
+
+	require.Equal(t, uint16(tls.VersionTLS13), minVersion)
 }
 
 // go test -run Test_Listen_ListenerAddrFunc

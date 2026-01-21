@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -51,6 +52,12 @@ type ListenConfig struct {
 	//
 	// Default: nil
 	TLSConfigFunc func(tlsConfig *tls.Config) `json:"tls_config_func"`
+
+	// TLSConfig allows providing a tls.Config used as the base for TLS settings.
+	// This enables external certificate providers via GetCertificate.
+	//
+	// Default: nil
+	TLSConfig *tls.Config `json:"tls_config"`
 
 	// ListenerFunc allows accessing and customizing net.Listener.
 	//
@@ -166,9 +173,21 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 func (app *App) Listen(addr string, config ...ListenConfig) error {
 	cfg := listenConfigDefault(config...)
 
+	switch {
+	case cfg.TLSConfig != nil && (cfg.CertFile != "" || cfg.CertKeyFile != ""):
+		return errors.New("tls: TLSConfig cannot be combined with CertFile/CertKeyFile")
+	case cfg.TLSConfig != nil && cfg.AutoCertManager != nil:
+		return errors.New("tls: TLSConfig cannot be combined with AutoCertManager")
+	case cfg.AutoCertManager != nil && (cfg.CertFile != "" || cfg.CertKeyFile != ""):
+		return errors.New("tls: AutoCertManager cannot be combined with CertFile/CertKeyFile")
+	}
+
 	// Configure TLS
 	var tlsConfig *tls.Config
-	if cfg.CertFile != "" && cfg.CertKeyFile != "" {
+	switch {
+	case cfg.TLSConfig != nil:
+		tlsConfig = cfg.TLSConfig.Clone()
+	case cfg.CertFile != "" && cfg.CertKeyFile != "":
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.CertKeyFile)
 		if err != nil {
 			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", cfg.CertFile, cfg.CertKeyFile, err)
@@ -183,27 +202,22 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 			GetCertificate: tlsHandler.GetClientInfo,
 		}
 
-		if cfg.CertClientFile != "" {
-			clientCACert, err := os.ReadFile(filepath.Clean(cfg.CertClientFile))
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-
-			clientCertPool := x509.NewCertPool()
-			clientCertPool.AppendCertsFromPEM(clientCACert)
-
-			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
-			tlsConfig.ClientCAs = clientCertPool
-		}
-
 		// Attach the tlsHandler to the config
 		app.SetTLSHandler(tlsHandler)
-	} else if cfg.AutoCertManager != nil {
+	case cfg.AutoCertManager != nil:
 		tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
 			MinVersion:     cfg.TLSMinVersion,
 			GetCertificate: cfg.AutoCertManager.GetCertificate,
 			NextProtos:     []string{"http/1.1", "acme-tls/1"},
 		}
+	default:
+	}
+
+	if tlsConfig != nil && (tlsConfig.MinVersion == 0 || tlsConfig.MinVersion < cfg.TLSMinVersion) {
+		tlsConfig.MinVersion = cfg.TLSMinVersion
+	}
+	if err := applyClientCert(tlsConfig, cfg.CertClientFile); err != nil {
+		return err
 	}
 
 	if tlsConfig != nil && cfg.TLSConfigFunc != nil {
@@ -335,6 +349,28 @@ func (app *App) printMessages(cfg *ListenConfig, listenData *ListenData) {
 	if cfg.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+}
+
+func applyClientCert(tlsConfig *tls.Config, certClientFile string) error {
+	if tlsConfig == nil || certClientFile == "" {
+		return nil
+	}
+
+	clientCACert, err := os.ReadFile(filepath.Clean(certClientFile))
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	clientCertPool := tlsConfig.ClientCAs
+	if clientCertPool == nil {
+		clientCertPool = x509.NewCertPool()
+	}
+	clientCertPool.AppendCertsFromPEM(clientCACert)
+
+	tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+	tlsConfig.ClientCAs = clientCertPool
+
+	return nil
 }
 
 // prepareListenData creates a ListenData instance populated with the application metadata.
