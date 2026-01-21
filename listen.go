@@ -364,7 +364,9 @@ func applyClientCert(tlsConfig *tls.Config, certClientFile string) error {
 	if clientCertPool == nil {
 		clientCertPool = x509.NewCertPool()
 	}
-	clientCertPool.AppendCertsFromPEM(clientCACert)
+	if !clientCertPool.AppendCertsFromPEM(clientCACert) {
+		return fmt.Errorf("%w: %s", ErrTLSClientCertsNotAppended, certClientFile)
+	}
 
 	tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 	tlsConfig.ClientCAs = clientCertPool
