@@ -156,7 +156,7 @@ This distributes the incoming connections between the spawned processes and allo
 
 Prefer `TLSConfig` for TLS configuration so you can fully control certificates and settings. When `TLSConfig` is set, Fiber ignores `CertFile`, `CertKeyFile`, `CertClientFile`, `TLSMinVersion`, `AutoCertManager`, and `TLSConfigFunc`.
 
-TLS serves HTTPs requests from the given address using certFile and keyFile paths to as TLS certificate and key file.
+TLS serves HTTPs requests from the given address using certFile and keyFile paths as TLS certificate and key file.
 
 ```go title="TLS with cert and key files"
 app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key"})
@@ -214,6 +214,34 @@ app.Listen(":443", fiber.ListenConfig{
         GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
             return myProvider.Certificate(info.ServerName)
         },
+    },
+})
+```
+
+#### Mutual TLS with TLSConfig
+
+Use `TLSConfig` to configure mutual TLS by setting `ClientAuth` and `ClientCAs`. This replaces `CertClientFile` when you manage TLS configuration directly.
+
+```go title="TLSConfig with client CA pool"
+certPEM := []byte(certPEMString)
+keyPEM := []byte(keyPEMString)
+caPEM := []byte(caPEMString)
+
+cert, err := tls.X509KeyPair(certPEM, keyPEM)
+if err != nil {
+    log.Fatal(err)
+}
+
+clientCAs := x509.NewCertPool()
+if ok := clientCAs.AppendCertsFromPEM(caPEM); !ok {
+    log.Fatal("failed to append client CA")
+}
+
+app.Listen(":443", fiber.ListenConfig{
+    TLSConfig: &tls.Config{
+        Certificates: []tls.Certificate{cert},
+        ClientAuth:   tls.RequireAndVerifyClientCert,
+        ClientCAs:    clientCAs,
     },
 })
 ```
