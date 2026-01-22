@@ -299,6 +299,19 @@ app.Listen("app.sock", fiber.ListenerConfig{
 })
 ```
 
+- Added `TLSConfig` to `ListenConfig` so external providers can supply certificates via `GetCertificate`. Prefer `TLSConfig` when configuring TLS; when set, it is cloned and takes precedence over other TLS fields.
+
+```go
+app := fiber.New()
+app.Listen(":443", fiber.ListenConfig{
+    TLSConfig: &tls.Config{
+        GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+            return myProvider.Certificate(info.ServerName)
+        },
+    },
+})
+```
+
 - Expanded `ListenData` with versioning, handler, process, and PID metadata, plus dedicated startup message hooks for customization. Check out the [Hooks](./api/hooks#startup-message-customization) documentation for further details.
 
 ```go title="Customize the startup message"

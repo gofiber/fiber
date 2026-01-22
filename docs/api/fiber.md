@@ -118,7 +118,8 @@ app.Listen(":8080", fiber.ListenConfig{
 | <Reference id="listeneraddrfunc">ListenerAddrFunc</Reference>           | `func(addr net.Addr)`         | Allows accessing and customizing `net.Listener`.                                                                                                                                                                                                                                                                             | `nil`              |
 | <Reference id="listenernetwork">ListenerNetwork</Reference>             | `string`                      | Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), "unix" (Unix Domain Sockets). WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.                                                                                                                                                  | `tcp4`             |
 | <Reference id="unixsocketfilemode">UnixSocketFileMode</Reference>       | `os.FileMode`                 | FileMode to set for Unix Domain Socket (ListenerNetwork must be "unix")                                                                                                                                                                                                                                                      | `0770`             |
-| <Reference id="tlsconfigfunc">TLSConfigFunc</Reference>                 | `func(tlsConfig *tls.Config)` | Allows customizing `tls.Config` as you want.                                                                                                                                                                                                                                                                                 | `nil`              |
+| <Reference id="tlsconfigfunc">TLSConfigFunc</Reference>                 | `func(tlsConfig *tls.Config)` | Allows customizing `tls.Config` as you want. Ignored when `TLSConfig` is set.                                                                                                                                                                                                                                                | `nil`              |
+| <Reference id="tlsconfig">TLSConfig</Reference>                         | `*tls.Config`                 | Recommended base TLS configuration (cloned). Use for external certificate providers via `GetCertificate`. When set, other TLS fields are ignored.                                                                                                                                                                             | `nil`              |
 | <Reference id="autocertmanager">AutoCertManager</Reference>             | `*autocert.Manager`           | Manages TLS certificates automatically using the ACME protocol. Enables integration with Let's Encrypt or other ACME-compatible providers.                                                                                                                                                                                   | `nil`              |
 | <Reference id="tlsminversion">TLSMinVersion</Reference>                 | `uint16`                      | Allows customizing the TLS minimum version.                                                                                                                                                                                                                                                                                  | `tls.VersionTLS12` |
 
@@ -130,7 +131,7 @@ Listen serves HTTP requests from the given address.
 func (app *App) Listen(addr string, config ...ListenConfig) error
 ```
 
-```go title="Examples"
+```go title="Basic Listen usage"
 // Listen on port :8080
 app.Listen(":8080")
 
@@ -145,7 +146,7 @@ app.Listen("127.0.0.1:8080")
 
 Prefork is a feature that allows you to spawn multiple Go processes listening on the same port. This can be useful for scaling across multiple CPU cores.
 
-```go title="Examples"
+```go title="Prefork listener"
 app.Listen(":8080", fiber.ListenConfig{EnablePrefork: true})
 ```
 
@@ -153,29 +154,31 @@ This distributes the incoming connections between the spawned processes and allo
 
 #### TLS
 
-TLS serves HTTPs requests from the given address using certFile and keyFile paths to as TLS certificate and key file.
+Prefer `TLSConfig` for TLS configuration so you can fully control certificates and settings. When `TLSConfig` is set, Fiber ignores `CertFile`, `CertKeyFile`, `CertClientFile`, `TLSMinVersion`, `AutoCertManager`, and `TLSConfigFunc`.
 
-```go title="Examples"
+TLS serves HTTPs requests from the given address using certFile and keyFile paths as TLS certificate and key file.
+
+```go title="TLS with cert and key files"
 app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key"})
 ```
 
-#### TLS with certificate
+#### TLS with client CA certificate
 
-```go title="Examples"
-app.Listen(":443", fiber.ListenConfig{CertClientFile: "./ca-chain-cert.pem"})
-```
+`CertClientFile` only configures the client CA for mTLS when using `CertFile`/`CertKeyFile`. If `TLSConfig` is set, `CertClientFile` is ignored, so configure client CAs in the provided `tls.Config` instead.
 
-#### TLS with certFile, keyFile and clientCertFile
-
-```go title="Examples"
-app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key", CertClientFile: "./ca-chain-cert.pem"})
+```go title="TLS with client CA certificate"
+app.Listen(":443", fiber.ListenConfig{
+    CertFile:       "./cert.pem",
+    CertKeyFile:    "./cert.key",
+    CertClientFile: "./ca-chain-cert.pem",
+})
 ```
 
 #### TLS AutoCert support (ACME / Let's Encrypt)
 
 Provides automatic access to certificates management from Let's Encrypt and any other ACME-based providers.
 
-```go title="Examples"
+```go title="AutoCert (ACME) configuration"
 // Certificate manager
 certManager := &autocert.Manager{
     Prompt: autocert.AcceptTOS,
@@ -187,6 +190,87 @@ certManager := &autocert.Manager{
 
 app.Listen(":444", fiber.ListenConfig{
     AutoCertManager:    certManager,
+})
+```
+
+#### Precedence and conflicts
+
+- `TLSConfig` is preferred and ignores `CertFile`/`CertKeyFile`, `CertClientFile`, `AutoCertManager`, `TLSMinVersion`, and `TLSConfigFunc`.
+- `AutoCertManager` cannot be combined with `CertFile`/`CertKeyFile`.
+
+#### TLS with external certificate provider
+
+Use `TLSConfig` to supply a base `tls.Config` that can fetch certificates at runtime. `TLSConfig` is cloned and used as-is.
+
+```go title="TLSConfig with dynamic certificate provider"
+app.Listen(":443", fiber.ListenConfig{
+    TLSConfig: &tls.Config{
+        GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+            return myProvider.Certificate(info.ServerName)
+        },
+    },
+})
+```
+
+#### Mutual TLS with TLSConfig
+
+Use `TLSConfig` to configure mutual TLS by setting `ClientAuth` and `ClientCAs`. This replaces `CertClientFile` when you manage TLS configuration directly.
+
+```go title="TLSConfig with client CA pool"
+certPEM := []byte(certPEMString)
+keyPEM := []byte(keyPEMString)
+caPEM := []byte(caPEMString)
+
+cert, err := tls.X509KeyPair(certPEM, keyPEM)
+if err != nil {
+    log.Fatal(err)
+}
+
+clientCAs := x509.NewCertPool()
+if ok := clientCAs.AppendCertsFromPEM(caPEM); !ok {
+    log.Fatal("failed to append client CA")
+}
+
+app.Listen(":443", fiber.ListenConfig{
+    TLSConfig: &tls.Config{
+        Certificates: []tls.Certificate{cert},
+        ClientAuth:   tls.RequireAndVerifyClientCert,
+        ClientCAs:    clientCAs,
+    },
+})
+```
+
+Load certificates from memory or environment variables and provide them via `TLSConfig`.
+
+```go title="TLSConfig with in-memory certificate"
+certPEM := []byte(certPEMString)
+keyPEM := []byte(keyPEMString)
+
+cert, err := tls.X509KeyPair(certPEM, keyPEM)
+if err != nil {
+    log.Fatal(err)
+}
+
+app.Listen(":443", fiber.ListenConfig{
+    TLSConfig: &tls.Config{
+        Certificates: []tls.Certificate{cert},
+    },
+})
+```
+
+```go title="TLSConfig with certificate from environment"
+certPEM := []byte(os.Getenv("TLS_CERT_PEM"))
+keyPEM := []byte(os.Getenv("TLS_KEY_PEM"))
+
+cert, err := tls.X509KeyPair(certPEM, keyPEM)
+if err != nil {
+    log.Fatal(err)
+}
+
+app.Listen(":443", fiber.ListenConfig{
+    TLSConfig: &tls.Config{
+        Certificates: []tls.Certificate{cert},
+    },
 })
 ```
 
