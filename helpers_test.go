@@ -346,6 +346,16 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 			expectedList: []string{"gzip", "deflate", "br", "zip"},
 		},
 		{
+			description:  "comma with trailing spaces around values",
+			headerValue:  "gzip , br",
+			expectedList: []string{"gzip", "br"},
+		},
+		{
+			description:  "comma with tabbed whitespace",
+			headerValue:  "gzip\t,br",
+			expectedList: []string{"gzip", "br"},
+		},
+		{
 			description:  "headerValue is empty",
 			headerValue:  "",
 			expectedList: nil,
