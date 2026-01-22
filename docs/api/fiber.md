@@ -174,12 +174,6 @@ app.Listen(":443", fiber.ListenConfig{
 })
 ```
 
-#### TLS with certFile, keyFile and clientCertFile
-
-```go title="TLS with cert, key, and client CA"
-app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key", CertClientFile: "./ca-chain-cert.pem"})
-```
-
 #### TLS AutoCert support (ACME / Let's Encrypt)
 
 Provides automatic access to certificates management from Let's Encrypt and any other ACME-based providers.
