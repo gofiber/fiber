@@ -422,6 +422,25 @@ func Test_Listen_TLSConfig(t *testing.T) {
 	})
 }
 
+// go test -run Test_Listen_TLSCertFiles
+func Test_Listen_TLSCertFiles(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	require.NoError(t, app.Listen(":0", ListenConfig{
+		DisableStartupMessage: true,
+		CertFile:              "./.github/testdata/ssl.pem",
+		CertKeyFile:           "./.github/testdata/ssl.key",
+		CertClientFile:        "./.github/testdata/ssl.pem",
+	}))
+}
+
 // go test -run Test_Listen_TLSConfig_WithTLSConfigFunc
 func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
 	t.Parallel()
