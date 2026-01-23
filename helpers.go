@@ -97,10 +97,11 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 			log.Errorf("Error closing file: %s", err)
 		}
 	}()
-	if n, err := rf.ReadFrom(f); err != nil {
+	n, err := rf.ReadFrom(f)
+	if err != nil {
 		return n, fmt.Errorf("failed to read: %w", err)
 	}
-	return 0, nil
+	return n, nil
 }
 
 // quoteString escapes special characters using percent-encoding.
