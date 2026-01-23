@@ -97,9 +97,9 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 			log.Errorf("Error closing file: %s", err)
 		}
 	}()
-	n, err := rf.ReadFrom(f)
-	if err != nil {
-		return n, fmt.Errorf("failed to read: %w", err)
+	n, readErr := rf.ReadFrom(f)
+	if readErr != nil {
+		return n, fmt.Errorf("failed to read: %w", readErr)
 	}
 	return n, nil
 }
