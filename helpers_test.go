@@ -5,7 +5,9 @@
 package fiber
 
 import (
+	"bytes"
 	"math"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -107,6 +109,27 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.False(t, acceptsLanguageOfferExtended("de-*-DE", "de-x-DE", nil))
 	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-CH", nil))
 	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-Latn-CH", nil))
+}
+
+func Test_ReadContentReturnsBytes(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("fiber read content test")
+	tempFile, err := os.CreateTemp("", "fiber-read-content-*.txt")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, os.Remove(tempFile.Name()))
+	})
+
+	_, err = tempFile.Write(content)
+	require.NoError(t, err)
+	require.NoError(t, tempFile.Close())
+
+	var buffer bytes.Buffer
+	n, err := readContent(&buffer, tempFile.Name())
+	require.NoError(t, err)
+	require.Equal(t, int64(len(content)), n)
+	require.Equal(t, content, buffer.Bytes())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
@@ -344,6 +367,16 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 			description:  "no matter the value",
 			headerValue:  "   gzip,deflate, br, zip",
 			expectedList: []string{"gzip", "deflate", "br", "zip"},
+		},
+		{
+			description:  "comma with trailing spaces around values",
+			headerValue:  "gzip , br",
+			expectedList: []string{"gzip", "br"},
+		},
+		{
+			description:  "comma with tabbed whitespace",
+			headerValue:  "gzip\t,br",
+			expectedList: []string{"gzip", "br"},
 		},
 		{
 			description:  "headerValue is empty",
