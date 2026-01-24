@@ -18,13 +18,13 @@ func toFiberHandler(handler any) (Handler, bool) {
 	switch handler.(type) {
 	case Handler, func(Ctx): // (1)-(2) Fiber handlers
 		return adaptFiberHandler(handler)
-	case func(Req, Res) error, func(Req, Res), func(Req, Res, func() error) error, func(Req, Res, func() error), func(Req, Res, func()) error, func(Req, Res, func()): // (3)-(8) Express-style request handlers
+	case func(Req, Res) error, func(Req, Res), func(Req, Res, func() error) error, func(Req, Res, func() error), func(Req, Res, func()) error, func(Req, Res, func()), func(Req, Res, func(error)), func(Req, Res, func(error)) error, func(Req, Res, func(error) error), func(Req, Res, func(error) error) error: // (3)-(12) Express-style request handlers
 		return adaptExpressHandler(handler)
-	case http.HandlerFunc, http.Handler, func(http.ResponseWriter, *http.Request): // (9)-(11) net/http handlers
+	case http.HandlerFunc, http.Handler, func(http.ResponseWriter, *http.Request): // (13)-(15) net/http handlers
 		return adaptHTTPHandler(handler)
-	case fasthttp.RequestHandler, func(*fasthttp.RequestCtx) error: // (12)-(13) fasthttp handlers
+	case fasthttp.RequestHandler, func(*fasthttp.RequestCtx) error: // (16)-(17) fasthttp handlers
 		return adaptFastHTTPHandler(handler)
-	default: // (14) unsupported handler type
+	default: // (18) unsupported handler type
 		return nil, false
 	}
 }
@@ -112,6 +112,74 @@ func adaptExpressHandler(handler any) (Handler, bool) {
 			})
 			return nextErr
 		}, true
+	case func(Req, Res, func(error)): // (9) Express-style handler with error-accepting next callback
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			var nextErr error
+			h(c.Req(), c.Res(), func(err error) {
+				if err != nil {
+					nextErr = err
+					return
+				}
+				nextErr = c.Next()
+			})
+			return nextErr
+		}, true
+	case func(Req, Res, func(error)) error: // (10) Express-style handler with error-accepting next callback and error return
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			var nextErr error
+			err := h(c.Req(), c.Res(), func(nextErrArg error) {
+				if nextErrArg != nil {
+					nextErr = nextErrArg
+					return
+				}
+				nextErr = c.Next()
+			})
+			if err != nil {
+				return err
+			}
+			return nextErr
+		}, true
+	case func(Req, Res, func(error) error): // (11) Express-style handler with error-accepting next callback that returns an error
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			var nextErr error
+			h(c.Req(), c.Res(), func(nextErrArg error) error {
+				if nextErrArg != nil {
+					nextErr = nextErrArg
+					return nextErrArg
+				}
+				nextErr = c.Next()
+				return nextErr
+			})
+			return nextErr
+		}, true
+	case func(Req, Res, func(error) error) error: // (12) Express-style handler with error-accepting next callback that returns an error and error return
+		if h == nil {
+			return nil, false
+		}
+		return func(c Ctx) error {
+			var nextErr error
+			err := h(c.Req(), c.Res(), func(nextErrArg error) error {
+				if nextErrArg != nil {
+					nextErr = nextErrArg
+					return nextErrArg
+				}
+				nextErr = c.Next()
+				return nextErr
+			})
+			if err != nil {
+				return err
+			}
+			return nextErr
+		}, true
 	default:
 		return nil, false
 	}
@@ -119,12 +187,12 @@ func adaptExpressHandler(handler any) (Handler, bool) {
 
 func adaptHTTPHandler(handler any) (Handler, bool) {
 	switch h := handler.(type) {
-	case http.HandlerFunc: // (9) net/http HandlerFunc
+	case http.HandlerFunc: // (13) net/http HandlerFunc
 		if h == nil {
 			return nil, false
 		}
 		return wrapHTTPHandler(h), true
-	case http.Handler: // (10) net/http Handler implementation
+	case http.Handler: // (14) net/http Handler implementation
 		if h == nil {
 			return nil, false
 		}
@@ -133,7 +201,7 @@ func adaptHTTPHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return wrapHTTPHandler(h), true
-	case func(http.ResponseWriter, *http.Request): // (11) net/http function handler
+	case func(http.ResponseWriter, *http.Request): // (15) net/http function handler
 		if h == nil {
 			return nil, false
 		}
@@ -145,7 +213,7 @@ func adaptHTTPHandler(handler any) (Handler, bool) {
 
 func adaptFastHTTPHandler(handler any) (Handler, bool) {
 	switch h := handler.(type) {
-	case fasthttp.RequestHandler: // (12) fasthttp handler
+	case fasthttp.RequestHandler: // (16) fasthttp handler
 		if h == nil {
 			return nil, false
 		}
@@ -153,7 +221,7 @@ func adaptFastHTTPHandler(handler any) (Handler, bool) {
 			h(c.RequestCtx())
 			return nil
 		}, true
-	case func(*fasthttp.RequestCtx) error: // (13) fasthttp handler with error return
+	case func(*fasthttp.RequestCtx) error: // (17) fasthttp handler with error return
 		if h == nil {
 			return nil, false
 		}
