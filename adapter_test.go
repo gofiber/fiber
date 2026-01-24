@@ -307,6 +307,33 @@ func TestToFiberHandler_ExpressNextWithErrorReturnCallback_PropagatesNextError(t
 	require.True(t, nextCalled)
 }
 
+func TestToFiberHandler_ExpressNextWithErrorReturnCallback_ShortCircuitsOnNextError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func(error) error) {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		require.EqualError(t, next(errors.New("next error")), "next error")
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return nil
+	}
+
+	withRouteHandlers(t, ctx, converted, nextHandler)
+
+	err := converted(ctx)
+	require.EqualError(t, err, "next error")
+	require.False(t, nextCalled)
+}
+
 func TestToFiberHandler_ExpressNextWithErrorReturn_PrefersHandlerErrorOverNextError(t *testing.T) {
 	t.Parallel()
 
@@ -359,6 +386,33 @@ func TestToFiberHandler_ExpressNextWithErrorReturn_PropagatesNextErrorWhenNoRetu
 
 	err := converted(ctx)
 	require.EqualError(t, err, "next error")
+	require.False(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressNextWithErrorReturnCallback_StopsChainWithoutNextCall(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, _ func(error) error) {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		// Intentionally do not call next.
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return errors.New("should not be called")
+	}
+
+	withRouteHandlers(t, ctx, converted, nextHandler)
+
+	err := converted(ctx)
+	require.NoError(t, err)
 	require.False(t, nextCalled)
 }
 
