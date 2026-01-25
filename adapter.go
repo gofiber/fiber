@@ -213,7 +213,7 @@ func adaptHTTPHandler(handler any) (Handler, bool) {
 
 func isNilableKind(kind reflect.Kind) bool {
 	switch kind {
-	case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.Interface, reflect.Slice:
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.Interface, reflect.Slice, reflect.UnsafePointer:
 		return true
 	default:
 		return false
