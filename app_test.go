@@ -36,6 +36,25 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
+type fileView struct {
+	path    string
+	content string
+	loads   int
+}
+
+func (v *fileView) Load() error {
+	contents, err := os.ReadFile(v.path)
+	if err != nil {
+		return fmt.Errorf("read template: %w", err)
+	}
+
+	v.content = string(contents)
+	v.loads++
+	return nil
+}
+
+func (*fileView) Render(io.Writer, string, any, ...string) error { return nil }
+
 func testEmptyHandler(_ Ctx) error {
 	return nil
 }
@@ -2045,6 +2064,29 @@ func Test_App_ReloadViews_InterfaceNilPointer(t *testing.T) {
 
 	err := app.ReloadViews()
 	require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+}
+
+func Test_App_ReloadViews_MountedViews(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	templatePath := filepath.Join(tempDir, "template.html")
+
+	require.NoError(t, os.WriteFile(templatePath, []byte("before"), 0o600))
+
+	view := &fileView{path: templatePath}
+	subApp := New(Config{Views: view})
+	app := New()
+	app.mount("/sub", subApp)
+
+	require.NoError(t, view.Load())
+	initialLoads := view.loads
+	require.Equal(t, "before", view.content)
+
+	require.NoError(t, os.WriteFile(templatePath, []byte("after"), 0o600))
+	require.NoError(t, app.ReloadViews())
+
+	require.Equal(t, "after", view.content)
+	require.Greater(t, view.loads, initialLoads)
 }
 
 // go test -run Test_App_Init_Error_View

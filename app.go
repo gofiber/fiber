@@ -715,16 +715,30 @@ func (app *App) ReloadViews() error {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	if app.config.Views == nil {
-		return ErrNoViewEngineConfigured
+	apps := map[string]*App{"": app}
+	if app.mountFields != nil {
+		apps = app.mountFields.appList
 	}
 
-	if viewValue := reflect.ValueOf(app.config.Views); viewValue.Kind() == reflect.Pointer && viewValue.IsNil() {
-		return ErrNoViewEngineConfigured
+	var reloaded bool
+	for _, targetApp := range apps {
+		if targetApp == nil || targetApp.config.Views == nil {
+			continue
+		}
+
+		if viewValue := reflect.ValueOf(targetApp.config.Views); viewValue.Kind() == reflect.Pointer && viewValue.IsNil() {
+			continue
+		}
+
+		if err := targetApp.config.Views.Load(); err != nil {
+			return fmt.Errorf("fiber: failed to reload views: %w", err)
+		}
+
+		reloaded = true
 	}
 
-	if err := app.config.Views.Load(); err != nil {
-		return fmt.Errorf("fiber: failed to reload views: %w", err)
+	if !reloaded {
+		return ErrNoViewEngineConfigured
 	}
 
 	return nil
@@ -845,8 +859,7 @@ func (app *App) Use(args ...any) Router {
 
 	for _, prefix := range prefixes {
 		if subApp != nil {
-			app.mount(prefix, subApp)
-			return app
+			return app.mount(prefix, subApp)
 		}
 
 		app.register([]string{methodUse}, prefix, nil, handlers...)
