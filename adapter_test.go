@@ -53,6 +53,15 @@ func TestToFiberHandler_FiberHandlerNoErrorReturn(t *testing.T) {
 	require.Equal(t, "ok", string(ctx.Response().Header.Peek("X-Handler")))
 }
 
+func TestNewTestCtx_ReturnsDefaultCtx(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+	require.NotNil(t, app)
+	require.NotNil(t, ctx)
+	require.Equal(t, app, ctx.App())
+}
+
 func newTestCtx(t *testing.T) (*App, *DefaultCtx) {
 	t.Helper()
 
