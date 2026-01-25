@@ -197,7 +197,7 @@ func adaptHTTPHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		hv := reflect.ValueOf(h)
-		if hv.Kind() == reflect.Pointer && hv.IsNil() {
+		if isNilableKind(hv.Kind()) && hv.IsNil() {
 			return nil, false
 		}
 		return wrapHTTPHandler(h), true
@@ -208,6 +208,15 @@ func adaptHTTPHandler(handler any) (Handler, bool) {
 		return wrapHTTPHandler(http.HandlerFunc(h)), true
 	default:
 		return nil, false
+	}
+}
+
+func isNilableKind(kind reflect.Kind) bool {
+	switch kind {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.Interface, reflect.Slice:
+		return true
+	default:
+		return false
 	}
 }
 

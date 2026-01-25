@@ -817,12 +817,32 @@ type dummyHandler struct{}
 
 func (dummyHandler) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
+type dummyFuncHandler func(http.ResponseWriter, *http.Request)
+
+func (handler dummyFuncHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if handler == nil {
+		return
+	}
+	handler(w, r)
+}
+
 func TestCollectHandlers_TypedNilPointerHTTPHandler(t *testing.T) {
 	t.Parallel()
 
 	var handler http.Handler = (*dummyHandler)(nil)
 
 	require.PanicsWithValue(t, "context: invalid handler #0 (*fiber.dummyHandler)\n", func() {
+		collectHandlers("context", handler)
+	})
+}
+
+func TestCollectHandlers_TypedNilFuncHTTPHandler(t *testing.T) {
+	t.Parallel()
+
+	var handler http.Handler = dummyFuncHandler(nil)
+	expected := fmt.Sprintf("context: invalid handler #0 (%T)\n", handler)
+
+	require.PanicsWithValue(t, expected, func() {
 		collectHandlers("context", handler)
 	})
 }
