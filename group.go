@@ -168,8 +168,7 @@ func (grp *Group) Use(args ...any) Router {
 
 	for _, prefix := range prefixes {
 		if subApp != nil {
-			grp.mount(prefix, subApp)
-			return grp
+			return grp.mount(prefix, subApp)
 		}
 
 		grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, handlers...)

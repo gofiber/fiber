@@ -53,6 +53,15 @@ func TestToFiberHandler_FiberHandlerNoErrorReturn(t *testing.T) {
 	require.Equal(t, "ok", string(ctx.Response().Header.Peek("X-Handler")))
 }
 
+func TestNewTestCtx_ReturnsDefaultCtx(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+	require.NotNil(t, app)
+	require.NotNil(t, ctx)
+	require.Equal(t, app, ctx.App())
+}
+
 func newTestCtx(t *testing.T) (*App, *DefaultCtx) {
 	t.Helper()
 
@@ -67,6 +76,17 @@ func newTestCtx(t *testing.T) (*App, *DefaultCtx) {
 	})
 
 	return app, ctx
+}
+
+func withRouteHandlers(t *testing.T, ctx *DefaultCtx, handlers ...Handler) {
+	t.Helper()
+
+	ctx.route = &Route{Handlers: handlers}
+	ctx.indexHandler = 0
+	t.Cleanup(func() {
+		ctx.route = nil
+		ctx.indexHandler = 0
+	})
 }
 
 func TestToFiberHandler_ExpressTwoParamsWithError(t *testing.T) {
@@ -125,13 +145,7 @@ func TestToFiberHandler_ExpressThreeParamsWithError(t *testing.T) {
 		return nextErr
 	}
 
-	route := &Route{Handlers: []Handler{converted, nextHandler}}
-	ctx.route = route
-	ctx.indexHandler = 0
-	t.Cleanup(func() {
-		ctx.route = nil
-		ctx.indexHandler = 0
-	})
+	withRouteHandlers(t, ctx, converted, nextHandler)
 
 	err := converted(ctx)
 	require.ErrorIs(t, err, nextErr)
@@ -157,13 +171,7 @@ func TestToFiberHandler_ExpressThreeParamsWithoutError(t *testing.T) {
 		return errors.New("next without error")
 	}
 
-	route := &Route{Handlers: []Handler{converted, nextHandler}}
-	ctx.route = route
-	ctx.indexHandler = 0
-	t.Cleanup(func() {
-		ctx.route = nil
-		ctx.indexHandler = 0
-	})
+	withRouteHandlers(t, ctx, converted, nextHandler)
 
 	err := converted(ctx)
 	require.EqualError(t, err, "next without error")
@@ -191,17 +199,230 @@ func TestToFiberHandler_ExpressNextNoArgWithErrorReturn(t *testing.T) {
 		return nextErr
 	}
 
-	route := &Route{Handlers: []Handler{converted, nextHandler}}
-	ctx.route = route
-	ctx.indexHandler = 0
-	t.Cleanup(func() {
-		ctx.route = nil
-		ctx.indexHandler = 0
-	})
+	withRouteHandlers(t, ctx, converted, nextHandler)
 
 	err := converted(ctx)
 	require.ErrorIs(t, err, nextErr)
 	require.True(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressNextWithErrorContinuesOnNil(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func(error)) {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		next(nil)
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return nil
+	}
+
+	withRouteHandlers(t, ctx, converted, nextHandler)
+
+	err := converted(ctx)
+	require.NoError(t, err)
+	require.True(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressNextWithErrorShortCircuitsOnError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func(error)) {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		next(errors.New("next error"))
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return nil
+	}
+
+	withRouteHandlers(t, ctx, converted, nextHandler)
+
+	err := converted(ctx)
+	require.EqualError(t, err, "next error")
+	require.False(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressNextWithErrorReturn_ShortCircuitsOnNextError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func(error)) error {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		next(errors.New("next error"))
+		return nil
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return nil
+	}
+
+	withRouteHandlers(t, ctx, converted, nextHandler)
+
+	err := converted(ctx)
+	require.EqualError(t, err, "next error")
+	require.False(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressNextWithErrorReturnCallback_PropagatesNextError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func(error) error) {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		require.EqualError(t, next(nil), "next error")
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextErr := errors.New("next error")
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return nextErr
+	}
+
+	withRouteHandlers(t, ctx, converted, nextHandler)
+
+	err := converted(ctx)
+	require.ErrorIs(t, err, nextErr)
+	require.True(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressNextWithErrorReturnCallback_ShortCircuitsOnNextError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func(error) error) {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		require.EqualError(t, next(errors.New("next error")), "next error")
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return nil
+	}
+
+	withRouteHandlers(t, ctx, converted, nextHandler)
+
+	err := converted(ctx)
+	require.EqualError(t, err, "next error")
+	require.False(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressNextWithErrorReturn_PrefersHandlerErrorOverNextError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func(error) error) error {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		require.EqualError(t, next(errors.New("next error")), "next error")
+		return errors.New("handler error")
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return nil
+	}
+
+	withRouteHandlers(t, ctx, converted, nextHandler)
+
+	err := converted(ctx)
+	require.EqualError(t, err, "handler error")
+	require.False(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressNextWithErrorReturn_PropagatesNextErrorWhenNoReturnError(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, next func(error) error) error {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		return next(errors.New("next error"))
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return nil
+	}
+
+	withRouteHandlers(t, ctx, converted, nextHandler)
+
+	err := converted(ctx)
+	require.EqualError(t, err, "next error")
+	require.False(t, nextCalled)
+}
+
+func TestToFiberHandler_ExpressNextWithErrorReturnCallback_StopsChainWithoutNextCall(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+
+	handler := func(req Req, res Res, _ func(error) error) {
+		assert.Equal(t, app, req.App())
+		assert.Equal(t, app, res.App())
+		// Intentionally do not call next.
+	}
+
+	converted, ok := toFiberHandler(handler)
+	require.True(t, ok)
+
+	nextCalled := false
+	nextHandler := func(_ Ctx) error {
+		nextCalled = true
+		return errors.New("should not be called")
+	}
+
+	withRouteHandlers(t, ctx, converted, nextHandler)
+
+	err := converted(ctx)
+	require.NoError(t, err)
+	require.False(t, nextCalled)
 }
 
 func TestAdapter_MixedHandlerIntegration(t *testing.T) {
@@ -302,13 +523,7 @@ func TestToFiberHandler_ExpressNextNoArgPropagatesError(t *testing.T) {
 		return nextErr
 	}
 
-	route := &Route{Handlers: []Handler{converted, nextHandler}}
-	ctx.route = route
-	ctx.indexHandler = 0
-	t.Cleanup(func() {
-		ctx.route = nil
-		ctx.indexHandler = 0
-	})
+	withRouteHandlers(t, ctx, converted, nextHandler)
 
 	err := converted(ctx)
 	require.ErrorIs(t, err, nextErr)
@@ -335,13 +550,7 @@ func TestToFiberHandler_ExpressNextNoArgStopsChain(t *testing.T) {
 		return errors.New("should not be called")
 	}
 
-	route := &Route{Handlers: []Handler{converted, nextHandler}}
-	ctx.route = route
-	ctx.indexHandler = 0
-	t.Cleanup(func() {
-		ctx.route = nil
-		ctx.indexHandler = 0
-	})
+	withRouteHandlers(t, ctx, converted, nextHandler)
 
 	err := converted(ctx)
 	require.NoError(t, err)
@@ -617,12 +826,32 @@ type dummyHandler struct{}
 
 func (dummyHandler) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
+type dummyFuncHandler func(http.ResponseWriter, *http.Request)
+
+func (handler dummyFuncHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if handler == nil {
+		return
+	}
+	handler(w, r)
+}
+
 func TestCollectHandlers_TypedNilPointerHTTPHandler(t *testing.T) {
 	t.Parallel()
 
 	var handler http.Handler = (*dummyHandler)(nil)
 
 	require.PanicsWithValue(t, "context: invalid handler #0 (*fiber.dummyHandler)\n", func() {
+		collectHandlers("context", handler)
+	})
+}
+
+func TestCollectHandlers_TypedNilFuncHTTPHandler(t *testing.T) {
+	t.Parallel()
+
+	var handler http.Handler = dummyFuncHandler(nil)
+	expected := fmt.Sprintf("context: invalid handler #0 (%T)\n", handler)
+
+	require.PanicsWithValue(t, expected, func() {
 		collectHandlers("context", handler)
 	})
 }

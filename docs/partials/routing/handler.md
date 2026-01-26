@@ -29,7 +29,7 @@ func (app *App) All(path string, handler any, handlers ...any) Router
 ```
 
 Fiber's adapter converts a variety of handler shapes to native
-`func(fiber.Ctx) error` callbacks. It currently recognizes thirteen cases (the
+`func(fiber.Ctx) error` callbacks. It currently recognizes seventeen cases (the
 numbers below match the comments in `toFiberHandler` inside `adapter.go`). This
 lets you mix Fiber-style handlers with Express-style callbacks and even reuse
 `net/http` or `fasthttp` functions.
@@ -40,7 +40,7 @@ lets you mix Fiber-style handlers with Express-style callbacks and even reuse
 - **Case 2.** `func(fiber.Ctx)` — Fiber runs the function and treats it as if it
   returned `nil`.
 
-### Express-style request handlers (cases 3–8)
+### Express-style request handlers (cases 3–12)
 
 - **Case 3.** `func(fiber.Req, fiber.Res) error`
 - **Case 4.** `func(fiber.Req, fiber.Res)`
@@ -48,17 +48,26 @@ lets you mix Fiber-style handlers with Express-style callbacks and even reuse
 - **Case 6.** `func(fiber.Req, fiber.Res, func() error)`
 - **Case 7.** `func(fiber.Req, fiber.Res, func()) error`
 - **Case 8.** `func(fiber.Req, fiber.Res, func())`
+- **Case 9.** `func(fiber.Req, fiber.Res, func(error))`
+- **Case 10.** `func(fiber.Req, fiber.Res, func(error)) error`
+- **Case 11.** `func(fiber.Req, fiber.Res, func(error) error)`
+- **Case 12.** `func(fiber.Req, fiber.Res, func(error) error) error`
 
 The adapter injects a `next` callback when your signature accepts one. Fiber
 propagates downstream errors from `c.Next()` back through the wrapper, so
 returning those errors remains optional. If you never call the injected `next`
 function, the handler chain stops, matching Express semantics.
 
-### net/http handlers (cases 9–11)
+When you accept `next` callbacks that take an `error`, calling `next(nil)`
+continues the chain and passing a non-nil error short-circuits with that error.
+If the handler itself returns an error, Fiber prioritizes that value over any
+recorded `next` error.
 
-- **Case 9.** `http.HandlerFunc`
-- **Case 10.** `http.Handler`
-- **Case 11.** `func(http.ResponseWriter, *http.Request)`
+### net/http handlers (cases 13–15)
+
+- **Case 13.** `http.HandlerFunc`
+- **Case 14.** `http.Handler`
+- **Case 15.** `func(http.ResponseWriter, *http.Request)`
 
 :::caution Compatibility overhead
 Fiber adapts these handlers through `fasthttpadaptor`. They do not receive
@@ -67,10 +76,10 @@ chain. The compatibility layer also adds more overhead than running a native
 Fiber handler, so prefer the other forms when possible.
 :::
 
-### fasthttp handlers (cases 12–13)
+### fasthttp handlers (cases 16–17)
 
-- **Case 12.** `fasthttp.RequestHandler`
-- **Case 13.** `func(*fasthttp.RequestCtx) error`
+- **Case 16.** `fasthttp.RequestHandler`
+- **Case 17.** `func(*fasthttp.RequestCtx) error`
 
 fasthttp handlers run with full access to the underlying `fasthttp.RequestCtx`.
 They are expected to manage the response directly. Fiber will propagate any

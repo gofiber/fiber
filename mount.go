@@ -45,6 +45,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 		prefix = "/"
 	}
 
+	app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subApp := range subApp.mountFields.appList {
 		path := getGroupPath(prefix, mountedPrefixes)
@@ -52,6 +53,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 		subApp.mountFields.mountPath = path
 		app.mountFields.appList[path] = subApp
 	}
+	app.mutex.Unlock()
 
 	// register mounted group
 	mountGroup := &Group{Prefix: prefix, app: subApp}
@@ -75,6 +77,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 		groupPath = "/"
 	}
 
+	grp.app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subApp := range subApp.mountFields.appList {
 		path := getGroupPath(groupPath, mountedPrefixes)
@@ -82,6 +85,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 		subApp.mountFields.mountPath = path
 		grp.app.mountFields.appList[path] = subApp
 	}
+	grp.app.mutex.Unlock()
 
 	// register mounted group
 	mountGroup := &Group{Prefix: groupPath, app: subApp}
