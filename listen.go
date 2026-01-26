@@ -295,6 +295,32 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 		go app.gracefulShutdown(ctx, &cfg)
 	}
 
+	// Prefork support for custom listeners
+	if cfg.EnablePrefork {
+		addr := ln.Addr().String()
+		network := ln.Addr().Network()
+
+		// Check if this is a TLS listener
+		tlsConfig := getTLSConfig(ln)
+
+		// Validate that the listener network is compatible with prefork
+		if network != "tcp" && network != "tcp4" && network != "tcp6" {
+			log.Warnf("[prefork] Prefork only supports tcp, tcp4, and tcp6 networks. Current network: %s. Ignoring prefork flag.", network)
+			return app.server.Serve(ln)
+		}
+
+		// Align the config with the provided listener so children bind to the same network type.
+		cfg.ListenerNetwork = network
+
+		// Close the provided listener since prefork will create its own listeners
+		if err := ln.Close(); err != nil {
+			log.Warnf("[prefork] failed to close provided listener: %v", err)
+		}
+
+		log.Info("[prefork] Starting prefork mode with custom listener address")
+		return app.prefork(addr, tlsConfig, &cfg)
+	}
+
 	// prepare the server for the start
 	app.startupProcess()
 
@@ -311,34 +337,6 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 		if err := cfg.BeforeServeFunc(app); err != nil {
 			return err
 		}
-	}
-
-	// Prefork support for custom listeners
-	if cfg.EnablePrefork {
-		// Extract address and network from listener
-		addr := ln.Addr().String()
-		network := ln.Addr().Network()
-
-		// Check if this is a TLS listener
-		tlsConfig := getTLSConfig(ln)
-
-		// Validate that the listener network is compatible with prefork
-		if network != "tcp" && network != "tcp4" && network != "tcp6" {
-			log.Warnf("[prefork] Prefork only supports tcp, tcp4, and tcp6 networks. Current network: %s. Ignoring prefork flag.", network)
-			return app.server.Serve(ln)
-		}
-
-		// Close the provided listener since prefork will create its own listeners
-		if err := ln.Close(); err != nil {
-			log.Warnf("[prefork] failed to close provided listener: %v", err)
-		}
-
-		// Use prefork mode
-		// NOTE: This assumes the provided listener was created with reuseport.Listen or similar
-		// If the system doesn't support SO_REUSEPORT, prefork will automatically fall back
-		// to standard listening mode (see prefork.go for fallback logic)
-		log.Info("[prefork] Starting prefork mode with custom listener address")
-		return app.prefork(addr, tlsConfig, &cfg)
 	}
 
 	return app.server.Serve(ln)
