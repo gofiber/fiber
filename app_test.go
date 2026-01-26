@@ -36,6 +36,25 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
+type fileView struct {
+	path    string
+	content string
+	loads   int
+}
+
+func (v *fileView) Load() error {
+	contents, err := os.ReadFile(v.path)
+	if err != nil {
+		return fmt.Errorf("read template: %w", err)
+	}
+
+	v.content = string(contents)
+	v.loads++
+	return nil
+}
+
+func (*fileView) Render(io.Writer, string, any, ...string) error { return nil }
+
 func testEmptyHandler(_ Ctx) error {
 	return nil
 }
@@ -2045,6 +2064,77 @@ func Test_App_ReloadViews_InterfaceNilPointer(t *testing.T) {
 
 	err := app.ReloadViews()
 	require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+}
+
+func Test_App_ReloadViews_MountedViews(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	templatePath := filepath.Join(tempDir, "template.html")
+
+	require.NoError(t, os.WriteFile(templatePath, []byte("before"), 0o600))
+
+	view := &fileView{path: templatePath}
+	subApp := New(Config{Views: view})
+	app := New()
+	app.Use("/sub", subApp)
+
+	require.NoError(t, view.Load())
+	initialLoads := view.loads
+	require.Equal(t, "before", view.content)
+
+	require.NoError(t, os.WriteFile(templatePath, []byte("after"), 0o600))
+	require.NoError(t, app.ReloadViews())
+
+	require.Equal(t, "after", view.content)
+	require.Greater(t, view.loads, initialLoads)
+}
+
+func Test_App_ReloadViews_MountedViews_Error(t *testing.T) {
+	t.Parallel()
+	expectedErr := errors.New("sub view error")
+	subView := &countingView{loadErr: expectedErr}
+	subApp := New(Config{Views: subView})
+	app := New()
+	app.Use("/sub", subApp)
+
+	err := app.ReloadViews()
+	require.ErrorIs(t, err, expectedErr)
+}
+
+func Test_App_ReloadViews_MountedViews_MultipleApps(t *testing.T) {
+	t.Parallel()
+	viewA := &countingView{}
+	viewB := &countingView{}
+	subAppA := New(Config{Views: viewA})
+	subAppB := New(Config{Views: viewB})
+	app := New()
+	app.Use("/a", subAppA)
+	app.Use("/b", subAppB)
+
+	initialLoadsA := viewA.loads
+	initialLoadsB := viewB.loads
+
+	require.NoError(t, app.ReloadViews())
+
+	require.Equal(t, initialLoadsA+1, viewA.loads)
+	require.Equal(t, initialLoadsB+1, viewB.loads)
+}
+
+func Test_App_ReloadViews_MountedViews_WithParentViews(t *testing.T) {
+	t.Parallel()
+	parentView := &countingView{}
+	subView := &countingView{}
+	subApp := New(Config{Views: subView})
+	app := New(Config{Views: parentView})
+	app.Use("/sub", subApp)
+
+	initialParentLoads := parentView.loads
+	initialSubLoads := subView.loads
+
+	require.NoError(t, app.ReloadViews())
+
+	require.Equal(t, initialParentLoads+1, parentView.loads)
+	require.Equal(t, initialSubLoads+1, subView.loads)
 }
 
 // go test -run Test_App_Init_Error_View
