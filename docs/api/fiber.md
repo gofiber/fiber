@@ -156,6 +156,7 @@ app.Listen(":8080", fiber.ListenConfig{EnablePrefork: true})
 This distributes the incoming connections between the spawned processes and allows more requests to be handled simultaneously.
 
 **How it works:**
+
 - On systems with **SO_REUSEPORT support** (Linux, macOS, FreeBSD): Each child process creates its own listener using SO_REUSEPORT, allowing the kernel to load-balance connections efficiently.
 - On systems **without SO_REUSEPORT** (older systems, AIX, Solaris): Fiber automatically falls back to **file descriptor sharing**, where the master process creates a single listener and shares it with all children. Prefork remains active!
 - You can control this behavior with `DisableReuseportFallback` (see below).
@@ -183,6 +184,7 @@ app.Listen(":8080", fiber.ListenConfig{
 **Child Process Recovery:**
 
 By default, if a child process crashes, it will be automatically restarted to maintain the desired number of worker processes. You can:
+
 - Disable recovery entirely with `DisableChildRecovery: true`
 - Limit recovery attempts with `MaxChildRecoveries: N`
 

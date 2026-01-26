@@ -18,13 +18,13 @@ import (
 )
 
 const (
-	envPreforkChildKey   = "FIBER_PREFORK_CHILD"
-	envPreforkChildVal   = "1"
-	envPreforkFDKey      = "FIBER_PREFORK_USE_FD"
-	envPreforkFDVal      = "1"
-	sleepDuration        = 100 * time.Millisecond
-	windowsOS            = "windows"
-	inheritedListenerFD  = 3 // First FD in ExtraFiles becomes FD 3
+	envPreforkChildKey  = "FIBER_PREFORK_CHILD"
+	envPreforkChildVal  = "1"
+	envPreforkFDKey     = "FIBER_PREFORK_USE_FD"
+	envPreforkFDVal     = "1"
+	sleepDuration       = 100 * time.Millisecond
+	windowsOS           = "windows"
+	inheritedListenerFD = 3 // First FD in ExtraFiles becomes FD 3
 )
 
 // childInfo tracks information about a child process
@@ -58,9 +58,11 @@ func isReusePortError(err error) bool {
 func testReuseportSupport(network, addr string) error {
 	ln, err := reuseport.Listen(network, addr)
 	if err != nil {
-		return err
+		return fmt.Errorf("reuseport test failed: %w", err)
 	}
-	_ = ln.Close()
+	if closeErr := ln.Close(); closeErr != nil {
+		log.Warnf("[prefork] failed to close test listener: %v", closeErr)
+	}
 	return nil
 }
 
@@ -86,7 +88,7 @@ func startChildProcess(app *App, inheritedLn net.Listener) (*childInfo, error) {
 		// Extract the file descriptor from the listener
 		tcpLn, ok := inheritedLn.(*net.TCPListener)
 		if !ok {
-			return nil, fmt.Errorf("prefork: inherited listener is not a TCP listener")
+			return nil, errors.New("prefork: inherited listener is not a TCP listener")
 		}
 
 		file, err := tcpLn.File()
@@ -148,7 +150,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 				if !cfg.DisableStartupMessage {
 					time.Sleep(sleepDuration)
 				}
-				return fmt.Errorf("prefork: failed to recreate listener from file descriptor")
+				return errors.New("prefork: failed to recreate listener from file descriptor")
 			}
 
 			ln, err = net.FileListener(f)
@@ -160,7 +162,9 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 			}
 
 			// Close the file as we don't need it anymore (listener is created)
-			_ = f.Close()
+			if closeErr := f.Close(); closeErr != nil {
+				log.Warnf("[prefork] failed to close file descriptor: %v", closeErr)
+			}
 		} else {
 			// Use SO_REUSEPORT mode (default)
 			// Linux will use SO_REUSEPORT and Windows falls back to SO_REUSEADDR
@@ -203,7 +207,8 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 	// Test if SO_REUSEPORT is supported before spawning children
 	var inheritedLn net.Listener
 	if err = testReuseportSupport(cfg.ListenerNetwork, addr); err != nil {
-		if isReusePortError(err) && !cfg.DisableReuseportFallback {
+		switch {
+		case isReusePortError(err) && !cfg.DisableReuseportFallback:
 			log.Warn("[prefork] SO_REUSEPORT is not supported on this system, using file descriptor sharing fallback")
 			// Create a single shared listener that will be passed to all children
 			inheritedLn, err = net.Listen(cfg.ListenerNetwork, addr)
@@ -213,21 +218,23 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 			// Close the listener in the master process after all children have inherited it
 			defer func() {
 				if inheritedLn != nil {
-					_ = inheritedLn.Close()
+					if closeErr := inheritedLn.Close(); closeErr != nil {
+						log.Warnf("[prefork] failed to close inherited listener: %v", closeErr)
+					}
 				}
 			}()
 			log.Info("[prefork] File descriptor sharing fallback enabled, all children will share the same socket")
-		} else if isReusePortError(err) {
+		case isReusePortError(err):
 			// DisableReuseportFallback is true, fail
 			return fmt.Errorf("prefork: SO_REUSEPORT not supported and fallback is disabled: %w", err)
-		} else {
+		default:
 			return fmt.Errorf("prefork: failed to test SO_REUSEPORT support: %w", err)
 		}
 	}
 
 	type childEvent struct {
-		pid int
 		err error
+		pid int
 	}
 
 	// create variables
@@ -261,7 +268,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 
 	// launch initial child procs
 	var childPIDs []int
-	for i := 0; i < maxProcs; i++ {
+	for range maxProcs {
 		child, err := startChildProcess(app, inheritedLn)
 		if err != nil {
 			return err
