@@ -130,6 +130,24 @@ type ListenConfig struct {
 	//
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
+
+	// When set to true, prefork will fail if SO_REUSEPORT is not supported
+	// instead of falling back to standard listener.
+	//
+	// Default: false
+	DisableReuseportFallback bool `json:"disable_reuseport_fallback"`
+
+	// When set to true, disables automatic recovery of crashed child processes in prefork mode.
+	// By default, if a child process crashes, it will be automatically restarted.
+	//
+	// Default: false
+	DisableChildRecovery bool `json:"disable_child_recovery"`
+
+	// Maximum number of times a child process can be recovered before giving up.
+	// Set to 0 for unlimited recoveries.
+	//
+	// Default: 0 (unlimited)
+	MaxChildRecoveries int `json:"max_child_recoveries"`
 }
 
 // listenConfigDefault is a function to set default values of ListenConfig.
@@ -295,9 +313,32 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 		}
 	}
 
-	// Prefork is not supported for custom listeners
+	// Prefork support for custom listeners
 	if cfg.EnablePrefork {
-		log.Warn("Prefork isn't supported for custom listeners.")
+		// Extract address and network from listener
+		addr := ln.Addr().String()
+		network := ln.Addr().Network()
+
+		// Check if this is a TLS listener
+		tlsConfig := getTLSConfig(ln)
+
+		// Validate that the listener network is compatible with prefork
+		if network != "tcp" && network != "tcp4" && network != "tcp6" {
+			log.Warnf("[prefork] Prefork only supports tcp, tcp4, and tcp6 networks. Current network: %s. Ignoring prefork flag.", network)
+			return app.server.Serve(ln)
+		}
+
+		// Close the provided listener since prefork will create its own listeners
+		if err := ln.Close(); err != nil {
+			log.Warnf("[prefork] failed to close provided listener: %v", err)
+		}
+
+		// Use prefork mode
+		// NOTE: This assumes the provided listener was created with reuseport.Listen or similar
+		// If the system doesn't support SO_REUSEPORT, prefork will automatically fall back
+		// to standard listening mode (see prefork.go for fallback logic)
+		log.Info("[prefork] Starting prefork mode with custom listener address")
+		return app.prefork(addr, tlsConfig, &cfg)
 	}
 
 	return app.server.Serve(ln)

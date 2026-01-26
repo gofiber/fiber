@@ -349,6 +349,49 @@ func main() {
 }
 ```
 
+### Prefork Enhancements
+
+Fiber v3 introduces significant improvements to the prefork feature:
+
+- **Automatic Fallback to File Descriptor Sharing**: On systems without SO_REUSEPORT support (e.g., older kernels, AIX, Solaris), prefork now automatically falls back to file descriptor sharing instead of failing. This ensures prefork works consistently across all platforms.
+
+- **Child Process Recovery**: Crashed child processes are now automatically restarted by default, maintaining the desired number of worker processes. This can be controlled with new configuration options:
+  - `DisableChildRecovery` - Disable automatic recovery
+  - `MaxChildRecoveries` - Limit recovery attempts per child (0 = unlimited)
+
+- **Prefork with Custom Listeners**: The `app.Listener()` method now supports prefork mode when using custom listeners created with `reuseport.Listen`.
+
+- **Fallback Control**: New `DisableReuseportFallback` flag allows you to fail explicitly if SO_REUSEPORT is not supported instead of using the fallback.
+
+```go
+// Basic prefork with automatic recovery
+app.Listen(":8080", fiber.ListenConfig{
+    EnablePrefork: true,
+})
+
+// Prefork with limited recovery attempts
+app.Listen(":8080", fiber.ListenConfig{
+    EnablePrefork: true,
+    MaxChildRecoveries: 10, // Stop after 10 recovery attempts
+})
+
+// Prefork with file descriptor sharing disabled
+app.Listen(":8080", fiber.ListenConfig{
+    EnablePrefork: true,
+    DisableReuseportFallback: true, // Fail if SO_REUSEPORT not available
+})
+
+// Prefork with custom listener
+import "github.com/valyala/fasthttp/reuseport"
+
+ln, _ := reuseport.Listen("tcp4", ":8080")
+app.Listener(ln, fiber.ListenConfig{
+    EnablePrefork: true,
+})
+```
+
+These enhancements make prefork more robust, portable, and easier to use across different operating systems and deployment scenarios.
+
 ## 🗺 Router
 
 We have slightly adapted our router interface

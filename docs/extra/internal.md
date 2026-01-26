@@ -265,7 +265,7 @@ Reusing Context objects significantly reduces garbage collection overhead, ensur
 
 ## Preforking Mechanism
 
-To take full advantage of multi‑core systems, Fiber offers a prefork mode. In this mode, the master process spawns several child processes that listen on the same port using OS features such as SO_REUSEPORT (or fall back to SO_REUSEADDR).
+To take full advantage of multi‑core systems, Fiber offers a prefork mode. In this mode, the master process spawns several child processes that listen on the same port using OS features such as SO_REUSEPORT. On systems without SO_REUSEPORT support, Fiber automatically falls back to file descriptor sharing, ensuring prefork remains functional across all platforms.
 
 ```mermaid
 flowchart LR
@@ -289,13 +289,17 @@ flowchart LR
 
 ### Detailed Preforking Workflow
 
-Fiber’s prefork mode uses OS‑level mechanisms to allow multiple processes to listen on the same port. Here’s a more detailed look:
+Fiber's prefork mode uses OS‑level mechanisms to allow multiple processes to listen on the same port. Here's a more detailed look:
 
-1. Master Process Spawning: The master process detects the number of CPU cores and spawns that many child processes.
-2. Child Process Initialization: Each child process sets GOMAXPROCS(1) so that it runs on a single core.
-3. Binding to Port: Child processes use packages like reuseport to bind to the same address and port.
-4. Parent Monitoring: Each child runs a watchdog function (watchMaster()) to monitor the master process; if the master terminates, children exit.
-5. Request Handling: Each child independently handles incoming HTTP requests.
+1. **Master Process Spawning**: The master process detects the number of CPU cores and spawns that many child processes.
+2. **SO_REUSEPORT Detection**: The master tests if SO_REUSEPORT is supported on the system.
+3. **Listener Creation**:
+   - **With SO_REUSEPORT**: Each child process creates its own listener using `reuseport.Listen()`, allowing the kernel to efficiently load-balance connections.
+   - **Without SO_REUSEPORT**: The master creates a single listener and shares its file descriptor with all children via `cmd.ExtraFiles`. Children recreate the listener from the inherited file descriptor.
+4. **Child Process Initialization**: Each child process sets GOMAXPROCS(1) so that it runs on a single core.
+5. **Parent Monitoring**: Each child runs a watchdog function (`watchMaster()`) to monitor the master process; if the master terminates, children exit gracefully.
+6. **Child Recovery** (optional): The master continuously monitors child processes. If a child crashes, it is automatically restarted (configurable via `DisableChildRecovery` and `MaxChildRecoveries`).
+7. **Request Handling**: Each child independently handles incoming HTTP requests.
 
 ```mermaid
 flowchart TD
@@ -317,9 +321,11 @@ flowchart TD
 
 #### Explanation
 
-- Preforking improves performance by allowing multiple processes to handle requests concurrently.
-- Using reuseport (or a fallback) ensures that all child processes can listen on the same port without conflicts.
-- The watchdog routine in each child ensures that they exit if the master process is no longer running, maintaining process integrity.
+- **Performance**: Preforking improves performance by allowing multiple processes to handle requests concurrently, effectively utilizing all CPU cores.
+- **Socket Sharing**: Using SO_REUSEPORT (when available) or file descriptor sharing (fallback) ensures that all child processes can listen on the same port without conflicts.
+- **Cross-Platform**: The automatic fallback to file descriptor sharing ensures prefork works on all systems, even those without SO_REUSEPORT support.
+- **Resilience**: Child recovery ensures that the desired number of worker processes is maintained even if individual children crash.
+- **Process Integrity**: The watchdog routine (`watchMaster()`) in each child ensures they exit gracefully if the master process is no longer running.
 
 ## Redirection & Flash Messages
 

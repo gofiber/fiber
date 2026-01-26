@@ -111,7 +111,10 @@ app.Listen(":8080", fiber.ListenConfig{
 | <Reference id="certfile">CertFile</Reference>                           | `string`                      | Path of the certificate file. If you want to use TLS, you must enter this field.                                                                                                                                                                                                                                             | `""`               |
 | <Reference id="certkeyfile">CertKeyFile</Reference>                     | `string`                      | Path of the certificate's private key. If you want to use TLS, you must enter this field.                                                                                                                                                                                                                                    | `""`               |
 | <Reference id="disablestartupmessage">DisableStartupMessage</Reference> | `bool`                        | When set to true, it will not print out the «Fiber» ASCII art and listening address.                                                                                                                                                                                                                                         | `false`            |
-| <Reference id="enableprefork">EnablePrefork</Reference>                 | `bool`                        | When set to true, this will spawn multiple Go processes listening on the same port.                                                                                                                                                                                                                                          | `false`            |
+| <Reference id="enableprefork">EnablePrefork</Reference>                 | `bool`                        | When set to true, this will spawn multiple Go processes listening on the same port. See [Prefork](#prefork) for more details.                                                                                                                                                                                                | `false`            |
+| <Reference id="disablereuseportfallback">DisableReuseportFallback</Reference> | `bool`                  | When set to true, prefork will fail if SO_REUSEPORT is not supported instead of falling back to file descriptor sharing. Only relevant when `EnablePrefork` is true.                                                                                                                                                          | `false`            |
+| <Reference id="disablechildrecovery">DisableChildRecovery</Reference>   | `bool`                        | When set to true, disables automatic recovery of crashed child processes in prefork mode. Only relevant when `EnablePrefork` is true.                                                                                                                                                                                        | `false`            |
+| <Reference id="maxchildrecoveries">MaxChildRecoveries</Reference>       | `int`                         | Maximum number of times a child process can be recovered before giving up. Set to 0 for unlimited recoveries. Only relevant when `EnablePrefork` is true and `DisableChildRecovery` is false.                                                                                                                                | `0` (unlimited)    |
 | <Reference id="enableprintroutes">EnablePrintRoutes</Reference>         | `bool`                        | If set to true, will print all routes with their method, path, and handler.                                                                                                                                                                                                                                                  | `false`            |
 | <Reference id="gracefulcontext">GracefulContext</Reference>             | `context.Context`             | Field to shutdown Fiber by given context gracefully.                                                                                                                                                                                                                                                                         | `nil`              |
 | <Reference id="ShutdownTimeout">ShutdownTimeout</Reference>             | `time.Duration`               | Specifies the maximum duration to wait for the server to gracefully shutdown. When the timeout is reached, the graceful shutdown process is interrupted and forcibly terminated, and the `context.DeadlineExceeded` error is passed to the `OnPostShutdown` callback. Set to 0 to disable the timeout and wait indefinitely. | `10 * time.Second` |
@@ -151,6 +154,52 @@ app.Listen(":8080", fiber.ListenConfig{EnablePrefork: true})
 ```
 
 This distributes the incoming connections between the spawned processes and allows more requests to be handled simultaneously.
+
+**How it works:**
+- On systems with **SO_REUSEPORT support** (Linux, macOS, FreeBSD): Each child process creates its own listener using SO_REUSEPORT, allowing the kernel to load-balance connections efficiently.
+- On systems **without SO_REUSEPORT** (older systems, AIX, Solaris): Fiber automatically falls back to **file descriptor sharing**, where the master process creates a single listener and shares it with all children. Prefork remains active!
+- You can control this behavior with `DisableReuseportFallback` (see below).
+
+**Advanced Configuration:**
+
+```go title="Prefork with child recovery"
+app.Listen(":8080", fiber.ListenConfig{
+    EnablePrefork: true,
+    // Automatically restart crashed child processes (default: enabled)
+    DisableChildRecovery: false,
+    // Maximum recovery attempts per child before giving up (0 = unlimited)
+    MaxChildRecoveries: 10,
+})
+```
+
+```go title="Disable fallback to file descriptor sharing"
+app.Listen(":8080", fiber.ListenConfig{
+    EnablePrefork: true,
+    // Fail if SO_REUSEPORT is not supported (no fallback)
+    DisableReuseportFallback: true,
+})
+```
+
+**Child Process Recovery:**
+
+By default, if a child process crashes, it will be automatically restarted to maintain the desired number of worker processes. You can:
+- Disable recovery entirely with `DisableChildRecovery: true`
+- Limit recovery attempts with `MaxChildRecoveries: N`
+
+**Prefork with Custom Listener:**
+
+You can also use prefork with a custom listener created via `reuseport.Listen`:
+
+```go title="Prefork with custom listener"
+import "github.com/valyala/fasthttp/reuseport"
+
+ln, err := reuseport.Listen("tcp4", ":8080")
+if err != nil {
+    panic(err)
+}
+
+app.Listener(ln, fiber.ListenConfig{EnablePrefork: true})
+```
 
 #### TLS
 

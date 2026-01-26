@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"context"
 	"crypto/tls"
 	"io"
 	"os"
@@ -58,18 +59,33 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 
 	app := New()
 
+	// Use context for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
+		time.Sleep(100 * time.Millisecond)
+		cancel() // Trigger graceful shutdown
 	}()
 
+	// Disable child recovery in tests to avoid endless recovery loops
+	// since test children ("go version") exit immediately
 	cfg := listenConfigDefault()
-	require.NoError(t, app.prefork(":0", nil, &cfg))
+	cfg.DisableChildRecovery = true
+	cfg.GracefulContext = ctx
+
+	// Test can end either with graceful shutdown (no error) or with child crash error
+	err := app.prefork(":0", nil, &cfg)
+	// Either no error (graceful shutdown) or child crash error (expected with DisableChildRecovery)
+	if err != nil {
+		require.Contains(t, err.Error(), "child process")
+	}
 
 	dummyChildCmd.Store("invalid")
 
 	cfg = listenConfigDefault()
-	err := app.prefork("127.0.0.1:", nil, &cfg)
+	cfg.DisableChildRecovery = true
+	err = app.prefork("127.0.0.1:", nil, &cfg)
 	require.Error(t, err)
 
 	dummyChildCmd.Store("go")
