@@ -176,6 +176,11 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Optional. Default: ""
 	RootDir string `json:"root_dir"`
 
+	// RootPerms specifies the permissions used when creating RootDir or RootFs prefixes.
+	//
+	// Optional. Default: 0o750
+	RootPerms fs.FileMode `json:"root_perms"`
+
 	// RootFs specifies the filesystem used for SaveFile/SaveFileToStorage uploads.
 	// When set, RootDir is treated as a relative prefix within the filesystem.
 	//
@@ -596,6 +601,9 @@ func New(config ...Config) *App {
 			"br":   ".fiber.br",
 			"zstd": ".fiber.zst",
 		}
+	}
+	if app.config.RootPerms == 0 {
+		app.config.RootPerms = 0o750
 	}
 
 	if app.config.Immutable {

@@ -50,7 +50,7 @@ func (app *App) configureUploads() {
 		}
 
 		if prefix != "" {
-			if err := mkdirer.MkdirAll(prefix, 0o750); err != nil {
+			if err := mkdirer.MkdirAll(prefix, app.config.RootPerms); err != nil {
 				panic(fmt.Sprintf("fiber: failed to create RootFs prefix %q: %v", prefix, err))
 			}
 		}
@@ -74,7 +74,7 @@ func (app *App) configureUploads() {
 		panic(fmt.Sprintf("fiber: failed to resolve RootDir: %v", err))
 	}
 	rootAbs = filepath.Clean(rootAbs)
-	if err = os.MkdirAll(rootAbs, 0o750); err != nil {
+	if err = os.MkdirAll(rootAbs, app.config.RootPerms); err != nil {
 		panic(fmt.Sprintf("fiber: failed to create RootDir %q: %v", rootAbs, err))
 	}
 	rootEval, err := filepath.EvalSymlinks(rootAbs)
