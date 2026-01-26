@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -168,6 +169,18 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: nil
 	Views Views `json:"-"`
+
+	// RootDir specifies the base directory for SaveFile/SaveFileToStorage uploads.
+	// Relative paths are resolved against this directory.
+	//
+	// Optional. Default: ""
+	RootDir string `json:"root_dir"`
+
+	// RootFs specifies the filesystem used for SaveFile/SaveFileToStorage uploads.
+	// When set, RootDir is treated as a relative prefix within the filesystem.
+	//
+	// Optional. Default: nil
+	RootFs fs.FS `json:"-"`
 
 	// Views Layout is the global layout for all template render until override on Render function.
 	//
@@ -423,6 +436,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Optional. Default: a provider that returns context.Background()
 	ServicesShutdownContextProvider func() context.Context
+
+	uploadRootDir      string
+	uploadRootEval     string
+	uploadRootPath     string
+	uploadRootFSPrefix string
+	uploadRootFSWriter uploadFSWriter
 }
 
 // Default TrustProxyConfig
@@ -614,6 +633,8 @@ func New(config ...Config) *App {
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
 	}
+
+	app.configureUploads()
 
 	app.config.TrustProxyConfig.ips = make(map[string]struct{}, len(app.config.TrustProxyConfig.Proxies))
 	for _, ipAddress := range app.config.TrustProxyConfig.Proxies {

@@ -4230,25 +4230,20 @@ func Test_Ctx_RouteNormalized(t *testing.T) {
 func Test_Ctx_SaveFile(t *testing.T) {
 	// TODO We should clean this up
 	t.Parallel()
-	app := New()
+	rootDir := t.TempDir()
+	app := New(Config{RootDir: rootDir})
 
 	app.Post("/test", func(c Ctx) error {
 		fh, err := c.Req().FormFile("file")
 		require.NoError(t, err)
 
-		tempFile, err := os.CreateTemp(os.TempDir(), "test-")
+		relativePath := "upload.txt"
+		err = c.SaveFile(fh, relativePath)
 		require.NoError(t, err)
 
-		defer func(file *os.File) {
-			closeErr := file.Close()
-			require.NoError(t, closeErr)
-			closeErr = os.Remove(file.Name())
-			require.NoError(t, closeErr)
-		}(tempFile)
-		err = c.SaveFile(fh, tempFile.Name())
-		require.NoError(t, err)
-
-		bs, err := os.ReadFile(tempFile.Name())
+		targetPath := filepath.Join(rootDir, relativePath)
+		// #nosec G304 -- reading from test-controlled temp directory.
+		bs, err := os.ReadFile(targetPath)
 		require.NoError(t, err)
 		require.Equal(t, "hello world", string(bs))
 		return nil
@@ -4271,6 +4266,57 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_SaveFile_RootDirTraversal
+func Test_Ctx_SaveFile_RootDirTraversal(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"traversal": filepath.Join("..", "outside.txt"),
+		"absolute":  filepath.Join(t.TempDir(), "abs.txt"),
+	}
+
+	for name, targetPath := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			rootDir := t.TempDir()
+			app := New(Config{RootDir: rootDir})
+
+			app.Post("/test", func(c Ctx) error {
+				fh, err := c.FormFile("file")
+				require.NoError(t, err)
+
+				err = c.SaveFile(fh, targetPath)
+				require.Error(t, err)
+				return c.SendStatus(StatusOK)
+			})
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			ioWriter, err := writer.CreateFormFile("file", "test")
+			require.NoError(t, err)
+			_, err = ioWriter.Write([]byte("hello world"))
+			require.NoError(t, err)
+			require.NoError(t, writer.Close())
+
+			req := httptest.NewRequest(MethodPost, "/test", body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+
+			resp, err := app.Test(req)
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+			expectedPath := targetPath
+			if !filepath.IsAbs(expectedPath) {
+				expectedPath = filepath.Join(rootDir, expectedPath)
+			}
+			expectedPath = filepath.Clean(expectedPath)
+			_, statErr := os.Stat(expectedPath)
+			require.Error(t, statErr)
+		})
+	}
 }
 
 func createMultipartFileHeader(t *testing.T, filename string, data []byte) *multipart.FileHeader {
@@ -4298,6 +4344,25 @@ func createMultipartFileHeader(t *testing.T, filename string, data []byte) *mult
 	require.Len(t, files, 1)
 
 	return files[0]
+}
+
+type recordingStorage struct {
+	*memory.Storage
+	setKeys []string
+}
+
+func newRecordingStorage() *recordingStorage {
+	return &recordingStorage{Storage: memory.New()}
+}
+
+func (s *recordingStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.setKeys = append(s.setKeys, key)
+	return s.Storage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s *recordingStorage) Set(key string, val []byte, exp time.Duration) error {
+	s.setKeys = append(s.setKeys, key)
+	return s.Storage.Set(key, val, exp)
 }
 
 // go test -run Test_Ctx_SaveFileToStorage
@@ -4340,6 +4405,52 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_SaveFileToStorage_RootDirTraversal
+func Test_Ctx_SaveFileToStorage_RootDirTraversal(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"traversal": filepath.Join("..", "outside"),
+		"absolute":  filepath.Join(t.TempDir(), "abs"),
+	}
+
+	for name, targetPath := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			rootDir := t.TempDir()
+			storage := newRecordingStorage()
+			app := New(Config{RootDir: rootDir})
+
+			app.Post("/test", func(c Ctx) error {
+				fh, err := c.FormFile("file")
+				require.NoError(t, err)
+
+				err = c.SaveFileToStorage(fh, targetPath, storage)
+				require.Error(t, err)
+				return c.SendStatus(StatusOK)
+			})
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			ioWriter, err := writer.CreateFormFile("file", "test")
+			require.NoError(t, err)
+			_, err = ioWriter.Write([]byte("hello world"))
+			require.NoError(t, err)
+			require.NoError(t, writer.Close())
+
+			req := httptest.NewRequest(MethodPost, "/test", body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+
+			resp, err := app.Test(req)
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+			require.Empty(t, storage.setKeys)
+		})
+	}
 }
 
 func Test_Ctx_SaveFileToStorage_LargeUpload(t *testing.T) {
