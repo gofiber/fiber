@@ -53,6 +53,15 @@ func TestToFiberHandler_FiberHandlerNoErrorReturn(t *testing.T) {
 	require.Equal(t, "ok", string(ctx.Response().Header.Peek("X-Handler")))
 }
 
+func TestNewTestCtx_ReturnsDefaultCtx(t *testing.T) {
+	t.Parallel()
+
+	app, ctx := newTestCtx(t)
+	require.NotNil(t, app)
+	require.NotNil(t, ctx)
+	require.Equal(t, app, ctx.App())
+}
+
 func newTestCtx(t *testing.T) (*App, *DefaultCtx) {
 	t.Helper()
 
@@ -817,12 +826,32 @@ type dummyHandler struct{}
 
 func (dummyHandler) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
+type dummyFuncHandler func(http.ResponseWriter, *http.Request)
+
+func (handler dummyFuncHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if handler == nil {
+		return
+	}
+	handler(w, r)
+}
+
 func TestCollectHandlers_TypedNilPointerHTTPHandler(t *testing.T) {
 	t.Parallel()
 
 	var handler http.Handler = (*dummyHandler)(nil)
 
 	require.PanicsWithValue(t, "context: invalid handler #0 (*fiber.dummyHandler)\n", func() {
+		collectHandlers("context", handler)
+	})
+}
+
+func TestCollectHandlers_TypedNilFuncHTTPHandler(t *testing.T) {
+	t.Parallel()
+
+	var handler http.Handler = dummyFuncHandler(nil)
+	expected := fmt.Sprintf("context: invalid handler #0 (%T)\n", handler)
+
+	require.PanicsWithValue(t, expected, func() {
 		collectHandlers("context", handler)
 	})
 }
