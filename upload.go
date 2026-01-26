@@ -15,19 +15,6 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-type uploadFSWriter interface {
-	fs.FS
-	OpenFile(name string, flag int, perm fs.FileMode) (fs.File, error)
-}
-
-type uploadFSMkdirAll interface {
-	MkdirAll(path string, perm fs.FileMode) error
-}
-
-type uploadFSRemover interface {
-	Remove(name string) error
-}
-
 type uploadPath struct {
 	osPath    string
 	slashPath string
@@ -35,11 +22,16 @@ type uploadPath struct {
 
 func (app *App) configureUploads() {
 	if app.config.RootFs != nil {
-		writer, ok := app.config.RootFs.(uploadFSWriter)
+		writer, ok := app.config.RootFs.(interface {
+			fs.FS
+			OpenFile(name string, flag int, perm fs.FileMode) (fs.File, error)
+		})
 		if !ok {
 			panic("fiber: RootFs must implement OpenFile for uploads")
 		}
-		mkdirer, ok := app.config.RootFs.(uploadFSMkdirAll)
+		mkdirer, ok := app.config.RootFs.(interface {
+			MkdirAll(path string, perm fs.FileMode) error
+		})
 		if !ok {
 			panic("fiber: RootFs must implement MkdirAll for uploads")
 		}
@@ -281,7 +273,11 @@ func probeUploadDirWritable(root string) error {
 	return nil
 }
 
-func probeUploadFSWritable(fsys uploadFSWriter, prefix string) error {
+func probeUploadFSWritable(fsys interface {
+	fs.FS
+	OpenFile(name string, flag int, perm fs.FileMode) (fs.File, error)
+}, prefix string,
+) error {
 	name := pathpkg.Join(prefix, fmt.Sprintf(".fiber-upload-check-%d", time.Now().UnixNano()))
 	file, err := fsys.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
@@ -304,7 +300,9 @@ func probeUploadFSWritable(fsys uploadFSWriter, prefix string) error {
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("failed to close probe file: %w", err)
 	}
-	if remover, ok := fsys.(uploadFSRemover); ok {
+	if remover, ok := fsys.(interface {
+		Remove(name string) error
+	}); ok {
 		if err := remover.Remove(name); err != nil {
 			return fmt.Errorf("failed to remove probe file: %w", err)
 		}

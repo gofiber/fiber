@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"mime/multipart"
 	"os"
@@ -589,7 +590,10 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 func saveMultipartFileToFS(
 	fileheader *multipart.FileHeader,
 	path string,
-	fsys uploadFSWriter,
+	fsys interface {
+		fs.FS
+		OpenFile(name string, flag int, perm fs.FileMode) (fs.File, error)
+	},
 ) error {
 	file, err := fileheader.Open()
 	if err != nil {

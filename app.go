@@ -446,7 +446,10 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	uploadRootEval     string
 	uploadRootPath     string
 	uploadRootFSPrefix string
-	uploadRootFSWriter uploadFSWriter
+	uploadRootFSWriter interface {
+		fs.FS
+		OpenFile(name string, flag int, perm fs.FileMode) (fs.File, error)
+	}
 }
 
 // Default TrustProxyConfig

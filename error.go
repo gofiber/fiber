@@ -23,9 +23,9 @@ var (
 	// ErrAutoCertWithCertFile indicates AutoCertManager cannot be used with CertFile/CertKeyFile.
 	ErrAutoCertWithCertFile = errors.New("tls: AutoCertManager cannot be combined with CertFile/CertKeyFile")
 	// ErrInvalidUploadPath indicates the upload path is invalid.
-	ErrInvalidUploadPath = errors.New("upload: invalid path")
+	ErrInvalidUploadPath = errors.New("upload: path must be relative and must not contain '..' or absolute prefixes")
 	// ErrUploadPathEscapesRoot indicates the upload path escapes the configured root.
-	ErrUploadPathEscapesRoot = errors.New("upload: path escapes root")
+	ErrUploadPathEscapesRoot = errors.New("upload: path escapes the configured root")
 )
 
 // Fiber redirection errors
