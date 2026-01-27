@@ -20,6 +20,12 @@ type uploadPath struct {
 	slashPath string
 }
 
+type tempProbeFile interface {
+	WriteString(string) (int, error)
+	Close() error
+	Name() string
+}
+
 func (app *App) configureUploads() {
 	if app.config.RootFs != nil {
 		writer, ok := app.config.RootFs.(interface {
@@ -243,7 +249,17 @@ func ensureNoSymlinkFS(fsys fs.FS, fullPath string) error {
 }
 
 func probeUploadDirWritable(root string) error {
-	tempFile, err := os.CreateTemp(root, ".fiber-upload-check-*")
+	return probeUploadDirWritableWith(root, func(dir, pattern string) (tempProbeFile, error) {
+		return os.CreateTemp(dir, pattern)
+	}, os.Remove)
+}
+
+func probeUploadDirWritableWith(
+	root string,
+	createFile func(dir, pattern string) (tempProbeFile, error),
+	removeFile func(name string) error,
+) error {
+	tempFile, err := createFile(root, ".fiber-upload-check-*")
 	if err != nil {
 		return fmt.Errorf("failed to create probe file: %w", err)
 	}
@@ -252,20 +268,20 @@ func probeUploadDirWritable(root string) error {
 		if closeErr != nil {
 			return fmt.Errorf("failed to close probe file: %w", closeErr)
 		}
-		removeErr := os.Remove(tempFile.Name())
+		removeErr := removeFile(tempFile.Name())
 		if removeErr != nil {
 			return fmt.Errorf("failed to remove probe file: %w", removeErr)
 		}
 		return fmt.Errorf("failed to write probe file: %w", err)
 	}
 	if err := tempFile.Close(); err != nil {
-		removeErr := os.Remove(tempFile.Name())
+		removeErr := removeFile(tempFile.Name())
 		if removeErr != nil {
 			return fmt.Errorf("failed to remove probe file: %w", removeErr)
 		}
 		return fmt.Errorf("failed to close probe file: %w", err)
 	}
-	if err := os.Remove(tempFile.Name()); err != nil {
+	if err := removeFile(tempFile.Name()); err != nil {
 		return fmt.Errorf("failed to remove probe file: %w", err)
 	}
 	return nil
