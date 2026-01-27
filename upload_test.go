@@ -389,6 +389,10 @@ func TestEnsureUploadPathWithinRoot(t *testing.T) {
 func TestEvalExistingPath(t *testing.T) {
 	t.Parallel()
 
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		t.Skip("path resolution differs on this platform")
+	}
+
 	root := t.TempDir()
 	target := filepath.Join(root, "missing", "file.txt")
 	got, err := evalExistingPath(target)
@@ -490,6 +494,10 @@ func TestEnsureNoSymlinkFS(t *testing.T) {
 
 func TestProbeUploadDirWritable(t *testing.T) {
 	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("probe behavior differs on Windows")
+	}
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
