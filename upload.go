@@ -95,8 +95,6 @@ func validateUploadPath(path string) (uploadPath, error) {
 	}
 
 	cleanOS := filepath.Clean(path)
-	cleanOS = utils.TrimLeft(cleanOS, '.')
-	cleanOS = utils.TrimLeft(cleanOS, byte(filepath.Separator))
 
 	cleanSlash := pathpkg.Clean("/" + filepath.ToSlash(path))
 	cleanSlash = utils.TrimLeft(cleanSlash, '/')

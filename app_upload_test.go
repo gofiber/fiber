@@ -3,7 +3,9 @@ package fiber
 import (
 	"bytes"
 	"io/fs"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -130,5 +132,23 @@ func TestRootPermsRootFs(t *testing.T) {
 				t.Fatalf("expected RootPerms %o, got %o", tt.wantPerm, tfs.mkdirPerm)
 			}
 		})
+	}
+}
+
+func TestValidateUploadPathPreservesLeadingDot(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(".hidden", "file.txt")
+
+	normalized, err := validateUploadPath(path)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if !strings.HasPrefix(normalized.osPath, ".") {
+		t.Fatalf("expected os path %q to preserve leading dot", normalized.osPath)
+	}
+	if normalized.slashPath != ".hidden/file.txt" {
+		t.Fatalf("expected slash path %q, got %q", ".hidden/file.txt", normalized.slashPath)
 	}
 }
