@@ -1710,7 +1710,7 @@ Method is used to save **any** multipart file to disk.
 func (c fiber.Ctx) SaveFile(fh *multipart.FileHeader, path string) error
 ```
 
-Paths must be relative and cannot contain `..` segments or absolute prefixes. When `Config.RootDir` or `Config.RootFs` is set, the path is resolved against that root and attempts to escape it are rejected.
+Paths must be relative and cannot contain `..` segments or absolute prefixes. When `Config.RootDir` or `Config.RootFs` is set, the path is resolved against that root and attempts to escape it are rejected. Storage keys are prefixed by the configured root when one is set.
 
 ```go title="Example"
 app.Post("/", func(c fiber.Ctx) error {

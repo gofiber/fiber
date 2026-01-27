@@ -4461,6 +4461,36 @@ func Test_Ctx_SaveFileToStorage_RootFsPrefix(t *testing.T) {
 	require.Equal(t, []string{"uploads/rootfs.txt"}, storage.setKeys)
 }
 
+func Test_Ctx_SaveFileToStorage_RootFs_SymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink behavior differs on Windows")
+	}
+
+	baseDir := t.TempDir()
+	uploadsDir := filepath.Join(baseDir, "uploads")
+	require.NoError(t, os.MkdirAll(uploadsDir, 0o750))
+	require.NoError(t, os.Symlink(baseDir, filepath.Join(uploadsDir, "link")))
+
+	app := New(Config{
+		RootDir: "uploads",
+		RootFs:  rootDirFS{base: baseDir},
+	})
+	storage := newRecordingStorage()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "rootfs.txt", []byte("hello rootfs"))
+
+	err := ctx.SaveFileToStorage(fileHeader, "link/rootfs.txt", storage)
+	require.ErrorIs(t, err, ErrUploadPathEscapesRoot)
+	require.Empty(t, storage.setKeys)
+}
+
 // go test -run Test_Ctx_SaveFileToStorage_RootDirTraversal
 func Test_Ctx_SaveFileToStorage_RootDirTraversal(t *testing.T) {
 	t.Parallel()
@@ -4575,6 +4605,32 @@ func Test_Ctx_SaveFileToStorage_LimitExceededUnknownSize(t *testing.T) {
 
 	err := ctx.SaveFileToStorage(fileHeader, "test", storage)
 	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+}
+
+func Test_Ctx_SaveFileToStorage_InvalidPath(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	storage := newRecordingStorage()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "rootfs.txt", []byte("hello"))
+
+	invalidPaths := []string{"", "..", "/absolute"}
+	if runtime.GOOS == "windows" {
+		invalidPaths = append(invalidPaths, `C:\absolute`)
+	}
+
+	for _, path := range invalidPaths {
+		err := ctx.SaveFileToStorage(fileHeader, path, storage)
+		require.ErrorIs(t, err, ErrInvalidUploadPath)
+	}
+
+	require.Empty(t, storage.setKeys)
 }
 
 func Test_Ctx_SaveFile_RootFs(t *testing.T) {
@@ -4785,6 +4841,26 @@ func Test_Ctx_SaveFileToStorage_StorageError(t *testing.T) {
 
 	err := ctx.SaveFileToStorage(fileHeader, "test", errStorage{err: expectedErr})
 	require.ErrorIs(t, err, expectedErr)
+}
+
+func Test_Ctx_SaveFileToStorage_RootDirPrefix(t *testing.T) {
+	t.Parallel()
+
+	rootDir := filepath.Join(t.TempDir(), "uploads")
+	app := New(Config{RootDir: rootDir})
+	storage := newRecordingStorage()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "rootdir.txt", []byte("hello"))
+
+	err := ctx.SaveFileToStorage(fileHeader, "rootdir.txt", storage)
+	require.NoError(t, err)
+	expectedPath := storageUploadPath(storageRootPrefix(rootDir), "rootdir.txt")
+	require.Equal(t, []string{expectedPath}, storage.setKeys)
 }
 
 type mockContextAwareStorage struct {
