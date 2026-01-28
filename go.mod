@@ -2,6 +2,8 @@ module github.com/gofiber/fiber/v3
 
 go 1.25.0
 
+replace github.com/valyala/fasthttp => github.com/ReneWerner87/fasthttp v1.62.1-0.20260128075009-77f4c9b092d0
+
 require (
 	github.com/gofiber/schema v1.6.0
 	github.com/gofiber/utils/v2 v2.0.0-rc.6
