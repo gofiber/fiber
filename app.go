@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -109,6 +110,24 @@ type App struct {
 	routesRefreshed bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
+	// activeConns is an atomic counter of connections currently tracked by the
+	// connTrackingListener. It is incremented on Accept and decremented on Close.
+	activeConns int64
+	// shuttingDown is set to 1 atomically when shutdown begins and stays set.
+	shuttingDown int32
+	// trackingListener holds the connection-tracking wrapper so that shutdown
+	// can close the listener (stop accepts) and force-close tracked connections.
+	trackingListener *connTrackingListener
+	// shutdownCtx is the parent context that every request-level context is
+	// derived from.  Cancelling shutdownCancel propagates ErrRequestShutdown
+	// into every in-flight handler's context.
+	shutdownCtx context.Context
+	// shutdownCancel cancels shutdownCtx.  Called once at the start of shutdown.
+	shutdownCancel context.CancelFunc
+	// lastTelemetry holds the telemetry snapshot from the most recent completed
+	// shutdown.  Written atomically at the end of ShutdownWithConfig; read by
+	// ShutdownDebugHandler and LastShutdownTelemetry.
+	lastTelemetry atomic.Pointer[ShutdownTelemetry]
 }
 
 // Config is a struct holding the server settings.
@@ -1064,8 +1083,6 @@ func (app *App) HandlersCount() uint32 {
 //	go app.Listen(":3000")
 //	// ...
 //	app.Shutdown()
-//
-// Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
 	return app.ShutdownWithContext(context.Background())
 }
@@ -1075,8 +1092,6 @@ func (app *App) Shutdown() error {
 // ShutdownWithTimeout works by first closing all open listeners and then waiting for all connections to return to idle before shutting down.
 //
 // Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
-//
-// ShutdownWithTimeout does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()
@@ -1084,26 +1099,298 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 }
 
 // ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
-//
-// Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
-//
-// ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
+// It sets the shutting-down flag, closes idle keepalive connections, executes pre- and post-shutdown
+// hooks exactly once, and delegates to fasthttp for the actual drain.
 func (app *App) ShutdownWithContext(ctx context.Context) error {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-
-	var err error
 
 	if app.server == nil {
 		return ErrNotRunning
 	}
 
-	// Execute the Shutdown hook
+	// Mark the app as shutting down (atomic, idempotent).
+	atomic.StoreInt32(&app.shuttingDown, 1)
+
+	// Cancel the shutdown context so that every in-flight request's
+	// Context().Done() channel is closed.  Handlers that select on
+	// c.Context().Done() will receive ErrRequestShutdown immediately.
+	if app.shutdownCancel != nil {
+		app.shutdownCancel()
+	}
+
+	// Close idle keepalive connections immediately so they do not block the
+	// drain. Setting IdleTimeout to a minimal value causes fasthttp to evict
+	// idle connections on the next tick rather than waiting for the configured
+	// (potentially unbounded) IdleTimeout.
+	app.server.IdleTimeout = time.Nanosecond
+
+	// Execute the pre-shutdown hooks exactly once.
 	app.hooks.executeOnPreShutdownHooks()
-	defer app.hooks.executeOnPostShutdownHooks(err)
+
+	// Delegate to fasthttp and capture the error for the post-shutdown hooks.
+	// Use a closure in defer so that err is evaluated at return time, not at
+	// defer-registration time (the previous code passed err by value while it
+	// was still nil).
+	var err error
+	defer func() {
+		app.hooks.executeOnPostShutdownHooks(err)
+	}()
 
 	err = app.server.ShutdownWithContext(ctx)
 	return err
+}
+
+// ShutdownWithConfig performs a graceful shutdown with full drain visibility.
+//
+// The lifecycle is:
+//  1. Mark the app as shutting down (IsShuttingDown returns true).
+//  2. Close idle keepalive connections by setting IdleTimeout to 1 ns.
+//  3. Close the listener so that no new connections are accepted.
+//  4. Call OnShutdownStart with the number of connections that are still active.
+//  5. Execute OnPreShutdown hooks.
+//  6. Launch a drain-monitor goroutine that calls OnDrainProgress at every
+//     DrainInterval while connections remain open.
+//  7. Poll activeConns until it reaches zero (drain complete) or the context
+//     deadline is exceeded (drain timed out).
+//  8. If the deadline was exceeded, force-close every remaining tracked
+//     connection via the connection registry and call OnForceClose with the
+//     number of connections that were still alive at that point.
+//  9. Execute OnPostShutdown hooks exactly once.
+func (app *App) ShutdownWithConfig(ctx context.Context, cfg ShutdownConfig) error {
+	app.mutex.Lock()
+
+	if app.server == nil {
+		app.mutex.Unlock()
+		return ErrNotRunning
+	}
+
+	tel := &ShutdownTelemetry{}
+	tel.StartedAt = time.Now()
+	tel.InitialConns = int(atomic.LoadInt64(&app.activeConns))
+
+	// --- phase 1: mark state & signal in-flight requests ----------------------
+	atomic.StoreInt32(&app.shuttingDown, 1)
+	if app.shutdownCancel != nil {
+		app.shutdownCancel()
+	}
+
+	// --- phase 2: evict idle keepalives ----------------------------------------
+	// A very small IdleTimeout causes fasthttp to close connections that are
+	// waiting for a new request on the next internal tick, without waiting for
+	// the (potentially unbounded) user-configured IdleTimeout.
+	app.server.IdleTimeout = time.Nanosecond
+
+	// --- phase 3: stop accepting new connections --------------------------------
+	// Closing the tracking listener immediately rejects every subsequent Dial /
+	// Accept.  Connections already accepted continue to be served.
+	if app.trackingListener != nil {
+		_ = app.trackingListener.Close()
+	}
+
+	// --- phase 3b: apply per-request deadline -----------------------------------
+	// RequestDeadline adds an additional bound on top of the caller's context.
+	// The effective deadline is whichever expires first.
+	if cfg.RequestDeadline > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, cfg.RequestDeadline)
+		defer cancel()
+	}
+
+	// --- phase 3c: swap request-level parent context ---------------------------
+	// If the caller supplied a RequestContext, replace the app's shutdown
+	// context so that every subsequent c.Context() derivation inherits the
+	// caller's deadline.  This lets handlers observe a concrete deadline via
+	// c.Deadline() in addition to the immediate Done() signal.
+	if cfg.RequestContext != nil {
+		app.shutdownCtx = cfg.RequestContext
+	}
+
+	// --- phase 4: report initial state -----------------------------------------
+	if cfg.OnShutdownStart != nil {
+		cfg.OnShutdownStart(int(atomic.LoadInt64(&app.activeConns)))
+	}
+
+	// --- phase 5: pre-shutdown hooks --------------------------------------------
+	preStart := time.Now()
+	app.hooks.executeOnPreShutdownHooks()
+	tel.PreHooksDuration = time.Since(preStart)
+
+	// --- phase 5b: graceful close of typed (WS/SSE) connections ----------------
+	// Only connections explicitly marked as WebSocket or SSE are touched.
+	// Plain HTTP connections proceed to the normal drain / force-close path.
+	gcStart := time.Now()
+	if app.trackingListener != nil {
+		app.trackingListener.GracefulCloseTyped(ctx, &cfg, tel)
+	}
+	tel.GracefulCloseDuration = time.Since(gcStart)
+
+	// --- phase 6: start drain monitor ------------------------------------------
+	interval := cfg.DrainInterval
+	if interval <= 0 {
+		interval = 500 * time.Millisecond
+	}
+
+	drainDone := make(chan struct{})
+	startedAt := time.Now()
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-drainDone:
+				return
+			case <-ticker.C:
+				if cfg.OnDrainProgress != nil {
+					cfg.OnDrainProgress(int(atomic.LoadInt64(&app.activeConns)), time.Since(startedAt))
+				}
+			}
+		}
+	}()
+
+	// Release the mutex before blocking so ActiveConnections / IsShuttingDown
+	// remain callable from other goroutines (e.g. health checks).
+	app.mutex.Unlock()
+
+	// --- phase 7: drain — wait for zero or timeout ------------------------------
+	drainStart := time.Now()
+	err := app.drainConnections(ctx)
+	tel.DrainDuration = time.Since(drainStart)
+
+	// Stop the drain monitor ticker.
+	close(drainDone)
+
+	// --- phase 8: force-close on timeout ----------------------------------------
+	if ctx.Err() != nil && app.trackingListener != nil {
+		forceClosed := app.trackingListener.CloseAll()
+		tel.ForcedConns = forceClosed
+		tel.TimedOut = true
+		if cfg.OnForceClose != nil && forceClosed > 0 {
+			cfg.OnForceClose(forceClosed)
+		}
+	}
+
+	// --- phase 9: post-shutdown hooks -------------------------------------------
+	postStart := time.Now()
+	app.hooks.executeOnPostShutdownHooks(err)
+	tel.PostHooksDuration = time.Since(postStart)
+
+	tel.CompletedAt = time.Now()
+	tel.TotalDuration = tel.CompletedAt.Sub(tel.StartedAt)
+	tel.DrainedConns = tel.InitialConns - tel.ForcedConns
+	app.lastTelemetry.Store(tel)
+
+	return err
+}
+
+// drainConnections polls the active-connection counter every 10 ms.  It returns
+// nil as soon as the counter reaches zero (all connections completed naturally)
+// or ctx.Err() if the context's deadline is exceeded first.
+func (app *App) drainConnections(ctx context.Context) error {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if atomic.LoadInt64(&app.activeConns) <= 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			// re-check on next tick
+		}
+	}
+}
+
+// IsShuttingDown returns true once a shutdown sequence has begun.
+// It is safe to call from any goroutine (e.g. a health-check handler).
+func (app *App) IsShuttingDown() bool {
+	return atomic.LoadInt32(&app.shuttingDown) == 1
+}
+
+// ActiveConnections returns the number of connections currently tracked by the
+// application's connection-tracking listener. The value is updated atomically
+// on every Accept and Close, so it reflects the live connection count.
+func (app *App) ActiveConnections() int {
+	return int(atomic.LoadInt64(&app.activeConns))
+}
+
+// LastShutdownTelemetry returns the telemetry snapshot from the most recent
+// completed shutdown, or nil if no shutdown has occurred yet.
+func (app *App) LastShutdownTelemetry() *ShutdownTelemetry {
+	return app.lastTelemetry.Load()
+}
+
+// shutdownDebugResponse is the JSON envelope returned by ShutdownDebugHandler.
+type shutdownDebugResponse struct {
+	Status            string                 `json:"status"`
+	ActiveConnections int                    `json:"activeConnections"`
+	LastShutdown      *shutdownTelemetryJSON `json:"lastShutdown"`
+}
+
+// shutdownTelemetryJSON mirrors ShutdownTelemetry with durations as human-readable strings.
+type shutdownTelemetryJSON struct {
+	StartedAt             time.Time `json:"startedAt"`
+	CompletedAt           time.Time `json:"completedAt"`
+	TotalDuration         string    `json:"totalDuration"`
+	DrainDuration         string    `json:"drainDuration"`
+	PreHooksDuration      string    `json:"preHooksDuration"`
+	GracefulCloseDuration string    `json:"gracefulCloseDuration"`
+	PostHooksDuration     string    `json:"postHooksDuration"`
+	InitialConns          int       `json:"initialConns"`
+	DrainedConns          int       `json:"drainedConns"`
+	ForcedConns           int       `json:"forcedConns"`
+	WebSocketsClosed      int       `json:"webSocketsClosed"`
+	SSEsClosed            int       `json:"sseClosed"`
+	TimedOut              bool      `json:"timedOut"`
+}
+
+func telemetryToJSON(t *ShutdownTelemetry) *shutdownTelemetryJSON {
+	if t == nil {
+		return nil
+	}
+	return &shutdownTelemetryJSON{
+		StartedAt:             t.StartedAt,
+		CompletedAt:           t.CompletedAt,
+		TotalDuration:         t.TotalDuration.String(),
+		DrainDuration:         t.DrainDuration.String(),
+		PreHooksDuration:      t.PreHooksDuration.String(),
+		GracefulCloseDuration: t.GracefulCloseDuration.String(),
+		PostHooksDuration:     t.PostHooksDuration.String(),
+		InitialConns:          t.InitialConns,
+		DrainedConns:          t.DrainedConns,
+		ForcedConns:           t.ForcedConns,
+		WebSocketsClosed:      t.WebSocketsClosed,
+		SSEsClosed:            t.SSEsClosed,
+		TimedOut:              t.TimedOut,
+	}
+}
+
+// ShutdownDebugHandler returns a handler that responds with the current
+// shutdown status and, if a shutdown has completed, the last telemetry
+// snapshot as JSON.  Register it at any path:
+//
+//	app.Get("/debug/shutdown", app.ShutdownDebugHandler())
+func (app *App) ShutdownDebugHandler() Handler {
+	return func(c Ctx) error {
+		status := "running"
+		if app.IsShuttingDown() {
+			if app.lastTelemetry.Load() != nil {
+				status = "shutdown"
+			} else {
+				status = "shutting_down"
+			}
+		}
+
+		resp := shutdownDebugResponse{
+			Status:            status,
+			ActiveConnections: app.ActiveConnections(),
+			LastShutdown:      telemetryToJSON(app.lastTelemetry.Load()),
+		}
+		return c.JSON(resp)
+	}
 }
 
 // Server returns the underlying fasthttp server
@@ -1288,6 +1575,11 @@ func (app *App) init() *App {
 	app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
 	app.server.StreamRequestBody = app.config.StreamRequestBody
 	app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm
+
+	// Create the shutdown context that every request context is derived from.
+	// Cancelling shutdownCancel propagates ErrRequestShutdown into all
+	// in-flight handlers via their Context().Done() channel.
+	app.shutdownCtx, app.shutdownCancel = context.WithCancel(context.Background())
 
 	// unlock application
 	app.mutex.Unlock()

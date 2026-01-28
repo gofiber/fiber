@@ -18,6 +18,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"text/tabwriter"
 	"time"
 
@@ -130,6 +132,383 @@ type ListenConfig struct {
 	//
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
+}
+
+// ConnType identifies the protocol class of a tracked connection.
+// The zero value (ConnTypeHTTP) means no special shutdown handling.
+type ConnType int32
+
+const (
+	ConnTypeHTTP      ConnType = iota // default; force-close only
+	ConnTypeWebSocket                 // send WS close frame, wait for ack
+	ConnTypeSSE                       // send final SSE event, no ack
+)
+
+// TrackedConn exposes metadata and lifecycle controls for a connection
+// tracked by the shutdown system.  Obtain via Ctx.TrackedConn().
+type TrackedConn interface {
+	// SetConnType marks this connection for protocol-aware graceful close.
+	SetConnType(ConnType)
+	// ConnType returns the current protocol type tag.
+	ConnType() ConnType
+	// SetCleanupHook registers a one-shot callback invoked before the
+	// connection is closed during shutdown.  If set, this hook is responsible
+	// for the full close handshake (send close frame / final event and wait
+	// for client acknowledgement).  The framework's default close-frame
+	// writer is skipped when a hook is present.
+	// Only the first call takes effect; subsequent calls are ignored.
+	SetCleanupHook(func() error)
+	// ID returns the internal tracking identifier for this connection.
+	ID() int64
+}
+
+// ShutdownConfig holds the configuration for a graceful shutdown initiated via ShutdownWithConfig.
+type ShutdownConfig struct {
+	// OnShutdownStart is called once at the beginning of shutdown with the current
+	// number of active connections.
+	//
+	// Default: nil
+	OnShutdownStart func(activeConns int)
+
+	// OnDrainProgress is called periodically while active connections are still draining.
+	// remaining is the number of connections still open; elapsed is the time since shutdown began.
+	//
+	// Default: nil
+	OnDrainProgress func(remaining int, elapsed time.Duration)
+
+	// OnForceClose is called after the context deadline is reached and connections
+	// are force-closed. forceClosed is the number of connections that were still active.
+	//
+	// Default: nil
+	OnForceClose func(forceClosed int)
+
+	// RequestDeadline is the maximum duration a single in-flight request is allowed
+	// to complete after shutdown begins. Connections that exceed this are force-closed.
+	// A zero value means no per-request deadline is enforced beyond the context deadline.
+	//
+	// Default: 0 (no additional per-request deadline)
+	RequestDeadline time.Duration
+
+	// DrainInterval is how often OnDrainProgress is invoked while waiting for
+	// connections to drain.
+	//
+	// Default: 500ms
+	DrainInterval time.Duration
+
+	// RequestContext, when non-nil, replaces the application's default shutdown
+	// context as the parent for every in-flight request's context.  Use this to
+	// layer an additional deadline on top of the shutdown signal.  For example,
+	// passing context.WithTimeout(ctx, 5*time.Second) gives every active request
+	// exactly 5 s to finish before the context expires.
+	//
+	// When nil the application's internal shutdown context is used (cancelled
+	// the moment shutdown begins, with no additional deadline).
+	//
+	// Default: nil
+	RequestContext context.Context //nolint:containedctx // Intentional: user supplies a deadline-bearing context.
+
+	// WebSocketCloseTimeout is how long to wait for a WebSocket client's
+	// close-frame acknowledgement after the server sends its close frame.
+	// Only applies when no cleanup hook is registered on the connection.
+	//
+	// Default: 5s
+	WebSocketCloseTimeout time.Duration
+
+	// SSECloseTimeout is how long to wait after writing the final SSE
+	// shutdown event for the client to disconnect.
+	//
+	// Default: 2s
+	SSECloseTimeout time.Duration
+
+	// SSECloseEvent is the raw SSE payload written to each tracked SSE
+	// connection.  Must follow SSE wire format (field: value\n, blank line
+	// terminator).  Only used when no cleanup hook is registered.
+	//
+	// Default: "event: shutdown\ndata: server shutting down\n\n"
+	SSECloseEvent string
+
+	// OnWebSocketClose is called after the server completes (or times out)
+	// the close handshake for each WebSocket connection.
+	// connID is the internal tracking ID.
+	//
+	// Default: nil
+	OnWebSocketClose func(connID int64, err error)
+
+	// OnSSEClose is called after the final SSE event has been sent
+	// (or the write failed) for each SSE connection.
+	//
+	// Default: nil
+	OnSSEClose func(connID int64, err error)
+}
+
+// ShutdownTelemetry captures timing and connection-disposition metrics for the
+// most recently completed shutdown.  Obtain via App.LastShutdownTelemetry() or
+// through the JSON debug endpoint registered with App.ShutdownDebugHandler().
+type ShutdownTelemetry struct {
+	// StartedAt is the wall-clock moment phase 1 began.
+	StartedAt time.Time
+	// CompletedAt is the wall-clock moment after phase 9 finished.
+	CompletedAt time.Time
+	// TotalDuration is CompletedAt − StartedAt.
+	TotalDuration time.Duration
+
+	// DrainDuration is the time spent in the drain-poll loop (phase 7).
+	DrainDuration time.Duration
+	// PreHooksDuration is the time spent executing pre-shutdown hooks (phase 5).
+	PreHooksDuration time.Duration
+	// GracefulCloseDuration is the time spent in GracefulCloseTyped (phase 5b).
+	GracefulCloseDuration time.Duration
+	// PostHooksDuration is the time spent executing post-shutdown hooks (phase 9).
+	PostHooksDuration time.Duration
+
+	// InitialConns is the number of active connections at the start of shutdown.
+	InitialConns int
+	// DrainedConns is the number of connections that closed naturally before the
+	// context deadline (InitialConns − ForcedConns).
+	DrainedConns int
+	// ForcedConns is the number of connections force-closed after the deadline.
+	ForcedConns int
+
+	// WebSocketsClosed is the number of WebSocket connections that received a
+	// close frame (or had a cleanup hook executed) during phase 5b.
+	WebSocketsClosed int
+	// SSEsClosed is the number of SSE connections that received the shutdown
+	// event (or had a cleanup hook executed) during phase 5b.
+	SSEsClosed int
+
+	// TimedOut is true when the shutdown context deadline was exceeded.
+	TimedOut bool
+}
+
+// connTrackingListener wraps a net.Listener and maintains both an atomic
+// active-connection counter and a registry (sync.Map) of every live
+// connection.  The registry enables CloseAll to force-close every tracked
+// connection at shutdown when the drain deadline is exceeded.
+type connTrackingListener struct {
+	net.Listener
+
+	activeConns *int64   // shared atomic counter (lives on App)
+	conns       sync.Map // map[int64]*connTrackingConn — live connections
+	nextID      int64    // monotonic ID generator for registry keys
+}
+
+// Accept waits for the next connection, increments the active counter, and
+// registers the connection in the internal map so it can be force-closed later.
+func (l *connTrackingListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	atomic.AddInt64(l.activeConns, 1)
+	id := atomic.AddInt64(&l.nextID, 1)
+	tc := &connTrackingConn{
+		Conn:        conn,
+		activeConns: l.activeConns,
+		registry:    &l.conns,
+		id:          id,
+	}
+	l.conns.Store(id, tc)
+	return tc, nil
+}
+
+// CloseAll force-closes every connection currently in the registry and returns
+// the number of connections that were still open (i.e. the ones actually closed
+// by this call).  It is safe to call concurrently; connections that have already
+// been closed by their own handler are skipped via the closed guard.
+func (l *connTrackingListener) CloseAll() int {
+	closed := 0
+	l.conns.Range(func(_, value any) bool {
+		if tc, ok := value.(*connTrackingConn); ok {
+			if atomic.CompareAndSwapInt32(&tc.closed, 0, 1) {
+				// We won the CAS — this connection is still alive.
+				atomic.AddInt64(l.activeConns, -1)
+				_ = tc.Conn.Close()
+				closed++
+			}
+			// Remove from the registry regardless of who closed it.
+			l.conns.Delete(tc.id)
+		}
+		return true
+	})
+	return closed
+}
+
+// connTrackingConn wraps a net.Conn, decrements the active counter on Close,
+// and removes itself from the listener's connection registry.
+type connTrackingConn struct {
+	net.Conn
+	activeConns *int64
+	registry    *sync.Map
+	id          int64
+	closed      int32 // CAS guard: ensures decrement and registry removal happen once
+
+	// Protocol-aware shutdown fields:
+	connType    int32                        // atomic; ConnType enum value
+	cleanupOnce sync.Once                    // one-shot guard for hook
+	cleanupHook atomic.Pointer[func() error] // per-connection pre-close callback
+}
+
+func (c *connTrackingConn) SetConnType(ct ConnType) {
+	atomic.StoreInt32(&c.connType, int32(ct))
+}
+
+func (c *connTrackingConn) ConnType() ConnType {
+	return ConnType(atomic.LoadInt32(&c.connType))
+}
+
+func (c *connTrackingConn) SetCleanupHook(fn func() error) {
+	if fn != nil {
+		c.cleanupHook.Store(&fn)
+	}
+}
+
+func (c *connTrackingConn) ID() int64 {
+	return c.id
+}
+
+// runCleanup executes the hook exactly once; returns its error.
+func (c *connTrackingConn) runCleanup() error {
+	var err error
+	c.cleanupOnce.Do(func() {
+		if ptr := c.cleanupHook.Load(); ptr != nil {
+			err = (*ptr)()
+		}
+	})
+	return err
+}
+
+// Close closes the underlying connection and decrements the active counter
+// exactly once.  It also removes this connection from the tracking registry so
+// that CloseAll does not attempt to close it again.
+func (c *connTrackingConn) Close() error {
+	if atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
+		atomic.AddInt64(c.activeConns, -1)
+		c.registry.Delete(c.id)
+	}
+	return c.Conn.Close()
+}
+
+// GracefulCloseTyped iterates all tracked connections and performs
+// protocol-aware graceful close for WebSocket and SSE connections.
+// Plain HTTP connections are skipped entirely.
+// The provided context bounds the total time spent in this phase.
+// tel is guaranteed non-nil from the caller; WS/SSE counters are incremented
+// sequentially inside the Range so no additional synchronization is needed.
+func (l *connTrackingListener) GracefulCloseTyped(ctx context.Context, cfg *ShutdownConfig, tel *ShutdownTelemetry) {
+	l.conns.Range(func(_, value any) bool {
+		tc, ok := value.(*connTrackingConn)
+		if !ok {
+			return true
+		}
+
+		switch tc.ConnType() {
+		case ConnTypeWebSocket:
+			l.closeWebSocket(ctx, tc, cfg)
+			tel.WebSocketsClosed++
+		case ConnTypeSSE:
+			l.closeSSE(ctx, tc, cfg)
+			tel.SSEsClosed++
+		default:
+			// Plain HTTP — run cleanup hook if registered, but no
+			// protocol-specific close logic.
+			_ = tc.runCleanup()
+		}
+		return true
+	})
+}
+
+func (l *connTrackingListener) closeWebSocket(ctx context.Context, tc *connTrackingConn, cfg *ShutdownConfig) {
+	// If handler registered a cleanup hook, it owns the full handshake.
+	if ptr := tc.cleanupHook.Load(); ptr != nil {
+		err := tc.runCleanup()
+		if cfg != nil && cfg.OnWebSocketClose != nil {
+			cfg.OnWebSocketClose(tc.id, err)
+		}
+		return
+	}
+
+	// No hook — framework writes a minimal RFC 6455 close frame:
+	// opcode 0x88 (close), payload length 2, status 1001 (Going Away).
+	closeFrame := [4]byte{0x88, 0x02, 0x03, 0xe9}
+
+	_ = tc.Conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+	if _, err := tc.Conn.Write(closeFrame[:]); err != nil {
+		if cfg != nil && cfg.OnWebSocketClose != nil {
+			cfg.OnWebSocketClose(tc.id, err)
+		}
+		return
+	}
+
+	// Wait for client's close-frame reply.
+	timeout := 5 * time.Second
+	if cfg != nil && cfg.WebSocketCloseTimeout > 0 {
+		timeout = cfg.WebSocketCloseTimeout
+	}
+	deadline := time.Now().Add(timeout)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	_ = tc.Conn.SetReadDeadline(deadline)
+
+	var buf [2]byte
+	_, readErr := tc.Conn.Read(buf[:])
+
+	// Reset deadlines so normal Close path isn't affected.
+	_ = tc.Conn.SetReadDeadline(time.Time{})
+	_ = tc.Conn.SetWriteDeadline(time.Time{})
+
+	var reportErr error
+	if readErr != nil {
+		reportErr = ErrWebSocketCloseTimeout
+	}
+	if cfg != nil && cfg.OnWebSocketClose != nil {
+		cfg.OnWebSocketClose(tc.id, reportErr)
+	}
+}
+
+func (l *connTrackingListener) closeSSE(ctx context.Context, tc *connTrackingConn, cfg *ShutdownConfig) {
+	// If handler registered a cleanup hook, it owns the event write.
+	if ptr := tc.cleanupHook.Load(); ptr != nil {
+		err := tc.runCleanup()
+		if cfg != nil && cfg.OnSSEClose != nil {
+			cfg.OnSSEClose(tc.id, err)
+		}
+		return
+	}
+
+	// No hook — framework writes the default (or configured) SSE event.
+	payload := "event: shutdown\ndata: server shutting down\n\n"
+	if cfg != nil && cfg.SSECloseEvent != "" {
+		payload = cfg.SSECloseEvent
+	}
+
+	_ = tc.Conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+	_, writeErr := tc.Conn.Write([]byte(payload))
+
+	// Reset write deadline.
+	_ = tc.Conn.SetWriteDeadline(time.Time{})
+
+	// Wait briefly for client to acknowledge (disconnect).
+	timeout := 2 * time.Second
+	if cfg != nil && cfg.SSECloseTimeout > 0 {
+		timeout = cfg.SSECloseTimeout
+	}
+	deadline := time.Now().Add(timeout)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	_ = tc.Conn.SetReadDeadline(deadline)
+	var buf [1]byte
+	_, _ = tc.Conn.Read(buf[:]) // blocks until disconnect or timeout
+	_ = tc.Conn.SetReadDeadline(time.Time{})
+
+	var reportErr error
+	if writeErr != nil {
+		reportErr = ErrSSECloseWriteFailed
+	}
+	if cfg != nil && cfg.OnSSEClose != nil {
+		cfg.OnSSEClose(tc.id, reportErr)
+	}
 }
 
 // listenConfigDefault is a function to set default values of ListenConfig.
@@ -261,7 +640,11 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		}
 	}
 
-	return app.server.Serve(ln)
+	// Wrap listener with connection tracking and store the reference so
+	// ShutdownWithConfig can close it and force-close tracked connections.
+	app.trackingListener = &connTrackingListener{Listener: ln, activeConns: &app.activeConns}
+
+	return app.server.Serve(app.trackingListener)
 }
 
 // Listener serves HTTP requests from the given listener.
@@ -300,7 +683,11 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 		log.Warn("Prefork isn't supported for custom listeners.")
 	}
 
-	return app.server.Serve(ln)
+	// Wrap listener with connection tracking and store the reference so
+	// ShutdownWithConfig can close it and force-close tracked connections.
+	app.trackingListener = &connTrackingListener{Listener: ln, activeConns: &app.activeConns}
+
+	return app.server.Serve(app.trackingListener)
 }
 
 // Create listener function.
@@ -559,18 +946,18 @@ func (app *App) printRoutesMessage() {
 func (app *App) gracefulShutdown(ctx context.Context, cfg *ListenConfig) {
 	<-ctx.Done()
 
-	var err error
-
+	// Derive the shutdown context from the parent context so that any deadline
+	// already set on ctx is respected. If ShutdownTimeout is also configured,
+	// apply it as an additional bound — the effective deadline is the earlier of
+	// the two.
+	shutdownCtx := ctx
 	if cfg != nil && cfg.ShutdownTimeout != 0 {
-		err = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:contextcheck // TODO: Implement it
-	} else {
-		err = app.Shutdown() //nolint:contextcheck // TODO: Implement it
+		var cancel context.CancelFunc
+		shutdownCtx, cancel = context.WithTimeout(ctx, cfg.ShutdownTimeout)
+		defer cancel()
 	}
 
-	if err != nil {
-		app.hooks.executeOnPostShutdownHooks(err)
-		return
-	}
-
-	app.hooks.executeOnPostShutdownHooks(nil)
+	// ShutdownWithContext already executes pre- and post-shutdown hooks via defer,
+	// so we must not call executeOnPostShutdownHooks again here.
+	_ = app.ShutdownWithContext(shutdownCtx)
 }
