@@ -67,6 +67,8 @@ type DefaultCtx struct {
 	flashMessages    redirectionMsgs      // Flash messages
 	path             []byte               // HTTP path with the modifications by the configuration
 	detectionPath    []byte               // Route detection path
+	detectionPathStr string               // Cached string of detectionPath for route matching
+	pathStr          string               // Cached string of path for route matching
 	treePathHash     int                  // Hash of the path for the search in the tree
 	indexRoute       int                  // Index of the current route
 	indexHandler     int                  // Index of the current handler
@@ -229,19 +231,22 @@ func (c *DefaultCtx) Next() error {
 	// Increment handler index
 	c.indexHandler++
 
-	// Did we execute all route handlers?
-	if c.indexHandler < len(c.route.Handlers) {
-		if c.handlerCtx != nil {
-			return c.route.Handlers[c.indexHandler](c.handlerCtx)
+	// Fast path: custom context is not in use (the common case).
+	// This avoids checking handlerCtx on every call in the default path.
+	if c.handlerCtx == nil {
+		// Still have handlers on the current route?
+		if c.indexHandler < len(c.route.Handlers) {
+			return c.route.Handlers[c.indexHandler](c)
 		}
-		return c.route.Handlers[c.indexHandler](c)
-	}
-
-	if c.handlerCtx != nil {
-		_, err := c.app.nextCustom(c.handlerCtx)
+		_, err := c.app.next(c)
 		return err
 	}
-	_, err := c.app.next(c)
+
+	// Slow path: custom context is active
+	if c.indexHandler < len(c.route.Handlers) {
+		return c.route.Handlers[c.indexHandler](c.handlerCtx)
+	}
+	_, err := c.app.nextCustom(c.handlerCtx)
 	return err
 }
 
@@ -280,7 +285,7 @@ func (c *DefaultCtx) OriginalURL() string {
 // Optionally, you could override the path.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Path(override ...string) string {
-	if len(override) != 0 && string(c.path) != override[0] {
+	if len(override) != 0 && c.pathStr != override[0] {
 		// Set new path to context
 		c.pathOriginal = override[0]
 
@@ -289,7 +294,7 @@ func (c *DefaultCtx) Path(override ...string) string {
 		// Prettify path
 		c.configDependentPaths()
 	}
-	return c.app.toString(c.path)
+	return c.pathStr
 }
 
 // RequestID returns the request identifier from the response header or request header.
@@ -637,6 +642,11 @@ func (c *DefaultCtx) configDependentPaths() {
 			int(c.detectionPath[1])<<8 |
 			int(c.detectionPath[2])
 	}
+
+	// Cache string conversions of path and detectionPath to avoid repeated
+	// UnsafeString calls in the hot route-matching loop (next/nextCustom).
+	c.detectionPathStr = utils.UnsafeString(c.detectionPath)
+	c.pathStr = utils.UnsafeString(c.path)
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.
@@ -766,7 +776,7 @@ func (c *DefaultCtx) getTreePathHash() int {
 }
 
 func (c *DefaultCtx) getDetectionPath() string {
-	return c.app.toString(c.detectionPath)
+	return c.detectionPathStr
 }
 
 func (c *DefaultCtx) getValues() *[maxParams]string {

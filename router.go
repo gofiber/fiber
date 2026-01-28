@@ -126,6 +126,10 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 
 	indexRoute := c.indexRoute
 
+	// Use cached string conversions to avoid repeated UnsafeString calls in the loop
+	detectionPath := c.detectionPathStr
+	path := c.pathStr
+
 	// Loop over the route stack starting from previous index
 	for indexRoute < lenr {
 		// Increment route index
@@ -134,12 +138,8 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		// Get *Route
 		route := tree[indexRoute]
 
-		if route.mount {
-			continue
-		}
-
 		// Check if it matches the request path
-		if !route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values) {
+		if !route.match(detectionPath, path, &c.values) {
 			continue
 		}
 
@@ -198,7 +198,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values) {
+			if route.match(detectionPath, path, &c.values) {
 				// We matched
 				exists = true
 				// Add method to Allow header
@@ -234,10 +234,6 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 
 		// Get *Route
 		route := tree[indexRoute]
-
-		if route.mount {
-			continue
-		}
 
 		// Check if it matches the request path
 		if !route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
@@ -328,9 +324,11 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		// Optional: Check flash messages
-		rawHeaders := d.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
+		// Optional: Check flash messages.
+		// First check if the Cookie header exists at all (cheap peek) before
+		// doing the more expensive raw header scan for the flash cookie name.
+		if cookieBytes := d.Request().Header.Peek(HeaderCookie); len(cookieBytes) > 0 &&
+			bytes.Contains(cookieBytes, flashCookieNameBytes) {
 			d.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.next(d)
@@ -341,9 +339,9 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		// Optional: Check flash messages
-		rawHeaders := ctx.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
+		// Optional: Check flash messages.
+		if cookieBytes := ctx.Request().Header.Peek(HeaderCookie); len(cookieBytes) > 0 &&
+			bytes.Contains(cookieBytes, flashCookieNameBytes) {
 			ctx.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.nextCustom(ctx)
@@ -712,15 +710,27 @@ func (app *App) buildTree() *App {
 		return app
 	}
 
-	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
+	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method.
+	// Mount routes are filtered out here so they don't consume cycles in the hot path.
 	for method := range app.config.RequestMethods {
 		routes := app.stack[method]
-		treePaths := make([]int, len(routes))
+
+		// Pre-filter: exclude mount routes from the tree to avoid a per-iteration
+		// branch check in the hot next() loop. Mount routes are only used for
+		// sub-app mounting and should never match in normal request dispatching.
+		filtered := make([]*Route, 0, len(routes))
+		for _, route := range routes {
+			if !route.mount {
+				filtered = append(filtered, route)
+			}
+		}
+
+		treePaths := make([]int, len(filtered))
 
 		globalCount := 0
-		prefixCounts := make(map[int]int, len(routes))
+		prefixCounts := make(map[int]int, len(filtered))
 
-		for i, route := range routes {
+		for i, route := range filtered {
 			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths {
 				treePaths[i] = int(route.routeParser.segs[0].Const[0])<<16 |
 					int(route.routeParser.segs[0].Const[1])<<8 |
@@ -741,7 +751,7 @@ func (app *App) buildTree() *App {
 			tsMap[treePath] = make([]*Route, 0, count+globalCount)
 		}
 
-		for i, route := range routes {
+		for i, route := range filtered {
 			treePath := treePaths[i]
 
 			if treePath == 0 {
