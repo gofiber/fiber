@@ -55,7 +55,7 @@ jobs:
             @cspell/dict-data-science
 
       - name: Run cspell
-        uses: streetsidesoftware/cspell-action@24fa8d3096a314ce263f39578744e9d9f8d80acf # v8.1.2
+        uses: streetsidesoftware/cspell-action@d5d910b521ad408f1e7383c24609079f5a88bdca # v8.2.0
         with:
           incremental_files_only: false
           check_dot_files: explicit
