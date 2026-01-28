@@ -126,6 +126,26 @@ type ListenConfig struct {
 	// Default: false
 	EnablePrefork bool `json:"enable_prefork"`
 
+	// PreforkRecoverThreshold defines the maximum number of times a child process
+	// can be restarted after crashing before the master process exits with an error.
+	// This only applies when EnablePrefork is true.
+	//
+	// Default: runtime.GOMAXPROCS(0) / 2
+	PreforkRecoverThreshold int `json:"prefork_recover_threshold"`
+
+	// OnPreforkServe is called in child processes when using Listener() with prefork.
+	// This callback allows the user to create a new listener in the child process.
+	// The callback receives the original listener's address and should return a new listener.
+	// This is required for prefork with Listener() because each child needs its own reuseport listener.
+	//
+	// Example:
+	//   OnPreforkServe: func(addr net.Addr) (net.Listener, error) {
+	//       return reuseport.Listen("tcp4", addr.String())
+	//   }
+	//
+	// Default: nil (prefork not supported for Listener() without this callback)
+	OnPreforkServe func(addr net.Addr) (net.Listener, error) `json:"-"`
+
 	// If set to true, will print all routes with their method, path and handler.
 	//
 	// Default: false
@@ -266,8 +286,31 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 // Listener serves HTTP requests from the given listener.
 // You should enter custom ListenConfig to customize startup. (prefork, startup message, graceful shutdown...)
+//
+// To use prefork with a custom listener, you must provide OnPreforkServe callback in ListenConfig.
+// This callback allows each child process to create its own reuseport listener on the same address.
+//
+// Example with prefork:
+//
+//	ln, _ := reuseport.Listen("tcp4", ":8080")
+//	app.Listener(ln, fiber.ListenConfig{
+//	    EnablePrefork: true,
+//	    OnPreforkServe: func(addr net.Addr) (net.Listener, error) {
+//	        return reuseport.Listen("tcp4", addr.String())
+//	    },
+//	})
 func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	cfg := listenConfigDefault(config...)
+
+	// Check if prefork is enabled and supported
+	if cfg.EnablePrefork {
+		if cfg.OnPreforkServe == nil {
+			log.Warn("Prefork with Listener() requires OnPreforkServe callback. Falling back to single process mode.")
+		} else {
+			// Use prefork with custom listener
+			return app.preforkListener(ln, &cfg)
+		}
+	}
 
 	// Graceful shutdown
 	if cfg.GracefulContext != nil {
@@ -293,11 +336,6 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 		if err := cfg.BeforeServeFunc(app); err != nil {
 			return err
 		}
-	}
-
-	// Prefork is not supported for custom listeners
-	if cfg.EnablePrefork {
-		log.Warn("Prefork isn't supported for custom listeners.")
 	}
 
 	return app.server.Serve(ln)

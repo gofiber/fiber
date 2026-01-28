@@ -29,3 +29,5 @@ require (
 	golang.org/x/text v0.33.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/valyala/fasthttp => github.com/ReneWerner87/fasthttp v1.62.1-0.20260128120903-81e8463a276d
