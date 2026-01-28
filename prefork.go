@@ -3,6 +3,7 @@ package fiber
 import (
 	"crypto/tls"
 	"net"
+	"os"
 	"os/exec"
 	"runtime"
 	"sync/atomic"
@@ -47,6 +48,16 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 		RecoverThreshold: recoverThreshold,
 		Logger:           preforkLogger{},
 		WatchMaster:      true, // Enable master process watching
+	}
+
+	// Use custom CommandProducer for testing
+	if testPreforkMaster {
+		p.CommandProducer = func(files []*os.File) (*exec.Cmd, error) {
+			cmd := dummyCmd()
+			cmd.ExtraFiles = files
+			err := cmd.Start()
+			return cmd, err
+		}
 	}
 
 	// Configure ServeFunc for child processes

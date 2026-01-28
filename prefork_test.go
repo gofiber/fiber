@@ -53,36 +53,28 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {
-	t.Skip("TODO: Adapt test for FastHTTP integration - testPreforkMaster flag needs FastHTTP TestMode support")
-
-	// NOTE: This test needs to be rewritten because:
-	// 1. FastHTTP prefork waits for child process events
-	// 2. testPreforkMaster flag is Fiber-specific and not known to FastHTTP
-	// 3. Alternative: Use real child processes or add TestMode to FastHTTP Prefork
-	//
-	// The integration works correctly (Child tests pass), but the master process
-	// test needs a different approach.
-
-	// Reset test var
+	// Enable test mode - uses dummyCmd() via CommandProducer
 	testPreforkMaster = true
+	defer func() { testPreforkMaster = false }()
 
+	// Test 1: Master process starts with valid command
+	// The child processes (dummyCmd = "go version") will exit quickly,
+	// which will eventually exceed RecoverThreshold and return ErrOverRecovery
 	app := New()
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
 	cfg := listenConfigDefault()
-	require.NoError(t, app.prefork(":0", nil, &cfg))
-
-	dummyChildCmd.Store("invalid")
-
-	cfg = listenConfigDefault()
-	err := app.prefork("127.0.0.1:", nil, &cfg)
+	cfg.PreforkRecoverThreshold = 1 // Set low threshold for quick test
+	err := app.prefork(":0", nil, &cfg)
+	// Expected: ErrOverRecovery because children keep exiting
 	require.Error(t, err)
 
-	dummyChildCmd.Store("go")
+	// Test 2: Master process fails with invalid command
+	dummyChildCmd.Store("invalid_command_that_does_not_exist")
+	defer dummyChildCmd.Store("go")
+
+	cfg = listenConfigDefault()
+	err = app.prefork("127.0.0.1:", nil, &cfg)
+	require.Error(t, err)
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
