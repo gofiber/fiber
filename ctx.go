@@ -118,15 +118,40 @@ func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 	return c.fasthttp
 }
 
-// Context returns a context implementation that was set by
-// user earlier or returns a non-nil, empty context, if it was not set earlier.
+// TrackedConn returns the TrackedConn interface for this request's
+// underlying TCP connection, or nil if connection tracking is not active
+// (e.g. in unit tests using bare listeners).
+// Use this to mark long-lived connections (WebSocket, SSE) for
+// protocol-aware graceful close during shutdown.
+func (c *DefaultCtx) TrackedConn() TrackedConn {
+	if c.fasthttp == nil {
+		return nil
+	}
+	conn := c.fasthttp.Conn()
+	if tc, ok := conn.(*connTrackingConn); ok {
+		return tc
+	}
+	return nil
+}
+
+// Context returns the Go context associated with this request.
+//
+// If the user has previously called SetContext, that context is returned.
+// Otherwise the application's shutdown context (app.shutdownCtx) is returned
+// directly — without caching — so that a mid-shutdown swap (e.g. via
+// ShutdownConfig.RequestContext) is visible to all subsequent calls.
+// Because every request context is a descendant of that parent, cancelling it
+// at shutdown-start propagates a Done signal into every in-flight handler.
 func (c *DefaultCtx) Context() context.Context {
 	if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
 		return ctx
 	}
-	ctx := context.Background()
-	c.SetContext(ctx)
-	return ctx
+	// Return the live shutdown context without caching so that a
+	// RequestContext swap during shutdown is immediately visible.
+	if parent := c.app.shutdownCtx; parent != nil {
+		return parent
+	}
+	return context.Background()
 }
 
 // SetContext sets a context implementation by user.
@@ -134,33 +159,28 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 	c.fasthttp.SetUserValue(userContextKey, ctx)
 }
 
-// Deadline returns the time when work done on behalf of this context
-// should be canceled. Deadline returns ok==false when no deadline is
-// set. Successive calls to Deadline return the same results.
-//
-// Due to current limitations in how fasthttp works, Deadline operates as a nop.
-// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Deadline() (time.Time, bool) {
-	return time.Time{}, false
+// Deadline returns the deadline carried by this request's context.
+// If the user set a context with a deadline (or if a per-request shutdown
+// deadline was configured), ok is true and the deadline is returned.
+func (c *DefaultCtx) Deadline() (deadline time.Time, ok bool) {
+	return c.Context().Deadline()
 }
 
-// Done returns a channel that's closed when work done on behalf of this
-// context should be canceled. Done may return nil if this context can
-// never be canceled. Successive calls to Done return the same value.
-// The close of the Done channel may happen asynchronously,
-// after the cancel function returns.
-//
-// Due to current limitations in how fasthttp works, Done operates as a nop.
-// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Done() <-chan struct{} {
-	return nil
+// Done returns a channel that is closed when this request's context is
+// cancelled.  During normal operation the channel remains open.  When the
+// application begins shutting down the channel is closed and Err() returns
+// ErrRequestShutdown.
+func (c *DefaultCtx) Done() <-chan struct{} {
+	return c.Context().Done()
 }
 
-// Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
-//
-// Due to current limitations in how fasthttp works, Err operates as a nop.
-// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Err() error {
+// Err returns nil while the request context is still active.  Once shutdown
+// begins and the context is cancelled, Err returns ErrRequestShutdown so
+// handlers can distinguish a shutdown cancellation from other errors.
+func (c *DefaultCtx) Err() error {
+	if err := c.Context().Err(); err != nil {
+		return ErrRequestShutdown
+	}
 	return nil
 }
 

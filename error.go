@@ -16,6 +16,16 @@ var (
 	ErrGracefulTimeout = errors.New("shutdown: graceful timeout has been reached, exiting")
 	// ErrNotRunning indicates that a Shutdown method was called when the server was not running.
 	ErrNotRunning = errors.New("shutdown: server is not running")
+	// ErrRequestShutdown is the context error returned to in-flight handlers when the
+	// application begins shutting down.  Handlers can check for this sentinel to
+	// distinguish a shutdown cancellation from other context errors.
+	ErrRequestShutdown = errors.New("shutdown: server is shutting down")
+	// ErrWebSocketCloseTimeout is returned when a WebSocket close handshake
+	// does not complete within WebSocketCloseTimeout.
+	ErrWebSocketCloseTimeout = errors.New("shutdown: websocket close handshake timed out")
+	// ErrSSECloseWriteFailed is returned when the final SSE shutdown event
+	// cannot be written to a tracked SSE connection.
+	ErrSSECloseWriteFailed = errors.New("shutdown: failed to write SSE close event")
 	// ErrHandlerExited is returned by App.Test if a handler panics or calls runtime.Goexit().
 	ErrHandlerExited = errors.New("runtime.Goexit() called in handler or server panic")
 	// ErrNoViewEngineConfigured indicates that a helper requiring a view engine was invoked without one configured.

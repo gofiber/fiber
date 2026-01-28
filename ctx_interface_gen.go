@@ -23,6 +23,9 @@ type Ctx interface {
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
 	RequestCtx() *fasthttp.RequestCtx
+	// TrackedConn returns the TrackedConn for this request's connection,
+	// or nil if tracking is not active.
+	TrackedConn() TrackedConn
 	// Context returns a context implementation that was set by
 	// user earlier or returns a non-nil, empty context, if it was not set earlier.
 	Context() context.Context
