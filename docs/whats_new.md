@@ -18,7 +18,7 @@ it update your project automatically:
 
 ```bash
 go install github.com/gofiber/cli/fiber@latest
-fiber migrate --to v3.0.0-rc.3
+fiber migrate --to v3.0.0
 ```
 
 See the [migration guide](#-migration-guide) for more details and options.
@@ -1687,7 +1687,7 @@ To streamline upgrades between Fiber versions, the Fiber CLI ships with a
 
 ```bash
 go install github.com/gofiber/cli/fiber@latest
-fiber migrate --to v3.0.0-rc.3
+fiber migrate --to v3.0.0
 ```
 
 ### Options

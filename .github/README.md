@@ -31,12 +31,6 @@
 
 ---
 
-## ⚠️ **Attention**
-
-Fiber v3 is currently in rc and under active development. While it offers exciting new features, please note that it may not be stable for production use. We recommend sticking to the latest stable release (v2.x) for mission-critical applications. If you choose to use v3, be prepared for potential bugs and breaking changes. Always check the official documentation and release notes for updates and proceed with caution. Happy coding! 🚀
-
----
-
 ## ⚙️ Installation
 
 Fiber requires **Go version `1.25` or higher** to run. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/). To start setting up your project, create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
