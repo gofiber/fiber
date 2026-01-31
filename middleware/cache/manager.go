@@ -23,6 +23,7 @@ type item struct {
 	expires         []byte
 	etag            []byte
 	date            uint64
+	lastModified    uint64
 	status          int
 	age             uint64
 	exp             uint64
@@ -33,6 +34,8 @@ type item struct {
 	private         bool
 	// used for finding the item in an indexed heap
 	heapidx int
+	// tags persisted with the entry so the tag index survives restarts
+	tags []string
 }
 
 type cachedHeader struct {
@@ -90,6 +93,7 @@ func (m *manager) release(e *item) {
 	e.ctype = nil
 	e.cencoding = nil
 	e.date = 0
+	e.lastModified = 0
 	e.status = 0
 	e.age = 0
 	e.exp = 0
@@ -97,6 +101,7 @@ func (m *manager) release(e *item) {
 	e.forceRevalidate = false
 	e.revalidate = false
 	e.headers = nil
+	e.tags = nil
 	e.shareable = false
 	e.private = false
 	e.heapidx = 0

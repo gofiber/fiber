@@ -242,6 +242,12 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "date")
 				return
 			}
+		case "lastModified":
+			z.lastModified, err = dc.ReadUint64()
+			if err != nil {
+				err = msgp.WrapError(err, "lastModified")
+				return
+			}
 		case "status":
 			z.status, err = dc.ReadInt()
 			if err != nil {
@@ -296,6 +302,25 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "heapidx")
 				return
 			}
+		case "tags":
+			var zb0002 uint32
+			zb0002, err = dc.ReadArrayHeader()
+			if err != nil {
+				err = msgp.WrapError(err, "tags")
+				return
+			}
+			if cap(z.tags) >= int(zb0002) {
+				z.tags = (z.tags)[:zb0002]
+			} else {
+				z.tags = make([]string, zb0002)
+			}
+			for za0001 := range z.tags {
+				z.tags[za0001], err = dc.ReadString()
+				if err != nil {
+					err = msgp.WrapError(err, "tags", za0001)
+					return
+				}
+			}
 		default:
 			err = dc.Skip()
 			if err != nil {
@@ -309,9 +334,9 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 17
+	// map header, size 19
 	// write "headers"
-	err = en.Append(0xde, 0x0, 0x11, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	err = en.Append(0xde, 0x0, 0x13, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	if err != nil {
 		return
 	}
@@ -413,6 +438,16 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "date")
 		return
 	}
+	// write "lastModified"
+	err = en.Append(0xac, 0x6c, 0x61, 0x73, 0x74, 0x4d, 0x6f, 0x64, 0x69, 0x66, 0x69, 0x65, 0x64)
+	if err != nil {
+		return
+	}
+	err = en.WriteUint64(z.lastModified)
+	if err != nil {
+		err = msgp.WrapError(err, "lastModified")
+		return
+	}
 	// write "status"
 	err = en.Append(0xa6, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73)
 	if err != nil {
@@ -503,15 +538,32 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "heapidx")
 		return
 	}
+	// write "tags"
+	err = en.Append(0xa4, 0x74, 0x61, 0x67, 0x73)
+	if err != nil {
+		return
+	}
+	err = en.WriteArrayHeader(uint32(len(z.tags)))
+	if err != nil {
+		err = msgp.WrapError(err, "tags")
+		return
+	}
+	for za0001 := range z.tags {
+		err = en.WriteString(z.tags[za0001])
+		if err != nil {
+			err = msgp.WrapError(err, "tags", za0001)
+			return
+		}
+	}
 	return
 }
 
 // MarshalMsg implements msgp.Marshaler
 func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 17
+	// map header, size 19
 	// string "headers"
-	o = append(o, 0xde, 0x0, 0x11, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	o = append(o, 0xde, 0x0, 0x13, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.headers)))
 	for za0001 := range z.headers {
 		// map header, size 2
@@ -543,6 +595,9 @@ func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "date"
 	o = append(o, 0xa4, 0x64, 0x61, 0x74, 0x65)
 	o = msgp.AppendUint64(o, z.date)
+	// string "lastModified"
+	o = append(o, 0xac, 0x6c, 0x61, 0x73, 0x74, 0x4d, 0x6f, 0x64, 0x69, 0x66, 0x69, 0x65, 0x64)
+	o = msgp.AppendUint64(o, z.lastModified)
 	// string "status"
 	o = append(o, 0xa6, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73)
 	o = msgp.AppendInt(o, z.status)
@@ -570,6 +625,12 @@ func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "heapidx"
 	o = append(o, 0xa7, 0x68, 0x65, 0x61, 0x70, 0x69, 0x64, 0x78)
 	o = msgp.AppendInt(o, z.heapidx)
+	// string "tags"
+	o = append(o, 0xa4, 0x74, 0x61, 0x67, 0x73)
+	o = msgp.AppendArrayHeader(o, uint32(len(z.tags)))
+	for za0001 := range z.tags {
+		o = msgp.AppendString(o, z.tags[za0001])
+	}
 	return
 }
 
@@ -681,6 +742,12 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "date")
 				return
 			}
+		case "lastModified":
+			z.lastModified, bts, err = msgp.ReadUint64Bytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "lastModified")
+				return
+			}
 		case "status":
 			z.status, bts, err = msgp.ReadIntBytes(bts)
 			if err != nil {
@@ -735,6 +802,25 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "heapidx")
 				return
 			}
+		case "tags":
+			var zb0002 uint32
+			zb0002, bts, err = msgp.ReadArrayHeaderBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "tags")
+				return
+			}
+			if cap(z.tags) >= int(zb0002) {
+				z.tags = (z.tags)[:zb0002]
+			} else {
+				z.tags = make([]string, zb0002)
+			}
+			for za0001 := range z.tags {
+				z.tags[za0001], bts, err = msgp.ReadStringBytes(bts)
+				if err != nil {
+					err = msgp.WrapError(err, "tags", za0001)
+					return
+				}
+			}
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
@@ -753,6 +839,10 @@ func (z *item) Msgsize() (s int) {
 	for za0001 := range z.headers {
 		s += 1 + 4 + msgp.BytesPrefixSize + len(z.headers[za0001].key) + 6 + msgp.BytesPrefixSize + len(z.headers[za0001].value)
 	}
-	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 13 + msgp.BytesPrefixSize + len(z.cacheControl) + 8 + msgp.BytesPrefixSize + len(z.expires) + 5 + msgp.BytesPrefixSize + len(z.etag) + 5 + msgp.Uint64Size + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 16 + msgp.BoolSize + 11 + msgp.BoolSize + 10 + msgp.BoolSize + 8 + msgp.BoolSize + 8 + msgp.IntSize
+	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 13 + msgp.BytesPrefixSize + len(z.cacheControl) + 8 + msgp.BytesPrefixSize + len(z.expires) + 5 + msgp.BytesPrefixSize + len(z.etag) + 5 + msgp.Uint64Size + 13 + msgp.Uint64Size + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 16 + msgp.BoolSize + 11 + msgp.BoolSize + 10 + msgp.BoolSize + 8 + msgp.BoolSize + 8 + msgp.IntSize
+	s += 5 + msgp.ArrayHeaderSize
+	for za0002 := range z.tags {
+		s += msgp.StringPrefixSize + len(z.tags[za0002])
+	}
 	return
 }

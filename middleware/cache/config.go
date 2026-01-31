@@ -77,6 +77,72 @@ type Config struct {
 	//
 	// Default: false
 	StoreResponseHeaders bool
+
+	// EnableETag controls automatic ETag generation. When true and the
+	// response does not already carry an ETag header (set by the handler
+	// or by ETagGenerator), the middleware computes a strong ETag from
+	// the response body using SHA-256. The stored ETag is then used for
+	// If-None-Match conditional validation on subsequent cache hits,
+	// returning 304 Not Modified when the value matches.
+	//
+	// Optional. Default: true
+	EnableETag bool
+
+	// EnableLastModified controls automatic Last-Modified header
+	// generation. When true and the response does not already carry a
+	// Last-Modified header (set by the handler or by
+	// LastModifiedGenerator), the middleware sets it to the current time.
+	// The stored timestamp is then used for If-Modified-Since conditional
+	// validation on subsequent cache hits, returning 304 Not Modified
+	// when the resource has not changed.
+	//
+	// If-Modified-Since is only evaluated when If-None-Match is absent,
+	// matching RFC 9110 §8.3 precedence rules.
+	//
+	// Optional. Default: true
+	EnableLastModified bool
+
+	// Tags returns cache tags for a request. Entries sharing a tag are
+	// invalidated together via InvalidateTags. Tags are computed from the
+	// request before the handler runs.
+	//
+	// Optional. Default: nil
+	Tags func(c fiber.Ctx) []string
+
+	// ResponseTags returns additional cache tags computed from the response
+	// body after the handler runs. Tags from both Tags and ResponseTags are
+	// merged for each cached entry.
+	//
+	// Optional. Default: nil
+	ResponseTags func(c fiber.Ctx, body []byte) []string
+
+	// RejectTags is a list of tag patterns that prevent a response from
+	// being cached. If any tag returned by Tags or ResponseTags matches
+	// a pattern the response is not stored. The only wildcard character
+	// is '*', which matches any sequence of characters (including none).
+	//
+	// Examples:
+	//   []string{"internal"}   – exact match
+	//   []string{"user:*"}     – prefix wildcard, matches "user:", "user:123", …
+	//   []string{"*:secret"}   – suffix wildcard, matches "data:secret", …
+	//
+	// Optional. Default: nil
+	RejectTags []string
+
+	// ETagGenerator computes an ETag value for the response body. When set,
+	// the middleware sets the ETag header on cache miss and evaluates
+	// If-None-Match on cache hit to return 304 Not Modified.
+	//
+	// Optional. Default: nil
+	ETagGenerator func(c fiber.Ctx, body []byte) string
+
+	// LastModifiedGenerator returns the last-modification time for the
+	// resource. When set, the middleware sets the Last-Modified header on
+	// cache miss and evaluates If-Modified-Since on cache hit to return
+	// 304 Not Modified.
+	//
+	// Optional. Default: nil
+	LastModifiedGenerator func(c fiber.Ctx) time.Time
 }
 
 // ConfigDefault is the default config
@@ -92,6 +158,8 @@ var ConfigDefault = Config{
 	},
 	ExpirationGenerator:  nil,
 	StoreResponseHeaders: false,
+	EnableETag:           true,
+	EnableLastModified:   true,
 	Storage:              nil,
 	MaxBytes:             1 * 1024 * 1024,
 	Methods:              []string{fiber.MethodGet, fiber.MethodHead},

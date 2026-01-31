@@ -80,6 +80,7 @@ var ignoreHeaders = map[string]struct{}{
 	"Date":                {},
 	"ETag":                {}, // already stored explicitly by the cache manager
 	"Expires":             {}, // already stored explicitly by the cache manager
+	"Last-Modified":       {}, // already stored explicitly by the cache manager
 	"Keep-Alive":          {},
 	"Proxy-Authenticate":  {},
 	"Proxy-Authorization": {},
@@ -102,6 +103,22 @@ var cacheableStatusCodes = map[int]struct{}{
 	fiber.StatusGone:                        {},
 	fiber.StatusRequestURITooLong:           {},
 	fiber.StatusNotImplemented:              {},
+}
+
+// cacheInvalidatorLocalKey is the Locals key used to pass the tag
+// invalidation function from the middleware to downstream handlers.
+const cacheInvalidatorLocalKey = "__fiber_cache_invalidator"
+
+// InvalidateTags removes all cached responses associated with any of the
+// provided tags. The cache middleware must be present in the handler chain
+// (registered via app.Use or on the same route group) for the invalidation
+// function to be available.
+func InvalidateTags(c fiber.Ctx, tags ...string) error {
+	fn, ok := c.Locals(cacheInvalidatorLocalKey).(func(context.Context, ...string) error)
+	if !ok || fn == nil {
+		return errors.New("cache: InvalidateTags requires the cache middleware to be registered on this route")
+	}
+	return fn(c.Context(), tags...)
 }
 
 // New creates a new middleware handler
@@ -143,6 +160,25 @@ func New(config ...Config) fiber.Handler {
 	heap := &indexedHeap{}
 	// count stored bytes (sizes of response bodies)
 	var storedBytes uint
+	// Tag index for tag-based cache invalidation
+	var ti tagStore
+	if cfg.Tags != nil || cfg.ResponseTags != nil {
+		if cfg.Storage != nil {
+			ti = newDistributedTagStore(cfg.Storage, cfg.Expiration)
+		} else {
+			ti = newTagIndex()
+		}
+	}
+	// Pre-classify reject patterns for efficient runtime matching
+	var reject *rejectMatcher
+	if len(cfg.RejectTags) > 0 {
+		reject = newRejectMatcher(cfg.RejectTags)
+	}
+	// Key → heap index mapping for O(1) lookup during tag invalidation
+	var keyHeapIdx map[string]int
+	if cfg.MaxBytes > 0 {
+		keyHeapIdx = make(map[string]int)
+	}
 	// Pool for hex encoding buffers
 	hexBufPool := &sync.Pool{
 		New: func() any {
@@ -197,6 +233,9 @@ func New(config ...Config) fiber.Handler {
 
 		_, size := heap.remove(heapIdx)
 		storedBytes -= size
+		if keyHeapIdx != nil {
+			delete(keyHeapIdx, entryKey)
+		}
 	}
 
 	refreshHeapIndex := func(ctx context.Context, candidate evictionCandidate) error {
@@ -219,8 +258,42 @@ func New(config ...Config) fiber.Handler {
 		return nil
 	}
 
+	// invalidateFn is stored in Locals so InvalidateTags can reach it.
+	// Lock ordering: ti.mu is never held while mux is held, and vice versa.
+	invalidateFn := func(ctx context.Context, tags ...string) error {
+		if ti == nil {
+			return nil
+		}
+		// Collect keys (acquires and releases ti.mu)
+		keys := ti.invalidate(tags)
+		if len(keys) == 0 {
+			return nil
+		}
+		// Remove from heap (acquires and releases mux; ti.mu is not held)
+		if cfg.MaxBytes > 0 {
+			mux.Lock()
+			for _, k := range keys {
+				if idx, ok := keyHeapIdx[k]; ok {
+					removeHeapEntry(k, idx)
+				}
+			}
+			mux.Unlock()
+		}
+		// Delete from storage
+		var errs error
+		for _, k := range keys {
+			if delErr := deleteKey(ctx, k); delErr != nil {
+				errs = errors.Join(errs, delErr)
+			}
+		}
+		return errs
+	}
+
 	// Return new handler
 	return func(c fiber.Ctx) error {
+		// Expose invalidation function for all requests in this middleware chain
+		c.Locals(cacheInvalidatorLocalKey, invalidateFn)
+
 		hasAuthorization := len(c.Request().Header.Peek(fiber.HeaderAuthorization)) > 0
 		reqCacheControl := c.Request().Header.Peek(fiber.HeaderCacheControl)
 		reqDirectives := parseRequestCacheControl(reqCacheControl)
@@ -269,6 +342,12 @@ func New(config ...Config) fiber.Handler {
 		if err != nil && !errors.Is(err, errCacheMiss) {
 			return err
 		}
+
+		// Re-populate tag index from persisted entry (recovers across restarts)
+		if e != nil && ti != nil && len(e.tags) > 0 && !ti.has(key) {
+			ti.add(key, e.tags)
+		}
+
 		entryAge := uint64(0)
 		revalidate := false
 		oldHeapIdx := -1 // Track old heap index for replacement during revalidation
@@ -345,6 +424,9 @@ func New(config ...Config) fiber.Handler {
 			}
 			e = nil
 			unlock()
+			if ti != nil {
+				ti.remove(key)
+			}
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			goto continueRequest
 		}
@@ -407,6 +489,10 @@ func New(config ...Config) fiber.Handler {
 				manager.release(e)
 				removeHeapEntry(key, idx)
 				e = nil
+				unlock()
+				if ti != nil {
+					ti.remove(key)
+				}
 			case entryHasPrivate:
 				unlock()
 				if err := deleteKey(reqCtx, key); err != nil {
@@ -422,6 +508,9 @@ func New(config ...Config) fiber.Handler {
 				}
 				e = nil
 				unlock()
+				if ti != nil {
+					ti.remove(key)
+				}
 				c.Set(cfg.CacheHeader, cacheUnreachable)
 				if reqDirectives.onlyIfCached {
 					return c.SendStatus(fiber.StatusGatewayTimeout)
@@ -436,6 +525,51 @@ func New(config ...Config) fiber.Handler {
 					unlock()
 					c.Set(cfg.CacheHeader, cacheUnreachable)
 					return c.Next()
+				}
+
+				// Check conditional request headers (RFC 7232).
+				// ETag and Last-Modified are in the cached item; no body load needed for 304.
+				{
+					ifNoneMatch := c.Request().Header.Peek(fiber.HeaderIfNoneMatch)
+					ifModSince := c.Request().Header.Peek(fiber.HeaderIfModifiedSince)
+					notModified := false
+					if len(ifNoneMatch) > 0 && len(e.etag) > 0 {
+						notModified = etagWeakMatch(ifNoneMatch, e.etag)
+					} else if len(ifModSince) > 0 && e.lastModified != 0 {
+						if modTime, parseErr := fasthttp.ParseHTTPDate(ifModSince); parseErr == nil {
+							notModified = !secondsToTime(e.lastModified).After(modTime)
+						}
+					}
+
+					if notModified {
+						unlock()
+						c.Response().SetStatusCode(fiber.StatusNotModified)
+						if len(e.etag) > 0 {
+							c.Response().Header.SetBytesV(fiber.HeaderETag, e.etag)
+						}
+						if e.lastModified != 0 {
+							lmBytes := fasthttp.AppendHTTPDate(nil, secondsToTime(e.lastModified))
+							c.Response().Header.SetBytesV(fiber.HeaderLastModified, lmBytes)
+						}
+						if len(e.cacheControl) > 0 {
+							c.Response().Header.SetBytesV(fiber.HeaderCacheControl, e.cacheControl)
+						}
+						if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
+							remaining := uint64(0)
+							if e.exp > ts {
+								remaining = e.exp - ts
+							}
+							c.Set(fiber.HeaderCacheControl, buildCacheControl(remaining, e.revalidate))
+						}
+						clampedDate := clampDateSeconds(e.date, ts)
+						dateValue := fasthttp.AppendHTTPDate(nil, secondsToTime(clampedDate))
+						c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
+						c.Set(cfg.CacheHeader, cacheHit)
+						if cfg.Storage != nil {
+							manager.release(e)
+						}
+						return nil
+					}
 				}
 
 				// Separate body value to avoid msgp serialization
@@ -467,6 +601,10 @@ func New(config ...Config) fiber.Handler {
 				if len(e.etag) > 0 {
 					c.Response().Header.SetBytesV(fiber.HeaderETag, e.etag)
 				}
+				if e.lastModified != 0 {
+					lmBytes := fasthttp.AppendHTTPDate(nil, secondsToTime(e.lastModified))
+					c.Response().Header.SetBytesV(fiber.HeaderLastModified, lmBytes)
+				}
 				clampedDate := clampDateSeconds(e.date, ts)
 				dateValue := fasthttp.AppendHTTPDate(nil, secondsToTime(clampedDate))
 				c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
@@ -480,8 +618,7 @@ func New(config ...Config) fiber.Handler {
 					if e.exp > ts {
 						remaining = e.exp - ts
 					}
-					maxAge := utils.FormatUint(remaining)
-					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
+					c.Set(fiber.HeaderCacheControl, buildCacheControl(remaining, e.revalidate))
 				}
 
 				const maxDeltaSeconds = uint64(math.MaxInt32)
@@ -530,6 +667,59 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
+
+		// Generate ETag from response body if configured
+		if cfg.ETagGenerator != nil {
+			if etag := cfg.ETagGenerator(c, c.Response().Body()); etag != "" {
+				c.Response().Header.Set(fiber.HeaderETag, etag)
+			}
+		}
+		// Auto-generate ETag from body hash when none is already set
+		if cfg.EnableETag && len(c.Response().Header.Peek(fiber.HeaderETag)) == 0 {
+			c.Response().Header.Set(fiber.HeaderETag, generateETag(c.Response().Body()))
+		}
+		// Generate Last-Modified if configured
+		if cfg.LastModifiedGenerator != nil {
+			if lm := cfg.LastModifiedGenerator(c); !lm.IsZero() {
+				lmBytes := fasthttp.AppendHTTPDate(nil, lm.UTC())
+				c.Response().Header.SetBytesV(fiber.HeaderLastModified, lmBytes)
+			}
+		}
+		// Auto-set Last-Modified to now when none is already set
+		if cfg.EnableLastModified && len(c.Response().Header.Peek(fiber.HeaderLastModified)) == 0 {
+			c.Response().Header.SetBytesV(fiber.HeaderLastModified, fasthttp.AppendHTTPDate(nil, time.Now().UTC()))
+		}
+
+		// Evaluate conditional request headers on the revalidation /
+		// first-miss path (RFC 9110 §8.3).  The cache-hit path already
+		// handles this using stored e.etag / e.lastModified; this block
+		// covers the case where c.Next() ran and the ETag or Last-Modified
+		// was set by the handler, a generator, or auto-generation above.
+		// Per RFC 9110 §8.3: If-None-Match takes precedence;
+		// If-Modified-Since is ignored when If-None-Match is present.
+		{
+			ifNoneMatch := c.Request().Header.Peek(fiber.HeaderIfNoneMatch)
+			storedETag := c.Response().Header.Peek(fiber.HeaderETag)
+			notModified := false
+			if len(ifNoneMatch) > 0 && len(storedETag) > 0 {
+				notModified = etagWeakMatch(ifNoneMatch, storedETag)
+			} else if ifModSince := c.Request().Header.Peek(fiber.HeaderIfModifiedSince); len(ifModSince) > 0 {
+				if lm := c.Response().Header.Peek(fiber.HeaderLastModified); len(lm) > 0 {
+					if modTime, parseErr := fasthttp.ParseHTTPDate(ifModSince); parseErr == nil {
+						if lmTime, lmErr := fasthttp.ParseHTTPDate(lm); lmErr == nil {
+							notModified = !lmTime.After(modTime)
+						}
+					}
+				}
+			}
+			if notModified {
+				c.Response().ResetBody()
+				c.Response().SetStatusCode(fiber.StatusNotModified)
+				c.Set(cfg.CacheHeader, cacheMiss)
+				return nil
+			}
+		}
+
 		cacheControlBytes := c.Response().Header.Peek(fiber.HeaderCacheControl)
 		respCacheControl := parseResponseCacheControl(cacheControlBytes)
 		varyHeader := utils.UnsafeString(c.Response().Header.Peek(fiber.HeaderVary))
@@ -558,6 +748,9 @@ func New(config ...Config) fiber.Handler {
 				}
 				e = nil
 				mux.Unlock()
+				if ti != nil {
+					ti.remove(key)
+				}
 			}
 
 			if hasVaryManifest {
@@ -608,6 +801,19 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		// Compute tags before eviction so tag-based rejection short-circuits early
+		var entryTags []string
+		if cfg.Tags != nil {
+			entryTags = append(entryTags, cfg.Tags(c)...)
+		}
+		if cfg.ResponseTags != nil {
+			entryTags = append(entryTags, cfg.ResponseTags(c, c.Response().Body())...)
+		}
+		if reject != nil && reject.matchesAny(entryTags) {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return nil
+		}
+
 		// Eviction loop: atomically reserve space for new entry and evict old entries.
 		// Strategy:
 		// 1. Under lock: reserve space by pre-incrementing storedBytes, then collect entries to evict
@@ -646,6 +852,9 @@ func New(config ...Config) fiber.Handler {
 				}
 				next := heap.entries[0]
 				keyToRemove, size := heap.removeFirst()
+				if keyHeapIdx != nil {
+					delete(keyHeapIdx, keyToRemove)
+				}
 				keysToRemove = append(keysToRemove, keyToRemove)
 				sizesToRemove = append(sizesToRemove, size)
 				candidates = append(candidates, evictionCandidate{
@@ -662,6 +871,9 @@ func New(config ...Config) fiber.Handler {
 				for i, keyToRemove := range keysToRemove {
 					delErr := deleteKey(reqCtx, keyToRemove)
 					if delErr == nil {
+						if ti != nil {
+							ti.remove(keyToRemove)
+						}
 						continue
 					}
 
@@ -680,6 +892,9 @@ func New(config ...Config) fiber.Handler {
 					for j := i; j < len(candidates); j++ {
 						candidate := candidates[j]
 						candidate.heapIdx = heap.put(candidate.key, candidate.exp, candidate.size)
+						if keyHeapIdx != nil {
+							keyHeapIdx[candidate.key] = candidate.heapIdx
+						}
 						restored = append(restored, candidate)
 					}
 					mux.Unlock()
@@ -711,6 +926,14 @@ func New(config ...Config) fiber.Handler {
 		e.expires = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderExpires))
 		e.etag = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderETag))
 		e.date = 0
+		// Parse Last-Modified from response header
+		if lm := c.Response().Header.Peek(fiber.HeaderLastModified); len(lm) > 0 {
+			if t, parseErr := fasthttp.ParseHTTPDate(lm); parseErr == nil {
+				e.lastModified = safeUnixSeconds(t)
+			}
+		}
+
+		e.tags = entryTags
 
 		ageVal := uint64(0)
 		if b := c.Response().Header.Peek(fiber.HeaderAge); len(b) > 0 {
@@ -838,6 +1061,9 @@ func New(config ...Config) fiber.Handler {
 			mux.Lock()
 			heapIdx = heap.put(key, e.exp, bodySize)
 			e.heapidx = heapIdx
+			if keyHeapIdx != nil {
+				keyHeapIdx[key] = heapIdx
+			}
 			// Note: storedBytes was incremented during reservation, and evictions
 			// have already been accounted for, so no additional increment is needed
 			spaceReserved = false // Clear flag to prevent defer from unreserving
@@ -850,6 +1076,9 @@ func New(config ...Config) fiber.Handler {
 				mux.Lock()
 				_, size := heap.remove(heapIdx)
 				storedBytes -= size
+				if keyHeapIdx != nil {
+					delete(keyHeapIdx, key)
+				}
 				mux.Unlock()
 			}
 			if releaseEntry {
@@ -895,6 +1124,16 @@ func New(config ...Config) fiber.Handler {
 			mux.Lock()
 			removeHeapEntry(key, oldHeapIdx)
 			mux.Unlock()
+		}
+
+		// Register tags for this cache entry
+		if ti != nil && len(entryTags) > 0 {
+			ti.add(key, entryTags)
+		}
+
+		// Generate Cache-Control on miss when the handler did not set one
+		if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
+			c.Set(fiber.HeaderCacheControl, buildCacheControl(uint64(remainingExpiration.Seconds()), mustRevalidate))
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)
@@ -1379,4 +1618,69 @@ func makeHashAuthFunc(hexBufPool *sync.Pool) func([]byte) string {
 		hexBufPool.Put(bufPtr)
 		return result
 	}
+}
+
+// generateETag computes a strong ETag value from the response body.
+// The result is a quoted SHA-256 hex digest per RFC 7232 §2.3.
+func generateETag(body []byte) string {
+	h := sha256.Sum256(body)
+	return `"` + hex.EncodeToString(h[:]) + `"`
+}
+
+// stripETagWeakPrefix removes the W/ prefix from an ETag value if present.
+func stripETagWeakPrefix(etag string) string {
+	if len(etag) >= 2 && etag[0] == 'W' && etag[1] == '/' {
+		return etag[2:]
+	}
+	return etag
+}
+
+// etagWeakMatch performs weak ETag comparison per RFC 7232 §2.3.2.
+// It returns true if the If-None-Match header value matches the stored ETag.
+// The If-None-Match value may be "*" (matches any ETag) or a comma-separated
+// list of ETags; the W/ weak-validator prefix is stripped before comparison.
+func etagWeakMatch(ifNoneMatch, storedETag []byte) bool {
+	stored := stripETagWeakPrefix(utils.UnsafeString(storedETag))
+	header := utils.UnsafeString(ifNoneMatch)
+	if header == "*" {
+		return true
+	}
+
+	for len(header) > 0 {
+		// Skip separators
+		for len(header) > 0 && (header[0] == ' ' || header[0] == ',') {
+			header = header[1:]
+		}
+		if len(header) == 0 {
+			break
+		}
+
+		end := strings.IndexByte(header, ',')
+		var candidate string
+		if end < 0 {
+			candidate = header
+			header = ""
+		} else {
+			candidate = header[:end]
+			header = header[end+1:]
+		}
+
+		candidate = strings.TrimRight(candidate, " ")
+		if stripETagWeakPrefix(candidate) == stored {
+			return true
+		}
+	}
+
+	return false
+}
+
+// buildCacheControl constructs a Cache-Control response header value.
+// It always includes "public, max-age=<remainingSec>". When mustRevalidate
+// is true it appends ", must-revalidate" per RFC 9111 §5.2.2.8.
+func buildCacheControl(remainingSec uint64, mustRevalidate bool) string {
+	s := "public, max-age=" + utils.FormatUint(remainingSec)
+	if mustRevalidate {
+		s += ", must-revalidate"
+	}
+	return s
 }
