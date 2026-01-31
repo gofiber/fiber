@@ -8466,14 +8466,3 @@ func Benchmark_Ctx_OverrideParam(b *testing.B) {
 		c.OverrideParam("name", "changed")
 	}
 }
-
-func acquireDefaultCtxForBenchmark(b *testing.B, app *App, fctx *fasthttp.RequestCtx) *DefaultCtx {
-	b.Helper()
-
-	ctx := app.AcquireCtx(fctx)
-	defaultCtx, ok := ctx.(*DefaultCtx)
-	if !ok {
-		b.Fatal("AcquireCtx did not return *DefaultCtx")
-	}
-	return defaultCtx
-}
