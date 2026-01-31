@@ -1881,6 +1881,14 @@ func Benchmark_NewError(b *testing.B) {
 	}
 }
 
+func Benchmark_NewError_Parallel(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			NewError(200, "test") //nolint:errcheck // not needed
+		}
+	})
+}
+
 // go test -run Test_NewError
 func Test_NewError(t *testing.T) {
 	t.Parallel()
@@ -2835,6 +2843,34 @@ func Benchmark_Communication_Flow(b *testing.B) {
 	require.Equal(b, "Hello, World!", string(fctx.Response.Body()))
 }
 
+func Benchmark_Communication_Flow_Parallel(b *testing.B) {
+	app := New()
+
+	app.Get("/", func(c Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(MethodGet)
+		fctx.Request.SetRequestURI("/")
+		for pb.Next() {
+			h(fctx)
+		}
+	})
+
+	verifyCtx := &fasthttp.RequestCtx{}
+	verifyCtx.Request.Header.SetMethod(MethodGet)
+	verifyCtx.Request.SetRequestURI("/")
+	h(verifyCtx)
+
+	require.Equal(b, 200, verifyCtx.Response.Header.StatusCode())
+	require.Equal(b, "Hello, World!", string(verifyCtx.Response.Body()))
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcquireReleaseFlow -benchmem -count=4
 func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 	app := New()
@@ -2857,6 +2893,44 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 			c, _ := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck // not needed
 			app.ReleaseCtx(c)
 		}
+	})
+}
+
+func acquireDefaultCtxForAppBenchmark(b *testing.B, app *App, fctx *fasthttp.RequestCtx) *DefaultCtx {
+	b.Helper()
+
+	ctx := app.AcquireCtx(fctx)
+	defaultCtx, ok := ctx.(*DefaultCtx)
+	if !ok {
+		b.Fatal("AcquireCtx did not return *DefaultCtx")
+	}
+	return defaultCtx
+}
+
+func Benchmark_Ctx_AcquireReleaseFlow_Parallel(b *testing.B) {
+	app := New()
+
+	b.Run("withoutRequestCtx", func(b *testing.B) {
+		b.ReportAllocs()
+
+		b.RunParallel(func(pb *testing.PB) {
+			fctx := &fasthttp.RequestCtx{}
+			for pb.Next() {
+				c := acquireDefaultCtxForAppBenchmark(b, app, fctx)
+				app.ReleaseCtx(c)
+			}
+		})
+	})
+
+	b.Run("withRequestCtx", func(b *testing.B) {
+		b.ReportAllocs()
+
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				c := acquireDefaultCtxForAppBenchmark(b, app, &fasthttp.RequestCtx{})
+				app.ReleaseCtx(c)
+			}
+		})
 	})
 }
 

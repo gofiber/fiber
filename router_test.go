@@ -1454,6 +1454,17 @@ func registerDummyRoutes(app *App) {
 	}
 }
 
+func acquireDefaultCtxForRouterBenchmark(b *testing.B, app *App, fctx *fasthttp.RequestCtx) *DefaultCtx {
+	b.Helper()
+
+	ctx := app.AcquireCtx(fctx)
+	defaultCtx, ok := ctx.(*DefaultCtx)
+	if !ok {
+		b.Fatal("AcquireCtx did not return *DefaultCtx")
+	}
+	return defaultCtx
+}
+
 // go test -v -run=^$ -bench=Benchmark_App_RebuildTree -benchmem -count=4
 func Benchmark_App_RebuildTree(b *testing.B) {
 	app := New()
@@ -2002,4 +2013,296 @@ func Test_AddRoute_MergeHandlers(t *testing.T) {
 
 	require.Len(t, app.stack[app.methodInt(MethodGet)], 1)
 	require.Len(t, app.stack[app.methodInt(MethodGet)][0].Handlers, 2)
+}
+
+func Benchmark_App_RebuildTree_Parallel(b *testing.B) {
+	app := New()
+	registerDummyRoutes(app)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			app.routesRefreshed = true
+			app.RebuildTree()
+		}
+	})
+}
+
+func Benchmark_App_MethodNotAllowed_Parallel(b *testing.B) {
+	app := New()
+	h := func(c Ctx) error {
+		return c.SendString("Hello World!")
+	}
+	app.All("/this/is/a/", h)
+	app.Get("/this/is/a/dummy/route/oke", h)
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/this/is/a/dummy/route/oke")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			appHandler(c)
+		}
+	})
+	require.Equal(b, 405, c.Response.StatusCode())
+	require.Equal(b, MethodGet+", "+MethodHead, string(c.Response.Header.Peek("Allow")))
+	require.Equal(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
+}
+
+func Benchmark_Router_NotFound_Parallel(b *testing.B) {
+	b.ReportAllocs()
+	app := New()
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	})
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/this/route/does/not/exist")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			appHandler(c)
+		}
+	})
+	require.Equal(b, 404, c.Response.StatusCode())
+	require.Equal(b, "Not Found", string(c.Response.Body()))
+}
+
+func Benchmark_Router_Handler_Parallel(b *testing.B) {
+	app := New()
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/user/keys/1337")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_Router_Handler_Strict_Case_Parallel(b *testing.B) {
+	app := New(Config{StrictRouting: true, CaseSensitive: true})
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/user/keys/1337")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_Router_Chain_Parallel(b *testing.B) {
+	app := New()
+	handler := func(c Ctx) error {
+		return c.Next()
+	}
+	app.Get("/", handler, handler, handler, handler, handler, handler)
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod(MethodGet)
+	c.URI().SetPath("/")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_Router_WithCompression_Parallel(b *testing.B) {
+	app := New()
+	handler := func(c Ctx) error {
+		return c.Next()
+	}
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod(MethodGet)
+	c.URI().SetPath("/")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_Startup_Process_Parallel(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			app := New()
+			registerDummyRoutes(app)
+			app.startupProcess()
+		}
+	})
+}
+
+func Benchmark_Router_Next_Parallel(b *testing.B) {
+	app := New()
+	registerDummyRoutes(app)
+	app.startupProcess()
+	request := &fasthttp.RequestCtx{}
+	request.Request.Header.SetMethod("DELETE")
+	request.URI().SetPath("/user/keys/1337")
+	var res bool
+	var err error
+	c := acquireDefaultCtxForRouterBenchmark(b, app, request)
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			c.indexRoute = -1
+			res, err = app.next(c)
+		}
+	})
+	require.NoError(b, err)
+	require.True(b, res)
+	require.Equal(b, 4, c.indexRoute)
+}
+
+func Benchmark_Router_Next_Default_Immutable_Parallel(b *testing.B) {
+	app := New(Config{Immutable: true})
+	app.Get("/", func(_ Ctx) error {
+		return nil
+	})
+	h := app.Handler()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/")
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			h(fctx)
+		}
+	})
+}
+
+func Benchmark_Route_Match_Parallel(b *testing.B) {
+	var match bool
+	var params [maxParams]string
+	parsed := parseRoute("/user/keys/:id")
+	route := &Route{use: false, root: false, star: false, routeParser: parsed, Params: parsed.params, path: "/user/keys/:id", Path: "/user/keys/:id", Method: "DELETE"}
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
+		return nil
+	})
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			match = route.match("/user/keys/1337", "/user/keys/1337", &params)
+		}
+	})
+	require.True(b, match)
+	require.Equal(b, []string{"1337"}, params[0:len(parsed.params)])
+}
+
+func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
+	var match bool
+	var params [maxParams]string
+	parsed := parseRoute("/*")
+	route := &Route{use: false, root: false, star: true, routeParser: parsed, Params: parsed.params, path: "/user/keys/bla", Path: "/user/keys/bla", Method: "DELETE"}
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
+		return nil
+	})
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			match = route.match("/user/keys/bla", "/user/keys/bla", &params)
+		}
+	})
+	require.True(b, match)
+	require.Equal(b, []string{"user/keys/bla"}, params[0:len(parsed.params)])
+}
+
+func Benchmark_Route_Match_Root_Parallel(b *testing.B) {
+	var match bool
+	var params [maxParams]string
+	parsed := parseRoute("/")
+	route := &Route{use: false, root: true, star: false, path: "/", routeParser: parsed, Params: parsed.params, Path: "/", Method: "DELETE"}
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
+		return nil
+	})
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			match = route.match("/", "/", &params)
+		}
+	})
+	require.True(b, match)
+	require.Equal(b, []string{}, params[0:len(parsed.params)])
+}
+
+func Benchmark_Router_Handler_CaseSensitive_Parallel(b *testing.B) {
+	app := New()
+	app.config.CaseSensitive = true
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/user/keys/1337")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_Router_Handler_Unescape_Parallel(b *testing.B) {
+	app := New()
+	app.config.UnescapePath = true
+	registerDummyRoutes(app)
+	app.Delete("/créer", func(_ Ctx) error {
+		return nil
+	})
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod(MethodDelete)
+	c.URI().SetPath("/cr%C3%A9er")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			c.URI().SetPath("/cr%C3%A9er")
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_Router_Handler_StrictRouting_Parallel(b *testing.B) {
+	app := New()
+	app.config.CaseSensitive = true
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/user/keys/1337")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_Router_GitHub_API_Parallel(b *testing.B) {
+	app := New()
+	registerDummyRoutes(app)
+	app.startupProcess()
+	c := &fasthttp.RequestCtx{}
+	var match bool
+	var err error
+	b.ResetTimer()
+	for i := range routesFixture.TestRoutes {
+		b.RunParallel(func(pb *testing.PB) {
+			c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
+			for pb.Next() {
+				c.URI().SetPath(routesFixture.TestRoutes[i].Path)
+				ctx := acquireDefaultCtxForRouterBenchmark(b, app, c)
+				match, err = app.next(ctx)
+				app.ReleaseCtx(ctx)
+			}
+		})
+		require.NoError(b, err)
+		require.True(b, match)
+	}
 }
