@@ -2016,14 +2016,15 @@ func Test_AddRoute_MergeHandlers(t *testing.T) {
 }
 
 func Benchmark_App_RebuildTree_Parallel(b *testing.B) {
-	app := New()
-	registerDummyRoutes(app)
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
+		// Each worker gets its own App instance to avoid data races on shared state
+		localApp := New()
+		registerDummyRoutes(localApp)
 		for pb.Next() {
-			app.routesRefreshed = true
-			app.RebuildTree()
+			localApp.routesRefreshed = true
+			localApp.RebuildTree()
 		}
 	})
 }
@@ -2036,17 +2037,24 @@ func Benchmark_App_MethodNotAllowed_Parallel(b *testing.B) {
 	app.All("/this/is/a/", h)
 	app.Get("/this/is/a/dummy/route/oke", h)
 	appHandler := app.Handler()
-	c := &fasthttp.RequestCtx{}
-	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/this/is/a/dummy/route/oke")
 	b.RunParallel(func(pb *testing.PB) {
+		// Each worker gets its own RequestCtx to avoid data races
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("DELETE")
+		c.URI().SetPath("/this/is/a/dummy/route/oke")
 		for pb.Next() {
 			appHandler(c)
 		}
 	})
-	require.Equal(b, 405, c.Response.StatusCode())
-	require.Equal(b, MethodGet+", "+MethodHead, string(c.Response.Header.Peek("Allow")))
-	require.Equal(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
+
+	// Single-threaded verification on a fresh context to preserve correctness checks
+	verifyCtx := &fasthttp.RequestCtx{}
+	verifyCtx.Request.Header.SetMethod("DELETE")
+	verifyCtx.URI().SetPath("/this/is/a/dummy/route/oke")
+	appHandler(verifyCtx)
+	require.Equal(b, 405, verifyCtx.Response.StatusCode())
+	require.Equal(b, MethodGet+", "+MethodHead, string(verifyCtx.Response.Header.Peek("Allow")))
+	require.Equal(b, utils.StatusMessage(StatusMethodNotAllowed), string(verifyCtx.Response.Body()))
 }
 
 func Benchmark_Router_NotFound_Parallel(b *testing.B) {
@@ -2158,6 +2166,7 @@ func Benchmark_Router_Next_Parallel(b *testing.B) {
 		c := acquireDefaultCtxForRouterBenchmark(b, app, request)
 		for pb.Next() {
 			c.indexRoute = -1
+			//nolint:errcheck // Benchmark hot path - error checked in verification
 			_, _ = app.next(c)
 		}
 	})
@@ -2192,20 +2201,24 @@ func Benchmark_Router_Next_Default_Immutable_Parallel(b *testing.B) {
 }
 
 func Benchmark_Route_Match_Parallel(b *testing.B) {
-	var match bool
-	var params [maxParams]string
 	parsed := parseRoute("/user/keys/:id")
 	route := &Route{use: false, root: false, star: false, routeParser: parsed, Params: parsed.params, path: "/user/keys/:id", Path: "/user/keys/:id", Method: "DELETE"}
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
 	b.RunParallel(func(pb *testing.PB) {
+		// Each worker gets its own local variables to avoid data races
+		var params [maxParams]string
 		for pb.Next() {
-			match = route.match("/user/keys/1337", "/user/keys/1337", &params)
+			_ = route.match("/user/keys/1337", "/user/keys/1337", &params)
 		}
 	})
+
+	// Single-threaded verification to preserve correctness checks
+	var verifyParams [maxParams]string
+	match := route.match("/user/keys/1337", "/user/keys/1337", &verifyParams)
 	require.True(b, match)
-	require.Equal(b, []string{"1337"}, params[0:len(parsed.params)])
+	require.Equal(b, []string{"1337"}, verifyParams[0:len(parsed.params)])
 }
 
 func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
@@ -2295,20 +2308,28 @@ func Benchmark_Router_GitHub_API_Parallel(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
 	app.startupProcess()
-	c := &fasthttp.RequestCtx{}
-	var match bool
-	var err error
 	b.ResetTimer()
 	for i := range routesFixture.TestRoutes {
 		b.RunParallel(func(pb *testing.PB) {
+			// Each worker gets its own RequestCtx and local variables to avoid data races
+			c := &fasthttp.RequestCtx{}
 			c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
 			for pb.Next() {
 				c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 				ctx := acquireDefaultCtxForRouterBenchmark(b, app, c)
-				match, err = app.next(ctx)
+				//nolint:errcheck // Benchmark hot path - error checked in verification
+				_, _ = app.next(ctx)
 				app.ReleaseCtx(ctx)
 			}
 		})
+
+		// Single-threaded verification on a fresh context to preserve correctness checks
+		verifyC := &fasthttp.RequestCtx{}
+		verifyC.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
+		verifyC.URI().SetPath(routesFixture.TestRoutes[i].Path)
+		verifyCtx := acquireDefaultCtxForRouterBenchmark(b, app, verifyC)
+		match, err := app.next(verifyCtx)
+		app.ReleaseCtx(verifyCtx)
 		require.NoError(b, err)
 		require.True(b, match)
 	}
