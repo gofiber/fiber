@@ -2046,7 +2046,7 @@ func Benchmark_App_MethodNotAllowed_Parallel(b *testing.B) {
 			appHandler(c)
 		}
 	})
-	
+
 	// Single-threaded verification on a fresh context to preserve correctness checks
 	verifyCtx := &fasthttp.RequestCtx{}
 	verifyCtx.Request.Header.SetMethod("DELETE")
@@ -2166,6 +2166,7 @@ func Benchmark_Router_Next_Parallel(b *testing.B) {
 		c := acquireDefaultCtxForRouterBenchmark(b, app, request)
 		for pb.Next() {
 			c.indexRoute = -1
+			//nolint:errcheck // Benchmark hot path - error checked in verification
 			_, _ = app.next(c)
 		}
 	})
@@ -2212,7 +2213,7 @@ func Benchmark_Route_Match_Parallel(b *testing.B) {
 			_ = route.match("/user/keys/1337", "/user/keys/1337", &params)
 		}
 	})
-	
+
 	// Single-threaded verification to preserve correctness checks
 	var verifyParams [maxParams]string
 	match := route.match("/user/keys/1337", "/user/keys/1337", &verifyParams)
@@ -2316,11 +2317,12 @@ func Benchmark_Router_GitHub_API_Parallel(b *testing.B) {
 			for pb.Next() {
 				c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 				ctx := acquireDefaultCtxForRouterBenchmark(b, app, c)
+				//nolint:errcheck // Benchmark hot path - error checked in verification
 				_, _ = app.next(ctx)
 				app.ReleaseCtx(ctx)
 			}
 		})
-		
+
 		// Single-threaded verification on a fresh context to preserve correctness checks
 		verifyC := &fasthttp.RequestCtx{}
 		verifyC.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
