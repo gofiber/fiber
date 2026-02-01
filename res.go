@@ -67,11 +67,11 @@ type sendFileStore struct {
 	config            SendFile
 }
 
-// compareConfig compares the current SendFile config with the new one
-// and returns true if they are different.
+// configEqual compares the current SendFile config with the new one
+// and returns true if they are equal.
 //
 // Here we don't use reflect.DeepEqual because it is quite slow compared to manual comparison.
-func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
+func (sf *sendFileStore) configEqual(cfg SendFile) bool {
 	if sf.config.FS != cfg.FS {
 		return false
 	}
@@ -772,7 +772,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	app := r.c.app
 	app.sendfilesMutex.RLock()
 	for _, sf := range app.sendfiles {
-		if sf.compareConfig(cfg) {
+		if sf.configEqual(cfg) {
 			fsHandler = sf.handler
 			cacheControlValue = sf.cacheControlValue
 			break
