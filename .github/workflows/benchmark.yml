@@ -66,6 +66,11 @@ jobs:
           mv output_prefixed.txt output.txt
       ### end
 
+      - name: Remove _Parallel Benchmarks
+        run: |
+          awk '!/^Benchmark.*_Parallel/' output.txt > output_filtered.txt
+          mv output_filtered.txt output.txt
+
       # NOTE: Benchmarks could change with different CPU types
       - name: Get GitHub Runner System Information
         uses: kenchan0130/actions-system-info@59699597e84e80085a750998045983daa49274c4 # v1.4.0
