@@ -8431,21 +8431,6 @@ func Benchmark_Ctx_IsFromLocalhost(b *testing.B) {
 		app.ReleaseCtx(c)
 	})
 
-	// Scenario without localhost check in parallel
-	b.Run("Non_Localhost_Parallel", func(b *testing.B) {
-		app := New()
-		b.ReportAllocs()
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			c.Request().SetRequestURI("http://google.com:8080/test")
-			for pb.Next() {
-				c.IsFromLocal()
-			}
-			app.ReleaseCtx(c)
-		})
-	})
-
 	// Scenario with localhost check
 	b.Run("Localhost", func(b *testing.B) {
 		app := New()
@@ -8456,21 +8441,6 @@ func Benchmark_Ctx_IsFromLocalhost(b *testing.B) {
 			c.IsFromLocal()
 		}
 		app.ReleaseCtx(c)
-	})
-
-	// Scenario with localhost check in parallel
-	b.Run("Localhost_Parallel", func(b *testing.B) {
-		app := New()
-		b.ReportAllocs()
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			c.Request().SetRequestURI("http://localhost:8080/test")
-			for pb.Next() {
-				c.IsFromLocal()
-			}
-			app.ReleaseCtx(c)
-		})
 	})
 }
 
