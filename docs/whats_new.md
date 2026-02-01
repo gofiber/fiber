@@ -1588,8 +1588,6 @@ The Session middleware has undergone key changes in v3 to improve functionality 
 
 #### Key Updates
 
-### Session
-
 The session middleware has undergone significant improvements in v3, focusing on type safety, flexibility, and better developer experience.
 
 #### Key Changes
