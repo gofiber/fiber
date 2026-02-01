@@ -2150,21 +2150,28 @@ func Benchmark_Router_Next_Parallel(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
 	app.startupProcess()
-	request := &fasthttp.RequestCtx{}
-	request.Request.Header.SetMethod("DELETE")
-	request.URI().SetPath("/user/keys/1337")
-	var res bool
-	var err error
-	c := acquireDefaultCtxForRouterBenchmark(b, app, request)
 	b.RunParallel(func(pb *testing.PB) {
+		// Each worker gets its own request and context to avoid data races.
+		request := &fasthttp.RequestCtx{}
+		request.Request.Header.SetMethod("DELETE")
+		request.URI().SetPath("/user/keys/1337")
+		c := acquireDefaultCtxForRouterBenchmark(b, app, request)
 		for pb.Next() {
 			c.indexRoute = -1
-			res, err = app.next(c)
+			_, _ = app.next(c)
 		}
 	})
+
+	// Single-threaded verification on a fresh context to preserve correctness checks.
+	verifyRequest := &fasthttp.RequestCtx{}
+	verifyRequest.Request.Header.SetMethod("DELETE")
+	verifyRequest.URI().SetPath("/user/keys/1337")
+	verifyCtx := acquireDefaultCtxForRouterBenchmark(b, app, verifyRequest)
+	verifyCtx.indexRoute = -1
+	res, err := app.next(verifyCtx)
 	require.NoError(b, err)
 	require.True(b, res)
-	require.Equal(b, 4, c.indexRoute)
+	require.Equal(b, 4, verifyCtx.indexRoute)
 }
 
 func Benchmark_Router_Next_Default_Immutable_Parallel(b *testing.B) {
