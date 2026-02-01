@@ -2003,3 +2003,189 @@ func Test_AddRoute_MergeHandlers(t *testing.T) {
 	require.Len(t, app.stack[app.methodInt(MethodGet)], 1)
 	require.Len(t, app.stack[app.methodInt(MethodGet)][0].Handlers, 2)
 }
+
+func Test_Route_InvalidMediaType(t *testing.T) {
+	t.Run("produces", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Produces("invalid")
+		})
+	})
+	t.Run("consumes", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Consumes("invalid")
+		})
+	})
+	t.Run("request body", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Post("/", testEmptyHandler).RequestBody("payload", true, "invalid")
+		})
+	})
+	t.Run("request body missing type", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Post("/", testEmptyHandler).RequestBody("payload", true)
+		})
+	})
+	t.Run("response", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Response(StatusOK, "", "invalid")
+		})
+	})
+	t.Run("parameter", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Parameter("foo", "body", true, nil, "")
+		})
+	})
+}
+
+func Test_App_Produces(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).Produces(MIMEApplicationJSON)
+	route := app.stack[app.methodInt(MethodGet)][0]
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
+}
+
+func Test_App_RequestBody(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Post("/users", testEmptyHandler).
+		RequestBody("User payload", true, MIMEApplicationJSON, MIMEApplicationXML)
+
+	route := app.stack[app.methodInt(MethodPost)][0]
+	require.NotNil(t, route.RequestBody)
+	require.Equal(t, "User payload", route.RequestBody.Description)
+	require.True(t, route.RequestBody.Required)
+	require.Equal(t, []string{MIMEApplicationJSON, MIMEApplicationXML}, route.RequestBody.MediaTypes)
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Consumes)
+}
+
+func Test_App_RequestBodyWithExample(t *testing.T) {
+	t.Parallel()
+	examples := map[string]any{
+		"sample": map[string]any{"name": "john"},
+	}
+	app := New()
+	app.Post("/users", testEmptyHandler).
+		RequestBodyWithExample("payload", true, map[string]any{"type": "object"}, "#/components/schemas/User", map[string]any{"name": "doe"}, examples, MIMEApplicationJSON)
+
+	route := app.stack[app.methodInt(MethodPost)][0]
+	require.NotNil(t, route.RequestBody)
+	require.Equal(t, "#/components/schemas/User", route.RequestBody.SchemaRef)
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/User"}, route.RequestBody.Schema)
+	require.Equal(t, map[string]any{"name": "doe"}, route.RequestBody.Example)
+	require.Equal(t, examples, route.RequestBody.Examples)
+}
+
+func Test_App_Parameter(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/:id", testEmptyHandler).
+		Parameter("id", "path", false, map[string]any{"type": "integer"}, "identifier").
+		Parameter("filter", "query", true, nil, "Filter results")
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.Len(t, route.Parameters, 2)
+
+	pathParam := route.Parameters[0]
+	require.Equal(t, "id", pathParam.Name)
+	require.Equal(t, "path", pathParam.In)
+	require.True(t, pathParam.Required)
+	require.Equal(t, "integer", pathParam.Schema["type"])
+	require.Equal(t, "identifier", pathParam.Description)
+
+	queryParam := route.Parameters[1]
+	require.Equal(t, "filter", queryParam.Name)
+	require.Equal(t, "query", queryParam.In)
+	require.True(t, queryParam.Required)
+	require.Equal(t, "string", queryParam.Schema["type"])
+	require.Equal(t, "Filter results", queryParam.Description)
+}
+
+func Test_App_ParameterWithExample(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/:id", testEmptyHandler).
+		ParameterWithExample("id", "path", false, nil, "#/components/schemas/ID", "identifier", "123", map[string]any{"sample": 123})
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.Len(t, route.Parameters, 1)
+
+	param := route.Parameters[0]
+	require.Equal(t, "id", param.Name)
+	require.Equal(t, "path", param.In)
+	require.True(t, param.Required)
+	require.Equal(t, "#/components/schemas/ID", param.SchemaRef)
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/ID"}, param.Schema)
+	require.Equal(t, "identifier", param.Description)
+	require.Equal(t, "123", param.Example)
+	require.Equal(t, map[string]any{"sample": 123}, param.Examples)
+}
+
+func Test_App_Response(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).
+		Response(StatusOK, "OK", MIMEApplicationJSON).
+		Response(StatusCreated, "Created", MIMEApplicationJSON).
+		Response(0, "Default fallback")
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
+	require.Len(t, route.Responses, 3)
+
+	okResp, ok := route.Responses["200"]
+	require.True(t, ok)
+	require.Equal(t, "OK", okResp.Description)
+	require.Equal(t, []string{MIMEApplicationJSON}, okResp.MediaTypes)
+
+	created, ok := route.Responses["201"]
+	require.True(t, ok)
+	require.Equal(t, "Created", created.Description)
+
+	defResp, ok := route.Responses["default"]
+	require.True(t, ok)
+	require.Equal(t, "Default fallback", defResp.Description)
+}
+
+func Test_App_ResponseWithExample(t *testing.T) {
+	t.Parallel()
+	examples := map[string]any{"sample": map[string]any{"id": 2}}
+	app := New()
+	app.Get("/", testEmptyHandler).
+		ResponseWithExample(StatusOK, "user response", nil, "#/components/schemas/User", map[string]any{"id": 1}, examples, MIMEApplicationJSON)
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	resp, ok := route.Responses["200"]
+	require.True(t, ok)
+	require.Equal(t, "#/components/schemas/User", resp.SchemaRef)
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/User"}, resp.Schema)
+	require.Equal(t, map[string]any{"id": 1}, resp.Example)
+	require.Equal(t, examples, resp.Examples)
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
+}
+
+func Test_App_Response_InvalidStatus(t *testing.T) {
+	t.Parallel()
+	app := New()
+	require.Panics(t, func() {
+		app.Get("/", testEmptyHandler).Response(42, "invalid")
+	})
+}
+
+func Test_App_Deprecated(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).Deprecated()
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.True(t, route.Deprecated)
+}

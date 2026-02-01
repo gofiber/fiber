@@ -46,6 +46,78 @@ func (grp *Group) Name(name string) Router {
 	return grp
 }
 
+// Summary assigns a short summary to the most recently added route in the group.
+func (grp *Group) Summary(sum string) Router {
+	grp.app.Summary(sum)
+	return grp
+}
+
+// Description assigns a description to the most recently added route in the group.
+func (grp *Group) Description(desc string) Router {
+	grp.app.Description(desc)
+	return grp
+}
+
+// Consumes assigns a request media type to the most recently added route in the group.
+func (grp *Group) Consumes(typ string) Router {
+	grp.app.Consumes(typ)
+	return grp
+}
+
+// Produces assigns a response media type to the most recently added route in the group.
+func (grp *Group) Produces(typ string) Router {
+	grp.app.Produces(typ)
+	return grp
+}
+
+// RequestBody documents the request payload for the most recently added route in the group.
+func (grp *Group) RequestBody(description string, required bool, mediaTypes ...string) Router {
+	grp.app.RequestBody(description, required, mediaTypes...)
+	return grp
+}
+
+// RequestBodyWithExample documents the request payload for the most recently added route in the group with schema references and examples.
+func (grp *Group) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	grp.app.RequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...)
+	return grp
+}
+
+// Parameter documents an input parameter for the most recently added route in the group.
+func (grp *Group) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+	grp.app.Parameter(name, in, required, schema, description)
+	return grp
+}
+
+// ParameterWithExample documents an input parameter for the most recently added route in the group with schema references and examples.
+func (grp *Group) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef string, description string, example any, examples map[string]any) Router {
+	grp.app.ParameterWithExample(name, in, required, schema, schemaRef, description, example, examples)
+	return grp
+}
+
+// Response documents an HTTP response for the most recently added route in the group.
+func (grp *Group) Response(status int, description string, mediaTypes ...string) Router {
+	grp.app.Response(status, description, mediaTypes...)
+	return grp
+}
+
+// ResponseWithExample documents an HTTP response for the most recently added route in the group with schema references and examples.
+func (grp *Group) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	grp.app.ResponseWithExample(status, description, schema, schemaRef, example, examples, mediaTypes...)
+	return grp
+}
+
+// Tags assigns tags to the most recently added route in the group.
+func (grp *Group) Tags(tags ...string) Router {
+	grp.app.Tags(tags...)
+	return grp
+}
+
+// Deprecated marks the most recently added route in the group as deprecated.
+func (grp *Group) Deprecated() Router {
+	grp.app.Deprecated()
+	return grp
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 // Also, you can pass another app instance as a sub-router along a routing path.
@@ -71,7 +143,7 @@ func (grp *Group) Use(args ...any) Router {
 	var subApp *App
 	var prefix string
 	var prefixes []string
-	var handlers []Handler
+	var handlers []any
 
 	for i := range args {
 		switch arg := args[i].(type) {
