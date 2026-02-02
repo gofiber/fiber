@@ -180,7 +180,7 @@ Middleware are executed in the order they are registered. This sequential design
 
 Fiber allows mounting sub‑applications (or sub‑routers) under specific path prefixes. This enables modular design of large APIs. The mounting process works as follows:
 
-1. Defining a Mount Point: A parent application calls `App.Mount()` or a Group calls its own `mount()` method.
+1. Defining a Mount Point: A parent application (or group) calls `Use` with a sub-app, which triggers the internal mount path logic.
 2. Merging Mount Fields: The sub‑app’s mount fields are updated with the prefix of the parent, and its routes are integrated into the parent’s routing structure.
 3. Processing Sub‑App Routes: During startup, the parent app collects routes from mounted sub‑apps and builds a unified route tree.
 

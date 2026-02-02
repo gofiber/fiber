@@ -128,7 +128,7 @@ func (h *Hooks) OnGroupName(handler ...OnGroupNameHandler)
 
 ## OnListen
 
-Runs when the app starts listening via `Listen`, `ListenTLS`, or `Listener`.
+Runs when the app starts listening via `Listen` or `Listener`.
 
 ```go title="Signature"
 func (h *Hooks) OnListen(handler ...OnListenHandler)
@@ -310,7 +310,7 @@ func main() {
         return nil
     })
 
-    app.Mount("/sub", subApp)
+    app.Use("/sub", subApp)
 }
 
 func testSimpleHandler(c fiber.Ctx) error {
