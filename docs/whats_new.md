@@ -59,9 +59,9 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
-## Drop for old Go versions
+## Dropping support for old Go versions
 
-Fiber `v3` drops support for Go versions below `1.25`. We recommend upgrading to Go `1.25` or higher to use Fiber `v3`.
+Fiber `v3` requires Go `1.25` or later. Update your toolchain to `1.25+` before upgrading so the module `go` directive and standard library features align with the new minimum version.
 
 ## 🚀 App
 
@@ -248,13 +248,13 @@ app.Shutdown()      // Never reached
 
 We have made several changes to the Fiber listen, including:
 
-- Removed `OnShutdownError` and `OnShutdownSuccess` from `ListenerConfig` in favor of using `OnPostShutdown` hook which receives the shutdown error
+- Removed `OnShutdownError` and `OnShutdownSuccess` from `ListenConfig` in favor of using the `OnPostShutdown` hook, which receives the shutdown error
 
 ```go
 app := fiber.New()
 
-// Before - using ListenerConfig callbacks
-app.Listen(":3000", fiber.ListenerConfig{
+// Before - using ListenConfig callbacks
+app.Listen(":3000", fiber.ListenConfig{
     OnShutdownError: func(err error) {
         log.Printf("Shutdown error: %v", err)
     },
@@ -293,7 +293,7 @@ app.Listen("app.sock")
 
 // v3 - Fiber does it for you
 app := fiber.New()
-app.Listen("app.sock", fiber.ListenerConfig{
+app.Listen("app.sock", fiber.ListenConfig{
     ListenerNetwork:    fiber.NetworkUnix,
     UnixSocketFileMode: 0770,
 })
@@ -1380,8 +1380,8 @@ The `ExcludeVars` field has been removed from the EnvVar middleware configuratio
 
 ### Filesystem
 
-We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
-Now, static middleware can do everything that filesystem middleware and static do. You can check out [static middleware](./middleware/static.md) or [migration guide](#-migration-guide) to see what has been changed.
+The filesystem middleware was removed to reduce confusion with the static middleware.
+The static middleware now covers the functionality of both. Review the [static middleware](./middleware/static.md) docs or the [migration guide](#-migration-guide) for the updated usage.
 
 ### Healthcheck
 
@@ -1397,7 +1397,7 @@ New `Challenge`, `Error`, `ErrorDescription`, `ErrorURI`, and `Scope` fields all
 
 ### Logger
 
-New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without any extra afford. For example, you can use `zap` with Fiber logger middleware like this:
+New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without an extra adapter. For example, you can use `zap` with Fiber logger middleware like this:
 
 Custom logger integrations should update any `LoggerFunc` implementations to the new signature that receives a pointer to the middleware config: `func(c fiber.Ctx, data *logger.Data, cfg *logger.Config) error`.
 
@@ -1794,8 +1794,9 @@ app.OnShutdown(func() {
 
 ```go
 // After
-app.OnPreShutdown(func() {
+app.Hooks().OnPreShutdown(func() error {
     // Code to run before shutdown
+    return nil
 })
 ```
 
@@ -1804,7 +1805,8 @@ app.OnPreShutdown(func() {
 The `Listen` helpers (`ListenTLS`, `ListenMutualTLS`, etc.) were removed. Use
 `app.Listen()` with `fiber.ListenConfig` and a `tls.Config` when TLS is required.
 Options such as `ListenerNetwork` and `UnixSocketFileMode` are now configured via
-this struct.
+this struct. Prefer `TLSConfig` when you need full control, or use `CertFile` and
+`CertKeyFile` for quick TLS setup.
 
 ```go
 // Before
@@ -1814,8 +1816,8 @@ app.ListenTLS(":3000", "cert.pem", "key.pem")
 ```go
 // After
 app.Listen(":3000", fiber.ListenConfig{
-    CertFile: "./cert.pem",
-    CertKeyFile: "./cert.key",
+    CertFile:    "./cert.pem",
+    CertKeyFile: "./key.pem",
 })
 ```
 
