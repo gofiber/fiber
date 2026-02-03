@@ -118,7 +118,7 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 
 ## ⚠️ Limitations
 
-- Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.24 or higher.
+- Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.25 or higher.
 - Fiber automatically adapts common `net/http` handler shapes when you register them on the router, and you can still use the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/) when you need to bridge entire apps or `net/http` middleware.
 
 ### net/http compatibility
