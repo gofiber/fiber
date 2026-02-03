@@ -93,7 +93,12 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 			if i > 0 || format != "" {
 				buf.WriteByte(' ')
 			}
-			buf.WriteString(keysAndValues[i].(string)) //nolint:forcetypeassert,errcheck // Keys must be strings
+			switch key := keysAndValues[i].(type) {
+			case string:
+				buf.WriteString(key)
+			default:
+				_, _ = fmt.Fprint(buf, key)
+			}
 			buf.WriteByte('=')
 			buf.WriteString(utils.ToString(keysAndValues[i+1]))
 		}
