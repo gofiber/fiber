@@ -332,21 +332,39 @@ func (k stringKey) String() string {
 func Test_DefaultLoggerNonStringKeys(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	l := &defaultLogger{
-		stdlog: log.New(&buf, "", 0),
-		level:  LevelTrace,
-		depth:  4,
-	}
+	t.Run("Tracew with non-string keys", func(t *testing.T) {
+		t.Parallel()
 
-	require.NotPanics(t, func() {
-		l.Tracew("trace", 123, "value", stringKey{value: "alpha"}, 42)
-	})
-	require.NotPanics(t, func() {
-		l.Infow("info", 456, "value", stringKey{value: "beta"}, 7)
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+
+		require.NotPanics(t, func() {
+			l.Tracew("trace", 123, "value", stringKey{value: "alpha"}, 42)
+		})
+
+		require.Equal(t, "[Trace] trace 123=value key:alpha=42\n", buf.String())
 	})
 
-	require.Equal(t, "[Trace] trace 123=value key:alpha=42\n[Info] info 456=value key:beta=7\n", buf.String())
+	t.Run("Infow with non-string keys", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+
+		require.NotPanics(t, func() {
+			l.Infow("info", 456, "value", stringKey{value: "beta"}, 7)
+		})
+
+		require.Equal(t, "[Info] info 456=value key:beta=7\n", buf.String())
+	})
 }
 
 func Benchmark_LogfKeyAndValues(b *testing.B) {
