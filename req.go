@@ -486,6 +486,9 @@ func (r *DefaultReq) Hostname() string {
 // Port returns the remote port of the request.
 func (r *DefaultReq) Port() string {
 	addr := r.c.fasthttp.RemoteAddr()
+	if addr == nil {
+		return "0"
+	}
 	switch typedAddr := addr.(type) {
 	case *net.TCPAddr:
 		return strconv.Itoa(typedAddr.Port)
