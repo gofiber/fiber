@@ -30,6 +30,19 @@ func (app *App) hasConfiguredServices() bool {
 	return len(app.configured.Services) > 0
 }
 
+func (app *App) validateConfiguredServices() error {
+	return validateServicesSlice(app.configured.Services)
+}
+
+func validateServicesSlice(services []Service) error {
+	for idx, srv := range services {
+		if srv == nil {
+			return fmt.Errorf("fiber: service at index %d is nil", idx)
+		}
+	}
+	return nil
+}
+
 // initServices If the app is configured to use services, this function registers
 // a post shutdown hook to shutdown them after the server is closed.
 // This function panics if there is an error starting the services.
@@ -71,7 +84,10 @@ func (app *App) startServices(ctx context.Context) error {
 	}
 
 	var errs []error
-	for _, srv := range app.configured.Services {
+	for idx, srv := range app.configured.Services {
+		if srv == nil {
+			return fmt.Errorf("fiber: service at index %d is nil", idx)
+		}
 		if err := ctx.Err(); err != nil {
 			// Context is canceled, return an error the soonest possible, so that
 			// the user can see the context cancellation error and act on it.
@@ -103,7 +119,10 @@ func (app *App) shutdownServices(ctx context.Context) error {
 	}
 
 	var errs []error
-	for _, srv := range app.state.Services() {
+	for key, srv := range app.state.Services() {
+		if srv == nil {
+			return fmt.Errorf("fiber: service %q is nil", key)
+		}
 		if err := ctx.Err(); err != nil {
 			// Context is canceled, do a best effort to terminate the services.
 			errs = append(errs, fmt.Errorf("service %s terminate: %w", srv.String(), err))
@@ -123,10 +142,11 @@ func (app *App) shutdownServices(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// logServices logs information about services
-func (app *App) logServices(ctx context.Context, out io.Writer, colors *Colors) {
+// logServices logs information about services and returns an error
+// if any configured service is nil.
+func (app *App) logServices(ctx context.Context, out io.Writer, colors *Colors) error {
 	if !app.hasConfiguredServices() {
-		return
+		return nil
 	}
 
 	scheme := colors
@@ -137,7 +157,10 @@ func (app *App) logServices(ctx context.Context, out io.Writer, colors *Colors) 
 	fmt.Fprintf(out,
 		"%sINFO%s Services: \t%s%d%s\n",
 		scheme.Green, scheme.Reset, scheme.Blue, app.state.ServicesLen(), scheme.Reset)
-	for _, srv := range app.state.Services() {
+	for key, srv := range app.state.Services() {
+		if srv == nil {
+			return fmt.Errorf("fiber: service %q is nil", key)
+		}
 		var state string
 		var stateColor string
 		state, err := srv.State(ctx)
@@ -150,4 +173,5 @@ func (app *App) logServices(ctx context.Context, out io.Writer, colors *Colors) 
 		}
 		fmt.Fprintf(out, "%sINFO%s    🧩 %s[ %s ] %s%s\n", scheme.Green, scheme.Reset, stateColor, utils.ToUpper(state), srv.String(), scheme.Reset)
 	}
+	return nil
 }

@@ -421,6 +421,7 @@ func Test_ShutdownServices(t *testing.T) {
 }
 
 func Test_LogServices(t *testing.T) {
+	t.Parallel()
 	// Service with successful State
 	runningService := &mockService{name: "running", started: true}
 	// Service with State error
@@ -446,7 +447,8 @@ func Test_LogServices(t *testing.T) {
 		Red:   "\033[31m",
 	}
 
-	app.logServices(context.Background(), &buf, &colors)
+	err := app.logServices(context.Background(), &buf, &colors)
+	require.NoError(t, err)
 
 	output := buf.String()
 
@@ -461,6 +463,16 @@ func Test_LogServices(t *testing.T) {
 		expected := fmt.Sprintf("%sINFO%s    🧩 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), srv.String(), colors.Reset)
 		require.Contains(t, output, expected)
 	}
+}
+
+func Test_NewConfiguredServicesNil(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithError(t, "fiber: service at index 0 is nil", func() {
+		New(Config{
+			Services: []Service{nil},
+		})
+	})
 }
 
 func Test_ServiceContextProviders(t *testing.T) {

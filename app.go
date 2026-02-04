@@ -557,6 +557,9 @@ func New(config ...Config) *App {
 
 	// Initialize configured before defaults are set
 	app.configured = app.config
+	if err := app.validateConfiguredServices(); err != nil {
+		panic(err)
+	}
 
 	// Override default values
 	if app.config.BodyLimit <= 0 {

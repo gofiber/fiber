@@ -459,7 +459,9 @@ func (app *App) startupMessage(listenData *ListenData, cfg *ListenConfig) {
 
 	printStartupEntries(out, &colors, preData.entries)
 
-	app.logServices(app.servicesStartupCtx(), out, &colors)
+	if err := app.logServices(app.servicesStartupCtx(), out, &colors); err != nil {
+		log.Errorf("failed to log services: %v", err)
+	}
 
 	if listenData.Prefork && len(listenData.ChildPIDs) > 0 {
 		fmt.Fprintf(out, "%sINFO%s Child PIDs: \t\t%s", colors.Green, colors.Reset, colors.Blue)
