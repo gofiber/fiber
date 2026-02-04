@@ -46,6 +46,19 @@ const epsilon = 0.001
 
 type testContextKey struct{}
 
+type testNetAddr struct {
+	network string
+	address string
+}
+
+func (t testNetAddr) Network() string {
+	return t.network
+}
+
+func (t testNetAddr) String() string {
+	return t.address
+}
+
 // go test -run Test_Ctx_Accepts
 func Test_Ctx_Accepts(t *testing.T) {
 	t.Parallel()
@@ -2690,6 +2703,64 @@ func Test_Ctx_Port(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	require.Equal(t, "0", c.Port())
+}
+
+// go test -run Test_Ctx_Port_RemoteAddrVariants
+func Test_Ctx_Port_RemoteAddrVariants(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		remote net.Addr
+		want   string
+	}{
+		{
+			name: "tcp",
+			remote: &net.TCPAddr{
+				IP:   net.IPv4(127, 0, 0, 1),
+				Port: 8080,
+			},
+			want: "8080",
+		},
+		{
+			name:   "unix",
+			remote: &net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"},
+			want:   "",
+		},
+		{
+			name:   "default-remote",
+			remote: nil,
+			want:   "0",
+		},
+		{
+			name:   "string-host-port",
+			remote: testNetAddr{network: "tcp", address: "192.0.2.1:443"},
+			want:   "443",
+		},
+		{
+			name:   "string-missing-port",
+			remote: testNetAddr{network: "tcp", address: "192.0.2.1"},
+			want:   "",
+		},
+		{
+			name:   "string-ipv6-port",
+			remote: testNetAddr{network: "tcp", address: "[2001:db8::1]:8443"},
+			want:   "8443",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defaultCtx, ok := ctx.(*DefaultCtx)
+			require.True(t, ok)
+			defaultCtx.fasthttp.SetRemoteAddr(test.remote)
+			require.Equal(t, test.want, ctx.Port())
+			app.ReleaseCtx(ctx)
+		})
+	}
 }
 
 // go test -run Test_Ctx_PortInHandler
