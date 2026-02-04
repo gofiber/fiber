@@ -500,7 +500,10 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 		return offers[0]
 	}
 
-	acceptedTypes := make([]acceptedType, 0, 8)
+	// Use stack-allocated array for typical cases (most Accept headers have <8 types)
+	// This avoids heap allocation in the common case
+	var acceptedTypesArray [8]acceptedType
+	acceptedTypes := acceptedTypesArray[:0]
 	order := 0
 
 	// Parse header and get accepted types with their quality and specificity
