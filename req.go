@@ -485,11 +485,23 @@ func (r *DefaultReq) Hostname() string {
 
 // Port returns the remote port of the request.
 func (r *DefaultReq) Port() string {
-	tcpaddr, ok := r.c.fasthttp.RemoteAddr().(*net.TCPAddr)
-	if !ok {
-		panic(errTCPAddrTypeAssertion)
+	addr := r.c.fasthttp.RemoteAddr()
+	if addr == nil {
+		return "0"
 	}
-	return strconv.Itoa(tcpaddr.Port)
+	switch typedAddr := addr.(type) {
+	case *net.TCPAddr:
+		return strconv.Itoa(typedAddr.Port)
+	case *net.UnixAddr:
+		return ""
+	}
+
+	_, port, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return ""
+	}
+
+	return port
 }
 
 // IP returns the remote IP address of the request.
