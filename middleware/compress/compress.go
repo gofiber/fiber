@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/etag"
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 
@@ -38,6 +39,9 @@ func shouldSkip(c fiber.Ctx) bool {
 	return false
 }
 
+// Pre-allocated byte slice for Vary header separator
+var varyCommaSpace = []byte(", ")
+
 func appendVaryAcceptEncoding(c fiber.Ctx) {
 	vary := c.GetRespHeader(fiber.HeaderVary)
 	if vary == "" {
@@ -47,7 +51,13 @@ func appendVaryAcceptEncoding(c fiber.Ctx) {
 	if hasToken(vary, "*") || hasToken(vary, fiber.HeaderAcceptEncoding) {
 		return
 	}
-	c.Set(fiber.HeaderVary, vary+", "+fiber.HeaderAcceptEncoding)
+	// Use bytebufferpool to avoid string concatenation allocation
+	buf := bytebufferpool.Get()
+	buf.WriteString(vary)
+	buf.Write(varyCommaSpace)
+	buf.WriteString(fiber.HeaderAcceptEncoding)
+	c.Set(fiber.HeaderVary, string(buf.Bytes()))
+	bytebufferpool.Put(buf)
 }
 
 // New creates a new middleware handler

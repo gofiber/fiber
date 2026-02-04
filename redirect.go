@@ -330,21 +330,25 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 
 	// Check queries
 	if len(cfg.Queries) > 0 {
-		queryText := bytebufferpool.Get()
-		defer bytebufferpool.Put(queryText)
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+
+		// Build full URL with query string using buffer to avoid string concatenation
+		buf.WriteString(location)
+		buf.WriteByte('?')
 
 		first := true
 		for k, v := range cfg.Queries {
 			if !first {
-				queryText.WriteByte('&')
+				buf.WriteByte('&')
 			}
 			first = false
-			queryText.WriteString(k)
-			queryText.WriteByte('=')
-			queryText.WriteString(v)
+			buf.WriteString(k)
+			buf.WriteByte('=')
+			buf.WriteString(v)
 		}
 
-		return r.To(location + "?" + r.c.app.toString(queryText.Bytes()))
+		return r.To(r.c.app.toString(buf.Bytes()))
 	}
 
 	return r.To(location)
