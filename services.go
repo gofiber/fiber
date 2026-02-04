@@ -142,7 +142,8 @@ func (app *App) shutdownServices(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// logServices logs information about services
+// logServices logs information about services and returns an error
+// if any configured service is nil.
 func (app *App) logServices(ctx context.Context, out io.Writer, colors *Colors) error {
 	if !app.hasConfiguredServices() {
 		return nil
