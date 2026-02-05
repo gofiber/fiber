@@ -158,7 +158,7 @@ func (r *DefaultRes) Append(field string, values ...string) {
 // with optional whitespace (OWS) around them.
 func headerContainsValue(header, value string) bool {
 	// Empty value should never match
-	if value == "" {
+	if value == "" || header == "" {
 		return false
 	}
 
@@ -167,11 +167,31 @@ func headerContainsValue(header, value string) bool {
 		return true
 	}
 
-	// Check each comma-separated element, handling optional whitespace (OWS)
-	for part := range strings.SplitSeq(header, ",") {
-		if utils.TrimSpace(part) == value {
+	// Parse comma-separated elements in a single pass, trimming only OWS
+	// (SP / HTAB) as defined by RFC 9110.
+	start := 0
+	for start <= len(header) {
+		end := strings.IndexByte(header[start:], ',')
+		if end < 0 {
+			end = len(header) - start
+		}
+
+		partStart, partEnd := start, start+end
+		for partStart < partEnd && (header[partStart] == ' ' || header[partStart] == '\t') {
+			partStart++
+		}
+		for partEnd > partStart && (header[partEnd-1] == ' ' || header[partEnd-1] == '\t') {
+			partEnd--
+		}
+
+		if partEnd-partStart == len(value) && header[partStart:partEnd] == value {
 			return true
 		}
+
+		if start+end >= len(header) {
+			break
+		}
+		start += end + 1
 	}
 
 	return false

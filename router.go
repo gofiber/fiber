@@ -735,10 +735,11 @@ func (app *App) buildTree() *App {
 			prefixCounts[treePaths[i]]++
 		}
 
+		prevBuckets := app.treeStack[method]
 		tsMap := make(map[int][]*Route, len(prefixCounts)+1)
-		tsMap[0] = make([]*Route, 0, globalCount)
+		tsMap[0] = reuseRouteBucket(prevBuckets, 0, globalCount)
 		for treePath, count := range prefixCounts {
-			tsMap[treePath] = make([]*Route, 0, count+globalCount)
+			tsMap[treePath] = reuseRouteBucket(prevBuckets, treePath, count+globalCount)
 		}
 
 		for i, route := range routes {
@@ -760,4 +761,11 @@ func (app *App) buildTree() *App {
 	// reset the flag and return
 	app.routesRefreshed = false
 	return app
+}
+
+func reuseRouteBucket(prev map[int][]*Route, key, capHint int) []*Route {
+	if bucket, ok := prev[key]; ok && cap(bucket) >= capHint {
+		return bucket[:0]
+	}
+	return make([]*Route, 0, capHint)
 }

@@ -619,9 +619,12 @@ func (c *DefaultCtx) configDependentPaths() {
 
 	// another path is specified which is for routing recognition only
 	// use the path that was changed by the previous configuration flags
-	c.detectionPath = append(c.detectionPath[:0], c.path...)
-	// If CaseSensitive is disabled, we lowercase the original path
-	if !c.app.config.CaseSensitive {
+	c.detectionPath = c.path
+	// If CaseSensitive is disabled, lowercase only when needed.
+	// For already-lowercase paths we can reuse c.path directly and avoid an extra copy.
+	if !c.app.config.CaseSensitive && containsUpperASCII(c.path) {
+		// cap=0 forces append to allocate a separate backing array, preventing aliasing c.path.
+		c.detectionPath = append(c.detectionPath[:0:0], c.path...)
 		c.detectionPath = utils.ToLowerBytes(c.detectionPath)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes

@@ -381,8 +381,8 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 
 	dst = dst[:0]
 	segmentStart := 0
-	for i, c := range headerValue {
-		if c == ',' {
+	for i := 0; i < len(headerValue); i++ {
+		if headerValue[i] == ',' {
 			dst = append(dst, utils.TrimSpace(headerValue[segmentStart:i]))
 			segmentStart = i + 1
 		}
@@ -744,28 +744,60 @@ func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocr
 // Both forms indicate the response should not be served from cache without revalidation.
 func isNoCache(cacheControl string) bool {
 	n := len(cacheControl)
-	ncLen := len(noCacheValue)
-	for i := 0; i <= n-ncLen; i++ {
-		if !utils.EqualFold(cacheControl[i:i+ncLen], noCacheValue) {
+	if n < len(noCacheValue) {
+		return false
+	}
+
+	const noCacheLen = len(noCacheValue)
+	const asciiCaseFold = byte(0x20)
+	for i := 0; i <= n-noCacheLen; i++ {
+		if (cacheControl[i] | asciiCaseFold) != 'n' {
 			continue
 		}
-		if i > 0 {
-			prev := cacheControl[i-1]
-			if prev != ' ' && prev != ',' {
-				continue
-			}
+		if !matchNoCacheToken(cacheControl, i) {
+			continue
 		}
-		// Check for end of string, comma, equals sign, or space after no-cache
-		// This handles: "no-cache", "no-cache, ...", "no-cache=...", "no-cache ,"
-		if i+ncLen == n {
+		if i > 0 && !isNoCacheDelimiter(cacheControl[i-1]) {
+			continue
+		}
+
+		// Handle: "no-cache", "no-cache, ...", "no-cache=...", "no-cache ,"
+		if i+noCacheLen == n {
 			return true
 		}
-		next := cacheControl[i+ncLen]
-		if next == ',' || next == '=' || next == ' ' {
+		if isNoCacheDelimiter(cacheControl[i+noCacheLen]) || cacheControl[i+noCacheLen] == '=' {
 			return true
 		}
 	}
 
+	return false
+}
+
+func isNoCacheDelimiter(c byte) bool {
+	return c == ' ' || c == '\t' || c == ','
+}
+
+func matchNoCacheToken(s string, i int) bool {
+	// ASCII-only case-insensitive compare for "no-cache".
+	const asciiCaseFold = byte(0x20)
+	b := s[i:]
+
+	return (b[0]|asciiCaseFold) == 'n' &&
+		(b[1]|asciiCaseFold) == 'o' &&
+		b[2] == '-' &&
+		(b[3]|asciiCaseFold) == 'c' &&
+		(b[4]|asciiCaseFold) == 'a' &&
+		(b[5]|asciiCaseFold) == 'c' &&
+		(b[6]|asciiCaseFold) == 'h' &&
+		(b[7]|asciiCaseFold) == 'e'
+}
+
+func containsUpperASCII(b []byte) bool {
+	for i := range b {
+		if b[i] >= 'A' && b[i] <= 'Z' {
+			return true
+		}
+	}
 	return false
 }
 
