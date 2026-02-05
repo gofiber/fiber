@@ -53,36 +53,68 @@ type headerParams map[string][]byte
 
 // getTLSConfig returns a net listener's tls config
 func getTLSConfig(ln net.Listener) *tls.Config {
-	// Get listener type
-	pointer := reflect.ValueOf(ln)
-
-	// Is it a tls.listener?
-	if pointer.String() != "<*tls.listener Value>" {
+	if ln == nil {
 		return nil
 	}
 
-	// Copy value from pointer
-	if val := reflect.Indirect(pointer); val.IsValid() {
-		// Get private field from value
-		if field := val.FieldByName("config"); field.IsValid() {
-			// Copy value from pointer field (unsafe)
-			newValue := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
-			if !newValue.IsValid() {
-				return nil
-			}
-			// Get element from pointer
-			if elem := newValue.Elem(); elem.IsValid() {
-				// Cast value to *tls.Config
-				c, ok := reflect.TypeAssert[*tls.Config](elem)
-				if !ok {
-					panic(errTLSConfigTypeAssertion)
-				}
-				return c
-			}
-		}
+	type tlsConfigProvider interface {
+		TLSConfig() *tls.Config
 	}
 
-	return nil
+	type configProvider interface {
+		Config() *tls.Config
+	}
+
+	if provider, ok := ln.(tlsConfigProvider); ok {
+		return provider.TLSConfig()
+	}
+
+	if provider, ok := ln.(configProvider); ok {
+		return provider.Config()
+	}
+
+	pointer := reflect.ValueOf(ln)
+	if !pointer.IsValid() {
+		return nil
+	}
+
+	// Reflection fallback for listeners that do not expose a TLS config method.
+	val := reflect.Indirect(pointer)
+	if !val.IsValid() {
+		return nil
+	}
+
+	field := val.FieldByName("config")
+	if !field.IsValid() {
+		return nil
+	}
+
+	if field.Type() != reflect.TypeFor[*tls.Config]() {
+		return nil
+	}
+
+	if field.CanInterface() {
+		if cfg, ok := field.Interface().(*tls.Config); ok {
+			return cfg
+		}
+		return nil
+	}
+
+	if !field.CanAddr() {
+		return nil
+	}
+
+	value := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem() //nolint:gosec // Access to unexported field is required for listeners that don't expose TLS config methods.
+	if !value.IsValid() {
+		return nil
+	}
+
+	cfg, ok := value.Interface().(*tls.Config)
+	if !ok {
+		return nil
+	}
+
+	return cfg
 }
 
 // readContent opens a named file and read content from it
