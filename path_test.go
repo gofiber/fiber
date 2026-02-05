@@ -255,6 +255,69 @@ func Test_Utils_RemoveEscapeChar(t *testing.T) {
 	require.Equal(t, "noEscapeChar", res)
 }
 
+func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		param      string
+		constraint Constraint
+	}{
+		{
+			name:       "minLen invalid metadata",
+			constraint: Constraint{ID: minLenConstraint, Data: []string{"abc"}},
+			param:      "abcd",
+		},
+		{
+			name:       "maxLen invalid metadata",
+			constraint: Constraint{ID: maxLenConstraint, Data: []string{"abc"}},
+			param:      "abcd",
+		},
+		{
+			name:       "len invalid metadata",
+			constraint: Constraint{ID: lenConstraint, Data: []string{"abc"}},
+			param:      "abcd",
+		},
+		{
+			name:       "betweenLen invalid first metadata",
+			constraint: Constraint{ID: betweenLenConstraint, Data: []string{"abc", "5"}},
+			param:      "abcd",
+		},
+		{
+			name:       "betweenLen invalid second metadata",
+			constraint: Constraint{ID: betweenLenConstraint, Data: []string{"1", "abc"}},
+			param:      "abcd",
+		},
+		{
+			name:       "min invalid metadata",
+			constraint: Constraint{ID: minConstraint, Data: []string{"abc"}},
+			param:      "10",
+		},
+		{
+			name:       "max invalid metadata",
+			constraint: Constraint{ID: maxConstraint, Data: []string{"abc"}},
+			param:      "10",
+		},
+		{
+			name:       "range invalid first metadata",
+			constraint: Constraint{ID: rangeConstraint, Data: []string{"abc", "10"}},
+			param:      "7",
+		},
+		{
+			name:       "range invalid second metadata",
+			constraint: Constraint{ID: rangeConstraint, Data: []string{"1", "abc"}},
+			param:      "7",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			require.False(t, testCase.constraint.CheckConstraint(testCase.param))
+		})
+	}
+}
+
 func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 	b.ReportAllocs()
 	var res string
