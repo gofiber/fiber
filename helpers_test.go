@@ -138,6 +138,15 @@ type wrappedListener struct {
 	net.Listener
 }
 
+type tlsConfigMethodListener struct {
+	net.Listener
+	cfg *tls.Config
+}
+
+func (ln *tlsConfigMethodListener) TLSConfig() *tls.Config {
+	return ln.cfg
+}
+
 type configMethodListener struct {
 	net.Listener
 	cfg *tls.Config
@@ -175,6 +184,19 @@ func Test_GetTLSConfig(t *testing.T) {
 		})
 
 		require.Nil(t, getTLSConfig(wrapped), "wrapping without Config()-like methods should return nil")
+	})
+
+	t.Run("listener with tls config method", func(t *testing.T) {
+		t.Parallel()
+
+		base := newLocalListener(t)
+		cfg := &tls.Config{MinVersion: tls.VersionTLS13}
+		listener := &tlsConfigMethodListener{Listener: base, cfg: cfg}
+		t.Cleanup(func() {
+			require.NoError(t, listener.Close())
+		})
+
+		require.Same(t, cfg, getTLSConfig(listener), "TLSConfig() should be preferred for TLS discovery")
 	})
 
 	t.Run("listener with config method", func(t *testing.T) {
