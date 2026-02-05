@@ -347,10 +347,8 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 
 // FilterFlags returns the media type value by trimming any parameters from a Content-Type header.
 func FilterFlags(content string) string {
-	for i, char := range content {
-		if char == ' ' || char == ';' {
-			return content[:i]
-		}
+	if i := strings.IndexAny(content, " ;"); i >= 0 {
+		return content[:i]
 	}
 	return content
 }

@@ -228,6 +228,21 @@ func Test_FilterFlags(t *testing.T) {
 	}
 }
 
+func Benchmark_FilterFlags(b *testing.B) {
+	b.ReportAllocs()
+
+	cases := []string{
+		"text/javascript; charset=utf-8",
+		"application/json",
+		"text/plain; charset=utf-8; foo=bar",
+		"text/javascript charset=utf-8",
+	}
+
+	for i := 0; i < b.N; i++ {
+		_ = FilterFlags(cases[i&3])
+	}
+}
+
 func TestFormatBindData(t *testing.T) {
 	t.Parallel()
 
