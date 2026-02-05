@@ -21,14 +21,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Pre-allocated byte slices for common strings to avoid allocations
-var (
-	charsetUTF8Bytes  = []byte("; charset=utf-8")
-	charsetPrefixBytes = []byte("; charset=")
-	htmlPOpen         = []byte("<p>")
-	htmlPClose        = []byte("</p>")
-)
-
 // SendFile defines configuration options when to transfer file with SendFile.
 type SendFile struct {
 	// FS is the file system to serve the static files from.
@@ -377,10 +369,11 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		return handlers[0].Handler(r.c)
 	}
 
-	// Use stack-allocated array for typical cases (most handlers have <8 types).
-	// This avoids heap allocation in the common case.
-	var typesArray [8]string
-	types := typesArray[:0]
+	// Using an int literal as the slice capacity allows for the slice to be
+	// allocated on the stack. The number was chosen arbitrarily as an
+	// approximation of the maximum number of content types a user might handle.
+	// If the user goes over, it just causes allocations, so it's not a problem.
+	types := make([]string, 0, 8)
 	var defaultHandler Handler
 	for _, h := range handlers {
 		if h.MediaType == "default" {
@@ -439,14 +432,7 @@ func (r *DefaultRes) AutoFormat(body any) error {
 	case "xml":
 		return r.XML(body)
 	case "html":
-		// Use bytebufferpool and pre-allocated slices to avoid string concatenation
-		buf := bytebufferpool.Get()
-		buf.Write(htmlPOpen)
-		buf.WriteString(b)
-		buf.Write(htmlPClose)
-		err := r.Send(buf.Bytes())
-		bytebufferpool.Put(buf)
-		return err
+		return r.SendString("<p>" + b + "</p>")
 	case "msgpack":
 		return r.MsgPack(body)
 	case "cbor":
@@ -1041,22 +1027,11 @@ func (r *DefaultRes) Type(extension string, charset ...string) Ctx {
 	mimeType := utils.GetMIME(extension)
 
 	if len(charset) > 0 {
-		// Use bytebufferpool to avoid string concatenation allocation
-		buf := bytebufferpool.Get()
-		buf.WriteString(mimeType)
-		buf.Write(charsetPrefixBytes)
-		buf.WriteString(charset[0])
-		r.c.fasthttp.Response.Header.SetContentTypeBytes(buf.Bytes())
-		bytebufferpool.Put(buf)
+		r.c.fasthttp.Response.Header.SetContentType(mimeType + "; charset=" + charset[0])
 	} else {
 		// Automatically add UTF-8 charset for text-based MIME types
 		if shouldIncludeCharset(mimeType) {
-			// Use bytebufferpool to avoid string concatenation allocation
-			buf := bytebufferpool.Get()
-			buf.WriteString(mimeType)
-			buf.Write(charsetUTF8Bytes)
-			r.c.fasthttp.Response.Header.SetContentTypeBytes(buf.Bytes())
-			bytebufferpool.Put(buf)
+			r.c.fasthttp.Response.Header.SetContentType(mimeType + "; charset=utf-8")
 		} else {
 			r.c.fasthttp.Response.Header.SetContentType(mimeType)
 		}
