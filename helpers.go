@@ -792,15 +792,6 @@ func matchNoCacheToken(s string, i int) bool {
 		(b[7]|asciiCaseFold) == 'e'
 }
 
-func containsUpperASCII(b []byte) bool {
-	for i := range b {
-		if b[i] >= 'A' && b[i] <= 'Z' {
-			return true
-		}
-	}
-	return false
-}
-
 var errTestConnClosed = errors.New("testConn is closed")
 
 type testConn struct {
