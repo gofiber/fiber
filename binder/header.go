@@ -17,9 +17,7 @@ func (*HeaderBinding) Name() string {
 
 // Bind parses the request header and returns the result.
 func (b *HeaderBinding) Bind(req *fasthttp.Request, out any) error {
-	data := AcquireBindData()
-	defer ReleaseBindData(data)
-
+	data := make(map[string][]string)
 	for key, val := range req.Header.All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)

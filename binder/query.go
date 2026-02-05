@@ -17,9 +17,7 @@ func (*QueryBinding) Name() string {
 
 // Bind parses the request query and returns the result.
 func (b *QueryBinding) Bind(reqCtx *fasthttp.Request, out any) error {
-	data := AcquireBindData()
-	defer ReleaseBindData(data)
-
+	data := make(map[string][]string)
 	for key, val := range reqCtx.URI().QueryArgs().All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)

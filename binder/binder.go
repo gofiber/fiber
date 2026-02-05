@@ -16,30 +16,6 @@ var (
 
 var errPoolTypeAssertion = errors.New("failed to type-assert to T")
 
-// bindDataPool is a shared pool for map[string][]string used by binders
-// to avoid allocations on each bind call.
-var bindDataPool = sync.Pool{
-	New: func() any {
-		return make(map[string][]string, 8)
-	},
-}
-
-// AcquireBindData retrieves a map from the pool for binding data.
-// The returned map is empty and ready for use.
-func AcquireBindData() map[string][]string {
-	m, ok := bindDataPool.Get().(map[string][]string)
-	if !ok {
-		return make(map[string][]string, 8)
-	}
-	return m
-}
-
-// ReleaseBindData clears the map and returns it to the pool.
-func ReleaseBindData(m map[string][]string) {
-	clear(m)
-	bindDataPool.Put(m)
-}
-
 var HeaderBinderPool = sync.Pool{
 	New: func() any {
 		return &HeaderBinding{}

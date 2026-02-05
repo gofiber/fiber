@@ -10,9 +10,7 @@ func (*URIBinding) Name() string {
 
 // Bind parses the URI parameters and returns the result.
 func (b *URIBinding) Bind(params []string, paramsFunc func(key string, defaultValue ...string) string, out any) error {
-	data := AcquireBindData()
-	defer ReleaseBindData(data)
-
+	data := make(map[string][]string, len(params))
 	for _, param := range params {
 		data[param] = append(data[param], paramsFunc(param))
 	}

@@ -17,8 +17,7 @@ func (*CookieBinding) Name() string {
 
 // Bind parses the request cookie and returns the result.
 func (b *CookieBinding) Bind(req *fasthttp.Request, out any) error {
-	data := AcquireBindData()
-	defer ReleaseBindData(data)
+	data := make(map[string][]string)
 
 	for key, val := range req.Header.Cookies() {
 		k := utils.UnsafeString(key)
