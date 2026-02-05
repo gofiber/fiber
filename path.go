@@ -694,8 +694,6 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 
 // CheckConstraint validates if a param matches the given constraint
 // Returns true if the param passes the constraint check, false otherwise
-//
-//nolint:errcheck // TODO: Properly check _all_ errors in here, log them or immediately return
 func (c *Constraint) CheckConstraint(param string) bool {
 	// First check if there's a custom constraint with the same name
 	// This allows custom constraints to override built-in constraints
@@ -737,47 +735,80 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	case guidConstraint:
 		_, err = uuid.Parse(param)
 	case minLenConstraint:
-		data, _ := strconv.Atoi(c.Data[0])
+		data, parseErr := strconv.Atoi(c.Data[0])
+		if parseErr != nil {
+			return false
+		}
 
 		if len(param) < data {
 			return false
 		}
 	case maxLenConstraint:
-		data, _ := strconv.Atoi(c.Data[0])
+		data, parseErr := strconv.Atoi(c.Data[0])
+		if parseErr != nil {
+			return false
+		}
 
 		if len(param) > data {
 			return false
 		}
 	case lenConstraint:
-		data, _ := strconv.Atoi(c.Data[0])
+		data, parseErr := strconv.Atoi(c.Data[0])
+		if parseErr != nil {
+			return false
+		}
 
 		if len(param) != data {
 			return false
 		}
 	case betweenLenConstraint:
-		data, _ := strconv.Atoi(c.Data[0])
-		data2, _ := strconv.Atoi(c.Data[1])
+		data, parseErr := strconv.Atoi(c.Data[0])
+		if parseErr != nil {
+			return false
+		}
+
+		data2, parseErr := strconv.Atoi(c.Data[1])
+		if parseErr != nil {
+			return false
+		}
+
 		length := len(param)
 		if length < data || length > data2 {
 			return false
 		}
 	case minConstraint:
-		data, _ := strconv.Atoi(c.Data[0])
+		data, parseErr := strconv.Atoi(c.Data[0])
+		if parseErr != nil {
+			return false
+		}
+
 		num, err = strconv.Atoi(param)
 
 		if err != nil || num < data {
 			return false
 		}
 	case maxConstraint:
-		data, _ := strconv.Atoi(c.Data[0])
+		data, parseErr := strconv.Atoi(c.Data[0])
+		if parseErr != nil {
+			return false
+		}
+
 		num, err = strconv.Atoi(param)
 
 		if err != nil || num > data {
 			return false
 		}
 	case rangeConstraint:
-		data, _ := strconv.Atoi(c.Data[0])
-		data2, _ := strconv.Atoi(c.Data[1])
+		data, parseErr := strconv.Atoi(c.Data[0])
+		if parseErr != nil {
+			return false
+		}
+
+		data2, parseErr := strconv.Atoi(c.Data[1])
+		if parseErr != nil {
+			return false
+		}
+
 		num, err = strconv.Atoi(param)
 
 		if err != nil || num < data || num > data2 {
