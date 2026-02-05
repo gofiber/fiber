@@ -141,25 +141,15 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	}
 	h := r.c.app.toString(r.c.fasthttp.Response.Header.Peek(field))
 	originalH := h
-
-	// Use bytebufferpool to avoid repeated string concatenation allocations
-	buf := bytebufferpool.Get()
-	buf.WriteString(h)
-
 	for _, value := range values {
-		if buf.Len() == 0 {
-			buf.WriteString(value)
-		} else if !headerContainsValue(r.c.app.toString(buf.Bytes()), value) {
-			buf.WriteString(", ")
-			buf.WriteString(value)
+		if h == "" {
+			h = value
+		} else if !headerContainsValue(h, value) {
+			h += ", " + value
 		}
 	}
-
-	newH := r.c.app.toString(buf.Bytes())
-	bytebufferpool.Put(buf)
-
-	if originalH != newH {
-		r.Set(field, newH)
+	if originalH != h {
+		r.Set(field, h)
 	}
 }
 

@@ -511,12 +511,14 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 
 	headerValue := r.Get(header)
 
-	// Use stack-allocated array for collecting IPs during parsing.
-	// Most X-Forwarded-For headers contain fewer than 8 IPs.
-	// This avoids heap allocation during the parsing phase.
-	const maxStackIPs = 8
-	var ipsArray [maxStackIPs]string
-	ipsFound := ipsArray[:0]
+	// We can't know how many IPs we will return, but we will try to guess with this constant division.
+	// Counting ',' makes function slower for about 50ns in general case.
+	const maxEstimatedCount = 8
+	estimatedCount := min(len(headerValue)/maxEstimatedCount,
+		// Avoid big allocation on big header
+		maxEstimatedCount)
+
+	ipsFound := make([]string, 0, estimatedCount)
 
 	i := 0
 	j := -1
@@ -559,15 +561,7 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 		ipsFound = append(ipsFound, s)
 	}
 
-	// Return nil if no IPs found (avoids allocation)
-	if len(ipsFound) == 0 {
-		return nil
-	}
-
-	// Copy from stack to heap with exact size needed
-	result := make([]string, len(ipsFound))
-	copy(result, ipsFound)
-	return result
+	return ipsFound
 }
 
 // extractIPFromHeader will attempt to pull the real client IP from the given header when IP validation is enabled.
