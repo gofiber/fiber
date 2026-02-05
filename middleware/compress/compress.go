@@ -3,12 +3,11 @@ package compress
 import (
 	"strings"
 
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/etag"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
-
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/etag"
 )
 
 func hasToken(header, token string) bool {
@@ -54,11 +53,11 @@ func appendVaryAcceptEncoding(c fiber.Ctx) {
 	}
 	// Use bytebufferpool to avoid string concatenation allocation
 	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
 	buf.WriteString(vary)
 	buf.Write(varyCommaSpace)
 	buf.WriteString(fiber.HeaderAcceptEncoding)
-	c.Response().Header.SetBytesV(fiber.HeaderVary, buf.Bytes())
+	c.Set(fiber.HeaderVary, string(buf.Bytes()))
+	bytebufferpool.Put(buf)
 }
 
 // New creates a new middleware handler
