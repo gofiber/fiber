@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2/utils"
@@ -273,7 +274,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 	// Test with exactly maxParams (30) - should work
 	t.Run("exactly_maxParams", func(t *testing.T) {
 		t.Parallel()
-		route := "/:p1/:p2/:p3/:p4/:p5/:p6/:p7/:p8/:p9/:p10/:p11/:p12/:p13/:p14/:p15/:p16/:p17/:p18/:p19/:p20/:p21/:p22/:p23/:p24/:p25/:p26/:p27/:p28/:p29/:p30"
+		route := paramsRoute(t, maxParams)
 		require.NotPanics(t, func() {
 			parseRoute(route)
 		})
@@ -282,7 +283,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 	// Test with maxParams + 1 (31) - should panic
 	t.Run("maxParams_plus_one", func(t *testing.T) {
 		t.Parallel()
-		route := "/:p1/:p2/:p3/:p4/:p5/:p6/:p7/:p8/:p9/:p10/:p11/:p12/:p13/:p14/:p15/:p16/:p17/:p18/:p19/:p20/:p21/:p22/:p23/:p24/:p25/:p26/:p27/:p28/:p29/:p30/:p31"
+		route := paramsRoute(t, maxParams+1)
 		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
 			parseRoute(route)
 		})
@@ -291,7 +292,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 	// Test with 35 params - should panic
 	t.Run("35_params", func(t *testing.T) {
 		t.Parallel()
-		route := "/:p1/:p2/:p3/:p4/:p5/:p6/:p7/:p8/:p9/:p10/:p11/:p12/:p13/:p14/:p15/:p16/:p17/:p18/:p19/:p20/:p21/:p22/:p23/:p24/:p25/:p26/:p27/:p28/:p29/:p30/:p31/:p32/:p33/:p34/:p35"
+		route := paramsRoute(t, maxParams+5)
 		require.PanicsWithValue(t, "Route '"+route+"' has 35 parameters, which exceeds the maximum of 30", func() {
 			parseRoute(route)
 		})
@@ -305,7 +306,7 @@ func Test_App_Register_TooManyParams_Panic(t *testing.T) {
 	t.Run("register_via_Get", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		route := "/:p1/:p2/:p3/:p4/:p5/:p6/:p7/:p8/:p9/:p10/:p11/:p12/:p13/:p14/:p15/:p16/:p17/:p18/:p19/:p20/:p21/:p22/:p23/:p24/:p25/:p26/:p27/:p28/:p29/:p30/:p31"
+		route := paramsRoute(t, maxParams+1)
 
 		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
 			app.Get(route, func(c Ctx) error {
@@ -318,7 +319,7 @@ func Test_App_Register_TooManyParams_Panic(t *testing.T) {
 	t.Run("register_maxParams_works", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		route := "/:p1/:p2/:p3/:p4/:p5/:p6/:p7/:p8/:p9/:p10/:p11/:p12/:p13/:p14/:p15/:p16/:p17/:p18/:p19/:p20/:p21/:p22/:p23/:p24/:p25/:p26/:p27/:p28/:p29/:p30"
+		route := paramsRoute(t, maxParams)
 
 		require.NotPanics(t, func() {
 			app.Get(route, func(c Ctx) error {
@@ -326,4 +327,15 @@ func Test_App_Register_TooManyParams_Panic(t *testing.T) {
 			})
 		})
 	})
+}
+
+// paramsRoute generates a route with n parameters for testing parseRoute maxParams condition.
+// Returns a route in the format "/:p1/:p2/:p3/.../:pN"
+func paramsRoute(t *testing.T, n int) string {
+	t.Helper()
+	params := make([]string, n)
+	for i := range params {
+		params[i] = fmt.Sprintf(":p%d", i+1)
+	}
+	return "/" + strings.Join(params, "/")
 }
