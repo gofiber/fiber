@@ -241,7 +241,7 @@ func parseRoute(pattern string, customConstraints ...CustomConstraint) routePars
 
 	// Check if the route has too many parameters
 	if len(parser.params) > maxParams {
-		panic(fmt.Errorf("Route '%s' has %d parameters, which exceeds the maximum of %d",
+		panic(fmt.Sprintf("Route '%s' has %d parameters, which exceeds the maximum of %d",
 			pattern, len(parser.params), maxParams))
 	}
 
