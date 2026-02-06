@@ -520,8 +520,7 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 }
 
 func Test_Hook_OnListenPrefork(t *testing.T) {
-	testPreforkMaster = true
-	defer func() { testPreforkMaster = false }()
+	usePreforkDummyCommand(t, "go")
 
 	app := New()
 
@@ -545,13 +544,8 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 func Test_Hook_OnHook(t *testing.T) {
 	app := New()
 
-	// Reset test var
-	testPreforkMaster = true
-	testOnPrefork = true
-	defer func() {
-		testPreforkMaster = false
-		testOnPrefork = false
-	}()
+	usePreforkDummyCommand(t, "go")
+	usePreforkHookPIDOverride(t, 1)
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)

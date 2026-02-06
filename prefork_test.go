@@ -16,8 +16,7 @@ import (
 )
 
 func Test_App_Prefork_Child_Process(t *testing.T) {
-	// Reset test var
-	testPreforkMaster = true
+	usePreforkDummyCommand(t, "go")
 
 	setupIsChild(t)
 
@@ -53,12 +52,10 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {
-	// Enable test mode - uses dummyCmd() via CommandProducer
-	testPreforkMaster = true
-	defer func() { testPreforkMaster = false }()
+	usePreforkDummyCommand(t, "go")
 
 	// Test 1: Master process starts with valid command
-	// The child processes (dummyCmd = "go version") will exit quickly,
+	// The child processes ("go version") will exit quickly,
 	// which will eventually exceed RecoverThreshold and return ErrOverRecovery
 	app := New()
 
@@ -69,8 +66,7 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 	require.Error(t, err)
 
 	// Test 2: Master process fails with invalid command
-	dummyChildCmd.Store("invalid_command_that_does_not_exist")
-	defer dummyChildCmd.Store("go")
+	setPreforkDummyCommand("invalid_command_that_does_not_exist")
 
 	cfg = listenConfigDefault()
 	err = app.prefork("127.0.0.1:", nil, &cfg)
