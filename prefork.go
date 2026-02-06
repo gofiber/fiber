@@ -30,6 +30,19 @@ func IsChild() bool {
 	return prefork.IsChild()
 }
 
+func (app *App) executeOnForkHooks(pid int) {
+	if app.hooks == nil {
+		return
+	}
+
+	if testOnPrefork {
+		app.hooks.executeOnForkHooks(dummyPid)
+		return
+	}
+
+	app.hooks.executeOnForkHooks(pid)
+}
+
 func (app *App) newPrefork(cfg *ListenConfig, onMasterReady func(childPIDs []int) error) *prefork.Prefork {
 	recoverThreshold := cfg.PreforkRecoverThreshold
 	if recoverThreshold == 0 {
@@ -56,16 +69,7 @@ func (app *App) newPrefork(cfg *ListenConfig, onMasterReady func(childPIDs []int
 	}
 
 	p.OnChildSpawn = func(pid int) error {
-		if app.hooks == nil {
-			return nil
-		}
-
-		if testOnPrefork {
-			app.hooks.executeOnForkHooks(dummyPid)
-			return nil
-		}
-
-		app.hooks.executeOnForkHooks(pid)
+		app.executeOnForkHooks(pid)
 		return nil
 	}
 
@@ -73,16 +77,7 @@ func (app *App) newPrefork(cfg *ListenConfig, onMasterReady func(childPIDs []int
 
 	p.OnChildRecover = func(pid int) error {
 		log.Warnf("prefork: child process crashed and has been recovered with new PID %d", pid)
-		if app.hooks == nil {
-			return nil
-		}
-
-		if testOnPrefork {
-			app.hooks.executeOnForkHooks(dummyPid)
-			return nil
-		}
-
-		app.hooks.executeOnForkHooks(pid)
+		app.executeOnForkHooks(pid)
 		return nil
 	}
 

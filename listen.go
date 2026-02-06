@@ -42,61 +42,15 @@ const (
 
 // ListenConfig is a struct to customize startup of Fiber.
 type ListenConfig struct {
-	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), "unix" (Unix Domain Sockets)
-	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
-	//
-	// Default: NetworkTCP4
-	ListenerNetwork string `json:"listener_network"`
-
-	// CertFile is a path of certificate file.
-	// If you want to use TLS, you have to enter this field.
-	//
-	// Default : ""
-	CertFile string `json:"cert_file"`
-
-	// KeyFile is a path of certificate's private key.
-	// If you want to use TLS, you have to enter this field.
-	//
-	// Default : ""
-	CertKeyFile string `json:"cert_key_file"`
-
-	// CertClientFile is a path of client certificate.
-	// If you want to use mTLS, you have to enter this field.
-	//
-	// Default : ""
-	CertClientFile string `json:"cert_client_file"`
-
 	// GracefulContext is a field to shutdown Fiber by given context gracefully.
 	//
 	// Default: nil
 	GracefulContext context.Context `json:"graceful_context"` //nolint:containedctx // It's needed to set context inside Listen.
 
-	// TLSConfigFunc allows customizing tls.Config as you want.
-	//
-	// Default: nil
-	TLSConfigFunc func(tlsConfig *tls.Config) `json:"tls_config_func"`
-
-	// TLSConfig allows providing a tls.Config used as the base for TLS settings.
-	// This enables external certificate providers via GetCertificate.
-	//
-	// Default: nil
-	TLSConfig *tls.Config `json:"tls_config"`
-
-	// ListenerFunc allows accessing and customizing net.Listener.
-	//
-	// Default: nil
-	ListenerAddrFunc func(addr net.Addr) `json:"listener_addr_func"`
-
 	// BeforeServeFunc allows customizing and accessing fiber app before serving the app.
 	//
 	// Default: nil
 	BeforeServeFunc func(app *App) error `json:"before_serve_func"`
-
-	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
-	// Enables integration with Let's Encrypt or other ACME-compatible providers.
-	//
-	// Default: nil
-	AutoCertManager *autocert.Manager `json:"auto_cert_manager"`
 
 	// OnPreforkServe is called in child processes when using Listener() with prefork.
 	// This callback allows the user to create a new listener in the child process.
@@ -111,12 +65,65 @@ type ListenConfig struct {
 	// Default: nil (prefork not supported for Listener() without this callback)
 	OnPreforkServe func(addr net.Addr) (net.Listener, error) `json:"-"`
 
+	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
+	// Enables integration with Let's Encrypt or other ACME-compatible providers.
+	//
+	// Default: nil
+	AutoCertManager *autocert.Manager `json:"auto_cert_manager"`
+
+	// ListenerFunc allows accessing and customizing net.Listener.
+	//
+	// Default: nil
+	ListenerAddrFunc func(addr net.Addr) `json:"listener_addr_func"`
+
+	// TLSConfigFunc allows customizing tls.Config as you want.
+	//
+	// Default: nil
+	TLSConfigFunc func(tlsConfig *tls.Config) `json:"tls_config_func"`
+
+	// TLSConfig allows providing a tls.Config used as the base for TLS settings.
+	// This enables external certificate providers via GetCertificate.
+	//
+	// Default: nil
+	TLSConfig *tls.Config `json:"tls_config"`
+
+	// CertFile is a path of certificate file.
+	// If you want to use TLS, you have to enter this field.
+	//
+	// Default : ""
+	CertFile string `json:"cert_file"`
+
+	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), "unix" (Unix Domain Sockets)
+	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
+	//
+	// Default: NetworkTCP4
+	ListenerNetwork string `json:"listener_network"`
+
+	// KeyFile is a path of certificate's private key.
+	// If you want to use TLS, you have to enter this field.
+	//
+	// Default : ""
+	CertKeyFile string `json:"cert_key_file"`
+
+	// CertClientFile is a path of client certificate.
+	// If you want to use mTLS, you have to enter this field.
+	//
+	// Default : ""
+	CertClientFile string `json:"cert_client_file"`
+
 	// When the graceful shutdown begins, use this field to set the timeout
 	// duration. If the timeout is reached, OnPostShutdown will be called with the error.
 	// Set to 0 to disable the timeout and wait indefinitely.
 	//
 	// Default: 10 * time.Second
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
+
+	// PreforkRecoverThreshold defines the maximum number of times a child process
+	// can be restarted after crashing before the master process exits with an error.
+	// This only applies when EnablePrefork is true.
+	//
+	// Default: runtime.GOMAXPROCS(0) / 2
+	PreforkRecoverThreshold int `json:"prefork_recover_threshold"`
 
 	// FileMode to set for Unix Domain Socket (ListenerNetwork must be "unix")
 	//
@@ -138,13 +145,6 @@ type ListenConfig struct {
 	//
 	// Default: false
 	EnablePrefork bool `json:"enable_prefork"`
-
-	// PreforkRecoverThreshold defines the maximum number of times a child process
-	// can be restarted after crashing before the master process exits with an error.
-	// This only applies when EnablePrefork is true.
-	//
-	// Default: runtime.GOMAXPROCS(0) / 2
-	PreforkRecoverThreshold int `json:"prefork_recover_threshold"`
 
 	// If set to true, will print all routes with their method, path and handler.
 	//

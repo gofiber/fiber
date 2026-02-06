@@ -67,6 +67,7 @@ func Test_Listener_Prefork_Without_Callback(t *testing.T) {
 	}()
 
 	errCh := make(chan error, 1)
+	shutdownErrCh := make(chan error, 1)
 	go func() {
 		// This should log a warning and fall back to single process mode
 		errCh <- app.Listener(ln, ListenConfig{
@@ -78,10 +79,11 @@ func Test_Listener_Prefork_Without_Callback(t *testing.T) {
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		shutdownErrCh <- app.Shutdown()
 	}()
 
 	require.NoError(t, <-errCh)
+	require.NoError(t, <-shutdownErrCh)
 }
 
 // Test_PreforkRecoverThreshold verifies the recover threshold is properly set
