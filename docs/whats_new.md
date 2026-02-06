@@ -1399,6 +1399,8 @@ New `Challenge`, `Error`, `ErrorDescription`, `ErrorURI`, and `Scope` fields all
 
 New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without an extra adapter. For example, you can use `zap` with Fiber logger middleware like this:
 
+The `Output` field in `logger.Config` has been renamed to `Stream`. Update your logger middleware configuration accordingly when migrating to v3.
+
 Custom logger integrations should update any `LoggerFunc` implementations to the new signature that receives a pointer to the middleware config: `func(c fiber.Ctx, data *logger.Data, cfg *logger.Config) error`.
 
 <details>
@@ -1425,7 +1427,7 @@ func main() {
 
     // Use the logger middleware with zerolog logger
     app.Use(logger.New(logger.Config{
-        Output: logger.LoggerToWriter(zap, log.LevelDebug),
+        Stream: logger.LoggerToWriter(zap, log.LevelDebug),
     }))
 
     // Define a route
