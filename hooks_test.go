@@ -548,6 +548,10 @@ func Test_Hook_OnHook(t *testing.T) {
 	// Reset test var
 	testPreforkMaster = true
 	testOnPrefork = true
+	defer func() {
+		testPreforkMaster = false
+		testOnPrefork = false
+	}()
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
@@ -559,7 +563,12 @@ func Test_Hook_OnHook(t *testing.T) {
 		return nil
 	})
 
-	require.NoError(t, app.prefork(":0", nil, &ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	err := app.prefork(":0", nil, &ListenConfig{
+		DisableStartupMessage:   true,
+		EnablePrefork:           true,
+		PreforkRecoverThreshold: 1,
+	})
+	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 }
 
 func Test_Hook_OnMount(t *testing.T) {

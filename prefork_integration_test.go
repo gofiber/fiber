@@ -1,12 +1,16 @@
 package fiber
 
 import (
+	"errors"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/prefork"
 )
+
+var errOnPreforkServeTest = errors.New("on prefork serve test sentinel")
 
 // Test_IsChild_Integration verifies that IsChild() correctly delegates to fasthttp/prefork.IsChild()
 func Test_IsChild_Integration(t *testing.T) {
@@ -28,7 +32,7 @@ func Test_IsChild_Integration(t *testing.T) {
 }
 
 // Test_Prefork_Logger verifies the logger adapter works correctly
-func Test_Prefork_Logger(t *testing.T) {
+func Test_Prefork_Logger(_ *testing.T) {
 	logger := preforkLogger{}
 
 	// Should not panic
@@ -39,9 +43,9 @@ func Test_Prefork_Logger(t *testing.T) {
 func Test_ListenConfig_OnPreforkServe(t *testing.T) {
 	cfg := ListenConfig{
 		EnablePrefork: true,
-		OnPreforkServe: func(addr net.Addr) (net.Listener, error) {
+		OnPreforkServe: func(_ net.Addr) (net.Listener, error) {
 			// This callback would create a reuseport listener in real usage
-			return nil, nil
+			return nil, errOnPreforkServeTest
 		},
 	}
 
@@ -56,20 +60,28 @@ func Test_Listener_Prefork_Without_Callback(t *testing.T) {
 	// Create a simple listener
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() {
+		if closeErr := ln.Close(); closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+			t.Errorf("listener close failed: %v", closeErr)
+		}
+	}()
 
-	// Start server in background
+	errCh := make(chan error, 1)
 	go func() {
 		// This should log a warning and fall back to single process mode
-		_ = app.Listener(ln, ListenConfig{
+		errCh <- app.Listener(ln, ListenConfig{
 			EnablePrefork:         true,
 			DisableStartupMessage: true,
 			// OnPreforkServe NOT set - should warn and fall back
 		})
 	}()
 
-	// Give it time to start
-	require.NoError(t, app.Shutdown())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		require.NoError(t, app.Shutdown())
+	}()
+
+	require.NoError(t, <-errCh)
 }
 
 // Test_PreforkRecoverThreshold verifies the recover threshold is properly set

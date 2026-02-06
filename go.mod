@@ -30,4 +30,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/valyala/fasthttp => github.com/ReneWerner87/fasthttp v1.62.1-0.20260128120903-81e8463a276d
+//nolint:gomoddirectives // Temporary until prefork callback/watchMaster changes are available in upstream fasthttp.
+
+replace github.com/valyala/fasthttp => github.com/ReneWerner87/fasthttp v1.62.1-0.20260206083743-94d5cc6b6528

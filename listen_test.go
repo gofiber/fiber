@@ -180,6 +180,7 @@ func Test_Listen_Prefork(t *testing.T) {
 // go test -run Test_Listen_TLSMinVersion
 func Test_Listen_TLSMinVersion(t *testing.T) {
 	testPreforkMaster = true
+	defer func() { testPreforkMaster = false }()
 
 	app := New()
 
@@ -207,11 +208,13 @@ func Test_Listen_TLSMinVersion(t *testing.T) {
 	require.NoError(t, app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS13}))
 
 	// Valid TLSMinVersion with Prefork
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS13}))
+	err := app.Listen(":0", ListenConfig{
+		DisableStartupMessage:   true,
+		EnablePrefork:           true,
+		TLSMinVersion:           tls.VersionTLS13,
+		PreforkRecoverThreshold: 1,
+	})
+	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 }
 
 // go test -run Test_Listen_TLS

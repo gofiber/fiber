@@ -1,6 +1,8 @@
 package fiber
 
-import "github.com/gofiber/fiber/v3/log"
+import (
+	"github.com/gofiber/fiber/v3/log"
+)
 
 // preforkLogger adapts fiber's logger to the fasthttp prefork Logger interface.
 type preforkLogger struct{}

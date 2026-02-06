@@ -42,6 +42,30 @@ const (
 
 // ListenConfig is a struct to customize startup of Fiber.
 type ListenConfig struct {
+	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), "unix" (Unix Domain Sockets)
+	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
+	//
+	// Default: NetworkTCP4
+	ListenerNetwork string `json:"listener_network"`
+
+	// CertFile is a path of certificate file.
+	// If you want to use TLS, you have to enter this field.
+	//
+	// Default : ""
+	CertFile string `json:"cert_file"`
+
+	// KeyFile is a path of certificate's private key.
+	// If you want to use TLS, you have to enter this field.
+	//
+	// Default : ""
+	CertKeyFile string `json:"cert_key_file"`
+
+	// CertClientFile is a path of client certificate.
+	// If you want to use mTLS, you have to enter this field.
+	//
+	// Default : ""
+	CertClientFile string `json:"cert_client_file"`
+
 	// GracefulContext is a field to shutdown Fiber by given context gracefully.
 	//
 	// Default: nil
@@ -74,29 +98,18 @@ type ListenConfig struct {
 	// Default: nil
 	AutoCertManager *autocert.Manager `json:"auto_cert_manager"`
 
-	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), "unix" (Unix Domain Sockets)
-	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
+	// OnPreforkServe is called in child processes when using Listener() with prefork.
+	// This callback allows the user to create a new listener in the child process.
+	// The callback receives the original listener's address and should return a new listener.
+	// This is required for prefork with Listener() because each child needs its own reuseport listener.
 	//
-	// Default: NetworkTCP4
-	ListenerNetwork string `json:"listener_network"`
-
-	// CertFile is a path of certificate file.
-	// If you want to use TLS, you have to enter this field.
+	// Example:
+	//   OnPreforkServe: func(addr net.Addr) (net.Listener, error) {
+	//       return reuseport.Listen("tcp4", addr.String())
+	//   }
 	//
-	// Default : ""
-	CertFile string `json:"cert_file"`
-
-	// KeyFile is a path of certificate's private key.
-	// If you want to use TLS, you have to enter this field.
-	//
-	// Default : ""
-	CertKeyFile string `json:"cert_key_file"`
-
-	// CertClientFile is a path of client certificate.
-	// If you want to use mTLS, you have to enter this field.
-	//
-	// Default : ""
-	CertClientFile string `json:"cert_client_file"`
+	// Default: nil (prefork not supported for Listener() without this callback)
+	OnPreforkServe func(addr net.Addr) (net.Listener, error) `json:"-"`
 
 	// When the graceful shutdown begins, use this field to set the timeout
 	// duration. If the timeout is reached, OnPostShutdown will be called with the error.
@@ -132,19 +145,6 @@ type ListenConfig struct {
 	//
 	// Default: runtime.GOMAXPROCS(0) / 2
 	PreforkRecoverThreshold int `json:"prefork_recover_threshold"`
-
-	// OnPreforkServe is called in child processes when using Listener() with prefork.
-	// This callback allows the user to create a new listener in the child process.
-	// The callback receives the original listener's address and should return a new listener.
-	// This is required for prefork with Listener() because each child needs its own reuseport listener.
-	//
-	// Example:
-	//   OnPreforkServe: func(addr net.Addr) (net.Listener, error) {
-	//       return reuseport.Listen("tcp4", addr.String())
-	//   }
-	//
-	// Default: nil (prefork not supported for Listener() without this callback)
-	OnPreforkServe func(addr net.Addr) (net.Listener, error) `json:"-"`
 
 	// If set to true, will print all routes with their method, path and handler.
 	//
@@ -302,14 +302,12 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	cfg := listenConfigDefault(config...)
 
-	// Check if prefork is enabled and supported
+	// Check if prefork is enabled and supported.
+	if cfg.EnablePrefork && cfg.OnPreforkServe != nil {
+		return app.preforkListener(ln, &cfg)
+	}
 	if cfg.EnablePrefork {
-		if cfg.OnPreforkServe == nil {
-			log.Warn("Prefork with Listener() requires OnPreforkServe callback. Falling back to single process mode.")
-		} else {
-			// Use prefork with custom listener
-			return app.preforkListener(ln, &cfg)
-		}
+		log.Warn("Prefork with Listener() requires OnPreforkServe callback. Falling back to single process mode.")
 	}
 
 	// Graceful shutdown
