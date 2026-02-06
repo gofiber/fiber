@@ -190,6 +190,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 // this information is needed later when assigning the requests to the declared routes
 func parseRoute(pattern string) routeParser {
 	parser := routeParser{}
+	originalPattern := pattern
 
 	part := ""
 	for len(pattern) > 0 {
@@ -218,7 +219,7 @@ func parseRoute(pattern string) routeParser {
 	// Check if the route has too many parameters
 	if len(parser.params) > maxParams {
 		panic(fmt.Sprintf("Route '%s' has %d parameters, which exceeds the maximum of %d",
-			pattern, len(parser.params), maxParams))
+			originalPattern, len(parser.params), maxParams))
 	}
 
 	return parser

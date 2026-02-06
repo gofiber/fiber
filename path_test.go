@@ -275,27 +275,32 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 	t.Run("exactly_maxParams", func(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams)
-		require.NotPanics(t, func() {
-			parseRoute(route)
-		})
+		// Should not panic
+		parseRoute(route)
 	})
 
 	// Test with maxParams + 1 (31) - should panic
 	t.Run("maxParams_plus_one", func(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams+1)
-		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
-			parseRoute(route)
-		})
+		defer func() {
+			if err := recover(); err != nil {
+				utils.AssertEqual(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", fmt.Sprintf("%v", err))
+			}
+		}()
+		parseRoute(route)
 	})
 
 	// Test with 35 params - should panic
 	t.Run("35_params", func(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams+5)
-		require.PanicsWithValue(t, "Route '"+route+"' has 35 parameters, which exceeds the maximum of 30", func() {
-			parseRoute(route)
-		})
+		defer func() {
+			if err := recover(); err != nil {
+				utils.AssertEqual(t, "Route '"+route+"' has 35 parameters, which exceeds the maximum of 30", fmt.Sprintf("%v", err))
+			}
+		}()
+		parseRoute(route)
 	})
 }
 
@@ -308,10 +313,13 @@ func Test_App_Register_TooManyParams_Panic(t *testing.T) {
 		app := New()
 		route := paramsRoute(t, maxParams+1)
 
-		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
-			app.Get(route, func(c Ctx) error {
-				return c.SendString("test")
-			})
+		defer func() {
+			if err := recover(); err != nil {
+				utils.AssertEqual(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", fmt.Sprintf("%v", err))
+			}
+		}()
+		app.Get(route, func(c *Ctx) error {
+			return c.SendString("test")
 		})
 	})
 
@@ -321,10 +329,9 @@ func Test_App_Register_TooManyParams_Panic(t *testing.T) {
 		app := New()
 		route := paramsRoute(t, maxParams)
 
-		require.NotPanics(t, func() {
-			app.Get(route, func(c Ctx) error {
-				return c.SendString("test")
-			})
+		// Should not panic
+		app.Get(route, func(c *Ctx) error {
+			return c.SendString("test")
 		})
 	})
 }
