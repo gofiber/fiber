@@ -75,7 +75,7 @@ func (s *State) Keys() []string {
 	s.dependencies.Range(func(key, _ any) bool {
 		keyStr, ok := key.(string)
 		if !ok {
-			return false
+			return true
 		}
 
 		keys = append(keys, keyStr)
@@ -261,7 +261,7 @@ func (s *State) serviceKeys() []string {
 	s.dependencies.Range(func(key, _ any) bool {
 		keyStr, ok := key.(string)
 		if !ok {
-			return false
+			return true
 		}
 
 		if !strings.HasPrefix(keyStr, s.servicePrefix) {

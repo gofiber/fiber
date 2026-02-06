@@ -6,7 +6,9 @@ package fiber
 
 import (
 	"bytes"
+	"crypto/tls"
 	"math"
+	"net"
 	"os"
 	"strconv"
 	"testing"
@@ -130,6 +132,105 @@ func Test_ReadContentReturnsBytes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(len(content)), n)
 	require.Equal(t, content, buffer.Bytes())
+}
+
+type wrappedListener struct {
+	net.Listener
+}
+
+type tlsConfigMethodListener struct {
+	net.Listener
+	cfg *tls.Config
+}
+
+func (ln *tlsConfigMethodListener) TLSConfig() *tls.Config {
+	return ln.cfg
+}
+
+type configMethodListener struct {
+	net.Listener
+	cfg *tls.Config
+}
+
+func (ln *configMethodListener) Config() *tls.Config {
+	return ln.cfg
+}
+
+func Test_GetTLSConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("tls listener", func(t *testing.T) {
+		t.Parallel()
+
+		base := newLocalListener(t)
+		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+		tlsListener := tls.NewListener(base, cfg)
+		t.Cleanup(func() {
+			require.NoError(t, tlsListener.Close())
+		})
+
+		require.Same(t, cfg, getTLSConfig(tlsListener), "*tls.Listener should expose its TLS config")
+	})
+
+	t.Run("wrapped tls listener", func(t *testing.T) {
+		t.Parallel()
+
+		base := newLocalListener(t)
+		cfg := &tls.Config{MinVersion: tls.VersionTLS13}
+		tlsListener := tls.NewListener(base, cfg)
+		wrapped := &wrappedListener{Listener: tlsListener}
+		t.Cleanup(func() {
+			require.NoError(t, wrapped.Close())
+		})
+
+		require.Nil(t, getTLSConfig(wrapped), "wrapping without Config()-like methods should return nil")
+	})
+
+	t.Run("listener with tls config method", func(t *testing.T) {
+		t.Parallel()
+
+		base := newLocalListener(t)
+		cfg := &tls.Config{MinVersion: tls.VersionTLS13}
+		listener := &tlsConfigMethodListener{Listener: base, cfg: cfg}
+		t.Cleanup(func() {
+			require.NoError(t, listener.Close())
+		})
+
+		require.Same(t, cfg, getTLSConfig(listener), "TLSConfig() should be preferred for TLS discovery")
+	})
+
+	t.Run("listener with config method", func(t *testing.T) {
+		t.Parallel()
+
+		base := newLocalListener(t)
+		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+		listener := &configMethodListener{Listener: base, cfg: cfg}
+		t.Cleanup(func() {
+			require.NoError(t, listener.Close())
+		})
+
+		require.Same(t, cfg, getTLSConfig(listener), "Config() should be preferred for TLS discovery")
+	})
+
+	t.Run("non tls listener", func(t *testing.T) {
+		t.Parallel()
+
+		base := newLocalListener(t)
+		t.Cleanup(func() {
+			require.NoError(t, base.Close())
+		})
+
+		require.Nil(t, getTLSConfig(base), "plain listeners should not report TLS config")
+	})
+}
+
+func newLocalListener(t *testing.T) net.Listener {
+	t.Helper()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	return ln
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
