@@ -3239,7 +3239,7 @@ func Test_Ctx_Value_AfterRelease(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	
+
 	// After the handler completes, the context is released and fasthttp is nil
 	// Value should return nil instead of panicking
 	require.NotPanics(t, func() {
@@ -3253,10 +3253,10 @@ func Test_Ctx_Value_InGoroutine(t *testing.T) {
 	t.Parallel()
 	app := New()
 	done := make(chan bool)
-	
+
 	app.Get("/test", func(c Ctx) error {
 		c.Locals("test", "value")
-		
+
 		// Simulate a goroutine that uses the context (like minio.GetObject)
 		go func() {
 			defer func() {
@@ -3265,7 +3265,7 @@ func Test_Ctx_Value_InGoroutine(t *testing.T) {
 				}
 				done <- true
 			}()
-			
+
 			// This simulates what happens when minio or other libraries
 			// use the fiber.Ctx as a context.Context in a goroutine
 			// The Value method should not panic even if fasthttp is nil
@@ -3273,14 +3273,14 @@ func Test_Ctx_Value_InGoroutine(t *testing.T) {
 			// The value might be nil if the context was released
 			_ = val
 		}()
-		
+
 		return nil
 	})
-	
+
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	
+
 	// Wait for goroutine to complete
 	<-done
 }
