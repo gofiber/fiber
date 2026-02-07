@@ -3009,8 +3009,8 @@ func TestErrorHandler_PicksRightOne(t *testing.T) {
 	}
 }
 
-type GroupIDResponse struct {
-	GroupID string `json:"groupID"`
+type groupIDResponse struct {
+	GroupID string `json:"group_id"`
 }
 
 // Test for the reported bug: https://github.com/gofiber/fiber/issues/XXXX
@@ -3022,12 +3022,12 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutFalse(t *testing.T) {
 	app := New()
 	app.Post("/admin/api/groups", func(c Ctx) error {
 		groupID := "g.test123"
-		return c.JSON(GroupIDResponse{
+		return c.JSON(groupIDResponse{
 			GroupID: groupID,
 		})
 	})
 
-	req := httptest.NewRequest("POST", "/admin/api/groups", nil)
+	req := httptest.NewRequest(MethodPost, "/admin/api/groups", http.NoBody)
 
 	// Using 5000 nanoseconds (5 microseconds) which is too short
 	// But with FailOnTimeout: false (default is true), it should wait and succeed
@@ -3039,7 +3039,7 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutFalse(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	var response GroupIDResponse
+	var response groupIDResponse
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	err = json.Unmarshal(body, &response)
@@ -3057,12 +3057,12 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
 	app.Post("/admin/api/groups", func(c Ctx) error {
 		time.Sleep(100 * time.Millisecond)
 		groupID := "g.test123"
-		return c.JSON(GroupIDResponse{
+		return c.JSON(groupIDResponse{
 			GroupID: groupID,
 		})
 	})
 
-	req := httptest.NewRequest("POST", "/admin/api/groups", nil)
+	req := httptest.NewRequest(MethodPost, "/admin/api/groups", http.NoBody)
 
 	// With FailOnTimeout: true (default), it should fail fast
 	_, err := app.Test(req, TestConfig{
