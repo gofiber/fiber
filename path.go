@@ -7,6 +7,7 @@
 package fiber
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -189,6 +190,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 // this information is needed later when assigning the requests to the declared routes
 func parseRoute(pattern string) routeParser {
 	parser := routeParser{}
+	originalPattern := pattern
 
 	part := ""
 	for len(pattern) > 0 {
@@ -213,6 +215,12 @@ func parseRoute(pattern string) routeParser {
 		parser.segs[len(parser.segs)-1].IsLast = true
 	}
 	parser.segs = addParameterMetaInfo(parser.segs)
+
+	// Check if the route has too many parameters
+	if len(parser.params) > maxParams {
+		panic(fmt.Sprintf("Route '%s' has %d parameters, which exceeds the maximum of %d",
+			originalPattern, len(parser.params), maxParams))
+	}
 
 	return parser
 }
