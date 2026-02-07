@@ -592,6 +592,9 @@ func (c *DefaultCtx) String() string {
 // Value makes it possible to retrieve values (Locals) under keys scoped to the request
 // and therefore available to all following routes that match the request.
 func (c *DefaultCtx) Value(key any) any {
+	if c.fasthttp == nil {
+		return nil
+	}
 	return c.fasthttp.UserValue(key)
 }
 

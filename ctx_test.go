@@ -3226,6 +3226,78 @@ func Test_Ctx_Value(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_Ctx_Value_AfterRelease
+func Test_Ctx_Value_AfterRelease(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		c.Locals("test", "value")
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// After the handler completes, the context is released and fasthttp is nil
+	// Value should return nil instead of panicking
+	require.NotPanics(t, func() {
+		val := ctx.Value("test")
+		require.Nil(t, val)
+	})
+}
+
+// go test -run Test_Ctx_Value_InGoroutine
+func Test_Ctx_Value_InGoroutine(t *testing.T) {
+	t.Parallel()
+	app := New()
+	done := make(chan bool, 1)   // Buffered to prevent goroutine leak
+	errCh := make(chan error, 1) // Channel to communicate errors from goroutine
+
+	app.Get("/test", func(c Ctx) error {
+		c.Locals("test", "value")
+
+		// Simulate a goroutine that uses the context (like minio.GetObject)
+		go func() {
+			// Add a small delay to increase the likelihood that the context
+			// is released before we access it, simulating the real-world scenario
+			time.Sleep(10 * time.Millisecond)
+
+			defer func() {
+				if r := recover(); r != nil {
+					errCh <- fmt.Errorf("panic in goroutine: %v", r)
+					return
+				}
+				done <- true
+			}()
+
+			// This simulates what happens when minio or other libraries
+			// use the fiber.Ctx as a context.Context in a goroutine
+			// The Value method should not panic even if fasthttp is nil
+			val := c.Value("test")
+			// The value might be nil if the context was released
+			_ = val
+		}()
+
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// Wait for goroutine to complete with timeout
+	select {
+	case <-done:
+		// Success - goroutine completed without panic
+	case err := <-errCh:
+		t.Fatalf("error from goroutine: %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("test timed out waiting for goroutine")
+	}
+}
+
 // go test -run Test_Ctx_Context
 func Test_Ctx_Context(t *testing.T) {
 	t.Parallel()
