@@ -3255,14 +3255,17 @@ func Test_Ctx_Value_InGoroutine(t *testing.T) {
 	done := make(chan bool, 1)   // Buffered to prevent goroutine leak
 	errCh := make(chan error, 1) // Channel to communicate errors from goroutine
 
+	// Use a synchronization point to avoid race detector complaints
+	// while still testing the defensive nil behavior
+	start := make(chan struct{})
+
 	app.Get("/test", func(c Ctx) error {
 		c.Locals("test", "value")
 
 		// Simulate a goroutine that uses the context (like minio.GetObject)
 		go func() {
-			// Add a small delay to increase the likelihood that the context
-			// is released before we access it, simulating the real-world scenario
-			time.Sleep(10 * time.Millisecond)
+			// Wait for handler to complete and context to be released
+			<-start
 
 			defer func() {
 				if r := recover(); r != nil {
@@ -3286,6 +3289,12 @@ func Test_Ctx_Value_InGoroutine(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// Give time for context to be released
+	time.Sleep(50 * time.Millisecond)
+
+	// Signal goroutine to proceed - at this point context should be released
+	close(start)
 
 	// Wait for goroutine to complete with timeout
 	select {
