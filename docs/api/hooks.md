@@ -200,6 +200,8 @@ func (sm *PreStartupMessageData) DeleteEntry(key string)
 - Set `sm.PreventDefault = true` to suppress the built-in banner without affecting other hooks.
 - `PostStartupMessageData` reports whether the banner was skipped via the `Disabled`, `IsChild`, and `Prevented` flags.
 
+### Startup Message Customization
+
 ```go title="Customize the startup message"
 package main
 

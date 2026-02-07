@@ -134,7 +134,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### FullPath
 
-Returns the full path of the matched route. This includes any prefixes that were added by [groups](../guide/routing.md#grouping-routes) or mounts.
+Returns the full path of the matched route. This includes any prefixes that were added by [groups](../guide/routing.md#grouping) or mounts.
 
 ```go title="Signature"
 func (c fiber.Ctx) FullPath() string
