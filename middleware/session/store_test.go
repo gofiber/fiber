@@ -230,6 +230,7 @@ func Test_Store_GetByID(t *testing.T) {
 
 type trackingStorage struct {
 	data        map[string][]byte
+	lastCtxErr  error
 	deleteErr   error
 	deleteCalls int
 }
@@ -262,8 +263,11 @@ func (s *trackingStorage) Set(key string, val []byte, exp time.Duration) error {
 	return s.SetWithContext(context.Background(), key, val, exp)
 }
 
-func (s *trackingStorage) DeleteWithContext(_ context.Context, key string) error {
+func (s *trackingStorage) DeleteWithContext(ctx context.Context, key string) error {
 	s.deleteCalls++
+	if ctx != nil {
+		s.lastCtxErr = ctx.Err()
+	}
 	if s.deleteErr != nil {
 		return s.deleteErr
 	}
@@ -348,4 +352,26 @@ func Test_Store_GetByID_ExpiredDestroySuccessReleasesSession(t *testing.T) {
 	require.Nil(t, reused.config)
 	require.Empty(t, reused.id)
 	reused.Release()
+}
+
+func Test_Store_GetByID_DestroyUsesContext(t *testing.T) {
+	t.Parallel()
+
+	storage := newTrackingStorage()
+	store := NewStore(Config{
+		Storage:         storage,
+		IdleTimeout:     time.Minute,
+		AbsoluteTimeout: time.Minute,
+	})
+
+	const sessionID = "expired-session-id"
+	seedExpiredSessionInStore(t, store, sessionID)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	sess, err := store.GetByID(ctx, sessionID)
+	require.Nil(t, sess)
+	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
+	require.ErrorIs(t, storage.lastCtxErr, context.Canceled)
 }
