@@ -3252,18 +3252,21 @@ func Test_Ctx_Value_AfterRelease(t *testing.T) {
 func Test_Ctx_Value_InGoroutine(t *testing.T) {
 	t.Parallel()
 	app := New()
-	done := make(chan bool)
+	done := make(chan bool, 1) // Buffered to prevent goroutine leak
 
 	app.Get("/test", func(c Ctx) error {
 		c.Locals("test", "value")
 
 		// Simulate a goroutine that uses the context (like minio.GetObject)
 		go func() {
+			// Add a small delay to increase the likelihood that the context
+			// is released before we access it, simulating the real-world scenario
+			time.Sleep(10 * time.Millisecond)
+
 			defer func() {
 				if r := recover(); r != nil {
-					t.Errorf("panic in goroutine: %v", r)
+					t.Fatalf("panic in goroutine: %v", r)
 				}
-				done <- true
 			}()
 
 			// This simulates what happens when minio or other libraries
@@ -3272,6 +3275,7 @@ func Test_Ctx_Value_InGoroutine(t *testing.T) {
 			val := c.Value("test")
 			// The value might be nil if the context was released
 			_ = val
+			done <- true
 		}()
 
 		return nil
