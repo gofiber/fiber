@@ -177,6 +177,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
 	} else if sess.isAbsExpired() {
 		if err := sess.Reset(); err != nil {
+			sess.Release()
 			return nil, fmt.Errorf("failed to reset session: %w", err)
 		}
 		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
@@ -292,6 +293,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 
 	sess.mu.Lock()
 
+	sess.gctx = ctx
 	sess.config = s
 	sess.id = id
 	sess.fresh = false
@@ -308,9 +310,9 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	if s.AbsoluteTimeout > 0 {
 		if sess.isAbsExpired() {
 			if err := sess.Destroy(); err != nil { //nolint:contextcheck // it is not right
-				sess.Release()
 				log.Errorf("failed to destroy session: %v", err)
 			}
+			sess.Release()
 			return nil, ErrSessionIDNotFoundInStore
 		}
 	}
