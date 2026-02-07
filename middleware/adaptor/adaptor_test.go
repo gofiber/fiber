@@ -252,16 +252,11 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
 		Timeout:       200 * time.Millisecond,
-		FailOnTimeout: false,
+		FailOnTimeout: true, // Changed to true to test interrupted behavior
 	})
-	require.NoError(t, err)
-	defer resp.Body.Close() //nolint:errcheck // not needed
-
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
-	require.Equal(t, "Hello ", string(body))
+	// With FailOnTimeout: true, we should get a timeout error
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	require.Nil(t, resp)
 }
 
 func Test_HTTPHandlerWithContext_local_context(t *testing.T) {

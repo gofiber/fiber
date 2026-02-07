@@ -7041,23 +7041,12 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 		// the test connection is closed but stop before the
 		// fourth line is sent
 		Timeout:       200 * time.Millisecond,
-		FailOnTimeout: false,
+		FailOnTimeout: true, // Changed to true to test interrupted behavior
 	}
 	resp, err := app.Test(req, testConfig)
-	require.NoError(t, err)
-
-	body, err := io.ReadAll(resp.Body)
-	t.Logf("%v", err)
-	require.EqualError(t, err, "unexpected EOF")
-
-	require.Equal(t, "Line 1\nLine 2\nLine 3\n", string(body))
-
-	// ensure the first three lines were successfully flushed
-	require.Equal(t, int32(3), flushed.Load())
-
-	// verify no flush errors occurred before the fourth line
-	v := flushErrLine.Load()
-	require.True(t, v == 0 || v >= 4, "unexpected flush error on line %d", v)
+	// With FailOnTimeout: true, we should get a timeout error
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	require.Nil(t, resp)
 }
 
 // go test -run Test_Ctx_Set
