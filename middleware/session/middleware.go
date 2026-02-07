@@ -96,7 +96,7 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 			}
 
 			releaseMiddleware(m)
-			if c.Response().StatusCode() == fiber.StatusOK {
+			if c.Response().StatusCode() == fiber.StatusOK && len(c.Response().Body()) == 0 {
 				return err
 			}
 			return nil
