@@ -3013,9 +3013,9 @@ type groupIDResponse struct {
 	GroupID string `json:"group_id"`
 }
 
-// Test for the reported bug: https://github.com/gofiber/fiber/issues/XXXX
-// When using a very small timeout value (e.g., 5000 nanoseconds instead of 5 seconds),
-// the test should still wait for the response when FailOnTimeout is false (default is true)
+// Test for the reported bug where Test method returns "test: got empty response" error
+// when using a very small timeout value (e.g., 5000 nanoseconds instead of 5 seconds).
+// With FailOnTimeout: false, the test should wait for the response regardless of timeout.
 func Test_App_Test_SmallTimeout_WithFailOnTimeoutFalse(t *testing.T) {
 	t.Parallel()
 
@@ -3029,8 +3029,8 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutFalse(t *testing.T) {
 
 	req := httptest.NewRequest(MethodPost, "/admin/api/groups", http.NoBody)
 
-	// Using 5000 nanoseconds (5 microseconds) which is too short
-	// But with FailOnTimeout: false (default is true), it should wait and succeed
+	// Using 5000 nanoseconds (5 microseconds) which is too short for the handler to complete
+	// But with FailOnTimeout: false, it should wait and succeed
 	resp, err := app.Test(req, TestConfig{
 		Timeout:       5000, // 5 microseconds
 		FailOnTimeout: false,
