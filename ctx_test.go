@@ -3346,8 +3346,35 @@ func Test_Ctx_Context_AfterHandlerPanics(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Panics(t, func() {
-		_ = ctx.Context()
+	// After the fix, Context() returns context.Background() instead of panicking
+	require.NotPanics(t, func() {
+		c := ctx.Context()
+		require.NotNil(t, c)
+		require.Equal(t, context.Background(), c)
+	})
+}
+
+// go test -run Test_Ctx_Request_Response_AfterRelease
+func Test_Ctx_Request_Response_AfterRelease(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// After the handler completes and context is released,
+	// Request() and Response() should return nil instead of panicking
+	require.NotPanics(t, func() {
+		req := ctx.Request()
+		require.Nil(t, req)
+
+		res := ctx.Response()
+		require.Nil(t, res)
 	})
 }
 

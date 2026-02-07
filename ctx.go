@@ -121,6 +121,9 @@ func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 // Context returns a context implementation that was set by
 // user earlier or returns a non-nil, empty context, if it was not set earlier.
 func (c *DefaultCtx) Context() context.Context {
+	if c.fasthttp == nil {
+		return context.Background()
+	}
 	if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
 		return ctx
 	}
@@ -131,6 +134,9 @@ func (c *DefaultCtx) Context() context.Context {
 
 // SetContext sets a context implementation by user.
 func (c *DefaultCtx) SetContext(ctx context.Context) {
+	if c.fasthttp == nil {
+		return
+	}
 	c.fasthttp.SetUserValue(userContextKey, ctx)
 }
 
@@ -168,6 +174,9 @@ func (*DefaultCtx) Err() error {
 // This allows you to use all fasthttp request methods
 // https://godoc.org/github.com/valyala/fasthttp#Request
 func (c *DefaultCtx) Request() *fasthttp.Request {
+	if c.fasthttp == nil {
+		return nil
+	}
 	return &c.fasthttp.Request
 }
 
@@ -175,6 +184,9 @@ func (c *DefaultCtx) Request() *fasthttp.Request {
 // This allows you to use all fasthttp response methods
 // https://godoc.org/github.com/valyala/fasthttp#Response
 func (c *DefaultCtx) Response() *fasthttp.Response {
+	if c.fasthttp == nil {
+		return nil
+	}
 	return &c.fasthttp.Response
 }
 
