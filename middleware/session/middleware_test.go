@@ -573,6 +573,31 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 }
 
+func Test_Session_Middleware_ClearsContextLocalsOnRelease(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		require.Nil(t, FromContext(c))
+		return err
+	})
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		require.NotNil(t, sess)
+		sess.Set("key", "value")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 type failingStorage struct {
 	getErr   error
 	getCalls int

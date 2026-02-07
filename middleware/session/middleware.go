@@ -106,6 +106,7 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 
 		m.finalizeSession()
 
+		c.Locals(middlewareContextKey, nil)
 		releaseMiddleware(m)
 		return stackErr
 	}
