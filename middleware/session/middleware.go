@@ -88,17 +88,23 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 
 		// Acquire session middleware
 		m := acquireMiddleware()
-		m.initialize(c, &cfg)
+		if err := m.initialize(c, &cfg); err != nil {
+			if cfg.ErrorHandler != nil {
+				cfg.ErrorHandler(c, err)
+			} else {
+				DefaultErrorHandler(c, err)
+			}
+
+			releaseMiddleware(m)
+			if c.Response().StatusCode() == fiber.StatusOK {
+				return err
+			}
+			return nil
+		}
 
 		stackErr := c.Next()
 
-		m.mu.RLock()
-		destroyed := m.destroyed
-		m.mu.RUnlock()
-
-		if !destroyed {
-			m.saveSession()
-		}
+		m.finalizeSession()
 
 		releaseMiddleware(m)
 		return stackErr
@@ -108,13 +114,13 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 }
 
 // initialize sets up middleware for the request.
-func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
+func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	session, err := cfg.Store.getSession(c)
 	if err != nil {
-		panic(err) // handle or log this error appropriately in production
+		return err
 	}
 
 	m.config = *cfg
@@ -122,6 +128,8 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
 	m.ctx = c
 
 	c.Locals(middlewareContextKey, m)
+
+	return nil
 }
 
 // saveSession handles session saving and error management after the response.
@@ -132,6 +140,17 @@ func (m *Middleware) saveSession() {
 		} else {
 			DefaultErrorHandler(m.ctx, err)
 		}
+	}
+}
+
+// finalizeSession handles session persistence and always releases the session object.
+func (m *Middleware) finalizeSession() {
+	m.mu.RLock()
+	destroyed := m.destroyed
+	m.mu.RUnlock()
+
+	if !destroyed {
+		m.saveSession()
 	}
 
 	releaseSession(m.Session)

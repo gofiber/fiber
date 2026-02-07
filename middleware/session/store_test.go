@@ -2,8 +2,10 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
@@ -224,4 +226,126 @@ func Test_Store_GetByID(t *testing.T) {
 			retrievedSession.Release()
 		})
 	})
+}
+
+type trackingStorage struct {
+	data        map[string][]byte
+	deleteErr   error
+	deleteCalls int
+}
+
+func newTrackingStorage() *trackingStorage {
+	return &trackingStorage{data: make(map[string][]byte)}
+}
+
+func (s *trackingStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
+	if v, ok := s.data[key]; ok {
+		copied := make([]byte, len(v))
+		copy(copied, v)
+		return copied, nil
+	}
+	return nil, nil
+}
+
+func (s *trackingStorage) Get(key string) ([]byte, error) {
+	return s.GetWithContext(context.Background(), key)
+}
+
+func (s *trackingStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
+	copied := make([]byte, len(val))
+	copy(copied, val)
+	s.data[key] = copied
+	return nil
+}
+
+func (s *trackingStorage) Set(key string, val []byte, exp time.Duration) error {
+	return s.SetWithContext(context.Background(), key, val, exp)
+}
+
+func (s *trackingStorage) DeleteWithContext(_ context.Context, key string) error {
+	s.deleteCalls++
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+	delete(s.data, key)
+	return nil
+}
+
+func (s *trackingStorage) Delete(key string) error {
+	return s.DeleteWithContext(context.Background(), key)
+}
+
+func (*trackingStorage) ResetWithContext(context.Context) error { return nil }
+func (*trackingStorage) Reset() error                           { return nil }
+func (*trackingStorage) Close() error                           { return nil }
+
+func seedExpiredSessionInStore(t *testing.T, store *Store, sessionID string) {
+	t.Helper()
+
+	sess := acquireSession()
+	sess.mu.Lock()
+	sess.config = store
+	sess.id = sessionID
+	sess.fresh = false
+	sess.mu.Unlock()
+	sess.Set("name", "john")
+	sess.Set(absExpirationKey, time.Now().Add(-time.Minute))
+	require.NoError(t, sess.Save())
+	sess.Release()
+}
+
+func Test_Store_getSession_ExpiredResetFailureReleasesSession(t *testing.T) {
+	t.Parallel()
+
+	storage := newTrackingStorage()
+	store := NewStore(Config{
+		Storage:         storage,
+		IdleTimeout:     time.Minute,
+		AbsoluteTimeout: time.Minute,
+	})
+
+	const sessionID = "existing-session-id"
+	seedExpiredSessionInStore(t, store, sessionID)
+	storage.deleteErr = errors.New("delete failed")
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.SetCookie("session_id", sessionID)
+
+	sess, err := store.Get(ctx)
+	require.Nil(t, sess)
+	require.ErrorContains(t, err, "failed to reset session")
+	require.Equal(t, 1, storage.deleteCalls)
+
+	reused := acquireSession()
+	require.Nil(t, reused.ctx)
+	require.Nil(t, reused.config)
+	require.Empty(t, reused.id)
+	reused.Release()
+}
+
+func Test_Store_GetByID_ExpiredDestroySuccessReleasesSession(t *testing.T) {
+	t.Parallel()
+
+	storage := newTrackingStorage()
+	store := NewStore(Config{
+		Storage:         storage,
+		IdleTimeout:     time.Minute,
+		AbsoluteTimeout: time.Minute,
+	})
+
+	const sessionID = "expired-session-id"
+	seedExpiredSessionInStore(t, store, sessionID)
+
+	sess, err := store.GetByID(context.Background(), sessionID)
+	require.Nil(t, sess)
+	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
+	require.Equal(t, 1, storage.deleteCalls)
+
+	reused := acquireSession()
+	require.Nil(t, reused.ctx)
+	require.Nil(t, reused.config)
+	require.Empty(t, reused.id)
+	reused.Release()
 }

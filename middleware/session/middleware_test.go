@@ -1,7 +1,12 @@
 package session
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync"
@@ -566,4 +571,215 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+}
+
+type failingStorage struct {
+	getErr   error
+	getCalls int
+	setCalls int
+}
+
+func (s *failingStorage) GetWithContext(_ context.Context, _ string) ([]byte, error) {
+	s.getCalls++
+	return nil, s.getErr
+}
+
+func (s *failingStorage) Get(_ string) ([]byte, error) {
+	return nil, s.getErr
+}
+
+func (s *failingStorage) SetWithContext(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	s.setCalls++
+	return nil
+}
+
+func (*failingStorage) Set(_ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+
+func (*failingStorage) DeleteWithContext(context.Context, string) error { return nil }
+func (*failingStorage) Delete(string) error                             { return nil }
+func (*failingStorage) ResetWithContext(context.Context) error          { return nil }
+func (*failingStorage) Reset() error                                    { return nil }
+func (*failingStorage) Close() error                                    { return nil }
+
+func Test_Session_Middleware_InitializeError_WithCustomErrorHandler(t *testing.T) {
+	t.Parallel()
+	errStorage := &failingStorage{getErr: errors.New("storage down")}
+	app := fiber.New()
+
+	var nextCalled bool
+	app.Use(New(Config{
+		Storage: errStorage,
+		ErrorHandler: func(c fiber.Ctx, err error) {
+			require.ErrorContains(t, err, "storage down")
+			require.NoError(t, c.Status(fiber.StatusServiceUnavailable).SendString("session unavailable"))
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		nextCalled = true
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "existing-id"})
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, readErr)
+	require.Equal(t, "session unavailable", string(body))
+	require.False(t, nextCalled)
+	require.Equal(t, 1, errStorage.getCalls)
+	require.Equal(t, 0, errStorage.setCalls)
+
+	m := acquireMiddleware()
+	require.Nil(t, m.Session)
+	require.Nil(t, m.ctx)
+	require.Nil(t, m.config.Store)
+	releaseMiddleware(m)
+}
+
+func Test_Session_Middleware_InitializeError_DefaultErrorHandler(t *testing.T) {
+	t.Parallel()
+	errStorage := &failingStorage{getErr: errors.New("storage down")}
+	app := fiber.New()
+
+	app.Use(New(Config{Storage: errStorage}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "existing-id"})
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, readErr)
+	require.Equal(t, "Internal Server Error", string(body))
+	require.Equal(t, 1, errStorage.getCalls)
+	require.Equal(t, 0, errStorage.setCalls)
+}
+
+func Test_Session_Middleware_InitializeError_ReturnsHandlerErrorWhenUnwritten(t *testing.T) {
+	t.Parallel()
+	errStorage := &failingStorage{getErr: errors.New("storage down")}
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Storage: errStorage,
+		ErrorHandler: func(fiber.Ctx, error) {
+			// Intentionally do not write a response to assert return semantics.
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "existing-id"})
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Equal(t, 1, errStorage.getCalls)
+	require.Equal(t, 0, errStorage.setCalls)
+}
+
+type lifecycleStorage struct {
+	setErr      error
+	setCalls    int32
+	deleteCalls int32
+}
+
+func (*lifecycleStorage) GetWithContext(context.Context, string) ([]byte, error) { return nil, nil }
+func (*lifecycleStorage) Get(string) ([]byte, error)                             { return nil, nil }
+
+func (s *lifecycleStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
+	s.setCalls++
+	return s.setErr
+}
+
+func (s *lifecycleStorage) Set(string, []byte, time.Duration) error { return s.setErr }
+
+func (s *lifecycleStorage) DeleteWithContext(context.Context, string) error {
+	s.deleteCalls++
+	return nil
+}
+
+func (*lifecycleStorage) Delete(string) error                    { return nil }
+func (*lifecycleStorage) ResetWithContext(context.Context) error { return nil }
+func (*lifecycleStorage) Reset() error                           { return nil }
+func (*lifecycleStorage) Close() error                           { return nil }
+
+func newMiddlewareSessionForFinalize(t *testing.T, storage *lifecycleStorage) (*Middleware, *Session) {
+	t.Helper()
+
+	store := NewStore(Config{Storage: storage})
+	sess := acquireSession()
+	sess.mu.Lock()
+	sess.id = "session-id"
+	sess.config = store
+	sess.mu.Unlock()
+	sess.Set("k", "v")
+
+	m := &Middleware{
+		Session: sess,
+		config:  Config{Store: store, ErrorHandler: func(fiber.Ctx, error) {}},
+	}
+
+	return m, sess
+}
+
+func Test_Middleware_FinalizeSession_NormalSavePath(t *testing.T) {
+	t.Parallel()
+
+	storage := &lifecycleStorage{}
+	m, sess := newMiddlewareSessionForFinalize(t, storage)
+
+	m.finalizeSession()
+
+	require.EqualValues(t, 1, storage.setCalls)
+	require.EqualValues(t, 0, storage.deleteCalls)
+	require.Nil(t, sess.ctx)
+	require.Nil(t, sess.config)
+	require.Empty(t, sess.id)
+}
+
+func Test_Middleware_FinalizeSession_DestroyedPathSkipsSave(t *testing.T) {
+	t.Parallel()
+
+	storage := &lifecycleStorage{}
+	m, sess := newMiddlewareSessionForFinalize(t, storage)
+
+	m.destroyed = true
+	m.finalizeSession()
+
+	require.EqualValues(t, 0, storage.setCalls)
+	require.EqualValues(t, 0, storage.deleteCalls)
+	require.Nil(t, sess.ctx)
+	require.Nil(t, sess.config)
+	require.Empty(t, sess.id)
+}
+
+func Test_Middleware_FinalizeSession_SaveErrorStillReleasesSession(t *testing.T) {
+	t.Parallel()
+
+	storage := &lifecycleStorage{setErr: errors.New("set failed")}
+	m, sess := newMiddlewareSessionForFinalize(t, storage)
+
+	errCalls := 0
+	m.config.ErrorHandler = func(fiber.Ctx, error) {
+		errCalls++
+	}
+
+	m.finalizeSession()
+
+	require.EqualValues(t, 1, storage.setCalls)
+	require.Equal(t, 1, errCalls)
+	require.Nil(t, sess.ctx)
+	require.Nil(t, sess.config)
+	require.Empty(t, sess.id)
 }
