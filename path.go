@@ -8,6 +8,7 @@ package fiber
 
 import (
 	"bytes"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -242,6 +243,13 @@ func (parser *routeParser) parseRoute(pattern string, customConstraints ...Custo
 func parseRoute(pattern string, customConstraints ...CustomConstraint) routeParser {
 	parser := routeParser{}
 	parser.parseRoute(pattern, customConstraints...)
+
+	// Check if the route has too many parameters
+	if len(parser.params) > maxParams {
+		panic(fmt.Sprintf("Route '%s' has %d parameters, which exceeds the maximum of %d",
+			pattern, len(parser.params), maxParams))
+	}
+
 	return parser
 }
 
