@@ -16,8 +16,7 @@ import (
 )
 
 func Test_App_Prefork_Child_Process(t *testing.T) {
-	// Reset test var
-	testPreforkMaster = true
+	usePreforkDummyCommand(t, "go")
 
 	setupIsChild(t)
 
@@ -53,26 +52,25 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {
-	// Reset test var
-	testPreforkMaster = true
+	usePreforkDummyCommand(t, "go")
 
+	// Test 1: Master process starts with valid command
+	// The child processes ("go version") will exit quickly,
+	// which will eventually exceed RecoverThreshold and return ErrOverRecovery
 	app := New()
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
 	cfg := listenConfigDefault()
-	require.NoError(t, app.prefork(":0", nil, &cfg))
-
-	dummyChildCmd.Store("invalid")
-
-	cfg = listenConfigDefault()
-	err := app.prefork("127.0.0.1:", nil, &cfg)
+	cfg.PreforkRecoverThreshold = 1 // Set low threshold for quick test
+	err := app.prefork(":0", nil, &cfg)
+	// Expected: ErrOverRecovery because children keep exiting
 	require.Error(t, err)
 
-	dummyChildCmd.Store("go")
+	// Test 2: Master process fails with invalid command
+	setPreforkDummyCommand("invalid_command_that_does_not_exist")
+
+	cfg = listenConfigDefault()
+	err = app.prefork("127.0.0.1:", nil, &cfg)
+	require.Error(t, err)
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
@@ -102,5 +100,6 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 func setupIsChild(t *testing.T) {
 	t.Helper()
 
-	t.Setenv(envPreforkChildKey, envPreforkChildVal)
+	// Use FastHTTP's prefork environment variable
+	t.Setenv("FASTHTTP_PREFORK_CHILD", "1")
 }
