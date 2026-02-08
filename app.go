@@ -1200,9 +1200,15 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 				conn.Close() //nolint:errcheck // It is fine to ignore the error here
 				return nil, os.ErrDeadlineExceeded
 			}
-			// When FailOnTimeout is false, don't close the connection
-			// and wait for the handler to complete so we can read the response
-			err = <-channel
+			// When FailOnTimeout is false, wait up to 1 additional second for the handler
+			// to complete and write a response. This prevents indefinite blocking while
+			// allowing slow handlers to finish.
+			select {
+			case err = <-channel:
+			case <-time.After(time.Second):
+				// Handler took too long even with extra time
+				conn.Close() //nolint:errcheck // It is fine to ignore the error here
+			}
 		}
 	} else {
 		// Without timeout
