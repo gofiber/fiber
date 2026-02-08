@@ -121,6 +121,9 @@ func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 // Context returns a context implementation that was set by
 // user earlier or returns a non-nil, empty context, if it was not set earlier.
 func (c *DefaultCtx) Context() context.Context {
+	if c.fasthttp == nil {
+		return context.Background()
+	}
 	if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
 		return ctx
 	}
@@ -131,6 +134,9 @@ func (c *DefaultCtx) Context() context.Context {
 
 // SetContext sets a context implementation by user.
 func (c *DefaultCtx) SetContext(ctx context.Context) {
+	if c.fasthttp == nil {
+		return
+	}
 	c.fasthttp.SetUserValue(userContextKey, ctx)
 }
 
@@ -167,14 +173,22 @@ func (*DefaultCtx) Err() error {
 // Request return the *fasthttp.Request object
 // This allows you to use all fasthttp request methods
 // https://godoc.org/github.com/valyala/fasthttp#Request
+// Returns nil if the context has been released.
 func (c *DefaultCtx) Request() *fasthttp.Request {
+	if c.fasthttp == nil {
+		return nil
+	}
 	return &c.fasthttp.Request
 }
 
 // Response return the *fasthttp.Response object
 // This allows you to use all fasthttp response methods
 // https://godoc.org/github.com/valyala/fasthttp#Response
+// Returns nil if the context has been released.
 func (c *DefaultCtx) Response() *fasthttp.Response {
+	if c.fasthttp == nil {
+		return nil
+	}
 	return &c.fasthttp.Response
 }
 
@@ -590,8 +604,12 @@ func (c *DefaultCtx) String() string {
 }
 
 // Value makes it possible to retrieve values (Locals) under keys scoped to the request
-// and therefore available to all following routes that match the request.
+// and therefore available to all following routes that match the request. If the context
+// has been released and c.fasthttp is nil (for example, after ReleaseCtx), Value returns nil.
 func (c *DefaultCtx) Value(key any) any {
+	if c.fasthttp == nil {
+		return nil
+	}
 	return c.fasthttp.UserValue(key)
 }
 

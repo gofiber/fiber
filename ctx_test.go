@@ -3226,6 +3226,85 @@ func Test_Ctx_Value(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_Ctx_Value_AfterRelease
+func Test_Ctx_Value_AfterRelease(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		c.Locals("test", "value")
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// After the handler completes, the context is released and fasthttp is nil
+	// Value should return nil instead of panicking
+	require.NotPanics(t, func() {
+		val := ctx.Value("test")
+		require.Nil(t, val)
+	})
+}
+
+// go test -run Test_Ctx_Value_InGoroutine
+func Test_Ctx_Value_InGoroutine(t *testing.T) {
+	t.Parallel()
+	app := New()
+	done := make(chan bool, 1)   // Buffered to prevent goroutine leak
+	errCh := make(chan error, 1) // Channel to communicate errors from goroutine
+
+	// Use a synchronization point to avoid race detector complaints
+	// while still testing the defensive nil behavior
+	start := make(chan struct{})
+
+	app.Get("/test", func(c Ctx) error {
+		c.Locals("test", "value")
+
+		// Simulate a goroutine that uses the context (like minio.GetObject)
+		go func() {
+			// Wait for handler to complete and context to be released
+			<-start
+
+			defer func() {
+				if r := recover(); r != nil {
+					errCh <- fmt.Errorf("panic in goroutine: %v", r)
+					return
+				}
+				done <- true
+			}()
+
+			// This simulates what happens when minio or other libraries
+			// use the fiber.Ctx as a context.Context in a goroutine
+			// The Value method should not panic even if fasthttp is nil
+			val := c.Value("test")
+			// The value might be nil if the context was released
+			_ = val
+		}()
+
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// Signal goroutine to proceed - context has been released after app.Test returns
+	// since the handler (and its deferred ReleaseCtx) has completed
+	close(start)
+
+	// Wait for goroutine to complete with timeout
+	select {
+	case <-done:
+		// Success - goroutine completed without panic
+	case err := <-errCh:
+		t.Fatalf("error from goroutine: %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("test timed out waiting for goroutine")
+	}
+}
+
 // go test -run Test_Ctx_Context
 func Test_Ctx_Context(t *testing.T) {
 	t.Parallel()
@@ -3274,8 +3353,35 @@ func Test_Ctx_Context_AfterHandlerPanics(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Panics(t, func() {
-		_ = ctx.Context()
+	// After the fix, Context() returns context.Background() instead of panicking
+	require.NotPanics(t, func() {
+		c := ctx.Context()
+		require.NotNil(t, c)
+		require.Equal(t, context.Background(), c)
+	})
+}
+
+// go test -run Test_Ctx_Request_Response_AfterRelease
+func Test_Ctx_Request_Response_AfterRelease(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// After the handler completes and context is released,
+	// Request() and Response() should return nil instead of panicking
+	require.NotPanics(t, func() {
+		req := ctx.Request()
+		require.Nil(t, req)
+
+		res := ctx.Response()
+		require.Nil(t, res)
 	})
 }
 
