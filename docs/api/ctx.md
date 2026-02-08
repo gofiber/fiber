@@ -2704,10 +2704,46 @@ Sets the response body to a stream of data and adds an optional body size.
 func (c fiber.Ctx) SendStream(stream io.Reader, size ...int) error
 ```
 
+:::info
+`SendStream` operates asynchronously. The handler returns immediately after setting up the stream,
+but the actual reading and sending of data happens **after** the handler completes. This is handled
+by the underlying `fasthttp` library.
+
+If the provided stream implements `io.Closer`, it will be automatically closed by `fasthttp` after
+the response is fully sent or if an error occurs.
+:::
+
+:::caution
+When passing `fiber.Ctx` as a `context.Context` to libraries that spawn goroutines (e.g., for streaming operations),
+those goroutines may attempt to access the context after the handler returns. Since `fiber.Ctx` is recycled and
+released after the handler completes, this can cause issues.
+
+**Recommended approach**: Use `c.Context()` or `c.RequestCtx()` instead of passing `c` directly to such libraries.
+See the [Context Guide](../guide/context.md) for more details.
+:::
+
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   return c.SendStream(bytes.NewReader([]byte("Hello, World!")))
   // => "Hello, World!"
+})
+```
+
+```go title="Example with file streaming"
+app.Get("/download", func(c fiber.Ctx) error {
+  file, err := os.Open("large-file.zip")
+  if err != nil {
+    return err
+  }
+  // File will be automatically closed by fasthttp after streaming completes
+  
+  stat, err := file.Stat()
+  if err != nil {
+    file.Close()
+    return err
+  }
+  
+  return c.SendStream(file, int(stat.Size()))
 })
 ```
 
