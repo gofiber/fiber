@@ -352,7 +352,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
 			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
 		}
-		// TODO: Do we need to return here?
+		return
 	}
 }
 

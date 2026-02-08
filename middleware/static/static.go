@@ -9,6 +9,7 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -53,15 +54,50 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 		s = us
 	}
 
+	if strings.IndexByte(s, '\\') >= 0 {
+		return nil, ErrInvalidPath
+	}
+
 	// reject any null bytes
 	if strings.IndexByte(s, '\x00') >= 0 {
 		return nil, ErrInvalidPath
 	}
 
-	s = pathpkg.Clean("/" + s)
+	normalized := filepath.ToSlash(s)
+	if filesystem == nil && strings.HasPrefix(normalized, "//") {
+		return nil, ErrInvalidPath
+	}
+
+	s = pathpkg.Clean("/" + normalized)
+
+	trimmed := utils.TrimLeft(s, '/')
+	if trimmed != "" {
+		if slices.Contains(strings.Split(trimmed, "/"), "..") {
+			return nil, ErrInvalidPath
+		}
+	}
+
+	if filesystem == nil {
+		normalizedClean := filepath.ToSlash(trimmed)
+		if strings.HasPrefix(normalizedClean, "//") {
+			return nil, ErrInvalidPath
+		}
+		if volume := filepath.VolumeName(normalizedClean); volume != "" {
+			return nil, ErrInvalidPath
+		}
+		if len(normalizedClean) >= 2 && normalizedClean[1] == ':' {
+			drive := normalizedClean[0]
+			if (drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z') {
+				return nil, ErrInvalidPath
+			}
+		}
+		if strings.HasPrefix(filepath.ToSlash(s), "//") {
+			return nil, ErrInvalidPath
+		}
+	}
 
 	if filesystem != nil {
-		s = utils.TrimLeft(s, '/')
+		s = trimmed
 		if s == "" {
 			return []byte("/"), nil
 		}
