@@ -6,12 +6,6 @@ import (
 	"github.com/tinylib/msgp/msgp"
 )
 
-// Size limits for msgp deserialization
-const (
-	zd44e2ac8limitArrays = 16384
-	zd44e2ac8limitMaps   = 2048
-)
-
 // DecodeMsg implements msgp.Decodable
 func (z *response) DecodeMsg(dc *msgp.Reader) (err error) {
 	var field []byte
@@ -20,10 +14,6 @@ func (z *response) DecodeMsg(dc *msgp.Reader) (err error) {
 	zb0001, err = dc.ReadMapHeader()
 	if err != nil {
 		err = msgp.WrapError(err)
-		return
-	}
-	if zb0001 > zd44e2ac8limitMaps {
-		err = msgp.ErrLimitExceeded
 		return
 	}
 	for zb0001 > 0 {
@@ -84,10 +74,7 @@ func (z *response) DecodeMsg(dc *msgp.Reader) (err error) {
 				z.Headers[za0001] = za0002
 			}
 		case "b":
-			z.Body, err = dc.ReadBytesLimit(z.Body, zd44e2ac8limitArrays)
-			if err == nil && z.Body == nil {
-				z.Body = []byte{}
-			}
+			z.Body, err = dc.ReadBytes(z.Body)
 			if err != nil {
 				err = msgp.WrapError(err, "Body")
 				return
@@ -122,10 +109,6 @@ func (z *response) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "Headers")
 		return
 	}
-	if uint32(len(z.Headers)) > zd44e2ac8limitMaps {
-		err = msgp.ErrLimitExceeded
-		return
-	}
 	for za0001, za0002 := range z.Headers {
 		err = en.WriteString(za0001)
 		if err != nil {
@@ -135,10 +118,6 @@ func (z *response) EncodeMsg(en *msgp.Writer) (err error) {
 		err = en.WriteArrayHeader(uint32(len(za0002)))
 		if err != nil {
 			err = msgp.WrapError(err, "Headers", za0001)
-			return
-		}
-		if uint32(len(za0002)) > zd44e2ac8limitArrays {
-			err = msgp.ErrLimitExceeded
 			return
 		}
 		for za0003 := range za0002 {
@@ -179,15 +158,9 @@ func (z *response) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "hs"
 	o = append(o, 0x83, 0xa2, 0x68, 0x73)
 	o = msgp.AppendMapHeader(o, uint32(len(z.Headers)))
-	if uint32(len(z.Headers)) > zd44e2ac8limitMaps {
-		return nil, msgp.ErrLimitExceeded
-	}
 	for za0001, za0002 := range z.Headers {
 		o = msgp.AppendString(o, za0001)
 		o = msgp.AppendArrayHeader(o, uint32(len(za0002)))
-		if uint32(len(za0002)) > zd44e2ac8limitArrays {
-			return nil, msgp.ErrLimitExceeded
-		}
 		for za0003 := range za0002 {
 			o = msgp.AppendString(o, za0002[za0003])
 		}
@@ -209,10 +182,6 @@ func (z *response) UnmarshalMsg(bts []byte) (o []byte, err error) {
 	zb0001, bts, err = msgp.ReadMapHeaderBytes(bts)
 	if err != nil {
 		err = msgp.WrapError(err)
-		return
-	}
-	if zb0001 > zd44e2ac8limitMaps {
-		err = msgp.ErrLimitExceeded
 		return
 	}
 	for zb0001 > 0 {
@@ -273,27 +242,11 @@ func (z *response) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				z.Headers[za0001] = za0002
 			}
 		case "b":
-			var zb0004 uint32
-			zb0004, bts, err = msgp.ReadBytesHeader(bts)
+			z.Body, bts, err = msgp.ReadBytesBytes(bts, z.Body)
 			if err != nil {
 				err = msgp.WrapError(err, "Body")
 				return
 			}
-			if zb0004 > zd44e2ac8limitArrays {
-				err = msgp.ErrLimitExceeded
-				return
-			}
-			if z.Body == nil || uint32(cap(z.Body)) < zb0004 {
-				z.Body = make([]byte, zb0004)
-			} else {
-				z.Body = z.Body[:zb0004]
-			}
-			if uint32(len(bts)) < zb0004 {
-				err = msgp.ErrShortBytes
-				return
-			}
-			copy(z.Body, bts[:zb0004])
-			bts = bts[zb0004:]
 		case "sc":
 			z.StatusCode, bts, err = msgp.ReadIntBytes(bts)
 			if err != nil {

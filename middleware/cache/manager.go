@@ -14,7 +14,6 @@ import (
 // msgp -file="manager.go" -o="manager_msgp.go" -tests=true -unexported
 // Default slice limits are sized for cache payloads, with tighter field caps below.
 //
-//msgp:limit arrays:65535 maps:2048 marshal:true
 //go:generate msgp -o=manager_msgp.go -tests=true -unexported
 //nolint:revive // msgp requires tags on unexported fields for limit enforcement.
 type item struct {

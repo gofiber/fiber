@@ -7,11 +7,10 @@ import (
 // msgp -file="data.go" -o="data_msgp.go" -tests=true -unexported
 // Session state should remain small to fit common storage payload limits.
 //
-//msgp:limit arrays:4096 maps:2048 marshal:true
 //go:generate msgp -o=data_msgp.go -tests=true -unexported
 //msgp:ignore data
 type data struct {
-	Data         map[any]any `msg:",limit=2048"` // Session key counts are expected to be bounded.
+	Data         map[any]any // Session key counts are expected to be bounded.
 	sync.RWMutex `msg:"-"`
 }
 
