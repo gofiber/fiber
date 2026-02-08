@@ -2334,3 +2334,48 @@ func Benchmark_Router_GitHub_API_Parallel(b *testing.B) {
 		require.True(b, match)
 	}
 }
+
+func Test_reuseRouteBucket(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reuses bucket when capacity sufficient", func(t *testing.T) {
+		t.Parallel()
+		existing := make([]*Route, 5, 10)
+		prev := map[int][]*Route{1: existing}
+
+		got := reuseRouteBucket(prev, 1, 8)
+
+		require.Empty(t, got)
+		require.Equal(t, 10, cap(got))
+	})
+
+	t.Run("allocates new bucket when capacity insufficient", func(t *testing.T) {
+		t.Parallel()
+		existing := make([]*Route, 2, 3)
+		prev := map[int][]*Route{1: existing}
+
+		got := reuseRouteBucket(prev, 1, 5)
+
+		require.Empty(t, got)
+		require.Equal(t, 5, cap(got))
+	})
+
+	t.Run("allocates new bucket when key missing", func(t *testing.T) {
+		t.Parallel()
+		prev := map[int][]*Route{}
+
+		got := reuseRouteBucket(prev, 99, 4)
+
+		require.Empty(t, got)
+		require.Equal(t, 4, cap(got))
+	})
+
+	t.Run("nil prev map allocates new bucket", func(t *testing.T) {
+		t.Parallel()
+
+		got := reuseRouteBucket(nil, 1, 6)
+
+		require.Empty(t, got)
+		require.Equal(t, 6, cap(got))
+	})
+}
