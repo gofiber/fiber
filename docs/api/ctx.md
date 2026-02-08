@@ -482,6 +482,10 @@ Returns the [*fasthttp.Request](https://pkg.go.dev/github.com/valyala/fasthttp#R
 func (c fiber.Ctx) Request() *fasthttp.Request
 ```
 
+:::info
+Returns `nil` if the context has been released (e.g., after the handler completes and the context is returned to the pool).
+:::
+
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   c.Request().Header.Method()
@@ -518,6 +522,10 @@ Returns the [\*fasthttp.Response](https://pkg.go.dev/github.com/valyala/fasthttp
 ```go title="Signature"
 func (c fiber.Ctx) Response() *fasthttp.Response
 ```
+
+:::info
+Returns `nil` if the context has been released (e.g., after the handler completes and the context is returned to the pool).
+:::
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
