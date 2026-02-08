@@ -3290,10 +3290,8 @@ func Test_Ctx_Value_InGoroutine(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	// Give time for context to be released
-	time.Sleep(50 * time.Millisecond)
-
-	// Signal goroutine to proceed - at this point context should be released
+	// Signal goroutine to proceed - context has been released after app.Test returns
+	// since the handler (and its deferred ReleaseCtx) has completed
 	close(start)
 
 	// Wait for goroutine to complete with timeout

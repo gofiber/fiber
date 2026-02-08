@@ -173,6 +173,7 @@ func (*DefaultCtx) Err() error {
 // Request return the *fasthttp.Request object
 // This allows you to use all fasthttp request methods
 // https://godoc.org/github.com/valyala/fasthttp#Request
+// Returns nil if the context has been released.
 func (c *DefaultCtx) Request() *fasthttp.Request {
 	if c.fasthttp == nil {
 		return nil
@@ -183,6 +184,7 @@ func (c *DefaultCtx) Request() *fasthttp.Request {
 // Response return the *fasthttp.Response object
 // This allows you to use all fasthttp response methods
 // https://godoc.org/github.com/valyala/fasthttp#Response
+// Returns nil if the context has been released.
 func (c *DefaultCtx) Response() *fasthttp.Response {
 	if c.fasthttp == nil {
 		return nil
@@ -602,7 +604,8 @@ func (c *DefaultCtx) String() string {
 }
 
 // Value makes it possible to retrieve values (Locals) under keys scoped to the request
-// and therefore available to all following routes that match the request.
+// and therefore available to all following routes that match the request. If the context
+// has been released and c.fasthttp is nil (for example, after ReleaseCtx), Value returns nil.
 func (c *DefaultCtx) Value(key any) any {
 	if c.fasthttp == nil {
 		return nil
