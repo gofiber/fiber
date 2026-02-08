@@ -1,6 +1,8 @@
 package requestid
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 )
@@ -32,6 +34,12 @@ func New(config ...Config) fiber.Handler {
 
 		// Add the request ID to locals
 		c.Locals(requestIDKey, rid)
+
+		// Also store the request ID in the user context so it can be
+		// retrieved from any context.Context (e.g. c.Context() or
+		// c.RequestCtx()) further down the call stack.
+		ctx := context.WithValue(c.Context(), requestIDKey, rid)
+		c.SetContext(ctx)
 
 		// Continue stack
 		return c.Next()
@@ -77,6 +85,18 @@ func isValidRequestID(rid string) bool {
 // If there is no request ID, an empty string is returned.
 func FromContext(c fiber.Ctx) string {
 	if rid, ok := c.Locals(requestIDKey).(string); ok {
+		return rid
+	}
+	return ""
+}
+
+// FromStdContext returns the request ID from a standard context.Context.
+// This is useful when the request ID needs to be retrieved outside of a
+// Fiber handler, for example in service layers that only receive a
+// context.Context (obtained via c.Context() or c.RequestCtx()).
+// If there is no request ID, an empty string is returned.
+func FromStdContext(ctx context.Context) string {
+	if rid, ok := ctx.Value(requestIDKey).(string); ok {
 		return rid
 	}
 	return ""

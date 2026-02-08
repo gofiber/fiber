@@ -1,6 +1,7 @@
 package requestid
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -205,4 +206,68 @@ func Test_RequestID_FromContext_Empty(t *testing.T) {
 
 	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
+}
+
+// go test -run Test_RequestID_FromStdContext
+func Test_RequestID_FromStdContext(t *testing.T) {
+	t.Parallel()
+	reqID := "ThisIsARequestId"
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return reqID
+		},
+	}))
+
+	var ctxVal string
+
+	app.Use(func(c fiber.Ctx) error {
+		// Retrieve request ID from the standard context.Context,
+		// simulating what a service layer would do.
+		ctxVal = FromStdContext(c.Context())
+		return c.Next()
+	})
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, reqID, ctxVal)
+}
+
+// go test -run Test_RequestID_FromStdContext_Empty
+func Test_RequestID_FromStdContext_Empty(t *testing.T) {
+	t.Parallel()
+
+	// FromStdContext on a plain context should return empty string
+	ctxVal := FromStdContext(context.Background())
+	require.Empty(t, ctxVal)
+}
+
+// go test -run Test_RequestID_FromStdContext_WrappedContext
+func Test_RequestID_FromStdContext_WrappedContext(t *testing.T) {
+	t.Parallel()
+	reqID := "WrappedContextRequestId"
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return reqID
+		},
+	}))
+
+	var ctxVal string
+
+	app.Use(func(c fiber.Ctx) error {
+		// Wrap the context further (simulating passing through layers)
+		stdCtx := c.Context()
+		wrappedCtx := context.WithValue(stdCtx, "some-other-key", "some-value")
+
+		// The request ID should still be retrievable from the wrapped context
+		ctxVal = FromStdContext(wrappedCtx)
+		return c.Next()
+	})
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, reqID, ctxVal)
 }
