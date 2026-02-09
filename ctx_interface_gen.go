@@ -52,10 +52,12 @@ type Ctx interface {
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods
 	// https://godoc.org/github.com/valyala/fasthttp#Request
+	// Returns nil if the context has been released.
 	Request() *fasthttp.Request
 	// Response return the *fasthttp.Response object
 	// This allows you to use all fasthttp response methods
 	// https://godoc.org/github.com/valyala/fasthttp#Response
+	// Returns nil if the context has been released.
 	Response() *fasthttp.Response
 	// Get returns the HTTP request header specified by field.
 	// Field names are case-insensitive
@@ -142,7 +144,8 @@ type Ctx interface {
 	// The returned value may be useful for logging.
 	String() string
 	// Value makes it possible to retrieve values (Locals) under keys scoped to the request
-	// and therefore available to all following routes that match the request.
+	// and therefore available to all following routes that match the request. If the context
+	// has been released and c.fasthttp is nil (for example, after ReleaseCtx), Value returns nil.
 	Value(key any) any
 	// XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 	// indicating that the request was issued by a client library (such as jQuery).

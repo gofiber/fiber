@@ -177,10 +177,25 @@ func headerContainsValue(header, value string) bool {
 	return false
 }
 
+func sanitizeFilename(filename string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '\r', '\n', '\t', 0:
+			return -1
+		default:
+			return r
+		}
+	}, filename)
+}
+
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
 func (r *DefaultRes) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
+		fname = sanitizeFilename(fname)
+		if fname == "" {
+			fname = "download"
+		}
 		r.Type(filepath.Ext(fname))
 		app := r.c.app
 		var quoted string
@@ -318,6 +333,10 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 		fname = filename[0]
 	} else {
 		fname = filepath.Base(file)
+	}
+	fname = sanitizeFilename(fname)
+	if fname == "" {
+		fname = "download"
 	}
 	app := r.c.app
 	var quoted string
