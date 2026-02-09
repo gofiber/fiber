@@ -331,7 +331,7 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 func (r *DefaultRes) Download(file string, filename ...string) error {
 	var fname string
 	if len(filename) > 0 {
-		fname = filename[0]
+		fname = filepath.Base(filename[0])
 	} else {
 		fname = filepath.Base(file)
 	}
