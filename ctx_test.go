@@ -4164,6 +4164,25 @@ func Test_Ctx_Range_Unsatisfiable(t *testing.T) {
 	require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
 }
 
+func Test_Ctx_Range_TooManyRanges(t *testing.T) {
+	t.Parallel()
+	app := New(Config{MaxRanges: 2})
+	app.Get("/", func(c Ctx) error {
+		_, err := c.Range(10)
+		if err != nil {
+			return err
+		}
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
+	req.Header.Set(HeaderRange, "bytes=0-1,2-3,4-5")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
+}
+
 func Test_Ctx_Range_SuffixNormalization(t *testing.T) {
 	t.Parallel()
 

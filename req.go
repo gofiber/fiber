@@ -899,6 +899,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		ranges    string
 	)
 	rangeStr := utils.TrimSpace(r.Get(HeaderRange))
+	maxRanges := r.c.app.config.MaxRanges
 
 	parseBound := func(value string) (int64, error) {
 		parsed, err := utils.ParseUint(value)
@@ -924,8 +925,15 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	var (
 		singleRange string
 		moreRanges  = ranges
+		rangeCount  int
 	)
 	for moreRanges != "" {
+		rangeCount++
+		if rangeCount > maxRanges {
+			r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
+			r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+strconv.FormatInt(size, 10)) //nolint:staticcheck // It is fine to ignore the static check
+			return rangeData, ErrRangeTooLarge
+		}
 		singleRange = moreRanges
 		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
 			singleRange = moreRanges[:i]

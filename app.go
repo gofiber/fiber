@@ -159,6 +159,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: 4 * 1024 * 1024
 	BodyLimit int `json:"body_limit"`
 
+	// MaxRanges sets the maximum number of ranges parsed from a Range header.
+	// Zero or negative values fall back to the default limit.
+	//
+	// Default: 16
+	MaxRanges int `json:"max_ranges"`
+
 	// Maximum number of concurrent connections.
 	//
 	// Default: 256 * 1024
@@ -466,6 +472,7 @@ type RouteMessage struct {
 // Default Config values
 const (
 	DefaultBodyLimit       = 4 * 1024 * 1024
+	DefaultMaxRanges       = 16
 	DefaultConcurrency     = 256 * 1024
 	DefaultReadBufferSize  = 4096
 	DefaultWriteBufferSize = 4096
@@ -564,6 +571,9 @@ func New(config ...Config) *App {
 	// Override default values
 	if app.config.BodyLimit <= 0 {
 		app.config.BodyLimit = DefaultBodyLimit
+	}
+	if app.config.MaxRanges <= 0 {
+		app.config.MaxRanges = DefaultMaxRanges
 	}
 	if app.config.Concurrency <= 0 {
 		app.config.Concurrency = DefaultConcurrency
