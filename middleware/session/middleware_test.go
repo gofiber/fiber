@@ -2,6 +2,8 @@ package session
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync"
@@ -380,6 +382,24 @@ func Test_Session_FromSession(t *testing.T) {
 	require.Nil(t, sess)
 
 	app.Use(New())
+}
+
+func Test_Session_FromContext_Types(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		require.NotNil(t, FromContext(c))
+		require.NotNil(t, FromContext(c.RequestCtx()))
+		require.NotNil(t, FromContext(c.Context()))
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
 func Test_Session_WithConfig(t *testing.T) {

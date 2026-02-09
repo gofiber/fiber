@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 )
 
 var (
@@ -107,6 +109,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Store the CSRF handler in the context
 		c.Locals(handlerKey, handler)
+		c.SetContext(context.WithValue(c.Context(), handlerKey, handler))
 
 		var token string
 
@@ -213,6 +216,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Store the token in the context
 		c.Locals(tokenKey, token)
+		c.SetContext(context.WithValue(c.Context(), tokenKey, token))
 
 		// Continue stack
 		return c.Next()
@@ -221,22 +225,42 @@ func New(config ...Config) fiber.Handler {
 
 // TokenFromContext returns the token found in the context
 // returns an empty string if the token does not exist
-func TokenFromContext(c fiber.Ctx) string {
-	token, ok := c.Locals(tokenKey).(string)
-	if !ok {
-		return ""
+func TokenFromContext(ctx any) string {
+	switch typed := ctx.(type) {
+	case fiber.Ctx:
+		if token, ok := typed.Locals(tokenKey).(string); ok {
+			return token
+		}
+	case *fasthttp.RequestCtx:
+		if token, ok := typed.UserValue(tokenKey).(string); ok {
+			return token
+		}
+	case context.Context:
+		if token, ok := typed.Value(tokenKey).(string); ok {
+			return token
+		}
 	}
-	return token
+	return ""
 }
 
 // HandlerFromContext returns the Handler found in the context
 // returns nil if the handler does not exist
-func HandlerFromContext(c fiber.Ctx) *Handler {
-	handler, ok := c.Locals(handlerKey).(*Handler)
-	if !ok {
-		return nil
+func HandlerFromContext(ctx any) *Handler {
+	switch typed := ctx.(type) {
+	case fiber.Ctx:
+		if handler, ok := typed.Locals(handlerKey).(*Handler); ok {
+			return handler
+		}
+	case *fasthttp.RequestCtx:
+		if handler, ok := typed.UserValue(handlerKey).(*Handler); ok {
+			return handler
+		}
+	case context.Context:
+		if handler, ok := typed.Value(handlerKey).(*Handler); ok {
+			return handler
+		}
 	}
-	return handler
+	return nil
 }
 
 // getRawFromStorage returns the raw value from the storage for the given token

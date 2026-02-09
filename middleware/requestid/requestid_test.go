@@ -206,3 +206,27 @@ func Test_RequestID_FromContext_Empty(t *testing.T) {
 	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 }
+
+func Test_RequestID_FromContext_Types(t *testing.T) {
+	t.Parallel()
+
+	reqID := "request-id-123"
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return reqID
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		require.Equal(t, reqID, FromContext(c))
+		require.Equal(t, reqID, FromContext(c.RequestCtx()))
+		require.Equal(t, reqID, FromContext(c.Context()))
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}

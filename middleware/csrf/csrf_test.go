@@ -2006,6 +2006,11 @@ func Test_CSRF_FromContextMethods(t *testing.T) {
 		handler := HandlerFromContext(c)
 		require.NotNil(t, handler)
 
+		require.Equal(t, token, TokenFromContext(c.RequestCtx()))
+		require.Equal(t, token, TokenFromContext(c.Context()))
+		require.Equal(t, handler, HandlerFromContext(c.RequestCtx()))
+		require.Equal(t, handler, HandlerFromContext(c.Context()))
+
 		return c.SendStatus(fiber.StatusOK)
 	})
 

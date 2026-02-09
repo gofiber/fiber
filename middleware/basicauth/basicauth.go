@@ -1,6 +1,7 @@
 package basicauth
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -102,6 +104,7 @@ func New(config ...Config) fiber.Handler {
 
 		if cfg.Authorizer(username, password, c) {
 			c.Locals(usernameKey, username)
+			c.SetContext(context.WithValue(c.Context(), usernameKey, username))
 			return c.Next()
 		}
 
@@ -122,10 +125,20 @@ func containsInvalidHeaderChars(s string) bool {
 
 // UsernameFromContext returns the username found in the context
 // returns an empty string if the username does not exist
-func UsernameFromContext(c fiber.Ctx) string {
-	username, ok := c.Locals(usernameKey).(string)
-	if !ok {
-		return ""
+func UsernameFromContext(ctx any) string {
+	switch typed := ctx.(type) {
+	case fiber.Ctx:
+		if username, ok := typed.Locals(usernameKey).(string); ok {
+			return username
+		}
+	case *fasthttp.RequestCtx:
+		if username, ok := typed.UserValue(usernameKey).(string); ok {
+			return username
+		}
+	case context.Context:
+		if username, ok := typed.Value(usernameKey).(string); ok {
+			return username
+		}
 	}
-	return username
+	return ""
 }

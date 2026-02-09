@@ -1,8 +1,11 @@
 package requestid
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -32,6 +35,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Add the request ID to locals
 		c.Locals(requestIDKey, rid)
+		c.SetContext(context.WithValue(c.Context(), requestIDKey, rid))
 
 		// Continue stack
 		return c.Next()
@@ -75,9 +79,20 @@ func isValidRequestID(rid string) bool {
 
 // FromContext returns the request ID from context.
 // If there is no request ID, an empty string is returned.
-func FromContext(c fiber.Ctx) string {
-	if rid, ok := c.Locals(requestIDKey).(string); ok {
-		return rid
+func FromContext(ctx any) string {
+	switch typed := ctx.(type) {
+	case fiber.Ctx:
+		if rid, ok := typed.Locals(requestIDKey).(string); ok {
+			return rid
+		}
+	case *fasthttp.RequestCtx:
+		if rid, ok := typed.UserValue(requestIDKey).(string); ok {
+			return rid
+		}
+	case context.Context:
+		if rid, ok := typed.Value(requestIDKey).(string); ok {
+			return rid
+		}
 	}
 	return ""
 }

@@ -10,8 +10,10 @@ The RequestID middleware generates or propagates a request identifier, adding it
 
 ```go
 func New(config ...Config) fiber.Handler
-func FromContext(c fiber.Ctx) string
+func FromContext(ctx any) string
 ```
+
+`FromContext` accepts a `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
 
 ## Examples
 

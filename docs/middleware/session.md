@@ -612,7 +612,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ### Middleware Methods (Recommended)
 
 ```go
-sess := session.FromContext(c)
+sess := session.FromContext(ctx)
 
 // Data operations
 sess.Get(key any) any
@@ -630,6 +630,8 @@ sess.Destroy() error     // Keep ID, clear data
 // Store access
 sess.Store() *session.Store
 ```
+
+`FromContext` accepts a `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
 
 ### Store Methods
 

@@ -384,14 +384,16 @@ session.Destroy()
 func New(config ...csrf.Config) fiber.Handler
 
 // Get token from context
-func TokenFromContext(c fiber.Ctx) string
+func TokenFromContext(ctx any) string
 
 // Get handler from context
-func HandlerFromContext(c fiber.Ctx) *csrf.Handler
+func HandlerFromContext(ctx any) *csrf.Handler
 
 // Delete token
 func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 ```
+
+`TokenFromContext` and `HandlerFromContext` accept a `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
 
 ## Config Properties
 

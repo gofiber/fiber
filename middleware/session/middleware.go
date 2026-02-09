@@ -3,10 +3,12 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/valyala/fasthttp"
 )
 
 // Middleware holds session data and configuration.
@@ -122,6 +124,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
 	m.ctx = c
 
 	c.Locals(middlewareContextKey, m)
+	c.SetContext(context.WithValue(c.Context(), middlewareContextKey, m))
 }
 
 // saveSession handles session saving and error management after the response.
@@ -175,12 +178,22 @@ func releaseMiddleware(m *Middleware) {
 // Usage:
 //
 //	m := session.FromContext(c)
-func FromContext(c fiber.Ctx) *Middleware {
-	m, ok := c.Locals(middlewareContextKey).(*Middleware)
-	if !ok {
-		return nil
+func FromContext(ctx any) *Middleware {
+	switch typed := ctx.(type) {
+	case fiber.Ctx:
+		if m, ok := typed.Locals(middlewareContextKey).(*Middleware); ok {
+			return m
+		}
+	case *fasthttp.RequestCtx:
+		if m, ok := typed.UserValue(middlewareContextKey).(*Middleware); ok {
+			return m
+		}
+	case context.Context:
+		if m, ok := typed.Value(middlewareContextKey).(*Middleware); ok {
+			return m
+		}
 	}
-	return m
+	return nil
 }
 
 // Set sets a key-value pair in the session.

@@ -1,6 +1,7 @@
 package keyauth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -49,6 +51,7 @@ func New(config ...Config) fiber.Handler {
 			valid, err = cfg.Validator(c, key)
 			if err == nil && valid {
 				c.Locals(tokenKey, key)
+				c.SetContext(context.WithValue(c.Context(), tokenKey, key))
 				return cfg.SuccessHandler(c)
 			}
 		}
@@ -95,12 +98,22 @@ func New(config ...Config) fiber.Handler {
 
 // TokenFromContext returns the bearer token from the request context.
 // returns an empty string if the token does not exist
-func TokenFromContext(c fiber.Ctx) string {
-	token, ok := c.Locals(tokenKey).(string)
-	if !ok {
-		return ""
+func TokenFromContext(ctx any) string {
+	switch typed := ctx.(type) {
+	case fiber.Ctx:
+		if token, ok := typed.Locals(tokenKey).(string); ok {
+			return token
+		}
+	case *fasthttp.RequestCtx:
+		if token, ok := typed.UserValue(tokenKey).(string); ok {
+			return token
+		}
+	case context.Context:
+		if token, ok := typed.Value(tokenKey).(string); ok {
+			return token
+		}
 	}
-	return token
+	return ""
 }
 
 // getAuthSchemes inspects an extractor and its chain to find all auth schemes
