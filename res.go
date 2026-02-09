@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
@@ -178,14 +179,16 @@ func headerContainsValue(header, value string) bool {
 }
 
 func sanitizeFilename(filename string) string {
-	return strings.Map(func(r rune) rune {
-		switch r {
-		case '\r', '\n', '\t', 0:
+	sanitized := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
 			return -1
-		default:
-			return r
 		}
+		return r
 	}, filename)
+	if sanitized == "" {
+		return "download"
+	}
+	return sanitized
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
@@ -193,9 +196,6 @@ func (r *DefaultRes) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
 		fname = sanitizeFilename(fname)
-		if fname == "" {
-			fname = "download"
-		}
 		r.Type(filepath.Ext(fname))
 		app := r.c.app
 		var quoted string
@@ -335,9 +335,6 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 		fname = filepath.Base(file)
 	}
 	fname = sanitizeFilename(fname)
-	if fname == "" {
-		fname = "download"
-	}
 	app := r.c.app
 	var quoted string
 	if app.isASCII(fname) {
