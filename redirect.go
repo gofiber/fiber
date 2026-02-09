@@ -42,7 +42,9 @@ const (
 
 // redirectionMsgs is a struct that used to store flash messages and old input data in cookie using MSGP.
 // msgp -file="redirect.go" -o="redirect_msgp.go" -unexported
+// Cookie payloads are limited to ~4KB, so keep flash message counts bounded but usable.
 //
+//msgp:limit arrays:256 maps:32 marshal:true
 //msgp:ignore Redirect RedirectConfig OldInputData FlashMessage
 type redirectionMsg struct {
 	key        string
