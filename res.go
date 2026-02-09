@@ -185,6 +185,7 @@ func sanitizeFilename(filename string) string {
 		}
 		return r
 	}, filename)
+	sanitized = utils.TrimSpace(sanitized)
 	if sanitized == "" {
 		return "download"
 	}
