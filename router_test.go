@@ -69,6 +69,18 @@ func Test_Route_Handler_Order(t *testing.T) {
 	require.Equal(t, expectedOrder, order, "Handler order")
 }
 
+func Test_hasFlashCookieExactMatch(t *testing.T) {
+	t.Parallel()
+
+	var req fasthttp.Request
+
+	req.Header.Set(HeaderCookie, FlashCookieName+"X=not-the-flash-cookie")
+	require.False(t, hasFlashCookie(&req.Header))
+
+	req.Header.Set(HeaderCookie, FlashCookieName+"=valid")
+	require.True(t, hasFlashCookie(&req.Header))
+}
+
 func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {
 	t.Parallel()
 
