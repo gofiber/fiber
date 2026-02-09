@@ -932,7 +932,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		rangeCount++
 		if rangeCount > maxRanges {
 			r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
-			r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+strconv.FormatInt(size, 10)) //nolint:staticcheck // It is fine to ignore the static check
+			r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
 			return rangeData, ErrRangeTooLarge
 		}
 		singleRange = moreRanges
