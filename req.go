@@ -900,6 +900,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	)
 	rangeStr := utils.TrimSpace(r.Get(HeaderRange))
 	maxRanges := r.c.app.config.MaxRanges
+	rangeData.Ranges = make([]RangeSet, 0, maxRanges)
 
 	parseBound := func(value string) (int64, error) {
 		parsed, err := utils.ParseUint(value)
