@@ -720,6 +720,11 @@ func Test_Ctx_Attachment_SanitizesFilenameControls(t *testing.T) {
 		expected string
 	}{
 		{
+			name:     "base name only",
+			filename: "../docs/archive.tar.gz",
+			expected: `attachment; filename="archive.tar.gz"`,
+		},
+		{
 			name:     "controls stripped",
 			filename: "down\r\nload\t\x00.txt",
 			expected: `attachment; filename="download.txt"`,
@@ -5089,6 +5094,11 @@ func Test_Ctx_Download_SanitizesFilenameControls(t *testing.T) {
 		filename string
 		expected string
 	}{
+		{
+			name:     "base name only",
+			filename: "../docs/archive.tar.gz",
+			expected: `attachment; filename="archive.tar.gz"`,
+		},
 		{
 			name:     "controls stripped",
 			filename: "down\r\nload\t\x00.txt",
