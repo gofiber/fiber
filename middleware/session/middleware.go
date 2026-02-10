@@ -168,6 +168,7 @@ func releaseMiddleware(m *Middleware) {
 }
 
 // FromContext returns the Middleware from the Fiber context.
+// It accepts fiber.Ctx, fiber.CustomCtx, *fasthttp.RequestCtx, and context.Context.
 //
 // Parameters:
 //   - c: The Fiber context.
@@ -179,13 +180,13 @@ func releaseMiddleware(m *Middleware) {
 //
 //	m := session.FromContext(c)
 func FromContext(ctx any) *Middleware {
-	if customCtx, ok := ctx.(fiber.CustomCtx); ok {
-		if m, ok := customCtx.Locals(middlewareContextKey).(*Middleware); ok {
-			return m
-		}
-	}
 	switch typed := ctx.(type) {
 	case fiber.Ctx:
+		if customCtx, ok := typed.(fiber.CustomCtx); ok {
+			if m, ok := customCtx.Locals(middlewareContextKey).(*Middleware); ok {
+				return m
+			}
+		}
 		if m, ok := typed.Locals(middlewareContextKey).(*Middleware); ok {
 			return m
 		}

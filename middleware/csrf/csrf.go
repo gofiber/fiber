@@ -223,16 +223,17 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// TokenFromContext returns the token found in the context
-// returns an empty string if the token does not exist
+// TokenFromContext returns the token found in the context.
+// It accepts fiber.Ctx, fiber.CustomCtx, *fasthttp.RequestCtx, and context.Context.
+// It returns an empty string if the token does not exist.
 func TokenFromContext(ctx any) string {
-	if customCtx, ok := ctx.(fiber.CustomCtx); ok {
-		if token, ok := customCtx.Locals(tokenKey).(string); ok {
-			return token
-		}
-	}
 	switch typed := ctx.(type) {
 	case fiber.Ctx:
+		if customCtx, ok := typed.(fiber.CustomCtx); ok {
+			if token, ok := customCtx.Locals(tokenKey).(string); ok {
+				return token
+			}
+		}
 		if token, ok := typed.Locals(tokenKey).(string); ok {
 			return token
 		}
@@ -248,16 +249,17 @@ func TokenFromContext(ctx any) string {
 	return ""
 }
 
-// HandlerFromContext returns the Handler found in the context
-// returns nil if the handler does not exist
+// HandlerFromContext returns the Handler found in the context.
+// It accepts fiber.Ctx, fiber.CustomCtx, *fasthttp.RequestCtx, and context.Context.
+// It returns nil if the handler does not exist.
 func HandlerFromContext(ctx any) *Handler {
-	if customCtx, ok := ctx.(fiber.CustomCtx); ok {
-		if handler, ok := customCtx.Locals(handlerKey).(*Handler); ok {
-			return handler
-		}
-	}
 	switch typed := ctx.(type) {
 	case fiber.Ctx:
+		if customCtx, ok := typed.(fiber.CustomCtx); ok {
+			if handler, ok := customCtx.Locals(handlerKey).(*Handler); ok {
+				return handler
+			}
+		}
 		if handler, ok := typed.Locals(handlerKey).(*Handler); ok {
 			return handler
 		}

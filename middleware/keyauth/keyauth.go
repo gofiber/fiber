@@ -97,15 +97,16 @@ func New(config ...Config) fiber.Handler {
 }
 
 // TokenFromContext returns the bearer token from the request context.
-// returns an empty string if the token does not exist
+// It accepts fiber.Ctx, fiber.CustomCtx, *fasthttp.RequestCtx, and context.Context.
+// It returns an empty string if the token does not exist.
 func TokenFromContext(ctx any) string {
-	if customCtx, ok := ctx.(fiber.CustomCtx); ok {
-		if token, ok := customCtx.Locals(tokenKey).(string); ok {
-			return token
-		}
-	}
 	switch typed := ctx.(type) {
 	case fiber.Ctx:
+		if customCtx, ok := typed.(fiber.CustomCtx); ok {
+			if token, ok := customCtx.Locals(tokenKey).(string); ok {
+				return token
+			}
+		}
 		if token, ok := typed.Locals(tokenKey).(string); ok {
 			return token
 		}
