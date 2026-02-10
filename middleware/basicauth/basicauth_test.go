@@ -121,6 +121,9 @@ func Test_BasicAuth_UsernameFromContext_Types(t *testing.T) {
 
 	app.Get("/", func(c fiber.Ctx) error {
 		require.Equal(t, "john", UsernameFromContext(c))
+		customCtx, ok := c.(fiber.CustomCtx)
+		require.True(t, ok)
+		require.Equal(t, "john", UsernameFromContext(customCtx))
 		require.Equal(t, "john", UsernameFromContext(c.RequestCtx()))
 		require.Equal(t, "john", UsernameFromContext(c.Context()))
 		return c.SendStatus(fiber.StatusOK)

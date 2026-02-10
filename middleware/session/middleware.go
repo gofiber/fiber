@@ -179,6 +179,11 @@ func releaseMiddleware(m *Middleware) {
 //
 //	m := session.FromContext(c)
 func FromContext(ctx any) *Middleware {
+	if customCtx, ok := ctx.(fiber.CustomCtx); ok {
+		if m, ok := customCtx.Locals(middlewareContextKey).(*Middleware); ok {
+			return m
+		}
+	}
 	switch typed := ctx.(type) {
 	case fiber.Ctx:
 		if m, ok := typed.Locals(middlewareContextKey).(*Middleware); ok {

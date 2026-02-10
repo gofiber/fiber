@@ -221,6 +221,9 @@ func Test_RequestID_FromContext_Types(t *testing.T) {
 
 	app.Get("/", func(c fiber.Ctx) error {
 		require.Equal(t, reqID, FromContext(c))
+		customCtx, ok := c.(fiber.CustomCtx)
+		require.True(t, ok)
+		require.Equal(t, reqID, FromContext(customCtx))
 		require.Equal(t, reqID, FromContext(c.RequestCtx()))
 		require.Equal(t, reqID, FromContext(c.Context()))
 		return c.SendStatus(fiber.StatusOK)

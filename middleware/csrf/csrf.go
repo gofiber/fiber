@@ -226,6 +226,11 @@ func New(config ...Config) fiber.Handler {
 // TokenFromContext returns the token found in the context
 // returns an empty string if the token does not exist
 func TokenFromContext(ctx any) string {
+	if customCtx, ok := ctx.(fiber.CustomCtx); ok {
+		if token, ok := customCtx.Locals(tokenKey).(string); ok {
+			return token
+		}
+	}
 	switch typed := ctx.(type) {
 	case fiber.Ctx:
 		if token, ok := typed.Locals(tokenKey).(string); ok {
@@ -246,6 +251,11 @@ func TokenFromContext(ctx any) string {
 // HandlerFromContext returns the Handler found in the context
 // returns nil if the handler does not exist
 func HandlerFromContext(ctx any) *Handler {
+	if customCtx, ok := ctx.(fiber.CustomCtx); ok {
+		if handler, ok := customCtx.Locals(handlerKey).(*Handler); ok {
+			return handler
+		}
+	}
 	switch typed := ctx.(type) {
 	case fiber.Ctx:
 		if handler, ok := typed.Locals(handlerKey).(*Handler); ok {

@@ -568,6 +568,9 @@ func Test_TokenFromContext_Types(t *testing.T) {
 
 	app.Get("/", func(c fiber.Ctx) error {
 		require.Equal(t, CorrectKey, TokenFromContext(c))
+		customCtx, ok := c.(fiber.CustomCtx)
+		require.True(t, ok)
+		require.Equal(t, CorrectKey, TokenFromContext(customCtx))
 		require.Equal(t, CorrectKey, TokenFromContext(c.RequestCtx()))
 		require.Equal(t, CorrectKey, TokenFromContext(c.Context()))
 		return c.SendStatus(fiber.StatusOK)

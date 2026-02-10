@@ -80,6 +80,11 @@ func isValidRequestID(rid string) bool {
 // FromContext returns the request ID from context.
 // If there is no request ID, an empty string is returned.
 func FromContext(ctx any) string {
+	if customCtx, ok := ctx.(fiber.CustomCtx); ok {
+		if rid, ok := customCtx.Locals(requestIDKey).(string); ok {
+			return rid
+		}
+	}
 	switch typed := ctx.(type) {
 	case fiber.Ctx:
 		if rid, ok := typed.Locals(requestIDKey).(string); ok {
