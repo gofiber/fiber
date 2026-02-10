@@ -612,7 +612,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ### Middleware Methods (Recommended)
 
 ```go
-sess := session.FromContext(ctx)
+sess := session.FromContext(c)
 
 // Data operations
 sess.Get(key any) any
