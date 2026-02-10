@@ -32,6 +32,7 @@ var (
 // Range errors
 var (
 	ErrRangeMalformed     = errors.New("range: malformed range header string")
+	ErrRangeTooLarge      = NewError(StatusRequestedRangeNotSatisfiable, "range: too many ranges")
 	ErrRangeUnsatisfiable = errors.New("range: unsatisfiable range")
 )
 
