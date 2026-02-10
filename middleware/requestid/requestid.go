@@ -5,7 +5,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
-	"github.com/valyala/fasthttp"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -81,24 +80,8 @@ func isValidRequestID(rid string) bool {
 // It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
 // If there is no request ID, an empty string is returned.
 func FromContext(ctx any) string {
-	//nolint:gocritic,staticcheck // CustomCtx is intentionally ordered before fiber.Ctx per review requirements.
-	switch typed := ctx.(type) {
-	case fiber.CustomCtx:
-		if rid, ok := typed.Locals(requestIDKey).(string); ok {
-			return rid
-		}
-	case fiber.Ctx:
-		if rid, ok := typed.Locals(requestIDKey).(string); ok {
-			return rid
-		}
-	case *fasthttp.RequestCtx:
-		if rid, ok := typed.UserValue(requestIDKey).(string); ok {
-			return rid
-		}
-	case context.Context:
-		if rid, ok := typed.Value(requestIDKey).(string); ok {
-			return rid
-		}
+	if rid, ok := fiber.ValueFromContext[string](ctx, requestIDKey); ok {
+		return rid
 	}
 
 	return ""

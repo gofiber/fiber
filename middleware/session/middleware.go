@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/valyala/fasthttp"
 )
 
 // Middleware holds session data and configuration.
@@ -180,24 +179,8 @@ func releaseMiddleware(m *Middleware) {
 //
 //	m := session.FromContext(c)
 func FromContext(ctx any) *Middleware {
-	//nolint:gocritic,staticcheck // CustomCtx is intentionally ordered before fiber.Ctx per review requirements.
-	switch typed := ctx.(type) {
-	case fiber.CustomCtx:
-		if m, ok := typed.Locals(middlewareContextKey).(*Middleware); ok {
-			return m
-		}
-	case fiber.Ctx:
-		if m, ok := typed.Locals(middlewareContextKey).(*Middleware); ok {
-			return m
-		}
-	case *fasthttp.RequestCtx:
-		if m, ok := typed.UserValue(middlewareContextKey).(*Middleware); ok {
-			return m
-		}
-	case context.Context:
-		if m, ok := typed.Value(middlewareContextKey).(*Middleware); ok {
-			return m
-		}
+	if m, ok := fiber.ValueFromContext[*Middleware](ctx, middlewareContextKey); ok {
+		return m
 	}
 
 	return nil

@@ -9,7 +9,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/utils/v2"
-	"github.com/valyala/fasthttp"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -100,24 +99,8 @@ func New(config ...Config) fiber.Handler {
 // It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
 // It returns an empty string if the token does not exist.
 func TokenFromContext(ctx any) string {
-	//nolint:gocritic,staticcheck // CustomCtx is intentionally ordered before fiber.Ctx per review requirements.
-	switch typed := ctx.(type) {
-	case fiber.CustomCtx:
-		if token, ok := typed.Locals(tokenKey).(string); ok {
-			return token
-		}
-	case fiber.Ctx:
-		if token, ok := typed.Locals(tokenKey).(string); ok {
-			return token
-		}
-	case *fasthttp.RequestCtx:
-		if token, ok := typed.UserValue(tokenKey).(string); ok {
-			return token
-		}
-	case context.Context:
-		if token, ok := typed.Value(tokenKey).(string); ok {
-			return token
-		}
+	if token, ok := fiber.ValueFromContext[string](ctx, tokenKey); ok {
+		return token
 	}
 
 	return ""

@@ -12,7 +12,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/utils/v2"
-	"github.com/valyala/fasthttp"
 )
 
 var (
@@ -227,24 +226,8 @@ func New(config ...Config) fiber.Handler {
 // It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
 // It returns an empty string if the token does not exist.
 func TokenFromContext(ctx any) string {
-	//nolint:gocritic,staticcheck // CustomCtx is intentionally ordered before fiber.Ctx per review requirements.
-	switch typed := ctx.(type) {
-	case fiber.CustomCtx:
-		if token, ok := typed.Locals(tokenKey).(string); ok {
-			return token
-		}
-	case fiber.Ctx:
-		if token, ok := typed.Locals(tokenKey).(string); ok {
-			return token
-		}
-	case *fasthttp.RequestCtx:
-		if token, ok := typed.UserValue(tokenKey).(string); ok {
-			return token
-		}
-	case context.Context:
-		if token, ok := typed.Value(tokenKey).(string); ok {
-			return token
-		}
+	if token, ok := fiber.ValueFromContext[string](ctx, tokenKey); ok {
+		return token
 	}
 
 	return ""
@@ -254,24 +237,8 @@ func TokenFromContext(ctx any) string {
 // It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
 // It returns nil if the handler does not exist.
 func HandlerFromContext(ctx any) *Handler {
-	//nolint:gocritic,staticcheck // CustomCtx is intentionally ordered before fiber.Ctx per review requirements.
-	switch typed := ctx.(type) {
-	case fiber.CustomCtx:
-		if handler, ok := typed.Locals(handlerKey).(*Handler); ok {
-			return handler
-		}
-	case fiber.Ctx:
-		if handler, ok := typed.Locals(handlerKey).(*Handler); ok {
-			return handler
-		}
-	case *fasthttp.RequestCtx:
-		if handler, ok := typed.UserValue(handlerKey).(*Handler); ok {
-			return handler
-		}
-	case context.Context:
-		if handler, ok := typed.Value(handlerKey).(*Handler); ok {
-			return handler
-		}
+	if handler, ok := fiber.ValueFromContext[*Handler](ctx, handlerKey); ok {
+		return handler
 	}
 
 	return nil

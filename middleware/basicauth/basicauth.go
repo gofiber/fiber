@@ -10,7 +10,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
-	"github.com/valyala/fasthttp"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -127,24 +126,8 @@ func containsInvalidHeaderChars(s string) bool {
 // It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
 // It returns an empty string if the username does not exist.
 func UsernameFromContext(ctx any) string {
-	//nolint:gocritic,staticcheck // CustomCtx is intentionally ordered before fiber.Ctx per review requirements.
-	switch typed := ctx.(type) {
-	case fiber.CustomCtx:
-		if username, ok := typed.Locals(usernameKey).(string); ok {
-			return username
-		}
-	case fiber.Ctx:
-		if username, ok := typed.Locals(usernameKey).(string); ok {
-			return username
-		}
-	case *fasthttp.RequestCtx:
-		if username, ok := typed.UserValue(usernameKey).(string); ok {
-			return username
-		}
-	case context.Context:
-		if username, ok := typed.Value(usernameKey).(string); ok {
-			return username
-		}
+	if username, ok := fiber.ValueFromContext[string](ctx, usernameKey); ok {
+		return username
 	}
 
 	return ""
