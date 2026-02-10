@@ -393,7 +393,7 @@ func HandlerFromContext(ctx any) *csrf.Handler
 func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 ```
 
-`TokenFromContext` and `HandlerFromContext` accept a `fiber.Ctx`, `fiber.CustomCtx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
+`TokenFromContext` and `HandlerFromContext` accept a `fiber.Ctx`, a `*fasthttp.RequestCtx`, `fiber.CustomCtx`, or a `context.Context`.
 
 ## Config Properties
 

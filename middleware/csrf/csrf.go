@@ -224,16 +224,12 @@ func New(config ...Config) fiber.Handler {
 }
 
 // TokenFromContext returns the token found in the context.
-// It accepts fiber.Ctx, fiber.CustomCtx, *fasthttp.RequestCtx, and context.Context.
+// It accepts fiber.Ctx, *fasthttp.RequestCtx, fiber.CustomCtx, and context.Context.
 // It returns an empty string if the token does not exist.
 func TokenFromContext(ctx any) string {
+	//nolint:staticcheck,gocritic // Required switch-case order keeps fiber.CustomCtx explicit for callers.
 	switch typed := ctx.(type) {
 	case fiber.Ctx:
-		if customCtx, ok := typed.(fiber.CustomCtx); ok {
-			if token, ok := customCtx.Locals(tokenKey).(string); ok {
-				return token
-			}
-		}
 		if token, ok := typed.Locals(tokenKey).(string); ok {
 			return token
 		}
@@ -241,25 +237,26 @@ func TokenFromContext(ctx any) string {
 		if token, ok := typed.UserValue(tokenKey).(string); ok {
 			return token
 		}
+	case fiber.CustomCtx:
+		if token, ok := typed.Locals(tokenKey).(string); ok {
+			return token
+		}
 	case context.Context:
 		if token, ok := typed.Value(tokenKey).(string); ok {
 			return token
 		}
 	}
+
 	return ""
 }
 
 // HandlerFromContext returns the Handler found in the context.
-// It accepts fiber.Ctx, fiber.CustomCtx, *fasthttp.RequestCtx, and context.Context.
+// It accepts fiber.Ctx, *fasthttp.RequestCtx, fiber.CustomCtx, and context.Context.
 // It returns nil if the handler does not exist.
 func HandlerFromContext(ctx any) *Handler {
+	//nolint:staticcheck,gocritic // Required switch-case order keeps fiber.CustomCtx explicit for callers.
 	switch typed := ctx.(type) {
 	case fiber.Ctx:
-		if customCtx, ok := typed.(fiber.CustomCtx); ok {
-			if handler, ok := customCtx.Locals(handlerKey).(*Handler); ok {
-				return handler
-			}
-		}
 		if handler, ok := typed.Locals(handlerKey).(*Handler); ok {
 			return handler
 		}
@@ -267,11 +264,16 @@ func HandlerFromContext(ctx any) *Handler {
 		if handler, ok := typed.UserValue(handlerKey).(*Handler); ok {
 			return handler
 		}
+	case fiber.CustomCtx:
+		if handler, ok := typed.Locals(handlerKey).(*Handler); ok {
+			return handler
+		}
 	case context.Context:
 		if handler, ok := typed.Value(handlerKey).(*Handler); ok {
 			return handler
 		}
 	}
+
 	return nil
 }
 

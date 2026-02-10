@@ -13,7 +13,7 @@ func New(config ...Config) fiber.Handler
 func FromContext(ctx any) string
 ```
 
-`FromContext` accepts a `fiber.Ctx`, `fiber.CustomCtx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
+`FromContext` accepts a `fiber.Ctx`, a `*fasthttp.RequestCtx`, `fiber.CustomCtx`, or a `context.Context`.
 
 ## Examples
 

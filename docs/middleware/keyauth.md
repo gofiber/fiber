@@ -13,7 +13,7 @@ func New(config ...Config) fiber.Handler
 func TokenFromContext(ctx any) string
 ```
 
-`TokenFromContext` accepts a `fiber.Ctx`, `fiber.CustomCtx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
+`TokenFromContext` accepts a `fiber.Ctx`, a `*fasthttp.RequestCtx`, `fiber.CustomCtx`, or a `context.Context`.
 
 ## Examples
 

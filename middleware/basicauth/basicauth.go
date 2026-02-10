@@ -124,16 +124,12 @@ func containsInvalidHeaderChars(s string) bool {
 }
 
 // UsernameFromContext returns the username found in the context.
-// It accepts fiber.Ctx, fiber.CustomCtx, *fasthttp.RequestCtx, and context.Context.
+// It accepts fiber.Ctx, *fasthttp.RequestCtx, fiber.CustomCtx, and context.Context.
 // It returns an empty string if the username does not exist.
 func UsernameFromContext(ctx any) string {
+	//nolint:staticcheck,gocritic // Required switch-case order keeps fiber.CustomCtx explicit for callers.
 	switch typed := ctx.(type) {
 	case fiber.Ctx:
-		if customCtx, ok := typed.(fiber.CustomCtx); ok {
-			if username, ok := customCtx.Locals(usernameKey).(string); ok {
-				return username
-			}
-		}
 		if username, ok := typed.Locals(usernameKey).(string); ok {
 			return username
 		}
@@ -141,10 +137,15 @@ func UsernameFromContext(ctx any) string {
 		if username, ok := typed.UserValue(usernameKey).(string); ok {
 			return username
 		}
+	case fiber.CustomCtx:
+		if username, ok := typed.Locals(usernameKey).(string); ok {
+			return username
+		}
 	case context.Context:
 		if username, ok := typed.Value(usernameKey).(string); ok {
 			return username
 		}
 	}
+
 	return ""
 }
