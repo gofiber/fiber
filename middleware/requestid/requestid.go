@@ -78,21 +78,21 @@ func isValidRequestID(rid string) bool {
 }
 
 // FromContext returns the request ID from context.
-// It accepts fiber.Ctx, *fasthttp.RequestCtx, fiber.CustomCtx, and context.Context.
+// It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
 // If there is no request ID, an empty string is returned.
 func FromContext(ctx any) string {
-	//nolint:staticcheck,gocritic // Required switch-case order keeps fiber.CustomCtx explicit for callers.
+	//nolint:gocritic,staticcheck // CustomCtx is intentionally ordered before fiber.Ctx per review requirements.
 	switch typed := ctx.(type) {
+	case fiber.CustomCtx:
+		if rid, ok := typed.Locals(requestIDKey).(string); ok {
+			return rid
+		}
 	case fiber.Ctx:
 		if rid, ok := typed.Locals(requestIDKey).(string); ok {
 			return rid
 		}
 	case *fasthttp.RequestCtx:
 		if rid, ok := typed.UserValue(requestIDKey).(string); ok {
-			return rid
-		}
-	case fiber.CustomCtx:
-		if rid, ok := typed.Locals(requestIDKey).(string); ok {
 			return rid
 		}
 	case context.Context:

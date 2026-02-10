@@ -15,7 +15,7 @@ func New(config Config) fiber.Handler
 func UsernameFromContext(ctx any) string
 ```
 
-`UsernameFromContext` accepts a `fiber.Ctx`, a `*fasthttp.RequestCtx`, `fiber.CustomCtx`, or a `context.Context`.
+`UsernameFromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
 
 ## Examples
 

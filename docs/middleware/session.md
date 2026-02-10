@@ -631,7 +631,7 @@ sess.Destroy() error     // Keep ID, clear data
 sess.Store() *session.Store
 ```
 
-`FromContext` accepts a `fiber.Ctx`, a `*fasthttp.RequestCtx`, `fiber.CustomCtx`, or a `context.Context`.
+`FromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
 
 ### Store Methods
 
