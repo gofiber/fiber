@@ -786,6 +786,65 @@ func Test_Proxy_Forward_Local_Client(t *testing.T) {
 	resp.Close()
 }
 
+// go test -run Test_Proxy_WithClient_Nil_Panics
+func Test_Proxy_WithClient_Nil_Panics(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t, "proxy: WithClient requires a non-nil *fasthttp.Client", func() {
+		WithClient(nil)
+	})
+}
+
+// go test -run Test_Proxy_Do_NilClientOverride
+func Test_Proxy_Do_NilClientOverride(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	app.Get("/test", func(c fiber.Ctx) error {
+		return Do(c, "http://"+addr, nil)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, errNilProxyClientOverride.Error(), string(body))
+}
+
+// go test -run Test_Proxy_Do_NonNilClientOverride
+func Test_Proxy_Do_NonNilClientOverride(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	app.Get("/test", func(c fiber.Ctx) error {
+		return Do(c, "http://"+addr, &fasthttp.Client{
+			NoDefaultUserAgentHeader: true,
+			DisablePathNormalizing:   true,
+		})
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "proxied", string(body))
+}
+
 // go test -run Test_ProxyBalancer_Custom_Client
 func Test_ProxyBalancer_Custom_Client(t *testing.T) {
 	t.Parallel()

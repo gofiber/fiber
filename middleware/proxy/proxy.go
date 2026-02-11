@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"errors"
 	"net/url"
 	"strings"
 	"sync"
@@ -113,11 +114,20 @@ var client = &fasthttp.Client{
 	DisablePathNormalizing:   true,
 }
 
+var (
+	errNilProxyClientOverride = errors.New("proxy: nil client override passed to Do/Forward")
+	errNilGlobalProxyClient   = errors.New("proxy: global client is nil, set a non-nil client with proxy.WithClient")
+)
+
 var lock sync.RWMutex
 
 // WithClient sets the global proxy client.
 // This function should be called before Do and Forward.
 func WithClient(cli *fasthttp.Client) {
+	if cli == nil {
+		panic("proxy: WithClient requires a non-nil *fasthttp.Client")
+	}
+
 	lock.Lock()
 	defer lock.Unlock()
 	client = cli
@@ -175,10 +185,16 @@ func doAction(
 	// set local or global client
 	if len(clients) != 0 {
 		cli = clients[0]
+		if cli == nil {
+			return errNilProxyClientOverride
+		}
 	} else {
 		lock.RLock()
 		cli = client
 		lock.RUnlock()
+		if cli == nil {
+			return errNilGlobalProxyClient
+		}
 	}
 
 	req := c.Request()
