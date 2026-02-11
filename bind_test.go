@@ -1873,6 +1873,93 @@ type simpleQuery struct {
 	Name string `query:"name" json:"name"`
 }
 
+// mapStructValidator returns an error if validation is called for map destinations.
+type mapStructValidator struct{}
+
+func (*mapStructValidator) Validate(out any) error {
+	if _, ok := out.(*map[string]string); ok {
+		return errors.New("validator should not run for map destinations")
+	}
+
+	return nil
+}
+
+// go test -run Test_Bind_Form_Map_SkipsStructValidator
+func Test_Bind_Form_Map_SkipsStructValidator(t *testing.T) {
+	t.Parallel()
+
+	makeRequest := func(c Ctx) {
+		body := []byte("name=john")
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType(MIMEApplicationForm)
+		c.Request().Header.SetContentLength(len(body))
+	}
+
+	t.Run("without validator", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		makeRequest(c)
+		req := make(map[string]string)
+		require.NoError(t, c.Bind().Form(&req))
+		require.Equal(t, "john", req["name"])
+	})
+
+	t.Run("with struct validator configured", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{StructValidator: &mapStructValidator{}})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		makeRequest(c)
+		req := make(map[string]string)
+		require.NoError(t, c.Bind().Form(&req))
+		require.Equal(t, "john", req["name"])
+	})
+}
+
+// go test -run Test_Bind_SkipValidation
+func Test_Bind_SkipValidation(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{StructValidator: &structValidator{}})
+
+	t.Run("validation enabled", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		rq := new(simpleQuery)
+		c.Request().URI().SetQueryString("name=efe")
+		require.Equal(t, "you should have entered right name", c.Bind().SkipValidation(false).Query(rq).Error())
+	})
+
+	t.Run("validation skipped", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		rq := new(simpleQuery)
+		c.Request().URI().SetQueryString("name=efe")
+		require.NoError(t, c.Bind().SkipValidation(true).Query(rq))
+		require.Equal(t, "efe", rq.Name)
+	})
+}
+
 // go test -run Test_Bind_StructValidator
 func Test_Bind_StructValidator(t *testing.T) {
 	app := New(Config{StructValidator: &structValidator{}})
