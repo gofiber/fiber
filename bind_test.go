@@ -1873,13 +1873,12 @@ type simpleQuery struct {
 	Name string `query:"name" json:"name"`
 }
 
-// mapStructValidator returns an error if validation is called for map destinations.
-type mapStructValidator struct{}
+type countingStructValidator struct {
+	calls int
+}
 
-func (*mapStructValidator) Validate(out any) error {
-	if _, ok := out.(*map[string]string); ok {
-		return errors.New("validator should not run for map destinations")
-	}
+func (v *countingStructValidator) Validate(_ any) error {
+	v.calls++
 
 	return nil
 }
@@ -1913,7 +1912,8 @@ func Test_Bind_Form_Map_SkipsStructValidator(t *testing.T) {
 	t.Run("with struct validator configured", func(t *testing.T) {
 		t.Parallel()
 
-		app := New(Config{StructValidator: &mapStructValidator{}})
+		validator := &countingStructValidator{}
+		app := New(Config{StructValidator: validator})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		t.Cleanup(func() {
 			app.ReleaseCtx(c)
@@ -1923,6 +1923,7 @@ func Test_Bind_Form_Map_SkipsStructValidator(t *testing.T) {
 		req := make(map[string]string)
 		require.NoError(t, c.Bind().Form(&req))
 		require.Equal(t, "john", req["name"])
+		require.Equal(t, 0, validator.calls)
 	})
 }
 
@@ -1958,6 +1959,21 @@ func Test_Bind_SkipValidation(t *testing.T) {
 		require.NoError(t, c.Bind().SkipValidation(true).Query(rq))
 		require.Equal(t, "efe", rq.Name)
 	})
+}
+
+// go test -run Test_Bind_ValidateStruct_NilTarget
+func Test_Bind_ValidateStruct_NilTarget(t *testing.T) {
+	t.Parallel()
+
+	validator := &countingStructValidator{}
+	app := New(Config{StructValidator: validator})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() {
+		app.ReleaseCtx(c)
+	})
+
+	require.NoError(t, c.Bind().validateStruct(nil))
+	require.Equal(t, 0, validator.calls)
 }
 
 // go test -run Test_Bind_StructValidator
