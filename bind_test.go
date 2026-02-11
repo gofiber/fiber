@@ -1961,6 +1961,69 @@ func Test_Bind_SkipValidation(t *testing.T) {
 	})
 }
 
+// go test -run Test_Bind_SkipValidation_Usage
+func Test_Bind_SkipValidation_Usage(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{StructValidator: &structValidator{}})
+
+	t.Run("skip validation for json", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		body := []byte(`{"name":"efe"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().Header.SetContentLength(len(body))
+
+		req := new(simpleQuery)
+		require.NoError(t, c.Bind().SkipValidation(true).JSON(req))
+		require.Equal(t, "efe", req.Name)
+	})
+
+	t.Run("re-enable validation explicitly", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		body := []byte(`{"name":"efe"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().Header.SetContentLength(len(body))
+
+		req := new(simpleQuery)
+		require.EqualError(t, c.Bind().SkipValidation(false).JSON(req), "you should have entered right name")
+	})
+
+	t.Run("toggle on same bind instance", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		body := []byte(`{"name":"efe"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().Header.SetContentLength(len(body))
+
+		req := new(simpleQuery)
+		require.NoError(t, c.Bind().SkipValidation(true).JSON(req))
+
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().Header.SetContentLength(len(body))
+		req = new(simpleQuery)
+		require.EqualError(t, c.Bind().SkipValidation(false).JSON(req), "you should have entered right name")
+	})
+}
+
 // go test -run Test_Bind_ValidateStruct_NilTarget
 func Test_Bind_ValidateStruct_NilTarget(t *testing.T) {
 	t.Parallel()
