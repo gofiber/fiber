@@ -31,7 +31,6 @@ import (
 	"testing"
 	"text/template"
 	"time"
-	"unicode"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/utils/v2"
@@ -759,90 +758,6 @@ func Test_Ctx_Attachment_SanitizesFilenameControls(t *testing.T) {
 			require.NotContains(t, header, "\t")
 			require.NotContains(t, header, "\x00")
 		})
-	}
-}
-
-func sanitizeFilenameStringsMapOld(filename string) string {
-	sanitized := strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, filename)
-	return utils.TrimSpace(sanitized)
-}
-
-func sanitizeFilenameASCIIFast(filename string) string {
-	for i := 0; i < len(filename); i++ {
-		c := filename[i]
-		if c < 0x20 || c == 0x7F {
-			return sanitizeFilenameASCIIFastSlow(filename, i)
-		}
-	}
-
-	return utils.TrimSpace(filename)
-}
-
-func sanitizeFilenameASCIIFastSlow(filename string, firstBad int) string {
-	buf := make([]byte, 0, len(filename))
-	buf = append(buf, filename[:firstBad]...)
-	for i := firstBad; i < len(filename); i++ {
-		c := filename[i]
-		if c >= 0x20 && c != 0x7F {
-			buf = append(buf, c)
-		}
-	}
-
-	return utils.TrimSpace(string(buf))
-}
-
-// go test -run=^$ -bench=Benchmark_sanitizeFilenameImplementations -benchmem -count=5
-func Benchmark_sanitizeFilenameImplementations(b *testing.B) {
-	b.ReportAllocs()
-
-	testCases := []struct {
-		name  string
-		input string
-	}{
-		{
-			name:  "no_controls",
-			input: "archive.tar.gz",
-		},
-		{
-			name:  "controls_present",
-			input: "file\rname\n\t\x00.bin",
-		},
-		{
-			name:  "controls_only",
-			input: "\r\n\t\x00",
-		},
-		{
-			name:  "unicode_no_controls",
-			input: "файл.txt",
-		},
-		{
-			name:  "unicode_control_c1",
-			input: "foo\u0085bar.txt",
-		},
-	}
-
-	impls := []struct {
-		name string
-		fn   func(string) string
-	}{
-		{name: "current", fn: sanitizeFilename},
-		{name: "ascii_fast_slow", fn: sanitizeFilenameASCIIFast},
-		{name: "old_strings_map", fn: sanitizeFilenameStringsMapOld},
-	}
-
-	for _, tc := range testCases {
-		for _, impl := range impls {
-			b.Run(tc.name+"/"+impl.name, func(b *testing.B) {
-				for b.Loop() {
-					_ = impl.fn(tc.input)
-				}
-			})
-		}
 	}
 }
 
