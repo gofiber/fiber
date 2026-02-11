@@ -82,6 +82,13 @@ func (b *Bind) WithAutoHandling() *Bind {
 	return b
 }
 
+// SkipValidation enables or disables struct validation for the current bind chain.
+func (b *Bind) SkipValidation(skip bool) *Bind {
+	b.skipValidation = skip
+
+	return b
+}
+
 // Check WithAutoHandling/WithoutAutoHandling errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
 	if err == nil || b.dontHandleErrs {
@@ -97,12 +104,27 @@ func (b *Bind) validateStruct(out any) error {
 	if b.skipValidation {
 		return nil
 	}
+
 	validator := b.ctx.App().config.StructValidator
-	if validator != nil {
-		return validator.Validate(out)
+	if validator == nil {
+		return nil
 	}
 
-	return nil
+	t := reflect.TypeOf(out)
+	if t == nil {
+		return nil
+	}
+
+	// Unwrap pointers (e.g. *T, **T) to inspect the underlying destination type.
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+
+	return validator.Validate(out)
 }
 
 // Custom To use custom binders, you have to use this method.

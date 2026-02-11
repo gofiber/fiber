@@ -600,6 +600,15 @@ It's the default behavior of the binder.
 func (b *Bind) WithoutAutoHandling() *Bind
 ```
 
+### SkipValidation
+
+To enable or disable validation for the current bind chain, use `SkipValidation`.
+By default, validation is enabled (`skip = false`).
+
+```go title="Signature"
+func (b *Bind) SkipValidation(skip bool) *Bind
+```
+
 ## SetParserDecoder
 
 Allows you to configure the BodyParser/QueryParser decoder based on schema options, providing the possibility to add custom types for parsing.
@@ -706,6 +715,9 @@ app := fiber.New(fiber.Config{
     StructValidator: &structValidator{validate: validator.New()},
 })
 ```
+
+Fiber only runs `StructValidator` for struct destinations (or pointers to structs).
+Binding into maps and other non-struct types skips the validator step.
 
 ### Usage of Validation in Binding Methods
 

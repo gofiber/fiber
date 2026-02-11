@@ -694,14 +694,76 @@ func Test_Ctx_Attachment(t *testing.T) {
 	c.Attachment("./static/img/logo.png")
 	require.Equal(t, `attachment; filename="logo.png"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
+	// filename with spaces
+	c.Attachment("report 2024.txt")
+	require.Equal(t, `attachment; filename="report+2024.txt"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	// filename with nested path
+	c.Attachment("../docs/archive.tar.gz")
+	require.Equal(t, `attachment; filename="archive.tar.gz"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 	// check quoting
 	c.Attachment("another document.pdf\"\r\nBla: \"fasel")
-	require.Equal(t, `attachment; filename="another+document.pdf%22%0D%0ABla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(t, `attachment; filename="another+document.pdf%22Bla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 
 	c.Attachment("файл.txt")
 	header := string(c.Response().Header.Peek(HeaderContentDisposition))
 	require.Contains(t, header, `filename="файл.txt"`)
 	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
+}
+
+// go test -run Test_Ctx_Attachment_SanitizesFilenameControls
+func Test_Ctx_Attachment_SanitizesFilenameControls(t *testing.T) {
+	t.Parallel()
+	app := New()
+	testCases := []struct {
+		name     string
+		filename string
+		expected string
+	}{
+		{
+			name:     "base name only",
+			filename: "../docs/archive.tar.gz",
+			expected: `attachment; filename="archive.tar.gz"`,
+		},
+		{
+			name:     "controls stripped",
+			filename: "down\r\nload\t\x00.txt",
+			expected: `attachment; filename="download.txt"`,
+		},
+		{
+			name:     "controls stripped without extension",
+			filename: "report\r\n\t\x00",
+			expected: `attachment; filename="report"`,
+		},
+		{
+			name:     "empty after sanitize",
+			filename: "\r\n\t\x00",
+			expected: `attachment; filename="download"`,
+		},
+		{
+			name:     "controls stripped in middle",
+			filename: "file\rname\n\t\x00.bin",
+			expected: `attachment; filename="filename.bin"`,
+		},
+		{
+			name:     "dot fallback",
+			filename: ".",
+			expected: `attachment; filename="download"`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Attachment(tc.filename)
+			header := string(c.Response().Header.Peek(HeaderContentDisposition))
+			require.Equal(t, tc.expected, header)
+			require.NotContains(t, header, "\r")
+			require.NotContains(t, header, "\n")
+			require.NotContains(t, header, "\t")
+			require.NotContains(t, header, "\x00")
+		})
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Attachment -benchmem -count=4
@@ -714,7 +776,7 @@ func Benchmark_Ctx_Attachment(b *testing.B) {
 		// example with quote params
 		c.Attachment("another document.pdf\"\r\nBla: \"fasel")
 	}
-	require.Equal(b, `attachment; filename="another+document.pdf%22%0D%0ABla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(b, `attachment; filename="another+document.pdf%22Bla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 }
 
 // go test -run Test_Ctx_BaseURL
@@ -4164,6 +4226,25 @@ func Test_Ctx_Range_Unsatisfiable(t *testing.T) {
 	require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
 }
 
+func Test_Ctx_Range_TooManyRanges(t *testing.T) {
+	t.Parallel()
+	app := New(Config{MaxRanges: 2})
+	app.Get("/", func(c Ctx) error {
+		_, err := c.Range(10)
+		if err != nil {
+			return err
+		}
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
+	req.Header.Set(HeaderRange, "bytes=0-1,2-3,4-5")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
+}
+
 func Test_Ctx_Range_SuffixNormalization(t *testing.T) {
 	t.Parallel()
 
@@ -5026,6 +5107,52 @@ func Test_Ctx_Download(t *testing.T) {
 	header := string(c.Response().Header.Peek(HeaderContentDisposition))
 	require.Contains(t, header, `filename="файл.txt"`)
 	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
+}
+
+// go test -race -run Test_Ctx_Download_SanitizesFilenameControls
+func Test_Ctx_Download_SanitizesFilenameControls(t *testing.T) {
+	t.Parallel()
+	app := New()
+	testCases := []struct {
+		name     string
+		filename string
+		expected string
+	}{
+		{
+			name:     "base name only",
+			filename: "../docs/archive.tar.gz",
+			expected: `attachment; filename="archive.tar.gz"`,
+		},
+		{
+			name:     "controls stripped",
+			filename: "down\r\nload\t\x00.txt",
+			expected: `attachment; filename="download.txt"`,
+		},
+		{
+			name:     "empty after sanitize",
+			filename: "\r\n\t\x00",
+			expected: `attachment; filename="download"`,
+		},
+		{
+			name:     "dot fallback",
+			filename: ".",
+			expected: `attachment; filename="download"`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			require.NoError(t, c.Download("ctx.go", tc.filename))
+			header := string(c.Response().Header.Peek(HeaderContentDisposition))
+			require.Equal(t, tc.expected, header)
+			require.NotContains(t, header, "\r")
+			require.NotContains(t, header, "\n")
+			require.NotContains(t, header, "\t")
+			require.NotContains(t, header, "\x00")
+		})
+	}
 }
 
 // go test -race -run Test_Ctx_SendEarlyHints

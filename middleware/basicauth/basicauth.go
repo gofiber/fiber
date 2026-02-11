@@ -49,7 +49,7 @@ func New(config ...Config) fiber.Handler {
 		if containsInvalidHeaderChars(rawAuth) {
 			return cfg.BadRequest(c)
 		}
-		auth := strings.Trim(rawAuth, " \t")
+		auth := utils.TrimSpace(rawAuth)
 		if auth == "" {
 			return cfg.Unauthorized(c)
 		}

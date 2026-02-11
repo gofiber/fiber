@@ -899,6 +899,12 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		ranges    string
 	)
 	rangeStr := utils.TrimSpace(r.Get(HeaderRange))
+	maxRanges := r.c.app.config.MaxRanges
+	const maxRangePrealloc = 8
+	prealloc := min(maxRanges, maxRangePrealloc)
+	if prealloc > 0 {
+		rangeData.Ranges = make([]RangeSet, 0, prealloc)
+	}
 
 	parseBound := func(value string) (int64, error) {
 		parsed, err := utils.ParseUint(value)
@@ -924,8 +930,15 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	var (
 		singleRange string
 		moreRanges  = ranges
+		rangeCount  int
 	)
 	for moreRanges != "" {
+		rangeCount++
+		if rangeCount > maxRanges {
+			r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
+			r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
+			return rangeData, ErrRangeTooLarge
+		}
 		singleRange = moreRanges
 		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
 			singleRange = moreRanges[:i]
@@ -970,7 +983,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	}
 	if len(rangeData.Ranges) < 1 {
 		r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
-		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+strconv.FormatInt(size, 10)) //nolint:staticcheck // It is fine to ignore the static check
+		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
 		return rangeData, ErrRequestedRangeNotSatisfiable
 	}
 
