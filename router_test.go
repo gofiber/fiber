@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -72,13 +73,26 @@ func Test_Route_Handler_Order(t *testing.T) {
 func Test_hasFlashCookieExactMatch(t *testing.T) {
 	t.Parallel()
 
-	var req fasthttp.Request
+	buildRequestWithCookie := func(t *testing.T, cookie string) *fasthttp.Request {
+		t.Helper()
 
-	req.Header.Set(HeaderCookie, FlashCookieName+"X=not-the-flash-cookie")
+		rawRequest := strings.NewReader(
+			"GET / HTTP/1.1\r\nHost: localhost\r\nCookie: " + cookie + "\r\n\r\n",
+		)
+		req := new(fasthttp.Request)
+		require.NoError(t, req.Read(bufio.NewReader(rawRequest)))
+		return req
+	}
+
+	req := buildRequestWithCookie(t, FlashCookieName+"X=not-the-flash-cookie")
 	require.False(t, hasFlashCookie(&req.Header))
 
-	req.Header.Set(HeaderCookie, FlashCookieName+"=valid")
+	req = buildRequestWithCookie(t, FlashCookieName+"=valid")
 	require.True(t, hasFlashCookie(&req.Header))
+
+	var syntheticReq fasthttp.Request
+	syntheticReq.Header.Set(HeaderCookie, FlashCookieName+"=valid")
+	require.False(t, hasFlashCookie(&syntheticReq.Header))
 }
 
 func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {

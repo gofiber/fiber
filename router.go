@@ -323,9 +323,8 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		// Optional: Check flash messages
-		rawHeaders := d.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && hasFlashCookie(&d.Request().Header) {
+		// Optional: check flash messages (hot path, see hasFlashCookie).
+		if hasFlashCookie(&d.Request().Header) {
 			d.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.next(d)
@@ -336,9 +335,8 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		// Optional: Check flash messages
-		rawHeaders := ctx.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && hasFlashCookie(&ctx.Request().Header) {
+		// Optional: check flash messages (hot path, see hasFlashCookie).
+		if hasFlashCookie(&ctx.Request().Header) {
 			ctx.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.nextCustom(ctx)
@@ -349,10 +347,6 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 		}
 		return
 	}
-}
-
-func hasFlashCookie(header *fasthttp.RequestHeader) bool {
-	return header.Cookie(FlashCookieName) != nil
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
