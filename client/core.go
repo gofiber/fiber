@@ -301,5 +301,4 @@ var (
 	ErrBodyType             = errors.New("the body type should be []byte")
 	ErrNotSupportSaveMethod = errors.New("only file paths and io.Writer are supported")
 	ErrBodyTypeNotSupported = errors.New("the body type is not supported")
-	ErrResponseClientNil    = errors.New("response client cannot be nil")
 )

@@ -113,7 +113,7 @@ func (r *Response) String() string {
 // JSON unmarshal the response body into the given interface{} using JSON.
 func (r *Response) JSON(v any) error {
 	if r.client == nil {
-		return ErrResponseClientNil
+		return ErrClientNil
 	}
 
 	return r.client.jsonUnmarshal(r.Body(), v)
@@ -122,7 +122,7 @@ func (r *Response) JSON(v any) error {
 // CBOR unmarshal the response body into the given interface{} using CBOR.
 func (r *Response) CBOR(v any) error {
 	if r.client == nil {
-		return ErrResponseClientNil
+		return ErrClientNil
 	}
 
 	return r.client.cborUnmarshal(r.Body(), v)
@@ -131,7 +131,7 @@ func (r *Response) CBOR(v any) error {
 // XML unmarshal the response body into the given interface{} using XML.
 func (r *Response) XML(v any) error {
 	if r.client == nil {
-		return ErrResponseClientNil
+		return ErrClientNil
 	}
 
 	return r.client.xmlUnmarshal(r.Body(), v)

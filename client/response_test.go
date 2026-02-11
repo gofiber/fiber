@@ -474,7 +474,7 @@ func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 			decoded := payload{}
 			require.NotPanics(t, func() {
 				err := resp.JSON(&decoded)
-				require.ErrorIs(t, err, ErrResponseClientNil)
+				require.ErrorIs(t, err, ErrClientNil)
 			})
 		})
 
@@ -490,7 +490,7 @@ func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 			decoded := payload{}
 			require.NotPanics(t, func() {
 				err := resp.XML(&decoded)
-				require.ErrorIs(t, err, ErrResponseClientNil)
+				require.ErrorIs(t, err, ErrClientNil)
 			})
 		})
 
@@ -506,7 +506,7 @@ func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
 			decoded := payload{}
 			require.NotPanics(t, func() {
 				err := resp.CBOR(&decoded)
-				require.ErrorIs(t, err, ErrResponseClientNil)
+				require.ErrorIs(t, err, ErrClientNil)
 			})
 		})
 	})
