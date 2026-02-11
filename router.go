@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"bytes"
 	"fmt"
 	"slices"
 	"sync/atomic"
@@ -13,10 +12,6 @@ import (
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
-
-// flashCookieNameBytes is a precomputed byte slice for flash cookie detection
-// to avoid string-to-bytes conversion on every request
-var flashCookieNameBytes = []byte(FlashCookieName)
 
 // Router defines all router handle interface, including app and group router.
 type Router interface {
@@ -328,9 +323,8 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		// Optional: Check flash messages
-		rawHeaders := d.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
+		// Optional: check flash messages (hot path, see hasFlashCookie).
+		if hasFlashCookie(&d.Request().Header) {
 			d.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.next(d)
@@ -341,9 +335,8 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		// Optional: Check flash messages
-		rawHeaders := ctx.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
+		// Optional: check flash messages (hot path, see hasFlashCookie).
+		if hasFlashCookie(&ctx.Request().Header) {
 			ctx.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.nextCustom(ctx)
