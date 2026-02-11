@@ -737,12 +737,17 @@ func Test_Ctx_Attachment_SanitizesFilenameControls(t *testing.T) {
 		{
 			name:     "empty after sanitize",
 			filename: "\r\n\t\x00",
-			expected: `attachment; filename=""`,
+			expected: `attachment; filename="download"`,
 		},
 		{
 			name:     "controls stripped in middle",
 			filename: "file\rname\n\t\x00.bin",
 			expected: `attachment; filename="filename.bin"`,
+		},
+		{
+			name:     "dot fallback",
+			filename: ".",
+			expected: `attachment; filename="download"`,
 		},
 	}
 
@@ -5107,7 +5112,12 @@ func Test_Ctx_Download_SanitizesFilenameControls(t *testing.T) {
 		{
 			name:     "empty after sanitize",
 			filename: "\r\n\t\x00",
-			expected: `attachment; filename=""`,
+			expected: `attachment; filename="download"`,
+		},
+		{
+			name:     "dot fallback",
+			filename: ".",
+			expected: `attachment; filename="download"`,
 		},
 	}
 

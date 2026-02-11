@@ -195,11 +195,20 @@ func sanitizeFilename(filename string) string {
 	return utils.TrimSpace(filename)
 }
 
+func fallbackFilenameIfInvalid(filename string) string {
+	if filename == "" || filename == "." {
+		return "download"
+	}
+
+	return filename
+}
+
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
 func (r *DefaultRes) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
 		fname = sanitizeFilename(fname)
+		fname = fallbackFilenameIfInvalid(fname)
 		r.Type(filepath.Ext(fname))
 		app := r.c.app
 		var quoted string
@@ -339,6 +348,7 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 		fname = filepath.Base(file)
 	}
 	fname = sanitizeFilename(fname)
+	fname = fallbackFilenameIfInvalid(fname)
 	app := r.c.app
 	var quoted string
 	if app.isASCII(fname) {
