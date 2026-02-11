@@ -452,6 +452,126 @@ func Test_Response_Body(t *testing.T) {
 	})
 }
 
+func Test_Response_DecodeHelpers_ClientNilSafety(t *testing.T) {
+	t.Parallel()
+
+	t.Run("client nil returns exported error without panic", func(t *testing.T) {
+		t.Parallel()
+
+		type payload struct {
+			Status string `json:"status" xml:"status" cbor:"status"`
+		}
+
+		t.Run("json", func(t *testing.T) {
+			t.Parallel()
+
+			resp := AcquireResponse()
+			t.Cleanup(func() {
+				ReleaseResponse(resp)
+			})
+			resp.RawResponse.SetBodyString(`{"status":"success"}`)
+
+			decoded := payload{}
+			require.NotPanics(t, func() {
+				err := resp.JSON(&decoded)
+				require.ErrorIs(t, err, ErrResponseClientNil)
+			})
+		})
+
+		t.Run("xml", func(t *testing.T) {
+			t.Parallel()
+
+			resp := AcquireResponse()
+			t.Cleanup(func() {
+				ReleaseResponse(resp)
+			})
+			resp.RawResponse.SetBodyString(`<payload><status>success</status></payload>`)
+
+			decoded := payload{}
+			require.NotPanics(t, func() {
+				err := resp.XML(&decoded)
+				require.ErrorIs(t, err, ErrResponseClientNil)
+			})
+		})
+
+		t.Run("cbor", func(t *testing.T) {
+			t.Parallel()
+
+			resp := AcquireResponse()
+			t.Cleanup(func() {
+				ReleaseResponse(resp)
+			})
+			resp.RawResponse.SetBodyString("not-cbor")
+
+			decoded := payload{}
+			require.NotPanics(t, func() {
+				err := resp.CBOR(&decoded)
+				require.ErrorIs(t, err, ErrResponseClientNil)
+			})
+		})
+	})
+
+	t.Run("decode helpers still work with client", func(t *testing.T) {
+		t.Parallel()
+
+		type payload struct {
+			Status string `json:"status" xml:"status" cbor:"status"`
+		}
+
+		t.Run("json", func(t *testing.T) {
+			t.Parallel()
+
+			resp := AcquireResponse()
+			t.Cleanup(func() {
+				ReleaseResponse(resp)
+			})
+			resp.setClient(New())
+			resp.RawResponse.SetBodyString(`{"status":"success"}`)
+
+			decoded := payload{}
+			err := resp.JSON(&decoded)
+			require.NoError(t, err)
+			require.Equal(t, "success", decoded.Status)
+		})
+
+		t.Run("xml", func(t *testing.T) {
+			t.Parallel()
+
+			resp := AcquireResponse()
+			t.Cleanup(func() {
+				ReleaseResponse(resp)
+			})
+			resp.setClient(New())
+			resp.RawResponse.SetBodyString(`<payload><status>success</status></payload>`)
+
+			decoded := payload{}
+			err := resp.XML(&decoded)
+			require.NoError(t, err)
+			require.Equal(t, "success", decoded.Status)
+		})
+
+		t.Run("cbor", func(t *testing.T) {
+			t.Parallel()
+
+			client := New()
+			resp := AcquireResponse()
+			t.Cleanup(func() {
+				ReleaseResponse(resp)
+			})
+			resp.setClient(client)
+
+			body, err := client.cborMarshal(payload{Status: "success"})
+			require.NoError(t, err)
+			resp.RawResponse.SetBody(body)
+
+			decoded := payload{}
+			err = resp.CBOR(&decoded)
+			require.NoError(t, err)
+			require.Equal(t, "success", decoded.Status)
+		})
+	})
+}
+
 func Test_Response_Save(t *testing.T) {
 	t.Parallel()
 
