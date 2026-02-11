@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
@@ -179,17 +180,19 @@ func headerContainsValue(header, value string) bool {
 }
 
 func sanitizeFilename(filename string) string {
-	sanitized := strings.Map(func(r rune) rune {
+	for _, r := range filename {
 		if unicode.IsControl(r) {
-			return -1
+			b := make([]byte, 0, len(filename))
+			for _, rr := range filename {
+				if !unicode.IsControl(rr) {
+					b = utf8.AppendRune(b, rr)
+				}
+			}
+			return utils.TrimSpace(string(b))
 		}
-		return r
-	}, filename)
-	sanitized = utils.TrimSpace(sanitized)
-	if sanitized == "" {
-		return "download"
 	}
-	return sanitized
+
+	return utils.TrimSpace(filename)
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
