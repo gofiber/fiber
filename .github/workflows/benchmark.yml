@@ -134,8 +134,7 @@ jobs:
           # Save the data to external file (GitHub Pages)
           save-data-file: true
           alert-threshold: "150%"
-          # TODO: reactivate it later -> when v3 is the stable one
-          #auto-push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+          auto-push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           auto-push: false
 
       - name: Update Benchmark Results cache
