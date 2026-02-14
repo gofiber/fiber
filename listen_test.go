@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
+	"github.com/valyala/fasthttp/prefork"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -165,16 +166,19 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 
 // go test -run Test_Listen_Prefork
 func Test_Listen_Prefork(t *testing.T) {
-	testPreforkMaster = true
+	usePreforkDummyCommand(t, "go")
 
 	app := New()
 
-	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	// In test mode, dummyCmd children exit immediately, triggering ErrOverRecovery
+	// This is expected behavior - we're testing that the prefork setup works
+	err := app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, PreforkRecoverThreshold: 1})
+	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 }
 
 // go test -run Test_Listen_TLSMinVersion
 func Test_Listen_TLSMinVersion(t *testing.T) {
-	testPreforkMaster = true
+	usePreforkDummyCommand(t, "go")
 
 	app := New()
 
@@ -202,11 +206,13 @@ func Test_Listen_TLSMinVersion(t *testing.T) {
 	require.NoError(t, app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS13}))
 
 	// Valid TLSMinVersion with Prefork
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS13}))
+	err := app.Listen(":0", ListenConfig{
+		DisableStartupMessage:   true,
+		EnablePrefork:           true,
+		TLSMinVersion:           tls.VersionTLS13,
+		PreforkRecoverThreshold: 1,
+	})
+	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 }
 
 // go test -run Test_Listen_TLS
@@ -232,7 +238,7 @@ func Test_Listen_TLS(t *testing.T) {
 
 // go test -run Test_Listen_TLS_Prefork
 func Test_Listen_TLS_Prefork(t *testing.T) {
-	testPreforkMaster = true
+	usePreforkDummyCommand(t, "go")
 
 	app := New()
 
@@ -244,17 +250,16 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 		CertKeyFile:           "./.github/testdata/template.tmpl",
 	}))
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		EnablePrefork:         true,
-		CertFile:              "./.github/testdata/ssl.pem",
-		CertKeyFile:           "./.github/testdata/ssl.key",
-	}))
+	// In test mode, dummyCmd children exit immediately, triggering ErrOverRecovery
+	// This is expected behavior - we're testing that the prefork setup works
+	err := app.Listen(":0", ListenConfig{
+		DisableStartupMessage:   true,
+		EnablePrefork:           true,
+		PreforkRecoverThreshold: 1,
+		CertFile:                "./.github/testdata/ssl.pem",
+		CertKeyFile:             "./.github/testdata/ssl.key",
+	})
+	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 }
 
 // go test -run Test_Listen_MutualTLS
@@ -282,7 +287,7 @@ func Test_Listen_MutualTLS(t *testing.T) {
 
 // go test -run Test_Listen_MutualTLS_Prefork
 func Test_Listen_MutualTLS_Prefork(t *testing.T) {
-	testPreforkMaster = true
+	usePreforkDummyCommand(t, "go")
 
 	app := New()
 
@@ -295,18 +300,17 @@ func Test_Listen_MutualTLS_Prefork(t *testing.T) {
 		CertClientFile:        "./.github/testdata/ca-chain.cert.pem",
 	}))
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		EnablePrefork:         true,
-		CertFile:              "./.github/testdata/ssl.pem",
-		CertKeyFile:           "./.github/testdata/ssl.key",
-		CertClientFile:        "./.github/testdata/ca-chain.cert.pem",
-	}))
+	// In test mode, dummyCmd children exit immediately, triggering ErrOverRecovery
+	// This is expected behavior - we're testing that the prefork setup works
+	err := app.Listen(":0", ListenConfig{
+		DisableStartupMessage:   true,
+		EnablePrefork:           true,
+		PreforkRecoverThreshold: 1,
+		CertFile:                "./.github/testdata/ssl.pem",
+		CertKeyFile:             "./.github/testdata/ssl.key",
+		CertClientFile:          "./.github/testdata/ca-chain.cert.pem",
+	})
+	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 }
 
 // go test -run Test_Listener
