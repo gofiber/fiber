@@ -450,7 +450,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 
 	for _, method := range methods {
 		// Uppercase HTTP methods
-		method = utilsstrings.UnsafeToUpper(method)
+		method = utilsstrings.ToUpper(method)
 
 		// Get unique HTTP method identifier
 		m := app.methodInt(method)

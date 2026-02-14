@@ -170,7 +170,7 @@ func (app *App) logServices(ctx context.Context, out io.Writer, colors *Colors) 
 		} else {
 			stateColor = scheme.Blue
 		}
-		fmt.Fprintf(out, "%sINFO%s    🧩 %s[ %s ] %s%s\n", scheme.Green, scheme.Reset, stateColor, utilsstrings.UnsafeToUpper(state), srv.String(), scheme.Reset)
+		fmt.Fprintf(out, "%sINFO%s    🧩 %s[ %s ] %s%s\n", scheme.Green, scheme.Reset, stateColor, utilsstrings.ToUpper(state), srv.String(), scheme.Reset)
 	}
 	return nil
 }

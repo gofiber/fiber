@@ -313,7 +313,7 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 
 func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	typ := reflect.TypeOf(out).Elem()
-	key = utilsstrings.UnsafeToLower(key)
+	key = utilsstrings.ToLower(key)
 
 	if isStringKeyMap(typ) {
 		return true

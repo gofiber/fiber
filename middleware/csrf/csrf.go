@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 )
 
 var (
@@ -327,7 +328,7 @@ func validateSecFetchSite(c fiber.Ctx) error {
 		return nil
 	}
 
-	switch utilsstrings.UnsafeToLower(secFetchSite) {
+	switch utilsstrings.ToLower(secFetchSite) {
 	case "same-origin", "none", "cross-site", "same-site":
 		return nil
 	default:
@@ -339,7 +340,7 @@ func validateSecFetchSite(c fiber.Ctx) error {
 // returns an error if the origin header is not present or is invalid
 // returns nil if the origin header is valid
 func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	origin := utilsstrings.UnsafeToLower(c.Get(fiber.HeaderOrigin))
+	origin := utilsstrings.ToLower(c.Get(fiber.HeaderOrigin))
 	if origin == "" || origin == "null" { // "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
 		return errOriginNotFound
 	}
@@ -370,7 +371,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
 func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	referer := utilsstrings.UnsafeToLower(c.Get(fiber.HeaderReferer))
+	referer := utilsstrings.ToLower(c.Get(fiber.HeaderReferer))
 	if referer == "" {
 		return ErrRefererNotFound
 	}

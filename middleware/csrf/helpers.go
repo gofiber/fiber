@@ -23,8 +23,8 @@ func compareStrings(a, b string) bool {
 }
 
 func schemeAndHostMatch(schemeA, hostA, schemeB, hostB string) bool {
-	normalizedSchemeA := utilsstrings.UnsafeToLower(schemeA)
-	normalizedSchemeB := utilsstrings.UnsafeToLower(schemeB)
+	normalizedSchemeA := utilsstrings.ToLower(schemeA)
+	normalizedSchemeB := utilsstrings.ToLower(schemeB)
 
 	normalizedHostA := normalizeSchemeHost(normalizedSchemeA, hostA)
 	normalizedHostB := normalizeSchemeHost(normalizedSchemeB, hostB)
@@ -33,7 +33,7 @@ func schemeAndHostMatch(schemeA, hostA, schemeB, hostB string) bool {
 }
 
 func normalizeSchemeHost(scheme, host string) string {
-	host = utilsstrings.UnsafeToLower(host)
+	host = utilsstrings.ToLower(host)
 
 	defaultPort := ""
 	switch scheme {
@@ -96,7 +96,7 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 
 	// Normalize the origin by constructing it from the scheme and host.
 	// The path or trailing slash is not included in the normalized origin.
-	return true, utilsstrings.UnsafeToLower(parsedOrigin.Scheme) + "://" + utilsstrings.UnsafeToLower(parsedOrigin.Host)
+	return true, utilsstrings.ToLower(parsedOrigin.Scheme) + "://" + utilsstrings.ToLower(parsedOrigin.Host)
 }
 
 type subdomain struct {

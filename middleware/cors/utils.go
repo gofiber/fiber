@@ -62,7 +62,7 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 
 	// Normalize the origin by constructing it from the scheme and host.
 	// The path or trailing slash is not included in the normalized origin.
-	return true, utilsstrings.UnsafeToLower(parsedOrigin.Scheme) + "://" + utilsstrings.UnsafeToLower(parsedOrigin.Host)
+	return true, utilsstrings.ToLower(parsedOrigin.Scheme) + "://" + utilsstrings.ToLower(parsedOrigin.Host)
 }
 
 type subdomain struct {
