@@ -17,6 +17,8 @@ import (
 	"unicode"
 
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/google/uuid"
 )
 
@@ -176,8 +178,8 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 
 	// Case-sensitive routing, all to lowercase
 	if !config.CaseSensitive {
-		patternPretty = utils.ToLowerBytes(patternPretty)
-		path = utils.ToLower(path)
+		patternPretty = utilsbytes.UnsafeToLower(patternPretty)
+		path = utilsstrings.ToLower(path)
 	}
 	// Strict routing, remove trailing slashes
 	if !config.StrictRouting && len(patternPretty) > 1 {
