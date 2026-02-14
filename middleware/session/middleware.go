@@ -3,6 +3,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -122,6 +123,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
 	m.ctx = c
 
 	c.Locals(middlewareContextKey, m)
+	c.SetContext(context.WithValue(c.Context(), middlewareContextKey, m))
 }
 
 // saveSession handles session saving and error management after the response.
@@ -165,6 +167,7 @@ func releaseMiddleware(m *Middleware) {
 }
 
 // FromContext returns the Middleware from the Fiber context.
+// It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
 //
 // Parameters:
 //   - c: The Fiber context.
@@ -175,12 +178,12 @@ func releaseMiddleware(m *Middleware) {
 // Usage:
 //
 //	m := session.FromContext(c)
-func FromContext(c fiber.Ctx) *Middleware {
-	m, ok := c.Locals(middlewareContextKey).(*Middleware)
-	if !ok {
-		return nil
+func FromContext(ctx any) *Middleware {
+	if m, ok := fiber.ValueFromContext[*Middleware](ctx, middlewareContextKey); ok {
+		return m
 	}
-	return m
+
+	return nil
 }
 
 // Set sets a key-value pair in the session.

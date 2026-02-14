@@ -1,6 +1,7 @@
 package keyauth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -49,6 +50,7 @@ func New(config ...Config) fiber.Handler {
 			valid, err = cfg.Validator(c, key)
 			if err == nil && valid {
 				c.Locals(tokenKey, key)
+				c.SetContext(context.WithValue(c.Context(), tokenKey, key))
 				return cfg.SuccessHandler(c)
 			}
 		}
@@ -94,13 +96,14 @@ func New(config ...Config) fiber.Handler {
 }
 
 // TokenFromContext returns the bearer token from the request context.
-// returns an empty string if the token does not exist
-func TokenFromContext(c fiber.Ctx) string {
-	token, ok := c.Locals(tokenKey).(string)
-	if !ok {
-		return ""
+// It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
+// It returns an empty string if the token does not exist.
+func TokenFromContext(ctx any) string {
+	if token, ok := fiber.ValueFromContext[string](ctx, tokenKey); ok {
+		return token
 	}
-	return token
+
+	return ""
 }
 
 // getAuthSchemes inspects an extractor and its chain to find all auth schemes
