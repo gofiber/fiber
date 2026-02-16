@@ -1075,7 +1075,18 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 		return false
 	}
 
+	remoteAddr := r.c.fasthttp.RemoteAddr()
+	switch remoteAddr.(type) {
+	case *net.UnixAddr:
+		return config.TrustProxyConfig.Loopback
+	case *net.TCPAddr, *net.UDPAddr:
+		// Keep existing RemoteIP/IP-map/CIDR checks for TCP/UDP paths as-is.
+	}
+
 	ip := r.c.fasthttp.RemoteIP()
+	if ip == nil {
+		return false
+	}
 
 	if (config.TrustProxyConfig.Loopback && ip.IsLoopback()) ||
 		(config.TrustProxyConfig.Private && ip.IsPrivate()) ||

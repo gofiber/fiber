@@ -2966,6 +2966,85 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	require.Equal(t, "0.0.0.1", c.IP())
 }
 
+func Test_Ctx_ProxyTrust_UnixRemoteAddr(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("unix sockets are not supported on windows in this test")
+	}
+
+	t.Run("loopback_enabled", func(t *testing.T) {
+		t.Parallel()
+		parts := strings.SplitN(runCtxProxyTrustUnixRemoteAddrCase(t, true), "|", 2)
+		require.Len(t, parts, 2)
+		require.Equal(t, "true", parts[0])
+		require.Equal(t, "1.1.1.1", parts[1])
+	})
+
+	t.Run("loopback_disabled", func(t *testing.T) {
+		t.Parallel()
+		parts := strings.SplitN(runCtxProxyTrustUnixRemoteAddrCase(t, false), "|", 2)
+		require.Len(t, parts, 2)
+		require.Equal(t, "false", parts[0])
+		require.Equal(t, "0.0.0.0", parts[1])
+	})
+}
+
+func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, loopback bool) string {
+	t.Helper()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Loopback: loopback,
+		},
+		ProxyHeader: HeaderXForwardedFor,
+	})
+	app.Get("/ip", func(c Ctx) error {
+		return c.SendString(fmt.Sprintf("%t|%s", c.IsProxyTrusted(), c.IP()))
+	})
+
+	tmp, err := os.MkdirTemp(os.TempDir(), "fiber-ctx-unix")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(tmp)) })
+	sock := filepath.Join(tmp, "fiber.sock")
+
+	result := make(chan string, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+
+		client := &fasthttp.HostClient{
+			Addr: sock,
+			Dial: func(addr string) (net.Conn, error) {
+				return net.Dial(NetworkUnix, addr)
+			},
+		}
+
+		req := &fasthttp.Request{}
+		resp := &fasthttp.Response{}
+		req.SetRequestURI("http://fiber/ip")
+		req.Header.Set(HeaderXForwardedFor, "1.1.1.1")
+
+		if err = client.Do(req, resp); err != nil {
+			errCh <- errors.Join(err, app.Shutdown())
+			return
+		}
+
+		result <- string(resp.Body())
+		errCh <- app.Shutdown()
+	}()
+
+	require.NoError(t, app.Listen(sock, ListenConfig{
+		DisableStartupMessage: true,
+		ListenerNetwork:       NetworkUnix,
+		UnixSocketFileMode:    0o660,
+	}))
+	require.NoError(t, <-errCh)
+
+	return <-result
+}
+
 // go test -run Test_Ctx_IPs  -parallel
 func Test_Ctx_IPs(t *testing.T) {
 	t.Parallel()
