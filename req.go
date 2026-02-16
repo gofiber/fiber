@@ -1120,6 +1120,12 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 
 // IsFromLocal will return true if request came from local.
 func (r *DefaultReq) IsFromLocal() bool {
+	// Unix sockets are inherently local - only processes on the same host can connect.
+	remoteAddr := r.c.fasthttp.RemoteAddr()
+	if _, ok := remoteAddr.(*net.UnixAddr); ok {
+		return true
+	}
+
 	if ip := r.c.fasthttp.RemoteIP(); ip != nil {
 		return ip.IsLoopback()
 	}
