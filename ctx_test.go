@@ -2973,7 +2973,7 @@ func Test_Ctx_ProxyTrust_UnixRemoteAddr(t *testing.T) {
 		t.Skip("unix sockets are not supported on windows in this test")
 	}
 
-	t.Run("loopback_enabled", func(t *testing.T) {
+	t.Run("unix_socket_enabled", func(t *testing.T) {
 		t.Parallel()
 		parts := strings.SplitN(runCtxProxyTrustUnixRemoteAddrCase(t, true), "|", 2)
 		require.Len(t, parts, 2)
@@ -2981,7 +2981,7 @@ func Test_Ctx_ProxyTrust_UnixRemoteAddr(t *testing.T) {
 		require.Equal(t, "1.1.1.1", parts[1])
 	})
 
-	t.Run("loopback_disabled", func(t *testing.T) {
+	t.Run("unix_socket_disabled", func(t *testing.T) {
 		t.Parallel()
 		parts := strings.SplitN(runCtxProxyTrustUnixRemoteAddrCase(t, false), "|", 2)
 		require.Len(t, parts, 2)
@@ -2990,13 +2990,13 @@ func Test_Ctx_ProxyTrust_UnixRemoteAddr(t *testing.T) {
 	})
 }
 
-func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, loopback bool) string {
+func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, unixSocket bool) string {
 	t.Helper()
 
 	app := New(Config{
 		TrustProxy: true,
 		TrustProxyConfig: TrustProxyConfig{
-			Loopback: loopback,
+			UnixSocket: unixSocket,
 		},
 		ProxyHeader: HeaderXForwardedFor,
 	})
