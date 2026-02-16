@@ -22,6 +22,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
 
 	"github.com/gofiber/fiber/v3/log"
 
@@ -522,8 +523,6 @@ var headerParamPool = sync.Pool{
 }
 
 // getOffer return valid offer for header negotiation.
-// Do not pass header using utils.UnsafeBytes - this can cause a panic due
-// to the use of utils.ToLowerBytes.
 func getOffer(header []byte, isAccepted func(spec, offer string, specParams headerParams) bool, offers ...string) string {
 	if len(offers) == 0 {
 		return ""
@@ -563,7 +562,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 						}
 						return false
 					}
-					lowerKey := utils.UnsafeString(utils.ToLowerBytes(key))
+					lowerKey := utils.UnsafeString(utilsbytes.UnsafeToLower(key))
 					val, err := unescapeHeaderValue(value)
 					if err != nil {
 						return true

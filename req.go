@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
@@ -155,7 +157,7 @@ func (r *DefaultReq) Body() []byte {
 	request := &r.c.fasthttp.Request
 
 	// Get Content-Encoding header
-	headerEncoding = utils.ToLower(utils.UnsafeString(request.Header.ContentEncoding()))
+	headerEncoding = utils.UnsafeString(utilsbytes.UnsafeToLower(request.Header.ContentEncoding()))
 
 	// If no encoding is provided, return the original body
 	if headerEncoding == "" {
@@ -166,7 +168,7 @@ func (r *DefaultReq) Body() []byte {
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	for i := range encodingOrder {
-		encodingOrder[i] = utils.ToLower(encodingOrder[i])
+		encodingOrder[i] = utilsstrings.UnsafeToLower(encodingOrder[i])
 	}
 	if len(encodingOrder) == 0 {
 		return r.getBody()
@@ -700,7 +702,7 @@ func (r *DefaultReq) Method(override ...string) string {
 		return app.method(r.c.methodInt)
 	}
 
-	method := utils.ToUpper(override[0])
+	method := utilsstrings.ToUpper(override[0])
 	methodInt := app.methodInt(method)
 	if methodInt == -1 {
 		// Provided override does not valid HTTP method, no override, return current method
@@ -813,7 +815,7 @@ func (r *DefaultReq) Scheme() string {
 			continue
 		}
 	}
-	return utils.ToLower(utils.TrimSpace(scheme))
+	return utilsstrings.ToLower(utils.TrimSpace(scheme))
 }
 
 // Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
@@ -921,7 +923,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	if !found || strings.IndexByte(after, '=') >= 0 {
 		return rangeData, ErrRangeMalformed
 	}
-	rangeData.Type = utils.ToLower(utils.TrimSpace(before))
+	rangeData.Type = utilsstrings.ToLower(utils.TrimSpace(before))
 	if rangeData.Type != "bytes" {
 		return rangeData, ErrRangeMalformed
 	}
@@ -1015,12 +1017,12 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 	if strings.HasSuffix(host, ".") {
 		host = utils.TrimRight(host, '.')
 	}
-	host = utils.ToLower(host)
+	host = utilsstrings.ToLower(host)
 
 	// Decode punycode labels only when necessary
 	if strings.Contains(host, "xn--") {
 		if u, err := idna.Lookup.ToUnicode(host); err == nil {
-			host = utils.ToLower(u)
+			host = utilsstrings.ToLower(u)
 		}
 	}
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/bytebufferpool"
 
 	"github.com/gofiber/schema"
@@ -238,7 +238,7 @@ func fieldName(f *reflect.StructField, aliasTag string) string {
 		name = first
 	}
 
-	return utils.ToLower(name)
+	return utilsstrings.ToLower(name)
 }
 
 type fieldInfo struct {
@@ -313,7 +313,7 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 
 func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	typ := reflect.TypeOf(out).Elem()
-	key = utils.ToLower(key)
+	key = utilsstrings.ToLower(key)
 
 	if isStringKeyMap(typ) {
 		return true
