@@ -7859,6 +7859,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(localIPv4)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 
 		require.Equal(t, "127.0.0.1", c.IP())
 		require.True(t, c.IsFromLocal())
@@ -7869,6 +7870,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(localIPv6)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "::1", c.Req().IP())
 		require.True(t, c.Req().IsFromLocal())
 	}
@@ -7878,6 +7880,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(localIPv6long)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		// fasthttp should return "::1" for "0:0:0:0:0:0:0:1".
 		// otherwise IsFromLocal() will break.
 		require.Equal(t, "::1", c.IP())
@@ -7889,6 +7892,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(zeroIPv4)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "0.0.0.0", c.IP())
 		require.False(t, c.IsFromLocal())
 	}
@@ -7898,6 +7902,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(someIPv4)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "93.46.8.90", c.IP())
 		require.False(t, c.IsFromLocal())
 	}
@@ -7907,6 +7912,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(someIPv6)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "2001:db8:85a3::8a2e:370:7334", c.IP())
 		require.False(t, c.IsFromLocal())
 	}
@@ -7918,6 +7924,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		unixAddr := &net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"}
 		fastCtx.SetRemoteAddr(unixAddr)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.True(t, c.IsFromLocal())
 	}
 }
