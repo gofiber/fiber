@@ -7910,6 +7910,16 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		require.Equal(t, "2001:db8:85a3::8a2e:370:7334", c.IP())
 		require.False(t, c.IsFromLocal())
 	}
+	// Test for the case fasthttp remoteAddr is set to a Unix socket.
+	// Unix sockets are inherently local - only processes on the same host can connect.
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		unixAddr := net.Addr(&net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"})
+		fastCtx.SetRemoteAddr(unixAddr)
+		c := app.AcquireCtx(fastCtx)
+		require.True(t, c.IsFromLocal())
+	}
 }
 
 // go test -run Test_Ctx_extractIPsFromHeader -v
