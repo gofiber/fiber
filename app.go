@@ -459,6 +459,12 @@ type TrustProxyConfig struct {
 	//
 	// Default: false
 	Private bool `json:"private"`
+
+	// UnixSocket enables trusting Unix domain socket connections.
+	// When enabled, requests from Unix sockets are treated as trusted proxies.
+	//
+	// Default: false
+	UnixSocket bool `json:"unix_socket"`
 }
 
 // RouteMessage is some message need to be print when server starts

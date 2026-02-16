@@ -1777,6 +1777,8 @@ app := fiber.New(fiber.Config{
         Proxies: []string{"0.8.0.0"},
         // Trust all loop-back IP addresses (127.0.0.0/8, ::1/128)
         Loopback: true,
+        // Trust Unix domain socket connections
+        UnixSocket: true,
     }
 })
 ```
