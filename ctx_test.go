@@ -7915,7 +7915,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 	{
 		app := New()
 		fastCtx := &fasthttp.RequestCtx{}
-		unixAddr := net.Addr(&net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"})
+		unixAddr := &net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"}
 		fastCtx.SetRemoteAddr(unixAddr)
 		c := app.AcquireCtx(fastCtx)
 		require.True(t, c.IsFromLocal())
