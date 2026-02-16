@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 )
 
@@ -354,7 +355,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	prettyPath := prefixedPath
 	// Case-sensitive routing, all to lowercase
 	if !app.config.CaseSensitive {
-		prettyPath = utils.ToLower(prettyPath)
+		prettyPath = utilsstrings.ToLower(prettyPath)
 	}
 	// Strict routing, remove trailing slashes
 	if !app.config.StrictRouting && len(prettyPath) > 1 {
@@ -400,7 +401,7 @@ func (app *App) normalizePath(path string) string {
 		path = "/" + path
 	}
 	if !app.config.CaseSensitive {
-		path = utils.ToLower(path)
+		path = utilsstrings.ToLower(path)
 	}
 	if !app.config.StrictRouting && len(path) > 1 {
 		path = utils.TrimRight(path, '/')
@@ -449,7 +450,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 
 	for _, method := range methods {
 		// Uppercase HTTP methods
-		method = utils.ToUpper(method)
+		method = utilsstrings.ToUpper(method)
 
 		// Get unique HTTP method identifier
 		m := app.methodInt(method)
@@ -528,7 +529,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 	pathPretty := pathRaw
 	if !app.config.CaseSensitive {
-		pathPretty = utils.ToLower(pathPretty)
+		pathPretty = utilsstrings.ToLower(pathPretty)
 	}
 	if !app.config.StrictRouting && len(pathPretty) > 1 {
 		pathPretty = utils.TrimRight(pathPretty, '/')
@@ -541,7 +542,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	isMount := group != nil && group.app != app
 
 	for _, method := range methods {
-		method = utils.ToUpper(method)
+		method = utilsstrings.ToUpper(method)
 		if method != methodUse && app.methodInt(method) == -1 {
 			panic(fmt.Sprintf("add: invalid http method %s\n", method))
 		}
