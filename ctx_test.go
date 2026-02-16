@@ -3012,7 +3012,7 @@ func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, loopback bool) string {
 	result := make(chan string, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 
 		client := &fasthttp.HostClient{
 			Addr: sock,
@@ -3027,6 +3027,7 @@ func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, loopback bool) string {
 		req.Header.Set(HeaderXForwardedFor, "1.1.1.1")
 
 		if err = client.Do(req, resp); err != nil {
+			result <- "" // Ensure result channel always receives a value
 			errCh <- errors.Join(err, app.Shutdown())
 			return
 		}
