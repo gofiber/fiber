@@ -515,7 +515,10 @@ func (r *DefaultReq) IP() string {
 		return r.extractIPFromHeader(app.config.ProxyHeader)
 	}
 
-	return r.c.fasthttp.RemoteIP().String()
+	if ip := r.c.fasthttp.RemoteIP(); ip != nil {
+		return ip.String()
+	}
+	return ""
 }
 
 // extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
@@ -627,7 +630,10 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 			return s
 		}
 
-		return r.c.fasthttp.RemoteIP().String()
+		if ip := r.c.fasthttp.RemoteIP(); ip != nil {
+			return ip.String()
+		}
+		return ""
 	}
 
 	// default behavior if IP validation is not enabled is just to return whatever value is
@@ -1077,7 +1083,21 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 		return false
 	}
 
+	remoteAddr := r.c.fasthttp.RemoteAddr()
+	switch remoteAddr.(type) {
+	case *net.UnixAddr:
+		return config.TrustProxyConfig.UnixSocket
+	case *net.TCPAddr, *net.UDPAddr:
+		// Keep existing RemoteIP/IP-map/CIDR checks for TCP/UDP paths as-is.
+	default:
+		// Unknown address type: do not trust by default.
+		return false
+	}
+
 	ip := r.c.fasthttp.RemoteIP()
+	if ip == nil {
+		return false
+	}
 
 	if (config.TrustProxyConfig.Loopback && ip.IsLoopback()) ||
 		(config.TrustProxyConfig.Private && ip.IsPrivate()) ||
@@ -1100,7 +1120,16 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 
 // IsFromLocal will return true if request came from local.
 func (r *DefaultReq) IsFromLocal() bool {
-	return r.c.fasthttp.RemoteIP().IsLoopback()
+	// Unix sockets are inherently local - only processes on the same host can connect.
+	remoteAddr := r.c.fasthttp.RemoteAddr()
+	if _, ok := remoteAddr.(*net.UnixAddr); ok {
+		return true
+	}
+
+	if ip := r.c.fasthttp.RemoteIP(); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 // Release is a method to reset Req fields when to use ReleaseCtx()

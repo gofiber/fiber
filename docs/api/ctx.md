@@ -1285,6 +1285,8 @@ app := fiber.New(fiber.Config{
   // Proxies is a list of trusted proxy IP ranges/addresses
   TrustProxyConfig: fiber.TrustProxyConfig{
     Proxies: []string{"0.8.0.0", "1.1.1.1/30"}, // IP address or IP address range
+    Loopback: true,   // Trust loopback addresses (127.0.0.0/8, ::1/128)
+    UnixSocket: true, // Trust Unix domain socket connections
   },
 })
 

@@ -2966,6 +2966,86 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	require.Equal(t, "0.0.0.1", c.IP())
 }
 
+func Test_Ctx_ProxyTrust_UnixRemoteAddr(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("unix sockets are not supported on windows in this test")
+	}
+
+	t.Run("unix_socket_enabled", func(t *testing.T) {
+		t.Parallel()
+		parts := strings.SplitN(runCtxProxyTrustUnixRemoteAddrCase(t, true), "|", 2)
+		require.Len(t, parts, 2)
+		require.Equal(t, "true", parts[0])
+		require.Equal(t, "1.1.1.1", parts[1])
+	})
+
+	t.Run("unix_socket_disabled", func(t *testing.T) {
+		t.Parallel()
+		parts := strings.SplitN(runCtxProxyTrustUnixRemoteAddrCase(t, false), "|", 2)
+		require.Len(t, parts, 2)
+		require.Equal(t, "false", parts[0])
+		require.Equal(t, "0.0.0.0", parts[1])
+	})
+}
+
+func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, unixSocket bool) string {
+	t.Helper()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			UnixSocket: unixSocket,
+		},
+		ProxyHeader: HeaderXForwardedFor,
+	})
+	app.Get("/ip", func(c Ctx) error {
+		return c.SendString(fmt.Sprintf("%t|%s", c.IsProxyTrusted(), c.IP()))
+	})
+
+	tmp, err := os.MkdirTemp(os.TempDir(), "fiber-ctx-unix")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(tmp)) })
+	sock := filepath.Join(tmp, "fiber.sock")
+
+	result := make(chan string, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+
+		client := &fasthttp.HostClient{
+			Addr: sock,
+			Dial: func(addr string) (net.Conn, error) {
+				return net.Dial(NetworkUnix, addr)
+			},
+		}
+
+		req := &fasthttp.Request{}
+		resp := &fasthttp.Response{}
+		req.SetRequestURI("http://fiber/ip")
+		req.Header.Set(HeaderXForwardedFor, "1.1.1.1")
+
+		if err = client.Do(req, resp); err != nil {
+			result <- "" // Ensure result channel always receives a value
+			errCh <- errors.Join(err, app.Shutdown())
+			return
+		}
+
+		result <- string(resp.Body())
+		errCh <- app.Shutdown()
+	}()
+
+	require.NoError(t, app.Listen(sock, ListenConfig{
+		DisableStartupMessage: true,
+		ListenerNetwork:       NetworkUnix,
+		UnixSocketFileMode:    0o660,
+	}))
+	require.NoError(t, <-errCh)
+
+	return <-result
+}
+
 // go test -run Test_Ctx_IPs  -parallel
 func Test_Ctx_IPs(t *testing.T) {
 	t.Parallel()
@@ -7779,6 +7859,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(localIPv4)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 
 		require.Equal(t, "127.0.0.1", c.IP())
 		require.True(t, c.IsFromLocal())
@@ -7789,6 +7870,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(localIPv6)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "::1", c.Req().IP())
 		require.True(t, c.Req().IsFromLocal())
 	}
@@ -7798,6 +7880,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(localIPv6long)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		// fasthttp should return "::1" for "0:0:0:0:0:0:0:1".
 		// otherwise IsFromLocal() will break.
 		require.Equal(t, "::1", c.IP())
@@ -7809,6 +7892,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(zeroIPv4)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "0.0.0.0", c.IP())
 		require.False(t, c.IsFromLocal())
 	}
@@ -7818,6 +7902,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(someIPv4)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "93.46.8.90", c.IP())
 		require.False(t, c.IsFromLocal())
 	}
@@ -7827,8 +7912,20 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(someIPv6)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "2001:db8:85a3::8a2e:370:7334", c.IP())
 		require.False(t, c.IsFromLocal())
+	}
+	// Test for the case fasthttp remoteAddr is set to a Unix socket.
+	// Unix sockets are inherently local - only processes on the same host can connect.
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		unixAddr := &net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"}
+		fastCtx.SetRemoteAddr(unixAddr)
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+		require.True(t, c.IsFromLocal())
 	}
 }
 
