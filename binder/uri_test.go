@@ -99,6 +99,27 @@ func Test_uriTag(t *testing.T) {
 	// Non-pointer struct returns correct tag
 	require.Equal(t, "params", uriTag(withParams{}))
 	require.Equal(t, "uri", uriTag(withURI{}))
+
+	// Mixed tags: first params tag wins, so "params" is returned.
+	// Users should use one tag type consistently; mixing is not supported.
+	type mixedTags struct {
+		Name string `uri:"name"`
+		ID   int    `params:"id"`
+	}
+	require.Equal(t, "params", uriTag(&mixedTags{}))
+}
+
+// Test that cached results are returned on subsequent calls.
+func Test_uriTag_Cached(t *testing.T) {
+	t.Parallel()
+
+	type cachedStruct struct {
+		ID int `params:"id"`
+	}
+	// First call populates the cache
+	require.Equal(t, "params", uriTag(&cachedStruct{}))
+	// Second call returns from cache
+	require.Equal(t, "params", uriTag(&cachedStruct{}))
 }
 
 func Benchmark_URIBinding_Bind(b *testing.B) {
@@ -110,6 +131,41 @@ func Benchmark_URIBinding_Bind(b *testing.B) {
 		Name  string   `uri:"name"`
 		Posts []string `uri:"posts"`
 		Age   int      `uri:"age"`
+	}
+	var user User
+
+	paramsKey := []string{"name", "age", "posts"}
+	paramsVals := []string{"john", "42", "post1,post2,post3"}
+	paramsFunc := func(key string, _ ...string) string {
+		for i, k := range paramsKey {
+			if k == key {
+				return paramsVals[i]
+			}
+		}
+
+		return ""
+	}
+
+	var err error
+	for b.Loop() {
+		err = binder.Bind(paramsKey, paramsFunc, &user)
+	}
+
+	require.NoError(b, err)
+	require.Equal(b, "john", user.Name)
+	require.Equal(b, 42, user.Age)
+	require.Equal(b, []string{"post1,post2,post3"}, user.Posts)
+}
+
+func Benchmark_URIBinding_Bind_ParamsTag(b *testing.B) {
+	b.ReportAllocs()
+
+	binder := &URIBinding{}
+
+	type User struct {
+		Name  string   `params:"name"`
+		Posts []string `params:"posts"`
+		Age   int      `params:"age"`
 	}
 	var user User
 

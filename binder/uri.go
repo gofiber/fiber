@@ -2,9 +2,14 @@ package binder
 
 import (
 	"reflect"
+	"sync"
 )
 
 const uriTagName = "uri"
+
+// uriTagCache caches the resolved tag name per struct type to avoid
+// repeated reflection on every Bind call.
+var uriTagCache sync.Map
 
 // URIBinding is the binder implementation for populating values from route parameters.
 type URIBinding struct{}
@@ -27,6 +32,9 @@ func (*URIBinding) Bind(params []string, paramsFunc func(key string, defaultValu
 // uriTag returns the struct tag to use for URI binding.
 // It returns "params" if any exported field carries a params tag,
 // otherwise it returns the default "uri".
+// Results are cached per struct type for performance.
+// Note: use either "uri" or "params" tags consistently across all fields
+// in a struct; mixing both tag types in one struct is not supported.
 func uriTag(out any) string {
 	t := reflect.TypeOf(out)
 	for t.Kind() == reflect.Ptr {
@@ -35,12 +43,21 @@ func uriTag(out any) string {
 	if t.Kind() != reflect.Struct {
 		return uriTagName
 	}
+
+	if cached, ok := uriTagCache.Load(t); ok {
+		return cached.(string) //nolint:forcetypeassert,errcheck // cached value is always a string
+	}
+
+	tag := uriTagName
 	for i := range t.NumField() {
 		if f := t.Field(i); f.IsExported() && f.Tag.Get("params") != "" {
-			return "params"
+			tag = "params"
+			break
 		}
 	}
-	return uriTagName
+
+	uriTagCache.Store(t, tag)
+	return tag
 }
 
 // Reset resets URIBinding binder.
