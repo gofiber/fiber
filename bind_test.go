@@ -1412,26 +1412,6 @@ func Test_Bind_URI(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// go test -run Test_Bind_URI_ParamsTag
-func Test_Bind_URI_ParamsTag(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	app.Get("/user/:id", func(c Ctx) error {
-		type Params struct {
-			ID int `params:"id"`
-		}
-		p := new(Params)
-		if err := c.Bind().URI(p); err != nil {
-			t.Fatal(err)
-		}
-		require.Equal(t, 5, p.ID)
-		return nil
-	})
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/user/5", http.NoBody))
-	require.NoError(t, err)
-}
-
 // go test -run Test_Bind_URI_Map
 func Test_Bind_URI_Map(t *testing.T) {
 	t.Parallel()

@@ -505,7 +505,7 @@ curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,
 ### URI
 
 This method is similar to [Body Binding](#body), but for path parameters.  
-It is important to choose one struct tag, either `uri` or `params`, and use it consistently across all fields in a struct. For example, if you want to parse a path parameter with a field called `Pass`, you would use a struct field with either `uri:"pass"` or `params:"pass"`.
+It is important to use the struct tag `uri`. For example, if you want to parse a path parameter with a field called `Pass`, you would use a struct field with `uri:"pass"`.
 
 ```go title="Signature"
 func (b *Bind) URI(out any) error
