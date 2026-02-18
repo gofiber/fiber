@@ -538,6 +538,7 @@ func Test_getFieldCache(t *testing.T) {
 	require.NotNil(t, getFieldCache("cookie"))
 	require.NotNil(t, getFieldCache("form"))
 	require.NotNil(t, getFieldCache("uri"))
+	require.NotNil(t, getFieldCache("params"))
 	require.NotNil(t, getFieldCache("query"))
 	require.Panics(t, func() { getFieldCache("unknown") })
 }

@@ -40,6 +40,37 @@ func Test_URIBinding_Bind(t *testing.T) {
 	b.Reset()
 }
 
+func Test_URIBinding_Bind_ParamsTag(t *testing.T) {
+	t.Parallel()
+
+	b := &URIBinding{}
+
+	type User struct {
+		Name  string   `params:"name"`
+		Posts []string `params:"posts"`
+		Age   int      `params:"age"`
+	}
+	var user User
+
+	paramsKey := []string{"name", "age", "posts"}
+	paramsVals := []string{"john", "42", "post1,post2,post3"}
+	paramsFunc := func(key string, _ ...string) string {
+		for i, k := range paramsKey {
+			if k == key {
+				return paramsVals[i]
+			}
+		}
+
+		return ""
+	}
+
+	err := b.Bind(paramsKey, paramsFunc, &user)
+	require.NoError(t, err)
+	require.Equal(t, "john", user.Name)
+	require.Equal(t, 42, user.Age)
+	require.Equal(t, []string{"post1,post2,post3"}, user.Posts)
+}
+
 func Benchmark_URIBinding_Bind(b *testing.B) {
 	b.ReportAllocs()
 

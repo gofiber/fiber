@@ -34,7 +34,7 @@ var (
 	// decoderPoolMap helps to improve binders
 	decoderPoolMap = map[string]*sync.Pool{}
 	// tags is used to classify parser's pool
-	tags = []string{"header", "respHeader", "cookie", "query", "form", "uri"}
+	tags = []string{"header", "respHeader", "cookie", "query", "form", uriTagName, "params"}
 )
 
 func getDecoderPool(tag string) *sync.Pool {
@@ -261,6 +261,7 @@ var (
 	queryFieldCache      sync.Map
 	formFieldCache       sync.Map
 	uriFieldCache        sync.Map
+	paramsFieldCache     sync.Map
 )
 
 func getFieldCache(aliasTag string) *sync.Map {
@@ -273,8 +274,10 @@ func getFieldCache(aliasTag string) *sync.Map {
 		return &cookieFieldCache
 	case "form":
 		return &formFieldCache
-	case "uri":
+	case uriTagName:
 		return &uriFieldCache
+	case "params":
+		return &paramsFieldCache
 	case "query":
 		return &queryFieldCache
 	}
