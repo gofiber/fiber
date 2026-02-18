@@ -71,6 +71,36 @@ func Test_URIBinding_Bind_ParamsTag(t *testing.T) {
 	require.Equal(t, []string{"post1,post2,post3"}, user.Posts)
 }
 
+func Test_uriTag(t *testing.T) {
+	t.Parallel()
+
+	// Struct with params tags returns "params"
+	type withParams struct {
+		ID int `params:"id"`
+	}
+	require.Equal(t, "params", uriTag(&withParams{}))
+
+	// Struct with uri tags returns "uri"
+	type withURI struct {
+		ID int `uri:"id"`
+	}
+	require.Equal(t, "uri", uriTag(&withURI{}))
+
+	// Struct with no relevant tags returns "uri"
+	type noTags struct {
+		ID int
+	}
+	require.Equal(t, "uri", uriTag(&noTags{}))
+
+	// Non-struct (map) returns "uri"
+	m := map[string]string{}
+	require.Equal(t, "uri", uriTag(&m))
+
+	// Non-pointer struct returns correct tag
+	require.Equal(t, "params", uriTag(withParams{}))
+	require.Equal(t, "uri", uriTag(withURI{}))
+}
+
 func Benchmark_URIBinding_Bind(b *testing.B) {
 	b.ReportAllocs()
 
