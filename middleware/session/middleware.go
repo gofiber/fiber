@@ -3,7 +3,6 @@
 package session
 
 import (
-	"context"
 	"errors"
 	"sync"
 
@@ -122,8 +121,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
 	m.Session = session
 	m.ctx = c
 
-	c.Locals(middlewareContextKey, m)
-	c.SetContext(context.WithValue(c.Context(), middlewareContextKey, m))
+	fiber.StoreInContext(c, middlewareContextKey, m)
 }
 
 // saveSession handles session saving and error management after the response.

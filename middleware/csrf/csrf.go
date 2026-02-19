@@ -1,7 +1,6 @@
 package csrf
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -109,8 +108,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Store the CSRF handler in the context
-		c.Locals(handlerKey, handler)
-		c.SetContext(context.WithValue(c.Context(), handlerKey, handler))
+		fiber.StoreInContext(c, handlerKey, handler)
 
 		var token string
 
@@ -216,8 +214,7 @@ func New(config ...Config) fiber.Handler {
 		c.Vary(fiber.HeaderCookie)
 
 		// Store the token in the context
-		c.Locals(tokenKey, token)
-		c.SetContext(context.WithValue(c.Context(), tokenKey, token))
+		fiber.StoreInContext(c, tokenKey, token)
 
 		// Continue stack
 		return c.Next()

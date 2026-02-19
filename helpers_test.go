@@ -1651,6 +1651,25 @@ func Test_App_quoteRawString(t *testing.T) {
 	}
 }
 
+func TestStoreInContext(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	raw := &fasthttp.RequestCtx{}
+	c := app.AcquireCtx(raw)
+	defer app.ReleaseCtx(c)
+
+	StoreInContext(c, "key", "value")
+
+	localValue, ok := c.Locals("key").(string)
+	require.True(t, ok)
+	require.Equal(t, "value", localValue)
+
+	contextValue, ok := c.Context().Value("key").(string)
+	require.True(t, ok)
+	require.Equal(t, "value", contextValue)
+}
+
 func TestValueFromContext(t *testing.T) {
 	t.Parallel()
 

@@ -262,6 +262,8 @@ This approach provides safe cancellation semantics for goroutine-based work whil
   methods are currently no-ops.
 - `RequestCtx` exposes the raw `fasthttp` context, whose `Done` channel closes
   when the client connection ends.
+- Use `fiber.StoreInContext(c, key, value)` to store request-scoped values in both
+  `c.Locals()` and `c.Context()` when values must be available through either API.
 - Middleware helpers like `requestid.FromContext` or `session.FromContext`
   make it easy to retrieve request-scoped data.
 - Standard helpers such as `context.WithTimeout` can wrap `fiber.Ctx` to create
