@@ -771,7 +771,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 
 ```go
 type User struct {
-    ID    int    `params:"id"`
+    ID    int    `uri:"id"`
     Name  string `json:"name"`
     Email string `json:"email"`
 }
@@ -1777,6 +1777,8 @@ app := fiber.New(fiber.Config{
         Proxies: []string{"0.8.0.0"},
         // Trust all loop-back IP addresses (127.0.0.0/8, ::1/128)
         Loopback: true,
+        // Trust Unix domain socket connections
+        UnixSocket: true,
     }
 })
 ```
@@ -2044,13 +2046,17 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
     </details>
 
-2. **ParamsParser**: Use `c.Bind().URI()` instead of `c.ParamsParser()`.
+2. **ParamsParser**: Use `c.Bind().URI()` instead of `c.ParamsParser()`. Note that the struct tag has changed from `params` to `uri`.
 
     <details>
     <summary>Example</summary>
 
     ```go
     // Before
+    type Params struct {
+        ID int `params:"id"`
+    }
+
     app.Get("/user/:id", func(c *fiber.Ctx) error {
         var params Params
         if err := c.ParamsParser(&params); err != nil {
@@ -2062,6 +2068,10 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
     ```go
     // After
+    type Params struct {
+        ID int `uri:"id"`
+    }
+
     app.Get("/user/:id", func(c fiber.Ctx) error {
         var params Params
         if err := c.Bind().URI(&params); err != nil {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
 )
 
 // CustomBinder An interface to register custom binders.
@@ -291,7 +292,7 @@ func (b *Bind) MsgPack(out any) error {
 // If there is no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
 func (b *Bind) Body(out any) error {
 	// Get content-type
-	ctype := utils.ToLower(utils.UnsafeString(b.ctx.RequestCtx().Request.Header.ContentType()))
+	ctype := utils.UnsafeString(utilsbytes.UnsafeToLower(b.ctx.RequestCtx().Request.Header.ContentType()))
 	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))
 
 	// Check custom binders

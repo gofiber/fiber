@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
 const redactedValue = "[redacted]"
@@ -109,7 +110,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Get origin header preserving the original case for the response
 		originHeaderRaw := c.Get(fiber.HeaderOrigin)
-		originHeader := utils.ToLower(originHeaderRaw)
+		originHeader := utilsstrings.ToLower(originHeaderRaw)
 
 		// If the request does not have Origin header, the request is outside the scope of CORS
 		if originHeader == "" {
