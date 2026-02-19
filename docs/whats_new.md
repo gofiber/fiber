@@ -464,7 +464,7 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 
 ```go
 // register multiple prefixes
-app.Use(["/v1", "/v2"], func(c fiber.Ctx) error {
+app.Use([]string{"/v1", "/v2"}, func(c fiber.Ctx) error {
     // Middleware for /v1 and /v2
     return c.Next()
 })
