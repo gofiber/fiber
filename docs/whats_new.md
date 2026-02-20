@@ -743,8 +743,8 @@ app.Use(func (c fiber.Ctx) error {
 app.Get("/hello", func (c fiber.Ctx) error {
     query := c.Query("name", "")
     if query == "" {
-        c.SendString("You don't have a name?")
-        c.End() // Closes the underlying connection
+        _ = c.SendString("You don't have a name?")
+        _ = c.End() // Closes the underlying connection; errors intentionally ignored
         return errors.New("No name provided")
     }
     return c.SendString("Hello, " + query + "!")

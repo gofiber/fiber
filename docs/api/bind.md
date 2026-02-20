@@ -618,7 +618,7 @@ func (b *Bind) SkipValidation(skip bool) *Bind
 Allows you to configure the BodyParser/QueryParser decoder based on schema options, providing the possibility to add custom types for parsing.
 
 ```go title="Signature"
-func SetParserDecoder(parserConfig binder.ParserConfig)
+binder.SetParserDecoder(parserConfig binder.ParserConfig)
 ```
 
 `binder.ParserConfig` has the following fields:
