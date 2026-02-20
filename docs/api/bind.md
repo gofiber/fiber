@@ -42,6 +42,10 @@ The binding sources have the following precedence:
 4. **Request Headers**
 5. **Cookies**
 
+:::info
+The request body is only included as a binding source when the request has both a non-empty body **and** a non-empty `Content-Type` header.
+:::
+
 ```go title="Signature"
 func (b *Bind) All(out any) error
 ```
@@ -614,15 +618,23 @@ func (b *Bind) SkipValidation(skip bool) *Bind
 Allows you to configure the BodyParser/QueryParser decoder based on schema options, providing the possibility to add custom types for parsing.
 
 ```go title="Signature"
-func SetParserDecoder(parserConfig fiber.ParserConfig{
-    IgnoreUnknownKeys bool,
-    ParserType        []fiber.ParserType{
-        Customtype any,
-        Converter  func(string) reflect.Value,
-    },
-    ZeroEmpty         bool,
-    SetAliasTag       string,
-})
+func SetParserDecoder(parserConfig binder.ParserConfig)
+```
+
+`binder.ParserConfig` has the following fields:
+
+```go
+type ParserConfig struct {
+    IgnoreUnknownKeys bool
+    ParserType        []ParserType
+    ZeroEmpty         bool
+    SetAliasTag       string
+}
+
+type ParserType struct {
+    CustomType any
+    Converter  func(string) reflect.Value
+}
 ```
 
 ```go title="Example"
@@ -644,15 +656,15 @@ var timeConverter = func(value string) reflect.Value {
     return reflect.Value{}
 }
 
-customTime := fiber.ParserType{
+customTime := binder.ParserType{
     CustomType: CustomTime{},
     Converter:  timeConverter,
 }
 
 // Add custom type to the Decoder settings
-fiber.SetParserDecoder(fiber.ParserConfig{
+binder.SetParserDecoder(binder.ParserConfig{
     IgnoreUnknownKeys: true,
-    ParserType:        []fiber.ParserType{customTime},
+    ParserType:        []binder.ParserType{customTime},
     ZeroEmpty:         true,
 })
 

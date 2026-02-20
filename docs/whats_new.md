@@ -653,7 +653,7 @@ Older HTTP/1.1 clients may ignore these interim responses or handle them inconsi
 In v3, we introduced support for buffered streaming with the addition of the `SendStreamWriter` method:
 
 ```go
-func (c Ctx) SendStreamWriter(streamWriter func(w *bufio.Writer))
+func (c Ctx) SendStreamWriter(streamWriter func(w *bufio.Writer)) error
 ```
 
 With this new method, you can implement:
@@ -663,7 +663,7 @@ With this new method, you can implement:
 - Live data streaming
 
 ```go
-app.Get("/sse", func(c fiber.Ctx) {
+app.Get("/sse", func(c fiber.Ctx) error {
     c.Set("Content-Type", "text/event-stream")
     c.Set("Cache-Control", "no-cache")
     c.Set("Connection", "keep-alive")
@@ -690,7 +690,7 @@ You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md)
 In v3, we introduced support to silently terminate requests through `Drop`.
 
 ```go
-func (c Ctx) Drop()
+func (c Ctx) Drop() error
 ```
 
 With this method, you can:
@@ -721,7 +721,7 @@ You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md)
 In v3, we introduced a new method to match the Express.js API's `res.end()` method.
 
 ```go
-func (c Ctx) End()
+func (c Ctx) End() error
 ```
 
 With this method, you can:
@@ -1121,7 +1121,7 @@ Fiber v3 introduces a new feature called Services. This feature allows developer
 package main
 
 import (
-    "strconv"
+    "context"
     "github.com/gofiber/fiber/v3"
 )
 
@@ -1903,15 +1903,15 @@ app.Route("/api", func(apiGrp Router) {
 
 ```go
 // After
-app.RouteChain("/api").RouteChain("/user/:id?")
-    .Get(func(c fiber.Ctx) error {
+app.RouteChain("/api").RouteChain("/user/:id?").
+    Get(func(c fiber.Ctx) error {
         // Get user
         return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
-    })
-    .Post(func(c fiber.Ctx) error {
+    }).
+    Post(func(c fiber.Ctx) error {
         // Create user
         return c.JSON(fiber.Map{"message": "User created"})
-    });
+    })
 ```
 
 ### 🗺 RebuildTree
@@ -1923,8 +1923,8 @@ For more details, refer to the [app documentation](./api/app.md#rebuildtree):
 #### Example Usage
 
 ```go
-app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
-    app.Get("/dynamically-defined", func(c Ctx) error {  // Adding a dynamically defined route
+app.Get("/define", func(c fiber.Ctx) error {  // Define a new route dynamically
+    app.Get("/dynamically-defined", func(c fiber.Ctx) error {  // Adding a dynamically defined route
         return c.SendStatus(http.StatusOK)
     })
 

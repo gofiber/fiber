@@ -243,8 +243,7 @@ func (b *Bind) XML(out any) error {
 
 // Form binds the form into the struct, map[string]string and map[string][]string.
 // If Content-Type is "application/x-www-form-urlencoded" or "multipart/form-data", it will bind the form values.
-//
-// Binding multipart files is not supported yet.
+// Multipart file fields are supported using *multipart.FileHeader, []*multipart.FileHeader, or *[]*multipart.FileHeader.
 func (b *Bind) Form(out any) error {
 	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
