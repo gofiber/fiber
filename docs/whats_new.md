@@ -1903,15 +1903,15 @@ app.Route("/api", func(apiGrp Router) {
 
 ```go
 // After
-app.RouteChain("/api").RouteChain("/user/:id?").
-    Get(func(c fiber.Ctx) error {
+app.RouteChain("/api").RouteChain("/user/:id?")
+    .Get(func(c fiber.Ctx) error {
         // Get user
         return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
-    }).
-    Post(func(c fiber.Ctx) error {
+    })
+    .Post(func(c fiber.Ctx) error {
         // Create user
         return c.JSON(fiber.Map{"message": "User created"})
-    })
+    });
 ```
 
 ### 🗺 RebuildTree
