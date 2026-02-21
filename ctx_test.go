@@ -27,6 +27,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"text/template"
@@ -2145,6 +2146,97 @@ func Test_Ctx_FormFile(t *testing.T) {
 	require.Equal(t, int64(0), resp.ContentLength)
 }
 
+// go test -run Test_Ctx_FormFile_Concurrent -race
+func Test_Ctx_FormFile_Concurrent(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Post("/test", func(c Ctx) error {
+		fh, err := c.FormFile("file")
+		if err != nil {
+			return err
+		}
+
+		f, err := fh.Open()
+		if err != nil {
+			return err
+		}
+		defer func() {
+			require.NoError(t, f.Close())
+		}()
+
+		b := new(bytes.Buffer)
+		_, err = io.Copy(b, f)
+		if err != nil {
+			return err
+		}
+
+		// Return filename and content to verify correctness
+		return c.SendString(fh.Filename + ":" + b.String())
+	})
+
+	const concurrency = 50
+	var wg sync.WaitGroup
+	errCh := make(chan error, concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+
+			expectedFilename := fmt.Sprintf("file_%d.txt", idx)
+			expectedContent := fmt.Sprintf("content_for_file_%d", idx)
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+
+			ioWriter, err := writer.CreateFormFile("file", expectedFilename)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: create form file: %w", idx, err)
+				return
+			}
+
+			_, err = ioWriter.Write([]byte(expectedContent))
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: write content: %w", idx, err)
+				return
+			}
+			require.NoError(t, writer.Close())
+
+			req := httptest.NewRequest(MethodPost, "/test", body)
+			req.Header.Set(HeaderContentType, writer.FormDataContentType())
+			req.Header.Set(HeaderContentLength, strconv.Itoa(body.Len()))
+
+			resp, err := app.Test(req)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: app.Test: %w", idx, err)
+				return
+			}
+			defer func() {
+				require.NoError(t, resp.Body.Close())
+			}()
+
+			respBody, err := io.ReadAll(resp.Body)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: read response: %w", idx, err)
+				return
+			}
+
+			expected := expectedFilename + ":" + expectedContent
+			if string(respBody) != expected {
+				errCh <- fmt.Errorf("request %d: expected %q, got %q", idx, expected, string(respBody))
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+}
+
 // go test -run Test_Ctx_FormValue
 func Test_Ctx_FormValue(t *testing.T) {
 	t.Parallel()
@@ -2174,6 +2266,65 @@ func Test_Ctx_FormValue(t *testing.T) {
 	require.Empty(t, respBody)
 	require.Empty(t, resp.Header.Get(HeaderContentType))
 	require.Equal(t, int64(0), resp.ContentLength)
+}
+
+// go test -run Test_Ctx_FormValue_Concurrent -race
+func Test_Ctx_FormValue_Concurrent(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Post("/test", func(c Ctx) error {
+		name := c.FormValue("name")
+		return c.SendString(name)
+	})
+
+	const concurrency = 50
+	var wg sync.WaitGroup
+	errCh := make(chan error, concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+
+			expectedName := fmt.Sprintf("user_%d", idx)
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			require.NoError(t, writer.WriteField("name", expectedName))
+			require.NoError(t, writer.Close())
+
+			req := httptest.NewRequest(MethodPost, "/test", body)
+			req.Header.Set(HeaderContentType, writer.FormDataContentType())
+			req.Header.Set(HeaderContentLength, strconv.Itoa(body.Len()))
+
+			resp, err := app.Test(req)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: app.Test: %w", idx, err)
+				return
+			}
+			defer func() {
+				require.NoError(t, resp.Body.Close())
+			}()
+
+			respBody, err := io.ReadAll(resp.Body)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: read response: %w", idx, err)
+				return
+			}
+
+			if string(respBody) != expectedName {
+				errCh <- fmt.Errorf("request %d: expected %q, got %q", idx, expectedName, string(respBody))
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_StaleEtag -benchmem -count=4
@@ -3752,6 +3903,107 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_MultipartForm_Concurrent -race
+func Test_Ctx_MultipartForm_Concurrent(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Post("/test", func(c Ctx) error {
+		result, err := c.MultipartForm()
+		if err != nil {
+			return err
+		}
+
+		name := result.Value["name"][0]
+
+		// Check file data
+		fileHeaders := result.File["file"]
+		if len(fileHeaders) == 0 {
+			return NewError(StatusBadRequest, "no file in form data")
+		}
+
+		f, err := fileHeaders[0].Open()
+		if err != nil {
+			return err
+		}
+		defer func() {
+			require.NoError(t, f.Close())
+		}()
+
+		b := new(bytes.Buffer)
+		_, err = io.Copy(b, f)
+		if err != nil {
+			return err
+		}
+
+		return c.SendString(name + ":" + fileHeaders[0].Filename + ":" + b.String())
+	})
+
+	const concurrency = 50
+	var wg sync.WaitGroup
+	errCh := make(chan error, concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+
+			expectedName := fmt.Sprintf("user_%d", idx)
+			expectedFilename := fmt.Sprintf("file_%d.txt", idx)
+			expectedContent := fmt.Sprintf("content_%d", idx)
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+
+			require.NoError(t, writer.WriteField("name", expectedName))
+
+			ioWriter, err := writer.CreateFormFile("file", expectedFilename)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: create form file: %w", idx, err)
+				return
+			}
+
+			_, err = ioWriter.Write([]byte(expectedContent))
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: write content: %w", idx, err)
+				return
+			}
+			require.NoError(t, writer.Close())
+
+			req := httptest.NewRequest(MethodPost, "/test", body)
+			req.Header.Set(HeaderContentType, writer.FormDataContentType())
+			req.Header.Set(HeaderContentLength, strconv.Itoa(body.Len()))
+
+			resp, err := app.Test(req)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: app.Test: %w", idx, err)
+				return
+			}
+			defer func() {
+				require.NoError(t, resp.Body.Close())
+			}()
+
+			respBody, err := io.ReadAll(resp.Body)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: read response: %w", idx, err)
+				return
+			}
+
+			expected := expectedName + ":" + expectedFilename + ":" + expectedContent
+			if string(respBody) != expected {
+				errCh <- fmt.Errorf("request %d: expected %q, got %q", idx, expected, string(respBody))
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_MultipartForm -benchmem -count=4

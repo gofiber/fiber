@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1094,6 +1095,106 @@ func Test_Bind_Body(t *testing.T) {
 		require.Equal(t, "john", cq.Data[0].Name)
 		require.Equal(t, "doe", cq.Data[1].Name)
 	})
+}
+
+// go test -run Test_Bind_Body_MultipartForm_Concurrent -race
+func Test_Bind_Body_MultipartForm_Concurrent(t *testing.T) {
+	t.Parallel()
+
+	type FormData struct {
+		Name string                `form:"name"`
+		File *multipart.FileHeader `form:"file"`
+	}
+
+	app := New()
+
+	app.Post("/test", func(c Ctx) error {
+		var data FormData
+		if err := c.Bind().Body(&data); err != nil {
+			return err
+		}
+
+		if data.File == nil {
+			return NewError(StatusBadRequest, "no file")
+		}
+
+		f, err := data.File.Open()
+		if err != nil {
+			return err
+		}
+		defer func() {
+			require.NoError(t, f.Close())
+		}()
+
+		b := new(bytes.Buffer)
+		if _, err = b.ReadFrom(f); err != nil {
+			return err
+		}
+
+		return c.SendString(data.Name + ":" + data.File.Filename + ":" + b.String())
+	})
+
+	const concurrency = 50
+	var wg sync.WaitGroup
+	errCh := make(chan error, concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+
+			expectedName := fmt.Sprintf("user_%d", idx)
+			expectedFilename := fmt.Sprintf("file_%d.txt", idx)
+			expectedContent := fmt.Sprintf("content_%d", idx)
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+
+			require.NoError(t, writer.WriteField("name", expectedName))
+
+			ioWriter, err := writer.CreateFormFile("file", expectedFilename)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: create form file: %w", idx, err)
+				return
+			}
+
+			_, err = ioWriter.Write([]byte(expectedContent))
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: write content: %w", idx, err)
+				return
+			}
+			require.NoError(t, writer.Close())
+
+			req := httptest.NewRequest(MethodPost, "/test", body)
+			req.Header.Set(HeaderContentType, writer.FormDataContentType())
+			req.Header.Set(HeaderContentLength, fmt.Sprintf("%d", body.Len()))
+
+			resp, err := app.Test(req)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: app.Test: %w", idx, err)
+				return
+			}
+			defer func() {
+				require.NoError(t, resp.Body.Close())
+			}()
+
+			respBody := make([]byte, 1024)
+			n, _ := resp.Body.Read(respBody)
+			respBody = respBody[:n]
+
+			expected := expectedName + ":" + expectedFilename + ":" + expectedContent
+			if string(respBody) != expected {
+				errCh <- fmt.Errorf("request %d: expected %q, got %q", idx, expected, string(respBody))
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
 }
 
 // go test -run Test_Bind_Body_WithSetParserDecoder
