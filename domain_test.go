@@ -23,16 +23,17 @@ func Test_Domain_Basic(t *testing.T) {
 	})
 
 	// Matching domain
-	req := httptest.NewRequest(MethodGet, "/hello", nil)
+	req := httptest.NewRequest(MethodGet, "/hello", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "api hello", string(body))
 
 	// Non-matching domain → 404
-	req = httptest.NewRequest(MethodGet, "/hello", nil)
+	req = httptest.NewRequest(MethodGet, "/hello", http.NoBody)
 	req.Host = "www.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -49,12 +50,13 @@ func Test_Domain_Params(t *testing.T) {
 		return c.SendString("blog of " + user)
 	})
 
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "john.blog.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "blog of john", string(body))
 }
 
@@ -69,12 +71,13 @@ func Test_Domain_MultipleParams(t *testing.T) {
 		return c.SendString(sub + "-" + region)
 	})
 
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.us-east.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "api-us-east", string(body))
 }
 
@@ -87,12 +90,13 @@ func Test_Domain_CaseInsensitive(t *testing.T) {
 		return c.SendString("ok")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "ok", string(body))
 }
 
@@ -110,25 +114,27 @@ func Test_Domain_MultipleDomains(t *testing.T) {
 	})
 
 	// First domain
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "api", string(body))
 
 	// Second domain
-	req = httptest.NewRequest(MethodGet, "/", nil)
+	req = httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "www.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ = io.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "www", string(body))
 
 	// Unknown domain
-	req = httptest.NewRequest(MethodGet, "/", nil)
+	req = httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "other.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -147,16 +153,17 @@ func Test_Domain_WithGroup(t *testing.T) {
 	})
 
 	// Matching domain + path
-	req := httptest.NewRequest(MethodGet, "/api/users", nil)
+	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "users list", string(body))
 
 	// Wrong domain
-	req = httptest.NewRequest(MethodGet, "/api/users", nil)
+	req = httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "www.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -178,7 +185,7 @@ func Test_Domain_WithMiddleware(t *testing.T) {
 	})
 
 	// Matching domain - middleware should set header
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -186,7 +193,7 @@ func Test_Domain_WithMiddleware(t *testing.T) {
 	require.Equal(t, "api", resp.Header.Get("X-Domain"))
 
 	// Non-matching domain - middleware should not set header
-	req = httptest.NewRequest(MethodGet, "/", nil)
+	req = httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "www.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -221,7 +228,7 @@ func Test_Domain_HTTPMethods(t *testing.T) {
 				return c.SendString(m.method)
 			})
 
-			req := httptest.NewRequest(m.method, "/test", nil)
+			req := httptest.NewRequest(m.method, "/test", http.NoBody)
 			req.Host = "api.example.com"
 			resp, err := app.Test(req)
 			require.NoError(t, err)
@@ -240,7 +247,7 @@ func Test_Domain_Head(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	req := httptest.NewRequest(MethodHead, "/test", nil)
+	req := httptest.NewRequest(MethodHead, "/test", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -257,7 +264,7 @@ func Test_Domain_All(t *testing.T) {
 	})
 
 	for _, method := range []string{MethodGet, MethodPost, MethodPut, MethodDelete} {
-		req := httptest.NewRequest(method, "/test", nil)
+		req := httptest.NewRequest(method, "/test", http.NoBody)
 		req.Host = "api.example.com"
 		resp, err := app.Test(req)
 		require.NoError(t, err)
@@ -275,14 +282,14 @@ func Test_Domain_Add(t *testing.T) {
 	})
 
 	// GET should work
-	req := httptest.NewRequest(MethodGet, "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 
 	// POST should work
-	req = httptest.NewRequest(MethodPost, "/test", nil)
+	req = httptest.NewRequest(MethodPost, "/test", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -300,12 +307,13 @@ func Test_Domain_DomainParam_DefaultValue(t *testing.T) {
 		return c.SendString(user)
 	})
 
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "default", string(body))
 }
 
@@ -319,11 +327,12 @@ func Test_Domain_DomainParam_NoDefault(t *testing.T) {
 		return c.SendString("user=" + user)
 	})
 
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "user=", string(body))
 }
 
@@ -337,7 +346,7 @@ func Test_Domain_WithHostPort(t *testing.T) {
 	})
 
 	// Host with port - Hostname() strips the port
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.example.com:8080"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -354,13 +363,13 @@ func Test_Domain_NoMatch_WrongPartCount(t *testing.T) {
 	})
 
 	// Different number of domain parts
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 
-	req = httptest.NewRequest(MethodGet, "/", nil)
+	req = httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "sub.api.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -381,24 +390,26 @@ func Test_Domain_Route(t *testing.T) {
 		})
 	})
 
-	req := httptest.NewRequest(MethodGet, "/api/users", nil)
+	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "users", string(body))
 
-	req = httptest.NewRequest(MethodGet, "/api/posts", nil)
+	req = httptest.NewRequest(MethodGet, "/api/posts", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ = io.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "posts", string(body))
 
 	// Wrong domain
-	req = httptest.NewRequest(MethodGet, "/api/users", nil)
+	req = httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "www.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -441,25 +452,27 @@ func Test_Domain_RouteChain(t *testing.T) {
 		})
 
 	// GET
-	req := httptest.NewRequest(MethodGet, "/api/users", nil)
+	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "get users", string(body))
 
 	// POST
-	req = httptest.NewRequest(MethodPost, "/api/users", nil)
+	req = httptest.NewRequest(MethodPost, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ = io.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "create user", string(body))
 
 	// Wrong domain
-	req = httptest.NewRequest(MethodGet, "/api/users", nil)
+	req = httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "www.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -477,16 +490,17 @@ func Test_Domain_GroupFromGroup(t *testing.T) {
 		return c.SendString("users from group domain")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/api/users", nil)
+	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "users from group domain", string(body))
 
 	// Wrong domain
-	req = httptest.NewRequest(MethodGet, "/api/users", nil)
+	req = httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
 	req.Host = "www.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -507,7 +521,7 @@ func Test_Domain_UseWithPrefix(t *testing.T) {
 		return c.SendString("data")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/api/data", nil)
+	req := httptest.NewRequest(MethodGet, "/api/data", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -531,19 +545,21 @@ func Test_Domain_FallbackToNonDomain(t *testing.T) {
 	})
 
 	// Domain route matches
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "api", string(body))
 
 	// Fallback route matches for other domains
-	req = httptest.NewRequest(MethodGet, "/", nil)
+	req = httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "www.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
-	body, _ = io.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "fallback", string(body))
 }
 
@@ -558,12 +574,13 @@ func Test_Domain_WithPathParams(t *testing.T) {
 		return c.SendString(tenant + ":" + id)
 	})
 
-	req := httptest.NewRequest(MethodGet, "/users/42", nil)
+	req := httptest.NewRequest(MethodGet, "/users/42", http.NoBody)
 	req.Host = "acme.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "acme:42", string(body))
 }
 
@@ -579,12 +596,13 @@ func Test_Domain_NestedGroups(t *testing.T) {
 		return c.SendString("v1 users")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/v1/users/", nil)
+	req := httptest.NewRequest(MethodGet, "/v1/users/", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "v1 users", string(body))
 }
 
@@ -599,13 +617,13 @@ func Test_Domain_Chaining(t *testing.T) {
 		Get("/a", func(c Ctx) error { return c.SendString("a") }).
 		Post("/b", func(c Ctx) error { return c.SendString("b") })
 
-	req := httptest.NewRequest(MethodGet, "/a", nil)
+	req := httptest.NewRequest(MethodGet, "/a", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 
-	req = httptest.NewRequest(MethodPost, "/b", nil)
+	req = httptest.NewRequest(MethodPost, "/b", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -627,13 +645,14 @@ func Test_Domain_MultipleHandlers(t *testing.T) {
 		},
 	)
 
-	req := httptest.NewRequest(MethodGet, "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, "true", resp.Header.Get("X-First"))
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "final", string(body))
 }
 
@@ -648,7 +667,7 @@ func Test_Domain_NetHTTPHandler(t *testing.T) {
 		_, _ = w.Write([]byte("net/http handler"))
 	}))
 
-	req := httptest.NewRequest(MethodGet, "/http", nil)
+	req := httptest.NewRequest(MethodGet, "/http", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -665,7 +684,7 @@ func Test_Domain_EmptyHostname(t *testing.T) {
 	})
 
 	// Empty host should not match
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = ""
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -685,12 +704,13 @@ func Test_Domain_DomainOnDomain(t *testing.T) {
 		return c.SendString("www")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Host = "www.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "www", string(body))
 }
 
@@ -709,7 +729,7 @@ func Test_Domain_GroupMiddleware(t *testing.T) {
 	})
 
 	// Matching domain
-	req := httptest.NewRequest(MethodGet, "/api/data", nil)
+	req := httptest.NewRequest(MethodGet, "/api/data", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -717,7 +737,7 @@ func Test_Domain_GroupMiddleware(t *testing.T) {
 	require.Equal(t, "yes", resp.Header.Get("X-Group-MW"))
 
 	// Non-matching domain
-	req = httptest.NewRequest(MethodGet, "/api/data", nil)
+	req = httptest.NewRequest(MethodGet, "/api/data", http.NoBody)
 	req.Host = "www.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -742,14 +762,14 @@ func Test_Domain_UseMultiplePrefixes(t *testing.T) {
 		return c.SendString("b")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/a/test", nil)
+	req := httptest.NewRequest(MethodGet, "/a/test", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, "true", resp.Header.Get("X-Domain-MW"))
 
-	req = httptest.NewRequest(MethodGet, "/b/test", nil)
+	req = httptest.NewRequest(MethodGet, "/b/test", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -777,12 +797,13 @@ func Test_Domain_RouteChainNested(t *testing.T) {
 			return c.SendString("v1")
 		})
 
-	req := httptest.NewRequest(MethodGet, "/api/v1", nil)
+	req := httptest.NewRequest(MethodGet, "/api/v1", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "v1", string(body))
 }
 
@@ -819,7 +840,7 @@ func Test_Domain_RouteChainAllMethods(t *testing.T) {
 	})
 
 	for _, method := range []string{MethodPut, MethodDelete, MethodPatch, MethodOptions} {
-		req := httptest.NewRequest(method, "/test", nil)
+		req := httptest.NewRequest(method, "/test", http.NoBody)
 		req.Host = "api.example.com"
 		resp, err := app.Test(req)
 		require.NoError(t, err)
@@ -912,15 +933,18 @@ func Benchmark_Domain_Route(b *testing.B) {
 		return c.SendString("ok")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 	req.Host = "api.example.com"
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for b.Loop() {
-		resp, _ := app.Test(req)
-		resp.Body.Close()
+		resp, err := app.Test(req)
+		if err != nil {
+			b.Fatal(err)
+		}
+		resp.Body.Close() //nolint:errcheck // benchmark
 	}
 }
 
@@ -932,13 +956,16 @@ func Benchmark_Domain_NoImpact(b *testing.B) {
 		return c.SendString("ok")
 	})
 
-	req := httptest.NewRequest(MethodGet, "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for b.Loop() {
-		resp, _ := app.Test(req)
-		resp.Body.Close()
+		resp, err := app.Test(req)
+		if err != nil {
+			b.Fatal(err)
+		}
+		resp.Body.Close() //nolint:errcheck // benchmark
 	}
 }
