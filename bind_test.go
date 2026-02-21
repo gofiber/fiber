@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1102,8 +1104,8 @@ func Test_Bind_Body_MultipartForm_Concurrent(t *testing.T) {
 	t.Parallel()
 
 	type FormData struct {
-		Name string                `form:"name"`
 		File *multipart.FileHeader `form:"file"`
+		Name string                `form:"name"`
 	}
 
 	app := New()
@@ -1111,7 +1113,7 @@ func Test_Bind_Body_MultipartForm_Concurrent(t *testing.T) {
 	app.Post("/test", func(c Ctx) error {
 		var data FormData
 		if err := c.Bind().Body(&data); err != nil {
-			return err
+			return fmt.Errorf("bind body: %w", err)
 		}
 
 		if data.File == nil {
@@ -1120,15 +1122,13 @@ func Test_Bind_Body_MultipartForm_Concurrent(t *testing.T) {
 
 		f, err := data.File.Open()
 		if err != nil {
-			return err
+			return fmt.Errorf("open file: %w", err)
 		}
-		defer func() {
-			require.NoError(t, f.Close())
-		}()
+		defer f.Close() //nolint:errcheck // not needed in test
 
 		b := new(bytes.Buffer)
 		if _, err = b.ReadFrom(f); err != nil {
-			return err
+			return fmt.Errorf("read file: %w", err)
 		}
 
 		return c.SendString(data.Name + ":" + data.File.Filename + ":" + b.String())
@@ -1138,11 +1138,9 @@ func Test_Bind_Body_MultipartForm_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	errCh := make(chan error, concurrency)
 
-	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-
+	for i := range concurrency {
+		idx := i
+		wg.Go(func() {
 			expectedName := fmt.Sprintf("user_%d", idx)
 			expectedFilename := fmt.Sprintf("file_%d.txt", idx)
 			expectedContent := fmt.Sprintf("content_%d", idx)
@@ -1150,7 +1148,10 @@ func Test_Bind_Body_MultipartForm_Concurrent(t *testing.T) {
 			body := &bytes.Buffer{}
 			writer := multipart.NewWriter(body)
 
-			require.NoError(t, writer.WriteField("name", expectedName))
+			if err := writer.WriteField("name", expectedName); err != nil {
+				errCh <- fmt.Errorf("request %d: write field: %w", idx, err)
+				return
+			}
 
 			ioWriter, err := writer.CreateFormFile("file", expectedFilename)
 			if err != nil {
@@ -1158,35 +1159,37 @@ func Test_Bind_Body_MultipartForm_Concurrent(t *testing.T) {
 				return
 			}
 
-			_, err = ioWriter.Write([]byte(expectedContent))
-			if err != nil {
+			if _, err = ioWriter.Write([]byte(expectedContent)); err != nil {
 				errCh <- fmt.Errorf("request %d: write content: %w", idx, err)
 				return
 			}
-			require.NoError(t, writer.Close())
+			if err = writer.Close(); err != nil {
+				errCh <- fmt.Errorf("request %d: close writer: %w", idx, err)
+				return
+			}
 
 			req := httptest.NewRequest(MethodPost, "/test", body)
 			req.Header.Set(HeaderContentType, writer.FormDataContentType())
-			req.Header.Set(HeaderContentLength, fmt.Sprintf("%d", body.Len()))
+			req.Header.Set(HeaderContentLength, strconv.Itoa(body.Len()))
 
 			resp, err := app.Test(req)
 			if err != nil {
 				errCh <- fmt.Errorf("request %d: app.Test: %w", idx, err)
 				return
 			}
-			defer func() {
-				require.NoError(t, resp.Body.Close())
-			}()
+			defer resp.Body.Close() //nolint:errcheck // not needed in test
 
-			respBody := make([]byte, 1024)
-			n, _ := resp.Body.Read(respBody)
-			respBody = respBody[:n]
+			respBody, err := io.ReadAll(resp.Body)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d: read response: %w", idx, err)
+				return
+			}
 
 			expected := expectedName + ":" + expectedFilename + ":" + expectedContent
 			if string(respBody) != expected {
 				errCh <- fmt.Errorf("request %d: expected %q, got %q", idx, expected, string(respBody))
 			}
-		}(i)
+		})
 	}
 
 	wg.Wait()
