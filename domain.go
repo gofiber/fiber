@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-
-	utils "github.com/gofiber/utils/v2"
 )
 
 // domainLocalsKey is the key used in c.Locals() to store domain parameter values.
@@ -32,7 +30,7 @@ type domainMatcher struct {
 // parseDomainPattern parses a domain pattern like ":subdomain.example.com"
 // into a domainMatcher. Parameter parts start with ":".
 func parseDomainPattern(pattern string) domainMatcher {
-	pattern = utils.TrimLeft(utils.TrimRight(pattern, ' '), ' ')
+	pattern = strings.TrimSpace(pattern)
 	// Domain names are case-insensitive per RFC 4343
 	pattern = strings.ToLower(pattern)
 
