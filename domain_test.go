@@ -205,17 +205,17 @@ func Test_Domain_HTTPMethods(t *testing.T) {
 	t.Parallel()
 
 	methods := []struct {
-		method string
 		reg    func(Router, string, any, ...any) Router
+		method string
 	}{
-		{MethodGet, func(r Router, p string, h any, hs ...any) Router { return r.Get(p, h, hs...) }},
-		{MethodPost, func(r Router, p string, h any, hs ...any) Router { return r.Post(p, h, hs...) }},
-		{MethodPut, func(r Router, p string, h any, hs ...any) Router { return r.Put(p, h, hs...) }},
-		{MethodDelete, func(r Router, p string, h any, hs ...any) Router { return r.Delete(p, h, hs...) }},
-		{MethodPatch, func(r Router, p string, h any, hs ...any) Router { return r.Patch(p, h, hs...) }},
-		{MethodOptions, func(r Router, p string, h any, hs ...any) Router { return r.Options(p, h, hs...) }},
-		{MethodConnect, func(r Router, p string, h any, hs ...any) Router { return r.Connect(p, h, hs...) }},
-		{MethodTrace, func(r Router, p string, h any, hs ...any) Router { return r.Trace(p, h, hs...) }},
+		{method: MethodGet, reg: func(r Router, p string, h any, hs ...any) Router { return r.Get(p, h, hs...) }},
+		{method: MethodPost, reg: func(r Router, p string, h any, hs ...any) Router { return r.Post(p, h, hs...) }},
+		{method: MethodPut, reg: func(r Router, p string, h any, hs ...any) Router { return r.Put(p, h, hs...) }},
+		{method: MethodDelete, reg: func(r Router, p string, h any, hs ...any) Router { return r.Delete(p, h, hs...) }},
+		{method: MethodPatch, reg: func(r Router, p string, h any, hs ...any) Router { return r.Patch(p, h, hs...) }},
+		{method: MethodOptions, reg: func(r Router, p string, h any, hs ...any) Router { return r.Options(p, h, hs...) }},
+		{method: MethodConnect, reg: func(r Router, p string, h any, hs ...any) Router { return r.Connect(p, h, hs...) }},
+		{method: MethodTrace, reg: func(r Router, p string, h any, hs ...any) Router { return r.Trace(p, h, hs...) }},
 	}
 
 	for _, m := range methods {
@@ -664,7 +664,11 @@ func Test_Domain_NetHTTPHandler(t *testing.T) {
 	// Register a net/http handler through domain routing
 	app.Domain("api.example.com").Get("/http", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("net/http handler"))
+		_, err := w.Write([]byte("net/http handler"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}))
 
 	req := httptest.NewRequest(MethodGet, "/http", http.NoBody)
@@ -854,15 +858,15 @@ func Test_parseDomainPattern(t *testing.T) {
 	tests := []struct {
 		name       string
 		pattern    string
-		numParts   int
 		paramNames []string
+		numParts   int
 	}{
-		{"simple", "example.com", 2, nil},
-		{"with subdomain", "api.example.com", 3, nil},
-		{"single param", ":sub.example.com", 3, []string{"sub"}},
-		{"multiple params", ":sub.:region.example.com", 4, []string{"sub", "region"}},
-		{"case insensitive", "API.Example.COM", 3, nil},
-		{"single part", "localhost", 1, nil},
+		{name: "simple", pattern: "example.com", numParts: 2},
+		{name: "with subdomain", pattern: "api.example.com", numParts: 3},
+		{name: "single param", pattern: ":sub.example.com", numParts: 3, paramNames: []string{"sub"}},
+		{name: "multiple params", pattern: ":sub.:region.example.com", numParts: 4, paramNames: []string{"sub", "region"}},
+		{name: "case insensitive", pattern: "API.Example.COM", numParts: 3},
+		{name: "single part", pattern: "localhost", numParts: 1},
 	}
 
 	for _, tt := range tests {
@@ -886,17 +890,17 @@ func Test_domainMatcher_match(t *testing.T) {
 		name     string
 		pattern  string
 		hostname string
-		matched  bool
 		values   []string
+		matched  bool
 	}{
-		{"exact match", "api.example.com", "api.example.com", true, nil},
-		{"case mismatch", "api.example.com", "API.EXAMPLE.COM", true, nil},
-		{"wrong subdomain", "api.example.com", "www.example.com", false, nil},
-		{"wrong part count", "api.example.com", "example.com", false, nil},
-		{"with param", ":sub.example.com", "api.example.com", true, []string{"api"}},
-		{"multi param", ":a.:b.com", "x.y.com", true, []string{"x", "y"}},
-		{"param no match const", ":a.example.com", "x.other.com", false, nil},
-		{"empty hostname", "example.com", "", false, nil},
+		{name: "exact match", pattern: "api.example.com", hostname: "api.example.com", matched: true},
+		{name: "case mismatch", pattern: "api.example.com", hostname: "API.EXAMPLE.COM", matched: true},
+		{name: "wrong subdomain", pattern: "api.example.com", hostname: "www.example.com"},
+		{name: "wrong part count", pattern: "api.example.com", hostname: "example.com"},
+		{name: "with param", pattern: ":sub.example.com", hostname: "api.example.com", matched: true, values: []string{"api"}},
+		{name: "multi param", pattern: ":a.:b.com", hostname: "x.y.com", matched: true, values: []string{"x", "y"}},
+		{name: "param no match const", pattern: ":a.example.com", hostname: "x.other.com"},
+		{name: "empty hostname", pattern: "example.com", hostname: ""},
 	}
 
 	for _, tt := range tests {

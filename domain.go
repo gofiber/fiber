@@ -43,7 +43,7 @@ func parseDomainPattern(pattern string) domainMatcher {
 	}
 
 	for i, part := range parts {
-		if len(part) > 0 && part[0] == ':' {
+		if part != "" && part[0] == ':' {
 			m.paramIdx = append(m.paramIdx, i)
 			m.paramNames = append(m.paramNames, part[1:])
 		}
@@ -54,7 +54,7 @@ func parseDomainPattern(pattern string) domainMatcher {
 
 // match checks if a hostname matches the domain pattern.
 // It returns true if matched and a slice of parameter values (parallel to paramNames).
-func (m *domainMatcher) match(hostname string) (bool, []string) {
+func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocritic // named returns conflict with nonamedreturns linter
 	// Domain names are case-insensitive per RFC 4343
 	hostname = strings.ToLower(hostname)
 
@@ -70,7 +70,7 @@ func (m *domainMatcher) match(hostname string) (bool, []string) {
 
 	paramIter := 0
 	for i, patternPart := range m.parts {
-		if len(patternPart) > 0 && patternPart[0] == ':' {
+		if patternPart != "" && patternPart[0] == ':' {
 			paramValues[paramIter] = parts[i]
 			paramIter++
 		} else if patternPart != parts[i] {
