@@ -259,6 +259,41 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 	require.Nil(t, resp)
 }
 
+func Test_LocalContextFromHTTPRequest(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil request", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, ok := LocalContextFromHTTPRequest(nil)
+		require.False(t, ok)
+		require.Nil(t, ctx)
+	})
+
+	t.Run("request without stored context key", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+
+		ctx, ok := LocalContextFromHTTPRequest(req)
+		require.False(t, ok)
+		require.Nil(t, ctx)
+	})
+
+	t.Run("request with stored context key", func(t *testing.T) {
+		t.Parallel()
+
+		expectedCtx := context.WithValue(context.Background(), contextKey("k"), "v")
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody).WithContext(
+			context.WithValue(context.Background(), localContextKey, expectedCtx),
+		)
+
+		ctx, ok := LocalContextFromHTTPRequest(req)
+		require.True(t, ok)
+		require.Equal(t, expectedCtx, ctx)
+	})
+}
+
 func Test_HTTPHandlerWithContext_local_context(t *testing.T) {
 	t.Parallel()
 

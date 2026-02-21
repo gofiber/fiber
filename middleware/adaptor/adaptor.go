@@ -76,6 +76,10 @@ func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
 
 // LocalContextFromHTTPRequest extracts the Fiber user context previously stored into r.Context() by the adaptor.
 func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
+	if r == nil {
+		return nil, false
+	}
+
 	ctx, err := r.Context().Value(localContextKey).(context.Context)
 	return ctx, err
 }
