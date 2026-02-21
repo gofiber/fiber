@@ -971,6 +971,29 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 	return grp
 }
 
+// Domain creates a new router scoped to the given hostname pattern. Routes
+// registered through the returned Router only match requests whose Host header
+// matches the pattern. The pattern can contain parameters prefixed with ":"
+// whose values are accessible via [DomainParam].
+//
+// Domain routing has zero performance impact on routes that don't use it because
+// the hostname check is applied as a handler wrapper, not a core router change.
+//
+//	// Static domain
+//	app.Domain("api.example.com").Get("/users", listUsers)
+//
+//	// Domain with parameter
+//	app.Domain(":user.example.com").Get("/", func(c fiber.Ctx) error {
+//	    user := fiber.DomainParam(c, "user")
+//	    return c.SendString("Hello, " + user)
+//	})
+func (app *App) Domain(host string) Router {
+	return &domainRouter{
+		app:     app,
+		matcher: parseDomainPattern(host),
+	}
+}
+
 // RouteChain creates a Registering instance that lets you declare a stack of
 // handlers for the same route. Handlers defined via the returned Register are
 // scoped to the provided path.
