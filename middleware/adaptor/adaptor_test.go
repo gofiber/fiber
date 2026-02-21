@@ -877,18 +877,56 @@ func Test_CopyContextToFiberContext(t *testing.T) {
 	})
 
 	t.Run("invalid src", func(t *testing.T) {
+		t.Parallel()
 		var fctx fasthttp.RequestCtx
 		CopyContextToFiberContext(nil, &fctx)
 		// Add assertion to ensure no panic and coverage is detected
 		assert.NotNil(t, &fctx)
 	})
 
+	t.Run("nil request context", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.WithValue(context.Background(), contextKey("nil-request-context"), "value")
+		require.NotPanics(t, func() {
+			CopyContextToFiberContext(ctx, nil)
+		})
+	})
+
 	t.Run("nil pointer", func(t *testing.T) {
+		t.Parallel()
 		var nilPtr *context.Context // Nil pointer to a context
 		var fctx fasthttp.RequestCtx
 		CopyContextToFiberContext(nilPtr, &fctx)
 		// Add assertion to ensure no panic and coverage is detected
 		assert.NotNil(t, &fctx)
+	})
+
+	t.Run("copies key value pairs", func(t *testing.T) {
+		t.Parallel()
+		var fctx fasthttp.RequestCtx
+		key := contextKey("copy-key")
+		expectedValue := "copy-value"
+		ctx := context.WithValue(context.Background(), key, expectedValue)
+
+		CopyContextToFiberContext(ctx, &fctx)
+
+		require.Equal(t, expectedValue, fctx.UserValue(key))
+	})
+
+	t.Run("nested context wrappers", func(t *testing.T) {
+		t.Parallel()
+		var fctx fasthttp.RequestCtx
+		keyA := contextKey("nested-a")
+		keyB := contextKey("nested-b")
+		baseCtx := context.WithValue(context.Background(), keyA, "value-a")
+		cancelCtx, cancel := context.WithCancel(baseCtx)
+		t.Cleanup(cancel)
+		wrappedCtx := context.WithValue(cancelCtx, keyB, "value-b")
+
+		CopyContextToFiberContext(wrappedCtx, &fctx)
+
+		require.Equal(t, "value-a", fctx.UserValue(keyA))
+		require.Equal(t, "value-b", fctx.UserValue(keyB))
 	})
 
 	t.Run("multi-level pointer", func(t *testing.T) {
