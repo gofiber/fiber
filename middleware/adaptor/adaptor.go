@@ -76,6 +76,10 @@ func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
 
 // LocalContextFromHTTPRequest extracts the Fiber user context previously stored into r.Context() by the adaptor.
 func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
+	if r == nil {
+		return nil, false
+	}
+
 	ctx, err := r.Context().Value(localContextKey).(context.Context)
 	return ctx, err
 }
@@ -95,6 +99,10 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 //
 // Deprecated: This function uses reflection and unsafe pointers; consider using explicit context passing.
 func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
+	if requestContext == nil {
+		return
+	}
+
 	v := reflect.ValueOf(src)
 	if !v.IsValid() {
 		return
