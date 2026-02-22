@@ -62,6 +62,12 @@ type headerParams map[string][]byte
 func ValueFromContext[T any](ctx, key any) (T, bool) {
 	switch typed := ctx.(type) {
 	case Ctx:
+		if typed.App().config.PassLocalsToContext {
+			if val, ok := typed.Context().Value(key).(T); ok {
+				return val, true
+			}
+		}
+
 		val, ok := typed.Locals(key).(T)
 		return val, ok
 	case *fasthttp.RequestCtx:
@@ -82,7 +88,10 @@ func ValueFromContext[T any](ctx, key any) (T, bool) {
 // context.Context lookups throughout middleware and handlers.
 func StoreInContext(c Ctx, key, value any) {
 	c.Locals(key, value)
-	c.SetContext(context.WithValue(c.Context(), key, value))
+
+	if c.App().config.PassLocalsToContext {
+		c.SetContext(context.WithValue(c.Context(), key, value))
+	}
 }
 
 // getTLSConfig returns a net listener's tls config

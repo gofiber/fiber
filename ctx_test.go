@@ -3540,6 +3540,122 @@ func Test_Ctx_SetContext(t *testing.T) {
 	require.Equal(t, testValue, c.Context().Value(testKey))
 }
 
+type contextHelperTestKey struct{}
+
+func Test_Ctx_StoreInContext_Config(t *testing.T) {
+	t.Parallel()
+
+	t.Run("disabled", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		StoreInContext(c, contextHelperTestKey{}, "locals-only")
+
+		value, ok := c.Locals(contextHelperTestKey{}).(string)
+		require.True(t, ok)
+		require.Equal(t, "locals-only", value)
+		require.Nil(t, c.Context().Value(contextHelperTestKey{}))
+	})
+
+	t.Run("enabled", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{PassLocalsToContext: true})
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		StoreInContext(c, contextHelperTestKey{}, "both")
+
+		value, ok := c.Locals(contextHelperTestKey{}).(string)
+		require.True(t, ok)
+		require.Equal(t, "both", value)
+
+		contextValue, ok := c.Context().Value(contextHelperTestKey{}).(string)
+		require.True(t, ok)
+		require.Equal(t, "both", contextValue)
+	})
+}
+
+func Test_Ctx_ValueFromContext_Config(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fiber ctx disabled reads locals", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		c.Locals(contextHelperTestKey{}, "locals")
+		c.SetContext(context.WithValue(context.Background(), contextHelperTestKey{}, "context"))
+
+		value, ok := ValueFromContext[string](c, contextHelperTestKey{})
+		require.True(t, ok)
+		require.Equal(t, "locals", value)
+	})
+
+	t.Run("fiber ctx enabled prefers context", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{PassLocalsToContext: true})
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		c.Locals(contextHelperTestKey{}, "locals")
+		c.SetContext(context.WithValue(context.Background(), contextHelperTestKey{}, "context"))
+
+		value, ok := ValueFromContext[string](c, contextHelperTestKey{})
+		require.True(t, ok)
+		require.Equal(t, "context", value)
+	})
+
+	t.Run("fiber custom ctx enabled prefers context", func(t *testing.T) {
+		t.Parallel()
+
+		app := NewWithCustomCtx(func(app *App) CustomCtx {
+			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+		}, Config{PassLocalsToContext: true})
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		c.Locals(contextHelperTestKey{}, "locals")
+		c.SetContext(context.WithValue(context.Background(), contextHelperTestKey{}, "context"))
+
+		value, ok := ValueFromContext[string](c, contextHelperTestKey{})
+		require.True(t, ok)
+		require.Equal(t, "context", value)
+	})
+
+	t.Run("fasthttp request ctx", func(t *testing.T) {
+		t.Parallel()
+
+		raw := &fasthttp.RequestCtx{}
+		raw.SetUserValue(contextHelperTestKey{}, "value")
+
+		value, ok := ValueFromContext[string](raw, contextHelperTestKey{})
+		require.True(t, ok)
+		require.Equal(t, "value", value)
+	})
+
+	t.Run("context.Context", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.WithValue(context.Background(), contextHelperTestKey{}, "value")
+
+		value, ok := ValueFromContext[string](ctx, contextHelperTestKey{})
+		require.True(t, ok)
+		require.Equal(t, "value", value)
+	})
+}
+
 // go test -run Test_Ctx_Context_Multiple_Requests
 func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 	t.Parallel()

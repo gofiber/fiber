@@ -1654,7 +1654,7 @@ func Test_App_quoteRawString(t *testing.T) {
 func TestStoreInContext(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := New(Config{PassLocalsToContext: true})
 	raw := &fasthttp.RequestCtx{}
 	c := app.AcquireCtx(raw)
 	defer app.ReleaseCtx(c)

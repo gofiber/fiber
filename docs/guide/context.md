@@ -268,6 +268,9 @@ This approach provides safe cancellation semantics for goroutine-based work whil
   make it easy to retrieve request-scoped data.
 - Standard helpers such as `context.WithTimeout` can wrap `fiber.Ctx` to create
   fully featured derived contexts inside handlers.
+- `fiber.Config.PassLocalsToContext` controls whether Fiber context helpers
+  also propagate values into and read from the request `context.Context` for
+  Fiber-backed contexts. It defaults to `false` for backward compatibility.
 - Use `c.Context()` to obtain a `context.Context` that can outlive the handler,
   and `c.SetContext()` to customize it with additional values or deadlines.
 

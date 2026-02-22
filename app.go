@@ -185,6 +185,15 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: false
 	PassLocalsToViews bool `json:"pass_locals_to_views"`
 
+	// PassLocalsToContext controls whether context helpers also propagate values to
+	// and read values from the request context.Context for Fiber-backed contexts.
+	//
+	// When false, helper lookups use c.Locals() for Fiber-backed contexts.
+	// When true, helper setters also write to c.Context() and helper lookups prefer c.Context().
+	//
+	// Default: false
+	PassLocalsToContext bool `json:"pass_locals_to_context"`
+
 	// The amount of time allowed to read the full request including body.
 	// It is reset after the request handler has returned.
 	// The connection's read deadline is reset when the connection opens.
@@ -596,6 +605,11 @@ func New(config ...Config) *App {
 			"br":   ".fiber.br",
 			"zstd": ".fiber.zst",
 		}
+	}
+
+	// Explicitly preserve default disabled behavior unless configured otherwise.
+	if !app.config.PassLocalsToContext {
+		app.config.PassLocalsToContext = false
 	}
 
 	if app.config.Immutable {

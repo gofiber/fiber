@@ -925,6 +925,8 @@ Fiber v3 introduces new generic functions that provide additional utility and fl
 - **Query**: Retrieves the value of a query parameter from the request URI and can handle various types of query parameters.
 - **GetReqHeader**: Returns the HTTP request header specified by the field and can handle various types of header values.
 
+`fiber.Config.PassLocalsToContext` is now available to control whether `StoreInContext`/`ValueFromContext` also synchronize with request `context.Context` for Fiber-backed contexts. The default is `false` for backward compatibility, so helper behavior remains locals-first unless you opt in.
+
 ### Example
 
 <details>
