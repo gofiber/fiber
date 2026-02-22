@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
@@ -32,7 +33,7 @@ type domainMatcher struct {
 // parseDomainPattern parses a domain pattern like ":subdomain.example.com"
 // into a domainMatcher. Parameter parts start with ":".
 func parseDomainPattern(pattern string) domainMatcher {
-	pattern = strings.TrimSpace(pattern)
+	pattern = utils.TrimSpace(pattern)
 	// Domain names are case-insensitive per RFC 4343
 	pattern = utilsstrings.ToLower(pattern)
 
@@ -47,6 +48,12 @@ func parseDomainPattern(pattern string) domainMatcher {
 			m.paramIdx = append(m.paramIdx, i)
 			m.paramNames = append(m.paramNames, part[1:])
 		}
+	}
+
+	// Check if the domain pattern has too many parameters
+	if len(m.paramNames) > maxParams {
+		panic(fmt.Sprintf("Domain pattern '%s' has %d parameters, which exceeds the maximum of %d",
+			pattern, len(m.paramNames), maxParams))
 	}
 
 	return m
