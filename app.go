@@ -185,11 +185,10 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: false
 	PassLocalsToViews bool `json:"pass_locals_to_views"`
 
-	// PassLocalsToContext controls whether context helpers also propagate values to
-	// and read values from the request context.Context for Fiber-backed contexts.
+	// PassLocalsToContext controls whether StoreInContext also propagates values to
+	// the request context.Context for Fiber-backed contexts.
 	//
-	// When false, helper lookups use c.Locals() for Fiber-backed contexts.
-	// When true, helper setters also write to c.Context() and helper lookups prefer c.Context().
+	// ValueFromContext for Fiber-backed contexts always reads from c.Locals().
 	//
 	// Default: false
 	PassLocalsToContext bool `json:"pass_locals_to_context"`

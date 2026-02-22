@@ -3600,7 +3600,7 @@ func Test_Ctx_ValueFromContext_Config(t *testing.T) {
 		require.Equal(t, "locals", value)
 	})
 
-	t.Run("fiber ctx enabled prefers context", func(t *testing.T) {
+	t.Run("fiber ctx enabled still reads locals", func(t *testing.T) {
 		t.Parallel()
 
 		app := New(Config{PassLocalsToContext: true})
@@ -3613,10 +3613,10 @@ func Test_Ctx_ValueFromContext_Config(t *testing.T) {
 
 		value, ok := ValueFromContext[string](c, contextHelperTestKey{})
 		require.True(t, ok)
-		require.Equal(t, "context", value)
+		require.Equal(t, "locals", value)
 	})
 
-	t.Run("fiber custom ctx enabled prefers context", func(t *testing.T) {
+	t.Run("fiber custom ctx enabled still reads locals", func(t *testing.T) {
 		t.Parallel()
 
 		app := NewWithCustomCtx(func(app *App) CustomCtx {
@@ -3631,7 +3631,7 @@ func Test_Ctx_ValueFromContext_Config(t *testing.T) {
 
 		value, ok := ValueFromContext[string](c, contextHelperTestKey{})
 		require.True(t, ok)
-		require.Equal(t, "context", value)
+		require.Equal(t, "locals", value)
 	})
 
 	t.Run("fasthttp request ctx", func(t *testing.T) {

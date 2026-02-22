@@ -62,12 +62,6 @@ type headerParams map[string][]byte
 func ValueFromContext[T any](ctx, key any) (T, bool) {
 	switch typed := ctx.(type) {
 	case Ctx:
-		if typed.App().config.PassLocalsToContext {
-			if val, ok := typed.Context().Value(key).(T); ok {
-				return val, true
-			}
-		}
-
 		val, ok := typed.Locals(key).(T)
 		return val, ok
 	case *fasthttp.RequestCtx:
