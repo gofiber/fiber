@@ -52,7 +52,7 @@ app.Get("/", func(c fiber.Ctx) error {
 import (
     "time"
     "github.com/gofiber/fiber/v3/extractors"
-    "github.com/gofiber/storage/redis"
+    "github.com/gofiber/storage/redis/v3"
 )
 
 storage := redis.New(redis.Config{
@@ -398,7 +398,7 @@ app.Use(session.New(session.Config{
 
 ```go
 import (
-    "github.com/gofiber/storage/redis"
+    "github.com/gofiber/storage/redis/v3"
     "github.com/gofiber/storage/postgres"
 )
 
@@ -701,7 +701,7 @@ import (
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/session"
     "github.com/gofiber/fiber/v3/extractors"
-    "github.com/gofiber/storage/redis"
+    "github.com/gofiber/storage/redis/v3"
 )
 
 func main() {
@@ -785,7 +785,7 @@ import (
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/session"
     "github.com/gofiber/fiber/v3/extractors"
-    "github.com/gofiber/storage/redis"
+    "github.com/gofiber/storage/redis/v3"
 )
 
 func main() {
