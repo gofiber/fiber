@@ -355,7 +355,7 @@ app.Use(csrf.New(csrf.Config{
 You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
 
 ```go
-storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
+storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3/v2
 app.Use(csrf.New(csrf.Config{
     Storage: storage,
 }))

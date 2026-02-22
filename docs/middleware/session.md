@@ -399,7 +399,7 @@ app.Use(session.New(session.Config{
 ```go
 import (
     "github.com/gofiber/storage/redis/v3"
-    "github.com/gofiber/storage/postgres"
+    "github.com/gofiber/storage/postgres/v3"
 )
 
 // Redis (recommended for production)
