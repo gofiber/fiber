@@ -128,6 +128,55 @@ func Test_Bind_Query(t *testing.T) {
 	require.Len(t, aq.Data, 2)
 }
 
+func Test_Bind_Query_EnableSplittingOnQueryParsers(t *testing.T) {
+	t.Parallel()
+
+	// Test that EnableSplittingOnQueryParsers overrides EnableSplittingOnParsers
+	// for query parameters only.
+	trueVal := true
+	falseVal := false
+
+	// Case 1: global=false, query-specific=true -> query should split
+	app := New(Config{
+		EnableSplittingOnParsers:      false,
+		EnableSplittingOnQueryParsers: &trueVal,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Query struct {
+		Hobby []string
+	}
+	c.Request().URI().SetQueryString("hobby=basketball,football")
+	q := new(Query)
+	require.NoError(t, c.Bind().Query(q))
+	require.Len(t, q.Hobby, 2)
+	require.Contains(t, q.Hobby, "basketball")
+	require.Contains(t, q.Hobby, "football")
+
+	// Case 2: global=true, query-specific=false -> query should NOT split
+	app2 := New(Config{
+		EnableSplittingOnParsers:      true,
+		EnableSplittingOnQueryParsers: &falseVal,
+	})
+	c2 := app2.AcquireCtx(&fasthttp.RequestCtx{})
+	c2.Request().URI().SetQueryString("hobby=basketball,football")
+	q2 := new(Query)
+	require.NoError(t, c2.Bind().Query(q2))
+	require.Len(t, q2.Hobby, 1)
+	require.Equal(t, "basketball,football", q2.Hobby[0])
+
+	// Case 3: query-specific=nil -> falls back to global
+	app3 := New(Config{
+		EnableSplittingOnParsers:      true,
+		EnableSplittingOnQueryParsers: nil,
+	})
+	c3 := app3.AcquireCtx(&fasthttp.RequestCtx{})
+	c3.Request().URI().SetQueryString("hobby=basketball,football")
+	q3 := new(Query)
+	require.NoError(t, c3.Bind().Query(q3))
+	require.Len(t, q3.Hobby, 2)
+}
+
 // go test -run Test_Bind_Query_Map -v
 func Test_Bind_Query_Map(t *testing.T) {
 	t.Parallel()

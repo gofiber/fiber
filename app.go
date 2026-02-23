@@ -415,6 +415,14 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Optional. Default: false
 	EnableSplittingOnParsers bool `json:"enable_splitting_on_parsers"`
 
+	// EnableSplittingOnQueryParsers overrides EnableSplittingOnParsers for query parameter parsing.
+	// When set, comma-separated query parameters will be split into slices based on this value
+	// instead of the global EnableSplittingOnParsers setting.
+	// For example: /api?foo=bar,baz will be parsed as foo[]=bar&foo[]=baz when enabled.
+	//
+	// Optional. Default: nil (uses EnableSplittingOnParsers value)
+	EnableSplittingOnQueryParsers *bool `json:"enable_splitting_on_query_parsers"`
+
 	// Services is a list of services that are used by the app (e.g. databases, caches, etc.)
 	//
 	// Optional. Default: a zero value slice
