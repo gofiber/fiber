@@ -645,6 +645,7 @@ func Test_Domain_MultipleHandlers(t *testing.T) {
 		},
 	)
 
+	// Matching host — both handlers should run
 	req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 	req.Host = "api.example.com"
 	resp, err := app.Test(req)
@@ -654,6 +655,14 @@ func Test_Domain_MultipleHandlers(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "final", string(body))
+
+	// Non-matching host — none of the handlers should run
+	req = httptest.NewRequest(MethodGet, "/test", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.Empty(t, resp.Header.Get("X-First"))
 }
 
 func Test_Domain_NetHTTPHandler(t *testing.T) {
@@ -789,6 +798,45 @@ func Test_Domain_RoutePanic(t *testing.T) {
 	require.Panics(t, func() {
 		app.Domain("api.example.com").Route("/test", nil)
 	})
+}
+
+func Test_Domain_UseMountPanic(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	subApp := New()
+
+	require.Panics(t, func() {
+		app.Domain("api.example.com").Use(subApp)
+	})
+}
+
+func Test_Domain_StaleParamsCleared(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	// First: a domain with a parameter
+	app.Domain(":tenant.example.com").Use(func(c Ctx) error {
+		c.Set("X-Tenant", DomainParam(c, "tenant"))
+		return c.Next()
+	})
+
+	// Second: a static domain (no params) — should clear any stale params
+	app.Domain("static.example.com").Get("/check", func(c Ctx) error {
+		// DomainParam should return "" since the static domain has no params
+		val := DomainParam(c, "tenant")
+		return c.SendString("tenant=" + val)
+	})
+
+	req := httptest.NewRequest(MethodGet, "/check", http.NoBody)
+	req.Host = "static.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "tenant=", string(body))
 }
 
 func Test_Domain_RouteChainNested(t *testing.T) {

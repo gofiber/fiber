@@ -13,8 +13,12 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
-// domainLocalsKey is the key used in c.Locals() to store domain parameter values.
-const domainLocalsKey = "__domain_params__"
+// domainLocalsKeyType is an unexported type used as the Locals key for domain
+// parameters, preventing collisions with user or middleware keys.
+type domainLocalsKeyType struct{}
+
+// domainLocalsKey is the typed key used in c.Locals() to store domain parameter values.
+var domainLocalsKey = domainLocalsKeyType{}
 
 // domainParams stores domain parameter names and their values for a request.
 type domainParams struct {
@@ -147,15 +151,21 @@ func (d *domainRouter) createDomainHandler(handler Handler) Handler {
 				names:  d.matcher.paramNames,
 				values: values,
 			})
+		} else {
+			// Clear any previously stored domain params when the domain matches
+			// but has no parameters, to avoid leaking stale values.
+			c.Locals(domainLocalsKey, nil)
 		}
 
 		return handler(c)
 	}
 }
 
-// wrapHandlers wraps the first handler in the slice with domain checking.
-// Only the first handler needs wrapping since subsequent handlers are
-// chained via c.Next() and will only execute if the first one proceeds.
+// wrapHandlers wraps all handlers in the slice with domain checking.
+// The domain check is performed once, and only if the request's host
+// matches will the handler chain be executed. On a non-matching host,
+// the entire route is skipped by calling c.Next(), so no handler in
+// this route's chain can run without a successful domain match.
 func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 	if len(handlers) == 0 {
 		return handlers
@@ -163,7 +173,10 @@ func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 
 	result := make([]Handler, len(handlers))
 	copy(result, handlers)
-	result[0] = d.createDomainHandler(handlers[0])
+
+	for i, h := range result {
+		result[i] = d.createDomainHandler(h)
+	}
 
 	return result
 }
@@ -203,6 +216,9 @@ func (d *domainRouter) Use(args ...any) Router {
 			prefix = arg
 		case []string:
 			prefixes = arg
+		case *App:
+			// Domain routers do not support mounting sub-apps via Use.
+			panic("use: mounting *App via Domain(...).Use is not supported; use app.Mount(...) or domain-specific handlers instead")
 		default:
 			handler, ok := toFiberHandler(arg)
 			if !ok {
