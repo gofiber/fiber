@@ -2,8 +2,8 @@
   <a href="https://gofiber.io">
   
   <picture>
-    <source height="125" media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo-dark.svg">
-    <img height="125" alt="Fiber" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
+    <source height="125" media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/gofiber/docs/master/static/img/v2/logo-dark.svg">
+    <img height="125" alt="Fiber" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/v2/logo.svg">
   </picture>
   
   </a>
@@ -137,8 +137,8 @@ func main() {
 </p>
 
 <p float="left" align="middle">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/plaintext.png" width="49%">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/json.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/v2/plaintext.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/v2/json.png" width="49%">
 </p>
 </br>
 

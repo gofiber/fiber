@@ -29,42 +29,42 @@ See [Plaintext requirements](https://github.com/TechEmpower/FrameworkBenchmarks/
 **Fiber** - **13,509,592** responses per second with an average latency of **0.9** ms.  
 **Express** - **279,922** responses per second with an average latency of **551.3** ms.
 
-![](/img/plaintext.png)
+![](/img/v2/plaintext.png)
 
-![Fiber vs Express](/img/plaintext_express.png)
+![Fiber vs Express](/img/v2/plaintext_express.png)
 
 ### Data Updates
 
 **Fiber** handled **30,884** responses per second with an average latency of **16.5** ms.  
 **Express** handled **50,818** responses per second with an average latency of **10.1** ms.
 
-![](/img/data_updates.png)
+![](/img/v2/data_updates.png)
 
-![Fiber vs Express](/img/data_updates_express.png)
+![Fiber vs Express](/img/v2/data_updates_express.png)
 
 ### Multiple Queries
 
 **Fiber** handled **55,577** responses per second with an average latency of **9.2** ms.  
 **Express** handled **62,036** responses per second with an average latency of **8.3** ms.
 
-![](/img/multiple_queries.png)
+![](/img/v2/multiple_queries.png)
 
-![Fiber vs Express](/img/multiple_queries_express.png)
+![Fiber vs Express](/img/v2/multiple_queries_express.png)
 
 ### Single Query
 
 **Fiber** handled **1,000,519** responses per second with an average latency of **0.5** ms.  
 **Express** handled **214,177** responses per second with an average latency of **2.5** ms.
 
-![](/img/single_query.png)
+![](/img/v2/single_query.png)
 
-![Fiber vs Express](/img/single_query_express.png)
+![Fiber vs Express](/img/v2/single_query_express.png)
 
 ### JSON Serialization
 
 **Fiber** handled **2,479,768** responses per second with an average latency of **0.2** ms.  
 **Express** handled **301,213** responses per second with an average latency of **2.0** ms.
 
-![](/img/json.png)
+![](/img/v2/json.png)
 
-![Fiber vs Express](/img/json_express.png)
+![Fiber vs Express](/img/v2/json_express.png)
