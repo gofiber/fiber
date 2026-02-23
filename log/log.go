@@ -28,6 +28,9 @@ var contextExtractors []ContextExtractor
 // copy-on-write strategy so that existing readers continue to see their
 // previous slice snapshot while new registrations are applied to a new slice.
 func RegisterContextExtractor(extractor ContextExtractor) {
+	if extractor == nil {
+		panic("log: RegisterContextExtractor called with nil extractor")
+	}
 	n := len(contextExtractors)
 	next := make([]ContextExtractor, n+1)
 	copy(next, contextExtractors)
