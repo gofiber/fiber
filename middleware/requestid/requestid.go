@@ -1,7 +1,10 @@
 package requestid
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -13,6 +16,13 @@ type contextKey int
 const (
 	requestIDKey contextKey = iota
 )
+
+func init() {
+	log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
+		rid := FromContext(ctx)
+		return "request-id", rid, rid != ""
+	})
+}
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {

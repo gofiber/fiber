@@ -1,11 +1,14 @@
 package requestid
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -232,4 +235,30 @@ func Test_RequestID_FromContext_Types(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func Test_RequestID_LogWithContext(t *testing.T) {
+	reqID := "test-request-id-456"
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return reqID
+		},
+	}))
+
+	var logOutput bytes.Buffer
+	fiberlog.SetOutput(&logOutput)
+	defer fiberlog.SetOutput(os.Stderr)
+
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("hello from handler")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, logOutput.String(), "request-id="+reqID)
+	require.Contains(t, logOutput.String(), "hello from handler")
 }

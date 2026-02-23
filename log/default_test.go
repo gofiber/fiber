@@ -118,6 +118,86 @@ func Test_CtxLogger(t *testing.T) {
 		"[Panic] work panic\n", string(w.b))
 }
 
+type testContextKey struct{}
+
+func Test_WithContextExtractor(t *testing.T) {
+	// Save and restore global extractors
+	saved := contextExtractors
+	defer func() { contextExtractors = saved }()
+	contextExtractors = nil
+
+	RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
+		if v, ok := ctx.Value(testContextKey{}).(string); ok && v != "" {
+			return "request-id", v, true
+		}
+		return "", nil, false
+	})
+
+	t.Run("Info with context field", func(t *testing.T) {
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+		ctx := context.WithValue(context.Background(), testContextKey{}, "abc-123")
+		l.WithContext(ctx).Info("hello")
+
+		require.Equal(t, "[Info] request-id=abc-123 hello\n", buf.String())
+	})
+
+	t.Run("Infof with context field", func(t *testing.T) {
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+		ctx := context.WithValue(context.Background(), testContextKey{}, "abc-123")
+		l.WithContext(ctx).Infof("hello %s", "world")
+
+		require.Equal(t, "[Info] request-id=abc-123 hello world\n", buf.String())
+	})
+
+	t.Run("Infow with context field", func(t *testing.T) {
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+		ctx := context.WithValue(context.Background(), testContextKey{}, "abc-123")
+		l.WithContext(ctx).Infow("hello", "key", "value")
+
+		require.Equal(t, "[Info] request-id=abc-123 hello key=value\n", buf.String())
+	})
+
+	t.Run("no context field when value absent", func(t *testing.T) {
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+		ctx := context.Background()
+		l.WithContext(ctx).Info("hello")
+
+		require.Equal(t, "[Info] hello\n", buf.String())
+	})
+
+	t.Run("no context field without WithContext", func(t *testing.T) {
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+		l.Info("hello")
+
+		require.Equal(t, "[Info] hello\n", buf.String())
+	})
+}
+
 func Test_LogfKeyAndValues(t *testing.T) {
 	tests := []struct {
 		name          string
