@@ -555,7 +555,7 @@ func Test_TokenFromContext(t *testing.T) {
 func Test_TokenFromContext_Types(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
 	app.Use(New(Config{
 		Extractor: extractors.FromAuthHeader("Basic"),
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {

@@ -1995,7 +1995,7 @@ func Test_CSRF_TokenFromContext(t *testing.T) {
 
 func Test_CSRF_FromContextMethods(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
 
 	app.Use(New())
 

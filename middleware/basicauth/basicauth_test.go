@@ -112,7 +112,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 func Test_BasicAuth_UsernameFromContext_Types(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
 	app.Use(New(Config{
 		Users: map[string]string{
 			"john": sha256Hash("doe"),

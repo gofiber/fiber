@@ -387,7 +387,7 @@ func Test_Session_FromSession(t *testing.T) {
 func Test_Session_FromContext_Types(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {

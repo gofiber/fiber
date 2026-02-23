@@ -1,7 +1,6 @@
 package keyauth
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -49,8 +48,7 @@ func New(config ...Config) fiber.Handler {
 			var valid bool
 			valid, err = cfg.Validator(c, key)
 			if err == nil && valid {
-				c.Locals(tokenKey, key)
-				c.SetContext(context.WithValue(c.Context(), tokenKey, key))
+				fiber.StoreInContext(c, tokenKey, key)
 				return cfg.SuccessHandler(c)
 			}
 		}

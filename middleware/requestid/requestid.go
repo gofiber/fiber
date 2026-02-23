@@ -1,8 +1,6 @@
 package requestid
 
 import (
-	"context"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 )
@@ -33,8 +31,7 @@ func New(config ...Config) fiber.Handler {
 		c.Set(cfg.Header, rid)
 
 		// Add the request ID to locals
-		c.Locals(requestIDKey, rid)
-		c.SetContext(context.WithValue(c.Context(), requestIDKey, rid))
+		fiber.StoreInContext(c, requestIDKey, rid)
 
 		// Continue stack
 		return c.Next()

@@ -1,7 +1,6 @@
 package basicauth
 
 import (
-	"context"
 	"encoding/base64"
 	"errors"
 	"strings"
@@ -102,8 +101,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if cfg.Authorizer(username, password, c) {
-			c.Locals(usernameKey, username)
-			c.SetContext(context.WithValue(c.Context(), usernameKey, username))
+			fiber.StoreInContext(c, usernameKey, username)
 			return c.Next()
 		}
 

@@ -212,7 +212,7 @@ func Test_RequestID_FromContext_Types(t *testing.T) {
 
 	reqID := "request-id-123"
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
 	app.Use(New(Config{
 		Generator: func() string {
 			return reqID
