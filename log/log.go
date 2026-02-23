@@ -17,15 +17,16 @@ type ContextExtractor func(ctx context.Context) (string, any, bool)
 //
 // This slice is read during logging and written during registration.
 // All calls to RegisterContextExtractor must happen during program
-// initialization (e.g. in init functions or before starting goroutines),
-// before any logging occurs, to avoid data races.
+// initialization (e.g. in init functions, or in middleware constructors
+// using sync.Once), before any logging occurs, to avoid data races.
 var contextExtractors []ContextExtractor
 
 // RegisterContextExtractor registers a function that extracts a key-value pair
 // from context for inclusion in log output when using WithContext.
 //
 // Note that this function is not concurrent-safe and must be called during
-// program initialization (e.g. in an init function), before any logging occurs.
+// program initialization (e.g. in an init function or middleware constructor
+// using sync.Once), before any logging occurs.
 func RegisterContextExtractor(extractor ContextExtractor) {
 	contextExtractors = append(contextExtractors, extractor)
 }

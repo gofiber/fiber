@@ -1214,6 +1214,22 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+### Context-Aware Logging
+
+`log.WithContext` now automatically includes context fields extracted by middleware. Middleware such as `requestid` and `basicauth` register extractors when their `New()` constructor is called. When you pass a `fiber.Ctx` (or any `context.Context`) to `log.WithContext`, registered fields are prepended to every log entry.
+
+```go
+app.Use(requestid.New())
+
+app.Get("/", func(c fiber.Ctx) error {
+    // Output: [Info] request-id=abc-123 processing request
+    log.WithContext(c).Info("processing request")
+    return c.SendString("OK")
+})
+```
+
+Custom extractors can be registered via `log.RegisterContextExtractor`. See [Log API docs](./api/log.md#custom-context-extractors) for details.
+
 ## 📦 Storage Interface
 
 The storage interface has been updated to include new subset of methods with `WithContext` suffix. These methods allow you to pass a context to the storage operations, enabling better control over timeouts and cancellation if needed. This is particularly useful when storage implementations used outside of the Fiber core, such as in background jobs or long-running tasks.

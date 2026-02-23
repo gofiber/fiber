@@ -198,7 +198,38 @@ commonLogger := log.WithContext(ctx)
 commonLogger.Info("info")
 ```
 
-Context binding adds request-specific data for easier tracing.
+Context binding adds request-specific data for easier tracing. The method accepts any value implementing `context.Context`, including `fiber.Ctx`, `*fasthttp.RequestCtx`, and standard `context.Context`.
+
+### Automatic Context Fields
+
+Middleware that stores values in the request context can register extractors so that `log.WithContext` automatically includes those values in every log entry. The `requestid` and `basicauth` middlewares register extractors when their `New()` constructor is called.
+
+```go
+app.Use(requestid.New())
+
+app.Get("/", func(c fiber.Ctx) error {
+    // Automatically includes request-id=<id> in the log output
+    log.WithContext(c).Info("processing request")
+    return c.SendString("OK")
+})
+```
+
+### Custom Context Extractors
+
+Use `log.RegisterContextExtractor` to register your own extractors. Each extractor receives the bound context and returns a field name, value, and success flag:
+
+```go
+log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
+    if traceID, ok := ctx.Value(traceIDKey).(string); ok && traceID != "" {
+        return "trace-id", traceID, true
+    }
+    return "", nil, false
+})
+```
+
+:::note
+`RegisterContextExtractor` is not concurrent-safe and must be called during program initialization (e.g. in an `init` function or middleware constructor).
+:::
 
 ## Logger
 
