@@ -189,8 +189,8 @@ func (b *Bind) Cookie(out any) error {
 // Query binds the query string into the struct, map[string]string and map[string][]string.
 func (b *Bind) Query(out any) error {
 	bind := binder.GetFromThePool[*binder.QueryBinding](&binder.QueryBinderPool)
-	if b.ctx.App().config.EnableSplittingOnQueryParsers != nil {
-		bind.EnableSplitting = *b.ctx.App().config.EnableSplittingOnQueryParsers
+	if b.ctx.App().config.EnableSplittingOnQueryParsers {
+		bind.EnableSplitting = true
 	} else {
 		bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
 	}
