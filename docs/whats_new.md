@@ -1216,7 +1216,7 @@ app.Use(logger.New(logger.Config{
 
 ### Context-Aware Logging
 
-`log.WithContext` now automatically includes context fields extracted by middleware. Middleware such as `requestid` and `basicauth` register extractors when their `New()` constructor is called. When you pass a `fiber.Ctx` (or any `context.Context`) to `log.WithContext`, registered fields are prepended to every log entry.
+`log.WithContext` now automatically includes context fields extracted by middleware. Middleware such as `requestid`, `basicauth`, `keyauth`, `csrf`, and `session` register extractors when their `New()` constructor is called. When you pass a `fiber.Ctx` (or any `context.Context`) to `log.WithContext`, registered fields are prepended to every log entry.
 
 ```go
 app.Use(requestid.New())

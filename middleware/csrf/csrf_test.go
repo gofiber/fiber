@@ -1,17 +1,20 @@
 package csrf
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -2483,4 +2486,24 @@ func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 			require.Equal(t, tc.expected, err)
 		})
 	}
+}
+
+func Test_CSRF_LogWithContext(t *testing.T) {
+	app := fiber.New()
+	app.Use(New())
+
+	var logOutput bytes.Buffer
+	fiberlog.SetOutput(&logOutput)
+	defer fiberlog.SetOutput(os.Stderr)
+
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("csrf test")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, logOutput.String(), "csrf-token=")
+	require.Contains(t, logOutput.String(), "csrf test")
 }

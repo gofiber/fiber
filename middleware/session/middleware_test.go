@@ -1,9 +1,11 @@
 package session
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -589,4 +592,26 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+}
+
+func Test_Session_LogWithContext(t *testing.T) {
+	app := fiber.New()
+	app.Use(New())
+
+	var logOutput bytes.Buffer
+	fiberlog.SetOutput(&logOutput)
+	defer fiberlog.SetOutput(os.Stderr)
+
+	app.Get("/", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		require.NotNil(t, sess)
+		fiberlog.WithContext(c).Info("session test")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, logOutput.String(), "session-id=")
+	require.Contains(t, logOutput.String(), "session test")
 }

@@ -202,7 +202,15 @@ Context binding adds request-specific data for easier tracing. The method accept
 
 ### Automatic Context Fields
 
-Middleware that stores values in the request context can register extractors so that `log.WithContext` automatically includes those values in every log entry. The `requestid` and `basicauth` middlewares register extractors when their `New()` constructor is called.
+Middleware that stores values in the request context can register extractors so that `log.WithContext` automatically includes those values in every log entry. The following middlewares register extractors when their `New()` constructor is called:
+
+| Middleware   | Log Field      | Description               |
+| ------------ | -------------- | ------------------------- |
+| `requestid`  | `request-id`   | Request identifier        |
+| `basicauth`  | `username`     | Authenticated username    |
+| `keyauth`    | `api-key`      | API key token             |
+| `csrf`       | `csrf-token`   | CSRF token                |
+| `session`    | `session-id`   | Session identifier        |
 
 ```go
 app.Use(requestid.New())

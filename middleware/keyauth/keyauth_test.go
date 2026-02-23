@@ -1,12 +1,14 @@
 package keyauth
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -15,6 +17,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 )
 
 const CorrectKey = "correct-token_123./~+"
@@ -1129,4 +1132,30 @@ func Test_New_ErrorURIAbsolute(t *testing.T) {
 			ErrorURI:  "/docs",
 		})
 	})
+}
+
+func Test_KeyAuth_LogWithContext(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
+			return key == CorrectKey, nil
+		},
+	}))
+
+	var logOutput bytes.Buffer
+	fiberlog.SetOutput(&logOutput)
+	defer fiberlog.SetOutput(os.Stderr)
+
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("keyauth test")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set("Authorization", "Bearer "+CorrectKey)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, logOutput.String(), "api-key="+CorrectKey)
+	require.Contains(t, logOutput.String(), "keyauth test")
 }
