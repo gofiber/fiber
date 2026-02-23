@@ -14,10 +14,10 @@ import (
 var _ AllLogger[*log.Logger] = (*defaultLogger)(nil)
 
 type defaultLogger struct {
+	ctx    context.Context //nolint:containedctx // stored for deferred field extraction
 	stdlog *log.Logger
 	level  Level
 	depth  int
-	ctx    context.Context //nolint:containedctx // stored for deferred field extraction
 }
 
 // writeContextFields appends extracted context key-value pairs to buf.
