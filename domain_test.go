@@ -100,6 +100,26 @@ func Test_Domain_CaseInsensitive(t *testing.T) {
 	require.Equal(t, "ok", string(body))
 }
 
+func Test_Domain_TrailingDot(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	app.Domain("api.example.com").Get("/", func(c Ctx) error {
+		return c.SendString("ok")
+	})
+
+	// Fully-qualified domain name with trailing dot should match
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Host = "api.example.com."
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "ok", string(body))
+}
+
 func Test_Domain_MultipleDomains(t *testing.T) {
 	t.Parallel()
 

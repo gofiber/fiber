@@ -26,6 +26,12 @@ type domainParams struct {
 	values []string
 }
 
+// domainCheckResult caches a domain match result for a single request.
+type domainCheckResult struct {
+	values  []string
+	matched bool
+}
+
 // domainMatcher holds the parsed domain pattern for matching against request hostnames.
 type domainMatcher struct {
 	parts      []string // domain parts split by "."
@@ -40,6 +46,9 @@ func parseDomainPattern(pattern string) domainMatcher {
 	pattern = utils.TrimSpace(pattern)
 	// Domain names are case-insensitive per RFC 4343
 	pattern = utilsstrings.ToLower(pattern)
+	// Trim trailing dot of a fully-qualified domain name (RFC 3986),
+	// consistent with Fiber's own host normalization in Subdomains().
+	pattern = strings.TrimSuffix(pattern, ".")
 
 	parts := strings.Split(pattern, ".")
 	m := domainMatcher{
@@ -68,6 +77,9 @@ func parseDomainPattern(pattern string) domainMatcher {
 func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocritic // named returns conflict with nonamedreturns linter
 	// Domain names are case-insensitive per RFC 4343
 	hostname = utilsstrings.ToLower(hostname)
+	// Trim trailing dot of a fully-qualified domain name (RFC 3986),
+	// consistent with Fiber's own host normalization in Subdomains().
+	hostname = strings.TrimSuffix(hostname, ".")
 
 	parts := strings.Split(hostname, ".")
 	if len(parts) != m.numParts {
@@ -135,47 +147,54 @@ type domainRouter struct {
 // Verify domainRouter implements Router at compile time.
 var _ Router = (*domainRouter)(nil)
 
-// createDomainHandler wraps a handler with domain matching logic.
-// If the hostname matches, domain parameters are stored in c.Locals()
-// and the original handler is executed. Otherwise, c.Next() is called
-// to continue to the next matching route.
-func (d *domainRouter) createDomainHandler(handler Handler) Handler {
-	return func(c Ctx) error {
-		hostname := c.Hostname()
-		matched, values := d.matcher.match(hostname)
-		if !matched {
-			return c.Next()
-		}
-		if len(values) > 0 {
-			c.Locals(domainLocalsKey, &domainParams{
-				names:  d.matcher.paramNames,
-				values: values,
-			})
-		} else {
-			// Clear any previously stored domain params when the domain matches
-			// but has no parameters, to avoid leaking stale values.
-			c.Locals(domainLocalsKey, nil)
-		}
-
-		return handler(c)
-	}
-}
-
-// wrapHandlers wraps all handlers in the slice with domain checking.
-// The domain check is performed once, and only if the request's host
-// matches will the handler chain be executed. On a non-matching host,
-// the entire route is skipped by calling c.Next(), so no handler in
-// this route's chain can run without a successful domain match.
+// wrapHandlers wraps every handler in the slice with domain checking.
+// The hostname match is computed once per request per domain-router and cached
+// so that subsequent handlers in the same route avoid redundant parsing.
+// Each handler independently checks the cached result, ensuring that Fiber's
+// route-merging behavior (combining handlers from multiple registrations into
+// one route) cannot cause a non-domain handler to be skipped.
 func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 	if len(handlers) == 0 {
 		return handlers
 	}
 
-	result := make([]Handler, len(handlers))
-	copy(result, handlers)
+	// Use the domainRouter pointer as cache key to avoid cross-matcher collisions.
+	// Each domainRouter instance gets its own cache slot.
+	cacheKey := d
 
-	for i, h := range result {
-		result[i] = d.createDomainHandler(h)
+	result := make([]Handler, len(handlers))
+	for i, h := range handlers {
+		origHandler := h
+		result[i] = func(c Ctx) error {
+			// Check if we already matched this domain on this request.
+			var matched bool
+			var values []string
+			if cached, ok := c.Locals(cacheKey).(*domainCheckResult); ok {
+				matched = cached.matched
+				values = cached.values
+			} else {
+				hostname := c.Hostname()
+				matched, values = d.matcher.match(hostname)
+				c.Locals(cacheKey, &domainCheckResult{matched: matched, values: values})
+			}
+
+			if !matched {
+				return c.Next()
+			}
+
+			if len(values) > 0 {
+				c.Locals(domainLocalsKey, &domainParams{
+					names:  d.matcher.paramNames,
+					values: values,
+				})
+			} else {
+				// Clear any previously stored domain params when the domain matches
+				// but has no parameters, to avoid leaking stale values.
+				c.Locals(domainLocalsKey, nil)
+			}
+
+			return origHandler(c)
+		}
 	}
 
 	return result
