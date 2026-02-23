@@ -552,6 +552,37 @@ func Test_TokenFromContext(t *testing.T) {
 	require.Equal(t, CorrectKey, string(body))
 }
 
+func Test_TokenFromContext_Types(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
+	app.Use(New(Config{
+		Extractor: extractors.FromAuthHeader("Basic"),
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
+			if key == CorrectKey {
+				return true, nil
+			}
+			return false, ErrMissingOrMalformedAPIKey
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		require.Equal(t, CorrectKey, TokenFromContext(c))
+		customCtx, ok := c.(fiber.CustomCtx)
+		require.True(t, ok)
+		require.Equal(t, CorrectKey, TokenFromContext(customCtx))
+		require.Equal(t, CorrectKey, TokenFromContext(c.RequestCtx()))
+		require.Equal(t, CorrectKey, TokenFromContext(c.Context()))
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Add("Authorization", "Basic "+CorrectKey)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 func Test_AuthSchemeToken(t *testing.T) {
 	app := fiber.New()
 

@@ -185,6 +185,14 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: false
 	PassLocalsToViews bool `json:"pass_locals_to_views"`
 
+	// PassLocalsToContext controls whether StoreInContext also propagates values to
+	// the request context.Context for Fiber-backed contexts.
+	//
+	// ValueFromContext for Fiber-backed contexts always reads from c.Locals().
+	//
+	// Default: false
+	PassLocalsToContext bool `json:"pass_locals_to_context"`
+
 	// The amount of time allowed to read the full request including body.
 	// It is reset after the request handler has returned.
 	// The connection's read deadline is reset when the connection opens.

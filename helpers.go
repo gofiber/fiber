@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -51,6 +52,41 @@ var (
 )
 
 type headerParams map[string][]byte
+
+// ValueFromContext retrieves a value stored under key from supported context types.
+//
+// Supported context types:
+//   - Ctx (including CustomCtx implementations)
+//   - *fasthttp.RequestCtx
+//   - context.Context
+func ValueFromContext[T any](ctx, key any) (T, bool) {
+	switch typed := ctx.(type) {
+	case Ctx:
+		val, ok := typed.Locals(key).(T)
+		return val, ok
+	case *fasthttp.RequestCtx:
+		val, ok := typed.UserValue(key).(T)
+		return val, ok
+	case context.Context:
+		val, ok := typed.Value(key).(T)
+		return val, ok
+	default:
+		var zero T
+		return zero, false
+	}
+}
+
+// StoreInContext stores key/value in both Fiber locals and request context.
+//
+// This is useful when values need to be available via both c.Locals() and
+// context.Context lookups throughout middleware and handlers.
+func StoreInContext(c Ctx, key, value any) {
+	c.Locals(key, value)
+
+	if c.App().config.PassLocalsToContext {
+		c.SetContext(context.WithValue(c.Context(), key, value))
+	}
+}
 
 // getTLSConfig returns a net listener's tls config
 func getTLSConfig(ln net.Listener) *tls.Config {
