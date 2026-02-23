@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -633,7 +634,17 @@ func Test_Session_Middleware_InitializeError_WithCustomErrorHandler(t *testing.T
 	errStorage := &failingStorage{getErr: errors.New("storage down")}
 	app := fiber.New()
 
-	var nextCalled bool
+	var (
+		nextCalled            bool
+		localsClearedOnReturn atomic.Bool
+	)
+
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		localsClearedOnReturn.Store(FromContext(c) == nil)
+		return err
+	})
+
 	app.Use(New(Config{
 		Storage: errStorage,
 		ErrorHandler: func(c fiber.Ctx, err error) {
@@ -658,12 +669,7 @@ func Test_Session_Middleware_InitializeError_WithCustomErrorHandler(t *testing.T
 	require.False(t, nextCalled)
 	require.Equal(t, 1, errStorage.getCalls)
 	require.Equal(t, 0, errStorage.setCalls)
-
-	m := acquireMiddleware()
-	require.Nil(t, m.Session)
-	require.Nil(t, m.ctx)
-	require.Nil(t, m.config.Store)
-	releaseMiddleware(m)
+	require.True(t, localsClearedOnReturn.Load())
 }
 
 func Test_Session_Middleware_InitializeError_DefaultErrorHandler(t *testing.T) {
