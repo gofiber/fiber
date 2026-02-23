@@ -16,19 +16,23 @@ type ContextExtractor func(ctx context.Context) (string, any, bool)
 // contextExtractors holds all registered context field extractors.
 //
 // This slice is read during logging and written during registration.
-// All calls to RegisterContextExtractor must happen during program
-// initialization (e.g. in init functions, or in middleware constructors
-// using sync.Once), before any logging occurs, to avoid data races.
+// Registrations use a copy-on-write strategy so that readers always see
+// an immutable snapshot of the slice and never observe concurrent mutation
+// of the underlying backing array.
 var contextExtractors []ContextExtractor
 
 // RegisterContextExtractor registers a function that extracts a key-value pair
 // from context for inclusion in log output when using WithContext.
 //
-// Note that this function is not concurrent-safe and must be called during
-// program initialization (e.g. in an init function or middleware constructor
-// using sync.Once), before any logging occurs.
+// This function is safe to call concurrently with logging: it uses a
+// copy-on-write strategy so that existing readers continue to see their
+// previous slice snapshot while new registrations are applied to a new slice.
 func RegisterContextExtractor(extractor ContextExtractor) {
-	contextExtractors = append(contextExtractors, extractor)
+	n := len(contextExtractors)
+	next := make([]ContextExtractor, n+1)
+	copy(next, contextExtractors)
+	next[n] = extractor
+	contextExtractors = next
 }
 
 // baseLogger defines the minimal logger functionality required by the package.
