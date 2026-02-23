@@ -14,8 +14,11 @@ import (
 type ContextExtractor func(ctx context.Context) (string, any, bool)
 
 // contextExtractors holds all registered context field extractors.
-// Registration is not concurrent-safe; call RegisterContextExtractor
-// during program initialization only.
+//
+// This slice is read during logging and written during registration.
+// All calls to RegisterContextExtractor must happen during program
+// initialization (e.g. in init functions or before starting goroutines),
+// before any logging occurs, to avoid data races.
 var contextExtractors []ContextExtractor
 
 // RegisterContextExtractor registers a function that extracts a key-value pair

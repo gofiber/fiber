@@ -18,6 +18,9 @@ const (
 )
 
 func init() {
+	// Register a context extractor so that log.WithContext(c) automatically
+	// includes the request ID when the requestid middleware is in use.
+	// An empty request ID (no middleware or middleware skipped) is omitted.
 	log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
 		rid := FromContext(ctx)
 		return "request-id", rid, rid != ""
