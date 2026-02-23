@@ -2504,6 +2504,6 @@ func Test_CSRF_LogWithContext(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Contains(t, logOutput.String(), "csrf-token=")
+	require.Contains(t, logOutput.String(), "csrf-token=[redacted]")
 	require.Contains(t, logOutput.String(), "csrf test")
 }

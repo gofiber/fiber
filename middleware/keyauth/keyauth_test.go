@@ -1156,6 +1156,6 @@ func Test_KeyAuth_LogWithContext(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Contains(t, logOutput.String(), "api-key="+CorrectKey)
+	require.Contains(t, logOutput.String(), "api-key=corr****")
 	require.Contains(t, logOutput.String(), "keyauth test")
 }

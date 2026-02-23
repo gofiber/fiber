@@ -59,12 +59,15 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	// Register a log context extractor so that log.WithContext(c) automatically
-	// includes the CSRF token when the csrf middleware is in use.
+	// includes a redacted CSRF token when the csrf middleware is in use.
 	// An empty token (no middleware or middleware skipped) is omitted.
 	registerExtractor.Do(func() {
 		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
 			token := TokenFromContext(ctx)
-			return "csrf-token", token, token != ""
+			if token == "" {
+				return "", nil, false
+			}
+			return "csrf-token", redactedKey, true
 		})
 	})
 

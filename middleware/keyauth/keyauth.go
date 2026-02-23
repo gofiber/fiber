@@ -35,12 +35,15 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	// Register a log context extractor so that log.WithContext(c) automatically
-	// includes the API key when the keyauth middleware is in use.
+	// includes a redacted API key when the keyauth middleware is in use.
 	// An empty token (no middleware or middleware skipped) is omitted.
 	registerExtractor.Do(func() {
 		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
 			token := TokenFromContext(ctx)
-			return "api-key", token, token != ""
+			if token == "" {
+				return "", nil, false
+			}
+			return "api-key", redactValue(token), true
 		})
 	})
 
@@ -133,4 +136,14 @@ func getAuthSchemes(e extractors.Extractor) []string {
 		schemes = append(schemes, getAuthSchemes(ex)...)
 	}
 	return schemes
+}
+
+// redactValue returns a masked version of a sensitive value for safe logging.
+// It shows the first 4 characters followed by "****" for values longer than
+// 8 characters, or "****" for shorter values.
+func redactValue(s string) string {
+	if len(s) > 8 {
+		return s[:4] + "****"
+	}
+	return "****"
 }
