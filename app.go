@@ -606,11 +606,6 @@ func New(config ...Config) *App {
 		}
 	}
 
-	// Explicitly preserve default disabled behavior unless configured otherwise.
-	if !app.config.PassLocalsToContext {
-		app.config.PassLocalsToContext = false
-	}
-
 	if app.config.Immutable {
 		app.toBytes, app.toString = toBytesImmutable, toStringImmutable
 	}

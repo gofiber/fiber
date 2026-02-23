@@ -49,7 +49,7 @@ func Test_RequestID_InvalidHeaderValue(t *testing.T) {
 func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New(fiber.Config{PassLocalsToContext: true})
+	app := fiber.New()
 	app.Use(New(Config{
 		Generator: func() string {
 			return "bad\r\nid"
@@ -74,7 +74,7 @@ func Test_RequestID_InvalidGeneratedValue(t *testing.T) {
 func Test_RequestID_GeneratorAlwaysInvalid(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New(fiber.Config{PassLocalsToContext: true})
+	app := fiber.New()
 	app.Use(New(Config{
 		Generator: func() string {
 			return "invalid\x00id" // Always invalid due to null byte
