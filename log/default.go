@@ -28,7 +28,7 @@ func (l *defaultLogger) writeContextFields(buf *bytebufferpool.ByteBuffer) {
 	}
 	for _, extractor := range contextExtractors {
 		key, value, ok := extractor(l.ctx)
-		if ok {
+		if ok && key != "" {
 			buf.WriteString(key)
 			buf.WriteByte('=')
 			buf.WriteString(utils.ToString(value))
