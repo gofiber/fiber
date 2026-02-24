@@ -1,6 +1,7 @@
 package recover //nolint:predeclared // TODO: Rename to some non-builtin
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,7 +21,7 @@ func Test_Recover(t *testing.T) {
 	})
 
 	app.Use(New(Config{ErrorCustomizer: func(c fiber.Ctx, r any) error {
-		return fiber.ErrInternalServerError
+		return fmt.Errorf("[RECOVERED]: %w", defaultErrorCustomizer(c, r))
 	}}))
 
 	app.Get("/panic", func(_ fiber.Ctx) error {

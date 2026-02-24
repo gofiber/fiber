@@ -11,7 +11,7 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// ErrorCustomizer defines a function to customize the error produced from a recovered panic/result
+	// ErrorCustomizer defines a function to customize the error produced from a recovered panic/result.
 	//
 	// Optional. Default: defaultErrorCustomizer
 	ErrorCustomizer func(c fiber.Ctx, r any) error
@@ -47,6 +47,9 @@ func configDefault(config ...Config) Config {
 
 	if cfg.EnableStackTrace && cfg.StackTraceHandler == nil {
 		cfg.StackTraceHandler = defaultStackTraceHandler
+	}
+	if cfg.ErrorCustomizer == nil {
+		cfg.ErrorCustomizer = defaultErrorCustomizer
 	}
 
 	return cfg
