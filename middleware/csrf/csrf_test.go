@@ -1995,7 +1995,7 @@ func Test_CSRF_TokenFromContext(t *testing.T) {
 
 func Test_CSRF_FromContextMethods(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
 
 	app.Use(New())
 
@@ -2005,6 +2005,15 @@ func Test_CSRF_FromContextMethods(t *testing.T) {
 
 		handler := HandlerFromContext(c)
 		require.NotNil(t, handler)
+
+		customCtx, ok := c.(fiber.CustomCtx)
+		require.True(t, ok)
+		require.Equal(t, token, TokenFromContext(customCtx))
+		require.Equal(t, handler, HandlerFromContext(customCtx))
+		require.Equal(t, token, TokenFromContext(c.RequestCtx()))
+		require.Equal(t, token, TokenFromContext(c.Context()))
+		require.Equal(t, handler, HandlerFromContext(c.RequestCtx()))
+		require.Equal(t, handler, HandlerFromContext(c.Context()))
 
 		return c.SendStatus(fiber.StatusOK)
 	})

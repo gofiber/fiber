@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
 )
 
 // CustomBinder An interface to register custom binders.
@@ -82,6 +83,13 @@ func (b *Bind) WithAutoHandling() *Bind {
 	return b
 }
 
+// SkipValidation enables or disables struct validation for the current bind chain.
+func (b *Bind) SkipValidation(skip bool) *Bind {
+	b.skipValidation = skip
+
+	return b
+}
+
 // Check WithAutoHandling/WithoutAutoHandling errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
 	if err == nil || b.dontHandleErrs {
@@ -97,12 +105,27 @@ func (b *Bind) validateStruct(out any) error {
 	if b.skipValidation {
 		return nil
 	}
+
 	validator := b.ctx.App().config.StructValidator
-	if validator != nil {
-		return validator.Validate(out)
+	if validator == nil {
+		return nil
 	}
 
-	return nil
+	t := reflect.TypeOf(out)
+	if t == nil {
+		return nil
+	}
+
+	// Unwrap pointers (e.g. *T, **T) to inspect the underlying destination type.
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+
+	return validator.Validate(out)
 }
 
 // Custom To use custom binders, you have to use this method.
@@ -220,8 +243,7 @@ func (b *Bind) XML(out any) error {
 
 // Form binds the form into the struct, map[string]string and map[string][]string.
 // If Content-Type is "application/x-www-form-urlencoded" or "multipart/form-data", it will bind the form values.
-//
-// Binding multipart files is not supported yet.
+// Multipart file fields are supported using *multipart.FileHeader, []*multipart.FileHeader, or *[]*multipart.FileHeader.
 func (b *Bind) Form(out any) error {
 	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
@@ -269,7 +291,7 @@ func (b *Bind) MsgPack(out any) error {
 // If there is no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
 func (b *Bind) Body(out any) error {
 	// Get content-type
-	ctype := utils.ToLower(utils.UnsafeString(b.ctx.RequestCtx().Request.Header.ContentType()))
+	ctype := utils.UnsafeString(utilsbytes.UnsafeToLower(b.ctx.RequestCtx().Request.Header.ContentType()))
 	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))
 
 	// Check custom binders

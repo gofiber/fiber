@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
@@ -155,7 +157,7 @@ func (r *DefaultReq) Body() []byte {
 	request := &r.c.fasthttp.Request
 
 	// Get Content-Encoding header
-	headerEncoding = utils.ToLower(utils.UnsafeString(request.Header.ContentEncoding()))
+	headerEncoding = utils.UnsafeString(utilsbytes.UnsafeToLower(request.Header.ContentEncoding()))
 
 	// If no encoding is provided, return the original body
 	if headerEncoding == "" {
@@ -166,7 +168,7 @@ func (r *DefaultReq) Body() []byte {
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	for i := range encodingOrder {
-		encodingOrder[i] = utils.ToLower(encodingOrder[i])
+		encodingOrder[i] = utilsstrings.UnsafeToLower(encodingOrder[i])
 	}
 	if len(encodingOrder) == 0 {
 		return r.getBody()
@@ -513,7 +515,10 @@ func (r *DefaultReq) IP() string {
 		return r.extractIPFromHeader(app.config.ProxyHeader)
 	}
 
-	return r.c.fasthttp.RemoteIP().String()
+	if ip := r.c.fasthttp.RemoteIP(); ip != nil {
+		return ip.String()
+	}
+	return ""
 }
 
 // extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
@@ -625,7 +630,10 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 			return s
 		}
 
-		return r.c.fasthttp.RemoteIP().String()
+		if ip := r.c.fasthttp.RemoteIP(); ip != nil {
+			return ip.String()
+		}
+		return ""
 	}
 
 	// default behavior if IP validation is not enabled is just to return whatever value is
@@ -700,7 +708,7 @@ func (r *DefaultReq) Method(override ...string) string {
 		return app.method(r.c.methodInt)
 	}
 
-	method := utils.ToUpper(override[0])
+	method := utilsstrings.ToUpper(override[0])
 	methodInt := app.methodInt(method)
 	if methodInt == -1 {
 		// Provided override does not valid HTTP method, no override, return current method
@@ -813,7 +821,7 @@ func (r *DefaultReq) Scheme() string {
 			continue
 		}
 	}
-	return utils.ToLower(utils.TrimSpace(scheme))
+	return utilsstrings.ToLower(utils.TrimSpace(scheme))
 }
 
 // Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
@@ -899,6 +907,12 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		ranges    string
 	)
 	rangeStr := utils.TrimSpace(r.Get(HeaderRange))
+	maxRanges := r.c.app.config.MaxRanges
+	const maxRangePrealloc = 8
+	prealloc := min(maxRanges, maxRangePrealloc)
+	if prealloc > 0 {
+		rangeData.Ranges = make([]RangeSet, 0, prealloc)
+	}
 
 	parseBound := func(value string) (int64, error) {
 		parsed, err := utils.ParseUint(value)
@@ -915,7 +929,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	if !found || strings.IndexByte(after, '=') >= 0 {
 		return rangeData, ErrRangeMalformed
 	}
-	rangeData.Type = utils.ToLower(utils.TrimSpace(before))
+	rangeData.Type = utilsstrings.ToLower(utils.TrimSpace(before))
 	if rangeData.Type != "bytes" {
 		return rangeData, ErrRangeMalformed
 	}
@@ -924,8 +938,15 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	var (
 		singleRange string
 		moreRanges  = ranges
+		rangeCount  int
 	)
 	for moreRanges != "" {
+		rangeCount++
+		if rangeCount > maxRanges {
+			r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
+			r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
+			return rangeData, ErrRangeTooLarge
+		}
 		singleRange = moreRanges
 		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
 			singleRange = moreRanges[:i]
@@ -970,7 +991,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	}
 	if len(rangeData.Ranges) < 1 {
 		r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
-		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+strconv.FormatInt(size, 10)) //nolint:staticcheck // It is fine to ignore the static check
+		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
 		return rangeData, ErrRequestedRangeNotSatisfiable
 	}
 
@@ -1002,12 +1023,12 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 	if strings.HasSuffix(host, ".") {
 		host = utils.TrimRight(host, '.')
 	}
-	host = utils.ToLower(host)
+	host = utilsstrings.ToLower(host)
 
 	// Decode punycode labels only when necessary
 	if strings.Contains(host, "xn--") {
 		if u, err := idna.Lookup.ToUnicode(host); err == nil {
-			host = utils.ToLower(u)
+			host = utilsstrings.ToLower(u)
 		}
 	}
 
@@ -1062,7 +1083,21 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 		return false
 	}
 
+	remoteAddr := r.c.fasthttp.RemoteAddr()
+	switch remoteAddr.(type) {
+	case *net.UnixAddr:
+		return config.TrustProxyConfig.UnixSocket
+	case *net.TCPAddr, *net.UDPAddr:
+		// Keep existing RemoteIP/IP-map/CIDR checks for TCP/UDP paths as-is.
+	default:
+		// Unknown address type: do not trust by default.
+		return false
+	}
+
 	ip := r.c.fasthttp.RemoteIP()
+	if ip == nil {
+		return false
+	}
 
 	if (config.TrustProxyConfig.Loopback && ip.IsLoopback()) ||
 		(config.TrustProxyConfig.Private && ip.IsPrivate()) ||
@@ -1085,7 +1120,16 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 
 // IsFromLocal will return true if request came from local.
 func (r *DefaultReq) IsFromLocal() bool {
-	return r.c.fasthttp.RemoteIP().IsLoopback()
+	// Unix sockets are inherently local - only processes on the same host can connect.
+	remoteAddr := r.c.fasthttp.RemoteAddr()
+	if _, ok := remoteAddr.(*net.UnixAddr); ok {
+		return true
+	}
+
+	if ip := r.c.fasthttp.RemoteIP(); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 // Release is a method to reset Req fields when to use ReleaseCtx()

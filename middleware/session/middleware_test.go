@@ -388,6 +388,27 @@ func Test_Session_FromSession(t *testing.T) {
 	app.Use(New())
 }
 
+func Test_Session_FromContext_Types(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		require.NotNil(t, FromContext(c))
+		customCtx, ok := c.(fiber.CustomCtx)
+		require.True(t, ok)
+		require.NotNil(t, FromContext(customCtx))
+		require.NotNil(t, FromContext(c.RequestCtx()))
+		require.NotNil(t, FromContext(c.Context()))
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 func Test_Session_WithConfig(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

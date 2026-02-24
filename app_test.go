@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -2461,15 +2462,18 @@ func Test_App_Test_timeout_empty_response(t *testing.T) {
 
 	app := New()
 	app.Get("/", func(_ Ctx) error {
-		time.Sleep(1 * time.Second)
+		time.Sleep(50 * time.Millisecond)
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{
-		Timeout:       100 * time.Millisecond,
+	// When FailOnTimeout is false, the test should return whatever response is available
+	// at timeout without failing
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), TestConfig{
+		Timeout:       10 * time.Millisecond,
 		FailOnTimeout: false,
 	})
-	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
 func Test_App_Test_drop_empty_response(t *testing.T) {
@@ -3003,4 +3007,70 @@ func TestErrorHandler_PicksRightOne(t *testing.T) {
 			require.Equal(t, testCase.expected, string(body))
 		})
 	}
+}
+
+type groupIDResponse struct {
+	GroupID string `json:"group_id"`
+}
+
+// Test for the reported bug where Test method returns "test: got empty response" error
+// when using a very small timeout value (e.g., 5 microseconds instead of 5 seconds).
+// With FailOnTimeout: false, the test should return whatever response is available without error.
+func Test_App_Test_SmallTimeout_WithFailOnTimeoutFalse(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Post("/admin/api/groups", func(c Ctx) error {
+		// Add a small delay to ensure timeout is triggered
+		time.Sleep(10 * time.Millisecond)
+		groupID := "g.test123"
+		return c.JSON(groupIDResponse{
+			GroupID: groupID,
+		})
+	})
+
+	req := httptest.NewRequest(MethodPost, "/admin/api/groups", http.NoBody)
+
+	// Using 5 microseconds which is too short for the handler to complete
+	// But with FailOnTimeout: false, it should return whatever is available without error
+	resp, err := app.Test(req, TestConfig{
+		Timeout:       5 * time.Microsecond,
+		FailOnTimeout: false,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+
+	var response groupIDResponse
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	err = json.Unmarshal(body, &response)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, response.GroupID)
+	require.Equal(t, "g.test123", response.GroupID)
+}
+
+// Test that FailOnTimeout: true still works as expected
+func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Post("/admin/api/groups", func(c Ctx) error {
+		time.Sleep(100 * time.Millisecond)
+		groupID := "g.test123"
+		return c.JSON(groupIDResponse{
+			GroupID: groupID,
+		})
+	})
+
+	req := httptest.NewRequest(MethodPost, "/admin/api/groups", http.NoBody)
+
+	// With FailOnTimeout: true (default), it should fail fast with timeout error
+	_, err := app.Test(req, TestConfig{
+		Timeout:       10 * time.Millisecond,
+		FailOnTimeout: true,
+	})
+
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 }

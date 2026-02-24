@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
 
 	"github.com/gofiber/fiber/v3/log"
 
@@ -50,6 +52,41 @@ var (
 )
 
 type headerParams map[string][]byte
+
+// ValueFromContext retrieves a value stored under key from supported context types.
+//
+// Supported context types:
+//   - Ctx (including CustomCtx implementations)
+//   - *fasthttp.RequestCtx
+//   - context.Context
+func ValueFromContext[T any](ctx, key any) (T, bool) {
+	switch typed := ctx.(type) {
+	case Ctx:
+		val, ok := typed.Locals(key).(T)
+		return val, ok
+	case *fasthttp.RequestCtx:
+		val, ok := typed.UserValue(key).(T)
+		return val, ok
+	case context.Context:
+		val, ok := typed.Value(key).(T)
+		return val, ok
+	default:
+		var zero T
+		return zero, false
+	}
+}
+
+// StoreInContext stores key/value in both Fiber locals and request context.
+//
+// This is useful when values need to be available via both c.Locals() and
+// context.Context lookups throughout middleware and handlers.
+func StoreInContext(c Ctx, key, value any) {
+	c.Locals(key, value)
+
+	if c.App().config.PassLocalsToContext {
+		c.SetContext(context.WithValue(c.Context(), key, value))
+	}
+}
 
 // getTLSConfig returns a net listener's tls config
 func getTLSConfig(ln net.Listener) *tls.Config {
@@ -413,8 +450,8 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 
 	dst = dst[:0]
 	segmentStart := 0
-	for i, c := range headerValue {
-		if c == ',' {
+	for i := 0; i < len(headerValue); i++ {
+		if headerValue[i] == ',' {
 			dst = append(dst, utils.TrimSpace(headerValue[segmentStart:i]))
 			segmentStart = i + 1
 		}
@@ -522,8 +559,6 @@ var headerParamPool = sync.Pool{
 }
 
 // getOffer return valid offer for header negotiation.
-// Do not pass header using utils.UnsafeBytes - this can cause a panic due
-// to the use of utils.ToLowerBytes.
 func getOffer(header []byte, isAccepted func(spec, offer string, specParams headerParams) bool, offers ...string) string {
 	if len(offers) == 0 {
 		return ""
@@ -563,7 +598,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 						}
 						return false
 					}
-					lowerKey := utils.UnsafeString(utils.ToLowerBytes(key))
+					lowerKey := utils.UnsafeString(utilsbytes.UnsafeToLower(key))
 					val, err := unescapeHeaderValue(value)
 					if err != nil {
 						return true
@@ -776,29 +811,52 @@ func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocr
 // Both forms indicate the response should not be served from cache without revalidation.
 func isNoCache(cacheControl string) bool {
 	n := len(cacheControl)
-	ncLen := len(noCacheValue)
-	for i := 0; i <= n-ncLen; i++ {
-		if !utils.EqualFold(cacheControl[i:i+ncLen], noCacheValue) {
+	if n < len(noCacheValue) {
+		return false
+	}
+
+	const noCacheLen = len(noCacheValue)
+	const asciiCaseFold = byte(0x20)
+	for i := 0; i <= n-noCacheLen; i++ {
+		if (cacheControl[i] | asciiCaseFold) != 'n' {
 			continue
 		}
-		if i > 0 {
-			prev := cacheControl[i-1]
-			if prev != ' ' && prev != ',' {
-				continue
-			}
+		if !matchNoCacheToken(cacheControl, i) {
+			continue
 		}
-		// Check for end of string, comma, equals sign, or space after no-cache
-		// This handles: "no-cache", "no-cache, ...", "no-cache=...", "no-cache ,"
-		if i+ncLen == n {
+		if i > 0 && !isNoCacheDelimiter(cacheControl[i-1]) {
+			continue
+		}
+
+		// Handle: "no-cache", "no-cache, ...", "no-cache=...", "no-cache ,"
+		if i+noCacheLen == n {
 			return true
 		}
-		next := cacheControl[i+ncLen]
-		if next == ',' || next == '=' || next == ' ' {
+		if isNoCacheDelimiter(cacheControl[i+noCacheLen]) || cacheControl[i+noCacheLen] == '=' {
 			return true
 		}
 	}
 
 	return false
+}
+
+func isNoCacheDelimiter(c byte) bool {
+	return c == ' ' || c == '\t' || c == ','
+}
+
+func matchNoCacheToken(s string, i int) bool {
+	// ASCII-only case-insensitive compare for "no-cache".
+	const asciiCaseFold = byte(0x20)
+	b := s[i:]
+
+	return (b[0]|asciiCaseFold) == 'n' &&
+		(b[1]|asciiCaseFold) == 'o' &&
+		b[2] == '-' &&
+		(b[3]|asciiCaseFold) == 'c' &&
+		(b[4]|asciiCaseFold) == 'a' &&
+		(b[5]|asciiCaseFold) == 'c' &&
+		(b[6]|asciiCaseFold) == 'h' &&
+		(b[7]|asciiCaseFold) == 'e'
 }
 
 var errTestConnClosed = errors.New("testConn is closed")

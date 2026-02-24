@@ -2,7 +2,7 @@
 
 1. [Supported Versions](#versions)
 2. [Reporting security problems to Fiber](#reporting)
-3. [Security Point of Contact](#contact)
+3. [Security Points of Contact](#contact)
 4. [Incident Response Process](#process)
 
 <a name="versions"></a>
@@ -23,19 +23,18 @@ The table below shows the supported versions for Fiber which include security up
 **DO NOT CREATE AN ISSUE** to report a security problem. Instead, please
 send us an e-mail at `team@gofiber.io` or join our discord server via
 [this invite link](https://gofiber.io/discord) and send a private message
-to Fenny or any of the maintainers.
+to any of the maintainers.
 
 <a name="contact"></a>
 
-## Security Point of Contact
+## Security Points of Contact
 
-The security point of contact is [Fenny](https://github.com/Fenny). Fenny responds
-to security incident reports as fast as possible, within one business day at the
-latest.
+For security-related matters, please contact any of the
+[@maintainers](https://github.com/orgs/gofiber/teams/maintainers).
 
-In case Fenny does not respond within a reasonable time, the secondary point
-of contact are any of the [@maintainers](https://github.com/orgs/gofiber/teams/maintainers).
-The maintainers are the only other persons with administrative access to Fiber's source code.
+The maintainers are the only persons with administrative access to Fiber's source code
+and respond to security incident reports as fast as possible, within one business day
+at the latest.
 
 <a name="process"></a>
 

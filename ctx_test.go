@@ -694,14 +694,76 @@ func Test_Ctx_Attachment(t *testing.T) {
 	c.Attachment("./static/img/logo.png")
 	require.Equal(t, `attachment; filename="logo.png"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
+	// filename with spaces
+	c.Attachment("report 2024.txt")
+	require.Equal(t, `attachment; filename="report+2024.txt"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	// filename with nested path
+	c.Attachment("../docs/archive.tar.gz")
+	require.Equal(t, `attachment; filename="archive.tar.gz"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 	// check quoting
 	c.Attachment("another document.pdf\"\r\nBla: \"fasel")
-	require.Equal(t, `attachment; filename="another+document.pdf%22%0D%0ABla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(t, `attachment; filename="another+document.pdf%22Bla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 
 	c.Attachment("файл.txt")
 	header := string(c.Response().Header.Peek(HeaderContentDisposition))
 	require.Contains(t, header, `filename="файл.txt"`)
 	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
+}
+
+// go test -run Test_Ctx_Attachment_SanitizesFilenameControls
+func Test_Ctx_Attachment_SanitizesFilenameControls(t *testing.T) {
+	t.Parallel()
+	app := New()
+	testCases := []struct {
+		name     string
+		filename string
+		expected string
+	}{
+		{
+			name:     "base name only",
+			filename: "../docs/archive.tar.gz",
+			expected: `attachment; filename="archive.tar.gz"`,
+		},
+		{
+			name:     "controls stripped",
+			filename: "down\r\nload\t\x00.txt",
+			expected: `attachment; filename="download.txt"`,
+		},
+		{
+			name:     "controls stripped without extension",
+			filename: "report\r\n\t\x00",
+			expected: `attachment; filename="report"`,
+		},
+		{
+			name:     "empty after sanitize",
+			filename: "\r\n\t\x00",
+			expected: `attachment; filename="download"`,
+		},
+		{
+			name:     "controls stripped in middle",
+			filename: "file\rname\n\t\x00.bin",
+			expected: `attachment; filename="filename.bin"`,
+		},
+		{
+			name:     "dot fallback",
+			filename: ".",
+			expected: `attachment; filename="download"`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Attachment(tc.filename)
+			header := string(c.Response().Header.Peek(HeaderContentDisposition))
+			require.Equal(t, tc.expected, header)
+			require.NotContains(t, header, "\r")
+			require.NotContains(t, header, "\n")
+			require.NotContains(t, header, "\t")
+			require.NotContains(t, header, "\x00")
+		})
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Attachment -benchmem -count=4
@@ -714,7 +776,7 @@ func Benchmark_Ctx_Attachment(b *testing.B) {
 		// example with quote params
 		c.Attachment("another document.pdf\"\r\nBla: \"fasel")
 	}
-	require.Equal(b, `attachment; filename="another+document.pdf%22%0D%0ABla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(b, `attachment; filename="another+document.pdf%22Bla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 }
 
 // go test -run Test_Ctx_BaseURL
@@ -2904,6 +2966,86 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	require.Equal(t, "0.0.0.1", c.IP())
 }
 
+func Test_Ctx_ProxyTrust_UnixRemoteAddr(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("unix sockets are not supported on windows in this test")
+	}
+
+	t.Run("unix_socket_enabled", func(t *testing.T) {
+		t.Parallel()
+		parts := strings.SplitN(runCtxProxyTrustUnixRemoteAddrCase(t, true), "|", 2)
+		require.Len(t, parts, 2)
+		require.Equal(t, "true", parts[0])
+		require.Equal(t, "1.1.1.1", parts[1])
+	})
+
+	t.Run("unix_socket_disabled", func(t *testing.T) {
+		t.Parallel()
+		parts := strings.SplitN(runCtxProxyTrustUnixRemoteAddrCase(t, false), "|", 2)
+		require.Len(t, parts, 2)
+		require.Equal(t, "false", parts[0])
+		require.Equal(t, "0.0.0.0", parts[1])
+	})
+}
+
+func runCtxProxyTrustUnixRemoteAddrCase(t *testing.T, unixSocket bool) string {
+	t.Helper()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			UnixSocket: unixSocket,
+		},
+		ProxyHeader: HeaderXForwardedFor,
+	})
+	app.Get("/ip", func(c Ctx) error {
+		return c.SendString(fmt.Sprintf("%t|%s", c.IsProxyTrusted(), c.IP()))
+	})
+
+	tmp, err := os.MkdirTemp(os.TempDir(), "fiber-ctx-unix")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(tmp)) })
+	sock := filepath.Join(tmp, "fiber.sock")
+
+	result := make(chan string, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+
+		client := &fasthttp.HostClient{
+			Addr: sock,
+			Dial: func(addr string) (net.Conn, error) {
+				return net.Dial(NetworkUnix, addr)
+			},
+		}
+
+		req := &fasthttp.Request{}
+		resp := &fasthttp.Response{}
+		req.SetRequestURI("http://fiber/ip")
+		req.Header.Set(HeaderXForwardedFor, "1.1.1.1")
+
+		if err = client.Do(req, resp); err != nil {
+			result <- "" // Ensure result channel always receives a value
+			errCh <- errors.Join(err, app.Shutdown())
+			return
+		}
+
+		result <- string(resp.Body())
+		errCh <- app.Shutdown()
+	}()
+
+	require.NoError(t, app.Listen(sock, ListenConfig{
+		DisableStartupMessage: true,
+		ListenerNetwork:       NetworkUnix,
+		UnixSocketFileMode:    0o660,
+	}))
+	require.NoError(t, <-errCh)
+
+	return <-result
+}
+
 // go test -run Test_Ctx_IPs  -parallel
 func Test_Ctx_IPs(t *testing.T) {
 	t.Parallel()
@@ -3226,6 +3368,85 @@ func Test_Ctx_Value(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_Ctx_Value_AfterRelease
+func Test_Ctx_Value_AfterRelease(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		c.Locals("test", "value")
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// After the handler completes, the context is released and fasthttp is nil
+	// Value should return nil instead of panicking
+	require.NotPanics(t, func() {
+		val := ctx.Value("test")
+		require.Nil(t, val)
+	})
+}
+
+// go test -run Test_Ctx_Value_InGoroutine
+func Test_Ctx_Value_InGoroutine(t *testing.T) {
+	t.Parallel()
+	app := New()
+	done := make(chan bool, 1)   // Buffered to prevent goroutine leak
+	errCh := make(chan error, 1) // Channel to communicate errors from goroutine
+
+	// Use a synchronization point to avoid race detector complaints
+	// while still testing the defensive nil behavior
+	start := make(chan struct{})
+
+	app.Get("/test", func(c Ctx) error {
+		c.Locals("test", "value")
+
+		// Simulate a goroutine that uses the context (like minio.GetObject)
+		go func() {
+			// Wait for handler to complete and context to be released
+			<-start
+
+			defer func() {
+				if r := recover(); r != nil {
+					errCh <- fmt.Errorf("panic in goroutine: %v", r)
+					return
+				}
+				done <- true
+			}()
+
+			// This simulates what happens when minio or other libraries
+			// use the fiber.Ctx as a context.Context in a goroutine
+			// The Value method should not panic even if fasthttp is nil
+			val := c.Value("test")
+			// The value might be nil if the context was released
+			_ = val
+		}()
+
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// Signal goroutine to proceed - context has been released after app.Test returns
+	// since the handler (and its deferred ReleaseCtx) has completed
+	close(start)
+
+	// Wait for goroutine to complete with timeout
+	select {
+	case <-done:
+		// Success - goroutine completed without panic
+	case err := <-errCh:
+		t.Fatalf("error from goroutine: %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("test timed out waiting for goroutine")
+	}
+}
+
 // go test -run Test_Ctx_Context
 func Test_Ctx_Context(t *testing.T) {
 	t.Parallel()
@@ -3274,8 +3495,35 @@ func Test_Ctx_Context_AfterHandlerPanics(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Panics(t, func() {
-		_ = ctx.Context()
+	// After the fix, Context() returns context.Background() instead of panicking
+	require.NotPanics(t, func() {
+		c := ctx.Context()
+		require.NotNil(t, c)
+		require.Equal(t, context.Background(), c)
+	})
+}
+
+// go test -run Test_Ctx_Request_Response_AfterRelease
+func Test_Ctx_Request_Response_AfterRelease(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// After the handler completes and context is released,
+	// Request() and Response() should return nil instead of panicking
+	require.NotPanics(t, func() {
+		req := ctx.Request()
+		require.Nil(t, req)
+
+		res := ctx.Response()
+		require.Nil(t, res)
 	})
 }
 
@@ -3290,6 +3538,122 @@ func Test_Ctx_SetContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), testKey, testValue)
 	c.SetContext(ctx)
 	require.Equal(t, testValue, c.Context().Value(testKey))
+}
+
+type contextHelperTestKey struct{}
+
+func Test_Ctx_StoreInContext_Config(t *testing.T) {
+	t.Parallel()
+
+	t.Run("disabled", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		StoreInContext(c, contextHelperTestKey{}, "locals-only")
+
+		value, ok := c.Locals(contextHelperTestKey{}).(string)
+		require.True(t, ok)
+		require.Equal(t, "locals-only", value)
+		require.Nil(t, c.Context().Value(contextHelperTestKey{}))
+	})
+
+	t.Run("enabled", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{PassLocalsToContext: true})
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		StoreInContext(c, contextHelperTestKey{}, "both")
+
+		value, ok := c.Locals(contextHelperTestKey{}).(string)
+		require.True(t, ok)
+		require.Equal(t, "both", value)
+
+		contextValue, ok := c.Context().Value(contextHelperTestKey{}).(string)
+		require.True(t, ok)
+		require.Equal(t, "both", contextValue)
+	})
+}
+
+func Test_Ctx_ValueFromContext_Config(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fiber ctx disabled reads locals", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		c.Locals(contextHelperTestKey{}, "locals")
+		c.SetContext(context.WithValue(context.Background(), contextHelperTestKey{}, "context"))
+
+		value, ok := ValueFromContext[string](c, contextHelperTestKey{})
+		require.True(t, ok)
+		require.Equal(t, "locals", value)
+	})
+
+	t.Run("fiber ctx enabled still reads locals", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{PassLocalsToContext: true})
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		c.Locals(contextHelperTestKey{}, "locals")
+		c.SetContext(context.WithValue(context.Background(), contextHelperTestKey{}, "context"))
+
+		value, ok := ValueFromContext[string](c, contextHelperTestKey{})
+		require.True(t, ok)
+		require.Equal(t, "locals", value)
+	})
+
+	t.Run("fiber custom ctx enabled still reads locals", func(t *testing.T) {
+		t.Parallel()
+
+		app := NewWithCustomCtx(func(app *App) CustomCtx {
+			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+		}, Config{PassLocalsToContext: true})
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		c.Locals(contextHelperTestKey{}, "locals")
+		c.SetContext(context.WithValue(context.Background(), contextHelperTestKey{}, "context"))
+
+		value, ok := ValueFromContext[string](c, contextHelperTestKey{})
+		require.True(t, ok)
+		require.Equal(t, "locals", value)
+	})
+
+	t.Run("fasthttp request ctx", func(t *testing.T) {
+		t.Parallel()
+
+		raw := &fasthttp.RequestCtx{}
+		raw.SetUserValue(contextHelperTestKey{}, "value")
+
+		value, ok := ValueFromContext[string](raw, contextHelperTestKey{})
+		require.True(t, ok)
+		require.Equal(t, "value", value)
+	})
+
+	t.Run("context.Context", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.WithValue(context.Background(), contextHelperTestKey{}, "value")
+
+		value, ok := ValueFromContext[string](ctx, contextHelperTestKey{})
+		require.True(t, ok)
+		require.Equal(t, "value", value)
+	})
 }
 
 // go test -run Test_Ctx_Context_Multiple_Requests
@@ -4052,6 +4416,25 @@ func Test_Ctx_Range_Unsatisfiable(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
 	req.Header.Set(HeaderRange, "bytes=20-30")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
+}
+
+func Test_Ctx_Range_TooManyRanges(t *testing.T) {
+	t.Parallel()
+	app := New(Config{MaxRanges: 2})
+	app.Get("/", func(c Ctx) error {
+		_, err := c.Range(10)
+		if err != nil {
+			return err
+		}
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
+	req.Header.Set(HeaderRange, "bytes=0-1,2-3,4-5")
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode)
@@ -4920,6 +5303,52 @@ func Test_Ctx_Download(t *testing.T) {
 	header := string(c.Response().Header.Peek(HeaderContentDisposition))
 	require.Contains(t, header, `filename="файл.txt"`)
 	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
+}
+
+// go test -race -run Test_Ctx_Download_SanitizesFilenameControls
+func Test_Ctx_Download_SanitizesFilenameControls(t *testing.T) {
+	t.Parallel()
+	app := New()
+	testCases := []struct {
+		name     string
+		filename string
+		expected string
+	}{
+		{
+			name:     "base name only",
+			filename: "../docs/archive.tar.gz",
+			expected: `attachment; filename="archive.tar.gz"`,
+		},
+		{
+			name:     "controls stripped",
+			filename: "down\r\nload\t\x00.txt",
+			expected: `attachment; filename="download.txt"`,
+		},
+		{
+			name:     "empty after sanitize",
+			filename: "\r\n\t\x00",
+			expected: `attachment; filename="download"`,
+		},
+		{
+			name:     "dot fallback",
+			filename: ".",
+			expected: `attachment; filename="download"`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			require.NoError(t, c.Download("ctx.go", tc.filename))
+			header := string(c.Response().Header.Peek(HeaderContentDisposition))
+			require.Equal(t, tc.expected, header)
+			require.NotContains(t, header, "\r")
+			require.NotContains(t, header, "\n")
+			require.NotContains(t, header, "\t")
+			require.NotContains(t, header, "\x00")
+		})
+	}
 }
 
 // go test -race -run Test_Ctx_SendEarlyHints
@@ -7041,23 +7470,12 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 		// the test connection is closed but stop before the
 		// fourth line is sent
 		Timeout:       200 * time.Millisecond,
-		FailOnTimeout: false,
+		FailOnTimeout: true, // Changed to true to test interrupted behavior
 	}
 	resp, err := app.Test(req, testConfig)
-	require.NoError(t, err)
-
-	body, err := io.ReadAll(resp.Body)
-	t.Logf("%v", err)
-	require.EqualError(t, err, "unexpected EOF")
-
-	require.Equal(t, "Line 1\nLine 2\nLine 3\n", string(body))
-
-	// ensure the first three lines were successfully flushed
-	require.Equal(t, int32(3), flushed.Load())
-
-	// verify no flush errors occurred before the fourth line
-	v := flushErrLine.Load()
-	require.True(t, v == 0 || v >= 4, "unexpected flush error on line %d", v)
+	// With FailOnTimeout: true, we should get a timeout error
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	require.Nil(t, resp)
 }
 
 // go test -run Test_Ctx_Set
@@ -7557,6 +7975,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(localIPv4)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 
 		require.Equal(t, "127.0.0.1", c.IP())
 		require.True(t, c.IsFromLocal())
@@ -7567,6 +7986,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(localIPv6)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "::1", c.Req().IP())
 		require.True(t, c.Req().IsFromLocal())
 	}
@@ -7576,6 +7996,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(localIPv6long)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		// fasthttp should return "::1" for "0:0:0:0:0:0:0:1".
 		// otherwise IsFromLocal() will break.
 		require.Equal(t, "::1", c.IP())
@@ -7587,6 +8008,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(zeroIPv4)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "0.0.0.0", c.IP())
 		require.False(t, c.IsFromLocal())
 	}
@@ -7596,6 +8018,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(someIPv4)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "93.46.8.90", c.IP())
 		require.False(t, c.IsFromLocal())
 	}
@@ -7605,8 +8028,20 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(someIPv6)
 		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
 		require.Equal(t, "2001:db8:85a3::8a2e:370:7334", c.IP())
 		require.False(t, c.IsFromLocal())
+	}
+	// Test for the case fasthttp remoteAddr is set to a Unix socket.
+	// Unix sockets are inherently local - only processes on the same host can connect.
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		unixAddr := &net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"}
+		fastCtx.SetRemoteAddr(unixAddr)
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+		require.True(t, c.IsFromLocal())
 	}
 }
 

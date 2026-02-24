@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
@@ -177,10 +179,36 @@ func headerContainsValue(header, value string) bool {
 	return false
 }
 
+func sanitizeFilename(filename string) string {
+	for _, r := range filename {
+		if unicode.IsControl(r) {
+			b := make([]byte, 0, len(filename))
+			for _, rr := range filename {
+				if !unicode.IsControl(rr) {
+					b = utf8.AppendRune(b, rr)
+				}
+			}
+			return utils.TrimSpace(string(b))
+		}
+	}
+
+	return utils.TrimSpace(filename)
+}
+
+func fallbackFilenameIfInvalid(filename string) string {
+	if filename == "" || filename == "." {
+		return "download"
+	}
+
+	return filename
+}
+
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
 func (r *DefaultRes) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
+		fname = sanitizeFilename(fname)
+		fname = fallbackFilenameIfInvalid(fname)
 		r.Type(filepath.Ext(fname))
 		app := r.c.app
 		var quoted string
@@ -315,10 +343,12 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 func (r *DefaultRes) Download(file string, filename ...string) error {
 	var fname string
 	if len(filename) > 0 {
-		fname = filename[0]
+		fname = filepath.Base(filename[0])
 	} else {
 		fname = filepath.Base(file)
 	}
+	fname = sanitizeFilename(fname)
+	fname = fallbackFilenameIfInvalid(fname)
 	app := r.c.app
 	var quoted string
 	if app.isASCII(fname) {

@@ -10,8 +10,10 @@ The KeyAuth middleware implements API key authentication.
 
 ```go
 func New(config ...Config) fiber.Handler
-func TokenFromContext(c fiber.Ctx) string
+func TokenFromContext(ctx any) string
 ```
+
+`TokenFromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
 
 ## Examples
 

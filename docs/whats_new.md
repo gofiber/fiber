@@ -464,7 +464,7 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 
 ```go
 // register multiple prefixes
-app.Use(["/v1", "/v2"], func(c fiber.Ctx) error {
+app.Use([]string{"/v1", "/v2"}, func(c fiber.Ctx) error {
     // Middleware for /v1 and /v2
     return c.Next()
 })
@@ -653,7 +653,7 @@ Older HTTP/1.1 clients may ignore these interim responses or handle them inconsi
 In v3, we introduced support for buffered streaming with the addition of the `SendStreamWriter` method:
 
 ```go
-func (c Ctx) SendStreamWriter(streamWriter func(w *bufio.Writer))
+func (c Ctx) SendStreamWriter(streamWriter func(w *bufio.Writer)) error
 ```
 
 With this new method, you can implement:
@@ -663,7 +663,7 @@ With this new method, you can implement:
 - Live data streaming
 
 ```go
-app.Get("/sse", func(c fiber.Ctx) {
+app.Get("/sse", func(c fiber.Ctx) error {
     c.Set("Content-Type", "text/event-stream")
     c.Set("Cache-Control", "no-cache")
     c.Set("Connection", "keep-alive")
@@ -690,7 +690,7 @@ You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md)
 In v3, we introduced support to silently terminate requests through `Drop`.
 
 ```go
-func (c Ctx) Drop()
+func (c Ctx) Drop() error
 ```
 
 With this method, you can:
@@ -721,7 +721,7 @@ You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md)
 In v3, we introduced a new method to match the Express.js API's `res.end()` method.
 
 ```go
-func (c Ctx) End()
+func (c Ctx) End() error
 ```
 
 With this method, you can:
@@ -743,8 +743,8 @@ app.Use(func (c fiber.Ctx) error {
 app.Get("/hello", func (c fiber.Ctx) error {
     query := c.Query("name", "")
     if query == "" {
-        c.SendString("You don't have a name?")
-        c.End() // Closes the underlying connection
+        _ = c.SendString("You don't have a name?")
+        _ = c.End() // Closes the underlying connection; errors intentionally ignored
         return errors.New("No name provided")
     }
     return c.SendString("Hello, " + query + "!")
@@ -771,7 +771,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 
 ```go
 type User struct {
-    ID    int    `params:"id"`
+    ID    int    `uri:"id"`
     Name  string `json:"name"`
     Email string `json:"email"`
 }
@@ -918,11 +918,14 @@ Fiber v3 introduces new generic functions that provide additional utility and fl
 
 ### New Generic Functions
 
+- **StoreInContext**: Stores request-scoped values in both `c.Locals()` and the request `context.Context`, so the same value can be read through middleware `FromContext` helpers and direct locals access.
 - **Convert**: Converts a value with a specified converter function and default value.
 - **Locals**: Retrieves or sets local values within a request context.
 - **Params**: Retrieves route parameters and can handle various types of route parameters.
 - **Query**: Retrieves the value of a query parameter from the request URI and can handle various types of query parameters.
 - **GetReqHeader**: Returns the HTTP request header specified by the field and can handle various types of header values.
+
+`fiber.Config.PassLocalsToContext` is now available to control whether `StoreInContext` also synchronizes values with request `context.Context` for Fiber-backed contexts. The default is `false` for backward compatibility. `ValueFromContext` continues reading Fiber-backed values from `c.Locals()`.
 
 ### Example
 
@@ -1121,7 +1124,7 @@ Fiber v3 introduces a new feature called Services. This feature allows developer
 package main
 
 import (
-    "strconv"
+    "context"
     "github.com/gofiber/fiber/v3"
 )
 
@@ -1399,6 +1402,8 @@ New `Challenge`, `Error`, `ErrorDescription`, `ErrorURI`, and `Scope` fields all
 
 New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without an extra adapter. For example, you can use `zap` with Fiber logger middleware like this:
 
+Logger configuration now uses `Stream` instead of `Output` for the destination writer, so update your logger middleware configuration when migrating to v3.
+
 Custom logger integrations should update any `LoggerFunc` implementations to the new signature that receives a pointer to the middleware config: `func(c fiber.Ctx, data *logger.Data, cfg *logger.Config) error`.
 
 <details>
@@ -1425,7 +1430,7 @@ func main() {
 
     // Use the logger middleware with zerolog logger
     app.Use(logger.New(logger.Config{
-        Output: logger.LoggerToWriter(zap, log.LevelDebug),
+        Stream: logger.LoggerToWriter(zap, log.LevelDebug),
     }))
 
     // Define a route
@@ -1775,6 +1780,8 @@ app := fiber.New(fiber.Config{
         Proxies: []string{"0.8.0.0"},
         // Trust all loop-back IP addresses (127.0.0.0/8, ::1/128)
         Loopback: true,
+        // Trust Unix domain socket connections
+        UnixSocket: true,
     }
 })
 ```
@@ -1919,8 +1926,8 @@ For more details, refer to the [app documentation](./api/app.md#rebuildtree):
 #### Example Usage
 
 ```go
-app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
-    app.Get("/dynamically-defined", func(c Ctx) error {  // Adding a dynamically defined route
+app.Get("/define", func(c fiber.Ctx) error {  // Define a new route dynamically
+    app.Get("/dynamically-defined", func(c fiber.Ctx) error {  // Adding a dynamically defined route
         return c.SendStatus(http.StatusOK)
     })
 
@@ -2042,13 +2049,17 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
     </details>
 
-2. **ParamsParser**: Use `c.Bind().URI()` instead of `c.ParamsParser()`.
+2. **ParamsParser**: Use `c.Bind().URI()` instead of `c.ParamsParser()`. Note that the struct tag has changed from `params` to `uri`.
 
     <details>
     <summary>Example</summary>
 
     ```go
     // Before
+    type Params struct {
+        ID int `params:"id"`
+    }
+
     app.Get("/user/:id", func(c *fiber.Ctx) error {
         var params Params
         if err := c.ParamsParser(&params); err != nil {
@@ -2060,6 +2071,10 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
     ```go
     // After
+    type Params struct {
+        ID int `uri:"id"`
+    }
+
     app.Get("/user/:id", func(c fiber.Ctx) error {
         var params Params
         if err := c.Bind().URI(&params); err != nil {

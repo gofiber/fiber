@@ -159,6 +159,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: 4 * 1024 * 1024
 	BodyLimit int `json:"body_limit"`
 
+	// MaxRanges sets the maximum number of ranges parsed from a Range header.
+	// Zero or negative values fall back to the default limit.
+	//
+	// Default: 16
+	MaxRanges int `json:"max_ranges"`
+
 	// Maximum number of concurrent connections.
 	//
 	// Default: 256 * 1024
@@ -178,6 +184,14 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: false
 	PassLocalsToViews bool `json:"pass_locals_to_views"`
+
+	// PassLocalsToContext controls whether StoreInContext also propagates values to
+	// the request context.Context for Fiber-backed contexts.
+	//
+	// ValueFromContext for Fiber-backed contexts always reads from c.Locals().
+	//
+	// Default: false
+	PassLocalsToContext bool `json:"pass_locals_to_context"`
 
 	// The amount of time allowed to read the full request including body.
 	// It is reset after the request handler has returned.
@@ -453,6 +467,12 @@ type TrustProxyConfig struct {
 	//
 	// Default: false
 	Private bool `json:"private"`
+
+	// UnixSocket enables trusting Unix domain socket connections.
+	// When enabled, requests from Unix sockets are treated as trusted proxies.
+	//
+	// Default: false
+	UnixSocket bool `json:"unix_socket"`
 }
 
 // RouteMessage is some message need to be print when server starts
@@ -466,6 +486,7 @@ type RouteMessage struct {
 // Default Config values
 const (
 	DefaultBodyLimit       = 4 * 1024 * 1024
+	DefaultMaxRanges       = 16
 	DefaultConcurrency     = 256 * 1024
 	DefaultReadBufferSize  = 4096
 	DefaultWriteBufferSize = 4096
@@ -564,6 +585,9 @@ func New(config ...Config) *App {
 	// Override default values
 	if app.config.BodyLimit <= 0 {
 		app.config.BodyLimit = DefaultBodyLimit
+	}
+	if app.config.MaxRanges <= 0 {
+		app.config.MaxRanges = DefaultMaxRanges
 	}
 	if app.config.Concurrency <= 0 {
 		app.config.Concurrency = DefaultConcurrency
@@ -1196,9 +1220,18 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 		select {
 		case err = <-channel:
 		case <-time.After(cfg.Timeout):
-			conn.Close() //nolint:errcheck // It is fine to ignore the error here
 			if cfg.FailOnTimeout {
+				conn.Close() //nolint:errcheck // It is fine to ignore the error here
 				return nil, os.ErrDeadlineExceeded
+			}
+			// When FailOnTimeout is false, wait up to 1 additional second for the handler
+			// to complete and write a response. This prevents indefinite blocking while
+			// allowing slow handlers to finish.
+			select {
+			case err = <-channel:
+			case <-time.After(time.Second):
+				// Handler took too long even with extra time
+				conn.Close() //nolint:errcheck // It is fine to ignore the error here
 			}
 		}
 	} else {

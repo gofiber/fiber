@@ -25,13 +25,19 @@ func (z *cachedHeader) DecodeMsg(dc *msgp.Reader) (err error) {
 		}
 		switch msgp.UnsafeString(field) {
 		case "key":
-			z.key, err = dc.ReadBytes(z.key)
+			z.key, err = dc.ReadBytesLimit(z.key, 512)
+			if err == nil && z.key == nil {
+				z.key = []byte{}
+			}
 			if err != nil {
 				err = msgp.WrapError(err, "key")
 				return
 			}
 		case "value":
-			z.value, err = dc.ReadBytes(z.value)
+			z.value, err = dc.ReadBytesLimit(z.value, 16384)
+			if err == nil && z.value == nil {
+				z.value = []byte{}
+			}
 			if err != nil {
 				err = msgp.WrapError(err, "value")
 				return
@@ -105,17 +111,49 @@ func (z *cachedHeader) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		}
 		switch msgp.UnsafeString(field) {
 		case "key":
-			z.key, bts, err = msgp.ReadBytesBytes(bts, z.key)
+			var zb0002 uint32
+			zb0002, bts, err = msgp.ReadBytesHeader(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "key")
 				return
 			}
+			if zb0002 > 512 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
+			if z.key == nil || uint32(cap(z.key)) < zb0002 {
+				z.key = make([]byte, zb0002)
+			} else {
+				z.key = z.key[:zb0002]
+			}
+			if uint32(len(bts)) < zb0002 {
+				err = msgp.ErrShortBytes
+				return
+			}
+			copy(z.key, bts[:zb0002])
+			bts = bts[zb0002:]
 		case "value":
-			z.value, bts, err = msgp.ReadBytesBytes(bts, z.value)
+			var zb0003 uint32
+			zb0003, bts, err = msgp.ReadBytesHeader(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "value")
 				return
 			}
+			if zb0003 > 16384 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
+			if z.value == nil || uint32(cap(z.value)) < zb0003 {
+				z.value = make([]byte, zb0003)
+			} else {
+				z.value = z.value[:zb0003]
+			}
+			if uint32(len(bts)) < zb0003 {
+				err = msgp.ErrShortBytes
+				return
+			}
+			copy(z.value, bts[:zb0003])
+			bts = bts[zb0003:]
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
@@ -159,6 +197,10 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "headers")
 				return
 			}
+			if zb0002 > 1024 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
 			if cap(z.headers) >= int(zb0002) {
 				z.headers = (z.headers)[:zb0002]
 			} else {
@@ -171,6 +213,10 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 					err = msgp.WrapError(err, "headers", za0001)
 					return
 				}
+				if zb0003 > 1024 {
+					err = msgp.ErrLimitExceeded
+					return
+				}
 				for zb0003 > 0 {
 					zb0003--
 					field, err = dc.ReadMapKeyPtr()
@@ -180,13 +226,19 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 					}
 					switch msgp.UnsafeString(field) {
 					case "key":
-						z.headers[za0001].key, err = dc.ReadBytes(z.headers[za0001].key)
+						z.headers[za0001].key, err = dc.ReadBytesLimit(z.headers[za0001].key, 512)
+						if err == nil && z.headers[za0001].key == nil {
+							z.headers[za0001].key = []byte{}
+						}
 						if err != nil {
 							err = msgp.WrapError(err, "headers", za0001, "key")
 							return
 						}
 					case "value":
-						z.headers[za0001].value, err = dc.ReadBytes(z.headers[za0001].value)
+						z.headers[za0001].value, err = dc.ReadBytesLimit(z.headers[za0001].value, 16384)
+						if err == nil && z.headers[za0001].value == nil {
+							z.headers[za0001].value = []byte{}
+						}
 						if err != nil {
 							err = msgp.WrapError(err, "headers", za0001, "value")
 							return
@@ -207,31 +259,46 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 				return
 			}
 		case "ctype":
-			z.ctype, err = dc.ReadBytes(z.ctype)
+			z.ctype, err = dc.ReadBytesLimit(z.ctype, 256)
+			if err == nil && z.ctype == nil {
+				z.ctype = []byte{}
+			}
 			if err != nil {
 				err = msgp.WrapError(err, "ctype")
 				return
 			}
 		case "cencoding":
-			z.cencoding, err = dc.ReadBytes(z.cencoding)
+			z.cencoding, err = dc.ReadBytesLimit(z.cencoding, 128)
+			if err == nil && z.cencoding == nil {
+				z.cencoding = []byte{}
+			}
 			if err != nil {
 				err = msgp.WrapError(err, "cencoding")
 				return
 			}
 		case "cacheControl":
-			z.cacheControl, err = dc.ReadBytes(z.cacheControl)
+			z.cacheControl, err = dc.ReadBytesLimit(z.cacheControl, 2048)
+			if err == nil && z.cacheControl == nil {
+				z.cacheControl = []byte{}
+			}
 			if err != nil {
 				err = msgp.WrapError(err, "cacheControl")
 				return
 			}
 		case "expires":
-			z.expires, err = dc.ReadBytes(z.expires)
+			z.expires, err = dc.ReadBytesLimit(z.expires, 128)
+			if err == nil && z.expires == nil {
+				z.expires = []byte{}
+			}
 			if err != nil {
 				err = msgp.WrapError(err, "expires")
 				return
 			}
 		case "etag":
-			z.etag, err = dc.ReadBytes(z.etag)
+			z.etag, err = dc.ReadBytesLimit(z.etag, 256)
+			if err == nil && z.etag == nil {
+				z.etag = []byte{}
+			}
 			if err != nil {
 				err = msgp.WrapError(err, "etag")
 				return
@@ -598,6 +665,10 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "headers")
 				return
 			}
+			if zb0002 > 1024 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
 			if cap(z.headers) >= int(zb0002) {
 				z.headers = (z.headers)[:zb0002]
 			} else {
@@ -610,6 +681,10 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					err = msgp.WrapError(err, "headers", za0001)
 					return
 				}
+				if zb0003 > 1024 {
+					err = msgp.ErrLimitExceeded
+					return
+				}
 				for zb0003 > 0 {
 					zb0003--
 					field, bts, err = msgp.ReadMapKeyZC(bts)
@@ -619,17 +694,49 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					}
 					switch msgp.UnsafeString(field) {
 					case "key":
-						z.headers[za0001].key, bts, err = msgp.ReadBytesBytes(bts, z.headers[za0001].key)
+						var zb0004 uint32
+						zb0004, bts, err = msgp.ReadBytesHeader(bts)
 						if err != nil {
 							err = msgp.WrapError(err, "headers", za0001, "key")
 							return
 						}
+						if zb0004 > 512 {
+							err = msgp.ErrLimitExceeded
+							return
+						}
+						if z.headers[za0001].key == nil || uint32(cap(z.headers[za0001].key)) < zb0004 {
+							z.headers[za0001].key = make([]byte, zb0004)
+						} else {
+							z.headers[za0001].key = z.headers[za0001].key[:zb0004]
+						}
+						if uint32(len(bts)) < zb0004 {
+							err = msgp.ErrShortBytes
+							return
+						}
+						copy(z.headers[za0001].key, bts[:zb0004])
+						bts = bts[zb0004:]
 					case "value":
-						z.headers[za0001].value, bts, err = msgp.ReadBytesBytes(bts, z.headers[za0001].value)
+						var zb0005 uint32
+						zb0005, bts, err = msgp.ReadBytesHeader(bts)
 						if err != nil {
 							err = msgp.WrapError(err, "headers", za0001, "value")
 							return
 						}
+						if zb0005 > 16384 {
+							err = msgp.ErrLimitExceeded
+							return
+						}
+						if z.headers[za0001].value == nil || uint32(cap(z.headers[za0001].value)) < zb0005 {
+							z.headers[za0001].value = make([]byte, zb0005)
+						} else {
+							z.headers[za0001].value = z.headers[za0001].value[:zb0005]
+						}
+						if uint32(len(bts)) < zb0005 {
+							err = msgp.ErrShortBytes
+							return
+						}
+						copy(z.headers[za0001].value, bts[:zb0005])
+						bts = bts[zb0005:]
 					default:
 						bts, err = msgp.Skip(bts)
 						if err != nil {
@@ -646,35 +753,115 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				return
 			}
 		case "ctype":
-			z.ctype, bts, err = msgp.ReadBytesBytes(bts, z.ctype)
+			var zb0006 uint32
+			zb0006, bts, err = msgp.ReadBytesHeader(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "ctype")
 				return
 			}
+			if zb0006 > 256 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
+			if z.ctype == nil || uint32(cap(z.ctype)) < zb0006 {
+				z.ctype = make([]byte, zb0006)
+			} else {
+				z.ctype = z.ctype[:zb0006]
+			}
+			if uint32(len(bts)) < zb0006 {
+				err = msgp.ErrShortBytes
+				return
+			}
+			copy(z.ctype, bts[:zb0006])
+			bts = bts[zb0006:]
 		case "cencoding":
-			z.cencoding, bts, err = msgp.ReadBytesBytes(bts, z.cencoding)
+			var zb0007 uint32
+			zb0007, bts, err = msgp.ReadBytesHeader(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "cencoding")
 				return
 			}
+			if zb0007 > 128 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
+			if z.cencoding == nil || uint32(cap(z.cencoding)) < zb0007 {
+				z.cencoding = make([]byte, zb0007)
+			} else {
+				z.cencoding = z.cencoding[:zb0007]
+			}
+			if uint32(len(bts)) < zb0007 {
+				err = msgp.ErrShortBytes
+				return
+			}
+			copy(z.cencoding, bts[:zb0007])
+			bts = bts[zb0007:]
 		case "cacheControl":
-			z.cacheControl, bts, err = msgp.ReadBytesBytes(bts, z.cacheControl)
+			var zb0008 uint32
+			zb0008, bts, err = msgp.ReadBytesHeader(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "cacheControl")
 				return
 			}
+			if zb0008 > 2048 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
+			if z.cacheControl == nil || uint32(cap(z.cacheControl)) < zb0008 {
+				z.cacheControl = make([]byte, zb0008)
+			} else {
+				z.cacheControl = z.cacheControl[:zb0008]
+			}
+			if uint32(len(bts)) < zb0008 {
+				err = msgp.ErrShortBytes
+				return
+			}
+			copy(z.cacheControl, bts[:zb0008])
+			bts = bts[zb0008:]
 		case "expires":
-			z.expires, bts, err = msgp.ReadBytesBytes(bts, z.expires)
+			var zb0009 uint32
+			zb0009, bts, err = msgp.ReadBytesHeader(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "expires")
 				return
 			}
+			if zb0009 > 128 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
+			if z.expires == nil || uint32(cap(z.expires)) < zb0009 {
+				z.expires = make([]byte, zb0009)
+			} else {
+				z.expires = z.expires[:zb0009]
+			}
+			if uint32(len(bts)) < zb0009 {
+				err = msgp.ErrShortBytes
+				return
+			}
+			copy(z.expires, bts[:zb0009])
+			bts = bts[zb0009:]
 		case "etag":
-			z.etag, bts, err = msgp.ReadBytesBytes(bts, z.etag)
+			var zb0010 uint32
+			zb0010, bts, err = msgp.ReadBytesHeader(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "etag")
 				return
 			}
+			if zb0010 > 256 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
+			if z.etag == nil || uint32(cap(z.etag)) < zb0010 {
+				z.etag = make([]byte, zb0010)
+			} else {
+				z.etag = z.etag[:zb0010]
+			}
+			if uint32(len(bts)) < zb0010 {
+				err = msgp.ErrShortBytes
+				return
+			}
+			copy(z.etag, bts[:zb0010])
+			bts = bts[zb0010:]
 		case "date":
 			z.date, bts, err = msgp.ReadUint64Bytes(bts)
 			if err != nil {
