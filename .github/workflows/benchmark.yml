@@ -59,9 +59,22 @@ jobs:
           path: ./cache
           key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-benchmark
 
+      - name: Checkout benchmark action PR #337
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: benchmark-action/github-action-benchmark
+          ref: a54e7acbfa4fd66735b9fdc9c6f34d54c7170e60 # PR #337
+          path: .github/actions/github-action-benchmark-pr337
+
+      - name: Build benchmark action PR #337
+        working-directory: .github/actions/github-action-benchmark-pr337
+        run: |
+          npm ci
+          npm run build
+
       # This will only run if we have Benchmark Results from main branch
       - name: Compare PR Benchmark Results with main branch
-        uses: benchmark-action/github-action-benchmark@a54e7acbfa4fd66735b9fdc9c6f34d54c7170e60 # PR #337
+        uses: ./.github/actions/github-action-benchmark-pr337
         if: steps.cache.outputs.cache-hit == 'true'
         with:
           tool: 'go'
@@ -78,7 +91,7 @@ jobs:
           go-force-package-suffix: true
 
       - name: Store Benchmark Results for main branch
-        uses: benchmark-action/github-action-benchmark@a54e7acbfa4fd66735b9fdc9c6f34d54c7170e60 # PR #337
+        uses: ./.github/actions/github-action-benchmark-pr337
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'
@@ -93,7 +106,7 @@ jobs:
           go-force-package-suffix: true
 
       - name: Publish Benchmark Results to GitHub Pages
-        uses: benchmark-action/github-action-benchmark@a54e7acbfa4fd66735b9fdc9c6f34d54c7170e60 # PR #337
+        uses: ./.github/actions/github-action-benchmark-pr337
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'
