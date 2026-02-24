@@ -12,7 +12,7 @@ func defaultStackTraceHandler(_ fiber.Ctx, e any) {
 	fmt.Fprintf(os.Stderr, "panic: %v\n\n%s\n", e, debug.Stack())
 }
 
-func defaultErrorCustomizer(_ fiber.Ctx, r any) error {
+func defaultPanicHandler(_ fiber.Ctx, r any) error {
 	if err, ok := r.(error); ok {
 		return err
 	}
@@ -39,7 +39,7 @@ func New(config ...Config) fiber.Handler {
 				}
 
 				// Set error that will call the global error handler
-				err = cfg.ErrorCustomizer(c, r)
+				err = cfg.PanicHandler(c, r)
 			}
 		}()
 

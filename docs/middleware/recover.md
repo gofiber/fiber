@@ -40,7 +40,7 @@ app.Get("/", func(c fiber.Ctx) error {
 | Property          | Type                         | Description                                           | Default                    |
 |:------------------|:-----------------------------|:------------------------------------------------------|:---------------------------|
 | Next              | `func(fiber.Ctx) bool`       | Skip when the function returns `true`.                | `nil`                      |
-| ErrorCustomizer   | `func(fiber.Ctx, any) error` | Customize the error returned from a recovered panic.  | `defaultErrorCustomizer`   |
+| PanicHandler      | `func(fiber.Ctx, any) error` | Customize the error returned from a recovered panic.  | `defaultPanicHandler`      |
 | EnableStackTrace  | `bool`                       | Capture and include a stack trace in error responses. | `false`                    |
 | StackTraceHandler | `func(fiber.Ctx, any)`       | Handle the captured stack trace when enabled.         | `defaultStackTraceHandler` |
 
@@ -49,7 +49,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```go
 var ConfigDefault = Config{
     Next:              nil,
-    ErrorCustomizer:   defaultErrorCustomizer,
+    PanicHandler:   defaultPanicHandler,
     EnableStackTrace:  false,
     StackTraceHandler: defaultStackTraceHandler,
 }

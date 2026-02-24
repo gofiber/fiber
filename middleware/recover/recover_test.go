@@ -1,6 +1,7 @@
 package recover //nolint:predeclared // TODO: Rename to some non-builtin
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -20,12 +21,15 @@ func Test_Recover(t *testing.T) {
 		},
 	})
 
-	app.Use(New(Config{ErrorCustomizer: func(c fiber.Ctx, r any) error {
-		return fmt.Errorf("[RECOVERED]: %w", defaultErrorCustomizer(c, r))
+	app.Use(New(Config{PanicHandler: func(c fiber.Ctx, r any) error {
+		return fmt.Errorf("[RECOVERED]: %w", defaultPanicHandler(c, r))
 	}}))
 
 	app.Get("/panic", func(_ fiber.Ctx) error {
 		panic("Hi, I'm an error!")
+	})
+	app.Get("/panic", func(_ fiber.Ctx) error {
+		panic(errors.New("hi, I'm an error"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
