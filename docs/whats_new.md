@@ -963,11 +963,14 @@ Fiber v3 introduces new generic functions that provide additional utility and fl
 
 ### New Generic Functions
 
+- **StoreInContext**: Stores request-scoped values in both `c.Locals()` and the request `context.Context`, so the same value can be read through middleware `FromContext` helpers and direct locals access.
 - **Convert**: Converts a value with a specified converter function and default value.
 - **Locals**: Retrieves or sets local values within a request context.
 - **Params**: Retrieves route parameters and can handle various types of route parameters.
 - **Query**: Retrieves the value of a query parameter from the request URI and can handle various types of query parameters.
 - **GetReqHeader**: Returns the HTTP request header specified by the field and can handle various types of header values.
+
+`fiber.Config.PassLocalsToContext` is now available to control whether `StoreInContext` also synchronizes values with request `context.Context` for Fiber-backed contexts. The default is `false` for backward compatibility. `ValueFromContext` continues reading Fiber-backed values from `c.Locals()`.
 
 ### Example
 

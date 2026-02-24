@@ -382,6 +382,12 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		return ErrNoHandlers
 	}
 
+	for i, h := range handlers {
+		if h.Handler == nil {
+			return fmt.Errorf("format handler is nil for media type %q at index %d", h.MediaType, i)
+		}
+	}
+
 	r.Vary(HeaderAccept)
 
 	if r.c.DefaultReq.Get(HeaderAccept) == "" {

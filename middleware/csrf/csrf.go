@@ -108,7 +108,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Store the CSRF handler in the context
-		c.Locals(handlerKey, handler)
+		fiber.StoreInContext(c, handlerKey, handler)
 
 		var token string
 
@@ -214,31 +214,33 @@ func New(config ...Config) fiber.Handler {
 		c.Vary(fiber.HeaderCookie)
 
 		// Store the token in the context
-		c.Locals(tokenKey, token)
+		fiber.StoreInContext(c, tokenKey, token)
 
 		// Continue stack
 		return c.Next()
 	}
 }
 
-// TokenFromContext returns the token found in the context
-// returns an empty string if the token does not exist
-func TokenFromContext(c fiber.Ctx) string {
-	token, ok := c.Locals(tokenKey).(string)
-	if !ok {
-		return ""
+// TokenFromContext returns the token found in the context.
+// It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
+// It returns an empty string if the token does not exist.
+func TokenFromContext(ctx any) string {
+	if token, ok := fiber.ValueFromContext[string](ctx, tokenKey); ok {
+		return token
 	}
-	return token
+
+	return ""
 }
 
-// HandlerFromContext returns the Handler found in the context
-// returns nil if the handler does not exist
-func HandlerFromContext(c fiber.Ctx) *Handler {
-	handler, ok := c.Locals(handlerKey).(*Handler)
-	if !ok {
-		return nil
+// HandlerFromContext returns the Handler found in the context.
+// It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
+// It returns nil if the handler does not exist.
+func HandlerFromContext(ctx any) *Handler {
+	if handler, ok := fiber.ValueFromContext[*Handler](ctx, handlerKey); ok {
+		return handler
 	}
-	return handler
+
+	return nil
 }
 
 // getRawFromStorage returns the raw value from the storage for the given token

@@ -12,8 +12,10 @@ The default unauthorized response includes the header `WWW-Authenticate: Basic r
 
 ```go
 func New(config Config) fiber.Handler
-func UsernameFromContext(c fiber.Ctx) string
+func UsernameFromContext(ctx any) string
 ```
+
+`UsernameFromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
 
 ## Examples
 

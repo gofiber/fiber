@@ -101,7 +101,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if cfg.Authorizer(username, password, c) {
-			c.Locals(usernameKey, username)
+			fiber.StoreInContext(c, usernameKey, username)
 			return c.Next()
 		}
 
@@ -120,12 +120,13 @@ func containsInvalidHeaderChars(s string) bool {
 	}) != -1
 }
 
-// UsernameFromContext returns the username found in the context
-// returns an empty string if the username does not exist
-func UsernameFromContext(c fiber.Ctx) string {
-	username, ok := c.Locals(usernameKey).(string)
-	if !ok {
-		return ""
+// UsernameFromContext returns the username found in the context.
+// It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
+// It returns an empty string if the username does not exist.
+func UsernameFromContext(ctx any) string {
+	if username, ok := fiber.ValueFromContext[string](ctx, usernameKey); ok {
+		return username
 	}
-	return username
+
+	return ""
 }
