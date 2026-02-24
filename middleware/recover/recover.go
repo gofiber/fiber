@@ -13,8 +13,7 @@ func defaultStackTraceHandler(_ fiber.Ctx, e any) {
 }
 
 func defaultErrorCustomizer(_ fiber.Ctx, r any) error {
-	err, ok := r.(error)
-	if ok {
+	if err, ok := r.(error); ok {
 		return err
 	}
 	return fmt.Errorf("%v", r)
