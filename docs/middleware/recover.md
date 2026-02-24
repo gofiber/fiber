@@ -49,7 +49,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```go
 var ConfigDefault = Config{
     Next:              nil,
-    PanicHandler:   defaultPanicHandler,
+    PanicHandler:      defaultPanicHandler,
     EnableStackTrace:  false,
     StackTraceHandler: defaultStackTraceHandler,
 }
