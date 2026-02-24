@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync"
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -31,19 +30,6 @@ type domainParams struct {
 type domainCheckResult struct {
 	values  []string
 	matched bool
-}
-
-// domainCheckPool reduces allocations for domain check results in the hot path.
-var domainCheckPool = sync.Pool{
-	New: func() any {
-		return &domainCheckResult{}
-	},
-}
-
-// acquireDomainCheck returns a domainCheckResult from the pool.
-func acquireDomainCheck() *domainCheckResult {
-	//nolint:errcheck,forcetypeassert // pool always returns *domainCheckResult
-	return domainCheckPool.Get().(*domainCheckResult)
 }
 
 // domainMatcher holds the parsed domain pattern for matching against request hostnames.
@@ -167,7 +153,7 @@ var _ Router = (*domainRouter)(nil)
 // Each handler independently checks the cached result, ensuring that Fiber's
 // route-merging behavior (combining handlers from multiple registrations into
 // one route) cannot cause a non-domain handler to be skipped.
-// domainCheckResult objects are pooled via sync.Pool to minimize allocations.
+// domainCheckResult objects are cached per-request in c.Locals() to avoid redundant hostname parsing.
 func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 	if len(handlers) == 0 {
 		return handlers
@@ -190,9 +176,10 @@ func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 			} else {
 				hostname := c.Hostname()
 				matched, values = d.matcher.match(hostname)
-				check := acquireDomainCheck()
-				check.matched = matched
-				check.values = append(check.values[:0], values...)
+				check := &domainCheckResult{
+					matched: matched,
+					values:  append([]string(nil), values...),
+				}
 				c.Locals(cacheKey, check)
 			}
 
