@@ -620,6 +620,33 @@ func Test_Session_Middleware_ClearsContextLocalsOnRelease(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
+func Test_Session_Middleware_ClearsContextOnRelease_PassLocalsToContext(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
+
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		// Verify cleared via all context types
+		require.Nil(t, FromContext(c))
+		require.Nil(t, FromContext(c.Context()))
+		return err
+	})
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		// Session should be available from all context types
+		require.NotNil(t, FromContext(c))
+		require.NotNil(t, FromContext(c.Context()))
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 type failingStorage struct {
 	getErr   error
 	getCalls int

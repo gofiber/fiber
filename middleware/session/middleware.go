@@ -106,7 +106,7 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 
 		m.finalizeSession()
 
-		c.Locals(middlewareContextKey, nil)
+		fiber.StoreInContext(c, middlewareContextKey, nil)
 		releaseMiddleware(m)
 		return stackErr
 	}
@@ -160,7 +160,7 @@ func (m *Middleware) finalizeSession() {
 func acquireMiddleware() *Middleware {
 	m, ok := middlewarePool.Get().(*Middleware)
 	if !ok {
-		panic(ErrTypeAssertionFailed.Error())
+		return &Middleware{}
 	}
 	return m
 }
