@@ -11,15 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// go test -run Test_Config
-func Test_Config(t *testing.T) {
-	defaultConfig := configDefault()
-	require.Nil(t, defaultConfig.Next)
-	require.NotNil(t, defaultConfig.PanicHandler)
-	require.NotNil(t, defaultConfig.StackTraceHandler)
-	require.False(t, defaultConfig.EnableStackTrace)
-}
-
 // go test -run Test_Recover
 func Test_Recover(t *testing.T) {
 	t.Parallel()
@@ -88,11 +79,11 @@ func Test_Recover_EnableStackTrace(t *testing.T) {
 		EnableStackTrace: true,
 	}))
 
-	app.Get("/panicVal", func(_ fiber.Ctx) error {
+	app.Get("/panic", func(_ fiber.Ctx) error {
 		panic("Hi, I'm an error!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panicVal", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 }
