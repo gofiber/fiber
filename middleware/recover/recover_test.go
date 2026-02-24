@@ -16,18 +16,37 @@ func Test_Recover(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		panicVal any
-		errorMsg string
+		name         string
+		panicVal     any
+		panicHandler func(c fiber.Ctx, r any) error
+		errorMsg     string
 	}{
 		{
-			name:     "string panic will be handled",
+			name:         "non-error panic will be handled by default",
+			panicVal:     "Hi, I'm an error!",
+			panicHandler: nil,
+			errorMsg:     "Hi, I'm an error!",
+		},
+		{
+			name:         "error panic will be handled by default",
+			panicVal:     errors.New("hi, I'm an error object"),
+			panicHandler: nil,
+			errorMsg:     "hi, I'm an error object",
+		},
+		{
+			name:     "non-error panic will be handled",
 			panicVal: "Hi, I'm an error!",
+			panicHandler: func(c fiber.Ctx, r any) error {
+				return fmt.Errorf("[RECOVERED]: %w", defaultPanicHandler(c, r))
+			},
 			errorMsg: "[RECOVERED]: Hi, I'm an error!",
 		},
 		{
 			name:     "error panic will be handled",
 			panicVal: errors.New("hi, I'm an error object"),
+			panicHandler: func(c fiber.Ctx, r any) error {
+				return fmt.Errorf("[RECOVERED]: %w", defaultPanicHandler(c, r))
+			},
 			errorMsg: "[RECOVERED]: hi, I'm an error object",
 		},
 	}
@@ -42,9 +61,7 @@ func Test_Recover(t *testing.T) {
 				},
 			})
 
-			app.Use(New(Config{PanicHandler: func(c fiber.Ctx, r any) error {
-				return fmt.Errorf("[RECOVERED]: %w", defaultPanicHandler(c, r))
-			}}))
+			app.Use(New(Config{PanicHandler: tc.panicHandler}))
 
 			app.Get("/panic", func(_ fiber.Ctx) error {
 				panic(tc.panicVal)
