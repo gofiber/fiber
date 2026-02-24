@@ -375,3 +375,66 @@ func Test_Store_GetByID_DestroyUsesContext(t *testing.T) {
 	require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
 	require.ErrorIs(t, storage.lastCtxErr, context.Canceled)
 }
+
+func Test_isValidSessionID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		id    string
+		valid bool
+	}{
+		{name: "empty", id: "", valid: false},
+		{name: "normal alphanumeric", id: "abc123", valid: true},
+		{name: "base64url token", id: "dGVzdC10b2tlbi12YWx1ZQ==", valid: true},
+		{name: "uuid", id: "550e8400-e29b-41d4-a716-446655440000", valid: true},
+		{name: "contains space", id: "abc 123", valid: false},
+		{name: "contains tab", id: "abc\t123", valid: false},
+		{name: "contains newline", id: "abc\n123", valid: false},
+		{name: "contains null byte", id: "abc\x00123", valid: false},
+		{name: "non-ascii", id: "abc\x80xyz", valid: false},
+		{name: "del character", id: "abc\x7fxyz", valid: false},
+		{name: "too long", id: string(make([]byte, maxSessionIDLen+1)), valid: false},
+		{name: "max length", id: string(makeVisibleASCII(maxSessionIDLen)), valid: true},
+		{name: "visible ascii symbols", id: "!@#$%^&*()_+-=[]{}|;':\",./<>?", valid: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.valid, isValidSessionID(tt.id))
+		})
+	}
+}
+
+// makeVisibleASCII returns a byte slice of length n filled with visible ASCII characters.
+func makeVisibleASCII(n int) []byte {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = 'a'
+	}
+	return b
+}
+
+func Test_Store_getSessionID_RejectsInvalidIDs(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore()
+
+	t.Run("control characters rejected", func(t *testing.T) {
+		t.Parallel()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().Header.SetCookie("session_id", "abc\x00def")
+		require.Empty(t, store.getSessionID(ctx))
+	})
+
+	t.Run("valid id accepted", func(t *testing.T) {
+		t.Parallel()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().Header.SetCookie("session_id", "valid-session-id")
+		require.Equal(t, "valid-session-id", store.getSessionID(ctx))
+	})
+}

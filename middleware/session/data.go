@@ -31,12 +31,12 @@ var dataPool = sync.Pool{
 //
 //	d := acquireData()
 func acquireData() *data {
-	obj := dataPool.Get()
-	if d, ok := obj.(*data); ok {
-		return d
+	d, ok := dataPool.Get().(*data)
+	if !ok {
+		d = new(data)
+		d.Data = make(map[any]any)
 	}
-	// Handle unexpected type in the pool
-	panic("unexpected type in data pool")
+	return d
 }
 
 // Reset clears the data map and resets the data object.
