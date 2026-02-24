@@ -14,10 +14,10 @@ func defaultStackTraceHandler(_ fiber.Ctx, e any) {
 
 func defaultErrorCustomizer(_ fiber.Ctx, r any) error {
 	err, ok := r.(error)
-	if !ok {
-		return fmt.Errorf("%v", r)
+	if ok {
+		return err
 	}
-	return err
+	return fmt.Errorf("%v", r)
 }
 
 // New creates a new middleware handler
