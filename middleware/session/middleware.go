@@ -128,13 +128,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	m.Session = session
 	m.ctx = c
 
-<<<<<<< update-session-middleware-to-fail-gracefully
-	c.Locals(middlewareContextKey, m)
-
-	return nil
-=======
 	fiber.StoreInContext(c, middlewareContextKey, m)
->>>>>>> main
 }
 
 // saveSession handles session saving and error management after the response.
