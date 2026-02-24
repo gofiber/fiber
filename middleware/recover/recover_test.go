@@ -14,12 +14,14 @@ func Test_Recover(t *testing.T) {
 	t.Parallel()
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
-			require.Equal(t, "Hi, I'm an error!", err.Error())
-			return c.SendStatus(fiber.StatusTeapot)
+			require.Equal(t, "[RECOVERED]: Hi, I'm an error!", err.Error())
+			return c.Status(fiber.StatusTeapot).SendString("changed")
 		},
 	})
 
-	app.Use(New())
+	app.Use(New(Config{ErrorCustomizer: func(c fiber.Ctx, r any) error {
+		return fiber.ErrInternalServerError
+	}}))
 
 	app.Get("/panic", func(_ fiber.Ctx) error {
 		panic("Hi, I'm an error!")

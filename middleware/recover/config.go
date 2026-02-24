@@ -11,6 +11,11 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
+	// ErrorCustomizer defines a function to create a custom error response based on the recovered result
+	//
+	// Optional. Default: defaultErrorCustomizer
+	ErrorCustomizer func(c fiber.Ctx, r any) error
+
 	// StackTraceHandler defines a function to handle stack trace
 	//
 	// Optional. Default: defaultStackTraceHandler
@@ -27,6 +32,7 @@ var ConfigDefault = Config{
 	Next:              nil,
 	EnableStackTrace:  false,
 	StackTraceHandler: defaultStackTraceHandler,
+	ErrorCustomizer:   defaultErrorCustomizer,
 }
 
 // Helper function to set default values
