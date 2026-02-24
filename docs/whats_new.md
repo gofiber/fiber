@@ -55,6 +55,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Logger](#logger)
   - [Monitor](#monitor)
   - [Proxy](#proxy)
+  - [Recover](#recover)
   - [Session](#session)
 - [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
@@ -1586,6 +1587,10 @@ The proxy middleware has been updated to improve consistency with Go naming conv
 The new `KeepConnectionHeader` option (default `false`) drops the `Connection` header unless explicitly enabled to retain it.
 
 `proxy.Balancer` now accepts an optional variadic configuration: call `proxy.Balancer()` to use defaults or continue passing a `proxy.Config` value as before.
+
+### Recover
+
+The Recover middleware allows customizing the error it returns. Set a `ErrorCustomizer` in it's `Config` to change the default behavior.
 
 ### Session
 
