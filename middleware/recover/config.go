@@ -11,7 +11,7 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// PanicHandler defines a function to customize the error produced from a recovered panic/result.
+	// PanicHandler defines a function to customize the error produced from a recovered panicVal/result.
 	//
 	// Optional. Default: defaultPanicHandler
 	PanicHandler func(c fiber.Ctx, r any) error
