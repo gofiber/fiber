@@ -1590,7 +1590,7 @@ The new `KeepConnectionHeader` option (default `false`) drops the `Connection` h
 
 ### Recover
 
-The Recover middleware allows customizing the error it returns. Set a `ErrorCustomizer` in it's `Config` to change the default behavior.
+The Recover middleware allows customizing the error it returns. Set a `ErrorCustomizer` in its `Config` to change the default behavior.
 
 ### Session
 
