@@ -163,16 +163,17 @@ func Test_Bind_Query_EnableSplittingOnQueryParsers(t *testing.T) {
 	require.Contains(t, q2.Hobby, "basketball")
 	require.Contains(t, q2.Hobby, "football")
 
-	// Case 3: query-specific=false -> falls back to global
+	// Case 3: global=false, query-specific=false -> falls back to global (no split)
 	app3 := New(Config{
-		EnableSplittingOnParsers:      true,
+		EnableSplittingOnParsers:      false,
 		EnableSplittingOnQueryParsers: false,
 	})
 	c3 := app3.AcquireCtx(&fasthttp.RequestCtx{})
 	c3.Request().URI().SetQueryString("hobby=basketball,football")
 	q3 := new(Query)
 	require.NoError(t, c3.Bind().Query(q3))
-	require.Len(t, q3.Hobby, 2)
+	require.Len(t, q3.Hobby, 1)
+	require.Contains(t, q3.Hobby, "basketball,football")
 }
 
 // go test -run Test_Bind_Query_Map -v
