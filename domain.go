@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -32,6 +33,19 @@ type domainCheckResult struct {
 	matched bool
 }
 
+// domainCheckPool reduces allocations for domain check results in the hot path.
+var domainCheckPool = sync.Pool{
+	New: func() any {
+		return &domainCheckResult{}
+	},
+}
+
+// acquireDomainCheck returns a domainCheckResult from the pool.
+func acquireDomainCheck() *domainCheckResult {
+	//nolint:errcheck,forcetypeassert // pool always returns *domainCheckResult
+	return domainCheckPool.Get().(*domainCheckResult)
+}
+
 // domainMatcher holds the parsed domain pattern for matching against request hostnames.
 type domainMatcher struct {
 	parts      []string // domain parts split by "."
@@ -48,7 +62,7 @@ func parseDomainPattern(pattern string) domainMatcher {
 	pattern = utilsstrings.ToLower(pattern)
 	// Trim trailing dot of a fully-qualified domain name (RFC 3986),
 	// consistent with Fiber's own host normalization in Subdomains().
-	pattern = strings.TrimSuffix(pattern, ".")
+	pattern = utils.TrimRight(pattern, '.')
 
 	parts := strings.Split(pattern, ".")
 	m := domainMatcher{
@@ -79,7 +93,7 @@ func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocri
 	hostname = utilsstrings.ToLower(hostname)
 	// Trim trailing dot of a fully-qualified domain name (RFC 3986),
 	// consistent with Fiber's own host normalization in Subdomains().
-	hostname = strings.TrimSuffix(hostname, ".")
+	hostname = utils.TrimRight(hostname, '.')
 
 	parts := strings.Split(hostname, ".")
 	if len(parts) != m.numParts {
@@ -153,6 +167,7 @@ var _ Router = (*domainRouter)(nil)
 // Each handler independently checks the cached result, ensuring that Fiber's
 // route-merging behavior (combining handlers from multiple registrations into
 // one route) cannot cause a non-domain handler to be skipped.
+// domainCheckResult objects are pooled via sync.Pool to minimize allocations.
 func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 	if len(handlers) == 0 {
 		return handlers
@@ -175,7 +190,10 @@ func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 			} else {
 				hostname := c.Hostname()
 				matched, values = d.matcher.match(hostname)
-				c.Locals(cacheKey, &domainCheckResult{matched: matched, values: values})
+				check := acquireDomainCheck()
+				check.matched = matched
+				check.values = append(check.values[:0], values...)
+				c.Locals(cacheKey, check)
 			}
 
 			if !matched {

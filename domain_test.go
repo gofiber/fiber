@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_Domain_Basic(t *testing.T) {
@@ -986,6 +987,347 @@ func Test_domainMatcher_match(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Test_Domain_HandlerTypes verifies that the domain router is compatible with
+// all handler types defined in adapter.go.
+func Test_Domain_HandlerTypes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fiber handler", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test", func(c Ctx) error {
+			return c.SendString("fiber")
+		})
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "fiber", string(body))
+	})
+
+	t.Run("fiber handler no error", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test", func(c Ctx) {
+			c.Set("X-Handler", "no-error")
+		})
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "no-error", resp.Header.Get("X-Handler"))
+	})
+
+	t.Run("express req res error", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test", func(_ Req, res Res) error {
+			return res.SendString("express-err")
+		})
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "express-err", string(body))
+	})
+
+	t.Run("express req res no error", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test", func(_ Req, res Res) {
+			res.Set("X-Express", "ok")
+		})
+	})
+
+	t.Run("express next-err returns-err", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test",
+			func(_ Req, res Res, next func() error) error {
+				res.Set("X-MW", "yes")
+				return next()
+			},
+			func(c Ctx) error {
+				return c.SendString("chained")
+			},
+		)
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "yes", resp.Header.Get("X-MW"))
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "chained", string(body))
+	})
+
+	t.Run("express with next error", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test",
+			func(_ Req, res Res, next func() error) {
+				res.Set("X-MW", "yes")
+				_ = next() //nolint:errcheck // test
+			},
+			func(c Ctx) error {
+				return c.SendString("chained")
+			},
+		)
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "yes", resp.Header.Get("X-MW"))
+	})
+
+	t.Run("express with noarg next error", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test",
+			func(_ Req, res Res, next func()) error {
+				res.Set("X-MW", "yes")
+				next()
+				return nil
+			},
+			func(c Ctx) error {
+				return c.SendString("chained")
+			},
+		)
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "yes", resp.Header.Get("X-MW"))
+	})
+
+	t.Run("express with noarg next", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test",
+			func(_ Req, res Res, next func()) {
+				res.Set("X-MW", "yes")
+				next()
+			},
+			func(c Ctx) error {
+				return c.SendString("chained")
+			},
+		)
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "yes", resp.Header.Get("X-MW"))
+	})
+
+	t.Run("express with error next", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test",
+			func(_ Req, res Res, next func(error)) {
+				res.Set("X-MW", "yes")
+				next(nil)
+			},
+			func(c Ctx) error {
+				return c.SendString("chained")
+			},
+		)
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "yes", resp.Header.Get("X-MW"))
+	})
+
+	t.Run("express with error next error", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test",
+			func(_ Req, res Res, next func(error)) error {
+				res.Set("X-MW", "yes")
+				next(nil)
+				return nil
+			},
+			func(c Ctx) error {
+				return c.SendString("chained")
+			},
+		)
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "yes", resp.Header.Get("X-MW"))
+	})
+
+	t.Run("express errnext-err returns-err", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test",
+			func(_ Req, res Res, next func(error) error) {
+				res.Set("X-MW", "yes")
+				_ = next(nil) //nolint:errcheck // test
+			},
+			func(c Ctx) error {
+				return c.SendString("chained")
+			},
+		)
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "yes", resp.Header.Get("X-MW"))
+	})
+
+	t.Run("express errnext-err returns-err err", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test",
+			func(_ Req, res Res, next func(error) error) error {
+				res.Set("X-MW", "yes")
+				return next(nil)
+			},
+			func(c Ctx) error {
+				return c.SendString("chained")
+			},
+		)
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "yes", resp.Header.Get("X-MW"))
+	})
+
+	t.Run("net/http HandlerFunc", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("net/http func handler", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("fasthttp RequestHandler", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test", fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
+			ctx.SetStatusCode(fasthttp.StatusOK)
+			ctx.SetBodyString("fasthttp")
+		}))
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("fasthttp handler with error", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test", func(ctx *fasthttp.RequestCtx) error {
+			ctx.SetStatusCode(fasthttp.StatusOK)
+			ctx.SetBodyString("fasthttp-err")
+			return nil
+		})
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	// Verify non-matching domain doesn't execute any handler type
+	t.Run("non-matching domain skips all handler types", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/test",
+			func(c Ctx) error {
+				c.Set("X-Handler", "ran")
+				return c.SendString("should-not-run")
+			},
+		)
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "wrong.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.Empty(t, resp.Header.Get("X-Handler"))
+	})
+}
+
+// Test_Domain_UseHandlerTypes verifies that Use() is compatible with all handler types.
+func Test_Domain_UseHandlerTypes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fiber handler middleware", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Use(func(c Ctx) error {
+			c.Set("X-MW", "fiber")
+			return c.Next()
+		})
+		domain.Get("/test", func(c Ctx) error {
+			return c.SendString("ok")
+		})
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "fiber", resp.Header.Get("X-MW"))
+	})
+
+	t.Run("express middleware", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Use(func(_ Req, res Res, next func() error) error {
+			res.Set("X-MW", "express")
+			return next()
+		})
+		domain.Get("/test", func(c Ctx) error {
+			return c.SendString("ok")
+		})
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "express", resp.Header.Get("X-MW"))
+	})
 }
 
 func Benchmark_Domain_Match(b *testing.B) {
