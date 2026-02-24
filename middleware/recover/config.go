@@ -11,7 +11,7 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// ErrorCustomizer defines a function to create a custom error response based on the recovered result
+	// ErrorCustomizer defines a function to customize the error produced from a recovered panic/result
 	//
 	// Optional. Default: defaultErrorCustomizer
 	ErrorCustomizer func(c fiber.Ctx, r any) error

@@ -15,7 +15,7 @@ func Test_Recover(t *testing.T) {
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			require.Equal(t, "[RECOVERED]: Hi, I'm an error!", err.Error())
-			return c.Status(fiber.StatusTeapot).SendString("changed")
+			return c.SendStatus(fiber.StatusTeapot)
 		},
 	})
 
