@@ -59,7 +59,7 @@ app.Use(recover.New(recover.Config{PanicHandler: func(c fiber.Ctx, r any) error 
     return fiber.ErrInternalServerError
 }}))
 
-// In more elaborate scenarios could also create a custom error which can be processed differently in the fiber.ErrorHandler.
+// In more elaborate scenarios you can also create a custom error which can be processed differently in the fiber.ErrorHandler.
 // See the tests for an example of such an ErrorHandler.
 app.Use(recover.New(recover.Config{PanicHandler: func(c fiber.Ctx, r any) error {
     return &MyCustomRecoveredFromPanicError { // or just: fmt.Errorf("[RECOVERED]: %w", recover.DefaultPanicHandler(c, r))
