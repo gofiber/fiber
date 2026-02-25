@@ -37,7 +37,7 @@ func Test_Recover(t *testing.T) {
 			name:     "non-error panic will be handled",
 			panicVal: "Hi, I'm an error!",
 			panicHandler: func(c fiber.Ctx, r any) error {
-				return fmt.Errorf("[RECOVERED]: %w", defaultPanicHandler(c, r))
+				return fmt.Errorf("[RECOVERED]: %w", DefaultPanicHandler(c, r))
 			},
 			errorMsg: "[RECOVERED]: Hi, I'm an error!",
 		},
@@ -45,7 +45,7 @@ func Test_Recover(t *testing.T) {
 			name:     "error panic will be handled",
 			panicVal: errors.New("hi, I'm an error object"),
 			panicHandler: func(c fiber.Ctx, r any) error {
-				return fmt.Errorf("[RECOVERED]: %w", defaultPanicHandler(c, r))
+				return fmt.Errorf("[RECOVERED]: %w", DefaultPanicHandler(c, r))
 			},
 			errorMsg: "[RECOVERED]: hi, I'm an error object",
 		},

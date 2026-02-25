@@ -12,7 +12,8 @@ func defaultStackTraceHandler(_ fiber.Ctx, e any) {
 	fmt.Fprintf(os.Stderr, "panic: %v\n\n%s\n", e, debug.Stack())
 }
 
-func defaultPanicHandler(_ fiber.Ctx, r any) error {
+// DefaultPanicHandler returns r directly if it's an error, and creates a new one with the %v verb otherwise.
+func DefaultPanicHandler(_ fiber.Ctx, r any) error {
 	if err, ok := r.(error); ok {
 		return err
 	}

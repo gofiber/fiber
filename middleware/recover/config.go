@@ -13,7 +13,7 @@ type Config struct {
 
 	// PanicHandler defines a function to customize the error produced from a recovered panic/result.
 	//
-	// Optional. Default: defaultPanicHandler
+	// Optional. Default: DefaultPanicHandler
 	PanicHandler func(c fiber.Ctx, r any) error
 
 	// StackTraceHandler defines a function to handle stack trace
@@ -32,7 +32,7 @@ var ConfigDefault = Config{
 	Next:              nil,
 	EnableStackTrace:  false,
 	StackTraceHandler: defaultStackTraceHandler,
-	PanicHandler:      defaultPanicHandler,
+	PanicHandler:      DefaultPanicHandler,
 }
 
 // Helper function to set default values
@@ -49,7 +49,7 @@ func configDefault(config ...Config) Config {
 		cfg.StackTraceHandler = defaultStackTraceHandler
 	}
 	if cfg.PanicHandler == nil {
-		cfg.PanicHandler = defaultPanicHandler
+		cfg.PanicHandler = DefaultPanicHandler
 	}
 
 	return cfg

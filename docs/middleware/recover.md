@@ -40,7 +40,7 @@ app.Get("/", func(c fiber.Ctx) error {
 | Property          | Type                         | Description                                           | Default                    |
 |:------------------|:-----------------------------|:------------------------------------------------------|:---------------------------|
 | Next              | `func(fiber.Ctx) bool`       | Skip when the function returns `true`.                | `nil`                      |
-| PanicHandler      | `func(fiber.Ctx, any) error` | Customize the error returned from a recovered panic.  | `defaultPanicHandler`      |
+| PanicHandler      | `func(fiber.Ctx, any) error` | Customize the error returned from a recovered panic.  | `DefaultPanicHandler`      |
 | EnableStackTrace  | `bool`                       | Capture and include a stack trace in error responses. | `false`                    |
 | StackTraceHandler | `func(fiber.Ctx, any)`       | Handle the captured stack trace when enabled.         | `defaultStackTraceHandler` |
 
@@ -49,8 +49,21 @@ app.Get("/", func(c fiber.Ctx) error {
 ```go
 var ConfigDefault = Config{
     Next:              nil,
-    PanicHandler:      defaultPanicHandler,
+    PanicHandler:      DefaultPanicHandler,
     EnableStackTrace:  false,
     StackTraceHandler: defaultStackTraceHandler,
 }
+
+// Set up a PanicHandler to hide internals.
+app.Use(recover.New(recover.Config{PanicHandler: func(c fiber.Ctx, r any) error {
+    return fiber.ErrInternalServerError
+}}))
+
+// In more elaborate scenarios could also create a custom error which can be processed differently in the fiber.ErrorHandler.
+// See the tests for an example of such an ErrorHandler.
+app.Use(recover.New(recover.Config{PanicHandler: func(c fiber.Ctx, r any) error {
+    return &MyCustomRecoveredFromPanicError { // or just: fmt.Errorf("[RECOVERED]: %w", recover.DefaultPanicHandler(c, r))
+        Inner: recover.DefaultPanicHandler(c, r),
+    }
+}}))
 ```
