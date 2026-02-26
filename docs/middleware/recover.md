@@ -55,14 +55,14 @@ var ConfigDefault = recoverer.Config{
 }
 
 // Set up a PanicHandler to hide internals.
-app.Use(recoverer.New(recover.Config{PanicHandler: func(c fiber.Ctx, r any) error {
+app.Use(recoverer.New(recoverer.Config{PanicHandler: func(c fiber.Ctx, r any) error {
     return fiber.ErrInternalServerError
 }}))
 
 // In more elaborate scenarios you can also create a custom error which can be processed differently in the fiber.ErrorHandler.
 // See the tests for an example of such an ErrorHandler.
 // You could also just wrap the default handler's error, e.g. fmt.Errorf("[RECOVERED]: %w", recoverer.DefaultPanicHandler(c, r))
-app.Use(recoverer.New(recover.Config{PanicHandler: func(c fiber.Ctx, r any) error {
+app.Use(recoverer.New(recoverer.Config{PanicHandler: func(c fiber.Ctx, r any) error {
     return &MyCustomRecoveredFromPanicError {
         Inner: recoverer.DefaultPanicHandler(c, r),
     }
