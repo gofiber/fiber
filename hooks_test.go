@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasthttp/prefork"
 
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -519,7 +520,8 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 }
 
 func Test_Hook_OnListenPrefork(t *testing.T) {
-	t.Parallel()
+	usePreforkDummyCommand(t, "go")
+
 	app := New()
 
 	buf := bytebufferpool.Get()
@@ -532,21 +534,18 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 		return nil
 	})
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	// In test mode, dummyCmd children exit immediately, triggering ErrOverRecovery
+	// The OnListen hook should still be called in the master process
+	err := app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, PreforkRecoverThreshold: 1})
+	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 	require.Equal(t, "ready", buf.String())
 }
 
 func Test_Hook_OnHook(t *testing.T) {
 	app := New()
 
-	// Reset test var
-	testPreforkMaster = true
-	testOnPrefork = true
+	usePreforkDummyCommand(t, "go")
+	usePreforkHookPIDOverride(t, 1)
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
@@ -558,7 +557,12 @@ func Test_Hook_OnHook(t *testing.T) {
 		return nil
 	})
 
-	require.NoError(t, app.prefork(":0", nil, &ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	err := app.prefork(":0", nil, &ListenConfig{
+		DisableStartupMessage:   true,
+		EnablePrefork:           true,
+		PreforkRecoverThreshold: 1,
+	})
+	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 }
 
 func Test_Hook_OnMount(t *testing.T) {

@@ -2,191 +2,142 @@ package fiber
 
 import (
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
-	"os"
-	"os/exec"
 	"runtime"
-	"sync/atomic"
 	"time"
 
-	"github.com/valyala/fasthttp/reuseport"
+	"github.com/valyala/fasthttp/prefork"
 
 	"github.com/gofiber/fiber/v3/log"
 )
 
 const (
-	envPreforkChildKey = "FIBER_PREFORK_CHILD"
-	envPreforkChildVal = "1"
-	sleepDuration      = 100 * time.Millisecond
-	windowsOS          = "windows"
+	sleepDuration = 100 * time.Millisecond
 )
 
-var (
-	testPreforkMaster = false
-	testOnPrefork     = false
-)
-
-// IsChild determines if the current process is a child of Prefork
+// IsChild determines if the current process is a child of Prefork.
 func IsChild() bool {
-	return os.Getenv(envPreforkChildKey) == envPreforkChildVal
+	return prefork.IsChild()
 }
 
-// prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
+func (app *App) executeOnForkHooks(pid int) {
+	if app.hooks == nil {
+		return
+	}
+
+	hookPID := pid
+	if preforkHookPIDOverride != nil {
+		hookPID = preforkHookPIDOverride(pid)
+	}
+	app.hooks.executeOnForkHooks(hookPID)
+}
+
+func (app *App) setupPreforkChildListener(ln net.Listener, tlsConfig *tls.Config, cfg *ListenConfig) net.Listener {
+	if tlsConfig != nil {
+		ln = tls.NewListener(ln, tlsConfig)
+	}
+	if !cfg.DisableStartupMessage {
+		time.Sleep(sleepDuration)
+	}
+	app.startupProcess()
+	if cfg.ListenerAddrFunc != nil {
+		cfg.ListenerAddrFunc(ln.Addr())
+	}
+	return ln
+}
+
+func (app *App) onPreforkMasterReady(addr string, isTLS bool, cfg *ListenConfig) func(childPIDs []int) error {
+	return func(childPIDs []int) error {
+		listenData := app.prepareListenData(addr, isTLS, cfg, childPIDs)
+		app.runOnListenHooks(listenData)
+		app.printMessages(cfg, listenData)
+		return nil
+	}
+}
+
+func (app *App) newPrefork(cfg *ListenConfig, onMasterReady func(childPIDs []int) error) *prefork.Prefork {
+	recoverThreshold := cfg.PreforkRecoverThreshold
+	if recoverThreshold == 0 {
+		recoverThreshold = runtime.GOMAXPROCS(0) / 2
+	}
+
+	p := &prefork.Prefork{
+		Network:          cfg.ListenerNetwork,
+		Reuseport:        true,
+		RecoverThreshold: recoverThreshold,
+		Logger:           preforkLogger{},
+		WatchMaster:      true,
+		OnMasterReady:    onMasterReady,
+	}
+
+	if preforkCommandProducer != nil {
+		p.CommandProducer = preforkCommandProducer
+	}
+
+	p.OnChildSpawn = func(pid int) error {
+		app.executeOnForkHooks(pid)
+		return nil
+	}
+	p.OnChildRecover = func(pid int) error {
+		log.Warnf("prefork: child process crashed and has been recovered with new PID %d", pid)
+		app.executeOnForkHooks(pid)
+		return nil
+	}
+
+	return p
+}
+
+// prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature.
 func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) error {
 	if cfg == nil {
 		cfg = &ListenConfig{}
 	}
-	var ln net.Listener
-	var err error
 
-	// 👶 child process 👶
-	if IsChild() {
-		// use 1 cpu core per child process
-		runtime.GOMAXPROCS(1)
-		// Linux will use SO_REUSEPORT and Windows falls back to SO_REUSEADDR
-		// Only tcp4 or tcp6 is supported when preforking, both are not supported
-		if ln, err = reuseport.Listen(cfg.ListenerNetwork, addr); err != nil {
-			if !cfg.DisableStartupMessage {
-				time.Sleep(sleepDuration) // avoid colliding with startup message
-			}
-			return fmt.Errorf("prefork: %w", err)
+	p := app.newPrefork(cfg, app.onPreforkMasterReady(addr, tlsConfig != nil, cfg))
+	p.ServeFunc = func(ln net.Listener) error {
+		if prefork.IsChild() {
+			ln = app.setupPreforkChildListener(ln, tlsConfig, cfg)
 		}
-		// wrap a tls config around the listener if provided
-		if tlsConfig != nil {
-			ln = tls.NewListener(ln, tlsConfig)
-		}
-
-		// kill current child proc when master exits
-		go watchMaster()
-
-		// prepare the server for the start
-		app.startupProcess()
-
-		if cfg.ListenerAddrFunc != nil {
-			cfg.ListenerAddrFunc(ln.Addr())
-		}
-
-		// listen for incoming connections
 		return app.server.Serve(ln)
 	}
 
-	// 👮 master process 👮
-	type child struct {
-		err error
-		pid int
+	if err := p.ListenAndServe(addr); err != nil {
+		return fmt.Errorf("prefork listen and serve failed: %w", err)
 	}
-	// create variables
-	maxProcs := runtime.GOMAXPROCS(0)
-	children := make(map[int]*exec.Cmd)
-	channel := make(chan child, maxProcs)
-
-	// kill child procs when master exits
-	defer func() {
-		for _, proc := range children {
-			if err = proc.Process.Kill(); err != nil {
-				if !errors.Is(err, os.ErrProcessDone) {
-					log.Errorf("prefork: failed to kill child: %v", err)
-				}
-			}
-		}
-	}()
-
-	// collect child pids
-	var childPIDs []int
-
-	// launch child procs
-	for range maxProcs {
-		cmd := exec.Command(os.Args[0], os.Args[1:]...) //nolint:gosec // It's fine to launch the same process again
-		if testPreforkMaster {
-			// When test prefork master,
-			// just start the child process with a dummy cmd,
-			// which will exit soon
-			cmd = dummyCmd()
-		}
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		// add fiber prefork child flag into child proc env
-		cmd.Env = append(os.Environ(),
-			fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
-		)
-
-		if err = cmd.Start(); err != nil {
-			return fmt.Errorf("failed to start a child prefork process, error: %w", err)
-		}
-
-		// store child process
-		pid := cmd.Process.Pid
-		children[pid] = cmd
-		childPIDs = append(childPIDs, pid)
-
-		// execute fork hook
-		if app.hooks != nil {
-			if testOnPrefork {
-				app.hooks.executeOnForkHooks(dummyPid)
-			} else {
-				app.hooks.executeOnForkHooks(pid)
-			}
-		}
-
-		// notify master if child crashes
-		go func() {
-			channel <- child{pid: pid, err: cmd.Wait()}
-		}()
-	}
-
-	// Run onListen hooks
-	// Hooks have to be run here as different as non-prefork mode due to they should run as child or master
-	listenData := app.prepareListenData(addr, tlsConfig != nil, cfg, childPIDs)
-
-	app.runOnListenHooks(listenData)
-
-	app.startupMessage(listenData, cfg)
-
-	if cfg.EnablePrintRoutes {
-		app.printRoutesMessage()
-	}
-
-	// return error if child crashes
-	return (<-channel).err
+	return nil
 }
 
-// watchMaster watches child procs
-func watchMaster() {
-	if runtime.GOOS == windowsOS {
-		// finds parent process,
-		// and waits for it to exit
-		p, err := os.FindProcess(os.Getppid())
-		if err == nil {
-			_, _ = p.Wait() //nolint:errcheck // It is fine to ignore the error here
-		}
-		os.Exit(1) //nolint:revive // Calling os.Exit is fine here in the prefork
+// preforkListener manages child processes for prefork mode with a custom listener.
+func (app *App) preforkListener(ln net.Listener, cfg *ListenConfig) error {
+	if cfg == nil {
+		cfg = &ListenConfig{}
 	}
-	// if it is equal to 1 (init process ID),
-	// it indicates that the master process has exited
-	const watchInterval = 500 * time.Millisecond
-	for range time.NewTicker(watchInterval).C {
-		if os.Getppid() == 1 {
-			os.Exit(1) //nolint:revive // Calling os.Exit is fine here in the prefork
-		}
-	}
-}
 
-var (
-	dummyPid      = 1
-	dummyChildCmd atomic.Value
-)
+	addr := ln.Addr()
+	tlsConfig := getTLSConfig(ln)
+	p := app.newPrefork(cfg, app.onPreforkMasterReady(addr.String(), tlsConfig != nil, cfg))
+	p.ServeFunc = func(_ net.Listener) error {
+		if !prefork.IsChild() {
+			return nil
+		}
 
-// dummyCmd is for internal prefork testing
-func dummyCmd() *exec.Cmd {
-	command := "go"
-	if storeCommand := dummyChildCmd.Load(); storeCommand != nil && storeCommand != "" {
-		command = storeCommand.(string) //nolint:forcetypeassert,errcheck // We always store a string in here
+		childLn, err := cfg.OnPreforkServe(addr)
+		if err != nil {
+			return fmt.Errorf("on prefork serve callback failed: %w", err)
+		}
+		childLn = app.setupPreforkChildListener(childLn, tlsConfig, cfg)
+		return app.server.Serve(childLn)
 	}
-	if runtime.GOOS == windowsOS {
-		return exec.Command("cmd", "/C", command, "version")
+
+	if !prefork.IsChild() {
+		if err := ln.Close(); err != nil {
+			log.Warnf("prefork: failed to close original listener: %v", err)
+		}
 	}
-	return exec.Command(command, "version")
+
+	if err := p.ListenAndServe(addr.String()); err != nil {
+		return fmt.Errorf("prefork listener serve failed: %w", err)
+	}
+	return nil
 }

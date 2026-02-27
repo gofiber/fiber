@@ -47,6 +47,35 @@ type ListenConfig struct {
 	// Default: nil
 	GracefulContext context.Context `json:"graceful_context"` //nolint:containedctx // It's needed to set context inside Listen.
 
+	// BeforeServeFunc allows customizing and accessing fiber app before serving the app.
+	//
+	// Default: nil
+	BeforeServeFunc func(app *App) error `json:"before_serve_func"`
+
+	// OnPreforkServe is called in child processes when using Listener() with prefork.
+	// This callback allows the user to create a new listener in the child process.
+	// The callback receives the original listener's address and should return a new listener.
+	// This is required for prefork with Listener() because each child needs its own reuseport listener.
+	//
+	// Example:
+	//   OnPreforkServe: func(addr net.Addr) (net.Listener, error) {
+	//       return reuseport.Listen("tcp4", addr.String())
+	//   }
+	//
+	// Default: nil (prefork not supported for Listener() without this callback)
+	OnPreforkServe func(addr net.Addr) (net.Listener, error) `json:"-"`
+
+	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
+	// Enables integration with Let's Encrypt or other ACME-compatible providers.
+	//
+	// Default: nil
+	AutoCertManager *autocert.Manager `json:"auto_cert_manager"`
+
+	// ListenerFunc allows accessing and customizing net.Listener.
+	//
+	// Default: nil
+	ListenerAddrFunc func(addr net.Addr) `json:"listener_addr_func"`
+
 	// TLSConfigFunc allows customizing tls.Config as you want.
 	//
 	// Default: nil
@@ -58,33 +87,17 @@ type ListenConfig struct {
 	// Default: nil
 	TLSConfig *tls.Config `json:"tls_config"`
 
-	// ListenerFunc allows accessing and customizing net.Listener.
+	// CertFile is a path of certificate file.
+	// If you want to use TLS, you have to enter this field.
 	//
-	// Default: nil
-	ListenerAddrFunc func(addr net.Addr) `json:"listener_addr_func"`
-
-	// BeforeServeFunc allows customizing and accessing fiber app before serving the app.
-	//
-	// Default: nil
-	BeforeServeFunc func(app *App) error `json:"before_serve_func"`
-
-	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
-	// Enables integration with Let's Encrypt or other ACME-compatible providers.
-	//
-	// Default: nil
-	AutoCertManager *autocert.Manager `json:"auto_cert_manager"`
+	// Default : ""
+	CertFile string `json:"cert_file"`
 
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), "unix" (Unix Domain Sockets)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 	//
 	// Default: NetworkTCP4
 	ListenerNetwork string `json:"listener_network"`
-
-	// CertFile is a path of certificate file.
-	// If you want to use TLS, you have to enter this field.
-	//
-	// Default : ""
-	CertFile string `json:"cert_file"`
 
 	// KeyFile is a path of certificate's private key.
 	// If you want to use TLS, you have to enter this field.
@@ -104,6 +117,13 @@ type ListenConfig struct {
 	//
 	// Default: 10 * time.Second
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
+
+	// PreforkRecoverThreshold defines the maximum number of times a child process
+	// can be restarted after crashing before the master process exits with an error.
+	// This only applies when EnablePrefork is true.
+	//
+	// Default: runtime.GOMAXPROCS(0) / 2
+	PreforkRecoverThreshold int `json:"prefork_recover_threshold"`
 
 	// FileMode to set for Unix Domain Socket (ListenerNetwork must be "unix")
 	//
@@ -266,8 +286,29 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 // Listener serves HTTP requests from the given listener.
 // You should enter custom ListenConfig to customize startup. (prefork, startup message, graceful shutdown...)
+//
+// To use prefork with a custom listener, you must provide OnPreforkServe callback in ListenConfig.
+// This callback allows each child process to create its own reuseport listener on the same address.
+//
+// Example with prefork:
+//
+//	ln, _ := reuseport.Listen("tcp4", ":8080")
+//	app.Listener(ln, fiber.ListenConfig{
+//	    EnablePrefork: true,
+//	    OnPreforkServe: func(addr net.Addr) (net.Listener, error) {
+//	        return reuseport.Listen("tcp4", addr.String())
+//	    },
+//	})
 func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	cfg := listenConfigDefault(config...)
+
+	// Check if prefork is enabled and supported.
+	if cfg.EnablePrefork && cfg.OnPreforkServe != nil {
+		return app.preforkListener(ln, &cfg)
+	}
+	if cfg.EnablePrefork {
+		log.Warn("Prefork with Listener() requires OnPreforkServe callback. Falling back to single process mode.")
+	}
 
 	// Graceful shutdown
 	if cfg.GracefulContext != nil {
@@ -293,11 +334,6 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 		if err := cfg.BeforeServeFunc(app); err != nil {
 			return err
 		}
-	}
-
-	// Prefork is not supported for custom listeners
-	if cfg.EnablePrefork {
-		log.Warn("Prefork isn't supported for custom listeners.")
 	}
 
 	return app.server.Serve(ln)
