@@ -1,7 +1,11 @@
 package requestid
 
 import (
+	"context"
+	"sync"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -14,10 +18,24 @@ const (
 	requestIDKey contextKey = iota
 )
 
+// registerExtractor ensures the log context extractor for request IDs is
+// registered exactly once, regardless of how many times New() is called.
+var registerExtractor sync.Once
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
+
+	// Register a log context extractor so that log.WithContext(c) automatically
+	// includes the request ID when the requestid middleware is in use.
+	// An empty request ID (no middleware or middleware skipped) is omitted.
+	registerExtractor.Do(func() {
+		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
+			rid := FromContext(ctx)
+			return "request-id", rid, rid != ""
+		})
+	})
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
