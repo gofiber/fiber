@@ -26,8 +26,9 @@ jobs:
         with:
           github-token: ${{ secrets.ISSUE_PR_TOKEN }}
           script: |
-            const sourceTitle = core.getInput('source_milestone', { required: true }).trim();
-            const targetTitle = core.getInput('target_milestone', { required: true }).trim();
+            const dispatchInputs = context.payload.inputs ?? {};
+            const sourceTitle = (dispatchInputs.source_milestone ?? '').trim();
+            const targetTitle = (dispatchInputs.target_milestone ?? '').trim();
 
             if (sourceTitle.length === 0 || targetTitle.length === 0) {
               throw new Error('Both source_milestone and target_milestone must be non-empty.');
