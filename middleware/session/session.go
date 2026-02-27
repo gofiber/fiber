@@ -16,13 +16,14 @@ import (
 
 // Session represents a user session.
 type Session struct {
-	ctx         fiber.Ctx     // fiber context
-	config      *Store        // store configuration
-	data        *data         // key value data
-	id          string        // session id
-	idleTimeout time.Duration // idleTimeout of this session
-	mu          sync.RWMutex  // Mutex to protect non-data fields
-	fresh       bool          // if new session
+	ctx         fiber.Ctx       // fiber context
+	gctx        context.Context //nolint:containedctx // Stored to honor GetByID context during Destroy.
+	config      *Store          // store configuration
+	data        *data           // key value data
+	id          string          // session id
+	idleTimeout time.Duration   // idleTimeout of this session
+	mu          sync.RWMutex    // Mutex to protect non-data fields
+	fresh       bool            // if new session
 }
 
 type absExpirationKeyType int
@@ -54,7 +55,10 @@ var sessionPool = sync.Pool{
 //
 //	s := acquireSession()
 func acquireSession() *Session {
-	s := sessionPool.Get().(*Session) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	s, ok := sessionPool.Get().(*Session)
+	if !ok {
+		s = &Session{}
+	}
 	if s.data == nil {
 		s.data = acquireData()
 	}
@@ -91,6 +95,7 @@ func releaseSession(s *Session) {
 	s.id = ""
 	s.idleTimeout = 0
 	s.ctx = nil
+	s.gctx = nil
 	s.config = nil
 	if s.data != nil {
 		s.data.Reset()
@@ -197,7 +202,9 @@ func (s *Session) Destroy() error {
 
 	// Use external Storage if exist
 	var ctx context.Context = s.ctx
-	if ctx == nil {
+	if s.gctx != nil {
+		ctx = s.gctx
+	} else if ctx == nil {
 		ctx = context.Background()
 	}
 	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
