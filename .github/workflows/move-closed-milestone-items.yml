@@ -1,0 +1,110 @@
+name: Move closed milestone items
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_milestone:
+        description: Milestone that currently owns the closed items
+        required: true
+        type: string
+      target_milestone:
+        description: Milestone that should receive the closed items
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  move-closed-items:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Move closed items to target milestone
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          github-token: ${{ secrets.ISSUE_PR_TOKEN }}
+          script: |
+            const sourceTitle = core.getInput('source_milestone', { required: true }).trim();
+            const targetTitle = core.getInput('target_milestone', { required: true }).trim();
+
+            if (sourceTitle.length === 0 || targetTitle.length === 0) {
+              throw new Error('Both source_milestone and target_milestone must be non-empty.');
+            }
+
+            if (sourceTitle === targetTitle) {
+              throw new Error('source_milestone and target_milestone must be different.');
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            async function listMilestones() {
+              return github.paginate(github.rest.issues.listMilestones, {
+                owner,
+                repo,
+                state: 'all',
+                per_page: 100,
+              });
+            }
+
+            function findMilestoneByTitle(milestones, title) {
+              return milestones.find((milestone) => milestone.title === title);
+            }
+
+            let milestones = await listMilestones();
+
+            const sourceMilestone = findMilestoneByTitle(milestones, sourceTitle);
+            if (!sourceMilestone) {
+              throw new Error(`Source milestone "${sourceTitle}" was not found.`);
+            }
+
+            let targetMilestone = findMilestoneByTitle(milestones, targetTitle);
+            if (!targetMilestone) {
+              const createdMilestone = await github.rest.issues.createMilestone({
+                owner,
+                repo,
+                title: targetTitle,
+              });
+              targetMilestone = createdMilestone.data;
+              core.info(`Created target milestone "${targetTitle}" (#${targetMilestone.number}).`);
+            } else if (targetMilestone.state !== 'open') {
+              const reopenedMilestone = await github.rest.issues.updateMilestone({
+                owner,
+                repo,
+                milestone_number: targetMilestone.number,
+                state: 'open',
+              });
+              targetMilestone = reopenedMilestone.data;
+              core.info(`Reopened target milestone "${targetTitle}" (#${targetMilestone.number}).`);
+            }
+
+            const closedItems = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'closed',
+              milestone: String(sourceMilestone.number),
+              per_page: 100,
+            });
+
+            if (closedItems.length === 0) {
+              core.notice(`No closed items were found in milestone "${sourceTitle}".`);
+              return;
+            }
+
+            for (const item of closedItems) {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: item.number,
+                milestone: targetMilestone.number,
+              });
+
+              const itemType = item.pull_request ? 'pull request' : 'issue';
+              core.info(`Moved ${itemType} #${item.number} to milestone "${targetTitle}".`);
+            }
+
+            core.notice(
+              `Moved ${closedItems.length} closed item(s) from "${sourceTitle}" to "${targetTitle}".`,
+            );
