@@ -478,7 +478,8 @@ Fiber supports several formats for passing array values via query parameters. Th
 | Repeated key | `?colors=red&colors=blue` | No |
 | Bracket notation | `?colors[]=red&colors[]=blue` | No |
 | Comma-separated | `?colors=red,blue` | **Yes** |
-| Indexed bracket notation | `?colors[0]=red&colors[1]=blue` | No |
+| Indexed bracket notation | `?posts[0][title]=Hello&posts[1][title]=World` | No |
+| Nested bracket notation | `?preferences[tags]=golang,api` | No (comma splitting: **Yes**) |
 
 ##### Repeated Key
 
@@ -610,12 +611,16 @@ type Profile struct {
     Prefs *Preferences `query:"preferences"`
 }
 // With EnableSplittingOnParsers: true
-// Result: Prefs.Tags = ["golang", "api"]
+// Result: *Prefs.Tags = ["golang", "api"]
 ```
 
 ```bash title="curl"
 curl "http://localhost:3000/api?preferences[tags]=golang,api"
 ```
+
+:::note
+Pointer fields (`*[]string`, `*Preferences`) let you distinguish between a missing parameter (`nil`) and an empty one. When the parameter is present, Fiber allocates the pointer automatically.
+:::
 
 ### RespHeader
 
