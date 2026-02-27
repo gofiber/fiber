@@ -469,6 +469,159 @@ curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 For more parser settings, please refer to [Config](fiber.md#enablesplittingonparsers)
 :::
 
+#### Array Query Parameters
+
+Fiber supports several formats for passing array values via query parameters. The following table gives an overview:
+
+| Format | Example | Requires `EnableSplittingOnParsers` |
+| --- | --- | --- |
+| Repeated key | `?colors=red&colors=blue` | No |
+| Bracket notation | `?colors[]=red&colors[]=blue` | No |
+| Comma-separated | `?colors=red,blue` | **Yes** |
+| Indexed bracket notation | `?posts[0][title]=Hello&posts[1][title]=World` | No |
+| Nested bracket notation | `?preferences[tags]=golang,api` | No (comma splitting: **Yes**) |
+
+##### Repeated Key
+
+The most common approach. Repeat the same query key for each value:
+
+```text
+GET /api?colors=red&colors=blue&colors=green
+```
+
+```go title="Struct"
+type Filter struct {
+    Colors []string `query:"colors"`
+}
+// Result: Colors = ["red", "blue", "green"]
+```
+
+```bash title="curl"
+curl "http://localhost:3000/api?colors=red&colors=blue&colors=green"
+```
+
+##### Bracket Notation
+
+Append `[]` to the key name. This is common in PHP-style and JavaScript frameworks:
+
+```text
+GET /api?colors[]=red&colors[]=blue&colors[]=green
+```
+
+```go title="Struct"
+type Filter struct {
+    Colors []string `query:"colors"`
+}
+// Result: Colors = ["red", "blue", "green"]
+```
+
+```bash title="curl"
+curl "http://localhost:3000/api?colors[]=red&colors[]=blue&colors[]=green"
+```
+
+:::note
+The struct field tag stays `query:"colors"` (without brackets). Fiber strips the `[]` automatically.
+:::
+
+##### Comma-Separated Values
+
+Pass multiple values in a single parameter, separated by commas. This format requires [`EnableSplittingOnParsers`](fiber.md#enablesplittingonparsers) to be set to `true`.
+
+```text
+GET /api?colors=red,blue,green
+```
+
+```go title="Struct"
+type Filter struct {
+    Colors []string `query:"colors"`
+}
+```
+
+```go title="App Setup"
+// EnableSplittingOnParsers is required for comma splitting
+app := fiber.New(fiber.Config{
+    EnableSplittingOnParsers: true,
+})
+// Result: Colors = ["red", "blue", "green"]
+```
+
+Without `EnableSplittingOnParsers`, the entire string `"red,blue,green"` is treated as a **single** element.
+
+```go title="Default behavior (EnableSplittingOnParsers: false)"
+// GET /api?colors=red,blue,green
+// Result: Colors = ["red,blue,green"]  ← single element
+```
+
+```bash title="curl"
+curl "http://localhost:3000/api?colors=red,blue,green"
+```
+
+You can also mix comma-separated values with repeated keys when splitting is enabled:
+
+```text
+GET /api?hobby=soccer&hobby=basketball,football
+```
+
+```go
+type Query struct {
+    Hobby []string `query:"hobby"`
+}
+// With EnableSplittingOnParsers: true
+// Result: Hobby = ["soccer", "basketball", "football"]  ← 3 elements
+```
+
+##### Indexed Bracket Notation (Nested Structs)
+
+Use indexed brackets to bind arrays of nested structs:
+
+```text
+GET /api?posts[0][title]=Hello&posts[0][author]=Alice&posts[1][title]=World&posts[1][author]=Bob
+```
+
+```go title="Struct"
+type Post struct {
+    Title  string `query:"title"`
+    Author string `query:"author"`
+}
+
+type Request struct {
+    Posts []Post `query:"posts"`
+}
+// Result: Posts = [{Title: "Hello", Author: "Alice"}, {Title: "World", Author: "Bob"}]
+```
+
+```bash title="curl"
+curl "http://localhost:3000/api?posts[0][title]=Hello&posts[0][author]=Alice&posts[1][title]=World&posts[1][author]=Bob"
+```
+
+##### Nested Bracket Notation (Without Index)
+
+Use bracket notation to access fields of a nested struct:
+
+```text
+GET /api?preferences[tags]=golang,api
+```
+
+```go title="Struct"
+type Preferences struct {
+    Tags *[]string `query:"tags"`
+}
+
+type Profile struct {
+    Prefs *Preferences `query:"preferences"`
+}
+// With EnableSplittingOnParsers: true
+// Result: *Prefs.Tags = ["golang", "api"]
+```
+
+```bash title="curl"
+curl "http://localhost:3000/api?preferences[tags]=golang,api"
+```
+
+:::note
+Pointer fields (`*[]string`, `*Preferences`) let you distinguish between a missing parameter (`nil`) and an empty one. When the parameter is present, Fiber allocates the pointer automatically.
+:::
+
 ### RespHeader
 
 This method is similar to [Body Binding](#body), but for response headers.
