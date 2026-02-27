@@ -484,7 +484,7 @@ Fiber supports several formats for passing array values via query parameters. Th
 
 The most common approach. Repeat the same query key for each value:
 
-```
+```text
 GET /api?colors=red&colors=blue&colors=green
 ```
 
@@ -503,7 +503,7 @@ curl "http://localhost:3000/api?colors=red&colors=blue&colors=green"
 
 Append `[]` to the key name. This is common in PHP-style and JavaScript frameworks:
 
-```
+```text
 GET /api?colors[]=red&colors[]=blue&colors[]=green
 ```
 
@@ -526,7 +526,7 @@ The struct field tag stays `query:"colors"` (without brackets). Fiber strips the
 
 Pass multiple values in a single parameter, separated by commas. This format requires [`EnableSplittingOnParsers`](fiber.md#enablesplittingonparsers) to be set to `true`.
 
-```
+```text
 GET /api?colors=red,blue,green
 ```
 
@@ -557,7 +557,7 @@ curl "http://localhost:3000/api?colors=red,blue,green"
 
 You can also mix comma-separated values with repeated keys when splitting is enabled:
 
-```
+```text
 GET /api?hobby=soccer&hobby=basketball,football
 ```
 
@@ -573,7 +573,7 @@ type Query struct {
 
 Use indexed brackets to bind arrays of nested structs:
 
-```
+```text
 GET /api?posts[0][title]=Hello&posts[0][author]=Alice&posts[1][title]=World&posts[1][author]=Bob
 ```
 
@@ -597,7 +597,7 @@ curl "http://localhost:3000/api?posts[0][title]=Hello&posts[0][author]=Alice&pos
 
 Use bracket notation to access fields of a nested struct:
 
-```
+```text
 GET /api?preferences[tags]=golang,api
 ```
 
