@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"mime/multipart"
 	"net"
@@ -4744,25 +4745,20 @@ func Test_Ctx_RouteNormalized(t *testing.T) {
 func Test_Ctx_SaveFile(t *testing.T) {
 	// TODO We should clean this up
 	t.Parallel()
-	app := New()
+	rootDir := t.TempDir()
+	app := New(Config{RootDir: rootDir})
 
 	app.Post("/test", func(c Ctx) error {
 		fh, err := c.Req().FormFile("file")
 		require.NoError(t, err)
 
-		tempFile, err := os.CreateTemp(os.TempDir(), "test-")
+		relativePath := "upload.txt"
+		err = c.SaveFile(fh, relativePath)
 		require.NoError(t, err)
 
-		defer func(file *os.File) {
-			closeErr := file.Close()
-			require.NoError(t, closeErr)
-			closeErr = os.Remove(file.Name())
-			require.NoError(t, closeErr)
-		}(tempFile)
-		err = c.SaveFile(fh, tempFile.Name())
-		require.NoError(t, err)
-
-		bs, err := os.ReadFile(tempFile.Name())
+		targetPath := filepath.Join(rootDir, relativePath)
+		// #nosec G304 -- reading from test-controlled temp directory.
+		bs, err := os.ReadFile(targetPath)
 		require.NoError(t, err)
 		require.Equal(t, "hello world", string(bs))
 		return nil
@@ -4785,6 +4781,57 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_SaveFile_RootDirTraversal
+func Test_Ctx_SaveFile_RootDirTraversal(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"traversal": filepath.Join("..", "outside.txt"),
+		"absolute":  filepath.Join(t.TempDir(), "abs.txt"),
+	}
+
+	for name, targetPath := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			rootDir := t.TempDir()
+			app := New(Config{RootDir: rootDir})
+
+			app.Post("/test", func(c Ctx) error {
+				fh, err := c.FormFile("file")
+				require.NoError(t, err)
+
+				err = c.SaveFile(fh, targetPath)
+				require.Error(t, err)
+				return c.SendStatus(StatusOK)
+			})
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			ioWriter, err := writer.CreateFormFile("file", "test")
+			require.NoError(t, err)
+			_, err = ioWriter.Write([]byte("hello world"))
+			require.NoError(t, err)
+			require.NoError(t, writer.Close())
+
+			req := httptest.NewRequest(MethodPost, "/test", body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+
+			resp, err := app.Test(req)
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+			expectedPath := targetPath
+			if !filepath.IsAbs(expectedPath) {
+				expectedPath = filepath.Join(rootDir, expectedPath)
+			}
+			expectedPath = filepath.Clean(expectedPath)
+			_, statErr := os.Stat(expectedPath)
+			require.Error(t, statErr)
+		})
+	}
 }
 
 func createMultipartFileHeader(t *testing.T, filename string, data []byte) *multipart.FileHeader {
@@ -4812,6 +4859,56 @@ func createMultipartFileHeader(t *testing.T, filename string, data []byte) *mult
 	require.Len(t, files, 1)
 
 	return files[0]
+}
+
+type rootDirFS struct {
+	base string
+}
+
+func (fsys rootDirFS) Open(name string) (fs.File, error) {
+	return os.Open(filepath.Join(fsys.base, filepath.FromSlash(name))) //nolint:wrapcheck // test helper passes temp paths directly.
+}
+
+func (fsys rootDirFS) OpenFile(name string, flag int, perm fs.FileMode) (fs.File, error) {
+	fullPath := filepath.Join(fsys.base, filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o750); err != nil {
+		return nil, fmt.Errorf("failed to create directory: %w", err)
+	}
+	return os.OpenFile(fullPath, flag, perm) //nolint:wrapcheck,gosec // test helper uses temp paths and returns os errors directly.
+}
+
+func (fsys rootDirFS) MkdirAll(path string, perm fs.FileMode) error {
+	if err := os.MkdirAll(filepath.Join(fsys.base, filepath.FromSlash(path)), perm); err != nil {
+		return fmt.Errorf("failed to create root dir: %w", err)
+	}
+	return nil
+}
+
+func (fsys rootDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	return os.ReadDir(filepath.Join(fsys.base, filepath.FromSlash(name))) //nolint:wrapcheck // test helper returns os errors directly.
+}
+
+func (fsys rootDirFS) Remove(name string) error {
+	return os.Remove(filepath.Join(fsys.base, filepath.FromSlash(name))) //nolint:wrapcheck // test helper returns os errors directly.
+}
+
+type recordingStorage struct {
+	*memory.Storage
+	setKeys []string
+}
+
+func newRecordingStorage() *recordingStorage {
+	return &recordingStorage{Storage: memory.New()}
+}
+
+func (s *recordingStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.setKeys = append(s.setKeys, key)
+	return s.Storage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s *recordingStorage) Set(key string, val []byte, exp time.Duration) error {
+	s.setKeys = append(s.setKeys, key)
+	return s.Storage.Set(key, val, exp)
 }
 
 // go test -run Test_Ctx_SaveFileToStorage
@@ -4854,6 +4951,104 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+func Test_Ctx_SaveFileToStorage_RootFsPrefix(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	app := New(Config{
+		RootDir: "uploads",
+		RootFs:  rootDirFS{base: baseDir},
+	})
+	storage := newRecordingStorage()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "rootfs.txt", []byte("hello rootfs"))
+
+	err := ctx.SaveFileToStorage(fileHeader, "rootfs.txt", storage)
+	require.NoError(t, err)
+	require.Equal(t, []string{"uploads/rootfs.txt"}, storage.setKeys)
+}
+
+func Test_Ctx_SaveFileToStorage_RootFs_SymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink behavior differs on Windows")
+	}
+
+	baseDir := t.TempDir()
+	uploadsDir := filepath.Join(baseDir, "uploads")
+	require.NoError(t, os.MkdirAll(uploadsDir, 0o750))
+	require.NoError(t, os.Symlink(baseDir, filepath.Join(uploadsDir, "link")))
+
+	app := New(Config{
+		RootDir: "uploads",
+		RootFs:  rootDirFS{base: baseDir},
+	})
+	storage := newRecordingStorage()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "rootfs.txt", []byte("hello rootfs"))
+
+	err := ctx.SaveFileToStorage(fileHeader, "link/rootfs.txt", storage)
+	require.ErrorIs(t, err, ErrUploadPathEscapesRoot)
+	require.Empty(t, storage.setKeys)
+}
+
+// go test -run Test_Ctx_SaveFileToStorage_RootDirTraversal
+func Test_Ctx_SaveFileToStorage_RootDirTraversal(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"traversal": filepath.Join("..", "outside"),
+		"absolute":  filepath.Join(t.TempDir(), "abs"),
+	}
+
+	for name, targetPath := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			rootDir := t.TempDir()
+			storage := newRecordingStorage()
+			app := New(Config{RootDir: rootDir})
+
+			app.Post("/test", func(c Ctx) error {
+				fh, err := c.FormFile("file")
+				require.NoError(t, err)
+
+				err = c.SaveFileToStorage(fh, targetPath, storage)
+				require.Error(t, err)
+				return c.SendStatus(StatusOK)
+			})
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			ioWriter, err := writer.CreateFormFile("file", "test")
+			require.NoError(t, err)
+			_, err = ioWriter.Write([]byte("hello world"))
+			require.NoError(t, err)
+			require.NoError(t, writer.Close())
+
+			req := httptest.NewRequest(MethodPost, "/test", body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+
+			resp, err := app.Test(req)
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+			require.Empty(t, storage.setKeys)
+		})
+	}
 }
 
 func Test_Ctx_SaveFileToStorage_LargeUpload(t *testing.T) {
@@ -4924,6 +5119,85 @@ func Test_Ctx_SaveFileToStorage_LimitExceededUnknownSize(t *testing.T) {
 
 	err := ctx.SaveFileToStorage(fileHeader, "test", storage)
 	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+}
+
+func Test_Ctx_SaveFileToStorage_InvalidPath(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	storage := newRecordingStorage()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "rootfs.txt", []byte("hello"))
+
+	invalidPaths := []string{"", "..", "/absolute"}
+	if runtime.GOOS == "windows" {
+		invalidPaths = append(invalidPaths, `C:\absolute`)
+	}
+
+	for _, path := range invalidPaths {
+		err := ctx.SaveFileToStorage(fileHeader, path, storage)
+		require.ErrorIs(t, err, ErrInvalidUploadPath)
+	}
+
+	require.Empty(t, storage.setKeys)
+}
+
+func Test_Ctx_SaveFile_RootFs(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	app := New(Config{
+		RootDir: "uploads",
+		RootFs:  rootDirFS{base: baseDir},
+	})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "rootfs.txt", []byte("hello rootfs"))
+
+	err := ctx.SaveFile(fileHeader, "rootfs.txt")
+	require.NoError(t, err)
+
+	//nolint:gosec // reading from test-controlled temp directory.
+	content, err := os.ReadFile(filepath.Join(baseDir, "uploads", "rootfs.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "hello rootfs", string(content))
+}
+
+func Test_Ctx_SaveFile_RootFs_SymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink behavior differs on Windows")
+	}
+
+	baseDir := t.TempDir()
+	uploadsDir := filepath.Join(baseDir, "uploads")
+	require.NoError(t, os.MkdirAll(uploadsDir, 0o750))
+	require.NoError(t, os.Symlink(baseDir, filepath.Join(uploadsDir, "link")))
+
+	app := New(Config{
+		RootDir: "uploads",
+		RootFs:  rootDirFS{base: baseDir},
+	})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "rootfs.txt", []byte("hello rootfs"))
+
+	err := ctx.SaveFile(fileHeader, "link/rootfs.txt")
+	require.ErrorIs(t, err, ErrUploadPathEscapesRoot)
 }
 
 type captureStorage struct {
@@ -4998,6 +5272,46 @@ func (s *captureStorage) Close() error {
 	return nil
 }
 
+type errStorage struct {
+	err error
+}
+
+func (s errStorage) GetWithContext(context.Context, string) ([]byte, error) {
+	return nil, s.err
+}
+
+func (s errStorage) Get(string) ([]byte, error) {
+	return nil, s.err
+}
+
+func (s errStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
+	return s.err
+}
+
+func (s errStorage) Set(string, []byte, time.Duration) error {
+	return s.err
+}
+
+func (s errStorage) DeleteWithContext(context.Context, string) error {
+	return s.err
+}
+
+func (s errStorage) Delete(string) error {
+	return s.err
+}
+
+func (s errStorage) ResetWithContext(context.Context) error {
+	return s.err
+}
+
+func (s errStorage) Reset() error {
+	return s.err
+}
+
+func (s errStorage) Close() error {
+	return s.err
+}
+
 func Test_Ctx_SaveFileToStorage_BufferNotReused(t *testing.T) {
 	t.Parallel()
 
@@ -5024,6 +5338,43 @@ func Test_Ctx_SaveFileToStorage_BufferNotReused(t *testing.T) {
 	require.Equal(t, secondPayload, storage.data["second"])
 
 	require.Equal(t, firstPayload, firstStored, "stored data must not rely on pooled buffers")
+}
+
+func Test_Ctx_SaveFileToStorage_StorageError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "rootfs.txt", []byte("hello"))
+	expectedErr := errors.New("store failed")
+
+	err := ctx.SaveFileToStorage(fileHeader, "test", errStorage{err: expectedErr})
+	require.ErrorIs(t, err, expectedErr)
+}
+
+func Test_Ctx_SaveFileToStorage_RootDirPrefix(t *testing.T) {
+	t.Parallel()
+
+	rootDir := filepath.Join(t.TempDir(), "uploads")
+	app := New(Config{RootDir: rootDir})
+	storage := newRecordingStorage()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	t.Cleanup(func() {
+		app.ReleaseCtx(ctx)
+	})
+
+	fileHeader := createMultipartFileHeader(t, "rootdir.txt", []byte("hello"))
+
+	err := ctx.SaveFileToStorage(fileHeader, "rootdir.txt", storage)
+	require.NoError(t, err)
+	expectedPath := storageUploadPath(storageRootPrefix(rootDir), "rootdir.txt")
+	require.Equal(t, []string{expectedPath}, storage.setKeys)
 }
 
 type mockContextAwareStorage struct {

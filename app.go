@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -174,6 +175,23 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: nil
 	Views Views `json:"-"`
+
+	// RootDir specifies the base directory for SaveFile/SaveFileToStorage uploads.
+	// Relative paths are resolved against this directory.
+	//
+	// Optional. Default: ""
+	RootDir string `json:"root_dir"`
+
+	// RootPerms specifies the permissions used when creating RootDir or RootFs prefixes.
+	//
+	// Optional. Default: 0o750
+	RootPerms fs.FileMode `json:"root_perms"`
+
+	// RootFs specifies the filesystem used for SaveFile/SaveFileToStorage uploads.
+	// When set, RootDir is treated as a relative prefix within the filesystem.
+	//
+	// Optional. Default: nil
+	RootFs fs.FS `json:"-"`
 
 	// Views Layout is the global layout for all template render until override on Render function.
 	//
@@ -437,6 +455,15 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Optional. Default: a provider that returns context.Background()
 	ServicesShutdownContextProvider func() context.Context
+
+	uploadRootDir      string
+	uploadRootEval     string
+	uploadRootPath     string
+	uploadRootFSPrefix string
+	uploadRootFSWriter interface {
+		fs.FS
+		OpenFile(name string, flag int, perm fs.FileMode) (fs.File, error)
+	}
 }
 
 // Default TrustProxyConfig
@@ -605,6 +632,9 @@ func New(config ...Config) *App {
 			"zstd": ".fiber.zst",
 		}
 	}
+	if app.config.RootPerms == 0 {
+		app.config.RootPerms = 0o750
+	}
 
 	if app.config.Immutable {
 		app.toBytes, app.toString = toBytesImmutable, toStringImmutable
@@ -641,6 +671,8 @@ func New(config ...Config) *App {
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
 	}
+
+	app.configureUploads()
 
 	app.config.TrustProxyConfig.ips = make(map[string]struct{}, len(app.config.TrustProxyConfig.Proxies))
 	for _, ipAddress := range app.config.TrustProxyConfig.Proxies {

@@ -7,10 +7,14 @@ package fiber
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"mime/multipart"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -511,12 +515,57 @@ func (c *DefaultCtx) IsPreflight() bool {
 }
 
 // SaveFile saves any multipart file to disk.
-func (*DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) error {
-	return fasthttp.SaveMultipartFile(fileheader, path)
+func (c *DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) error {
+	normalized, err := validateUploadPath(path)
+	if err != nil {
+		return err
+	}
+
+	if c.app.config.RootFs != nil {
+		fsPath := storageUploadPath(c.app.config.uploadRootFSPrefix, normalized.slashPath)
+		err = ensureNoSymlinkFS(c.app.config.RootFs, fsPath)
+		if err != nil {
+			return err
+		}
+		return saveMultipartFileToFS(fileheader, fsPath, c.app.config.uploadRootFSWriter)
+	}
+
+	fullPath := normalized.osPath
+	if root := c.app.config.uploadRootDir; root != "" {
+		fullPath = filepath.Join(root, normalized.osPath)
+		err = ensureUploadPathWithinRoot(c.app.config.uploadRootEval, fullPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	return fasthttp.SaveMultipartFile(fileheader, fullPath)
 }
 
 // SaveFileToStorage saves any multipart file to an external storage system.
 func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
+	normalized, err := validateUploadPath(path)
+	if err != nil {
+		return err
+	}
+
+	if c.app.config.RootFs != nil {
+		fsPath := storageUploadPath(c.app.config.uploadRootFSPrefix, normalized.slashPath)
+		err = ensureNoSymlinkFS(c.app.config.RootFs, fsPath)
+		if err != nil {
+			return err
+		}
+	}
+	if root := c.app.config.uploadRootDir; root != "" {
+		fullPath := filepath.Join(root, filepath.FromSlash(normalized.slashPath))
+		err = ensureUploadPathWithinRoot(c.app.config.uploadRootEval, fullPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	storagePath := storageUploadPath(c.app.config.uploadRootPath, normalized.slashPath)
+
 	file, err := fileheader.Open()
 	if err != nil {
 		return fmt.Errorf("failed to open: %w", err)
@@ -546,10 +595,49 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 
 	data := append([]byte(nil), buf.Bytes()...)
 
-	if err := storage.SetWithContext(c.Context(), path, data, 0); err != nil {
+	if err := storage.SetWithContext(c.Context(), storagePath, data, 0); err != nil {
 		return fmt.Errorf("failed to store: %w", err)
 	}
 
+	return nil
+}
+
+func saveMultipartFileToFS(
+	fileheader *multipart.FileHeader,
+	path string,
+	fsys interface {
+		fs.FS
+		OpenFile(name string, flag int, perm fs.FileMode) (fs.File, error)
+	},
+) error {
+	file, err := fileheader.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open multipart file: %w", err)
+	}
+	defer file.Close() //nolint:errcheck // not needed
+
+	dst, err := fsys.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to open upload destination: %w", err)
+	}
+	writer, ok := dst.(io.Writer)
+	if !ok {
+		closeErr := dst.Close()
+		if closeErr != nil {
+			return fmt.Errorf("failed to close upload destination: %w", closeErr)
+		}
+		return errors.New("failed to open upload destination for write")
+	}
+	if _, err = io.Copy(writer, file); err != nil {
+		closeErr := dst.Close()
+		if closeErr != nil {
+			return fmt.Errorf("failed to close upload destination: %w", closeErr)
+		}
+		return fmt.Errorf("failed to copy upload data: %w", err)
+	}
+	if err := dst.Close(); err != nil {
+		return fmt.Errorf("failed to close upload destination: %w", err)
+	}
 	return nil
 }
 

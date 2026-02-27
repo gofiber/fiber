@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log" //nolint:depguard // TODO: Required to capture output, use internal log package instead
 	"net"
 	"os"
 	"path/filepath"
@@ -21,6 +20,8 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 	"golang.org/x/crypto/acme/autocert"
+
+	fiberlog "github.com/gofiber/fiber/v3/log"
 )
 
 // go test -run Test_Listen
@@ -876,11 +877,11 @@ func captureOutput(f func()) string {
 	defer func() {
 		os.Stdout = stdout
 		os.Stderr = stderr
-		log.SetOutput(os.Stderr)
+		fiberlog.SetOutput(os.Stderr)
 	}()
 	os.Stdout = writer
 	os.Stderr = writer
-	log.SetOutput(writer)
+	fiberlog.SetOutput(writer)
 	out := make(chan string)
 	go func() {
 		var buf bytes.Buffer
