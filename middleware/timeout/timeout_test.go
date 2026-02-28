@@ -90,7 +90,6 @@ func TestTimeout_ContextPropagation(t *testing.T) {
 	errCh := make(chan error, 1)
 
 	app.Get("/context-aware", New(func(c fiber.Ctx) error {
-
 		timer := time.NewTimer(500 * time.Millisecond)
 		defer timer.Stop()
 
