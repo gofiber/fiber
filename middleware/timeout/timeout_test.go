@@ -110,11 +110,14 @@ func TestTimeout_ContextPropagation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
 
+	safety := time.NewTimer(1 * time.Second)
+	defer safety.Stop()
+
 	select {
 	case handlerErr := <-errCh:
 		require.ErrorIs(t, handlerErr, context.DeadlineExceeded, "handler should report DeadlineExceeded")
 
-	case <-time.After(1 * time.Second):
+	case <-safety.C:
 		t.Fatal("timed out waiting for handler to report context state")
 	}
 }
