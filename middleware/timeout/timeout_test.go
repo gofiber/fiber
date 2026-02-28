@@ -87,16 +87,21 @@ func TestTimeout_ContextPropagation(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	var contextCanceled atomic.Bool
+	errCh := make(chan error, 1)
 
 	app.Get("/context-aware", New(func(c fiber.Ctx) error {
-		// Handler that properly listens for context cancelation
+
+		timer := time.NewTimer(500 * time.Millisecond)
+		defer timer.Stop()
+
 		select {
-		case <-c.Context().Done():
-			contextCanceled.Store(true)
-			return c.Context().Err()
-		case <-time.After(500 * time.Millisecond):
+		case <-timer.C:
+			errCh <- nil
 			return c.SendString("completed")
+
+		case <-c.Context().Done():
+			errCh <- c.Context().Err()
+			return c.Context().Err()
 		}
 	}, Config{Timeout: 50 * time.Millisecond}))
 
@@ -105,7 +110,14 @@ func TestTimeout_ContextPropagation(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
-	require.True(t, contextCanceled.Load(), "Handler should have detected context cancelation")
+
+	select {
+	case handlerErr := <-errCh:
+		require.ErrorIs(t, handlerErr, context.DeadlineExceeded, "handler should report DeadlineExceeded")
+
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for handler to report context state")
+	}
 }
 
 // TestTimeout_HandlerReturnsEarlyOnCancel verifies that handlers checking context
