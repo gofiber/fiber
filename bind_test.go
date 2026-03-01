@@ -64,14 +64,15 @@ func Test_BindError_Unwrap(t *testing.T) {
 
 func Test_BindError_FieldExtraction(t *testing.T) {
 	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	t.Run("QueryConversionError", func(t *testing.T) {
 		t.Parallel()
 		type Q struct {
 			ID int `query:"id"`
 		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
 		c.Request().URI().SetQueryString("id=notanint")
 		err := c.Bind().Query(new(Q))
 		require.Error(t, err)
@@ -87,6 +88,9 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 		type J struct {
 			Count int `json:"count"`
 		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
 		c.Request().SetBody([]byte(`{"count":"notanint"}`))
 		c.Request().Header.SetContentType(MIMEApplicationJSON)
 		err := c.Bind().Body(new(J))
@@ -102,15 +106,13 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 
 func Test_BindError_Sources(t *testing.T) {
 	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	t.Run("URI", func(t *testing.T) {
 		t.Parallel()
 		type U struct {
 			ID int `uri:"id"`
 		}
-		c.Request().SetRequestURI("/user/notanint")
+		app := New()
 		app.Get("/user/:id", func(ctx Ctx) error {
 			err := ctx.Bind().URI(new(U))
 			require.Error(t, err)
@@ -129,6 +131,9 @@ func Test_BindError_Sources(t *testing.T) {
 		type Q struct {
 			ID int `query:"id,required"`
 		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
 		c.Request().URI().SetQueryString("")
 		err := c.Bind().Query(new(Q))
 		require.Error(t, err)
@@ -143,6 +148,9 @@ func Test_BindError_Sources(t *testing.T) {
 		type H struct {
 			ID int `header:"x-id,required"`
 		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
 		c.Request().Header.Del("X-Id")
 		err := c.Bind().Header(new(H))
 		require.Error(t, err)
@@ -157,6 +165,9 @@ func Test_BindError_Sources(t *testing.T) {
 		type C struct {
 			ID int `cookie:"id,required"`
 		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
 		c.Request().Header.DelCookie("id")
 		err := c.Bind().Cookie(new(C))
 		require.Error(t, err)
@@ -171,6 +182,9 @@ func Test_BindError_Sources(t *testing.T) {
 		type J struct {
 			X int `json:"x"`
 		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
 		c.Request().SetBody([]byte(`{"x":"bad"}`))
 		c.Request().Header.SetContentType(MIMEApplicationJSON)
 		err := c.Bind().Body(new(J))
