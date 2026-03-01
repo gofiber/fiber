@@ -1,11 +1,15 @@
 package fiber
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/schema"
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 )
@@ -31,10 +35,72 @@ var bindPool = sync.Pool{
 }
 
 // Bind provides helper methods for binding request data to Go values.
+// By default (manual mode), parsing failures are returned as *BindError; use errors.As to extract source and field details.
+// With WithAutoHandling(), parsing failures set HTTP 400 and return *Error instead.
 type Bind struct {
 	ctx            Ctx
 	dontHandleErrs bool
 	skipValidation bool
+}
+
+// BindError source constants for BindError.Source.
+const (
+	BindSourceURI        = "uri"
+	BindSourceQuery      = "query"
+	BindSourceHeader     = "header"
+	BindSourceCookie     = "cookie"
+	BindSourceBody       = "body"
+	BindSourceRespHeader = "respHeader"
+)
+
+// BindError wraps a binding failure with the source and field that failed.
+// Use errors.As(err, &be) to extract it when you need to branch on source
+// (e.g. 404 for URI vs 400 for body).
+type BindError struct {
+	Err    error  // underlying error; use errors.As to inspect
+	Source string // binding source: uri, query, body, header, cookie, or respHeader (see BindSource* constants)
+	Field  string // struct field or tag key that failed (best-effort, may be empty)
+}
+
+func (e *BindError) Error() string {
+	if e.Field != "" {
+		return fmt.Sprintf("bind %q from %s: %v", e.Field, e.Source, e.Err)
+	}
+	return fmt.Sprintf("bind from %s: %v", e.Source, e.Err)
+}
+
+func (e *BindError) Unwrap() error {
+	return e.Err
+}
+
+func extractFieldFromError(err error) string {
+	var convErr schema.ConversionError
+	if errors.As(err, &convErr) {
+		return convErr.Key
+	}
+	var unknownKey schema.UnknownKeyError
+	if errors.As(err, &unknownKey) {
+		return unknownKey.Key
+	}
+	var emptyField schema.EmptyFieldError
+	if errors.As(err, &emptyField) {
+		return emptyField.Key
+	}
+	var multiErr schema.MultiError
+	if errors.As(err, &multiErr) {
+		for k := range multiErr {
+			return k
+		}
+	}
+	var unmarshalErr *json.UnmarshalTypeError
+	if errors.As(err, &unmarshalErr) {
+		return unmarshalErr.Field
+	}
+	return ""
+}
+
+func newBindError(source string, raw error) *BindError {
+	return &BindError{Source: source, Field: extractFieldFromError(raw), Err: raw}
 }
 
 // AcquireBind returns Bind reference from bind pool.
@@ -144,6 +210,7 @@ func (b *Bind) Custom(name string, dest any) error {
 }
 
 // Header binds the request header strings into the struct, map[string]string and map[string][]string.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) Header(out any) error {
 	bind := binder.GetFromThePool[*binder.HeaderBinding](&binder.HeaderBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
@@ -151,13 +218,18 @@ func (b *Bind) Header(out any) error {
 	defer releasePooledBinder(&binder.HeaderBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Request(), out)); err != nil {
-		return err
+		var fiberErr *Error
+		if errors.As(err, &fiberErr) {
+			return err
+		}
+		return newBindError(BindSourceHeader, err)
 	}
 
 	return b.validateStruct(out)
 }
 
 // RespHeader binds the response header strings into the struct, map[string]string and map[string][]string.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) RespHeader(out any) error {
 	bind := binder.GetFromThePool[*binder.RespHeaderBinding](&binder.RespHeaderBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
@@ -165,13 +237,18 @@ func (b *Bind) RespHeader(out any) error {
 	defer releasePooledBinder(&binder.RespHeaderBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Response(), out)); err != nil {
-		return err
+		var fiberErr *Error
+		if errors.As(err, &fiberErr) {
+			return err
+		}
+		return newBindError(BindSourceRespHeader, err)
 	}
 
 	return b.validateStruct(out)
 }
 
 // Cookie binds the request cookie strings into the struct, map[string]string and map[string][]string.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 // NOTE: If your cookie is like key=val1,val2; they'll be bound as a slice if your map is map[string][]string. Else, it'll use last element of cookie.
 func (b *Bind) Cookie(out any) error {
 	bind := binder.GetFromThePool[*binder.CookieBinding](&binder.CookieBinderPool)
@@ -180,13 +257,18 @@ func (b *Bind) Cookie(out any) error {
 	defer releasePooledBinder(&binder.CookieBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
-		return err
+		var fiberErr *Error
+		if errors.As(err, &fiberErr) {
+			return err
+		}
+		return newBindError(BindSourceCookie, err)
 	}
 
 	return b.validateStruct(out)
 }
 
 // Query binds the query string into the struct, map[string]string and map[string][]string.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) Query(out any) error {
 	bind := binder.GetFromThePool[*binder.QueryBinding](&binder.QueryBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
@@ -194,13 +276,18 @@ func (b *Bind) Query(out any) error {
 	defer releasePooledBinder(&binder.QueryBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
-		return err
+		var fiberErr *Error
+		if errors.As(err, &fiberErr) {
+			return err
+		}
+		return newBindError(BindSourceQuery, err)
 	}
 
 	return b.validateStruct(out)
 }
 
 // JSON binds the body string into the struct.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) JSON(out any) error {
 	bind := binder.GetFromThePool[*binder.JSONBinding](&binder.JSONBinderPool)
 	bind.JSONDecoder = b.ctx.App().Config().JSONDecoder
@@ -208,13 +295,18 @@ func (b *Bind) JSON(out any) error {
 	defer releasePooledBinder(&binder.JSONBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
-		return err
+		var fiberErr *Error
+		if errors.As(err, &fiberErr) {
+			return err
+		}
+		return newBindError(BindSourceBody, err)
 	}
 
 	return b.validateStruct(out)
 }
 
 // CBOR binds the body string into the struct.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) CBOR(out any) error {
 	bind := binder.GetFromThePool[*binder.CBORBinding](&binder.CBORBinderPool)
 	bind.CBORDecoder = b.ctx.App().Config().CBORDecoder
@@ -222,12 +314,17 @@ func (b *Bind) CBOR(out any) error {
 	defer releasePooledBinder(&binder.CBORBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
-		return err
+		var fiberErr *Error
+		if errors.As(err, &fiberErr) {
+			return err
+		}
+		return newBindError(BindSourceBody, err)
 	}
 	return b.validateStruct(out)
 }
 
 // XML binds the body string into the struct.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) XML(out any) error {
 	bind := binder.GetFromThePool[*binder.XMLBinding](&binder.XMLBinderPool)
 	bind.XMLDecoder = b.ctx.App().config.XMLDecoder
@@ -235,13 +332,18 @@ func (b *Bind) XML(out any) error {
 	defer releasePooledBinder(&binder.XMLBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
-		return err
+		var fiberErr *Error
+		if errors.As(err, &fiberErr) {
+			return err
+		}
+		return newBindError(BindSourceBody, err)
 	}
 
 	return b.validateStruct(out)
 }
 
 // Form binds the form into the struct, map[string]string and map[string][]string.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 // If Content-Type is "application/x-www-form-urlencoded" or "multipart/form-data", it will bind the form values.
 // Multipart file fields are supported using *multipart.FileHeader, []*multipart.FileHeader, or *[]*multipart.FileHeader.
 func (b *Bind) Form(out any) error {
@@ -251,26 +353,36 @@ func (b *Bind) Form(out any) error {
 	defer releasePooledBinder(&binder.FormBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
-		return err
+		var fiberErr *Error
+		if errors.As(err, &fiberErr) {
+			return err
+		}
+		return newBindError(BindSourceBody, err)
 	}
 
 	return b.validateStruct(out)
 }
 
 // URI binds the route parameters into the struct, map[string]string and map[string][]string.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) URI(out any) error {
 	bind := binder.GetFromThePool[*binder.URIBinding](&binder.URIBinderPool)
 
 	defer releasePooledBinder(&binder.URIBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Route().Params, b.ctx.Params, out)); err != nil {
-		return err
+		var fiberErr *Error
+		if errors.As(err, &fiberErr) {
+			return err
+		}
+		return newBindError(BindSourceURI, err)
 	}
 
 	return b.validateStruct(out)
 }
 
 // MsgPack binds the body string into the struct.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) MsgPack(out any) error {
 	bind := binder.GetFromThePool[*binder.MsgPackBinding](&binder.MsgPackBinderPool)
 	bind.MsgPackDecoder = b.ctx.App().Config().MsgPackDecoder
@@ -278,13 +390,18 @@ func (b *Bind) MsgPack(out any) error {
 	defer releasePooledBinder(&binder.MsgPackBinderPool, bind)
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
-		return err
+		var fiberErr *Error
+		if errors.As(err, &fiberErr) {
+			return err
+		}
+		return newBindError(BindSourceBody, err)
 	}
 
 	return b.validateStruct(out)
 }
 
 // Body binds the request body into the struct, map[string]string and map[string][]string.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 // If none of the content types above are matched, it'll take a look custom binders by checking the MIMETypes() method of custom binder.
@@ -298,7 +415,14 @@ func (b *Bind) Body(out any) error {
 	binders := b.ctx.App().customBinders
 	for _, customBinder := range binders {
 		if slices.Contains(customBinder.MIMETypes(), ctype) {
-			return b.returnErr(customBinder.Parse(b.ctx, out))
+			if err := b.returnErr(customBinder.Parse(b.ctx, out)); err != nil {
+				var fiberErr *Error
+				if errors.As(err, &fiberErr) {
+					return err
+				}
+				return newBindError(BindSourceBody, err)
+			}
+			return nil
 		}
 	}
 
@@ -322,6 +446,7 @@ func (b *Bind) Body(out any) error {
 
 // All binds values from URI params, the request body, the query string,
 // headers, and cookies into the provided struct in precedence order.
+// Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) All(out any) error {
 	outVal := reflect.ValueOf(out)
 	if outVal.Kind() != reflect.Ptr || outVal.Elem().Kind() != reflect.Struct {

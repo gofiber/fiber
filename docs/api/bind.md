@@ -50,7 +50,7 @@ The request body is only included as a binding source when the request has both 
 func (b *Bind) All(out any) error
 ```
 
-``` go title="Example"
+```go title="Example"
 type User struct {
     Name      string                `query:"name" json:"name" form:"name"`
     Email     string                `json:"email" form:"email"`
@@ -473,13 +473,13 @@ For more parser settings, please refer to [Config](fiber.md#enablesplittingonpar
 
 Fiber supports several formats for passing array values via query parameters. The following table gives an overview:
 
-| Format | Example | Requires `EnableSplittingOnParsers` |
-| --- | --- | --- |
-| Repeated key | `?colors=red&colors=blue` | No |
-| Bracket notation | `?colors[]=red&colors[]=blue` | No |
-| Comma-separated | `?colors=red,blue` | **Yes** |
-| Indexed bracket notation | `?posts[0][title]=Hello&posts[1][title]=World` | No |
-| Nested bracket notation | `?preferences[tags]=golang,api` | No (comma splitting: **Yes**) |
+| Format                   | Example                                        | Requires `EnableSplittingOnParsers` |
+| ------------------------ | ---------------------------------------------- | ----------------------------------- |
+| Repeated key             | `?colors=red&colors=blue`                      | No                                  |
+| Bracket notation         | `?colors[]=red&colors[]=blue`                  | No                                  |
+| Comma-separated          | `?colors=red,blue`                             | **Yes**                             |
+| Indexed bracket notation | `?posts[0][title]=Hello&posts[1][title]=World` | No                                  |
+| Nested bracket notation  | `?preferences[tags]=golang,api`                | No (comma splitting: **Yes**)       |
 
 ##### Repeated Key
 
@@ -683,6 +683,42 @@ app.Get("/user/:id", func(c fiber.Ctx) error {
     return c.SendString(fmt.Sprintf("User ID: %d", param.ID))
 })
 ```
+
+## BindError
+
+When a bind method fails to parse (e.g. invalid JSON, bad type conversion), it returns a `*BindError` wrapping the underlying error. Use `errors.As` to extract it when you need to branch on the binding source or field.
+
+```go
+type BindError struct {
+    Source string // "uri", "query", "body", "header", "cookie", or "respHeader"
+    Field  string // struct field or tag key that failed (best-effort, may be empty)
+    Err    error  // underlying error; use errors.As to inspect
+}
+```
+
+Source constants: `BindSourceURI`, `BindSourceQuery`, `BindSourceHeader`, `BindSourceCookie`, `BindSourceBody`, `BindSourceRespHeader`.
+
+### Branching on source
+
+Use `errors.As` to extract `*BindError` and branch on `Source` for RFC-correct status codes (e.g. 404 for URI failures vs 400 for body/query):
+
+```go title="Example"
+var req struct {
+    ID   uuid.UUID `uri:"id"`
+    Name string    `json:"name"`
+}
+if err := c.Bind().All(&req); err != nil {
+    var be *fiber.BindError
+    if errors.As(err, &be) && be.Source == fiber.BindSourceURI {
+        return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
+    }
+    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
+}
+```
+
+### Validation vs binding errors
+
+Validation errors (from `StructValidator`) are **not** wrapped in `BindError`. Use `errors.As(err, &be)` to distinguish: it succeeds only for parsing/binding failures, not for validation failures.
 
 ## Custom
 
