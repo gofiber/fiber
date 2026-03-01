@@ -95,7 +95,8 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 		require.ErrorAs(t, err, &be)
 		require.Equal(t, BindSourceBody, be.Source)
 		require.Equal(t, "count", be.Field)
-		require.ErrorAs(t, err, &UnmarshalTypeError{})
+		var unmarshalErr *json.UnmarshalTypeError
+		require.ErrorAs(t, err, &unmarshalErr)
 	})
 }
 
