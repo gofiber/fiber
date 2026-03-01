@@ -177,7 +177,8 @@ func Test_BindError_Sources(t *testing.T) {
 		var be *BindError
 		require.ErrorAs(t, err, &be)
 		require.Equal(t, BindSourceBody, be.Source)
-		require.ErrorAs(t, err, &UnmarshalTypeError{})
+		var unmarshalErr *json.UnmarshalTypeError
+		require.ErrorAs(t, err, &unmarshalErr)
 	})
 }
 
