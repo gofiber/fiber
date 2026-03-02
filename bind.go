@@ -166,6 +166,19 @@ func (b *Bind) returnErr(err error) error {
 	return NewError(StatusBadRequest, "Bad request: "+err.Error())
 }
 
+// returnBindErr runs returnErr and, if the result is not a *Error, wraps it in *BindError.
+// Use for binding parse failures; use returnErr directly for Custom and validation errors.
+func (b *Bind) returnBindErr(err error, source string) error {
+	if retErr := b.returnErr(err); retErr != nil {
+		var fiberErr *Error
+		if errors.As(retErr, &fiberErr) {
+			return retErr
+		}
+		return newBindError(source, err)
+	}
+	return nil
+}
+
 // Struct validation.
 func (b *Bind) validateStruct(out any) error {
 	if b.skipValidation {
@@ -217,12 +230,8 @@ func (b *Bind) Header(out any) error {
 
 	defer releasePooledBinder(&binder.HeaderBinderPool, bind)
 
-	if err := b.returnErr(bind.Bind(b.ctx.Request(), out)); err != nil {
-		var fiberErr *Error
-		if errors.As(err, &fiberErr) {
-			return err
-		}
-		return newBindError(BindSourceHeader, err)
+	if err := b.returnBindErr(bind.Bind(b.ctx.Request(), out), BindSourceHeader); err != nil {
+		return err
 	}
 
 	return b.validateStruct(out)
@@ -236,12 +245,8 @@ func (b *Bind) RespHeader(out any) error {
 
 	defer releasePooledBinder(&binder.RespHeaderBinderPool, bind)
 
-	if err := b.returnErr(bind.Bind(b.ctx.Response(), out)); err != nil {
-		var fiberErr *Error
-		if errors.As(err, &fiberErr) {
-			return err
-		}
-		return newBindError(BindSourceRespHeader, err)
+	if err := b.returnBindErr(bind.Bind(b.ctx.Response(), out), BindSourceRespHeader); err != nil {
+		return err
 	}
 
 	return b.validateStruct(out)
@@ -256,12 +261,8 @@ func (b *Bind) Cookie(out any) error {
 
 	defer releasePooledBinder(&binder.CookieBinderPool, bind)
 
-	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
-		var fiberErr *Error
-		if errors.As(err, &fiberErr) {
-			return err
-		}
-		return newBindError(BindSourceCookie, err)
+	if err := b.returnBindErr(bind.Bind(&b.ctx.RequestCtx().Request, out), BindSourceCookie); err != nil {
+		return err
 	}
 
 	return b.validateStruct(out)
@@ -275,12 +276,8 @@ func (b *Bind) Query(out any) error {
 
 	defer releasePooledBinder(&binder.QueryBinderPool, bind)
 
-	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
-		var fiberErr *Error
-		if errors.As(err, &fiberErr) {
-			return err
-		}
-		return newBindError(BindSourceQuery, err)
+	if err := b.returnBindErr(bind.Bind(&b.ctx.RequestCtx().Request, out), BindSourceQuery); err != nil {
+		return err
 	}
 
 	return b.validateStruct(out)
@@ -294,12 +291,8 @@ func (b *Bind) JSON(out any) error {
 
 	defer releasePooledBinder(&binder.JSONBinderPool, bind)
 
-	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
-		var fiberErr *Error
-		if errors.As(err, &fiberErr) {
-			return err
-		}
-		return newBindError(BindSourceBody, err)
+	if err := b.returnBindErr(bind.Bind(b.ctx.Body(), out), BindSourceBody); err != nil {
+		return err
 	}
 
 	return b.validateStruct(out)
@@ -313,12 +306,8 @@ func (b *Bind) CBOR(out any) error {
 
 	defer releasePooledBinder(&binder.CBORBinderPool, bind)
 
-	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
-		var fiberErr *Error
-		if errors.As(err, &fiberErr) {
-			return err
-		}
-		return newBindError(BindSourceBody, err)
+	if err := b.returnBindErr(bind.Bind(b.ctx.Body(), out), BindSourceBody); err != nil {
+		return err
 	}
 	return b.validateStruct(out)
 }
@@ -331,12 +320,8 @@ func (b *Bind) XML(out any) error {
 
 	defer releasePooledBinder(&binder.XMLBinderPool, bind)
 
-	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
-		var fiberErr *Error
-		if errors.As(err, &fiberErr) {
-			return err
-		}
-		return newBindError(BindSourceBody, err)
+	if err := b.returnBindErr(bind.Bind(b.ctx.Body(), out), BindSourceBody); err != nil {
+		return err
 	}
 
 	return b.validateStruct(out)
@@ -352,12 +337,8 @@ func (b *Bind) Form(out any) error {
 
 	defer releasePooledBinder(&binder.FormBinderPool, bind)
 
-	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
-		var fiberErr *Error
-		if errors.As(err, &fiberErr) {
-			return err
-		}
-		return newBindError(BindSourceBody, err)
+	if err := b.returnBindErr(bind.Bind(&b.ctx.RequestCtx().Request, out), BindSourceBody); err != nil {
+		return err
 	}
 
 	return b.validateStruct(out)
@@ -370,12 +351,8 @@ func (b *Bind) URI(out any) error {
 
 	defer releasePooledBinder(&binder.URIBinderPool, bind)
 
-	if err := b.returnErr(bind.Bind(b.ctx.Route().Params, b.ctx.Params, out)); err != nil {
-		var fiberErr *Error
-		if errors.As(err, &fiberErr) {
-			return err
-		}
-		return newBindError(BindSourceURI, err)
+	if err := b.returnBindErr(bind.Bind(b.ctx.Route().Params, b.ctx.Params, out), BindSourceURI); err != nil {
+		return err
 	}
 
 	return b.validateStruct(out)
@@ -389,12 +366,8 @@ func (b *Bind) MsgPack(out any) error {
 
 	defer releasePooledBinder(&binder.MsgPackBinderPool, bind)
 
-	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
-		var fiberErr *Error
-		if errors.As(err, &fiberErr) {
-			return err
-		}
-		return newBindError(BindSourceBody, err)
+	if err := b.returnBindErr(bind.Bind(b.ctx.Body(), out), BindSourceBody); err != nil {
+		return err
 	}
 
 	return b.validateStruct(out)
@@ -415,14 +388,7 @@ func (b *Bind) Body(out any) error {
 	binders := b.ctx.App().customBinders
 	for _, customBinder := range binders {
 		if slices.Contains(customBinder.MIMETypes(), ctype) {
-			if err := b.returnErr(customBinder.Parse(b.ctx, out)); err != nil {
-				var fiberErr *Error
-				if errors.As(err, &fiberErr) {
-					return err
-				}
-				return newBindError(BindSourceBody, err)
-			}
-			return nil
+			return b.returnBindErr(customBinder.Parse(b.ctx, out), BindSourceBody)
 		}
 	}
 
