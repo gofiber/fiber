@@ -2219,6 +2219,29 @@ func Test_Bind_CustomBinder(t *testing.T) {
 	require.Equal(t, "john", d.Name)
 }
 
+// go test -run Test_Bind_CustomBinder_Source
+func Test_Bind_CustomBinder_Source(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	app.RegisterCustomBinder(&customBinder{})
+
+	type Demo struct {
+		Name string `json:"name"`
+	}
+	c.Request().SetBody([]byte(`{invalid json`))
+	c.Request().Header.SetContentLength(14)
+
+	err := c.Bind().Custom("custom", new(Demo))
+	require.Error(t, err)
+	var be *BindError
+	require.ErrorAs(t, err, &be)
+	require.Equal(t, "custom", be.Source)
+}
+
 // go test -run Test_Bind_WithAutoHandling
 func Test_Bind_WithAutoHandling(t *testing.T) {
 	app := New()

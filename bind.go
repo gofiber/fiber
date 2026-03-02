@@ -215,7 +215,7 @@ func (b *Bind) Custom(name string, dest any) error {
 	binders := b.ctx.App().customBinders
 	for _, customBinder := range binders {
 		if customBinder.Name() == name {
-			return b.returnErr(customBinder.Parse(b.ctx, dest))
+			return b.returnBindErr(customBinder.Parse(b.ctx, dest), name)
 		}
 	}
 
