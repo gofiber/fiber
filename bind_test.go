@@ -17,6 +17,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/schema"
 	"github.com/shamaton/msgpack/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -62,6 +63,24 @@ func Test_BindError_Unwrap(t *testing.T) {
 	require.Equal(t, BindSourceQuery, extracted.Source)
 }
 
+func Test_BindError_ErrorFormat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with field", func(t *testing.T) {
+		t.Parallel()
+		be := &BindError{Source: BindSourceQuery, Field: "id", Err: errors.New("conversion failed")}
+		require.Contains(t, be.Error(), `"id"`)
+		require.Contains(t, be.Error(), "query")
+		require.Contains(t, be.Error(), "conversion failed")
+	})
+
+	t.Run("without field", func(t *testing.T) {
+		t.Parallel()
+		be := &BindError{Source: BindSourceBody, Field: "", Err: errors.New("parse failed")}
+		require.Equal(t, "bind from body: parse failed", be.Error())
+	})
+}
+
 func Test_BindError_FieldExtraction(t *testing.T) {
 	t.Parallel()
 
@@ -83,6 +102,27 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 		require.ErrorAs(t, err, &MultiError{})
 	})
 
+	t.Run("ConversionError", func(t *testing.T) {
+		t.Parallel()
+		convErrBinder := &customBinderReturningError{
+			err:      schema.ConversionError{Key: "count"},
+			mimeType: "application/x-conversion-error-test",
+		}
+		app := New()
+		app.RegisterCustomBinder(convErrBinder)
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().SetBody([]byte("{}"))
+		c.Request().Header.SetContentType("application/x-conversion-error-test")
+		type D struct{ Name string }
+		err := c.Bind().Body(new(D))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceBody, be.Source)
+		require.Equal(t, "count", be.Field)
+	})
+
 	t.Run("JSONUnmarshalTypeError", func(t *testing.T) {
 		t.Parallel()
 		type J struct {
@@ -101,6 +141,88 @@ func Test_BindError_FieldExtraction(t *testing.T) {
 		require.Equal(t, "count", be.Field)
 		var unmarshalErr *json.UnmarshalTypeError
 		require.ErrorAs(t, err, &unmarshalErr)
+	})
+
+	t.Run("UnknownKeyError", func(t *testing.T) {
+		t.Parallel()
+		unknownKeyBinder := &customBinderReturningError{
+			err:      schema.UnknownKeyError{Key: "extra_field"},
+			mimeType: "application/x-unknown-key-test",
+		}
+		app := New()
+		app.RegisterCustomBinder(unknownKeyBinder)
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().SetBody([]byte("{}"))
+		c.Request().Header.SetContentType("application/x-unknown-key-test")
+		type D struct{ Name string }
+		err := c.Bind().Body(new(D))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceBody, be.Source)
+		require.Equal(t, "extra_field", be.Field)
+	})
+
+	t.Run("EmptyFieldError", func(t *testing.T) {
+		t.Parallel()
+		emptyFieldBinder := &customBinderReturningError{
+			err:      schema.EmptyFieldError{Key: "required_field"},
+			mimeType: "application/x-empty-field-test",
+		}
+		app := New()
+		app.RegisterCustomBinder(emptyFieldBinder)
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().SetBody([]byte("{}"))
+		c.Request().Header.SetContentType("application/x-empty-field-test")
+		type D struct{ Name string }
+		err := c.Bind().Body(new(D))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceBody, be.Source)
+		require.Equal(t, "required_field", be.Field)
+	})
+
+	t.Run("MultiError", func(t *testing.T) {
+		t.Parallel()
+		type Q struct {
+			A string `query:"a,required"`
+			B string `query:"b,required"`
+		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().URI().SetQueryString("")
+		err := c.Bind().Query(new(Q))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceQuery, be.Source)
+		require.Contains(t, []string{"a", "b"}, be.Field)
+		require.ErrorAs(t, err, &MultiError{})
+	})
+
+	t.Run("NoRecognizedErrorType", func(t *testing.T) {
+		t.Parallel()
+		genericErrBinder := &customBinderReturningError{
+			err:      errors.New("generic parse failure"),
+			mimeType: "application/x-generic-error",
+		}
+		app := New()
+		app.RegisterCustomBinder(genericErrBinder)
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().SetBody([]byte("{}"))
+		c.Request().Header.SetContentType("application/x-generic-error")
+		type D struct{ Name string }
+		err := c.Bind().Body(new(D))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceBody, be.Source)
+		require.Empty(t, be.Field)
 	})
 }
 
@@ -1231,6 +1353,18 @@ func Test_Bind_Body(t *testing.T) {
 		testDecodeParserError(t, "invalid-content-type", "")
 	})
 
+	t.Run("ErrorUnknownContentTypeReturnsUnprocessableEntity", func(t *testing.T) {
+		t.Parallel()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.SetContentType("application/unknown-type")
+		c.Request().SetBody([]byte("some body"))
+		c.Request().Header.SetContentLength(9)
+		d := new(Demo)
+		err := c.Bind().Body(d)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrUnprocessableEntity)
+	})
+
 	t.Run("ErrorMalformedMultipart", func(t *testing.T) {
 		testDecodeParserError(t, MIMEMultipartForm+`;boundary="b"`, "--b")
 	})
@@ -2038,6 +2172,27 @@ func (*customBinder) MIMETypes() []string {
 
 func (*customBinder) Parse(c Ctx, out any) error {
 	return json.Unmarshal(c.Body(), out)
+}
+
+// customBinderReturningError returns a fixed error for testing extractFieldFromError branches.
+type customBinderReturningError struct {
+	err      error
+	mimeType string
+}
+
+func (*customBinderReturningError) Name() string {
+	return "error-binder"
+}
+
+func (b *customBinderReturningError) MIMETypes() []string {
+	if b.mimeType != "" {
+		return []string{b.mimeType}
+	}
+	return []string{"application/x-unknown-key-test", "application/x-empty-field-test"}
+}
+
+func (b *customBinderReturningError) Parse(_ Ctx, _ any) error {
+	return b.err
 }
 
 // go test -run Test_Bind_CustomBinder
