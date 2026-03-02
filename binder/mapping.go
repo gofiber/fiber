@@ -117,7 +117,7 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 	schemaDecoder.SetAliasTag(aliasTag)
 
 	if err := schemaDecoder.Decode(out, data, files...); err != nil {
-		return fmt.Errorf("bind: %w", err)
+		return fmt.Errorf("%w", err)
 	}
 
 	return nil
