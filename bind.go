@@ -170,11 +170,13 @@ func (b *Bind) returnErr(err error) error {
 // Use for binding parse failures; use returnErr directly for Custom and validation errors.
 func (b *Bind) returnBindErr(err error, source string) error {
 	if retErr := b.returnErr(err); retErr != nil {
-		var fiberErr *Error
-		if errors.As(retErr, &fiberErr) {
+		if _, ok := retErr.(*Error); ok {
 			return retErr
 		}
-		return newBindError(source, err)
+		return newBindError(source, retErr)
+	}
+	return nil
+}
 	}
 	return nil
 }
