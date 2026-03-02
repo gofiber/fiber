@@ -686,7 +686,7 @@ app.Get("/user/:id", func(c fiber.Ctx) error {
 
 ## BindError
 
-When a bind method fails to parse (e.g. invalid JSON, bad type conversion), it returns a `*BindError` wrapping the underlying error. Use `errors.As` to extract it when you need to branch on the binding source or field.
+When a bind method fails to parse (e.g. invalid JSON, bad type conversion), the behavior depends on the error-handling mode. In **manual handling** (the default), the binder returns a `*BindError` wrapping the underlying error — use `errors.As` to extract it and branch on the binding source or field. In **automatic handling** (enabled via `WithAutoHandling`), parse failures are instead converted to a `*fiber.Error` with HTTP status 400; `*BindError` is never surfaced to the caller in that mode. If you are using `WithAutoHandling`, check for `*fiber.Error` or an HTTP 400 response rather than using `errors.As` for `*BindError`.
 
 ```go
 type BindError struct {
