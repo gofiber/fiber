@@ -703,9 +703,11 @@ Source constants: `BindSourceURI`, `BindSourceQuery`, `BindSourceHeader`, `BindS
 Use `errors.As` to extract `*BindError` and branch on `Source` for RFC-correct status codes (e.g. 404 for URI failures vs 400 for body/query):
 
 ```go title="Example"
+// With manual handling mode (default behavior)
+// Will not work with WithAutoHandling()
 var req struct {
-    ID   uuid.UUID `uri:"id"`
-    Name string    `json:"name"`
+    ID   int    `uri:"id"`
+    Name string `json:"name"`
 }
 if err := c.Bind().All(&req); err != nil {
     var be *fiber.BindError
