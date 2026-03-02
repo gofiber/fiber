@@ -215,7 +215,10 @@ func (b *Bind) Custom(name string, dest any) error {
 	binders := b.ctx.App().customBinders
 	for _, customBinder := range binders {
 		if customBinder.Name() == name {
-			return b.returnBindErr(customBinder.Parse(b.ctx, dest), name)
+			if err := b.returnBindErr(customBinder.Parse(b.ctx, dest), name); err != nil {
+				return err
+			}
+			return b.validateStruct(dest)
 		}
 	}
 
@@ -388,7 +391,10 @@ func (b *Bind) Body(out any) error {
 	binders := b.ctx.App().customBinders
 	for _, customBinder := range binders {
 		if slices.Contains(customBinder.MIMETypes(), ctype) {
-			return b.returnBindErr(customBinder.Parse(b.ctx, out), BindSourceBody)
+			if err := b.returnBindErr(customBinder.Parse(b.ctx, out), BindSourceBody); err != nil {
+				return err
+			}
+			return b.validateStruct(out)
 		}
 	}
 
