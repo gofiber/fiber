@@ -177,9 +177,6 @@ func (b *Bind) returnBindErr(err error, source string) error {
 	}
 	return nil
 }
-	}
-	return nil
-}
 
 // Struct validation.
 func (b *Bind) validateStruct(out any) error {
