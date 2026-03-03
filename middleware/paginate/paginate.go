@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -23,9 +24,6 @@ const MaxLimit = 100
 // New creates a new pagination middleware handler.
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
-	if cfg.DefaultSort == "" {
-		cfg.DefaultSort = "id"
-	}
 
 	return func(c fiber.Ctx) error {
 		if cfg.Next != nil && cfg.Next(c) {
@@ -58,16 +56,17 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			pageInfo := &PageInfo{
-				Limit:  limit,
-				Sort:   sorts,
-				Cursor: cursorRaw,
+				Limit:      limit,
+				Sort:       sorts,
+				Cursor:     cursorRaw,
+				cursorData: obj,
 			}
 			fiber.StoreInContext(c, pageInfoKey, pageInfo)
 			return c.Next()
 		}
 
 		page := max(fiber.Query(c, cfg.PageKey, cfg.DefaultPage), 1)
-		offset := max(fiber.Query(c, "offset", 0), 0)
+		offset := max(fiber.Query(c, cfg.OffsetKey, 0), 0)
 
 		fiber.StoreInContext(c, pageInfoKey, NewPageInfo(page, limit, offset, sorts))
 		return c.Next()
@@ -90,12 +89,16 @@ func parseSortQuery(query string, allowedSorts []string, defaultSort string) []S
 	sortFields := make([]SortField, 0, len(fields))
 
 	for _, field := range fields {
+		field = utils.Trim(field, ' ')
+		if field == "" {
+			continue
+		}
 		order := ASC
 		if strings.HasPrefix(field, "-") {
 			order = DESC
-			field = field[1:]
+			field = utils.Trim(field[1:], ' ')
 		}
-		if slices.Contains(allowedSorts, field) {
+		if len(allowedSorts) == 0 || slices.Contains(allowedSorts, field) {
 			sortFields = append(sortFields, SortField{Field: field, Order: order})
 		}
 	}

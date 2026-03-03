@@ -75,12 +75,17 @@ app.Get("/feed", func(c fiber.Ctx) error {
         // Use values["id"], values["created_at"], etc. for WHERE clause
     }
 
+    // results is a slice of items from your database query
     // After fetching results, set the next cursor for the client
-    lastItem := results[len(results)-1]
-    pageInfo.SetNextCursor(map[string]any{
-        "id":         lastItem.ID,
-        "created_at": lastItem.CreatedAt,
-    })
+    if len(results) > 0 {
+        lastItem := results[len(results)-1]
+        if err := pageInfo.SetNextCursor(map[string]any{
+            "id":         lastItem.ID,
+            "created_at": lastItem.CreatedAt,
+        }); err != nil {
+            return err
+        }
+    }
 
     return c.JSON(fiber.Map{
         "data":        results,
@@ -120,7 +125,8 @@ app.Use(paginate.New(paginate.Config{
 | DefaultLimit | `int`                    | Default items per page.                                            | `10`       |
 | SortKey      | `string`                 | Query string key for sort.                                         | `""`       |
 | DefaultSort  | `string`                 | Default sort field.                                                | `"id"`     |
-| AllowedSorts | `[]string`               | Whitelist of allowed sort fields.                                  | `nil`      |
+| AllowedSorts | `[]string`               | Whitelist of allowed sort fields. If nil, all fields are allowed.  | `nil`      |
+| OffsetKey    | `string`                 | Query string key for offset.                                       | `"offset"` |
 | CursorKey    | `string`                 | Query string key for cursor-based pagination.                      | `"cursor"` |
 | CursorParam  | `string`                 | Optional alias for the cursor query key.                           | `""`       |
 
@@ -133,6 +139,8 @@ var ConfigDefault = Config{
     DefaultPage:  1,
     LimitKey:     "limit",
     DefaultLimit: 10,
+    DefaultSort:  "id",
+    OffsetKey:    "offset",
     CursorKey:    "cursor",
 }
 ```
@@ -141,15 +149,18 @@ var ConfigDefault = Config{
 
 The `PageInfo` struct is stored in the request context and provides:
 
-| Method                      | Description                                                 |
-|:----------------------------|:------------------------------------------------------------|
-| `Start() int`               | Returns calculated start index (from page/limit or offset)  |
-| `SortBy(field, order)`      | Adds a sort field (chainable)                               |
-| `NextPageURL(baseURL)`      | Generates next page URL                                     |
-| `PreviousPageURL(baseURL)`  | Generates previous page URL (empty on page 1)               |
-| `NextCursorURL(baseURL)`    | Generates next cursor URL (empty if no more)                |
-| `CursorValues()`            | Decodes cursor token into key-value map                     |
-| `SetNextCursor(values)`     | Encodes values into cursor token, sets HasMore (chainable)  |
+| Method                                          | Description                                                    |
+|:------------------------------------------------|:---------------------------------------------------------------|
+| `Start() int`                                   | Returns calculated start index (from page/limit or offset)     |
+| `SortBy(field, order)`                          | Adds a sort field (chainable)                                  |
+| `NextPageURL(baseURL)`                          | Generates next page URL with default keys                      |
+| `NextPageURLWithKeys(baseURL, pageKey, limitKey)` | Generates next page URL with custom query keys               |
+| `PreviousPageURL(baseURL)`                      | Generates previous page URL (empty on page 1)                  |
+| `PreviousPageURLWithKeys(baseURL, pageKey, limitKey)` | Generates previous page URL with custom query keys       |
+| `NextCursorURL(baseURL)`                        | Generates next cursor URL (empty if no more)                   |
+| `NextCursorURLWithKeys(baseURL, cursorKey, limitKey)` | Generates next cursor URL with custom query keys         |
+| `CursorValues()`                                | Decodes cursor token into key-value map                        |
+| `SetNextCursor(values)`                         | Encodes values into cursor token, sets HasMore; returns error  |
 
 ## Safety
 
