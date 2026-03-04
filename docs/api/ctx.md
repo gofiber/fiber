@@ -2240,6 +2240,12 @@ app.Get("/", func(c fiber.Ctx) error {
 Calling `c.End()` will disallow further writes to the underlying connection.
 :::
 
+:::warning
+`c.End()` does **not** work in streaming mode (e.g. when using `fasthttp`'s `HijackConn` or `SendStream`).
+In streaming mode the connection is managed asynchronously and `ctx.Conn()` may return `nil`,
+so `c.End()` will return `nil` without flushing or closing the connection.
+:::
+
 End can be used to stop a middleware from modifying a response of a handler/other middleware down the method chain
 when they regain control after calling `c.Next()`.
 
