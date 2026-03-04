@@ -1041,10 +1041,11 @@ func Benchmark_PaginateMiddleware(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/?page=2&limit=20&sort=name,-date", http.NoBody)
-		_, err := app.Test(req, fiber.TestConfig{Timeout: 0})
+		resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
 		if err != nil {
 			b.Fatal(err)
 		}
+		_ = resp.Body.Close()
 	}
 }
 
@@ -1069,10 +1070,11 @@ func Benchmark_PaginateMiddlewareWithCustomConfig(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/?p=3&l=25&s=name,-id", http.NoBody)
-		_, err := app.Test(req, fiber.TestConfig{Timeout: 0})
+		resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
 		if err != nil {
 			b.Fatal(err)
 		}
+		_ = resp.Body.Close()
 	}
 }
 
@@ -1096,9 +1098,10 @@ func Benchmark_PaginateCursorMiddleware(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/?cursor="+cursor+"&limit=20&sort=name,-id", http.NoBody)
-		_, err := app.Test(req, fiber.TestConfig{Timeout: 0})
+		resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
 		if err != nil {
 			b.Fatal(err)
 		}
+		_ = resp.Body.Close()
 	}
 }
