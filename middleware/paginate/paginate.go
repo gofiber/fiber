@@ -48,11 +48,11 @@ func New(config ...Config) fiber.Handler {
 		if cursorRaw != "" {
 			data, err := base64.RawURLEncoding.DecodeString(cursorRaw)
 			if err != nil {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid cursor"})
+				return fiber.NewError(fiber.StatusBadRequest, "invalid cursor")
 			}
 			var obj map[string]any
 			if err := json.Unmarshal(data, &obj); err != nil {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid cursor"})
+				return fiber.NewError(fiber.StatusBadRequest, "invalid cursor")
 			}
 
 			pageInfo := &PageInfo{
@@ -97,6 +97,9 @@ func parseSortQuery(query string, allowedSorts []string, defaultSort string) []S
 		if strings.HasPrefix(field, "-") {
 			order = DESC
 			field = utils.Trim(field[1:], ' ')
+		}
+		if field == "" {
+			continue
 		}
 		if len(allowedSorts) == 0 || slices.Contains(allowedSorts, field) {
 			sortFields = append(sortFields, SortField{Field: field, Order: order})

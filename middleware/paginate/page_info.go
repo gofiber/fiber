@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
 )
 
 // ErrCursorEncode is returned when cursor values cannot be encoded.
@@ -24,9 +27,9 @@ type SortField struct {
 	Order SortOrder `json:"order"`
 }
 
-// SortOrderFromString returns a SortOrder from a string.
+// SortOrderFromString returns a SortOrder from a string (case-insensitive).
 func SortOrderFromString(s string) SortOrder {
-	if s == "desc" {
+	if strings.EqualFold(s, "desc") {
 		return DESC
 	}
 	return ASC
@@ -59,6 +62,9 @@ func (p *PageInfo) Start() int {
 	if p.Offset > 0 {
 		return p.Offset
 	}
+	if p.Page < 1 {
+		return 0
+	}
 	return (p.Page - 1) * p.Limit
 }
 
@@ -70,7 +76,7 @@ func (p *PageInfo) SortBy(field string, order SortOrder) *PageInfo {
 
 // NextPageURLWithKeys returns the URL for the next page using custom query keys.
 func (p *PageInfo) NextPageURLWithKeys(baseURL, pageKey, limitKey string) string {
-	return fmt.Sprintf("%s?%s=%d&%s=%d", baseURL, pageKey, p.Page+1, limitKey, p.Limit)
+	return buildPaginationURL(baseURL, pageKey, strconv.Itoa(p.Page+1), limitKey, strconv.Itoa(p.Limit))
 }
 
 // NextPageURL returns the URL for the next page.
@@ -82,7 +88,7 @@ func (p *PageInfo) NextPageURL(baseURL string) string {
 // Returns empty string if on page 1.
 func (p *PageInfo) PreviousPageURLWithKeys(baseURL, pageKey, limitKey string) string {
 	if p.Page > 1 {
-		return fmt.Sprintf("%s?%s=%d&%s=%d", baseURL, pageKey, p.Page-1, limitKey, p.Limit)
+		return buildPaginationURL(baseURL, pageKey, strconv.Itoa(p.Page-1), limitKey, strconv.Itoa(p.Limit))
 	}
 	return ""
 }
@@ -99,13 +105,27 @@ func (p *PageInfo) NextCursorURLWithKeys(baseURL, cursorKey, limitKey string) st
 	if !p.HasMore {
 		return ""
 	}
-	return fmt.Sprintf("%s?%s=%s&%s=%d", baseURL, cursorKey, p.NextCursor, limitKey, p.Limit)
+	return buildPaginationURL(baseURL, cursorKey, p.NextCursor, limitKey, strconv.Itoa(p.Limit))
 }
 
 // NextCursorURL returns the URL for the next cursor page.
 // Returns empty string if HasMore is false.
 func (p *PageInfo) NextCursorURL(baseURL string) string {
 	return p.NextCursorURLWithKeys(baseURL, "cursor", "limit")
+}
+
+// buildPaginationURL parses baseURL and sets/replaces two query parameters,
+// preserving any existing query string values.
+func buildPaginationURL(baseURL, pageParam, pageValue, limitParam, limitValue string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return fmt.Sprintf("%s?%s=%s&%s=%s", baseURL, pageParam, pageValue, limitParam, limitValue)
+	}
+	q := u.Query()
+	q.Set(pageParam, pageValue)
+	q.Set(limitParam, limitValue)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // CursorValues returns the decoded cursor key-value map.

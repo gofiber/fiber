@@ -97,6 +97,8 @@ func Test_SortOrderFromString(t *testing.T) {
 	}{
 		{"asc", ASC},
 		{"desc", DESC},
+		{"DESC", DESC},
+		{"Desc", DESC},
 		{"invalid", ASC},
 		{"", ASC},
 	}
@@ -156,13 +158,13 @@ func Test_PageInfoNextPageURL(t *testing.T) {
 		{
 			name:     "Middle page",
 			baseURL:  "https://example.com/users",
-			expected: "https://example.com/users?page=3&limit=10",
+			expected: "https://example.com/users?limit=10&page=3",
 			pageInfo: PageInfo{Page: 2, Limit: 10},
 		},
 		{
 			name:     "First page",
 			baseURL:  "https://example.com/users",
-			expected: "https://example.com/users?page=2&limit=20",
+			expected: "https://example.com/users?limit=20&page=2",
 			pageInfo: PageInfo{Page: 1, Limit: 20},
 		},
 	}
@@ -187,7 +189,7 @@ func Test_PageInfoPreviousPageURL(t *testing.T) {
 		{
 			name:     "Middle page",
 			baseURL:  "https://example.com/users",
-			expected: "https://example.com/users?page=1&limit=10",
+			expected: "https://example.com/users?limit=10&page=1",
 			pageInfo: PageInfo{Page: 2, Limit: 10},
 		},
 		{
@@ -204,6 +206,34 @@ func Test_PageInfoPreviousPageURL(t *testing.T) {
 			require.Equal(t, tt.expected, tt.pageInfo.PreviousPageURL(tt.baseURL))
 		})
 	}
+}
+
+func Test_PageInfoStartCursorMode(t *testing.T) {
+	t.Parallel()
+
+	// In cursor mode, Page is 0 (not set). Start() should return 0, not negative.
+	p := &PageInfo{Page: 0, Limit: 20}
+	require.Equal(t, 0, p.Start())
+}
+
+func Test_PageInfoNextPageURLWithExistingQueryParams(t *testing.T) {
+	t.Parallel()
+
+	p := PageInfo{Page: 2, Limit: 10}
+	result := p.NextPageURL("https://example.com/users?filter=active")
+	require.Contains(t, result, "filter=active")
+	require.Contains(t, result, "page=3")
+	require.Contains(t, result, "limit=10")
+}
+
+func Test_PageInfoPreviousPageURLWithExistingQueryParams(t *testing.T) {
+	t.Parallel()
+
+	p := PageInfo{Page: 3, Limit: 10}
+	result := p.PreviousPageURL("https://example.com/users?filter=active")
+	require.Contains(t, result, "filter=active")
+	require.Contains(t, result, "page=2")
+	require.Contains(t, result, "limit=10")
 }
 
 func Test_PageInfoCursorFields(t *testing.T) {
@@ -330,8 +360,8 @@ func Test_PaginateWithQueries(t *testing.T) {
 	require.Equal(t, 20, body.Limit)
 	require.Equal(t, 0, body.Offset)
 	require.Equal(t, 20, body.Start)
-	require.Equal(t, "http://example.com?page=3&limit=20", body.NextPageURL)
-	require.Equal(t, "http://example.com?page=1&limit=20", body.PreviousPageURL)
+	require.Equal(t, "http://example.com?limit=20&page=3", body.NextPageURL)
+	require.Equal(t, "http://example.com?limit=20&page=1", body.PreviousPageURL)
 	require.Equal(t, []SortField{{Field: "id", Order: ASC}}, body.Sort)
 }
 
@@ -738,6 +768,23 @@ func Test_ParseSortQuery(t *testing.T) {
 			[]SortField{
 				{Field: "email", Order: ASC},
 				{Field: "phone", Order: DESC},
+			},
+		},
+		{
+			"Bare dash is skipped",
+			"-",
+			nil,
+			"id",
+			[]SortField{{Field: "id", Order: ASC}},
+		},
+		{
+			"Dash in comma list is skipped",
+			"name,-,email",
+			nil,
+			"id",
+			[]SortField{
+				{Field: "name", Order: ASC},
+				{Field: "email", Order: ASC},
 			},
 		},
 	}
