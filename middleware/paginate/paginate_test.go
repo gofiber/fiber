@@ -333,7 +333,7 @@ func Test_PaginateWithQueries(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -371,7 +371,7 @@ func Test_PaginateWithOffset(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -403,7 +403,7 @@ func Test_PaginateCheckDefaultsWhenNoQueries(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -436,7 +436,7 @@ func Test_PaginateCheckDefaultsWhenNoPage(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -464,7 +464,7 @@ func Test_PaginateCheckDefaultsWhenNoLimit(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -491,12 +491,12 @@ func Test_PaginateConfigDefaultPageDefaultLimit(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		DefaultPage:  100,
-		DefaultLimit: MaxLimit,
+		DefaultLimit: DefaultMaxLimit,
 		DefaultSort:  "name",
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -515,7 +515,7 @@ func Test_PaginateConfigDefaultPageDefaultLimit(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
 
 	require.Equal(t, 100, body.Page)
-	require.Equal(t, MaxLimit, body.Limit)
+	require.Equal(t, DefaultMaxLimit, body.Limit)
 	require.Equal(t, 9900, body.Start)
 	require.Equal(t, []SortField{{Field: "name", Order: ASC}}, body.Sort)
 }
@@ -530,7 +530,7 @@ func Test_PaginateConfigPageKeyLimitKey(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -563,7 +563,7 @@ func Test_PaginateNegativeDefaultPageDefaultLimitValues(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -590,7 +590,7 @@ func Test_PaginateFromContextWithoutNew(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/", func(c fiber.Ctx) error {
-		_, ok := PageInfoFromContext(c)
+		_, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -612,7 +612,7 @@ func Test_PaginateNextSkip(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		_, ok := PageInfoFromContext(c)
+		_, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -633,7 +633,7 @@ func Test_PaginateEdgeCases(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -650,7 +650,7 @@ func Test_PaginateEdgeCases(t *testing.T) {
 		{"Page zero", "/?page=0", 1, 10},
 		{"Negative limit", "/?limit=-10", 1, 10},
 		{"Limit zero", "/?limit=0", 1, 10},
-		{"Limit exceeds max", "/?limit=200", 1, MaxLimit},
+		{"Limit exceeds max", "/?limit=200", 1, DefaultMaxLimit},
 	}
 
 	for _, tc := range testCases {
@@ -678,7 +678,7 @@ func Test_PaginateWithMultipleSorting(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -808,7 +808,7 @@ func Test_PaginateWithCursor(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -838,7 +838,7 @@ func Test_PaginateCursorPriorityOverPage(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -863,7 +863,7 @@ func Test_PaginateEmptyCursorIsFirstPage(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -885,7 +885,7 @@ func Test_PaginateInvalidCursorReturns400(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, _ := PageInfoFromContext(c)
+		pageInfo, _ := FromContext(c)
 		return c.JSON(pageInfo)
 	})
 
@@ -917,7 +917,7 @@ func Test_PaginateCursorWithSort(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -946,7 +946,7 @@ func Test_PaginateCursorWithCustomKey(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -976,7 +976,7 @@ func Test_PaginateCursorWithParamAlias(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -1005,7 +1005,7 @@ func Test_PaginateNoCursorFallsBackToPageMode(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := PageInfoFromContext(c)
+		pageInfo, ok := FromContext(c)
 		if !ok {
 			return fiber.ErrBadRequest
 		}
@@ -1033,7 +1033,7 @@ func Benchmark_PaginateMiddleware(b *testing.B) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, _ := PageInfoFromContext(c)
+		pageInfo, _ := FromContext(c)
 		return c.JSON(pageInfo)
 	})
 
@@ -1045,7 +1045,7 @@ func Benchmark_PaginateMiddleware(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		_ = resp.Body.Close()
+		resp.Body.Close() //nolint:errcheck // not needed
 	}
 }
 
@@ -1062,7 +1062,7 @@ func Benchmark_PaginateMiddlewareWithCustomConfig(b *testing.B) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, _ := PageInfoFromContext(c)
+		pageInfo, _ := FromContext(c)
 		return c.JSON(pageInfo)
 	})
 
@@ -1074,7 +1074,7 @@ func Benchmark_PaginateMiddlewareWithCustomConfig(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		_ = resp.Body.Close()
+		resp.Body.Close() //nolint:errcheck // not needed
 	}
 }
 
@@ -1087,7 +1087,7 @@ func Benchmark_PaginateCursorMiddleware(b *testing.B) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, _ := PageInfoFromContext(c)
+		pageInfo, _ := FromContext(c)
 		return c.JSON(pageInfo)
 	})
 
@@ -1102,6 +1102,6 @@ func Benchmark_PaginateCursorMiddleware(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		_ = resp.Body.Close()
+		resp.Body.Close() //nolint:errcheck // not needed
 	}
 }

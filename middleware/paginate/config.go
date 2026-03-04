@@ -58,6 +58,11 @@ type Config struct {
 	//
 	// Optional. Default: 10
 	DefaultLimit int
+
+	// MaxLimit is the maximum items per page.
+	//
+	// Optional. Default: 100
+	MaxLimit int
 }
 
 // ConfigDefault is the default config.

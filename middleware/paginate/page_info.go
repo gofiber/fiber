@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"strconv"
-	"strings"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // ErrCursorEncode is returned when cursor values cannot be encoded.
@@ -29,7 +29,7 @@ type SortField struct {
 
 // SortOrderFromString returns a SortOrder from a string (case-insensitive).
 func SortOrderFromString(s string) SortOrder {
-	if strings.EqualFold(s, "desc") {
+	if utils.EqualFold(s, "desc") {
 		return DESC
 	}
 	return ASC
@@ -37,14 +37,16 @@ func SortOrderFromString(s string) SortOrder {
 
 // PageInfo contains pagination information.
 type PageInfo struct {
-	cursorData map[string]any
-	Cursor     string      `json:"cursor,omitempty"`
-	NextCursor string      `json:"next_cursor,omitempty"`
-	Sort       []SortField `json:"sort"`
-	Page       int         `json:"page"`
-	Limit      int         `json:"limit"`
-	Offset     int         `json:"offset"`
-	HasMore    bool        `json:"has_more,omitempty"`
+	cursorData    map[string]any
+	jsonMarshal   utils.JSONMarshal
+	jsonUnmarshal utils.JSONUnmarshal
+	Cursor        string      `json:"cursor,omitempty"`
+	NextCursor    string      `json:"next_cursor,omitempty"`
+	Sort          []SortField `json:"sort"`
+	Page          int         `json:"page"`
+	Limit         int         `json:"limit"`
+	Offset        int         `json:"offset"`
+	HasMore       bool        `json:"has_more,omitempty"`
 }
 
 // NewPageInfo creates a new PageInfo.
@@ -76,7 +78,7 @@ func (p *PageInfo) SortBy(field string, order SortOrder) *PageInfo {
 
 // NextPageURLWithKeys returns the URL for the next page using custom query keys.
 func (p *PageInfo) NextPageURLWithKeys(baseURL, pageKey, limitKey string) string {
-	return buildPaginationURL(baseURL, pageKey, strconv.Itoa(p.Page+1), limitKey, strconv.Itoa(p.Limit))
+	return buildPaginationURL(baseURL, pageKey, utils.FormatInt(int64(p.Page+1)), limitKey, utils.FormatInt(int64(p.Limit)))
 }
 
 // NextPageURL returns the URL for the next page.
@@ -88,7 +90,7 @@ func (p *PageInfo) NextPageURL(baseURL string) string {
 // Returns empty string if on page 1.
 func (p *PageInfo) PreviousPageURLWithKeys(baseURL, pageKey, limitKey string) string {
 	if p.Page > 1 {
-		return buildPaginationURL(baseURL, pageKey, strconv.Itoa(p.Page-1), limitKey, strconv.Itoa(p.Limit))
+		return buildPaginationURL(baseURL, pageKey, utils.FormatInt(int64(p.Page-1)), limitKey, utils.FormatInt(int64(p.Limit)))
 	}
 	return ""
 }
@@ -105,7 +107,7 @@ func (p *PageInfo) NextCursorURLWithKeys(baseURL, cursorKey, limitKey string) st
 	if !p.HasMore {
 		return ""
 	}
-	return buildPaginationURL(baseURL, cursorKey, p.NextCursor, limitKey, strconv.Itoa(p.Limit))
+	return buildPaginationURL(baseURL, cursorKey, p.NextCursor, limitKey, utils.FormatInt(int64(p.Limit)))
 }
 
 // NextCursorURL returns the URL for the next cursor page.
@@ -147,7 +149,11 @@ func (p *PageInfo) CursorValues() map[string]any {
 	}
 
 	var values map[string]any
-	if err := json.Unmarshal(data, &values); err != nil {
+	unmarshal := p.jsonUnmarshal
+	if unmarshal == nil {
+		unmarshal = json.Unmarshal
+	}
+	if err := unmarshal(data, &values); err != nil {
 		return nil
 	}
 
@@ -159,7 +165,11 @@ func (p *PageInfo) CursorValues() map[string]any {
 // SetNextCursor encodes a key-value map into an opaque cursor token
 // and sets both NextCursor and HasMore on the PageInfo.
 func (p *PageInfo) SetNextCursor(values map[string]any) error {
-	data, err := json.Marshal(values)
+	marshal := p.jsonMarshal
+	if marshal == nil {
+		marshal = json.Marshal
+	}
+	data, err := marshal(values)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrCursorEncode, err)
 	}

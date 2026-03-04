@@ -2,7 +2,6 @@ package paginate
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"slices"
 	"strings"
 
@@ -18,8 +17,8 @@ const (
 	pageInfoKey contextKey = iota
 )
 
-// MaxLimit is the maximum limit allowed.
-const MaxLimit = 100
+// DefaultMaxLimit is the default maximum limit allowed.
+const DefaultMaxLimit = 100
 
 // New creates a new pagination middleware handler.
 func New(config ...Config) fiber.Handler {
@@ -30,12 +29,18 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
+		appCfg := c.App().Config()
+		maxLimit := cfg.MaxLimit
+		if maxLimit < 1 {
+			maxLimit = DefaultMaxLimit
+		}
+
 		limit := fiber.Query(c, cfg.LimitKey, cfg.DefaultLimit)
 		if limit < 1 {
 			limit = cfg.DefaultLimit
 		}
-		if limit > MaxLimit {
-			limit = MaxLimit
+		if limit > maxLimit {
+			limit = maxLimit
 		}
 
 		sorts := parseSortQuery(c.Query(cfg.SortKey), cfg.AllowedSorts, cfg.DefaultSort)
@@ -51,15 +56,17 @@ func New(config ...Config) fiber.Handler {
 				return fiber.NewError(fiber.StatusBadRequest, "invalid cursor")
 			}
 			var obj map[string]any
-			if err := json.Unmarshal(data, &obj); err != nil {
+			if err := appCfg.JSONDecoder(data, &obj); err != nil {
 				return fiber.NewError(fiber.StatusBadRequest, "invalid cursor")
 			}
 
 			pageInfo := &PageInfo{
-				Limit:      limit,
-				Sort:       sorts,
-				Cursor:     cursorRaw,
-				cursorData: obj,
+				Limit:         limit,
+				Sort:          sorts,
+				Cursor:        cursorRaw,
+				cursorData:    obj,
+				jsonMarshal:   appCfg.JSONEncoder,
+				jsonUnmarshal: appCfg.JSONDecoder,
 			}
 			fiber.StoreInContext(c, pageInfoKey, pageInfo)
 			return c.Next()
@@ -68,15 +75,18 @@ func New(config ...Config) fiber.Handler {
 		page := max(fiber.Query(c, cfg.PageKey, cfg.DefaultPage), 1)
 		offset := max(fiber.Query(c, cfg.OffsetKey, 0), 0)
 
-		fiber.StoreInContext(c, pageInfoKey, NewPageInfo(page, limit, offset, sorts))
+		pageInfo := NewPageInfo(page, limit, offset, sorts)
+		pageInfo.jsonMarshal = appCfg.JSONEncoder
+		pageInfo.jsonUnmarshal = appCfg.JSONDecoder
+		fiber.StoreInContext(c, pageInfoKey, pageInfo)
 		return c.Next()
 	}
 }
 
-// PageInfoFromContext returns the PageInfo from the request context.
+// FromContext returns the PageInfo from the request context.
 // It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
 // Returns nil and false if no PageInfo is stored.
-func PageInfoFromContext(ctx any) (*PageInfo, bool) {
+func FromContext(ctx any) (*PageInfo, bool) {
 	return fiber.ValueFromContext[*PageInfo](ctx, pageInfoKey)
 }
 
@@ -89,14 +99,14 @@ func parseSortQuery(query string, allowedSorts []string, defaultSort string) []S
 	sortFields := make([]SortField, 0, len(fields))
 
 	for _, field := range fields {
-		field = utils.Trim(field, ' ')
+		field = utils.TrimSpace(field)
 		if field == "" {
 			continue
 		}
 		order := ASC
 		if strings.HasPrefix(field, "-") {
 			order = DESC
-			field = utils.Trim(field[1:], ' ')
+			field = utils.TrimSpace(field[1:])
 		}
 		if field == "" {
 			continue

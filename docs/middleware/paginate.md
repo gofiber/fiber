@@ -10,10 +10,10 @@ Pagination middleware for [Fiber](https://github.com/gofiber/fiber) that extract
 
 ```go
 func New(config ...Config) fiber.Handler
-func PageInfoFromContext(ctx any) (*PageInfo, bool)
+func FromContext(ctx any) (*PageInfo, bool)
 ```
 
-`PageInfoFromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
+`FromContext` accepts `fiber.CustomCtx`, `fiber.Ctx`, `*fasthttp.RequestCtx`, or `context.Context`.
 
 ## Examples
 
@@ -34,7 +34,7 @@ Once your Fiber app is initialized, choose one of the following approaches:
 app.Use(paginate.New())
 
 app.Get("/users", func(c fiber.Ctx) error {
-    pageInfo, ok := paginate.PageInfoFromContext(c)
+    pageInfo, ok := paginate.FromContext(c)
     if !ok {
         return fiber.ErrBadRequest
     }
@@ -64,7 +64,7 @@ app.Use(paginate.New(paginate.Config{
 app.Use(paginate.New())
 
 app.Get("/feed", func(c fiber.Ctx) error {
-    pageInfo, ok := paginate.PageInfoFromContext(c)
+    pageInfo, ok := paginate.FromContext(c)
     if !ok {
         return fiber.ErrBadRequest
     }
@@ -129,6 +129,7 @@ app.Use(paginate.New(paginate.Config{
 | OffsetKey    | `string`                 | Query string key for offset.                                       | `"offset"` |
 | CursorKey    | `string`                 | Query string key for cursor-based pagination.                      | `"cursor"` |
 | CursorParam  | `string`                 | Optional alias for the cursor query key.                           | `""`       |
+| MaxLimit     | `int`                    | Maximum items per page.                                            | `100`      |
 
 ## Default Config
 
@@ -164,7 +165,7 @@ The `PageInfo` struct is stored in the request context and provides:
 
 ## Safety
 
-- Limit is capped at `MaxLimit` (100) to prevent excessive memory usage
+- Limit is capped at `MaxLimit` (default: 100, configurable) to prevent excessive memory usage
 - Page values below 1 reset to 1
 - Negative offsets reset to 0
 - Sort fields are validated against `AllowedSorts`
