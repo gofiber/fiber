@@ -1131,6 +1131,10 @@ func (r *DefaultRes) Drop() error {
 // because in streaming mode the connection is managed asynchronously and ctx.Conn() may return nil.
 func (r *DefaultRes) End() error {
 	ctx := r.c.fasthttp
+	if ctx == nil {
+		return nil
+	}
+
 	conn := ctx.Conn()
 	if conn == nil {
 		return nil
