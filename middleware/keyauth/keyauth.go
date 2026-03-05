@@ -1,12 +1,15 @@
 package keyauth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -22,10 +25,27 @@ const (
 // ErrMissingOrMalformedAPIKey is returned when the API key is missing or invalid.
 var ErrMissingOrMalformedAPIKey = errors.New("missing or invalid API Key")
 
+// registerExtractor ensures the log context extractor for API keys is
+// registered exactly once, regardless of how many times New() is called.
+var registerExtractor sync.Once
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Init config
 	cfg := configDefault(config...)
+
+	// Register a log context extractor so that log.WithContext(c) automatically
+	// includes a redacted API key when the keyauth middleware is in use.
+	// An empty token (no middleware or middleware skipped) is omitted.
+	registerExtractor.Do(func() {
+		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
+			token := TokenFromContext(ctx)
+			if token == "" {
+				return "", nil, false
+			}
+			return "api-key", redactValue(token), true
+		})
+	})
 
 	// Determine the auth schemes from the extractor chain.
 	authSchemes := getAuthSchemes(cfg.Extractor)
@@ -116,4 +136,14 @@ func getAuthSchemes(e extractors.Extractor) []string {
 		schemes = append(schemes, getAuthSchemes(ex)...)
 	}
 	return schemes
+}
+
+// redactValue returns a masked version of a sensitive value for safe logging.
+// It shows the first 4 characters followed by "****" for values longer than
+// 8 characters, or "****" for shorter values.
+func redactValue(s string) string {
+	if len(s) > 8 {
+		return s[:4] + "****"
+	}
+	return "****"
 }

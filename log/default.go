@@ -14,9 +14,27 @@ import (
 var _ AllLogger[*log.Logger] = (*defaultLogger)(nil)
 
 type defaultLogger struct {
+	ctx    context.Context //nolint:containedctx // stored for deferred field extraction
 	stdlog *log.Logger
 	level  Level
 	depth  int
+}
+
+// writeContextFields appends extracted context key-value pairs to buf.
+// Each pair is written as "key=value " (trailing space included).
+func (l *defaultLogger) writeContextFields(buf *bytebufferpool.ByteBuffer) {
+	if l.ctx == nil || len(contextExtractors) == 0 {
+		return
+	}
+	for _, extractor := range contextExtractors {
+		key, value, ok := extractor(l.ctx)
+		if ok && key != "" {
+			buf.WriteString(key)
+			buf.WriteByte('=')
+			buf.WriteString(utils.ToString(value))
+			buf.WriteByte(' ')
+		}
+	}
 }
 
 // privateLog logs a message at a given level log the default logger.
@@ -28,6 +46,7 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	level := lv.toString()
 	buf := bytebufferpool.Get()
 	buf.WriteString(level)
+	l.writeContextFields(buf)
 	fmt.Fprint(buf, fmtArgs...)
 
 	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
@@ -51,6 +70,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	level := lv.toString()
 	buf := bytebufferpool.Get()
 	buf.WriteString(level)
+	l.writeContextFields(buf)
 
 	if len(fmtArgs) > 0 {
 		_, _ = fmt.Fprintf(buf, format, fmtArgs...)
@@ -78,8 +98,7 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 	level := lv.toString()
 	buf := bytebufferpool.Get()
 	buf.WriteString(level)
-
-	// Write format privateLog buffer
+	l.writeContextFields(buf)
 	if format != "" {
 		buf.WriteString(format)
 	}
@@ -220,12 +239,15 @@ func (l *defaultLogger) Panicw(msg string, keysAndValues ...any) {
 	l.privateLogw(LevelPanic, msg, keysAndValues)
 }
 
-// WithContext returns a logger that shares the underlying output but adjusts the call depth.
-func (l *defaultLogger) WithContext(_ context.Context) CommonLogger {
+// WithContext returns a logger that shares the underlying output but carries
+// the provided context. Any registered ContextExtractor functions will be
+// called at log time to prepend key-value fields extracted from the context.
+func (l *defaultLogger) WithContext(ctx context.Context) CommonLogger {
 	return &defaultLogger{
 		stdlog: l.stdlog,
 		level:  l.level,
 		depth:  l.depth - 1,
+		ctx:    ctx,
 	}
 }
 

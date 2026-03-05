@@ -8,6 +8,36 @@ import (
 	"os"
 )
 
+// ContextExtractor extracts a key-value pair from the given context for
+// inclusion in log output when using WithContext.
+// It returns the log field name, its value, and whether extraction succeeded.
+type ContextExtractor func(ctx context.Context) (string, any, bool)
+
+// contextExtractors holds all registered context field extractors.
+//
+// This slice is read during logging and written during registration.
+// Registrations use a copy-on-write strategy so that readers always see
+// an immutable snapshot of the slice and never observe concurrent mutation
+// of the underlying backing array.
+var contextExtractors []ContextExtractor
+
+// RegisterContextExtractor registers a function that extracts a key-value pair
+// from context for inclusion in log output when using WithContext.
+//
+// This function is safe to call concurrently with logging: it uses a
+// copy-on-write strategy so that existing readers continue to see their
+// previous slice snapshot while new registrations are applied to a new slice.
+func RegisterContextExtractor(extractor ContextExtractor) {
+	if extractor == nil {
+		panic("log: RegisterContextExtractor called with nil extractor")
+	}
+	n := len(contextExtractors)
+	next := make([]ContextExtractor, n+1)
+	copy(next, contextExtractors)
+	next[n] = extractor
+	contextExtractors = next
+}
+
 // baseLogger defines the minimal logger functionality required by the package.
 // It allows storing any logger implementation regardless of its generic type.
 type baseLogger interface {

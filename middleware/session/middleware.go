@@ -3,10 +3,12 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // Middleware holds session data and configuration.
@@ -36,6 +38,10 @@ var (
 			return &Middleware{}
 		},
 	}
+
+	// registerExtractor ensures the log context extractor for session IDs is
+	// registered exactly once.
+	registerExtractor sync.Once
 )
 
 // New initializes session middleware with optional configuration.
@@ -80,6 +86,19 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 	if cfg.Store == nil {
 		cfg.Store = NewStore(cfg)
 	}
+
+	// Register a log context extractor so that log.WithContext(c) automatically
+	// includes the session ID when the session middleware is in use.
+	registerExtractor.Do(func() {
+		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
+			m := FromContext(ctx)
+			if m == nil || m.Session == nil {
+				return "", nil, false
+			}
+			id := m.Session.ID()
+			return "session-id", id, id != ""
+		})
+	})
 
 	handler := func(c fiber.Ctx) error {
 		if cfg.Next != nil && cfg.Next(c) {

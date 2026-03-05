@@ -1,11 +1,14 @@
 package requestid
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -232,4 +235,61 @@ func Test_RequestID_FromContext_Types(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// Test_RequestID_LogWithContext_FiberCtx verifies that log.WithContext(c)
+// automatically includes the request ID when a fiber.Ctx is passed.
+func Test_RequestID_LogWithContext_FiberCtx(t *testing.T) {
+	reqID := "test-request-id-fiber"
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return reqID
+		},
+	}))
+
+	var logOutput bytes.Buffer
+	fiberlog.SetOutput(&logOutput)
+	defer fiberlog.SetOutput(os.Stderr)
+
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("hello from handler")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, logOutput.String(), "request-id="+reqID)
+	require.Contains(t, logOutput.String(), "hello from handler")
+}
+
+// Test_RequestID_LogWithContext_ContextContext verifies that log.WithContext
+// works with a context.Context obtained via c.Context() when PassLocalsToContext
+// is enabled.
+func Test_RequestID_LogWithContext_ContextContext(t *testing.T) {
+	reqID := "test-request-id-context"
+
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
+	app.Use(New(Config{
+		Generator: func() string {
+			return reqID
+		},
+	}))
+
+	var logOutput bytes.Buffer
+	fiberlog.SetOutput(&logOutput)
+	defer fiberlog.SetOutput(os.Stderr)
+
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c.Context()).Info("hello via context.Context")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, logOutput.String(), "request-id="+reqID)
+	require.Contains(t, logOutput.String(), "hello via context.Context")
 }
