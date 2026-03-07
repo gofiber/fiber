@@ -153,7 +153,9 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 	return (<-channel).err
 }
 
-// watchMaster watches child procs
+// watchMaster watches the master process and exits if it dies.
+// It detects master death by checking if the parent PID has changed,
+// which happens when the master exits and the child is reparented to init.
 func watchMaster() {
 	if runtime.GOOS == windowsOS {
 		// finds parent process,
@@ -164,11 +166,15 @@ func watchMaster() {
 		}
 		os.Exit(1) //nolint:revive // Calling os.Exit is fine here in the prefork
 	}
-	// if it is equal to 1 (init process ID),
-	// it indicates that the master process has exited
+	// Store the original parent PID and watch for changes.
+	// When the master exits, the OS reparents the child to init (PID 1),
+	// causing Getppid() to change. Comparing against the original PID
+	// instead of hardcoding 1 ensures this works correctly when the
+	// master itself is PID 1 (e.g. in Docker containers).
 	const watchInterval = 500 * time.Millisecond
+	masterPID := os.Getppid()
 	for range time.NewTicker(watchInterval).C {
-		if os.Getppid() == 1 {
+		if os.Getppid() != masterPID {
 			os.Exit(1) //nolint:revive // Calling os.Exit is fine here in the prefork
 		}
 	}
