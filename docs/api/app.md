@@ -251,6 +251,80 @@ app.Route("/test", func(api fiber.Router) {
 }, "test.")
 ```
 
+### Domain
+
+Creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose `Host` header matches the pattern. Domain names are matched case-insensitively per [RFC 4343](https://www.rfc-editor.org/rfc/rfc4343).
+
+The pattern can contain parameters prefixed with `:`. Use [`DomainParam`](#domainparam) to retrieve them inside handlers.
+
+Domain routing has **zero performance impact** on routes that don't use it — the hostname check is applied as a handler wrapper, not a change to the core router.
+
+```go title="Signature"
+func (app *App) Domain(host string) Router
+```
+
+```go title="Example"
+package main
+
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    // Static domain — only matches requests to api.example.com
+    app.Domain("api.example.com").Get("/users", func(c fiber.Ctx) error {
+        return c.SendString("API users list")
+    })
+
+    // Domain with parameter
+    app.Domain(":user.blog.example.com").Get("/", func(c fiber.Ctx) error {
+        user := fiber.DomainParam(c, "user")
+        return c.SendString(user + "'s blog")
+    })
+
+    // Composable with groups and middleware
+    admin := app.Domain("admin.example.com")
+    admin.Use(func(c fiber.Ctx) error {
+        // Only runs for admin.example.com
+        c.Set("X-Admin", "true")
+        return c.Next()
+    })
+    admin.Get("/dashboard", func(c fiber.Ctx) error {
+        return c.SendString("Admin Dashboard")
+    })
+
+    // Fallback for unmatched domains
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString("Default site")
+    })
+
+    log.Fatal(app.Listen(":3000"))
+}
+```
+
+#### DomainParam
+
+Returns the value of a domain parameter captured by a [`Domain`](#domain) pattern. If the key is not found, the optional default value is returned.
+
+```go title="Signature"
+func DomainParam(c Ctx, key string, defaultValue ...string) string
+```
+
+```go title="Example"
+// Pattern: ":tenant.example.com"
+// Request Host: acme.example.com
+
+app.Domain(":tenant.example.com").Get("/", func(c fiber.Ctx) error {
+    tenant := fiber.DomainParam(c, "tenant")           // "acme"
+    missing := fiber.DomainParam(c, "missing", "none") // "none"
+    return c.SendString(tenant + " " + missing)
+})
+```
+
 ### HandlersCount
 
 Returns the number of registered handlers.

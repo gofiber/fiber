@@ -33,6 +33,8 @@ type Router interface {
 
 	Group(prefix string, handlers ...any) Router
 
+	Domain(host string) Router
+
 	RouteChain(path string) Register
 	Route(prefix string, fn func(router Router), name ...string) Router
 

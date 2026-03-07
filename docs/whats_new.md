@@ -415,6 +415,51 @@ app.RouteChain("/api").RouteChain("/user/:id?")
 
 You can find more information about `app.RouteChain` and `app.Route` in the API documentation ([RouteChain](./api/app#routechain), [Route](./api/app#route)).
 
+### Domain routing
+
+`Domain` creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose `Host` header matches the pattern. The pattern can contain parameters prefixed with `:`, accessible via `fiber.DomainParam`.
+
+Domain routing has **zero performance impact** on routes that don't use it because the hostname check is applied as a handler wrapper, not a change to the core router.
+
+```go
+Domain(host string) Router
+```
+
+<details>
+<summary>Example</summary>
+
+```go
+app := fiber.New()
+
+// Static domain
+app.Domain("api.example.com").Get("/users", func(c fiber.Ctx) error {
+    return c.SendString("API users")
+})
+
+// Domain with parameter
+app.Domain(":user.blog.example.com").Get("/", func(c fiber.Ctx) error {
+    user := fiber.DomainParam(c, "user")
+    return c.SendString(user + "'s blog")
+})
+
+// Domain with groups
+api := app.Domain("api.example.com")
+v1 := api.Group("/v1")
+v1.Get("/posts", listPosts)
+
+// Domain with middleware
+admin := app.Domain("admin.example.com")
+admin.Use(authMiddleware)
+admin.Get("/dashboard", dashboardHandler)
+
+// Fallback for unmatched domains
+app.Get("/", func(c fiber.Ctx) error {
+    return c.SendString("default site")
+})
+```
+
+</details>
+
 ### Automatic HEAD routes for GET
 
 Fiber now auto-registers a `HEAD` route whenever you add a `GET` route. The generated handler chain matches the `GET` chain so status codes and headers stay in sync while the response body remains empty, ensuring `HEAD` clients observe the same metadata as a `GET` consumer.
