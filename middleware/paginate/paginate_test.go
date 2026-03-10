@@ -40,6 +40,7 @@ func Test_ConfigDefault(t *testing.T) {
 	require.Equal(t, 1, cfg.DefaultPage)
 	require.Equal(t, "limit", cfg.LimitKey)
 	require.Equal(t, 10, cfg.DefaultLimit)
+	require.Equal(t, DefaultMaxLimit, cfg.MaxLimit)
 }
 
 func Test_ConfigOverride(t *testing.T) {
@@ -1024,6 +1025,103 @@ func Test_PaginateNoCursorFallsBackToPageMode(t *testing.T) {
 	require.Equal(t, 3, result.Page)
 	require.Equal(t, 15, result.Limit)
 	require.Equal(t, 30, result.Start)
+}
+
+func Test_NextPageURLWithKeys(t *testing.T) {
+	t.Parallel()
+
+	p := PageInfo{Page: 2, Limit: 10}
+	result := p.NextPageURLWithKeys("https://example.com/users", "p", "per_page")
+	require.Equal(t, "https://example.com/users?p=3&per_page=10", result)
+}
+
+func Test_PreviousPageURLWithKeys(t *testing.T) {
+	t.Parallel()
+
+	t.Run("has previous", func(t *testing.T) {
+		t.Parallel()
+		p := PageInfo{Page: 3, Limit: 15}
+		result := p.PreviousPageURLWithKeys("https://example.com/items", "p", "size")
+		require.Equal(t, "https://example.com/items?p=2&size=15", result)
+	})
+
+	t.Run("first page returns empty", func(t *testing.T) {
+		t.Parallel()
+		p := PageInfo{Page: 1, Limit: 15}
+		result := p.PreviousPageURLWithKeys("https://example.com/items", "p", "size")
+		require.Empty(t, result)
+	})
+}
+
+func Test_NextCursorURLWithKeys(t *testing.T) {
+	t.Parallel()
+
+	t.Run("has more", func(t *testing.T) {
+		t.Parallel()
+		p := &PageInfo{Limit: 20}
+		require.NoError(t, p.SetNextCursor(map[string]any{"id": float64(42)}))
+
+		result := p.NextCursorURLWithKeys("https://example.com/users", "after", "per_page")
+		expected := fmt.Sprintf("https://example.com/users?after=%s&per_page=20", p.NextCursor)
+		require.Equal(t, expected, result)
+	})
+
+	t.Run("no more", func(t *testing.T) {
+		t.Parallel()
+		p := &PageInfo{Limit: 20}
+		result := p.NextCursorURLWithKeys("https://example.com/users", "after", "per_page")
+		require.Empty(t, result)
+	})
+}
+
+func Test_PaginateCustomMaxLimit(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{
+		DefaultSort:  "id",
+		DefaultLimit: 10,
+		MaxLimit:     50,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		pageInfo, ok := FromContext(c)
+		if !ok {
+			return fiber.ErrBadRequest
+		}
+		return c.JSON(pageInfo)
+	})
+
+	testCases := []struct {
+		name          string
+		url           string
+		expectedLimit int
+	}{
+		{"Limit within custom max", "/?limit=40", 40},
+		{"Limit exceeds custom max", "/?limit=200", 50},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp, err := app.Test(httptest.NewRequest(http.MethodGet, tc.url, http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+
+			var result PageInfo
+			require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+			require.Equal(t, tc.expectedLimit, result.Limit)
+		})
+	}
+}
+
+func Test_ConfigDefaultMaxLimitNormalization(t *testing.T) {
+	t.Parallel()
+
+	cfg := configDefault(Config{MaxLimit: 0})
+	require.Equal(t, DefaultMaxLimit, cfg.MaxLimit)
+
+	cfg2 := configDefault(Config{MaxLimit: 50})
+	require.Equal(t, 50, cfg2.MaxLimit)
 }
 
 // --- Benchmarks ---

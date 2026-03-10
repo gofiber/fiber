@@ -30,17 +30,13 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		appCfg := c.App().Config()
-		maxLimit := cfg.MaxLimit
-		if maxLimit < 1 {
-			maxLimit = DefaultMaxLimit
-		}
 
 		limit := fiber.Query(c, cfg.LimitKey, cfg.DefaultLimit)
 		if limit < 1 {
 			limit = cfg.DefaultLimit
 		}
-		if limit > maxLimit {
-			limit = maxLimit
+		if limit > cfg.MaxLimit {
+			limit = cfg.MaxLimit
 		}
 
 		sorts := parseSortQuery(c.Query(cfg.SortKey), cfg.AllowedSorts, cfg.DefaultSort)

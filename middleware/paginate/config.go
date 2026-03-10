@@ -72,6 +72,7 @@ var ConfigDefault = Config{
 	DefaultPage:  1,
 	LimitKey:     "limit",
 	DefaultLimit: 10,
+	MaxLimit:     DefaultMaxLimit,
 	DefaultSort:  "id",
 	OffsetKey:    "offset",
 	CursorKey:    "cursor",
@@ -107,6 +108,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.OffsetKey == "" {
 		cfg.OffsetKey = ConfigDefault.OffsetKey
+	}
+	if cfg.MaxLimit < 1 {
+		cfg.MaxLimit = ConfigDefault.MaxLimit
 	}
 
 	return cfg
