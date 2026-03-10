@@ -140,6 +140,7 @@ var ConfigDefault = Config{
     DefaultPage:  1,
     LimitKey:     "limit",
     DefaultLimit: 10,
+    MaxLimit:     100,
     DefaultSort:  "id",
     OffsetKey:    "offset",
     CursorKey:    "cursor",

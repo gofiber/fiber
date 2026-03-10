@@ -112,6 +112,9 @@ func configDefault(config ...Config) Config {
 	if cfg.MaxLimit < 1 {
 		cfg.MaxLimit = ConfigDefault.MaxLimit
 	}
+	if cfg.DefaultLimit > cfg.MaxLimit {
+		cfg.DefaultLimit = cfg.MaxLimit
+	}
 
 	return cfg
 }
