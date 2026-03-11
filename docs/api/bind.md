@@ -899,6 +899,14 @@ Validation is also possible with the binding methods. You can specify your valid
 
 Specify your struct validator in the [config](./fiber.md#structvalidator).
 
+The validator must implement the `StructValidator` interface, which requires a `Validate` method that takes an `any` type and returns an error.
+
+```go title="Interface"
+type StructValidator interface {
+    Validate(out any) error
+}
+```
+
 ### Setup Your Validator in the Config
 
 ```go title="Example"
