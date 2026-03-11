@@ -2242,6 +2242,74 @@ func Test_Bind_CustomBinder_Source(t *testing.T) {
 	require.Equal(t, "custom", be.Source)
 }
 
+// go test -run Test_Bind_CustomBinder_Validation
+func Test_Bind_CustomBinder_Validation(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{StructValidator: &structValidator{}})
+	app.RegisterCustomBinder(&customBinder{})
+
+	t.Run("Body_custom_binder_validation_pass", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		body := []byte(`{"name":"john"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType("test")
+		c.Request().Header.SetContentLength(len(body))
+
+		out := new(simpleQuery)
+		require.NoError(t, c.Bind().Body(out))
+		require.Equal(t, "john", out.Name)
+	})
+
+	t.Run("Body_custom_binder_validation_fail", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		body := []byte(`{"name":"invalid"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType("test")
+		c.Request().Header.SetContentLength(len(body))
+
+		out := new(simpleQuery)
+		require.EqualError(t, c.Bind().Body(out), "you should have entered right name")
+	})
+
+	t.Run("Custom_binder_validation_pass", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		body := []byte(`{"name":"john"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentLength(len(body))
+
+		out := new(simpleQuery)
+		require.NoError(t, c.Bind().Custom("custom", out))
+		require.Equal(t, "john", out.Name)
+	})
+
+	t.Run("Custom_binder_validation_fail", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		body := []byte(`{"name":"invalid"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentLength(len(body))
+
+		out := new(simpleQuery)
+		require.EqualError(t, c.Bind().Custom("custom", out), "you should have entered right name")
+	})
+}
+
 // go test -run Test_Bind_WithAutoHandling
 func Test_Bind_WithAutoHandling(t *testing.T) {
 	app := New()
