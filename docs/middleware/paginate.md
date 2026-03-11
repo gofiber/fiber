@@ -170,5 +170,6 @@ The `PageInfo` struct is stored in the request context and provides:
 - Page values below 1 reset to 1
 - Negative offsets reset to 0
 - Sort fields are validated against `AllowedSorts`
+- Cursor tokens exceeding 2048 characters are rejected with `400 Bad Request`
 - Invalid cursor tokens return `400 Bad Request` via Fiber's error handler
 - URL helpers preserve existing query parameters when building pagination links

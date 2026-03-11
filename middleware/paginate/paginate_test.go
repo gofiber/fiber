@@ -656,7 +656,6 @@ func Test_PaginateEdgeCases(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			resp, err := app.Test(httptest.NewRequest(http.MethodGet, tc.url, http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, 200, resp.StatusCode)
@@ -701,7 +700,6 @@ func Test_PaginateWithMultipleSorting(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.url, http.NoBody))
 			require.NoError(t, err)
 
@@ -900,7 +898,6 @@ func Test_PaginateInvalidCursorReturns400(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor="+tc.cursor, http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, 400, resp.StatusCode)
@@ -1102,7 +1099,6 @@ func Test_PaginateCustomMaxLimit(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			resp, err := app.Test(httptest.NewRequest(http.MethodGet, tc.url, http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode)

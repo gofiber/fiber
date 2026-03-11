@@ -47,6 +47,12 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if cursorRaw != "" {
+			// Reject oversized cursors to prevent excessive allocation/CPU usage.
+			const maxCursorLen = 2048
+			if len(cursorRaw) > maxCursorLen {
+				return fiber.NewError(fiber.StatusBadRequest, "cursor too long")
+			}
+
 			data, err := base64.RawURLEncoding.DecodeString(cursorRaw)
 			if err != nil {
 				return fiber.NewError(fiber.StatusBadRequest, "invalid cursor")
