@@ -20,6 +20,9 @@ const (
 // DefaultMaxLimit is the default maximum limit allowed.
 const DefaultMaxLimit = 100
 
+// maxCursorLen is the maximum allowed cursor string length.
+const maxCursorLen = 2048
+
 // New creates a new pagination middleware handler.
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
@@ -47,8 +50,6 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if cursorRaw != "" {
-			// Reject oversized cursors to prevent excessive allocation/CPU usage.
-			const maxCursorLen = 2048
 			if len(cursorRaw) > maxCursorLen {
 				return fiber.NewError(fiber.StatusBadRequest, "cursor too long")
 			}

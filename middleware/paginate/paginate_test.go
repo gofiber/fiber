@@ -627,19 +627,6 @@ func Test_PaginateNextSkip(t *testing.T) {
 
 func Test_PaginateEdgeCases(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{
-		DefaultSort:  "id",
-		DefaultLimit: 10,
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := FromContext(c)
-		if !ok {
-			return fiber.ErrBadRequest
-		}
-		return c.JSON(pageInfo)
-	})
 
 	testCases := []struct {
 		name          string
@@ -656,6 +643,21 @@ func Test_PaginateEdgeCases(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{
+				DefaultSort:  "id",
+				DefaultLimit: 10,
+			}))
+
+			app.Get("/", func(c fiber.Ctx) error {
+				pageInfo, ok := FromContext(c)
+				if !ok {
+					return fiber.ErrBadRequest
+				}
+				return c.JSON(pageInfo)
+			})
+
 			resp, err := app.Test(httptest.NewRequest(http.MethodGet, tc.url, http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, 200, resp.StatusCode)
@@ -670,22 +672,6 @@ func Test_PaginateEdgeCases(t *testing.T) {
 
 func Test_PaginateWithMultipleSorting(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{
-		SortKey:      "sort",
-		DefaultSort:  "id",
-		AllowedSorts: []string{"id", "name", "date"},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := FromContext(c)
-		if !ok {
-			return fiber.ErrBadRequest
-		}
-		return c.JSON(paginateResponse{
-			Sort: pageInfo.Sort,
-		})
-	})
 
 	testCases := []struct {
 		name         string
@@ -700,6 +686,24 @@ func Test_PaginateWithMultipleSorting(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{
+				SortKey:      "sort",
+				DefaultSort:  "id",
+				AllowedSorts: []string{"id", "name", "date"},
+			}))
+
+			app.Get("/", func(c fiber.Ctx) error {
+				pageInfo, ok := FromContext(c)
+				if !ok {
+					return fiber.ErrBadRequest
+				}
+				return c.JSON(paginateResponse{
+					Sort: pageInfo.Sort,
+				})
+			})
+
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.url, http.NoBody))
 			require.NoError(t, err)
 
@@ -880,13 +884,6 @@ func Test_PaginateEmptyCursorIsFirstPage(t *testing.T) {
 
 func Test_PaginateInvalidCursorReturns400(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New())
-
-	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, _ := FromContext(c)
-		return c.JSON(pageInfo)
-	})
 
 	testCases := []struct {
 		name   string
@@ -898,6 +895,15 @@ func Test_PaginateInvalidCursorReturns400(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New())
+
+			app.Get("/", func(c fiber.Ctx) error {
+				pageInfo, _ := FromContext(c)
+				return c.JSON(pageInfo)
+			})
+
 			resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor="+tc.cursor, http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, 400, resp.StatusCode)
@@ -1073,20 +1079,6 @@ func Test_NextCursorURLWithKeys(t *testing.T) {
 
 func Test_PaginateCustomMaxLimit(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{
-		DefaultSort:  "id",
-		DefaultLimit: 10,
-		MaxLimit:     50,
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		pageInfo, ok := FromContext(c)
-		if !ok {
-			return fiber.ErrBadRequest
-		}
-		return c.JSON(pageInfo)
-	})
 
 	testCases := []struct {
 		name          string
@@ -1099,6 +1091,22 @@ func Test_PaginateCustomMaxLimit(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{
+				DefaultSort:  "id",
+				DefaultLimit: 10,
+				MaxLimit:     50,
+			}))
+
+			app.Get("/", func(c fiber.Ctx) error {
+				pageInfo, ok := FromContext(c)
+				if !ok {
+					return fiber.ErrBadRequest
+				}
+				return c.JSON(pageInfo)
+			})
+
 			resp, err := app.Test(httptest.NewRequest(http.MethodGet, tc.url, http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode)

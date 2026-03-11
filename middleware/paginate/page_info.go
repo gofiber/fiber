@@ -121,7 +121,7 @@ func (p *PageInfo) NextCursorURL(baseURL string) string {
 func buildPaginationURL(baseURL, pageParam, pageValue, limitParam, limitValue string) string {
 	u, err := url.Parse(baseURL)
 	if err != nil {
-		return fmt.Sprintf("%s?%s=%s&%s=%s", baseURL, pageParam, pageValue, limitParam, limitValue)
+		return baseURL
 	}
 	q := u.Query()
 	q.Set(pageParam, pageValue)
@@ -140,6 +140,10 @@ func (p *PageInfo) CursorValues() map[string]any {
 	}
 
 	if p.Cursor == "" {
+		return nil
+	}
+
+	if len(p.Cursor) > maxCursorLen {
 		return nil
 	}
 
