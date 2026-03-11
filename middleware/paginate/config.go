@@ -1,6 +1,8 @@
 package paginate
 
 import (
+	"slices"
+
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -114,6 +116,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.DefaultLimit > cfg.MaxLimit {
 		cfg.DefaultLimit = cfg.MaxLimit
+	}
+	if len(cfg.AllowedSorts) > 0 && !slices.Contains(cfg.AllowedSorts, cfg.DefaultSort) {
+		cfg.DefaultSort = cfg.AllowedSorts[0]
 	}
 
 	return cfg

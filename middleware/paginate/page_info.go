@@ -178,7 +178,12 @@ func (p *PageInfo) SetNextCursor(values map[string]any) error {
 		return fmt.Errorf("%w: %w", ErrCursorEncode, err)
 	}
 
-	p.NextCursor = base64.RawURLEncoding.EncodeToString(data)
+	encoded := base64.RawURLEncoding.EncodeToString(data)
+	if len(encoded) > maxCursorLen {
+		return fmt.Errorf("%w: cursor token exceeds maximum length (%d)", ErrCursorEncode, maxCursorLen)
+	}
+
+	p.NextCursor = encoded
 	p.HasMore = true
 
 	return nil
