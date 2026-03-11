@@ -352,6 +352,7 @@ func Test_PaginateWithQueries(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?page=2&limit=20", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	var body paginateResponse
@@ -387,6 +388,7 @@ func Test_PaginateWithOffset(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?offset=20&limit=20", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	var body paginateResponse
@@ -419,6 +421,7 @@ func Test_PaginateCheckDefaultsWhenNoQueries(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	var body paginateResponse
@@ -450,6 +453,7 @@ func Test_PaginateCheckDefaultsWhenNoPage(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?limit=20", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var body paginateResponse
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
@@ -478,6 +482,7 @@ func Test_PaginateCheckDefaultsWhenNoLimit(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?page=2", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var body paginateResponse
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
@@ -511,6 +516,7 @@ func Test_PaginateConfigDefaultPageDefaultLimit(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var body paginateResponse
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
@@ -545,6 +551,7 @@ func Test_PaginateConfigPageKeyLimitKey(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?site=2&size=5", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var body paginateResponse
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
@@ -577,6 +584,7 @@ func Test_PaginateNegativeDefaultPageDefaultLimitValues(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var body paginateResponse
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
@@ -600,6 +608,7 @@ func Test_PaginateFromContextWithoutNew(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }
 
@@ -622,6 +631,7 @@ func Test_PaginateNextSkip(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }
 
@@ -660,6 +670,7 @@ func Test_PaginateEdgeCases(t *testing.T) {
 
 			resp, err := app.Test(httptest.NewRequest(http.MethodGet, tc.url, http.NoBody))
 			require.NoError(t, err)
+			defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 			require.Equal(t, 200, resp.StatusCode)
 
 			var result PageInfo
@@ -706,6 +717,7 @@ func Test_PaginateWithMultipleSorting(t *testing.T) {
 
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.url, http.NoBody))
 			require.NoError(t, err)
+			defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 			var result paginateResponse
 			require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
@@ -827,6 +839,7 @@ func Test_PaginateWithCursor(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor="+cursor+"&limit=20", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, 200, resp.StatusCode)
 
 	var result cursorResponse
@@ -853,6 +866,7 @@ func Test_PaginateCursorPriorityOverPage(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor="+cursor+"&page=5&limit=10", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var result PageInfo
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
@@ -875,6 +889,7 @@ func Test_PaginateEmptyCursorIsFirstPage(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor=&limit=10", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, 200, resp.StatusCode)
 
 	var result PageInfo
@@ -906,6 +921,7 @@ func Test_PaginateInvalidCursorReturns400(t *testing.T) {
 
 			resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor="+tc.cursor, http.NoBody))
 			require.NoError(t, err)
+			defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 			require.Equal(t, 400, resp.StatusCode)
 		})
 	}
@@ -936,6 +952,7 @@ func Test_PaginateCursorWithSort(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?cursor="+cursor+"&sort=name,-id", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var result cursorResponse
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
@@ -965,6 +982,7 @@ func Test_PaginateCursorWithCustomKey(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?after="+cursor, http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, 200, resp.StatusCode)
 
 	var result cursorResponse
@@ -994,6 +1012,7 @@ func Test_PaginateCursorWithParamAlias(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?starting_after="+cursor, http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	require.Equal(t, 200, resp.StatusCode)
 
 	var result cursorResponse
@@ -1022,6 +1041,7 @@ func Test_PaginateNoCursorFallsBackToPageMode(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/?page=3&limit=15", http.NoBody))
 	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 
 	var result paginateResponse
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
@@ -1109,6 +1129,7 @@ func Test_PaginateCustomMaxLimit(t *testing.T) {
 
 			resp, err := app.Test(httptest.NewRequest(http.MethodGet, tc.url, http.NoBody))
 			require.NoError(t, err)
+			defer resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 			require.Equal(t, http.StatusOK, resp.StatusCode)
 
 			var result PageInfo
@@ -1147,7 +1168,7 @@ func Benchmark_PaginateMiddleware(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		resp.Body.Close() //nolint:errcheck // not needed
+		resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	}
 }
 
@@ -1176,7 +1197,7 @@ func Benchmark_PaginateMiddlewareWithCustomConfig(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		resp.Body.Close() //nolint:errcheck // not needed
+		resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	}
 }
 
@@ -1204,6 +1225,6 @@ func Benchmark_PaginateCursorMiddleware(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		resp.Body.Close() //nolint:errcheck // not needed
+		resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	}
 }
