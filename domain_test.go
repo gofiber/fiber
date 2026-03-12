@@ -101,6 +101,26 @@ func Test_Domain_CaseInsensitive(t *testing.T) {
 	require.Equal(t, "ok", string(body))
 }
 
+func Test_Domain_ParamNameCasePreserved(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	// Use mixed-case param name ":User" — DomainParam should find it by exact name
+	app.Domain(":User.example.com").Get("/", func(c Ctx) error {
+		return c.SendString(DomainParam(c, "User"))
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Host = "alice.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "alice", string(body))
+}
+
 func Test_Domain_TrailingDot(t *testing.T) {
 	t.Parallel()
 
@@ -457,6 +477,32 @@ func Test_Domain_Name(t *testing.T) {
 		}
 	}
 	require.True(t, found, "route should be named 'api-test'")
+}
+
+func Test_Domain_NameWithGroup(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	// When Domain is used with Route(prefix, fn, name), the group Name()
+	// should apply properly via delegation to the underlying group.
+	api := app.Domain("api.example.com")
+	api.Route("/v1", func(r Router) {
+		r.Get("/items", func(c Ctx) error {
+			return c.SendString("items")
+		}).Name("items-list")
+	}, "v1.")
+
+	var found bool
+	for _, routes := range app.Stack() {
+		for _, route := range routes {
+			if route.Name == "v1.items-list" {
+				found = true
+				break
+			}
+		}
+	}
+	require.True(t, found, "route should be named 'v1.items-list'")
 }
 
 func Test_Domain_RouteChain(t *testing.T) {
@@ -1046,6 +1092,12 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 		app.Domain("api.example.com").Get("/test", func(_ Req, res Res) {
 			res.Set("X-Express", "ok")
 		})
+		req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, "ok", resp.Header.Get("X-Express"))
 	})
 
 	t.Run("express next-err returns-err", func(t *testing.T) {

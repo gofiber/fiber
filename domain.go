@@ -42,24 +42,29 @@ type domainMatcher struct {
 
 // parseDomainPattern parses a domain pattern like ":subdomain.example.com"
 // into a domainMatcher. Parameter parts start with ":".
+// Constant labels are lowercased per RFC 4343 (domain names are case-insensitive),
+// but parameter names are preserved as-is so that DomainParam lookups work with
+// the exact names the caller used (e.g., ":User" → param name "User").
 func parseDomainPattern(pattern string) domainMatcher {
 	pattern = utils.TrimSpace(pattern)
-	// Domain names are case-insensitive per RFC 4343
-	pattern = utilsstrings.ToLower(pattern)
 	// Trim trailing dot of a fully-qualified domain name (RFC 3986),
 	// consistent with Fiber's own host normalization in Subdomains().
 	pattern = utils.TrimRight(pattern, '.')
 
 	parts := strings.Split(pattern, ".")
 	m := domainMatcher{
-		parts:    parts,
+		parts:    make([]string, len(parts)),
 		numParts: len(parts),
 	}
 
 	for i, part := range parts {
 		if part != "" && part[0] == ':' {
 			m.paramIdx = append(m.paramIdx, i)
-			m.paramNames = append(m.paramNames, part[1:])
+			m.paramNames = append(m.paramNames, part[1:]) // preserve original case
+			m.parts[i] = part                             // keep ":param" marker for matching
+		} else {
+			// Only lowercase constant labels (RFC 4343)
+			m.parts[i] = utilsstrings.ToLower(part)
 		}
 	}
 
@@ -74,6 +79,7 @@ func parseDomainPattern(pattern string) domainMatcher {
 
 // match checks if a hostname matches the domain pattern.
 // It returns true if matched and a slice of parameter values (parallel to paramNames).
+// Uses a stack-allocated buffer to avoid heap allocation for typical domain names.
 func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocritic // named returns conflict with nonamedreturns linter
 	// Domain names are case-insensitive per RFC 4343
 	hostname = utilsstrings.ToLower(hostname)
@@ -81,7 +87,15 @@ func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocri
 	// consistent with Fiber's own host normalization in Subdomains().
 	hostname = utils.TrimRight(hostname, '.')
 
-	parts := strings.Split(hostname, ".")
+	// Use stack-allocated array for typical domain names (up to 8 labels).
+	// This avoids heap allocation for most common cases, consistent with
+	// the Subdomains() implementation in req.go.
+	var partsBuf [8]string
+	parts := partsBuf[:0]
+	for part := range strings.SplitSeq(hostname, ".") {
+		parts = append(parts, part)
+	}
+
 	if len(parts) != m.numParts {
 		return false, nil
 	}
@@ -138,6 +152,13 @@ func DomainParam(c Ctx, key string, defaultValue ...string) string {
 //
 // Routes registered through a domainRouter have zero impact on routing
 // performance for requests that don't use domain-based routing.
+//
+// Known limitation: because domain filtering is applied at handler-execution
+// time (not at route-matching time), Fiber's 405 Method Not Allowed logic
+// may advertise methods for domain-scoped routes even when the requesting
+// host does not match the domain pattern. Fixing this would require core
+// router changes; for now callers should be aware that 405 responses may
+// include methods from domain-scoped routes whose host did not match.
 type domainRouter struct {
 	app     *App
 	group   *Group // non-nil when created from a Group
@@ -261,6 +282,12 @@ func (d *domainRouter) Use(args ...any) Router {
 		d.app.register([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), wrapped...)
 	}
 
+	// Mark the underlying group so Name() can distinguish between
+	// group-name-prefix calls (before routes) and route-name calls (after routes).
+	if d.group != nil && !d.group.anyRouteDefined {
+		d.group.anyRouteDefined = true
+	}
+
 	return d
 }
 
@@ -325,6 +352,12 @@ func (d *domainRouter) Add(methods []string, path string, handler any, handlers 
 	wrapped := d.wrapHandlers(converted)
 	d.app.register(methods, d.registerPath(path), d.registerGroup(), wrapped...)
 
+	// Mark the underlying group so Name() can distinguish between
+	// group-name-prefix calls (before routes) and route-name calls (after routes).
+	if d.group != nil && !d.group.anyRouteDefined {
+		d.group.anyRouteDefined = true
+	}
+
 	return d
 }
 
@@ -384,8 +417,14 @@ func (d *domainRouter) Route(prefix string, fn func(router Router), name ...stri
 }
 
 // Name assigns a name to the most recently registered route.
+// When the domain router was created from a Group, this delegates to the
+// group's Name method so that group name prefixes are applied correctly.
 func (d *domainRouter) Name(name string) Router {
-	d.app.Name(name)
+	if d.group != nil {
+		d.group.Name(name)
+	} else {
+		d.app.Name(name)
+	}
 	return d
 }
 
