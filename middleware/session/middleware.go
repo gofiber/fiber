@@ -209,8 +209,10 @@ func FromContext(ctx any) *Middleware {
 }
 
 // redactSessionID returns a masked version of a session ID for safe logging.
-// Session IDs are bearer secrets; only the first 4 characters are retained so
-// that log entries can still be correlated without exposing the full token.
+// Session IDs are bearer secrets; for IDs longer than 8 characters, only the
+// first 4 characters are retained and the remainder is masked so that log
+// entries can still be correlated without exposing the full token. Shorter
+// IDs are fully redacted.
 func redactSessionID(id string) string {
 	if len(id) > 8 {
 		return id[:4] + "****"
