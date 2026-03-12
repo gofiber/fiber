@@ -198,7 +198,7 @@ commonLogger := log.WithContext(ctx)
 commonLogger.Info("info")
 ```
 
-Context binding adds request-specific data for easier tracing. The method accepts any value implementing `context.Context`, including `fiber.Ctx`, `*fasthttp.RequestCtx`, and standard `context.Context`.
+Context binding adds request-specific data for easier tracing. The method accepts any value implementing `context.Context`, including `fiber.Ctx` and standard `context.Context`. To use a `*fasthttp.RequestCtx` (obtained via `c.Context()`), enable `PassLocalsToContext` in the app config so that context values are propagated through the standard context chain.
 
 ### Automatic Context Fields
 

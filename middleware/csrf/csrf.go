@@ -58,20 +58,24 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
+	redactKeys := !cfg.DisableValueRedaction
+
 	// Register a log context extractor so that log.WithContext(c) automatically
-	// includes a redacted CSRF token when the csrf middleware is in use.
-	// An empty token (no middleware or middleware skipped) is omitted.
+	// includes the CSRF token when the csrf middleware is in use.
+	// Redaction is controlled by the DisableValueRedaction option from the first
+	// call to New(). An empty token (no middleware or middleware skipped) is omitted.
 	registerExtractor.Do(func() {
 		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
 			token := TokenFromContext(ctx)
 			if token == "" {
 				return "", nil, false
 			}
-			return "csrf-token", redactedKey, true
+			if redactKeys {
+				return "csrf-token", redactedKey, true
+			}
+			return "csrf-token", token, true
 		})
 	})
-
-	redactKeys := !cfg.DisableValueRedaction
 
 	maskValue := func(value string) string {
 		if redactKeys {
