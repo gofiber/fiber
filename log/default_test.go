@@ -121,10 +121,17 @@ func Test_CtxLogger(t *testing.T) {
 type testContextKey struct{}
 
 func Test_WithContextExtractor(t *testing.T) {
-	// Save and restore global extractors
+	// Save and restore global extractors using the mutex for correctness.
+	contextExtractorsMu.Lock()
 	saved := contextExtractors
-	defer func() { contextExtractors = saved }()
 	contextExtractors = nil
+	contextExtractorsMu.Unlock()
+
+	defer func() {
+		contextExtractorsMu.Lock()
+		contextExtractors = saved
+		contextExtractorsMu.Unlock()
+	}()
 
 	RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
 		if v, ok := ctx.Value(testContextKey{}).(string); ok && v != "" {
@@ -198,9 +205,16 @@ func Test_WithContextExtractor(t *testing.T) {
 	})
 
 	t.Run("empty key extractor is skipped", func(t *testing.T) {
-		// Save and restore extractors for this subtest
+		// Save and restore extractors for this subtest using the mutex.
+		contextExtractorsMu.Lock()
 		savedInner := contextExtractors
-		defer func() { contextExtractors = savedInner }()
+		contextExtractorsMu.Unlock()
+
+		defer func() {
+			contextExtractorsMu.Lock()
+			contextExtractors = savedInner
+			contextExtractorsMu.Unlock()
+		}()
 
 		// Add an extractor that returns ok=true but key=""
 		RegisterContextExtractor(func(_ context.Context) (string, any, bool) {

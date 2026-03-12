@@ -88,7 +88,9 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 	}
 
 	// Register a log context extractor so that log.WithContext(c) automatically
-	// includes the session ID when the session middleware is in use.
+	// includes a redacted session ID when the session middleware is in use.
+	// Session IDs are bearer secrets, so only the first 4 characters are logged
+	// to enable correlation without exposing the full token.
 	registerExtractor.Do(func() {
 		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
 			m := FromContext(ctx)
@@ -96,7 +98,10 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 				return "", nil, false
 			}
 			id := m.Session.ID()
-			return "session-id", id, id != ""
+			if id == "" {
+				return "", nil, false
+			}
+			return "session-id", redactSessionID(id), true
 		})
 	})
 
@@ -201,6 +206,16 @@ func FromContext(ctx any) *Middleware {
 	}
 
 	return nil
+}
+
+// redactSessionID returns a masked version of a session ID for safe logging.
+// Session IDs are bearer secrets; only the first 4 characters are retained so
+// that log entries can still be correlated without exposing the full token.
+func redactSessionID(id string) string {
+	if len(id) > 8 {
+		return id[:4] + "****"
+	}
+	return "****"
 }
 
 // Set sets a key-value pair in the session.

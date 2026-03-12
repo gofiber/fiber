@@ -23,10 +23,11 @@ type defaultLogger struct {
 // writeContextFields appends extracted context key-value pairs to buf.
 // Each pair is written as "key=value " (trailing space included).
 func (l *defaultLogger) writeContextFields(buf *bytebufferpool.ByteBuffer) {
-	if l.ctx == nil || len(contextExtractors) == 0 {
+	if l.ctx == nil {
 		return
 	}
-	for _, extractor := range contextExtractors {
+	extractors := loadContextExtractors()
+	for _, extractor := range extractors {
 		key, value, ok := extractor(l.ctx)
 		if ok && key != "" {
 			buf.WriteString(key)

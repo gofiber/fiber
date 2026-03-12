@@ -602,9 +602,12 @@ func Test_Session_LogWithContext(t *testing.T) {
 	fiberlog.SetOutput(&logOutput)
 	defer fiberlog.SetOutput(os.Stderr)
 
+	var capturedID string
+
 	app.Get("/", func(c fiber.Ctx) error {
 		sess := FromContext(c)
 		require.NotNil(t, sess)
+		capturedID = sess.Session.ID()
 		fiberlog.WithContext(c).Info("session test")
 		return c.SendStatus(fiber.StatusOK)
 	})
@@ -612,6 +615,32 @@ func Test_Session_LogWithContext(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	// Session ID must appear in log but be redacted (only first 4 chars + ****)
 	require.Contains(t, logOutput.String(), "session-id=")
 	require.Contains(t, logOutput.String(), "session test")
+	require.NotContains(t, logOutput.String(), capturedID, "full session ID must not appear in log")
+}
+
+func Test_redactSessionID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("long ID is redacted", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "abcd****", redactSessionID("abcdefghij"))
+	})
+
+	t.Run("short ID is fully redacted", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "****", redactSessionID("short"))
+	})
+
+	t.Run("exactly 8 chars is fully redacted", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "****", redactSessionID("12345678"))
+	})
+
+	t.Run("empty string is fully redacted", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "****", redactSessionID(""))
+	})
 }

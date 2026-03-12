@@ -210,7 +210,7 @@ Middleware that stores values in the request context can register extractors so 
 | `basicauth`  | `username`     | Authenticated username           |
 | `keyauth`    | `api-key`      | API key token (redacted)         |
 | `csrf`       | `csrf-token`   | CSRF token (redacted)            |
-| `session`    | `session-id`   | Session identifier               |
+| `session`    | `session-id`   | Session identifier (redacted)    |
 
 ```go
 app.Use(requestid.New())
@@ -236,7 +236,7 @@ log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
 ```
 
 :::note
-`RegisterContextExtractor` is not concurrent-safe and must be called during program initialization (e.g. in an `init` function or middleware constructor).
+`RegisterContextExtractor` may be called at any time, including while your application is handling requests and emitting logs. Registrations are safe to perform concurrently with logging. In practice, register extractors during program initialization (e.g. in an `init` function or middleware constructor) so that they are in place before requests are processed.
 :::
 
 ## Logger
