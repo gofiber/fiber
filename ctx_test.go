@@ -1796,6 +1796,66 @@ func Test_Ctx_Format(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoHandlers)
 }
 
+func Test_Ctx_Format_NilHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil handler in first entry", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+		var err error
+		require.NotPanics(t, func() {
+			err = c.Format(
+				ResFmt{MediaType: "text/html", Handler: nil},
+				ResFmt{MediaType: "application/json", Handler: func(_ Ctx) error { return nil }},
+			)
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), `media type "text/html"`)
+		require.Contains(t, err.Error(), "index 0")
+	})
+
+	t.Run("nil handler in matched media type", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderAccept, "application/json")
+
+		var err error
+		require.NotPanics(t, func() {
+			err = c.Format(
+				ResFmt{MediaType: "text/html", Handler: func(_ Ctx) error { return nil }},
+				ResFmt{MediaType: "application/json", Handler: nil},
+			)
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), `media type "application/json"`)
+		require.Contains(t, err.Error(), "index 1")
+	})
+
+	t.Run("nil default handler", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderAccept, "application/json")
+
+		var err error
+		require.NotPanics(t, func() {
+			err = c.Format(
+				ResFmt{MediaType: "text/html", Handler: func(_ Ctx) error { return nil }},
+				ResFmt{MediaType: "default", Handler: nil},
+			)
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), `media type "default"`)
+		require.Contains(t, err.Error(), "index 1")
+	})
+}
+
 func Benchmark_Ctx_Format(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})

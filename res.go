@@ -382,6 +382,12 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		return ErrNoHandlers
 	}
 
+	for i, h := range handlers {
+		if h.Handler == nil {
+			return fmt.Errorf("format handler is nil for media type %q at index %d", h.MediaType, i)
+		}
+	}
+
 	r.Vary(HeaderAccept)
 
 	if r.c.DefaultReq.Get(HeaderAccept) == "" {
@@ -1120,9 +1126,19 @@ func (r *DefaultRes) Drop() error {
 }
 
 // End immediately flushes the current response and closes the underlying connection.
+//
+// Note: End does not work when using streaming (e.g. fasthttp's HijackConn or SendStream),
+// because in streaming mode the connection is managed asynchronously and ctx.Conn() may return nil.
 func (r *DefaultRes) End() error {
 	ctx := r.c.fasthttp
+	if ctx == nil {
+		return nil
+	}
+
 	conn := ctx.Conn()
+	if conn == nil {
+		return nil
+	}
 
 	bw := bufio.NewWriter(conn)
 	if err := ctx.Response.Write(bw); err != nil {
