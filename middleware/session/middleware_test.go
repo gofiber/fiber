@@ -616,9 +616,11 @@ func Test_Session_LogWithContext(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	// Session ID must appear in log but be redacted (only first 4 chars + ****)
-	require.Contains(t, logOutput.String(), "session-id=")
-	require.Contains(t, logOutput.String(), "session test")
-	require.NotContains(t, logOutput.String(), capturedID, "full session ID must not appear in log")
+	logStr := logOutput.String()
+	expectedRedacted := redactSessionID(capturedID)
+	require.Contains(t, logStr, "session-id="+expectedRedacted, "redacted session ID must appear in log")
+	require.Contains(t, logStr, "session test")
+	require.NotContains(t, logStr, capturedID, "full session ID must not appear in log")
 }
 
 func Test_redactSessionID(t *testing.T) {
