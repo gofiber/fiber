@@ -635,7 +635,6 @@ func Test_BasicAuth_HashVariants_Invalid(t *testing.T) {
 }
 
 func Test_BasicAuth_LogWithContext(t *testing.T) {
-
 	hashedJohn := sha256Hash("doe")
 	app := fiber.New()
 	app.Use(New(Config{
