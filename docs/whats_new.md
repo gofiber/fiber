@@ -421,6 +421,8 @@ You can find more information about `app.RouteChain` and `app.Route` in the API 
 
 Domain routing has **zero performance impact** on routes that don't use it because the hostname check is applied as a handler wrapper, not a change to the core router.
 
+> **Note:** Because domain filtering happens at handler-execution time, Fiber's `405 Method Not Allowed` responses may advertise methods from domain-scoped routes even when the requesting host does not match. This is a known trade-off of the handler-wrapping approach.
+
 ```go
 Domain(host string) Router
 ```

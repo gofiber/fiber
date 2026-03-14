@@ -1656,3 +1656,36 @@ func Test_Domain_Security_ValidParamNames(t *testing.T) {
 		})
 	}
 }
+
+// Test_Domain_Security_NonASCIIRejected tests that non-ASCII characters are rejected
+// in both domain labels and parameter names (DNS names are ASCII-only).
+func Test_Domain_Security_NonASCIIRejected(t *testing.T) {
+	t.Parallel()
+
+	// Non-ASCII in constant labels
+	require.Panics(t, func() {
+		parseDomainPattern("ünïcödé.example.com")
+	})
+
+	// Non-ASCII in parameter names
+	require.Panics(t, func() {
+		parseDomainPattern(":üser.example.com")
+	})
+}
+
+// Test_Domain_Security_NonASCIIHostnameRejected tests that non-ASCII hostnames
+// are rejected at runtime (DNS names are ASCII-only).
+func Test_Domain_Security_NonASCIIHostnameRejected(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Domain(":sub.example.com").Get("/", func(c Ctx) error {
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Host = "ünïcödé.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}

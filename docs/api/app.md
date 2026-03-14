@@ -259,6 +259,10 @@ The pattern can contain parameters prefixed with `:`. Use [`DomainParam`](#domai
 
 Domain routing has **zero performance impact** on routes that don't use it — the hostname check is applied as a handler wrapper, not a change to the core router.
 
+:::note
+Because domain filtering is applied at handler-execution time (not during route matching), Fiber's `405 Method Not Allowed` logic may advertise methods from domain-scoped routes even when the requesting host does not match the domain pattern. This is a known trade-off of the handler-wrapping approach — it avoids core router changes while keeping non-domain routes unaffected.
+:::
+
 ```go title="Signature"
 func (app *App) Domain(host string) Router
 ```

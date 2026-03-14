@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"unicode"
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -28,8 +27,10 @@ type domainParams struct {
 }
 
 // domainCheckResult caches a domain match result for a single request.
+// It stores the matched domain params (if any) alongside the match status
+// to avoid allocating a new domainParams struct for every handler invocation.
 type domainCheckResult struct {
-	values  []string
+	params  *domainParams // pre-built params (nil if no params or no match)
 	matched bool
 }
 
@@ -87,9 +88,11 @@ func parseDomainPattern(pattern string) domainMatcher {
 				panic(fmt.Sprintf("Domain pattern '%s' contains empty parameter name at position %d", pattern, i))
 			}
 			paramName := part[1:]
-			// Validate parameter name contains only safe characters (alphanumeric, underscore, hyphen)
+			// Validate parameter name contains only ASCII-safe characters (a-z, A-Z, 0-9, underscore, hyphen).
+			// Using explicit ASCII ranges rather than unicode.IsLetter/IsDigit to reject non-ASCII
+			// characters that are invalid in DNS names.
 			for _, ch := range paramName {
-				if !unicode.IsLetter(ch) && !unicode.IsDigit(ch) && ch != '_' && ch != '-' {
+				if !isASCIIAlphanumeric(ch) && ch != '_' && ch != '-' {
 					panic(fmt.Sprintf("Domain pattern '%s' contains invalid parameter name '%s' with character '%c'", pattern, paramName, ch))
 				}
 			}
@@ -98,10 +101,10 @@ func parseDomainPattern(pattern string) domainMatcher {
 			m.parts[i] = part                              // keep ":param" marker for matching
 		} else {
 			// Only lowercase constant labels (RFC 4343)
-			// Validate label contains only valid domain characters
+			// Validate label contains only valid ASCII domain characters (a-z, 0-9, hyphen).
 			normalized := utilsstrings.ToLower(part)
 			for _, ch := range normalized {
-				if !unicode.IsLetter(ch) && !unicode.IsDigit(ch) && ch != '-' {
+				if !isASCIIAlphanumeric(ch) && ch != '-' {
 					panic(fmt.Sprintf("Domain pattern '%s' contains invalid character '%c' in label '%s'", pattern, ch, part))
 				}
 			}
@@ -153,10 +156,10 @@ func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocri
 		if part == "" || len(part) > 63 {
 			return false, nil
 		}
-		// Validate label contains only safe domain characters (basic sanitization)
+		// Validate label contains only safe ASCII domain characters (basic sanitization)
 		// This prevents injection attacks via malicious hostnames
 		for _, ch := range part {
-			if ch != '-' && !unicode.IsLetter(ch) && !unicode.IsDigit(ch) {
+			if ch != '-' && !isASCIIAlphanumeric(ch) {
 				return false, nil
 			}
 		}
@@ -185,6 +188,13 @@ func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocri
 	return true, paramValues
 }
 
+// isASCIIAlphanumeric returns true if the rune is an ASCII letter (a-z, A-Z) or digit (0-9).
+// This is used instead of unicode.IsLetter/unicode.IsDigit to ensure only ASCII characters
+// are accepted in domain patterns and hostnames, as DNS names are ASCII-only.
+func isASCIIAlphanumeric(ch rune) bool {
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
+}
+
 // DomainParam returns the value of a domain parameter from the context.
 // Domain parameters are set when a route registered via [App.Domain] or [Group.Domain]
 // matches the incoming request hostname.
@@ -198,7 +208,7 @@ func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocri
 //	    return c.SendString("Hello, " + user)
 //	})
 func DomainParam(c Ctx, key string, defaultValue ...string) string {
-	if params, ok := c.Locals(domainLocalsKey).(*domainParams); ok {
+	if params, ok := c.Locals(domainLocalsKey).(*domainParams); ok && params != nil {
 		for i, name := range params.names {
 			if name == key {
 				return params.values[i]
@@ -256,35 +266,32 @@ func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 		origHandler := h
 		result[i] = func(c Ctx) error {
 			// Check if we already matched this domain on this request.
-			var matched bool
-			var values []string
+			var check *domainCheckResult
 			if cached, ok := c.Locals(cacheKey).(*domainCheckResult); ok {
-				matched = cached.matched
-				values = cached.values
+				check = cached
 			} else {
 				hostname := c.Hostname()
-				matched, values = d.matcher.match(hostname)
-				check := &domainCheckResult{
-					matched: matched,
-					values:  append([]string(nil), values...),
+				matched, values := d.matcher.match(hostname)
+				check = &domainCheckResult{matched: matched}
+				if matched && len(values) > 0 {
+					// Store values directly — match() returns a fresh slice each time.
+					// Build domainParams once and cache it alongside the match result
+					// so subsequent handlers reuse the same struct.
+					check.params = &domainParams{
+						names:  d.matcher.paramNames,
+						values: values,
+					}
 				}
 				c.Locals(cacheKey, check)
 			}
 
-			if !matched {
+			if !check.matched {
 				return c.Next()
 			}
 
-			if len(values) > 0 {
-				c.Locals(domainLocalsKey, &domainParams{
-					names:  d.matcher.paramNames,
-					values: values,
-				})
-			} else {
-				// Clear any previously stored domain params when the domain matches
-				// but has no parameters, to avoid leaking stale values.
-				c.Locals(domainLocalsKey, nil)
-			}
+			// Reuse the cached domainParams (or nil to clear stale values)
+			// instead of allocating a new struct per handler invocation.
+			c.Locals(domainLocalsKey, check.params)
 
 			return origHandler(c)
 		}
