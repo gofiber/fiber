@@ -126,8 +126,6 @@ func parseDomainPattern(pattern string) domainMatcher {
 // Uses a stack-allocated buffer to avoid heap allocation for typical domain names.
 // Validates hostname to prevent DoS attacks from malicious input.
 func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocritic // named returns conflict with nonamedreturns linter
-	// Domain names are case-insensitive per RFC 4343
-	hostname = utilsstrings.ToLower(hostname)
 	// Trim trailing dot of a fully-qualified domain name (RFC 3986),
 	// consistent with Fiber's own host normalization in Subdomains().
 	hostname = utils.TrimRight(hostname, '.')
@@ -137,6 +135,9 @@ func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocri
 	if hostname == "" || len(hostname) > 253 {
 		return false, nil
 	}
+
+	// Domain names are case-insensitive per RFC 4343; lowercase after cheap validation
+	hostname = utilsstrings.ToLower(hostname)
 
 	// Use stack-allocated array for typical domain names (up to 16 labels).
 	// This avoids heap allocation for most common cases, consistent with
