@@ -1,7 +1,6 @@
 package requestid
 
 import (
-	"context"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -31,7 +30,7 @@ func New(config ...Config) fiber.Handler {
 	// includes the request ID when the requestid middleware is in use.
 	// An empty request ID (no middleware or middleware skipped) is omitted.
 	registerExtractor.Do(func() {
-		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
+		log.RegisterContextExtractor(func(ctx any) (string, any, bool) {
 			rid := FromContext(ctx)
 			return "request-id", rid, rid != ""
 		})

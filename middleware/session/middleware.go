@@ -3,7 +3,6 @@
 package session
 
 import (
-	"context"
 	"errors"
 	"sync"
 
@@ -92,7 +91,7 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 	// Session IDs are bearer secrets, so only the first 4 characters are logged
 	// to enable correlation without exposing the full token.
 	registerExtractor.Do(func() {
-		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
+		log.RegisterContextExtractor(func(ctx any) (string, any, bool) {
 			m := FromContext(ctx)
 			if m == nil || m.Session == nil {
 				return "", nil, false

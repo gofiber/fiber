@@ -133,9 +133,11 @@ func Test_WithContextExtractor(t *testing.T) {
 		contextExtractorsMu.Unlock()
 	}()
 
-	RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
-		if v, ok := ctx.Value(testContextKey{}).(string); ok && v != "" {
-			return "request-id", v, true
+	RegisterContextExtractor(func(ctx any) (string, any, bool) {
+		if ctxTyped, ok := ctx.(context.Context); ok {
+			if v, ok := ctxTyped.Value(testContextKey{}).(string); ok && v != "" {
+				return "request-id", v, true
+			}
 		}
 		return "", nil, false
 	})
@@ -217,7 +219,7 @@ func Test_WithContextExtractor(t *testing.T) {
 		}()
 
 		// Add an extractor that returns ok=true but key=""
-		RegisterContextExtractor(func(_ context.Context) (string, any, bool) {
+		RegisterContextExtractor(func(_ any) (string, any, bool) {
 			return "", "should-not-appear", true
 		})
 

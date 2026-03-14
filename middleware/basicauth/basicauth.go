@@ -1,7 +1,6 @@
 package basicauth
 
 import (
-	"context"
 	"encoding/base64"
 	"errors"
 	"strings"
@@ -38,7 +37,7 @@ func New(config ...Config) fiber.Handler {
 	// Register a log context extractor so that log.WithContext(c) automatically
 	// includes the authenticated username when basicauth middleware is in use.
 	registerExtractor.Do(func() {
-		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
+		log.RegisterContextExtractor(func(ctx any) (string, any, bool) {
 			username := UsernameFromContext(ctx)
 			return "username", username, username != ""
 		})

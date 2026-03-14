@@ -198,7 +198,7 @@ commonLogger := log.WithContext(ctx)
 commonLogger.Info("info")
 ```
 
-Context binding adds request-specific data for easier tracing. The method accepts any value implementing `context.Context`, including `fiber.Ctx` (which itself implements `context.Context`) and standard `context.Context` instances such as `c.Context()`. When using `c.Context()`, enable `PassLocalsToContext` in the app config so that values stored in `fiber.Ctx.Locals` are propagated through the standard context chain.
+Context binding adds request-specific data for easier tracing. The method accepts `fiber.Ctx`, `*fasthttp.RequestCtx`, or `context.Context`. When using standard `context.Context` instances (such as `c.Context()`), enable `PassLocalsToContext` in the app config so that values stored in `fiber.Ctx.Locals` are propagated through the context chain.
 
 ### Automatic Context Fields
 
@@ -227,8 +227,9 @@ app.Get("/", func(c fiber.Ctx) error {
 Use `log.RegisterContextExtractor` to register your own extractors. Each extractor receives the bound context and returns a field name, value, and success flag:
 
 ```go
-log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
-    if traceID, ok := ctx.Value(traceIDKey).(string); ok && traceID != "" {
+log.RegisterContextExtractor(func(ctx any) (string, any, bool) {
+    // Use fiber.ValueFromContext to extract from any supported context type
+    if traceID, ok := fiber.ValueFromContext[string](ctx, traceIDKey); ok && traceID != "" {
         return "trace-id", traceID, true
     }
     return "", nil, false

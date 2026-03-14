@@ -1,7 +1,6 @@
 package csrf
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -66,7 +65,7 @@ func New(config ...Config) fiber.Handler {
 	// because they are bearer secrets and must never appear in plain text in logs.
 	// An empty token (no middleware or middleware skipped) is omitted.
 	registerExtractor.Do(func() {
-		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
+		log.RegisterContextExtractor(func(ctx any) (string, any, bool) {
 			token := TokenFromContext(ctx)
 			if token == "" {
 				return "", nil, false

@@ -1,7 +1,6 @@
 package log
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log"
@@ -14,7 +13,7 @@ import (
 var _ AllLogger[*log.Logger] = (*defaultLogger)(nil)
 
 type defaultLogger struct {
-	ctx    context.Context //nolint:containedctx // stored for deferred field extraction
+	ctx    any
 	stdlog *log.Logger
 	level  Level
 	depth  int
@@ -243,7 +242,8 @@ func (l *defaultLogger) Panicw(msg string, keysAndValues ...any) {
 // WithContext returns a logger that shares the underlying output but carries
 // the provided context. Any registered ContextExtractor functions will be
 // called at log time to prepend key-value fields extracted from the context.
-func (l *defaultLogger) WithContext(ctx context.Context) CommonLogger {
+// The ctx parameter can be fiber.Ctx, *fasthttp.RequestCtx, or context.Context.
+func (l *defaultLogger) WithContext(ctx any) CommonLogger {
 	return &defaultLogger{
 		stdlog: l.stdlog,
 		level:  l.level,

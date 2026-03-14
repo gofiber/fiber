@@ -1,7 +1,6 @@
 package keyauth
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -38,7 +37,7 @@ func New(config ...Config) fiber.Handler {
 	// includes a redacted API key when the keyauth middleware is in use.
 	// An empty token (no middleware or middleware skipped) is omitted.
 	registerExtractor.Do(func() {
-		log.RegisterContextExtractor(func(ctx context.Context) (string, any, bool) {
+		log.RegisterContextExtractor(func(ctx any) (string, any, bool) {
 			token := TokenFromContext(ctx)
 			if token == "" {
 				return "", nil, false

@@ -1,7 +1,6 @@
 package log
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log"
@@ -12,7 +11,8 @@ import (
 // ContextExtractor extracts a key-value pair from the given context for
 // inclusion in log output when using WithContext.
 // It returns the log field name, its value, and whether extraction succeeded.
-type ContextExtractor func(ctx context.Context) (string, any, bool)
+// The ctx parameter can be fiber.Ctx, *fasthttp.RequestCtx, or context.Context.
+type ContextExtractor func(ctx any) (string, any, bool)
 
 // contextExtractorsMu guards contextExtractors for concurrent registration
 // and snapshot reads.
@@ -59,7 +59,7 @@ type baseLogger interface {
 	CommonLogger
 	SetLevel(Level)
 	SetOutput(io.Writer)
-	WithContext(ctx context.Context) CommonLogger
+	WithContext(ctx any) CommonLogger
 }
 
 var logger baseLogger = &defaultLogger{
@@ -129,7 +129,8 @@ type AllLogger[T any] interface {
 	ConfigurableLogger[T]
 
 	// WithContext returns a new logger with the given context.
-	WithContext(ctx context.Context) CommonLogger
+	// The ctx parameter can be fiber.Ctx, *fasthttp.RequestCtx, or context.Context.
+	WithContext(ctx any) CommonLogger
 }
 
 // Level defines the priority of a log message.
