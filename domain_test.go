@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -1433,5 +1434,225 @@ func Benchmark_Domain_NoImpact(b *testing.B) {
 			b.Fatal(err)
 		}
 		resp.Body.Close() //nolint:errcheck // benchmark
+	}
+}
+
+// Test_Domain_Security_EmptyPattern tests that empty domain patterns are rejected
+func Test_Domain_Security_EmptyPattern(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		parseDomainPattern("")
+	})
+
+	require.Panics(t, func() {
+		parseDomainPattern("   ")
+	})
+}
+
+// Test_Domain_Security_EmptyLabel tests that domain patterns with empty labels are rejected
+func Test_Domain_Security_EmptyLabel(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		parseDomainPattern("example..com")
+	})
+
+	require.Panics(t, func() {
+		parseDomainPattern(".example.com")
+	})
+}
+
+// Test_Domain_Security_EmptyParamName tests that empty parameter names are rejected
+func Test_Domain_Security_EmptyParamName(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		parseDomainPattern(":.example.com")
+	})
+}
+
+// Test_Domain_Security_InvalidParamName tests that invalid parameter names are rejected
+func Test_Domain_Security_InvalidParamName(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		parseDomainPattern(":user@host.example.com")
+	})
+
+	require.Panics(t, func() {
+		parseDomainPattern(":user$.example.com")
+	})
+
+	require.Panics(t, func() {
+		parseDomainPattern(":user name.example.com")
+	})
+}
+
+// Test_Domain_Security_InvalidDomainChars tests that invalid domain characters are rejected
+func Test_Domain_Security_InvalidDomainChars(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		parseDomainPattern("example$.com")
+	})
+
+	require.Panics(t, func() {
+		parseDomainPattern("example@domain.com")
+	})
+
+	require.Panics(t, func() {
+		parseDomainPattern("example domain.com")
+	})
+}
+
+// Test_Domain_Security_TooManyParts tests DoS protection against excessive domain labels
+func Test_Domain_Security_TooManyParts(t *testing.T) {
+	t.Parallel()
+
+	// Pattern with too many parts should panic
+	require.Panics(t, func() {
+		parts := make([]string, 20)
+		for i := range parts {
+			parts[i] = "sub"
+		}
+		parseDomainPattern(strings.Join(parts, "."))
+	})
+}
+
+// Test_Domain_Security_TooManyPartsRuntime tests DoS protection against excessive hostname labels at runtime
+func Test_Domain_Security_TooManyPartsRuntime(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Domain("example.com").Get("/", func(c Ctx) error {
+		return c.SendString("ok")
+	})
+
+	// Hostname with too many labels should not match (DoS protection)
+	parts := make([]string, 20)
+	for i := range parts {
+		parts[i] = "sub"
+	}
+	maliciousHost := strings.Join(parts, ".")
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Host = maliciousHost
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_Security_ExcessiveHostnameLength tests DoS protection against very long hostnames
+func Test_Domain_Security_ExcessiveHostnameLength(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Domain("example.com").Get("/", func(c Ctx) error {
+		return c.SendString("ok")
+	})
+
+	// Hostname exceeding 253 characters should not match (DoS protection)
+	maliciousHost := strings.Repeat("a", 254) + ".com"
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Host = maliciousHost
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_Security_ExcessiveLabelLength tests DoS protection against very long labels
+func Test_Domain_Security_ExcessiveLabelLength(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Domain("example.com").Get("/", func(c Ctx) error {
+		return c.SendString("ok")
+	})
+
+	// Label exceeding 63 characters should not match (DoS protection)
+	maliciousHost := strings.Repeat("a", 64) + ".example.com"
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Host = maliciousHost
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_Security_InvalidHostnameChars tests that hostnames with invalid characters are rejected
+func Test_Domain_Security_InvalidHostnameChars(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Domain("example.com").Get("/", func(c Ctx) error {
+		return c.SendString("ok")
+	})
+
+	// Test hostnames with invalid characters that can be tested
+	// Note: Some invalid chars (like spaces) are rejected by httptest.NewRequest itself
+	tests := []struct {
+		host      string
+		canCreate bool
+	}{
+		{"example$.com", true},
+		{"example@domain.com", true},
+		{"example\x00.com", true},
+		{"example\n.com", true},
+		{"example;.com", true},
+		{"example/.com", true},
+	}
+
+	for _, tt := range tests {
+		if tt.canCreate {
+			req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+			req.Host = tt.host
+			resp, err := app.Test(req)
+			if err == nil {
+				require.Equal(t, StatusNotFound, resp.StatusCode, "Should reject hostname: %s", tt.host)
+			}
+			// If there's an error, the validation happened at an earlier layer which is also acceptable
+		}
+	}
+}
+
+// Test_Domain_Security_EmptyHostnameLabel tests that hostnames with empty labels are rejected
+func Test_Domain_Security_EmptyHostnameLabel(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Domain("example.com").Get("/", func(c Ctx) error {
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Host = "example..com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_Security_ValidParamNames tests that valid parameter names are accepted
+func Test_Domain_Security_ValidParamNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		pattern string
+	}{
+		{name: "alphanumeric", pattern: ":user123.example.com"},
+		{name: "underscore", pattern: ":user_name.example.com"},
+		{name: "hyphen", pattern: ":user-name.example.com"},
+		{name: "mixed", pattern: ":user_123-name.example.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.NotPanics(t, func() {
+				parseDomainPattern(tt.pattern)
+			})
+		})
 	}
 }

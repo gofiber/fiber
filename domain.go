@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"unicode"
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -40,6 +41,11 @@ type domainMatcher struct {
 	numParts   int      // total number of parts
 }
 
+// maxDomainParts defines the maximum number of domain labels allowed (e.g., sub.domain.example.com = 4 parts).
+// This prevents DoS attacks from patterns or hostnames with excessive label counts.
+// RFC 1035 suggests 127 labels max, but we use a more conservative limit to prevent memory exhaustion.
+const maxDomainParts = 16
+
 // parseDomainPattern parses a domain pattern like ":subdomain.example.com"
 // into a domainMatcher. Parameter parts start with ":".
 // Constant labels are lowercased per RFC 4343 (domain names are case-insensitive),
@@ -51,20 +57,55 @@ func parseDomainPattern(pattern string) domainMatcher {
 	// consistent with Fiber's own host normalization in Subdomains().
 	pattern = utils.TrimRight(pattern, '.')
 
+	// Validate pattern is not empty after trimming
+	if pattern == "" {
+		panic("Domain pattern cannot be empty")
+	}
+
 	parts := strings.Split(pattern, ".")
+
+	// Prevent DoS from patterns with excessive label counts
+	if len(parts) > maxDomainParts {
+		panic(fmt.Sprintf("Domain pattern '%s' has %d parts, which exceeds the maximum of %d",
+			pattern, len(parts), maxDomainParts))
+	}
+
 	m := domainMatcher{
 		parts:    make([]string, len(parts)),
 		numParts: len(parts),
 	}
 
 	for i, part := range parts {
-		if part != "" && part[0] == ':' {
+		// Validate no empty labels (e.g., "example..com" is invalid)
+		if part == "" {
+			panic(fmt.Sprintf("Domain pattern '%s' contains empty label at position %d", pattern, i))
+		}
+
+		if part[0] == ':' {
+			// Validate parameter name is not empty
+			if len(part) == 1 {
+				panic(fmt.Sprintf("Domain pattern '%s' contains empty parameter name at position %d", pattern, i))
+			}
+			paramName := part[1:]
+			// Validate parameter name contains only safe characters (alphanumeric, underscore, hyphen)
+			for _, ch := range paramName {
+				if !unicode.IsLetter(ch) && !unicode.IsDigit(ch) && ch != '_' && ch != '-' {
+					panic(fmt.Sprintf("Domain pattern '%s' contains invalid parameter name '%s' with character '%c'", pattern, paramName, ch))
+				}
+			}
 			m.paramIdx = append(m.paramIdx, i)
-			m.paramNames = append(m.paramNames, part[1:]) // preserve original case
-			m.parts[i] = part                             // keep ":param" marker for matching
+			m.paramNames = append(m.paramNames, paramName) // preserve original case
+			m.parts[i] = part                              // keep ":param" marker for matching
 		} else {
 			// Only lowercase constant labels (RFC 4343)
-			m.parts[i] = utilsstrings.ToLower(part)
+			// Validate label contains only valid domain characters
+			normalized := utilsstrings.ToLower(part)
+			for _, ch := range normalized {
+				if !unicode.IsLetter(ch) && !unicode.IsDigit(ch) && ch != '-' {
+					panic(fmt.Sprintf("Domain pattern '%s' contains invalid character '%c' in label '%s'", pattern, ch, part))
+				}
+			}
+			m.parts[i] = normalized
 		}
 	}
 
@@ -80,6 +121,7 @@ func parseDomainPattern(pattern string) domainMatcher {
 // match checks if a hostname matches the domain pattern.
 // It returns true if matched and a slice of parameter values (parallel to paramNames).
 // Uses a stack-allocated buffer to avoid heap allocation for typical domain names.
+// Validates hostname to prevent DoS attacks from malicious input.
 func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocritic // named returns conflict with nonamedreturns linter
 	// Domain names are case-insensitive per RFC 4343
 	hostname = utilsstrings.ToLower(hostname)
@@ -87,12 +129,37 @@ func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocri
 	// consistent with Fiber's own host normalization in Subdomains().
 	hostname = utils.TrimRight(hostname, '.')
 
-	// Use stack-allocated array for typical domain names (up to 8 labels).
+	// Validate hostname is not empty and not excessively long (DoS protection)
+	// RFC 1035 limits domain names to 253 characters
+	if hostname == "" || len(hostname) > 253 {
+		return false, nil
+	}
+
+	// Use stack-allocated array for typical domain names (up to 16 labels).
 	// This avoids heap allocation for most common cases, consistent with
 	// the Subdomains() implementation in req.go.
-	var partsBuf [8]string
+	// The buffer size matches maxDomainParts to prevent overflow.
+	var partsBuf [maxDomainParts]string
 	parts := partsBuf[:0]
+	labelCount := 0
 	for part := range strings.SplitSeq(hostname, ".") {
+		labelCount++
+		// DoS protection: reject hostnames with too many labels
+		if labelCount > maxDomainParts {
+			return false, nil
+		}
+		// DoS protection: reject empty labels or excessively long labels
+		// RFC 1035 limits each label to 63 characters
+		if part == "" || len(part) > 63 {
+			return false, nil
+		}
+		// Validate label contains only safe domain characters (basic sanitization)
+		// This prevents injection attacks via malicious hostnames
+		for _, ch := range part {
+			if ch != '-' && !unicode.IsLetter(ch) && !unicode.IsDigit(ch) {
+				return false, nil
+			}
+		}
 		parts = append(parts, part)
 	}
 
