@@ -334,7 +334,7 @@ func (d *domainRouter) Use(args ...any) Router {
 		default:
 			handler, ok := toFiberHandler(arg)
 			if !ok {
-				panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
+				panic(fmt.Sprintf("use: invalid handler %v", reflect.TypeOf(arg)))
 			}
 			handlers = append(handlers, handler)
 		}
