@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // Middleware holds session data and configuration.
@@ -36,6 +37,10 @@ var (
 			return &Middleware{}
 		},
 	}
+
+	// registerExtractor ensures the log context extractor for session IDs is
+	// registered exactly once.
+	registerExtractor sync.Once
 )
 
 // New initializes session middleware with optional configuration.
@@ -80,6 +85,24 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 	if cfg.Store == nil {
 		cfg.Store = NewStore(cfg)
 	}
+
+	// Register a log context extractor so that log.WithContext(c) automatically
+	// includes a redacted session ID when the session middleware is in use.
+	// Session IDs are bearer secrets, so only the first 4 characters are logged
+	// to enable correlation without exposing the full token.
+	registerExtractor.Do(func() {
+		log.RegisterContextExtractor(func(ctx any) (string, any, bool) {
+			m := FromContext(ctx)
+			if m == nil || m.Session == nil {
+				return "", nil, false
+			}
+			id := m.Session.ID()
+			if id == "" {
+				return "", nil, false
+			}
+			return "session-id", redactSessionID(id), true
+		})
+	})
 
 	handler := func(c fiber.Ctx) error {
 		if cfg.Next != nil && cfg.Next(c) {
@@ -182,6 +205,18 @@ func FromContext(ctx any) *Middleware {
 	}
 
 	return nil
+}
+
+// redactSessionID returns a masked version of a session ID for safe logging.
+// Session IDs are bearer secrets; for IDs longer than 8 characters, only the
+// first 4 characters are retained and the remainder is masked so that log
+// entries can still be correlated without exposing the full token. Shorter
+// IDs are fully redacted.
+func redactSessionID(id string) string {
+	if len(id) > 8 {
+		return id[:4] + "****"
+	}
+	return "****"
 }
 
 // Set sets a key-value pair in the session.
