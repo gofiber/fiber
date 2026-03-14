@@ -200,6 +200,20 @@ func (grp *Group) Group(prefix string, handlers ...any) Router {
 	return newGrp
 }
 
+// Domain creates a new router scoped to the given hostname pattern within
+// this group. Routes registered through the returned Router inherit the
+// group prefix and only match requests whose Host header matches the pattern.
+//
+//	api := app.Group("/api")
+//	api.Domain("api.example.com").Get("/users", listUsers)
+func (grp *Group) Domain(host string) Router {
+	return &domainRouter{
+		app:     grp.app,
+		group:   grp,
+		matcher: parseDomainPattern(host),
+	}
+}
+
 // RouteChain creates a Registering instance scoped to the group's prefix,
 // allowing chained route declarations for the same path.
 func (grp *Group) RouteChain(path string) Register {
