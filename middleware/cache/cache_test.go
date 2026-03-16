@@ -5091,3 +5091,56 @@ func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 		require.Equal(t, cacheMiss, rsp2.Header.Get("X-Cache"))
 	})
 }
+
+// go test -run Test_hasDirective
+func Test_hasDirective(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		cc        string
+		directive string
+		expected  bool
+	}{
+		// Basic matching
+		{name: "exact match", cc: "no-cache", directive: "no-cache", expected: true},
+		{name: "not found", cc: "public", directive: "no-cache", expected: false},
+		{name: "empty header", cc: "", directive: "no-cache", expected: false},
+
+		// Comma-separated directives
+		{name: "first in list", cc: "no-cache, no-store", directive: "no-cache", expected: true},
+		{name: "last in list", cc: "public, no-cache", directive: "no-cache", expected: true},
+		{name: "middle in list", cc: "public, no-cache, no-store", directive: "no-cache", expected: true},
+		{name: "no spaces", cc: "public,no-cache,no-store", directive: "no-cache", expected: true},
+
+		// Trailing/leading whitespace
+		{name: "trailing space", cc: "no-cache ", directive: "no-cache", expected: true},
+		{name: "trailing tab", cc: "no-cache\t", directive: "no-cache", expected: true},
+		{name: "space before comma", cc: "no-cache , public", directive: "no-cache", expected: true},
+
+		// Directives with arguments (=)
+		{name: "directive with value", cc: "no-cache=\"Set-Cookie\"", directive: "no-cache", expected: true},
+		{name: "directive with value in list", cc: "public, no-cache=\"Set-Cookie\", no-store", directive: "no-cache", expected: true},
+
+		// Partial matches should not match
+		{name: "prefix match only", cc: "no-cache-extended", directive: "no-cache", expected: false},
+		{name: "suffix match only", cc: "xno-cache", directive: "no-cache", expected: false},
+
+		// Case insensitivity
+		{name: "uppercase", cc: "NO-CACHE", directive: "no-cache", expected: true},
+		{name: "mixed case", cc: "No-Cache", directive: "no-cache", expected: true},
+
+		// Private directive
+		{name: "private standalone", cc: "private", directive: "private", expected: true},
+		{name: "private with trailing space", cc: "private ", directive: "private", expected: true},
+		{name: "private in list with spaces", cc: "max-age=3600, private ", directive: "private", expected: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := hasDirective(tt.cc, tt.directive)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}

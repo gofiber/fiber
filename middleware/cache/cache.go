@@ -905,7 +905,11 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// hasDirective checks if a cache-control header contains a directive (case-insensitive)
+// hasDirective checks if a cache-control header contains a directive (case-insensitive).
+// A directive is considered matched when it appears as a standalone token, meaning
+// it must be preceded by the start of string, a comma, or whitespace, and followed
+// by the end of string, a comma, whitespace, or '=' (for directives with arguments
+// like no-cache="field").
 func hasDirective(cc, directive string) bool {
 	ccLen := len(cc)
 	dirLen := len(directive)
@@ -919,7 +923,8 @@ func hasDirective(cc, directive string) bool {
 				continue
 			}
 		}
-		if i+dirLen == ccLen || cc[i+dirLen] == ',' {
+		end := i + dirLen
+		if end == ccLen || cc[end] == ',' || cc[end] == ' ' || cc[end] == '=' || cc[end] == '\t' {
 			return true
 		}
 	}
