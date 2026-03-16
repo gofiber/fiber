@@ -121,7 +121,11 @@ server {
 ```go title="main.go"
 package main
 
-import "github.com/gofiber/fiber/v3"
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
 
 func main() {
     app := fiber.New(fiber.Config{
@@ -139,7 +143,7 @@ func main() {
         return c.SendString("Your IP: " + c.IP())
     })
 
-    app.Listen(":3000")
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
