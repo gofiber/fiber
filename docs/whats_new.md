@@ -1791,7 +1791,7 @@ app := fiber.New(fiber.Config{
         Loopback: true,
         // Trust Unix domain socket connections
         UnixSocket: true,
-    }
+    },
 })
 ```
 
