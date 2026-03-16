@@ -75,7 +75,7 @@ We have made several changes to the Fiber app, including:
   - `EnablePrefork` (previously `Prefork`)
   - `EnablePrintRoutes`
   - `ListenerNetwork` (previously `Network`)
-- **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`.
+- **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`. Additionally, `ProxyHeader` must be set to read client IPs from proxy headers (e.g., `X-Forwarded-For`).
 - **XMLDecoder Config Property**: The `XMLDecoder` property has been added to allow usage of 3rd-party XML libraries in XML binder.
 
 ### New Methods
@@ -1764,6 +1764,8 @@ You have to put `*` to the end of the route if you don't define static route wit
 
 We've renamed `EnableTrustedProxyCheck` to `TrustProxy` and moved `TrustedProxies` to `TrustProxyConfig`.
 
+**Important:** To use proxy headers like `X-Forwarded-For` with `c.IP()`, you must configure **both** `TrustProxy` **and** `ProxyHeader`. Setting only `ProxyHeader` without `TrustProxy` will not work.
+
 ```go
 // Before
 app := fiber.New(fiber.Config{
@@ -1779,6 +1781,8 @@ app := fiber.New(fiber.Config{
 app := fiber.New(fiber.Config{
     // TrustProxy enables the trusted proxy check
     TrustProxy: true,
+    // ProxyHeader specifies which header to read the real client IP from
+    ProxyHeader: fiber.HeaderXForwardedFor,
     // TrustProxyConfig allows for configuring trusted proxies.
     TrustProxyConfig: fiber.TrustProxyConfig{
         // Proxies is a list of trusted proxy IP ranges/addresses.
@@ -1790,6 +1794,8 @@ app := fiber.New(fiber.Config{
     }
 })
 ```
+
+For detailed proxy configuration guidance, see the [reverse proxy guide](./guide/reverse-proxy.md).
 
 ### 🎣 Hooks
 
