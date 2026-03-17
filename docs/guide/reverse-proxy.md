@@ -162,7 +162,7 @@ app.Get("/debug", func(c fiber.Ctx) error {
 })
 ```
 
-### Enabling HTTP/2
+## Enabling HTTP/2
 
 Popular choices include Nginx and Traefik.
 
@@ -198,7 +198,7 @@ http:
 With this configuration, Traefik terminates TLS and serves your app over HTTP/2.
 </details>
 
-### HTTP/3 (QUIC) Support
+## HTTP/3 (QUIC) Support
 
 Early Hints (103 responses) are defined for HTTP and can be delivered over HTTP/1.1 and HTTP/2/3. In practice, browsers process 103 most reliably over HTTP/2/3. Many reverse proxies also support HTTP/3 (QUIC):
 
