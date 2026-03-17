@@ -157,7 +157,7 @@ app.Get("/debug", func(c fiber.Ctx) error {
         "c.IP()":           c.IP(),                    // Should show real client IP
         "X-Forwarded-For":  c.Get("X-Forwarded-For"),  // Raw header value
         "IsProxyTrusted":   c.IsProxyTrusted(),        // Should be true
-        "RemoteIP":         c.Context().RemoteIP().String(), // Proxy IP
+        "RemoteIP":         c.RequestCtx().RemoteIP().String(), // Proxy IP
     })
 })
 ```
