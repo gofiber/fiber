@@ -11,6 +11,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -106,6 +108,77 @@ func Test_Cache(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	utils.AssertEqual(t, cachedBody, body)
+}
+
+// Test_Cache_SingleFlight verifies that with SingleFlight enabled, concurrent
+// misses for the same key result in exactly one handler invocation and all
+// requesters receive the same response (stampede prevention).
+func Test_Cache_SingleFlight(t *testing.T) {
+	t.Parallel()
+
+	var handlerCalls int64
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration:   10 * time.Second,
+		SingleFlight: true,
+		KeyGenerator: func(c *fiber.Ctx) string { return "/singleflight" },
+	}))
+
+	app.Get("/singleflight", func(c *fiber.Ctx) error {
+		n := atomic.AddInt64(&handlerCalls, 1)
+		return c.SendString(fmt.Sprintf("ok-%d", n))
+	})
+
+	// Cold cache: fire many concurrent requests for the same key. Only one
+	// handler run should occur; all requesters get the same body.
+	const concurrency = 50
+	var wg sync.WaitGroup
+	bodies := make([][]byte, concurrency)
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			req := httptest.NewRequest("GET", "/singleflight", nil)
+			resp, err := app.Test(req)
+			if err != nil {
+				t.Errorf("request %d: %v", idx, err)
+				return
+			}
+			body, _ := io.ReadAll(resp.Body)
+			bodies[idx] = body
+		}(i)
+	}
+	wg.Wait()
+
+	utils.AssertEqual(t, int64(1), atomic.LoadInt64(&handlerCalls), "handler should be invoked exactly once")
+	expectedBody := []byte("ok-1")
+	for i := 0; i < concurrency; i++ {
+		utils.AssertEqual(t, expectedBody, bodies[i], fmt.Sprintf("request %d body", i))
+	}
+}
+
+// Test_Cache_DefaultConfig_BackwardsCompatible ensures default config (SingleFlight false)
+// keeps existing behavior: no coalescing; existing tests pass unchanged.
+func Test_Cache_DefaultConfig_BackwardsCompatible(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New()) // SingleFlight defaults to false
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("default")
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	body, _ := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, []byte("default"), body)
+
+	resp2, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	body2, _ := io.ReadAll(resp2.Body)
+	utils.AssertEqual(t, []byte("default"), body2)
+	utils.AssertEqual(t, cacheHit, resp2.Header.Get("X-Cache"))
 }
 
 // go test -run Test_Cache_WithNoCacheRequestDirective

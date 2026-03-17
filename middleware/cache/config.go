@@ -72,6 +72,20 @@ type Config struct {
 	//
 	// Default: []string{fiber.MethodGet, fiber.MethodHead}
 	Methods []string
+
+	// SingleFlight, when true, prevents cache stampede by coalescing concurrent
+	// misses for the same key: only one request runs the handler and populates
+	// the cache; others wait and share the result. Recommend true for high-concurrency setups.
+	//
+	// Default: false
+	SingleFlight bool
+
+	// StaleWhileRevalidate, when > 0, allows serving stale responses for expired
+	// entries while one revalidation runs (one handler run per key). 0 disables.
+	// Full stale-while-revalidate behavior may be added in a follow-up.
+	//
+	// Default: 0
+	StaleWhileRevalidate time.Duration
 }
 
 // ConfigDefault is the default config
@@ -88,6 +102,8 @@ var ConfigDefault = Config{
 	Storage:              nil,
 	MaxBytes:             0,
 	Methods:              []string{fiber.MethodGet, fiber.MethodHead},
+	SingleFlight:         false,
+	StaleWhileRevalidate: 0,
 }
 
 // Helper function to set default values
@@ -124,5 +140,6 @@ func configDefault(config ...Config) Config {
 	if len(cfg.Methods) == 0 {
 		cfg.Methods = ConfigDefault.Methods
 	}
+	// SingleFlight and StaleWhileRevalidate have zero-value defaults; no need to set
 	return cfg
 }
