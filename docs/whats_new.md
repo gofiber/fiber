@@ -1764,7 +1764,7 @@ You have to put `*` to the end of the route if you don't define static route wit
 
 We've renamed `EnableTrustedProxyCheck` to `TrustProxy` and moved `TrustedProxies` to `TrustProxyConfig`.
 
-**Important:** To use proxy headers like `X-Forwarded-For` with `c.IP()`, you must configure **both** `TrustProxy` **and** `ProxyHeader`. Setting only `ProxyHeader` without `TrustProxy` will not work.
+**Important:** To use proxy headers like `X-Forwarded-For` with `c.IP()`, you must configure **all** of `TrustProxy`, `ProxyHeader`, and a trusted proxy via `TrustProxyConfig`. If the proxy is not trusted (for example, if you set only `ProxyHeader` or only `TrustProxy` without configuring `TrustProxyConfig`), proxy headers are ignored and `c.IP()` will return the remote TCP IP instead.
 
 ```go
 // Before

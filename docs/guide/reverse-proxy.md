@@ -129,8 +129,9 @@ import (
 
 func main() {
     app := fiber.New(fiber.Config{
-        TrustProxy: true,
-        ProxyHeader: fiber.HeaderXForwardedFor,
+        TrustProxy:        true,
+        ProxyHeader:       fiber.HeaderXForwardedFor,
+        EnableIPValidation: true,
         TrustProxyConfig: fiber.TrustProxyConfig{
             // Trust localhost since Nginx is on the same machine
             Loopback: true,
