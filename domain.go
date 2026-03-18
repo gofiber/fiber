@@ -171,18 +171,29 @@ func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocri
 		return false, nil
 	}
 
-	var paramValues []string
-	if len(m.paramIdx) > 0 {
-		paramValues = make([]string, len(m.paramIdx))
+	// First pass: validate all constant labels without allocating paramValues.
+	for i, patternPart := range m.parts {
+		if patternPart != "" && patternPart[0] == ':' {
+			// Parameter segment; skip in this pass.
+			continue
+		}
+		if patternPart != parts[i] {
+			return false, nil
+		}
 	}
 
+	// No parameters to capture; avoid allocating an empty slice.
+	if len(m.paramIdx) == 0 {
+		return true, nil
+	}
+
+	// Second pass: now that constants are confirmed, allocate and fill paramValues.
+	paramValues := make([]string, len(m.paramIdx))
 	paramIter := 0
 	for i, patternPart := range m.parts {
 		if patternPart != "" && patternPart[0] == ':' {
 			paramValues[paramIter] = parts[i]
 			paramIter++
-		} else if patternPart != parts[i] {
-			return false, nil
 		}
 	}
 
