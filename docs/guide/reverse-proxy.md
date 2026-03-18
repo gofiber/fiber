@@ -35,6 +35,8 @@ When your Fiber application is behind a reverse proxy, the TCP connection comes 
 
 :::warning Security Warning
 Proxy headers can be easily spoofed by malicious clients. **Always** configure `TrustProxyConfig` to validate the proxy IP address, otherwise attackers can forge headers to bypass IP-based access controls, rate limiting, or geolocation features.
+
+In addition, your reverse proxy should be configured to **set or overwrite** the forwarding header you choose (for example, `X-Forwarded-For`) based on the real client connection, or to use its real IP / PROXY protocol features. Do not simply pass through client-supplied forwarding headers, or `c.IP()` may still be controlled by an attacker even when `TrustProxyConfig` is correct.
 :::
 
 ### Configuration
