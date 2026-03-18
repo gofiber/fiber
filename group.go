@@ -202,7 +202,11 @@ func (grp *Group) Group(prefix string, handlers ...any) Router {
 
 // Domain creates a new router scoped to the given hostname pattern within
 // this group. Routes registered through the returned Router inherit the
-// group prefix and only match requests whose Host header matches the pattern.
+// group prefix and only match requests whose hostname (from c.Hostname())
+// matches the pattern. When TrustProxy is enabled and the proxy is trusted,
+// the hostname may be derived from the X-Forwarded-Host header.
+//
+// Please use Config.TrustProxy to prevent header spoofing, see: https://docs.gofiber.io/api/fiber#trustproxy
 //
 //	api := app.Group("/api")
 //	api.Domain("api.example.com").Get("/users", listUsers)

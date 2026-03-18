@@ -980,12 +980,16 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 }
 
 // Domain creates a new router scoped to the given hostname pattern. Routes
-// registered through the returned Router only match requests whose Host header
-// matches the pattern. The pattern can contain parameters prefixed with ":"
-// whose values are accessible via [DomainParam].
+// registered through the returned Router only match requests whose hostname
+// (from c.Hostname()) matches the pattern. When TrustProxy is enabled and the
+// proxy is trusted, the hostname may be derived from the X-Forwarded-Host header.
+// The pattern can contain parameters prefixed with ":" whose values are accessible
+// via [DomainParam].
 //
 // Domain routing has zero performance impact on routes that don't use it because
 // the hostname check is applied as a handler wrapper, not a core router change.
+//
+// Please use Config.TrustProxy to prevent header spoofing, see: https://docs.gofiber.io/api/fiber#trustproxy
 //
 //	// Static domain
 //	app.Domain("api.example.com").Get("/users", listUsers)

@@ -417,7 +417,9 @@ You can find more information about `app.RouteChain` and `app.Route` in the API 
 
 ### Domain routing
 
-`Domain` creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose `Host` header matches the pattern. The pattern can contain parameters prefixed with `:`, accessible via `fiber.DomainParam`.
+`Domain` creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose hostname (from `c.Hostname()`) matches the pattern. When `TrustProxy` is enabled and the proxy is trusted, the hostname may be derived from the `X-Forwarded-Host` header. Please configure `TrustProxy` to prevent header spoofing.
+
+The pattern can contain parameters prefixed with `:`, accessible via `fiber.DomainParam`.
 
 Domain routing has **zero performance impact** on routes that don't use it because the hostname check is applied as a handler wrapper, not a change to the core router.
 

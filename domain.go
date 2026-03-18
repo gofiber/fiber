@@ -125,7 +125,7 @@ func parseDomainPattern(pattern string) domainMatcher {
 // It returns true if matched and a slice of parameter values (parallel to paramNames).
 // Uses a stack-allocated buffer to avoid heap allocation for typical domain names.
 // Validates hostname to prevent DoS attacks from malicious input.
-func (m *domainMatcher) match(hostname string) (bool, []string) {
+func (m *domainMatcher) match(hostname string) (bool, []string) { //nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter
 	// Trim trailing dot of a fully-qualified domain name (RFC 3986),
 	// consistent with Fiber's own host normalization in Subdomains().
 	hostname = utils.TrimRight(hostname, '.')

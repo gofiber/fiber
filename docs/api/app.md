@@ -253,7 +253,9 @@ app.Route("/test", func(api fiber.Router) {
 
 ### Domain
 
-Creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose `Host` header matches the pattern. Domain names are matched case-insensitively per [RFC 4343](https://www.rfc-editor.org/rfc/rfc4343).
+Creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose hostname (from `c.Hostname()`) matches the pattern. Domain names are matched case-insensitively per [RFC 4343](https://www.rfc-editor.org/rfc/rfc4343).
+
+When `TrustProxy` is enabled and the proxy is trusted, the hostname may be derived from the `X-Forwarded-Host` header instead of the `Host` header. Please configure `TrustProxy` to prevent header spoofing. See the [TrustProxy documentation](https://docs.gofiber.io/api/fiber#trustproxy) for details.
 
 The pattern can contain parameters prefixed with `:`. Use [`DomainParam`](#domainparam) to retrieve them inside handlers.
 
