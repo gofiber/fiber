@@ -5112,6 +5112,7 @@ func Test_hasDirective(t *testing.T) {
 		{name: "last in list", cc: "public, no-cache", directive: "no-cache", expected: true},
 		{name: "middle in list", cc: "public, no-cache, no-store", directive: "no-cache", expected: true},
 		{name: "no spaces", cc: "public,no-cache,no-store", directive: "no-cache", expected: true},
+		{name: "tab before directive", cc: "public,\tno-cache", directive: "no-cache", expected: true},
 
 		// Trailing/leading whitespace
 		{name: "trailing space", cc: "no-cache ", directive: "no-cache", expected: true},
