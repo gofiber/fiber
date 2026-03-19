@@ -109,6 +109,34 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 	}
 }
 
+func Test_BasicAuth_UsernameFromContext_Types(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
+	app.Use(New(Config{
+		Users: map[string]string{
+			"john": sha256Hash("doe"),
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		require.Equal(t, "john", UsernameFromContext(c))
+		customCtx, ok := c.(fiber.CustomCtx)
+		require.True(t, ok)
+		require.Equal(t, "john", UsernameFromContext(customCtx))
+		require.Equal(t, "john", UsernameFromContext(c.RequestCtx()))
+		require.Equal(t, "john", UsernameFromContext(c.Context()))
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Add(fiber.HeaderAuthorization, "Basic "+creds)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 func Test_BasicAuth_AuthorizerCtx(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

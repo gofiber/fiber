@@ -228,6 +228,21 @@ func Test_FilterFlags(t *testing.T) {
 	}
 }
 
+func Benchmark_FilterFlags(b *testing.B) {
+	b.ReportAllocs()
+
+	cases := []string{
+		"text/javascript; charset=utf-8",
+		"application/json",
+		"text/plain; charset=utf-8; foo=bar",
+		"text/javascript charset=utf-8",
+	}
+
+	for i := 0; i < b.N; i++ {
+		_ = FilterFlags(cases[i&3])
+	}
+}
+
 func TestFormatBindData(t *testing.T) {
 	t.Parallel()
 
@@ -334,7 +349,7 @@ func Test_parseToStruct_MismatchedData(t *testing.T) {
 
 	err := parseToStruct("query", &User{}, data)
 	require.Error(t, err)
-	require.EqualError(t, err, "bind: schema: error converting value for \"age\"")
+	require.EqualError(t, err, "schema: error converting value for \"age\"")
 }
 
 func Test_formatBindData_ErrorCases(t *testing.T) {

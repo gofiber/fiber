@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
 // matchScheme compares the scheme of the domain and pattern
@@ -62,7 +62,7 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 
 	// Normalize the origin by constructing it from the scheme and host.
 	// The path or trailing slash is not included in the normalized origin.
-	return true, utils.ToLower(parsedOrigin.Scheme) + "://" + utils.ToLower(parsedOrigin.Host)
+	return true, utilsstrings.ToLower(parsedOrigin.Scheme) + "://" + utilsstrings.ToLower(parsedOrigin.Host)
 }
 
 type subdomain struct {

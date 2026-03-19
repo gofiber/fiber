@@ -18,7 +18,7 @@ it update your project automatically:
 
 ```bash
 go install github.com/gofiber/cli/fiber@latest
-fiber migrate --to v3.0.0-rc.3
+fiber migrate --to v3
 ```
 
 See the [migration guide](#-migration-guide) for more details and options.
@@ -55,13 +55,14 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Logger](#logger)
   - [Monitor](#monitor)
   - [Proxy](#proxy)
+  - [Recover](#recover)
   - [Session](#session)
 - [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
-## Drop for old Go versions
+## Dropping support for old Go versions
 
-Fiber `v3` drops support for Go versions below `1.25`. We recommend upgrading to Go `1.25` or higher to use Fiber `v3`.
+Fiber `v3` requires Go `1.25` or later. Update your toolchain to `1.25+` before upgrading so the module `go` directive and standard library features align with the new minimum version.
 
 ## 🚀 App
 
@@ -74,7 +75,7 @@ We have made several changes to the Fiber app, including:
   - `EnablePrefork` (previously `Prefork`)
   - `EnablePrintRoutes`
   - `ListenerNetwork` (previously `Network`)
-- **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`.
+- **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`. Additionally, `ProxyHeader` must be set to read client IPs from proxy headers (e.g., `X-Forwarded-For`).
 - **XMLDecoder Config Property**: The `XMLDecoder` property has been added to allow usage of 3rd-party XML libraries in XML binder.
 - **Upload Root Permissions**: The `RootPerms` property controls the permissions used when creating `RootDir` or `RootFs` prefixes for uploads (default `0o750`).
 
@@ -249,13 +250,13 @@ app.Shutdown()      // Never reached
 
 We have made several changes to the Fiber listen, including:
 
-- Removed `OnShutdownError` and `OnShutdownSuccess` from `ListenerConfig` in favor of using `OnPostShutdown` hook which receives the shutdown error
+- Removed `OnShutdownError` and `OnShutdownSuccess` from `ListenConfig` in favor of using the `OnPostShutdown` hook, which receives the shutdown error
 
 ```go
 app := fiber.New()
 
-// Before - using ListenerConfig callbacks
-app.Listen(":3000", fiber.ListenerConfig{
+// Before - using ListenConfig callbacks
+app.Listen(":3000", fiber.ListenConfig{
     OnShutdownError: func(err error) {
         log.Printf("Shutdown error: %v", err)
     },
@@ -294,7 +295,7 @@ app.Listen("app.sock")
 
 // v3 - Fiber does it for you
 app := fiber.New()
-app.Listen("app.sock", fiber.ListenerConfig{
+app.Listen("app.sock", fiber.ListenConfig{
     ListenerNetwork:    fiber.NetworkUnix,
     UnixSocketFileMode: 0770,
 })
@@ -465,7 +466,7 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 
 ```go
 // register multiple prefixes
-app.Use(["/v1", "/v2"], func(c fiber.Ctx) error {
+app.Use([]string{"/v1", "/v2"}, func(c fiber.Ctx) error {
     // Middleware for /v1 and /v2
     return c.Next()
 })
@@ -654,7 +655,7 @@ Older HTTP/1.1 clients may ignore these interim responses or handle them inconsi
 In v3, we introduced support for buffered streaming with the addition of the `SendStreamWriter` method:
 
 ```go
-func (c Ctx) SendStreamWriter(streamWriter func(w *bufio.Writer))
+func (c Ctx) SendStreamWriter(streamWriter func(w *bufio.Writer)) error
 ```
 
 With this new method, you can implement:
@@ -664,7 +665,7 @@ With this new method, you can implement:
 - Live data streaming
 
 ```go
-app.Get("/sse", func(c fiber.Ctx) {
+app.Get("/sse", func(c fiber.Ctx) error {
     c.Set("Content-Type", "text/event-stream")
     c.Set("Cache-Control", "no-cache")
     c.Set("Connection", "keep-alive")
@@ -691,7 +692,7 @@ You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md)
 In v3, we introduced support to silently terminate requests through `Drop`.
 
 ```go
-func (c Ctx) Drop()
+func (c Ctx) Drop() error
 ```
 
 With this method, you can:
@@ -722,7 +723,7 @@ You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md)
 In v3, we introduced a new method to match the Express.js API's `res.end()` method.
 
 ```go
-func (c Ctx) End()
+func (c Ctx) End() error
 ```
 
 With this method, you can:
@@ -744,8 +745,8 @@ app.Use(func (c fiber.Ctx) error {
 app.Get("/hello", func (c fiber.Ctx) error {
     query := c.Query("name", "")
     if query == "" {
-        c.SendString("You don't have a name?")
-        c.End() // Closes the underlying connection
+        _ = c.SendString("You don't have a name?")
+        _ = c.End() // Closes the underlying connection; errors intentionally ignored
         return errors.New("No name provided")
     }
     return c.SendString("Hello, " + query + "!")
@@ -772,7 +773,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 
 ```go
 type User struct {
-    ID    int    `params:"id"`
+    ID    int    `uri:"id"`
     Name  string `json:"name"`
     Email string `json:"email"`
 }
@@ -919,11 +920,14 @@ Fiber v3 introduces new generic functions that provide additional utility and fl
 
 ### New Generic Functions
 
+- **StoreInContext**: Stores request-scoped values in both `c.Locals()` and the request `context.Context`, so the same value can be read through middleware `FromContext` helpers and direct locals access.
 - **Convert**: Converts a value with a specified converter function and default value.
 - **Locals**: Retrieves or sets local values within a request context.
 - **Params**: Retrieves route parameters and can handle various types of route parameters.
 - **Query**: Retrieves the value of a query parameter from the request URI and can handle various types of query parameters.
 - **GetReqHeader**: Returns the HTTP request header specified by the field and can handle various types of header values.
+
+`fiber.Config.PassLocalsToContext` is now available to control whether `StoreInContext` also synchronizes values with request `context.Context` for Fiber-backed contexts. The default is `false` for backward compatibility. `ValueFromContext` continues reading Fiber-backed values from `c.Locals()`.
 
 ### Example
 
@@ -1122,7 +1126,7 @@ Fiber v3 introduces a new feature called Services. This feature allows developer
 package main
 
 import (
-    "strconv"
+    "context"
     "github.com/gofiber/fiber/v3"
 )
 
@@ -1381,8 +1385,8 @@ The `ExcludeVars` field has been removed from the EnvVar middleware configuratio
 
 ### Filesystem
 
-We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
-Now, static middleware can do everything that filesystem middleware and static do. You can check out [static middleware](./middleware/static.md) or [migration guide](#-migration-guide) to see what has been changed.
+The filesystem middleware was removed to reduce confusion with the static middleware.
+The static middleware now covers the functionality of both. Review the [static middleware](./middleware/static.md) docs or the [migration guide](#-migration-guide) for the updated usage.
 
 ### Healthcheck
 
@@ -1398,7 +1402,9 @@ New `Challenge`, `Error`, `ErrorDescription`, `ErrorURI`, and `Scope` fields all
 
 ### Logger
 
-New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without any extra afford. For example, you can use `zap` with Fiber logger middleware like this:
+New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without an extra adapter. For example, you can use `zap` with Fiber logger middleware like this:
+
+Logger configuration now uses `Stream` instead of `Output` for the destination writer, so update your logger middleware configuration when migrating to v3.
 
 Custom logger integrations should update any `LoggerFunc` implementations to the new signature that receives a pointer to the middleware config: `func(c fiber.Ctx, data *logger.Data, cfg *logger.Config) error`.
 
@@ -1426,7 +1432,7 @@ func main() {
 
     // Use the logger middleware with zerolog logger
     app.Use(logger.New(logger.Config{
-        Output: logger.LoggerToWriter(zap, log.LevelDebug),
+        Stream: logger.LoggerToWriter(zap, log.LevelDebug),
     }))
 
     // Define a route
@@ -1583,13 +1589,15 @@ The new `KeepConnectionHeader` option (default `false`) drops the `Connection` h
 
 `proxy.Balancer` now accepts an optional variadic configuration: call `proxy.Balancer()` to use defaults or continue passing a `proxy.Config` value as before.
 
+### Recover
+
+The Recover middleware allows customizing the error it returns. Set a `PanicHandler` in its `Config` to change the default behavior.
+
 ### Session
 
 The Session middleware has undergone key changes in v3 to improve functionality and flexibility. While v2 methods remain available for backward compatibility, we now recommend using the new middleware handler for session management.
 
 #### Key Updates
-
-### Session
 
 The session middleware has undergone significant improvements in v3, focusing on type safety, flexibility, and better developer experience.
 
@@ -1688,7 +1696,7 @@ To streamline upgrades between Fiber versions, the Fiber CLI ships with a
 
 ```bash
 go install github.com/gofiber/cli/fiber@latest
-fiber migrate --to v3.0.0-rc.3
+fiber migrate --to v3
 ```
 
 ### Options
@@ -1757,6 +1765,8 @@ You have to put `*` to the end of the route if you don't define static route wit
 
 We've renamed `EnableTrustedProxyCheck` to `TrustProxy` and moved `TrustedProxies` to `TrustProxyConfig`.
 
+**Important:** To use proxy headers like `X-Forwarded-For` with `c.IP()`, you must configure **all** of `TrustProxy`, `ProxyHeader`, and a trusted proxy via `TrustProxyConfig`. If the proxy is not trusted (for example, if you set only `ProxyHeader` or only `TrustProxy` without configuring `TrustProxyConfig`), proxy headers are ignored and `c.IP()` will return the remote TCP IP instead.
+
 ```go
 // Before
 app := fiber.New(fiber.Config{
@@ -1772,15 +1782,21 @@ app := fiber.New(fiber.Config{
 app := fiber.New(fiber.Config{
     // TrustProxy enables the trusted proxy check
     TrustProxy: true,
+    // ProxyHeader specifies which header to read the real client IP from
+    ProxyHeader: fiber.HeaderXForwardedFor,
     // TrustProxyConfig allows for configuring trusted proxies.
     TrustProxyConfig: fiber.TrustProxyConfig{
         // Proxies is a list of trusted proxy IP ranges/addresses.
         Proxies: []string{"0.8.0.0"},
         // Trust all loop-back IP addresses (127.0.0.0/8, ::1/128)
         Loopback: true,
-    }
+        // Trust Unix domain socket connections
+        UnixSocket: true,
+    },
 })
 ```
+
+For detailed proxy configuration guidance, see the [reverse proxy guide](./guide/reverse-proxy.md).
 
 ### 🎣 Hooks
 
@@ -1797,8 +1813,9 @@ app.OnShutdown(func() {
 
 ```go
 // After
-app.OnPreShutdown(func() {
+app.Hooks().OnPreShutdown(func() error {
     // Code to run before shutdown
+    return nil
 })
 ```
 
@@ -1807,7 +1824,8 @@ app.OnPreShutdown(func() {
 The `Listen` helpers (`ListenTLS`, `ListenMutualTLS`, etc.) were removed. Use
 `app.Listen()` with `fiber.ListenConfig` and a `tls.Config` when TLS is required.
 Options such as `ListenerNetwork` and `UnixSocketFileMode` are now configured via
-this struct.
+this struct. Prefer `TLSConfig` when you need full control, or use `CertFile` and
+`CertKeyFile` for quick TLS setup.
 
 ```go
 // Before
@@ -1817,8 +1835,8 @@ app.ListenTLS(":3000", "cert.pem", "key.pem")
 ```go
 // After
 app.Listen(":3000", fiber.ListenConfig{
-    CertFile: "./cert.pem",
-    CertKeyFile: "./cert.key",
+    CertFile:    "./cert.pem",
+    CertKeyFile: "./key.pem",
 })
 ```
 
@@ -1920,8 +1938,8 @@ For more details, refer to the [app documentation](./api/app.md#rebuildtree):
 #### Example Usage
 
 ```go
-app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
-    app.Get("/dynamically-defined", func(c Ctx) error {  // Adding a dynamically defined route
+app.Get("/define", func(c fiber.Ctx) error {  // Define a new route dynamically
+    app.Get("/dynamically-defined", func(c fiber.Ctx) error {  // Adding a dynamically defined route
         return c.SendStatus(http.StatusOK)
     })
 
@@ -2043,13 +2061,17 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
     </details>
 
-2. **ParamsParser**: Use `c.Bind().URI()` instead of `c.ParamsParser()`.
+2. **ParamsParser**: Use `c.Bind().URI()` instead of `c.ParamsParser()`. Note that the struct tag has changed from `params` to `uri`.
 
     <details>
     <summary>Example</summary>
 
     ```go
     // Before
+    type Params struct {
+        ID int `params:"id"`
+    }
+
     app.Get("/user/:id", func(c *fiber.Ctx) error {
         var params Params
         if err := c.ParamsParser(&params); err != nil {
@@ -2061,6 +2083,10 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
     ```go
     // After
+    type Params struct {
+        ID int `uri:"id"`
+    }
+
     app.Get("/user/:id", func(c fiber.Ctx) error {
         var params Params
         if err := c.Bind().URI(&params); err != nil {

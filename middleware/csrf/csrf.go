@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
-	"github.com/gofiber/utils/v2"
 )
 
 var (
@@ -106,7 +108,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Store the CSRF handler in the context
-		c.Locals(handlerKey, handler)
+		fiber.StoreInContext(c, handlerKey, handler)
 
 		var token string
 
@@ -212,31 +214,33 @@ func New(config ...Config) fiber.Handler {
 		c.Vary(fiber.HeaderCookie)
 
 		// Store the token in the context
-		c.Locals(tokenKey, token)
+		fiber.StoreInContext(c, tokenKey, token)
 
 		// Continue stack
 		return c.Next()
 	}
 }
 
-// TokenFromContext returns the token found in the context
-// returns an empty string if the token does not exist
-func TokenFromContext(c fiber.Ctx) string {
-	token, ok := c.Locals(tokenKey).(string)
-	if !ok {
-		return ""
+// TokenFromContext returns the token found in the context.
+// It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
+// It returns an empty string if the token does not exist.
+func TokenFromContext(ctx any) string {
+	if token, ok := fiber.ValueFromContext[string](ctx, tokenKey); ok {
+		return token
 	}
-	return token
+
+	return ""
 }
 
-// HandlerFromContext returns the Handler found in the context
-// returns nil if the handler does not exist
-func HandlerFromContext(c fiber.Ctx) *Handler {
-	handler, ok := c.Locals(handlerKey).(*Handler)
-	if !ok {
-		return nil
+// HandlerFromContext returns the Handler found in the context.
+// It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
+// It returns nil if the handler does not exist.
+func HandlerFromContext(ctx any) *Handler {
+	if handler, ok := fiber.ValueFromContext[*Handler](ctx, handlerKey); ok {
+		return handler
 	}
-	return handler
+
+	return nil
 }
 
 // getRawFromStorage returns the raw value from the storage for the given token
@@ -326,7 +330,7 @@ func validateSecFetchSite(c fiber.Ctx) error {
 		return nil
 	}
 
-	switch utils.ToLower(secFetchSite) {
+	switch utilsstrings.ToLower(secFetchSite) {
 	case "same-origin", "none", "cross-site", "same-site":
 		return nil
 	default:
@@ -338,7 +342,7 @@ func validateSecFetchSite(c fiber.Ctx) error {
 // returns an error if the origin header is not present or is invalid
 // returns nil if the origin header is valid
 func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	origin := utils.ToLower(c.Get(fiber.HeaderOrigin))
+	origin := utilsstrings.ToLower(c.Get(fiber.HeaderOrigin))
 	if origin == "" || origin == "null" { // "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
 		return errOriginNotFound
 	}
@@ -369,7 +373,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
 func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	referer := utils.ToLower(c.Get(fiber.HeaderReferer))
+	referer := utilsstrings.ToLower(c.Get(fiber.HeaderReferer))
 	if referer == "" {
 		return ErrRefererNotFound
 	}

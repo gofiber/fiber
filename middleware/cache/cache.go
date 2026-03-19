@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
@@ -1256,7 +1257,7 @@ func secondsToDuration(sec uint64) time.Duration {
 func parseVary(vary string) ([]string, bool) {
 	names := make([]string, 0, 8)
 	for part := range strings.SplitSeq(vary, ",") {
-		name := utils.TrimSpace(utils.ToLower(part))
+		name := utils.TrimSpace(utilsstrings.ToLower(part))
 		if name == "" {
 			continue
 		}

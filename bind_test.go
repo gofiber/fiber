@@ -17,6 +17,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/schema"
 	"github.com/shamaton/msgpack/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -46,6 +47,303 @@ func Test_AcquireReleaseBind(t *testing.T) {
 	require.True(t, b2.dontHandleErrs)
 	require.False(t, b2.skipValidation)
 	ReleaseBind(b2)
+}
+
+// go test -run Test_BindError -v
+
+func Test_BindError_Unwrap(t *testing.T) {
+	t.Parallel()
+	inner := errors.New("inner")
+	be := &BindError{Source: BindSourceQuery, Err: inner}
+	require.ErrorIs(t, be, inner)
+	require.Equal(t, inner, errors.Unwrap(be))
+
+	var extracted *BindError
+	require.ErrorAs(t, be, &extracted)
+	require.Equal(t, BindSourceQuery, extracted.Source)
+}
+
+func Test_BindError_ErrorFormat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with field", func(t *testing.T) {
+		t.Parallel()
+		be := &BindError{Source: BindSourceQuery, Field: "id", Err: errors.New("conversion failed")}
+		require.Contains(t, be.Error(), `"id"`)
+		require.Contains(t, be.Error(), "query")
+		require.Contains(t, be.Error(), "conversion failed")
+	})
+
+	t.Run("without field", func(t *testing.T) {
+		t.Parallel()
+		be := &BindError{Source: BindSourceBody, Field: "", Err: errors.New("parse failed")}
+		require.Equal(t, "bind from body: parse failed", be.Error())
+	})
+}
+
+func Test_BindError_FieldExtraction(t *testing.T) {
+	t.Parallel()
+
+	t.Run("QueryConversionError", func(t *testing.T) {
+		t.Parallel()
+		type Q struct {
+			ID int `query:"id"`
+		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().URI().SetQueryString("id=notanint")
+		err := c.Bind().Query(new(Q))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceQuery, be.Source)
+		require.Equal(t, "id", be.Field)
+		require.ErrorAs(t, err, &MultiError{})
+	})
+
+	t.Run("ConversionError", func(t *testing.T) {
+		t.Parallel()
+		convErrBinder := &customBinderReturningError{
+			err:      schema.ConversionError{Key: "count"},
+			mimeType: "application/x-conversion-error-test",
+		}
+		app := New()
+		app.RegisterCustomBinder(convErrBinder)
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().SetBody([]byte("{}"))
+		c.Request().Header.SetContentType("application/x-conversion-error-test")
+		type D struct{ Name string }
+		err := c.Bind().Body(new(D))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceBody, be.Source)
+		require.Equal(t, "count", be.Field)
+	})
+
+	t.Run("JSONUnmarshalTypeError", func(t *testing.T) {
+		t.Parallel()
+		type J struct {
+			Count int `json:"count"`
+		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().SetBody([]byte(`{"count":"notanint"}`))
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		err := c.Bind().Body(new(J))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceBody, be.Source)
+		require.Equal(t, "count", be.Field)
+		var unmarshalErr *json.UnmarshalTypeError
+		require.ErrorAs(t, err, &unmarshalErr)
+	})
+
+	t.Run("UnknownKeyError", func(t *testing.T) {
+		t.Parallel()
+		unknownKeyBinder := &customBinderReturningError{
+			err:      schema.UnknownKeyError{Key: "extra_field"},
+			mimeType: "application/x-unknown-key-test",
+		}
+		app := New()
+		app.RegisterCustomBinder(unknownKeyBinder)
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().SetBody([]byte("{}"))
+		c.Request().Header.SetContentType("application/x-unknown-key-test")
+		type D struct{ Name string }
+		err := c.Bind().Body(new(D))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceBody, be.Source)
+		require.Equal(t, "extra_field", be.Field)
+	})
+
+	t.Run("EmptyFieldError", func(t *testing.T) {
+		t.Parallel()
+		emptyFieldBinder := &customBinderReturningError{
+			err:      schema.EmptyFieldError{Key: "required_field"},
+			mimeType: "application/x-empty-field-test",
+		}
+		app := New()
+		app.RegisterCustomBinder(emptyFieldBinder)
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().SetBody([]byte("{}"))
+		c.Request().Header.SetContentType("application/x-empty-field-test")
+		type D struct{ Name string }
+		err := c.Bind().Body(new(D))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceBody, be.Source)
+		require.Equal(t, "required_field", be.Field)
+	})
+
+	t.Run("MultiError", func(t *testing.T) {
+		t.Parallel()
+		type Q struct {
+			A string `query:"a,required"`
+			B string `query:"b,required"`
+		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().URI().SetQueryString("")
+		err := c.Bind().Query(new(Q))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceQuery, be.Source)
+		require.Contains(t, []string{"a", "b"}, be.Field)
+		require.ErrorAs(t, err, &MultiError{})
+	})
+
+	t.Run("NoRecognizedErrorType", func(t *testing.T) {
+		t.Parallel()
+		genericErrBinder := &customBinderReturningError{
+			err:      errors.New("generic parse failure"),
+			mimeType: "application/x-generic-error",
+		}
+		app := New()
+		app.RegisterCustomBinder(genericErrBinder)
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().SetBody([]byte("{}"))
+		c.Request().Header.SetContentType("application/x-generic-error")
+		type D struct{ Name string }
+		err := c.Bind().Body(new(D))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceBody, be.Source)
+		require.Empty(t, be.Field)
+	})
+}
+
+func Test_BindError_Sources(t *testing.T) {
+	t.Parallel()
+
+	t.Run("URI", func(t *testing.T) {
+		t.Parallel()
+		type U struct {
+			ID int `uri:"id"`
+		}
+		app := New()
+		app.Get("/user/:id", func(ctx Ctx) error {
+			err := ctx.Bind().URI(new(U))
+			require.Error(t, err)
+			var be *BindError
+			require.ErrorAs(t, err, &be)
+			require.Equal(t, BindSourceURI, be.Source)
+			require.ErrorAs(t, err, &MultiError{})
+			return nil
+		})
+		_, err := app.Test(httptest.NewRequest(http.MethodGet, "/user/notanint", http.NoBody))
+		require.NoError(t, err)
+	})
+
+	t.Run("Query", func(t *testing.T) {
+		t.Parallel()
+		type Q struct {
+			ID int `query:"id,required"`
+		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().URI().SetQueryString("")
+		err := c.Bind().Query(new(Q))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceQuery, be.Source)
+		require.ErrorAs(t, err, &MultiError{})
+	})
+
+	t.Run("Header", func(t *testing.T) {
+		t.Parallel()
+		type H struct {
+			ID int `header:"x-id,required"`
+		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().Header.Del("X-Id")
+		err := c.Bind().Header(new(H))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceHeader, be.Source)
+		require.ErrorAs(t, err, &MultiError{})
+	})
+
+	t.Run("Cookie", func(t *testing.T) {
+		t.Parallel()
+		type C struct {
+			ID int `cookie:"id,required"`
+		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().Header.DelCookie("id")
+		err := c.Bind().Cookie(new(C))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceCookie, be.Source)
+		require.ErrorAs(t, err, &MultiError{})
+	})
+
+	t.Run("Body", func(t *testing.T) {
+		t.Parallel()
+		type J struct {
+			X int `json:"x"`
+		}
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Request().SetBody([]byte(`{"x":"bad"}`))
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		err := c.Bind().Body(new(J))
+		require.Error(t, err)
+		var be *BindError
+		require.ErrorAs(t, err, &be)
+		require.Equal(t, BindSourceBody, be.Source)
+		var unmarshalErr *json.UnmarshalTypeError
+		require.ErrorAs(t, err, &unmarshalErr)
+	})
+}
+
+func Test_BindError_All(t *testing.T) {
+	t.Parallel()
+
+	type Req struct {
+		Name string `json:"name"`
+		ID   int    `uri:"id" json:"id"`
+	}
+
+	t.Run("URIFailsFirst", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/users/:id", func(ctx Ctx) error {
+			err := ctx.Bind().All(new(Req))
+			require.Error(t, err)
+			var be *BindError
+			require.ErrorAs(t, err, &be)
+			require.Equal(t, BindSourceURI, be.Source)
+			require.ErrorAs(t, err, &MultiError{})
+			return nil
+		})
+		req := httptest.NewRequest(http.MethodGet, "/users/notanint", bytes.NewReader([]byte(`{"name":"ok"}`)))
+		req.Header.Set("Content-Type", MIMEApplicationJSON)
+		_, err := app.Test(req)
+		require.NoError(t, err)
+	})
 }
 
 // go test -run Test_Bind_Query -v
@@ -117,7 +415,10 @@ func Test_Bind_Query(t *testing.T) {
 	}
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
-	require.Equal(t, "bind: name is empty", c.Bind().Query(rq).Error())
+	err := c.Bind().Query(rq)
+	require.Error(t, err)
+	require.Equal(t, "bind \"name\" from query: name is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	type ArrayQuery struct {
 		Data []string
@@ -241,7 +542,10 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 	c.Request().URI().SetQueryString("namex=tom&nested.age=10")
 	q = new(Query1)
-	require.Equal(t, "bind: name is empty", c.Bind().Query(q).Error())
+	err := c.Bind().Query(q)
+	require.Error(t, err)
+	require.Equal(t, "bind \"name\" from query: name is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	c.Request().URI().SetQueryString("name=tom&nested.agex=10")
 	q = new(Query1)
@@ -249,7 +553,10 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 	c.Request().URI().SetQueryString("name=tom&test.age=10")
 	q = new(Query1)
-	require.Equal(t, "bind: nested is empty", c.Bind().Query(q).Error())
+	err = c.Bind().Query(q)
+	require.Error(t, err)
+	require.Equal(t, "bind \"nested\" from query: nested is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	type Query2 struct {
 		Name   string `query:"name"`
@@ -267,11 +574,17 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 	c.Request().URI().SetQueryString("nested.agex=10")
 	q2 = new(Query2)
-	require.Equal(t, "bind: nested.age is empty", c.Bind().Query(q2).Error())
+	err = c.Bind().Query(q2)
+	require.Error(t, err)
+	require.Equal(t, "bind \"nested.age\" from query: nested.age is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	c.Request().URI().SetQueryString("nested.agex=10")
 	q2 = new(Query2)
-	require.Equal(t, "bind: nested.age is empty", c.Bind().Query(q2).Error())
+	err = c.Bind().Query(q2)
+	require.Error(t, err)
+	require.Equal(t, "bind \"nested.age\" from query: nested.age is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	type Node struct {
 		Next  *Node `query:"next,required"`
@@ -285,7 +598,10 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 	c.Request().URI().SetQueryString("next.val=2")
 	n = new(Node)
-	require.Equal(t, "bind: val is empty", c.Bind().Query(n).Error())
+	err = c.Bind().Query(n)
+	require.Error(t, err)
+	require.Equal(t, "bind \"val\" from query: val is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	c.Request().URI().SetQueryString("val=3&next.value=2")
 	n = new(Node)
@@ -391,7 +707,10 @@ func Test_Bind_Header(t *testing.T) {
 	}
 	rh := new(RequiredHeader)
 	c.Request().Header.Del("name")
-	require.Equal(t, "bind: name is empty", c.Bind().Header(rh).Error())
+	err := c.Bind().Header(rh)
+	require.Error(t, err)
+	require.Equal(t, "bind \"name\" from header: name is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 }
 
 // go test -run Test_Bind_Header_Map -v
@@ -500,7 +819,10 @@ func Test_Bind_Header_Schema(t *testing.T) {
 
 	c.Request().Header.Del("Name")
 	q = new(Header1)
-	require.Equal(t, "bind: Name is empty", c.Bind().Header(q).Error())
+	err := c.Bind().Header(q)
+	require.Error(t, err)
+	require.Equal(t, "bind \"Name\" from header: Name is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	c.Request().Header.Add("Name", "tom")
 	c.Request().Header.Del("Nested.Age")
@@ -510,7 +832,10 @@ func Test_Bind_Header_Schema(t *testing.T) {
 
 	c.Request().Header.Del("Nested.Agex")
 	q = new(Header1)
-	require.Equal(t, "bind: Nested is empty", c.Bind().Header(q).Error())
+	err = c.Bind().Header(q)
+	require.Error(t, err)
+	require.Equal(t, "bind \"Nested\" from header: Nested is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	c.Request().Header.Del("Nested.Agex")
 	c.Request().Header.Del("Name")
@@ -536,7 +861,10 @@ func Test_Bind_Header_Schema(t *testing.T) {
 	c.Request().Header.Del("Nested.Age")
 	c.Request().Header.Add("Nested.Agex", "10")
 	h2 = new(Header2)
-	require.Equal(t, "bind: Nested.age is empty", c.Bind().Header(h2).Error())
+	err = c.Bind().Header(h2)
+	require.Error(t, err)
+	require.Equal(t, "bind \"Nested.age\" from header: Nested.age is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	type Node struct {
 		Next  *Node `header:"Next,required"`
@@ -551,7 +879,10 @@ func Test_Bind_Header_Schema(t *testing.T) {
 
 	c.Request().Header.Del("Val")
 	n = new(Node)
-	require.Equal(t, "bind: Val is empty", c.Bind().Header(n).Error())
+	err = c.Bind().Header(n)
+	require.Error(t, err)
+	require.Equal(t, "bind \"Val\" from header: Val is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	c.Request().Header.Add("Val", "3")
 	c.Request().Header.Del("Next.Val")
@@ -634,7 +965,10 @@ func Test_Bind_RespHeader(t *testing.T) {
 	}
 	rh := new(RequiredHeader)
 	c.Response().Header.Del("name")
-	require.Equal(t, "bind: name is empty", c.Bind().RespHeader(rh).Error())
+	err := c.Bind().RespHeader(rh)
+	require.Error(t, err)
+	require.Equal(t, "bind \"name\" from respHeader: name is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 }
 
 // go test -run Test_Bind_RespHeader_Map -v
@@ -1017,6 +1351,18 @@ func Test_Bind_Body(t *testing.T) {
 
 	t.Run("ErrorInvalidContentType", func(t *testing.T) {
 		testDecodeParserError(t, "invalid-content-type", "")
+	})
+
+	t.Run("ErrorUnknownContentTypeReturnsUnprocessableEntity", func(t *testing.T) {
+		t.Parallel()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.SetContentType("application/unknown-type")
+		c.Request().SetBody([]byte("some body"))
+		c.Request().Header.SetContentLength(9)
+		d := new(Demo)
+		err := c.Bind().Body(d)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrUnprocessableEntity)
 	})
 
 	t.Run("ErrorMalformedMultipart", func(t *testing.T) {
@@ -1572,7 +1918,10 @@ func Test_Bind_Cookie(t *testing.T) {
 	}
 	rh := new(RequiredCookie)
 	c.Request().Header.DelCookie("name")
-	require.Equal(t, "bind: name is empty", c.Bind().Cookie(rh).Error())
+	err := c.Bind().Cookie(rh)
+	require.Error(t, err)
+	require.Equal(t, "bind \"name\" from cookie: name is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 }
 
 // go test -run Test_Bind_Cookie_Map -v
@@ -1684,7 +2033,10 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 
 	c.Request().Header.DelCookie("Name")
 	q = new(Cookie1)
-	require.Equal(t, "bind: Name is empty", c.Bind().Cookie(q).Error())
+	err := c.Bind().Cookie(q)
+	require.Error(t, err)
+	require.Equal(t, "bind \"Name\" from cookie: Name is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	c.Request().Header.SetCookie("Name", "tom")
 	c.Request().Header.DelCookie("Nested.Age")
@@ -1694,7 +2046,10 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 
 	c.Request().Header.DelCookie("Nested.Agex")
 	q = new(Cookie1)
-	require.Equal(t, "bind: Nested is empty", c.Bind().Cookie(q).Error())
+	err = c.Bind().Cookie(q)
+	require.Error(t, err)
+	require.Equal(t, "bind \"Nested\" from cookie: Nested is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	c.Request().Header.DelCookie("Nested.Agex")
 	c.Request().Header.DelCookie("Name")
@@ -1720,7 +2075,10 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 	c.Request().Header.DelCookie("Nested.Age")
 	c.Request().Header.SetCookie("Nested.Agex", "10")
 	h2 = new(Cookie2)
-	require.Equal(t, "bind: Nested.Age is empty", c.Bind().Cookie(h2).Error())
+	err = c.Bind().Cookie(h2)
+	require.Error(t, err)
+	require.Equal(t, "bind \"Nested.Age\" from cookie: Nested.Age is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	type Node struct {
 		Next  *Node `cookie:"Next,required"`
@@ -1735,7 +2093,10 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 
 	c.Request().Header.DelCookie("Val")
 	n = new(Node)
-	require.Equal(t, "bind: Val is empty", c.Bind().Cookie(n).Error())
+	err = c.Bind().Cookie(n)
+	require.Error(t, err)
+	require.Equal(t, "bind \"Val\" from cookie: Val is empty", err.Error())
+	require.ErrorAs(t, err, &MultiError{})
 
 	c.Request().Header.SetCookie("Val", "3")
 	c.Request().Header.DelCookie("Next.Val")
@@ -1813,6 +2174,27 @@ func (*customBinder) Parse(c Ctx, out any) error {
 	return json.Unmarshal(c.Body(), out)
 }
 
+// customBinderReturningError returns a fixed error for testing extractFieldFromError branches.
+type customBinderReturningError struct {
+	err      error
+	mimeType string
+}
+
+func (*customBinderReturningError) Name() string {
+	return "error-binder"
+}
+
+func (b *customBinderReturningError) MIMETypes() []string {
+	if b.mimeType != "" {
+		return []string{b.mimeType}
+	}
+	return []string{"application/x-unknown-key-test", "application/x-empty-field-test"}
+}
+
+func (b *customBinderReturningError) Parse(_ Ctx, _ any) error {
+	return b.err
+}
+
 // go test -run Test_Bind_CustomBinder
 func Test_Bind_CustomBinder(t *testing.T) {
 	app := New()
@@ -1837,6 +2219,97 @@ func Test_Bind_CustomBinder(t *testing.T) {
 	require.Equal(t, "john", d.Name)
 }
 
+// go test -run Test_Bind_CustomBinder_Source
+func Test_Bind_CustomBinder_Source(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	app.RegisterCustomBinder(&customBinder{})
+
+	type Demo struct {
+		Name string `json:"name"`
+	}
+	c.Request().SetBody([]byte(`{invalid json`))
+	c.Request().Header.SetContentLength(14)
+
+	err := c.Bind().Custom("custom", new(Demo))
+	require.Error(t, err)
+	var be *BindError
+	require.ErrorAs(t, err, &be)
+	require.Equal(t, "custom", be.Source)
+}
+
+// go test -run Test_Bind_CustomBinder_Validation
+func Test_Bind_CustomBinder_Validation(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{StructValidator: &structValidator{}})
+	app.RegisterCustomBinder(&customBinder{})
+
+	t.Run("Body_custom_binder_validation_pass", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		body := []byte(`{"name":"john"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType("test")
+		c.Request().Header.SetContentLength(len(body))
+
+		out := new(simpleQuery)
+		require.NoError(t, c.Bind().Body(out))
+		require.Equal(t, "john", out.Name)
+	})
+
+	t.Run("Body_custom_binder_validation_fail", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		body := []byte(`{"name":"invalid"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType("test")
+		c.Request().Header.SetContentLength(len(body))
+
+		out := new(simpleQuery)
+		require.EqualError(t, c.Bind().Body(out), "you should have entered right name")
+	})
+
+	t.Run("Custom_binder_validation_pass", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		body := []byte(`{"name":"john"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentLength(len(body))
+
+		out := new(simpleQuery)
+		require.NoError(t, c.Bind().Custom("custom", out))
+		require.Equal(t, "john", out.Name)
+	})
+
+	t.Run("Custom_binder_validation_fail", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		body := []byte(`{"name":"invalid"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentLength(len(body))
+
+		out := new(simpleQuery)
+		require.EqualError(t, c.Bind().Custom("custom", out), "you should have entered right name")
+	})
+}
+
 // go test -run Test_Bind_WithAutoHandling
 func Test_Bind_WithAutoHandling(t *testing.T) {
 	app := New()
@@ -1849,7 +2322,7 @@ func Test_Bind_WithAutoHandling(t *testing.T) {
 	c.Request().URI().SetQueryString("")
 	err := c.Bind().WithAutoHandling().Query(rq)
 	require.Equal(t, StatusBadRequest, c.Response().StatusCode())
-	require.Equal(t, "Bad request: bind: name is empty", err.Error())
+	require.Equal(t, "Bad request: name is empty", err.Error())
 }
 
 // simple struct validator for testing
@@ -1871,6 +2344,172 @@ func (*structValidator) Validate(out any) error {
 
 type simpleQuery struct {
 	Name string `query:"name" json:"name"`
+}
+
+type countingStructValidator struct {
+	calls int
+}
+
+func (v *countingStructValidator) Validate(_ any) error {
+	v.calls++
+
+	return nil
+}
+
+// go test -run Test_Bind_Form_Map_SkipsStructValidator
+func Test_Bind_Form_Map_SkipsStructValidator(t *testing.T) {
+	t.Parallel()
+
+	makeRequest := func(c Ctx) {
+		body := []byte("name=john")
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType(MIMEApplicationForm)
+		c.Request().Header.SetContentLength(len(body))
+	}
+
+	t.Run("without validator", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		makeRequest(c)
+		req := make(map[string]string)
+		require.NoError(t, c.Bind().Form(&req))
+		require.Equal(t, "john", req["name"])
+	})
+
+	t.Run("with struct validator configured", func(t *testing.T) {
+		t.Parallel()
+
+		validator := &countingStructValidator{}
+		app := New(Config{StructValidator: validator})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		makeRequest(c)
+		req := make(map[string]string)
+		require.NoError(t, c.Bind().Form(&req))
+		require.Equal(t, "john", req["name"])
+		require.Equal(t, 0, validator.calls)
+	})
+}
+
+// go test -run Test_Bind_SkipValidation
+func Test_Bind_SkipValidation(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{StructValidator: &structValidator{}})
+
+	t.Run("validation enabled", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		rq := new(simpleQuery)
+		c.Request().URI().SetQueryString("name=efe")
+		require.Equal(t, "you should have entered right name", c.Bind().SkipValidation(false).Query(rq).Error())
+	})
+
+	t.Run("validation skipped", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		rq := new(simpleQuery)
+		c.Request().URI().SetQueryString("name=efe")
+		require.NoError(t, c.Bind().SkipValidation(true).Query(rq))
+		require.Equal(t, "efe", rq.Name)
+	})
+}
+
+// go test -run Test_Bind_SkipValidation_Usage
+func Test_Bind_SkipValidation_Usage(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{StructValidator: &structValidator{}})
+
+	t.Run("skip validation for json", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		body := []byte(`{"name":"efe"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().Header.SetContentLength(len(body))
+
+		req := new(simpleQuery)
+		require.NoError(t, c.Bind().SkipValidation(true).JSON(req))
+		require.Equal(t, "efe", req.Name)
+	})
+
+	t.Run("re-enable validation explicitly", func(t *testing.T) {
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		body := []byte(`{"name":"efe"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().Header.SetContentLength(len(body))
+
+		req := new(simpleQuery)
+		require.EqualError(t, c.Bind().SkipValidation(false).JSON(req), "you should have entered right name")
+	})
+
+	t.Run("toggle on same bind instance", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() {
+			app.ReleaseCtx(c)
+		})
+
+		body := []byte(`{"name":"efe"}`)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().Header.SetContentLength(len(body))
+
+		req := new(simpleQuery)
+		require.NoError(t, c.Bind().SkipValidation(true).JSON(req))
+
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().Header.SetContentLength(len(body))
+		req = new(simpleQuery)
+		require.EqualError(t, c.Bind().SkipValidation(false).JSON(req), "you should have entered right name")
+	})
+}
+
+// go test -run Test_Bind_ValidateStruct_NilTarget
+func Test_Bind_ValidateStruct_NilTarget(t *testing.T) {
+	t.Parallel()
+
+	validator := &countingStructValidator{}
+	app := New(Config{StructValidator: validator})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() {
+		app.ReleaseCtx(c)
+	})
+
+	require.NoError(t, c.Bind().validateStruct(nil))
+	require.Equal(t, 0, validator.calls)
 }
 
 // go test -run Test_Bind_StructValidator

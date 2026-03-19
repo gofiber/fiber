@@ -25,6 +25,10 @@ app := fiber.New(fiber.Config{
     StructValidator: &structValidator{validate: validator.New()},
 })
 
+// Note:
+// StructValidator runs only for struct destinations (or pointers to structs).
+// Binding into maps and other non-struct types skips validation.
+
 type User struct {
     Name string `json:"name" form:"name" query:"name" validate:"required"`
     Age  int    `json:"age" form:"age" query:"age" validate:"gte=0,lte=100"`

@@ -429,6 +429,31 @@ func TestState_Keys(t *testing.T) {
 	require.ElementsMatch(t, keys, returnedKeys)
 }
 
+func TestState_Keys_SkipsNonStringKeys(t *testing.T) {
+	t.Parallel()
+
+	st := newState()
+	st.Set("one", "one")
+	st.Set("two", "two")
+	st.dependencies.Store(42, "value")
+	st.dependencies.Store(struct{}{}, "value")
+
+	returnedKeys := st.Keys()
+	require.ElementsMatch(t, []string{"one", "two"}, returnedKeys)
+}
+
+func TestState_Keys_SkipsNonStringKeys_WithMixedOrder(t *testing.T) {
+	t.Parallel()
+
+	st := newState()
+	st.Set("before", "value")
+	st.dependencies.Store(42, "value")
+	st.Set("after", "value")
+
+	returnedKeys := st.Keys()
+	require.ElementsMatch(t, []string{"before", "after"}, returnedKeys)
+}
+
 func TestState_Len(t *testing.T) {
 	t.Parallel()
 	st := newState()
@@ -633,6 +658,36 @@ func TestState_Service(t *testing.T) {
 			require.Contains(t, keys, st.serviceKey(srv2.String()))
 			require.NotContains(t, keys, "key1")
 			require.NotContains(t, keys, "key2")
+		})
+
+		t.Run("with-non-string-key", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+			st.setService(srv2)
+			st.dependencies.Store(42, "value")
+			st.dependencies.Store(struct{}{}, "value")
+
+			keys := st.serviceKeys()
+			require.Len(t, keys, 2)
+			require.Contains(t, keys, st.serviceKey(srv1.String()))
+			require.Contains(t, keys, st.serviceKey(srv2.String()))
+		})
+
+		t.Run("with-non-service-keys", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+			st.setService(srv2)
+			st.Set("other", "value")
+			st.dependencies.Store(42, "value")
+
+			keys := st.serviceKeys()
+			require.Len(t, keys, 2)
+			require.Contains(t, keys, st.serviceKey(srv1.String()))
+			require.Contains(t, keys, st.serviceKey(srv2.String()))
 		})
 	})
 

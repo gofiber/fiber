@@ -28,43 +28,18 @@ jobs:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
       - name: Install Go
-        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           # NOTE: Keep this in sync with the version from go.mod
           go-version: "1.25.x"
 
       - name: Run Benchmark
         run: set -o pipefail; go test ./... -benchmem -run=^$ -bench . | tee output.txt
-      ### hack because of the problem with duplicated benchmark names - https://github.com/benchmark-action/github-action-benchmark/issues/264
-      - name: Extract Module Name
-        id: extract-module
-        run: |
-          MODULE_NAME=$(awk '/^module / {print $2}' go.mod)
-          echo "MODULE_NAME=$MODULE_NAME" >> $GITHUB_ENV
 
-      - name: Identify Duplicate Benchmark Names
+      - name: Remove _Parallel Benchmarks
         run: |
-          awk '/^Benchmark/ {print $1}' output.txt | sort | uniq -d > duplicate_benchmarks.txt
-
-      - name: Add Normalized Package Prefix to Duplicate Benchmark Names
-        run: |
-          awk -v MODULE_NAME="$MODULE_NAME" '
-            FNR==NR {duplicates[$1]; next}
-            /^pkg: / { package=$2 }
-            /^Benchmark/ {
-              if ($1 in duplicates) {
-                sub("^" MODULE_NAME "/?", "", package)
-                gsub("/", "_", package)
-                print $1 "_" package substr($0, length($1) + 1)
-              } else {
-                print $0
-              }
-              next
-            }
-            { print }
-          ' duplicate_benchmarks.txt output.txt > output_prefixed.txt
-          mv output_prefixed.txt output.txt
-      ### end
+          awk '!/^Benchmark.*_Parallel/' output.txt > output_filtered.txt
+          mv output_filtered.txt output.txt
 
       # NOTE: Benchmarks could change with different CPU types
       - name: Get GitHub Runner System Information
@@ -79,14 +54,14 @@ jobs:
 
       - name: Get Benchmark Results from main branch
         id: cache
-        uses: actions/cache/restore@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ./cache
           key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-benchmark
 
       # This will only run if we have Benchmark Results from main branch
       - name: Compare PR Benchmark Results with main branch
-        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+        uses: benchmark-action/github-action-benchmark@a7bc2366eda11037936ea57d811a43b3418d3073 # v1.21.0
         if: steps.cache.outputs.cache-hit == 'true'
         with:
           tool: 'go'
@@ -100,9 +75,10 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           summary-always: true
           alert-threshold: "150%"
+          go-force-package-suffix: true
 
       - name: Store Benchmark Results for main branch
-        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+        uses: benchmark-action/github-action-benchmark@a7bc2366eda11037936ea57d811a43b3418d3073 # v1.21.0
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'
@@ -114,9 +90,10 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           summary-always: true
           alert-threshold: "150%"
+          go-force-package-suffix: true
 
       - name: Publish Benchmark Results to GitHub Pages
-        uses: benchmark-action/github-action-benchmark@4bdcce38c94cec68da58d012ac24b7b1155efe8b # v1.20.7
+        uses: benchmark-action/github-action-benchmark@a7bc2366eda11037936ea57d811a43b3418d3073 # v1.21.0
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'
@@ -129,12 +106,11 @@ jobs:
           # Save the data to external file (GitHub Pages)
           save-data-file: true
           alert-threshold: "150%"
-          # TODO: reactivate it later -> when v3 is the stable one
-          #auto-push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-          auto-push: false
+          auto-push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+          go-force-package-suffix: true
 
       - name: Update Benchmark Results cache
-        uses: actions/cache/save@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         if: ${{ github.ref_name == 'main' }}
         with:
           path: ./cache

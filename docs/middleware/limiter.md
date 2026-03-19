@@ -172,7 +172,7 @@ var ConfigDefault = Config{
 You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
 
 ```go
-storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
+storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3/v2
 
 app.Use(limiter.New(limiter.Config{
     Storage: storage,

@@ -28,24 +28,28 @@ if [ "$EVENT" == "push" ]; then
 # Handle release event
 elif [ "$EVENT" == "release" ]; then
   major_version="${TAG_NAME%%.*}"
+  echo "Major version: $major_version"
 
   # Form new version name
   new_version="${major_version}.x"
+  echo "New version: $new_version"
 
   cd fiber-docs/ || true
   npm ci
 
   # Check if contrib_versions.json exists and modify it if required
-#  if [[ -f $VERSION_FILE ]]; then
-#    jq --arg new_version "$new_version" 'del(.[] | select(. == $new_version))' $VERSION_FILE > temp.json && mv temp.json $VERSION_FILE
-#  fi
-#
-#  # Run docusaurus versioning command
-#  $DOCUSAURUS_COMMAND "${new_version}"
-#
-#  if [[ -f $VERSION_FILE ]]; then
-#    jq 'sort | reverse' ${VERSION_FILE} > temp.json && mv temp.json ${VERSION_FILE}
-#  fi
+  if [[ -f $VERSION_FILE ]]; then
+    echo "Modifying version file: $VERSION_FILE"
+    jq --arg new_version "$new_version" 'del(.[] | select(. == $new_version))' $VERSION_FILE > temp.json && mv temp.json $VERSION_FILE
+  fi
+
+  # Run docusaurus versioning command
+  $DOCUSAURUS_COMMAND "${new_version}"
+
+  if [[ -f $VERSION_FILE ]]; then
+    echo "Sorting version file: $VERSION_FILE"
+    jq 'sort | reverse' ${VERSION_FILE} > temp.json && mv temp.json ${VERSION_FILE}
+  fi
 fi
 
 # Push changes
