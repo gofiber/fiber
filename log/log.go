@@ -1,12 +1,57 @@
 package log
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"sync"
 )
+
+// ContextExtractor extracts a key-value pair from the given context for
+// inclusion in log output when using WithContext.
+// It returns the log field name, its value, and whether extraction succeeded.
+// The ctx parameter can be fiber.Ctx, *fasthttp.RequestCtx, or context.Context.
+type ContextExtractor func(ctx any) (string, any, bool)
+
+// contextExtractorsMu guards contextExtractors for concurrent registration
+// and snapshot reads.
+var contextExtractorsMu sync.RWMutex
+
+// contextExtractors holds all registered context field extractors.
+// Use loadContextExtractors to obtain a safe snapshot for iteration.
+var contextExtractors []ContextExtractor
+
+// loadContextExtractors returns an immutable snapshot of the registered
+// extractors. The returned slice must not be modified.
+func loadContextExtractors() []ContextExtractor {
+	contextExtractorsMu.RLock()
+	snapshot := contextExtractors
+	contextExtractorsMu.RUnlock()
+	return snapshot
+}
+
+// RegisterContextExtractor registers a function that extracts a key-value pair
+// from context for inclusion in log output when using WithContext.
+//
+// This function is safe to call concurrently with logging and with other
+// registrations. All calls to RegisterContextExtractor should happen during
+// program initialization (e.g. in an init function or middleware constructor)
+// so that extractors are in place before requests are processed.
+func RegisterContextExtractor(extractor ContextExtractor) {
+	if extractor == nil {
+		panic("log: RegisterContextExtractor called with nil extractor")
+	}
+	contextExtractorsMu.Lock()
+	// Copy-on-write: always allocate a new backing array so snapshots taken
+	// by concurrent readers remain stable.
+	n := len(contextExtractors)
+	next := make([]ContextExtractor, n+1)
+	copy(next, contextExtractors)
+	next[n] = extractor
+	contextExtractors = next
+	contextExtractorsMu.Unlock()
+}
 
 // baseLogger defines the minimal logger functionality required by the package.
 // It allows storing any logger implementation regardless of its generic type.
@@ -14,7 +59,7 @@ type baseLogger interface {
 	CommonLogger
 	SetLevel(Level)
 	SetOutput(io.Writer)
-	WithContext(ctx context.Context) CommonLogger
+	WithContext(ctx any) CommonLogger
 }
 
 var logger baseLogger = &defaultLogger{
@@ -84,7 +129,8 @@ type AllLogger[T any] interface {
 	ConfigurableLogger[T]
 
 	// WithContext returns a new logger with the given context.
-	WithContext(ctx context.Context) CommonLogger
+	// The ctx parameter can be fiber.Ctx, *fasthttp.RequestCtx, or context.Context.
+	WithContext(ctx any) CommonLogger
 }
 
 // Level defines the priority of a log message.
