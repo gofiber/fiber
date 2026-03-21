@@ -19,6 +19,10 @@ var (
 	ErrSessionIDNotFoundInStore         = errors.New("session ID not found in session store")
 )
 
+// maxSessionIDLen is the upper bound on extracted session IDs.
+// IDs exceeding this length are treated as invalid and discarded.
+const maxSessionIDLen = 4096
+
 // sessionIDKey is the local key type used to store and retrieve the session ID in context.
 type sessionIDKey int
 
@@ -177,6 +181,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
 	} else if sess.isAbsExpired() {
 		if err := sess.Reset(); err != nil {
+			sess.Release()
 			return nil, fmt.Errorf("failed to reset session: %w", err)
 		}
 		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
@@ -203,7 +208,26 @@ func (s *Store) getSessionID(c fiber.Ctx) string {
 		// If extraction fails, return empty string to generate a new session
 		return ""
 	}
+	if !isValidSessionID(sessionID) {
+		return ""
+	}
 	return sessionID
+}
+
+// isValidSessionID reports whether id is safe for use as a storage key.
+// It rejects empty values, values longer than maxSessionIDLen, and any
+// byte outside the visible-ASCII range (0x21–0x7E).
+func isValidSessionID(id string) bool {
+	if id == "" || len(id) > maxSessionIDLen {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if c <= 0x20 || c > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 // Reset deletes all sessions from the storage.
@@ -292,6 +316,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 
 	sess.mu.Lock()
 
+	sess.gctx = ctx
 	sess.config = s
 	sess.id = id
 	sess.fresh = false
@@ -307,10 +332,10 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 
 	if s.AbsoluteTimeout > 0 {
 		if sess.isAbsExpired() {
-			if err := sess.Destroy(); err != nil { //nolint:contextcheck // it is not right
-				sess.Release()
+			if err := sess.Destroy(); err != nil { //nolint:contextcheck // sess.gctx is set to ctx above; Destroy honors it.
 				log.Errorf("failed to destroy session: %v", err)
 			}
+			sess.Release()
 			return nil, ErrSessionIDNotFoundInStore
 		}
 	}
