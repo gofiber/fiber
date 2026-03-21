@@ -337,6 +337,7 @@ func (d *domainRouter) registerGroup() *Group {
 //	    return c.Next()
 //	})
 func (d *domainRouter) Use(args ...any) Router {
+	var subApp *App
 	var prefix string
 	var prefixes []string
 	var handlers []Handler
@@ -348,8 +349,7 @@ func (d *domainRouter) Use(args ...any) Router {
 		case []string:
 			prefixes = arg
 		case *App:
-			// Domain routers do not support mounting sub-apps via Use.
-			panic("use: mounting *App via Domain(...).Use is not supported; use app.Mount(...) or domain-specific handlers instead")
+			subApp = arg
 		default:
 			handler, ok := toFiberHandler(arg)
 			if !ok {
@@ -363,13 +363,76 @@ func (d *domainRouter) Use(args ...any) Router {
 		prefixes = append(prefixes, prefix)
 	}
 
-	wrapped := d.wrapHandlers(handlers)
 	for _, prefix := range prefixes {
+		if subApp != nil {
+			return d.mount(prefix, subApp)
+		}
+
+		wrapped := d.wrapHandlers(handlers)
 		d.app.register([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), wrapped...)
 	}
 
 	// Mark the underlying group so Name() can distinguish between
 	// group-name-prefix calls (before routes) and route-name calls (after routes).
+	if d.group != nil && !d.group.anyRouteDefined {
+		d.group.anyRouteDefined = true
+	}
+
+	return d
+}
+
+// mount attaches a sub-app instance to the domain router at the specified prefix.
+// All routes from the sub-app will only be accessible when the request hostname
+// matches the domain pattern.
+func (d *domainRouter) mount(prefix string, subApp *App) Router {
+	// Determine the full mount path by combining the domain router's path with the prefix
+	var mountPath string
+	if d.group != nil {
+		mountPath = getGroupPath(d.group.Prefix, prefix)
+	} else {
+		mountPath = prefix
+	}
+
+	// Normalize the mount path
+	mountPath = utils.TrimRight(mountPath, '/')
+	if mountPath == "" {
+		mountPath = "/"
+	}
+
+	// Wrap all handlers in the sub-app with domain checking BEFORE mounting
+	// This ensures that when the routes are expanded during startup, they already
+	// have domain filtering applied.
+	for m := range subApp.stack {
+		for _, route := range subApp.stack[m] {
+			if len(route.Handlers) > 0 {
+				route.Handlers = d.wrapHandlers(route.Handlers)
+			}
+		}
+	}
+
+	d.app.mutex.Lock()
+	// Support for configs of mounted-apps and sub-mounted-apps
+	for mountedPrefixes, subAppInstance := range subApp.mountFields.appList {
+		path := getGroupPath(mountPath, mountedPrefixes)
+
+		subAppInstance.mountFields.mountPath = path
+		d.app.mountFields.appList[path] = subAppInstance
+	}
+	d.app.mutex.Unlock()
+
+	// Create a mount group that references the sub-app
+	mountGroup := &Group{Prefix: mountPath, app: subApp}
+
+	// Register the mount point - the routes will be expanded during startup
+	d.app.register([]string{methodUse}, mountPath, mountGroup)
+
+	// Execute onMount hooks
+	if err := subApp.hooks.executeOnMountHooks(d.app); err != nil {
+		panic(err)
+	}
+
+	// Mark the underlying group so Name() can distinguish between
+	// group-name-prefix calls and route-name calls
 	if d.group != nil && !d.group.anyRouteDefined {
 		d.group.anyRouteDefined = true
 	}

@@ -868,15 +868,114 @@ func Test_Domain_RoutePanic(t *testing.T) {
 	})
 }
 
-func Test_Domain_UseMountPanic(t *testing.T) {
+func Test_Domain_UseMount(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 	subApp := New()
 
-	require.Panics(t, func() {
-		app.Domain("api.example.com").Use(subApp)
+	// Create routes in the sub-app
+	subApp.Get("/users", func(c Ctx) error {
+		return c.SendString("users list")
 	})
+	subApp.Get("/posts", func(c Ctx) error {
+		return c.SendString("posts list")
+	})
+
+	// Mount the sub-app on the domain router
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	// Test that sub-app routes work on the correct domain
+	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "users list", string(body))
+
+	// Test second route
+	req = httptest.NewRequest(MethodGet, "/api/posts", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "posts list", string(body))
+
+	// Test that sub-app routes don't work on wrong domain
+	req = httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+func Test_Domain_UseMountNoPrefix(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	subApp := New()
+
+	// Create a route in the sub-app
+	subApp.Get("/users", func(c Ctx) error {
+		return c.SendString("users list")
+	})
+
+	// Mount the sub-app at root on the domain router
+	app.Domain("api.example.com").Use(subApp)
+
+	// Test that sub-app routes work
+	req := httptest.NewRequest(MethodGet, "/users", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "users list", string(body))
+
+	// Wrong domain should 404
+	req = httptest.NewRequest(MethodGet, "/users", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+func Test_Domain_UseMountFromGroup(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	subApp := New()
+
+	// Create a route in the sub-app
+	subApp.Get("/data", func(c Ctx) error {
+		return c.SendString("data response")
+	})
+
+	// Mount via a group's domain router
+	api := app.Group("/api")
+	api.Domain("api.example.com").Use("/v1", subApp)
+
+	// Test that sub-app routes work with group prefix + mount prefix
+	req := httptest.NewRequest(MethodGet, "/api/v1/data", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "data response", string(body))
+
+	// Wrong domain should 404
+	req = httptest.NewRequest(MethodGet, "/api/v1/data", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
 func Test_Domain_StaleParamsCleared(t *testing.T) {
