@@ -349,7 +349,7 @@ func Test_parseToStruct_MismatchedData(t *testing.T) {
 
 	err := parseToStruct("query", &User{}, data)
 	require.Error(t, err)
-	require.EqualError(t, err, "bind: schema: error converting value for \"age\"")
+	require.EqualError(t, err, "schema: error converting value for \"age\"")
 }
 
 func Test_formatBindData_ErrorCases(t *testing.T) {

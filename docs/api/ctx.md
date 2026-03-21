@@ -1145,13 +1145,44 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-When registering the proxy request header in the Fiber app, the IP address of the header is returned [(Fiber configuration)](fiber.md#proxyheader)
+:::info
+By default, `c.IP()` returns the remote IP address from the TCP connection. When your Fiber app is behind a reverse proxy (like Nginx, Traefik, or a load balancer), you need to configure **both** [`TrustProxy`](fiber.md#trustproxy) and [`ProxyHeader`](fiber.md#proxyheader) to read the client IP from proxy headers like `X-Forwarded-For`.
 
-```go
+**Important:** You must enable `TrustProxy` and configure trusted proxy IPs to prevent header spoofing. Simply setting `ProxyHeader` alone will not work.
+
+**Note:** When using a proxy header such as `X-Forwarded-For`, `c.IP()` returns the raw header value unless [`EnableIPValidation`](fiber.md#enableipvalidation) is enabled. For `X-Forwarded-For`, this raw value may be a comma-separated list of IPs; enable `EnableIPValidation` if you need `c.IP()` to return a single, validated client IP.
+:::
+
+#### Configuration for apps behind a reverse proxy
+
+```go title="Example - Basic Configuration"
 app := fiber.New(fiber.Config{
+  // Enable proxy support
+  TrustProxy: true,
+  // Specify which header contains the real client IP
   ProxyHeader: fiber.HeaderXForwardedFor,
+  // Configure which proxy IPs to trust
+  TrustProxyConfig: fiber.TrustProxyConfig{
+    // Trust private IP ranges (for internal load balancers)
+    Private: true,
+    // Or specify exact proxy IPs/ranges
+    // Proxies: []string{"10.10.0.58", "192.168.0.0/24"},
+  },
 })
 ```
+
+```go title="Example - Specific Proxy IPs"
+app := fiber.New(fiber.Config{
+  TrustProxy: true,
+  ProxyHeader: fiber.HeaderXForwardedFor,
+  TrustProxyConfig: fiber.TrustProxyConfig{
+    // Trust only specific proxy IP addresses
+    Proxies: []string{"10.10.0.58", "192.168.1.0/24"},
+  },
+})
+```
+
+See [`TrustProxy`](fiber.md#trustproxy) and [`TrustProxyConfig`](fiber.md#trustproxyconfig) for more details on security considerations and configuration options.
 
 ### IPs
 
@@ -2238,6 +2269,12 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::caution
 Calling `c.End()` will disallow further writes to the underlying connection.
+:::
+
+:::warning
+`c.End()` does **not** work in streaming mode (e.g. when using `fasthttp`'s `HijackConn` or `SendStream`).
+In streaming mode the connection is managed asynchronously and `ctx.Conn()` may return `nil`,
+so `c.End()` will return `nil` without flushing or closing the connection.
 :::
 
 End can be used to stop a middleware from modifying a response of a handler/other middleware down the method chain
