@@ -206,7 +206,9 @@ func (grp *Group) Group(prefix string, handlers ...any) Router {
 // matches the pattern. When TrustProxy is enabled and the proxy is trusted,
 // the hostname may be derived from the X-Forwarded-Host header.
 //
-// Please use Config.TrustProxy to prevent header spoofing, see: https://docs.gofiber.io/api/fiber#trustproxy
+// To prevent header spoofing, configure both Config.TrustProxy and
+// Config.TrustProxyConfig (trusted proxy IPs/ranges). See:
+// https://docs.gofiber.io/api/fiber#trustproxy
 //
 //	api := app.Group("/api")
 //	api.Domain("api.example.com").Get("/users", listUsers)
