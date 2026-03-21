@@ -456,6 +456,11 @@ admin := app.Domain("admin.example.com")
 admin.Use(authMiddleware)
 admin.Get("/dashboard", dashboardHandler)
 
+// Mount sub-applications on domain routers
+subApp := fiber.New()
+subApp.Get("/users", listUsers)
+app.Domain("api.example.com").Use("/api", subApp)
+
 // Fallback for unmatched domains
 app.Get("/", func(c fiber.Ctx) error {
     return c.SendString("default site")

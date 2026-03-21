@@ -303,6 +303,13 @@ func main() {
         return c.SendString("Admin Dashboard")
     })
 
+    // Mount sub-applications on domain routers
+    subApp := fiber.New()
+    subApp.Get("/users", func(c fiber.Ctx) error {
+        return c.SendString("Users list")
+    })
+    app.Domain("api.example.com").Use("/api", subApp)
+
     // Fallback for unmatched domains
     app.Get("/", func(c fiber.Ctx) error {
         return c.SendString("Default site")
