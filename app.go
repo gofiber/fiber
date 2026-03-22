@@ -989,7 +989,9 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 // Domain routing has zero performance impact on routes that don't use it because
 // the hostname check is applied as a handler wrapper, not a core router change.
 //
-// Please use Config.TrustProxy to prevent header spoofing, see: https://docs.gofiber.io/api/fiber#trustproxy
+// To prevent header spoofing, configure Config.TrustProxy together with Config.TrustProxyConfig
+// (trusted proxy IPs/ranges) and, where appropriate, Config.ProxyHeader; see:
+// https://docs.gofiber.io/api/fiber#trustproxy
 //
 //	// Static domain
 //	app.Domain("api.example.com").Get("/users", listUsers)

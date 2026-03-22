@@ -1788,3 +1788,143 @@ func Test_Domain_Security_NonASCIIHostnameRejected(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
+
+// Test_Domain_UseMountReusable verifies that mounting the same sub-app on
+// multiple domain routers does not double-wrap handlers (the original sub-app
+// is not mutated).
+func Test_Domain_UseMountReusable(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	subApp := New()
+
+	subApp.Get("/data", func(c Ctx) error {
+		return c.SendString("data response")
+	})
+
+	// Mount the same sub-app on two different domains
+	app.Domain("api.example.com").Use("/v1", subApp)
+	app.Domain("admin.example.com").Use("/v1", subApp)
+
+	// Test first domain works
+	req := httptest.NewRequest(MethodGet, "/v1/data", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "data response", string(body))
+
+	// Test second domain works
+	req = httptest.NewRequest(MethodGet, "/v1/data", http.NoBody)
+	req.Host = "admin.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "data response", string(body))
+
+	// Test wrong domain is rejected for both
+	req = httptest.NewRequest(MethodGet, "/v1/data", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_UseMountRoutesAfterMount verifies that routes added to a sub-app
+// after it has been mounted on a domain router are NOT domain-filtered (since
+// mount clones routes at mount time).
+func Test_Domain_UseMountRoutesAfterMount(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	subApp := New()
+
+	// Register a route BEFORE mounting
+	subApp.Get("/before", func(c Ctx) error {
+		return c.SendString("before mount")
+	})
+
+	// Mount on domain router
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	// Register a route AFTER mounting — this will NOT be domain-filtered
+	// because mount() clones routes at mount time.
+	subApp.Get("/after", func(c Ctx) error {
+		return c.SendString("after mount")
+	})
+
+	// Route registered before mount should be domain-filtered
+	req := httptest.NewRequest(MethodGet, "/api/before", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "before mount", string(body))
+
+	// Route registered before mount should be rejected on wrong domain
+	req = httptest.NewRequest(MethodGet, "/api/before", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+
+	// Route registered after mount on the original sub-app is NOT included
+	// in the wrapper. Since the mount group references the wrapper, the
+	// after-mount route is never expanded into the parent app.
+	req = httptest.NewRequest(MethodGet, "/api/after", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_Security_PatternLengthLimits verifies RFC 1035 length limits
+// are enforced for domain patterns (253 total, 63 per label).
+func Test_Domain_Security_PatternLengthLimits(t *testing.T) {
+	t.Parallel()
+
+	// Pattern exceeding 253 total characters
+	t.Run("total length exceeds 253", func(t *testing.T) {
+		t.Parallel()
+		// Build a valid-looking pattern that exceeds 253 chars
+		longPattern := strings.Repeat("a.", 127) + "com"
+		require.Panics(t, func() {
+			parseDomainPattern(longPattern)
+		})
+	})
+
+	// Single label exceeding 63 characters
+	t.Run("label exceeds 63 chars", func(t *testing.T) {
+		t.Parallel()
+		longLabel := strings.Repeat("a", 64)
+		require.Panics(t, func() {
+			parseDomainPattern(longLabel + ".example.com")
+		})
+	})
+
+	// Pattern at exactly 253 characters should not panic
+	t.Run("253 chars total is valid", func(t *testing.T) {
+		t.Parallel()
+		label63 := strings.Repeat("a", 63)
+		pattern := label63 + "." + label63 + "." + label63 + "." + strings.Repeat("b", 59)
+		require.LessOrEqual(t, len(pattern), 253)
+		require.NotPanics(t, func() {
+			parseDomainPattern(pattern)
+		})
+	})
+
+	// Label at exactly 63 characters should not panic
+	t.Run("63 char label is valid", func(t *testing.T) {
+		t.Parallel()
+		label63 := strings.Repeat("a", 63)
+		require.NotPanics(t, func() {
+			parseDomainPattern(label63 + ".com")
+		})
+	})
+}

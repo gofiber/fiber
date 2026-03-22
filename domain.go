@@ -63,6 +63,12 @@ func parseDomainPattern(pattern string) domainMatcher {
 		panic("Domain pattern cannot be empty")
 	}
 
+	// Enforce RFC 1035 total length limit on patterns
+	if len(pattern) > 253 {
+		panic(fmt.Sprintf("Domain pattern '%s' exceeds RFC 1035 maximum of 253 characters (%d chars)",
+			pattern, len(pattern)))
+	}
+
 	parts := strings.Split(pattern, ".")
 
 	// Prevent DoS from patterns with excessive label counts
@@ -101,6 +107,11 @@ func parseDomainPattern(pattern string) domainMatcher {
 			m.parts[i] = part                              // keep ":param" marker for matching
 		} else {
 			// Only lowercase constant labels (RFC 4343)
+			// Enforce RFC 1035 per-label length limit (63 characters)
+			if len(part) > 63 {
+				panic(fmt.Sprintf("Domain pattern '%s' has label '%s' exceeding RFC 1035 limit of 63 characters (%d chars)",
+					pattern, part, len(part)))
+			}
 			// Validate label contains only valid ASCII domain characters (a-z, 0-9, hyphen).
 			normalized := utilsstrings.ToLower(part)
 			for _, ch := range normalized {
@@ -384,6 +395,11 @@ func (d *domainRouter) Use(args ...any) Router {
 // mount attaches a sub-app instance to the domain router at the specified prefix.
 // All routes from the sub-app will only be accessible when the request hostname
 // matches the domain pattern.
+//
+// The sub-app is not modified: routes are cloned into a dedicated wrapper app
+// with domain-filtered handlers, so the same sub-app can safely be mounted on
+// multiple domains without double-wrapping. Routes added to the sub-app after
+// mounting will not inherit domain filtering.
 func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	// Determine the full mount path by combining the domain router's path with the prefix
 	var mountPath string
@@ -399,16 +415,28 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 		mountPath = "/"
 	}
 
-	// Wrap all handlers in the sub-app with domain checking BEFORE mounting
-	// This ensures that when the routes are expanded during startup, they already
-	// have domain filtering applied.
+	// Create a wrapper app so that the original sub-app is not mutated.
+	// This allows the same sub-app to be reused (e.g., mounted on multiple
+	// domains) without double-wrapping handlers.
+	wrapperApp := New(Config{
+		CaseSensitive: subApp.config.CaseSensitive,
+		StrictRouting: subApp.config.StrictRouting,
+	})
+
+	// Clone routes from the sub-app with domain-wrapped handlers.
+	// Lock the sub-app while reading to prevent data races with concurrent
+	// route registration.
+	subApp.mutex.Lock()
 	for m := range subApp.stack {
 		for _, route := range subApp.stack[m] {
-			if len(route.Handlers) > 0 {
-				route.Handlers = d.wrapHandlers(route.Handlers)
+			clonedRoute := subApp.copyRoute(route)
+			if len(clonedRoute.Handlers) > 0 {
+				clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
 			}
+			wrapperApp.stack[m] = append(wrapperApp.stack[m], clonedRoute)
 		}
 	}
+	subApp.mutex.Unlock()
 
 	d.app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps
@@ -420,8 +448,11 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	}
 	d.app.mutex.Unlock()
 
-	// Create a mount group that references the sub-app
-	mountGroup := &Group{Prefix: mountPath, app: subApp}
+	// Create a mount group referencing the wrapper app (not the original).
+	// During route expansion (processSubAppsRoutes), Fiber reads routes from
+	// route.group.app.stack — so using the wrapper ensures expanded routes
+	// carry domain-filtered handlers.
+	mountGroup := &Group{Prefix: mountPath, app: wrapperApp}
 
 	// Register the mount point - the routes will be expanded during startup
 	d.app.register([]string{methodUse}, mountPath, mountGroup)

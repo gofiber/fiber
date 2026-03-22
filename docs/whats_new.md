@@ -424,6 +424,8 @@ The pattern can contain parameters prefixed with `:`, accessible via `fiber.Doma
 Domain routing has **zero performance impact** on routes that don't use it because the hostname check is applied as a handler wrapper, not a change to the core router.
 
 > **Note:** Because domain filtering happens at handler-execution time, Fiber's `405 Method Not Allowed` responses may advertise methods from domain-scoped routes even when the requesting host does not match. This is a known trade-off of the handler-wrapping approach.
+>
+> When mounting sub-applications via `Domain(...).Use(*fiber.App)`, routes are cloned at mount time. The same sub-app can safely be mounted on multiple domains, but routes added to the sub-app after mounting will not inherit domain filtering. Register all sub-app routes before mounting.
 
 ```go
 Domain(host string) Router
