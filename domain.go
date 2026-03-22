@@ -427,6 +427,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	// Lock the sub-app while reading to prevent data races with concurrent
 	// route registration.
 	subApp.mutex.Lock()
+	defer subApp.mutex.Unlock()
 	for m := range subApp.stack {
 		for _, route := range subApp.stack[m] {
 			clonedRoute := subApp.copyRoute(route)
@@ -436,7 +437,6 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 			wrapperApp.stack[m] = append(wrapperApp.stack[m], clonedRoute)
 		}
 	}
-	subApp.mutex.Unlock()
 
 	d.app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps

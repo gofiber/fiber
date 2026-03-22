@@ -1892,8 +1892,9 @@ func Test_Domain_Security_PatternLengthLimits(t *testing.T) {
 	// Pattern exceeding 253 total characters
 	t.Run("total length exceeds 253", func(t *testing.T) {
 		t.Parallel()
-		// Build a valid-looking pattern that exceeds 253 chars
-		longPattern := strings.Repeat("a.", 127) + "com"
+		// 250 chars of 'a' + ".com" = 254 chars total > 253
+		longPattern := strings.Repeat("a", 250) + ".com"
+		require.Greater(t, len(longPattern), 253)
 		require.Panics(t, func() {
 			parseDomainPattern(longPattern)
 		})
