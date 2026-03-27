@@ -67,9 +67,7 @@ func resolvedSpecPath(c fiber.Ctx, cfgPath string) string {
 	if prefix == "/" || prefix == "" {
 		return path
 	}
-	if strings.HasSuffix(prefix, "/") {
-		prefix = strings.TrimSuffix(prefix, "/")
-	}
+	prefix = strings.TrimSuffix(prefix, "/")
 	if prefix == "" {
 		return path
 	}
@@ -135,6 +133,26 @@ func generateSpec(app *fiber.App, cfg Config) openAPISpec {
 		for _, r := range routes {
 			if r.Method == fiber.MethodConnect {
 				continue
+			}
+			// Skip automatically generated HEAD routes
+			if r.Method == fiber.MethodHead && r.Name != "" {
+				// Check if there's a GET route with the same name
+				// Auto-generated HEAD routes share the same name as their GET counterpart
+				hasMatchingGet := false
+				for _, checkRoutes := range stack {
+					for _, checkRoute := range checkRoutes {
+						if checkRoute.Method == fiber.MethodGet && checkRoute.Name == r.Name && checkRoute.Path == r.Path {
+							hasMatchingGet = true
+							break
+						}
+					}
+					if hasMatchingGet {
+						break
+					}
+				}
+				if hasMatchingGet {
+					continue
+				}
 			}
 
 			path := r.Path
@@ -341,8 +359,8 @@ func contentEntry(schema map[string]any, schemaRef string, example any, examples
 	entry := map[string]any{}
 	if schemaRef != "" {
 		entry["schema"] = map[string]any{"$ref": schemaRef}
-	} else if copy := copyAnyMap(schema); len(copy) > 0 {
-		entry["schema"] = copy
+	} else if copied := copyAnyMap(schema); len(copied) > 0 {
+		entry["schema"] = copied
 	}
 	if example != nil {
 		entry["example"] = example
@@ -490,6 +508,8 @@ func defaultResponseForMethod(method, mediaType string) (string, response) {
 	case fiber.MethodDelete, fiber.MethodHead:
 		status = "204"
 		description = "No Content"
+	default:
+		// Keep default 200/OK status
 	}
 
 	resp := response{Description: description}

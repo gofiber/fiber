@@ -1107,7 +1107,8 @@ func (app *App) Use(args ...any) Router {
 			return app.mount(prefix, subApp)
 		}
 
-		app.register([]string{methodUse}, prefix, nil, handlers...)
+		converted := collectHandlers("use", handlers...)
+		app.register([]string{methodUse}, prefix, nil, converted...)
 	}
 
 	return app

@@ -103,10 +103,6 @@ type Route struct {
 	Consumes    string `json:"consumes"`
 	Produces    string `json:"produces"`
 	Deprecated  bool   `json:"deprecated"`
-	Path        string      `json:"path"`   // Original registered route path
-	Params      []string    `json:"params"` // Case-sensitive param keys
-	Handlers    []Handler   `json:"-"`      // Ctx handlers
-	routeParser routeParser // Parameter parser
 
 	// Data for routing
 	use      bool // USE matches path prefixes
@@ -733,7 +729,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 
 			Path:        pathRaw,
 			Method:      method,
-			Handlers:    ctxHandlers,
+			Handlers:    handlers,
 			Summary:     "",
 			Description: "",
 			Consumes:    MIMETextPlain,

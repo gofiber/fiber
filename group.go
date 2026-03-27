@@ -171,7 +171,8 @@ func (grp *Group) Use(args ...any) Router {
 			return grp.mount(prefix, subApp)
 		}
 
-		grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, handlers...)
+		converted := collectHandlers("use", handlers...)
+		grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, converted...)
 	}
 
 	if !grp.anyRouteDefined {
