@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
 // New creates a new middleware handler that serves the generated OpenAPI specification.
@@ -161,7 +161,7 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 				}
 			}
 
-			methodLower := utils.ToLower(r.Method)
+			methodLower := utilsstrings.ToLower(r.Method)
 			if paths[path] == nil {
 				paths[path] = make(map[string]operation)
 			}
