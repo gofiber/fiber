@@ -6,7 +6,10 @@ package fiber
 
 import (
 	"bytes"
+	"context"
+	"crypto/tls"
 	"math"
+	"net"
 	"os"
 	"strconv"
 	"testing"
@@ -130,6 +133,105 @@ func Test_ReadContentReturnsBytes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(len(content)), n)
 	require.Equal(t, content, buffer.Bytes())
+}
+
+type wrappedListener struct {
+	net.Listener
+}
+
+type tlsConfigMethodListener struct {
+	net.Listener
+	cfg *tls.Config
+}
+
+func (ln *tlsConfigMethodListener) TLSConfig() *tls.Config {
+	return ln.cfg
+}
+
+type configMethodListener struct {
+	net.Listener
+	cfg *tls.Config
+}
+
+func (ln *configMethodListener) Config() *tls.Config {
+	return ln.cfg
+}
+
+func Test_GetTLSConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("tls listener", func(t *testing.T) {
+		t.Parallel()
+
+		base := newLocalListener(t)
+		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+		tlsListener := tls.NewListener(base, cfg)
+		t.Cleanup(func() {
+			require.NoError(t, tlsListener.Close())
+		})
+
+		require.Same(t, cfg, getTLSConfig(tlsListener), "*tls.Listener should expose its TLS config")
+	})
+
+	t.Run("wrapped tls listener", func(t *testing.T) {
+		t.Parallel()
+
+		base := newLocalListener(t)
+		cfg := &tls.Config{MinVersion: tls.VersionTLS13}
+		tlsListener := tls.NewListener(base, cfg)
+		wrapped := &wrappedListener{Listener: tlsListener}
+		t.Cleanup(func() {
+			require.NoError(t, wrapped.Close())
+		})
+
+		require.Nil(t, getTLSConfig(wrapped), "wrapping without Config()-like methods should return nil")
+	})
+
+	t.Run("listener with tls config method", func(t *testing.T) {
+		t.Parallel()
+
+		base := newLocalListener(t)
+		cfg := &tls.Config{MinVersion: tls.VersionTLS13}
+		listener := &tlsConfigMethodListener{Listener: base, cfg: cfg}
+		t.Cleanup(func() {
+			require.NoError(t, listener.Close())
+		})
+
+		require.Same(t, cfg, getTLSConfig(listener), "TLSConfig() should be preferred for TLS discovery")
+	})
+
+	t.Run("listener with config method", func(t *testing.T) {
+		t.Parallel()
+
+		base := newLocalListener(t)
+		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+		listener := &configMethodListener{Listener: base, cfg: cfg}
+		t.Cleanup(func() {
+			require.NoError(t, listener.Close())
+		})
+
+		require.Same(t, cfg, getTLSConfig(listener), "Config() should be preferred for TLS discovery")
+	})
+
+	t.Run("non tls listener", func(t *testing.T) {
+		t.Parallel()
+
+		base := newLocalListener(t)
+		t.Cleanup(func() {
+			require.NoError(t, base.Close())
+		})
+
+		require.Nil(t, getTLSConfig(base), "plain listeners should not report TLS config")
+	})
+}
+
+func newLocalListener(t *testing.T) net.Listener {
+	t.Helper()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	return ln
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
@@ -1547,4 +1649,90 @@ func Test_App_quoteRawString(t *testing.T) {
 			require.Equal(t, tc.out, app.quoteRawString(tc.in))
 		})
 	}
+}
+
+func TestStoreInContext(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{PassLocalsToContext: true})
+	raw := &fasthttp.RequestCtx{}
+	c := app.AcquireCtx(raw)
+	defer app.ReleaseCtx(c)
+
+	StoreInContext(c, "key", "value")
+
+	localValue, ok := c.Locals("key").(string)
+	require.True(t, ok)
+	require.Equal(t, "value", localValue)
+
+	contextValue, ok := c.Context().Value("key").(string)
+	require.True(t, ok)
+	require.Equal(t, "value", contextValue)
+}
+
+func TestValueFromContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fiber.Ctx", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		c.Locals("key", "value")
+
+		value, ok := ValueFromContext[string](c, "key")
+		require.True(t, ok)
+		require.Equal(t, "value", value)
+	})
+
+	t.Run("fiber.CustomCtx", func(t *testing.T) {
+		t.Parallel()
+
+		app := NewWithCustomCtx(func(app *App) CustomCtx {
+			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+		})
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+		defer app.ReleaseCtx(c)
+
+		c.Locals("key", "value")
+
+		value, ok := ValueFromContext[string](c, "key")
+		require.True(t, ok)
+		require.Equal(t, "value", value)
+	})
+
+	t.Run("fasthttp request ctx", func(t *testing.T) {
+		t.Parallel()
+
+		raw := &fasthttp.RequestCtx{}
+		raw.SetUserValue("key", "value")
+
+		value, ok := ValueFromContext[string](raw, "key")
+		require.True(t, ok)
+		require.Equal(t, "value", value)
+	})
+
+	t.Run("context.Context", func(t *testing.T) {
+		t.Parallel()
+
+		type testContextKey struct{}
+
+		ctx := context.WithValue(context.Background(), testContextKey{}, "value")
+
+		value, ok := ValueFromContext[string](ctx, testContextKey{})
+		require.True(t, ok)
+		require.Equal(t, "value", value)
+	})
+
+	t.Run("unsupported ctx", func(t *testing.T) {
+		t.Parallel()
+
+		value, ok := ValueFromContext[string](42, "key")
+		require.False(t, ok)
+		require.Empty(t, value)
+	})
 }

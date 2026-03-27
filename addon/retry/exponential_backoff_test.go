@@ -60,6 +60,31 @@ func Test_ExponentialBackoff_Retry(t *testing.T) {
 	}
 }
 
+func Test_ExponentialBackoff_Retry_NoSleepAfterLastAttempt(t *testing.T) {
+	t.Parallel()
+
+	const (
+		largeInterval = 5 * time.Second // would be used for sleep if bug existed
+		maxAcceptable = 2 * time.Second // Retry must return well before largeInterval
+	)
+
+	eb := &ExponentialBackoff{
+		InitialInterval: largeInterval,
+		MaxBackoffTime:  largeInterval * 2,
+		Multiplier:      2.0,
+		MaxRetryCount:   1,
+	}
+
+	start := time.Now()
+	err := eb.Retry(func() error { return errors.New("only attempt") })
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	require.Equal(t, "only attempt", err.Error())
+	require.Less(t, elapsed, maxAcceptable,
+		"Retry must not sleep after the last failed attempt; took %v (expected < %v)", elapsed, maxAcceptable)
+}
+
 func Test_ExponentialBackoff_Next(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

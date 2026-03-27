@@ -5,12 +5,16 @@
 package fiber
 
 import (
+	"bytes"
 	"encoding/hex"
 	"sync"
 
-	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3/binder"
 )
 
 // Pool for redirection
@@ -32,17 +36,35 @@ var (
 
 const maxPoolableMapSize = 64
 
-// Cookie name to send flash messages when to use redirection.
+// FlashCookieName Cookie name to send flash messages when to use redirection.
 const (
-	FlashCookieName     = "fiber_flash"
-	OldInputDataPrefix  = "old_input_data_"
-	CookieDataSeparator = ","
-	CookieDataAssigner  = ":"
+	FlashCookieName = "fiber_flash"
 )
+
+var flashCookieNeedle = []byte(FlashCookieName + "=")
+
+// hasFlashCookie is on the request hot path and runs on every request/response cycle.
+// Keep this cheap for users who don't use flash messages:
+// 1) a fast raw-header prefilter to avoid unnecessary cookie parsing,
+// 2) an exact cookie lookup to avoid prefix false positives (e.g. fiber_flashX).
+func hasFlashCookie(header *fasthttp.RequestHeader) bool {
+	rawHeaders := header.RawHeaders()
+	if len(rawHeaders) == 0 {
+		return false
+	}
+
+	if !bytes.Contains(rawHeaders, flashCookieNeedle) {
+		return false
+	}
+
+	return header.Cookie(FlashCookieName) != nil
+}
 
 // redirectionMsgs is a struct that used to store flash messages and old input data in cookie using MSGP.
 // msgp -file="redirect.go" -o="redirect_msgp.go" -unexported
+// Cookie payloads are limited to ~4KB, so keep flash message counts bounded but usable.
 //
+//msgp:limit arrays:256 maps:32 marshal:true
 //msgp:ignore Redirect RedirectConfig OldInputData FlashMessage
 type redirectionMsg struct {
 	key        string
@@ -168,7 +190,7 @@ func (r *Redirect) With(key, value string, level ...uint8) *Redirect {
 // You can get them by using: Redirect().OldInputs(), Redirect().OldInput()
 func (r *Redirect) WithInput() *Redirect {
 	// Get content-type
-	ctype := utils.ToLower(utils.UnsafeString(r.c.RequestCtx().Request.Header.ContentType()))
+	ctype := utils.UnsafeString(utilsbytes.UnsafeToLower(r.c.RequestCtx().Request.Header.ContentType()))
 	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))
 
 	oldInput := acquireOldInput()

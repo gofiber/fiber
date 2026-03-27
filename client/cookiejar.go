@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 )
 
@@ -154,7 +156,7 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 	if h, _, err := net.SplitHostPort(hostStr); err == nil {
 		hostStr = h
 	}
-	hostStr = utils.ToLower(hostStr)
+	hostStr = utilsstrings.ToLower(hostStr)
 	hostKey := utils.CopyString(hostStr)
 
 	cj.mu.Lock()
@@ -166,7 +168,7 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 
 	for _, cookie := range cookies {
 		domain := utils.TrimLeft(cookie.Domain(), '.')
-		utils.ToLowerBytes(domain)
+		utilsbytes.UnsafeToLower(domain)
 		key := hostKey
 		if len(domain) == 0 {
 			cookie.SetDomain(hostStr)
@@ -226,7 +228,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 	if h, _, err := net.SplitHostPort(hostStr); err == nil {
 		hostStr = h
 	}
-	hostStr = utils.ToLower(hostStr)
+	hostStr = utilsstrings.ToLower(hostStr)
 	hostKey := utils.CopyString(hostStr)
 
 	cj.mu.Lock()
@@ -242,7 +244,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 		_ = tmp.ParseBytes(value) //nolint:errcheck // ignore error
 
 		domainBytes := utils.TrimLeft(tmp.Domain(), '.')
-		utils.ToLowerBytes(domainBytes)
+		utilsbytes.UnsafeToLower(domainBytes)
 		key := hostKey
 		if len(domainBytes) == 0 {
 			tmp.SetDomain(hostStr)
@@ -323,7 +325,7 @@ func pathMatch(reqPath, cookiePath []byte) bool {
 
 // domainMatch reports whether host domain-matches the given cookie domain.
 func domainMatch(host, domain string) bool {
-	host = utils.ToLower(host)
+	host = utilsstrings.UnsafeToLower(host)
 
 	if host == domain {
 		return true

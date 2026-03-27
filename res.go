@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
@@ -67,11 +69,11 @@ type sendFileStore struct {
 	config            SendFile
 }
 
-// compareConfig compares the current SendFile config with the new one
-// and returns true if they are different.
+// configEqual compares the current SendFile config with the new one
+// and returns true if they are equal.
 //
 // Here we don't use reflect.DeepEqual because it is quite slow compared to manual comparison.
-func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
+func (sf *sendFileStore) configEqual(cfg SendFile) bool {
 	if sf.config.FS != cfg.FS {
 		return false
 	}
@@ -177,10 +179,36 @@ func headerContainsValue(header, value string) bool {
 	return false
 }
 
+func sanitizeFilename(filename string) string {
+	for _, r := range filename {
+		if unicode.IsControl(r) {
+			b := make([]byte, 0, len(filename))
+			for _, rr := range filename {
+				if !unicode.IsControl(rr) {
+					b = utf8.AppendRune(b, rr)
+				}
+			}
+			return utils.TrimSpace(string(b))
+		}
+	}
+
+	return utils.TrimSpace(filename)
+}
+
+func fallbackFilenameIfInvalid(filename string) string {
+	if filename == "" || filename == "." {
+		return "download"
+	}
+
+	return filename
+}
+
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
 func (r *DefaultRes) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
+		fname = sanitizeFilename(fname)
+		fname = fallbackFilenameIfInvalid(fname)
 		r.Type(filepath.Ext(fname))
 		app := r.c.app
 		var quoted string
@@ -315,10 +343,12 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 func (r *DefaultRes) Download(file string, filename ...string) error {
 	var fname string
 	if len(filename) > 0 {
-		fname = filename[0]
+		fname = filepath.Base(filename[0])
 	} else {
 		fname = filepath.Base(file)
 	}
+	fname = sanitizeFilename(fname)
+	fname = fallbackFilenameIfInvalid(fname)
 	app := r.c.app
 	var quoted string
 	if app.isASCII(fname) {
@@ -350,6 +380,12 @@ func (r *DefaultRes) Response() *fasthttp.Response {
 func (r *DefaultRes) Format(handlers ...ResFmt) error {
 	if len(handlers) == 0 {
 		return ErrNoHandlers
+	}
+
+	for i, h := range handlers {
+		if h.Handler == nil {
+			return fmt.Errorf("format handler is nil for media type %q at index %d", h.MediaType, i)
+		}
 	}
 
 	r.Vary(HeaderAccept)
@@ -772,7 +808,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	app := r.c.app
 	app.sendfilesMutex.RLock()
 	for _, sf := range app.sendfiles {
-		if sf.compareConfig(cfg) {
+		if sf.configEqual(cfg) {
 			fsHandler = sf.handler
 			cacheControlValue = sf.cacheControlValue
 			break
@@ -1090,9 +1126,19 @@ func (r *DefaultRes) Drop() error {
 }
 
 // End immediately flushes the current response and closes the underlying connection.
+//
+// Note: End does not work when using streaming (e.g. fasthttp's HijackConn or SendStream),
+// because in streaming mode the connection is managed asynchronously and ctx.Conn() may return nil.
 func (r *DefaultRes) End() error {
 	ctx := r.c.fasthttp
+	if ctx == nil {
+		return nil
+	}
+
 	conn := ctx.Conn()
+	if conn == nil {
+		return nil
+	}
 
 	bw := bufio.NewWriter(conn)
 	if err := ctx.Response.Write(bw); err != nil {

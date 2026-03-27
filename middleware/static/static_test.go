@@ -1032,6 +1032,22 @@ func Test_Static_PathTraversal(t *testing.T) {
 
 	// Backslash encoded attempts
 	assertTraversalBlocked("/%5C..%5Cindex.html")
+	assertTraversalBlocked("/%5c..%5c..%5cetc%5cpasswd")
+	assertTraversalBlocked("/%255c..%255c..%255cetc%255cpasswd")
+	assertTraversalBlocked("/..%5c..%5cetc%5cpasswd")
+	assertTraversalBlocked("/%2e%2e%5c%2e%2e%5cetc%5cpasswd")
+	assertTraversalBlocked("/%2e%2e%2f%2e%2e%5cetc%5cpasswd")
+	assertTraversalBlocked("/%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd")
+	assertTraversalBlocked("/.%2e/.%2e/etc/passwd")
+	assertTraversalBlocked("/..%2f..%2f..%2f..%2fetc%2fpasswd")
+	assertTraversalBlocked("/%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd")
+	assertTraversalBlocked("/%2e%2e%2f%2e%2e%2fetc%2fshadow")
+	assertTraversalBlocked("/%2e%2e/%2e%2e/var/log/auth.log")
+	assertTraversalBlocked("/..%2f..%2fvar%2flog%2fauth.log")
+	assertTraversalBlocked("/%2e%2e//%2e%2e//etc/passwd")
+	assertTraversalBlocked("/..//..//etc/passwd")
+	assertTraversalBlocked("/%2e%2e%2f%2e%2e%2f%2e%2e%2fproc%2fself%2fenviron")
+	assertTraversalBlocked("/%2e%2e%2f%2e%2e%2f%2e%2e%2froot%2f.ssh%2fauthorized_keys")
 }
 
 func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
@@ -1083,6 +1099,18 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 	// Backslashes are treated as directory separators on Windows.
 	assertTraversalBlocked("/..\\index.html")
 	assertTraversalBlocked("/..\\..\\index.html")
+	assertTraversalBlocked("/..\\..\\..\\Windows\\win.ini")
+	assertTraversalBlocked("/..\\..\\..\\Windows\\System32\\drivers\\etc\\hosts")
+	assertTraversalBlocked("/%5C..%5C..%5CWindows%5Cwin.ini")
+	assertTraversalBlocked("/%255C..%255C..%255CWindows%255Cwin.ini")
+	assertTraversalBlocked("/%5c..%5c..%5cWindows%5cSystem32%5cdrivers%5cetc%5chosts")
+	assertTraversalBlocked("/C:\\Windows\\System32\\cmd.exe")
+	assertTraversalBlocked("/C:%5CWindows%5CSystem32%5Ccmd.exe")
+	assertTraversalBlocked("/%43:%5CWindows%5CSystem32%5Ccmd.exe")
+	assertTraversalBlocked("/%5c%5cserver%5cshare%5csecret.txt")
+	assertTraversalBlocked("//server\\share\\secret.txt")
+	assertTraversalBlocked("//server/share/secret.txt")
+	assertTraversalBlocked("/%2F%2Fserver%2Fshare%2Fsecret.txt")
 
 	// Attempt with a path that might try to reference Windows drives or absolute paths
 	// Note: These are artificial tests to ensure no drive-letter escapes are allowed.
@@ -1141,11 +1169,19 @@ func Test_SanitizePath(t *testing.T) {
 		{name: "current dir reference", input: []byte("/foo/./bar.txt"), expectPath: "/foo/bar.txt"},
 		{name: "encoded slash", input: []byte("/foo%2Fbar.txt"), expectPath: "/foo/bar.txt"},
 		{name: "empty path", input: []byte(""), expectPath: "/"},
+		{name: "dot segments", input: []byte("/foo/./bar/../baz.txt"), expectPath: "/foo/baz.txt"},
+		{name: "leading dot segment", input: []byte("/./foo/bar.txt"), expectPath: "/foo/bar.txt"},
+		{name: "encoded space", input: []byte("/foo%20bar/baz.txt"), expectPath: "/foo bar/baz.txt"},
+		{name: "encoded plus literal", input: []byte("/foo+bar/baz.txt"), expectPath: "/foo+bar/baz.txt"},
 		// windows-specific paths
 		{name: "backslash path", input: []byte("\\foo\\bar.txt"), expectPath: "/foo/bar.txt"},
 		{name: "backslash traversal", input: []byte("\\foo\\..\\..\\bar.txt"), expectPath: "/bar.txt"},
 		{name: "mixed slashes", input: []byte("/foo\\bar.txt"), expectPath: "/foo/bar.txt"},
-		{name: "encoded backslash traversal", input: []byte("/foo%5C..%5Cbar.txt"), expectPath: "/foo\\..\\bar.txt"},
+		{name: "trailing slash preserved", input: []byte("/foo/bar/"), expectPath: "/foo/bar/"},
+		{name: "encoded trailing slash", input: []byte("/foo/bar%2F"), expectPath: "/foo/bar"},
+		{filesystem: os.DirFS("."), name: "filesystem empty path", input: []byte(""), expectPath: "/"},
+		{filesystem: os.DirFS("."), name: "filesystem trailing slash", input: []byte("/foo/"), expectPath: "/foo/"},
+		{filesystem: os.DirFS("."), name: "filesystem traversal clean", input: []byte("/foo/../bar.txt"), expectPath: "/bar.txt"},
 	}
 
 	for _, tc := range testCases {
@@ -1169,6 +1205,21 @@ func Test_SanitizePath_Error(t *testing.T) {
 
 	testCases := []testCase{
 		{name: "null byte", input: []byte("/foo/bar.txt%00")},
+		{name: "encoded backslash traversal", input: []byte("/foo%5C..%5Cbar.txt")},
+		{name: "double encoded backslash traversal", input: []byte("/%255C..%255C..%255CWindows%255Cwin.ini")},
+		{name: "encoded backslash absolute", input: []byte("/%5CWindows%5CSystem32%5Cdrivers%5Cetc%5Chosts")},
+		{name: "double encoded backslash absolute", input: []byte("/%255CWindows%255CSystem32%255Cdrivers%255Cetc%255Chosts")},
+		{name: "encoded backslash mixed slashes", input: []byte("/..%5C..%5Cetc%5Cpasswd")},
+		{name: "encoded backslash mixed encoding", input: []byte("/%2e%2e%5c%2e%2e%5cetc%5cpasswd")},
+		{name: "encoded backslash with encoded slash", input: []byte("/%2e%2e%2f%2e%2e%5cetc%5cpasswd")},
+		{name: "encoded backslash unc path", input: []byte("//server%5Cshare%5Csecret.txt")},
+		{name: "encoded backslash drive letter", input: []byte("/C:%5CWindows%5CSystem32%5Ccmd.exe")},
+		{name: "double slash path", input: []byte("//foo//bar.txt")},
+		{name: "drive letter", input: []byte("C:/Windows/System32/cmd.exe")},
+		{name: "drive letter with leading slash", input: []byte("/C:/Windows/System32/cmd.exe")},
+		{name: "encoded drive letter", input: []byte("/%43:%5CWindows%5CSystem32%5Ccmd.exe")},
+		{name: "unc path", input: []byte("//server/share/secret.txt")},
+		{name: "encoded unc path", input: []byte("/%2F%2Fserver%2Fshare%2Fsecret.txt")},
 	}
 
 	for _, tc := range testCases {

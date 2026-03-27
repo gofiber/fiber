@@ -1,8 +1,8 @@
 <h1 align="center">
   <a href="https://gofiber.io">
     <picture>
-      <source height="125" media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo-dark.svg">
-      <img height="125" alt="Fiber" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
+      <source height="125" media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/gofiber/docs/master/static/img/v3/logo-dark.svg">
+      <img height="125" alt="Fiber" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/v3/logo.svg">
     </picture>
   </a>
   <br>
@@ -28,12 +28,6 @@
 <p align="center">
   <em><b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <a href="https://docs.gofiber.io/#zero-allocation"><b>zero memory allocation</b></a> and <b>performance</b> in mind.</em>
 </p>
-
----
-
-## ⚠️ **Attention**
-
-Fiber v3 is currently in rc and under active development. While it offers exciting new features, please note that it may not be stable for production use. We recommend sticking to the latest stable release (v2.x) for mission-critical applications. If you choose to use v3, be prepared for potential bugs and breaking changes. Always check the official documentation and release notes for updates and proceed with caution. Happy coding! 🚀
 
 ---
 
@@ -94,8 +88,8 @@ Fiber is optimized for **high-performance**, meaning values returned from **fibe
 These tests are performed by [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext). If you want to see all the results, please visit our [Wiki](https://docs.gofiber.io/extra/benchmarks).
 
 <p float="left" align="middle">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/plaintext.png" width="49%">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/json.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/v3/plaintext.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/v3/json.png" width="49%">
 </p>
 
 ## 🎯 Features
@@ -124,7 +118,7 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 
 ## ⚠️ Limitations
 
-- Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.24 or higher.
+- Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.25 or higher.
 - Fiber automatically adapts common `net/http` handler shapes when you register them on the router, and you can still use the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/) when you need to bridge entire apps or `net/http` middleware.
 
 ### net/http compatibility
@@ -749,6 +743,7 @@ Here is a list of middleware that are included within the Fiber framework.
 | [keyauth](https://github.com/gofiber/fiber/tree/main/middleware/keyauth)             | Adds support for key based authentication.                                                                                                                              |
 | [limiter](https://github.com/gofiber/fiber/tree/main/middleware/limiter)             | Adds Rate-limiting support to Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset.                                             |
 | [logger](https://github.com/gofiber/fiber/tree/main/middleware/logger)               | HTTP request/response logger.                                                                                                                                           |
+| [paginate](https://github.com/gofiber/fiber/tree/main/middleware/paginate)           | Extracts pagination parameters from query strings. Supports page-based, offset-based, and cursor-based pagination with multi-field sorting.                             |
 | [pprof](https://github.com/gofiber/fiber/tree/main/middleware/pprof)                 | Serves runtime profiling data in pprof format.                                                                                                                          |
 | [proxy](https://github.com/gofiber/fiber/tree/main/middleware/proxy)                 | Allows you to proxy requests to multiple servers.                                                                                                                       |
 | [recover](https://github.com/gofiber/fiber/tree/main/middleware/recover)             | Recovers from panics anywhere in the stack chain and handles the control to the centralized ErrorHandler.                                                               |

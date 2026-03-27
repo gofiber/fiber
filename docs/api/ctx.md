@@ -134,7 +134,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### FullPath
 
-Returns the full path of the matched route. This includes any prefixes that were added by [groups](../guide/routing.md#grouping-routes) or mounts.
+Returns the full path of the matched route. This includes any prefixes that were added by [groups](../guide/routing.md#grouping) or mounts.
 
 ```go title="Signature"
 func (c fiber.Ctx) FullPath() string
@@ -482,6 +482,10 @@ Returns the [*fasthttp.Request](https://pkg.go.dev/github.com/valyala/fasthttp#R
 func (c fiber.Ctx) Request() *fasthttp.Request
 ```
 
+:::info
+Returns `nil` if the context has been released (e.g., after the handler completes and the context is returned to the pool).
+:::
+
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   c.Request().Header.Method()
@@ -518,6 +522,10 @@ Returns the [\*fasthttp.Response](https://pkg.go.dev/github.com/valyala/fasthttp
 ```go title="Signature"
 func (c fiber.Ctx) Response() *fasthttp.Response
 ```
+
+:::info
+Returns `nil` if the context has been released (e.g., after the handler completes and the context is returned to the pool).
+:::
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
@@ -1137,13 +1145,44 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-When registering the proxy request header in the Fiber app, the IP address of the header is returned [(Fiber configuration)](fiber.md#proxyheader)
+:::info
+By default, `c.IP()` returns the remote IP address from the TCP connection. When your Fiber app is behind a reverse proxy (like Nginx, Traefik, or a load balancer), you need to configure **both** [`TrustProxy`](fiber.md#trustproxy) and [`ProxyHeader`](fiber.md#proxyheader) to read the client IP from proxy headers like `X-Forwarded-For`.
 
-```go
+**Important:** You must enable `TrustProxy` and configure trusted proxy IPs to prevent header spoofing. Simply setting `ProxyHeader` alone will not work.
+
+**Note:** When using a proxy header such as `X-Forwarded-For`, `c.IP()` returns the raw header value unless [`EnableIPValidation`](fiber.md#enableipvalidation) is enabled. For `X-Forwarded-For`, this raw value may be a comma-separated list of IPs; enable `EnableIPValidation` if you need `c.IP()` to return a single, validated client IP.
+:::
+
+#### Configuration for apps behind a reverse proxy
+
+```go title="Example - Basic Configuration"
 app := fiber.New(fiber.Config{
+  // Enable proxy support
+  TrustProxy: true,
+  // Specify which header contains the real client IP
   ProxyHeader: fiber.HeaderXForwardedFor,
+  // Configure which proxy IPs to trust
+  TrustProxyConfig: fiber.TrustProxyConfig{
+    // Trust private IP ranges (for internal load balancers)
+    Private: true,
+    // Or specify exact proxy IPs/ranges
+    // Proxies: []string{"10.10.0.58", "192.168.0.0/24"},
+  },
 })
 ```
+
+```go title="Example - Specific Proxy IPs"
+app := fiber.New(fiber.Config{
+  TrustProxy: true,
+  ProxyHeader: fiber.HeaderXForwardedFor,
+  TrustProxyConfig: fiber.TrustProxyConfig{
+    // Trust only specific proxy IP addresses
+    Proxies: []string{"10.10.0.58", "192.168.1.0/24"},
+  },
+})
+```
+
+See [`TrustProxy`](fiber.md#trustproxy) and [`TrustProxyConfig`](fiber.md#trustproxyconfig) for more details on security considerations and configuration options.
 
 ### IPs
 
@@ -1277,6 +1316,8 @@ app := fiber.New(fiber.Config{
   // Proxies is a list of trusted proxy IP ranges/addresses
   TrustProxyConfig: fiber.TrustProxyConfig{
     Proxies: []string{"0.8.0.0", "1.1.1.1/30"}, // IP address or IP address range
+    Loopback: true,   // Trust loopback addresses (127.0.0.0/8, ::1/128)
+    UnixSocket: true, // Trust Unix domain socket connections
   },
 })
 
@@ -2230,6 +2271,12 @@ app.Get("/", func(c fiber.Ctx) error {
 Calling `c.End()` will disallow further writes to the underlying connection.
 :::
 
+:::warning
+`c.End()` does **not** work in streaming mode (e.g. when using `fasthttp`'s `HijackConn` or `SendStream`).
+In streaming mode the connection is managed asynchronously and `ctx.Conn()` may return `nil`,
+so `c.End()` will return `nil` without flushing or closing the connection.
+:::
+
 End can be used to stop a middleware from modifying a response of a handler/other middleware down the method chain
 when they regain control after calling `c.Next()`.
 
@@ -2704,10 +2751,46 @@ Sets the response body to a stream of data and adds an optional body size.
 func (c fiber.Ctx) SendStream(stream io.Reader, size ...int) error
 ```
 
+:::info
+`SendStream` operates asynchronously. The handler returns immediately after setting up the stream,
+but the actual reading and sending of data happens **after** the handler completes. This is handled
+by the underlying `fasthttp` library.
+
+If the provided stream implements `io.Closer`, it will be automatically closed by `fasthttp` after
+the response is fully sent or if an error occurs.
+:::
+
+:::caution
+When passing `fiber.Ctx` as a `context.Context` to libraries that spawn goroutines (e.g., for streaming operations),
+those goroutines may attempt to access the context after the handler returns. Since `fiber.Ctx` is recycled and
+released after the handler completes, this can cause issues.
+
+**Recommended approach**: Use `c.Context()` or `c.RequestCtx()` instead of passing `c` directly to such libraries.
+See the [Context Guide](../guide/context.md) for more details.
+:::
+
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   return c.SendStream(bytes.NewReader([]byte("Hello, World!")))
   // => "Hello, World!"
+})
+```
+
+```go title="Example with file streaming"
+app.Get("/download", func(c fiber.Ctx) error {
+  file, err := os.Open("large-file.zip")
+  if err != nil {
+    return err
+  }
+  // File will be automatically closed by fasthttp after streaming completes
+  
+  stat, err := file.Stat()
+  if err != nil {
+    file.Close()
+    return err
+  }
+  
+  return c.SendStream(file, int(stat.Size()))
 })
 ```
 

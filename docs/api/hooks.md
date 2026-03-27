@@ -128,7 +128,7 @@ func (h *Hooks) OnGroupName(handler ...OnGroupNameHandler)
 
 ## OnListen
 
-Runs when the app starts listening via `Listen`, `ListenTLS`, or `Listener`.
+Runs when the app starts listening via `Listen` or `Listener`.
 
 ```go title="Signature"
 func (h *Hooks) OnListen(handler ...OnListenHandler)
@@ -199,6 +199,8 @@ func (sm *PreStartupMessageData) DeleteEntry(key string)
 - Assign `sm.BannerHeader` to override the ASCII art banner. Leave it empty to use the default banner provided by Fiber.
 - Set `sm.PreventDefault = true` to suppress the built-in banner without affecting other hooks.
 - `PostStartupMessageData` reports whether the banner was skipped via the `Disabled`, `IsChild`, and `Prevented` flags.
+
+### Startup Message Customization
 
 ```go title="Customize the startup message"
 package main
@@ -310,7 +312,7 @@ func main() {
         return nil
     })
 
-    app.Mount("/sub", subApp)
+    app.Use("/sub", subApp)
 }
 
 func testSimpleHandler(c fiber.Ctx) error {

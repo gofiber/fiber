@@ -31,6 +31,10 @@ func (z *response) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "Headers")
 				return
 			}
+			if zb0002 > 1024 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
 			if z.Headers == nil {
 				z.Headers = make(map[string][]string, zb0002)
 			} else if len(z.Headers) > 0 {
@@ -49,6 +53,10 @@ func (z *response) DecodeMsg(dc *msgp.Reader) (err error) {
 				zb0003, err = dc.ReadArrayHeader()
 				if err != nil {
 					err = msgp.WrapError(err, "Headers", za0001)
+					return
+				}
+				if zb0003 > 1024 {
+					err = msgp.ErrLimitExceeded
 					return
 				}
 				if cap(za0002) >= int(zb0003) {
@@ -191,6 +199,10 @@ func (z *response) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "Headers")
 				return
 			}
+			if zb0002 > 1024 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
 			if z.Headers == nil {
 				z.Headers = make(map[string][]string, zb0002)
 			} else if len(z.Headers) > 0 {
@@ -209,6 +221,10 @@ func (z *response) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				zb0003, bts, err = msgp.ReadArrayHeaderBytes(bts)
 				if err != nil {
 					err = msgp.WrapError(err, "Headers", za0001)
+					return
+				}
+				if zb0003 > 1024 {
+					err = msgp.ErrLimitExceeded
 					return
 				}
 				if cap(za0002) >= int(zb0003) {

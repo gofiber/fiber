@@ -42,11 +42,15 @@ The binding sources have the following precedence:
 4. **Request Headers**
 5. **Cookies**
 
+:::info
+The request body is only included as a binding source when the request has both a non-empty body **and** a non-empty `Content-Type` header.
+:::
+
 ```go title="Signature"
 func (b *Bind) All(out any) error
 ```
 
-``` go title="Example"
+```go title="Example"
 type User struct {
     Name      string                `query:"name" json:"name" form:"name"`
     Email     string                `json:"email" form:"email"`
@@ -94,14 +98,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Body(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -146,14 +150,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().CBOR(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -182,14 +186,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Form(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -217,15 +221,15 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Form(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
     log.Println(p.Avatar.Filename) // file.txt
-    
+
     // ...
 })
 ```
@@ -254,14 +258,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().JSON(p); err != nil {
         return err
     }
 
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -294,14 +298,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().MsgPack(p); err != nil {
         return err
     }
 
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -331,14 +335,14 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().XML(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name) // john
     log.Println(p.Pass) // doe
-    
+
     // ...
 })
 ```
@@ -351,7 +355,7 @@ curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name>
 
 ### Cookie
 
-This method is similar to [Body Binding](#body), but for cookie parameters.  
+This method is similar to [Body Binding](#body), but for cookie parameters.
 It is important to use the struct tag `cookie`. For example, if you want to parse a cookie with a field called `Age`, you would use a struct field with `cookie:"age"`.
 
 ```go title="Signature"
@@ -367,11 +371,11 @@ type Person struct {
 
 app.Get("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Cookie(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name)  // Joseph
     log.Println(p.Age)   // 23
     log.Println(p.Job)   // true
@@ -386,7 +390,7 @@ curl --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
 
 ### Header
 
-This method is similar to [Body Binding](#body), but for request headers.  
+This method is similar to [Body Binding](#body), but for request headers.
 It is important to use the struct tag `header`. For example, if you want to parse a request header with a field called `Pass`, you would use a struct field with `header:"pass"`.
 
 ```go title="Signature"
@@ -402,15 +406,15 @@ type Person struct {
 
 app.Get("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Header(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
     log.Println(p.Products) // [shoe hat]
-    
+
     // ...
 })
 ```
@@ -423,7 +427,7 @@ curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,
 
 ### Query
 
-This method is similar to [Body Binding](#body), but for query parameters.  
+This method is similar to [Body Binding](#body), but for query parameters.
 It is important to use the struct tag `query`. For example, if you want to parse a query parameter with a field called `Pass`, you would use a struct field with `query:"pass"`.
 
 ```go title="Signature"
@@ -439,18 +443,18 @@ type Person struct {
 
 app.Get("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().Query(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
     // Depending on fiber.Config{EnableSplittingOnParsers: false} - default
     log.Println(p.Products) // ["shoe,hat"]
     // With fiber.Config{EnableSplittingOnParsers: true}
     // log.Println(p.Products) // ["shoe", "hat"]
-    
+
     // ...
 })
 ```
@@ -463,6 +467,159 @@ curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 
 :::info
 For more parser settings, please refer to [Config](fiber.md#enablesplittingonparsers)
+:::
+
+#### Array Query Parameters
+
+Fiber supports several formats for passing array values via query parameters. The following table gives an overview:
+
+| Format                   | Example                                        | Requires `EnableSplittingOnParsers` |
+| ------------------------ | ---------------------------------------------- | ----------------------------------- |
+| Repeated key             | `?colors=red&colors=blue`                      | No                                  |
+| Bracket notation         | `?colors[]=red&colors[]=blue`                  | No                                  |
+| Comma-separated          | `?colors=red,blue`                             | **Yes**                             |
+| Indexed bracket notation | `?posts[0][title]=Hello&posts[1][title]=World` | No                                  |
+| Nested bracket notation  | `?preferences[tags]=golang,api`                | No (comma splitting: **Yes**)       |
+
+##### Repeated Key
+
+The most common approach. Repeat the same query key for each value:
+
+```text
+GET /api?colors=red&colors=blue&colors=green
+```
+
+```go title="Struct"
+type Filter struct {
+    Colors []string `query:"colors"`
+}
+// Result: Colors = ["red", "blue", "green"]
+```
+
+```bash title="curl"
+curl "http://localhost:3000/api?colors=red&colors=blue&colors=green"
+```
+
+##### Bracket Notation
+
+Append `[]` to the key name. This is common in PHP-style and JavaScript frameworks:
+
+```text
+GET /api?colors[]=red&colors[]=blue&colors[]=green
+```
+
+```go title="Struct"
+type Filter struct {
+    Colors []string `query:"colors"`
+}
+// Result: Colors = ["red", "blue", "green"]
+```
+
+```bash title="curl"
+curl "http://localhost:3000/api?colors[]=red&colors[]=blue&colors[]=green"
+```
+
+:::note
+The struct field tag stays `query:"colors"` (without brackets). Fiber strips the `[]` automatically.
+:::
+
+##### Comma-Separated Values
+
+Pass multiple values in a single parameter, separated by commas. This format requires [`EnableSplittingOnParsers`](fiber.md#enablesplittingonparsers) to be set to `true`.
+
+```text
+GET /api?colors=red,blue,green
+```
+
+```go title="Struct"
+type Filter struct {
+    Colors []string `query:"colors"`
+}
+```
+
+```go title="App Setup"
+// EnableSplittingOnParsers is required for comma splitting
+app := fiber.New(fiber.Config{
+    EnableSplittingOnParsers: true,
+})
+// Result: Colors = ["red", "blue", "green"]
+```
+
+Without `EnableSplittingOnParsers`, the entire string `"red,blue,green"` is treated as a **single** element.
+
+```go title="Default behavior (EnableSplittingOnParsers: false)"
+// GET /api?colors=red,blue,green
+// Result: Colors = ["red,blue,green"]  ← single element
+```
+
+```bash title="curl"
+curl "http://localhost:3000/api?colors=red,blue,green"
+```
+
+You can also mix comma-separated values with repeated keys when splitting is enabled:
+
+```text
+GET /api?hobby=soccer&hobby=basketball,football
+```
+
+```go
+type Query struct {
+    Hobby []string `query:"hobby"`
+}
+// With EnableSplittingOnParsers: true
+// Result: Hobby = ["soccer", "basketball", "football"]  ← 3 elements
+```
+
+##### Indexed Bracket Notation (Nested Structs)
+
+Use indexed brackets to bind arrays of nested structs:
+
+```text
+GET /api?posts[0][title]=Hello&posts[0][author]=Alice&posts[1][title]=World&posts[1][author]=Bob
+```
+
+```go title="Struct"
+type Post struct {
+    Title  string `query:"title"`
+    Author string `query:"author"`
+}
+
+type Request struct {
+    Posts []Post `query:"posts"`
+}
+// Result: Posts = [{Title: "Hello", Author: "Alice"}, {Title: "World", Author: "Bob"}]
+```
+
+```bash title="curl"
+curl "http://localhost:3000/api?posts[0][title]=Hello&posts[0][author]=Alice&posts[1][title]=World&posts[1][author]=Bob"
+```
+
+##### Nested Bracket Notation (Without Index)
+
+Use bracket notation to access fields of a nested struct:
+
+```text
+GET /api?preferences[tags]=golang,api
+```
+
+```go title="Struct"
+type Preferences struct {
+    Tags *[]string `query:"tags"`
+}
+
+type Profile struct {
+    Prefs *Preferences `query:"preferences"`
+}
+// With EnableSplittingOnParsers: true
+// Result: *Prefs.Tags = ["golang", "api"]
+```
+
+```bash title="curl"
+curl "http://localhost:3000/api?preferences[tags]=golang,api"
+```
+
+:::note
+Pointer fields (`*[]string`, `*Preferences`) let you distinguish between a missing parameter (`nil`) and an empty one. When the parameter is present, Fiber allocates the pointer automatically.
 :::
 
 ### RespHeader
@@ -483,15 +640,15 @@ type Person struct {
 
 app.Get("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().RespHeader(p); err != nil {
         return err
     }
-    
+
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
     log.Println(p.Products) // [shoe hat]
-    
+
     // ...
 })
 ```
@@ -504,7 +661,7 @@ curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,
 
 ### URI
 
-This method is similar to [Body Binding](#body), but for path parameters.  
+This method is similar to [Body Binding](#body), but for path parameters.
 It is important to use the struct tag `uri`. For example, if you want to parse a path parameter with a field called `Pass`, you would use a struct field with `uri:"pass"`.
 
 ```go title="Signature"
@@ -517,15 +674,53 @@ app.Get("/user/:id", func(c fiber.Ctx) error {
     param := struct {
         ID uint `uri:"id"`
     }{}
-    
+
     if err := c.Bind().URI(&param); err != nil {
         return err
     }
-    
+
     // ...
     return c.SendString(fmt.Sprintf("User ID: %d", param.ID))
 })
 ```
+
+## BindError
+
+When a bind method fails to parse (e.g. invalid JSON, bad type conversion), the behavior depends on the error-handling mode. In **manual handling** (the default), the binder returns a `*BindError` wrapping the underlying error — use `errors.As` to extract it and branch on the binding source or field. In **automatic handling** (enabled via `WithAutoHandling`), parse failures are instead converted to a `*fiber.Error` with HTTP status 400; `*BindError` is never surfaced to the caller in that mode. If you are using `WithAutoHandling`, check for `*fiber.Error` or an HTTP 400 response rather than using `errors.As` for `*BindError`.
+
+```go
+type BindError struct {
+    Source string // "uri", "query", "body", "header", "cookie", or "respHeader"
+    Field  string // struct field or tag key that failed (best-effort, may be empty)
+    Err    error  // underlying error; use errors.As to inspect
+}
+```
+
+Source constants: `BindSourceURI`, `BindSourceQuery`, `BindSourceHeader`, `BindSourceCookie`, `BindSourceBody`, `BindSourceRespHeader`.
+
+### Branching on source
+
+Use `errors.As` to extract `*BindError` and branch on `Source` for RFC-correct status codes (e.g. 404 for URI failures vs 400 for body/query):
+
+```go title="Example"
+// With manual handling mode (default behavior)
+// Will not work with WithAutoHandling()
+var req struct {
+    ID   int    `uri:"id"`
+    Name string `json:"name"`
+}
+if err := c.Bind().All(&req); err != nil {
+    var be *fiber.BindError
+    if errors.As(err, &be) && be.Source == fiber.BindSourceURI {
+        return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
+    }
+    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
+}
+```
+
+### Validation vs binding errors
+
+Validation errors (from `StructValidator`) are **not** wrapped in `BindError`. Use `errors.As(err, &be)` to distinguish: it succeeds only for parsing/binding failures, not for validation failures.
 
 ## Custom
 
@@ -574,7 +769,7 @@ app.Post("/custom", func(c fiber.Ctx) error {
 })
 ```
 
-Internally, custom binders are also used in the [Body](#body) method.  
+Internally, custom binders are also used in the [Body](#body) method.
 The `MIMETypes` method is used to check if the custom binder should be used for the given content type.
 
 ## Options
@@ -583,7 +778,7 @@ For more control over error handling, you can use the following methods.
 
 ### WithAutoHandling
 
-If you want to handle binder errors automatically, you can use `WithAutoHandling`.  
+If you want to handle binder errors automatically, you can use `WithAutoHandling`.
 If there's an error, it will return the error and set HTTP status to `400 Bad Request`.
 This function does NOT panic therefore you must still return on error explicitly
 
@@ -593,11 +788,20 @@ func (b *Bind) WithAutoHandling() *Bind
 
 ### WithoutAutoHandling
 
-To handle binder errors manually, you can use the `WithoutAutoHandling` method.  
+To handle binder errors manually, you can use the `WithoutAutoHandling` method.
 It's the default behavior of the binder.
 
 ```go title="Signature"
 func (b *Bind) WithoutAutoHandling() *Bind
+```
+
+### SkipValidation
+
+To enable or disable validation for the current bind chain, use `SkipValidation`.
+By default, validation is enabled (`skip = false`).
+
+```go title="Signature"
+func (b *Bind) SkipValidation(skip bool) *Bind
 ```
 
 ## SetParserDecoder
@@ -605,15 +809,23 @@ func (b *Bind) WithoutAutoHandling() *Bind
 Allows you to configure the BodyParser/QueryParser decoder based on schema options, providing the possibility to add custom types for parsing.
 
 ```go title="Signature"
-func SetParserDecoder(parserConfig fiber.ParserConfig{
-    IgnoreUnknownKeys bool,
-    ParserType        []fiber.ParserType{
-        Customtype any,
-        Converter  func(string) reflect.Value,
-    },
-    ZeroEmpty         bool,
-    SetAliasTag       string,
-})
+func SetParserDecoder(parserConfig binder.ParserConfig)
+```
+
+`binder.ParserConfig` has the following fields:
+
+```go
+type ParserConfig struct {
+    IgnoreUnknownKeys bool
+    ParserType        []ParserType
+    ZeroEmpty         bool
+    SetAliasTag       string
+}
+
+type ParserType struct {
+    CustomType any
+    Converter  func(string) reflect.Value
+}
 ```
 
 ```go title="Example"
@@ -635,15 +847,15 @@ var timeConverter = func(value string) reflect.Value {
     return reflect.Value{}
 }
 
-customTime := fiber.ParserType{
+customTime := binder.ParserType{
     CustomType: CustomTime{},
     Converter:  timeConverter,
 }
 
 // Add custom type to the Decoder settings
-fiber.SetParserDecoder(fiber.ParserConfig{
+binder.SetParserDecoder(binder.ParserConfig{
     IgnoreUnknownKeys: true,
-    ParserType:        []fiber.ParserType{customTime},
+    ParserType:        []binder.ParserType{customTime},
     ZeroEmpty:         true,
 })
 
@@ -687,6 +899,14 @@ Validation is also possible with the binding methods. You can specify your valid
 
 Specify your struct validator in the [config](./fiber.md#structvalidator).
 
+The validator must implement the `StructValidator` interface, which requires a `Validate` method that takes an `any` type and returns an error.
+
+```go title="Interface"
+type StructValidator interface {
+    Validate(out any) error
+}
+```
+
 ### Setup Your Validator in the Config
 
 ```go title="Example"
@@ -707,6 +927,9 @@ app := fiber.New(fiber.Config{
 })
 ```
 
+Fiber only runs `StructValidator` for struct destinations (or pointers to structs).
+Binding into maps and other non-struct types skips the validator step.
+
 ### Usage of Validation in Binding Methods
 
 ```go title="Example"
@@ -717,7 +940,7 @@ type Person struct {
 
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
-    
+
     if err := c.Bind().JSON(p); err != nil { // Receives validation errors
         return err
     }
@@ -753,7 +976,7 @@ app.Get("/", func(c fiber.Ctx) error {
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
     log.Println(p.Products) // ["shoe", "hat"]
-    
+
     // ...
 })
 ```

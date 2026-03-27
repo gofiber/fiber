@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -129,6 +131,44 @@ func (tc middlewareCombinationTestCase) handlerOrDefault() func(fiber.Ctx) error
 	return func(fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "middleware combination failure")
 	}
+}
+
+func Test_Integration_RequestID_ContextPropagationFlag(t *testing.T) {
+	t.Parallel()
+
+	t.Run("disabled by default", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(requestid.New(requestid.Config{Generator: func() string { return "rid-disabled" }}))
+
+		app.Get("/", func(c fiber.Ctx) error {
+			require.Equal(t, "rid-disabled", requestid.FromContext(c))
+			require.Empty(t, requestid.FromContext(c.Context()))
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("enabled", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New(fiber.Config{PassLocalsToContext: true})
+		app.Use(requestid.New(requestid.Config{Generator: func() string { return "rid-enabled" }}))
+
+		app.Get("/", func(c fiber.Ctx) error {
+			require.Equal(t, "rid-enabled", requestid.FromContext(c))
+			require.Equal(t, "rid-enabled", requestid.FromContext(c.Context()))
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	})
 }
 
 func Test_Integration_App_ServerErrorHandler_MiddlewareCombinationHeaders(t *testing.T) {

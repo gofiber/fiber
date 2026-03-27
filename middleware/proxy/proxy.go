@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"errors"
 	"net/url"
 	"strings"
 	"sync"
@@ -113,11 +114,20 @@ var client = &fasthttp.Client{
 	DisablePathNormalizing:   true,
 }
 
+var (
+	errNilProxyClientOverride = errors.New("proxy: nil client override passed to Do/Forward")
+	errNilGlobalProxyClient   = errors.New("proxy: global client is nil, set a non-nil client with proxy.WithClient")
+)
+
 var lock sync.RWMutex
 
 // WithClient sets the global proxy client.
 // This function should be called before Do and Forward.
 func WithClient(cli *fasthttp.Client) {
+	if cli == nil {
+		panic("proxy: WithClient requires a non-nil *fasthttp.Client")
+	}
+
 	lock.Lock()
 	defer lock.Unlock()
 	client = cli
@@ -170,15 +180,13 @@ func doAction(
 	action func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error,
 	clients ...*fasthttp.Client,
 ) error {
-	var cli *fasthttp.Client
+	lock.RLock()
+	globalClient := client
+	lock.RUnlock()
 
-	// set local or global client
-	if len(clients) != 0 {
-		cli = clients[0]
-	} else {
-		lock.RLock()
-		cli = client
-		lock.RUnlock()
+	cli, err := selectClient(globalClient, clients...)
+	if err != nil {
+		return err
 	}
 
 	req := c.Request()
@@ -200,6 +208,22 @@ func doAction(
 	}
 	res.Header.Del(fiber.HeaderConnection)
 	return nil
+}
+
+func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*fasthttp.Client, error) {
+	if len(clients) != 0 {
+		if clients[0] == nil {
+			return nil, errNilProxyClientOverride
+		}
+
+		return clients[0], nil
+	}
+
+	if globalClient == nil {
+		return nil, errNilGlobalProxyClient
+	}
+
+	return globalClient, nil
 }
 
 func getScheme(uri []byte) []byte {

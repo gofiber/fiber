@@ -5,6 +5,8 @@
 package fiber
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -255,6 +257,69 @@ func Test_Utils_RemoveEscapeChar(t *testing.T) {
 	require.Equal(t, "noEscapeChar", res)
 }
 
+func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		param      string
+		constraint Constraint
+	}{
+		{
+			name:       "minLen invalid metadata",
+			constraint: Constraint{ID: minLenConstraint, Data: []string{"abc"}},
+			param:      "abcd",
+		},
+		{
+			name:       "maxLen invalid metadata",
+			constraint: Constraint{ID: maxLenConstraint, Data: []string{"abc"}},
+			param:      "abcd",
+		},
+		{
+			name:       "len invalid metadata",
+			constraint: Constraint{ID: lenConstraint, Data: []string{"abc"}},
+			param:      "abcd",
+		},
+		{
+			name:       "betweenLen invalid first metadata",
+			constraint: Constraint{ID: betweenLenConstraint, Data: []string{"abc", "5"}},
+			param:      "abcd",
+		},
+		{
+			name:       "betweenLen invalid second metadata",
+			constraint: Constraint{ID: betweenLenConstraint, Data: []string{"1", "abc"}},
+			param:      "abcd",
+		},
+		{
+			name:       "min invalid metadata",
+			constraint: Constraint{ID: minConstraint, Data: []string{"abc"}},
+			param:      "10",
+		},
+		{
+			name:       "max invalid metadata",
+			constraint: Constraint{ID: maxConstraint, Data: []string{"abc"}},
+			param:      "10",
+		},
+		{
+			name:       "range invalid first metadata",
+			constraint: Constraint{ID: rangeConstraint, Data: []string{"abc", "10"}},
+			param:      "7",
+		},
+		{
+			name:       "range invalid second metadata",
+			constraint: Constraint{ID: rangeConstraint, Data: []string{"1", "abc"}},
+			param:      "7",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			require.False(t, testCase.constraint.CheckConstraint(testCase.param))
+		})
+	}
+}
+
 func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 	b.ReportAllocs()
 	var res string
@@ -324,4 +389,76 @@ func Benchmark_RoutePatternMatch(t *testing.B) {
 	for _, testCollection := range benchmarkCases {
 		benchCaseFn(testCollection)
 	}
+}
+
+func Test_Route_TooManyParams_Panic(t *testing.T) {
+	t.Parallel()
+
+	// Test with exactly maxParams (30) - should work
+	t.Run("exactly_maxParams", func(t *testing.T) {
+		t.Parallel()
+		route := paramsRoute(t, maxParams)
+		require.NotPanics(t, func() {
+			parseRoute(route)
+		})
+	})
+
+	// Test with maxParams + 1 (31) - should panic
+	t.Run("maxParams_plus_one", func(t *testing.T) {
+		t.Parallel()
+		route := paramsRoute(t, maxParams+1)
+		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
+			parseRoute(route)
+		})
+	})
+
+	// Test with 35 params - should panic
+	t.Run("35_params", func(t *testing.T) {
+		t.Parallel()
+		route := paramsRoute(t, maxParams+5)
+		require.PanicsWithValue(t, "Route '"+route+"' has 35 parameters, which exceeds the maximum of 30", func() {
+			parseRoute(route)
+		})
+	})
+}
+
+func Test_App_Register_TooManyParams_Panic(t *testing.T) {
+	t.Parallel()
+
+	// Test registering a route with too many params via app
+	t.Run("register_via_Get", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		route := paramsRoute(t, maxParams+1)
+
+		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
+			app.Get(route, func(c Ctx) error {
+				return c.SendString("test")
+			})
+		})
+	})
+
+	// Test registering a route with maxParams works
+	t.Run("register_maxParams_works", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		route := paramsRoute(t, maxParams)
+
+		require.NotPanics(t, func() {
+			app.Get(route, func(c Ctx) error {
+				return c.SendString("test")
+			})
+		})
+	})
+}
+
+// paramsRoute generates a route with n parameters for testing parseRoute maxParams condition.
+// Returns a route in the format "/:p1/:p2/:p3/.../:pN"
+func paramsRoute(t *testing.T, n int) string {
+	t.Helper()
+	params := make([]string, n)
+	for i := range params {
+		params[i] = fmt.Sprintf(":p%d", i+1)
+	}
+	return "/" + strings.Join(params, "/")
 }

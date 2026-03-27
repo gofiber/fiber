@@ -681,6 +681,16 @@ func init() {
 				testCases: []routeTestCase{
 					{url: "/api/v1/entity", params: nil, match: false},
 					{url: "/api/v1/87283827683", params: nil, match: false},
+					{url: "/api/v1/25", params: nil, match: false},
+					{url: "/api/v1/1200", params: nil, match: false},
+					{url: "/api/v1/true", params: nil, match: false},
+				},
+			},
+			{
+				pattern: "/api/v1/:param<range(10,1500)>",
+				testCases: []routeTestCase{
+					{url: "/api/v1/entity", params: nil, match: false},
+					{url: "/api/v1/87283827683", params: nil, match: false},
 					{url: "/api/v1/25", params: []string{"25"}, match: true},
 					{url: "/api/v1/1200", params: []string{"1200"}, match: true},
 					{url: "/api/v1/true", params: nil, match: false},

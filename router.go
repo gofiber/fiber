@@ -5,19 +5,15 @@
 package fiber
 
 import (
-	"bytes"
 	"fmt"
 	"maps"
 	"slices"
 	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 )
-
-// flashCookieNameBytes is a precomputed byte slice for flash cookie detection
-// to avoid string-to-bytes conversion on every request
-var flashCookieNameBytes = []byte(FlashCookieName)
 
 // Router defines all router handle interface, including app and group router.
 type Router interface {
@@ -408,9 +404,8 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		// Optional: Check flash messages
-		rawHeaders := d.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
+		// Optional: check flash messages (hot path, see hasFlashCookie).
+		if hasFlashCookie(&d.Request().Header) {
 			d.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.next(d)
@@ -421,9 +416,8 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		// Optional: Check flash messages
-		rawHeaders := ctx.Request().Header.RawHeaders()
-		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, flashCookieNameBytes) {
+		// Optional: check flash messages (hot path, see hasFlashCookie).
+		if hasFlashCookie(&ctx.Request().Header) {
 			ctx.Redirect().parseAndClearFlashMessages()
 		}
 		_, err = app.nextCustom(ctx)
@@ -432,7 +426,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
 			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
 		}
-		// TODO: Do we need to return here?
+		return
 	}
 }
 
@@ -441,7 +435,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	prettyPath := prefixedPath
 	// Case-sensitive routing, all to lowercase
 	if !app.config.CaseSensitive {
-		prettyPath = utils.ToLower(prettyPath)
+		prettyPath = utilsstrings.ToLower(prettyPath)
 	}
 	// Strict routing, remove trailing slashes
 	if !app.config.StrictRouting && len(prettyPath) > 1 {
@@ -568,7 +562,7 @@ func (app *App) normalizePath(path string) string {
 		path = "/" + path
 	}
 	if !app.config.CaseSensitive {
-		path = utils.ToLower(path)
+		path = utilsstrings.ToLower(path)
 	}
 	if !app.config.StrictRouting && len(path) > 1 {
 		path = utils.TrimRight(path, '/')
@@ -617,7 +611,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 
 	for _, method := range methods {
 		// Uppercase HTTP methods
-		method = utils.ToUpper(method)
+		method = utilsstrings.ToUpper(method)
 
 		// Get unique HTTP method identifier
 		m := app.methodInt(method)
@@ -696,7 +690,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 	pathPretty := pathRaw
 	if !app.config.CaseSensitive {
-		pathPretty = utils.ToLower(pathPretty)
+		pathPretty = utilsstrings.ToLower(pathPretty)
 	}
 	if !app.config.StrictRouting && len(pathPretty) > 1 {
 		pathPretty = utils.TrimRight(pathPretty, '/')
@@ -709,7 +703,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	isMount := group != nil && group.app != app
 
 	for _, method := range methods {
-		method = utils.ToUpper(method)
+		method = utilsstrings.ToUpper(method)
 		if method != methodUse && app.methodInt(method) == -1 {
 			panic(fmt.Sprintf("add: invalid http method %s\n", method))
 		}
@@ -900,10 +894,11 @@ func (app *App) buildTree() *App {
 			prefixCounts[treePaths[i]]++
 		}
 
+		prevBuckets := app.treeStack[method]
 		tsMap := make(map[int][]*Route, len(prefixCounts)+1)
-		tsMap[0] = make([]*Route, 0, globalCount)
+		tsMap[0] = reuseRouteBucket(prevBuckets, 0, globalCount)
 		for treePath, count := range prefixCounts {
-			tsMap[treePath] = make([]*Route, 0, count+globalCount)
+			tsMap[treePath] = reuseRouteBucket(prevBuckets, treePath, count+globalCount)
 		}
 
 		for i, route := range routes {
@@ -925,4 +920,11 @@ func (app *App) buildTree() *App {
 	// reset the flag and return
 	app.routesRefreshed = false
 	return app
+}
+
+func reuseRouteBucket(prev map[int][]*Route, key, capHint int) []*Route {
+	if bucket, ok := prev[key]; ok && cap(bucket) >= capHint {
+		return bucket[:0]
+	}
+	return make([]*Route, 0, capHint)
 }
