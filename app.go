@@ -860,11 +860,11 @@ func (app *App) Parameter(name, in string, required bool, schema map[string]any,
 }
 
 // ParameterWithExample documents an input parameter, including schema references and examples.
-func (app *App) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef string, description string, example any, examples map[string]any) Router {
+func (app *App) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
 	return app.addParameter(name, in, required, schema, schemaRef, description, example, examples)
 }
 
-func (app *App) addParameter(name, in string, required bool, schema map[string]any, schemaRef string, description string, example any, examples map[string]any) Router {
+func (app *App) addParameter(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
 	if strings.TrimSpace(name) == "" {
 		panic("parameter name is required")
 	}

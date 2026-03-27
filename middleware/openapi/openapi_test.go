@@ -3,6 +3,7 @@ package openapi
 import (
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -20,7 +21,7 @@ func Test_OpenAPI_Generate(t *testing.T) {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -47,7 +48,7 @@ func Test_OpenAPI_JSONEquality(t *testing.T) {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -105,7 +106,7 @@ func Test_OpenAPI_RawJSON(t *testing.T) {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -163,7 +164,7 @@ func Test_OpenAPI_RawJSONFile(t *testing.T) {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -214,7 +215,7 @@ func Test_OpenAPI_OperationConfig(t *testing.T) {
 		},
 	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -249,7 +250,7 @@ func Test_OpenAPI_RouteMetadata(t *testing.T) {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -278,7 +279,7 @@ func Test_OpenAPI_RouteRequestBodyAndResponses(t *testing.T) {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -383,7 +384,7 @@ func getPaths(t *testing.T, app *fiber.App) map[string]map[string]any {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -522,7 +523,7 @@ func Test_OpenAPI_GroupMiddleware(t *testing.T) {
 	api.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	api.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/api/v2/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/api/v2/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -538,7 +539,7 @@ func Test_OpenAPI_DoesNotInterceptSimilarPaths(t *testing.T) {
 	app.Use(New())
 	app.Get("/reports/openapi.json", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusAccepted) })
 
-	req := httptest.NewRequest(fiber.MethodGet, "/reports/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/reports/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusAccepted, resp.StatusCode)
@@ -552,7 +553,7 @@ func Test_OpenAPI_RootAndGroupSpecs(t *testing.T) {
 	v1 := app.Group("/v1")
 	v1.Use(New(Config{Title: "group"}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -561,7 +562,7 @@ func Test_OpenAPI_RootAndGroupSpecs(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 	require.Equal(t, "root", spec.Info.Title)
 
-	req = httptest.NewRequest(fiber.MethodGet, "/v1/openapi.json", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/v1/openapi.json", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -584,7 +585,7 @@ func Test_OpenAPI_ConfigValues(t *testing.T) {
 	}
 	app.Use(New(cfg))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/spec.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/spec.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -603,7 +604,7 @@ func Test_OpenAPI_Next(t *testing.T) {
 
 	app.Use(New(Config{Next: func(fiber.Ctx) bool { return true }}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
@@ -672,7 +673,7 @@ func Test_OpenAPI_Cache(t *testing.T) {
 
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -683,7 +684,7 @@ func Test_OpenAPI_Cache(t *testing.T) {
 
 	app.Get("/second", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
-	req = httptest.NewRequest(fiber.MethodGet, "/openapi.json", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)

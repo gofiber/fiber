@@ -64,7 +64,7 @@ type Router interface {
 	Parameter(name, in string, required bool, schema map[string]any, description string) Router
 	// ParameterWithExample documents an input parameter for the most recently
 	// registered route, including schema references and examples.
-	ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef string, description string, example any, examples map[string]any) Router
+	ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router
 	// Response documents an HTTP response for the most recently
 	// registered route.
 	Response(status int, description string, mediaTypes ...string) Router
@@ -82,14 +82,8 @@ type Route struct {
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	group *Group // Group instance. used for routes in groups
 
-	routeParser routeParser // Parameter parser
-
-	Handlers    []Handler                `json:"-"` // Ctx handlers
-	Parameters  []RouteParameter         `json:"parameters"`
 	Responses   map[string]RouteResponse `json:"responses"`
-	RequestBody *RouteRequestBody        `json:"requestBody"` //nolint:tagliatelle
-	Tags        []string                 `json:"tags"`
-	Params      []string                 `json:"params"` // Case-sensitive param keys
+	RequestBody *RouteRequestBody        `json:"requestBody"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 
 	path string // Prettified path
 
@@ -102,7 +96,15 @@ type Route struct {
 	Description string `json:"description"`
 	Consumes    string `json:"consumes"`
 	Produces    string `json:"produces"`
-	Deprecated  bool   `json:"deprecated"`
+
+	Handlers   []Handler        `json:"-"` // Ctx handlers
+	Parameters []RouteParameter `json:"parameters"`
+	Tags       []string         `json:"tags"`
+	Params     []string         `json:"params"` // Case-sensitive param keys
+
+	routeParser routeParser // Parameter parser
+
+	Deprecated bool `json:"deprecated"`
 
 	// Data for routing
 	use      bool // USE matches path prefixes
@@ -115,7 +117,7 @@ type Route struct {
 // RouteParameter describes an input captured by a route.
 type RouteParameter struct {
 	Schema      map[string]any `json:"schema"`
-	SchemaRef   string         `json:"schemaRef,omitempty"`
+	SchemaRef   string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Example     any            `json:"example,omitempty"`
 	Examples    map[string]any `json:"examples,omitempty"`
 	Description string         `json:"description"`
@@ -126,22 +128,22 @@ type RouteParameter struct {
 
 // RouteResponse describes a response emitted by a route.
 type RouteResponse struct {
-	MediaTypes  []string       `json:"mediaTypes"` //nolint:tagliatelle
-	Schema      map[string]any `json:"schema,omitempty"`
-	SchemaRef   string         `json:"schemaRef,omitempty"`
 	Example     any            `json:"example,omitempty"`
+	Schema      map[string]any `json:"schema,omitempty"`
 	Examples    map[string]any `json:"examples,omitempty"`
+	SchemaRef   string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Description string         `json:"description"`
+	MediaTypes  []string       `json:"mediaTypes"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 }
 
 // RouteRequestBody describes the request payload accepted by a route.
 type RouteRequestBody struct {
-	MediaTypes  []string       `json:"mediaTypes"` //nolint:tagliatelle
-	Schema      map[string]any `json:"schema,omitempty"`
-	SchemaRef   string         `json:"schemaRef,omitempty"`
 	Example     any            `json:"example,omitempty"`
+	Schema      map[string]any `json:"schema,omitempty"`
 	Examples    map[string]any `json:"examples,omitempty"`
+	SchemaRef   string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Description string         `json:"description"`
+	MediaTypes  []string       `json:"mediaTypes"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Required    bool           `json:"required"`
 }
 

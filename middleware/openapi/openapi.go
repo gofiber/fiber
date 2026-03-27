@@ -32,7 +32,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		once.Do(func() {
-			spec := generateSpec(c.App(), cfg)
+			spec := generateSpec(c.App(), &cfg)
 			data, genErr = json.Marshal(spec)
 			if genErr != nil {
 				genErr = fmt.Errorf("openapi: marshal spec: %w", genErr)
@@ -77,9 +77,9 @@ func resolvedSpecPath(c fiber.Ctx, cfgPath string) string {
 
 type openAPISpec struct {
 	Paths   map[string]map[string]operation `json:"paths"`
-	Servers []openAPIServer                 `json:"servers,omitempty"`
 	Info    openAPIInfo                     `json:"info"`
 	OpenAPI string                          `json:"openapi"`
+	Servers []openAPIServer                 `json:"servers,omitempty"`
 }
 
 type openAPIInfo struct {
@@ -94,14 +94,15 @@ type openAPIServer struct {
 
 type operation struct {
 	Responses   map[string]response `json:"responses"`
-	RequestBody *requestBody        `json:"requestBody,omitempty"` //nolint:tagliatelle
-	Parameters  []parameter         `json:"parameters,omitempty"`
-	Tags        []string            `json:"tags,omitempty"`
+	RequestBody *requestBody        `json:"requestBody,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 
-	OperationID string `json:"operationId,omitempty"` //nolint:tagliatelle
-	Summary     string `json:"summary"`
-	Description string `json:"description"`
-	Deprecated  bool   `json:"deprecated,omitempty"`
+	OperationID string      `json:"operationId,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Summary     string      `json:"summary"`
+	Description string      `json:"description"`
+	Parameters  []parameter `json:"parameters,omitempty"`
+	Tags        []string    `json:"tags,omitempty"`
+
+	Deprecated bool `json:"deprecated,omitempty"`
 }
 
 type response struct {
@@ -125,7 +126,7 @@ type requestBody struct {
 	Required    bool                      `json:"required,omitempty"`
 }
 
-func generateSpec(app *fiber.App, cfg Config) openAPISpec {
+func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 	paths := make(map[string]map[string]operation)
 	stack := app.Stack()
 
@@ -281,7 +282,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		if param.In == "path" {
 			param.Required = true
 		}
-		params = appendOrReplaceParameter(params, index, param)
+		params = appendOrReplaceParameter(params, index, &param)
 	}
 	return params
 }
@@ -310,22 +311,22 @@ func mergeConfigParameters(params []parameter, index map[string]int, extras []Pa
 		if param.In == "path" {
 			param.Required = true
 		}
-		params = appendOrReplaceParameter(params, index, param)
+		params = appendOrReplaceParameter(params, index, &param)
 	}
 	return params
 }
 
-func appendOrReplaceParameter(params []parameter, index map[string]int, p parameter) []parameter {
+func appendOrReplaceParameter(params []parameter, index map[string]int, p *parameter) []parameter {
 	if p.Name == "" || p.In == "" {
 		return params
 	}
 	key := p.In + ":" + p.Name
 	if idx, ok := index[key]; ok {
-		params[idx] = p
+		params[idx] = *p
 		return params
 	}
 	index[key] = len(params)
-	return append(params, p)
+	return append(params, *p)
 }
 
 func copyAnyMap(src map[string]any) map[string]any {
@@ -337,7 +338,7 @@ func copyAnyMap(src map[string]any) map[string]any {
 	return dst
 }
 
-func schemaFrom(schema map[string]any, schemaRef string, defaultType string) map[string]any {
+func schemaFrom(schema map[string]any, schemaRef, defaultType string) map[string]any {
 	if schemaRef != "" {
 		return map[string]any{"$ref": schemaRef}
 	}
@@ -482,7 +483,7 @@ func buildRequestBody(routeBody *fiber.RouteRequestBody, cfgBody *RequestBody) *
 	return merged
 }
 
-func shouldIncludeRequestBody(reqType string, meta Operation, route *fiber.Route) bool {
+func shouldIncludeRequestBody(reqType string, meta Operation, route *fiber.Route) bool { //nolint:gocritic // route can be nil, pointer is needed
 	if reqType == "" || route == nil {
 		return false
 	}

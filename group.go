@@ -89,7 +89,7 @@ func (grp *Group) Parameter(name, in string, required bool, schema map[string]an
 }
 
 // ParameterWithExample documents an input parameter for the most recently added route in the group with schema references and examples.
-func (grp *Group) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef string, description string, example any, examples map[string]any) Router {
+func (grp *Group) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
 	grp.app.ParameterWithExample(name, in, required, schema, schemaRef, description, example, examples)
 	return grp
 }

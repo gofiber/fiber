@@ -2200,6 +2200,7 @@ func Test_App_Deprecated(t *testing.T) {
 	route := app.stack[app.methodInt(MethodGet)][0]
 	require.True(t, route.Deprecated)
 }
+
 func Benchmark_App_RebuildTree_Parallel(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()

@@ -90,15 +90,16 @@ func configDefault(config ...Config) Config {
 type Operation struct {
 	RequestBody *RequestBody
 	Responses   map[string]Response
-	Parameters  []Parameter
-	Tags        []string
 
 	ID          string
 	Summary     string
 	Description string
 	Consumes    string
 	Produces    string
-	Deprecated  bool
+	Parameters  []Parameter
+	Tags        []string
+
+	Deprecated bool
 }
 
 // Parameter describes a single OpenAPI parameter.
@@ -116,10 +117,10 @@ type Parameter struct {
 
 // Media describes the schema payload for a request or response media type.
 type Media struct {
-	Schema    map[string]any
-	SchemaRef string
-	Examples  map[string]any
 	Example   any
+	Schema    map[string]any
+	Examples  map[string]any
+	SchemaRef string
 }
 
 // Response describes an OpenAPI response object.
