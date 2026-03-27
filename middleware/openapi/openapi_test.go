@@ -708,3 +708,18 @@ func Test_OpenAPI_EmptyRequestBodyContent(t *testing.T) {
 	op := spec.Paths["/test"]["get"]
 	require.Nil(t, op.RequestBody)
 }
+
+func Test_OpenAPI_AutoHeadExcluded(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	// Registering a GET route automatically creates a HEAD route.
+	// The auto-generated HEAD should NOT appear in the spec.
+	app.Get("/items", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+	require.Contains(t, paths, "/items")
+	ops := paths["/items"]
+	require.Contains(t, ops, "get")
+	require.NotContains(t, ops, "head", "auto-generated HEAD route should be excluded")
+}
