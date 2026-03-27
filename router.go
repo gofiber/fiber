@@ -110,6 +110,19 @@ type Route struct {
 	autoHead bool // Automatically generated HEAD route
 }
 
+// IsMiddleware reports whether this route was registered via Use() and
+// therefore matches path prefixes rather than exact paths. This is useful
+// for filtering middleware routes from generated API specifications.
+func (r *Route) IsMiddleware() bool {
+	return r.use
+}
+
+// IsAutoHead reports whether this route was automatically generated as a
+// HEAD counterpart of a GET route.
+func (r *Route) IsAutoHead() bool {
+	return r.autoHead
+}
+
 // RouteParameter describes an input captured by a route.
 type RouteParameter struct {
 	Schema      map[string]any `json:"schema"`
@@ -477,7 +490,7 @@ func (*App) copyRoute(route *Route) *Route {
 		RequestBody: cloneRouteRequestBody(route.RequestBody),
 		Parameters:  cloneRouteParameters(route.Parameters),
 		Responses:   cloneRouteResponses(route.Responses),
-		Tags:        route.Tags,
+		Tags:        append([]string(nil), route.Tags...),
 		Deprecated:  route.Deprecated,
 	}
 }

@@ -56,31 +56,10 @@ func Test_OpenAPI_JSONEquality(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	rootOps := map[string]operation{}
-	for _, m := range app.Config().RequestMethods {
-		if m == fiber.MethodConnect {
-			continue
-		}
-		lower := strings.ToLower(m)
-		upper := strings.ToUpper(m)
-		status, resp := defaultResponseForMethod(m, fiber.MIMETextPlain)
-		op := operation{
-			Summary:     upper + " /",
-			Description: "",
-			Responses:   map[string]response{status: resp},
-		}
-		switch m {
-		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
-		default:
-			op.RequestBody = &requestBody{Content: map[string]map[string]any{fiber.MIMETextPlain: {}}}
-		}
-		rootOps[lower] = op
-	}
 	expected := openAPISpec{
 		OpenAPI: "3.0.0",
 		Info:    openAPIInfo{Title: "Fiber API", Version: "1.0.0"},
 		Paths: map[string]map[string]operation{
-			"/": rootOps,
 			"/users": {
 				"get": {
 					OperationID: "listUsers",
@@ -114,31 +93,10 @@ func Test_OpenAPI_RawJSON(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	rootOps := map[string]operation{}
-	for _, m := range app.Config().RequestMethods {
-		if m == fiber.MethodConnect {
-			continue
-		}
-		lower := strings.ToLower(m)
-		upper := strings.ToUpper(m)
-		status, resp := defaultResponseForMethod(m, fiber.MIMETextPlain)
-		op := operation{
-			Summary:     upper + " /",
-			Description: "",
-			Responses:   map[string]response{status: resp},
-		}
-		switch m {
-		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
-		default:
-			op.RequestBody = &requestBody{Content: map[string]map[string]any{fiber.MIMETextPlain: {}}}
-		}
-		rootOps[lower] = op
-	}
 	expected := openAPISpec{
 		OpenAPI: "3.0.0",
 		Info:    openAPIInfo{Title: "Fiber API", Version: "1.0.0"},
 		Paths: map[string]map[string]operation{
-			"/": rootOps,
 			"/users": {
 				"get": {
 					OperationID: "listUsers",
@@ -501,8 +459,9 @@ func Test_OpenAPI_NoRoutes(t *testing.T) {
 
 	paths := getPaths(t, app)
 
-	require.Len(t, paths, 1)
-	require.Contains(t, paths, "/")
+	// Middleware routes registered via Use() are excluded, so an app with
+	// only the openapi middleware has no paths in the generated spec.
+	require.Empty(t, paths)
 }
 
 func Test_OpenAPI_RootOnly(t *testing.T) {
@@ -705,4 +664,47 @@ func requireSlice(t *testing.T, value any) []any {
 	s, ok := value.([]any)
 	require.True(t, ok)
 	return s
+}
+
+func Test_OpenAPI_MiddlewareRoutesExcluded(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	// Register a middleware using Use() — should be excluded from spec
+	app.Use(func(c fiber.Ctx) error { return c.Next() })
+	// Register an actual route — should be included
+	app.Get("/health", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+	require.Contains(t, paths, "/health")
+	// The middleware path "/" should NOT appear
+	require.NotContains(t, paths, "/")
+}
+
+func Test_OpenAPI_EmptyRequestBodyContent(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	// Provide a config RequestBody with empty Content map — should omit requestBody
+	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{
+		Operations: map[string]Operation{
+			"GET /test": {
+				RequestBody: &RequestBody{
+					Description: "will be omitted",
+					Required:    true,
+					Content:     map[string]Media{},
+				},
+			},
+		},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	op := spec.Paths["/test"]["get"]
+	require.Nil(t, op.RequestBody)
 }

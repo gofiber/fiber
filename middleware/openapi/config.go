@@ -12,7 +12,8 @@ type Config struct {
 	Next func(c fiber.Ctx) bool
 
 	// Operations allows providing per-route metadata keyed by
-	// "METHOD /path" (e.g. "GET /users").
+	// "METHOD /path" where the path uses Fiber's route syntax
+	// (e.g. "GET /users/:id", "POST /items").
 	//
 	// Optional. Default: nil
 	Operations map[string]Operation

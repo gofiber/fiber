@@ -37,7 +37,8 @@ app.Use(openapi.New(openapi.Config{
     ServerURL: "https://example.com",
 }))
 
-// Customize metadata for specific operations
+// Customize metadata for specific operations.
+// Keys use the Fiber route path syntax, e.g. "GET /users/:id".
 app.Use(openapi.New(openapi.Config{
     Operations: map[string]openapi.Operation{
         "GET /users": {
@@ -97,11 +98,11 @@ If no responses are declared, the middleware adds a sensible default: `200 OK` f
 | Description | `string`                | Description is the description for the generated specification. | `""`             |
 | ServerURL   | `string`                | ServerURL is the server URL used in the generated specification.| `""`             |
 | Path        | `string`                | Path is the route where the specification will be served.       | `"/openapi.json"` |
-| Operations  | `map[string]Operation`  | Per-route metadata keyed by `METHOD /path`.                     | `nil`             |
+| Operations  | `map[string]Operation`  | Per-route metadata keyed by `METHOD /path` using Fiber route syntax (e.g. `GET /users/:id`). | `nil`             |
 
 When the middleware is attached to a group or mounted under a prefixed `Use`, the configured `Path` is resolved relative to that
-prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global `app.U
-se(openapi.New())` only intercepts `/openapi.json` and will not affect other endpoints ending in `openapi.json`.
+prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global
+`app.Use(openapi.New())` only intercepts `/openapi.json` and will not affect other endpoints ending in `openapi.json`.
 
 ## Default Config
 

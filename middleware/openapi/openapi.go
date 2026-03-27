@@ -135,25 +135,13 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 			if r.Method == fiber.MethodConnect {
 				continue
 			}
+			// Skip middleware routes registered via Use()
+			if r.IsMiddleware() {
+				continue
+			}
 			// Skip automatically generated HEAD routes
-			if r.Method == fiber.MethodHead && r.Name != "" {
-				// Check if there's a GET route with the same name
-				// Auto-generated HEAD routes share the same name as their GET counterpart
-				hasMatchingGet := false
-				for _, checkRoutes := range stack {
-					for _, checkRoute := range checkRoutes {
-						if checkRoute.Method == fiber.MethodGet && checkRoute.Name == r.Name && checkRoute.Path == r.Path {
-							hasMatchingGet = true
-							break
-						}
-					}
-					if hasMatchingGet {
-						break
-					}
-				}
-				if hasMatchingGet {
-					continue
-				}
+			if r.IsAutoHead() {
+				continue
 			}
 
 			path := r.Path
@@ -479,6 +467,11 @@ func buildRequestBody(routeBody *fiber.RouteRequestBody, cfgBody *RequestBody) *
 				}
 			}
 		}
+	}
+	// Omit requestBody entirely when content could not be built, as the
+	// OpenAPI specification requires at least one media type in content.
+	if merged != nil && len(merged.Content) == 0 {
+		return nil
 	}
 	return merged
 }
