@@ -979,6 +979,35 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 	return grp
 }
 
+// Domain creates a new router scoped to the given hostname pattern. Routes
+// registered through the returned Router only match requests whose hostname
+// (from c.Hostname()) matches the pattern. When TrustProxy is enabled and the
+// proxy is trusted, the hostname may be derived from the X-Forwarded-Host header.
+// The pattern can contain parameters prefixed with ":" whose values are accessible
+// via [DomainParam].
+//
+// Domain routing has zero performance impact on routes that don't use it because
+// the hostname check is applied as a handler wrapper, not a core router change.
+//
+// To prevent header spoofing, configure Config.TrustProxy together with Config.TrustProxyConfig
+// (trusted proxy IPs/ranges) and, where appropriate, Config.ProxyHeader; see:
+// https://docs.gofiber.io/api/fiber#trustproxy
+//
+//	// Static domain
+//	app.Domain("api.example.com").Get("/users", listUsers)
+//
+//	// Domain with parameter
+//	app.Domain(":user.example.com").Get("/", func(c fiber.Ctx) error {
+//	    user := fiber.DomainParam(c, "user")
+//	    return c.SendString("Hello, " + user)
+//	})
+func (app *App) Domain(host string) Router {
+	return &domainRouter{
+		app:     app,
+		matcher: parseDomainPattern(host),
+	}
+}
+
 // RouteChain creates a Registering instance that lets you declare a stack of
 // handlers for the same route. Handlers defined via the returned Register are
 // scoped to the provided path.
