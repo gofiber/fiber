@@ -198,7 +198,7 @@ commonLogger := log.WithContext(ctx)
 commonLogger.Info("info")
 ```
 
-Context binding adds request-specific data for easier tracing. The method accepts `fiber.Ctx`, `*fasthttp.RequestCtx`, or `context.Context`. When using standard `context.Context` instances (such as `c.Context()`), enable `PassLocalsToContext` in the app config so that values stored in `fiber.Ctx.Locals` are propagated through the context chain.
+Context binding adds request-specific data for easier tracing. The method accepts any context type supported by Fiber's `ValueFromContext` utility, including `fiber.Ctx` and `context.Context`. When using standard `context.Context` instances (such as `c.Context()`), enable `PassLocalsToContext` in the app config so that values stored in `fiber.Ctx.Locals` are propagated through the context chain.
 
 ### Automatic Context Fields
 
@@ -253,7 +253,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 - Context fields are prepended to the log message in `key=value` format
 - The fields are extracted once per log call and added before the message
-- Works with any logger that implements the `AllLogger` interface
+- Context extraction only works with the default logger implementation. If you set a custom logger using `log.SetLogger()`, you must implement context field extraction yourself
 - For JSON or structured logging, use the `Logw` methods (e.g., `log.WithContext(c).Infow("message", "key", "value")`) which preserve field structure
 - Context fields are always included when using `log.WithContext()`, regardless of how many times you call the logger in a handler
 

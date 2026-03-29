@@ -122,16 +122,26 @@ func Test_RequestID_CustomGenerator(t *testing.T) {
 func Test_isValidRequestID_VisibleASCII(t *testing.T) {
 	t.Parallel()
 
-	require.True(t, isValidRequestID("request-id-09AZaz ~"))
+	// Space and equals are now rejected for security (log injection prevention)
+	require.True(t, isValidRequestID("request-id-09AZaz~"))
 }
 
 func Test_isValidRequestID_Boundaries(t *testing.T) {
 	t.Parallel()
 
-	t.Run("allows space and tilde", func(t *testing.T) {
+	t.Run("rejects space and equals for security", func(t *testing.T) {
 		t.Parallel()
 
-		require.True(t, isValidRequestID(" ~"))
+		// Space and equals are rejected to prevent log injection attacks
+		require.False(t, isValidRequestID(" ~"))
+		require.False(t, isValidRequestID("id=value"))
+		require.False(t, isValidRequestID("id with spaces"))
+	})
+
+	t.Run("allows tilde", func(t *testing.T) {
+		t.Parallel()
+
+		require.True(t, isValidRequestID("~"))
 	})
 
 	t.Run("rejects out of range", func(t *testing.T) {

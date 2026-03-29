@@ -1217,7 +1217,7 @@ app.Use(logger.New(logger.Config{
 
 ### Context-Aware Logging
 
-`log.WithContext` now automatically includes context fields extracted by middleware. The method accepts `fiber.Ctx`, `*fasthttp.RequestCtx`, or `context.Context`, making it flexible and consistent with Fiber's context handling throughout the framework.
+`log.WithContext` now automatically includes context fields extracted by middleware. The method accepts any context type supported by Fiber's `ValueFromContext` utility, including `fiber.Ctx` and `context.Context`.
 
 Middleware such as `requestid`, `basicauth`, `keyauth`, `csrf`, and `session` register extractors when their `New()` constructor is called. When you pass a context to `log.WithContext`, registered fields are prepended to every log entry.
 

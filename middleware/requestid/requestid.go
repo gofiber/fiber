@@ -74,7 +74,9 @@ func sanitizeRequestID(rid string, generator func() string) string {
 }
 
 // isValidRequestID reports whether the request ID contains only visible ASCII
-// characters (0x20–0x7E) and is non-empty.
+// characters (0x21–0x7E) excluding space (0x20) and equals sign (0x3D),
+// and is non-empty. This prevents log injection attacks where malicious
+// request IDs could manipulate structured log output.
 func isValidRequestID(rid string) bool {
 	if rid == "" {
 		return false
@@ -82,7 +84,8 @@ func isValidRequestID(rid string) bool {
 
 	for i := 0; i < len(rid); i++ {
 		c := rid[i]
-		if c < 0x20 || c > 0x7e {
+		// Reject control characters, space (0x20), equals (0x3D), and non-ASCII
+		if c <= 0x20 || c == '=' || c > 0x7e {
 			return false
 		}
 	}
