@@ -709,6 +709,33 @@ func Test_OpenAPI_EmptyRequestBodyContent(t *testing.T) {
 	require.Nil(t, op.RequestBody)
 }
 
+func Test_OpenAPI_SuppressRequestBodyForPOST(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	// A POST route would normally get an auto-inserted requestBody.
+	// Providing a non-nil RequestBody with empty Content should suppress it.
+	app.Post("/webhook", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{
+		Operations: map[string]Operation{
+			"POST /webhook": {
+				RequestBody: &RequestBody{
+					Content: map[string]Media{},
+				},
+			},
+		},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	op := spec.Paths["/webhook"]["post"]
+	require.Nil(t, op.RequestBody, "POST with empty Content config should have no requestBody")
+}
+
 func Test_OpenAPI_AutoHeadExcluded(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

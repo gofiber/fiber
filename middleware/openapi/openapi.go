@@ -197,12 +197,16 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 
 			reqBody := buildRequestBody(r.RequestBody, meta.RequestBody)
 			if reqBody == nil {
-				reqType := meta.Consumes
-				if reqType == "" {
-					reqType = r.Consumes
-				}
-				if shouldIncludeRequestBody(reqType, meta, r) {
-					reqBody = &requestBody{Content: map[string]map[string]any{reqType: {}}}
+				// If a non-nil RequestBody with an empty Content map is provided in the config,
+				// treat it as an explicit override meaning "no request body" and skip defaults.
+				if meta.RequestBody == nil || len(meta.RequestBody.Content) > 0 {
+					reqType := meta.Consumes
+					if reqType == "" {
+						reqType = r.Consumes
+					}
+					if shouldIncludeRequestBody(reqType, meta, r) {
+						reqBody = &requestBody{Content: map[string]map[string]any{reqType: {}}}
+					}
 				}
 			}
 
