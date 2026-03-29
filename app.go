@@ -1037,13 +1037,12 @@ func sanitizeRequiredMediaTypes(mediaTypes []string) []string {
 // Tags assigns tags to the most recently added route.
 func (app *App) Tags(tags ...string) Router {
 	app.mutex.Lock()
+	var copied []string
 	if len(tags) > 0 {
-		copied := make([]string, len(tags))
+		copied = make([]string, len(tags))
 		copy(copied, tags)
-		app.latestRoute.Tags = copied
-	} else {
-		app.latestRoute.Tags = nil
 	}
+	app.latestRoute.Tags = copied
 	app.mutex.Unlock()
 	return app
 }
