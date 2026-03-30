@@ -26,8 +26,15 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// Initialize default config. Register the middleware *after* all routes
-// so that the spec includes every handler.
+// Initialize default config.
+//
+// The middleware inspects the app's routes and generates the OpenAPI spec
+// the first time a matching request (for example, GET /openapi.json) is served.
+// That spec is then cached for the lifetime of the process, so any routes
+// registered after the first OpenAPI request will not appear in the spec.
+//
+// To avoid surprises, register the middleware *after* all routes have been
+// added and before you start serving traffic.
 app.Use(openapi.New())
 
 // Or extend your config for customization

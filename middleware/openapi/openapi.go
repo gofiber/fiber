@@ -144,12 +144,11 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 				continue
 			}
 
-			path := r.Path
+			path := convertToOpenAPIPath(r.Path, r.Params)
 			params := make([]parameter, 0, len(r.Params))
 			paramIndex := make(map[string]int, len(r.Params))
 			if len(r.Params) > 0 {
 				for _, p := range r.Params {
-					path = strings.Replace(path, ":"+p, "{"+p+"}", 1)
 					param := parameter{
 						Name:     p,
 						In:       "path",
@@ -309,7 +308,7 @@ func mergeConfigParameters(params []parameter, index map[string]int, extras []Pa
 }
 
 func appendOrReplaceParameter(params []parameter, index map[string]int, p *parameter) []parameter {
-	if p.Name == "" || p.In == "" {
+	if p == nil || p.Name == "" || p.In == "" {
 		return params
 	}
 	key := p.In + ":" + p.Name
@@ -517,4 +516,89 @@ func defaultResponseForMethod(method, mediaType string) (string, response) {
 		}
 	}
 	return status, resp
+}
+
+// convertToOpenAPIPath converts Fiber route path patterns to OpenAPI path templates.
+// It handles parameter constraints (:id<int>), wildcards (*), plus params (+), and optional markers (?).
+// Examples:
+//   - /users/:id<int> -> /users/{id}
+//   - /files/* -> /files/{wildcard}
+//   - /items/:id? -> /items/{id}
+//   - /posts/:slug+ -> /posts/{slug}
+func convertToOpenAPIPath(fiberPath string, params []string) string {
+	if len(params) == 0 && !strings.ContainsAny(fiberPath, ":*+") {
+		return fiberPath
+	}
+
+	// Build a map of parameter names for quick lookup
+	paramSet := make(map[string]struct{}, len(params))
+	for _, p := range params {
+		paramSet[p] = struct{}{}
+	}
+
+	var result strings.Builder
+	result.Grow(len(fiberPath))
+	i := 0
+	length := len(fiberPath)
+
+	for i < length {
+		ch := fiberPath[i]
+
+		switch ch {
+		case ':':
+			// Named parameter - extract name until we hit a constraint, optional marker, or delimiter
+			i++
+			paramStart := i
+			for i < length {
+				c := fiberPath[i]
+				if c == '<' || c == '?' || c == '/' || c == '-' || c == '.' {
+					break
+				}
+				i++
+			}
+			paramName := fiberPath[paramStart:i]
+
+			// Skip constraints like <int>, <regex(...)>, etc.
+			if i < length && fiberPath[i] == '<' {
+				depth := 1
+				i++ // skip '<'
+				for i < length && depth > 0 {
+					switch fiberPath[i] {
+					case '<':
+						depth++
+					case '>':
+						depth--
+					default:
+						// Other characters inside constraints are ignored
+					}
+					i++
+				}
+			}
+
+			// Skip optional marker '?'
+			if i < length && fiberPath[i] == '?' {
+				i++
+			}
+
+			// Write OpenAPI parameter placeholder
+			if paramName != "" {
+				_ = result.WriteByte('{')            //nolint:errcheck // strings.Builder.WriteByte never returns an error
+				_, _ = result.WriteString(paramName) //nolint:errcheck // strings.Builder.WriteString never returns an error
+				_ = result.WriteByte('}')            //nolint:errcheck // strings.Builder.WriteByte never returns an error
+			}
+
+		case '*', '+':
+			// Wildcard or plus param - use a generic name
+			// In Fiber, * and + are greedy params that match everything
+			// We represent them as {wildcard} or the named param if it exists
+			_, _ = result.WriteString("{wildcard}") //nolint:errcheck // strings.Builder.WriteString never returns an error
+			i++
+
+		default:
+			_ = result.WriteByte(ch) //nolint:errcheck // strings.Builder.WriteByte never returns an error
+			i++
+		}
+	}
+
+	return result.String()
 }

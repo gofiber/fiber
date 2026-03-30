@@ -825,6 +825,7 @@ func (app *App) Description(desc string) Router {
 // Consumes assigns a request media type to the most recently added route.
 func (app *App) Consumes(typ string) Router {
 	if typ != "" {
+		typ = strings.TrimSpace(typ)
 		if _, _, err := mime.ParseMediaType(typ); err != nil || !strings.Contains(typ, "/") {
 			panic("invalid media type: " + typ)
 		}
@@ -838,6 +839,7 @@ func (app *App) Consumes(typ string) Router {
 // Produces assigns a response media type to the most recently added route.
 func (app *App) Produces(typ string) Router {
 	if typ != "" {
+		typ = strings.TrimSpace(typ)
 		if _, _, err := mime.ParseMediaType(typ); err != nil || !strings.Contains(typ, "/") {
 			panic("invalid media type: " + typ)
 		}

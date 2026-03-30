@@ -750,3 +750,74 @@ func Test_OpenAPI_AutoHeadExcluded(t *testing.T) {
 	require.Contains(t, ops, "get")
 	require.NotContains(t, ops, "head", "auto-generated HEAD route should be excluded")
 }
+
+func Test_ConvertToOpenAPIPath(t *testing.T) {
+	tests := []struct {
+		name       string
+		fiberPath  string
+		expectPath string
+		params     []string
+	}{
+		{
+			name:       "simple path no params",
+			fiberPath:  "/users",
+			params:     nil,
+			expectPath: "/users",
+		},
+		{
+			name:       "parameter with constraint",
+			fiberPath:  "/users/:id<int>",
+			params:     []string{"id"},
+			expectPath: "/users/{id}",
+		},
+		{
+			name:       "parameter with regex constraint",
+			fiberPath:  "/posts/:slug<regex([a-z]+)>",
+			params:     []string{"slug"},
+			expectPath: "/posts/{slug}",
+		},
+		{
+			name:       "optional parameter",
+			fiberPath:  "/items/:id?",
+			params:     []string{"id"},
+			expectPath: "/items/{id}",
+		},
+		{
+			name:       "wildcard param",
+			fiberPath:  "/files/*",
+			params:     []string{"*"},
+			expectPath: "/files/{wildcard}",
+		},
+		{
+			name:       "plus param",
+			fiberPath:  "/docs/+",
+			params:     []string{"+"},
+			expectPath: "/docs/{wildcard}",
+		},
+		{
+			name:       "multiple params with constraints",
+			fiberPath:  "/api/:version<int>/:resource/:id<int>",
+			params:     []string{"version", "resource", "id"},
+			expectPath: "/api/{version}/{resource}/{id}",
+		},
+		{
+			name:       "param with dot delimiter",
+			fiberPath:  "/files/:name.:ext",
+			params:     []string{"name", "ext"},
+			expectPath: "/files/{name}.{ext}",
+		},
+		{
+			name:       "param with dash delimiter",
+			fiberPath:  "/users/:firstName-:lastName",
+			params:     []string{"firstName", "lastName"},
+			expectPath: "/users/{firstName}-{lastName}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := convertToOpenAPIPath(tt.fiberPath, tt.params)
+			require.Equal(t, tt.expectPath, result)
+		})
+	}
+}
