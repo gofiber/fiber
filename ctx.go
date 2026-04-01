@@ -541,7 +541,7 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	}
 
 	if buf.Len() > maxUploadSize {
-		return fmt.Errorf("failed to read file %s: %w", fileheader.Filename, fasthttp.ErrBodyTooLarge)
+		return fmt.Errorf("failed to read file %q: %w", fileheader.Filename, fasthttp.ErrBodyTooLarge)
 	}
 
 	data := append([]byte(nil), buf.Bytes()...)
