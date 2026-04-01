@@ -537,7 +537,7 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 
 	limitedReader := io.LimitReader(file, int64(maxUploadSize)+1)
 	if _, err = buf.ReadFrom(limitedReader); err != nil {
-		return fmt.Errorf("failed to read file %s: %w", fileheader.Filename, err)
+		return fmt.Errorf("failed to read file %q: %w", fileheader.Filename, err)
 	}
 
 	if buf.Len() > maxUploadSize {
