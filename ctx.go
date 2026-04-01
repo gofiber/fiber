@@ -529,7 +529,7 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	}
 
 	if fileheader.Size > 0 && fileheader.Size > int64(maxUploadSize) {
-		return fmt.Errorf("failed to read file %s: %w", fileheader.Filename, fasthttp.ErrBodyTooLarge)
+		return fmt.Errorf("failed to read file %q: %w", fileheader.Filename, fasthttp.ErrBodyTooLarge)
 	}
 
 	buf := bytebufferpool.Get()
