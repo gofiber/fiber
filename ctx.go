@@ -517,9 +517,13 @@ func (*DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) error
 
 // SaveFileToStorage saves any multipart file to an external storage system.
 func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
+	if fileheader == nil {
+		return fmt.Errorf("fileheader is nil")
+	}
+
 	file, err := fileheader.Open()
 	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", fileheader.Filename, err)
+		return fmt.Errorf("failed to open file %q: %w", fileheader.Filename, err)
 	}
 	defer file.Close() //nolint:errcheck // not needed
 
@@ -547,7 +551,7 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	data := append([]byte(nil), buf.Bytes()...)
 
 	if err := storage.SetWithContext(c.Context(), path, data, 0); err != nil {
-		return fmt.Errorf("failed to store file %s at %s: %w", fileheader.Filename, path, err)
+		return fmt.Errorf("failed to store file %q at %q: %w", fileheader.Filename, path, err)
 	}
 
 	return nil
