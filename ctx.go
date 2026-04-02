@@ -518,12 +518,12 @@ func (*DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) error
 // SaveFileToStorage saves any multipart file to an external storage system.
 func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
 	if fileheader == nil {
-		return fmt.Errorf("fileheader is nil")
+		return ErrFileHeaderNil
 	}
 
 	file, err := fileheader.Open()
 	if err != nil {
-		return fmt.Errorf("failed to open file %q: %w", fileheader.Filename, err)
+		return fmt.Errorf("%w: %q: %v", ErrFileOpen, fileheader.Filename, err)
 	}
 	defer file.Close() //nolint:errcheck // not needed
 
@@ -533,7 +533,7 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	}
 
 	if fileheader.Size > 0 && fileheader.Size > int64(maxUploadSize) {
-		return fmt.Errorf("failed to read file %q: %w", fileheader.Filename, fasthttp.ErrBodyTooLarge)
+		return fmt.Errorf("%w: %q: %v", ErrFileRead, fileheader.Filename, fasthttp.ErrBodyTooLarge)
 	}
 
 	buf := bytebufferpool.Get()
@@ -541,17 +541,17 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 
 	limitedReader := io.LimitReader(file, int64(maxUploadSize)+1)
 	if _, err = buf.ReadFrom(limitedReader); err != nil {
-		return fmt.Errorf("failed to read file %q: %w", fileheader.Filename, err)
+		return fmt.Errorf("%w: %q: %v", ErrFileRead, fileheader.Filename, err)
 	}
 
 	if buf.Len() > maxUploadSize {
-		return fmt.Errorf("failed to read file %q: %w", fileheader.Filename, fasthttp.ErrBodyTooLarge)
+		return fmt.Errorf("%w: %q: %v", ErrFileRead, fileheader.Filename, fasthttp.ErrBodyTooLarge)
 	}
 
 	data := append([]byte(nil), buf.Bytes()...)
 
 	if err := storage.SetWithContext(c.Context(), path, data, 0); err != nil {
-		return fmt.Errorf("failed to store file %q at %q: %w", fileheader.Filename, path, err)
+		return fmt.Errorf("%w: %q to %q: %v", ErrFileStore, fileheader.Filename, path, err)
 	}
 
 	return nil

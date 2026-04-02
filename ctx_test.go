@@ -5117,7 +5117,7 @@ func Test_Ctx_SaveFileToStorage_NilFileHeader(t *testing.T) {
 	err := ctx.SaveFileToStorage(nil, "test", storage)
 
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "nil")
+	require.ErrorIs(t, err, ErrFileHeaderNil)
 }
 
 func Test_Ctx_SaveFileToStorage_ErrorMessageContainsFilename(t *testing.T) {
