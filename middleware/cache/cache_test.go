@@ -5091,3 +5091,108 @@ func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 		require.Equal(t, cacheMiss, rsp2.Header.Get("X-Cache"))
 	})
 }
+
+func Test_Cache_hasDirective(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		cc        string
+		directive string
+		expected  bool
+	}{
+		{
+			name:      "directive at end of string",
+			cc:        "no-cache",
+			directive: "no-cache",
+			expected:  true,
+		},
+		{
+			name:      "directive before comma",
+			cc:        "no-cache, no-store",
+			directive: "no-cache",
+			expected:  true,
+		},
+		{
+			name:      "directive after comma",
+			cc:        "no-store, no-cache",
+			directive: "no-cache",
+			expected:  true,
+		},
+		{
+			name:      "directive not present",
+			cc:        "no-store, public",
+			directive: "no-cache",
+			expected:  false,
+		},
+		{
+			name:      "trailing space",
+			cc:        "no-cache ",
+			directive: "no-cache",
+			expected:  true,
+		},
+		{
+			name:      "trailing tab",
+			cc:        "no-cache\t",
+			directive: "no-cache",
+			expected:  true,
+		},
+		{
+			name:      "directive with value using equals",
+			cc:        `no-cache="Set-Cookie"`,
+			directive: "no-cache",
+			expected:  true,
+		},
+		{
+			name:      "max-age with value",
+			cc:        "max-age=604800",
+			directive: "max-age",
+			expected:  true,
+		},
+		{
+			name:      "private with trailing space",
+			cc:        "private ",
+			directive: "private",
+			expected:  true,
+		},
+		{
+			name:      "s-maxage with value in middle",
+			cc:        "public, s-maxage=3600, must-revalidate",
+			directive: "s-maxage",
+			expected:  true,
+		},
+
+		{
+			name:      "partial match should fail",
+			cc:        "no-cache-extended",
+			directive: "no-cache",
+			expected:  false,
+		},
+		{
+			name:      "directive in middle with spaces",
+			cc:        "public, no-cache , max-age=60",
+			directive: "no-cache",
+			expected:  true,
+		},
+		{
+			name:      "empty string",
+			cc:        "",
+			directive: "no-cache",
+			expected:  false,
+		},
+		{
+			name:      "case insensitive match",
+			cc:        "No-Cache",
+			directive: "no-cache",
+			expected:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := hasDirective(tt.cc, tt.directive)
+			require.Equal(t, tt.expected, got)
+		})
+	}
+}

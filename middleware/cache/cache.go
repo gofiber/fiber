@@ -907,23 +907,16 @@ func New(config ...Config) fiber.Handler {
 
 // hasDirective checks if a cache-control header contains a directive (case-insensitive)
 func hasDirective(cc, directive string) bool {
-	ccLen := len(cc)
-	dirLen := len(directive)
-	for i := 0; i <= ccLen-dirLen; i++ {
-		if !utils.EqualFold(cc[i:i+dirLen], directive) {
-			continue
-		}
-		if i > 0 {
-			prev := cc[i-1]
-			if prev != ' ' && prev != ',' {
-				continue
-			}
-		}
-		if i+dirLen == ccLen || cc[i+dirLen] == ',' {
+	for _, part := range strings.Split(cc, ",") {
+		part = strings.TrimSpace(part)
+
+		key, _, _ := strings.Cut(part, "=")
+		key = strings.TrimSpace(key)
+
+		if strings.EqualFold(key, directive) {
 			return true
 		}
 	}
-
 	return false
 }
 
