@@ -75,13 +75,13 @@ import (
 
 // JSON format
 app.Get(healthcheck.LivenessEndpoint, healthcheck.New(healthcheck.Config{
-    ResponseFormat: healthcheck.ResponseFormatJSON,
+    ResponseFormat: healthcheck.FormatJSON,
 }))
 // Response: {"status":"OK"}
 
 // XML format
 app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
-    ResponseFormat: healthcheck.ResponseFormatXML,
+    ResponseFormat: healthcheck.FormatXML,
 }))
 // Response: <healthResponse><status>OK</status></healthResponse>
 ```
@@ -100,7 +100,7 @@ app := fiber.New(fiber.Config{
 })
 
 app.Get(healthcheck.LivenessEndpoint, healthcheck.New(healthcheck.Config{
-    ResponseFormat: healthcheck.ResponseFormatMsgPack,
+    ResponseFormat: healthcheck.FormatMsgPack,
 }))
 ```
 
@@ -125,7 +125,7 @@ type Config struct {
     // ResponseFormat specifies the format of the healthcheck response.
     // Supported formats: Text (default), JSON, XML, MsgPack, CBOR.
     //
-    // Optional. Default: ResponseFormatText
+    // Optional. Default: FormatText
     ResponseFormat ResponseFormat
 }
 ```
@@ -134,11 +134,11 @@ type Config struct {
 
 ```go
 const (
-    ResponseFormatText    // Plain text response (default)
-    ResponseFormatJSON    // JSON response
-    ResponseFormatXML     // XML response
-    ResponseFormatMsgPack // MessagePack response
-    ResponseFormatCBOR    // CBOR response
+    FormatText    // Plain text response (default)
+    FormatJSON    // JSON response
+    FormatXML     // XML response
+    FormatMsgPack // MessagePack response
+    FormatCBOR    // CBOR response
 )
 ```
 

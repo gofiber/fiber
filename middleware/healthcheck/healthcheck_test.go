@@ -237,7 +237,7 @@ func Test_HealthCheck_Text_Format(t *testing.T) {
 	// Test default format (text)
 	app.Get("/livez", New())
 	app.Get("/readyz", New(Config{
-		ResponseFormat: ResponseFormatText,
+		ResponseFormat: FormatText,
 		Probe: func(_ fiber.Ctx) bool {
 			return false
 		},
@@ -272,10 +272,10 @@ func Test_HealthCheck_JSON_Format(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/livez", New(Config{
-		ResponseFormat: ResponseFormatJSON,
+		ResponseFormat: FormatJSON,
 	}))
 	app.Get("/readyz", New(Config{
-		ResponseFormat: ResponseFormatJSON,
+		ResponseFormat: FormatJSON,
 		Probe: func(_ fiber.Ctx) bool {
 			return false
 		},
@@ -310,10 +310,10 @@ func Test_HealthCheck_XML_Format(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/livez", New(Config{
-		ResponseFormat: ResponseFormatXML,
+		ResponseFormat: FormatXML,
 	}))
 	app.Get("/readyz", New(Config{
-		ResponseFormat: ResponseFormatXML,
+		ResponseFormat: FormatXML,
 		Probe: func(_ fiber.Ctx) bool {
 			return false
 		},
@@ -352,10 +352,10 @@ func Test_HealthCheck_MsgPack_Format(t *testing.T) {
 	})
 
 	app.Get("/livez", New(Config{
-		ResponseFormat: ResponseFormatMsgPack,
+		ResponseFormat: FormatMsgPack,
 	}))
 	app.Get("/readyz", New(Config{
-		ResponseFormat: ResponseFormatMsgPack,
+		ResponseFormat: FormatMsgPack,
 		Probe: func(_ fiber.Ctx) bool {
 			return false
 		},
@@ -382,10 +382,10 @@ func Test_HealthCheck_CBOR_Format(t *testing.T) {
 	})
 
 	app.Get("/livez", New(Config{
-		ResponseFormat: ResponseFormatCBOR,
+		ResponseFormat: FormatCBOR,
 	}))
 	app.Get("/readyz", New(Config{
-		ResponseFormat: ResponseFormatCBOR,
+		ResponseFormat: FormatCBOR,
 		Probe: func(_ fiber.Ctx) bool {
 			return false
 		},

@@ -38,15 +38,15 @@ func New(config ...Config) fiber.Handler {
 
 		// Return response based on configured format
 		switch cfg.ResponseFormat {
-		case ResponseFormatJSON:
+		case FormatJSON:
 			return c.JSON(healthResponse{Status: statusMessage})
-		case ResponseFormatXML:
+		case FormatXML:
 			return c.XML(healthResponse{Status: statusMessage})
-		case ResponseFormatMsgPack:
+		case FormatMsgPack:
 			return c.MsgPack(healthResponse{Status: statusMessage})
-		case ResponseFormatCBOR:
+		case FormatCBOR:
 			return c.CBOR(healthResponse{Status: statusMessage})
-		default: // ResponseFormatText
+		default: // FormatText
 			return c.SendString(statusMessage)
 		}
 	}

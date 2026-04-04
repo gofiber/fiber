@@ -8,16 +8,16 @@ import (
 type ResponseFormat int
 
 const (
-	// ResponseFormatText returns a plain text response (default behavior).
-	ResponseFormatText ResponseFormat = iota
-	// ResponseFormatJSON returns a JSON response.
-	ResponseFormatJSON
-	// ResponseFormatXML returns an XML response.
-	ResponseFormatXML
-	// ResponseFormatMsgPack returns a MessagePack response.
-	ResponseFormatMsgPack
-	// ResponseFormatCBOR returns a CBOR response.
-	ResponseFormatCBOR
+	// FormatText returns a plain text response (default behavior).
+	FormatText ResponseFormat = iota
+	// FormatJSON returns a JSON response.
+	FormatJSON
+	// FormatXML returns an XML response.
+	FormatXML
+	// FormatMsgPack returns a MessagePack response.
+	FormatMsgPack
+	// FormatCBOR returns a CBOR response.
+	FormatCBOR
 )
 
 // Config defines the configuration options for the healthcheck middleware.
@@ -38,7 +38,7 @@ type Config struct {
 	// ResponseFormat specifies the format of the healthcheck response.
 	// Supported formats: Text (default), JSON, XML, MsgPack, CBOR.
 	//
-	// Optional. Default: ResponseFormatText
+	// Optional. Default: FormatText
 	ResponseFormat ResponseFormat
 }
 
