@@ -18,6 +18,8 @@ app.Get(healthcheck.StartupEndpoint, healthcheck.New())
 
 By default the probe returns `true`, so each endpoint responds with `200 OK`; returning `false` yields `503 Service Unavailable`.
 
+The default response format is plain text, but you can configure the middleware to return responses in JSON, XML, MessagePack, or CBOR formats.
+
 - **Liveness**: Checks if the server is running.
 - **Readiness**: Checks if the application is ready to handle requests.
 - **Startup**: Checks if the application has completed its startup sequence.
@@ -61,6 +63,47 @@ The middleware responds only to GET. Use `app.All` to expose a probe on every me
 app.All("/healthz", healthcheck.New())
 ```
 
+### Response Formats
+
+You can configure the response format using the `ResponseFormat` field in the config:
+
+```go
+import (
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/healthcheck"
+)
+
+// JSON format
+app.Get(healthcheck.LivenessEndpoint, healthcheck.New(healthcheck.Config{
+    ResponseFormat: healthcheck.ResponseFormatJSON,
+}))
+// Response: {"status":"OK"}
+
+// XML format
+app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
+    ResponseFormat: healthcheck.ResponseFormatXML,
+}))
+// Response: <healthResponse><status>OK</status></healthResponse>
+```
+
+**Note:** MessagePack and CBOR formats require configuring the appropriate encoders in your Fiber app:
+
+```go
+import (
+    "github.com/fxamacker/cbor/v2"
+    "github.com/shamaton/msgpack/v3"
+)
+
+app := fiber.New(fiber.Config{
+    MsgPackEncoder: msgpack.Marshal,
+    CBOREncoder:    cbor.Marshal,
+})
+
+app.Get(healthcheck.LivenessEndpoint, healthcheck.New(healthcheck.Config{
+    ResponseFormat: healthcheck.ResponseFormatMsgPack,
+}))
+```
+
 ## Config
 
 ```go
@@ -78,7 +121,25 @@ type Config struct {
     //
     // Optional. Default: func(c fiber.Ctx) bool { return true }
     Probe func(fiber.Ctx) bool
+
+    // ResponseFormat specifies the format of the healthcheck response.
+    // Supported formats: Text (default), JSON, XML, MsgPack, CBOR.
+    //
+    // Optional. Default: ResponseFormatText
+    ResponseFormat ResponseFormat
 }
+```
+
+### Response Format Constants
+
+```go
+const (
+    ResponseFormatText    // Plain text response (default)
+    ResponseFormatJSON    // JSON response
+    ResponseFormatXML     // XML response
+    ResponseFormatMsgPack // MessagePack response
+    ResponseFormatCBOR    // CBOR response
+)
 ```
 
 ## Default Config

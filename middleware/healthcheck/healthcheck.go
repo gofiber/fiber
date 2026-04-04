@@ -4,6 +4,11 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// healthResponse represents the JSON/XML/MsgPack/CBOR response structure.
+type healthResponse struct {
+	Status string `json:"status" xml:"status" msg:"status"`
+}
+
 // New returns a health-check handler that responds based on the provided
 // configuration.
 func New(config ...Config) fiber.Handler {
@@ -19,10 +24,30 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		if cfg.Probe(c) {
-			return c.SendStatus(fiber.StatusOK)
+		healthy := cfg.Probe(c)
+		statusCode := fiber.StatusOK
+		statusMessage := "OK"
+
+		if !healthy {
+			statusCode = fiber.StatusServiceUnavailable
+			statusMessage = "Service Unavailable"
 		}
 
-		return c.SendStatus(fiber.StatusServiceUnavailable)
+		// Set the status code
+		c.Status(statusCode)
+
+		// Return response based on configured format
+		switch cfg.ResponseFormat {
+		case ResponseFormatJSON:
+			return c.JSON(healthResponse{Status: statusMessage})
+		case ResponseFormatXML:
+			return c.XML(healthResponse{Status: statusMessage})
+		case ResponseFormatMsgPack:
+			return c.MsgPack(healthResponse{Status: statusMessage})
+		case ResponseFormatCBOR:
+			return c.CBOR(healthResponse{Status: statusMessage})
+		default: // ResponseFormatText
+			return c.SendString(statusMessage)
+		}
 	}
 }

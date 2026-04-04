@@ -4,6 +4,22 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// ResponseFormat defines the format of the healthcheck response.
+type ResponseFormat int
+
+const (
+	// ResponseFormatText returns a plain text response (default behavior).
+	ResponseFormatText ResponseFormat = iota
+	// ResponseFormatJSON returns a JSON response.
+	ResponseFormatJSON
+	// ResponseFormatXML returns an XML response.
+	ResponseFormatXML
+	// ResponseFormatMsgPack returns a MessagePack response.
+	ResponseFormatMsgPack
+	// ResponseFormatCBOR returns a CBOR response.
+	ResponseFormatCBOR
+)
+
 // Config defines the configuration options for the healthcheck middleware.
 type Config struct {
 	// Next defines a function to skip this middleware when returned true. If this function returns true
@@ -18,6 +34,12 @@ type Config struct {
 	//
 	// Optional. Default: func(c fiber.Ctx) bool { return true }
 	Probe func(fiber.Ctx) bool
+
+	// ResponseFormat specifies the format of the healthcheck response.
+	// Supported formats: Text (default), JSON, XML, MsgPack, CBOR.
+	//
+	// Optional. Default: ResponseFormatText
+	ResponseFormat ResponseFormat
 }
 
 const (
