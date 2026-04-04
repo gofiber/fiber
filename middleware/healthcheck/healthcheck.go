@@ -6,7 +6,7 @@ import (
 
 // healthResponse represents the JSON/XML/MsgPack/CBOR response structure.
 type healthResponse struct {
-	Status string `json:"status" xml:"status" msg:"status"`
+	Status string `json:"status" xml:"status" msgpack:"status" cbor:"status"`
 }
 
 // New returns a health-check handler that responds based on the provided

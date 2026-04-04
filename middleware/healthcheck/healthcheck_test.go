@@ -367,11 +367,29 @@ func Test_HealthCheck_MsgPack_Format(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, req.StatusCode)
 	require.Equal(t, "application/vnd.msgpack", req.Header.Get("Content-Type"))
 
+	body, err := io.ReadAll(req.Body)
+	require.NoError(t, err)
+	var livezResponse map[string]string
+	require.NoError(t, msgpack.Unmarshal(body, &livezResponse))
+	require.Len(t, livezResponse, 1)
+	require.Contains(t, livezResponse, "status")
+	require.NotContains(t, livezResponse, "Status")
+	require.Equal(t, "OK", livezResponse["status"])
+
 	// Test failed healthcheck with MsgPack format
 	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
 	require.Equal(t, "application/vnd.msgpack", req.Header.Get("Content-Type"))
+
+	body, err = io.ReadAll(req.Body)
+	require.NoError(t, err)
+	var readyzResponse map[string]string
+	require.NoError(t, msgpack.Unmarshal(body, &readyzResponse))
+	require.Len(t, readyzResponse, 1)
+	require.Contains(t, readyzResponse, "status")
+	require.NotContains(t, readyzResponse, "Status")
+	require.Equal(t, "Service Unavailable", readyzResponse["status"])
 }
 
 func Test_HealthCheck_CBOR_Format(t *testing.T) {
@@ -397,9 +415,27 @@ func Test_HealthCheck_CBOR_Format(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, req.StatusCode)
 	require.Equal(t, "application/cbor", req.Header.Get("Content-Type"))
 
+	body, err := io.ReadAll(req.Body)
+	require.NoError(t, err)
+	var livezResponse map[string]string
+	require.NoError(t, cbor.Unmarshal(body, &livezResponse))
+	require.Len(t, livezResponse, 1)
+	require.Contains(t, livezResponse, "status")
+	require.NotContains(t, livezResponse, "Status")
+	require.Equal(t, "OK", livezResponse["status"])
+
 	// Test failed healthcheck with CBOR format
 	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
 	require.Equal(t, "application/cbor", req.Header.Get("Content-Type"))
+
+	body, err = io.ReadAll(req.Body)
+	require.NoError(t, err)
+	var readyzResponse map[string]string
+	require.NoError(t, cbor.Unmarshal(body, &readyzResponse))
+	require.Len(t, readyzResponse, 1)
+	require.Contains(t, readyzResponse, "status")
+	require.NotContains(t, readyzResponse, "Status")
+	require.Equal(t, "Service Unavailable", readyzResponse["status"])
 }
