@@ -235,8 +235,8 @@ func Test_HealthCheck_Text_Format(t *testing.T) {
 	app := fiber.New()
 
 	// Test default format (text)
-	app.Get("/livez", New())
-	app.Get("/readyz", New(Config{
+	app.Get(LivenessEndpoint, New())
+	app.Get(ReadinessEndpoint, New(Config{
 		ResponseFormat: FormatText,
 		Probe: func(_ fiber.Ctx) bool {
 			return false
@@ -244,7 +244,7 @@ func Test_HealthCheck_Text_Format(t *testing.T) {
 	}))
 
 	// Test successful healthcheck with default text format
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/livez", http.NoBody))
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, LivenessEndpoint, http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, req.StatusCode)
 	require.Equal(t, "text/plain; charset=utf-8", req.Header.Get("Content-Type"))
@@ -255,7 +255,7 @@ func Test_HealthCheck_Text_Format(t *testing.T) {
 	require.Equal(t, "OK", string(body))
 
 	// Test failed healthcheck with text format
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", http.NoBody))
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, ReadinessEndpoint, http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
 	require.Equal(t, "text/plain; charset=utf-8", req.Header.Get("Content-Type"))
@@ -271,10 +271,10 @@ func Test_HealthCheck_JSON_Format(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Get("/livez", New(Config{
+	app.Get(LivenessEndpoint, New(Config{
 		ResponseFormat: FormatJSON,
 	}))
-	app.Get("/readyz", New(Config{
+	app.Get(ReadinessEndpoint, New(Config{
 		ResponseFormat: FormatJSON,
 		Probe: func(_ fiber.Ctx) bool {
 			return false
@@ -282,7 +282,7 @@ func Test_HealthCheck_JSON_Format(t *testing.T) {
 	}))
 
 	// Test successful healthcheck with JSON format
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/livez", http.NoBody))
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, LivenessEndpoint, http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, req.StatusCode)
 	require.Equal(t, "application/json; charset=utf-8", req.Header.Get("Content-Type"))
@@ -293,7 +293,7 @@ func Test_HealthCheck_JSON_Format(t *testing.T) {
 	require.JSONEq(t, `{"status":"OK"}`, string(body))
 
 	// Test failed healthcheck with JSON format
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", http.NoBody))
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, ReadinessEndpoint, http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
 	require.Equal(t, "application/json; charset=utf-8", req.Header.Get("Content-Type"))
@@ -309,10 +309,10 @@ func Test_HealthCheck_XML_Format(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Get("/livez", New(Config{
+	app.Get(LivenessEndpoint, New(Config{
 		ResponseFormat: FormatXML,
 	}))
-	app.Get("/readyz", New(Config{
+	app.Get(ReadinessEndpoint, New(Config{
 		ResponseFormat: FormatXML,
 		Probe: func(_ fiber.Ctx) bool {
 			return false
@@ -320,7 +320,7 @@ func Test_HealthCheck_XML_Format(t *testing.T) {
 	}))
 
 	// Test successful healthcheck with XML format
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/livez", http.NoBody))
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, LivenessEndpoint, http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, req.StatusCode)
 	require.Equal(t, "application/xml; charset=utf-8", req.Header.Get("Content-Type"))
@@ -332,7 +332,7 @@ func Test_HealthCheck_XML_Format(t *testing.T) {
 	require.Contains(t, string(body), "<status>OK</status>")
 
 	// Test failed healthcheck with XML format
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", http.NoBody))
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, ReadinessEndpoint, http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
 	require.Equal(t, "application/xml; charset=utf-8", req.Header.Get("Content-Type"))
@@ -351,10 +351,10 @@ func Test_HealthCheck_MsgPack_Format(t *testing.T) {
 		MsgPackEncoder: msgpack.Marshal,
 	})
 
-	app.Get("/livez", New(Config{
+	app.Get(LivenessEndpoint, New(Config{
 		ResponseFormat: FormatMsgPack,
 	}))
-	app.Get("/readyz", New(Config{
+	app.Get(ReadinessEndpoint, New(Config{
 		ResponseFormat: FormatMsgPack,
 		Probe: func(_ fiber.Ctx) bool {
 			return false
@@ -362,7 +362,7 @@ func Test_HealthCheck_MsgPack_Format(t *testing.T) {
 	}))
 
 	// Test successful healthcheck with MsgPack format
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/livez", http.NoBody))
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, LivenessEndpoint, http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, req.StatusCode)
 	require.Equal(t, "application/vnd.msgpack", req.Header.Get("Content-Type"))
@@ -377,7 +377,7 @@ func Test_HealthCheck_MsgPack_Format(t *testing.T) {
 	require.Equal(t, "OK", livezResponse["status"])
 
 	// Test failed healthcheck with MsgPack format
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", http.NoBody))
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, ReadinessEndpoint, http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
 	require.Equal(t, "application/vnd.msgpack", req.Header.Get("Content-Type"))
@@ -399,10 +399,10 @@ func Test_HealthCheck_CBOR_Format(t *testing.T) {
 		CBOREncoder: cbor.Marshal,
 	})
 
-	app.Get("/livez", New(Config{
+	app.Get(LivenessEndpoint, New(Config{
 		ResponseFormat: FormatCBOR,
 	}))
-	app.Get("/readyz", New(Config{
+	app.Get(ReadinessEndpoint, New(Config{
 		ResponseFormat: FormatCBOR,
 		Probe: func(_ fiber.Ctx) bool {
 			return false
@@ -410,7 +410,7 @@ func Test_HealthCheck_CBOR_Format(t *testing.T) {
 	}))
 
 	// Test successful healthcheck with CBOR format
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/livez", http.NoBody))
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, LivenessEndpoint, http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, req.StatusCode)
 	require.Equal(t, "application/cbor", req.Header.Get("Content-Type"))
@@ -425,7 +425,7 @@ func Test_HealthCheck_CBOR_Format(t *testing.T) {
 	require.Equal(t, "OK", livezResponse["status"])
 
 	// Test failed healthcheck with CBOR format
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", http.NoBody))
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, ReadinessEndpoint, http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusServiceUnavailable, req.StatusCode)
 	require.Equal(t, "application/cbor", req.Header.Get("Content-Type"))

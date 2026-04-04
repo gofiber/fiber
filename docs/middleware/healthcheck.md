@@ -135,12 +135,14 @@ type Config struct {
 ### Response Format Constants
 
 ```go
+type ResponseFormat int
+
 const (
-    FormatText    // Plain text response (default)
-    FormatJSON    // JSON response
-    FormatXML     // XML response
-    FormatMsgPack // MessagePack response
-    FormatCBOR    // CBOR response
+    FormatText    ResponseFormat = iota // Plain text response (default)
+    FormatJSON                          // JSON response
+    FormatXML                           // XML response
+    FormatMsgPack                       // MessagePack response
+    FormatCBOR                          // CBOR response
 )
 ```
 
