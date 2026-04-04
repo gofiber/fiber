@@ -91,6 +91,8 @@ app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
 ```go
 import (
     "github.com/fxamacker/cbor/v2"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/healthcheck"
     "github.com/shamaton/msgpack/v3"
 )
 
