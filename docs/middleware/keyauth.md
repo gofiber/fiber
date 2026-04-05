@@ -169,7 +169,7 @@ curl --cookie "access_token=correct horse battery staple" http://localhost:3000/
 ### Apply middleware in the handler
 
 You can apply the middleware to specific routes or groups instead of globally. This example uses the default extractor (`FromAuthHeader`).
-- FromAuthHeader expects a complaint [RFC 7235 Token68](https://datatracker.ietf.org/doc/html/rfc7235#:~:text=token%20/%20quoted%2Dstring%20)-,token68,-%3D%201*(%20ALPHA%20/%20DIGIT) key value.
+- FromAuthHeader expects a compliant [RFC 7235 Token68](https://datatracker.ietf.org/doc/html/rfc7235#:~:text=token%20/%20quoted%2Dstring%20)-,token68,-%3D%201*(%20ALPHA%20/%20DIGIT) key value.
 
 ```go
 package main
