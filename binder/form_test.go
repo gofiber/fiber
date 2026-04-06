@@ -363,3 +363,93 @@ func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	require.Equal(b, 42, user.Age)
 	require.Len(b, user.Posts, 3)
 }
+
+func Test_FormBinder_Bind_PointerScalars(t *testing.T) {
+	t.Parallel()
+
+	binder := &FormBinding{
+		EnableSplitting: false,
+	}
+
+	type Form struct {
+		ID     *int64   `form:"id"`
+		Name   *string  `form:"name"`
+		Active *bool    `form:"active"`
+		Score  *float64 `form:"score"`
+	}
+
+	t.Run("all fields provided", func(t *testing.T) {
+		t.Parallel()
+
+		var f Form
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("id=123&name=test&active=true&score=98.5")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &f)
+		require.NoError(t, err)
+
+		require.NotNil(t, f.ID)
+		require.Equal(t, int64(123), *f.ID)
+
+		require.NotNil(t, f.Name)
+		require.Equal(t, "test", *f.Name)
+
+		require.NotNil(t, f.Active)
+		require.True(t, *f.Active)
+
+		require.NotNil(t, f.Score)
+		require.InDelta(t, 98.5, *f.Score, 0.001)
+	})
+
+	t.Run("no fields provided", func(t *testing.T) {
+		t.Parallel()
+
+		var f Form
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &f)
+		require.NoError(t, err)
+
+		require.Nil(t, f.ID)
+		require.Nil(t, f.Name)
+		require.Nil(t, f.Active)
+		require.Nil(t, f.Score)
+	})
+
+	t.Run("partial fields provided", func(t *testing.T) {
+		t.Parallel()
+
+		var f Form
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("id=456&active=false")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &f)
+		require.NoError(t, err)
+
+		require.NotNil(t, f.ID)
+		require.Equal(t, int64(456), *f.ID)
+
+		require.Nil(t, f.Name)
+
+		require.NotNil(t, f.Active)
+		require.False(t, *f.Active)
+
+		require.Nil(t, f.Score)
+	})
+}
