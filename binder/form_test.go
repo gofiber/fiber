@@ -452,4 +452,32 @@ func Test_FormBinder_Bind_PointerScalars(t *testing.T) {
 
 		require.Nil(t, f.Score)
 	})
+
+	t.Run("explicit zero and empty values provided", func(t *testing.T) {
+		t.Parallel()
+
+		var f Form
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("id=0&name=&active=false&score=0")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &f)
+		require.NoError(t, err)
+
+		require.NotNil(t, f.ID)
+		require.Equal(t, int64(0), *f.ID)
+
+		require.NotNil(t, f.Name)
+		require.Equal(t, "", *f.Name)
+
+		require.NotNil(t, f.Active)
+		require.False(t, *f.Active)
+
+		require.NotNil(t, f.Score)
+		require.InDelta(t, 0.0, *f.Score, 0.001)
+	})
 }

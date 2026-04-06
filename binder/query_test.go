@@ -206,4 +206,31 @@ func Test_QueryBinder_Bind_PointerScalars(t *testing.T) {
 
 		require.Nil(t, q.Score)
 	})
+
+	t.Run("zero values provided", func(t *testing.T) {
+		t.Parallel()
+
+		var q Query
+		req := fasthttp.AcquireRequest()
+		req.URI().SetQueryString("id=0&name=&active=false&score=0")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &q)
+		require.NoError(t, err)
+
+		require.NotNil(t, q.ID)
+		require.Equal(t, int64(0), *q.ID)
+
+		require.NotNil(t, q.Name)
+		require.Equal(t, "", *q.Name)
+
+		require.NotNil(t, q.Active)
+		require.False(t, *q.Active)
+
+		require.NotNil(t, q.Score)
+		require.InDelta(t, 0.0, *q.Score, 0.001)
+	})
 }
