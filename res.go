@@ -646,12 +646,12 @@ func (r *DefaultRes) ViewBind(vars Map) error {
 }
 
 // getLocationFromRoute get URL location from route using parameters
-func (r *DefaultRes) getLocationFromRoute(route *Route, params Map) (string, error) {
+func (*DefaultRes) getLocationFromRoute(route *Route, params Map) (string, error) {
 	if route == nil || route.Path == "" {
 		return "", ErrNotFound
 	}
 
-	return buildRouteURL(route.routeParser.segs, params, r.c.app.config.CaseSensitive)
+	return buildRouteURL(route, params)
 }
 
 // GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"

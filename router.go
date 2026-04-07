@@ -83,7 +83,7 @@ func (r *Route) URL(params Map) (string, error) {
 		return "", ErrNotFound
 	}
 
-	return buildRouteURL(r.routeParser.segs, params, r.caseSensitive)
+	return buildRouteURL(r, params)
 }
 
 // buildRouteURL generates a URL from route segments and parameters.
@@ -94,11 +94,15 @@ func (r *Route) URL(params Map) (string, error) {
 //  1. Exact key match on segment.ParamName
 //  2. Case-insensitive fallback picking the lexicographically-smallest matching key (when !caseSensitive)
 //  3. Greedy parameter fallback for wildcard (*) and plus (+) parameters
-func buildRouteURL(segs []*routeSegment, params Map, caseSensitive bool) (string, error) {
+func buildRouteURL(route *Route, params Map) (string, error) {
+	if len(route.routeParser.segs) == 0 {
+		return route.Path, nil
+	}
+
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	for _, segment := range segs {
+	for _, segment := range route.routeParser.segs {
 		if !segment.IsParam {
 			_, err := buf.WriteString(segment.Const)
 			if err != nil {
@@ -113,7 +117,7 @@ func buildRouteURL(segs []*routeSegment, params Map, caseSensitive bool) (string
 		)
 
 		// Prefer an exact parameter name match
-		if val, found = params[segment.ParamName]; !found && !caseSensitive {
+		if val, found = params[segment.ParamName]; !found && !route.caseSensitive {
 			// Fall back to a case-insensitive match using a deterministic winner
 			var matchedKey string
 			for key := range params {
@@ -129,7 +133,7 @@ func buildRouteURL(segs []*routeSegment, params Map, caseSensitive bool) (string
 
 		// For greedy parameters, fall back to generic greedy keys
 		if !found && segment.IsGreedy {
-			for _, greedyParam := range greedyParameters {
+			for _, greedyParam := range preferredGreedyParameters(segment.ParamName) {
 				if val, found = params[string(greedyParam)]; found {
 					break
 				}
@@ -145,6 +149,19 @@ func buildRouteURL(segs []*routeSegment, params Map, caseSensitive bool) (string
 	}
 
 	return buf.String(), nil
+}
+
+func preferredGreedyParameters(paramName string) []byte {
+	if paramName != "" {
+		switch paramName[0] {
+		case plusParam:
+			return []byte{plusParam, wildcardParam}
+		case wildcardParam:
+			return []byte{wildcardParam, plusParam}
+		}
+	}
+
+	return greedyParameters
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {

@@ -2416,6 +2416,20 @@ func Test_Route_URL(t *testing.T) {
 		require.Equal(t, "/23456789/sms/send", url)
 	})
 
+	t.Run("plus parameters prefer plus fallback", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/user/+", emptyHandler).Name("UserGreedy")
+
+		route := app.GetRoute("UserGreedy")
+		url, err := route.URL(Map{
+			"*": "wildcard",
+			"+": "plus",
+		})
+		require.NoError(t, err)
+		require.Equal(t, "/user/plus", url)
+	})
+
 	t.Run("case insensitive default", func(t *testing.T) {
 		t.Parallel()
 		app := New()
@@ -2456,6 +2470,14 @@ func Test_Route_URL(t *testing.T) {
 		require.Error(t, err)
 		require.Equal(t, ErrNotFound, err)
 		require.Empty(t, url)
+	})
+
+	t.Run("route without parsed segments returns path", func(t *testing.T) {
+		t.Parallel()
+		route := Route{Path: "/error"}
+		url, err := route.URL(Map{"name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/error", url)
 	})
 
 	t.Run("nil route", func(t *testing.T) {
