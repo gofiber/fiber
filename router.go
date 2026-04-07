@@ -156,6 +156,8 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 	return buf.String(), nil
 }
 
+// preferredGreedyParameters returns the generic greedy fallback lookup order
+// for a route parameter name, preferring the matching greedy token type first.
 func preferredGreedyParameters(paramName string) []byte {
 	if paramName != "" {
 		switch paramName[0] {

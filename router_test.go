@@ -2432,6 +2432,8 @@ func Test_Route_URL(t *testing.T) {
 
 	t.Run("preferred greedy parameters default fallback", func(t *testing.T) {
 		t.Parallel()
+		require.Equal(t, preferredPlusGreedyParameters, preferredGreedyParameters("+1"))
+		require.Equal(t, preferredWildcardGreedyParameters, preferredGreedyParameters("*1"))
 		require.Equal(t, greedyParameters, preferredGreedyParameters(""))
 		require.Equal(t, greedyParameters, preferredGreedyParameters("name"))
 	})
