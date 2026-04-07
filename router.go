@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"bytes"
 	"fmt"
 	"slices"
 	"sync/atomic"
@@ -60,16 +59,18 @@ type Route struct {
 	routeParser routeParser // Parameter parser
 
 	// Data for routing
-	use      bool // USE matches path prefixes
-	mount    bool // Indicated a mounted app on a specific route
-	star     bool // Path equals '*'
-	root     bool // Path equals '/'
-	autoHead bool // Automatically generated HEAD route
+	use           bool // USE matches path prefixes
+	mount         bool // Indicated a mounted app on a specific route
+	star          bool // Path equals '*'
+	root          bool // Path equals '/'
+	autoHead      bool // Automatically generated HEAD route
+	caseSensitive bool // Whether parameter matching is case-sensitive
 }
 
 // URL generates a URL from the route path and parameters.
 // This method fills in the route parameters with the provided values.
-// Parameter matching is case-insensitive by default to match Fiber's default behavior.
+// Parameter matching respects the app's CaseSensitive configuration:
+// case-insensitive by default, case-sensitive when CaseSensitive is true.
 //
 // Example:
 //
@@ -94,16 +95,36 @@ func (r *Route) URL(params Map) (string, error) {
 			continue
 		}
 
-		for key, val := range params {
-			// Use case-insensitive matching to support both CaseSensitive and non-CaseSensitive configs
-			isSame := key == segment.ParamName || utils.EqualFold(key, segment.ParamName)
-			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) >= 0
-			if isSame || isGreedy {
-				_, err := buf.WriteString(utils.ToString(val))
-				if err != nil {
-					return "", fmt.Errorf("failed to write string: %w", err)
+		var (
+			val   any
+			found bool
+		)
+
+		// Prefer an exact parameter name match
+		if val, found = params[segment.ParamName]; !found && !r.caseSensitive {
+			// Fall back to a case-insensitive match
+			for key := range params {
+				if utils.EqualFold(key, segment.ParamName) {
+					val = params[key]
+					found = true
+					break
 				}
-				break
+			}
+		}
+
+		// For greedy parameters, fall back to generic greedy keys
+		if !found && segment.IsGreedy {
+			for _, greedyParam := range greedyParameters {
+				if val, found = params[string(greedyParam)]; found {
+					break
+				}
+			}
+		}
+
+		if found {
+			_, err := buf.WriteString(utils.ToString(val))
+			if err != nil {
+				return "", fmt.Errorf("failed to write string: %w", err)
 			}
 		}
 	}
@@ -422,11 +443,12 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 func (*App) copyRoute(route *Route) *Route {
 	return &Route{
 		// Router booleans
-		use:      route.use,
-		mount:    route.mount,
-		star:     route.star,
-		root:     route.root,
-		autoHead: route.autoHead,
+		use:           route.use,
+		mount:         route.mount,
+		star:          route.star,
+		root:          route.root,
+		autoHead:      route.autoHead,
+		caseSensitive: route.caseSensitive,
 
 		// Path data
 		path:        route.path,
@@ -600,10 +622,11 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		isRoot := pathClean == "/"
 
 		route := Route{
-			use:   isUse,
-			mount: isMount,
-			star:  isStar,
-			root:  isRoot,
+			use:           isUse,
+			mount:         isMount,
+			star:          isStar,
+			root:          isRoot,
+			caseSensitive: app.config.CaseSensitive,
 
 			path:        pathClean,
 			routeParser: parsedPretty,

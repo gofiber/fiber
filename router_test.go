@@ -2416,7 +2416,7 @@ func Test_Route_URL(t *testing.T) {
 		require.Equal(t, "/23456789/sms/send", url)
 	})
 
-	t.Run("case sensitivity", func(t *testing.T) {
+	t.Run("case insensitive default", func(t *testing.T) {
 		t.Parallel()
 		app := New()
 		app.Get("/user/:name", emptyHandler).Name("User")
@@ -2426,6 +2426,22 @@ func Test_Route_URL(t *testing.T) {
 		url, err := route.URL(Map{"Name": "fiber"})
 		require.NoError(t, err)
 		require.Equal(t, "/user/fiber", url)
+	})
+
+	t.Run("case sensitive", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{CaseSensitive: true})
+		app.Get("/user/:name", emptyHandler).Name("User")
+
+		route := app.GetRoute("User")
+		// Exact case match succeeds
+		url, err := route.URL(Map{"name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/fiber", url)
+		// Different case does not match when CaseSensitive is true
+		url, err = route.URL(Map{"Name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/", url)
 	})
 
 	t.Run("empty route", func(t *testing.T) {
