@@ -5,12 +5,14 @@
 package fiber
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 
@@ -63,6 +65,50 @@ type Route struct {
 	star     bool // Path equals '*'
 	root     bool // Path equals '/'
 	autoHead bool // Automatically generated HEAD route
+}
+
+// URL generates a URL from the route path and parameters.
+// This method fills in the route parameters with the provided values.
+// Parameter matching is case-insensitive by default to match Fiber's default behavior.
+//
+// Example:
+//
+//	app.Get("/user/:name/:id", handler).Name("user")
+//	route := app.GetRoute("user")
+//	url, err := route.URL(Map{"name": "john", "id": "123"})
+//	// Returns: "/user/john/123"
+func (r *Route) URL(params Map) (string, error) {
+	if r.Path == "" {
+		return "", ErrNotFound
+	}
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	for _, segment := range r.routeParser.segs {
+		if !segment.IsParam {
+			_, err := buf.WriteString(segment.Const)
+			if err != nil {
+				return "", fmt.Errorf("failed to write string: %w", err)
+			}
+			continue
+		}
+
+		for key, val := range params {
+			// Use case-insensitive matching to support both CaseSensitive and non-CaseSensitive configs
+			isSame := key == segment.ParamName || utils.EqualFold(key, segment.ParamName)
+			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) >= 0
+			if isSame || isGreedy {
+				_, err := buf.WriteString(utils.ToString(val))
+				if err != nil {
+					return "", fmt.Errorf("failed to write string: %w", err)
+				}
+				break
+			}
+		}
+	}
+
+	return buf.String(), nil
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
