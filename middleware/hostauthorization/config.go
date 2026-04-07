@@ -45,7 +45,7 @@ var ConfigDefault = Config{}
 
 func configDefault(config ...Config) Config {
 	if len(config) < 1 {
-		return ConfigDefault
+		panic("hostauthorization: AllowedHosts or AllowedHostsFunc is required")
 	}
 
 	cfg := config[0]
