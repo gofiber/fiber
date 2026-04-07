@@ -2426,6 +2426,11 @@ func Test_Route_URL(t *testing.T) {
 		url, err := route.URL(Map{"Name": "fiber"})
 		require.NoError(t, err)
 		require.Equal(t, "/user/fiber", url)
+
+		// When multiple keys case-fold to the same param name, prefer the exact match.
+		url, err = route.URL(Map{"name": "exact", "Name": "fallback"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/exact", url)
 	})
 
 	t.Run("case sensitive", func(t *testing.T) {

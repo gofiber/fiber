@@ -83,10 +83,22 @@ func (r *Route) URL(params Map) (string, error) {
 		return "", ErrNotFound
 	}
 
+	return buildRouteURL(r.routeParser.segs, params, r.caseSensitive)
+}
+
+// buildRouteURL generates a URL from route segments and parameters.
+// This shared helper is used by both Route.URL() and DefaultRes.getLocationFromRoute()
+// to ensure consistent URL generation behavior across APIs.
+//
+// Parameter resolution uses a deterministic three-step lookup:
+//  1. Exact key match on segment.ParamName
+//  2. Case-insensitive fallback picking the lexicographically-smallest matching key (when !caseSensitive)
+//  3. Greedy parameter fallback for wildcard (*) and plus (+) parameters
+func buildRouteURL(segs []*routeSegment, params Map, caseSensitive bool) (string, error) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	for _, segment := range r.routeParser.segs {
+	for _, segment := range segs {
 		if !segment.IsParam {
 			_, err := buf.WriteString(segment.Const)
 			if err != nil {
@@ -101,7 +113,7 @@ func (r *Route) URL(params Map) (string, error) {
 		)
 
 		// Prefer an exact parameter name match
-		if val, found = params[segment.ParamName]; !found && !r.caseSensitive {
+		if val, found = params[segment.ParamName]; !found && !caseSensitive {
 			// Fall back to a case-insensitive match using a deterministic winner
 			var matchedKey string
 			for key := range params {
