@@ -2430,6 +2430,12 @@ func Test_Route_URL(t *testing.T) {
 		require.Equal(t, "/user/plus", url)
 	})
 
+	t.Run("preferred greedy parameters default fallback", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, greedyParameters, preferredGreedyParameters(""))
+		require.Equal(t, greedyParameters, preferredGreedyParameters("name"))
+	})
+
 	t.Run("case insensitive default", func(t *testing.T) {
 		t.Parallel()
 		app := New()

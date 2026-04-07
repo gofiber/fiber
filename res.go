@@ -646,8 +646,8 @@ func (r *DefaultRes) ViewBind(vars Map) error {
 }
 
 // getLocationFromRoute get URL location from route using parameters
-func (*DefaultRes) getLocationFromRoute(route *Route, params Map) (string, error) {
-	if route == nil || route.Path == "" {
+func (r *DefaultRes) getLocationFromRoute(route *Route, params Map) (string, error) {
+	if r == nil || route == nil || route.Path == "" {
 		return "", ErrNotFound
 	}
 
