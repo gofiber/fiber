@@ -79,7 +79,7 @@ type Route struct {
 //	url, err := route.URL(Map{"name": "john", "id": "123"})
 //	// Returns: "/user/john/123"
 func (r *Route) URL(params Map) (string, error) {
-	if r.Path == "" {
+	if r == nil || r.Path == "" {
 		return "", ErrNotFound
 	}
 
@@ -102,13 +102,16 @@ func (r *Route) URL(params Map) (string, error) {
 
 		// Prefer an exact parameter name match
 		if val, found = params[segment.ParamName]; !found && !r.caseSensitive {
-			// Fall back to a case-insensitive match
+			// Fall back to a case-insensitive match using a deterministic winner
+			var matchedKey string
 			for key := range params {
-				if utils.EqualFold(key, segment.ParamName) {
-					val = params[key]
+				if utils.EqualFold(key, segment.ParamName) && (!found || key < matchedKey) {
+					matchedKey = key
 					found = true
-					break
 				}
+			}
+			if found {
+				val = params[matchedKey]
 			}
 		}
 
@@ -436,6 +439,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	route.routeParser = parseRoute(prettyPath, app.customConstraints...)
 	route.root = false
 	route.star = false
+	route.caseSensitive = app.config.CaseSensitive
 
 	return route
 }

@@ -2453,6 +2453,15 @@ func Test_Route_URL(t *testing.T) {
 		require.Empty(t, url)
 	})
 
+	t.Run("nil route", func(t *testing.T) {
+		t.Parallel()
+		var route *Route
+		url, err := route.URL(Map{"name": "fiber"})
+		require.Error(t, err)
+		require.Equal(t, ErrNotFound, err)
+		require.Empty(t, url)
+	})
+
 	t.Run("no parameters", func(t *testing.T) {
 		t.Parallel()
 		app := New()
