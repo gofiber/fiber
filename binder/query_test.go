@@ -225,7 +225,7 @@ func Test_QueryBinder_Bind_PointerScalars(t *testing.T) {
 		require.Equal(t, int64(0), *q.ID)
 
 		require.NotNil(t, q.Name)
-		require.Equal(t, "", *q.Name)
+		require.Empty(t, *q.Name)
 
 		require.NotNil(t, q.Active)
 		require.False(t, *q.Active)

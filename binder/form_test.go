@@ -472,7 +472,7 @@ func Test_FormBinder_Bind_PointerScalars(t *testing.T) {
 		require.Equal(t, int64(0), *f.ID)
 
 		require.NotNil(t, f.Name)
-		require.Equal(t, "", *f.Name)
+		require.Empty(t, *f.Name)
 
 		require.NotNil(t, f.Active)
 		require.False(t, *f.Active)
