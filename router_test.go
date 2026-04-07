@@ -2482,6 +2482,9 @@ func Test_Route_URL(t *testing.T) {
 
 	t.Run("route without parsed segments returns path", func(t *testing.T) {
 		t.Parallel()
+		// This covers fallback/manual Route values whose Path is set but whose
+		// routeParser was never populated, such as synthetic routes outside the
+		// normal registration pipeline.
 		route := Route{Path: "/error"}
 		url, err := route.URL(Map{"name": "fiber"})
 		require.NoError(t, err)
