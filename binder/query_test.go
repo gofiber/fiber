@@ -234,3 +234,69 @@ func Test_QueryBinder_Bind_PointerScalars(t *testing.T) {
 		require.InDelta(t, 0.0, *q.Score, 0.001)
 	})
 }
+
+func Test_QueryBinder_Bind_OptionalIDParam(t *testing.T) {
+	t.Parallel()
+
+	binder := &QueryBinding{
+		EnableSplitting: false,
+	}
+
+	// Use case from original issue
+	type OptionalIDParam struct {
+		IDPtr *int64 `query:"id"`
+	}
+
+	t.Run("id provided", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.URI().SetQueryString("id=123")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.NotNil(t, param.IDPtr)
+		require.Equal(t, int64(123), *param.IDPtr)
+	})
+
+	t.Run("id not provided", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.URI().SetQueryString("")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.Nil(t, param.IDPtr)
+	})
+
+	t.Run("id zero", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.URI().SetQueryString("id=0")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.NotNil(t, param.IDPtr)
+		require.Equal(t, int64(0), *param.IDPtr)
+	})
+}

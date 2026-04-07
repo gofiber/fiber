@@ -481,3 +481,72 @@ func Test_FormBinder_Bind_PointerScalars(t *testing.T) {
 		require.InDelta(t, 0.0, *f.Score, 0.001)
 	})
 }
+
+func Test_FormBinder_Bind_OptionalIDParam(t *testing.T) {
+	t.Parallel()
+
+	binder := &FormBinding{
+		EnableSplitting: false,
+	}
+
+	// Use case from original issue
+	type OptionalIDParam struct {
+		IDPtr *int64 `form:"id"`
+	}
+
+	t.Run("id provided", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("id=123")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.NotNil(t, param.IDPtr)
+		require.Equal(t, int64(123), *param.IDPtr)
+	})
+
+	t.Run("id not provided", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.Nil(t, param.IDPtr)
+	})
+
+	t.Run("id zero", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("id=0")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.NotNil(t, param.IDPtr)
+		require.Equal(t, int64(0), *param.IDPtr)
+	})
+}
