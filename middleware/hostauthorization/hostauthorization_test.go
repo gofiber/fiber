@@ -581,3 +581,67 @@ func Test_HostAuthorization_XForwardedHost_NoTrustProxy(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "X-Forwarded-Host should be ignored without TrustProxy")
 }
+
+// --- Benchmarks ---
+
+func Benchmark_HostAuthorization_ExactMatch(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{
+		AllowedHosts: []string{"example.com"},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = "example.com"
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = app.Test(req)
+	}
+}
+
+func Benchmark_HostAuthorization_CIDR(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{
+		AllowedHosts: []string{"10.0.0.0/8"},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = "10.0.50.3"
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = app.Test(req)
+	}
+}
+
+func Benchmark_HostAuthorization_Mixed(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{
+		AllowedHosts: []string{
+			"example.com",
+			".myapp.com",
+			"10.0.0.0/8",
+			"127.0.0.1",
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = "api.myapp.com"
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = app.Test(req)
+	}
+}
