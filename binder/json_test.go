@@ -39,6 +39,61 @@ func Test_JSON_Binding_Bind(t *testing.T) {
 	require.Nil(t, b.JSONDecoder)
 }
 
+func Test_JSON_Binding_Bind_OptionalIDParam(t *testing.T) {
+	t.Parallel()
+
+	b := &JSONBinding{
+		JSONDecoder: json.Unmarshal,
+	}
+
+	// Use case from original issue
+	type OptionalIDParam struct {
+		IDPtr *int64 `json:"id"`
+	}
+
+	t.Run("id provided", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		err := b.Bind([]byte(`{"id":123}`), &param)
+		require.NoError(t, err)
+
+		require.NotNil(t, param.IDPtr)
+		require.Equal(t, int64(123), *param.IDPtr)
+	})
+
+	t.Run("id not provided", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		err := b.Bind([]byte(`{}`), &param)
+		require.NoError(t, err)
+
+		require.Nil(t, param.IDPtr)
+	})
+
+	t.Run("id zero", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		err := b.Bind([]byte(`{"id":0}`), &param)
+		require.NoError(t, err)
+
+		require.NotNil(t, param.IDPtr)
+		require.Equal(t, int64(0), *param.IDPtr)
+	})
+
+	t.Run("id null", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		err := b.Bind([]byte(`{"id":null}`), &param)
+		require.NoError(t, err)
+
+		require.Nil(t, param.IDPtr)
+	})
+}
+
 func Benchmark_JSON_Binding_Bind(b *testing.B) {
 	b.ReportAllocs()
 
