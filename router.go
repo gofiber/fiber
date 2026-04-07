@@ -67,6 +67,11 @@ type Route struct {
 	caseSensitive bool // Whether parameter matching is case-sensitive
 }
 
+var (
+	preferredWildcardGreedyParameters = []byte{wildcardParam, plusParam}
+	preferredPlusGreedyParameters     = []byte{plusParam, wildcardParam}
+)
+
 // URL generates a URL from the route path and parameters.
 // This method fills in the route parameters with the provided values.
 // Parameter matching respects the app's CaseSensitive configuration:
@@ -155,9 +160,9 @@ func preferredGreedyParameters(paramName string) []byte {
 	if paramName != "" {
 		switch paramName[0] {
 		case plusParam:
-			return []byte{plusParam, wildcardParam}
+			return preferredPlusGreedyParameters
 		case wildcardParam:
-			return []byte{wildcardParam, plusParam}
+			return preferredWildcardGreedyParameters
 		}
 	}
 
