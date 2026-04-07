@@ -38,11 +38,12 @@ func Test_ConfigPanicEmptySlice(t *testing.T) {
 	})
 }
 
-func Test_ConfigNoDefaultArgs(t *testing.T) {
+func Test_ConfigPanicNoArgs(t *testing.T) {
 	t.Parallel()
 
-	cfg := configDefault()
-	require.Equal(t, ConfigDefault, cfg)
+	require.Panics(t, func() {
+		configDefault()
+	})
 }
 
 func Test_ConfigAllowedHostsFuncOnly(t *testing.T) {
