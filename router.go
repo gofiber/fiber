@@ -68,8 +68,9 @@ type Route struct {
 }
 
 var (
-	preferredWildcardGreedyParameters = []byte{wildcardParam, plusParam}
-	preferredPlusGreedyParameters     = []byte{plusParam, wildcardParam}
+	greedyParameterKeys               = []string{"*", "+"}
+	preferredWildcardGreedyParameters = []string{"*", "+"}
+	preferredPlusGreedyParameters     = []string{"+", "*"}
 )
 
 // URL generates a URL from the route path and parameters.
@@ -138,8 +139,8 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 
 		// For greedy parameters, fall back to generic greedy keys
 		if !found && segment.IsGreedy {
-			for _, greedyParam := range preferredGreedyParameters(segment.ParamName) {
-				if val, found = params[string(greedyParam)]; found {
+			for _, greedyKey := range preferredGreedyParameters(segment.ParamName) {
+				if val, found = params[greedyKey]; found {
 					break
 				}
 			}
@@ -160,7 +161,7 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 // for a route parameter name.
 // Parameter names starting with '+' prefer '+' before '*', names starting with
 // '*' prefer '*' before '+', and all other names fall back to the default order.
-func preferredGreedyParameters(paramName string) []byte {
+func preferredGreedyParameters(paramName string) []string {
 	if paramName != "" {
 		switch paramName[0] {
 		case plusParam:
@@ -170,7 +171,7 @@ func preferredGreedyParameters(paramName string) []byte {
 		}
 	}
 
-	return greedyParameters
+	return greedyParameterKeys
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
