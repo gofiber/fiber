@@ -1,6 +1,7 @@
 package hostauthorization
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -215,7 +216,7 @@ func Test_HostAuthorization_AllowedHost(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
 
 	resp, err := app.Test(req)
@@ -235,7 +236,7 @@ func Test_HostAuthorization_RejectedHost(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "evil.com"
 
 	resp, err := app.Test(req)
@@ -255,7 +256,7 @@ func Test_HostAuthorization_EmptyHost(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = ""
 
 	resp, err := app.Test(req)
@@ -275,7 +276,7 @@ func Test_HostAuthorization_HostWithPort(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com:8080"
 
 	resp, err := app.Test(req)
@@ -298,7 +299,7 @@ func Test_HostAuthorization_Next(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/healthz", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/healthz", http.NoBody)
 	req.Host = "evil.com"
 
 	resp, err := app.Test(req)
@@ -319,7 +320,7 @@ func Test_HostAuthorization_SubdomainWildcard(t *testing.T) {
 	})
 
 	// Subdomain should be allowed
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "api.myapp.com"
 
 	resp, err := app.Test(req)
@@ -327,7 +328,7 @@ func Test_HostAuthorization_SubdomainWildcard(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	// Bare domain should be rejected
-	req2 := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req2 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req2.Host = "myapp.com"
 
 	resp2, err := app.Test(req2)
@@ -347,7 +348,7 @@ func Test_HostAuthorization_CIDR(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "10.0.50.3"
 
 	resp, err := app.Test(req)
@@ -355,7 +356,7 @@ func Test_HostAuthorization_CIDR(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	// Cloud metadata IP should be rejected
-	req2 := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req2 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req2.Host = "169.254.169.254"
 
 	resp2, err := app.Test(req2)
@@ -377,14 +378,14 @@ func Test_HostAuthorization_AllowedHostsFunc(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "dynamic.com"
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	req2 := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req2 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req2.Host = "evil.com"
 
 	resp2, err := app.Test(req2)
@@ -408,7 +409,7 @@ func Test_HostAuthorization_CustomErrorHandler(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "evil.com"
 
 	resp, err := app.Test(req)
@@ -428,7 +429,7 @@ func Test_HostAuthorization_CaseInsensitive(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "EXAMPLE.com"
 
 	resp, err := app.Test(req)
@@ -448,7 +449,7 @@ func Test_HostAuthorization_TrailingDot(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com."
 
 	resp, err := app.Test(req)
@@ -468,7 +469,7 @@ func Test_HostAuthorization_ExactIP(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "127.0.0.1"
 
 	resp, err := app.Test(req)
@@ -493,7 +494,7 @@ func Test_HostAuthorization_OverlappingRules(t *testing.T) {
 	})
 
 	// Matches both exact and wildcard
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "api.myapp.com"
 
 	resp, err := app.Test(req)
@@ -513,7 +514,7 @@ func Test_HostAuthorization_IPv6Brackets(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "[fd00::1]"
 
 	resp, err := app.Test(req)
@@ -542,7 +543,7 @@ func Test_HostAuthorization_XForwardedHost_TrustProxy(t *testing.T) {
 	})
 
 	// Allowed via X-Forwarded-Host
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "proxy.internal"
 	req.Header.Set("X-Forwarded-Host", "example.com")
 
@@ -551,7 +552,7 @@ func Test_HostAuthorization_XForwardedHost_TrustProxy(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	// Rejected: X-Forwarded-Host is unauthorized
-	req2 := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req2 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req2.Host = "example.com"
 	req2.Header.Set("X-Forwarded-Host", "evil.com")
 
@@ -574,7 +575,7 @@ func Test_HostAuthorization_XForwardedHost_NoTrustProxy(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
 	req.Header.Set("X-Forwarded-Host", "evil.com")
 
@@ -594,13 +595,17 @@ func Benchmark_HostAuthorization_ExactMatch(b *testing.B) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = app.Test(req)
+		resp, err := app.Test(req)
+		if err != nil {
+			b.Fatal(err)
+		}
+		resp.Body.Close() //nolint:errcheck // benchmark cleanup
 	}
 }
 
@@ -613,13 +618,17 @@ func Benchmark_HostAuthorization_CIDR(b *testing.B) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "10.0.50.3"
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = app.Test(req)
+		resp, err := app.Test(req)
+		if err != nil {
+			b.Fatal(err)
+		}
+		resp.Body.Close() //nolint:errcheck // benchmark cleanup
 	}
 }
 
@@ -637,12 +646,16 @@ func Benchmark_HostAuthorization_Mixed(b *testing.B) {
 		return c.SendString("OK")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "api.myapp.com"
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = app.Test(req)
+		resp, err := app.Test(req)
+		if err != nil {
+			b.Fatal(err)
+		}
+		resp.Body.Close() //nolint:errcheck // benchmark cleanup
 	}
 }

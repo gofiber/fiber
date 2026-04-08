@@ -17,15 +17,6 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// AllowedHosts is the list of permitted host values.
-	// Supports three match types:
-	//   - Exact:     "api.myapp.com"
-	//   - Subdomain: ".myapp.com" (leading dot matches any subdomain, NOT the bare domain)
-	//   - CIDR:      "10.0.0.0/8" (matches hosts that are IPs in the range)
-	//
-	// Required if AllowedHostsFunc is nil.
-	AllowedHosts []string
-
 	// AllowedHostsFunc is a dynamic validator called when static AllowedHosts
 	// don't match. Receives the hostname (port stripped, lowercased).
 	// Return true to allow.
@@ -38,6 +29,15 @@ type Config struct {
 	//
 	// Optional. Default: returns 403 Forbidden with "Forbidden" body.
 	ErrorHandler fiber.ErrorHandler
+
+	// AllowedHosts is the list of permitted host values.
+	// Supports three match types:
+	//   - Exact:     "api.myapp.com"
+	//   - Subdomain: ".myapp.com" (leading dot matches any subdomain, NOT the bare domain)
+	//   - CIDR:      "10.0.0.0/8" (matches hosts that are IPs in the range)
+	//
+	// Required if AllowedHostsFunc is nil.
+	AllowedHosts []string
 }
 
 // ConfigDefault is the default config.
