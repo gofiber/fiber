@@ -84,7 +84,7 @@ var (
 //	url, err := app.GetRoute("user").URL(Map{"name": "john", "id": "123"})
 //	// Returns: "/user/john/123"
 //
-//nolint:gocritic // hugeParam: App.GetRoute returns a value, so URL must be callable on that value directly.
+//nolint:gocritic // hugeParam: app.GetRoute returns a value, so URL must be callable on that value directly.
 func (r Route) URL(params Map) (string, error) {
 	if r.Path == "" {
 		return "", ErrNotFound
