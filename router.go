@@ -81,15 +81,16 @@ var (
 // Example:
 //
 //	app.Get("/user/:name/:id", handler).Name("user")
-//	route := app.GetRoute("user")
-//	url, err := route.URL(Map{"name": "john", "id": "123"})
+//	url, err := app.GetRoute("user").URL(Map{"name": "john", "id": "123"})
 //	// Returns: "/user/john/123"
-func (r *Route) URL(params Map) (string, error) {
-	if r == nil || r.Path == "" {
+//
+//nolint:gocritic // App.GetRoute returns a value, so URL must be callable on that value directly.
+func (r Route) URL(params Map) (string, error) {
+	if r.Path == "" {
 		return "", ErrNotFound
 	}
 
-	return buildRouteURL(r, params)
+	return buildRouteURL(&r, params)
 }
 
 // buildRouteURL generates a URL from route segments and parameters.

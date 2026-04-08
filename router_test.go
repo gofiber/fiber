@@ -2491,13 +2491,14 @@ func Test_Route_URL(t *testing.T) {
 		require.Equal(t, "/error", url)
 	})
 
-	t.Run("nil route", func(t *testing.T) {
+	t.Run("GetRoute direct call", func(t *testing.T) {
 		t.Parallel()
-		var route *Route
-		url, err := route.URL(Map{"name": "fiber"})
-		require.Error(t, err)
-		require.Equal(t, ErrNotFound, err)
-		require.Empty(t, url)
+		app := New()
+		app.Get("/user/:name", emptyHandler).Name("User")
+
+		url, err := app.GetRoute("User").URL(Map{"name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/fiber", url)
 	})
 
 	t.Run("no parameters", func(t *testing.T) {
