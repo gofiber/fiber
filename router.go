@@ -68,7 +68,7 @@ type Route struct {
 }
 
 var (
-	greedyParameterKeys               = []string{"*", "+"}
+	defaultGreedyParameterKeys        = []string{"*", "+"}
 	preferredWildcardGreedyParameters = []string{"*", "+"}
 	preferredPlusGreedyParameters     = []string{"+", "*"}
 )
@@ -171,7 +171,7 @@ func preferredGreedyParameters(paramName string) []string {
 		}
 	}
 
-	return greedyParameterKeys
+	return defaultGreedyParameterKeys
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
