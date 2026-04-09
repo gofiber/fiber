@@ -586,6 +586,51 @@ func Test_HostAuthorization_XForwardedHost_NoTrustProxy(t *testing.T) {
 
 // --- Benchmarks ---
 
+// --- Low-level matchHost benchmarks (isolate matching cost from HTTP pipeline) ---
+
+func Benchmark_matchHost_ExactMatch(b *testing.B) {
+	parsed := parseAllowedHosts([]string{"example.com"})
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		matchHost("example.com", parsed, nil)
+	}
+}
+
+func Benchmark_matchHost_WildcardMatch(b *testing.B) {
+	parsed := parseAllowedHosts([]string{".myapp.com"})
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		matchHost("api.myapp.com", parsed, nil)
+	}
+}
+
+func Benchmark_matchHost_CIDRMatch(b *testing.B) {
+	parsed := parseAllowedHosts([]string{"10.0.0.0/8"})
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		matchHost("10.0.50.3", parsed, nil)
+	}
+}
+
+func Benchmark_matchHost_Mixed(b *testing.B) {
+	parsed := parseAllowedHosts([]string{
+		"example.com",
+		".myapp.com",
+		"10.0.0.0/8",
+		"127.0.0.1",
+	})
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		matchHost("api.myapp.com", parsed, nil)
+	}
+}
+
+// --- Full HTTP pipeline benchmarks (includes app.Test() overhead) ---
+
 func Benchmark_HostAuthorization_ExactMatch(b *testing.B) {
 	app := fiber.New()
 	app.Use(New(Config{

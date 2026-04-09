@@ -44,11 +44,10 @@ type Config struct {
 var ConfigDefault = Config{}
 
 func configDefault(config ...Config) Config {
-	if len(config) < 1 {
-		panic("hostauthorization: AllowedHosts or AllowedHostsFunc is required")
+	cfg := ConfigDefault
+	if len(config) > 0 {
+		cfg = config[0]
 	}
-
-	cfg := config[0]
 
 	if len(cfg.AllowedHosts) == 0 && cfg.AllowedHostsFunc == nil {
 		panic("hostauthorization: AllowedHosts or AllowedHostsFunc is required")

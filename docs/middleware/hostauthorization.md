@@ -62,20 +62,20 @@ AllowedHosts: []string{"myapp.com", ".myapp.com"},
 
 ### CIDR Ranges
 
-Useful for internal services that should only respond to requests from known IP ranges:
+Useful for services accessed directly by IP (e.g. internal tooling) where the `Host` header will be a raw IP address. This matches the **Host header value** against a CIDR range — it does not filter by client IP address:
 
 ```go
 app.Use(hostauthorization.New(hostauthorization.Config{
     AllowedHosts: []string{
         "internal.myapp.com",
-        "10.0.0.0/8",       // internal network
-        "127.0.0.1",        // localhost
+        "10.0.0.0/8",       // Host header IPs in this range are allowed
+        "127.0.0.1",        // Host header must be exactly this IP
     },
 }))
 
 // Host: internal.myapp.com → 200 OK
-// Host: 10.0.50.3          → 200 OK
-// Host: 169.254.169.254    → 403 Forbidden (blocks cloud metadata)
+// Host: 10.0.50.3          → 200 OK  (Host header IP is in 10.0.0.0/8)
+// Host: 169.254.169.254    → 403 Forbidden (Host header IP not in allowlist)
 ```
 
 ### Skipping Health Checks

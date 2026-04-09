@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
 // parsedHosts holds the pre-parsed host matching structures.
@@ -22,7 +24,11 @@ func parseAllowedHosts(hosts []string) parsedHosts {
 	}
 
 	for _, h := range hosts {
-		h = strings.ToLower(strings.TrimSpace(h))
+		h = utils.TrimSpace(h)
+		if h == "" {
+			continue
+		}
+		h = normalizeHost(h)
 		if h == "" {
 			continue
 		}
@@ -37,8 +43,8 @@ func parseAllowedHosts(hosts []string) parsedHosts {
 			parsed.cidrNets = append(parsed.cidrNets, cidr)
 
 		case strings.HasPrefix(h, "."):
-			// Subdomain wildcard — store without leading dot
-			parsed.wildcardSuffixes = append(parsed.wildcardSuffixes, h[1:])
+			// Subdomain wildcard — store with leading dot to avoid allocation in hot path
+			parsed.wildcardSuffixes = append(parsed.wildcardSuffixes, h)
 
 		default:
 			// Exact match
@@ -59,7 +65,7 @@ func normalizeHost(host string) string {
 	// Strip trailing dot (FQDN normalization)
 	host = strings.TrimSuffix(host, ".")
 
-	return strings.ToLower(host)
+	return utilsstrings.ToLower(host)
 }
 
 // matchHost checks if the given host matches any of the parsed allowed hosts.
@@ -71,7 +77,7 @@ func matchHost(host string, parsed parsedHosts, allowedHostsFunc func(string) bo
 
 	// Subdomain wildcard: ".myapp.com" matches "api.myapp.com" but NOT "myapp.com"
 	for _, suffix := range parsed.wildcardSuffixes {
-		if strings.HasSuffix(host, "."+suffix) {
+		if strings.HasSuffix(host, suffix) {
 			return true
 		}
 	}
