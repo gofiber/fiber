@@ -259,9 +259,10 @@ func Test_HostAuthorization_EmptyHost(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = ""
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	// fasthttp v1.70.0+ enforces the HTTP/1.1 Host header requirement at the
+	// protocol level, so a missing Host is rejected before reaching our middleware.
+	_, err := app.Test(req)
+	require.Error(t, err)
 }
 
 func Test_HostAuthorization_HostWithPort(t *testing.T) {
