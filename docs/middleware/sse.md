@@ -4,7 +4,9 @@ id: sse
 
 # SSE
 
-Server-Sent Events middleware for [Fiber](https://github.com/gofiber/fiber) that provides a production-grade SSE broker built natively on Fiber's fasthttp architecture. It includes a Hub-based event broker with topic routing, event coalescing (last-writer-wins), three priority lanes (instant/batched/coalesced), NATS-style topic wildcards, adaptive per-connection throttling, connection groups, built-in JWT and ticket auth helpers, Prometheus metrics, graceful Kubernetes-style drain, auto fan-out from Redis/NATS, and pluggable Last-Event-ID replay.
+Server-Sent Events middleware for [Fiber](https://github.com/gofiber/fiber) built natively on Fiber's fasthttp architecture. It provides a Hub-based event broker with topic routing, three priority lanes (instant/batched/coalesced), NATS-style topic wildcards, adaptive per-connection throttling, connection groups, graceful drain, and pluggable Last-Event-ID replay.
+
+The middleware is fully compatible with the standard SSE wire format — any client that speaks Server-Sent Events (browser `EventSource`, `curl -N`, or any HTTP client that reads `text/event-stream`) works with it.
 
 ## Signatures
 
@@ -12,6 +14,8 @@ Server-Sent Events middleware for [Fiber](https://github.com/gofiber/fiber) that
 func New(config ...Config) fiber.Handler
 func NewWithHub(config ...Config) (fiber.Handler, *Hub)
 ```
+
+`New` returns just the handler; use `NewWithHub` when you need access to the hub for publishing events.
 
 ## Examples
 
@@ -44,51 +48,66 @@ hub.Publish(sse.Event{
 })
 ```
 
-Use JWT authentication and metadata-based groups for multi-tenant isolation:
+Use NATS-style wildcards to subscribe to multiple related topics:
 
 ```go
 handler, hub := sse.NewWithHub(sse.Config{
-    OnConnect: sse.JWTAuth(func(token string) (map[string]string, error) {
-        claims, err := validateJWT(token)
-        if err != nil {
-            return nil, err
-        }
-        return map[string]string{
-            "user_id":   claims.UserID,
-            "tenant_id": claims.TenantID,
-        }, nil
-    }),
+    OnConnect: func(c fiber.Ctx, conn *sse.Connection) error {
+        // Match orders.created, orders.updated, orders.deleted
+        conn.Topics = []string{"orders.*"}
+        return nil
+    },
 })
-app.Get("/events", handler)
+```
 
-// Publish only to a specific tenant
-hub.DomainEvent("orders", "created", orderID, tenantID, nil)
+Use connection groups (metadata-based filtering) for multi-tenant isolation:
+
+```go
+handler, hub := sse.NewWithHub(sse.Config{
+    OnConnect: func(c fiber.Ctx, conn *sse.Connection) error {
+        tenantID := c.Locals("tenant_id").(string)
+        conn.Metadata["tenant_id"] = tenantID
+        conn.Topics = []string{"orders"}
+        return nil
+    },
+})
+
+// Publish only to connections in tenant "t_123"
+hub.Publish(sse.Event{
+    Type:   "order-created",
+    Data:   orderJSON,
+    Topics: []string{"orders"},
+    Group:  map[string]string{"tenant_id": "t_123"},
+})
 ```
 
 Use event coalescing to reduce traffic for high-frequency updates:
 
 ```go
-// Progress events use PriorityCoalesced — if progress goes 5%→8%
-// in one flush window, only 8% is sent to the client.
-hub.Progress("import", importID, tenantID, current, total, nil)
-
-// Completion events use PriorityInstant — always delivered immediately.
-hub.Complete("import", importID, tenantID, true, map[string]any{
-    "rows_imported": 1500,
-})
+// Coalesced: if progress goes 5%→8% in one flush window,
+// only the latest value is sent.
+for i := 1; i <= 100; i++ {
+    hub.Publish(sse.Event{
+        Type:        "progress",
+        Data:        fmt.Sprintf(`{"pct":%d}`, i),
+        Topics:      []string{"import"},
+        Priority:    sse.PriorityCoalesced,
+        CoalesceKey: "import-progress",
+    })
+}
 ```
 
-Use fan-out to bridge an external pub/sub system into the SSE hub:
+Graceful shutdown with deadline:
 
 ```go
-cancel := hub.FanOut(sse.FanOutConfig{
-    Subscriber: redisSubscriber,
-    Channel:    "events:orders",
-    EventType:  "order-update",
-    Topic:      "orders",
-})
+ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 defer cancel()
+if err := hub.Shutdown(ctx); err != nil {
+    log.Errorf("sse drain failed: %v", err)
+}
 ```
+
+Authentication is left to the user via `OnConnect`. Note that browser `EventSource` cannot send custom headers, so if you need token authentication, consider passing the token via a query parameter or a short-lived ticket exchanged on a separate endpoint.
 
 ## Config
 
@@ -99,7 +118,7 @@ defer cancel()
 | OnDisconnect      | `func(*Connection)`                               | Called after a client disconnects.                                                                                    | `nil`          |
 | OnPause           | `func(*Connection)`                               | Called when a connection is paused (browser tab hidden).                                                              | `nil`          |
 | OnResume          | `func(*Connection)`                               | Called when a connection is resumed (browser tab visible).                                                            | `nil`          |
-| Replayer          | `Replayer`                                        | Enables Last-Event-ID replay. If nil, replay is disabled.                                                            | `nil`          |
+| Replayer          | `Replayer`                                        | Pluggable Last-Event-ID replay backend. If nil, replay is disabled.                                                   | `nil`          |
 | FlushInterval     | `time.Duration`                                   | How often batched (P1) and coalesced (P2) events are flushed to clients. Instant (P0) events bypass this.            | `2s`           |
 | HeartbeatInterval | `time.Duration`                                   | How often a comment is sent to idle connections to detect disconnects and prevent proxy timeouts.                     | `30s`          |
 | MaxLifetime       | `time.Duration`                                   | Maximum duration a single SSE connection can stay open. Set to -1 for unlimited.                                     | `30m`          |

@@ -5,11 +5,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -317,73 +316,6 @@ func Test_SSE_AdaptiveThrottler(t *testing.T) {
 	at.remove("conn1")
 }
 
-func Test_SSE_MemoryReplayer(t *testing.T) {
-	t.Parallel()
-
-	replayer := NewMemoryReplayer(MemoryReplayerConfig{MaxEvents: 5})
-
-	for i := range 5 {
-		require.NoError(t, replayer.Store(
-			MarshaledEvent{ID: fmt.Sprintf("evt_%d", i), Data: fmt.Sprintf("data_%d", i)},
-			[]string{"topic1"},
-		))
-	}
-
-	events, err := replayer.Replay("evt_2", []string{"topic1"})
-	require.NoError(t, err)
-	require.Len(t, events, 2) // evt_3 and evt_4
-
-	// Unknown ID returns nil
-	events, err = replayer.Replay("unknown", []string{"topic1"})
-	require.NoError(t, err)
-	require.Nil(t, events)
-}
-
-func Test_SSE_MemoryReplayer_MaxEvents(t *testing.T) {
-	t.Parallel()
-
-	replayer := NewMemoryReplayer(MemoryReplayerConfig{MaxEvents: 3})
-
-	for i := range 10 {
-		require.NoError(t, replayer.Store(
-			MarshaledEvent{ID: fmt.Sprintf("evt_%d", i)},
-			[]string{"t"},
-		))
-	}
-
-	// Only last 3 events should be retained (ring buffer count)
-	replayer.mu.RLock()
-	require.Equal(t, 3, replayer.count)
-	replayer.mu.RUnlock()
-
-	// Replay from evt_7 should return evt_8 and evt_9
-	events, err := replayer.Replay("evt_7", []string{"t"})
-	require.NoError(t, err)
-	require.Len(t, events, 2)
-	require.Equal(t, "evt_8", events[0].ID)
-	require.Equal(t, "evt_9", events[1].ID)
-}
-
-func Test_SSE_TicketAuth(t *testing.T) {
-	t.Parallel()
-
-	store := NewMemoryTicketStore()
-
-	ticket, err := IssueTicket(store, `{"tenant":"t_1"}`, 5*time.Minute)
-	require.NoError(t, err)
-	require.Len(t, ticket, 48) // 24 bytes = 48 hex chars
-
-	// Consume ticket
-	value, err := store.GetDel(ticket)
-	require.NoError(t, err)
-	require.JSONEq(t, `{"tenant":"t_1"}`, value)
-
-	// Second use should fail
-	value, err = store.GetDel(ticket)
-	require.NoError(t, err)
-	require.Empty(t, value)
-}
-
 func Test_SSE_Publish_Stats(t *testing.T) {
 	t.Parallel()
 
@@ -436,53 +368,6 @@ func Test_SSE_Shutdown_Background_Context(t *testing.T) {
 
 	err := hub.Shutdown(context.Background())
 	require.NoError(t, err)
-}
-
-func Test_SSE_Invalidation(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	// These should not panic
-	hub.Invalidate("orders", "ord_123", "created")
-	hub.InvalidateForTenant("t_1", "orders", "ord_123", "created")
-	hub.InvalidateWithHint("orders", "ord_123", "created", map[string]any{"total": 99.99})
-	hub.InvalidateForTenantWithHint("t_1", "orders", "ord_123", "created", nil)
-	hub.Signal("dashboard")
-	hub.SignalForTenant("t_1", "dashboard")
-	hub.SignalThrottled("analytics", time.Minute)
-
-	time.Sleep(50 * time.Millisecond)
-	stats := hub.Stats()
-	require.Equal(t, int64(7), stats.EventsPublished)
-}
-
-func Test_SSE_DomainEvent(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	hub.DomainEvent("orders", "created", "ord_1", "t_1", nil)
-	hub.Progress("import", "imp_1", "t_1", 50, 100)
-	hub.Complete("import", "imp_1", "t_1", true, nil)
-	hub.BatchDomainEvents("t_1", []DomainEventSpec{
-		{Resource: "orders", Action: "created", ResourceID: "o1"},
-		{Resource: "products", Action: "updated", ResourceID: "p1"},
-	})
-
-	time.Sleep(50 * time.Millisecond)
-	stats := hub.Stats()
-	require.Equal(t, int64(4), stats.EventsPublished)
 }
 
 func Test_SSE_Draining_RejectsConnection(t *testing.T) {
@@ -557,21 +442,6 @@ func Test_SSE_WriteRetry(t *testing.T) {
 	require.Equal(t, "retry: 3000\n\n", buf.String())
 }
 
-func Test_SSE_Metrics(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	snap := hub.Metrics(false)
-	require.Equal(t, 0, snap.ActiveConnections)
-	require.NotEmpty(t, snap.Timestamp)
-}
-
 func Test_SSE_MaxLifetime_Unlimited(t *testing.T) {
 	t.Parallel()
 
@@ -583,434 +453,6 @@ func Test_SSE_MaxLifetime_Unlimited(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	require.NoError(t, hub.Shutdown(ctx))
-}
-
-func Test_SSE_JWTAuth_Valid(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	handler, hub := NewWithHub(Config{
-		OnConnect: JWTAuth(func(token string) (map[string]string, error) {
-			if token == "valid-token" {
-				return map[string]string{"user_id": "u_1", "tenant_id": "t_1"}, nil
-			}
-			return nil, errors.New("invalid token")
-		}),
-	})
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	app.Get("/events", handler)
-
-	// No token → 403
-	req, err := http.NewRequest(fiber.MethodGet, "/events", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
-
-	// Invalid token → 403
-	req, err = http.NewRequest(fiber.MethodGet, "/events?token=bad", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
-
-	// Valid token but no topics set → 400
-	req, err = http.NewRequest(fiber.MethodGet, "/events?token=valid-token", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
-}
-
-func Test_SSE_JWTAuth_BearerHeader(t *testing.T) {
-	t.Parallel()
-
-	authHandler := JWTAuth(func(token string) (map[string]string, error) {
-		if token == "my-jwt" {
-			return map[string]string{"user": "test"}, nil
-		}
-		return nil, errors.New("bad")
-	})
-
-	app := fiber.New()
-	handler, hub := NewWithHub(Config{
-		OnConnect: func(c fiber.Ctx, conn *Connection) error {
-			if err := authHandler(c, conn); err != nil {
-				return err
-			}
-			conn.Topics = []string{"test"}
-			return nil
-		},
-	})
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	app.Get("/events", handler)
-
-	// Bearer header should work — SSE streams never end, so use short timeout
-	req, err := http.NewRequest(fiber.MethodGet, "/events", http.NoBody)
-	require.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer my-jwt")
-	resp, err := app.Test(req, fiber.TestConfig{Timeout: 500 * time.Millisecond})
-	// Timeout is expected for SSE — the stream opened successfully
-	if err != nil {
-		require.ErrorContains(t, err, "timeout")
-	}
-	if resp != nil {
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	}
-}
-
-func Test_SSE_TicketAuth_Full(t *testing.T) {
-	t.Parallel()
-
-	store := NewMemoryTicketStore()
-	defer store.Close()
-
-	ticket, err := IssueTicket(store, `test-value`, 5*time.Minute)
-	require.NoError(t, err)
-
-	app := fiber.New()
-	handler, hub := NewWithHub(Config{
-		OnConnect: TicketAuth(store, func(_ string) (map[string]string, []string, error) {
-			return map[string]string{"source": "ticket"}, []string{"notifications"}, nil
-		}),
-	})
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	app.Get("/events", handler)
-
-	// Valid ticket → SSE stream starts (timeout expected)
-	req, err := http.NewRequest(fiber.MethodGet, "/events?ticket="+ticket, http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req, fiber.TestConfig{Timeout: 500 * time.Millisecond})
-	if err != nil {
-		require.ErrorContains(t, err, "timeout")
-	}
-	if resp != nil {
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	}
-
-	// Same ticket again → 403 (one-time use, already consumed)
-	req, err = http.NewRequest(fiber.MethodGet, "/events?ticket="+ticket, http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
-
-	// No ticket → 403
-	req, err = http.NewRequest(fiber.MethodGet, "/events", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
-}
-
-func Test_SSE_TicketStore_Close(t *testing.T) {
-	t.Parallel()
-
-	store := NewMemoryTicketStore()
-	require.NoError(t, store.Set("test", "value", time.Minute))
-
-	// Close should not panic
-	store.Close()
-
-	// Double close should not panic
-	store.Close()
-
-	// Operations after close still work (just no cleanup goroutine)
-	v, err := store.GetDel("test")
-	require.NoError(t, err)
-	require.Equal(t, "value", v)
-}
-
-func Test_SSE_MetricsHandler(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	app.Get("/metrics", hub.MetricsHandler())
-
-	req, err := http.NewRequest(fiber.MethodGet, "/metrics", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), `"active_connections"`)
-	require.Contains(t, string(body), `"events_published"`)
-}
-
-func Test_SSE_MetricsHandler_WithConnections(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	app.Get("/metrics", hub.MetricsHandler())
-
-	req, err := http.NewRequest(fiber.MethodGet, "/metrics?connections=true", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-}
-
-func Test_SSE_PrometheusHandler(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	// Publish some events so metrics have data
-	hub.Publish(Event{Type: "test", Topics: []string{"t"}, Data: "x"})
-	time.Sleep(50 * time.Millisecond)
-
-	app.Get("/prom", hub.PrometheusHandler())
-
-	req, err := http.NewRequest(fiber.MethodGet, "/prom", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	output := string(body)
-	require.Contains(t, output, "sse_connections_active")
-	require.Contains(t, output, "sse_events_published_total")
-	require.Contains(t, output, "sse_events_dropped_total")
-}
-
-func Test_SSE_Prometheus_LabelEscaping(t *testing.T) {
-	t.Parallel()
-
-	// No special chars → pass through
-	require.Equal(t, "normal", escapePromLabelValue("normal"))
-
-	// Quotes get escaped
-	require.Equal(t, `say \"hello\"`, escapePromLabelValue(`say "hello"`))
-
-	// Backslashes get escaped
-	require.Equal(t, `path\\to`, escapePromLabelValue(`path\to`))
-
-	// Newlines get escaped
-	require.Equal(t, `line1\nline2`, escapePromLabelValue("line1\nline2"))
-}
-
-func Test_SSE_FanOut(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	// Mock subscriber that sends one message then blocks
-	received := make(chan string, 1)
-	mockSub := &mockPubSubSubscriber{
-		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
-			onMessage("test-payload")
-			received <- "delivered"
-			<-ctx.Done()
-			return ctx.Err()
-		},
-	}
-
-	cancel := hub.FanOut(FanOutConfig{
-		Subscriber: mockSub,
-		Channel:    "test-channel",
-		EventType:  "notification",
-	})
-
-	// Wait for message delivery
-	select {
-	case <-received:
-		// success
-	case <-time.After(2 * time.Second):
-		t.Fatal("FanOut did not deliver message in time")
-	}
-
-	cancel()
-	time.Sleep(50 * time.Millisecond)
-
-	stats := hub.Stats()
-	require.Equal(t, int64(1), stats.EventsPublished)
-}
-
-func Test_SSE_FanOut_Cancel(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	subscribeCalled := make(chan struct{}, 1)
-	mockSub := &mockPubSubSubscriber{
-		onSubscribe: func(ctx context.Context, _ string, _ func(string)) error {
-			subscribeCalled <- struct{}{}
-			<-ctx.Done()
-			return ctx.Err()
-		},
-	}
-
-	cancel := hub.FanOut(FanOutConfig{
-		Subscriber: mockSub,
-		Channel:    "ch",
-		EventType:  "evt",
-	})
-
-	<-subscribeCalled
-	cancel()
-	// Should not hang — goroutine exits cleanly
-}
-
-func Test_SSE_FanOutMulti(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	count := make(chan struct{}, 2)
-	mockSub := &mockPubSubSubscriber{
-		onSubscribe: func(ctx context.Context, channel string, onMessage func(string)) error {
-			onMessage("msg-from-" + channel)
-			count <- struct{}{}
-			<-ctx.Done()
-			return ctx.Err()
-		},
-	}
-
-	cancel := hub.FanOutMulti(
-		FanOutConfig{Subscriber: mockSub, Channel: "ch1", EventType: "e1"},
-		FanOutConfig{Subscriber: mockSub, Channel: "ch2", EventType: "e2"},
-	)
-
-	// Wait for both
-	<-count
-	<-count
-	cancel()
-
-	time.Sleep(50 * time.Millisecond)
-	stats := hub.Stats()
-	require.Equal(t, int64(2), stats.EventsPublished)
-}
-
-func Test_SSE_FanOut_Transform(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	done := make(chan struct{}, 1)
-	mockSub := &mockPubSubSubscriber{
-		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
-			onMessage("raw-data")
-			done <- struct{}{}
-			<-ctx.Done()
-			return ctx.Err()
-		},
-	}
-
-	cancel := hub.FanOut(FanOutConfig{
-		Subscriber: mockSub,
-		Channel:    "ch",
-		EventType:  "default",
-		Transform: func(payload string) *Event {
-			return &Event{
-				Type:   "transformed",
-				Data:   "transformed:" + payload,
-				Topics: []string{"custom-topic"},
-			}
-		},
-	})
-
-	<-done
-	cancel()
-	time.Sleep(50 * time.Millisecond)
-
-	stats := hub.Stats()
-	require.Equal(t, int64(1), stats.EventsPublished)
-}
-
-func Test_SSE_FanOut_TransformNil(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	done := make(chan struct{}, 1)
-	mockSub := &mockPubSubSubscriber{
-		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
-			onMessage("skip-this")
-			done <- struct{}{}
-			<-ctx.Done()
-			return ctx.Err()
-		},
-	}
-
-	cancel := hub.FanOut(FanOutConfig{
-		Subscriber: mockSub,
-		Channel:    "ch",
-		EventType:  "evt",
-		Transform: func(_ string) *Event {
-			return nil // skip message
-		},
-	})
-
-	<-done
-	cancel()
-	time.Sleep(50 * time.Millisecond)
-
-	stats := hub.Stats()
-	require.Equal(t, int64(0), stats.EventsPublished)
 }
 
 func Test_SSE_SetPaused(t *testing.T) {
@@ -1037,52 +479,6 @@ func Test_SSE_SetPaused(t *testing.T) {
 
 	hub.SetPaused("test-conn", false)
 	require.False(t, conn.paused.Load())
-}
-
-func Test_SSE_BatchDomainEvents_Empty(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	// Empty batch should be a no-op
-	hub.BatchDomainEvents("t_1", nil)
-	hub.BatchDomainEvents("t_1", []DomainEventSpec{})
-
-	time.Sleep(50 * time.Millisecond)
-	stats := hub.Stats()
-	require.Equal(t, int64(0), stats.EventsPublished)
-}
-
-func Test_SSE_Replayer_EmptyID(t *testing.T) {
-	t.Parallel()
-
-	replayer := NewMemoryReplayer()
-
-	// Empty lastEventID returns nil
-	events, err := replayer.Replay("", []string{"t"})
-	require.NoError(t, err)
-	require.Nil(t, events)
-}
-
-func Test_SSE_Replayer_WildcardTopics(t *testing.T) {
-	t.Parallel()
-
-	replayer := NewMemoryReplayer()
-
-	require.NoError(t, replayer.Store(MarshaledEvent{ID: "e1"}, []string{"orders.created"}))
-	require.NoError(t, replayer.Store(MarshaledEvent{ID: "e2"}, []string{"orders.updated"}))
-	require.NoError(t, replayer.Store(MarshaledEvent{ID: "e3"}, []string{"products.created"}))
-
-	// Wildcard replay
-	events, err := replayer.Replay("e1", []string{"orders.*"})
-	require.NoError(t, err)
-	require.Len(t, events, 1) // e2 matches orders.*, e3 doesn't
-	require.Equal(t, "e2", events[0].ID)
 }
 
 // ---------------------------------------------------------------------------
@@ -1281,138 +677,6 @@ func Test_SSE_Throttler_Cleanup(t *testing.T) {
 
 	require.False(t, oldExists, "old conn should be cleaned up")
 	require.True(t, newExists, "new conn should remain")
-}
-
-func Test_SSE_FormatFloat_AllBranches(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, "42", formatFloat(42.0))
-	require.Equal(t, "3.140000", formatFloat(3.14))
-	require.Equal(t, "0", formatFloat(math.NaN()))
-	require.Equal(t, "0", formatFloat(math.Inf(1)))
-	require.Equal(t, "0", formatFloat(math.Inf(-1)))
-}
-
-func Test_SSE_Metrics_WithConnections(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	// Add a connection manually to test metrics with connections
-	conn := newConnection("metrics-conn", []string{"orders", "products"}, 10, time.Second)
-	conn.Metadata["tenant_id"] = "t_1"
-
-	hub.mu.Lock()
-	hub.connections[conn.ID] = conn
-	hub.topicIndex["orders"] = map[string]struct{}{conn.ID: {}}
-	hub.topicIndex["products"] = map[string]struct{}{conn.ID: {}}
-	hub.mu.Unlock()
-
-	snap := hub.Metrics(true)
-	require.Equal(t, 1, snap.ActiveConnections)
-	require.Len(t, snap.Connections, 1)
-	require.Equal(t, "metrics-conn", snap.Connections[0].ID)
-	require.Equal(t, 1, snap.ConnectionsByTopic["orders"])
-
-	// Test with paused connection
-	conn.paused.Store(true)
-	snap = hub.Metrics(true)
-	require.Equal(t, 1, snap.PausedConnections)
-}
-
-func Test_SSE_FanOut_RetryOnError(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	attempts := make(chan struct{}, 5)
-	mockSub := &mockPubSubSubscriber{
-		onSubscribe: func(_ context.Context, _ string, _ func(string)) error {
-			select {
-			case attempts <- struct{}{}:
-			default:
-			}
-			return errors.New("connection failed")
-		},
-	}
-
-	cancel := hub.FanOut(FanOutConfig{
-		Subscriber: mockSub,
-		Channel:    "retry-ch",
-		EventType:  "evt",
-	})
-
-	// Wait for at least one retry attempt
-	<-attempts
-	cancel()
-}
-
-func Test_SSE_FanOut_BuildEvent_ConfigDefaults(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	// Non-transform with all config defaults
-	cfg := &FanOutConfig{
-		EventType:   "test-event",
-		Priority:    PriorityBatched,
-		CoalesceKey: "my-key",
-		TTL:         5 * time.Minute,
-	}
-	event := hub.buildFanOutEvent(cfg, "my-topic", "payload")
-	require.NotNil(t, event)
-	require.Equal(t, "test-event", event.Type)
-	require.Equal(t, []string{"my-topic"}, event.Topics)
-	require.Equal(t, PriorityBatched, event.Priority)
-	require.Equal(t, "my-key", event.CoalesceKey)
-	require.Equal(t, 5*time.Minute, event.TTL)
-	require.Equal(t, "payload", event.Data)
-
-	// Transform that sets its own priority — should be respected
-	cfgT := &FanOutConfig{
-		EventType: "default-type",
-		Priority:  PriorityBatched,
-		Transform: func(payload string) *Event {
-			return &Event{
-				Type:     "custom-type",
-				Data:     "custom:" + payload,
-				Priority: PriorityCoalesced,
-				Topics:   []string{"custom-topic"},
-			}
-		},
-	}
-	event = hub.buildFanOutEvent(cfgT, "fallback-topic", "raw")
-	require.NotNil(t, event)
-	require.Equal(t, "custom-type", event.Type)
-	require.Equal(t, PriorityCoalesced, event.Priority) // Transform's priority preserved
-	require.Equal(t, []string{"custom-topic"}, event.Topics)
-
-	// Transform returning event without Topics or Type — should use defaults
-	cfgT2 := &FanOutConfig{
-		EventType: "fallback-type",
-		Transform: func(_ string) *Event {
-			return &Event{Data: "minimal"}
-		},
-	}
-	event = hub.buildFanOutEvent(cfgT2, "default-topic", "x")
-	require.NotNil(t, event)
-	require.Equal(t, "fallback-type", event.Type)
-	require.Equal(t, []string{"default-topic"}, event.Topics)
 }
 
 func Test_SSE_SetPaused_Callbacks(t *testing.T) {
@@ -1841,42 +1105,6 @@ func Test_SSE_RemoveConnection_Wildcard(t *testing.T) {
 	require.False(t, hasWildcard)
 }
 
-func Test_SSE_Progress_WithHint(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	hub.Progress("import", "imp_1", "t_1", 50, 100, map[string]any{"filename": "data.csv"})
-	hub.Progress("import", "imp_2", "", 0, 0) // zero total
-
-	time.Sleep(50 * time.Millisecond)
-	stats := hub.Stats()
-	require.Equal(t, int64(2), stats.EventsPublished)
-}
-
-func Test_SSE_Complete_Failure(t *testing.T) {
-	t.Parallel()
-
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	hub.Complete("import", "imp_1", "t_1", false, map[string]any{"error": "timeout"})
-	hub.Complete("import", "imp_2", "", true, nil) // no tenant, no hint
-
-	time.Sleep(50 * time.Millisecond)
-	stats := hub.Stats()
-	require.Equal(t, int64(2), stats.EventsPublished)
-}
-
 func Test_SSE_Publish_BufferFull(t *testing.T) {
 	t.Parallel()
 
@@ -1898,10 +1126,74 @@ func Test_SSE_Publish_BufferFull(t *testing.T) {
 	require.Positive(t, stats.EventsPublished)
 }
 
+// testReplayer is a minimal in-memory Replayer implementation used by tests
+// that exercise hub.replayEvents and hub.initStream. The production
+// MemoryReplayer has been removed from the library surface.
+type testReplayer struct {
+	entries []testReplayEntry
+	mu      sync.RWMutex
+}
+
+type testReplayEntry struct {
+	topics []string
+	event  MarshaledEvent
+}
+
+//nolint:gocritic // hugeParam: signature must match Replayer interface
+func (r *testReplayer) Store(event MarshaledEvent, topics []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.entries = append(r.entries, testReplayEntry{event: event, topics: topics})
+	return nil
+}
+
+func (r *testReplayer) Replay(lastEventID string, topics []string) ([]MarshaledEvent, error) {
+	if lastEventID == "" {
+		return nil, nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	// Find the index of lastEventID
+	idx := -1
+	for i, entry := range r.entries {
+		if entry.event.ID == lastEventID {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return nil, nil
+	}
+	var out []MarshaledEvent
+	for _, entry := range r.entries[idx+1:] {
+		if topicsOverlap(entry.topics, topics) {
+			out = append(out, entry.event)
+		}
+	}
+	return out, nil
+}
+
+func (r *testReplayer) count() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.entries)
+}
+
+func topicsOverlap(a, b []string) bool {
+	for _, x := range a {
+		for _, y := range b {
+			if topicMatch(y, x) || topicMatch(x, y) || x == y {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func Test_SSE_ReplayEvents(t *testing.T) {
 	t.Parallel()
 
-	replayer := NewMemoryReplayer()
+	replayer := &testReplayer{}
 	require.NoError(t, replayer.Store(MarshaledEvent{ID: "r1", Data: "d1", Retry: -1}, []string{"t"}))
 	require.NoError(t, replayer.Store(MarshaledEvent{ID: "r2", Data: "d2", Retry: -1}, []string{"t"}))
 
@@ -1943,7 +1235,7 @@ func Test_SSE_ReplayEvents_NoReplayer(t *testing.T) {
 func Test_SSE_InitStream(t *testing.T) {
 	t.Parallel()
 
-	replayer := NewMemoryReplayer()
+	replayer := &testReplayer{}
 	require.NoError(t, replayer.Store(MarshaledEvent{ID: "i1", Data: "d1", Retry: -1}, []string{"t"}))
 	require.NoError(t, replayer.Store(MarshaledEvent{ID: "i2", Data: "d2", Retry: -1}, []string{"t"}))
 
@@ -1970,7 +1262,7 @@ func Test_SSE_InitStream(t *testing.T) {
 func Test_SSE_RouteEvent_ReplayerStore(t *testing.T) {
 	t.Parallel()
 
-	replayer := NewMemoryReplayer()
+	replayer := &testReplayer{}
 	_, hub := NewWithHub(Config{Replayer: replayer})
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -1982,10 +1274,6 @@ func Test_SSE_RouteEvent_ReplayerStore(t *testing.T) {
 	hub.Publish(Event{Type: "test", Topics: []string{"t"}, Data: "stored"})
 	time.Sleep(100 * time.Millisecond)
 
-	events, err := replayer.Replay("", []string{"t"})
-	require.NoError(t, err)
-	require.Nil(t, events) // empty lastEventID
-
 	// Publish a group event — should NOT be stored in replayer
 	hub.Publish(Event{
 		Type:   "test",
@@ -1996,10 +1284,7 @@ func Test_SSE_RouteEvent_ReplayerStore(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// The replayer should only have 1 event (the non-group one)
-	replayer.mu.RLock()
-	count := replayer.count
-	replayer.mu.RUnlock()
-	require.Equal(t, 1, count)
+	require.Equal(t, 1, replayer.count())
 }
 
 func Test_SSE_Shutdown_Timeout(t *testing.T) {
@@ -2018,15 +1303,6 @@ func Test_SSE_Shutdown_Timeout(t *testing.T) {
 
 	// With already-canceled context, it might return an error if stopped hasn't been signaled
 	_ = hub.Shutdown(ctx) //nolint:errcheck // testing shutdown with canceled context
-}
-
-// mockPubSubSubscriber implements PubSubSubscriber for testing.
-type mockPubSubSubscriber struct {
-	onSubscribe func(ctx context.Context, channel string, onMessage func(string)) error
-}
-
-func (m *mockPubSubSubscriber) Subscribe(ctx context.Context, channel string, onMessage func(string)) error {
-	return m.onSubscribe(ctx, channel, onMessage)
 }
 
 func Benchmark_SSE_Publish(b *testing.B) {

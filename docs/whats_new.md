@@ -3142,7 +3142,7 @@ for complete details.
 
 #### SSE
 
-The new SSE middleware provides production-grade Server-Sent Events for Fiber. It includes a Hub-based broker with topic routing, event coalescing, NATS-style wildcards, JWT/ticket auth, and Prometheus metrics.
+The new SSE middleware provides Server-Sent Events for Fiber, built natively on the fasthttp `SendStreamWriter` API. It includes a Hub-based broker with topic routing, three priority lanes (instant/batched/coalesced), NATS-style topic wildcards, connection groups for metadata-based filtering, adaptive throttling, graceful drain, and pluggable Last-Event-ID replay. Fully compatible with the standard SSE wire format and any `EventSource`-style client.
 
 ```go
 handler, hub := sse.NewWithHub(sse.Config{
@@ -3153,6 +3153,10 @@ handler, hub := sse.NewWithHub(sse.Config{
 })
 app.Get("/events", handler)
 
-// Replace polling with real-time push
-hub.Invalidate("orders", order.ID, "created")
+// Publish from any handler or worker
+hub.Publish(sse.Event{
+    Type:   "update",
+    Data:   "hello",
+    Topics: []string{"notifications"},
+})
 ```
