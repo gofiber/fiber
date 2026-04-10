@@ -387,7 +387,7 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins 
 		return nil
 	}
 
-	refererOrigin := utilsstrings.ToLower(refererURL.Scheme) + "://" + utilsstrings.ToLower(refererURL.Host)
+	refererOrigin := refererURL.Scheme + "://" + refererURL.Host
 
 	if slices.Contains(trustedOrigins, refererOrigin) {
 		return nil

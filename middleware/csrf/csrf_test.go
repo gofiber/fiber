@@ -1352,6 +1352,22 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
 	require.Equal(t, 200, ctx.Response.StatusCode())
+
+	// Test Trusted Referer Wildcard with path — wildcard subdomain referer
+	// that includes a path must still match the trusted sub-origin
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+	ctx.Request.URI().SetScheme("https")
+	ctx.Request.URI().SetHost("domain-1.com")
+	ctx.Request.Header.SetProtocol("https")
+	ctx.Request.Header.SetHost("domain-1.com")
+	ctx.Request.Header.Set(fiber.HeaderReferer, "https://safe.domain-1.com/api/callback?code=abc")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 200, ctx.Response.StatusCode())
 }
 
 func Test_CSRF_TrustedOrigins_InvalidOrigins(t *testing.T) {
