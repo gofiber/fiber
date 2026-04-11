@@ -120,7 +120,7 @@ func dummyCmd() *exec.Cmd {
 	if storeCommand := dummyChildCmd.Load(); storeCommand != nil && storeCommand != "" {
 		command = storeCommand.(string) //nolint:forcetypeassert,errcheck // We always store a string in here
 	}
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == windowsOS {
 		return exec.Command("cmd", "/C", command, "version")
 	}
 	return exec.Command(command, "version")
