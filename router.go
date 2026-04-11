@@ -168,7 +168,7 @@ func preferredGreedyParameters(paramName string) []string {
 		case plusParam:
 			return preferredPlusGreedyParameters
 		case wildcardParam:
-			return preferredWildcardGreedyParameters
+			return defaultGreedyParameterKeys
 		}
 	}
 
