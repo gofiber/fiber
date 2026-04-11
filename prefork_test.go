@@ -67,10 +67,12 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 	err := app.prefork(":0", nil, &cfg)
 	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 
-	// With invalid command, should get a start error
+	// With invalid command, should get a start error immediately
+	// (error happens during initial spawning, before recovery loop)
 	dummyChildCmd.Store("invalid")
 
 	cfg = listenConfigDefault()
+	cfg.PreforkRecoverThreshold = 1
 	err = app.prefork("127.0.0.1:", nil, &cfg)
 	require.Error(t, err)
 
