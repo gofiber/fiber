@@ -40,6 +40,12 @@ func acquireData() *data {
 	panic("unexpected type in data pool")
 }
 
+// releaseData resets the data object and returns it to the pool.
+func releaseData(d *data) {
+	d.Reset()
+	dataPool.Put(d)
+}
+
 // Reset clears the data map and resets the data object.
 //
 // Usage:
