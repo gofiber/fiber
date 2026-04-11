@@ -133,6 +133,12 @@ type ListenConfig struct {
 	// Default: runtime.GOMAXPROCS(0) / 2
 	PreforkRecoverThreshold int `json:"prefork_recover_threshold"`
 
+	// PreforkLogger sets a custom logger for the prefork process manager.
+	// This only applies when EnablePrefork is true.
+	//
+	// Default: Fiber's built-in logger (log.Infof)
+	PreforkLogger PreforkLoggerInterface `json:"prefork_logger"`
+
 	// If set to true, will print all routes with their method, path and handler.
 	//
 	// Default: false
