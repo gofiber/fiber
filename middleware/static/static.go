@@ -163,8 +163,16 @@ func New(root string, cfg ...Config) fiber.Handler {
 				prefixLen--
 			}
 
+			// For io/fs.FS, Root must be empty so fasthttp's pathToFilePath
+			// returns clean relative paths without prefixing the root.
+			// PathRewrite already handles file-root and subdirectory cases.
+			fsRoot := root
+			if config.FS != nil {
+				fsRoot = ""
+			}
+
 			fileServer := &fasthttp.FS{
-				Root:                   root,
+				Root:                   fsRoot,
 				FS:                     config.FS,
 				AllowEmptyRoot:         true,
 				GenerateIndexPages:     config.Browse,
