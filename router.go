@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sync/atomic"
 
@@ -39,6 +40,39 @@ type Router interface {
 	Route(prefix string, fn func(router Router), name ...string) Router
 
 	Name(name string) Router
+	// Summary sets a short summary for the most recently registered route.
+	Summary(sum string) Router
+	// Description sets a human-readable description for the most recently
+	// registered route.
+	Description(desc string) Router
+	// Consumes sets the request media type for the most recently
+	// registered route.
+	Consumes(typ string) Router
+	// Produces sets the response media type for the most recently
+	// registered route.
+	Produces(typ string) Router
+	// RequestBody documents the request body for the most recently
+	// registered route.
+	RequestBody(description string, required bool, mediaTypes ...string) Router
+	// RequestBodyWithExample documents the request body for the most recently
+	// registered route with schema references and examples.
+	RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
+	// Parameter documents an input parameter for the most recently
+	// registered route.
+	Parameter(name, in string, required bool, schema map[string]any, description string) Router
+	// ParameterWithExample documents an input parameter for the most recently
+	// registered route, including schema references and examples.
+	ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router
+	// Response documents an HTTP response for the most recently
+	// registered route.
+	Response(status int, description string, mediaTypes ...string) Router
+	// ResponseWithExample documents an HTTP response for the most recently
+	// registered route, including schema references and examples.
+	ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
+	// Tags sets the tags for the most recently registered route.
+	Tags(tags ...string) Router
+	// Deprecated marks the most recently registered route as deprecated.
+	Deprecated() Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
@@ -46,16 +80,29 @@ type Route struct {
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	group *Group // Group instance. used for routes in groups
 
+	Responses   map[string]RouteResponse `json:"responses"`
+	RequestBody *RouteRequestBody        `json:"requestBody"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+
 	path string // Prettified path
 
 	// Public fields
 	Method string `json:"method"` // HTTP method
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
-	Path        string      `json:"path"`   // Original registered route path
-	Params      []string    `json:"params"` // Case-sensitive param keys
-	Handlers    []Handler   `json:"-"`      // Ctx handlers
+	Path        string `json:"path"` // Original registered route path
+	Summary     string `json:"summary"`
+	Description string `json:"description"`
+	Consumes    string `json:"consumes"`
+	Produces    string `json:"produces"`
+
+	Handlers   []Handler        `json:"-"` // Ctx handlers
+	Parameters []RouteParameter `json:"parameters"`
+	Tags       []string         `json:"tags"`
+	Params     []string         `json:"params"` // Case-sensitive param keys
+
 	routeParser routeParser // Parameter parser
+
+	Deprecated bool `json:"deprecated"`
 
 	// Data for routing
 	use      bool // USE matches path prefixes
@@ -63,6 +110,52 @@ type Route struct {
 	star     bool // Path equals '*'
 	root     bool // Path equals '/'
 	autoHead bool // Automatically generated HEAD route
+}
+
+// IsMiddleware reports whether this route was registered via Use() and
+// therefore matches path prefixes rather than exact paths. This is useful
+// for filtering middleware routes from generated API specifications.
+func (r *Route) IsMiddleware() bool {
+	return r.use
+}
+
+// IsAutoHead reports whether this route was automatically generated as a
+// HEAD counterpart of a GET route.
+func (r *Route) IsAutoHead() bool {
+	return r.autoHead
+}
+
+// RouteParameter describes an input captured by a route.
+type RouteParameter struct {
+	Schema      map[string]any `json:"schema"`
+	SchemaRef   string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Example     any            `json:"example,omitempty"`
+	Examples    map[string]any `json:"examples,omitempty"`
+	Description string         `json:"description"`
+	Name        string         `json:"name"`
+	In          string         `json:"in"`
+	Required    bool           `json:"required"`
+}
+
+// RouteResponse describes a response emitted by a route.
+type RouteResponse struct {
+	Example     any            `json:"example,omitempty"`
+	Schema      map[string]any `json:"schema,omitempty"`
+	Examples    map[string]any `json:"examples,omitempty"`
+	SchemaRef   string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Description string         `json:"description"`
+	MediaTypes  []string       `json:"mediaTypes"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+}
+
+// RouteRequestBody describes the request payload accepted by a route.
+type RouteRequestBody struct {
+	Example     any            `json:"example,omitempty"`
+	Schema      map[string]any `json:"schema,omitempty"`
+	Examples    map[string]any `json:"examples,omitempty"`
+	SchemaRef   string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Description string         `json:"description"`
+	MediaTypes  []string       `json:"mediaTypes"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Required    bool           `json:"required"`
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
@@ -387,12 +480,93 @@ func (*App) copyRoute(route *Route) *Route {
 		routeParser: route.routeParser,
 
 		// Public data
-		Path:     route.Path,
-		Params:   route.Params,
-		Name:     route.Name,
-		Method:   route.Method,
-		Handlers: route.Handlers,
+		Path:        route.Path,
+		Params:      route.Params,
+		Name:        route.Name,
+		Method:      route.Method,
+		Handlers:    route.Handlers,
+		Summary:     route.Summary,
+		Description: route.Description,
+		Consumes:    route.Consumes,
+		Produces:    route.Produces,
+		RequestBody: cloneRouteRequestBody(route.RequestBody),
+		Parameters:  cloneRouteParameters(route.Parameters),
+		Responses:   cloneRouteResponses(route.Responses),
+		Tags:        append([]string(nil), route.Tags...),
+		Deprecated:  route.Deprecated,
 	}
+}
+
+func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {
+	if body == nil {
+		return nil
+	}
+	clone := &RouteRequestBody{
+		Description: body.Description,
+		Required:    body.Required,
+	}
+	if len(body.Schema) > 0 {
+		clone.Schema = copyAnyMap(body.Schema)
+	}
+	clone.SchemaRef = body.SchemaRef
+	if len(body.Examples) > 0 {
+		clone.Examples = copyAnyMap(body.Examples)
+	}
+	clone.Example = body.Example
+	if len(body.MediaTypes) > 0 {
+		clone.MediaTypes = append([]string(nil), body.MediaTypes...)
+	}
+	return clone
+}
+
+func cloneRouteParameters(params []RouteParameter) []RouteParameter {
+	if len(params) == 0 {
+		return nil
+	}
+	cloned := make([]RouteParameter, len(params))
+	for i, p := range params {
+		cloned[i] = RouteParameter{
+			Name:        p.Name,
+			In:          p.In,
+			Required:    p.Required,
+			Description: p.Description,
+		}
+		cloned[i].Schema = copyAnyMap(p.Schema)
+		cloned[i].SchemaRef = p.SchemaRef
+		cloned[i].Examples = copyAnyMap(p.Examples)
+		cloned[i].Example = p.Example
+	}
+	return cloned
+}
+
+func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteResponse {
+	if len(responses) == 0 {
+		return nil
+	}
+	cloned := make(map[string]RouteResponse, len(responses))
+	for code, resp := range responses {
+		copyResp := RouteResponse{
+			Description: resp.Description,
+			Schema:      copyAnyMap(resp.Schema),
+			SchemaRef:   resp.SchemaRef,
+			Examples:    copyAnyMap(resp.Examples),
+			Example:     resp.Example,
+		}
+		if len(resp.MediaTypes) > 0 {
+			copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
+		}
+		cloned[code] = copyResp
+	}
+	return cloned
+}
+
+func copyAnyMap(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	maps.Copy(dst, src)
+	return dst
 }
 
 func (app *App) normalizePath(path string) string {
@@ -564,9 +738,13 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			Params:      parsedRaw.params,
 			group:       group,
 
-			Path:     pathRaw,
-			Method:   method,
-			Handlers: handlers,
+			Path:        pathRaw,
+			Method:      method,
+			Handlers:    handlers,
+			Summary:     "",
+			Description: "",
+			Consumes:    MIMETextPlain,
+			Produces:    MIMETextPlain,
 		}
 
 		// Increment global handler count
