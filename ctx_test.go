@@ -5105,6 +5105,42 @@ func (s *mockContextAwareStorage) Close() error {
 	return nil
 }
 
+func Test_Ctx_SaveFileToStorage_NilFileHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	storage := memory.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	err := ctx.SaveFileToStorage(nil, "test", storage)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrFileHeaderNil)
+}
+
+func Test_Ctx_SaveFileToStorage_ErrorMessageContainsFilename(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{BodyLimit: 10}) // small limit to force error
+	storage := memory.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	fileHeader := createMultipartFileHeader(
+		t,
+		"test-file.png",
+		bytes.Repeat([]byte{'a'}, 100), // bigger than limit
+	)
+
+	err := ctx.SaveFileToStorage(fileHeader, "test-path", storage)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "test-file.png")
+}
+
 // go test -run Test_Ctx_SaveFileToStorage_ContextPropagation
 func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
 	t.Parallel()
