@@ -224,7 +224,7 @@ func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
 		return d
 	}
 
-	first := acquireWithCleanup()
+	first := acquireData()
 	first.Set("key1", "value1")
 	first.Set("key2", "value2")
 	first.Reset()

@@ -93,8 +93,7 @@ func releaseSession(s *Session) {
 	s.ctx = nil
 	s.config = nil
 	if s.data != nil {
-		releaseData(s.data)
-		s.data = nil
+		s.data.Reset()
 	}
 	s.mu.Unlock()
 	sessionPool.Put(s)
