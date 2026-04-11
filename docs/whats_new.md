@@ -57,6 +57,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Proxy](#proxy)
   - [Recover](#recover)
   - [Session](#session)
+  - [SSE](#sse)
 - [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
@@ -3138,3 +3139,20 @@ app.Use(session.New(session.Config{
 
 See the [Session Middleware Migration Guide](./middleware/session.md#migration-guide)
 for complete details.
+
+#### SSE
+
+The new SSE middleware provides production-grade Server-Sent Events for Fiber. It includes a Hub-based broker with topic routing, event coalescing, NATS-style wildcards, JWT/ticket auth, and Prometheus metrics.
+
+```go
+handler, hub := sse.NewWithHub(sse.Config{
+    OnConnect: func(c fiber.Ctx, conn *sse.Connection) error {
+        conn.Topics = []string{"notifications"}
+        return nil
+    },
+})
+app.Get("/events", handler)
+
+// Replace polling with real-time push
+hub.Invalidate("orders", order.ID, "created")
+```
