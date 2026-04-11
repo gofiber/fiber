@@ -5472,7 +5472,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 
 	// test not modified
 	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().Header.Set(HeaderIfModifiedSince, fI.ModTime().Format(time.RFC1123))
+	c.Request().Header.Set(HeaderIfModifiedSince, fI.ModTime().UTC().Format(http.TimeFormat))
 	err = c.SendFile("ctx.go")
 	// check expectation
 	require.NoError(t, err)
