@@ -1213,6 +1213,19 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 		req.Header.Add(HeaderContentLength, strconv.FormatInt(req.ContentLength, 10))
 	}
 
+	// Ensure Host header is present in the dump (required by fasthttp)
+	if req.Host == "" {
+		if req.URL != nil && req.URL.Host != "" {
+			req.Host = req.URL.Host
+		} else {
+			req.Host = "localhost"
+		}
+	}
+
+	// Clear RequestURI so DumpRequest writes origin-form request line with
+	// Host header instead of absolute-form URI without Host header.
+	req.RequestURI = ""
+
 	// Dump raw http request
 	dump, err := httputil.DumpRequest(req, true)
 	if err != nil {

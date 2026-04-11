@@ -810,10 +810,6 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 			},
 		}
 
-		if cfg.FS != nil {
-			fasthttpFS.Root = "."
-		}
-
 		sf := &sendFileStore{
 			config:  cfg,
 			handler: fasthttpFS.NewRequestHandler(),
