@@ -2,6 +2,7 @@ package fiber
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -51,12 +52,14 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 
 	// Use test command producer if in test mode
 	if testPreforkMaster {
-		p.CommandProducer = func(files []*os.File) (*exec.Cmd, error) {
+		p.CommandProducer = func(_ []*os.File) (*exec.Cmd, error) {
 			cmd := dummyCmd()
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
-			err := cmd.Start()
-			return cmd, err
+			if err := cmd.Start(); err != nil {
+				return cmd, fmt.Errorf("prefork: failed to start test command: %w", err)
+			}
+			return cmd, nil
 		}
 	}
 
@@ -111,7 +114,11 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 		return nil
 	}
 
-	return p.ListenAndServe(addr)
+	if err := p.ListenAndServe(addr); err != nil {
+		return fmt.Errorf("prefork: %w", err)
+	}
+
+	return nil
 }
 
 // dummyCmd is for internal prefork testing
