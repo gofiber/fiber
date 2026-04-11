@@ -198,7 +198,84 @@ commonLogger := log.WithContext(ctx)
 commonLogger.Info("info")
 ```
 
-Context binding adds request-specific data for easier tracing.
+Context binding adds request-specific data for easier tracing. The method accepts any context type supported by Fiber's `ValueFromContext` utility, including `fiber.Ctx` and `context.Context`. When using standard `context.Context` instances (such as `c.Context()`), enable `PassLocalsToContext` in the app config so that values stored in `fiber.Ctx.Locals` are propagated through the context chain.
+
+### Automatic Context Fields
+
+Middleware that stores values in the request context can register extractors so that `log.WithContext` automatically includes those values in every log entry. The following middlewares register extractors when their `New()` constructor is called:
+
+| Middleware   | Log Field      | Description                      |
+| ------------ | -------------- | -------------------------------- |
+| `requestid`  | `request-id`   | Request identifier               |
+| `basicauth`  | `username`     | Authenticated username           |
+| `keyauth`    | `api-key`      | API key token (redacted)         |
+| `csrf`       | `csrf-token`   | CSRF token (redacted)            |
+| `session`    | `session-id`   | Session identifier (redacted)    |
+
+```go
+app.Use(requestid.New())
+
+app.Get("/", func(c fiber.Ctx) error {
+    // Automatically includes request-id=<id> in the log output
+    log.WithContext(c).Info("processing request")
+    return c.SendString("OK")
+})
+```
+
+**Example output:**
+
+```text
+2026/03/17 12:00:00.123456 main.go:15: [Info] request-id=abc-123 processing request
+```
+
+The context fields (`request-id=abc-123`) are automatically prepended to the log message. You can use multiple middlewares and all their fields will be included:
+
+```go
+app.Use(requestid.New())
+app.Use(basicauth.New(basicauth.Config{
+    Users: map[string]string{"admin": "password"},
+}))
+
+app.Get("/", func(c fiber.Ctx) error {
+    log.WithContext(c).Info("user action")
+    return c.SendString("OK")
+})
+```
+
+**Example output:**
+
+```text
+2026/03/17 12:00:00.123456 main.go:20: [Info] request-id=abc-123 username=admin user action
+```
+
+:::note
+**Context fields and logger compatibility:**
+
+- Context fields are prepended to the log message in `key=value` format
+- The fields are extracted once per log call and added before the message
+- Context extraction only works with the default logger implementation. If you set a custom logger using `log.SetLogger()`, you must implement context field extraction yourself
+- For JSON or structured logging, use the `Logw` methods (e.g., `log.WithContext(c).Infow("message", "key", "value")`) which preserve field structure
+- Context fields are always included when using `log.WithContext()`, regardless of how many times you call the logger in a handler
+
+:::
+
+### Custom Context Extractors
+
+Use `log.RegisterContextExtractor` to register your own extractors. Each extractor receives the bound context and returns a field name, value, and success flag:
+
+```go
+log.RegisterContextExtractor(func(ctx any) (string, any, bool) {
+    // Use fiber.ValueFromContext to extract from any supported context type
+    if traceID, ok := fiber.ValueFromContext[string](ctx, traceIDKey); ok && traceID != "" {
+        return "trace-id", traceID, true
+    }
+    return "", nil, false
+})
+```
+
+:::note
+`RegisterContextExtractor` may be called at any time, including while your application is handling requests and emitting logs. Registrations are safe to perform concurrently with logging. In practice, register extractors during program initialization (e.g. in an `init` function or middleware constructor) so that they are in place before requests are processed.
+:::
 
 ## Logger
 

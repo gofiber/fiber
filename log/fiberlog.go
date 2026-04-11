@@ -1,7 +1,6 @@
 package log
 
 import (
-	"context"
 	"io"
 )
 
@@ -119,7 +118,8 @@ func Panicw(msg string, keysAndValues ...any) {
 
 // WithContext binds the default logger to the provided context and returns the
 // contextualized logger.
-func WithContext(ctx context.Context) CommonLogger {
+// The ctx parameter can be fiber.Ctx, *fasthttp.RequestCtx, or context.Context.
+func WithContext(ctx any) CommonLogger {
 	return logger.WithContext(ctx)
 }
 

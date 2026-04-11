@@ -1,9 +1,11 @@
 package session
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -589,4 +592,57 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+}
+
+func Test_Session_LogWithContext(t *testing.T) {
+	app := fiber.New()
+	app.Use(New())
+
+	var logOutput bytes.Buffer
+	fiberlog.SetOutput(&logOutput)
+	defer fiberlog.SetOutput(os.Stderr)
+
+	var capturedID string
+
+	app.Get("/", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		require.NotNil(t, sess)
+		capturedID = sess.Session.ID()
+		fiberlog.WithContext(c).Info("session test")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	// Session ID must appear in log but be redacted (only first 4 chars + ****)
+	logStr := logOutput.String()
+	expectedRedacted := redactSessionID(capturedID)
+	require.Contains(t, logStr, "session-id="+expectedRedacted, "redacted session ID must appear in log")
+	require.Contains(t, logStr, "session test")
+	require.NotContains(t, logStr, capturedID, "full session ID must not appear in log")
+}
+
+func Test_redactSessionID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("long ID is redacted", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "abcd****", redactSessionID("abcdefghij"))
+	})
+
+	t.Run("short ID is fully redacted", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "****", redactSessionID("short"))
+	})
+
+	t.Run("exactly 8 chars is fully redacted", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "****", redactSessionID("12345678"))
+	})
+
+	t.Run("empty string is fully redacted", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "****", redactSessionID(""))
+	})
 }
