@@ -41,6 +41,8 @@ func acquireData() *data {
 }
 
 // releaseData resets the data object and returns it to the pool.
+// d must not be used after calling this function.
+// If d is nil, releaseData is a no-op.
 func releaseData(d *data) {
 	if d == nil {
 		return

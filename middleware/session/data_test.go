@@ -224,6 +224,8 @@ func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
 		return d
 	}
 
+	// Acquire first outside acquireWithCleanup to avoid double-put:
+	// it is explicitly released via releaseData below.
 	first := acquireData()
 	first.Set("key1", "value1")
 	first.Set("key2", "value2")
