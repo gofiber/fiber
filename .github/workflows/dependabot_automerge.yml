@@ -11,14 +11,13 @@ jobs:
     if: ${{ github.actor == 'dependabot[bot]' }}
     steps:
       - name: Wait for check is finished
-        uses: lewagon/wait-on-check-action@v1.6.1
         id: wait_for_checks
+        uses: poseidon/wait-for-status-checks@v0.6.0
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          running-workflow-name: wait_for_checks
-          check-regexp: unit
-          repo-token: ${{ secrets.PR_TOKEN }}
-          wait-interval: 10
+          token: ${{ secrets.PR_TOKEN }}
+          match_pattern: ^unit
+          interval: 10
+          timeout: 600
   dependabot:
     needs: [wait_for_checks]
     name: Dependabot auto-merge
