@@ -2449,6 +2449,14 @@ func Test_Route_URL(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "/user/fiber", url)
 
+		// When multiple keys case-fold to the same param name and no exact key
+		// exists, the lexicographically-smallest key wins deterministically.
+		for range 50 {
+			url, err = route.URL(Map{"nAme": "second", "Name": "first"})
+			require.NoError(t, err)
+			require.Equal(t, "/user/first", url)
+		}
+
 		// When multiple keys case-fold to the same param name, prefer the exact match.
 		url, err = route.URL(Map{"name": "exact", "Name": "fallback"})
 		require.NoError(t, err)

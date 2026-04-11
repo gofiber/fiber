@@ -127,14 +127,16 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		if val, found = params[segment.ParamName]; !found && !route.caseSensitive {
 			// Fall back to a case-insensitive match using a deterministic winner
 			var matchedKey string
+			foundMatch := false
 			for key := range params {
-				if utils.EqualFold(key, segment.ParamName) && (!found || key < matchedKey) {
+				if utils.EqualFold(key, segment.ParamName) && (!foundMatch || key < matchedKey) {
 					matchedKey = key
-					found = true
+					foundMatch = true
 				}
 			}
-			if found {
+			if foundMatch {
 				val = params[matchedKey]
+				found = true
 			}
 		}
 
