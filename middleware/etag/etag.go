@@ -17,7 +17,7 @@ var (
 
 // Generate returns a strong ETag for body.
 func Generate(body []byte) []byte {
-	if uint64(len(body)) > math.MaxUint32 {
+	if uint64(len(body)) > uint64(math.MaxUint32) {
 		return nil
 	}
 	bb := bytebufferpool.Get()
@@ -74,7 +74,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		bodyLength := len(body)
-		if uint64(bodyLength) > math.MaxUint32 {
+		if uint64(bodyLength) > uint64(math.MaxUint32) {
 			return c.SendStatus(fiber.StatusRequestEntityTooLarge)
 		}
 

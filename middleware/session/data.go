@@ -33,10 +33,22 @@ var dataPool = sync.Pool{
 func acquireData() *data {
 	obj := dataPool.Get()
 	if d, ok := obj.(*data); ok {
+		d.Reset()
 		return d
 	}
 	// Handle unexpected type in the pool
 	panic("unexpected type in data pool")
+}
+
+// releaseData resets the data object and returns it to the pool.
+// d must not be used after calling this function.
+// If d is nil, releaseData is a no-op.
+func releaseData(d *data) {
+	if d == nil {
+		return
+	}
+	d.Reset()
+	dataPool.Put(d)
 }
 
 // Reset clears the data map and resets the data object.

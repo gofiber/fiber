@@ -3,6 +3,7 @@ package fiber_test
 import (
 	"bytes"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -656,4 +657,437 @@ func Test_Integration_App_ServerErrorHandler_WithCustomCtx(t *testing.T) {
 	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode())
 	require.Equal(t, "true", string(resp.Header.Peek("X-Custom-Ctx")))
 	require.Equal(t, "https://example.org", string(resp.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+}
+
+// Integration tests for domain routing
+
+func Test_Integration_Domain_WithMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(helmet.New())
+	app.Use(requestid.New())
+
+	// Domain-specific route with middleware
+	app.Domain("api.example.com").Get("/users", func(c fiber.Ctx) error {
+		return c.SendString("api users")
+	})
+
+	// Fallback route
+	app.Get("/users", func(c fiber.Ctx) error {
+		return c.SendString("default users")
+	})
+
+	// Test matching domain
+	req := httptest.NewRequest(http.MethodGet, "/users", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "api users", string(body))
+	require.NotEmpty(t, resp.Header.Get("X-Request-ID"))
+	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
+
+	// Test non-matching domain (fallback)
+	req = httptest.NewRequest(http.MethodGet, "/users", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "default users", string(body))
+}
+
+func Test_Integration_Domain_WithCORS(t *testing.T) {
+	t.Parallel()
+
+	const apiOrigin = "https://api.example.com"
+
+	app := fiber.New()
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{apiOrigin},
+		AllowCredentials: true,
+	}))
+
+	app.Domain("api.example.com").Get("/data", func(c fiber.Ctx) error {
+		return c.JSON(fiber.Map{"source": "api"})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/data", http.NoBody)
+	req.Host = "api.example.com"
+	req.Header.Set(fiber.HeaderOrigin, apiOrigin)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, apiOrigin, resp.Header.Get(fiber.HeaderAccessControlAllowOrigin))
+	require.Equal(t, "true", resp.Header.Get(fiber.HeaderAccessControlAllowCredentials))
+}
+
+func Test_Integration_Domain_WithGroup(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(helmet.New())
+
+	// Domain with group
+	apiDomain := app.Domain("api.example.com")
+	apiDomain.Use(requestid.New(requestid.Config{
+		Generator: func() string { return "domain-request-id" },
+	}))
+
+	v1 := apiDomain.Group("/v1")
+	v1.Get("/posts", func(c fiber.Ctx) error {
+		return c.SendString("v1 posts")
+	})
+
+	v2 := apiDomain.Group("/v2")
+	v2.Get("/posts", func(c fiber.Ctx) error {
+		return c.SendString("v2 posts")
+	})
+
+	// Test v1
+	req := httptest.NewRequest(http.MethodGet, "/v1/posts", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "v1 posts", string(body))
+	require.Equal(t, "domain-request-id", resp.Header.Get("X-Request-ID"))
+	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
+
+	// Test v2
+	req = httptest.NewRequest(http.MethodGet, "/v2/posts", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "v2 posts", string(body))
+}
+
+func Test_Integration_Domain_WithSubAppMount(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(helmet.New())
+
+	// Create sub-app with routes
+	subApp := fiber.New()
+	subApp.Use(requestid.New())
+	subApp.Get("/users", func(c fiber.Ctx) error {
+		return c.JSON(fiber.Map{"users": []string{"alice", "bob"}})
+	})
+	subApp.Get("/posts", func(c fiber.Ctx) error {
+		return c.JSON(fiber.Map{"posts": []string{"post1", "post2"}})
+	})
+
+	// Mount sub-app on domain
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	// Fallback route
+	app.Get("/api/users", func(c fiber.Ctx) error {
+		return c.SendString("default users")
+	})
+
+	// Test domain-mounted sub-app
+	req := httptest.NewRequest(http.MethodGet, "/api/users", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "alice")
+	require.NotEmpty(t, resp.Header.Get("X-Request-ID"))
+	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
+
+	// Test non-matching domain (fallback)
+	req = httptest.NewRequest(http.MethodGet, "/api/users", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "default users", string(body))
+}
+
+func Test_Integration_Domain_WithParams(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(requestid.New())
+
+	// Domain with parameters
+	app.Domain(":tenant.app.example.com").Get("/dashboard", func(c fiber.Ctx) error {
+		tenant := fiber.DomainParam(c, "tenant")
+		return c.JSON(fiber.Map{
+			"tenant":    tenant,
+			"page":      "dashboard",
+			"requestID": c.Get("X-Request-ID"),
+		})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", http.NoBody)
+	req.Host = "acme.app.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "acme")
+	require.Contains(t, string(body), "dashboard")
+	require.NotEmpty(t, resp.Header.Get("X-Request-ID"))
+}
+
+func Test_Integration_Domain_MultipleDomains(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	// Different domains with different responses
+	app.Domain("api.example.com").Get("/", func(c fiber.Ctx) error {
+		return c.SendString("api domain")
+	})
+
+	app.Domain("admin.example.com").Get("/", func(c fiber.Ctx) error {
+		return c.SendString("admin domain")
+	})
+
+	app.Domain("app.example.com").Get("/", func(c fiber.Ctx) error {
+		return c.SendString("app domain")
+	})
+
+	// Default fallback
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("default domain")
+	})
+
+	tests := []struct {
+		host     string
+		expected string
+	}{
+		{"api.example.com", "api domain"},
+		{"admin.example.com", "admin domain"},
+		{"app.example.com", "app domain"},
+		{"www.example.com", "default domain"},
+		{"unknown.example.com", "default domain"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.host, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+			req.Host = tt.host
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, string(body))
+		})
+	}
+}
+
+func Test_Integration_Domain_WithSession(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(session.New())
+
+	app.Domain("api.example.com").Get("/session", func(c fiber.Ctx) error {
+		sess := session.FromContext(c)
+		if sess == nil {
+			return c.Status(fiber.StatusInternalServerError).SendString("no session")
+		}
+		sess.Set("domain", "api")
+		return c.SendString("session set")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/session", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, resp.Header.Get(fiber.HeaderSetCookie), "session_id=")
+}
+
+func Test_Integration_Domain_WithCompress(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(compress.New())
+
+	app.Domain("api.example.com").Get("/data", func(c fiber.Ctx) error {
+		// Return large enough content for compression
+		return c.SendString(strings.Repeat("Hello World! ", 100))
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/data", http.NoBody)
+	req.Host = "api.example.com"
+	req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+}
+
+func Test_Integration_Domain_ErrorHandling(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			c.Set("X-Error-Handled", "true")
+			return c.Status(fiber.StatusInternalServerError).SendString("error: " + err.Error())
+		},
+	})
+	app.Use(helmet.New())
+
+	app.Domain("api.example.com").Get("/error", func(_ fiber.Ctx) error {
+		return fiber.NewError(fiber.StatusInternalServerError, "domain error")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/error", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Equal(t, "true", resp.Header.Get("X-Error-Handled"))
+	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "domain error")
+}
+
+func Test_Integration_Domain_WithLimiter(t *testing.T) {
+	t.Parallel()
+
+	const maxRequests = 3
+
+	app := fiber.New()
+	app.Use(limiter.New(limiter.Config{
+		Max:        maxRequests,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(_ fiber.Ctx) string {
+			return "domain-limiter"
+		},
+	}))
+
+	app.Domain("api.example.com").Get("/limited", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	// Make requests up to the limit
+	for i := 0; i < maxRequests; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/limited", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		require.Equal(t, strconv.Itoa(maxRequests), resp.Header.Get("X-RateLimit-Limit"))
+	}
+
+	// Next request should be rate limited
+	req := httptest.NewRequest(http.MethodGet, "/limited", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+}
+
+func Test_Integration_Domain_WithCSRF(t *testing.T) {
+	t.Parallel()
+
+	const csrfCookie = "domain-csrf"
+
+	app := fiber.New()
+	app.Use(csrf.New(csrf.Config{
+		CookieName:   csrfCookie,
+		KeyGenerator: func() string { return "test-csrf-token" },
+	}))
+
+	app.Domain("api.example.com").Get("/form", func(c fiber.Ctx) error {
+		return c.SendString("form page")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/form", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, resp.Header.Get(fiber.HeaderSetCookie), csrfCookie+"=")
+}
+
+func Test_Integration_Domain_CaseInsensitiveMatching(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Domain("API.Example.COM").Get("/", func(c fiber.Ctx) error {
+		return c.SendString("matched")
+	})
+
+	// Test various case combinations
+	hosts := []string{
+		"api.example.com",
+		"API.EXAMPLE.COM",
+		"Api.Example.Com",
+		"aPi.eXaMpLe.CoM",
+	}
+
+	for _, host := range hosts {
+		t.Run(host, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+			req.Host = host
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "matched", string(body))
+		})
+	}
+}
+
+func Test_Integration_Domain_ReusableSubApp(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	// Create a reusable sub-app
+	apiApp := fiber.New()
+	apiApp.Get("/status", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	// Mount the same sub-app on multiple domains
+	app.Domain("api1.example.com").Use("/v1", apiApp)
+	app.Domain("api2.example.com").Use("/v2", apiApp)
+
+	// Test first domain
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", http.NoBody)
+	req.Host = "api1.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "ok", string(body))
+
+	// Test second domain
+	req = httptest.NewRequest(http.MethodGet, "/v2/status", http.NoBody)
+	req.Host = "api2.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "ok", string(body))
 }

@@ -75,7 +75,7 @@ We have made several changes to the Fiber app, including:
   - `EnablePrefork` (previously `Prefork`)
   - `EnablePrintRoutes`
   - `ListenerNetwork` (previously `Network`)
-- **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`.
+- **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`. Additionally, `ProxyHeader` must be set to read client IPs from proxy headers (e.g., `X-Forwarded-For`).
 - **XMLDecoder Config Property**: The `XMLDecoder` property has been added to allow usage of 3rd-party XML libraries in XML binder.
 
 ### New Methods
@@ -414,6 +414,62 @@ app.RouteChain("/api").RouteChain("/user/:id?")
 </details>
 
 You can find more information about `app.RouteChain` and `app.Route` in the API documentation ([RouteChain](./api/app#routechain), [Route](./api/app#route)).
+
+### Domain routing
+
+`Domain` creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose hostname (from `c.Hostname()`) matches the pattern. When `TrustProxy` is enabled and the proxy is trusted (as defined by [`TrustProxyConfig`](./api/app#trustproxyconfig)), the hostname may be derived from the `X-Forwarded-Host` header. Be sure to configure `TrustProxyConfig` to restrict which proxies are trusted and prevent header spoofing when enabling `TrustProxy`.
+
+The pattern can contain parameters prefixed with `:`, accessible via `fiber.DomainParam`.
+
+Domain routing has **zero performance impact** on routes that don't use it because the hostname check is applied as a handler wrapper, not a change to the core router.
+
+> **Note:** Because domain filtering happens at handler-execution time, Fiber's `405 Method Not Allowed` responses may advertise methods from domain-scoped routes even when the requesting host does not match. This is a known trade-off of the handler-wrapping approach.
+>
+> When mounting sub-applications via `Domain(...).Use(*fiber.App)`, routes are cloned at mount time. The same sub-app can safely be mounted on multiple domains, but routes added to the sub-app after mounting will not inherit domain filtering. Register all sub-app routes before mounting.
+
+```go
+Domain(host string) Router
+```
+
+<details>
+<summary>Example</summary>
+
+```go
+app := fiber.New()
+
+// Static domain
+app.Domain("api.example.com").Get("/users", func(c fiber.Ctx) error {
+    return c.SendString("API users")
+})
+
+// Domain with parameter
+app.Domain(":user.blog.example.com").Get("/", func(c fiber.Ctx) error {
+    user := fiber.DomainParam(c, "user")
+    return c.SendString(user + "'s blog")
+})
+
+// Domain with groups
+api := app.Domain("api.example.com")
+v1 := api.Group("/v1")
+v1.Get("/posts", listPosts)
+
+// Domain with middleware
+admin := app.Domain("admin.example.com")
+admin.Use(authMiddleware)
+admin.Get("/dashboard", dashboardHandler)
+
+// Mount sub-applications on domain routers
+subApp := fiber.New()
+subApp.Get("/users", listUsers)
+app.Domain("api.example.com").Use("/api", subApp)
+
+// Fallback for unmatched domains
+app.Get("/", func(c fiber.Ctx) error {
+    return c.SendString("default site")
+})
+```
+
+</details>
 
 ### Automatic HEAD routes for GET
 
@@ -1764,6 +1820,8 @@ You have to put `*` to the end of the route if you don't define static route wit
 
 We've renamed `EnableTrustedProxyCheck` to `TrustProxy` and moved `TrustedProxies` to `TrustProxyConfig`.
 
+**Important:** To use proxy headers like `X-Forwarded-For` with `c.IP()`, you must configure **all** of `TrustProxy`, `ProxyHeader`, and a trusted proxy via `TrustProxyConfig`. If the proxy is not trusted (for example, if you set only `ProxyHeader` or only `TrustProxy` without configuring `TrustProxyConfig`), proxy headers are ignored and `c.IP()` will return the remote TCP IP instead.
+
 ```go
 // Before
 app := fiber.New(fiber.Config{
@@ -1779,6 +1837,8 @@ app := fiber.New(fiber.Config{
 app := fiber.New(fiber.Config{
     // TrustProxy enables the trusted proxy check
     TrustProxy: true,
+    // ProxyHeader specifies which header to read the real client IP from
+    ProxyHeader: fiber.HeaderXForwardedFor,
     // TrustProxyConfig allows for configuring trusted proxies.
     TrustProxyConfig: fiber.TrustProxyConfig{
         // Proxies is a list of trusted proxy IP ranges/addresses.
@@ -1787,9 +1847,11 @@ app := fiber.New(fiber.Config{
         Loopback: true,
         // Trust Unix domain socket connections
         UnixSocket: true,
-    }
+    },
 })
 ```
+
+For detailed proxy configuration guidance, see the [reverse proxy guide](./guide/reverse-proxy.md).
 
 ### 🎣 Hooks
 

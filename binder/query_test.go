@@ -120,3 +120,183 @@ func Test_QueryBinder_Bind_PointerSlices(t *testing.T) {
 	require.NotNil(t, profile.Prefs.Tags)
 	require.ElementsMatch(t, []string{"golang", "api"}, *profile.Prefs.Tags)
 }
+
+func Test_QueryBinder_Bind_PointerScalars(t *testing.T) {
+	t.Parallel()
+
+	binder := &QueryBinding{
+		EnableSplitting: false,
+	}
+
+	type Query struct {
+		ID     *int64   `query:"id"`
+		Name   *string  `query:"name"`
+		Active *bool    `query:"active"`
+		Score  *float64 `query:"score"`
+	}
+
+	t.Run("all fields provided", func(t *testing.T) {
+		t.Parallel()
+
+		var q Query
+		req := fasthttp.AcquireRequest()
+		req.URI().SetQueryString("id=123&name=test&active=true&score=98.5")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &q)
+		require.NoError(t, err)
+
+		require.NotNil(t, q.ID)
+		require.Equal(t, int64(123), *q.ID)
+
+		require.NotNil(t, q.Name)
+		require.Equal(t, "test", *q.Name)
+
+		require.NotNil(t, q.Active)
+		require.True(t, *q.Active)
+
+		require.NotNil(t, q.Score)
+		require.InDelta(t, 98.5, *q.Score, 0.001)
+	})
+
+	t.Run("no fields provided", func(t *testing.T) {
+		t.Parallel()
+
+		var q Query
+		req := fasthttp.AcquireRequest()
+		req.URI().SetQueryString("")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &q)
+		require.NoError(t, err)
+
+		require.Nil(t, q.ID)
+		require.Nil(t, q.Name)
+		require.Nil(t, q.Active)
+		require.Nil(t, q.Score)
+	})
+
+	t.Run("partial fields provided", func(t *testing.T) {
+		t.Parallel()
+
+		var q Query
+		req := fasthttp.AcquireRequest()
+		req.URI().SetQueryString("id=456&active=false")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &q)
+		require.NoError(t, err)
+
+		require.NotNil(t, q.ID)
+		require.Equal(t, int64(456), *q.ID)
+
+		require.Nil(t, q.Name)
+
+		require.NotNil(t, q.Active)
+		require.False(t, *q.Active)
+
+		require.Nil(t, q.Score)
+	})
+
+	t.Run("zero values provided", func(t *testing.T) {
+		t.Parallel()
+
+		var q Query
+		req := fasthttp.AcquireRequest()
+		req.URI().SetQueryString("id=0&name=&active=false&score=0")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &q)
+		require.NoError(t, err)
+
+		require.NotNil(t, q.ID)
+		require.Equal(t, int64(0), *q.ID)
+
+		require.NotNil(t, q.Name)
+		require.Empty(t, *q.Name)
+
+		require.NotNil(t, q.Active)
+		require.False(t, *q.Active)
+
+		require.NotNil(t, q.Score)
+		require.InDelta(t, 0.0, *q.Score, 0.001)
+	})
+}
+
+func Test_QueryBinder_Bind_OptionalIDParam(t *testing.T) {
+	t.Parallel()
+
+	binder := &QueryBinding{
+		EnableSplitting: false,
+	}
+
+	// Use case from original issue
+	type OptionalIDParam struct {
+		IDPtr *int64 `query:"id"`
+	}
+
+	t.Run("id provided", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.URI().SetQueryString("id=123")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.NotNil(t, param.IDPtr)
+		require.Equal(t, int64(123), *param.IDPtr)
+	})
+
+	t.Run("id not provided", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.URI().SetQueryString("")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.Nil(t, param.IDPtr)
+	})
+
+	t.Run("id zero", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.URI().SetQueryString("id=0")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.NotNil(t, param.IDPtr)
+		require.Equal(t, int64(0), *param.IDPtr)
+	})
+}

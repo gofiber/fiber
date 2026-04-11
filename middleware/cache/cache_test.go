@@ -1647,7 +1647,7 @@ func Test_CacheExpiresFutureAllowsCaching(t *testing.T) {
 	var count int
 	app.Get("/", func(c fiber.Ctx) error {
 		count++
-		c.Set(fiber.HeaderExpires, time.Now().Add(30*time.Second).UTC().Format(time.RFC1123))
+		c.Set(fiber.HeaderExpires, time.Now().Add(30*time.Second).UTC().Format(http.TimeFormat))
 		return c.SendString("expires" + strconv.Itoa(count))
 	})
 
@@ -1675,7 +1675,7 @@ func Test_CacheExpiresPastPreventsCaching(t *testing.T) {
 	var count int
 	app.Get("/", func(c fiber.Ctx) error {
 		count++
-		c.Set(fiber.HeaderExpires, time.Now().Add(-1*time.Minute).UTC().Format(time.RFC1123))
+		c.Set(fiber.HeaderExpires, time.Now().Add(-1*time.Minute).UTC().Format(http.TimeFormat))
 		return c.SendString("expires" + strconv.Itoa(count))
 	})
 
@@ -4671,7 +4671,7 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 		app := fiber.New()
 		app.Use(New(Config{Expiration: 1 * time.Hour}))
 		app.Get("/test", func(c fiber.Ctx) error {
-			futureTime := time.Now().Add(1 * time.Hour).Format(time.RFC1123)
+			futureTime := time.Now().Add(1 * time.Hour).UTC().Format(http.TimeFormat)
 			c.Response().Header.Set("Expires", futureTime)
 			return c.SendString("test")
 		})
