@@ -42,6 +42,9 @@ func acquireData() *data {
 
 // releaseData resets the data object and returns it to the pool.
 func releaseData(d *data) {
+	if d == nil {
+		return
+	}
 	d.Reset()
 	dataPool.Put(d)
 }
