@@ -10,11 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/valyala/fasthttp/prefork"
-
-	"github.com/gofiber/fiber/v3/log"
 )
-
-const windowsOS = "windows"
 
 // Test seams for prefork testing - allows injecting dummy commands
 var (
@@ -42,11 +38,17 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 		recoverThreshold = runtime.GOMAXPROCS(0) / 2
 	}
 
+	// Use configured logger or default to Fiber's log package
+	var logger prefork.Logger = preforkLogger{} //nolint:wastedassign // fallback default
+	if cfg.PreforkLogger != nil {
+		logger = cfg.PreforkLogger
+	}
+
 	p := &prefork.Prefork{
 		Network:          cfg.ListenerNetwork,
 		Reuseport:        true,
 		RecoverThreshold: recoverThreshold,
-		Logger:           preforkLogger{},
+		Logger:           logger,
 		OnMasterDeath:    func() { os.Exit(1) }, //nolint:revive // Exiting child process is intentional
 	}
 
@@ -103,7 +105,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 
 	// Master callback: child recovered after crash
 	p.OnChildRecover = func(pid int) error {
-		log.Warnf("prefork: child process crashed, recovered with new PID %d", pid)
+		logger.Printf("prefork: child process crashed, recovered with new PID %d", pid)
 		if app.hooks != nil {
 			if testOnPrefork {
 				app.hooks.executeOnForkHooks(dummyPid)
