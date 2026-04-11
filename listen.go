@@ -126,6 +126,13 @@ type ListenConfig struct {
 	// Default: false
 	EnablePrefork bool `json:"enable_prefork"`
 
+	// PreforkRecoverThreshold defines the maximum number of times a child process
+	// can be restarted after crashing before the master process exits with an error.
+	// This only applies when EnablePrefork is true.
+	//
+	// Default: runtime.GOMAXPROCS(0) / 2
+	PreforkRecoverThreshold int `json:"prefork_recover_threshold"`
+
 	// If set to true, will print all routes with their method, path and handler.
 	//
 	// Default: false
