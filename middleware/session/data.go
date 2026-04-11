@@ -33,6 +33,7 @@ var dataPool = sync.Pool{
 func acquireData() *data {
 	obj := dataPool.Get()
 	if d, ok := obj.(*data); ok {
+		d.Reset()
 		return d
 	}
 	// Handle unexpected type in the pool
