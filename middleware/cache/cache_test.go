@@ -5091,3 +5091,47 @@ func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 		require.Equal(t, cacheMiss, rsp2.Header.Get("X-Cache"))
 	})
 }
+
+func Test_hasDirective(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		cc        string
+		directive string
+		want      bool
+	}{
+		// Basic matches
+		{"exact match", "no-cache", "no-cache", true},
+		{"comma separated", "public, no-cache, max-age=0", "no-cache", true},
+		{"at start", "no-cache, max-age=0", "no-cache", true},
+		{"at end", "public, no-cache", "no-cache", true},
+		{"not present", "public, max-age=0", "no-cache", false},
+		{"partial match", "no-cach", "no-cache", false},
+		{"substring of longer token", "no-cache-extended", "no-cache", false},
+
+		// Trailing whitespace (#4143)
+		{"trailing space", "no-cache ", "no-cache", true},
+		{"trailing tab", "no-cache\t", "no-cache", true},
+		{"private trailing space", "private ", "private", true},
+
+		// Directive with value (#4143)
+		{"directive with equals", `no-cache="Set-Cookie"`, "no-cache", true},
+		{"max-age with value", "max-age=3600", "max-age", true},
+		{"s-maxage with value in list", "public, s-maxage=600, max-age=3600", "s-maxage", true},
+
+		// Tab as separator before directive
+		{"tab before directive", "public,\tno-cache", "no-cache", true},
+
+		// Case insensitive
+		{"case insensitive", "No-Cache", "no-cache", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := hasDirective(tc.cc, tc.directive)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
