@@ -165,68 +165,36 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 				paths[path] = make(map[string]operation)
 			}
 
-			key := r.Method + " " + r.Path
-			meta := cfg.Operations[key]
-
 			params = mergeRouteParameters(params, paramIndex, r.Parameters)
-			params = mergeConfigParameters(params, paramIndex, meta.Parameters)
 
-			summary := meta.Summary
-			if summary == "" {
-				summary = r.Summary
-			}
+			summary := r.Summary
 			if summary == "" {
 				summary = r.Method + " " + r.Path
 			}
-			description := meta.Description
-			if description == "" {
-				description = r.Description
-			}
+			description := r.Description
 
-			respType := meta.Produces
-			if respType == "" {
-				respType = r.Produces
-			}
+			respType := r.Produces
 
-			responses := mergeResponses(r.Responses, meta.Responses)
+			responses := convertRouteResponses(r.Responses)
 			if len(responses) == 0 {
 				status, defaultResp := defaultResponseForMethod(r.Method, respType)
 				responses = map[string]response{status: defaultResp}
 			}
 
-			reqBody := buildRequestBody(r.RequestBody, meta.RequestBody)
+			reqBody := buildRequestBody(r.RequestBody)
 			if reqBody == nil {
-				// If a non-nil RequestBody with an empty Content map is provided in the config,
-				// treat it as an explicit override meaning "no request body" and skip defaults.
-				if meta.RequestBody == nil || len(meta.RequestBody.Content) > 0 {
-					reqType := meta.Consumes
-					if reqType == "" {
-						reqType = r.Consumes
-					}
-					if shouldIncludeRequestBody(reqType, meta, r) {
-						reqBody = &requestBody{Content: map[string]map[string]any{reqType: {}}}
-					}
+				reqType := r.Consumes
+				if shouldIncludeRequestBody(reqType, r) {
+					reqBody = &requestBody{Content: map[string]map[string]any{reqType: {}}}
 				}
 			}
 
-			opID := meta.ID
-			if opID == "" {
-				opID = r.Name
-			}
-
-			tags := meta.Tags
-			if len(tags) == 0 {
-				tags = r.Tags
-			}
-
-			deprecated := meta.Deprecated || r.Deprecated
-
 			paths[path][methodLower] = operation{
-				OperationID: opID,
+				OperationID: r.Name,
 				Summary:     summary,
 				Description: description,
-				Tags:        tags,
-				Deprecated:  deprecated,
+				Tags:        r.Tags,
+				Deprecated:  r.Deprecated,
 				Parameters:  params,
 				RequestBody: reqBody,
 				Responses:   responses,
@@ -250,35 +218,6 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 }
 
 func mergeRouteParameters(params []parameter, index map[string]int, extras []fiber.RouteParameter) []parameter {
-	if len(extras) == 0 {
-		return params
-	}
-	for _, extra := range extras {
-		if strings.TrimSpace(extra.Name) == "" {
-			continue
-		}
-		location := strings.ToLower(strings.TrimSpace(extra.In))
-		if location == "" {
-			location = "query"
-		}
-		param := parameter{
-			Name:        extra.Name,
-			In:          location,
-			Description: extra.Description,
-			Required:    extra.Required,
-			Schema:      schemaFrom(extra.Schema, extra.SchemaRef, "string"),
-			Example:     extra.Example,
-			Examples:    copyAnyMap(extra.Examples),
-		}
-		if param.In == "path" {
-			param.Required = true
-		}
-		params = appendOrReplaceParameter(params, index, &param)
-	}
-	return params
-}
-
-func mergeConfigParameters(params []parameter, index map[string]int, extras []Parameter) []parameter {
 	if len(extras) == 0 {
 		return params
 	}
@@ -363,7 +302,7 @@ func contentEntry(schema map[string]any, schemaRef string, example any, examples
 	return entry
 }
 
-func mergeResponses(routeResponses map[string]fiber.RouteResponse, cfgResponses map[string]Response) map[string]response {
+func convertRouteResponses(routeResponses map[string]fiber.RouteResponse) map[string]response {
 	var merged map[string]response
 	if len(routeResponses) > 0 {
 		merged = make(map[string]response, len(routeResponses))
@@ -374,49 +313,7 @@ func mergeResponses(routeResponses map[string]fiber.RouteResponse, cfgResponses 
 			}
 		}
 	}
-	if len(cfgResponses) > 0 {
-		if merged == nil {
-			merged = make(map[string]response, len(cfgResponses))
-		}
-		for code, resp := range cfgResponses {
-			merged[code] = response{
-				Description: resp.Description,
-				Content:     convertMediaContent(resp.Content, nil, resp.SchemaRef, resp.Example, resp.Examples),
-			}
-		}
-	}
 	return merged
-}
-
-func convertMediaContent(content map[string]Media, defaultSchema map[string]any, defaultSchemaRef string, defaultExample any, defaultExamples map[string]any) map[string]map[string]any {
-	if len(content) == 0 {
-		return nil
-	}
-	converted := make(map[string]map[string]any, len(content))
-	for mediaType, media := range content {
-		entry := contentEntry(media.Schema, media.SchemaRef, media.Example, media.Examples)
-		if len(entry) == 0 && (len(defaultSchema) > 0 || defaultSchemaRef != "" || defaultExample != nil || len(defaultExamples) > 0) {
-			entry = contentEntry(defaultSchema, defaultSchemaRef, defaultExample, defaultExamples)
-		} else {
-			if _, ok := entry["schema"]; !ok {
-				if defaultSchemaRef != "" {
-					entry["schema"] = map[string]any{"$ref": defaultSchemaRef}
-				} else if schema := copyAnyMap(defaultSchema); len(schema) > 0 {
-					entry["schema"] = schema
-				}
-			}
-			if _, ok := entry["example"]; !ok && defaultExample != nil {
-				entry["example"] = defaultExample
-			}
-			if _, ok := entry["examples"]; !ok {
-				if ex := copyAnyMap(defaultExamples); len(ex) > 0 {
-					entry["examples"] = ex
-				}
-			}
-		}
-		converted[mediaType] = entry
-	}
-	return converted
 }
 
 func mediaTypesToContent(mediaTypes []string, schema map[string]any, schemaRef string, example any, examples map[string]any) map[string]map[string]any {
@@ -440,51 +337,29 @@ func mediaTypesToContent(mediaTypes []string, schema map[string]any, schemaRef s
 	return content
 }
 
-func buildRequestBody(routeBody *fiber.RouteRequestBody, cfgBody *RequestBody) *requestBody {
-	var merged *requestBody
-	if routeBody != nil {
-		merged = &requestBody{
-			Description: routeBody.Description,
-			Required:    routeBody.Required,
-			Content:     mediaTypesToContent(routeBody.MediaTypes, routeBody.Schema, routeBody.SchemaRef, routeBody.Example, routeBody.Examples),
-		}
+func buildRequestBody(routeBody *fiber.RouteRequestBody) *requestBody {
+	if routeBody == nil {
+		return nil
 	}
-	if cfgBody != nil {
-		cfgReq := &requestBody{
-			Description: cfgBody.Description,
-			Required:    cfgBody.Required,
-			Content:     convertMediaContent(cfgBody.Content, nil, cfgBody.SchemaRef, cfgBody.Example, cfgBody.Examples),
-		}
-		if merged == nil {
-			merged = cfgReq
-		} else {
-			if cfgReq.Description != "" {
-				merged.Description = cfgReq.Description
-			}
-			merged.Required = cfgReq.Required
-			if len(cfgReq.Content) > 0 {
-				if merged.Content == nil {
-					merged.Content = cfgReq.Content
-				} else {
-					maps.Copy(merged.Content, cfgReq.Content)
-				}
-			}
-		}
+	merged := &requestBody{
+		Description: routeBody.Description,
+		Required:    routeBody.Required,
+		Content:     mediaTypesToContent(routeBody.MediaTypes, routeBody.Schema, routeBody.SchemaRef, routeBody.Example, routeBody.Examples),
 	}
 	// Omit requestBody entirely when content could not be built, as the
 	// OpenAPI specification requires at least one media type in content.
-	if merged != nil && len(merged.Content) == 0 {
+	if len(merged.Content) == 0 {
 		return nil
 	}
 	return merged
 }
 
-func shouldIncludeRequestBody(reqType string, meta Operation, route *fiber.Route) bool { //nolint:gocritic // route can be nil, pointer is needed
+// shouldIncludeRequestBody returns true when an implicit request body should be
+// added for a route without explicit request body metadata. A nil route always
+// returns false.
+func shouldIncludeRequestBody(reqType string, route *fiber.Route) bool {
 	if reqType == "" || route == nil {
 		return false
-	}
-	if meta.Consumes != "" {
-		return true
 	}
 	if route.Consumes != fiber.MIMETextPlain {
 		return true

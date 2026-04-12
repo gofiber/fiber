@@ -136,42 +136,21 @@ func Test_OpenAPI_RawJSONFile(t *testing.T) {
 	require.JSONEq(t, string(expected), string(body))
 }
 
-func Test_OpenAPI_OperationConfig(t *testing.T) {
+func Test_OpenAPI_RouteHelperMetadata(t *testing.T) {
 	app := fiber.New()
-	app.Get("/users", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"hello": "world"}) })
+	app.Post("/users", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"hello": "world"}) }).
+		Name("createUserCustom").
+		Summary("Create user").
+		Description("Creates users").
+		Tags("users").
+		Deprecated().
+		Consumes(fiber.MIMEApplicationJSON).
+		Produces(fiber.MIMEApplicationJSON).
+		ParameterWithExample("pageSize", "query", true, map[string]any{"type": "integer"}, "", "Page size", nil, nil).
+		RequestBodyWithExample("Custom payload", true, map[string]any{"type": "object"}, "", nil, nil, fiber.MIMEApplicationJSON).
+		ResponseWithExample(fiber.StatusCreated, "Created", map[string]any{"type": "object"}, "", nil, nil, fiber.MIMEApplicationJSON)
 
-	app.Use(New(Config{
-		Operations: map[string]Operation{
-			"GET /users": {
-				ID:          "listUsersCustom",
-				Summary:     "List users",
-				Description: "Returns all users",
-				Tags:        []string{"users"},
-				Deprecated:  true,
-				Consumes:    fiber.MIMEApplicationJSON,
-				Produces:    fiber.MIMEApplicationJSON,
-				Parameters: []Parameter{{
-					Name:        "limit",
-					In:          "query",
-					Required:    true,
-					Description: "Maximum items",
-					Schema:      map[string]any{"type": "integer"},
-				}},
-				RequestBody: &RequestBody{
-					Description: "Custom payload",
-					Required:    true,
-					Content: map[string]Media{
-						fiber.MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
-					},
-				},
-				Responses: map[string]Response{
-					"201": {Description: "Created", Content: map[string]Media{
-						fiber.MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
-					}},
-				},
-			},
-		},
-	}))
+	app.Use(New())
 
 	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
@@ -181,10 +160,10 @@ func Test_OpenAPI_OperationConfig(t *testing.T) {
 	var spec openAPISpec
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 
-	op := spec.Paths["/users"]["get"]
-	require.Equal(t, "listUsersCustom", op.OperationID)
-	require.Equal(t, "List users", op.Summary)
-	require.Equal(t, "Returns all users", op.Description)
+	op := spec.Paths["/users"]["post"]
+	require.Equal(t, "createUserCustom", op.OperationID)
+	require.Equal(t, "Create user", op.Summary)
+	require.Equal(t, "Creates users", op.Description)
 	require.ElementsMatch(t, []string{"users"}, op.Tags)
 	require.True(t, op.Deprecated)
 	require.Len(t, op.Responses, 1)
@@ -195,7 +174,7 @@ func Test_OpenAPI_OperationConfig(t *testing.T) {
 	require.Contains(t, op.RequestBody.Content, fiber.MIMEApplicationJSON)
 	require.True(t, op.RequestBody.Required)
 	require.Len(t, op.Parameters, 1)
-	require.Equal(t, "limit", op.Parameters[0].Name)
+	require.Equal(t, "pageSize", op.Parameters[0].Name)
 	require.Equal(t, "integer", op.Parameters[0].Schema["type"])
 }
 
@@ -681,50 +660,13 @@ func Test_OpenAPI_MiddlewareRoutesExcluded(t *testing.T) {
 	require.NotContains(t, paths, "/")
 }
 
-func Test_OpenAPI_EmptyRequestBodyContent(t *testing.T) {
+func Test_OpenAPI_DefaultRequestBodyForPOST(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Provide a config RequestBody with empty Content map — should omit requestBody
-	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-	app.Use(New(Config{
-		Operations: map[string]Operation{
-			"GET /test": {
-				RequestBody: &RequestBody{
-					Description: "will be omitted",
-					Required:    true,
-					Content:     map[string]Media{},
-				},
-			},
-		},
-	}))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-
-	var spec openAPISpec
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
-	op := spec.Paths["/test"]["get"]
-	require.Nil(t, op.RequestBody)
-}
-
-func Test_OpenAPI_SuppressRequestBodyForPOST(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	// A POST route would normally get an auto-inserted requestBody.
-	// Providing a non-nil RequestBody with empty Content should suppress it.
+	// No route body metadata should fall back to the default request body for POST.
 	app.Post("/webhook", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-	app.Use(New(Config{
-		Operations: map[string]Operation{
-			"POST /webhook": {
-				RequestBody: &RequestBody{
-					Content: map[string]Media{},
-				},
-			},
-		},
-	}))
+	app.Use(New())
 
 	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
@@ -733,7 +675,8 @@ func Test_OpenAPI_SuppressRequestBodyForPOST(t *testing.T) {
 	var spec openAPISpec
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 	op := spec.Paths["/webhook"]["post"]
-	require.Nil(t, op.RequestBody, "POST with empty Content config should have no requestBody")
+	require.NotNil(t, op.RequestBody)
+	require.Contains(t, op.RequestBody.Content, fiber.MIMETextPlain)
 }
 
 func Test_OpenAPI_AutoHeadExcluded(t *testing.T) {
@@ -822,29 +765,14 @@ func Test_ConvertToOpenAPIPath(t *testing.T) {
 	}
 }
 
-func Test_OpenAPI_RequestBodyMerge(t *testing.T) {
+func Test_OpenAPI_RequestBodyFromRoute(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Test merging route-level requestBody with config-level requestBody
+	// Route-level requestBody should be reflected in the generated spec.
 	app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
 		RequestBodyWithExample("User from route", true, map[string]any{"type": "object"}, "", map[string]any{"name": "Alice"}, nil, fiber.MIMEApplicationJSON)
-
-	app.Use(New(Config{
-		Operations: map[string]Operation{
-			"POST /users": {
-				RequestBody: &RequestBody{
-					Description: "User from config (overrides route)",
-					Required:    false, // overrides route's true
-					Content: map[string]Media{
-						fiber.MIMEApplicationJSON: {
-							Example: map[string]any{"name": "Bob"}, // merges with route
-						},
-					},
-				},
-			},
-		},
-	}))
+	app.Use(New())
 
 	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
@@ -854,38 +782,26 @@ func Test_OpenAPI_RequestBodyMerge(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 	op := spec.Paths["/users"]["post"]
 	require.NotNil(t, op.RequestBody)
-	require.Equal(t, "User from config (overrides route)", op.RequestBody.Description)
-	require.False(t, op.RequestBody.Required) // config overrides route
+	require.Equal(t, "User from route", op.RequestBody.Description)
+	require.True(t, op.RequestBody.Required)
 	require.Contains(t, op.RequestBody.Content, fiber.MIMEApplicationJSON)
 }
 
-func Test_OpenAPI_MediaContentDefaults(t *testing.T) {
+func Test_OpenAPI_ResponseContentFromRoute(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Test convertMediaContent with default schema, schemaRef, examples
-	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-	app.Use(New(Config{
-		Operations: map[string]Operation{
-			"GET /test": {
-				Responses: map[string]Response{
-					"200": {
-						Description: "Success",
-						SchemaRef:   "#/components/schemas/DefaultSchema",
-						Example:     map[string]any{"default": "example"},
-						Examples: map[string]any{
-							"example1": map[string]any{"value": "test"},
-						},
-						Content: map[string]Media{
-							fiber.MIMEApplicationJSON: {
-								// Empty media entry should inherit defaults
-							},
-						},
-					},
-				},
-			},
-		},
-	}))
+	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		ResponseWithExample(
+			fiber.StatusOK,
+			"Success",
+			nil,
+			"#/components/schemas/DefaultSchema",
+			map[string]any{"default": "example"},
+			map[string]any{"example1": map[string]any{"value": "test"}},
+			fiber.MIMEApplicationJSON,
+		)
+	app.Use(New())
 
 	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
@@ -955,19 +871,10 @@ func Test_OpenAPI_ParameterEdgeCases(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Test mergeConfigParameters with empty name and location edge cases
-	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-	app.Use(New(Config{
-		Operations: map[string]Operation{
-			"GET /test": {
-				Parameters: []Parameter{
-					{Name: "valid", In: "query", Required: true},
-					{Name: "", In: "query"},      // empty name, should be skipped
-					{Name: "noLocation", In: ""}, // empty location, defaults to query
-				},
-			},
-		},
-	}))
+	// Route parameter helpers should force path parameters to required=true.
+	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Parameter("id", "path", false, nil, "resource identifier")
+	app.Use(New())
 
 	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
@@ -976,54 +883,21 @@ func Test_OpenAPI_ParameterEdgeCases(t *testing.T) {
 	var spec openAPISpec
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 	op := spec.Paths["/test"]["get"]
-	require.Len(t, op.Parameters, 2) // only "valid" and "noLocation"
-
-	// Check that valid parameter exists
-	foundValid := false
-	foundNoLocation := false
-	for _, param := range op.Parameters {
-		if param.Name == "valid" {
-			foundValid = true
-			require.Equal(t, "query", param.In)
-		}
-		if param.Name == "noLocation" {
-			foundNoLocation = true
-			require.Equal(t, "query", param.In) // should default to query
-		}
-	}
-	require.True(t, foundValid)
-	require.True(t, foundNoLocation)
+	require.Len(t, op.Parameters, 1)
+	require.Equal(t, "id", op.Parameters[0].Name)
+	require.Equal(t, "path", op.Parameters[0].In)
+	require.True(t, op.Parameters[0].Required)
 }
 
 func Test_OpenAPI_SchemaFromCombinations(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-	app.Use(New(Config{
-		Operations: map[string]Operation{
-			"GET /test": {
-				Parameters: []Parameter{
-					{
-						Name:      "withSchemaRef",
-						In:        "query",
-						SchemaRef: "#/components/schemas/MySchema",
-						Schema:    map[string]any{"type": "string"}, // should be ignored when SchemaRef is present
-					},
-					{
-						Name:   "withSchema",
-						In:     "query",
-						Schema: map[string]any{"type": "integer", "minimum": 0},
-					},
-					{
-						Name: "withDefaultType",
-						In:   "query",
-						// No schema or schemaRef, should get default type "string"
-					},
-				},
-			},
-		},
-	}))
+	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		ParameterWithExample("withSchemaRef", "query", false, map[string]any{"type": "string"}, "#/components/schemas/MySchema", "", nil, nil).
+		ParameterWithExample("withSchema", "query", false, map[string]any{"type": "integer", "minimum": 0}, "", "", nil, nil).
+		Parameter("withDefaultType", "query", false, nil, "")
+	app.Use(New())
 
 	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
@@ -1053,11 +927,10 @@ func Test_OpenAPI_ShouldIncludeRequestBody(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		consumes       string
-		configConsumes string
-		method         string
-		expectBody     bool
+		name       string
+		consumes   string
+		method     string
+		expectBody bool
 	}{
 		{
 			name:       "GET with text/plain no body",
@@ -1113,13 +986,6 @@ func Test_OpenAPI_ShouldIncludeRequestBody(t *testing.T) {
 			consumes:   fiber.MIMEApplicationJSON,
 			expectBody: true,
 		},
-		{
-			name:           "POST with config consumes override",
-			method:         fiber.MethodPost,
-			consumes:       fiber.MIMETextPlain, // route default
-			configConsumes: fiber.MIMEApplicationJSON,
-			expectBody:     true,
-		},
 	}
 
 	for _, tt := range tests {
@@ -1155,15 +1021,7 @@ func Test_OpenAPI_ShouldIncludeRequestBody(t *testing.T) {
 				route.Consumes(tt.consumes)
 			}
 
-			cfg := Config{}
-			if tt.configConsumes != "" {
-				cfg.Operations = map[string]Operation{
-					tt.method + " /test": {
-						Consumes: tt.configConsumes,
-					},
-				}
-			}
-			app.Use(New(cfg))
+			app.Use(New())
 
 			req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 			resp, err := app.Test(req)
@@ -1250,33 +1108,21 @@ func Test_OpenAPI_MarshalError(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
 }
 
-func Test_OpenAPI_ConvertMediaContentEmptyEntry(t *testing.T) {
+func Test_OpenAPI_ResponseWithSchemaRefAndExamples(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Test convertMediaContent with empty media entry falling back to defaults
-	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-	app.Use(New(Config{
-		Operations: map[string]Operation{
-			"GET /test": {
-				Responses: map[string]Response{
-					"200": {
-						Description: "Success",
-						SchemaRef:   "#/components/schemas/TestSchema",
-						Example:     map[string]any{"test": "value"},
-						Examples: map[string]any{
-							"ex1": map[string]any{"value": "example1"},
-						},
-						Content: map[string]Media{
-							fiber.MIMEApplicationJSON: {
-								// Completely empty - should use all defaults
-							},
-						},
-					},
-				},
-			},
-		},
-	}))
+	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		ResponseWithExample(
+			fiber.StatusOK,
+			"Success",
+			nil,
+			"#/components/schemas/TestSchema",
+			map[string]any{"test": "value"},
+			map[string]any{"ex1": map[string]any{"value": "example1"}},
+			fiber.MIMEApplicationJSON,
+		)
+	app.Use(New())
 
 	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
@@ -1288,7 +1134,6 @@ func Test_OpenAPI_ConvertMediaContentEmptyEntry(t *testing.T) {
 	resp200 := op.Responses["200"]
 	content := resp200.Content[fiber.MIMEApplicationJSON]
 
-	// Should have inherited all defaults
 	require.Contains(t, content, "schema")
 	require.Contains(t, content, "example")
 	require.Contains(t, content, "examples")

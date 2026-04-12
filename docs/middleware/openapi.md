@@ -44,18 +44,6 @@ app.Use(openapi.New(openapi.Config{
     ServerURL: "https://example.com",
 }))
 
-// Customize metadata for specific operations.
-// Keys use the Fiber route path syntax, e.g. "GET /users/:id".
-app.Use(openapi.New(openapi.Config{
-    Operations: map[string]openapi.Operation{
-        "GET /users": {
-            Summary:     "List users",
-            Description: "Returns all users",
-            Produces:    fiber.MIMEApplicationJSON,
-        },
-    },
-}))
-
 // Routes may optionally document themselves using Summary, Description,
 // RequestBody, Parameter, Response, Tags, Deprecated, Produces and Consumes.
 app.Post("/users", createUser).
@@ -105,7 +93,6 @@ If no responses are declared, the middleware adds a sensible default: `200 OK` f
 | Description | `string`                | Description is the description for the generated specification. | `""`             |
 | ServerURL   | `string`                | ServerURL is the server URL used in the generated specification.| `""`             |
 | Path        | `string`                | Path is the route where the specification will be served.       | `"/openapi.json"` |
-| Operations  | `map[string]Operation`  | Per-route metadata keyed by `METHOD /path` using Fiber route syntax (e.g. `GET /users/:id`). | `nil`             |
 
 When the middleware is attached to a group or mounted under a prefixed `Use`, the configured `Path` is resolved relative to that
 prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global
@@ -116,7 +103,6 @@ prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specificat
 ```go
 var ConfigDefault = Config{
     Next:        nil,
-    Operations:  nil,
     Title:       "Fiber API",
     Version:     "1.0.0",
     Description: "",
@@ -124,60 +110,5 @@ var ConfigDefault = Config{
     Path:        "/openapi.json",
 }
 ```
-
-### Operation
-
-```go
-type Operation struct {
-    RequestBody *RequestBody
-    Responses   map[string]Response
-    Parameters  []Parameter
-    Tags        []string
-
-    ID          string
-    Summary     string
-    Description string
-    Consumes    string
-    Produces    string
-    Deprecated  bool
-}
-
-type Parameter struct {
-    Schema      map[string]any
-    SchemaRef   string
-    Examples    map[string]any
-    Example     any
-    Name        string
-    In          string
-    Description string
-    Required    bool
-}
-
-type Media struct {
-    Schema    map[string]any
-    SchemaRef string
-    Examples  map[string]any
-    Example   any
-}
-
-type Response struct {
-    Content     map[string]Media
-    Examples    map[string]any
-    Example     any
-    SchemaRef   string
-    Description string
-}
-
-type RequestBody struct {
-    Content     map[string]Media
-    Examples    map[string]any
-    Example     any
-    SchemaRef   string
-    Description string
-    Required    bool
-}
-```
-
-Refer to the type definitions above when customizing OpenAPI operations in your configuration.
 
 Schema references (`SchemaRef`) are emitted as `$ref` entries in the generated JSON and can point to components such as `#/components/schemas/User`. `Example` and `Examples` are forwarded verbatim into operation parameters, request bodies, and responses so that client generators can surface realistic payloads.

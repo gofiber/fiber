@@ -11,13 +11,6 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Operations allows providing per-route metadata keyed by
-	// "METHOD /path" where the path uses Fiber's route syntax
-	// (e.g. "GET /users/:id", "POST /items").
-	//
-	// Optional. Default: nil
-	Operations map[string]Operation
-
 	// Title is the title for the generated OpenAPI specification.
 	//
 	// Optional. Default: "Fiber API"
@@ -47,7 +40,6 @@ type Config struct {
 // ConfigDefault is the default config.
 var ConfigDefault = Config{
 	Next:        nil,
-	Operations:  nil,
 	Title:       "Fiber API",
 	Version:     "1.0.0",
 	Description: "",
@@ -80,65 +72,5 @@ func configDefault(config ...Config) Config {
 	if cfg.Path == "" {
 		cfg.Path = ConfigDefault.Path
 	}
-	if cfg.Operations == nil {
-		cfg.Operations = ConfigDefault.Operations
-	}
-
 	return cfg
-}
-
-// Operation configures metadata for a single route in the generated spec.
-type Operation struct {
-	RequestBody *RequestBody
-	Responses   map[string]Response
-
-	ID          string
-	Summary     string
-	Description string
-	Consumes    string
-	Produces    string
-	Parameters  []Parameter
-	Tags        []string
-
-	Deprecated bool
-}
-
-// Parameter describes a single OpenAPI parameter.
-type Parameter struct {
-	Schema    map[string]any
-	SchemaRef string
-	Examples  map[string]any
-	Example   any
-
-	Name        string
-	In          string
-	Description string
-	Required    bool
-}
-
-// Media describes the schema payload for a request or response media type.
-type Media struct {
-	Example   any
-	Schema    map[string]any
-	Examples  map[string]any
-	SchemaRef string
-}
-
-// Response describes an OpenAPI response object.
-type Response struct {
-	Content     map[string]Media
-	Examples    map[string]any
-	Example     any
-	SchemaRef   string
-	Description string
-}
-
-// RequestBody describes the request body configuration for an operation.
-type RequestBody struct {
-	Content     map[string]Media
-	Examples    map[string]any
-	Example     any
-	SchemaRef   string
-	Description string
-	Required    bool
 }
