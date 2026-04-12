@@ -905,7 +905,7 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// hasDirective checks if a cache-control header contains a directive (case-insensitive).
+// hasDirective checks if a cache directive header value contains a directive (case-insensitive).
 // A directive is considered matched when followed by end-of-string, ',', ' ', '\t', or '='
 // per RFC 9111 §5.2.
 func hasDirective(cc, directive string) bool {
