@@ -35,7 +35,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 	// Determine RecoverThreshold
 	recoverThreshold := cfg.PreforkRecoverThreshold
 	if recoverThreshold == 0 {
-		recoverThreshold = runtime.GOMAXPROCS(0) / 2
+		recoverThreshold = max(1, runtime.GOMAXPROCS(0)/2)
 	}
 
 	// Use configured logger or default to Fiber's log package
