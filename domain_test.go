@@ -250,18 +250,18 @@ func Test_Domain_OpenAPI_Helpers(t *testing.T) {
 		t.Parallel()
 		app := New()
 		domain := app.Domain("api.example.com")
-		domain.Get("/users", testEmptyHandler).Summary("sum")
+		domain.Get("/users", testEmptyHandler).Summary("Get all users")
 		route := app.stack[app.methodInt(MethodGet)][0]
-		require.Equal(t, "sum", route.Summary)
+		require.Equal(t, "Get all users", route.Summary)
 	})
 
 	t.Run("Description", func(t *testing.T) {
 		t.Parallel()
 		app := New()
 		domain := app.Domain("api.example.com")
-		domain.Get("/users", testEmptyHandler).Description("desc")
+		domain.Get("/users", testEmptyHandler).Description("Retrieves all users")
 		route := app.stack[app.methodInt(MethodGet)][0]
-		require.Equal(t, "desc", route.Description)
+		require.Equal(t, "Retrieves all users", route.Description)
 	})
 
 	t.Run("Consumes", func(t *testing.T) {
@@ -270,7 +270,7 @@ func Test_Domain_OpenAPI_Helpers(t *testing.T) {
 		domain := app.Domain("api.example.com")
 		domain.Get("/users", testEmptyHandler).Consumes(MIMEApplicationJSON)
 		route := app.stack[app.methodInt(MethodGet)][0]
-		//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+		//nolint:testifylint // MIMEApplicationJSON is a MIME type string, not JSON payload
 		require.Equal(t, MIMEApplicationJSON, route.Consumes)
 	})
 
@@ -359,9 +359,9 @@ func Test_Domain_OpenAPI_Helpers(t *testing.T) {
 		t.Parallel()
 		app := New()
 		domain := app.Domain("api.example.com")
-		domain.Get("/users", testEmptyHandler).Tags("foo", "bar")
+		domain.Get("/users", testEmptyHandler).Tags("users", "api")
 		route := app.stack[app.methodInt(MethodGet)][0]
-		require.Equal(t, []string{"foo", "bar"}, route.Tags)
+		require.Equal(t, []string{"users", "api"}, route.Tags)
 	})
 
 	t.Run("Deprecated", func(t *testing.T) {
