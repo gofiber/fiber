@@ -113,10 +113,6 @@ func New(config ...Config) fiber.Handler {
 
 		host := normalizeHost(c.Hostname())
 
-		if host == "" {
-			return cfg.ErrorHandler(c, ErrForbiddenHost)
-		}
-
 		if matchHost(host, parsed, cfg.AllowedHostsFunc) {
 			return c.Next()
 		}

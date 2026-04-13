@@ -111,6 +111,15 @@ func Test_NormalizeHost(t *testing.T) {
 	}
 }
 
+func Test_ParseAllowedHosts_SkipsBlankEntries(t *testing.T) {
+	t.Parallel()
+
+	parsed := parseAllowedHosts([]string{"", "   ", ".", "example.com"})
+
+	require.True(t, matchHost("example.com", parsed, nil))
+	require.False(t, matchHost("", parsed, nil))
+}
+
 // --- Matching logic tests ---
 
 func Test_MatchExact(t *testing.T) {
@@ -313,7 +322,7 @@ func Test_HostAuthorization_Next(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
-func Test_HostAuthorization_SubdomainWildcard(t *testing.T) {
+func Test_HostAuthorization_SubdomainWildcard_Allowed(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -325,24 +334,35 @@ func Test_HostAuthorization_SubdomainWildcard(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	// Subdomain should be allowed
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "api.myapp.com"
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	// Bare domain should be rejected
-	req2 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req2.Host = "myapp.com"
-
-	resp2, err := app.Test(req2)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp2.StatusCode)
 }
 
-func Test_HostAuthorization_CIDR(t *testing.T) {
+func Test_HostAuthorization_SubdomainWildcard_BareDomainRejected(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		AllowedHosts: []string{".myapp.com"},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "myapp.com"
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+}
+
+func Test_HostAuthorization_CIDR_Allowed(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -360,17 +380,29 @@ func Test_HostAuthorization_CIDR(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	// Cloud metadata IP should be rejected
-	req2 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req2.Host = "169.254.169.254"
-
-	resp2, err := app.Test(req2)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp2.StatusCode)
 }
 
-func Test_HostAuthorization_AllowedHostsFunc(t *testing.T) {
+func Test_HostAuthorization_CIDR_CloudMetadataRejected(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		AllowedHosts: []string{"10.0.0.0/8"},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "169.254.169.254"
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+}
+
+func Test_HostAuthorization_AllowedHostsFunc_Allowed(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -390,13 +422,28 @@ func Test_HostAuthorization_AllowedHostsFunc(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
 
-	req2 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req2.Host = "evil.com"
+func Test_HostAuthorization_AllowedHostsFunc_Rejected(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
 
-	resp2, err := app.Test(req2)
+	app.Use(New(Config{
+		AllowedHostsFunc: func(host string) bool {
+			return host == "dynamic.com"
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "evil.com"
+
+	resp, err := app.Test(req)
 	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp2.StatusCode)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
 func Test_HostAuthorization_CustomErrorHandler(t *testing.T) {
@@ -528,7 +575,7 @@ func Test_HostAuthorization_IPv6Brackets(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
-func Test_HostAuthorization_XForwardedHost_TrustProxy(t *testing.T) {
+func Test_HostAuthorization_XForwardedHost_TrustProxy_Allowed(t *testing.T) {
 	t.Parallel()
 
 	// With TrustProxy enabled, X-Forwarded-Host should be used
@@ -548,7 +595,6 @@ func Test_HostAuthorization_XForwardedHost_TrustProxy(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	// Allowed via X-Forwarded-Host
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "proxy.internal"
 	req.Header.Set("X-Forwarded-Host", "example.com")
@@ -556,15 +602,33 @@ func Test_HostAuthorization_XForwardedHost_TrustProxy(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
 
-	// Rejected: X-Forwarded-Host is unauthorized
-	req2 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req2.Host = "example.com"
-	req2.Header.Set("X-Forwarded-Host", "evil.com")
+func Test_HostAuthorization_XForwardedHost_TrustProxy_Rejected(t *testing.T) {
+	t.Parallel()
 
-	resp2, err := app.Test(req2)
+	app := fiber.New(fiber.Config{
+		TrustProxy: true,
+		TrustProxyConfig: fiber.TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+
+	app.Use(New(Config{
+		AllowedHosts: []string{"example.com"},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "example.com"
+	req.Header.Set("X-Forwarded-Host", "evil.com")
+
+	resp, err := app.Test(req)
 	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp2.StatusCode)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
 func Test_HostAuthorization_XForwardedHost_NoTrustProxy(t *testing.T) {
