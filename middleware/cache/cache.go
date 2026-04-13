@@ -907,21 +907,41 @@ func New(config ...Config) fiber.Handler {
 
 // hasDirective checks if a cache-control header contains a directive (case-insensitive)
 func hasDirective(cc, directive string) bool {
-	ccLen := len(cc)
-	dirLen := len(directive)
-	for i := 0; i <= ccLen-dirLen; i++ {
-		if !utils.EqualFold(cc[i:i+dirLen], directive) {
-			continue
+	start := 0
+	for start < len(cc) {
+		end := start
+		for end < len(cc) && cc[end] != ',' {
+			end++
 		}
-		if i > 0 {
-			prev := cc[i-1]
-			if prev != ' ' && prev != ',' {
-				continue
+
+		partStart, partEnd := start, end
+		for partStart < partEnd && (cc[partStart] == ' ' || cc[partStart] == '\t') {
+			partStart++
+		}
+		for partEnd > partStart && (cc[partEnd-1] == ' ' || cc[partEnd-1] == '\t') {
+			partEnd--
+		}
+
+		if partStart < partEnd {
+			keyEnd := partStart
+			for keyEnd < partEnd && cc[keyEnd] != '=' {
+				keyEnd++
+			}
+
+			keyStart := partStart
+			for keyStart < keyEnd && (cc[keyStart] == ' ' || cc[keyStart] == '\t') {
+				keyStart++
+			}
+			for keyEnd > keyStart && (cc[keyEnd-1] == ' ' || cc[keyEnd-1] == '\t') {
+				keyEnd--
+			}
+
+			if keyStart < keyEnd && utils.EqualFold(cc[keyStart:keyEnd], directive) {
+				return true
 			}
 		}
-		if i+dirLen == ccLen || cc[i+dirLen] == ',' {
-			return true
-		}
+
+		start = end + 1
 	}
 
 	return false

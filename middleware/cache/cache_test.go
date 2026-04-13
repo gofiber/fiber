@@ -3046,6 +3046,35 @@ func Test_AllowsSharedCache(t *testing.T) {
 	})
 }
 
+func Test_HasDirective(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		header    string
+		directive string
+		expect    bool
+	}{
+		{header: "no-cache", directive: "no-cache", expect: true},
+		{header: "NO-CACHE", directive: "no-cache", expect: true},
+		{header: "no-cache ", directive: "no-cache", expect: true},
+		{header: "no-cache\t", directive: "no-cache", expect: true},
+		{header: "no-cache=\"Set-Cookie\"", directive: "no-cache", expect: true},
+		{header: "private ", directive: "private", expect: true},
+		{header: "public, private ", directive: "private", expect: true},
+		{header: "my-no-cache", directive: "no-cache", expect: false},
+		{header: "private-ish", directive: "private", expect: false},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.header+"_"+tt.directive, func(t *testing.T) {
+			t.Parallel()
+			got := hasDirective(tt.header, tt.directive)
+			require.Equal(t, tt.expect, got)
+		})
+	}
+}
+
 func TestCacheSkipsAuthorizationByDefault(t *testing.T) {
 	t.Parallel()
 
