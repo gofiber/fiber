@@ -259,10 +259,15 @@ func Test_HostAuthorization_EmptyHost(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = ""
 
-	// fasthttp v1.70.0+ enforces the HTTP/1.1 Host header requirement at the
-	// protocol level, so a missing Host is rejected before reaching our middleware.
-	_, err := app.Test(req)
-	require.Error(t, err)
+	// An empty Host must always be rejected. Two valid outcomes depending on Go version:
+	//   - fasthttp rejects the missing Host at the protocol level → app.Test returns an error
+	//   - Go 1.26+ serializes a default Host value so the request reaches the middleware,
+	//     which rejects it with 403 Forbidden → app.Test returns a response with no error
+	resp, err := app.Test(req)
+	if err != nil {
+		return
+	}
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
 func Test_HostAuthorization_HostWithPort(t *testing.T) {
