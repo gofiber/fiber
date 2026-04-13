@@ -450,10 +450,11 @@ func Test_HostAuthorization_CustomErrorHandler(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
+	var handlerErr error
 	app.Use(New(Config{
 		AllowedHosts: []string{"example.com"},
 		ErrorHandler: func(c fiber.Ctx, err error) error {
-			require.ErrorIs(t, err, ErrForbiddenHost)
+			handlerErr = err
 			return c.Status(fiber.StatusTeapot).SendString("custom rejection")
 		},
 	}))
@@ -468,6 +469,7 @@ func Test_HostAuthorization_CustomErrorHandler(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.ErrorIs(t, handlerErr, ErrForbiddenHost)
 }
 
 func Test_HostAuthorization_CaseInsensitive(t *testing.T) {
