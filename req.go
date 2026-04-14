@@ -102,6 +102,7 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 	encodings []string,
 ) (body []byte, decodesRealized uint8, err error) {
 	request := &r.c.fasthttp.Request
+	maxBodySize := r.c.app.config.BodyLimit
 	for idx := range encodings {
 		i := len(encodings) - 1 - idx
 		encoding := encodings[i]
@@ -109,13 +110,13 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 		var decodeErr error
 		switch encoding {
 		case StrGzip, "x-gzip":
-			body, decodeErr = request.BodyGunzip()
+			body, decodeErr = request.BodyGunzipWithLimit(maxBodySize)
 		case StrBr, StrBrotli:
-			body, decodeErr = request.BodyUnbrotli()
+			body, decodeErr = request.BodyUnbrotliWithLimit(maxBodySize)
 		case StrDeflate:
-			body, decodeErr = request.BodyInflate()
+			body, decodeErr = request.BodyInflateWithLimit(maxBodySize)
 		case StrZstd:
-			body, decodeErr = request.BodyUnzstd()
+			body, decodeErr = request.BodyUnzstdWithLimit(maxBodySize)
 		case StrIdentity:
 			body = request.Body()
 		case StrCompress, "x-compress":
@@ -721,7 +722,7 @@ func (r *DefaultReq) Method(override ...string) string {
 // MultipartForm parse form entries from binary.
 // This returns a map[string][]string, so given a key, the value will be a string slice.
 func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
-	return r.c.fasthttp.MultipartForm()
+	return r.c.fasthttp.MultipartFormWithLimit(r.c.app.config.BodyLimit)
 }
 
 // OriginalURL contains the original request URL.

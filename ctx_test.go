@@ -1024,6 +1024,32 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 	}
 }
 
+func Test_Ctx_Body_With_Compression_BodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		BodyLimit: 8,
+	})
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	c.Request().Header.Set(HeaderContentEncoding, StrGzip)
+
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+	_, err := gz.Write([]byte("payload-over-limit"))
+	require.NoError(t, err)
+	require.NoError(t, gz.Flush())
+	require.NoError(t, gz.Close())
+
+	compressedBody := b.Bytes()
+	c.Request().SetBody(compressedBody)
+
+	body := c.Body()
+	require.Equal(t, []byte(fasthttp.ErrBodyTooLarge.Error()), body)
+	require.Equal(t, compressedBody, c.Request().Body())
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression -benchmem -count=4
 func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 	encodingErr := errors.New("failed to encoding data")
@@ -3928,6 +3954,34 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+func Test_Ctx_MultipartForm_BodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		BodyLimit: 64,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	multipartBody := &bytes.Buffer{}
+	writer := multipart.NewWriter(multipartBody)
+	require.NoError(t, writer.WriteField("name", strings.Repeat("a", 1024)))
+	require.NoError(t, writer.Close())
+
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	_, err := gz.Write(multipartBody.Bytes())
+	require.NoError(t, err)
+	require.NoError(t, gz.Flush())
+	require.NoError(t, gz.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().Header.Set(HeaderContentEncoding, StrGzip)
+	c.Request().SetBody(compressed.Bytes())
+
+	_, err = c.MultipartForm()
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_MultipartForm -benchmem -count=4
