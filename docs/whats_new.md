@@ -415,6 +415,8 @@ app.RouteChain("/api").RouteChain("/user/:id?")
 
 You can find more information about `app.RouteChain` and `app.Route` in the API documentation ([RouteChain](./api/app#routechain), [Route](./api/app#route)).
 
+Named routes retrieved with `app.GetRoute(name)` also support `route.URL(params)` for generating relative URLs directly from the route definition, including parameter substitution for named, wildcard (`*`), and plus (`+`) segments.
+
 ### Domain routing
 
 `Domain` creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose hostname (from `c.Hostname()`) matches the pattern. When `TrustProxy` is enabled and the proxy is trusted (as defined by [`TrustProxyConfig`](./api/app#trustproxyconfig)), the hostname may be derived from the `X-Forwarded-Host` header. Be sure to configure `TrustProxyConfig` to restrict which proxies are trusted and prevent header spoofing when enabling `TrustProxy`.
