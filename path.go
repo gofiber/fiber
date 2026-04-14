@@ -124,8 +124,6 @@ const (
 var (
 	// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
 	routeDelimiter = []byte{slashDelimiter, '-', '.'}
-	// list of greedy parameters
-	greedyParameters = []byte{wildcardParam, plusParam}
 	// list of chars for the parameter recognizing
 	parameterStartChars = [256]bool{
 		wildcardParam:    true,
