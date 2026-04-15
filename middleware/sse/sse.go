@@ -7,9 +7,8 @@
 // Features: event coalescing (last-writer-wins), three priority lanes
 // (instant/batched/coalesced), NATS-style topic wildcards, adaptive
 // per-connection throttling, connection groups (publish by metadata),
-// built-in JWT and ticket auth helpers, Prometheus metrics, graceful
-// Kubernetes-style drain, auto fan-out from Redis/NATS, and pluggable
-// Last-Event-ID replay.
+// graceful Kubernetes-style drain, auto fan-out from Redis/NATS, and
+// pluggable Last-Event-ID replay.
 //
 // Quick start:
 //

@@ -1383,3 +1383,287 @@ func Benchmark_SSE_GenerateID(b *testing.B) {
 		generateID()
 	}
 }
+
+func Test_SSE_FanOut(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Mock subscriber that sends one message then blocks
+	received := make(chan string, 1)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
+			onMessage("test-payload")
+			received <- "delivered"
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	cancel := hub.FanOut(FanOutConfig{
+		Subscriber: mockSub,
+		Channel:    "test-channel",
+		EventType:  "notification",
+	})
+
+	// Wait for message delivery
+	select {
+	case <-received:
+		// success
+	case <-time.After(2 * time.Second):
+		t.Fatal("FanOut did not deliver message in time")
+	}
+
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	stats := hub.Stats()
+	require.Equal(t, int64(1), stats.EventsPublished)
+}
+
+func Test_SSE_FanOut_Cancel(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	subscribeCalled := make(chan struct{}, 1)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(ctx context.Context, _ string, _ func(string)) error {
+			subscribeCalled <- struct{}{}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	cancel := hub.FanOut(FanOutConfig{
+		Subscriber: mockSub,
+		Channel:    "ch",
+		EventType:  "evt",
+	})
+
+	<-subscribeCalled
+	cancel()
+	// Should not hang — goroutine exits cleanly
+}
+
+func Test_SSE_FanOutMulti(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	count := make(chan struct{}, 2)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(ctx context.Context, channel string, onMessage func(string)) error {
+			onMessage("msg-from-" + channel)
+			count <- struct{}{}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	cancel := hub.FanOutMulti(
+		FanOutConfig{Subscriber: mockSub, Channel: "ch1", EventType: "e1"},
+		FanOutConfig{Subscriber: mockSub, Channel: "ch2", EventType: "e2"},
+	)
+
+	// Wait for both
+	<-count
+	<-count
+	cancel()
+
+	time.Sleep(50 * time.Millisecond)
+	stats := hub.Stats()
+	require.Equal(t, int64(2), stats.EventsPublished)
+}
+
+func Test_SSE_FanOut_Transform(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	done := make(chan struct{}, 1)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
+			onMessage("raw-data")
+			done <- struct{}{}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	cancel := hub.FanOut(FanOutConfig{
+		Subscriber: mockSub,
+		Channel:    "ch",
+		EventType:  "default",
+		Transform: func(payload string) *Event {
+			return &Event{
+				Type:   "transformed",
+				Data:   "transformed:" + payload,
+				Topics: []string{"custom-topic"},
+			}
+		},
+	})
+
+	<-done
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	stats := hub.Stats()
+	require.Equal(t, int64(1), stats.EventsPublished)
+}
+
+func Test_SSE_FanOut_TransformNil(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	done := make(chan struct{}, 1)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
+			onMessage("skip-this")
+			done <- struct{}{}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	cancel := hub.FanOut(FanOutConfig{
+		Subscriber: mockSub,
+		Channel:    "ch",
+		EventType:  "evt",
+		Transform: func(_ string) *Event {
+			return nil // skip message
+		},
+	})
+
+	<-done
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	stats := hub.Stats()
+	require.Equal(t, int64(0), stats.EventsPublished)
+}
+
+func Test_SSE_FanOut_RetryOnError(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	attempts := make(chan struct{}, 5)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(_ context.Context, _ string, _ func(string)) error {
+			select {
+			case attempts <- struct{}{}:
+			default:
+			}
+			return errors.New("connection failed")
+		},
+	}
+
+	cancel := hub.FanOut(FanOutConfig{
+		Subscriber: mockSub,
+		Channel:    "retry-ch",
+		EventType:  "evt",
+	})
+
+	// Wait for at least one retry attempt
+	<-attempts
+	cancel()
+}
+
+func Test_SSE_FanOut_BuildEvent_ConfigDefaults(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Non-transform with all config defaults
+	cfg := &FanOutConfig{
+		EventType:   "test-event",
+		Priority:    PriorityBatched,
+		CoalesceKey: "my-key",
+		TTL:         5 * time.Minute,
+	}
+	event := hub.buildFanOutEvent(cfg, "my-topic", "payload")
+	require.NotNil(t, event)
+	require.Equal(t, "test-event", event.Type)
+	require.Equal(t, []string{"my-topic"}, event.Topics)
+	require.Equal(t, PriorityBatched, event.Priority)
+	require.Equal(t, "my-key", event.CoalesceKey)
+	require.Equal(t, 5*time.Minute, event.TTL)
+	require.Equal(t, "payload", event.Data)
+
+	// Transform that sets its own priority — should be respected
+	cfgT := &FanOutConfig{
+		EventType: "default-type",
+		Priority:  PriorityBatched,
+		Transform: func(payload string) *Event {
+			return &Event{
+				Type:     "custom-type",
+				Data:     "custom:" + payload,
+				Priority: PriorityCoalesced,
+				Topics:   []string{"custom-topic"},
+			}
+		},
+	}
+	event = hub.buildFanOutEvent(cfgT, "fallback-topic", "raw")
+	require.NotNil(t, event)
+	require.Equal(t, "custom-type", event.Type)
+	require.Equal(t, PriorityCoalesced, event.Priority) // Transform's priority preserved
+	require.Equal(t, []string{"custom-topic"}, event.Topics)
+
+	// Transform returning event without Topics or Type — should use defaults
+	cfgT2 := &FanOutConfig{
+		EventType: "fallback-type",
+		Transform: func(_ string) *Event {
+			return &Event{Data: "minimal"}
+		},
+	}
+	event = hub.buildFanOutEvent(cfgT2, "default-topic", "x")
+	require.NotNil(t, event)
+	require.Equal(t, "fallback-type", event.Type)
+	require.Equal(t, []string{"default-topic"}, event.Topics)
+}
+
+// mockPubSubSubscriber implements PubSubSubscriber for testing.
+type mockPubSubSubscriber struct {
+	onSubscribe func(ctx context.Context, channel string, onMessage func(string)) error
+}
+
+func (m *mockPubSubSubscriber) Subscribe(ctx context.Context, channel string, onMessage func(string)) error {
+	return m.onSubscribe(ctx, channel, onMessage)
+}

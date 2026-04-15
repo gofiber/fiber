@@ -97,6 +97,29 @@ for i := 1; i <= 100; i++ {
 }
 ```
 
+Fan out from an external pub/sub system (Redis, NATS, etc.) into the hub. Implement the `PubSubSubscriber` interface and let `FanOut` bridge incoming messages as SSE events:
+
+```go
+type redisSubscriber struct{ client *redis.Client }
+
+func (r *redisSubscriber) Subscribe(ctx context.Context, channel string, onMessage func(string)) error {
+    sub := r.client.Subscribe(ctx, channel)
+    defer sub.Close()
+    for msg := range sub.Channel() {
+        onMessage(msg.Payload)
+    }
+    return ctx.Err()
+}
+
+cancel := hub.FanOut(sse.FanOutConfig{
+    Subscriber: &redisSubscriber{client: rdb},
+    Channel:    "notifications",
+    Topic:      "notifications",
+    EventType:  "notification",
+})
+defer cancel()
+```
+
 Graceful shutdown with deadline:
 
 ```go
