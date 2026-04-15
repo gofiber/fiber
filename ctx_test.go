@@ -1047,7 +1047,7 @@ func Test_Ctx_Body_With_Compression_BodyLimitExceeded(t *testing.T) {
 	body := c.Body()
 	require.Equal(t, []byte(fasthttp.ErrBodyTooLarge.Error()), body)
 	require.Equal(t, compressedBody, c.Request().Body())
-	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Equal(t, StatusRequestEntityTooLarge, c.Response().StatusCode())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression -benchmem -count=4
