@@ -2306,6 +2306,85 @@ func Test_Ctx_FormValue_BodyLimitExceeded(t *testing.T) {
 	require.Empty(t, val)
 }
 
+// Test_Ctx_FormValue_QueryArgs covers the path where the key is found in QueryArgs
+// for a multipart request, which is checked before the multipart form is parsed.
+func Test_Ctx_FormValue_QueryArgs(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	require.NoError(t, writer.WriteField("other", "value"))
+	require.NoError(t, writer.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().SetBody(body.Bytes())
+	// Set the key in QueryArgs so the QueryArgs branch returns it.
+	c.Request().URI().QueryArgs().Set("name", "alice")
+
+	require.Equal(t, "alice", c.FormValue("name"))
+}
+
+// Test_Ctx_FormValue_PostArgs covers the path where the key is found in PostArgs
+// for a multipart request, which is checked before the multipart form is parsed.
+func Test_Ctx_FormValue_PostArgs(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	require.NoError(t, writer.WriteField("other", "value"))
+	require.NoError(t, writer.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().SetBody(body.Bytes())
+	// Manually set a PostArg so that the PostArgs branch returns it.
+	c.Request().PostArgs().Set("name", "bob")
+
+	require.Equal(t, "bob", c.FormValue("name"))
+}
+
+// Test_Ctx_FormValue_MultipartKeyNotFound covers the path where the key is absent
+// from the multipart form: returns "" without a default and the provided default otherwise.
+func Test_Ctx_FormValue_MultipartKeyNotFound(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	require.NoError(t, writer.WriteField("other", "value"))
+	require.NoError(t, writer.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().SetBody(body.Bytes())
+
+	// Key not present → empty string.
+	require.Empty(t, c.FormValue("missing"))
+	// Key not present + default → default value.
+	require.Equal(t, "fallback", c.FormValue("missing", "fallback"))
+}
+
+// Test_Ctx_FormValue_NonMultipart covers the non-multipart branch (e.g. URL-encoded body).
+func Test_Ctx_FormValue_NonMultipart(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	c.Request().Header.Set(HeaderContentType, MIMEApplicationForm)
+	c.Request().SetBodyString("name=carol")
+
+	require.Equal(t, "carol", c.FormValue("name"))
+	// Key not present + default → default value.
+	require.Equal(t, "fallback", c.FormValue("missing", "fallback"))
+}
+
 func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
