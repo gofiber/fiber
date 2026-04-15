@@ -10,7 +10,7 @@ require (
 	github.com/mattn/go-isatty v0.0.21
 	github.com/shamaton/msgpack/v3 v3.1.0
 	github.com/stretchr/testify v1.11.1
-	github.com/tinylib/msgp v1.6.3
+	github.com/tinylib/msgp v1.6.4
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.70.0
 	golang.org/x/crypto v0.50.0
