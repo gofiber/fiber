@@ -353,7 +353,12 @@ func (r *DefaultReq) Request() *fasthttp.Request {
 }
 
 // FormFile returns the first file by key from a MultipartForm.
+// The multipart form is parsed using the application's BodyLimit to prevent
+// unbounded memory usage.
 func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
+	if _, err := r.MultipartForm(); err != nil {
+		return nil, err
+	}
 	return r.c.fasthttp.FormFile(key)
 }
 
@@ -363,7 +368,30 @@ func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
 // If a default value is given, it will return that value if the form value does not exist.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
+// When the request is a multipart form, it is parsed using the application's
+// BodyLimit so the configured limit is consistently enforced.
 func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
+	if r.c.IsMultipart() {
+		// For multipart requests, parse the form using the application's BodyLimit.
+		// fasthttp's FormValue would otherwise re-parse with its default 8 MiB limit,
+		// effectively bypassing the configured BodyLimit.
+		//
+		// Preserve the original search order: QueryArgs → PostArgs → MultipartForm.
+		if v := r.c.fasthttp.QueryArgs().Peek(key); len(v) > 0 {
+			return r.c.app.toString(v)
+		}
+		if v := r.c.fasthttp.PostArgs().Peek(key); len(v) > 0 {
+			return r.c.app.toString(v)
+		}
+		mf, err := r.MultipartForm()
+		if err != nil {
+			return defaultString("", defaultValue)
+		}
+		if vals := mf.Value[key]; len(vals) > 0 {
+			return vals[0]
+		}
+		return defaultString("", defaultValue)
+	}
 	return defaultString(r.c.app.toString(r.c.fasthttp.FormValue(key)), defaultValue)
 }
 

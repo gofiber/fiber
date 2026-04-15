@@ -2262,7 +2262,50 @@ func Test_Ctx_FormValue(t *testing.T) {
 	require.Equal(t, int64(0), resp.ContentLength)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_StaleEtag -benchmem -count=4
+func Test_Ctx_FormFile_BodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		BodyLimit: 64,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	ioWriter, err := writer.CreateFormFile("file", "test.txt")
+	require.NoError(t, err)
+	_, err = ioWriter.Write([]byte(strings.Repeat("a", 256)))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().SetBody(body.Bytes())
+
+	_, err = c.FormFile("file")
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+}
+
+func Test_Ctx_FormValue_BodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		BodyLimit: 64,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	require.NoError(t, writer.WriteField("name", strings.Repeat("a", 256)))
+	require.NoError(t, writer.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().SetBody(body.Bytes())
+
+	// FormValue should return empty string (default) when the body limit is exceeded.
+	val := c.FormValue("name")
+	require.Empty(t, val)
+}
+
 func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
