@@ -58,12 +58,28 @@ func Test_ConfigAllowedHostsFuncOnly(t *testing.T) {
 	require.NotNil(t, cfg.AllowedHostsFunc)
 }
 
-func Test_ConfigPanicInvalidCIDR(t *testing.T) {
+func Test_ConfigInvalidCIDRTreatedAsExact(t *testing.T) {
 	t.Parallel()
 
+	// "not-a-cidr/99" fails net.ParseCIDR, so it falls through to an exact-match
+	// entry that will never match a real host (no valid hostname contains "/").
+	// The middleware should be created without panicking.
+	require.NotPanics(t, func() {
+		h := New(Config{
+			AllowedHosts: []string{"not-a-cidr/99"},
+		})
+		require.NotNil(t, h)
+	})
+}
+
+func Test_ConfigPanicNonCanonicalCIDR(t *testing.T) {
+	t.Parallel()
+
+	// "10.0.0.5/8" passes net.ParseCIDR but has host bits set — it would silently
+	// expand to 10.0.0.0/8, allowing far more than the developer intended.
 	require.Panics(t, func() {
 		New(Config{
-			AllowedHosts: []string{"not-a-cidr/99"},
+			AllowedHosts: []string{"10.0.0.5/8"},
 		})
 	})
 }

@@ -33,20 +33,18 @@ func parseAllowedHosts(hosts []string) parsedHosts {
 			continue
 		}
 
-		switch {
-		case strings.Contains(h, "/"):
-			// CIDR range
-			_, cidr, err := net.ParseCIDR(h)
-			if err != nil {
-				panic("hostauthorization: invalid CIDR: " + h)
+		if hostIP, cidr, err := net.ParseCIDR(h); err == nil {
+			// CIDR range — let net.ParseCIDR be the authoritative detector.
+			// Reject non-canonical CIDRs (host bits set): "10.0.0.5/8" silently
+			// becomes 10.0.0.0/8 which is far broader than intended.
+			if !hostIP.Equal(cidr.IP) {
+				panic("hostauthorization: CIDR has host bits set, use canonical form: " + h)
 			}
 			parsed.cidrNets = append(parsed.cidrNets, cidr)
-
-		case strings.HasPrefix(h, "."):
+		} else if strings.HasPrefix(h, ".") {
 			// Subdomain wildcard — store with leading dot to avoid allocation in hot path
 			parsed.wildcardSuffixes = append(parsed.wildcardSuffixes, h)
-
-		default:
+		} else {
 			// Exact match
 			parsed.exact[h] = true
 		}
@@ -78,6 +76,11 @@ func normalizeHost(host string) string {
 
 // matchHost checks if the given host matches any of the parsed allowed hosts.
 func matchHost(host string, parsed parsedHosts, allowedHostsFunc func(string) bool) bool {
+	// Dynamic validator — checked first so it can override static rules
+	if allowedHostsFunc != nil && allowedHostsFunc(host) {
+		return true
+	}
+
 	// Exact match
 	if parsed.exact[host] {
 		return true
@@ -99,11 +102,6 @@ func matchHost(host string, parsed parsedHosts, allowedHostsFunc func(string) bo
 				}
 			}
 		}
-	}
-
-	// Dynamic validator fallback
-	if allowedHostsFunc != nil {
-		return allowedHostsFunc(host)
 	}
 
 	return false
