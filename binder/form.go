@@ -26,6 +26,7 @@ var (
 // FormBinding is the form binder for form request body.
 type FormBinding struct {
 	EnableSplitting bool
+	MaxBodySize     int
 }
 
 // Name returns the binding name.
@@ -56,7 +57,7 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 
 // bindMultipart parses the request body and returns the result.
 func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
-	multipartForm, err := req.MultipartForm()
+	multipartForm, err := req.MultipartFormWithLimit(b.MaxBodySize)
 	if err != nil {
 		return err
 	}
@@ -87,6 +88,7 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 // Reset resets the FormBinding binder.
 func (b *FormBinding) Reset() {
 	b.EnableSplitting = false
+	b.MaxBodySize = 0
 }
 
 func acquireFormMap() map[string][]string {

@@ -1403,6 +1403,8 @@ Additionally, panic messages and logs redact misconfigured origins by default, a
 - Compression is bypassed for responses that already specify `Content-Encoding`, for range requests or `206` statuses, and when either side sends `Cache-Control: no-transform`.
 - `HEAD` requests still negotiate compression so `Content-Encoding`, `Content-Length`, `ETag`, and `Vary` match a corresponding `GET`, but the body is omitted.
 - `Vary: Accept-Encoding` is merged into responses even when compression is skipped, preventing caches from mixing encoded and unencoded variants.
+- Decoding compressed request bodies now enforces the app `BodyLimit` through fasthttp `WithLimit` helpers, including when the compression middleware is active.
+- Multipart form parsing now enforces the app `BodyLimit` by using fasthttp `MultipartFormWithLimit`.
 
 ### CSRF
 
