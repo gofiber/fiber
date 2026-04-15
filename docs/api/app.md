@@ -535,6 +535,8 @@ func main() {
 
 This method retrieves a route by its name.
 
+The returned `Route` can be inspected or used to generate a URL directly with `route.URL(params)`.
+
 ```go title="Signature"
 func (app *App) GetRoute(name string) Route
 ```
@@ -554,11 +556,16 @@ func main() {
     app := fiber.New()
 
     app.Get("/", handler).Name("index")
+    app.Get("/user/:name/:id", handler).Name("user")
 
     route := app.GetRoute("index")
 
     data, _ := json.MarshalIndent(route, "", "  ")
     fmt.Println(string(data))
+
+    userRoute := app.GetRoute("user")
+    location, _ := userRoute.URL(fiber.Map{"name": "john", "id": 1})
+    fmt.Println(location) // /user/john/1
 
     log.Fatal(app.Listen(":3000"))
 }
