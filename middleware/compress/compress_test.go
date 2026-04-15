@@ -275,7 +275,7 @@ func Test_Compress_RespectsBodyLimitOnCompressedRequestBody(t *testing.T) {
 
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
