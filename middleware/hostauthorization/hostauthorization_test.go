@@ -97,9 +97,13 @@ func Test_NormalizeHost(t *testing.T) {
 		{"plain host", "example.com", "example.com"},
 		{"uppercase", "EXAMPLE.COM", "example.com"},
 		{"trailing dot", "example.com.", "example.com"},
+		{"host with port", "example.com:8080", "example.com"},
+		{"uppercase host with port", "EXAMPLE.COM:8080", "example.com"},
 		{"ipv4", "192.168.1.1", "192.168.1.1"},
+		{"ipv4 with port", "192.168.1.1:8080", "192.168.1.1"},
 		{"ipv6 brackets", "[::1]", "::1"},
 		{"ipv6 bare", "::1", "::1"},
+		{"ipv6 with port", "[::1]:8080", "::1"},
 		{"empty", "", ""},
 	}
 
@@ -297,6 +301,39 @@ func Test_HostAuthorization_HostWithPort(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// Test_HostAuthorization_AllowedHostWithPort verifies that configuring AllowedHosts
+// with an explicit port (e.g. "example.com:8080") still matches correctly.
+// c.Hostname() strips ports from the request Host header, so the AllowedHosts
+// entry must also have its port stripped during config parsing.
+func Test_HostAuthorization_AllowedHostWithPort(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		AllowedHosts: []string{"example.com:8080"},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	// Request with matching host (port in Host header is stripped by c.Hostname())
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "example.com:8080"
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	// Request without port should also match (both normalize to "example.com")
+	req2 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req2.Host = "example.com"
+
+	resp2, err := app.Test(req2)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
 }
 
 func Test_HostAuthorization_Next(t *testing.T) {

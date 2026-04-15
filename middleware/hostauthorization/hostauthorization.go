@@ -55,12 +55,20 @@ func parseAllowedHosts(hosts []string) parsedHosts {
 	return parsed
 }
 
-// normalizeHost normalizes a hostname (already port-stripped by c.Hostname()).
-// Strips trailing dot, IPv6 brackets, and lowercases.
+// normalizeHost normalizes a hostname for matching.
+// Strips port (if any), trailing dot, IPv6 brackets, and lowercases.
+// Safe to call on both c.Hostname() output (already port-stripped) and
+// raw AllowedHosts entries (which may include a port like "example.com:8080").
 func normalizeHost(host string) string {
-	// Strip IPv6 brackets
-	host = strings.TrimPrefix(host, "[")
-	host = strings.TrimSuffix(host, "]")
+	// Strip port if present. net.SplitHostPort handles both "host:port" and
+	// "[::1]:port" forms, and strips IPv6 brackets as a side effect.
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	} else {
+		// No port: strip bare IPv6 brackets (e.g. "[::1]" → "::1").
+		host = strings.TrimPrefix(host, "[")
+		host = strings.TrimSuffix(host, "]")
+	}
 
 	// Strip trailing dot (FQDN normalization)
 	host = strings.TrimSuffix(host, ".")
