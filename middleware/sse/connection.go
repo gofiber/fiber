@@ -15,7 +15,7 @@ type Connection struct {
 	send        chan MarshaledEvent
 	heartbeat   chan struct{}
 	done        chan struct{}
-	coalescer   *coalescer
+	dispatcher  *dispatcher
 	// Metadata holds connection metadata set during OnConnect.
 	// It is frozen (defensive-copied) after OnConnect returns -- do not
 	// mutate it from other goroutines after the connection is registered.
@@ -41,7 +41,7 @@ func newConnection(id string, topics []string, bufferSize int, flushInterval tim
 	}
 	c.lastWrite.Store(time.Now())
 	c.LastEventID.Store("")
-	c.coalescer = newCoalescer(flushInterval)
+	c.dispatcher = newDispatcher(flushInterval)
 	return c
 }
 

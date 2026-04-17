@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/valyala/bytebufferpool"
 )
 
 // Priority controls how an event is delivered to clients.
@@ -46,7 +49,7 @@ var globalEventID atomic.Uint64
 
 // nextEventID returns a monotonically increasing event ID string.
 func nextEventID() string {
-	return fmt.Sprintf("evt_%d", globalEventID.Add(1))
+	return "evt_" + strconv.FormatUint(globalEventID.Add(1), 10)
 }
 
 // MarshaledEvent is the wire-ready representation of an SSE event.
@@ -112,55 +115,52 @@ func marshalEvent(e *Event) MarshaledEvent {
 }
 
 // WriteTo writes the SSE-formatted event to w following the Server-Sent
-// Events specification.
+// Events specification. It assembles the frame in a pooled buffer so the
+// hot path performs a single Write syscall with zero fmt allocations.
 func (me *MarshaledEvent) WriteTo(w io.Writer) (int64, error) {
-	var total int64
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
 
 	if me.ID != "" {
-		n, err := fmt.Fprintf(w, "id: %s\n", me.ID)
-		total += int64(n)
-		if err != nil {
-			return total, fmt.Errorf("sse: write id: %w", err)
-		}
+		buf.WriteString("id: ")
+		buf.WriteString(me.ID)
+		buf.WriteByte('\n')
 	}
-
 	if me.Type != "" {
-		n, err := fmt.Fprintf(w, "event: %s\n", me.Type)
-		total += int64(n)
-		if err != nil {
-			return total, fmt.Errorf("sse: write event: %w", err)
-		}
+		buf.WriteString("event: ")
+		buf.WriteString(me.Type)
+		buf.WriteByte('\n')
 	}
-
 	if me.Retry >= 0 {
-		n, err := fmt.Fprintf(w, "retry: %d\n", me.Retry)
-		total += int64(n)
-		if err != nil {
-			return total, fmt.Errorf("sse: write retry: %w", err)
-		}
+		buf.WriteString("retry: ")
+		buf.WriteString(strconv.Itoa(me.Retry))
+		buf.WriteByte('\n')
 	}
 
-	// strings.SplitSeq("", "\n") yields "", correctly writing "data: \n" for empty data.
+	// strings.SplitSeq("", "\n") yields "", correctly writing "data: \n"
+	// for empty data.
 	for line := range strings.SplitSeq(me.Data, "\n") {
-		n, err := fmt.Fprintf(w, "data: %s\n", line)
-		total += int64(n)
-		if err != nil {
-			return total, fmt.Errorf("sse: write data: %w", err)
-		}
+		buf.WriteString("data: ")
+		buf.WriteString(line)
+		buf.WriteByte('\n')
 	}
+	buf.WriteByte('\n')
 
-	n, err := fmt.Fprint(w, "\n")
-	total += int64(n)
+	n, err := w.Write(buf.B)
 	if err != nil {
-		return total, fmt.Errorf("sse: write terminator: %w", err)
+		return int64(n), fmt.Errorf("sse: write frame: %w", err)
 	}
-	return total, nil
+	return int64(n), nil
 }
 
 // writeComment writes an SSE comment line.
 func writeComment(w io.Writer, text string) error {
-	_, err := fmt.Fprintf(w, ": %s\n\n", text)
-	if err != nil {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+	buf.WriteString(": ")
+	buf.WriteString(text)
+	buf.WriteString("\n\n")
+	if _, err := w.Write(buf.B); err != nil {
 		return fmt.Errorf("sse: write comment: %w", err)
 	}
 	return nil
@@ -168,8 +168,12 @@ func writeComment(w io.Writer, text string) error {
 
 // writeRetry writes the retry directive.
 func writeRetry(w io.Writer, ms int) error {
-	_, err := fmt.Fprintf(w, "retry: %d\n\n", ms)
-	if err != nil {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+	buf.WriteString("retry: ")
+	buf.WriteString(strconv.Itoa(ms))
+	buf.WriteString("\n\n")
+	if _, err := w.Write(buf.B); err != nil {
 		return fmt.Errorf("sse: write retry: %w", err)
 	}
 	return nil

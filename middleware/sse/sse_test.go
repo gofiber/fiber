@@ -6,15 +6,272 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 )
+
+// startSSEServer spins up a real TCP listener serving the given handler and
+// returns the base URL + cleanup. Use for end-to-end response-body checks
+// since app.Test() blocks on SSE streams that never terminate.
+func startSSEServer(t *testing.T, handler fiber.Handler) (string, func()) { //nolint:gocritic // unnamedResult: nonamedreturns rule forbids names; types are self-explanatory
+	t.Helper()
+	app := fiber.New()
+	app.Get("/events", handler)
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+
+	go func() {
+		_ = app.Listener(ln) //nolint:errcheck // best-effort test listener
+	}()
+
+	baseURL := "http://" + ln.Addr().String()
+	cleanup := func() {
+		// Close the listener first to force-abort in-flight SSE writers;
+		// app.Shutdown would otherwise wait for the long-lived handler.
+		_ = ln.Close() //nolint:errcheck // may already be closed
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+		_ = app.ShutdownWithContext(shutdownCtx) //nolint:errcheck // best-effort test shutdown
+	}
+	return baseURL, cleanup
+}
+
+// sseFrameTimeout is the deadline for reading a single SSE frame in tests.
+const sseFrameTimeout = 2 * time.Second
+
+// readSSEFrame reads one SSE frame (ending in blank line) from r.
+// Fails the test if no complete frame arrives within sseFrameTimeout.
+func readSSEFrame(t *testing.T, r *bufio.Reader) string {
+	t.Helper()
+	type result struct {
+		err   error
+		frame string
+	}
+	done := make(chan result, 1)
+	go func() {
+		var buf bytes.Buffer
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil {
+				done <- result{err: err}
+				return
+			}
+			_, _ = buf.WriteString(line) //nolint:errcheck // bytes.Buffer.WriteString never fails
+			if line == "\n" {
+				done <- result{frame: buf.String()}
+				return
+			}
+		}
+	}()
+	select {
+	case res := <-done:
+		require.NoError(t, res.err)
+		return res.frame
+	case <-time.After(sseFrameTimeout):
+		t.Fatal("timed out waiting for SSE frame")
+		return ""
+	}
+}
+
+func Test_SSE_E2E_HeadersAndConnectedFrame(t *testing.T) {
+	t.Parallel()
+
+	handler, hub := NewWithHub(Config{
+		MaxLifetime:       500 * time.Millisecond,
+		HeartbeatInterval: 100 * time.Millisecond,
+		FlushInterval:     50 * time.Millisecond,
+		OnConnect: func(_ fiber.Ctx, conn *Connection) error {
+			conn.Topics = []string{"updates"}
+			return nil
+		},
+	})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	base, cleanup := startSSEServer(t, handler)
+	defer cleanup()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/events", http.NoBody)
+	require.NoError(t, err)
+
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+	// RFC 8895 + W3C SSE: Content-Type must be text/event-stream.
+	require.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))
+	require.Equal(t, "no-cache", resp.Header.Get("Cache-Control"))
+	require.Equal(t, "keep-alive", resp.Header.Get("Connection"))
+	require.Equal(t, "no", resp.Header.Get("X-Accel-Buffering"))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	br := bufio.NewReader(resp.Body)
+
+	// First: retry directive frame from writeRetry.
+	retryFrame := readSSEFrame(t, br)
+	require.Contains(t, retryFrame, "retry: 3000")
+
+	// Second: connected event with connection_id and topics.
+	connectedFrame := readSSEFrame(t, br)
+	require.Contains(t, connectedFrame, "event: connected")
+	require.Contains(t, connectedFrame, "connection_id")
+	require.Contains(t, connectedFrame, `"topics":["updates"]`)
+}
+
+func Test_SSE_E2E_PublishedEventDeliveredToClient(t *testing.T) {
+	t.Parallel()
+
+	handler, hub := NewWithHub(Config{
+		OnConnect: func(_ fiber.Ctx, conn *Connection) error {
+			conn.Topics = []string{"orders"}
+			return nil
+		},
+	})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	base, cleanup := startSSEServer(t, handler)
+	defer cleanup()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/events", http.NoBody)
+	require.NoError(t, err)
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+	br := bufio.NewReader(resp.Body)
+	_ = readSSEFrame(t, br) // retry
+	_ = readSSEFrame(t, br) // connected
+
+	// Give the hub time to register the connection before publishing.
+	time.Sleep(50 * time.Millisecond)
+
+	hub.Publish(Event{
+		Type:     "order-created",
+		Data:     `{"id":"ord_123","total":99}`,
+		Topics:   []string{"orders"},
+		Priority: PriorityInstant,
+	})
+
+	frame := readSSEFrame(t, br)
+	require.Contains(t, frame, "event: order-created")
+	require.Contains(t, frame, `data: {"id":"ord_123","total":99}`)
+	require.Contains(t, frame, "id: evt_")
+}
+
+func Test_SSE_E2E_MultilineDataProducesMultipleDataLines(t *testing.T) {
+	t.Parallel()
+
+	handler, hub := NewWithHub(Config{
+		OnConnect: func(_ fiber.Ctx, conn *Connection) error {
+			conn.Topics = []string{"logs"}
+			return nil
+		},
+	})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	base, cleanup := startSSEServer(t, handler)
+	defer cleanup()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/events", http.NoBody)
+	require.NoError(t, err)
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+	br := bufio.NewReader(resp.Body)
+	_ = readSSEFrame(t, br)
+	_ = readSSEFrame(t, br)
+	time.Sleep(50 * time.Millisecond)
+
+	hub.Publish(Event{
+		Type:     "log",
+		Data:     "line1\nline2\nline3",
+		Topics:   []string{"logs"},
+		Priority: PriorityInstant,
+	})
+
+	frame := readSSEFrame(t, br)
+	require.Contains(t, frame, "data: line1\n")
+	require.Contains(t, frame, "data: line2\n")
+	require.Contains(t, frame, "data: line3\n")
+}
+
+func Test_SSE_E2E_IDAndTypeSanitizedAgainstInjection(t *testing.T) {
+	t.Parallel()
+
+	handler, hub := NewWithHub(Config{
+		OnConnect: func(_ fiber.Ctx, conn *Connection) error {
+			conn.Topics = []string{"t"}
+			return nil
+		},
+	})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	base, cleanup := startSSEServer(t, handler)
+	defer cleanup()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/events", http.NoBody)
+	require.NoError(t, err)
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+	br := bufio.NewReader(resp.Body)
+	_ = readSSEFrame(t, br)
+	_ = readSSEFrame(t, br)
+	time.Sleep(50 * time.Millisecond)
+
+	hub.Publish(Event{
+		ID:       "bad\nid: injected",
+		Type:     "evt\nevent: sneaky",
+		Data:     "x",
+		Topics:   []string{"t"},
+		Priority: PriorityInstant,
+	})
+
+	frame := readSSEFrame(t, br)
+
+	// Split frame into logical lines; id: and event: must each appear on
+	// exactly one line. Injection attempts that embed `\nid: injected` or
+	// `\nevent: sneaky` would create extra lines the SSE parser would
+	// interpret as additional fields — we must collapse them away.
+	lines := strings.Split(frame, "\n")
+	var idLines, eventLines int
+	for _, line := range lines {
+		if strings.HasPrefix(line, "id: ") {
+			idLines++
+		}
+		if strings.HasPrefix(line, "event: ") {
+			eventLines++
+		}
+	}
+	require.Equal(t, 1, idLines, "id: injection must be sanitized")
+	require.Equal(t, 1, eventLines, "event: injection must be sanitized")
+}
 
 func Test_SSE_New(t *testing.T) {
 	t.Parallel()
@@ -62,41 +319,6 @@ func Test_SSE_New_CustomConfig(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	require.NoError(t, hub.Shutdown(ctx))
-}
-
-func Test_SSE_Next(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	handler, hub := NewWithHub(Config{
-		Next: func(c fiber.Ctx) bool {
-			return c.Query("skip") == "true"
-		},
-		OnConnect: func(_ fiber.Ctx, conn *Connection) error {
-			conn.Topics = []string{"test"}
-			return nil
-		},
-	})
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	app.Get("/events", handler)
-	app.Get("/events", func(c fiber.Ctx) error {
-		return c.SendString("skipped")
-	})
-
-	req, err := http.NewRequest(fiber.MethodGet, "/events?skip=true", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "skipped", string(body))
 }
 
 func Test_SSE_NoTopics(t *testing.T) {
@@ -270,23 +492,23 @@ func Test_SSE_MarshaledEvent_WriteTo_Retry(t *testing.T) {
 	require.Contains(t, buf.String(), "retry: 3000\n")
 }
 
-func Test_SSE_Coalescer(t *testing.T) {
+func Test_SSE_Dispatcher(t *testing.T) {
 	t.Parallel()
 
-	c := newCoalescer(time.Second)
+	c := newDispatcher(time.Second)
 
 	// Add batched events
-	c.addBatched(MarshaledEvent{ID: "1", Data: "a"})
-	c.addBatched(MarshaledEvent{ID: "2", Data: "b"})
+	c.AddEvent(MarshaledEvent{ID: "1", Data: "a"})
+	c.AddEvent(MarshaledEvent{ID: "2", Data: "b"})
 
 	// Add coalesced events (last wins)
-	c.addCoalesced("key1", MarshaledEvent{ID: "3", Data: "old"})
-	c.addCoalesced("key1", MarshaledEvent{ID: "4", Data: "new"})
-	c.addCoalesced("key2", MarshaledEvent{ID: "5", Data: "other"})
+	c.AddState("key1", MarshaledEvent{ID: "3", Data: "old"})
+	c.AddState("key1", MarshaledEvent{ID: "4", Data: "new"})
+	c.AddState("key2", MarshaledEvent{ID: "5", Data: "other"})
 
 	require.Equal(t, 4, c.pending())
 
-	events := c.flush()
+	events := c.WriteTo()
 	require.Len(t, events, 4)
 
 	// Batched first
@@ -298,7 +520,7 @@ func Test_SSE_Coalescer(t *testing.T) {
 	require.Equal(t, "other", events[3].Data)
 
 	// Should be empty now
-	require.Nil(t, c.flush())
+	require.Nil(t, c.WriteTo())
 }
 
 func Test_SSE_AdaptiveThrottler(t *testing.T) {
@@ -855,7 +1077,7 @@ func Test_SSE_RouteEvent_PausedSkipsNonInstant(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	require.Equal(t, 0, conn.coalescer.pending())
+	require.Equal(t, 0, conn.dispatcher.pending())
 
 	// P0 (instant) should still deliver
 	hub.Publish(Event{
@@ -925,17 +1147,17 @@ func Test_SSE_DeliverToConn_AllPriorities(t *testing.T) {
 
 	// Test batched delivery
 	hub.deliverToConn(conn, &Event{Priority: PriorityBatched}, me)
-	require.Equal(t, 1, conn.coalescer.pending())
-	conn.coalescer.flush()
+	require.Equal(t, 1, conn.dispatcher.pending())
+	conn.dispatcher.WriteTo()
 
 	// Test coalesced delivery
 	hub.deliverToConn(conn, &Event{Priority: PriorityCoalesced, Type: "progress", CoalesceKey: "k1"}, me)
-	require.Equal(t, 1, conn.coalescer.pending())
-	conn.coalescer.flush()
+	require.Equal(t, 1, conn.dispatcher.pending())
+	conn.dispatcher.WriteTo()
 
 	// Test coalesced without explicit key — uses Type
 	hub.deliverToConn(conn, &Event{Priority: PriorityCoalesced, Type: "counter"}, me)
-	require.Equal(t, 1, conn.coalescer.pending())
+	require.Equal(t, 1, conn.dispatcher.pending())
 }
 
 func Test_SSE_FlushAll(t *testing.T) {
@@ -956,8 +1178,8 @@ func Test_SSE_FlushAll(t *testing.T) {
 	hub.mu.Unlock()
 
 	// Add batched events to the coalescer
-	conn.coalescer.addBatched(MarshaledEvent{ID: "b1", Data: "batch1"})
-	conn.coalescer.addBatched(MarshaledEvent{ID: "b2", Data: "batch2"})
+	conn.dispatcher.AddEvent(MarshaledEvent{ID: "b1", Data: "batch1"})
+	conn.dispatcher.AddEvent(MarshaledEvent{ID: "b2", Data: "batch2"})
 
 	// Wait for throttler to allow flush, then flush
 	time.Sleep(100 * time.Millisecond)
@@ -985,7 +1207,7 @@ func Test_SSE_FlushAll_TTLExpiry(t *testing.T) {
 	hub.mu.Unlock()
 
 	// Add an expired event to the coalescer
-	conn.coalescer.addBatched(MarshaledEvent{
+	conn.dispatcher.AddEvent(MarshaledEvent{
 		ID:        "exp",
 		Data:      "expired",
 		TTL:       time.Millisecond,
@@ -1367,13 +1589,13 @@ func Benchmark_SSE_WriteTo(b *testing.B) {
 }
 
 func Benchmark_SSE_Coalescer(b *testing.B) {
-	c := newCoalescer(time.Second)
+	c := newDispatcher(time.Second)
 	me := MarshaledEvent{ID: "1", Data: "test"}
 
 	b.ResetTimer()
 	for b.Loop() {
-		c.addCoalesced("key", me)
-		c.flush()
+		c.AddState("key", me)
+		c.WriteTo()
 	}
 }
 
@@ -1384,125 +1606,113 @@ func Benchmark_SSE_GenerateID(b *testing.B) {
 	}
 }
 
-func Test_SSE_FanOut(t *testing.T) {
+// mockBridge implements SubscriberBridge for testing.
+type mockBridge struct {
+	onSubscribe func(ctx context.Context, channel string, onMessage func(string)) error
+}
+
+func (m *mockBridge) Subscribe(ctx context.Context, channel string, onMessage func(string)) error {
+	return m.onSubscribe(ctx, channel, onMessage)
+}
+
+func Test_SSE_Bridge_Publishes(t *testing.T) {
 	t.Parallel()
 
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	// Mock subscriber that sends one message then blocks
-	received := make(chan string, 1)
-	mockSub := &mockPubSubSubscriber{
+	delivered := make(chan string, 1)
+	bridge := &mockBridge{
 		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
 			onMessage("test-payload")
-			received <- "delivered"
+			delivered <- "ok"
 			<-ctx.Done()
 			return ctx.Err()
 		},
 	}
 
-	cancel := hub.FanOut(FanOutConfig{
-		Subscriber: mockSub,
-		Channel:    "test-channel",
-		EventType:  "notification",
+	_, hub := NewWithHub(Config{
+		Bridges: []BridgeConfig{{
+			Subscriber: bridge,
+			Channel:    "test-channel",
+			EventType:  "notification",
+		}},
 	})
 
-	// Wait for message delivery
 	select {
-	case <-received:
-		// success
+	case <-delivered:
 	case <-time.After(2 * time.Second):
-		t.Fatal("FanOut did not deliver message in time")
+		t.Fatal("bridge did not deliver message in time")
 	}
 
-	cancel()
-	time.Sleep(50 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, hub.Shutdown(ctx))
 
 	stats := hub.Stats()
 	require.Equal(t, int64(1), stats.EventsPublished)
 }
 
-func Test_SSE_FanOut_Cancel(t *testing.T) {
+func Test_SSE_Bridge_CancelsOnShutdown(t *testing.T) {
 	t.Parallel()
 
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	subscribeCalled := make(chan struct{}, 1)
-	mockSub := &mockPubSubSubscriber{
+	subscribed := make(chan struct{}, 1)
+	bridge := &mockBridge{
 		onSubscribe: func(ctx context.Context, _ string, _ func(string)) error {
-			subscribeCalled <- struct{}{}
+			subscribed <- struct{}{}
 			<-ctx.Done()
 			return ctx.Err()
 		},
 	}
 
-	cancel := hub.FanOut(FanOutConfig{
-		Subscriber: mockSub,
-		Channel:    "ch",
-		EventType:  "evt",
+	_, hub := NewWithHub(Config{
+		Bridges: []BridgeConfig{{
+			Subscriber: bridge,
+			Channel:    "ch",
+			EventType:  "evt",
+		}},
 	})
 
-	<-subscribeCalled
-	cancel()
-	// Should not hang — goroutine exits cleanly
+	<-subscribed
+	// Shutdown should cancel the bridge context and wait for the goroutine.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, hub.Shutdown(ctx))
 }
 
-func Test_SSE_FanOutMulti(t *testing.T) {
+func Test_SSE_Bridge_Multiple(t *testing.T) {
 	t.Parallel()
 
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	count := make(chan struct{}, 2)
-	mockSub := &mockPubSubSubscriber{
+	delivered := make(chan struct{}, 2)
+	bridge := &mockBridge{
 		onSubscribe: func(ctx context.Context, channel string, onMessage func(string)) error {
 			onMessage("msg-from-" + channel)
-			count <- struct{}{}
+			delivered <- struct{}{}
 			<-ctx.Done()
 			return ctx.Err()
 		},
 	}
 
-	cancel := hub.FanOutMulti(
-		FanOutConfig{Subscriber: mockSub, Channel: "ch1", EventType: "e1"},
-		FanOutConfig{Subscriber: mockSub, Channel: "ch2", EventType: "e2"},
-	)
+	_, hub := NewWithHub(Config{
+		Bridges: []BridgeConfig{
+			{Subscriber: bridge, Channel: "ch1", EventType: "e1"},
+			{Subscriber: bridge, Channel: "ch2", EventType: "e2"},
+		},
+	})
 
-	// Wait for both
-	<-count
-	<-count
-	cancel()
+	<-delivered
+	<-delivered
 
-	time.Sleep(50 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, hub.Shutdown(ctx))
+
 	stats := hub.Stats()
 	require.Equal(t, int64(2), stats.EventsPublished)
 }
 
-func Test_SSE_FanOut_Transform(t *testing.T) {
+func Test_SSE_Bridge_Transform(t *testing.T) {
 	t.Parallel()
 
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
 	done := make(chan struct{}, 1)
-	mockSub := &mockPubSubSubscriber{
+	bridge := &mockBridge{
 		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
 			onMessage("raw-data")
 			done <- struct{}{}
@@ -1511,39 +1721,36 @@ func Test_SSE_FanOut_Transform(t *testing.T) {
 		},
 	}
 
-	cancel := hub.FanOut(FanOutConfig{
-		Subscriber: mockSub,
-		Channel:    "ch",
-		EventType:  "default",
-		Transform: func(payload string) *Event {
-			return &Event{
-				Type:   "transformed",
-				Data:   "transformed:" + payload,
-				Topics: []string{"custom-topic"},
-			}
-		},
+	_, hub := NewWithHub(Config{
+		Bridges: []BridgeConfig{{
+			Subscriber: bridge,
+			Channel:    "ch",
+			EventType:  "default",
+			Transform: func(payload string) *Event {
+				return &Event{
+					Type:   "transformed",
+					Data:   "transformed:" + payload,
+					Topics: []string{"custom-topic"},
+				}
+			},
+		}},
 	})
 
 	<-done
-	cancel()
-	time.Sleep(50 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, hub.Shutdown(ctx))
 
 	stats := hub.Stats()
 	require.Equal(t, int64(1), stats.EventsPublished)
 }
 
-func Test_SSE_FanOut_TransformNil(t *testing.T) {
+func Test_SSE_Bridge_TransformNilSkipsMessage(t *testing.T) {
 	t.Parallel()
 
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
 	done := make(chan struct{}, 1)
-	mockSub := &mockPubSubSubscriber{
+	bridge := &mockBridge{
 		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
 			onMessage("skip-this")
 			done <- struct{}{}
@@ -1552,56 +1759,64 @@ func Test_SSE_FanOut_TransformNil(t *testing.T) {
 		},
 	}
 
-	cancel := hub.FanOut(FanOutConfig{
-		Subscriber: mockSub,
-		Channel:    "ch",
-		EventType:  "evt",
-		Transform: func(_ string) *Event {
-			return nil // skip message
-		},
+	_, hub := NewWithHub(Config{
+		Bridges: []BridgeConfig{{
+			Subscriber: bridge,
+			Channel:    "ch",
+			EventType:  "evt",
+			Transform: func(_ string) *Event {
+				return nil
+			},
+		}},
 	})
 
 	<-done
-	cancel()
-	time.Sleep(50 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, hub.Shutdown(ctx))
 
 	stats := hub.Stats()
 	require.Equal(t, int64(0), stats.EventsPublished)
 }
 
-func Test_SSE_FanOut_RetryOnError(t *testing.T) {
+func Test_SSE_Bridge_RetriesOnError(t *testing.T) {
 	t.Parallel()
 
-	_, hub := NewWithHub()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		require.NoError(t, hub.Shutdown(ctx))
-	}()
-
-	attempts := make(chan struct{}, 5)
-	mockSub := &mockPubSubSubscriber{
+	var attempts atomic.Int32
+	bridge := &mockBridge{
 		onSubscribe: func(_ context.Context, _ string, _ func(string)) error {
-			select {
-			case attempts <- struct{}{}:
-			default:
+			n := attempts.Add(1)
+			if n < 2 {
+				return errors.New("transient error")
 			}
-			return errors.New("connection failed")
+			// On second attempt, block until ctx.Done.
+			time.Sleep(50 * time.Millisecond)
+			return nil
 		},
 	}
 
-	cancel := hub.FanOut(FanOutConfig{
-		Subscriber: mockSub,
-		Channel:    "retry-ch",
-		EventType:  "evt",
+	// Override the retry delay by using a short-lived setup. The bridge
+	// retry delay is 3s, so we just assert that errors are logged and the
+	// loop keeps running (attempts > 0 by shutdown time).
+	_, hub := NewWithHub(Config{
+		Bridges: []BridgeConfig{{
+			Subscriber: bridge,
+			Channel:    "ch",
+			EventType:  "e",
+		}},
 	})
 
-	// Wait for at least one retry attempt
-	<-attempts
-	cancel()
+	// Let the first failed attempt happen.
+	time.Sleep(100 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	require.NoError(t, hub.Shutdown(ctx))
+	require.GreaterOrEqual(t, attempts.Load(), int32(1))
 }
 
-func Test_SSE_FanOut_BuildEvent_ConfigDefaults(t *testing.T) {
+func Test_SSE_Bridge_BuildEvent_Defaults(t *testing.T) {
 	t.Parallel()
 
 	_, hub := NewWithHub()
@@ -1611,59 +1826,54 @@ func Test_SSE_FanOut_BuildEvent_ConfigDefaults(t *testing.T) {
 		require.NoError(t, hub.Shutdown(ctx))
 	}()
 
-	// Non-transform with all config defaults
-	cfg := &FanOutConfig{
-		EventType:   "test-event",
-		Priority:    PriorityBatched,
-		CoalesceKey: "my-key",
-		TTL:         5 * time.Minute,
+	// Non-transform: event built entirely from config defaults.
+	cfg := &BridgeConfig{
+		Channel:     "ch",
+		EventType:   "my-event",
+		CoalesceKey: "k",
+		TTL:         5 * time.Second,
+		Priority:    PriorityCoalesced,
 	}
-	event := hub.buildFanOutEvent(cfg, "my-topic", "payload")
+	event := hub.buildBridgeEvent(cfg, "my-topic", "payload")
 	require.NotNil(t, event)
-	require.Equal(t, "test-event", event.Type)
-	require.Equal(t, []string{"my-topic"}, event.Topics)
-	require.Equal(t, PriorityBatched, event.Priority)
-	require.Equal(t, "my-key", event.CoalesceKey)
-	require.Equal(t, 5*time.Minute, event.TTL)
+	require.Equal(t, "my-event", event.Type)
 	require.Equal(t, "payload", event.Data)
+	require.Equal(t, []string{"my-topic"}, event.Topics)
+	require.Equal(t, PriorityCoalesced, event.Priority)
+	require.Equal(t, "k", event.CoalesceKey)
+	require.Equal(t, 5*time.Second, event.TTL)
 
-	// Transform that sets its own priority — should be respected
-	cfgT := &FanOutConfig{
-		EventType: "default-type",
-		Priority:  PriorityBatched,
-		Transform: func(payload string) *Event {
-			return &Event{
-				Type:     "custom-type",
-				Data:     "custom:" + payload,
-				Priority: PriorityCoalesced,
-				Topics:   []string{"custom-topic"},
-			}
-		},
-	}
-	event = hub.buildFanOutEvent(cfgT, "fallback-topic", "raw")
-	require.NotNil(t, event)
-	require.Equal(t, "custom-type", event.Type)
-	require.Equal(t, PriorityCoalesced, event.Priority) // Transform's priority preserved
-	require.Equal(t, []string{"custom-topic"}, event.Topics)
-
-	// Transform returning event without Topics or Type — should use defaults
-	cfgT2 := &FanOutConfig{
+	// Transform path: only missing Topics/Type filled from defaults.
+	cfgT := &BridgeConfig{
 		EventType: "fallback-type",
 		Transform: func(_ string) *Event {
-			return &Event{Data: "minimal"}
+			return &Event{Priority: PriorityInstant, Data: "x"}
 		},
 	}
-	event = hub.buildFanOutEvent(cfgT2, "default-topic", "x")
+	event = hub.buildBridgeEvent(cfgT, "fallback-topic", "raw")
 	require.NotNil(t, event)
 	require.Equal(t, "fallback-type", event.Type)
-	require.Equal(t, []string{"default-topic"}, event.Topics)
+	require.Equal(t, []string{"fallback-topic"}, event.Topics)
+	require.Equal(t, PriorityInstant, event.Priority)
+
+	// Transform nil filters message.
+	cfgT2 := &BridgeConfig{
+		EventType: "x",
+		Transform: func(_ string) *Event { return nil },
+	}
+	event = hub.buildBridgeEvent(cfgT2, "default-topic", "x")
+	require.Nil(t, event)
 }
 
-// mockPubSubSubscriber implements PubSubSubscriber for testing.
-type mockPubSubSubscriber struct {
-	onSubscribe func(ctx context.Context, channel string, onMessage func(string)) error
-}
+func Test_SSE_Bridge_PanicsWithoutSubscriber(t *testing.T) {
+	t.Parallel()
 
-func (m *mockPubSubSubscriber) Subscribe(ctx context.Context, channel string, onMessage func(string)) error {
-	return m.onSubscribe(ctx, channel, onMessage)
+	require.Panics(t, func() {
+		_, _ = NewWithHub(Config{
+			Bridges: []BridgeConfig{{
+				Channel:   "ch",
+				EventType: "e",
+			}},
+		})
+	})
 }

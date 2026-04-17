@@ -7,12 +7,12 @@ import (
 )
 
 // Config defines the configuration for the SSE middleware.
+//
+// The SSE middleware is terminal: it hijacks the response stream and
+// never calls c.Next(). Placing handlers after sse.New() in the chain
+// results in undefined behavior because Fiber releases the fiber.Ctx
+// before the stream writer runs.
 type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c fiber.Ctx) bool
-
 	// OnConnect is called when a new client connects, before the SSE
 	// stream begins. Use it for authentication, topic selection, and
 	// connection limits. Set conn.Topics and conn.Metadata here.
@@ -40,6 +40,13 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Replayer Replayer
+
+	// Bridges declares external pub/sub sources (Redis, NATS, etc.) that
+	// feed events into the hub. Bridges start automatically when the first
+	// handler is mounted and stop on Shutdown.
+	//
+	// Optional. Default: nil
+	Bridges []BridgeConfig
 
 	// FlushInterval is how often batched (P1) and coalesced (P2) events
 	// are flushed to clients. Instant (P0) events bypass this.
