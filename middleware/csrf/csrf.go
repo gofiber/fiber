@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 var (
@@ -46,12 +48,31 @@ const (
 	handlerKey
 )
 
+// registerExtractor ensures the log context extractor for CSRF tokens is
+// registered exactly once, regardless of how many times New() is called.
+var registerExtractor sync.Once
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
 	redactKeys := !cfg.DisableValueRedaction
+
+	// Register a log context extractor so that log.WithContext(c) automatically
+	// includes a redacted CSRF token when the csrf middleware is in use.
+	// CSRF tokens are always redacted in log output regardless of DisableValueRedaction,
+	// because they are bearer secrets and must never appear in plain text in logs.
+	// An empty token (no middleware or middleware skipped) is omitted.
+	registerExtractor.Do(func() {
+		log.RegisterContextExtractor(func(ctx any) (string, any, bool) {
+			token := TokenFromContext(ctx)
+			if token == "" {
+				return "", nil, false
+			}
+			return "csrf-token", redactedKey, true
+		})
+	})
 
 	maskValue := func(value string) string {
 		if redactKeys {

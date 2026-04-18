@@ -1,6 +1,7 @@
 package basicauth
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
@@ -9,10 +10,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/crypto/bcrypt"
@@ -631,4 +634,33 @@ func Test_BasicAuth_HashVariants_Invalid(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 	}
+}
+
+func Test_BasicAuth_LogWithContext(t *testing.T) {
+	hashedJohn := sha256Hash("doe")
+	app := fiber.New()
+	app.Use(New(Config{
+		Users: map[string]string{
+			"john": hashedJohn,
+		},
+	}))
+
+	var logOutput bytes.Buffer
+	fiberlog.SetOutput(&logOutput)
+	defer fiberlog.SetOutput(os.Stderr)
+
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("basicauth test")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, logOutput.String(), "username=john")
+	require.Contains(t, logOutput.String(), "basicauth test")
 }

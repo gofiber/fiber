@@ -1,7 +1,10 @@
 package requestid
 
 import (
+	"sync"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -14,10 +17,24 @@ const (
 	requestIDKey contextKey = iota
 )
 
+// registerExtractor ensures the log context extractor for request IDs is
+// registered exactly once, regardless of how many times New() is called.
+var registerExtractor sync.Once
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
+
+	// Register a log context extractor so that log.WithContext(c) automatically
+	// includes the request ID when the requestid middleware is in use.
+	// An empty request ID (no middleware or middleware skipped) is omitted.
+	registerExtractor.Do(func() {
+		log.RegisterContextExtractor(func(ctx any) (string, any, bool) {
+			rid := FromContext(ctx)
+			return "request-id", rid, rid != ""
+		})
+	})
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
@@ -57,7 +74,9 @@ func sanitizeRequestID(rid string, generator func() string) string {
 }
 
 // isValidRequestID reports whether the request ID contains only visible ASCII
-// characters (0x20–0x7E) and is non-empty.
+// characters (0x21–0x7E) excluding space (0x20) and equals sign (0x3D),
+// and is non-empty. This prevents log injection attacks where malicious
+// request IDs could manipulate structured log output.
 func isValidRequestID(rid string) bool {
 	if rid == "" {
 		return false
@@ -65,7 +84,8 @@ func isValidRequestID(rid string) bool {
 
 	for i := 0; i < len(rid); i++ {
 		c := rid[i]
-		if c < 0x20 || c > 0x7e {
+		// Reject control characters, space (0x20), equals (0x3D), and non-ASCII
+		if c <= 0x20 || c == '=' || c > 0x7e {
 			return false
 		}
 	}

@@ -853,7 +853,7 @@ func Test_Response_Header(t *testing.T) {
 	app.Use(requestid.New(requestid.Config{
 		Next:      nil,
 		Header:    fiber.HeaderXRequestID,
-		Generator: func() string { return "Hello fiber!" },
+		Generator: func() string { return "Hello-fiber" }, // No spaces - prevents log injection
 	}))
 	app.Use(New(Config{
 		Format: "${respHeader:X-Request-ID}",
@@ -867,7 +867,7 @@ func Test_Response_Header(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "Hello fiber!", buf.String())
+	require.Equal(t, "Hello-fiber", buf.String())
 }
 
 // go test -run Test_Req_Header

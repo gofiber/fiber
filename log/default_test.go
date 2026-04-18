@@ -118,6 +118,124 @@ func Test_CtxLogger(t *testing.T) {
 		"[Panic] work panic\n", string(w.b))
 }
 
+type testContextKey struct{}
+
+func Test_WithContextExtractor(t *testing.T) {
+	// Save and restore global extractors using the mutex for correctness.
+	contextExtractorsMu.Lock()
+	saved := contextExtractors
+	contextExtractors = nil
+	contextExtractorsMu.Unlock()
+
+	defer func() {
+		contextExtractorsMu.Lock()
+		contextExtractors = saved
+		contextExtractorsMu.Unlock()
+	}()
+
+	RegisterContextExtractor(func(ctx any) (string, any, bool) {
+		if ctxTyped, ok := ctx.(context.Context); ok {
+			if v, ok := ctxTyped.Value(testContextKey{}).(string); ok && v != "" {
+				return "request-id", v, true
+			}
+		}
+		return "", nil, false
+	})
+
+	t.Run("Info with context field", func(t *testing.T) {
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+		ctx := context.WithValue(context.Background(), testContextKey{}, "abc-123")
+		l.WithContext(ctx).Info("hello")
+
+		require.Equal(t, "[Info] request-id=abc-123 hello\n", buf.String())
+	})
+
+	t.Run("Infof with context field", func(t *testing.T) {
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+		ctx := context.WithValue(context.Background(), testContextKey{}, "abc-123")
+		l.WithContext(ctx).Infof("hello %s", "world")
+
+		require.Equal(t, "[Info] request-id=abc-123 hello world\n", buf.String())
+	})
+
+	t.Run("Infow with context field", func(t *testing.T) {
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+		ctx := context.WithValue(context.Background(), testContextKey{}, "abc-123")
+		l.WithContext(ctx).Infow("hello", "key", "value")
+
+		require.Equal(t, "[Info] request-id=abc-123 hello key=value\n", buf.String())
+	})
+
+	t.Run("no context field when value absent", func(t *testing.T) {
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+		ctx := context.Background()
+		l.WithContext(ctx).Info("hello")
+
+		require.Equal(t, "[Info] hello\n", buf.String())
+	})
+
+	t.Run("no context field without WithContext", func(t *testing.T) {
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+		l.Info("hello")
+
+		require.Equal(t, "[Info] hello\n", buf.String())
+	})
+
+	t.Run("empty key extractor is skipped", func(t *testing.T) {
+		// Save and restore extractors for this subtest using the mutex.
+		contextExtractorsMu.Lock()
+		savedInner := contextExtractors
+		contextExtractorsMu.Unlock()
+
+		defer func() {
+			contextExtractorsMu.Lock()
+			contextExtractors = savedInner
+			contextExtractorsMu.Unlock()
+		}()
+
+		// Add an extractor that returns ok=true but key=""
+		RegisterContextExtractor(func(_ any) (string, any, bool) {
+			return "", "should-not-appear", true
+		})
+
+		var buf bytes.Buffer
+		l := &defaultLogger{
+			stdlog: log.New(&buf, "", 0),
+			level:  LevelTrace,
+			depth:  4,
+		}
+		ctx := context.WithValue(context.Background(), testContextKey{}, "abc-123")
+		l.WithContext(ctx).Info("hello")
+
+		require.Equal(t, "[Info] request-id=abc-123 hello\n", buf.String())
+	})
+}
+
 func Test_LogfKeyAndValues(t *testing.T) {
 	tests := []struct {
 		name          string
