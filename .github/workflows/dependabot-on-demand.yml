@@ -1,0 +1,14 @@
+name: Dependabot On-Demand
+
+on:
+  repository_dispatch:
+    types: [trigger-dependabot]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    uses: gofiber/.github/.github/workflows/dependabot-on-demand.yml@main
