@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasthttp/prefork"
 
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -519,7 +520,8 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 }
 
 func Test_Hook_OnListenPrefork(t *testing.T) {
-	t.Parallel()
+	testPreforkMaster = true
+
 	app := New()
 
 	buf := bytebufferpool.Get()
@@ -532,12 +534,12 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 		return nil
 	})
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	err := app.Listen(":0", ListenConfig{
+		DisableStartupMessage:   true,
+		EnablePrefork:           true,
+		PreforkRecoverThreshold: 1,
+	})
+	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 	require.Equal(t, "ready", buf.String())
 }
 
@@ -548,17 +550,17 @@ func Test_Hook_OnHook(t *testing.T) {
 	testPreforkMaster = true
 	testOnPrefork = true
 
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
 	app.Hooks().OnFork(func(pid int) error {
 		require.Equal(t, 1, pid)
 		return nil
 	})
 
-	require.NoError(t, app.prefork(":0", nil, &ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	err := app.prefork(":0", nil, &ListenConfig{
+		DisableStartupMessage:   true,
+		EnablePrefork:           true,
+		PreforkRecoverThreshold: 1,
+	})
+	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 }
 
 func Test_Hook_OnMount(t *testing.T) {
