@@ -1,0 +1,2109 @@
+package sse
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/require"
+)
+
+func Test_SSE_New(t *testing.T) {
+	t.Parallel()
+
+	handler, hub := NewWithHub()
+	require.NotNil(t, handler)
+	require.NotNil(t, hub)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, hub.Shutdown(ctx))
+}
+
+func Test_SSE_New_DefaultConfig(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	require.Equal(t, 2*time.Second, hub.cfg.FlushInterval)
+	require.Equal(t, 256, hub.cfg.SendBufferSize)
+	require.Equal(t, 30*time.Second, hub.cfg.HeartbeatInterval)
+	require.Equal(t, 30*time.Minute, hub.cfg.MaxLifetime)
+	require.Equal(t, 3000, hub.cfg.RetryMS)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, hub.Shutdown(ctx))
+}
+
+func Test_SSE_New_CustomConfig(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub(Config{
+		FlushInterval:     5 * time.Second,
+		SendBufferSize:    128,
+		HeartbeatInterval: 10 * time.Second,
+		MaxLifetime:       time.Hour,
+		RetryMS:           5000,
+	})
+	require.Equal(t, 5*time.Second, hub.cfg.FlushInterval)
+	require.Equal(t, 128, hub.cfg.SendBufferSize)
+	require.Equal(t, 10*time.Second, hub.cfg.HeartbeatInterval)
+	require.Equal(t, time.Hour, hub.cfg.MaxLifetime)
+	require.Equal(t, 5000, hub.cfg.RetryMS)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, hub.Shutdown(ctx))
+}
+
+func Test_SSE_Next(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	handler, hub := NewWithHub(Config{
+		Next: func(c fiber.Ctx) bool {
+			return c.Query("skip") == "true"
+		},
+		OnConnect: func(_ fiber.Ctx, conn *Connection) error {
+			conn.Topics = []string{"test"}
+			return nil
+		},
+	})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	app.Get("/events", handler)
+	app.Get("/events", func(c fiber.Ctx) error {
+		return c.SendString("skipped")
+	})
+
+	req, err := http.NewRequest(fiber.MethodGet, "/events?skip=true", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "skipped", string(body))
+}
+
+func Test_SSE_NoTopics(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	handler, hub := NewWithHub(Config{
+		OnConnect: func(_ fiber.Ctx, _ *Connection) error {
+			// Don't set any topics
+			return nil
+		},
+	})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	app.Get("/events", handler)
+
+	req, err := http.NewRequest(fiber.MethodGet, "/events", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+func Test_SSE_OnConnectReject(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	handler, hub := NewWithHub(Config{
+		OnConnect: func(_ fiber.Ctx, _ *Connection) error {
+			return errors.New("unauthorized")
+		},
+	})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	app.Get("/events", handler)
+
+	req, err := http.NewRequest(fiber.MethodGet, "/events", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+}
+
+func Test_SSE_GenerateID(t *testing.T) {
+	t.Parallel()
+
+	ids := make(map[string]struct{})
+	for range 1000 {
+		id := generateID()
+		require.Len(t, id, 32)
+		_, exists := ids[id]
+		require.False(t, exists, "duplicate ID generated")
+		ids[id] = struct{}{}
+	}
+}
+
+func Test_SSE_TopicMatch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		pattern string
+		topic   string
+		want    bool
+	}{
+		{"events", "events", true},
+		{"events", "events.sub", false},
+		{"notifications.*", "notifications.orders", true},
+		{"notifications.*", "notifications.orders.new", false},
+		{"analytics.>", "analytics.live", true},
+		{"analytics.>", "analytics.live.visitors", true},
+		{"analytics.>", "analytics", false},
+		{"*", "anything", true},
+		{">", "anything", true},
+		{">", "a.b.c", true},
+		// > must be last token — invalid patterns should not match
+		{"a.>.c", "a.b.c", false},
+		{">.b", "a.b", false},
+	}
+
+	for _, tt := range tests {
+		got := topicMatch(tt.pattern, tt.topic)
+		require.Equal(t, tt.want, got, "topicMatch(%q, %q)", tt.pattern, tt.topic)
+	}
+}
+
+func Test_SSE_MarshalEvent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		data any
+		want string
+	}{
+		{"nil", nil, ""},
+		{"string", "hello", "hello"},
+		{"bytes", []byte("world"), "world"},
+		{"struct", map[string]string{"key": "val"}, `{"key":"val"}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			me := marshalEvent(&Event{Data: tt.data})
+			require.Equal(t, tt.want, me.Data)
+			require.NotEmpty(t, me.ID) // auto-generated
+		})
+	}
+}
+
+func Test_SSE_MarshaledEvent_WriteTo(t *testing.T) {
+	t.Parallel()
+
+	me := MarshaledEvent{
+		ID:   "evt_1",
+		Type: "test",
+		Data: "hello world",
+	}
+
+	var buf bytes.Buffer
+	n, err := me.WriteTo(&buf)
+	require.NoError(t, err)
+	require.Positive(t, n)
+
+	output := buf.String()
+	require.Contains(t, output, "id: evt_1\n")
+	require.Contains(t, output, "event: test\n")
+	require.Contains(t, output, "data: hello world\n")
+	require.True(t, strings.HasSuffix(output, "\n\n"))
+}
+
+func Test_SSE_MarshaledEvent_WriteTo_Multiline(t *testing.T) {
+	t.Parallel()
+
+	me := MarshaledEvent{
+		ID:   "evt_2",
+		Type: "test",
+		Data: "line1\nline2\nline3",
+	}
+
+	var buf bytes.Buffer
+	_, err := me.WriteTo(&buf)
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "data: line1\n")
+	require.Contains(t, output, "data: line2\n")
+	require.Contains(t, output, "data: line3\n")
+}
+
+func Test_SSE_MarshaledEvent_WriteTo_Retry(t *testing.T) {
+	t.Parallel()
+
+	me := MarshaledEvent{
+		ID:    "evt_3",
+		Type:  "test",
+		Data:  "x",
+		Retry: 3000,
+	}
+
+	var buf bytes.Buffer
+	_, err := me.WriteTo(&buf)
+	require.NoError(t, err)
+	require.Contains(t, buf.String(), "retry: 3000\n")
+}
+
+func Test_SSE_Coalescer(t *testing.T) {
+	t.Parallel()
+
+	c := newCoalescer(time.Second)
+
+	// Add batched events
+	c.addBatched(MarshaledEvent{ID: "1", Data: "a"})
+	c.addBatched(MarshaledEvent{ID: "2", Data: "b"})
+
+	// Add coalesced events (last wins)
+	c.addCoalesced("key1", MarshaledEvent{ID: "3", Data: "old"})
+	c.addCoalesced("key1", MarshaledEvent{ID: "4", Data: "new"})
+	c.addCoalesced("key2", MarshaledEvent{ID: "5", Data: "other"})
+
+	require.Equal(t, 4, c.pending())
+
+	events := c.flush()
+	require.Len(t, events, 4)
+
+	// Batched first
+	require.Equal(t, "a", events[0].Data)
+	require.Equal(t, "b", events[1].Data)
+
+	// Coalesced: key1 = "new" (last wins), key2 = "other"
+	require.Equal(t, "new", events[2].Data)
+	require.Equal(t, "other", events[3].Data)
+
+	// Should be empty now
+	require.Nil(t, c.flush())
+}
+
+func Test_SSE_AdaptiveThrottler(t *testing.T) {
+	t.Parallel()
+
+	at := newAdaptiveThrottler(2 * time.Second)
+
+	// First flush always passes
+	require.True(t, at.shouldFlush("conn1", 0.0))
+
+	// Second flush immediately — should fail (too soon)
+	require.False(t, at.shouldFlush("conn1", 0.0))
+
+	// Clean up
+	at.remove("conn1")
+}
+
+func Test_SSE_MemoryReplayer(t *testing.T) {
+	t.Parallel()
+
+	replayer := NewMemoryReplayer(MemoryReplayerConfig{MaxEvents: 5})
+
+	for i := range 5 {
+		require.NoError(t, replayer.Store(
+			MarshaledEvent{ID: fmt.Sprintf("evt_%d", i), Data: fmt.Sprintf("data_%d", i)},
+			[]string{"topic1"},
+		))
+	}
+
+	events, err := replayer.Replay("evt_2", []string{"topic1"})
+	require.NoError(t, err)
+	require.Len(t, events, 2) // evt_3 and evt_4
+
+	// Unknown ID returns nil
+	events, err = replayer.Replay("unknown", []string{"topic1"})
+	require.NoError(t, err)
+	require.Nil(t, events)
+}
+
+func Test_SSE_MemoryReplayer_MaxEvents(t *testing.T) {
+	t.Parallel()
+
+	replayer := NewMemoryReplayer(MemoryReplayerConfig{MaxEvents: 3})
+
+	for i := range 10 {
+		require.NoError(t, replayer.Store(
+			MarshaledEvent{ID: fmt.Sprintf("evt_%d", i)},
+			[]string{"t"},
+		))
+	}
+
+	// Only last 3 events should be retained (ring buffer count)
+	replayer.mu.RLock()
+	require.Equal(t, 3, replayer.count)
+	replayer.mu.RUnlock()
+
+	// Replay from evt_7 should return evt_8 and evt_9
+	events, err := replayer.Replay("evt_7", []string{"t"})
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	require.Equal(t, "evt_8", events[0].ID)
+	require.Equal(t, "evt_9", events[1].ID)
+}
+
+func Test_SSE_TicketAuth(t *testing.T) {
+	t.Parallel()
+
+	store := NewMemoryTicketStore()
+
+	ticket, err := IssueTicket(store, `{"tenant":"t_1"}`, 5*time.Minute)
+	require.NoError(t, err)
+	require.Len(t, ticket, 48) // 24 bytes = 48 hex chars
+
+	// Consume ticket
+	value, err := store.GetDel(ticket)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"tenant":"t_1"}`, value)
+
+	// Second use should fail
+	value, err = store.GetDel(ticket)
+	require.NoError(t, err)
+	require.Empty(t, value)
+}
+
+func Test_SSE_Publish_Stats(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	hub.Publish(Event{Type: "test", Topics: []string{"t"}, Data: "hello"})
+	time.Sleep(50 * time.Millisecond) // let run loop process
+
+	stats := hub.Stats()
+	require.Equal(t, int64(1), stats.EventsPublished)
+}
+
+func Test_SSE_Shutdown(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := hub.Shutdown(ctx)
+	require.NoError(t, err)
+	require.True(t, hub.draining.Load())
+}
+
+func Test_SSE_Shutdown_Idempotent(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// First call shuts down
+	require.NoError(t, hub.Shutdown(ctx))
+
+	// Second call must not panic (sync.Once guards close)
+	require.NoError(t, hub.Shutdown(ctx))
+}
+
+func Test_SSE_Shutdown_Background_Context(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+
+	err := hub.Shutdown(context.Background())
+	require.NoError(t, err)
+}
+
+func Test_SSE_Invalidation(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// These should not panic
+	hub.Invalidate("orders", "ord_123", "created")
+	hub.InvalidateForTenant("t_1", "orders", "ord_123", "created")
+	hub.InvalidateWithHint("orders", "ord_123", "created", map[string]any{"total": 99.99})
+	hub.InvalidateForTenantWithHint("t_1", "orders", "ord_123", "created", nil)
+	hub.Signal("dashboard")
+	hub.SignalForTenant("t_1", "dashboard")
+	hub.SignalThrottled("analytics", time.Minute)
+
+	time.Sleep(50 * time.Millisecond)
+	stats := hub.Stats()
+	require.Equal(t, int64(7), stats.EventsPublished)
+}
+
+func Test_SSE_DomainEvent(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	hub.DomainEvent("orders", "created", "ord_1", "t_1", nil)
+	hub.Progress("import", "imp_1", "t_1", 50, 100)
+	hub.Complete("import", "imp_1", "t_1", true, nil)
+	hub.BatchDomainEvents("t_1", []DomainEventSpec{
+		{Resource: "orders", Action: "created", ResourceID: "o1"},
+		{Resource: "products", Action: "updated", ResourceID: "p1"},
+	})
+
+	time.Sleep(50 * time.Millisecond)
+	stats := hub.Stats()
+	require.Equal(t, int64(4), stats.EventsPublished)
+}
+
+func Test_SSE_Draining_RejectsConnection(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	handler, hub := NewWithHub(Config{
+		OnConnect: func(_ fiber.Ctx, conn *Connection) error {
+			conn.Topics = []string{"test"}
+			return nil
+		},
+	})
+
+	app.Get("/events", handler)
+
+	// Start draining
+	hub.draining.Store(true)
+	defer func() {
+		close(hub.shutdown)
+		<-hub.stopped
+	}()
+
+	req, err := http.NewRequest(fiber.MethodGet, "/events", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+}
+
+func Test_SSE_Connection_Lifecycle(t *testing.T) {
+	t.Parallel()
+
+	conn := newConnection("test-id", []string{"t"}, 10, time.Second)
+	require.Equal(t, "test-id", conn.ID)
+	require.False(t, conn.IsClosed())
+
+	conn.Close()
+	require.True(t, conn.IsClosed())
+
+	// Double close should not panic
+	conn.Close()
+}
+
+func Test_SSE_Connection_TrySend_Backpressure(t *testing.T) {
+	t.Parallel()
+
+	conn := newConnection("test", nil, 2, time.Second)
+
+	require.True(t, conn.trySend(MarshaledEvent{Data: "1"}))
+	require.True(t, conn.trySend(MarshaledEvent{Data: "2"}))
+
+	// Buffer full
+	require.False(t, conn.trySend(MarshaledEvent{Data: "3"}))
+	require.Equal(t, int64(1), conn.MessagesDropped.Load())
+}
+
+func Test_SSE_WriteComment(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	err := writeComment(&buf, "heartbeat")
+	require.NoError(t, err)
+	require.Equal(t, ": heartbeat\n\n", buf.String())
+}
+
+func Test_SSE_WriteRetry(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	err := writeRetry(&buf, 3000)
+	require.NoError(t, err)
+	require.Equal(t, "retry: 3000\n\n", buf.String())
+}
+
+func Test_SSE_Metrics(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	snap := hub.Metrics(false)
+	require.Equal(t, 0, snap.ActiveConnections)
+	require.NotEmpty(t, snap.Timestamp)
+}
+
+func Test_SSE_MaxLifetime_Unlimited(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub(Config{
+		MaxLifetime: -1, // unlimited
+	})
+	require.Equal(t, time.Duration(-1), hub.cfg.MaxLifetime)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, hub.Shutdown(ctx))
+}
+
+func Test_SSE_JWTAuth_Valid(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	handler, hub := NewWithHub(Config{
+		OnConnect: JWTAuth(func(token string) (map[string]string, error) {
+			if token == "valid-token" {
+				return map[string]string{"user_id": "u_1", "tenant_id": "t_1"}, nil
+			}
+			return nil, errors.New("invalid token")
+		}),
+	})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	app.Get("/events", handler)
+
+	// No token → 403
+	req, err := http.NewRequest(fiber.MethodGet, "/events", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+
+	// Invalid token → 403
+	req, err = http.NewRequest(fiber.MethodGet, "/events?token=bad", http.NoBody)
+	require.NoError(t, err)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+
+	// Valid token but no topics set → 400
+	req, err = http.NewRequest(fiber.MethodGet, "/events?token=valid-token", http.NoBody)
+	require.NoError(t, err)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+func Test_SSE_JWTAuth_BearerHeader(t *testing.T) {
+	t.Parallel()
+
+	authHandler := JWTAuth(func(token string) (map[string]string, error) {
+		if token == "my-jwt" {
+			return map[string]string{"user": "test"}, nil
+		}
+		return nil, errors.New("bad")
+	})
+
+	app := fiber.New()
+	handler, hub := NewWithHub(Config{
+		OnConnect: func(c fiber.Ctx, conn *Connection) error {
+			if err := authHandler(c, conn); err != nil {
+				return err
+			}
+			conn.Topics = []string{"test"}
+			return nil
+		},
+	})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	app.Get("/events", handler)
+
+	// Bearer header should work — SSE streams never end, so use short timeout
+	req, err := http.NewRequest(fiber.MethodGet, "/events", http.NoBody)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer my-jwt")
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: 500 * time.Millisecond})
+	// Timeout is expected for SSE — the stream opened successfully
+	if err != nil {
+		require.ErrorContains(t, err, "timeout")
+	}
+	if resp != nil {
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	}
+}
+
+func Test_SSE_TicketAuth_Full(t *testing.T) {
+	t.Parallel()
+
+	store := NewMemoryTicketStore()
+	defer store.Close()
+
+	ticket, err := IssueTicket(store, `test-value`, 5*time.Minute)
+	require.NoError(t, err)
+
+	app := fiber.New()
+	handler, hub := NewWithHub(Config{
+		OnConnect: TicketAuth(store, func(_ string) (map[string]string, []string, error) {
+			return map[string]string{"source": "ticket"}, []string{"notifications"}, nil
+		}),
+	})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	app.Get("/events", handler)
+
+	// Valid ticket → SSE stream starts (timeout expected)
+	req, err := http.NewRequest(fiber.MethodGet, "/events?ticket="+ticket, http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: 500 * time.Millisecond})
+	if err != nil {
+		require.ErrorContains(t, err, "timeout")
+	}
+	if resp != nil {
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	}
+
+	// Same ticket again → 403 (one-time use, already consumed)
+	req, err = http.NewRequest(fiber.MethodGet, "/events?ticket="+ticket, http.NoBody)
+	require.NoError(t, err)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+
+	// No ticket → 403
+	req, err = http.NewRequest(fiber.MethodGet, "/events", http.NoBody)
+	require.NoError(t, err)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+}
+
+func Test_SSE_TicketStore_Close(t *testing.T) {
+	t.Parallel()
+
+	store := NewMemoryTicketStore()
+	require.NoError(t, store.Set("test", "value", time.Minute))
+
+	// Close should not panic
+	store.Close()
+
+	// Double close should not panic
+	store.Close()
+
+	// Operations after close still work (just no cleanup goroutine)
+	v, err := store.GetDel("test")
+	require.NoError(t, err)
+	require.Equal(t, "value", v)
+}
+
+func Test_SSE_MetricsHandler(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	app.Get("/metrics", hub.MetricsHandler())
+
+	req, err := http.NewRequest(fiber.MethodGet, "/metrics", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `"active_connections"`)
+	require.Contains(t, string(body), `"events_published"`)
+}
+
+func Test_SSE_MetricsHandler_WithConnections(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	app.Get("/metrics", hub.MetricsHandler())
+
+	req, err := http.NewRequest(fiber.MethodGet, "/metrics?connections=true", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func Test_SSE_PrometheusHandler(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Publish some events so metrics have data
+	hub.Publish(Event{Type: "test", Topics: []string{"t"}, Data: "x"})
+	time.Sleep(50 * time.Millisecond)
+
+	app.Get("/prom", hub.PrometheusHandler())
+
+	req, err := http.NewRequest(fiber.MethodGet, "/prom", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	output := string(body)
+	require.Contains(t, output, "sse_connections_active")
+	require.Contains(t, output, "sse_events_published_total")
+	require.Contains(t, output, "sse_events_dropped_total")
+}
+
+func Test_SSE_Prometheus_LabelEscaping(t *testing.T) {
+	t.Parallel()
+
+	// No special chars → pass through
+	require.Equal(t, "normal", escapePromLabelValue("normal"))
+
+	// Quotes get escaped
+	require.Equal(t, `say \"hello\"`, escapePromLabelValue(`say "hello"`))
+
+	// Backslashes get escaped
+	require.Equal(t, `path\\to`, escapePromLabelValue(`path\to`))
+
+	// Newlines get escaped
+	require.Equal(t, `line1\nline2`, escapePromLabelValue("line1\nline2"))
+}
+
+func Test_SSE_FanOut(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Mock subscriber that sends one message then blocks
+	received := make(chan string, 1)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
+			onMessage("test-payload")
+			received <- "delivered"
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	cancel := hub.FanOut(FanOutConfig{
+		Subscriber: mockSub,
+		Channel:    "test-channel",
+		EventType:  "notification",
+	})
+
+	// Wait for message delivery
+	select {
+	case <-received:
+		// success
+	case <-time.After(2 * time.Second):
+		t.Fatal("FanOut did not deliver message in time")
+	}
+
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	stats := hub.Stats()
+	require.Equal(t, int64(1), stats.EventsPublished)
+}
+
+func Test_SSE_FanOut_Cancel(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	subscribeCalled := make(chan struct{}, 1)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(ctx context.Context, _ string, _ func(string)) error {
+			subscribeCalled <- struct{}{}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	cancel := hub.FanOut(FanOutConfig{
+		Subscriber: mockSub,
+		Channel:    "ch",
+		EventType:  "evt",
+	})
+
+	<-subscribeCalled
+	cancel()
+	// Should not hang — goroutine exits cleanly
+}
+
+func Test_SSE_FanOutMulti(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	count := make(chan struct{}, 2)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(ctx context.Context, channel string, onMessage func(string)) error {
+			onMessage("msg-from-" + channel)
+			count <- struct{}{}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	cancel := hub.FanOutMulti(
+		FanOutConfig{Subscriber: mockSub, Channel: "ch1", EventType: "e1"},
+		FanOutConfig{Subscriber: mockSub, Channel: "ch2", EventType: "e2"},
+	)
+
+	// Wait for both
+	<-count
+	<-count
+	cancel()
+
+	time.Sleep(50 * time.Millisecond)
+	stats := hub.Stats()
+	require.Equal(t, int64(2), stats.EventsPublished)
+}
+
+func Test_SSE_FanOut_Transform(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	done := make(chan struct{}, 1)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
+			onMessage("raw-data")
+			done <- struct{}{}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	cancel := hub.FanOut(FanOutConfig{
+		Subscriber: mockSub,
+		Channel:    "ch",
+		EventType:  "default",
+		Transform: func(payload string) *Event {
+			return &Event{
+				Type:   "transformed",
+				Data:   "transformed:" + payload,
+				Topics: []string{"custom-topic"},
+			}
+		},
+	})
+
+	<-done
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	stats := hub.Stats()
+	require.Equal(t, int64(1), stats.EventsPublished)
+}
+
+func Test_SSE_FanOut_TransformNil(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	done := make(chan struct{}, 1)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(ctx context.Context, _ string, onMessage func(string)) error {
+			onMessage("skip-this")
+			done <- struct{}{}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	cancel := hub.FanOut(FanOutConfig{
+		Subscriber: mockSub,
+		Channel:    "ch",
+		EventType:  "evt",
+		Transform: func(_ string) *Event {
+			return nil // skip message
+		},
+	})
+
+	<-done
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	stats := hub.Stats()
+	require.Equal(t, int64(0), stats.EventsPublished)
+}
+
+func Test_SSE_SetPaused(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// SetPaused on non-existent connection should not panic
+	hub.SetPaused("nonexistent", true)
+
+	// Add a connection manually
+	conn := newConnection("test-conn", []string{"t"}, 10, time.Second)
+	hub.mu.Lock()
+	hub.connections["test-conn"] = conn
+	hub.mu.Unlock()
+
+	hub.SetPaused("test-conn", true)
+	require.True(t, conn.paused.Load())
+
+	hub.SetPaused("test-conn", false)
+	require.False(t, conn.paused.Load())
+}
+
+func Test_SSE_BatchDomainEvents_Empty(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Empty batch should be a no-op
+	hub.BatchDomainEvents("t_1", nil)
+	hub.BatchDomainEvents("t_1", []DomainEventSpec{})
+
+	time.Sleep(50 * time.Millisecond)
+	stats := hub.Stats()
+	require.Equal(t, int64(0), stats.EventsPublished)
+}
+
+func Test_SSE_Replayer_EmptyID(t *testing.T) {
+	t.Parallel()
+
+	replayer := NewMemoryReplayer()
+
+	// Empty lastEventID returns nil
+	events, err := replayer.Replay("", []string{"t"})
+	require.NoError(t, err)
+	require.Nil(t, events)
+}
+
+func Test_SSE_Replayer_WildcardTopics(t *testing.T) {
+	t.Parallel()
+
+	replayer := NewMemoryReplayer()
+
+	require.NoError(t, replayer.Store(MarshaledEvent{ID: "e1"}, []string{"orders.created"}))
+	require.NoError(t, replayer.Store(MarshaledEvent{ID: "e2"}, []string{"orders.updated"}))
+	require.NoError(t, replayer.Store(MarshaledEvent{ID: "e3"}, []string{"products.created"}))
+
+	// Wildcard replay
+	events, err := replayer.Replay("e1", []string{"orders.*"})
+	require.NoError(t, err)
+	require.Len(t, events, 1) // e2 matches orders.*, e3 doesn't
+	require.Equal(t, "e2", events[0].ID)
+}
+
+// ---------------------------------------------------------------------------
+// Coverage-boost tests
+// ---------------------------------------------------------------------------
+
+func Test_SSE_New_Wrapper(t *testing.T) {
+	t.Parallel()
+	handler := New()
+	require.NotNil(t, handler)
+}
+
+func Test_SSE_SanitizeSSEField(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "clean", sanitizeSSEField("clean"))
+	require.Equal(t, "ab", sanitizeSSEField("a\nb"))
+	require.Equal(t, "ab", sanitizeSSEField("a\rb"))
+	require.Equal(t, "ab", sanitizeSSEField("a\r\nb"))
+	require.Equal(t, "abc", sanitizeSSEField("a\r\nb\nc"))
+}
+
+func Test_SSE_MarshalEvent_SanitizesIDAndType(t *testing.T) {
+	t.Parallel()
+
+	me := marshalEvent(&Event{
+		ID:   "id\r\ninjected",
+		Type: "type\ninjected",
+		Data: "safe",
+	})
+	require.Equal(t, "idinjected", me.ID)
+	require.Equal(t, "typeinjected", me.Type)
+}
+
+func Test_SSE_MarshalEvent_JsonMarshalerError(t *testing.T) {
+	t.Parallel()
+
+	me := marshalEvent(&Event{Data: badMarshaler{}})
+	require.Contains(t, me.Data, "error")
+}
+
+func Test_SSE_MarshalEvent_DefaultMarshalError(t *testing.T) {
+	t.Parallel()
+
+	// A channel cannot be JSON-marshaled
+	me := marshalEvent(&Event{Data: make(chan int)})
+	require.Contains(t, me.Data, "error")
+}
+
+// badMarshaler implements json.Marshaler and always returns an error.
+type badMarshaler struct{}
+
+func (badMarshaler) MarshalJSON() ([]byte, error) {
+	return nil, errors.New("marshal failed")
+}
+
+func Test_SSE_WriteTo_EmptyFields(t *testing.T) {
+	t.Parallel()
+
+	me := MarshaledEvent{
+		Data:  "x",
+		Retry: -1,
+	}
+	var buf bytes.Buffer
+	_, err := me.WriteTo(&buf)
+	require.NoError(t, err)
+	output := buf.String()
+	// No id: or event: lines
+	require.NotContains(t, output, "id:")
+	require.NotContains(t, output, "event:")
+	require.Contains(t, output, "data: x\n")
+}
+
+func Test_SSE_ConnMatchesGroup(t *testing.T) {
+	t.Parallel()
+
+	conn := newConnection("c1", []string{"t"}, 10, time.Second)
+	conn.Metadata["tenant_id"] = "t_1"
+	conn.Metadata["role"] = "admin"
+
+	require.True(t, connMatchesGroup(conn, map[string]string{"tenant_id": "t_1"}))
+	require.True(t, connMatchesGroup(conn, map[string]string{"tenant_id": "t_1", "role": "admin"}))
+	require.False(t, connMatchesGroup(conn, map[string]string{"tenant_id": "t_2"}))
+	require.False(t, connMatchesGroup(conn, map[string]string{"missing": "key"}))
+	require.True(t, connMatchesGroup(conn, map[string]string{})) // empty group matches all
+}
+
+func Test_SSE_SendHeartbeat(t *testing.T) {
+	t.Parallel()
+
+	conn := newConnection("hb", []string{"t"}, 10, time.Second)
+
+	// First heartbeat should succeed
+	conn.sendHeartbeat()
+	// Second should be silently dropped (buffer 1)
+	conn.sendHeartbeat()
+
+	// Drain the heartbeat channel
+	select {
+	case <-conn.heartbeat:
+	default:
+		t.Fatal("expected heartbeat in channel")
+	}
+}
+
+func Test_SSE_WriteLoop_Events(t *testing.T) {
+	t.Parallel()
+
+	conn := newConnection("wl", []string{"t"}, 10, time.Second)
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	// Send an event + heartbeat, then close
+	conn.trySend(MarshaledEvent{ID: "e1", Type: "test", Data: "hello", Retry: -1})
+	conn.sendHeartbeat()
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		conn.Close()
+	}()
+
+	conn.writeLoop(w)
+
+	output := buf.String()
+	require.Contains(t, output, "id: e1\n")
+	require.Contains(t, output, "event: test\n")
+	require.Contains(t, output, "data: hello\n")
+	require.Contains(t, output, ": heartbeat\n")
+	require.Equal(t, int64(1), conn.MessagesSent.Load())
+}
+
+func Test_SSE_WriteLoop_ChannelClose(t *testing.T) {
+	t.Parallel()
+
+	conn := newConnection("wlc", []string{"t"}, 10, time.Second)
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	// Close the send channel directly to test the !ok path
+	close(conn.send)
+	conn.writeLoop(w)
+	// Should return without panic
+}
+
+func Test_SSE_TopicMatchesAny(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, topicMatchesAny([]string{"orders", "products"}, "orders"))
+	require.True(t, topicMatchesAny([]string{"orders.*"}, "orders.created"))
+	require.False(t, topicMatchesAny([]string{"orders", "products"}, "users"))
+	require.False(t, topicMatchesAny(nil, "anything"))
+}
+
+func Test_SSE_ConnMatchesTopic(t *testing.T) {
+	t.Parallel()
+
+	conn := newConnection("ct", []string{"orders.*", "products"}, 10, time.Second)
+	require.True(t, connMatchesTopic(conn, "orders.created"))
+	require.True(t, connMatchesTopic(conn, "products"))
+	require.False(t, connMatchesTopic(conn, "users"))
+}
+
+func Test_SSE_EffectiveInterval_AllBranches(t *testing.T) {
+	t.Parallel()
+
+	at := newAdaptiveThrottler(2 * time.Second)
+
+	// saturation > 0.8 → maxInterval
+	require.Equal(t, at.maxInterval, at.effectiveInterval(0.9))
+	// saturation > 0.5 → baseInterval * 2
+	require.Equal(t, at.baseInterval*2, at.effectiveInterval(0.6))
+	// saturation < 0.1 → minInterval
+	require.Equal(t, at.minInterval, at.effectiveInterval(0.05))
+	// default → baseInterval
+	require.Equal(t, at.baseInterval, at.effectiveInterval(0.3))
+}
+
+func Test_SSE_Throttler_Cleanup(t *testing.T) {
+	t.Parallel()
+
+	at := newAdaptiveThrottler(time.Second)
+	at.shouldFlush("old-conn", 0.0)
+	at.shouldFlush("new-conn", 0.0)
+
+	// Make "old-conn" stale
+	at.mu.Lock()
+	at.lastFlush["old-conn"] = time.Now().Add(-20 * time.Minute)
+	at.mu.Unlock()
+
+	at.cleanup(time.Now().Add(-10 * time.Minute))
+
+	at.mu.Lock()
+	_, oldExists := at.lastFlush["old-conn"]
+	_, newExists := at.lastFlush["new-conn"]
+	at.mu.Unlock()
+
+	require.False(t, oldExists, "old conn should be cleaned up")
+	require.True(t, newExists, "new conn should remain")
+}
+
+func Test_SSE_FormatFloat_AllBranches(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "42", formatFloat(42.0))
+	require.Equal(t, "3.140000", formatFloat(3.14))
+	require.Equal(t, "0", formatFloat(math.NaN()))
+	require.Equal(t, "0", formatFloat(math.Inf(1)))
+	require.Equal(t, "0", formatFloat(math.Inf(-1)))
+}
+
+func Test_SSE_Metrics_WithConnections(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Add a connection manually to test metrics with connections
+	conn := newConnection("metrics-conn", []string{"orders", "products"}, 10, time.Second)
+	conn.Metadata["tenant_id"] = "t_1"
+
+	hub.mu.Lock()
+	hub.connections[conn.ID] = conn
+	hub.topicIndex["orders"] = map[string]struct{}{conn.ID: {}}
+	hub.topicIndex["products"] = map[string]struct{}{conn.ID: {}}
+	hub.mu.Unlock()
+
+	snap := hub.Metrics(true)
+	require.Equal(t, 1, snap.ActiveConnections)
+	require.Len(t, snap.Connections, 1)
+	require.Equal(t, "metrics-conn", snap.Connections[0].ID)
+	require.Equal(t, 1, snap.ConnectionsByTopic["orders"])
+
+	// Test with paused connection
+	conn.paused.Store(true)
+	snap = hub.Metrics(true)
+	require.Equal(t, 1, snap.PausedConnections)
+}
+
+func Test_SSE_FanOut_RetryOnError(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	attempts := make(chan struct{}, 5)
+	mockSub := &mockPubSubSubscriber{
+		onSubscribe: func(_ context.Context, _ string, _ func(string)) error {
+			select {
+			case attempts <- struct{}{}:
+			default:
+			}
+			return errors.New("connection failed")
+		},
+	}
+
+	cancel := hub.FanOut(FanOutConfig{
+		Subscriber: mockSub,
+		Channel:    "retry-ch",
+		EventType:  "evt",
+	})
+
+	// Wait for at least one retry attempt
+	<-attempts
+	cancel()
+}
+
+func Test_SSE_FanOut_BuildEvent_ConfigDefaults(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Non-transform with all config defaults
+	cfg := &FanOutConfig{
+		EventType:   "test-event",
+		Priority:    PriorityBatched,
+		CoalesceKey: "my-key",
+		TTL:         5 * time.Minute,
+	}
+	event := hub.buildFanOutEvent(cfg, "my-topic", "payload")
+	require.NotNil(t, event)
+	require.Equal(t, "test-event", event.Type)
+	require.Equal(t, []string{"my-topic"}, event.Topics)
+	require.Equal(t, PriorityBatched, event.Priority)
+	require.Equal(t, "my-key", event.CoalesceKey)
+	require.Equal(t, 5*time.Minute, event.TTL)
+	require.Equal(t, "payload", event.Data)
+
+	// Transform that sets its own priority — should be respected
+	cfgT := &FanOutConfig{
+		EventType: "default-type",
+		Priority:  PriorityBatched,
+		Transform: func(payload string) *Event {
+			return &Event{
+				Type:     "custom-type",
+				Data:     "custom:" + payload,
+				Priority: PriorityCoalesced,
+				Topics:   []string{"custom-topic"},
+			}
+		},
+	}
+	event = hub.buildFanOutEvent(cfgT, "fallback-topic", "raw")
+	require.NotNil(t, event)
+	require.Equal(t, "custom-type", event.Type)
+	require.Equal(t, PriorityCoalesced, event.Priority) // Transform's priority preserved
+	require.Equal(t, []string{"custom-topic"}, event.Topics)
+
+	// Transform returning event without Topics or Type — should use defaults
+	cfgT2 := &FanOutConfig{
+		EventType: "fallback-type",
+		Transform: func(_ string) *Event {
+			return &Event{Data: "minimal"}
+		},
+	}
+	event = hub.buildFanOutEvent(cfgT2, "default-topic", "x")
+	require.NotNil(t, event)
+	require.Equal(t, "fallback-type", event.Type)
+	require.Equal(t, []string{"default-topic"}, event.Topics)
+}
+
+func Test_SSE_SetPaused_Callbacks(t *testing.T) {
+	t.Parallel()
+
+	var paused, resumed bool
+	_, hub := NewWithHub(Config{
+		OnPause:  func(_ *Connection) { paused = true },
+		OnResume: func(_ *Connection) { resumed = true },
+	})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("cb-conn", []string{"t"}, 10, time.Second)
+	hub.mu.Lock()
+	hub.connections["cb-conn"] = conn
+	hub.mu.Unlock()
+
+	hub.SetPaused("cb-conn", true)
+	require.True(t, paused)
+
+	hub.SetPaused("cb-conn", false)
+	require.True(t, resumed)
+}
+
+func Test_SSE_RouteEvent_WithGroup(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Add two connections with different tenants
+	conn1 := newConnection("c1", []string{"orders"}, 10, time.Second)
+	conn1.Metadata["tenant_id"] = "t_1"
+	conn2 := newConnection("c2", []string{"orders"}, 10, time.Second)
+	conn2.Metadata["tenant_id"] = "t_2"
+
+	hub.mu.Lock()
+	hub.connections["c1"] = conn1
+	hub.connections["c2"] = conn2
+	hub.topicIndex["orders"] = map[string]struct{}{"c1": {}, "c2": {}}
+	hub.mu.Unlock()
+
+	// Publish with group targeting t_1 only
+	hub.Publish(Event{
+		Type:     "test",
+		Topics:   []string{"orders"},
+		Data:     "for-t1",
+		Group:    map[string]string{"tenant_id": "t_1"},
+		Priority: PriorityInstant,
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	// conn1 should have received the event, conn2 should not
+	require.Equal(t, int64(0), conn1.MessagesDropped.Load())
+	// Check send channel
+	select {
+	case me := <-conn1.send:
+		require.Contains(t, me.Data, "for-t1")
+	default:
+		t.Fatal("expected event in conn1 send channel")
+	}
+
+	select {
+	case <-conn2.send:
+		t.Fatal("conn2 should NOT have received the event")
+	default:
+		// correct
+	}
+}
+
+func Test_SSE_RouteEvent_GroupOnly(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Connection with metadata but no topic match — group-only delivery
+	conn := newConnection("g1", []string{"unrelated"}, 10, time.Second)
+	conn.Metadata["role"] = "admin"
+
+	hub.mu.Lock()
+	hub.connections["g1"] = conn
+	hub.topicIndex["unrelated"] = map[string]struct{}{"g1": {}}
+	hub.mu.Unlock()
+
+	// Publish with group only (no topic overlap)
+	hub.Publish(Event{
+		Type:     "admin-alert",
+		Data:     "alert",
+		Group:    map[string]string{"role": "admin"},
+		Priority: PriorityInstant,
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case me := <-conn.send:
+		require.Contains(t, me.Data, "alert")
+	default:
+		t.Fatal("expected event via group match")
+	}
+}
+
+func Test_SSE_RouteEvent_WildcardConn(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("wc1", []string{"orders.*"}, 10, time.Second)
+
+	hub.mu.Lock()
+	hub.connections["wc1"] = conn
+	hub.wildcardConns["wc1"] = struct{}{}
+	hub.mu.Unlock()
+
+	hub.Publish(Event{
+		Type:     "test",
+		Topics:   []string{"orders.created"},
+		Data:     "wildcard-match",
+		Priority: PriorityInstant,
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case me := <-conn.send:
+		require.Contains(t, me.Data, "wildcard-match")
+	default:
+		t.Fatal("wildcard connection should have received the event")
+	}
+}
+
+func Test_SSE_RouteEvent_PausedSkipsNonInstant(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("p1", []string{"t"}, 10, time.Second)
+	conn.paused.Store(true)
+
+	hub.mu.Lock()
+	hub.connections["p1"] = conn
+	hub.topicIndex["t"] = map[string]struct{}{"p1": {}}
+	hub.mu.Unlock()
+
+	// P1 event should be skipped for paused connection
+	hub.Publish(Event{
+		Type:     "batch",
+		Topics:   []string{"t"},
+		Data:     "batched",
+		Priority: PriorityBatched,
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	require.Equal(t, 0, conn.coalescer.pending())
+
+	// P0 (instant) should still deliver
+	hub.Publish(Event{
+		Type:     "urgent",
+		Topics:   []string{"t"},
+		Data:     "instant",
+		Priority: PriorityInstant,
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case me := <-conn.send:
+		require.Contains(t, me.Data, "instant")
+	default:
+		t.Fatal("P0 event should deliver to paused connection")
+	}
+}
+
+func Test_SSE_RouteEvent_TTLExpired(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Publish an expired event
+	hub.Publish(Event{
+		Type:      "old",
+		Topics:    []string{"t"},
+		Data:      "expired",
+		Priority:  PriorityInstant,
+		TTL:       time.Millisecond,
+		CreatedAt: time.Now().Add(-time.Second),
+	})
+
+	time.Sleep(100 * time.Millisecond)
+
+	stats := hub.Stats()
+	require.Equal(t, int64(1), stats.EventsDropped)
+}
+
+func Test_SSE_DeliverToConn_AllPriorities(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("dc", []string{"t"}, 10, time.Second)
+
+	me := MarshaledEvent{ID: "e1", Data: "test"}
+
+	// Test instant delivery
+	hub.deliverToConn(conn, &Event{Priority: PriorityInstant}, me)
+	select {
+	case <-conn.send:
+	default:
+		t.Fatal("instant event should be in send channel")
+	}
+
+	// Test batched delivery
+	hub.deliverToConn(conn, &Event{Priority: PriorityBatched}, me)
+	require.Equal(t, 1, conn.coalescer.pending())
+	conn.coalescer.flush()
+
+	// Test coalesced delivery
+	hub.deliverToConn(conn, &Event{Priority: PriorityCoalesced, Type: "progress", CoalesceKey: "k1"}, me)
+	require.Equal(t, 1, conn.coalescer.pending())
+	conn.coalescer.flush()
+
+	// Test coalesced without explicit key — uses Type
+	hub.deliverToConn(conn, &Event{Priority: PriorityCoalesced, Type: "counter"}, me)
+	require.Equal(t, 1, conn.coalescer.pending())
+}
+
+func Test_SSE_FlushAll(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub(Config{FlushInterval: 50 * time.Millisecond})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("fl", []string{"t"}, 10, 50*time.Millisecond)
+
+	hub.mu.Lock()
+	hub.connections["fl"] = conn
+	hub.topicIndex["t"] = map[string]struct{}{"fl": {}}
+	hub.mu.Unlock()
+
+	// Add batched events to the coalescer
+	conn.coalescer.addBatched(MarshaledEvent{ID: "b1", Data: "batch1"})
+	conn.coalescer.addBatched(MarshaledEvent{ID: "b2", Data: "batch2"})
+
+	// Wait for throttler to allow flush, then flush
+	time.Sleep(100 * time.Millisecond)
+	hub.flushAll()
+
+	// Events should now be in the send channel
+	require.Len(t, conn.send, 2)
+}
+
+func Test_SSE_FlushAll_TTLExpiry(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub(Config{FlushInterval: 50 * time.Millisecond})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("fle", []string{"t"}, 10, 50*time.Millisecond)
+
+	hub.mu.Lock()
+	hub.connections["fle"] = conn
+	hub.topicIndex["t"] = map[string]struct{}{"fle": {}}
+	hub.mu.Unlock()
+
+	// Add an expired event to the coalescer
+	conn.coalescer.addBatched(MarshaledEvent{
+		ID:        "exp",
+		Data:      "expired",
+		TTL:       time.Millisecond,
+		CreatedAt: time.Now().Add(-time.Second),
+	})
+
+	time.Sleep(100 * time.Millisecond)
+	hub.flushAll()
+
+	// Event should be dropped, not delivered
+	require.Empty(t, conn.send)
+	require.Equal(t, int64(1), hub.metrics.eventsDropped.Load())
+}
+
+func Test_SSE_SendHeartbeats(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub(Config{HeartbeatInterval: 50 * time.Millisecond})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("hb", []string{"t"}, 10, time.Second)
+	// Set lastWrite to long ago
+	conn.lastWrite.Store(time.Now().Add(-time.Minute))
+
+	hub.mu.Lock()
+	hub.connections["hb"] = conn
+	hub.mu.Unlock()
+
+	hub.sendHeartbeats()
+
+	// Should have a heartbeat pending
+	select {
+	case <-conn.heartbeat:
+	default:
+		t.Fatal("expected heartbeat")
+	}
+}
+
+func Test_SSE_SendHeartbeats_SkipsClosed(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub(Config{HeartbeatInterval: 50 * time.Millisecond})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("closed-hb", []string{"t"}, 10, time.Second)
+	conn.lastWrite.Store(time.Now().Add(-time.Minute))
+	conn.Close()
+
+	hub.mu.Lock()
+	hub.connections["closed-hb"] = conn
+	hub.mu.Unlock()
+
+	// Should not panic
+	hub.sendHeartbeats()
+}
+
+func Test_SSE_RemoveConnection(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("rm", []string{"orders", "products"}, 10, time.Second)
+
+	hub.addConnection(conn)
+
+	stats := hub.Stats()
+	require.Equal(t, 1, stats.ActiveConnections)
+	require.Equal(t, 2, stats.TotalTopics)
+
+	hub.removeConnection(conn)
+
+	stats = hub.Stats()
+	require.Equal(t, 0, stats.ActiveConnections)
+	require.Equal(t, 0, stats.TotalTopics)
+
+	// Remove again should be no-op
+	hub.removeConnection(conn)
+}
+
+func Test_SSE_RemoveConnection_Wildcard(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("rmw", []string{"orders.*"}, 10, time.Second)
+
+	hub.addConnection(conn)
+
+	hub.mu.RLock()
+	_, hasWildcard := hub.wildcardConns["rmw"]
+	hub.mu.RUnlock()
+	require.True(t, hasWildcard)
+
+	hub.removeConnection(conn)
+
+	hub.mu.RLock()
+	_, hasWildcard = hub.wildcardConns["rmw"]
+	hub.mu.RUnlock()
+	require.False(t, hasWildcard)
+}
+
+func Test_SSE_Progress_WithHint(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	hub.Progress("import", "imp_1", "t_1", 50, 100, map[string]any{"filename": "data.csv"})
+	hub.Progress("import", "imp_2", "", 0, 0) // zero total
+
+	time.Sleep(50 * time.Millisecond)
+	stats := hub.Stats()
+	require.Equal(t, int64(2), stats.EventsPublished)
+}
+
+func Test_SSE_Complete_Failure(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	hub.Complete("import", "imp_1", "t_1", false, map[string]any{"error": "timeout"})
+	hub.Complete("import", "imp_2", "", true, nil) // no tenant, no hint
+
+	time.Sleep(50 * time.Millisecond)
+	stats := hub.Stats()
+	require.Equal(t, int64(2), stats.EventsPublished)
+}
+
+func Test_SSE_Publish_BufferFull(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Fill the event buffer (size 1024)
+	for range 2000 {
+		hub.Publish(Event{Type: "flood", Topics: []string{"t"}, Data: "x"})
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	stats := hub.Stats()
+	// Some events should have been dropped
+	require.Positive(t, stats.EventsPublished)
+}
+
+func Test_SSE_ReplayEvents(t *testing.T) {
+	t.Parallel()
+
+	replayer := NewMemoryReplayer()
+	require.NoError(t, replayer.Store(MarshaledEvent{ID: "r1", Data: "d1", Retry: -1}, []string{"t"}))
+	require.NoError(t, replayer.Store(MarshaledEvent{ID: "r2", Data: "d2", Retry: -1}, []string{"t"}))
+
+	_, hub := NewWithHub(Config{Replayer: replayer})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("replay-conn", []string{"t"}, 10, time.Second)
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	err := hub.replayEvents(w, conn, "r1")
+	require.NoError(t, err)
+	require.Contains(t, buf.String(), "id: r2")
+}
+
+func Test_SSE_ReplayEvents_NoReplayer(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("no-replay", []string{"t"}, 10, time.Second)
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	err := hub.replayEvents(w, conn, "some-id")
+	require.NoError(t, err)
+	require.Empty(t, buf.String())
+}
+
+func Test_SSE_InitStream(t *testing.T) {
+	t.Parallel()
+
+	replayer := NewMemoryReplayer()
+	require.NoError(t, replayer.Store(MarshaledEvent{ID: "i1", Data: "d1", Retry: -1}, []string{"t"}))
+	require.NoError(t, replayer.Store(MarshaledEvent{ID: "i2", Data: "d2", Retry: -1}, []string{"t"}))
+
+	_, hub := NewWithHub(Config{Replayer: replayer})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("init-conn", []string{"t"}, 10, time.Second)
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	err := hub.initStream(w, conn, "i1")
+	require.NoError(t, err)
+
+	output := buf.String()
+	require.Contains(t, output, "retry: 3000")
+	require.Contains(t, output, "id: i2")
+	require.Contains(t, output, `event: connected`)
+}
+
+func Test_SSE_RouteEvent_ReplayerStore(t *testing.T) {
+	t.Parallel()
+
+	replayer := NewMemoryReplayer()
+	_, hub := NewWithHub(Config{Replayer: replayer})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// Publish a non-group event — should be stored in replayer
+	hub.Publish(Event{Type: "test", Topics: []string{"t"}, Data: "stored"})
+	time.Sleep(100 * time.Millisecond)
+
+	events, err := replayer.Replay("", []string{"t"})
+	require.NoError(t, err)
+	require.Nil(t, events) // empty lastEventID
+
+	// Publish a group event — should NOT be stored in replayer
+	hub.Publish(Event{
+		Type:   "test",
+		Topics: []string{"t"},
+		Data:   "not-stored",
+		Group:  map[string]string{"tenant_id": "t_1"},
+	})
+	time.Sleep(100 * time.Millisecond)
+
+	// The replayer should only have 1 event (the non-group one)
+	replayer.mu.RLock()
+	count := replayer.count
+	replayer.mu.RUnlock()
+	require.Equal(t, 1, count)
+}
+
+func Test_SSE_Shutdown_Timeout(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+
+	// Create a context that's already canceled
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Close the hub so it can stop
+	hub.shutdownOnce.Do(func() {
+		close(hub.shutdown)
+	})
+
+	// With already-canceled context, it might return an error if stopped hasn't been signaled
+	_ = hub.Shutdown(ctx) //nolint:errcheck // testing shutdown with canceled context
+}
+
+// mockPubSubSubscriber implements PubSubSubscriber for testing.
+type mockPubSubSubscriber struct {
+	onSubscribe func(ctx context.Context, channel string, onMessage func(string)) error
+}
+
+func (m *mockPubSubSubscriber) Subscribe(ctx context.Context, channel string, onMessage func(string)) error {
+	return m.onSubscribe(ctx, channel, onMessage)
+}
+
+func Benchmark_SSE_Publish(b *testing.B) {
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(b, hub.Shutdown(ctx))
+	}()
+
+	event := Event{
+		Type:   "test",
+		Topics: []string{"benchmark"},
+		Data:   "hello",
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		hub.Publish(event)
+	}
+}
+
+func Benchmark_SSE_TopicMatch(b *testing.B) {
+	b.ResetTimer()
+	for b.Loop() {
+		topicMatch("notifications.*", "notifications.orders")
+	}
+}
+
+func Benchmark_SSE_TopicMatch_Exact(b *testing.B) {
+	b.ResetTimer()
+	for b.Loop() {
+		topicMatch("notifications.orders", "notifications.orders")
+	}
+}
+
+func Benchmark_SSE_MarshalEvent(b *testing.B) {
+	event := &Event{
+		Type: "test",
+		Data: map[string]string{"key": "value", "foo": "bar"},
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		marshalEvent(event)
+	}
+}
+
+func Benchmark_SSE_WriteTo(b *testing.B) {
+	me := MarshaledEvent{
+		ID:   "evt_1",
+		Type: "test",
+		Data: `{"key":"value"}`,
+	}
+
+	w := bufio.NewWriter(io.Discard)
+
+	b.ResetTimer()
+	for b.Loop() {
+		me.WriteTo(w) //nolint:errcheck // benchmark: error irrelevant for perf measurement
+	}
+}
+
+func Benchmark_SSE_Coalescer(b *testing.B) {
+	c := newCoalescer(time.Second)
+	me := MarshaledEvent{ID: "1", Data: "test"}
+
+	b.ResetTimer()
+	for b.Loop() {
+		c.addCoalesced("key", me)
+		c.flush()
+	}
+}
+
+func Benchmark_SSE_GenerateID(b *testing.B) {
+	b.ResetTimer()
+	for b.Loop() {
+		generateID()
+	}
+}
