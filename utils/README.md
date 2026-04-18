@@ -1,4 +1,5 @@
 A collection of common functions but with better performance, less allocations and no dependencies created for [Fiber](https://github.com/gofiber/fiber).
+> Minimum supported Go version: **1.24**.
 
 ```go
 // go test -benchmem -run=^$ -bench=Benchmark_ -count=2
