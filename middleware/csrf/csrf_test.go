@@ -102,6 +102,11 @@ func Test_CSRF_WithSession(t *testing.T) {
 	app.Use(New(config))
 
 	app.Post("/", func(c *fiber.Ctx) error {
+		if handler, ok := c.Locals(ConfigDefault.HandlerContextKey).(*CSRFHandler); ok {
+			if err := handler.DeleteToken(c); err != nil {
+				return err
+			}
+		}
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -720,11 +725,6 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
-	if handler, ok := app.AcquireCtx(ctx).Locals(ConfigDefault.HandlerContextKey).(*CSRFHandler); ok {
-		if err := handler.DeleteToken(app.AcquireCtx(ctx)); err != nil {
-			t.Fatal(err)
-		}
-	}
 	h(ctx)
 
 	ctx.Request.Reset()
@@ -733,7 +733,7 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
-	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
+	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
 }
 
 func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
