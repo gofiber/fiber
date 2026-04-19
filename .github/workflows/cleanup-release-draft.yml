@@ -4,9 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag of the draft release to clean up'
-        required: true
+        description: 'Tag or name of the draft (empty = latest draft)'
+        required: false
         type: string
+        default: ''
 
 jobs:
   cleanup:
