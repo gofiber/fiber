@@ -8,6 +8,12 @@ jobs:
   notify:
     uses: gofiber/.github/.github/workflows/after-release.yml@main
     with:
-      repos: '["gofiber/contrib","gofiber/storage","gofiber/template","gofiber/cli","gofiber/boilerplate","gofiber/recipes"]'
+      repos: |
+        - gofiber/contrib
+        - gofiber/storage
+        - gofiber/template
+        - gofiber/cli
+        - gofiber/boilerplate
+        - gofiber/recipes
     secrets:
       dispatch-token: ${{ secrets.DISPATCH_TOKEN }}
