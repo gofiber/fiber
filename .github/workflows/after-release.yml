@@ -11,6 +11,7 @@ jobs:
   notify:
     uses: gofiber/.github/.github/workflows/after-release.yml@main
     with:
+      skip-wait: ${{ github.event_name == 'workflow_dispatch' }}
       repos: |
         - gofiber/contrib
         - gofiber/storage
