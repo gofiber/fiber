@@ -104,7 +104,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 	}
 
 	// Master callback: child recovered after crash
-	p.OnChildRecover = func(pid int) error {
+	p.OnChildRecover = func(pid int) {
 		logger.Printf("prefork: child process crashed, recovered with new PID %d", pid)
 		if app.hooks != nil {
 			if testOnPrefork {
@@ -113,7 +113,6 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 				app.hooks.executeOnForkHooks(pid)
 			}
 		}
-		return nil
 	}
 
 	if err := p.ListenAndServe(addr); err != nil {
