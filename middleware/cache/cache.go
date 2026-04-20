@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"slices"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -29,7 +29,10 @@ import (
 const timestampUpdatePeriod = 300 * time.Millisecond
 
 // buffer size for hexpool
-const hexLen = sha256.Size * 2
+const (
+	hexLen                       = sha256.Size * 2
+	maxKeyDimensionSegmentLength = 192
+)
 
 // cache status
 // unreachable: when cache is bypass, or invalid
@@ -239,14 +242,14 @@ func New(config ...Config) fiber.Handler {
 
 		requestMethod := c.Method()
 
-		// Only cache selected methods
-		if !slices.Contains(cfg.Methods, requestMethod) {
+		// Cache only GET and HEAD requests.
+		if requestMethod != fiber.MethodGet && requestMethod != fiber.MethodHead {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
 
 		// Get key from request
-		baseKey := cfg.KeyGenerator(c) + "_" + requestMethod
+		baseKey := requestMethod + "|" + cfg.KeyGenerator(c)
 		manifestKey := baseKey + "|vary"
 		if hasAuthorization {
 			authHash := hashAuthorization(c.Request().Header.Peek(fiber.HeaderAuthorization))
@@ -257,12 +260,17 @@ func New(config ...Config) fiber.Handler {
 
 		reqCtx := c.Context()
 
-		varyNames, hasVaryManifest, err := loadVaryManifest(reqCtx, manager, manifestKey)
-		if err != nil {
-			return err
-		}
-		if len(varyNames) > 0 {
-			key += buildVaryKey(varyNames, &c.Request().Header)
+		varyNames := []string(nil)
+		hasVaryManifest := false
+		var err error
+		if !cfg.DisableVaryHeaders {
+			varyNames, hasVaryManifest, err = loadVaryManifest(reqCtx, manager, manifestKey)
+			if err != nil {
+				return err
+			}
+			if len(varyNames) > 0 {
+				key += buildVaryKey(varyNames, &c.Request().Header)
+			}
 		}
 
 		// Get entry from pool
@@ -544,7 +552,7 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		if hasPrivate || hasNoCache || varyHasStar {
+		if hasPrivate || hasNoCache || (!cfg.DisableVaryHeaders && varyHasStar) {
 			if e != nil {
 				if err := deleteKey(reqCtx, key); err != nil {
 					if cfg.Storage != nil {
@@ -561,7 +569,7 @@ func New(config ...Config) fiber.Handler {
 				mux.Unlock()
 			}
 
-			if hasVaryManifest {
+			if !cfg.DisableVaryHeaders && hasVaryManifest {
 				if err := manager.del(reqCtx, manifestKey); err != nil {
 					return fmt.Errorf("cache: failed to delete stale vary manifest %q: %w", maskKey(manifestKey), err)
 				}
@@ -571,12 +579,12 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		shouldStoreVaryManifest := len(varyNames) > 0
-		if len(varyNames) > 0 {
+		shouldStoreVaryManifest := !cfg.DisableVaryHeaders && len(varyNames) > 0
+		if !cfg.DisableVaryHeaders && len(varyNames) > 0 {
 			if key == baseKey {
 				key += buildVaryKey(varyNames, &c.Request().Header)
 			}
-		} else if hasVaryManifest {
+		} else if !cfg.DisableVaryHeaders && hasVaryManifest {
 			if err := manager.del(reqCtx, manifestKey); err != nil {
 				return fmt.Errorf("cache: failed to delete stale vary manifest %q: %w", maskKey(manifestKey), err)
 			}
@@ -821,7 +829,7 @@ func New(config ...Config) fiber.Handler {
 			remainingExpiration = 0
 		}
 
-		if shouldStoreVaryManifest {
+		if !cfg.DisableVaryHeaders && shouldStoreVaryManifest {
 			if err := storeVaryManifest(reqCtx, manager, manifestKey, varyNames, storageExpiration); err != nil {
 				return err
 			}
@@ -1252,6 +1260,105 @@ func secondsToDuration(sec uint64) time.Duration {
 		return time.Duration(math.MaxInt64)
 	}
 	return time.Duration(sec) * time.Second
+}
+
+func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
+	buf := make([]byte, 0, 256)
+	buf = append(buf, c.Path()...)
+
+	if !cfg.DisableQueryKeys {
+		buf = append(buf, []byte("|q=")...)
+		buf = append(buf, canonicalQueryString(c.Request().URI())...)
+	}
+
+	if len(cfg.KeyHeaders) > 0 {
+		buf = append(buf, []byte("|h=")...)
+		buf = append(buf, canonicalHeaderSubset(&c.Request().Header, cfg.KeyHeaders)...)
+	}
+
+	if len(cfg.KeyCookies) > 0 {
+		buf = append(buf, []byte("|c=")...)
+		buf = append(buf, canonicalCookieSubset(c, cfg.KeyCookies)...)
+	}
+
+	return utils.CopyString(utils.UnsafeString(buf))
+}
+
+func canonicalQueryString(uri *fasthttp.URI) string {
+	query := utils.CopyString(utils.UnsafeString(uri.QueryString()))
+	if query == "" {
+		return ""
+	}
+	parsed, err := url.ParseQuery(query)
+	if err != nil {
+		return boundKeySegment(query)
+	}
+
+	keys := make([]string, 0, len(parsed))
+	for key := range parsed {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	buf := make([]byte, 0, len(query))
+	for _, key := range keys {
+		values := parsed[key]
+		sort.Strings(values)
+		for _, value := range values {
+			if len(buf) > 0 {
+				buf = append(buf, '&')
+			}
+			buf = append(buf, url.QueryEscape(key)...)
+			buf = append(buf, '=')
+			buf = append(buf, url.QueryEscape(value)...)
+		}
+	}
+
+	return boundKeySegment(utils.UnsafeString(buf))
+}
+
+func canonicalHeaderSubset(header *fasthttp.RequestHeader, names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+
+	buf := make([]byte, 0, len(names)*16)
+	for idx, name := range names {
+		if idx > 0 {
+			buf = append(buf, '|')
+		}
+		buf = append(buf, name...)
+		buf = append(buf, ':')
+		buf = append(buf, boundKeySegment(utils.CopyString(utils.UnsafeString(header.Peek(name))))...)
+	}
+
+	return utils.CopyString(utils.UnsafeString(buf))
+}
+
+func canonicalCookieSubset(c fiber.Ctx, names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+
+	buf := make([]byte, 0, len(names)*16)
+	for idx, name := range names {
+		if idx > 0 {
+			buf = append(buf, '|')
+		}
+		buf = append(buf, name...)
+		buf = append(buf, ':')
+		buf = append(buf, boundKeySegment(c.Cookies(name))...)
+	}
+
+	return utils.CopyString(utils.UnsafeString(buf))
+}
+
+func boundKeySegment(segment string) string {
+	if len(segment) <= maxKeyDimensionSegmentLength {
+		return segment
+	}
+	hash := sha256.Sum256(utils.UnsafeBytes(segment))
+	return "sha256:" + hex.EncodeToString(hash[:])
 }
 
 func parseVary(vary string) ([]string, bool) {
