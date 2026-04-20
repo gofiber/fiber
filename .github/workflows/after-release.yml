@@ -3,6 +3,9 @@ name: After Release
 on:
   release:
     types: [published]
+  repository_dispatch:
+    types: [after-release]
+  workflow_dispatch:
 
 jobs:
   notify:
