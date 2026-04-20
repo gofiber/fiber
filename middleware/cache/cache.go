@@ -32,6 +32,7 @@ const timestampUpdatePeriod = 300 * time.Millisecond
 const (
 	hexLen                       = sha256.Size * 2
 	maxKeyDimensionSegmentLength = 192
+	defaultKeyBufferCap          = 256
 )
 
 // cache status
@@ -106,6 +107,13 @@ var cacheableStatusCodes = map[int]struct{}{
 	fiber.StatusGone:                        {},
 	fiber.StatusRequestURITooLong:           {},
 	fiber.StatusNotImplemented:              {},
+}
+
+var keyBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 0, defaultKeyBufferCap)
+		return &buf
+	},
 }
 
 // New creates a new middleware handler
@@ -1263,7 +1271,14 @@ func secondsToDuration(sec uint64) time.Duration {
 }
 
 func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
-	buf := make([]byte, 0, 256)
+	v := keyBufferPool.Get()
+	bufPtr, ok := v.(*[]byte)
+	if !ok || bufPtr == nil {
+		b := make([]byte, 0, defaultKeyBufferCap)
+		bufPtr = &b
+	}
+
+	buf := (*bufPtr)[:0]
 	buf = append(buf, c.Path()...)
 
 	if !cfg.DisableQueryKeys {
@@ -1281,7 +1296,11 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 		buf = append(buf, canonicalCookieSubset(c, cfg.KeyCookies)...)
 	}
 
-	return utils.CopyString(utils.UnsafeString(buf))
+	result := utils.CopyString(utils.UnsafeString(buf))
+	*bufPtr = buf
+	keyBufferPool.Put(bufPtr)
+
+	return result
 }
 
 func canonicalQueryString(uri *fasthttp.URI) string {
