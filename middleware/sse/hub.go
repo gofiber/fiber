@@ -52,20 +52,24 @@ func newHub(cfg Config) *Hub { //nolint:gocritic // hugeParam: internal construc
 		stopped:       make(chan struct{}),
 	}
 
+	// Validate every BridgeConfig BEFORE launching ANY goroutine —
+	// including hub.run(). A panic from here must leak nothing: no run
+	// loop, no bridge workers, no cancel function. Starting hub.run()
+	// first would leave a zombie goroutine alive after the panic,
+	// because NewWithHub never returns the hub to its caller for
+	// Shutdown.
+	for i, bc := range cfg.Bridges {
+		if bc.Subscriber == nil {
+			panic(fmt.Sprintf("sse: BridgeConfig.Subscriber at index %d must not be nil", i))
+		}
+		if bc.Channel == "" {
+			panic(fmt.Sprintf("sse: BridgeConfig.Channel at index %d must not be empty", i))
+		}
+	}
+
 	go hub.run()
 
 	if len(cfg.Bridges) > 0 {
-		// Validate every BridgeConfig BEFORE starting any goroutines so a
-		// bad config fails cleanly without leaking bridges that were
-		// already launched by earlier iterations.
-		for i, bc := range cfg.Bridges {
-			if bc.Subscriber == nil {
-				panic(fmt.Sprintf("sse: BridgeConfig.Subscriber at index %d must not be nil", i))
-			}
-			if bc.Channel == "" {
-				panic(fmt.Sprintf("sse: BridgeConfig.Channel at index %d must not be empty", i))
-			}
-		}
 		// cancel is stored on the Hub and invoked in Shutdown; the linter
 		// can't follow that across goroutines, so suppress G118 here.
 		ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored on hub.bridgeCancel and invoked in Shutdown

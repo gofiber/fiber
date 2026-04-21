@@ -1883,24 +1883,29 @@ func Test_SSE_Bridge_TransformNilSkipsMessage(t *testing.T) {
 }
 
 func Test_SSE_Bridge_RetriesOnError(t *testing.T) {
-	t.Parallel()
+	// Cannot run in parallel — we mutate the package-level bridgeRetryDelay
+	// so the retry loop is deterministic within the test's time budget.
+	original := bridgeRetryDelay
+	bridgeRetryDelay = 20 * time.Millisecond
+	t.Cleanup(func() { bridgeRetryDelay = original })
 
 	var attempts atomic.Int32
+	secondAttemptBlocked := make(chan struct{})
 	bridge := &mockBridge{
-		onSubscribe: func(_ context.Context, _ string, _ func(string)) error {
+		onSubscribe: func(ctx context.Context, _ string, _ func(string)) error {
 			n := attempts.Add(1)
 			if n < 2 {
 				return errors.New("transient error")
 			}
-			// On second attempt, block until ctx.Done.
-			time.Sleep(50 * time.Millisecond)
-			return nil
+			// Second attempt reached — signal the test and block until
+			// Shutdown cancels the ctx. This proves the loop retried
+			// past the error rather than exiting.
+			close(secondAttemptBlocked)
+			<-ctx.Done()
+			return ctx.Err()
 		},
 	}
 
-	// Override the retry delay by using a short-lived setup. The bridge
-	// retry delay is 3s, so we just assert that errors are logged and the
-	// loop keeps running (attempts > 0 by shutdown time).
 	_, hub := NewWithHub(Config{
 		Bridges: []BridgeConfig{{
 			Subscriber: bridge,
@@ -1909,13 +1914,18 @@ func Test_SSE_Bridge_RetriesOnError(t *testing.T) {
 		}},
 	})
 
-	// Let the first failed attempt happen.
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the retry to actually happen. Before reaching here,
+	// attempts must be exactly 2: one error + one in-progress call.
+	select {
+	case <-secondAttemptBlocked:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("bridge did not retry after error (attempts=%d)", attempts.Load())
+	}
+	require.Equal(t, int32(2), attempts.Load(), "expected exactly 2 Subscribe calls")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	require.NoError(t, hub.Shutdown(ctx))
-	require.GreaterOrEqual(t, attempts.Load(), int32(1))
 }
 
 func Test_SSE_Bridge_BuildEvent_Defaults(t *testing.T) {

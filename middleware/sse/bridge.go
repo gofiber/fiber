@@ -8,8 +8,9 @@ import (
 )
 
 // bridgeRetryDelay is how long the hub waits before retrying a failed
-// SubscriberBridge.Subscribe call.
-const bridgeRetryDelay = 3 * time.Second
+// SubscriberBridge.Subscribe call. Package-level var (not const) so tests
+// can shorten it to observe retry behavior deterministically.
+var bridgeRetryDelay = 3 * time.Second
 
 // SubscriberBridge adapts an external pub/sub system (Redis, NATS, Kafka,
 // etc.) so incoming messages can be forwarded into the hub as SSE events.
