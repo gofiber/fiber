@@ -74,13 +74,21 @@ func (h *Hub) runBridge(ctx context.Context, cfg BridgeConfig) { //nolint:gocrit
 			}
 		})
 
-		if err != nil && ctx.Err() == nil {
+		if ctx.Err() != nil {
+			return
+		}
+
+		// Any early return — error or unexpected nil from a well-behaved
+		// subscriber — is treated as retryable. Without the backoff on
+		// nil, a misbehaving subscriber that returns immediately would
+		// spin this loop hot.
+		if err != nil {
 			logBridgeError(cfg.Channel, err)
-			select {
-			case <-time.After(bridgeRetryDelay):
-			case <-ctx.Done():
-				return
-			}
+		}
+		select {
+		case <-time.After(bridgeRetryDelay):
+		case <-ctx.Done():
+			return
 		}
 	}
 }

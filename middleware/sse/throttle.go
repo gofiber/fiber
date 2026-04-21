@@ -17,8 +17,19 @@ type adaptiveThrottler struct {
 }
 
 func newAdaptiveThrottler(baseInterval time.Duration) *adaptiveThrottler {
+	// Start with the "nice" bounds, then tighten them so the invariant
+	// min <= base <= max holds for any baseInterval. Without the extra
+	// clamp, extreme configs (e.g. baseInterval < 25ms or > 10s) would
+	// invert the throttling policy — saturated connections flushing
+	// faster than idle ones.
 	minInt := max(baseInterval/4, 100*time.Millisecond)
 	maxInt := min(baseInterval*4, 10*time.Second)
+	if minInt > baseInterval {
+		minInt = baseInterval
+	}
+	if maxInt < baseInterval {
+		maxInt = baseInterval
+	}
 	return &adaptiveThrottler{
 		lastFlush:    make(map[string]time.Time),
 		baseInterval: baseInterval,

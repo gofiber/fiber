@@ -78,6 +78,14 @@ func newHub(cfg Config) *Hub { //nolint:gocritic // hugeParam: internal construc
 // This method is goroutine-safe and non-blocking. If the internal event buffer
 // is full, the event is dropped and eventsDropped is incremented.
 func (h *Hub) Publish(event Event) { //nolint:gocritic // hugeParam: public API, value semantics preferred
+	// Reject early if the hub is draining. Without this, a concurrent
+	// Shutdown() can race with Publish() and enqueue an event the run
+	// loop will never dispatch — inflating EventsPublished and leaving
+	// the caller under the false impression the event was delivered.
+	if h.draining.Load() {
+		h.metrics.eventsDropped.Add(1)
+		return
+	}
 	if event.TTL > 0 && event.CreatedAt.IsZero() {
 		event.CreatedAt = time.Now()
 	}
@@ -86,8 +94,9 @@ func (h *Hub) Publish(event Event) { //nolint:gocritic // hugeParam: public API,
 		h.metrics.eventsPublished.Add(1)
 	case <-h.shutdown:
 		// Hub is shutting down, discard
+		h.metrics.eventsDropped.Add(1)
 	default:
-		// Buffer full — drop event to avoid blocking callers (MAJOR-5).
+		// Buffer full — drop event to avoid blocking callers.
 		h.metrics.eventsDropped.Add(1)
 	}
 }
@@ -124,8 +133,19 @@ func (h *Hub) Shutdown(ctx context.Context) error {
 	})
 
 	// Bridges must finish before we report stopped so their in-flight
-	// Publish calls don't race with a re-used hub.
-	h.bridges.Wait()
+	// Publish calls don't race with a re-used hub — but wait must still
+	// honor the caller's deadline so a wedged bridge can't hang Shutdown.
+	bridgesDone := make(chan struct{})
+	go func() {
+		h.bridges.Wait()
+		close(bridgesDone)
+	}()
+
+	select {
+	case <-bridgesDone:
+	case <-ctx.Done():
+		return fmt.Errorf("sse: shutdown: %w", ctx.Err())
+	}
 
 	select {
 	case <-h.stopped:
@@ -237,26 +257,28 @@ func (h *Hub) watchLifetime(conn *Connection) {
 // and closing the connection, allowing the client to process the event.
 const shutdownDrainDelay = 200 * time.Millisecond
 
-// watchShutdown starts a goroutine that sends a server-shutdown event
-// and closes the connection when the hub begins draining.
-func (h *Hub) watchShutdown(conn *Connection) {
-	go func() {
-		select {
-		case <-h.shutdown:
-			if !conn.IsClosed() {
-				shutdownEvt := MarshaledEvent{
-					ID:    nextEventID(),
-					Type:  "server-shutdown",
-					Data:  "{}",
-					Retry: -1,
-				}
-				conn.trySend(shutdownEvt)
-				time.Sleep(shutdownDrainDelay)
-			}
-			conn.Close()
-		case <-conn.done:
+// broadcastShutdown queues a server-shutdown event on every live connection.
+// Called from the run loop on the shutdown signal BEFORE any Close() so that
+// writeLoop has a chance to flush the event to the network. A short drain
+// delay afterwards gives writers time to complete the flush before close.
+func (h *Hub) broadcastShutdown() {
+	h.mu.RLock()
+	conns := make([]*Connection, 0, len(h.connections))
+	for _, conn := range h.connections {
+		if !conn.IsClosed() {
+			conns = append(conns, conn)
 		}
-	}()
+	}
+	h.mu.RUnlock()
+
+	for _, conn := range conns {
+		conn.trySend(MarshaledEvent{
+			ID:    nextEventID(),
+			Type:  "server-shutdown",
+			Data:  "{}",
+			Retry: -1,
+		})
+	}
 }
 
 // run is the hub's main event loop.
@@ -293,6 +315,11 @@ func (h *Hub) run() {
 			h.throttler.cleanup(time.Now().Add(-10 * time.Minute))
 
 		case <-h.shutdown:
+			// Notify clients first, wait briefly for writeLoops to flush,
+			// then close. Prevents a race where Close() beats the
+			// server-shutdown event to the network.
+			h.broadcastShutdown()
+			time.Sleep(shutdownDrainDelay)
 			h.mu.Lock()
 			for _, conn := range h.connections {
 				conn.Close()
@@ -368,9 +395,12 @@ func (h *Hub) routeEvent(event *Event) {
 	h.metrics.trackEventType(event.Type)
 
 	// Skip replayer for group-scoped events to avoid cross-tenant leaks
-	// on reconnect (CRITICAL-2).
+	// on reconnect. Store errors are logged but non-fatal — replay is a
+	// best-effort feature and one missing event shouldn't break delivery.
 	if h.cfg.Replayer != nil && len(event.Group) == 0 {
-		_ = h.cfg.Replayer.Store(me, event.Topics) //nolint:errcheck // replayer is best-effort persistence
+		if err := h.cfg.Replayer.Store(me, event.Topics); err != nil {
+			log.Warnf("sse: replayer store error, continuing: %v", err)
+		}
 	}
 
 	h.mu.RLock()

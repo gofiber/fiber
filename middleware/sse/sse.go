@@ -78,9 +78,14 @@ func NewWithHub(config ...Config) (fiber.Handler, *Hub) {
 		)
 
 		// Let the application authenticate and configure the connection.
+		// The returned error is never exposed to the client — callers may
+		// include user/tenant identifiers or internal policy reasons that
+		// would leak information to an unauthenticated peer. The error is
+		// returned to the caller for logging via the standard Fiber error
+		// pipeline.
 		if cfg.OnConnect != nil {
 			if err := cfg.OnConnect(c, conn); err != nil {
-				return c.Status(fiber.StatusForbidden).SendString(err.Error())
+				return fiber.NewError(fiber.StatusForbidden, "forbidden")
 			}
 		}
 
@@ -123,20 +128,22 @@ func NewWithHub(config ...Config) (fiber.Handler, *Hub) {
 				}
 			}()
 
-			if err := hub.initStream(w, conn, lastEventID); err != nil {
-				return
-			}
-
-			// Register AFTER initStream to avoid duplicate events from
-			// replay + live delivery race.
+			// Register BEFORE writing the preamble / replay so events
+			// published during replay buffer in conn.send instead of being
+			// dropped. Event IDs are monotonic, so live events always have
+			// higher IDs than any replayed event — no duplicates are
+			// possible with a Last-Event-ID strictly-after replayer.
 			select {
 			case hub.register <- conn:
 			case <-hub.shutdown:
 				return
 			}
 
+			if err := hub.initStream(w, conn, lastEventID); err != nil {
+				return
+			}
+
 			hub.watchLifetime(conn)
-			hub.watchShutdown(conn)
 			conn.writeLoop(w)
 		})
 	}

@@ -72,6 +72,13 @@ func sanitizeSSEField(s string) string {
 	return strings.NewReplacer("\r\n", "", "\r", "", "\n", "").Replace(s)
 }
 
+// normalizeSSEDataTerminators is used on the data field to convert any CR or
+// CRLF sequence into LF before we split on line boundaries. The HTML SSE spec
+// treats all three as valid line terminators, so we must emit one "data:" per
+// logical line regardless of which terminator the caller used.
+// Order matters: CRLF must be replaced first so we don't double-split.
+var normalizeSSEDataTerminators = strings.NewReplacer("\r\n", "\n", "\r", "\n")
+
 // marshalEvent converts an Event into wire-ready format.
 func marshalEvent(e *Event) MarshaledEvent {
 	me := MarshaledEvent{
@@ -137,9 +144,14 @@ func (me *MarshaledEvent) WriteTo(w io.Writer) (int64, error) {
 		buf.WriteByte('\n')
 	}
 
+	// Normalise CR and CRLF to LF so a caller-supplied "\r" or "\r\n"
+	// produces one data line per logical line rather than a single line
+	// containing raw control characters (the HTML SSE parser treats all
+	// three as line terminators and would mis-frame the client).
 	// strings.SplitSeq("", "\n") yields "", correctly writing "data: \n"
 	// for empty data.
-	for line := range strings.SplitSeq(me.Data, "\n") {
+	data := normalizeSSEDataTerminators.Replace(me.Data)
+	for line := range strings.SplitSeq(data, "\n") {
 		buf.WriteString("data: ")
 		buf.WriteString(line)
 		buf.WriteByte('\n')

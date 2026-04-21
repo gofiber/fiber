@@ -1670,7 +1670,11 @@ func Test_SSE_Bridge_CancelsOnShutdown(t *testing.T) {
 		}},
 	})
 
-	<-subscribed
+	select {
+	case <-subscribed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("bridge did not subscribe in time")
+	}
 	// Shutdown should cancel the bridge context and wait for the goroutine.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -1697,8 +1701,13 @@ func Test_SSE_Bridge_Multiple(t *testing.T) {
 		},
 	})
 
-	<-delivered
-	<-delivered
+	for range 2 {
+		select {
+		case <-delivered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("bridge did not deliver both messages in time")
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -1736,7 +1745,11 @@ func Test_SSE_Bridge_Transform(t *testing.T) {
 		}},
 	})
 
-	<-done
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("bridge did not deliver in time")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -1770,7 +1783,11 @@ func Test_SSE_Bridge_TransformNilSkipsMessage(t *testing.T) {
 		}},
 	})
 
-	<-done
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("bridge did not deliver in time")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()

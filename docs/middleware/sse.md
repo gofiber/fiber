@@ -97,7 +97,7 @@ for i := 1; i <= 100; i++ {
 }
 ```
 
-Fan out from an external pub/sub system (Redis, NATS, etc.) into the hub. Implement the `PubSubSubscriber` interface and let `FanOut` bridge incoming messages as SSE events:
+Fan out from an external pub/sub system (Redis, NATS, etc.) into the hub. Implement the `SubscriberBridge` interface and declare it on `Config.Bridges` — the middleware auto-starts each bridge and cancels/awaits them on `hub.Shutdown`, so there are no `CancelFunc`s for the caller to track.
 
 ```go
 type redisSubscriber struct{ client *redis.Client }
@@ -111,13 +111,15 @@ func (r *redisSubscriber) Subscribe(ctx context.Context, channel string, onMessa
     return ctx.Err()
 }
 
-cancel := hub.FanOut(sse.FanOutConfig{
-    Subscriber: &redisSubscriber{client: rdb},
-    Channel:    "notifications",
-    Topic:      "notifications",
-    EventType:  "notification",
+handler, hub := sse.NewWithHub(sse.Config{
+    Bridges: []sse.BridgeConfig{{
+        Subscriber: &redisSubscriber{client: rdb},
+        Channel:    "notifications",
+        Topic:      "notifications",
+        EventType:  "notification",
+    }},
 })
-defer cancel()
+app.Get("/events", handler)
 ```
 
 Graceful shutdown with deadline:
@@ -136,17 +138,19 @@ Authentication is left to the user via `OnConnect`. Note that browser `EventSour
 
 | Property          | Type                                              | Description                                                                                                          | Default        |
 | :---------------- | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------- | :------------- |
-| Next              | `func(fiber.Ctx) bool`                            | Next defines a function to skip this middleware when returned true.                                                   | `nil`          |
 | OnConnect         | `func(fiber.Ctx, *Connection) error`              | Called when a new client connects. Set `conn.Topics` and `conn.Metadata` here. Return error to reject (sends 403).   | `nil`          |
 | OnDisconnect      | `func(*Connection)`                               | Called after a client disconnects.                                                                                    | `nil`          |
 | OnPause           | `func(*Connection)`                               | Called when a connection is paused (browser tab hidden).                                                              | `nil`          |
 | OnResume          | `func(*Connection)`                               | Called when a connection is resumed (browser tab visible).                                                            | `nil`          |
 | Replayer          | `Replayer`                                        | Pluggable Last-Event-ID replay backend. If nil, replay is disabled.                                                   | `nil`          |
+| Bridges           | `[]BridgeConfig`                                  | Auto-started bridges from external pub/sub systems. Each implements `SubscriberBridge`. Canceled on `hub.Shutdown`.   | `nil`          |
 | FlushInterval     | `time.Duration`                                   | How often batched (P1) and coalesced (P2) events are flushed to clients. Instant (P0) events bypass this.            | `2s`           |
 | HeartbeatInterval | `time.Duration`                                   | How often a comment is sent to idle connections to detect disconnects and prevent proxy timeouts.                     | `30s`          |
 | MaxLifetime       | `time.Duration`                                   | Maximum duration a single SSE connection can stay open. Set to -1 for unlimited.                                     | `30m`          |
 | SendBufferSize    | `int`                                             | Per-connection channel buffer. If full, events are dropped.                                                          | `256`          |
 | RetryMS           | `int`                                             | Reconnection interval hint sent to clients via the `retry:` directive on connect.                                    | `3000`         |
+
+The SSE middleware is **terminal** — the returned handler hijacks the response stream and never calls `c.Next()`. For the same reason `Config` does not include a `Next` field: placing handlers after the SSE middleware has no defined effect.
 
 ## Default Config
 
