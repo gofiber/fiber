@@ -560,7 +560,7 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		if hasPrivate || hasNoCache || (!cfg.DisableVaryHeaders && varyHasStar) {
+		if hasPrivate || hasNoCache || varyHasStar {
 			if e != nil {
 				if err := deleteKey(reqCtx, key); err != nil {
 					if cfg.Storage != nil {
@@ -1279,7 +1279,7 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 	}
 
 	buf := (*bufPtr)[:0]
-	buf = append(buf, c.Path()...)
+	buf = append(buf, boundKeySegment(c.Path())...)
 
 	if !cfg.DisableQueryKeys {
 		buf = append(buf, []byte("|q=")...)

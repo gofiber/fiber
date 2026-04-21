@@ -26,11 +26,14 @@ type Config struct {
 	// Optional. Default: nil
 	CacheInvalidator func(fiber.Ctx) bool
 
-	// Key allows you to generate custom keys, by default c.Path() is used
+	// KeyGenerator allows you to generate custom keys.
+	//
+	// When nil, the middleware uses a structured key based on the request path,
+	// canonical query string, selected request headers, and selected cookies.
 	//
 	// The resulting cache key is always partitioned by request method internally.
 	//
-	// Default: structured key based on path, canonical query string, and selected request headers.
+	// Default: nil
 	KeyGenerator func(fiber.Ctx) string
 
 	// ExpirationGenerator allows you to generate a custom expiration per request.
@@ -121,8 +124,8 @@ func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
 	if len(config) < 1 {
 		cfg := ConfigDefault
-		cfg.KeyHeaders = normalizeKeyDimensions(cfg.KeyHeaders, ConfigDefault.KeyHeaders)
-		cfg.KeyCookies = normalizeKeyDimensions(cfg.KeyCookies, nil)
+		cfg.KeyHeaders = normalizeHeaderDimensions(cfg.KeyHeaders, ConfigDefault.KeyHeaders)
+		cfg.KeyCookies = normalizeCookieDimensions(cfg.KeyCookies, nil)
 		if cfg.KeyGenerator == nil {
 			cfg.KeyGenerator = func(c fiber.Ctx) string {
 				return defaultKeyGenerator(c, &cfg)
@@ -144,8 +147,8 @@ func configDefault(config ...Config) Config {
 	if cfg.CacheHeader == "" {
 		cfg.CacheHeader = ConfigDefault.CacheHeader
 	}
-	cfg.KeyHeaders = normalizeKeyDimensions(cfg.KeyHeaders, ConfigDefault.KeyHeaders)
-	cfg.KeyCookies = normalizeKeyDimensions(cfg.KeyCookies, nil)
+	cfg.KeyHeaders = normalizeHeaderDimensions(cfg.KeyHeaders, ConfigDefault.KeyHeaders)
+	cfg.KeyCookies = normalizeCookieDimensions(cfg.KeyCookies, nil)
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = func(c fiber.Ctx) string {
 			return defaultKeyGenerator(c, &cfg)
@@ -154,7 +157,17 @@ func configDefault(config ...Config) Config {
 	return cfg
 }
 
-func normalizeKeyDimensions(values, defaults []string) []string {
+func normalizeHeaderDimensions(values, defaults []string) []string {
+	return normalizeKeyDimensions(values, defaults, utilsstrings.ToLower)
+}
+
+func normalizeCookieDimensions(values, defaults []string) []string {
+	return normalizeKeyDimensions(values, defaults, func(value string) string {
+		return value
+	})
+}
+
+func normalizeKeyDimensions(values, defaults []string, normalize func(string) string) []string {
 	if len(values) == 0 {
 		if len(defaults) == 0 {
 			return nil
@@ -169,7 +182,7 @@ func normalizeKeyDimensions(values, defaults []string) []string {
 		if trimmed == "" {
 			continue
 		}
-		normalized := utilsstrings.ToLower(trimmed)
+		normalized := normalize(trimmed)
 		if _, ok := seen[normalized]; ok {
 			continue
 		}
