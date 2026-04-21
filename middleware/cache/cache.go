@@ -560,6 +560,8 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		// RFC 9111 requires responses with Vary: * to remain uncacheable even when
+		// response-driven Vary partitioning is otherwise disabled.
 		if hasPrivate || hasNoCache || varyHasStar {
 			if e != nil {
 				if err := deleteKey(reqCtx, key); err != nil {

@@ -162,9 +162,7 @@ func normalizeHeaderDimensions(values, defaults []string) []string {
 }
 
 func normalizeCookieDimensions(values, defaults []string) []string {
-	return normalizeKeyDimensions(values, defaults, func(value string) string {
-		return value
-	})
+	return normalizeKeyDimensions(values, defaults, preserveKeyDimensionCase)
 }
 
 func normalizeKeyDimensions(values, defaults []string, normalize func(string) string) []string {
@@ -192,4 +190,8 @@ func normalizeKeyDimensions(values, defaults []string, normalize func(string) st
 
 	sort.Strings(out)
 	return out
+}
+
+func preserveKeyDimensionCase(value string) string {
+	return value
 }
