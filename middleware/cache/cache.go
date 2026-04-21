@@ -1302,8 +1302,13 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 	}
 
 	result := utils.CopyString(utils.UnsafeString(buf))
-	*bufPtr = buf
-	keyBufferPool.Put(bufPtr)
+
+	// Reset buffer and return to pool, but discard if it grew too large
+	// to prevent pool from retaining oversized buffers
+	if cap(buf) <= defaultKeyBufferCap*4 {
+		*bufPtr = buf
+		keyBufferPool.Put(bufPtr)
+	}
 
 	return result
 }
@@ -1375,9 +1380,10 @@ func canonicalHeaderSubset(header *fasthttp.RequestHeader, names []string) strin
 		if idx > 0 {
 			buf = append(buf, '|')
 		}
-		buf = append(buf, name...)
+		buf = append(buf, utils.UnsafeBytes(name)...)
 		buf = append(buf, ':')
-		buf = append(buf, boundKeySegment(utils.CopyString(utils.UnsafeString(header.Peek(name))))...)
+		headerValue := header.Peek(name)
+		buf = append(buf, utils.UnsafeBytes(boundKeySegment(utils.CopyString(utils.UnsafeString(headerValue))))...)
 	}
 
 	return utils.CopyString(utils.UnsafeString(buf))
@@ -1393,9 +1399,10 @@ func canonicalCookieSubset(c fiber.Ctx, names []string) string {
 		if idx > 0 {
 			buf = append(buf, '|')
 		}
-		buf = append(buf, name...)
+		buf = append(buf, utils.UnsafeBytes(name)...)
 		buf = append(buf, ':')
-		buf = append(buf, boundKeySegment(c.Cookies(name))...)
+		cookieValue := c.Cookies(name)
+		buf = append(buf, utils.UnsafeBytes(boundKeySegment(cookieValue))...)
 	}
 
 	return utils.CopyString(utils.UnsafeString(buf))

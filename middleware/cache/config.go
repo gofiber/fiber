@@ -28,8 +28,11 @@ type Config struct {
 
 	// KeyGenerator allows you to generate custom keys.
 	//
-	// When nil, the middleware uses a structured key based on the request path,
-	// canonical query string, selected request headers, and selected cookies.
+	// When nil, the middleware uses a structured key based on:
+	//   - Request path (bounded to 192 bytes, hashed if longer)
+	//   - Canonical query string (sorted parameters, bounded)
+	//   - Selected request headers (from KeyHeaders)
+	//   - Selected cookies (from KeyCookies)
 	//
 	// The resulting cache key is always partitioned by request method internally.
 	//
