@@ -50,7 +50,8 @@ type Config struct {
 	CacheHeader string
 
 	// KeyHeaders is the set of request headers that can change the selected representation and
-	// therefore should partition cache entries.
+	// therefore should partition cache entries. Set this to an empty slice to disable
+	// header-based partitioning.
 	//
 	// Optional. Default: []string{"Accept", "Accept-Encoding", "Accept-Language"}
 	KeyHeaders []string
@@ -158,19 +159,23 @@ func configDefault(config ...Config) Config {
 }
 
 func normalizeHeaderDimensions(values, defaults []string) []string {
-	return normalizeKeyDimensions(values, defaults, false)
+	return normalizeKeyDimensions(values, defaults, utilsstrings.ToLower)
 }
 
 func normalizeCookieDimensions(values, defaults []string) []string {
-	return normalizeKeyDimensions(values, defaults, true)
+	return normalizeKeyDimensions(values, defaults, nil)
 }
 
-func normalizeKeyDimensions(values, defaults []string, caseSensitive bool) []string {
-	if len(values) == 0 {
+func normalizeKeyDimensions(values, defaults []string, normalize func(string) string) []string {
+	if values == nil {
 		if len(defaults) == 0 {
 			return nil
 		}
 		values = defaults
+	}
+
+	if len(values) == 0 {
+		return nil
 	}
 
 	seen := make(map[string]struct{}, len(values))
@@ -181,8 +186,8 @@ func normalizeKeyDimensions(values, defaults []string, caseSensitive bool) []str
 			continue
 		}
 		normalized := trimmed
-		if !caseSensitive {
-			normalized = utilsstrings.ToLower(trimmed)
+		if normalize != nil {
+			normalized = normalize(trimmed)
 		}
 		if _, ok := seen[normalized]; ok {
 			continue

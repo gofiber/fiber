@@ -1284,17 +1284,17 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 	buf = append(buf, boundKeySegment(c.Path())...)
 
 	if !cfg.DisableQueryKeys {
-		buf = append(buf, []byte("|q=")...)
+		buf = append(buf, '|', 'q', '=')
 		buf = append(buf, canonicalQueryString(c.Request().URI())...)
 	}
 
 	if len(cfg.KeyHeaders) > 0 {
-		buf = append(buf, []byte("|h=")...)
+		buf = append(buf, '|', 'h', '=')
 		buf = append(buf, canonicalHeaderSubset(&c.Request().Header, cfg.KeyHeaders)...)
 	}
 
 	if len(cfg.KeyCookies) > 0 {
-		buf = append(buf, []byte("|c=")...)
+		buf = append(buf, '|', 'c', '=')
 		buf = append(buf, canonicalCookieSubset(c, cfg.KeyCookies)...)
 	}
 

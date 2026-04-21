@@ -1071,33 +1071,63 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 		t.Parallel()
 
 		storage := newMutatingStorage(nil)
-		longPath := "/" + strings.Repeat("a", maxKeyDimensionSegmentLength+1)
+		oversizedPath := "/" + strings.Repeat("a", maxKeyDimensionSegmentLength+1)
 		app := fiber.New()
 		app.Use(New(Config{
 			Expiration: 1 * time.Hour,
 			Storage:    storage,
 		}))
-		app.Get(longPath, func(c fiber.Ctx) error {
+		app.Get(oversizedPath, func(c fiber.Ctx) error {
 			return c.SendString("ok")
 		})
 
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, longPath, http.NoBody))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, oversizedPath, http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-		hash := sha256.Sum256([]byte(longPath))
+		hash := sha256.Sum256([]byte(oversizedPath))
 		expectedBoundedPath := "sha256:" + hex.EncodeToString(hash[:])
-		require.Equal(t, len("sha256:")+sha256.Size*2, len(expectedBoundedPath))
+		require.Len(t, expectedBoundedPath, len("sha256:")+sha256.Size*2)
 
 		expectedPrefix := fiber.MethodGet + "|" + expectedBoundedPath
 		foundBoundedKey := false
 		for key := range storage.data {
-			require.NotContains(t, key, longPath)
+			require.NotContains(t, key, oversizedPath)
 			if strings.HasPrefix(key, expectedPrefix) {
 				foundBoundedKey = true
 			}
 		}
 		require.True(t, foundBoundedKey)
+	})
+
+	t.Run("empty keyed headers disable default header partitioning", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{KeyHeaders: []string{}}))
+
+		count := 0
+		app.Get("/", func(c fiber.Ctx) error {
+			count++
+			return c.SendString(fmt.Sprintf("%d:%s", count, c.Get(fiber.HeaderAcceptLanguage)))
+		})
+
+		reqEN := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		reqEN.Header.Set(fiber.HeaderAcceptLanguage, "en-US")
+		resp, err := app.Test(reqEN)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "1:en-US", string(body))
+
+		reqFR := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		reqFR.Header.Set(fiber.HeaderAcceptLanguage, "fr-FR")
+		resp, err = app.Test(reqFR)
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1:en-US", string(body))
 	})
 
 	t.Run("non-keyed headers do not fragment cache", func(t *testing.T) {
