@@ -5,6 +5,8 @@ package cache
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -1083,7 +1085,11 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-		expectedPrefix := fiber.MethodGet + "|" + boundKeySegment(longPath)
+		hash := sha256.Sum256([]byte(longPath))
+		expectedBoundedPath := "sha256:" + hex.EncodeToString(hash[:])
+		require.Equal(t, len("sha256:")+sha256.Size*2, len(expectedBoundedPath))
+
+		expectedPrefix := fiber.MethodGet + "|" + expectedBoundedPath
 		foundBoundedKey := false
 		for key := range storage.data {
 			require.NotContains(t, key, longPath)

@@ -158,14 +158,14 @@ func configDefault(config ...Config) Config {
 }
 
 func normalizeHeaderDimensions(values, defaults []string) []string {
-	return normalizeKeyDimensions(values, defaults, utilsstrings.ToLower)
+	return normalizeKeyDimensions(values, defaults, false)
 }
 
 func normalizeCookieDimensions(values, defaults []string) []string {
-	return normalizeKeyDimensions(values, defaults, preserveKeyDimensionCase)
+	return normalizeKeyDimensions(values, defaults, true)
 }
 
-func normalizeKeyDimensions(values, defaults []string, normalize func(string) string) []string {
+func normalizeKeyDimensions(values, defaults []string, caseSensitive bool) []string {
 	if len(values) == 0 {
 		if len(defaults) == 0 {
 			return nil
@@ -180,7 +180,10 @@ func normalizeKeyDimensions(values, defaults []string, normalize func(string) st
 		if trimmed == "" {
 			continue
 		}
-		normalized := normalize(trimmed)
+		normalized := trimmed
+		if !caseSensitive {
+			normalized = utilsstrings.ToLower(trimmed)
+		}
 		if _, ok := seen[normalized]; ok {
 			continue
 		}
@@ -190,8 +193,4 @@ func normalizeKeyDimensions(values, defaults []string, normalize func(string) st
 
 	sort.Strings(out)
 	return out
-}
-
-func preserveKeyDimensionCase(value string) string {
-	return value
 }
