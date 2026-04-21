@@ -33,6 +33,9 @@ const (
 	hexLen                       = sha256.Size * 2
 	maxKeyDimensionSegmentLength = 192
 	defaultKeyBufferCap          = 256
+	maxQueryParams               = 128  // Maximum number of query parameters to parse
+	maxVaryHeaders               = 32   // Maximum number of Vary headers to process
+	maxQueryBufferSize           = 4096 // Maximum buffer size for query string canonicalization
 )
 
 // cache status
@@ -1315,13 +1318,27 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 		return boundKeySegment(query)
 	}
 
+	// Protect against DoS via excessive query parameters
+	paramCount := 0
+	for _, values := range parsed {
+		paramCount += len(values)
+		if paramCount > maxQueryParams {
+			// Too many parameters, hash the entire query string
+			return boundKeySegment(query)
+		}
+	}
+
 	keys := make([]string, 0, len(parsed))
 	for key := range parsed {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 
-	buf := make([]byte, 0, len(query))
+	// Use a bounded buffer to prevent excessive memory allocation during URL escaping
+	// URL escaping can expand strings up to 3x (each byte -> %XX)
+	initialCap := min(len(query)*2, maxQueryBufferSize/2)
+	buf := make([]byte, 0, initialCap)
+
 	for _, key := range keys {
 		values := parsed[key]
 		sort.Strings(values)
@@ -1329,9 +1346,19 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 			if len(buf) > 0 {
 				buf = append(buf, '&')
 			}
-			buf = append(buf, url.QueryEscape(key)...)
+
+			// Check buffer size before appending to prevent unbounded growth
+			escapedKey := url.QueryEscape(key)
+			escapedValue := url.QueryEscape(value)
+
+			// If buffer would exceed safe limits, hash the entire query
+			if len(buf)+len(escapedKey)+len(escapedValue)+2 > maxQueryBufferSize {
+				return boundKeySegment(query)
+			}
+
+			buf = append(buf, escapedKey...)
 			buf = append(buf, '=')
-			buf = append(buf, url.QueryEscape(value)...)
+			buf = append(buf, escapedValue...)
 		}
 	}
 
@@ -1384,6 +1411,7 @@ func boundKeySegment(segment string) string {
 
 func parseVary(vary string) ([]string, bool) {
 	names := make([]string, 0, 8)
+	count := 0
 	for part := range strings.SplitSeq(vary, ",") {
 		name := utils.TrimSpace(utilsstrings.ToLower(part))
 		if name == "" {
@@ -1392,6 +1420,14 @@ func parseVary(vary string) ([]string, bool) {
 		if name == "*" {
 			return nil, true
 		}
+
+		// Protect against DoS via excessive Vary headers
+		count++
+		if count > maxVaryHeaders {
+			// Too many Vary headers, treat as uncacheable (same as Vary: *)
+			return nil, true
+		}
+
 		names = append(names, name)
 	}
 
