@@ -29,7 +29,7 @@ jobs:
       commit-url: https://github.com/gofiber/fiber
       event-mode: >-
         ${{ github.event_name == 'workflow_dispatch' && inputs.mode
-        || github.event_name == 'repository_dispatch' && 'push'
+        || github.event_name == 'repository_dispatch' && 'release-all'
         || github.event_name }}
       tag-name: ${{ github.ref_name }}
     secrets:
