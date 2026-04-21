@@ -1335,7 +1335,7 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 		}
 	}
 
-	return boundKeySegment(utils.CopyString(buf))
+	return boundKeySegment(utils.CopyString(utils.UnsafeString(buf)))
 }
 
 func canonicalHeaderSubset(header *fasthttp.RequestHeader, names []string) string {
