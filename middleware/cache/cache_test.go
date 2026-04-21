@@ -936,37 +936,32 @@ func Test_Cache_Post(t *testing.T) {
 
 	app.Use(New())
 
+	count := 0
 	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendString(fiber.Query[string](c, "cache"))
-	})
-
-	app.Get("/get", func(c fiber.Ctx) error {
-		return c.SendString(fiber.Query[string](c, "cache"))
+		count++
+		return c.SendString(fmt.Sprintf("%d:%s", count, fiber.Query[string](c, "cache")))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", http.NoBody))
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "123", string(body))
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Equal(t, "1:123", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", http.NoBody))
+	require.NoError(t, err)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Equal(t, "2:123", string(body))
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", http.NoBody))
 	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "12345", string(body))
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=123", http.NoBody))
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "123", string(body))
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=12345", http.NoBody))
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "12345", string(body))
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Equal(t, "3:12345", string(body))
 }
 
 func Test_Cache_DefaultKeyDimensions(t *testing.T) {
