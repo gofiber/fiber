@@ -492,6 +492,75 @@ func Test_SSE_MarshaledEvent_WriteTo_RetryZeroOmitted(t *testing.T) {
 	require.NotContains(t, buf.String(), "retry:")
 }
 
+func Test_SSE_MarshaledEvent_WriteTo_SanitizesInjectionAtBoundary(t *testing.T) {
+	t.Parallel()
+
+	// An external Replayer can construct MarshaledEvent directly, bypassing
+	// marshalEvent's sanitization. WriteTo is the last line of defense —
+	// control sequences in ID or Type must be stripped so an attacker can't
+	// inject additional SSE fields onto the wire by embedding \n.
+	me := MarshaledEvent{
+		ID:   "evt_1\nevent: injected\nid: fake",
+		Type: "custom\ndata: also_injected",
+		Data: "payload",
+	}
+	var buf bytes.Buffer
+	_, err := me.WriteTo(&buf)
+	require.NoError(t, err)
+
+	output := buf.String()
+
+	// Invariant: exactly one event frame, exactly one id header, exactly
+	// one event header. The SSE parser only recognizes `id:` / `event:`
+	// at the start of a line — so count lines starting with them, not raw
+	// substring occurrences (the attacker's text survives INSIDE the
+	// field value but cannot start a new line).
+	var idLines, eventLines int
+	for line := range strings.SplitSeq(output, "\n") {
+		switch {
+		case strings.HasPrefix(line, "id: "):
+			idLines++
+		case strings.HasPrefix(line, "event: "):
+			eventLines++
+		default:
+		}
+	}
+	require.Equal(t, 1, idLines, "exactly one id line")
+	require.Equal(t, 1, eventLines, "exactly one event line")
+
+	// Frame terminator: ends with exactly one blank line separator.
+	require.True(t, strings.HasSuffix(output, "\n\n"))
+	// No partial frames — only one `\n\n` separator total.
+	require.Equal(t, 1, strings.Count(output, "\n\n"))
+}
+
+func Test_SSE_MarshaledEvent_WriteTo_TypedNilJSONMarshaler(t *testing.T) {
+	t.Parallel()
+
+	// A typed-nil pointer whose type implements json.Marshaler used to panic
+	// in the explicit `case json.Marshaler:` branch because the receiver
+	// was dereferenced without a nil check. All values now flow through
+	// json.Marshal in the default branch which is nil-safe (emits "null").
+	var nilMarshaler *panicOnMarshal
+	evt := Event{ID: "evt_tn", Type: "test", Data: nilMarshaler, Topics: []string{"t"}}
+	me := marshalEvent(&evt)
+
+	var buf bytes.Buffer
+	_, err := me.WriteTo(&buf)
+	require.NoError(t, err)
+	require.Contains(t, buf.String(), "data: null\n")
+}
+
+// panicOnMarshal dereferences its receiver in MarshalJSON — a typed-nil
+// pointer to this type would panic if invoked directly. Used to prove
+// marshalEvent routes through json.Marshal's nil-safe path.
+type panicOnMarshal struct{ Name string }
+
+func (p *panicOnMarshal) MarshalJSON() ([]byte, error) {
+	// Intentionally dereferences — would panic if called on a typed-nil.
+	return []byte(`"` + p.Name + `"`), nil
+}
+
 func Test_SSE_MarshaledEvent_WriteTo_Retry(t *testing.T) {
 	t.Parallel()
 

@@ -55,6 +55,9 @@ type BridgeConfig struct {
 
 // runBridge consumes a single BridgeConfig, publishing incoming payloads
 // until ctx is canceled. Retries on Subscribe errors with bridgeRetryDelay.
+//
+// A nil Subscriber is a programming error caught at hub startup (see
+// NewWithHub) so runBridge assumes cfg.Subscriber is non-nil.
 func (h *Hub) runBridge(ctx context.Context, cfg BridgeConfig) { //nolint:gocritic // hugeParam: value semantics preferred
 	topic := cfg.Topic
 	if topic == "" {
@@ -68,7 +71,16 @@ func (h *Hub) runBridge(ctx context.Context, cfg BridgeConfig) { //nolint:gocrit
 		default:
 		}
 
+		// Wrap the callback in a recover so a panic inside the caller-
+		// supplied Transform can't tear down the bridge goroutine (which
+		// would leak h.bridges.Done() and hang Shutdown forever).
 		err := cfg.Subscriber.Subscribe(ctx, cfg.Channel, func(payload string) {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Errorf("sse: bridge transform panic, message dropped channel=%s panic=%v",
+						cfg.Channel, r)
+				}
+			}()
 			if event := h.buildBridgeEvent(&cfg, topic, payload); event != nil {
 				h.Publish(*event)
 			}

@@ -105,15 +105,13 @@ func marshalEvent(e *Event) MarshaledEvent {
 		me.Data = v
 	case []byte:
 		me.Data = string(v)
-	case json.Marshaler:
-		b, err := v.MarshalJSON()
-		if err != nil {
-			errJSON, _ := json.Marshal(err.Error()) //nolint:errcheck,errchkjson // encoding a string never fails
-			me.Data = fmt.Sprintf(`{"error":%s}`, string(errJSON))
-		} else {
-			me.Data = string(b)
-		}
 	default:
+		// All other types flow through json.Marshal. The previous explicit
+		// json.Marshaler branch panicked on typed-nil pointers (e.g.
+		// `var p *Foo = nil` where *Foo has a MarshalJSON that dereferences
+		// the receiver) because the type switch matches the interface.
+		// json.Marshal handles typed-nil safely — it checks before invoking
+		// the method and emits `null` for nil pointers.
 		b, err := json.Marshal(v)
 		if err != nil {
 			errJSON, _ := json.Marshal(err.Error()) //nolint:errcheck,errchkjson // encoding a string never fails
@@ -133,14 +131,19 @@ func (me *MarshaledEvent) WriteTo(w io.Writer) (int64, error) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	if me.ID != "" {
+	// Sanitize control-sequence fields at the write boundary — not just in
+	// marshalEvent — so external Replayer implementations returning raw
+	// MarshaledEvent values can't inject extra SSE fields via embedded
+	// \r/\n in ID or Type. Defense in depth: WriteTo is the last line
+	// between an event and the client.
+	if id := sanitizeSSEField(me.ID); id != "" {
 		buf.WriteString("id: ")
-		buf.WriteString(me.ID)
+		buf.WriteString(id)
 		buf.WriteByte('\n')
 	}
-	if me.Type != "" {
+	if evtType := sanitizeSSEField(me.Type); evtType != "" {
 		buf.WriteString("event: ")
-		buf.WriteString(me.Type)
+		buf.WriteString(evtType)
 		buf.WriteByte('\n')
 	}
 	// Retry must be strictly positive to be emitted. Per the SSE spec a
@@ -188,8 +191,13 @@ func writeComment(w io.Writer, text string) error {
 	return nil
 }
 
-// writeRetry writes the retry directive.
+// writeRetry writes the retry directive. Non-positive ms values are
+// silently skipped — per the SSE spec `retry: 0` tells clients to
+// reconnect immediately, matching the MarshaledEvent.WriteTo semantics.
 func writeRetry(w io.Writer, ms int) error {
+	if ms <= 0 {
+		return nil
+	}
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 	buf.WriteString("retry: ")
