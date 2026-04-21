@@ -1429,8 +1429,13 @@ func Test_SSE_Publish_BufferFull(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	stats := hub.Stats()
-	// Some events should have been dropped
+	// At least some events must have landed in the pipeline AND some must
+	// have been dropped by the non-blocking `default:` branch in Publish.
+	// Asserting only EventsPublished > 0 would let a regression that makes
+	// Publish blocking pass silently — the drop counter is the actual
+	// invariant this test exists to pin.
 	require.Positive(t, stats.EventsPublished)
+	require.Positive(t, stats.EventsDropped)
 }
 
 // testReplayer is a minimal in-memory Replayer implementation used by tests
@@ -1595,21 +1600,31 @@ func Test_SSE_RouteEvent_ReplayerStore(t *testing.T) {
 }
 
 func Test_SSE_Shutdown_Timeout(t *testing.T) {
-	t.Parallel()
+	// Not parallel. Previously this test used t.Parallel() and returned
+	// without waiting for hub.run() to drain — run() is still alive inside
+	// <-h.shutdown executing broadcastShutdown + time.Sleep(drainDelay)
+	// (~200ms) and would outlive the test, mutating hub.connections under
+	// mu.Lock concurrently with other parallel tests. Running serial and
+	// awaiting hub.stopped eliminates that cross-test goroutine leak.
 
 	_, hub := NewWithHub()
 
-	// Create a context that's already canceled
+	// Pre-cancel context — Shutdown should surface ctx.Err().
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	// Close the hub so it can stop
-	hub.shutdownOnce.Do(func() {
-		close(hub.shutdown)
-	})
+	err := hub.Shutdown(ctx)
+	require.Error(t, err, "Shutdown with canceled ctx must return an error")
+	require.ErrorIs(t, err, context.Canceled)
 
-	// With already-canceled context, it might return an error if stopped hasn't been signaled
-	_ = hub.Shutdown(ctx) //nolint:errcheck // testing shutdown with canceled context
+	// Wait for the run loop to actually exit so we don't leak the
+	// goroutine into subsequent tests. Bounded wait so a regression that
+	// never closes `stopped` fails loudly.
+	select {
+	case <-hub.stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("hub.run() did not exit after Shutdown with canceled ctx")
+	}
 }
 
 func Benchmark_SSE_Publish(b *testing.B) {
