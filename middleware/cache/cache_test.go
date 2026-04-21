@@ -936,10 +936,10 @@ func Test_Cache_Post(t *testing.T) {
 
 	app.Use(New())
 
-	count := 0
+	var count atomic.Int32
 	app.Post("/", func(c fiber.Ctx) error {
-		count++
-		return c.SendString(fmt.Sprintf("%d:%s", count, fiber.Query[string](c, "cache")))
+		current := count.Add(1)
+		return c.SendString(fmt.Sprintf("%d:%s", current, fiber.Query[string](c, "cache")))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", http.NoBody))
