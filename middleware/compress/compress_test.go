@@ -1,12 +1,15 @@
 package compress
 
 import (
+	"bytes"
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -243,6 +246,40 @@ func Test_Compress_Vary_List_Star(t *testing.T) {
 	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "User-Agent, *", resp.Header.Get(fiber.HeaderVary))
+}
+
+func Test_Compress_RespectsBodyLimitOnCompressedRequestBody(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{
+		BodyLimit: 40,
+	})
+
+	app.Use(New())
+
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.Send(c.Body())
+	})
+
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+	_, err := gz.Write([]byte(strings.Repeat("a", 256)))
+	require.NoError(t, err)
+	require.NoError(t, gz.Flush())
+	require.NoError(t, gz.Close())
+
+	req := httptest.NewRequest(fiber.MethodPost, "/", bytes.NewReader(b.Bytes()))
+	req.Header.Set(fiber.HeaderContentEncoding, fiber.StrGzip)
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
+	req.Header.Set(fiber.HeaderAcceptEncoding, fiber.StrIdentity)
+
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, fasthttp.ErrBodyTooLarge.Error(), string(body))
 }
 
 func Test_Compress_Vary_Similar_Substring(t *testing.T) {

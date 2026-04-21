@@ -1,33 +1,36 @@
-name: "Sync docs"
+name: Sync docs
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
-    paths:
-      - "docs/**"
+    branches: [main]
+    paths: ['docs/**']
   release:
     types: [published]
+  repository_dispatch:
+    types: [sync-docs]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'push = sync current docs, release-all = version snapshot for latest release'
+        type: choice
+        options: [push, release-all]
+        default: push
 
 jobs:
-  sync-docs:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 2
-
-      - name: Setup Node.js environment
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
-        with:
-          node-version: "22.x"
-
-      - name: Sync docs
-        run: ./.github/scripts/sync_docs.sh
-        env:
-          EVENT: ${{ github.event_name }}
-          TAG_NAME: ${{ github.ref_name }}
-          TOKEN: ${{ secrets.DOC_SYNC_TOKEN }}
+  sync:
+    uses: gofiber/.github/.github/workflows/sync-docs.yml@main
+    with:
+      repo-type: single
+      source-dir: docs
+      destination-dir: docs/core
+      version-file: versions.json
+      docusaurus-command: npm run docusaurus -- docs:version
+      file-patterns: '*'
+      commit-url: https://github.com/gofiber/fiber
+      event-mode: >-
+        ${{ github.event_name == 'workflow_dispatch' && inputs.mode
+        || github.event_name == 'repository_dispatch' && 'push'
+        || github.event_name }}
+      tag-name: ${{ github.ref_name }}
+    secrets:
+      doc-sync-token: ${{ secrets.DOC_SYNC_TOKEN }}
