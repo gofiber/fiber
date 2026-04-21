@@ -454,6 +454,9 @@ func Test_SSE_MarshaledEvent_WriteTo(t *testing.T) {
 	require.Contains(t, output, "id: evt_1\n")
 	require.Contains(t, output, "event: test\n")
 	require.Contains(t, output, "data: hello world\n")
+	// A zero-value Retry field must not produce `retry: 0` (which would
+	// tell clients to reconnect immediately per the SSE spec).
+	require.NotContains(t, output, "retry:")
 	require.True(t, strings.HasSuffix(output, "\n\n"))
 }
 
@@ -474,6 +477,19 @@ func Test_SSE_MarshaledEvent_WriteTo_Multiline(t *testing.T) {
 	require.Contains(t, output, "data: line1\n")
 	require.Contains(t, output, "data: line2\n")
 	require.Contains(t, output, "data: line3\n")
+}
+
+func Test_SSE_MarshaledEvent_WriteTo_RetryZeroOmitted(t *testing.T) {
+	t.Parallel()
+
+	// Retry: 0 (the zero value) must NOT emit `retry: 0\n`. Per the SSE
+	// spec that directive tells clients to reconnect immediately —
+	// emitting it for an unset field could cascade into a reconnect storm.
+	me := MarshaledEvent{ID: "evt_zero", Type: "test", Data: "x", Retry: 0}
+	var buf bytes.Buffer
+	_, err := me.WriteTo(&buf)
+	require.NoError(t, err)
+	require.NotContains(t, buf.String(), "retry:")
 }
 
 func Test_SSE_MarshaledEvent_WriteTo_Retry(t *testing.T) {

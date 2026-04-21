@@ -61,8 +61,13 @@ type MarshaledEvent struct {
 	Type      string
 	Data      string
 	// TTL is the maximum age for this event. Zero means no expiry.
-	TTL   time.Duration
-	Retry int // -1 means omit
+	TTL time.Duration
+	// Retry is the reconnection hint (milliseconds) sent to clients. Zero
+	// or negative values are omitted from the wire frame — per the SSE
+	// spec `retry: 0` instructs clients to reconnect immediately, which
+	// could trigger reconnect storms, so only strictly positive values
+	// are emitted.
+	Retry int
 }
 
 // sanitizeSSEField strips carriage returns and newlines from SSE control
@@ -138,7 +143,12 @@ func (me *MarshaledEvent) WriteTo(w io.Writer) (int64, error) {
 		buf.WriteString(me.Type)
 		buf.WriteByte('\n')
 	}
-	if me.Retry >= 0 {
+	// Retry must be strictly positive to be emitted. Per the SSE spec a
+	// `retry: 0` directive tells clients to reconnect immediately, which can
+	// trigger reconnect storms if a Replayer implementation accidentally
+	// constructs MarshaledEvent without setting Retry (its zero value is 0).
+	// Treating 0 as "unset" matches the internal marshalEvent default.
+	if me.Retry > 0 {
 		buf.WriteString("retry: ")
 		buf.WriteString(strconv.Itoa(me.Retry))
 		buf.WriteByte('\n')

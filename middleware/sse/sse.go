@@ -34,6 +34,7 @@ import (
 	"maps"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // New creates a new SSE middleware handler. Use this when you don't need
@@ -78,13 +79,14 @@ func NewWithHub(config ...Config) (fiber.Handler, *Hub) {
 		)
 
 		// Let the application authenticate and configure the connection.
-		// The returned error is never exposed to the client — callers may
-		// include user/tenant identifiers or internal policy reasons that
-		// would leak information to an unauthenticated peer. The error is
-		// returned to the caller for logging via the standard Fiber error
-		// pipeline.
+		// The returned error is logged server-side (so operators can tell
+		// auth-fail from rate-limit from tenant-mismatch, etc.) but never
+		// exposed to the client — callers may include user / tenant
+		// identifiers or internal policy reasons that would leak
+		// information to an unauthenticated peer.
 		if cfg.OnConnect != nil {
 			if err := cfg.OnConnect(c, conn); err != nil {
+				log.Warnf("sse: OnConnect rejected connection: %v", err)
 				return fiber.NewError(fiber.StatusForbidden, "forbidden")
 			}
 		}
