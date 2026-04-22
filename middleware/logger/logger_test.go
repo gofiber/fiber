@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -484,7 +485,7 @@ func Test_Logger_CLF_Format(t *testing.T) {
 
 	method := fiber.MethodGet
 	status := fiber.StatusNotFound
-	bytesSent := 0
+	bytesSent := 9 // "Not Found" response body
 
 	resp, err := app.Test(httptest.NewRequest(method, pathFooBar, http.NoBody))
 	require.NoError(t, err)
@@ -507,7 +508,7 @@ func Test_Logger_Combined_CLF_Format(t *testing.T) {
 
 	method := fiber.MethodGet
 	status := fiber.StatusNotFound
-	bytesSent := 0
+	bytesSent := 9 // "Not Found" response body
 	referer := "http://example.com"
 	ua := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
 
@@ -537,7 +538,7 @@ func Test_Logger_Json_Format(t *testing.T) {
 	method := fiber.MethodGet
 	status := fiber.StatusNotFound
 	ip := "0.0.0.0"
-	bytesSent := 0
+	bytesSent := 9 // "Not Found" response body
 
 	req := httptest.NewRequest(method, pathFooBar, http.NoBody)
 	resp, err := app.Test(req)
@@ -562,7 +563,7 @@ func Test_Logger_ECS_Format(t *testing.T) {
 	method := fiber.MethodGet
 	status := fiber.StatusNotFound
 	ip := "0.0.0.0"
-	bytesSent := 0
+	bytesSent := 9 // "Not Found" response body
 	msg := fmt.Sprintf("%s %s responded with %d", method, pathFooBar, status)
 
 	req := httptest.NewRequest(method, pathFooBar, http.NoBody)
@@ -799,13 +800,35 @@ func Test_Logger_AppendUint(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "-2 0 200", buf.String())
+	require.Equal(t, "-2 5 200", buf.String())
 
 	buf.Reset()
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/content", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "-2 5 200", buf.String())
+}
+
+// go test -run Test_Logger_BytesSent
+func Test_Logger_BytesSent(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format: "${url}====${bytesSent}====\n",
+		Stream: buf,
+	}))
+
+	app.Get("/test", func(c fiber.Ctx) error {
+		return c.SendString("test")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "/test====4====\n", buf.String())
 }
 
 // go test -run Test_Logger_Data_Race -race
@@ -987,8 +1010,12 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	// -2 means identity, -1 means chunked, 200 status
-	require.Equal(t, "-2 -1 200", buf.String())
+	// With streaming responses, bytesSent should reflect actual bytes sent (not -1 for chunked)
+	parts := strings.Split(strings.TrimSpace(buf.String()), " ")
+	require.Len(t, parts, 3)
+	require.Equal(t, "-2", parts[0])  // bytesReceived: -2 means identity
+	require.Greater(t, parts[1], "0") // bytesSent: should be actual byte count from streaming
+	require.Equal(t, "200", parts[2]) // status
 }
 
 type fakeOutput int
