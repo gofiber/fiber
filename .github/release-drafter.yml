@@ -1,52 +1,10 @@
-name-template: 'v$RESOLVED_VERSION'
-tag-template: 'v$RESOLVED_VERSION'
+_extends: gofiber/.github:release-drafter.yml
 commitish: main
 filter-by-commitish: true
 include-labels:
   - 'v3'
 exclude-labels:
   - 'v2'
-categories:
-  - title: '❗ Breaking Changes'
-    labels:
-      - '❗ BreakingChange'
-  - title: '🚀 New'
-    labels:
-      - '✏️ Feature'
-      - '📝 Proposal'
-  - title: '🧹 Updates'
-    labels:
-      - '🧹 Updates'
-      - '⚡️ Performance'
-  - title: '🐛 Fixes'
-    labels:
-      - '☢️ Bug'
-  - title: '🛠️ Maintenance'
-    labels:
-      - '🤖 Dependencies'
-  - title: '📚 Documentation'
-    labels:
-      - '📒 Documentation'
-change-template: '- $TITLE (#$NUMBER)'
-change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
-exclude-contributors:
-  - dependabot
-  - dependabot[bot]
-version-resolver:
-  major:
-    labels:
-      - '❗ BreakingChange'
-  minor:
-    labels:
-      - '✏️ Feature'
-  patch:
-    labels:
-      - '📒 Documentation'
-      - '☢️ Bug'
-      - '🤖 Dependencies'
-      - '🧹 Updates'
-      - '⚡️ Performance'
-  default: patch
 template: |
     $CHANGES
 

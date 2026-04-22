@@ -1,0 +1,23 @@
+name: After Release
+
+on:
+  release:
+    types: [published]
+  repository_dispatch:
+    types: [after-release]
+  workflow_dispatch:
+
+jobs:
+  notify:
+    uses: gofiber/.github/.github/workflows/after-release.yml@main
+    with:
+      skip-wait: ${{ github.event_name == 'workflow_dispatch' }}
+      repos: |
+        - gofiber/contrib
+        - gofiber/storage
+        - gofiber/template
+        - gofiber/cli
+        - gofiber/boilerplate
+        - gofiber/recipes
+    secrets:
+      dispatch-token: ${{ secrets.DISPATCH_TOKEN }}

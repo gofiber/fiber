@@ -2546,3 +2546,208 @@ func Benchmark_Router_GitHub_API_Parallel(b *testing.B) {
 		require.True(b, match)
 	}
 }
+
+// go test -run Test_Route_URL
+func Test_Route_URL(t *testing.T) {
+	t.Parallel()
+
+	t.Run("simple parameter", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/user/:name", emptyHandler).Name("User")
+
+		route := app.GetRoute("User")
+		url, err := route.URL(Map{"name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/fiber", url)
+	})
+
+	t.Run("multiple parameters", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/user/:name/:id", emptyHandler).Name("UserID")
+
+		route := app.GetRoute("UserID")
+		url, err := route.URL(Map{"name": "john", "id": "123"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/john/123", url)
+	})
+
+	t.Run("wildcard parameters", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/:phone/*/send/*", emptyHandler).Name("SendSms")
+
+		route := app.GetRoute("SendSms")
+		url, err := route.URL(Map{
+			"phone": "23456789",
+			"*1":    "sms",
+			"*2":    "test-msg",
+		})
+		require.NoError(t, err)
+		require.Equal(t, "/23456789/sms/send/test-msg", url)
+	})
+
+	t.Run("single wildcard parameter", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/:phone/*/send", emptyHandler).Name("SendSms")
+
+		route := app.GetRoute("SendSms")
+		url, err := route.URL(Map{
+			"phone": "23456789",
+			"*":     "sms",
+		})
+		require.NoError(t, err)
+		require.Equal(t, "/23456789/sms/send", url)
+	})
+
+	t.Run("plus parameters prefer plus fallback", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/user/+", emptyHandler).Name("UserGreedy")
+
+		route := app.GetRoute("UserGreedy")
+		url, err := route.URL(Map{
+			"*": "wildcard",
+			"+": "plus",
+		})
+		require.NoError(t, err)
+		require.Equal(t, "/user/plus", url)
+	})
+
+	t.Run("preferred greedy parameters default fallback", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, preferredPlusGreedyParameters, preferredGreedyParameters("+1"))
+		require.Equal(t, preferredWildcardGreedyParameters, preferredGreedyParameters("*1"))
+		require.Equal(t, defaultGreedyParameterKeys, preferredGreedyParameters(""))
+		require.Equal(t, defaultGreedyParameterKeys, preferredGreedyParameters("name"))
+	})
+
+	t.Run("case insensitive default", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/user/:name", emptyHandler).Name("User")
+
+		route := app.GetRoute("User")
+		// Case-insensitive by default (matching Fiber's default behavior)
+		url, err := route.URL(Map{"Name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/fiber", url)
+
+		// When multiple keys case-fold to the same param name and no exact key
+		// exists, the lexicographically-smallest key wins deterministically.
+		for range 50 {
+			url, err = route.URL(Map{"nAme": "second", "Name": "first"})
+			require.NoError(t, err)
+			require.Equal(t, "/user/first", url)
+		}
+
+		// When multiple keys case-fold to the same param name, prefer the exact match.
+		url, err = route.URL(Map{"name": "exact", "Name": "fallback"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/exact", url)
+	})
+
+	t.Run("case sensitive", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{CaseSensitive: true})
+		app.Get("/user/:name", emptyHandler).Name("User")
+
+		route := app.GetRoute("User")
+		// Exact case match succeeds
+		url, err := route.URL(Map{"name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/fiber", url)
+		// Different case does not match when CaseSensitive is true
+		url, err = route.URL(Map{"Name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/", url)
+	})
+
+	t.Run("empty route", func(t *testing.T) {
+		t.Parallel()
+		route := Route{}
+		url, err := route.URL(Map{"name": "fiber"})
+		require.Error(t, err)
+		require.Equal(t, ErrNotFound, err)
+		require.Empty(t, url)
+	})
+
+	t.Run("route without parsed segments returns path", func(t *testing.T) {
+		t.Parallel()
+		// This covers fallback/manual Route values whose Path is set but whose
+		// routeParser was never populated, such as synthetic routes outside the
+		// normal registration pipeline.
+		route := Route{Path: "/error"}
+		url, err := route.URL(Map{"name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/error", url)
+	})
+
+	t.Run("GetRoute direct call", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/user/:name", emptyHandler).Name("User")
+
+		url, err := app.GetRoute("User").URL(Map{"name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/fiber", url)
+	})
+
+	t.Run("no parameters", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/static/path", emptyHandler).Name("Static")
+
+		route := app.GetRoute("Static")
+		url, err := route.URL(Map{})
+		require.NoError(t, err)
+		require.Equal(t, "/static/path", url)
+	})
+
+	t.Run("missing parameter value", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/user/:name/:id", emptyHandler).Name("UserID")
+
+		route := app.GetRoute("UserID")
+		url, err := route.URL(Map{"name": "john"})
+		require.NoError(t, err)
+		// Missing id parameter results in empty placeholder
+		require.Equal(t, "/user/john/", url)
+	})
+
+	t.Run("extra parameters ignored", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/user/:name", emptyHandler).Name("User")
+
+		route := app.GetRoute("User")
+		url, err := route.URL(Map{"name": "fiber", "extra": "ignored"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/fiber", url)
+	})
+
+	t.Run("numeric parameter values", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/item/:id", emptyHandler).Name("Item")
+
+		route := app.GetRoute("Item")
+		url, err := route.URL(Map{"id": 42})
+		require.NoError(t, err)
+		require.Equal(t, "/item/42", url)
+	})
+
+	t.Run("complex path with mixed content", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/api/v1/users/:userId/posts/:postId/comments", emptyHandler).Name("Comments")
+
+		route := app.GetRoute("Comments")
+		url, err := route.URL(Map{"userId": "user123", "postId": "post456"})
+		require.NoError(t, err)
+		require.Equal(t, "/api/v1/users/user123/posts/post456/comments", url)
+	})
+}
