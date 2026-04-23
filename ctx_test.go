@@ -2151,6 +2151,12 @@ func Test_Ctx_AutoFormat_XSS_Prevention(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "<p>Price: 5 &lt; 10 &amp; 20 &gt; 15</p>", string(c.Response().Body()))
 
+	// Test that pre-rendered HTML is treated as plain text
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.AutoFormat("<b>Hello, World!</b>")
+	require.NoError(t, err)
+	require.Equal(t, "<p>&lt;b&gt;Hello, World!&lt;/b&gt;</p>", string(c.Response().Body()))
+
 	// Test that normal text without special chars works fine
 	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
 	err = c.AutoFormat("Hello, World!")
