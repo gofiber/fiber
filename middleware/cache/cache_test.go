@@ -506,7 +506,10 @@ func Test_Cache_CacheControl(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
-	require.Equal(t, "public, max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
+	// max-age can be 10 or 11 depending on sub-second timing between store and read
+	cc := resp.Header.Get(fiber.HeaderCacheControl)
+	require.True(t, cc == "public, max-age=10" || cc == "public, max-age=11",
+		"unexpected Cache-Control: %s", cc)
 }
 
 func Test_Cache_CacheControl_Disabled(t *testing.T) {
