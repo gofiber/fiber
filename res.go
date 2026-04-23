@@ -3,6 +3,7 @@ package fiber
 import (
 	"bufio"
 	"fmt"
+	"html"
 	"html/template"
 	"io"
 	"io/fs"
@@ -457,7 +458,7 @@ func (r *DefaultRes) AutoFormat(body any) error {
 	case "xml":
 		return r.XML(body)
 	case "html":
-		return r.SendString("<p>" + b + "</p>")
+		return r.SendString("<p>" + html.EscapeString(b) + "</p>")
 	case "msgpack":
 		return r.MsgPack(body)
 	case "cbor":
