@@ -2,7 +2,6 @@ package cache
 
 import (
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -172,7 +171,7 @@ func configDefault(config ...Config) Config {
 		// Normalize method names to uppercase (HTTP methods are case-sensitive
 		// and c.Method() returns uppercase, e.g. "GET" not "get")
 		for i, m := range cfg.Methods {
-			cfg.Methods[i] = strings.ToUpper(m)
+			cfg.Methods[i] = utilsstrings.ToUpper(m)
 		}
 	}
 	if cfg.KeyGenerator == nil {
