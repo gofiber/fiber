@@ -927,7 +927,9 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// hasDirective checks if a cache-control header contains a directive (case-insensitive)
+// hasDirective checks if a cache directive header value contains a directive (case-insensitive).
+// A directive is considered matched when followed by end-of-string, ',', ' ', '\t', or '='
+// per RFC 9111 §5.2.
 func hasDirective(cc, directive string) bool {
 	ccLen := len(cc)
 	dirLen := len(directive)
@@ -937,11 +939,15 @@ func hasDirective(cc, directive string) bool {
 		}
 		if i > 0 {
 			prev := cc[i-1]
-			if prev != ' ' && prev != ',' {
+			if prev != ' ' && prev != ',' && prev != '\t' {
 				continue
 			}
 		}
-		if i+dirLen == ccLen || cc[i+dirLen] == ',' {
+		if i+dirLen == ccLen {
+			return true
+		}
+		next := cc[i+dirLen]
+		if next == ',' || next == ' ' || next == '\t' || next == '=' {
 			return true
 		}
 	}
@@ -969,8 +975,8 @@ func parseUintDirective(val []byte) (uint64, bool) {
 
 func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 	for i := 0; i < len(cc); {
-		// skip leading separators/spaces
-		for i < len(cc) && (cc[i] == ' ' || cc[i] == ',') {
+		// skip leading separators and OWS (space/tab per RFC 9110 §5.6.3)
+		for i < len(cc) && (cc[i] == ' ' || cc[i] == '\t' || cc[i] == ',') {
 			i++
 		}
 		if i >= len(cc) {
@@ -982,12 +988,12 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 			i++
 		}
 		partEnd := i
-		for partEnd > start && cc[partEnd-1] == ' ' {
+		for partEnd > start && (cc[partEnd-1] == ' ' || cc[partEnd-1] == '\t') {
 			partEnd--
 		}
 
 		keyStart := start
-		for keyStart < partEnd && cc[keyStart] == ' ' {
+		for keyStart < partEnd && (cc[keyStart] == ' ' || cc[keyStart] == '\t') {
 			keyStart++
 		}
 		if keyStart >= partEnd {
@@ -998,9 +1004,9 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 		for keyEnd < partEnd && cc[keyEnd] != '=' {
 			keyEnd++
 		}
-		// Trim trailing spaces from key
+		// Trim trailing OWS from key
 		keyEndTrimmed := keyEnd
-		for keyEndTrimmed > keyStart && cc[keyEndTrimmed-1] == ' ' {
+		for keyEndTrimmed > keyStart && (cc[keyEndTrimmed-1] == ' ' || cc[keyEndTrimmed-1] == '\t') {
 			keyEndTrimmed--
 		}
 		key := cc[keyStart:keyEndTrimmed]
@@ -1008,11 +1014,11 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 		var value []byte
 		if keyEnd < partEnd && cc[keyEnd] == '=' {
 			valueStart := keyEnd + 1
-			for valueStart < partEnd && cc[valueStart] == ' ' {
+			for valueStart < partEnd && (cc[valueStart] == ' ' || cc[valueStart] == '\t') {
 				valueStart++
 			}
 			valueEnd := partEnd
-			for valueEnd > valueStart && cc[valueEnd-1] == ' ' {
+			for valueEnd > valueStart && (cc[valueEnd-1] == ' ' || cc[valueEnd-1] == '\t') {
 				valueEnd--
 			}
 			if valueStart <= valueEnd {
