@@ -169,10 +169,13 @@ func configDefault(config ...Config) Config {
 		cfg.Methods = ConfigDefault.Methods
 	} else {
 		// Normalize method names to uppercase (HTTP methods are case-sensitive
-		// and c.Method() returns uppercase, e.g. "GET" not "get")
+		// and c.Method() returns uppercase, e.g. "GET" not "get").
+		// Copy first to avoid mutating the caller's slice.
+		normalized := make([]string, len(cfg.Methods))
 		for i, m := range cfg.Methods {
-			cfg.Methods[i] = utilsstrings.ToUpper(m)
+			normalized[i] = utilsstrings.ToUpper(m)
 		}
+		cfg.Methods = normalized
 	}
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = func(c fiber.Ctx) string {

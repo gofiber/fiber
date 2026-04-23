@@ -1332,12 +1332,12 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 	// Pre-scan query string to detect excessive parameters before expensive parsing.
 	// This prevents DoS via url.ParseQuery allocating large maps/slices.
 	if len(query) > maxQueryBufferSize {
-		return boundKeySegment(query)
+		return boundKeySegment(escapeKeyDelimiters(query))
 	}
 
 	// Fast path: single key=value pair needs no parsing or sorting
 	if strings.IndexByte(query, '&') < 0 {
-		return boundKeySegment(query)
+		return boundKeySegment(escapeKeyDelimiters(query))
 	}
 
 	// Quick count of potential parameters (ampersands + 1)
@@ -1347,14 +1347,14 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 			paramCount++
 			if paramCount > maxQueryParams {
 				// Too many parameters detected, hash without parsing
-				return boundKeySegment(query)
+				return boundKeySegment(escapeKeyDelimiters(query))
 			}
 		}
 	}
 
 	parsed, err := url.ParseQuery(query)
 	if err != nil {
-		return boundKeySegment(query)
+		return boundKeySegment(escapeKeyDelimiters(query))
 	}
 
 	// Double-check actual parameter count after parsing
@@ -1362,7 +1362,7 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 	for _, values := range parsed {
 		actualCount += len(values)
 		if actualCount > maxQueryParams {
-			return boundKeySegment(query)
+			return boundKeySegment(escapeKeyDelimiters(query))
 		}
 	}
 
@@ -1399,7 +1399,7 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 					*bufPtr = buf
 					keyBufferPool.Put(bufPtr)
 				}
-				return boundKeySegment(query)
+				return boundKeySegment(escapeKeyDelimiters(query))
 			}
 
 			buf = append(buf, escapedKey...)

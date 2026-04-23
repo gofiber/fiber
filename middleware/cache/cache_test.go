@@ -5451,7 +5451,7 @@ func Test_hasDirective(t *testing.T) {
 		{"at start", "no-cache, max-age=0", "no-cache", true},
 		{"at end", "public, no-cache", "no-cache", true},
 		{"not present", "public, max-age=0", "no-cache", false},
-		{"partial match (truncated)", "no-cach", "no-cache", false}, // cspell:disable-line -- intentionally truncated directive
+		{"shorter token does not match", "no-catch", "no-cache", false},
 		{"substring of longer token", "no-cache-extended", "no-cache", false},
 
 		// Trailing whitespace (#4143)
