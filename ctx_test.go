@@ -2101,6 +2101,9 @@ func Test_Ctx_AutoFormat_XSS_Prevention(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() {
+		app.ReleaseCtx(c)
+	})
 
 	// Test basic XSS with script tag
 	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
