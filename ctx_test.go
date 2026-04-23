@@ -2175,7 +2175,7 @@ func Test_Ctx_AutoFormat_XSS_Prevention(t *testing.T) {
 		Value string
 	}{Value: "<script>alert('XSS')</script>"})
 	require.NoError(t, err)
-	// When formatted as string via fmt.Sprintf, the struct becomes something like {Value:<script>...}
+	// When formatted as a string via fmt.Sprintf with %v, the struct becomes something like {<script>...}
 	require.NotContains(t, string(c.Response().Body()), "<script>", "Script tags in struct should be escaped")
 	require.Contains(t, string(c.Response().Body()), "&lt;script&gt;", "Escaped script tags should be present")
 }
