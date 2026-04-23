@@ -56,6 +56,8 @@ type Config struct {
 	// therefore should partition cache entries. Set this to an empty slice to disable
 	// header-based partitioning.
 	//
+	// Header names are normalized to lowercase for case-insensitive matching.
+	//
 	// Optional. Default: []string{"Accept", "Accept-Encoding", "Accept-Language"}
 	KeyHeaders []string
 

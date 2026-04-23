@@ -372,3 +372,170 @@ func Test_Cache_Security_EmptyVaryHeaders(t *testing.T) {
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, count)
 }
+
+// Test_Cache_Security_MultiDimensionInjection tests injection with multiple headers and cookies
+func Test_Cache_Security_MultiDimensionInjection(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 1 * time.Hour,
+		KeyHeaders: []string{"X-Header-1", "X-Header-2"},
+		KeyCookies: []string{"cookie1", "cookie2"},
+	}))
+
+	var count int
+	app.Get("/", func(c fiber.Ctx) error {
+		count++
+		return c.SendString(fmt.Sprintf("h1=%s,h2=%s,c1=%s,c2=%s",
+			c.Get("X-Header-1"), c.Get("X-Header-2"),
+			c.Cookies("cookie1"), c.Cookies("cookie2")))
+	})
+
+	// Test combinations that should create distinct cache entries
+	testCases := []struct {
+		header1 string
+		header2 string
+		cookie1 string
+		cookie2 string
+	}{
+		// Normal values
+		{"value1", "value2", "cookie1", "cookie2"},
+		// Injection attempts with delimiters
+		{"value|injected", "normal", "normal", "normal"},
+		{"normal", "value:injected", "normal", "normal"},
+		{"normal", "normal", "value|injected", "normal"},
+		{"normal", "normal", "normal", "value:injected"},
+		// Multiple delimiters
+		{"value|with|pipes", "value:with:colons", "normal", "normal"},
+		// Backslashes
+		{"value\\with\\backslash", "normal", "normal", "normal"},
+		{"normal", "normal", "cookie\\value", "normal"},
+		// Combined escapes
+		{"value\\|mixed", "normal", "normal", "normal"},
+		{"normal", "value\\:mixed", "normal", "normal"},
+	}
+
+	for i, tc := range testCases {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set("X-Header-1", tc.header1)
+		req.Header.Set("X-Header-2", tc.header2)
+		req.Header.Set("Cookie", fmt.Sprintf("cookie1=%s; cookie2=%s", tc.cookie1, tc.cookie2))
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "Test case %d failed", i)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Test case %d failed", i)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "Test case %d failed", i)
+		expected := fmt.Sprintf("h1=%s,h2=%s,c1=%s,c2=%s", tc.header1, tc.header2, tc.cookie1, tc.cookie2)
+		require.Equal(t, expected, string(body), "Test case %d failed", i)
+	}
+
+	// Each test case should create a distinct cache entry (no collisions)
+	require.Equal(t, len(testCases), count, "All test cases should create distinct cache entries")
+}
+
+// Test_Cache_Security_BackslashEscaping tests that backslashes are properly escaped
+func Test_Cache_Security_BackslashEscaping(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 1 * time.Hour,
+		KeyHeaders: []string{"X-Custom-Header"},
+	}))
+
+	var count int
+	app.Get("/", func(c fiber.Ctx) error {
+		count++
+		return c.SendString("response-" + c.Get("X-Custom-Header"))
+	})
+
+	// Test backslash escaping scenarios
+	testCases := []string{
+		"\\",           // Single backslash
+		"\\\\",         // Double backslash
+		"\\p",          // Escaped pipe character
+		"\\c",          // Escaped colon character
+		"value\\|test", // Backslash before pipe
+		"value\\:test", // Backslash before colon
+		"\\\\p",        // Double backslash then p
+		"\\\\c",        // Double backslash then c
+	}
+
+	for i, tc := range testCases {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set("X-Custom-Header", tc)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "Test case %d (%s) failed", i, tc)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Test case %d (%s) failed", i, tc)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "Test case %d (%s) failed", i, tc)
+		require.Equal(t, "response-"+tc, string(body), "Test case %d (%s) failed", i, tc)
+	}
+
+	// Each test case should create a distinct cache entry
+	require.Equal(t, len(testCases), count, "All backslash test cases should create distinct cache entries")
+}
+
+// Test_Cache_Security_DelimiterCollisionPrevention verifies that escaped delimiters don't collide
+func Test_Cache_Security_DelimiterCollisionPrevention(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 1 * time.Hour,
+		KeyHeaders: []string{"X-Header"},
+		KeyCookies: []string{"session"},
+	}))
+
+	var responses []string
+	app.Get("/", func(c fiber.Ctx) error {
+		response := fmt.Sprintf("h=%s,c=%s", c.Get("X-Header"), c.Cookies("session"))
+		responses = append(responses, response)
+		return c.SendString(response)
+	})
+
+	// These pairs should NOT collide after escaping
+	testCases := []struct {
+		header string
+		cookie string
+	}{
+		{"value1|part2", "normal"}, // Pipe in header
+		{"value1", "part2|normal"}, // Different structure but similar
+		{"value:test", "cookie"},   // Colon in header
+		{"value", "test:cookie"},   // Colon in cookie
+		{"a|b:c", "d"},             // Mixed delimiters
+		{"a", "b:c|d"},             // Different arrangement
+		{"\\|", "test"},            // Backslash-pipe sequence
+		{"\\", "|test"},            // Separated backslash and pipe
+	}
+
+	for i, tc := range testCases {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set("X-Header", tc.header)
+		req.Header.Set("Cookie", "session="+tc.cookie)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err, "Test case %d failed", i)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Test case %d failed", i)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "Test case %d failed", i)
+		expected := fmt.Sprintf("h=%s,c=%s", tc.header, tc.cookie)
+		require.Equal(t, expected, string(body), "Test case %d failed", i)
+	}
+
+	// All test cases should create distinct cache entries (no collisions from injection)
+	require.Len(t, responses, len(testCases), "All test cases should create distinct cache entries")
+
+	// Verify all responses are unique
+	seen := make(map[string]bool)
+	for _, resp := range responses {
+		require.False(t, seen[resp], "Response should be unique: %s", resp)
+		seen[resp] = true
+	}
+}

@@ -1318,17 +1318,35 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 	if query == "" {
 		return ""
 	}
+
+	// Pre-scan query string to detect excessive parameters before expensive parsing
+	// This prevents DoS via url.ParseQuery allocating large maps/slices
+	if len(query) > maxQueryBufferSize {
+		return boundKeySegment(query)
+	}
+
+	// Quick count of potential parameters (ampersands + 1)
+	paramCount := 1
+	for i := 0; i < len(query); i++ {
+		if query[i] == '&' {
+			paramCount++
+			if paramCount > maxQueryParams {
+				// Too many parameters detected, hash without parsing
+				return boundKeySegment(query)
+			}
+		}
+	}
+
 	parsed, err := url.ParseQuery(query)
 	if err != nil {
 		return boundKeySegment(query)
 	}
 
-	// Protect against DoS via excessive query parameters
-	paramCount := 0
+	// Double-check actual parameter count after parsing
+	actualCount := 0
 	for _, values := range parsed {
-		paramCount += len(values)
-		if paramCount > maxQueryParams {
-			// Too many parameters, hash the entire query string
+		actualCount += len(values)
+		if actualCount > maxQueryParams {
 			return boundKeySegment(query)
 		}
 	}
@@ -1380,10 +1398,13 @@ func canonicalHeaderSubset(header *fasthttp.RequestHeader, names []string) strin
 		if idx > 0 {
 			buf = append(buf, '|')
 		}
-		buf = append(buf, utils.UnsafeBytes(name)...)
+		// Escape name (though names are normalized and trusted)
+		buf = append(buf, escapeKeyDelimiters(name)...)
 		buf = append(buf, ':')
 		headerValue := header.Peek(name)
-		buf = append(buf, utils.UnsafeBytes(boundKeySegment(utils.CopyString(utils.UnsafeString(headerValue))))...)
+		// Escape value to prevent delimiter injection
+		escapedValue := escapeKeyDelimiters(utils.UnsafeString(headerValue))
+		buf = append(buf, utils.UnsafeBytes(boundKeySegment(escapedValue))...)
 	}
 
 	return utils.CopyString(utils.UnsafeString(buf))
@@ -1399,13 +1420,31 @@ func canonicalCookieSubset(c fiber.Ctx, names []string) string {
 		if idx > 0 {
 			buf = append(buf, '|')
 		}
-		buf = append(buf, utils.UnsafeBytes(name)...)
+		// Escape name (though names are normalized and trusted)
+		buf = append(buf, escapeKeyDelimiters(name)...)
 		buf = append(buf, ':')
 		cookieValue := c.Cookies(name)
-		buf = append(buf, utils.UnsafeBytes(boundKeySegment(cookieValue))...)
+		// Escape value to prevent delimiter injection
+		escapedValue := escapeKeyDelimiters(cookieValue)
+		buf = append(buf, utils.UnsafeBytes(boundKeySegment(escapedValue))...)
 	}
 
 	return utils.CopyString(utils.UnsafeString(buf))
+}
+
+// escapeKeyDelimiters escapes pipe and colon characters used as delimiters in cache keys
+// to prevent injection attacks where crafted values could collide with different inputs
+func escapeKeyDelimiters(s string) string {
+	// Fast path: no delimiters to escape
+	if !strings.ContainsAny(s, "|:") {
+		return s
+	}
+
+	// Escape | as \p and : as \c, and \ as \\ (backslash must be escaped first)
+	result := strings.ReplaceAll(s, "\\", "\\\\")
+	result = strings.ReplaceAll(result, "|", "\\p")
+	result = strings.ReplaceAll(result, ":", "\\c")
+	return result
 }
 
 func boundKeySegment(segment string) string {
