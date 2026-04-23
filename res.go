@@ -429,7 +429,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // AutoFormat performs content-negotiation on the Accept HTTP header.
 // It uses Accepts to select a proper format.
 // The supported content types are text/html, text/plain, application/json, application/xml, application/vnd.msgpack, and application/cbor.
-// When text/html is selected, the body is treated as plain text and HTML-escaped before being wrapped in a <p> element.
+// When text/html is selected, the body is treated as plain text and HTML-escaped before being wrapped in a `<p>` element.
 // For more flexible content negotiation, use Format.
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
