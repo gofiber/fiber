@@ -964,6 +964,118 @@ func Test_Cache_Post(t *testing.T) {
 	require.Equal(t, "3:12345", string(body))
 }
 
+func Test_Cache_CustomMethods(t *testing.T) {
+	t.Parallel()
+
+	t.Run("POST cached when in Methods", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{fiber.MethodGet, fiber.MethodHead, fiber.MethodPost},
+		}))
+
+		var count atomic.Int32
+		app.Post("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		// First POST — cache miss
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", http.NoBody))
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1", string(body))
+
+		// Second POST — cache hit
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/", http.NoBody))
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1", string(body))
+	})
+
+	t.Run("unconfigured method bypasses cache", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{fiber.MethodGet},
+		}))
+
+		var count atomic.Int32
+		app.Put("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		// PUT not in Methods — always bypasses cache
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodPut, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(1), count.Load())
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodPut, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(2), count.Load(), "handler must be called on every bypass")
+	})
+
+	t.Run("empty Methods slice disables caching", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{},
+		}))
+
+		var count atomic.Int32
+		app.Get("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		// Even GET bypasses cache when Methods is explicitly empty
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(2), count.Load(), "handler must be called each time with empty Methods")
+	})
+
+	t.Run("lowercase method names are normalized", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{"get", "post"},
+		}))
+
+		var count atomic.Int32
+		app.Get("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		// "get" should be normalized to "GET" and match
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1", string(body))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1", string(body))
+	})
+}
+
 func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 	t.Parallel()
 

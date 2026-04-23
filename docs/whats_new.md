@@ -1369,7 +1369,7 @@ Cache keys are now redacted in logs and error messages by default, and a `Disabl
 
 The default cache key strategy was also hardened. Instead of path-only behavior, keys now use structured request dimensions: method partitioning, path, canonical query string, and selected representation headers (`Accept`, `Accept-Encoding`, `Accept-Language`). This avoids collisions such as `/items?id=1` vs `/items?id=2` while keeping key generation deterministic. New config fields were added for explicit control: `DisableQueryKeys`, `KeyHeaders`, `KeyCookies`, and `DisableVaryHeaders`.
 
-As a security/performance default, request body/form values are not part of the default cache key. Cache handling is limited to `GET` and `HEAD` requests.
+As a security/performance default, request body/form values are not part of the default cache key. Cache handling is limited to `GET` and `HEAD` requests by default, configurable via the `Methods` field.
 
 :::note
 The deprecated `Store` and `Key` options have been removed in v3. Use `Storage` and `KeyGenerator` instead.
@@ -2890,6 +2890,7 @@ To restore v2 behavior:
 
 Additional v3 cache key options:
 
+- `Methods`: HTTP methods eligible for caching (default `GET`, `HEAD`)
 - `DisableQueryKeys`: disable canonicalized query args in keys (default `false`)
 - `KeyHeaders`: request header allow-list for key partitioning
 - `KeyCookies`: explicit cookie allow-list for key partitioning

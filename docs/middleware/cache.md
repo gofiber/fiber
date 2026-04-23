@@ -120,7 +120,7 @@ This prevents common collisions from path-only keys (for example, `/?id=1` vs `/
 
 The middleware **does not include request body/form values in the default cache key**.
 
-Cache lookup/storage is only applied for `GET` and `HEAD` requests. Other HTTP methods always bypass the cache middleware.
+Cache lookup/storage is applied only for `GET` and `HEAD` requests by default. Other HTTP methods bypass the cache middleware. You can change this via the `Methods` config field.
 
 If a response sets `Vary`, request lookup/storage is also partitioned by those header values unless `DisableVaryHeaders` is `true`. Responses with `Vary: *` remain uncacheable.
 
@@ -138,6 +138,7 @@ If a response sets `Vary`, request lookup/storage is also partitioned by those h
 | DisableQueryKeys     | `bool`                                         | Disables canonicalized query params in keys. | `false` |
 | KeyHeaders           | `[]string`                                     | Header allow-list used for key partitioning. Names are normalized case-insensitively and sorted. Use `[]string{}` to disable header-based partitioning. | `[]string{"accept","accept-encoding","accept-language"}` |
 | KeyCookies           | `[]string`                                     | Optional cookie allow-list for key partitioning. Explicit opt-in only; names remain case-sensitive. | `nil` |
+| Methods              | `[]string`                                     | HTTP methods eligible for caching. Requests whose method is not in this list bypass the cache. | `[]string{fiber.MethodGet, fiber.MethodHead}` |
 | DisableVaryHeaders   | `bool`                                         | Disables response `Vary` dimensions in cache lookup/storage partitioning. | `false` |
 | ExpirationGenerator  | `func(fiber.Ctx, *cache.Config) time.Duration` | ExpirationGenerator allows you to generate custom expiration keys based on the request.                                                                                                                                                                                                                        | `nil`                                                            |
 | Storage              | `fiber.Storage`                                | Storage is used to store the state of the middleware.                                                                                                                                                                                                                                                            | In-memory store                                                  |
@@ -162,6 +163,7 @@ var ConfigDefault = Config{
         fiber.HeaderAcceptLanguage,
     },
     KeyCookies: nil,
+    Methods: []string{fiber.MethodGet, fiber.MethodHead},
     DisableVaryHeaders: false,
     ExpirationGenerator:  nil,
     StoreResponseHeaders: false,

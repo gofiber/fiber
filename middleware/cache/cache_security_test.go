@@ -539,3 +539,59 @@ func Test_Cache_Security_DelimiterCollisionPrevention(t *testing.T) {
 		seen[resp] = true
 	}
 }
+
+// Test_Cache_Security_EscapeKeyDelimiters_Unit is a direct regression test for the
+// escapeKeyDelimiters function, ensuring backslashes are escaped to prevent collisions
+// between e.g. a literal "a\pb" and the escaped form of "a|b" → "a\pb".
+func Test_Cache_Security_EscapeKeyDelimiters_Unit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		// Fast path: no special characters
+		{"hello", "hello"},
+		{"", ""},
+		{"foo/bar?baz=1", "foo/bar?baz=1"},
+		// Pipe escaping
+		{"a|b", "a\\pb"},
+		// Colon escaping
+		{"a:b", "a\\cb"},
+		// Backslash escaping (regression: fast path must also check for \)
+		{"a\\b", "a\\\\b"},
+		// Backslash-pipe sequence must not collide with escaped pipe
+		{"a\\pb", "a\\\\pb"}, // literal \p → \\p (differs from escaped | → \p)
+		{"a\\cb", "a\\\\cb"}, // literal \c → \\c (differs from escaped : → \c)
+		// Mixed delimiters
+		{"k|v:w\\x", "k\\pv\\cw\\\\x"},
+		// Multiple consecutive
+		{"||", "\\p\\p"},
+		{"::", "\\c\\c"},
+		{"\\\\", "\\\\\\\\"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("escape_%q", tt.input), func(t *testing.T) {
+			t.Parallel()
+			result := escapeKeyDelimiters(tt.input)
+			require.Equal(t, tt.expected, result, "escapeKeyDelimiters(%q)", tt.input)
+		})
+	}
+
+	// Verify no collisions between pairs that would collide without backslash escaping
+	collisionPairs := [][2]string{
+		{"a\\pb", "a|b"}, // literal \p vs escaped |
+		{"a\\cb", "a:b"}, // literal \c vs escaped :
+		{"\\\\", "\\"},   // double backslash vs single
+		{"x\\py", "x|y"},
+	}
+	for _, pair := range collisionPairs {
+		t.Run(fmt.Sprintf("no_collision_%q_vs_%q", pair[0], pair[1]), func(t *testing.T) {
+			t.Parallel()
+			a := escapeKeyDelimiters(pair[0])
+			b := escapeKeyDelimiters(pair[1])
+			require.NotEqual(t, a, b, "escapeKeyDelimiters(%q) must differ from escapeKeyDelimiters(%q)", pair[0], pair[1])
+		})
+	}
+}

@@ -2,6 +2,7 @@ package cache
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -67,6 +68,14 @@ type Config struct {
 	// Optional. Default: nil
 	KeyCookies []string
 
+	// Methods specifies which HTTP methods are eligible for caching.
+	// Requests with methods not in this list bypass the cache entirely.
+	// Method names are normalized to uppercase automatically.
+	// Set to nil to use the default; set to an empty slice to disable caching for all methods.
+	//
+	// Default: []string{fiber.MethodGet, fiber.MethodHead}
+	Methods []string
+
 	// Expiration is the time that a cached response will live
 	//
 	// Optional. Default: 5 * time.Minute
@@ -118,6 +127,7 @@ var ConfigDefault = Config{
 	DisableQueryKeys:      false,
 	KeyHeaders:            []string{fiber.HeaderAccept, fiber.HeaderAcceptEncoding, fiber.HeaderAcceptLanguage},
 	KeyCookies:            nil,
+	Methods:               []string{fiber.MethodGet, fiber.MethodHead},
 	DisableVaryHeaders:    false,
 	ExpirationGenerator:   nil,
 	StoreResponseHeaders:  false,
@@ -155,6 +165,16 @@ func configDefault(config ...Config) Config {
 	}
 	cfg.KeyHeaders = normalizeHeaderDimensions(cfg.KeyHeaders, ConfigDefault.KeyHeaders)
 	cfg.KeyCookies = normalizeCookieDimensions(cfg.KeyCookies, nil)
+	// nil = use default methods; explicit empty slice = cache no methods
+	if cfg.Methods == nil {
+		cfg.Methods = ConfigDefault.Methods
+	} else {
+		// Normalize method names to uppercase (HTTP methods are case-sensitive
+		// and c.Method() returns uppercase, e.g. "GET" not "get")
+		for i, m := range cfg.Methods {
+			cfg.Methods[i] = strings.ToUpper(m)
+		}
+	}
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = func(c fiber.Ctx) string {
 			return defaultKeyGenerator(c, &cfg)

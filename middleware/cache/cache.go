@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -253,8 +254,8 @@ func New(config ...Config) fiber.Handler {
 
 		requestMethod := c.Method()
 
-		// Cache only GET and HEAD requests.
-		if requestMethod != fiber.MethodGet && requestMethod != fiber.MethodHead {
+		// Only cache methods listed in cfg.Methods (default: GET, HEAD).
+		if !slices.Contains(cfg.Methods, requestMethod) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
@@ -1284,7 +1285,8 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 	}
 
 	buf := (*bufPtr)[:0]
-	buf = append(buf, boundKeySegment(c.Path())...)
+	// Escape delimiters in path to prevent crafted paths from injecting key structure
+	buf = append(buf, boundKeySegment(escapeKeyDelimiters(c.Path()))...)
 
 	if !cfg.DisableQueryKeys {
 		buf = append(buf, '|', 'q', '=')
@@ -1301,7 +1303,7 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 		buf = append(buf, canonicalCookieSubset(c, cfg.KeyCookies)...)
 	}
 
-	result := utils.CopyString(utils.UnsafeString(buf))
+	result := string(buf)
 
 	// Reset buffer and return to pool, but discard if it grew too large
 	// to prevent pool from retaining oversized buffers
@@ -1314,14 +1316,21 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 }
 
 func canonicalQueryString(uri *fasthttp.URI) string {
-	query := utils.CopyString(utils.UnsafeString(uri.QueryString()))
-	if query == "" {
+	raw := uri.QueryString()
+	if len(raw) == 0 {
 		return ""
 	}
 
-	// Pre-scan query string to detect excessive parameters before expensive parsing
-	// This prevents DoS via url.ParseQuery allocating large maps/slices
+	query := utils.CopyString(utils.UnsafeString(raw))
+
+	// Pre-scan query string to detect excessive parameters before expensive parsing.
+	// This prevents DoS via url.ParseQuery allocating large maps/slices.
 	if len(query) > maxQueryBufferSize {
+		return boundKeySegment(query)
+	}
+
+	// Fast path: single key=value pair needs no parsing or sorting
+	if strings.IndexByte(query, '&') < 0 {
 		return boundKeySegment(query)
 	}
 
@@ -1357,10 +1366,15 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 	}
 	sort.Strings(keys)
 
-	// Use a bounded buffer to prevent excessive memory allocation during URL escaping
-	// URL escaping can expand strings up to 3x (each byte -> %XX)
-	initialCap := min(len(query)*2, maxQueryBufferSize/2)
-	buf := make([]byte, 0, initialCap)
+	// Use pooled buffer to prevent excessive memory allocation during URL escaping.
+	// URL escaping can expand strings up to 3x (each byte -> %XX).
+	v := keyBufferPool.Get()
+	bufPtr, ok := v.(*[]byte)
+	if !ok || bufPtr == nil {
+		b := make([]byte, 0, defaultKeyBufferCap)
+		bufPtr = &b
+	}
+	buf := (*bufPtr)[:0]
 
 	for _, key := range keys {
 		values := parsed[key]
@@ -1370,12 +1384,15 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 				buf = append(buf, '&')
 			}
 
-			// Check buffer size before appending to prevent unbounded growth
 			escapedKey := url.QueryEscape(key)
 			escapedValue := url.QueryEscape(value)
 
-			// If buffer would exceed safe limits, hash the entire query
+			// Check buffer size before appending to prevent unbounded growth
 			if len(buf)+len(escapedKey)+len(escapedValue)+2 > maxQueryBufferSize {
+				if cap(buf) <= defaultKeyBufferCap*4 {
+					*bufPtr = buf
+					keyBufferPool.Put(bufPtr)
+				}
 				return boundKeySegment(query)
 			}
 
@@ -1385,7 +1402,15 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 		}
 	}
 
-	return boundKeySegment(utils.CopyString(utils.UnsafeString(buf)))
+	result := boundKeySegment(string(buf))
+
+	// Return buffer to pool if not oversized
+	if cap(buf) <= defaultKeyBufferCap*4 {
+		*bufPtr = buf
+		keyBufferPool.Put(bufPtr)
+	}
+
+	return result
 }
 
 func canonicalHeaderSubset(header *fasthttp.RequestHeader, names []string) string {
@@ -1404,10 +1429,10 @@ func canonicalHeaderSubset(header *fasthttp.RequestHeader, names []string) strin
 		headerValue := header.Peek(name)
 		// Escape value to prevent delimiter injection
 		escapedValue := escapeKeyDelimiters(utils.UnsafeString(headerValue))
-		buf = append(buf, utils.UnsafeBytes(boundKeySegment(escapedValue))...)
+		buf = append(buf, boundKeySegment(escapedValue)...)
 	}
 
-	return utils.CopyString(utils.UnsafeString(buf))
+	return string(buf)
 }
 
 func canonicalCookieSubset(c fiber.Ctx, names []string) string {
@@ -1426,17 +1451,17 @@ func canonicalCookieSubset(c fiber.Ctx, names []string) string {
 		cookieValue := c.Cookies(name)
 		// Escape value to prevent delimiter injection
 		escapedValue := escapeKeyDelimiters(cookieValue)
-		buf = append(buf, utils.UnsafeBytes(boundKeySegment(escapedValue))...)
+		buf = append(buf, boundKeySegment(escapedValue)...)
 	}
 
-	return utils.CopyString(utils.UnsafeString(buf))
+	return string(buf)
 }
 
-// escapeKeyDelimiters escapes pipe and colon characters used as delimiters in cache keys
+// escapeKeyDelimiters escapes pipe, colon, and backslash characters used as delimiters in cache keys
 // to prevent injection attacks where crafted values could collide with different inputs
 func escapeKeyDelimiters(s string) string {
-	// Fast path: no delimiters to escape
-	if !strings.ContainsAny(s, "|:") {
+	// Fast path: no characters to escape
+	if !strings.ContainsAny(s, "|:\\") {
 		return s
 	}
 
