@@ -79,7 +79,7 @@ app.Post("/users", createUser).
 // Consumes and Produces will panic if provided an invalid media type.
 ```
 
-If no responses are declared, the middleware adds a sensible default: `200 OK` for most methods and `204 No Content` for `DELETE` and `HEAD`. When any responses are provided (either via route helpers or middleware configuration), no automatic default is added.
+If no responses are declared, the middleware adds a sensible default: `200 OK` for most methods and `204 No Content` for `DELETE` and `HEAD`. When any responses are provided via the route helpers, no automatic default is added.
 
 `CONNECT` routes are ignored because the OpenAPI specification does not define a `connect` operation.
 
