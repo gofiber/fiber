@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"slices"
 	"sort"
 	"strings"
@@ -29,7 +30,14 @@ import (
 const timestampUpdatePeriod = 300 * time.Millisecond
 
 // buffer size for hexpool
-const hexLen = sha256.Size * 2
+const (
+	hexLen                       = sha256.Size * 2
+	maxKeyDimensionSegmentLength = 192
+	defaultKeyBufferCap          = 256
+	maxQueryParams               = 128  // Maximum number of query parameters to parse
+	maxVaryHeaders               = 32   // Maximum number of Vary headers to process
+	maxQueryBufferSize           = 4096 // Maximum buffer size for query string canonicalization
+)
 
 // cache status
 // unreachable: when cache is bypass, or invalid
@@ -103,6 +111,13 @@ var cacheableStatusCodes = map[int]struct{}{
 	fiber.StatusGone:                        {},
 	fiber.StatusRequestURITooLong:           {},
 	fiber.StatusNotImplemented:              {},
+}
+
+var keyBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 0, defaultKeyBufferCap)
+		return &buf
+	},
 }
 
 // New creates a new middleware handler
@@ -239,14 +254,14 @@ func New(config ...Config) fiber.Handler {
 
 		requestMethod := c.Method()
 
-		// Only cache selected methods
+		// Only cache methods listed in cfg.Methods (default: GET, HEAD).
 		if !slices.Contains(cfg.Methods, requestMethod) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
 
 		// Get key from request
-		baseKey := cfg.KeyGenerator(c) + "_" + requestMethod
+		baseKey := requestMethod + "|" + cfg.KeyGenerator(c)
 		manifestKey := baseKey + "|vary"
 		if hasAuthorization {
 			authHash := hashAuthorization(c.Request().Header.Peek(fiber.HeaderAuthorization))
@@ -257,12 +272,17 @@ func New(config ...Config) fiber.Handler {
 
 		reqCtx := c.Context()
 
-		varyNames, hasVaryManifest, err := loadVaryManifest(reqCtx, manager, manifestKey)
-		if err != nil {
-			return err
-		}
-		if len(varyNames) > 0 {
-			key += buildVaryKey(varyNames, &c.Request().Header)
+		varyNames := []string(nil)
+		hasVaryManifest := false
+		var err error
+		if !cfg.DisableVaryHeaders {
+			varyNames, hasVaryManifest, err = loadVaryManifest(reqCtx, manager, manifestKey)
+			if err != nil {
+				return err
+			}
+			if len(varyNames) > 0 {
+				key += buildVaryKey(varyNames, &c.Request().Header)
+			}
 		}
 
 		// Get entry from pool
@@ -544,6 +564,8 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		// RFC 9111 requires responses with Vary: * to remain uncacheable even when
+		// response-driven Vary partitioning is otherwise disabled.
 		if hasPrivate || hasNoCache || varyHasStar {
 			if e != nil {
 				if err := deleteKey(reqCtx, key); err != nil {
@@ -561,7 +583,7 @@ func New(config ...Config) fiber.Handler {
 				mux.Unlock()
 			}
 
-			if hasVaryManifest {
+			if !cfg.DisableVaryHeaders && hasVaryManifest {
 				if err := manager.del(reqCtx, manifestKey); err != nil {
 					return fmt.Errorf("cache: failed to delete stale vary manifest %q: %w", maskKey(manifestKey), err)
 				}
@@ -571,12 +593,12 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		shouldStoreVaryManifest := len(varyNames) > 0
-		if len(varyNames) > 0 {
+		shouldStoreVaryManifest := !cfg.DisableVaryHeaders && len(varyNames) > 0
+		if !cfg.DisableVaryHeaders && len(varyNames) > 0 {
 			if key == baseKey {
 				key += buildVaryKey(varyNames, &c.Request().Header)
 			}
-		} else if hasVaryManifest {
+		} else if !cfg.DisableVaryHeaders && hasVaryManifest {
 			if err := manager.del(reqCtx, manifestKey); err != nil {
 				return fmt.Errorf("cache: failed to delete stale vary manifest %q: %w", maskKey(manifestKey), err)
 			}
@@ -821,7 +843,7 @@ func New(config ...Config) fiber.Handler {
 			remainingExpiration = 0
 		}
 
-		if shouldStoreVaryManifest {
+		if !cfg.DisableVaryHeaders && shouldStoreVaryManifest {
 			if err := storeVaryManifest(reqCtx, manager, manifestKey, varyNames, storageExpiration); err != nil {
 				return err
 			}
@@ -905,7 +927,9 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// hasDirective checks if a cache-control header contains a directive (case-insensitive)
+// hasDirective checks if a cache directive header value contains a directive (case-insensitive).
+// A directive is considered matched when followed by end-of-string, ',', ' ', '\t', or '='
+// per RFC 9111 §5.2.
 func hasDirective(cc, directive string) bool {
 	ccLen := len(cc)
 	dirLen := len(directive)
@@ -915,11 +939,15 @@ func hasDirective(cc, directive string) bool {
 		}
 		if i > 0 {
 			prev := cc[i-1]
-			if prev != ' ' && prev != ',' {
+			if prev != ' ' && prev != ',' && prev != '\t' {
 				continue
 			}
 		}
-		if i+dirLen == ccLen || cc[i+dirLen] == ',' {
+		if i+dirLen == ccLen {
+			return true
+		}
+		next := cc[i+dirLen]
+		if next == ',' || next == ' ' || next == '\t' || next == '=' {
 			return true
 		}
 	}
@@ -947,8 +975,8 @@ func parseUintDirective(val []byte) (uint64, bool) {
 
 func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 	for i := 0; i < len(cc); {
-		// skip leading separators/spaces
-		for i < len(cc) && (cc[i] == ' ' || cc[i] == ',') {
+		// skip leading separators and OWS (space/tab per RFC 9110 §5.6.3)
+		for i < len(cc) && (cc[i] == ' ' || cc[i] == '\t' || cc[i] == ',') {
 			i++
 		}
 		if i >= len(cc) {
@@ -960,12 +988,12 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 			i++
 		}
 		partEnd := i
-		for partEnd > start && cc[partEnd-1] == ' ' {
+		for partEnd > start && (cc[partEnd-1] == ' ' || cc[partEnd-1] == '\t') {
 			partEnd--
 		}
 
 		keyStart := start
-		for keyStart < partEnd && cc[keyStart] == ' ' {
+		for keyStart < partEnd && (cc[keyStart] == ' ' || cc[keyStart] == '\t') {
 			keyStart++
 		}
 		if keyStart >= partEnd {
@@ -976,9 +1004,9 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 		for keyEnd < partEnd && cc[keyEnd] != '=' {
 			keyEnd++
 		}
-		// Trim trailing spaces from key
+		// Trim trailing OWS from key
 		keyEndTrimmed := keyEnd
-		for keyEndTrimmed > keyStart && cc[keyEndTrimmed-1] == ' ' {
+		for keyEndTrimmed > keyStart && (cc[keyEndTrimmed-1] == ' ' || cc[keyEndTrimmed-1] == '\t') {
 			keyEndTrimmed--
 		}
 		key := cc[keyStart:keyEndTrimmed]
@@ -986,11 +1014,11 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 		var value []byte
 		if keyEnd < partEnd && cc[keyEnd] == '=' {
 			valueStart := keyEnd + 1
-			for valueStart < partEnd && cc[valueStart] == ' ' {
+			for valueStart < partEnd && (cc[valueStart] == ' ' || cc[valueStart] == '\t') {
 				valueStart++
 			}
 			valueEnd := partEnd
-			for valueEnd > valueStart && cc[valueEnd-1] == ' ' {
+			for valueEnd > valueStart && (cc[valueEnd-1] == ' ' || cc[valueEnd-1] == '\t') {
 				valueEnd--
 			}
 			if valueStart <= valueEnd {
@@ -1254,8 +1282,213 @@ func secondsToDuration(sec uint64) time.Duration {
 	return time.Duration(sec) * time.Second
 }
 
+func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
+	v := keyBufferPool.Get()
+	bufPtr, ok := v.(*[]byte)
+	if !ok || bufPtr == nil {
+		b := make([]byte, 0, defaultKeyBufferCap)
+		bufPtr = &b
+	}
+
+	buf := (*bufPtr)[:0]
+	// Escape delimiters in path to prevent crafted paths from injecting key structure
+	buf = append(buf, boundKeySegment(escapeKeyDelimiters(c.Path()))...)
+
+	if !cfg.DisableQueryKeys {
+		buf = append(buf, '|', 'q', '=')
+		buf = append(buf, canonicalQueryString(c.Request().URI())...)
+	}
+
+	if len(cfg.KeyHeaders) > 0 {
+		buf = append(buf, '|', 'h', '=')
+		buf = append(buf, canonicalHeaderSubset(&c.Request().Header, cfg.KeyHeaders)...)
+	}
+
+	if len(cfg.KeyCookies) > 0 {
+		buf = append(buf, '|', 'c', '=')
+		buf = append(buf, canonicalCookieSubset(c, cfg.KeyCookies)...)
+	}
+
+	result := string(buf)
+
+	// Reset buffer and return to pool, but discard if it grew too large
+	// to prevent pool from retaining oversized buffers
+	if cap(buf) <= defaultKeyBufferCap*4 {
+		*bufPtr = buf
+		keyBufferPool.Put(bufPtr)
+	}
+
+	return result
+}
+
+func canonicalQueryString(uri *fasthttp.URI) string {
+	raw := uri.QueryString()
+	if len(raw) == 0 {
+		return ""
+	}
+
+	query := utils.CopyString(utils.UnsafeString(raw))
+
+	// Pre-scan query string to detect excessive parameters before expensive parsing.
+	// This prevents DoS via url.ParseQuery allocating large maps/slices.
+	if len(query) > maxQueryBufferSize {
+		return boundKeySegment(escapeKeyDelimiters(query))
+	}
+
+	// Fast path: single key=value pair needs no parsing or sorting
+	if strings.IndexByte(query, '&') < 0 {
+		return boundKeySegment(escapeKeyDelimiters(query))
+	}
+
+	// Quick count of potential parameters (ampersands + 1)
+	paramCount := 1
+	for i := 0; i < len(query); i++ {
+		if query[i] == '&' {
+			paramCount++
+			if paramCount > maxQueryParams {
+				// Too many parameters detected, hash without parsing
+				return boundKeySegment(escapeKeyDelimiters(query))
+			}
+		}
+	}
+
+	parsed, err := url.ParseQuery(query)
+	if err != nil {
+		return boundKeySegment(escapeKeyDelimiters(query))
+	}
+
+	// Double-check actual parameter count after parsing
+	actualCount := 0
+	for _, values := range parsed {
+		actualCount += len(values)
+		if actualCount > maxQueryParams {
+			return boundKeySegment(escapeKeyDelimiters(query))
+		}
+	}
+
+	keys := make([]string, 0, len(parsed))
+	for key := range parsed {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	// Use pooled buffer to prevent excessive memory allocation during URL escaping.
+	// URL escaping can expand strings up to 3x (each byte -> %XX).
+	v := keyBufferPool.Get()
+	bufPtr, ok := v.(*[]byte)
+	if !ok || bufPtr == nil {
+		b := make([]byte, 0, defaultKeyBufferCap)
+		bufPtr = &b
+	}
+	buf := (*bufPtr)[:0]
+
+	for _, key := range keys {
+		values := parsed[key]
+		sort.Strings(values)
+		for _, value := range values {
+			if len(buf) > 0 {
+				buf = append(buf, '&')
+			}
+
+			escapedKey := url.QueryEscape(key)
+			escapedValue := url.QueryEscape(value)
+
+			// Check buffer size before appending to prevent unbounded growth
+			if len(buf)+len(escapedKey)+len(escapedValue)+2 > maxQueryBufferSize {
+				if cap(buf) <= defaultKeyBufferCap*4 {
+					*bufPtr = buf
+					keyBufferPool.Put(bufPtr)
+				}
+				return boundKeySegment(escapeKeyDelimiters(query))
+			}
+
+			buf = append(buf, escapedKey...)
+			buf = append(buf, '=')
+			buf = append(buf, escapedValue...)
+		}
+	}
+
+	result := boundKeySegment(string(buf))
+
+	// Return buffer to pool if not oversized
+	if cap(buf) <= defaultKeyBufferCap*4 {
+		*bufPtr = buf
+		keyBufferPool.Put(bufPtr)
+	}
+
+	return result
+}
+
+func canonicalHeaderSubset(header *fasthttp.RequestHeader, names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+
+	buf := make([]byte, 0, len(names)*16)
+	for idx, name := range names {
+		if idx > 0 {
+			buf = append(buf, '|')
+		}
+		// Escape name (though names are normalized and trusted)
+		buf = append(buf, escapeKeyDelimiters(name)...)
+		buf = append(buf, ':')
+		headerValue := header.Peek(name)
+		// Escape value to prevent delimiter injection
+		escapedValue := escapeKeyDelimiters(utils.UnsafeString(headerValue))
+		buf = append(buf, boundKeySegment(escapedValue)...)
+	}
+
+	return string(buf)
+}
+
+func canonicalCookieSubset(c fiber.Ctx, names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+
+	buf := make([]byte, 0, len(names)*16)
+	for idx, name := range names {
+		if idx > 0 {
+			buf = append(buf, '|')
+		}
+		// Escape name (though names are normalized and trusted)
+		buf = append(buf, escapeKeyDelimiters(name)...)
+		buf = append(buf, ':')
+		cookieValue := c.Cookies(name)
+		// Escape value to prevent delimiter injection
+		escapedValue := escapeKeyDelimiters(cookieValue)
+		buf = append(buf, boundKeySegment(escapedValue)...)
+	}
+
+	return string(buf)
+}
+
+// escapeKeyDelimiters escapes pipe, colon, and backslash characters used as delimiters in cache keys
+// to prevent injection attacks where crafted values could collide with different inputs
+func escapeKeyDelimiters(s string) string {
+	// Fast path: no characters to escape
+	if !strings.ContainsAny(s, "|:\\") {
+		return s
+	}
+
+	// Escape | as \p and : as \c, and \ as \\ (backslash must be escaped first)
+	result := strings.ReplaceAll(s, "\\", "\\\\")
+	result = strings.ReplaceAll(result, "|", "\\p")
+	result = strings.ReplaceAll(result, ":", "\\c")
+	return result
+}
+
+func boundKeySegment(segment string) string {
+	if len(segment) <= maxKeyDimensionSegmentLength {
+		return segment
+	}
+	hash := sha256.Sum256(utils.UnsafeBytes(segment))
+	return "sha256:" + hex.EncodeToString(hash[:])
+}
+
 func parseVary(vary string) ([]string, bool) {
 	names := make([]string, 0, 8)
+	count := 0
 	for part := range strings.SplitSeq(vary, ",") {
 		name := utils.TrimSpace(utilsstrings.ToLower(part))
 		if name == "" {
@@ -1264,6 +1497,14 @@ func parseVary(vary string) ([]string, bool) {
 		if name == "*" {
 			return nil, true
 		}
+
+		// Protect against DoS via excessive Vary headers
+		count++
+		if count > maxVaryHeaders {
+			// Too many Vary headers, treat as uncacheable (same as Vary: *)
+			return nil, true
+		}
+
 		names = append(names, name)
 	}
 

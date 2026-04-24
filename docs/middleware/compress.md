@@ -15,6 +15,7 @@ Bodies smaller than 200 bytes remain uncompressed because compression would like
 - Skips compression for responses that already define `Content-Encoding`, for range requests, `206` responses, status codes without bodies, or when either side sends `Cache-Control: no-transform`.
 - `HEAD` requests negotiate compression so `Content-Encoding`, `Content-Length`, `ETag`, and `Vary` reflect the encoded representation, but the body is removed before sending.
 - When compression runs, strong `ETag` values are recomputed from the compressed bytes; when skipped, `Accept-Encoding` is still merged into `Vary` unless the header is `*` or already present.
+- Request-body decompression is still handled by Fiber's request APIs (for example `c.Body()`), and those decoders enforce the app `BodyLimit` for compressed payloads.
 
 ## Signatures
 

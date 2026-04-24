@@ -337,6 +337,7 @@ func (b *Bind) XML(out any) error {
 func (b *Bind) Form(out any) error {
 	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+	bind.MaxBodySize = b.ctx.App().config.BodyLimit
 
 	defer releasePooledBinder(&binder.FormBinderPool, bind)
 

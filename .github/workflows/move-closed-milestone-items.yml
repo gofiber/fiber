@@ -11,6 +11,19 @@ on:
         description: Milestone that should receive the closed items
         required: true
         type: string
+  workflow_call:
+    inputs:
+      source_milestone:
+        description: Milestone that currently owns the closed items
+        required: true
+        type: string
+      target_milestone:
+        description: Milestone that should receive the closed items
+        required: true
+        type: string
+    secrets:
+      ISSUE_PR_TOKEN:
+        required: true
 
 permissions:
   contents: read
@@ -22,13 +35,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Move closed items to target milestone
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SOURCE_MILESTONE: ${{ inputs.source_milestone }}
+          TARGET_MILESTONE: ${{ inputs.target_milestone }}
         with:
           github-token: ${{ secrets.ISSUE_PR_TOKEN }}
           script: |
-            const dispatchInputs = context.payload.inputs ?? {};
-            const sourceTitle = (dispatchInputs.source_milestone ?? '').trim();
-            const targetTitle = (dispatchInputs.target_milestone ?? '').trim();
+            const sourceTitle = (process.env.SOURCE_MILESTONE ?? '').trim();
+            const targetTitle = (process.env.TARGET_MILESTONE ?? '').trim();
 
             if (sourceTitle.length === 0 || targetTitle.length === 0) {
               throw new Error('Both source_milestone and target_milestone must be non-empty.');
@@ -58,7 +73,8 @@ jobs:
 
             const sourceMilestone = findMilestoneByTitle(milestones, sourceTitle);
             if (!sourceMilestone) {
-              throw new Error(`Source milestone "${sourceTitle}" was not found.`);
+              core.warning(`Source milestone "${sourceTitle}" was not found — skipping.`);
+              return;
             }
 
             let targetMilestone = findMilestoneByTitle(milestones, targetTitle);
