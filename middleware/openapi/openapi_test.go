@@ -472,6 +472,8 @@ func Test_OpenAPI_GroupMiddleware(t *testing.T) {
 }
 
 func Test_OpenAPI_DoesNotInterceptSimilarPaths(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New())
@@ -479,6 +481,27 @@ func Test_OpenAPI_DoesNotInterceptSimilarPaths(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/reports/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusAccepted, resp.StatusCode)
+}
+
+func Test_OpenAPI_OnlyInterceptsGetAndHead(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New())
+	app.Post("/openapi.json", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusAccepted) })
+
+	req := httptest.NewRequest(fiber.MethodHead, "/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	req = httptest.NewRequest(fiber.MethodPost, "/openapi.json", http.NoBody)
+	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusAccepted, resp.StatusCode)
 }

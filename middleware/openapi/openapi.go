@@ -30,6 +30,9 @@ func New(config ...Config) fiber.Handler {
 		if c.Path() != targetPath {
 			return c.Next()
 		}
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
+			return c.Next()
+		}
 
 		once.Do(func() {
 			spec := generateSpec(c.App(), &cfg)
