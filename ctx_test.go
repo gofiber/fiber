@@ -806,6 +806,35 @@ func Benchmark_Ctx_BaseURL(b *testing.B) {
 	require.Equal(b, "http://google.com:1337", res)
 }
 
+func Benchmark_Ctx_BaseURL_Uncached(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	c.Request().SetHost("google.com:1337")
+	c.Request().URI().SetPath("/haha/oke/lol")
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		c.baseURI = ""
+		res = c.BaseURL()
+	}
+	require.Equal(b, "http://google.com:1337", res)
+}
+
+func Benchmark_Ctx_FullURL(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	c.Request().SetRequestURI("/haha/oke/lol?name=fiber")
+	c.Request().URI().SetHost("google.com:1337")
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.FullURL()
+	}
+	require.Equal(b, "http://google.com:1337/haha/oke/lol?name=fiber", res)
+}
+
 // go test -run Test_Ctx_Body
 func Test_Ctx_Body(t *testing.T) {
 	t.Parallel()
