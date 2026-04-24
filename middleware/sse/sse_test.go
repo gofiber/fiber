@@ -2004,3 +2004,253 @@ func Test_SSE_Bridge_PanicsWithoutSubscriber(t *testing.T) {
 		})
 	})
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Coverage boosters — targeted tests for previously-uncovered branches.
+// ──────────────────────────────────────────────────────────────────────────────
+
+func Test_SSE_Publish_DropsDuringDrain(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+
+	// Flip the drain flag and Publish — event must be counted as dropped,
+	// not published. Exercises the early-return branch in Publish.
+	hub.draining.Store(true)
+	hub.Publish(Event{Type: "x", Topics: []string{"t"}, Data: "d"})
+
+	stats := hub.Stats()
+	require.Equal(t, int64(1), stats.EventsDropped)
+	require.Equal(t, int64(0), stats.EventsPublished)
+
+	hub.draining.Store(false)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, hub.Shutdown(ctx))
+}
+
+func Test_SSE_Publish_StampsCreatedAtWhenTTLSet(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// TTL > 0 with zero CreatedAt — Publish must stamp CreatedAt so
+	// routeEvent can compute age correctly.
+	before := time.Now()
+	hub.Publish(Event{
+		Type:   "x",
+		Topics: []string{"t"},
+		Data:   "d",
+		TTL:    time.Second,
+	})
+	time.Sleep(30 * time.Millisecond)
+
+	// No direct getter for the enqueued event; just assert the
+	// corresponding counter to ensure we hit the enqueue branch.
+	stats := hub.Stats()
+	require.Equal(t, int64(1), stats.EventsPublished)
+	require.Less(t, time.Since(before), time.Second)
+}
+
+func Test_SSE_WriteRetry_SkipsNonPositive(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	require.NoError(t, writeRetry(&buf, 0))
+	require.NoError(t, writeRetry(&buf, -42))
+	require.Empty(t, buf.String(), "non-positive ms must not emit a retry: directive")
+
+	require.NoError(t, writeRetry(&buf, 1500))
+	require.Contains(t, buf.String(), "retry: 1500\n")
+}
+
+func Test_SSE_TrackEventType_EmptyDefaultsToMessage(t *testing.T) {
+	t.Parallel()
+
+	m := &hubMetrics{eventsByType: make(map[string]*atomic.Int64)}
+	m.trackEventType("")
+	m.trackEventType("")
+	m.trackEventType("custom")
+
+	snap := m.snapshotEventsByType()
+	require.Equal(t, int64(2), snap["message"], "empty event type falls back to \"message\"")
+	require.Equal(t, int64(1), snap["custom"])
+}
+
+func Test_SSE_MatchGroupConns_EmptyGroupIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	_, hub := NewWithHub()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	// With no Group set on the event, matchGroupConns must short-circuit
+	// without scanning connections — the early-return branch.
+	seen := make(map[string]struct{})
+	hub.mu.RLock()
+	hub.matchGroupConns(&Event{Type: "x", Topics: []string{"t"}}, seen)
+	hub.mu.RUnlock()
+	require.Empty(t, seen)
+}
+
+func Test_SSE_WatchLifetime_NoOpWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	// MaxLifetime <= 0 must leave watchLifetime as a no-op (no goroutine
+	// spawned, no eventual Close on the connection).
+	_, hub := NewWithHub(Config{MaxLifetime: -1})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, hub.Shutdown(ctx))
+	}()
+
+	conn := newConnection("c1", []string{"t"}, 8, 100*time.Millisecond)
+	hub.watchLifetime(conn)
+
+	// If watchLifetime spawned a goroutine it would close `conn.done`
+	// eventually (with MaxLifetime<=0 it must NOT). Allow plenty of
+	// scheduler time then assert conn is still alive.
+	time.Sleep(50 * time.Millisecond)
+	require.False(t, conn.IsClosed(), "watchLifetime must not close the conn when MaxLifetime<=0")
+}
+
+func Test_SSE_ReplayEvents_NoReplayerOrEmptyLastEventID(t *testing.T) {
+	t.Parallel()
+
+	// nil Replayer OR empty Last-Event-ID — both branches return nil
+	// without touching the writer.
+	hub := &Hub{cfg: Config{Replayer: nil}}
+	conn := newConnection("c1", []string{"t"}, 8, 100*time.Millisecond)
+	var buf bytes.Buffer
+	require.NoError(t, hub.replayEvents(bufio.NewWriter(&buf), conn, "some-id"))
+	require.Empty(t, buf.String())
+
+	hub2 := &Hub{cfg: Config{Replayer: &testReplayer{}}}
+	require.NoError(t, hub2.replayEvents(bufio.NewWriter(&buf), conn, ""))
+	require.Empty(t, buf.String())
+}
+
+// failingWriter writes `limit` bytes successfully then returns errWrite on
+// subsequent writes. Used to hit the error branches in initStream, replayEvents,
+// sendConnectedEvent, and writeLoop without spinning up a real TCP listener.
+type failingWriter struct {
+	err     error
+	written int
+	limit   int
+}
+
+func (fw *failingWriter) Write(p []byte) (int, error) {
+	if fw.err != nil && fw.written >= fw.limit {
+		return 0, fw.err
+	}
+	fw.written += len(p)
+	return len(p), nil
+}
+
+func Test_SSE_InitStream_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	// Fail on the very first write so writeRetry returns an error —
+	// exercises initStream's first `if err != nil { return err }` branch.
+	hub := &Hub{cfg: Config{RetryMS: 3000}}
+	conn := newConnection("c1", []string{"t"}, 8, 100*time.Millisecond)
+	fw := &failingWriter{limit: 0, err: errors.New("forced write error")}
+	err := hub.initStream(bufio.NewWriter(fw), conn, "")
+	require.Error(t, err)
+}
+
+func Test_SSE_ReplayEvents_HandlesReplayerError(t *testing.T) {
+	t.Parallel()
+
+	// Replayer returning an error must be treated as best-effort — caller
+	// gets nil and no events are written.
+	hub := &Hub{cfg: Config{Replayer: &errorReplayer{err: errors.New("store down")}}}
+	conn := newConnection("c1", []string{"t"}, 8, 100*time.Millisecond)
+	var buf bytes.Buffer
+	require.NoError(t, hub.replayEvents(bufio.NewWriter(&buf), conn, "last-id"))
+	require.Empty(t, buf.String())
+}
+
+type errorReplayer struct{ err error }
+
+func (*errorReplayer) Store(MarshaledEvent, []string) error { return nil }
+func (e *errorReplayer) Replay(string, []string) ([]MarshaledEvent, error) {
+	return nil, e.err
+}
+
+func Test_SSE_ReplayEvents_WritesEventsAndFlushes(t *testing.T) {
+	t.Parallel()
+
+	// Replayer returning events must produce written frames terminated
+	// with a flush — exercises the write-and-flush branch.
+	r := &testReplayer{}
+	// testReplayer.Replay returns entries AFTER the lastEventID marker
+	// entry — store the marker first, then the two we want replayed.
+	require.NoError(t, r.Store(MarshaledEvent{ID: "last", Type: "test", Data: "anchor"}, []string{"t"}))
+	require.NoError(t, r.Store(MarshaledEvent{ID: "e1", Type: "test", Data: "one"}, []string{"t"}))
+	require.NoError(t, r.Store(MarshaledEvent{ID: "e2", Type: "test", Data: "two"}, []string{"t"}))
+
+	hub := &Hub{cfg: Config{Replayer: r}}
+	conn := newConnection("c1", []string{"t"}, 8, 100*time.Millisecond)
+	var buf bytes.Buffer
+	bw := bufio.NewWriter(&buf)
+	require.NoError(t, hub.replayEvents(bw, conn, "last"))
+	require.NoError(t, bw.Flush())
+	out := buf.String()
+	require.Contains(t, out, "id: e1\n")
+	require.Contains(t, out, "id: e2\n")
+	require.Contains(t, out, "data: one\n")
+	require.Contains(t, out, "data: two\n")
+}
+
+func Test_SSE_SendConnectedEvent_PropagatesWriteError(t *testing.T) {
+	t.Parallel()
+
+	conn := newConnection("c1", []string{"t"}, 8, 100*time.Millisecond)
+	fw := &failingWriter{limit: 0, err: errors.New("no space")}
+	err := sendConnectedEvent(bufio.NewWriter(fw), conn)
+	require.Error(t, err)
+}
+
+func Test_SSE_WriteLoop_HeartbeatFlush(t *testing.T) {
+	t.Parallel()
+
+	// Drive writeLoop: fire a heartbeat then a real event, then close,
+	// so we hit the heartbeat branch, the normal event branch, and the
+	// done-exit branch — previously uncovered paths in writeLoop.
+	conn := newConnection("c1", []string{"t"}, 8, 50*time.Millisecond)
+	var buf bytes.Buffer
+	bw := bufio.NewWriter(&buf)
+
+	done := make(chan struct{})
+	go func() {
+		conn.writeLoop(bw)
+		close(done)
+	}()
+
+	conn.sendHeartbeat()
+	// Heartbeat fires, wait briefly for flush.
+	time.Sleep(30 * time.Millisecond)
+
+	conn.trySend(MarshaledEvent{ID: "evt_x", Type: "test", Data: "hi"})
+	time.Sleep(30 * time.Millisecond)
+
+	conn.Close()
+	<-done
+
+	require.NoError(t, bw.Flush())
+	out := buf.String()
+	require.Contains(t, out, ": heartbeat\n", "heartbeat comment present")
+	require.Contains(t, out, "data: hi\n", "real event data present")
+	require.Equal(t, int64(1), conn.MessagesSent.Load(), "real event counted once")
+	require.Equal(t, "evt_x", conn.LastEventID.Load())
+}

@@ -25,7 +25,6 @@ type Hub struct {
 	events        chan Event
 	shutdown      chan struct{}
 	stopped       chan struct{}
-	bridgeCancel  context.CancelFunc
 	metrics       hubMetrics
 	cfg           Config
 	bridges       sync.WaitGroup
@@ -70,10 +69,15 @@ func newHub(cfg Config) *Hub { //nolint:gocritic // hugeParam: internal construc
 	go hub.run()
 
 	if len(cfg.Bridges) > 0 {
-		// cancel is stored on the Hub and invoked in Shutdown; the linter
-		// can't follow that across goroutines, so suppress G118 here.
-		ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored on hub.bridgeCancel and invoked in Shutdown
-		hub.bridgeCancel = cancel
+		ctx, cancel := context.WithCancel(context.Background())
+		// Tie cancel to hub.shutdown so a single close(h.shutdown) during
+		// Shutdown also cancels the bridges' context. Keeping cancel
+		// visible in a goroutine (rather than just storing a CancelFunc
+		// on the struct) lets gosec G118 see that it's always invoked.
+		go func() {
+			<-hub.shutdown
+			cancel()
+		}()
 		for _, bc := range cfg.Bridges {
 			hub.bridges.Add(1)
 			go func(cfg BridgeConfig) {
@@ -138,9 +142,8 @@ func (h *Hub) SetPaused(connID string, paused bool) { //nolint:revive // flag-pa
 func (h *Hub) Shutdown(ctx context.Context) error {
 	h.draining.Store(true)
 	h.shutdownOnce.Do(func() {
-		if h.bridgeCancel != nil {
-			h.bridgeCancel()
-		}
+		// Closing h.shutdown fans out to the bridge-cancel goroutine
+		// registered in newHub, the run loop, and watchers.
 		close(h.shutdown)
 	})
 
