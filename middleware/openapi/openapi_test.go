@@ -490,7 +490,6 @@ func Test_OpenAPI_OnlyInterceptsGetAndHead(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New())
 	app.Post("/openapi.json", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusAccepted) })
 

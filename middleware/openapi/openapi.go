@@ -27,10 +27,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		targetPath := resolvedSpecPath(c, cfg.Path)
-		if c.Path() != targetPath {
-			return c.Next()
-		}
-		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
+		if c.Path() != targetPath || (c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead) {
 			return c.Next()
 		}
 
