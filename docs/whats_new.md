@@ -1646,7 +1646,7 @@ Monitor middleware is migrated to the [Contrib package](https://github.com/gofib
 
 ### OpenAPI
 
-Introduces an `openapi` middleware that inspects registered routes and serves a generated OpenAPI 3.0 specification. Each operation includes a summary and a default response (typically `200`, or `204 No Content` for `DELETE` and `HEAD` operations, matching the middleware's behavior). Routes may attach descriptions, parameters, request bodies, and custom responses—alongside request/response media types—directly or configure them globally. New helpers allow parameters, request bodies, and responses to include schema references and examples (including `$ref` targets under `components/schemas`), enabling richer generated documentation.
+Introduces an `openapi` middleware that inspects registered routes and serves a generated OpenAPI 3.0 specification. Each operation includes a summary and a default response (typically `200`, or `204 No Content` for `DELETE` and `HEAD` operations, matching the middleware's behavior). Routes may attach descriptions, parameters, request bodies, and custom responses—alongside request/response media types—directly to route definitions. New helpers allow parameters, request bodies, and responses to include schema references and examples (including `$ref` targets under `components/schemas`), enabling richer generated documentation.
 
 ### Proxy
 
