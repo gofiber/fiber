@@ -406,11 +406,13 @@ func Test_BasicAuth_HeaderControlCharEdges(t *testing.T) {
 
 	handler := app.Handler()
 	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+	// Note: \r and \n are sanitized to spaces by fasthttp at the protocol level,
+	// so we use other control chars (SOH, BEL) that pass through unchanged.
 	headers := [][]byte{
-		[]byte("\rBasic " + creds),
-		[]byte("\nBasic " + creds),
-		[]byte("Basic " + creds + "\r"),
-		[]byte("Basic " + creds + "\n"),
+		[]byte("\x01Basic " + creds),
+		[]byte("\x07Basic " + creds),
+		[]byte("Basic " + creds + "\x01"),
+		[]byte("Basic " + creds + "\x07"),
 	}
 
 	for _, h := range headers {

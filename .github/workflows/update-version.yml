@@ -1,0 +1,94 @@
+name: Update Version
+
+# Updates the Version constant in app.go to match the next release draft.
+# Can be triggered manually with a specific version or auto-detect from
+# the latest draft release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >
+          Version to set (e.g. "3.2.0"). Leave empty to auto-detect
+          from the latest draft release tag.
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Determine version
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -n "$INPUT_VERSION" ]; then
+            version="$INPUT_VERSION"
+          else
+            # Find the latest draft release tag
+            tag=$(gh api "/repos/${{ github.repository }}/releases" --paginate \
+              | jq -r '[.[] | select(.draft == true)] | sort_by(.created_at) | reverse | .[0].tag_name // ""')
+            if [ -z "$tag" ]; then
+              echo "::error::No draft release found and no version provided."
+              exit 1
+            fi
+            # Strip leading 'v' if present
+            version="${tag#v}"
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: **${version}**" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update app.go
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current=$(grep -oP 'const Version = "\K[^"]+' app.go)
+          if [ "$current" = "$VERSION" ]; then
+            echo "Version already up to date: ${VERSION}"
+            echo "ℹ️ Version already \`${VERSION}\` — no changes." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          sed -i "s/const Version = \"${current}\"/const Version = \"${VERSION}\"/" app.go
+          echo "Updated: ${current} → ${VERSION}"
+
+          # Verify the change
+          grep "const Version = \"${VERSION}\"" app.go
+
+          {
+            echo "### Version updated"
+            echo "- \`${current}\` → \`${VERSION}\`"
+            echo "- File: \`app.go\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit and push
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app.go
+          git commit -m "chore: bump version to v${VERSION}"
+          git push

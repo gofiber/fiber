@@ -82,7 +82,9 @@ func testErrorResponse(t *testing.T, err error, resp *http.Response, expectedBod
 }
 
 func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
-	t.Parallel()
+	// Not parallel: this test relies on runtime.NumGoroutine() deltas,
+	// which are unreliable when hundreds of other tests spawn goroutines
+	// concurrently.
 
 	testCases := []struct {
 		handler    Handler
@@ -114,7 +116,6 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			app := New()
 
 			// Record initial goroutine count

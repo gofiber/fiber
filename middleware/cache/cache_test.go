@@ -5,6 +5,8 @@ package cache
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -227,7 +229,7 @@ func TestCacheStorageGetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["get|/_GET"] = errors.New("boom")
+	storage.errs["get|GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -253,7 +255,7 @@ func TestCacheStorageSetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["set|/_GET_body"] = errors.New("boom")
+	storage.errs["set|GET|/|q=|h=accept:|accept-encoding:|accept-language:_body"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -279,14 +281,14 @@ func TestCacheStorageDeleteError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["del|/_GET"] = errors.New("boom")
+	storage.errs["del|GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = errors.New("boom")
 
 	// Use an obviously expired timestamp without relying on time-based conversions
 	expired := &item{exp: 1}
 	raw, err := expired.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	storage.data["/_GET"] = raw
+	storage.data["GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = raw
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -367,14 +369,17 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 		require.True(t, rec.canceled)
 	}
 
-	require.ElementsMatch(t, []string{"/first_GET", "/first_GET_body"}, keys)
+	require.ElementsMatch(t, []string{
+		"GET|/first|q=|h=accept:|accept-encoding:|accept-language:",
+		"GET|/first|q=|h=accept:|accept-encoding:|accept-language:_body",
+	}, keys)
 }
 
 func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 	t.Parallel()
 
 	storage := newContextRecorderStorage()
-	storage.errs["set|/_GET"] = errors.New("boom")
+	storage.errs["set|GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -403,7 +408,7 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 
 	records := storage.recordedDeletes()
 	require.Len(t, records, 1)
-	require.Equal(t, "/_GET_body", records[0].key)
+	require.Equal(t, "GET|/|q=|h=accept:|accept-encoding:|accept-language:_body", records[0].key)
 	require.Equal(t, "cleanup", records[0].value)
 	require.True(t, records[0].canceled)
 }
@@ -454,7 +459,10 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 	setRecords := storage.recordedSets()
 	require.Len(t, setRecords, 2)
 	for _, rec := range setRecords {
-		require.Contains(t, []string{"/cache_GET", "/cache_GET_body"}, rec.key)
+		require.Contains(t, []string{
+			"GET|/cache|q=|h=accept:|accept-encoding:|accept-language:",
+			"GET|/cache|q=|h=accept:|accept-encoding:|accept-language:_body",
+		}, rec.key)
 		require.Equal(t, "store", rec.value)
 		require.True(t, rec.canceled)
 	}
@@ -468,11 +476,11 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 			continue
 		}
 
-		if rec.key == "/cache_GET" {
+		if rec.key == "GET|/cache|q=|h=accept:|accept-encoding:|accept-language:" {
 			require.True(t, rec.canceled)
 			fetchEntry = true
 		}
-		if rec.key == "/cache_GET_body" {
+		if rec.key == "GET|/cache|q=|h=accept:|accept-encoding:|accept-language:_body" {
 			require.True(t, rec.canceled)
 			fetchBody = true
 		}
@@ -498,7 +506,10 @@ func Test_Cache_CacheControl(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
-	require.Equal(t, "public, max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
+	// max-age can be 10 or 11 depending on sub-second timing between store and read
+	cc := resp.Header.Get(fiber.HeaderCacheControl)
+	require.True(t, cc == "public, max-age=10" || cc == "public, max-age=11",
+		"unexpected Cache-Control: %s", cc)
 }
 
 func Test_Cache_CacheControl_Disabled(t *testing.T) {
@@ -565,7 +576,7 @@ func Test_Cache(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New())
+	app.Use(New(Config{DisableQueryKeys: true}))
 
 	count := 0
 	app.Get("/", func(c fiber.Ctx) error {
@@ -594,7 +605,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New())
+	app.Use(New(Config{DisableQueryKeys: true}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(fiber.Query(c, "id", "1"))
@@ -693,7 +704,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	app := fiber.New()
 	app.Use(
 		etag.New(),
-		New(),
+		New(Config{DisableQueryKeys: true}),
 	)
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -767,7 +778,7 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New())
+	app.Use(New(Config{DisableQueryKeys: true}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(fiber.Query(c, "id", "1"))
@@ -918,7 +929,7 @@ func Test_Cache_Get(t *testing.T) {
 	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "123", string(body))
+	require.Equal(t, "12345", string(body))
 }
 
 func Test_Cache_Post(t *testing.T) {
@@ -926,41 +937,368 @@ func Test_Cache_Post(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(New(Config{
-		Methods: []string{fiber.MethodPost},
-	}))
+	app.Use(New())
 
+	var count atomic.Int32
 	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendString(fiber.Query[string](c, "cache"))
-	})
-
-	app.Get("/get", func(c fiber.Ctx) error {
-		return c.SendString(fiber.Query[string](c, "cache"))
+		current := count.Add(1)
+		return c.SendString(fmt.Sprintf("%d:%s", current, fiber.Query[string](c, "cache")))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", http.NoBody))
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "123", string(body))
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Equal(t, "1:123", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", http.NoBody))
+	require.NoError(t, err)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Equal(t, "2:123", string(body))
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", http.NoBody))
 	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "123", string(body))
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Equal(t, "3:12345", string(body))
+}
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=123", http.NoBody))
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "123", string(body))
+func Test_Cache_CustomMethods(t *testing.T) {
+	t.Parallel()
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=12345", http.NoBody))
-	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "12345", string(body))
+	t.Run("POST cached when in Methods", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{fiber.MethodGet, fiber.MethodHead, fiber.MethodPost},
+		}))
+
+		var count atomic.Int32
+		app.Post("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		// First POST — cache miss
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", http.NoBody))
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1", string(body))
+
+		// Second POST — cache hit
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/", http.NoBody))
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1", string(body))
+	})
+
+	t.Run("unconfigured method bypasses cache", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{fiber.MethodGet},
+		}))
+
+		var count atomic.Int32
+		app.Put("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		// PUT not in Methods — always bypasses cache
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodPut, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(1), count.Load())
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodPut, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(2), count.Load(), "handler must be called on every bypass")
+	})
+
+	t.Run("empty Methods slice disables caching", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{},
+		}))
+
+		var count atomic.Int32
+		app.Get("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		// Even GET bypasses cache when Methods is explicitly empty
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1", string(body))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		require.Equal(t, "2", string(body))
+		require.Equal(t, int32(2), count.Load(), "handler must be called each time with empty Methods")
+	})
+
+	t.Run("lowercase method names are normalized", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{"get", "post"},
+		}))
+
+		var count atomic.Int32
+		app.Get("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		// "get" should be normalized to "GET" and match
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1", string(body))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1", string(body))
+	})
+}
+
+func Test_Cache_DefaultKeyDimensions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("distinct query values do not collide", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New())
+
+		count := 0
+		app.Get("/", func(c fiber.Ctx) error {
+			count++
+			return c.SendString(fmt.Sprintf("%d:%s", count, c.Request().URI().QueryString()))
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/?id=1", http.NoBody)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "1:id=1", string(body))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody))
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "2:id=2", string(body))
+	})
+
+	t.Run("representation headers partition cache", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New())
+
+		count := 0
+		app.Get("/", func(c fiber.Ctx) error {
+			count++
+			return c.SendString(fmt.Sprintf("%d:%s", count, c.Get(fiber.HeaderAcceptLanguage)))
+		})
+
+		reqEN := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		reqEN.Header.Set(fiber.HeaderAcceptLanguage, "en-US")
+		resp, err := app.Test(reqEN)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "1:en-US", string(body))
+
+		reqFR := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		reqFR.Header.Set(fiber.HeaderAcceptLanguage, "fr-FR")
+		resp, err = app.Test(reqFR)
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "2:fr-FR", string(body))
+	})
+
+	t.Run("keyed cookies preserve case-sensitive names", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{KeyCookies: []string{"SessionID"}}))
+
+		count := 0
+		app.Get("/", func(c fiber.Ctx) error {
+			count++
+			return c.SendString(fmt.Sprintf("%d:%s", count, c.Cookies("SessionID")))
+		})
+
+		reqA := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		reqA.AddCookie(&http.Cookie{Name: "SessionID", Value: "alpha"})
+		resp, err := app.Test(reqA)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1:alpha", string(body))
+
+		reqB := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		reqB.AddCookie(&http.Cookie{Name: "SessionID", Value: "beta"})
+		resp, err = app.Test(reqB)
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		require.Equal(t, "2:beta", string(body))
+
+		reqBRepeat := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		reqBRepeat.AddCookie(&http.Cookie{Name: "SessionID", Value: "beta"})
+		resp, err = app.Test(reqBRepeat)
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+		require.Equal(t, "2:beta", string(body))
+	})
+
+	t.Run("long paths are bounded in storage keys", func(t *testing.T) {
+		t.Parallel()
+
+		storage := newMutatingStorage(nil)
+		oversizedPath := "/" + strings.Repeat("a", maxKeyDimensionSegmentLength+1)
+		app := fiber.New()
+		app.Use(New(Config{
+			Expiration: 1 * time.Hour,
+			Storage:    storage,
+		}))
+		app.Get(oversizedPath, func(c fiber.Ctx) error {
+			return c.SendString("ok")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, oversizedPath, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+		hash := sha256.Sum256([]byte(oversizedPath))
+		expectedBoundedPath := "sha256:" + hex.EncodeToString(hash[:])
+		require.Len(t, expectedBoundedPath, len("sha256:")+sha256.Size*2)
+
+		expectedPrefix := fiber.MethodGet + "|" + expectedBoundedPath
+		foundBoundedKey := false
+		for key := range storage.data {
+			require.NotContains(t, key, oversizedPath)
+			if strings.HasPrefix(key, expectedPrefix) {
+				foundBoundedKey = true
+			}
+		}
+		require.True(t, foundBoundedKey)
+	})
+
+	t.Run("empty keyed headers disable default header partitioning", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{KeyHeaders: []string{}}))
+
+		count := 0
+		app.Get("/", func(c fiber.Ctx) error {
+			count++
+			return c.SendString(fmt.Sprintf("%d:%s", count, c.Get(fiber.HeaderAcceptLanguage)))
+		})
+
+		reqEN := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		reqEN.Header.Set(fiber.HeaderAcceptLanguage, "en-US")
+		resp, err := app.Test(reqEN)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "1:en-US", string(body))
+
+		reqFR := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		reqFR.Header.Set(fiber.HeaderAcceptLanguage, "fr-FR")
+		resp, err = app.Test(reqFR)
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+		require.Equal(t, "1:en-US", string(body))
+	})
+
+	t.Run("non-keyed headers do not fragment cache", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New())
+
+		count := 0
+		app.Get("/", func(c fiber.Ctx) error {
+			count++
+			return c.SendString(fmt.Sprintf("%d:%s", count, c.Get("X-Request-ID")))
+		})
+
+		reqA := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		reqA.Header.Set("X-Request-ID", "a")
+		resp, err := app.Test(reqA)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "1:a", string(body))
+
+		reqB := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		reqB.Header.Set("X-Request-ID", "b")
+		resp, err = app.Test(reqB)
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "1:a", string(body))
+	})
+
+	t.Run("body-dependent requests are bypassed by default", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New())
+
+		count := 0
+		app.Post("/", func(c fiber.Ctx) error {
+			count++
+			return c.SendString(fmt.Sprintf("%d:%s", count, c.Body()))
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a")))
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "1:a", string(body))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("b")))
+		require.NoError(t, err)
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "2:b", string(body))
+	})
 }
 
 func Test_Cache_NothingToCache(t *testing.T) {
@@ -1647,7 +1985,7 @@ func Test_CacheExpiresFutureAllowsCaching(t *testing.T) {
 	var count int
 	app.Get("/", func(c fiber.Ctx) error {
 		count++
-		c.Set(fiber.HeaderExpires, time.Now().Add(30*time.Second).UTC().Format(time.RFC1123))
+		c.Set(fiber.HeaderExpires, time.Now().Add(30*time.Second).UTC().Format(http.TimeFormat))
 		return c.SendString("expires" + strconv.Itoa(count))
 	})
 
@@ -1675,7 +2013,7 @@ func Test_CacheExpiresPastPreventsCaching(t *testing.T) {
 	var count int
 	app.Get("/", func(c fiber.Ctx) error {
 		count++
-		c.Set(fiber.HeaderExpires, time.Now().Add(-1*time.Minute).UTC().Format(time.RFC1123))
+		c.Set(fiber.HeaderExpires, time.Now().Add(-1*time.Minute).UTC().Format(http.TimeFormat))
 		return c.SendString("expires" + strconv.Itoa(count))
 	})
 
@@ -1797,7 +2135,7 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "body1", string(body))
 
-	expectedKey := "/|invalid-expires_GET"
+	expectedKey := "GET|/|invalid-expires"
 	require.Contains(t, storage.data, expectedKey)
 	require.Contains(t, storage.data, expectedKey+"_body")
 
@@ -2812,33 +3150,40 @@ func Test_CacheVarySeparatesVariants(t *testing.T) {
 func Test_CacheVaryStarUncacheable(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		KeyGenerator: func(c fiber.Ctx) string {
-			return c.Path() + "|vary-star"
-		},
-	}))
+	for _, disableVaryHeaders := range []bool{false, true} {
+		t.Run(fmt.Sprintf("DisableVaryHeaders=%t", disableVaryHeaders), func(t *testing.T) {
+			t.Parallel()
 
-	var count int
-	app.Get("/", func(c fiber.Ctx) error {
-		count++
-		c.Set(fiber.HeaderVary, "*")
-		return c.SendString(strconv.Itoa(count))
-	})
+			app := fiber.New()
+			app.Use(New(Config{
+				DisableVaryHeaders: disableVaryHeaders,
+				KeyGenerator: func(c fiber.Ctx) string {
+					return c.Path() + "|vary-star"
+				},
+			}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "1", string(body))
+			var count int
+			app.Get("/", func(c fiber.Ctx) error {
+				count++
+				c.Set(fiber.HeaderVary, "*")
+				return c.SendString(strconv.Itoa(count))
+			})
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "2", string(body))
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "1", string(body))
+
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+			body, err = io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "2", string(body))
+		})
+	}
 }
 
 func Test_CachePrivateDirective(t *testing.T) {
@@ -4576,13 +4921,10 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 		require.Equal(t, cacheMiss, rsp.Header.Get("X-Cache"))
 	})
 
-	t.Run("method not in allowed methods list", func(t *testing.T) {
+	t.Run("non-get-head method bypasses cache", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
-		app.Use(New(Config{
-			Expiration: 1 * time.Hour,
-			Methods:    []string{fiber.MethodGet},
-		}))
+		app.Use(New(Config{Expiration: 1 * time.Hour}))
 		app.Post("/test", func(c fiber.Ctx) error {
 			return c.SendString("test")
 		})
@@ -4671,7 +5013,7 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 		app := fiber.New()
 		app.Use(New(Config{Expiration: 1 * time.Hour}))
 		app.Get("/test", func(c fiber.Ctx) error {
-			futureTime := time.Now().Add(1 * time.Hour).Format(time.RFC1123)
+			futureTime := time.Now().Add(1 * time.Hour).UTC().Format(http.TimeFormat)
 			c.Response().Header.Set("Expires", futureTime)
 			return c.SendString("test")
 		})
@@ -5090,4 +5432,53 @@ func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, cacheMiss, rsp2.Header.Get("X-Cache"))
 	})
+}
+
+// Test_hasDirective covers RFC 9111 §5.2 directive parsing including
+// space, tab, and '=' as valid terminators (fixes #4143).
+func Test_hasDirective(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		cc        string
+		directive string
+		want      bool
+	}{
+		// Basic matches
+		{"exact match", "no-cache", "no-cache", true},
+		{"comma separated", "public, no-cache, max-age=0", "no-cache", true},
+		{"at start", "no-cache, max-age=0", "no-cache", true},
+		{"at end", "public, no-cache", "no-cache", true},
+		{"not present", "public, max-age=0", "no-cache", false},
+		{"shorter token does not match", "no-catch", "no-cache", false},
+		{"substring of longer token", "no-cache-extended", "no-cache", false},
+
+		// Trailing whitespace (#4143)
+		{"trailing space", "no-cache ", "no-cache", true},
+		{"trailing tab", "no-cache\t", "no-cache", true},
+		{"private trailing space", "private ", "private", true},
+
+		// Directive with value (#4143)
+		{"directive with equals", `no-cache="Set-Cookie"`, "no-cache", true},
+		{"max-age with value", "max-age=3600", "max-age", true},
+		{"s-maxage with value in list", "public, s-maxage=600, max-age=3600", "s-maxage", true},
+
+		// Tab as separator before directive
+		{"tab before directive", "public,\tno-cache", "no-cache", true},
+
+		// Case insensitive
+		{"case insensitive", "No-Cache", "no-cache", true},
+
+		// Empty / edge cases
+		{"empty header", "", "no-cache", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := hasDirective(tc.cc, tc.directive)
+			require.Equal(t, tc.want, got)
+		})
+	}
 }

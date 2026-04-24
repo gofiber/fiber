@@ -1,0 +1,23 @@
+name: Cleanup Release Draft
+
+on:
+  workflow_run:
+    workflows: ["Release Drafter"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag or name of the draft (empty = latest draft)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: gofiber/.github/.github/actions/cleanup-release-draft@main
+        with:
+          tag: ${{ inputs.tag }}
