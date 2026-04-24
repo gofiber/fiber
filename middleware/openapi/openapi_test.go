@@ -1047,7 +1047,7 @@ func Test_OpenAPI_MediaTypesToContentEmptyMediaType(t *testing.T) {
 
 	// Test that empty media types in the list are skipped
 	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
-		Response(200, "Success", fiber.MIMEApplicationJSON, fiber.MIMETextPlain)
+		Response(200, "Success", fiber.MIMEApplicationJSON, "", fiber.MIMETextPlain)
 
 	app.Use(New())
 
