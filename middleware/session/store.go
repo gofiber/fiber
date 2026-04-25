@@ -158,6 +158,11 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 				// For read-only sources (query, form, param, custom), preserve the
 				// client-provided ID and create a fresh session under it so that
 				// subsequent requests carrying the same ID are served the same session.
+				//
+				// Security note: using a read-only source (e.g. FromQuery) means the
+				// client controls the session ID on every request and the server cannot
+				// rotate it in the response. Callers that require strong session
+				// fixation protection should use a cookie or header extractor instead.
 				fresh = true
 				c.Locals(sessionIDContextKey, id)
 			}

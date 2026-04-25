@@ -110,14 +110,15 @@ func Test_Store_Get(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
-		ctx.Request().SetRequestURI("/path?session_id=" + unexpectedID)
+		clientID := "client-chosen-session-id"
+		ctx.Request().SetRequestURI("/path?session_id=" + clientID)
 
 		acquiredSession, err := store.Get(ctx)
 		require.NoError(t, err)
 		defer acquiredSession.Release()
 
 		// The session ID must equal the value provided via the query parameter.
-		require.Equal(t, unexpectedID, acquiredSession.ID())
+		require.Equal(t, clientID, acquiredSession.ID())
 		// The session is fresh because no prior data existed under this ID.
 		require.True(t, acquiredSession.Fresh())
 	})
@@ -129,9 +130,11 @@ func Test_Store_Get(t *testing.T) {
 		})
 		app2 := fiber.New()
 
+		clientID := "client-chosen-session-id"
+
 		// First request: create and save a session under the query-provided ID.
 		ctx1 := app2.AcquireCtx(&fasthttp.RequestCtx{})
-		ctx1.Request().SetRequestURI("/path?session_id=" + unexpectedID)
+		ctx1.Request().SetRequestURI("/path?session_id=" + clientID)
 		sess1, err := store.Get(ctx1)
 		require.NoError(t, err)
 		sess1.Set("key", "value")
@@ -142,19 +145,20 @@ func Test_Store_Get(t *testing.T) {
 		// Second request with the same query ID: must load the existing session data.
 		ctx2 := app2.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app2.ReleaseCtx(ctx2)
-		ctx2.Request().SetRequestURI("/path?session_id=" + unexpectedID)
+		ctx2.Request().SetRequestURI("/path?session_id=" + clientID)
 		sess2, err := store.Get(ctx2)
 		require.NoError(t, err)
 		defer sess2.Release()
 
-		require.Equal(t, unexpectedID, sess2.ID())
+		require.Equal(t, clientID, sess2.ID())
 		require.False(t, sess2.Fresh())
 		require.Equal(t, "value", sess2.Get("key"))
 	})
 
 	t.Run("chain extractor: cookie source discards unknown ID (security)", func(t *testing.T) {
 		t.Parallel()
-		// Chain with cookie first: an unknown cookie ID must still be discarded.
+		// Chain with cookie first: an unknown cookie ID must still be discarded to
+		// prevent session fixation attacks.
 		store := NewStore(Config{
 			Extractor: extractors.Chain(
 				extractors.FromCookie("session_id"),
@@ -164,14 +168,15 @@ func Test_Store_Get(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
-		ctx.Request().Header.SetCookie("session_id", unexpectedID)
+		untrustedID := "untrusted-cookie-session-id"
+		ctx.Request().Header.SetCookie("session_id", untrustedID)
 
 		acquiredSession, err := store.Get(ctx)
 		require.NoError(t, err)
 		defer acquiredSession.Release()
 
 		// Cookie with unknown ID → new ID generated to prevent session fixation.
-		require.NotEqual(t, unexpectedID, acquiredSession.ID())
+		require.NotEqual(t, untrustedID, acquiredSession.ID())
 	})
 
 	t.Run("chain extractor: query fallback preserves ID when cookie absent", func(t *testing.T) {
@@ -187,14 +192,15 @@ func Test_Store_Get(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
+		queryID := "query-provided-session-id"
 		// No cookie; only query param.
-		ctx.Request().SetRequestURI("/path?session_id=" + unexpectedID)
+		ctx.Request().SetRequestURI("/path?session_id=" + queryID)
 
 		acquiredSession, err := store.Get(ctx)
 		require.NoError(t, err)
 		defer acquiredSession.Release()
 
-		require.Equal(t, unexpectedID, acquiredSession.ID())
+		require.Equal(t, queryID, acquiredSession.ID())
 		require.True(t, acquiredSession.Fresh())
 	})
 }
