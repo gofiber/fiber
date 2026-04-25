@@ -42,8 +42,9 @@ type Config struct {
 	Replayer Replayer
 
 	// Bridges declares external pub/sub sources (Redis, NATS, etc.) that
-	// feed events into the hub. Bridges start automatically when the first
-	// handler is mounted and stop on Shutdown.
+	// feed events into the hub. Bridges start automatically when the SSE
+	// middleware/hub is created (for example, via NewWithHub), not lazily
+	// when a handler is mounted, and stop on Shutdown.
 	//
 	// Optional. Default: nil
 	Bridges []BridgeConfig
