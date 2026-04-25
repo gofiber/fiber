@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"bytes"
 	"fmt"
 	"slices"
 	"sync/atomic"
@@ -426,22 +425,21 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 }
 
 func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
-	ctx := app.acquireDefaultCtx(rctx)
+	ctx, ok := app.acquireDefaultCtx(rctx)
+	if !ok {
+		app.customRequestHandler(rctx)
+		return
+	}
+	defer app.releaseDefaultCtx(ctx)
 
 	// Check if the HTTP method is valid
 	if ctx.methodInt == -1 {
 		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
-		if !ctx.abandoned.Load() {
-			ctx.release()
-			app.pool.Put(ctx)
-		}
 		return
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie).
-	if rawHeaders := ctx.fasthttp.Request.Header.RawHeaders(); len(rawHeaders) > 0 &&
-		bytes.Contains(rawHeaders, flashCookieNeedle) &&
-		ctx.fasthttp.Request.Header.Cookie(FlashCookieName) != nil {
+	if hasFlashCookie(&ctx.fasthttp.Request.Header) {
 		ctx.Redirect().parseAndClearFlashMessages()
 	}
 
@@ -450,15 +448,6 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
 			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
 		}
-		if !ctx.abandoned.Load() {
-			ctx.release()
-			app.pool.Put(ctx)
-		}
-		return
-	}
-	if !ctx.abandoned.Load() {
-		ctx.release()
-		app.pool.Put(ctx)
 	}
 }
 

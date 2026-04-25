@@ -81,15 +81,20 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 	return ctx
 }
 
-func (app *App) acquireDefaultCtx(fctx *fasthttp.RequestCtx) *DefaultCtx {
-	ctx, ok := app.pool.Get().(*DefaultCtx)
+func (app *App) acquireDefaultCtx(fctx *fasthttp.RequestCtx) (*DefaultCtx, bool) {
+	rawCtx := app.pool.Get()
+	ctx, ok := rawCtx.(*DefaultCtx)
 	if !ok {
+		if customCtx, ok := rawCtx.(CustomCtx); ok {
+			app.pool.Put(customCtx)
+			return nil, false
+		}
 		panic(errDefaultCtxTypeAssertion)
 	}
 
 	ctx.Reset(fctx)
 
-	return ctx
+	return ctx, true
 }
 
 // ReleaseCtx releases the ctx back into the pool.
@@ -98,6 +103,14 @@ func (app *App) acquireDefaultCtx(fctx *fasthttp.RequestCtx) *DefaultCtx {
 // requestHandler and ErrorHandler) still touch the context; the timeout
 // middleware intentionally leaves abandoned contexts unreleased to avoid races.
 func (app *App) ReleaseCtx(c CustomCtx) {
+	if c.IsAbandoned() {
+		return
+	}
+	c.release()
+	app.pool.Put(c)
+}
+
+func (app *App) releaseDefaultCtx(c *DefaultCtx) {
 	if c.IsAbandoned() {
 		return
 	}
