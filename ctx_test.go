@@ -355,11 +355,10 @@ func Test_App_AcquireDefaultCtx_CustomCtxFallback(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.pool.Put(&customCtx{
-		DefaultCtx: *NewDefaultCtx(app),
-	})
 
-	ctx, ok := app.acquireDefaultCtx(&fasthttp.RequestCtx{})
+	ctx, ok := app.prepareDefaultCtx(&customCtx{
+		DefaultCtx: *NewDefaultCtx(app),
+	}, &fasthttp.RequestCtx{})
 	require.False(t, ok)
 	require.Nil(t, ctx)
 }

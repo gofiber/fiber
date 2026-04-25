@@ -83,10 +83,19 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 
 func (app *App) acquireDefaultCtx(fctx *fasthttp.RequestCtx) (*DefaultCtx, bool) {
 	rawCtx := app.pool.Get()
+	ctx, ok := app.prepareDefaultCtx(rawCtx, fctx)
+	if !ok {
+		app.pool.Put(rawCtx)
+		return nil, false
+	}
+
+	return ctx, true
+}
+
+func (*App) prepareDefaultCtx(rawCtx any, fctx *fasthttp.RequestCtx) (*DefaultCtx, bool) {
 	ctx, ok := rawCtx.(*DefaultCtx)
 	if !ok {
-		if customCtx, ok := rawCtx.(CustomCtx); ok {
-			app.pool.Put(customCtx)
+		if _, ok := rawCtx.(CustomCtx); ok {
 			return nil, false
 		}
 		panic(errDefaultCtxTypeAssertion)
