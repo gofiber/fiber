@@ -196,9 +196,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 	// Does this route have parameters?
 	if len(r.Params) > 0 {
 		// Match params using precomputed routeParser
-		if r.routeParser.getMatch(detectionPath, path, params, r.use) {
-			return true
-		}
+		return r.routeParser.getMatch(detectionPath, path, params, r.use)
 	}
 
 	// Middleware route?
