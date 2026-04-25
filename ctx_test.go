@@ -1218,10 +1218,23 @@ func Test_Ctx_Format(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<p>Hello, World!</p>", string(c.Response().Body()))
 
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.Format("<script>alert(1)</script>")
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>", string(c.Response().Body()))
+
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
 	err = c.Format("Hello, World!")
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `"Hello, World!"`, string(c.Response().Body()))
+
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
+	err = c.Format("<script>alert(1)</script>")
+	utils.AssertEqual(t, nil, err)
+	jsonBody := append([]byte(nil), c.Response().Body()...)
+	err = c.JSON("<script>alert(1)</script>")
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, string(jsonBody), string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
 	err = c.Format(complex(1, 1))
@@ -1232,6 +1245,11 @@ func Test_Ctx_Format(t *testing.T) {
 	err = c.Format("Hello, World!")
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `<string>Hello, World!</string>`, string(c.Response().Body()))
+
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationXML)
+	err = c.Format("<script>alert(1)</script>")
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, `<string>&lt;script&gt;alert(1)&lt;/script&gt;</string>`, string(c.Response().Body()))
 
 	err = c.Format(complex(1, 1))
 	utils.AssertEqual(t, true, err != nil)

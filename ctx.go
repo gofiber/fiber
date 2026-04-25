@@ -11,6 +11,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"mime/multipart"
 	"net"
@@ -606,7 +607,7 @@ func (c *Ctx) Format(body interface{}) error {
 	// Format based on the accept content type
 	switch accept {
 	case "html":
-		return c.SendString("<p>" + b + "</p>")
+		return c.SendString("<p>" + html.EscapeString(b) + "</p>")
 	case "json":
 		return c.JSON(body)
 	case "txt":
