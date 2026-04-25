@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"sync/atomic"
@@ -225,6 +226,8 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 func (app *App) next(c *DefaultCtx) (bool, error) {
 	methodInt := c.methodInt
 	treeHash := c.treePathHash
+	detectionPath := utils.UnsafeString(c.detectionPath)
+	path := utils.UnsafeString(c.path)
 	// Get stack length
 	tree, ok := app.treeStack[methodInt][treeHash]
 	if !ok {
@@ -247,7 +250,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values) {
+		if !route.match(detectionPath, path, &c.values) {
 			continue
 		}
 
@@ -306,7 +309,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values) {
+			if route.match(detectionPath, path, &c.values) {
 				// We matched
 				exists = true
 				// Add method to Allow header
@@ -422,43 +425,63 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	return false, ErrNotFound
 }
 
-func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
-	// Acquire context from the pool
-	ctx := app.AcquireCtx(rctx)
-	defer app.ReleaseCtx(ctx)
+func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
+	ctx := app.acquireDefaultCtx(rctx)
 
-	var err error
-	// Attempt to match a route and execute the chain
-	if d, isDefault := ctx.(*DefaultCtx); isDefault {
-		// Check if the HTTP method is valid
-		if d.methodInt == -1 {
-			_ = d.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
-			return
+	// Check if the HTTP method is valid
+	if ctx.methodInt == -1 {
+		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
+		if !ctx.abandoned.Load() {
+			ctx.release()
+			app.pool.Put(ctx)
 		}
-
-		// Optional: check flash messages (hot path, see hasFlashCookie).
-		if hasFlashCookie(&d.Request().Header) {
-			d.Redirect().parseAndClearFlashMessages()
-		}
-		_, err = app.next(d)
-	} else {
-		// Check if the HTTP method is valid
-		if ctx.getMethodInt() == -1 {
-			_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
-			return
-		}
-
-		// Optional: check flash messages (hot path, see hasFlashCookie).
-		if hasFlashCookie(&ctx.Request().Header) {
-			ctx.Redirect().parseAndClearFlashMessages()
-		}
-		_, err = app.nextCustom(ctx)
+		return
 	}
+
+	// Optional: check flash messages (hot path, see hasFlashCookie).
+	if rawHeaders := ctx.fasthttp.Request.Header.RawHeaders(); len(rawHeaders) > 0 &&
+		bytes.Contains(rawHeaders, flashCookieNeedle) &&
+		ctx.fasthttp.Request.Header.Cookie(FlashCookieName) != nil {
+		ctx.Redirect().parseAndClearFlashMessages()
+	}
+
+	_, err := app.next(ctx)
 	if err != nil {
 		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
 			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
 		}
+		if !ctx.abandoned.Load() {
+			ctx.release()
+			app.pool.Put(ctx)
+		}
 		return
+	}
+	if !ctx.abandoned.Load() {
+		ctx.release()
+		app.pool.Put(ctx)
+	}
+}
+
+func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
+	ctx := app.AcquireCtx(rctx)
+	defer app.ReleaseCtx(ctx)
+
+	// Check if the HTTP method is valid
+	if ctx.getMethodInt() == -1 {
+		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
+		return
+	}
+
+	// Optional: check flash messages (hot path, see hasFlashCookie).
+	if hasFlashCookie(&ctx.Request().Header) {
+		ctx.Redirect().parseAndClearFlashMessages()
+	}
+
+	_, err := app.nextCustom(ctx)
+	if err != nil {
+		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
+			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
+		}
 	}
 }
 

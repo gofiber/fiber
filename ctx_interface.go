@@ -81,6 +81,17 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 	return ctx
 }
 
+func (app *App) acquireDefaultCtx(fctx *fasthttp.RequestCtx) *DefaultCtx {
+	ctx, ok := app.pool.Get().(*DefaultCtx)
+	if !ok {
+		panic(errDefaultCtxTypeAssertion)
+	}
+
+	ctx.Reset(fctx)
+
+	return ctx
+}
+
 // ReleaseCtx releases the ctx back into the pool.
 // If the context was abandoned (e.g., by timeout middleware), this is a no-op.
 // Call ForceRelease only when you can guarantee no goroutines (including the
