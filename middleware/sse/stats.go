@@ -16,7 +16,7 @@ type HubStats struct {
 	// EventsPublished is the lifetime count of events published to the hub.
 	EventsPublished int64 `json:"events_published"`
 
-	// EventsDropped is the lifetime count of events dropped due to backpressure.
+	// EventsDropped is the lifetime count of events dropped before delivery, for any reason.
 	EventsDropped int64 `json:"events_dropped"`
 
 	// ActiveConnections is the total number of open SSE connections.
