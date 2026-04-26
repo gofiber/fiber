@@ -154,7 +154,7 @@ app.Listen(":8080", fiber.ListenConfig{EnablePrefork: true})
 
 This distributes the incoming connections between the spawned processes and allows more requests to be handled simultaneously.
 
-On Linux, prefork typically relies on `SO_REUSEPORT` so multiple workers can bind the same port with kernel-assisted distribution. On Windows, Fiber uses a fallback path based on `SO_REUSEADDR`; this is not a drop-in equivalent to Linux `SO_REUSEPORT`, and operators should validate behavior for their threat model.
+On Linux, prefork typically relies on the SO_REUSEPORT socket option for kernel-assisted load distribution across workers. On Windows, Fiber falls back to SO_REUSEADDR; this is not a functional equivalent to Linux SO_REUSEPORT as it lacks native load balancing and may allow other processes to bind to the same port. Operators should validate this behavior against their security and availability requirements.
 
 ##### Security Considerations
 
