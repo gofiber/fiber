@@ -48,7 +48,11 @@ func New(config ...Config) fiber.Handler {
 			var streamErr error
 			defer func() {
 				if cfg.OnClose != nil {
-					cfg.OnClose(c, streamErr)
+					finalErr := streamErr
+					if finalErr == nil {
+						finalErr = stream.Err()
+					}
+					cfg.OnClose(c, finalErr)
 				}
 			}()
 			defer stream.closeStream()
