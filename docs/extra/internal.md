@@ -320,7 +320,7 @@ flowchart TD
 #### Explanation
 
 - Preforking improves performance by allowing multiple processes to handle requests concurrently.
-- Linux SO_REUSEPORT and Windows fallback behavior are functionally different; do not assume identical security or scheduling characteristics across operating systems.
+- Linux `SO_REUSEPORT` and Windows fallback behavior are functionally different; do not assume identical security or scheduling characteristics across operating systems.
 - The watchdog routine in each child ensures that they exit if the master process is no longer running, maintaining process integrity.
 
 ### Security Considerations
