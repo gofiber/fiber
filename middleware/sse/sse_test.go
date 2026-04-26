@@ -122,6 +122,27 @@ func Test_SSE_EventWritesRawJSONData(t *testing.T) {
 	require.Equal(t, "data: {\"hello\":\"world\"}\n\n", buf.String())
 }
 
+func Test_SSE_EventWritesByteSliceData(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	require.NoError(t, writeEvent(w, Event{Data: []byte("hello\nworld")}))
+	require.NoError(t, w.Flush())
+
+	require.Equal(t, "data: hello\ndata: world\n\n", buf.String())
+}
+
+func Test_SSE_EventReturnsWriterError(t *testing.T) {
+	t.Parallel()
+
+	writeErr := errors.New("write failed")
+	w := bufio.NewWriterSize(errWriter{err: writeErr}, 1)
+
+	require.ErrorIs(t, writeEvent(w, Event{Data: "hello"}), writeErr)
+}
+
 func Test_SSE_CommentSanitizesLines(t *testing.T) {
 	t.Parallel()
 
@@ -132,6 +153,24 @@ func Test_SSE_CommentSanitizesLines(t *testing.T) {
 	require.NoError(t, w.Flush())
 
 	require.Equal(t, ": first\n: second\n\n", buf.String())
+}
+
+func Test_SSE_CommentReturnsWriterError(t *testing.T) {
+	t.Parallel()
+
+	writeErr := errors.New("write failed")
+	w := bufio.NewWriterSize(errWriter{err: writeErr}, 1)
+
+	require.ErrorIs(t, writeComment(w, ""), writeErr)
+}
+
+func Test_SSE_WriteDataReturnsWriterError(t *testing.T) {
+	t.Parallel()
+
+	writeErr := errors.New("write failed")
+	w := bufio.NewWriterSize(errWriter{err: writeErr}, 1)
+
+	require.ErrorIs(t, writeData(w, "hello"), writeErr)
 }
 
 func Test_SSE_NewWritesHeadersAndEvents(t *testing.T) {
@@ -198,6 +237,28 @@ func Test_SSE_StreamComment(t *testing.T) {
 	require.Equal(t, ": hello\n\n", buf.String())
 }
 
+func Test_SSE_StreamRetryIgnoresNonPositiveDuration(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	stream := newStream(context.Background(), bufio.NewWriter(&buf), "")
+	defer stream.closeStream()
+
+	require.NoError(t, stream.Retry(0))
+	require.NoError(t, stream.Retry(-time.Second))
+	require.Empty(t, buf.String())
+}
+
+func Test_SSE_StreamRetryReturnsWriterError(t *testing.T) {
+	t.Parallel()
+
+	writeErr := errors.New("write failed")
+	stream := newStream(context.Background(), bufio.NewWriter(errWriter{err: writeErr}), "")
+
+	require.ErrorIs(t, stream.Retry(time.Second), writeErr)
+	require.ErrorIs(t, stream.Err(), writeErr)
+}
+
 func Test_SSE_StreamConcurrentWrites(t *testing.T) {
 	t.Parallel()
 
@@ -240,6 +301,17 @@ func Test_SSE_StreamContextCanceledOnClose(t *testing.T) {
 	}
 }
 
+func Test_SSE_NewStreamUsesBackgroundContextWhenNil(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	stream := newStream(nil, bufio.NewWriter(&buf), "") //nolint:staticcheck // Covers the nil fallback branch in newStream.
+	defer stream.closeStream()
+
+	require.NotNil(t, stream.Context())
+	require.NoError(t, stream.Context().Err())
+}
+
 func Test_SSE_StreamErrAfterNormalClose(t *testing.T) {
 	t.Parallel()
 
@@ -249,6 +321,16 @@ func Test_SSE_StreamErrAfterNormalClose(t *testing.T) {
 
 	require.NoError(t, stream.Err())
 	require.ErrorIs(t, stream.Event(Event{Data: "late"}), errStreamClosed)
+}
+
+func Test_SSE_StreamReturnsLatchedError(t *testing.T) {
+	t.Parallel()
+
+	writeErr := errors.New("write failed")
+	stream := newStream(context.Background(), bufio.NewWriter(errWriter{err: writeErr}), "")
+
+	require.ErrorIs(t, stream.Event(Event{Data: "hello"}), writeErr)
+	require.ErrorIs(t, stream.Event(Event{Data: "again"}), writeErr)
 }
 
 func Test_SSE_StreamWriteError(t *testing.T) {
@@ -336,6 +418,17 @@ func Test_SSE_StopHeartbeatIsIdempotent(t *testing.T) {
 	require.NotNil(t, stop)
 	require.NotPanics(t, stop)
 	require.NotPanics(t, stop)
+}
+
+func Test_SSE_StartHeartbeatReturnsNilForNonPositiveInterval(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	stream := newStream(context.Background(), bufio.NewWriter(&buf), "")
+	defer stream.closeStream()
+
+	require.Nil(t, stream.startHeartbeat(0))
+	require.Nil(t, stream.startHeartbeat(-time.Second))
 }
 
 func stringsTrimData(frame string) string {
