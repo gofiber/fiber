@@ -2,6 +2,7 @@ package sse
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,12 +31,15 @@ type Event struct {
 }
 
 func writeEvent(w *bufio.Writer, event Event) error {
+	var frame bytes.Buffer
+	fw := bufio.NewWriter(&frame)
+
 	if event.ID != "" {
 		id, err := sanitizeField(event.ID)
 		if err != nil {
 			return fmt.Errorf("sse: invalid id: %w", err)
 		}
-		if _, err := fmt.Fprintf(w, "id: %s\n", id); err != nil {
+		if _, err := fmt.Fprintf(fw, "id: %s\n", id); err != nil {
 			return fmt.Errorf("sse: write id: %w", err)
 		}
 	}
@@ -44,12 +48,12 @@ func writeEvent(w *bufio.Writer, event Event) error {
 		if err != nil {
 			return fmt.Errorf("sse: invalid event: %w", err)
 		}
-		if _, err := fmt.Fprintf(w, "event: %s\n", name); err != nil {
+		if _, err := fmt.Fprintf(fw, "event: %s\n", name); err != nil {
 			return fmt.Errorf("sse: write event: %w", err)
 		}
 	}
 	if event.Retry > 0 {
-		if _, err := fmt.Fprintf(w, "retry: %d\n", event.Retry.Milliseconds()); err != nil {
+		if _, err := fmt.Fprintf(fw, "retry: %d\n", event.Retry.Milliseconds()); err != nil {
 			return fmt.Errorf("sse: write retry: %w", err)
 		}
 	}
@@ -58,11 +62,19 @@ func writeEvent(w *bufio.Writer, event Event) error {
 	if err != nil {
 		return err
 	}
-	if err := writeData(w, data); err != nil {
-		return err
+	if data.hasData {
+		if err := writeData(fw, data.data); err != nil {
+			return err
+		}
 	}
-	if _, err := w.WriteString("\n"); err != nil {
+	if _, err := fw.WriteString("\n"); err != nil {
 		return fmt.Errorf("sse: finish event: %w", err)
+	}
+	if err := fw.Flush(); err != nil {
+		return fmt.Errorf("sse: flush event frame: %w", err)
+	}
+	if _, err := w.Write(frame.Bytes()); err != nil {
+		return fmt.Errorf("sse: write event: %w", err)
 	}
 	return nil
 }
@@ -86,22 +98,27 @@ func writeComment(w *bufio.Writer, comment string) error {
 	return nil
 }
 
-func eventData(data any) (string, error) {
+type eventPayload struct {
+	data    string
+	hasData bool
+}
+
+func eventData(data any) (eventPayload, error) {
 	switch value := data.(type) {
 	case nil:
-		return "", nil
+		return eventPayload{}, nil
 	case string:
-		return value, nil
+		return eventPayload{data: value, hasData: true}, nil
 	case []byte:
-		return string(value), nil
+		return eventPayload{data: string(value), hasData: true}, nil
 	case json.RawMessage:
-		return string(value), nil
+		return eventPayload{data: string(value), hasData: true}, nil
 	default:
 		encoded, err := json.Marshal(value)
 		if err != nil {
-			return "", fmt.Errorf("sse: marshal data: %w", err)
+			return eventPayload{}, fmt.Errorf("sse: marshal data: %w", err)
 		}
-		return string(encoded), nil
+		return eventPayload{data: string(encoded), hasData: true}, nil
 	}
 }
 

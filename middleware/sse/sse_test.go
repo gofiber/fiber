@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -81,6 +82,46 @@ func Test_SSE_EventJSONEncodesTypedNilStringer(t *testing.T) {
 	require.Equal(t, "data: null\n\n", buf.String())
 }
 
+func Test_SSE_EventOmitsDataForUntypedNil(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	require.NoError(t, writeEvent(w, Event{ID: "42"}))
+	require.NoError(t, w.Flush())
+
+	require.Equal(t, "id: 42\n\n", buf.String())
+}
+
+func Test_SSE_EventDoesNotWritePartialFrameWhenDataMarshalFails(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	require.Error(t, writeEvent(w, Event{
+		ID:   "42",
+		Name: "broken",
+		Data: func() {},
+	}))
+	require.NoError(t, w.Flush())
+
+	require.Empty(t, buf.String())
+}
+
+func Test_SSE_EventWritesRawJSONData(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	require.NoError(t, writeEvent(w, Event{Data: json.RawMessage(`{"hello":"world"}`)}))
+	require.NoError(t, w.Flush())
+
+	require.Equal(t, "data: {\"hello\":\"world\"}\n\n", buf.String())
+}
+
 func Test_SSE_CommentSanitizesLines(t *testing.T) {
 	t.Parallel()
 
@@ -128,10 +169,10 @@ func Test_SSE_NewWritesHeartbeat(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/events", New(Config{
-		HeartbeatInterval: 10 * time.Millisecond,
+		HeartbeatInterval: 5 * time.Millisecond,
 		Handler: func(_ fiber.Ctx, stream *Stream) error {
 			select {
-			case <-time.After(30 * time.Millisecond):
+			case <-time.After(150 * time.Millisecond):
 				return nil
 			case <-stream.Done():
 				return stream.Err()
@@ -168,7 +209,7 @@ func Test_SSE_StreamConcurrentWrites(t *testing.T) {
 	errs := make(chan error, writers)
 	var wg sync.WaitGroup
 	wg.Add(writers)
-	for i := range writers {
+	for i := 0; i < writers; i++ {
 		go func(data int) {
 			defer wg.Done()
 			errs <- stream.Event(Event{Name: "message", Data: data})
@@ -268,7 +309,12 @@ func Test_SSE_HandlerErrorCallsOnClose(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.ErrorIs(t, <-closed, handlerErr)
+	select {
+	case err := <-closed:
+		require.ErrorIs(t, err, handlerErr)
+	case <-time.After(time.Second):
+		t.Fatal("OnClose was not called")
+	}
 }
 
 func Test_SSE_NewPanicsWithoutHandler(t *testing.T) {
@@ -277,6 +323,19 @@ func Test_SSE_NewPanicsWithoutHandler(t *testing.T) {
 	require.PanicsWithValue(t, "sse: Handler must not be nil", func() {
 		New()
 	})
+}
+
+func Test_SSE_StopHeartbeatIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	stream := newStream(context.Background(), bufio.NewWriter(&buf), "")
+	defer stream.closeStream()
+
+	stop := stream.startHeartbeat(time.Hour)
+	require.NotNil(t, stop)
+	require.NotPanics(t, stop)
+	require.NotPanics(t, stop)
 }
 
 func stringsTrimData(frame string) string {
