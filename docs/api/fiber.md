@@ -154,6 +154,17 @@ app.Listen(":8080", fiber.ListenConfig{EnablePrefork: true})
 
 This distributes the incoming connections between the spawned processes and allows more requests to be handled simultaneously.
 
+On Linux, prefork typically relies on `SO_REUSEPORT` so multiple workers can bind the same port with kernel-assisted distribution. On Windows, Fiber uses a fallback path based on `SO_REUSEADDR`; this is not a drop-in equivalent to Linux `SO_REUSEPORT`, and operators should validate behavior for their threat model.
+
+##### Security Considerations
+
+Prefork changes the port-ownership model from strict single-owner binding to an intentional multi-listener setup. In shared hosts, a local co-resident attacker with sufficient privileges may be able to race for shared binds or receive a portion of traffic, depending on platform behavior and user boundaries.
+
+- Run prefork only within a trusted boundary (same deployment unit / same trust domain).
+- Use a dedicated service account for Fiber workers; avoid broad shared-user deployments.
+- Prefer container or VM isolation and avoid shared host namespaces for unrelated workloads.
+- If strict single-owner port semantics are required, run Fiber without prefork.
+
 #### TLS
 
 Prefer `TLSConfig` for TLS configuration so you can fully control certificates and settings. When `TLSConfig` is set, Fiber ignores `CertFile`, `CertKeyFile`, `CertClientFile`, `TLSMinVersion`, `AutoCertManager`, and `TLSConfigFunc`.

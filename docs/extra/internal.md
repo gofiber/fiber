@@ -265,7 +265,7 @@ Reusing Context objects significantly reduces garbage collection overhead, ensur
 
 ## Preforking Mechanism
 
-To take full advantage of multi‑core systems, Fiber offers a prefork mode. In this mode, the master process spawns several child processes that listen on the same port using OS features such as SO_REUSEPORT (or fall back to SO_REUSEADDR).
+To take full advantage of multi‑core systems, Fiber offers a prefork mode. In this mode, the master process spawns several child processes that listen on the same port. On Linux, this is typically done with `SO_REUSEPORT`; on Windows, Fiber falls back to a `SO_REUSEADDR`-based behavior that does not provide identical kernel-level load-distribution semantics.
 
 ```mermaid
 flowchart LR
@@ -293,7 +293,9 @@ Fiber’s prefork mode uses OS‑level mechanisms to allow multiple processes to
 
 1. Master Process Spawning: The master process detects the number of CPU cores and spawns that many child processes.
 2. Child Process Initialization: Each child process sets GOMAXPROCS(1) so that it runs on a single core.
-3. Binding to Port: Child processes use packages like reuseport to bind to the same address and port.
+3. Binding to Port:
+   - Linux: child processes use `SO_REUSEPORT` (for example through reuseport helpers) so multiple workers can bind the same address/port with kernel-level distribution.
+   - Windows: Fiber uses a `SO_REUSEADDR` fallback path; behavior is platform-dependent and should not be treated as equivalent to Linux `SO_REUSEPORT`.
 4. Parent Monitoring: Each child runs a watchdog function (watchMaster()) to monitor the master process; if the master terminates, children exit.
 5. Request Handling: Each child independently handles incoming HTTP requests.
 
@@ -318,8 +320,17 @@ flowchart TD
 #### Explanation
 
 - Preforking improves performance by allowing multiple processes to handle requests concurrently.
-- Using reuseport (or a fallback) ensures that all child processes can listen on the same port without conflicts.
+- Linux `SO_REUSEPORT` and Windows fallback behavior are intentionally different; do not assume identical security or scheduling characteristics across operating systems.
 - The watchdog routine in each child ensures that they exit if the master process is no longer running, maintaining process integrity.
+
+### Security Considerations
+
+Prefork intentionally relaxes strict single-owner assumptions on a listening socket. In multi-tenant or shared-host environments, a local co-resident attacker with sufficient local privileges may attempt to bind to the same address/port and compete for or observe traffic, depending on OS behavior, account boundaries, and deployment configuration.
+
+- **Privilege and user-boundary assumptions:** Prefork is safest when all participating workers run under the same dedicated service identity and within an isolated trust boundary.
+- **Linux vs Windows behavior:** Linux `SO_REUSEPORT` provides explicit multi-listener semantics; Windows fallback behavior differs and should be evaluated carefully before enabling prefork in sensitive environments.
+- **Strict ownership requirement:** If you require strict single-owner port semantics, run Fiber **without** prefork.
+- **Hardening guidance:** Prefer a dedicated service user, strong container/VM isolation, and avoid shared host namespaces between unrelated workloads.
 
 ## Redirection & Flash Messages
 
