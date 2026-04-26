@@ -226,6 +226,33 @@ func Test_SSE_NewWritesHeartbeat(t *testing.T) {
 	require.Contains(t, string(body), ":\n\n")
 }
 
+func Test_SSE_OnCloseReceivesNilAfterNormalClose(t *testing.T) {
+	t.Parallel()
+
+	closed := make(chan error, 1)
+
+	app := fiber.New()
+	app.Get("/events", New(Config{
+		DisableHeartbeat: true,
+		Handler: func(_ fiber.Ctx, stream *Stream) error {
+			return stream.Event(Event{Data: "ok"})
+		},
+		OnClose: func(_ fiber.Ctx, err error) {
+			closed <- err
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	select {
+	case err := <-closed:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("OnClose was not called")
+	}
+}
+
 func Test_SSE_StreamComment(t *testing.T) {
 	t.Parallel()
 
@@ -235,6 +262,16 @@ func Test_SSE_StreamComment(t *testing.T) {
 
 	require.NoError(t, stream.Comment("hello"))
 	require.Equal(t, ": hello\n\n", buf.String())
+}
+
+func Test_SSE_StreamCommentReturnsWriterError(t *testing.T) {
+	t.Parallel()
+
+	writeErr := errors.New("write failed")
+	stream := newStream(context.Background(), bufio.NewWriterSize(errWriter{err: writeErr}, 1), "")
+
+	require.ErrorIs(t, stream.Comment("hello"), writeErr)
+	require.ErrorIs(t, stream.Err(), writeErr)
 }
 
 func Test_SSE_StreamRetryIgnoresNonPositiveDuration(t *testing.T) {
@@ -253,7 +290,7 @@ func Test_SSE_StreamRetryReturnsWriterError(t *testing.T) {
 	t.Parallel()
 
 	writeErr := errors.New("write failed")
-	stream := newStream(context.Background(), bufio.NewWriter(errWriter{err: writeErr}), "")
+	stream := newStream(context.Background(), bufio.NewWriterSize(errWriter{err: writeErr}, 1), "")
 
 	require.ErrorIs(t, stream.Retry(time.Second), writeErr)
 	require.ErrorIs(t, stream.Err(), writeErr)
