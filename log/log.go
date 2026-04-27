@@ -77,7 +77,7 @@ type ConfigurableLogger[T any] interface {
 	Logger() T
 }
 
-// AllLogger is the combination of Logger, FormatLogger, CtxLogger and ConfigurableLogger.
+// AllLogger is the combination of CommonLogger, context binding, and ConfigurableLogger.
 // Custom extensions can be made through AllLogger
 type AllLogger[T any] interface {
 	CommonLogger

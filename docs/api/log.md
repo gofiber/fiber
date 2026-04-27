@@ -48,7 +48,9 @@ type ConfigurableLogger[T any] interface {
 type AllLogger[T any] interface {
     CommonLogger
     ConfigurableLogger[T]
-    WithLogger
+
+    // WithContext returns a new logger with the given context.
+    WithContext(ctx context.Context) CommonLogger
 }
 ```
 
@@ -198,7 +200,29 @@ commonLogger := log.WithContext(ctx)
 commonLogger.Info("info")
 ```
 
-Context binding adds request-specific data for easier tracing.
+Context binding can render request-specific data for easier tracing. Configure the default logger with `SetContextTemplate` and custom tags when the value is stored by middleware using package-private context keys.
+
+`SetContextTemplate` configures Fiber's built-in default logger. Custom loggers registered with `SetLogger` keep full control over their own `WithContext` behavior and should implement equivalent enrichment themselves when needed.
+
+```go
+app.Use(requestid.New())
+
+log.SetContextTemplate(log.ContextConfig{
+    Format: "[${requestid}] ",
+    CustomTags: map[string]log.ContextTagFunc{
+        "requestid": func(output log.Buffer, ctx context.Context, _ *log.ContextData, _ string) (int, error) {
+            return output.WriteString(requestid.FromContext(ctx))
+        },
+    },
+})
+
+app.Get("/", func(c fiber.Ctx) error {
+    log.WithContext(c).Info("start")
+    return c.SendString("Hello, World!")
+})
+```
+
+Use `log.WithContext(c)` inside handlers when you want tags to read values stored by Fiber middleware. Passing `c.Context()` only exposes values propagated into the standard request context. For ordinary `context.Context` string keys, use the built-in `${value:key}` tag.
 
 ## Logger
 

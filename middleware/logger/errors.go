@@ -1,8 +1,8 @@
 package logger
 
 import (
-	"errors"
+	"github.com/gofiber/fiber/v3/internal/logtemplate"
 )
 
 // ErrTemplateParameterMissing indicates that a template parameter was referenced but not provided.
-var ErrTemplateParameterMissing = errors.New("logger: template parameter missing")
+var ErrTemplateParameterMissing = logtemplate.ErrParameterMissing

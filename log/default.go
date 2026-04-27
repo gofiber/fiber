@@ -15,6 +15,7 @@ var _ AllLogger[*log.Logger] = (*defaultLogger)(nil)
 
 type defaultLogger struct {
 	stdlog *log.Logger
+	ctx    context.Context //nolint:containedctx // WithContext intentionally returns a logger bound to this context.
 	level  Level
 	depth  int
 }
@@ -28,6 +29,7 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	level := lv.toString()
 	buf := bytebufferpool.Get()
 	buf.WriteString(level)
+	l.writeContext(buf)
 	fmt.Fprint(buf, fmtArgs...)
 
 	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
@@ -51,6 +53,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	level := lv.toString()
 	buf := bytebufferpool.Get()
 	buf.WriteString(level)
+	l.writeContext(buf)
 
 	if len(fmtArgs) > 0 {
 		_, _ = fmt.Fprintf(buf, format, fmtArgs...)
@@ -78,6 +81,7 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 	level := lv.toString()
 	buf := bytebufferpool.Get()
 	buf.WriteString(level)
+	l.writeContext(buf)
 
 	// Write format privateLog buffer
 	if format != "" {
@@ -220,10 +224,28 @@ func (l *defaultLogger) Panicw(msg string, keysAndValues ...any) {
 	l.privateLogw(LevelPanic, msg, keysAndValues)
 }
 
-// WithContext returns a logger that shares the underlying output but adjusts the call depth.
-func (l *defaultLogger) WithContext(_ context.Context) CommonLogger {
+func (l *defaultLogger) writeContext(buf Buffer) {
+	if l.ctx == nil {
+		return
+	}
+
+	tmpl := contextTemplate.Load()
+	if tmpl == nil {
+		return
+	}
+
+	if err := tmpl.Execute(buf, l.ctx, &ContextData{}); err != nil {
+		if _, writeErr := buf.WriteString(err.Error()); writeErr != nil {
+			return
+		}
+	}
+}
+
+// WithContext returns a logger that shares the underlying output and renders configured contextual fields.
+func (l *defaultLogger) WithContext(ctx context.Context) CommonLogger {
 	return &defaultLogger{
 		stdlog: l.stdlog,
+		ctx:    ctx,
 		level:  l.level,
 		depth:  l.depth - 1,
 	}

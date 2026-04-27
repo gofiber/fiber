@@ -1587,6 +1587,29 @@ app.Use(logger.New(logger.Config{
 
 Both approaches ensure your logger can access these values while respecting Go's context practices.
 
+The same template/tag mechanism is also available for application logs emitted through `log.WithContext`. This keeps request logging and handler logging consistent without hard-coding middleware-specific values into the `log` package:
+
+```go
+app.Use(requestid.New())
+
+log.SetContextTemplate(log.ContextConfig{
+    Format: "[${requestid}] ",
+    CustomTags: map[string]log.ContextTagFunc{
+        "requestid": func(output log.Buffer, ctx context.Context, _ *log.ContextData, _ string) (int, error) {
+            return output.WriteString(requestid.FromContext(ctx))
+        },
+    },
+})
+
+app.Get("/", func(c fiber.Ctx) error {
+    // Pass c so middleware values stored on Fiber's request context can be read.
+    log.WithContext(c).Info("handling request")
+    return c.SendString("OK")
+})
+```
+
+`SetContextTemplate` configures Fiber's built-in default logger. Custom loggers registered with `log.SetLogger` keep control over their own `WithContext` behavior.
+
 The `Skip` is a function to determine if logging is skipped or written to `Stream`.
 
 <details>

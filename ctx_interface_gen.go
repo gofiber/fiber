@@ -256,6 +256,8 @@ type Ctx interface {
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Cookies(key string, defaultValue ...string) string
 	// FormFile returns the first file by key from a MultipartForm.
+	// The multipart form is parsed using the application's BodyLimit to prevent
+	// unbounded memory usage.
 	FormFile(key string) (*multipart.FileHeader, error)
 	// FormValue returns the first value by key from a MultipartForm.
 	// Search is performed in QueryArgs, PostArgs, MultipartForm and FormFile in this particular order.
@@ -263,6 +265,8 @@ type Ctx interface {
 	// If a default value is given, it will return that value if the form value does not exist.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
+	// When the request is a multipart form, it is parsed using the application's
+	// BodyLimit so the configured limit is consistently enforced.
 	FormValue(key string, defaultValue ...string) string
 	// Fresh returns true when the response is still “fresh” in the client's cache,
 	// otherwise false is returned to indicate that the client cache is now stale
@@ -398,7 +402,7 @@ type Ctx interface {
 	// AutoFormat performs content-negotiation on the Accept HTTP header.
 	// It uses Accepts to select a proper format.
 	// The supported content types are text/html, text/plain, application/json, application/xml, application/vnd.msgpack, and application/cbor.
-	// When text/html is selected, the body is treated as plain text and HTML-escaped before being wrapped in a <p> element.
+	// When text/html is selected, the body is treated as plain text and HTML-escaped before being wrapped in a `<p>` element.
 	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
 	AutoFormat(body any) error
@@ -431,7 +435,8 @@ type Ctx interface {
 	Links(link ...string)
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)
-	// getLocationFromRoute get URL location from route using parameters
+	// getLocationFromRoute gets the URL location from a route using parameters.
+	// Nil receivers and missing routes return ErrNotFound to match Route.URL semantics.
 	getLocationFromRoute(route *Route, params Map) (string, error)
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)

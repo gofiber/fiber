@@ -949,6 +949,44 @@ func Test_CustomTags(t *testing.T) {
 	require.Equal(t, customTag, buf.String())
 }
 
+func Test_Logger_DataLegacyTemplateChains(t *testing.T) {
+	t.Parallel()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		DisableColors: true,
+		Format:        "${method} ${path}",
+		LoggerFunc: func(c fiber.Ctx, data *Data, _ *Config) error {
+			require.Len(t, data.TemplateChain, len(data.LogFuncChain))
+			for i, logFunc := range data.LogFuncChain {
+				switch {
+				case logFunc == nil:
+					_, err := buf.Write(data.TemplateChain[i])
+					require.NoError(t, err)
+				case data.TemplateChain[i] == nil:
+					_, err := logFunc(buf, c, data, "")
+					require.NoError(t, err)
+				default:
+					_, err := logFunc(buf, c, data, string(data.TemplateChain[i]))
+					require.NoError(t, err)
+				}
+			}
+			return nil
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello fiber!")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "GET /", buf.String())
+}
+
 // go test -run Test_Logger_ByteSent_Streaming
 func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	t.Parallel()

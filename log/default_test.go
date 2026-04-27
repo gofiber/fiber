@@ -17,6 +17,7 @@ func initDefaultLogger() {
 		stdlog: log.New(os.Stderr, "", 0),
 		depth:  4,
 	}
+	SetContextTemplate(ContextConfig{})
 }
 
 type byteSliceWriter struct {
@@ -41,7 +42,7 @@ func Test_WithContextCaller(t *testing.T) {
 	WithContext(ctx).Info("")
 	Info("")
 
-	require.Equal(t, "default_test.go:41: [Info] \ndefault_test.go:42: [Info] \n", string(w.b))
+	require.Equal(t, "default_test.go:42: [Info] \ndefault_test.go:43: [Info] \n", string(w.b))
 }
 
 func Test_DefaultLogger(t *testing.T) {
@@ -116,6 +117,34 @@ func Test_CtxLogger(t *testing.T) {
 		"[Warn] work may fail\n"+
 		"[Error] work failed 50\n"+
 		"[Panic] work panic\n", string(w.b))
+}
+
+func Test_WithContextTemplate(t *testing.T) {
+	initDefaultLogger()
+
+	type requestIDKey struct{}
+	ctx := context.WithValue(context.Background(), requestIDKey{}, "req-42")
+
+	SetContextTemplate(ContextConfig{
+		Format: "[${requestid}] ",
+		CustomTags: map[string]ContextTagFunc{
+			"requestid": func(output Buffer, ctx context.Context, _ *ContextData, _ string) (int, error) {
+				id, ok := ctx.Value(requestIDKey{}).(string)
+				if !ok {
+					return 0, nil
+				}
+				return output.WriteString(id)
+			},
+		},
+	})
+	t.Cleanup(func() { SetContextTemplate(ContextConfig{}) })
+
+	var w byteSliceWriter
+	SetOutput(&w)
+
+	WithContext(ctx).Info("start")
+
+	require.Equal(t, "[Info] [req-42] start\n", string(w.b))
 }
 
 func Test_LogfKeyAndValues(t *testing.T) {

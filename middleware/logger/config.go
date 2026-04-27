@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/logtemplate"
 )
 
 // Config defines the config for middleware.
@@ -98,28 +99,11 @@ type Config struct {
 	enableLatency bool
 }
 
-const (
-	startTag       = "${"
-	endTag         = "}"
-	paramSeparator = ":"
-)
-
 // Buffer abstracts the buffer operations used when rendering log entries.
-type Buffer interface {
-	Len() int
-	ReadFrom(r io.Reader) (int64, error)
-	WriteTo(w io.Writer) (int64, error)
-	Bytes() []byte
-	Write(p []byte) (int, error)
-	WriteByte(c byte) error
-	WriteString(s string) (int, error)
-	Set(p []byte)
-	SetString(s string)
-	String() string
-}
+type Buffer = logtemplate.Buffer
 
 // LogFunc formats logging output using the provided buffer and request data.
-type LogFunc func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error)
+type LogFunc = logtemplate.Func[fiber.Ctx, Data]
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
