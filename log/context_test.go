@@ -70,3 +70,12 @@ func Test_ContextTemplate_CustomTag(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "[req-42]", buf.String())
 }
+
+func Test_SetContextTemplate_ReturnsBuildError(t *testing.T) {
+	t.Parallel()
+
+	err := SetContextTemplate(ContextConfig{
+		Format: "${missing:value}",
+	})
+	require.ErrorIs(t, err, logtemplate.ErrParameterMissing)
+}

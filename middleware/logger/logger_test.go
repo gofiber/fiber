@@ -447,6 +447,40 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	require.EqualValues(t, 2, *o)
 }
 
+func Test_Logger_ErrorOutput_TemplateFailure(t *testing.T) {
+	t.Parallel()
+
+	templateErr := errors.New("template failure")
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${fail}",
+		Stream: buf,
+		CustomTags: map[string]LogFunc{
+			"fail": func(_ Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+				return 0, templateErr
+			},
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	require.Equal(t, templateErr.Error(), buf.String())
+}
+
+func Test_Logger_TemplateParameterMissingCompatibility(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithError(t, `logger: template parameter missing: "missing:value"`, func() {
+		New(Config{
+			Format: "${missing:value}",
+		})
+	})
+}
+
 // go test -run Test_Logger_All
 func Test_Logger_All(t *testing.T) {
 	t.Parallel()

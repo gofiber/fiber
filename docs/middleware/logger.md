@@ -57,14 +57,16 @@ app.Use(logger.New(logger.Config{
 // Reuse the same tag approach for application logs emitted inside handlers.
 // This configures Fiber's built-in default logger. Custom loggers registered
 // with log.SetLogger should implement their own WithContext enrichment.
-log.SetContextTemplate(log.ContextConfig{
+if err := log.SetContextTemplate(log.ContextConfig{
     Format: "[${requestid}] ",
     CustomTags: map[string]log.ContextTagFunc{
         "requestid": func(output log.Buffer, c any, _ *log.ContextData, _ string) (int, error) {
             return output.WriteString(requestid.FromContext(c))
         },
     },
-})
+}); err != nil {
+    log.Fatal(err)
+}
 
 app.Get("/", func(c fiber.Ctx) error {
     // Pass c so middleware values stored on Fiber's request context can be read.

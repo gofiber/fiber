@@ -32,18 +32,27 @@ type ContextConfig struct {
 var contextTemplate atomic.Pointer[logtemplate.Template[any, ContextData]]
 
 // SetContextTemplate configures contextual fields rendered by WithContext for Fiber's default logger.
-func SetContextTemplate(config ContextConfig) {
+// It returns an error if config.Format cannot be parsed.
+func SetContextTemplate(config ContextConfig) error {
 	if config.Format == "" {
 		contextTemplate.Store(nil)
-		return
+		return nil
 	}
 
 	tmpl, err := logtemplate.Build[any, ContextData](config.Format, createContextTagMap(config.CustomTags))
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	contextTemplate.Store(tmpl)
+	return nil
+}
+
+// MustSetContextTemplate configures contextual fields and panics if the format cannot be parsed.
+func MustSetContextTemplate(config ContextConfig) {
+	if err := SetContextTemplate(config); err != nil {
+		panic(err)
+	}
 }
 
 func createContextTagMap(customTags map[string]ContextTagFunc) map[string]ContextTagFunc {

@@ -3,6 +3,7 @@ package log
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log"
 	"os"
 	"testing"
@@ -17,7 +18,7 @@ func initDefaultLogger() {
 		stdlog: log.New(os.Stderr, "", 0),
 		depth:  4,
 	}
-	SetContextTemplate(ContextConfig{})
+	MustSetContextTemplate(ContextConfig{})
 }
 
 type byteSliceWriter struct {
@@ -42,7 +43,7 @@ func Test_WithContextCaller(t *testing.T) {
 	WithContext(ctx).Info("")
 	Info("")
 
-	require.Equal(t, "default_test.go:42: [Info] \ndefault_test.go:43: [Info] \n", string(w.b))
+	require.Equal(t, "default_test.go:43: [Info] \ndefault_test.go:44: [Info] \n", string(w.b))
 }
 
 func Test_DefaultLogger(t *testing.T) {
@@ -125,7 +126,7 @@ func Test_WithContextTemplate(t *testing.T) {
 	type requestIDKey struct{}
 	ctx := context.WithValue(context.Background(), requestIDKey{}, "req-42")
 
-	SetContextTemplate(ContextConfig{
+	require.NoError(t, SetContextTemplate(ContextConfig{
 		Format: "[${requestid}] ",
 		CustomTags: map[string]ContextTagFunc{
 			"requestid": func(output Buffer, ctx any, _ *ContextData, _ string) (int, error) {
@@ -140,8 +141,8 @@ func Test_WithContextTemplate(t *testing.T) {
 				return output.WriteString(id)
 			},
 		},
-	})
-	t.Cleanup(func() { SetContextTemplate(ContextConfig{}) })
+	}))
+	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
 	var w byteSliceWriter
 	SetOutput(&w)
@@ -149,6 +150,30 @@ func Test_WithContextTemplate(t *testing.T) {
 	WithContext(ctx).Info("start")
 
 	require.Equal(t, "[Info] [req-42] start\n", string(w.b))
+}
+
+func Test_WithContextTemplateFailureOmitsPartialContext(t *testing.T) {
+	initDefaultLogger()
+
+	templateErr := errors.New("template failure")
+	require.NoError(t, SetContextTemplate(ContextConfig{
+		Format: "[${broken}] ",
+		CustomTags: map[string]ContextTagFunc{
+			"broken": func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
+				_, err := output.WriteString("partial")
+				require.NoError(t, err)
+				return 0, templateErr
+			},
+		},
+	}))
+	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
+
+	var w byteSliceWriter
+	SetOutput(&w)
+
+	WithContext(context.Background()).Info("start")
+
+	require.Equal(t, "[Info] start\n", string(w.b))
 }
 
 func Test_LogfKeyAndValues(t *testing.T) {

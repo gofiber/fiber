@@ -1592,14 +1592,16 @@ The same template/tag mechanism is also available for application logs emitted t
 ```go
 app.Use(requestid.New())
 
-log.SetContextTemplate(log.ContextConfig{
+if err := log.SetContextTemplate(log.ContextConfig{
     Format: "[${requestid}] ",
     CustomTags: map[string]log.ContextTagFunc{
         "requestid": func(output log.Buffer, ctx any, _ *log.ContextData, _ string) (int, error) {
             return output.WriteString(requestid.FromContext(ctx))
         },
     },
-})
+}); err != nil {
+    log.Fatal(err)
+}
 
 app.Get("/", func(c fiber.Ctx) error {
     // Pass c so middleware values stored on Fiber's request context can be read.

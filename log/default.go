@@ -233,10 +233,15 @@ func (l *defaultLogger) writeContext(buf Buffer) {
 		return
 	}
 
-	if err := tmpl.Execute(buf, l.ctx, &ContextData{}); err != nil {
-		if _, writeErr := buf.WriteString(err.Error()); writeErr != nil {
-			return
-		}
+	scratch := bytebufferpool.Get()
+	defer bytebufferpool.Put(scratch)
+
+	if err := tmpl.Execute(scratch, l.ctx, &ContextData{}); err != nil {
+		return
+	}
+
+	if _, err := buf.Write(scratch.Bytes()); err != nil {
+		return
 	}
 }
 

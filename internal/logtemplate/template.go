@@ -44,8 +44,9 @@ func Build[C, D any](format string, tagFunctions map[string]Func[C, D]) (*Templa
 	endTagB := utils.UnsafeBytes(endTag)
 	paramSeparatorB := utils.UnsafeBytes(paramSeparator)
 
-	fixedParts := make([][]byte, 0, bytes.Count(templateB, startTagB)+1)
-	funcChain := make([]Func[C, D], 0, bytes.Count(templateB, startTagB)+1)
+	chainCapacity := 2*bytes.Count(templateB, startTagB) + 1
+	fixedParts := make([][]byte, 0, chainCapacity)
+	funcChain := make([]Func[C, D], 0, chainCapacity)
 
 	for {
 		before, after, found := bytes.Cut(templateB, startTagB)

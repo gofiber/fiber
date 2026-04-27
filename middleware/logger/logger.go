@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -64,6 +65,10 @@ func New(config ...Config) fiber.Handler {
 	// and we create several slices of the same length with the functions to be executed and fixed parts.
 	template, err := logtemplate.Build[fiber.Ctx, Data](cfg.Format, createTagMap(&cfg))
 	if err != nil {
+		if errors.Is(err, logtemplate.ErrParameterMissing) {
+			msg := strings.TrimPrefix(err.Error(), logtemplate.ErrParameterMissing.Error()+": ")
+			panic(errTemplateParameterMissing(msg))
+		}
 		panic(err)
 	}
 	templateChain, logFuncChain := template.Chains()
@@ -97,6 +102,9 @@ func New(config ...Config) fiber.Handler {
 		data.Pid = pid
 		data.ErrPaddingStr = errPaddingStr
 		data.Timestamp = timestamp
+		// These compiled chains are shared across requests. The default logger and
+		// custom LoggerFunc implementations must only read them, for example via
+		// logtemplate.ExecuteChains.
 		data.TemplateChain = templateChain
 		data.LogFuncChain = logFuncChain
 		// put data back in the pool
