@@ -20,6 +20,7 @@ Import the middleware package:
 
 ```go
 import (
+    "context"
     "time"
 
     "github.com/gofiber/fiber/v3"
@@ -41,16 +42,27 @@ app.Get("/events", sse.New(sse.Config{
 }))
 ```
 
-For long-running streams, wait on your own event source and stop when the client disconnects:
+For long-running streams, subscribe each client to its own event channel and stop when the client disconnects.
+A single shared channel load-balances messages across clients; use a fan-out source when every client must receive every event:
 
 ```go
-events := make(chan string)
+type Broker interface {
+    Subscribe(ctx context.Context) (<-chan string, error)
+}
 
 app.Get("/events", sse.New(sse.Config{
     Handler: func(c fiber.Ctx, stream *sse.Stream) error {
+        events, err := broker.Subscribe(stream.Context())
+        if err != nil {
+            return err
+        }
+
         for {
             select {
-            case msg := <-events:
+            case msg, ok := <-events:
+                if !ok {
+                    return nil
+                }
                 if err := stream.Event(sse.Event{Name: "message", Data: msg}); err != nil {
                     return err
                 }

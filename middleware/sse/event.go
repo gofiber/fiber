@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,48 +32,34 @@ type Event struct {
 }
 
 func writeEvent(w *bufio.Writer, event Event) error {
+	data, err := eventData(event.Data)
+	if err != nil {
+		return err
+	}
+
 	var frame bytes.Buffer
-	fw := bufio.NewWriter(&frame)
 
 	if event.ID != "" {
 		id, err := sanitizeField(event.ID)
 		if err != nil {
 			return fmt.Errorf("sse: invalid id: %w", err)
 		}
-		if _, err := fmt.Fprintf(fw, "id: %s\n", id); err != nil {
-			return fmt.Errorf("sse: write id: %w", err)
-		}
+		appendField(&frame, "id", id)
 	}
 	if event.Name != "" {
 		name, err := sanitizeField(event.Name)
 		if err != nil {
 			return fmt.Errorf("sse: invalid event: %w", err)
 		}
-		if _, err := fmt.Fprintf(fw, "event: %s\n", name); err != nil {
-			return fmt.Errorf("sse: write event: %w", err)
-		}
+		appendField(&frame, "event", name)
 	}
 	if event.Retry > 0 {
-		if _, err := fmt.Fprintf(fw, "retry: %d\n", event.Retry.Milliseconds()); err != nil {
-			return fmt.Errorf("sse: write retry: %w", err)
-		}
-	}
-
-	data, err := eventData(event.Data)
-	if err != nil {
-		return err
+		appendField(&frame, "retry", strconv.FormatInt(event.Retry.Milliseconds(), 10))
 	}
 	if data.hasData {
-		if err := writeData(fw, data.data); err != nil {
-			return err
-		}
+		appendData(&frame, data.data)
 	}
-	if _, err := fw.WriteString("\n"); err != nil {
-		return fmt.Errorf("sse: finish event: %w", err)
-	}
-	if err := fw.Flush(); err != nil {
-		return fmt.Errorf("sse: flush event frame: %w", err)
-	}
+	frame.WriteByte('\n') //nolint:errcheck // bytes.Buffer writes never fail.
 	if _, err := w.Write(frame.Bytes()); err != nil {
 		return fmt.Errorf("sse: write event: %w", err)
 	}
@@ -130,6 +117,20 @@ func writeData(w *bufio.Writer, data string) error {
 		}
 	}
 	return nil
+}
+
+func appendField(w *bytes.Buffer, field, value string) {
+	w.WriteString(field) //nolint:errcheck // bytes.Buffer writes never fail.
+	w.WriteString(": ")  //nolint:errcheck // bytes.Buffer writes never fail.
+	w.WriteString(value) //nolint:errcheck // bytes.Buffer writes never fail.
+	w.WriteByte('\n')    //nolint:errcheck // bytes.Buffer writes never fail.
+}
+
+func appendData(w *bytes.Buffer, data string) {
+	data = normalizeNewlines(data)
+	for line := range strings.SplitSeq(data, "\n") {
+		appendField(w, "data", line)
+	}
 }
 
 func sanitizeField(value string) (string, error) {

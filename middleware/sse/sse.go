@@ -202,7 +202,9 @@ func (s *Stream) startHeartbeat(interval time.Duration) func() {
 
 	stop := make(chan struct{})
 	var stopOnce sync.Once
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -223,5 +225,6 @@ func (s *Stream) startHeartbeat(interval time.Duration) func() {
 		stopOnce.Do(func() {
 			close(stop)
 		})
+		<-done
 	}
 }
