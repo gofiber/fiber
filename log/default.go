@@ -1,7 +1,6 @@
 package log
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log"
@@ -15,7 +14,7 @@ var _ AllLogger[*log.Logger] = (*defaultLogger)(nil)
 
 type defaultLogger struct {
 	stdlog *log.Logger
-	ctx    context.Context //nolint:containedctx // WithContext intentionally returns a logger bound to this context.
+	ctx    any // WithContext intentionally returns a logger bound to this context-like value.
 	level  Level
 	depth  int
 }
@@ -242,7 +241,7 @@ func (l *defaultLogger) writeContext(buf Buffer) {
 }
 
 // WithContext returns a logger that shares the underlying output and renders configured contextual fields.
-func (l *defaultLogger) WithContext(ctx context.Context) CommonLogger {
+func (l *defaultLogger) WithContext(ctx any) CommonLogger {
 	return &defaultLogger{
 		stdlog: l.stdlog,
 		ctx:    ctx,

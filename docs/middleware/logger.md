@@ -18,8 +18,6 @@ Import the package:
 
 ```go
 import (
-    "context"
-
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/log"
     "github.com/gofiber/fiber/v3/middleware/logger"
@@ -62,7 +60,7 @@ app.Use(logger.New(logger.Config{
 log.SetContextTemplate(log.ContextConfig{
     Format: "[${requestid}] ",
     CustomTags: map[string]log.ContextTagFunc{
-        "requestid": func(output log.Buffer, c context.Context, _ *log.ContextData, _ string) (int, error) {
+        "requestid": func(output log.Buffer, c any, _ *log.ContextData, _ string) (int, error) {
             return output.WriteString(requestid.FromContext(c))
         },
     },

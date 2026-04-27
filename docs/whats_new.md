@@ -1595,7 +1595,7 @@ app.Use(requestid.New())
 log.SetContextTemplate(log.ContextConfig{
     Format: "[${requestid}] ",
     CustomTags: map[string]log.ContextTagFunc{
-        "requestid": func(output log.Buffer, ctx context.Context, _ *log.ContextData, _ string) (int, error) {
+        "requestid": func(output log.Buffer, ctx any, _ *log.ContextData, _ string) (int, error) {
             return output.WriteString(requestid.FromContext(ctx))
         },
     },

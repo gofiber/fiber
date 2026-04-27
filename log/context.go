@@ -1,7 +1,6 @@
 package log
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"sync/atomic"
@@ -9,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
 )
 
-// TagContextValue reads a value from context.Context using the tag parameter as the key.
+// TagContextValue reads a value from the bound context-like value using the tag parameter as the key.
 const TagContextValue = "value:"
 
 // Buffer abstracts the buffer operations used when rendering contextual log fields.
@@ -19,7 +18,7 @@ type Buffer = logtemplate.Buffer
 type ContextData struct{}
 
 // ContextTagFunc renders one contextual log tag.
-type ContextTagFunc = logtemplate.Func[context.Context, ContextData]
+type ContextTagFunc = logtemplate.Func[any, ContextData]
 
 // ContextConfig defines how WithContext enriches logs emitted by Fiber's default logger.
 type ContextConfig struct {
@@ -30,7 +29,7 @@ type ContextConfig struct {
 	Format string
 }
 
-var contextTemplate atomic.Pointer[logtemplate.Template[context.Context, ContextData]]
+var contextTemplate atomic.Pointer[logtemplate.Template[any, ContextData]]
 
 // SetContextTemplate configures contextual fields rendered by WithContext for Fiber's default logger.
 func SetContextTemplate(config ContextConfig) {
@@ -39,7 +38,7 @@ func SetContextTemplate(config ContextConfig) {
 		return
 	}
 
-	tmpl, err := logtemplate.Build[context.Context, ContextData](config.Format, createContextTagMap(config.CustomTags))
+	tmpl, err := logtemplate.Build[any, ContextData](config.Format, createContextTagMap(config.CustomTags))
 	if err != nil {
 		panic(err)
 	}
@@ -49,12 +48,8 @@ func SetContextTemplate(config ContextConfig) {
 
 func createContextTagMap(customTags map[string]ContextTagFunc) map[string]ContextTagFunc {
 	tags := map[string]ContextTagFunc{
-		TagContextValue: func(output Buffer, ctx context.Context, _ *ContextData, extraParam string) (int, error) {
-			if ctx == nil {
-				return 0, nil
-			}
-
-			switch v := ctx.Value(extraParam).(type) {
+		TagContextValue: func(output Buffer, ctx any, _ *ContextData, extraParam string) (int, error) {
+			switch v := contextValue(ctx, extraParam).(type) {
 			case []byte:
 				return output.Write(v)
 			case string:
@@ -70,4 +65,25 @@ func createContextTagMap(customTags map[string]ContextTagFunc) map[string]Contex
 	maps.Copy(tags, customTags)
 
 	return tags
+}
+
+type valueContext interface {
+	Value(key any) any
+}
+
+type userValueContext interface {
+	UserValue(key any) any
+}
+
+func contextValue(ctx, key any) any {
+	switch typed := ctx.(type) {
+	case nil:
+		return nil
+	case userValueContext:
+		return typed.UserValue(key)
+	case valueContext:
+		return typed.Value(key)
+	default:
+		return nil
+	}
 }

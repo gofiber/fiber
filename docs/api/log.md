@@ -50,7 +50,7 @@ type AllLogger[T any] interface {
     ConfigurableLogger[T]
 
     // WithContext returns a new logger with the given context.
-    WithContext(ctx context.Context) CommonLogger
+    WithContext(ctx any) CommonLogger
 }
 ```
 
@@ -210,7 +210,7 @@ app.Use(requestid.New())
 log.SetContextTemplate(log.ContextConfig{
     Format: "[${requestid}] ",
     CustomTags: map[string]log.ContextTagFunc{
-        "requestid": func(output log.Buffer, ctx context.Context, _ *log.ContextData, _ string) (int, error) {
+        "requestid": func(output log.Buffer, ctx any, _ *log.ContextData, _ string) (int, error) {
             return output.WriteString(requestid.FromContext(ctx))
         },
     },
@@ -222,7 +222,7 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-Use `log.WithContext(c)` inside handlers when you want tags to read values stored by Fiber middleware. Passing `c.Context()` only exposes values propagated into the standard request context. For ordinary `context.Context` string keys, use the built-in `${value:key}` tag.
+Use `log.WithContext(c)` inside handlers when you want tags to read values stored by Fiber middleware. Passing `c.Context()` only exposes values propagated into the standard request context. For ordinary string keys on values with `Value` or `UserValue` lookup methods, use the built-in `${value:key}` tag.
 
 ## Logger
 

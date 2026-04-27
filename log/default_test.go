@@ -128,8 +128,12 @@ func Test_WithContextTemplate(t *testing.T) {
 	SetContextTemplate(ContextConfig{
 		Format: "[${requestid}] ",
 		CustomTags: map[string]ContextTagFunc{
-			"requestid": func(output Buffer, ctx context.Context, _ *ContextData, _ string) (int, error) {
-				id, ok := ctx.Value(requestIDKey{}).(string)
+			"requestid": func(output Buffer, ctx any, _ *ContextData, _ string) (int, error) {
+				ctxTyped, ok := ctx.(context.Context)
+				if !ok {
+					return 0, nil
+				}
+				id, ok := ctxTyped.Value(requestIDKey{}).(string)
 				if !ok {
 					return 0, nil
 				}
