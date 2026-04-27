@@ -54,6 +54,22 @@ func Test_SSE_EventRejectsFieldInjection(t *testing.T) {
 	}), errInvalidField)
 }
 
+func Test_SSE_EventOmitsWhitespaceOnlyFields(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	require.NoError(t, writeEvent(w, Event{
+		ID:   "   ",
+		Name: "   ",
+		Data: "ok",
+	}))
+	require.NoError(t, w.Flush())
+
+	require.Equal(t, "data: ok\n\n", buf.String())
+}
+
 func Test_SSE_EventJSONEncodesData(t *testing.T) {
 	t.Parallel()
 
@@ -132,6 +148,30 @@ func Test_SSE_EventWritesByteSliceData(t *testing.T) {
 	require.NoError(t, w.Flush())
 
 	require.Equal(t, "data: hello\ndata: world\n\n", buf.String())
+}
+
+func Test_SSE_EventTrimsSingleTrailingDataNewline(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	require.NoError(t, writeEvent(w, Event{Data: "hello\n"}))
+	require.NoError(t, w.Flush())
+
+	require.Equal(t, "data: hello\n\n", buf.String())
+}
+
+func Test_SSE_EventPreservesIntentionalBlankDataLine(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+
+	require.NoError(t, writeEvent(w, Event{Data: "hello\n\n"}))
+	require.NoError(t, w.Flush())
+
+	require.Equal(t, "data: hello\ndata: \n\n", buf.String())
 }
 
 func Test_SSE_EventReturnsWriterError(t *testing.T) {

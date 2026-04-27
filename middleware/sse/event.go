@@ -44,14 +44,18 @@ func writeEvent(w *bufio.Writer, event Event) error {
 		if err != nil {
 			return fmt.Errorf("sse: invalid id: %w", err)
 		}
-		appendField(&frame, "id", id)
+		if id != "" {
+			appendField(&frame, "id", id)
+		}
 	}
 	if event.Name != "" {
 		name, err := sanitizeField(event.Name)
 		if err != nil {
 			return fmt.Errorf("sse: invalid event: %w", err)
 		}
-		appendField(&frame, "event", name)
+		if name != "" {
+			appendField(&frame, "event", name)
+		}
 	}
 	if event.Retry > 0 {
 		appendField(&frame, "retry", strconv.FormatInt(event.Retry.Milliseconds(), 10))
@@ -110,7 +114,7 @@ func eventData(data any) (eventPayload, error) {
 }
 
 func writeData(w *bufio.Writer, data string) error {
-	data = normalizeNewlines(data)
+	data = trimSingleTrailingNewline(normalizeNewlines(data))
 	for line := range strings.SplitSeq(data, "\n") {
 		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
 			return fmt.Errorf("sse: write data: %w", err)
@@ -127,10 +131,14 @@ func appendField(w *bytes.Buffer, field, value string) {
 }
 
 func appendData(w *bytes.Buffer, data string) {
-	data = normalizeNewlines(data)
+	data = trimSingleTrailingNewline(normalizeNewlines(data))
 	for line := range strings.SplitSeq(data, "\n") {
 		appendField(w, "data", line)
 	}
+}
+
+func trimSingleTrailingNewline(value string) string {
+	return strings.TrimSuffix(value, "\n")
 }
 
 func sanitizeField(value string) (string, error) {
