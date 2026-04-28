@@ -104,6 +104,9 @@ func (s *SharedState) SetJSONWithContext(ctx context.Context, key string, v any,
 	if s == nil || s.storage == nil {
 		return ErrSharedStorageNotConfigured
 	}
+	if key == "" {
+		return nil
+	}
 
 	encoded, err := s.jsonEncoder(v)
 	if err != nil {
@@ -144,6 +147,9 @@ func (s *SharedState) SetMsgPack(key string, v any, ttl time.Duration) error {
 func (s *SharedState) SetMsgPackWithContext(ctx context.Context, key string, v any, ttl time.Duration) error {
 	if s == nil || s.storage == nil {
 		return ErrSharedStorageNotConfigured
+	}
+	if key == "" {
+		return nil
 	}
 
 	encoded, err := s.msgPackEncoder(v)
@@ -186,6 +192,9 @@ func (s *SharedState) SetCBORWithContext(ctx context.Context, key string, v any,
 	if s == nil || s.storage == nil {
 		return ErrSharedStorageNotConfigured
 	}
+	if key == "" {
+		return nil
+	}
 
 	encoded, err := s.cborEncoder(v)
 	if err != nil {
@@ -226,6 +235,9 @@ func (s *SharedState) SetXML(key string, v any, ttl time.Duration) error {
 func (s *SharedState) SetXMLWithContext(ctx context.Context, key string, v any, ttl time.Duration) error {
 	if s == nil || s.storage == nil {
 		return ErrSharedStorageNotConfigured
+	}
+	if key == "" {
+		return nil
 	}
 
 	encoded, err := s.xmlEncoder(v)
@@ -290,5 +302,9 @@ func (s *SharedState) HasWithContext(ctx context.Context, key string) (bool, err
 }
 
 func (s *SharedState) key(key string) string {
+	if key == "" {
+		return ""
+	}
+
 	return s.prefix + key
 }

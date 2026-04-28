@@ -649,3 +649,42 @@ func TestSharedState_UsesAppXMLCodec(t *testing.T) {
 	require.True(t, encoderCalled)
 	require.True(t, decoderCalled)
 }
+
+func TestSharedState_EmptyKeyBehavior(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SharedStorage: newSharedStateMemoryStorage(t)})
+
+	require.NoError(t, app.SharedState().Set("", []byte("raw"), time.Minute))
+	require.NoError(t, app.SharedState().SetJSON("", Map{"v": 1}, time.Minute))
+	require.NoError(t, app.SharedState().SetMsgPack("", Map{"v": 1}, time.Minute))
+	require.NoError(t, app.SharedState().SetCBOR("", Map{"v": 1}, time.Minute))
+	require.NoError(t, app.SharedState().SetXML("", Map{"v": 1}, time.Minute))
+
+	raw, found, err := app.SharedState().Get("")
+	require.NoError(t, err)
+	require.Nil(t, raw)
+	require.False(t, found)
+
+	_, found, err = app.SharedState().GetJSON("", &Map{})
+	require.NoError(t, err)
+	require.False(t, found)
+
+	_, found, err = app.SharedState().GetMsgPack("", &Map{})
+	require.NoError(t, err)
+	require.False(t, found)
+
+	_, found, err = app.SharedState().GetCBOR("", &Map{})
+	require.NoError(t, err)
+	require.False(t, found)
+
+	_, found, err = app.SharedState().GetXML("", &Map{})
+	require.NoError(t, err)
+	require.False(t, found)
+
+	require.NoError(t, app.SharedState().Delete(""))
+
+	has, err := app.SharedState().Has("")
+	require.NoError(t, err)
+	require.False(t, has)
+}
