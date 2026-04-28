@@ -80,6 +80,18 @@ func main() {
 }
 ```
 
+### State / SharedState
+
+`State()` returns in-process state (local to the current process).  
+`SharedState()` returns storage-backed state intended for prefork/multi-process sharing.
+
+```go title="Signature"
+func (app *App) State() *State
+func (app *App) SharedState() *SharedState
+```
+
+See [State Management](./state.md) for usage and examples.
+
 ### MountPath
 
 The `MountPath` property contains one or more path patterns on which a sub-app was mounted.
