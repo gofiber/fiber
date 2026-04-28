@@ -2,7 +2,6 @@ package fiber
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -291,5 +290,5 @@ func (s *SharedState) HasWithContext(ctx context.Context, key string) (bool, err
 }
 
 func (s *SharedState) key(key string) string {
-	return utils.CopyString(s.prefix + hex.EncodeToString(utils.UnsafeBytes(key)))
+	return s.prefix + key
 }
