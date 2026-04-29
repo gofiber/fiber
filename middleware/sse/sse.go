@@ -37,10 +37,10 @@ func New(config ...Config) fiber.Handler {
 		c.Set(fiber.HeaderConnection, "keep-alive")
 		c.Set("X-Accel-Buffering", "no")
 
-		c.Abandon()
-
 		streamContext := c.Context()
 		lastEventID := c.Get(fiber.HeaderLastEventID)
+
+		c.Abandon()
 
 		return c.SendStreamWriter(func(w *bufio.Writer) {
 			stream := newStream(streamContext, w, lastEventID, c.App().Config().JSONEncoder)
@@ -52,6 +52,11 @@ func New(config ...Config) fiber.Handler {
 						finalErr = stream.Err()
 					}
 					cfg.OnClose(c, finalErr)
+				}
+			}()
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					streamErr = fmt.Errorf("sse: handler panic: %v", recovered)
 				}
 			}()
 			defer stream.closeStream()

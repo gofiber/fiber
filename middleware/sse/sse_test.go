@@ -500,6 +500,34 @@ func Test_SSE_HandlerErrorCallsOnClose(t *testing.T) {
 	}
 }
 
+func Test_SSE_HandlerPanicCallsOnClose(t *testing.T) {
+	t.Parallel()
+
+	closed := make(chan error, 1)
+
+	app := fiber.New()
+	app.Get("/events", New(Config{
+		DisableHeartbeat: true,
+		Handler: func(fiber.Ctx, *Stream) error {
+			panic("boom")
+		},
+		OnClose: func(_ fiber.Ctx, err error) {
+			closed <- err
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	select {
+	case err := <-closed:
+		require.EqualError(t, err, "sse: handler panic: boom")
+	case <-time.After(time.Second):
+		t.Fatal("OnClose was not called")
+	}
+}
+
 func Test_SSE_NewPanicsWithoutHandler(t *testing.T) {
 	t.Parallel()
 

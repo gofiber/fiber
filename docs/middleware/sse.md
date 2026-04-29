@@ -99,7 +99,7 @@ app.Get("/events", sse.New(sse.Config{
 | OnClose           | `func(fiber.Ctx, error)`     | Called when the stream ends, with `nil` when the handler returned successfully and no stream write failed. | `nil` |
 | Retry             | `time.Duration`              | Initial EventSource reconnect delay.           | `0`                 |
 | HeartbeatInterval | `time.Duration`              | Interval for SSE comment heartbeats.           | `15 * time.Second`  |
-| DisableHeartbeat  | `bool`                       | Disable automatic heartbeat comments.          | `false`             |
+| DisableHeartbeat  | `bool`                       | Disable automatic heartbeat comments. When disabled, disconnected clients may not be detected until the next write. | `false` |
 
 ## Default Config
 
@@ -127,5 +127,7 @@ func (s *Stream) LastEventID() string
 ```
 
 Every write is flushed. A failed flush closes `Done`, stores the error returned by `Err`, and lets the handler stop without relying on `fasthttp.RequestCtx.Done`, which is not a per-client disconnect signal. After a normal handler return, `Done` is closed and `Context()` is canceled while `Err()` remains `nil`; writes after that return `sse: stream closed`.
+
+Automatic heartbeat comments keep idle streams active and make silent client disconnects observable through the next flush error. If heartbeats are disabled, a handler waiting on an external source might not notice a disconnected client until it writes again. Stopping a stream waits for an in-flight heartbeat write to finish, so a very slow client can delay shutdown until the underlying write unblocks.
 
 `Config.Retry` sends the initial reconnect delay when the stream opens. `Event.Retry` changes the reconnect delay for a specific event, following the SSE wire format.
