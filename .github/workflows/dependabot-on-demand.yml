@@ -5,6 +5,9 @@ on:
     types: [trigger-dependabot]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   trigger:
     uses: gofiber/.github/.github/workflows/dependabot-on-demand.yml@main
