@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -17,6 +18,10 @@ import (
 )
 
 var ErrInvalidSHA256PasswordLength = errors.New("decode SHA256 password: invalid length")
+
+const defaultDummyPassword = "fiber-basicauth-dummy"
+
+var defaultDummyPasswordSHA512 = sha512.Sum512([]byte(defaultDummyPassword))
 
 // Config defines the config for middleware.
 type Config struct {
@@ -124,19 +129,9 @@ func configDefault(config ...Config) Config {
 	}
 
 	if cfg.Authorizer == nil {
-		verifiers := make(map[string]func(string) bool, len(cfg.Users))
-		dummyVerify := func(string) bool { return false }
-		hasDummy := false
-		for u, hpw := range cfg.Users {
-			v, err := parseHashedPassword(hpw)
-			if err != nil {
-				panic(err)
-			}
-			verifiers[u] = v
-			if !hasDummy {
-				dummyVerify = v
-				hasDummy = true
-			}
+		verifiers, dummyVerify, err := buildVerifiers(cfg.Users)
+		if err != nil {
+			panic(err)
 		}
 		cfg.Authorizer = func(user, pass string, _ fiber.Ctx) bool {
 			verify, ok := verifiers[user]
@@ -168,6 +163,69 @@ func configDefault(config ...Config) Config {
 		}
 	}
 	return cfg
+}
+
+type verifierStrength struct {
+	algorithm int
+	cost      int
+}
+
+func buildVerifiers(users map[string]string) (map[string]func(string) bool, func(string) bool, error) {
+	verifiers := make(map[string]func(string) bool, len(users))
+	dummyVerify := fallbackDummyVerify
+	keys := make([]string, 0, len(users))
+	for user := range users {
+		keys = append(keys, user)
+	}
+	sort.Strings(keys)
+
+	var dummyStrength verifierStrength
+	hasDummy := false
+	for _, user := range keys {
+		hashedPassword := users[user]
+		verify, err := parseHashedPassword(hashedPassword)
+		if err != nil {
+			return nil, nil, err
+		}
+		verifiers[user] = verify
+
+		strength := verifierStrengthForHash(hashedPassword)
+		if !hasDummy || strength.betterThan(dummyStrength) {
+			dummyVerify = verify
+			dummyStrength = strength
+			hasDummy = true
+		}
+	}
+
+	return verifiers, dummyVerify, nil
+}
+
+func fallbackDummyVerify(pass string) bool {
+	sum := sha512.Sum512([]byte(pass))
+	return subtle.ConstantTimeCompare(sum[:], defaultDummyPasswordSHA512[:]) == 1
+}
+
+func verifierStrengthForHash(h string) verifierStrength {
+	switch {
+	case strings.HasPrefix(h, "$2"):
+		cost, err := bcrypt.Cost([]byte(h))
+		if err != nil {
+			return verifierStrength{algorithm: 3}
+		}
+		return verifierStrength{algorithm: 3, cost: cost}
+	case strings.HasPrefix(h, "{SHA512}"):
+		return verifierStrength{algorithm: 2}
+	default:
+		return verifierStrength{algorithm: 1}
+	}
+}
+
+func (s verifierStrength) betterThan(other verifierStrength) bool {
+	if s.algorithm != other.algorithm {
+		return s.algorithm > other.algorithm
+	}
+
+	return s.cost > other.cost
 }
 
 func parseHashedPassword(h string) (func(string) bool, error) {
