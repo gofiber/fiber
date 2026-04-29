@@ -120,6 +120,9 @@ func Test_CtxLogger(t *testing.T) {
 		"[Panic] work panic\n", string(w.b))
 }
 
+// Test_WithContextTemplate runs serially because initDefaultLogger,
+// SetContextTemplate, MustSetContextTemplate, and SetOutput mutate package
+// globals shared with other log tests.
 func Test_WithContextTemplate(t *testing.T) {
 	initDefaultLogger()
 
@@ -152,6 +155,8 @@ func Test_WithContextTemplate(t *testing.T) {
 	require.Equal(t, "[Info] [req-42] start\n", string(w.b))
 }
 
+// Test_WithContextTemplateFailureOmitsPartialContext runs serially because it
+// mutates the same global logger state as Test_WithContextTemplate.
 func Test_WithContextTemplateFailureOmitsPartialContext(t *testing.T) {
 	initDefaultLogger()
 
@@ -161,7 +166,9 @@ func Test_WithContextTemplateFailureOmitsPartialContext(t *testing.T) {
 		CustomTags: map[string]ContextTagFunc{
 			"broken": func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
 				_, err := output.WriteString("partial")
-				require.NoError(t, err)
+				if err != nil {
+					return 0, err
+				}
 				return 0, templateErr
 			},
 		},
