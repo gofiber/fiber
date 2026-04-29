@@ -30,4 +30,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/valyala/fasthttp => github.com/ReneWerner87/fasthttp v0.0.0-20260425103602-fde83f8e3d55
+replace github.com/valyala/fasthttp => github.com/ReneWerner87/fasthttp v0.0.0-20260429070423-eac6a01ef5f7
