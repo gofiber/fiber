@@ -46,6 +46,21 @@ func Test_WithContextCaller(t *testing.T) {
 	require.Equal(t, "default_test.go:43: [Info] \ndefault_test.go:44: [Info] \n", string(w.b))
 }
 
+func Test_WithContextNilCaller(t *testing.T) {
+	logger = &defaultLogger{
+		stdlog: log.New(os.Stderr, "", log.Lshortfile),
+		depth:  4,
+	}
+
+	var w byteSliceWriter
+	SetOutput(&w)
+
+	WithContext(nil).Info("")
+	Info("")
+
+	require.Equal(t, "default_test.go:58: [Info] \ndefault_test.go:59: [Info] \n", string(w.b))
+}
+
 func Test_DefaultLogger(t *testing.T) {
 	initDefaultLogger()
 
