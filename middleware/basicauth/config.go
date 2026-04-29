@@ -19,9 +19,16 @@ import (
 
 var ErrInvalidSHA256PasswordLength = errors.New("decode SHA256 password: invalid length")
 
-const defaultDummyPassword = "fiber-basicauth-dummy"
+var fallbackDummySHA512 = [sha512.Size]byte{
+	0x85, 0xc7, 0xd4, 0xbc, 0xec, 0x5f, 0xdf, 0xef, 0xe0, 0x4d, 0xd4, 0x3e, 0xd3, 0xac, 0x45, 0x7c,
+	0x5e, 0x48, 0x60, 0x74, 0x12, 0x8e, 0xf8, 0xc0, 0xde, 0x39, 0x89, 0xf9, 0x84, 0x0c, 0x50, 0x24,
+	0x1e, 0xa6, 0x1f, 0x2a, 0x11, 0x97, 0xb1, 0xb9, 0x67, 0xa9, 0xf7, 0x3b, 0x82, 0x8f, 0x95, 0xf5,
+	0x58, 0xed, 0x3c, 0xab, 0x43, 0x22, 0xf6, 0xfa, 0x84, 0x1d, 0xbc, 0xeb, 0x87, 0xc4, 0x1c, 0x5a,
+}
 
-var defaultDummyPasswordSHA512 = sha512.Sum512([]byte(defaultDummyPassword))
+type passwordVerifier func(string) bool
+
+type userVerifiers map[string]passwordVerifier
 
 // Config defines the config for middleware.
 type Config struct {
@@ -170,9 +177,9 @@ type verifierStrength struct {
 	cost      int
 }
 
-func buildVerifiers(users map[string]string) (map[string]func(string) bool, func(string) bool, error) {
-	verifiers := make(map[string]func(string) bool, len(users))
-	dummyVerify := fallbackDummyVerify
+func buildVerifiers(users map[string]string) (userVerifiers, passwordVerifier, error) {
+	verifiers := make(userVerifiers, len(users))
+	dummyVerify := passwordVerifier(fallbackDummyVerify)
 	keys := make([]string, 0, len(users))
 	for user := range users {
 		keys = append(keys, user)
@@ -202,7 +209,7 @@ func buildVerifiers(users map[string]string) (map[string]func(string) bool, func
 
 func fallbackDummyVerify(pass string) bool {
 	sum := sha512.Sum512([]byte(pass))
-	return subtle.ConstantTimeCompare(sum[:], defaultDummyPasswordSHA512[:]) == 1
+	return subtle.ConstantTimeCompare(sum[:], fallbackDummySHA512[:]) == 1
 }
 
 func verifierStrengthForHash(h string) verifierStrength {
@@ -228,7 +235,7 @@ func (s verifierStrength) betterThan(other verifierStrength) bool {
 	return s.cost > other.cost
 }
 
-func parseHashedPassword(h string) (func(string) bool, error) {
+func parseHashedPassword(h string) (passwordVerifier, error) {
 	switch {
 	case strings.HasPrefix(h, "$2"):
 		hash := []byte(h)

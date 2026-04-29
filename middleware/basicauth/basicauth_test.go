@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -602,7 +603,7 @@ func Test_buildVerifiers(t *testing.T) {
 		verifiers, dummyVerify, err := buildVerifiers(nil)
 		require.NoError(t, err)
 		require.Empty(t, verifiers)
-		require.True(t, dummyVerify(defaultDummyPassword))
+		require.Equal(t, reflect.ValueOf(fallbackDummyVerify).Pointer(), reflect.ValueOf(dummyVerify).Pointer())
 		require.False(t, dummyVerify("wrong"))
 	})
 }
