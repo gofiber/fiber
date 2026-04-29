@@ -30,6 +30,9 @@ type passwordVerifier func(string) bool
 
 type userVerifiers map[string]passwordVerifier
 
+// Verifier strengths are ordered by expected verification work:
+// bcrypt is strongest because it is adaptive and cost-based, SHA-512 follows
+// as the larger fixed-cost digest, and SHA-256 is the lightest fixed-cost hash.
 const (
 	verifierStrengthSHA256 = iota + 1
 	verifierStrengthSHA512
@@ -185,7 +188,7 @@ type verifierStrength struct {
 
 func buildVerifiers(users map[string]string) (userVerifiers, passwordVerifier, error) {
 	verifiers := make(userVerifiers, len(users))
-	dummyVerify := passwordVerifier(fallbackDummyVerify)
+	dummyVerify := fallbackDummyVerify
 	keys := make([]string, 0, len(users))
 	for user := range users {
 		keys = append(keys, user)
