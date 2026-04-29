@@ -186,6 +186,9 @@ type verifierStrength struct {
 	cost      int
 }
 
+// buildVerifiers parses each configured user hash, stores the verifier by user,
+// and selects the strongest configured verifier for the dummy verification path.
+// It returns an error if any configured hash cannot be parsed.
 func buildVerifiers(users map[string]string) (userVerifiers, passwordVerifier, error) {
 	verifiers := make(userVerifiers, len(users))
 	dummyVerify := fallbackDummyVerify
@@ -216,11 +219,15 @@ func buildVerifiers(users map[string]string) (userVerifiers, passwordVerifier, e
 	return verifiers, dummyVerify, nil
 }
 
+// fallbackDummyVerify provides fixed verification work when no users are
+// configured so missing-user requests still perform a constant-time hash check.
 func fallbackDummyVerify(pass string) bool {
 	sum := sha512.Sum512([]byte(pass))
 	return subtle.ConstantTimeCompare(sum[:], fallbackDummySHA512[:]) == 1
 }
 
+// verifierStrengthForHash ranks a configured password hash by algorithm family
+// and cost so the middleware can choose the strongest verifier for dummy work.
 func verifierStrengthForHash(h string) verifierStrength {
 	switch {
 	case strings.HasPrefix(h, "$2"):
