@@ -30,6 +30,12 @@ type passwordVerifier func(string) bool
 
 type userVerifiers map[string]passwordVerifier
 
+const (
+	verifierStrengthSHA256 = iota + 1
+	verifierStrengthSHA512
+	verifierStrengthBcrypt
+)
+
 // Config defines the config for middleware.
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
@@ -217,16 +223,18 @@ func verifierStrengthForHash(h string) verifierStrength {
 	case strings.HasPrefix(h, "$2"):
 		cost, err := bcrypt.Cost([]byte(h))
 		if err != nil {
-			return verifierStrength{algorithm: 3}
+			return verifierStrength{algorithm: verifierStrengthBcrypt}
 		}
-		return verifierStrength{algorithm: 3, cost: cost}
+		return verifierStrength{algorithm: verifierStrengthBcrypt, cost: cost}
 	case strings.HasPrefix(h, "{SHA512}"):
-		return verifierStrength{algorithm: 2}
+		return verifierStrength{algorithm: verifierStrengthSHA512}
 	default:
-		return verifierStrength{algorithm: 1}
+		return verifierStrength{algorithm: verifierStrengthSHA256}
 	}
 }
 
+// betterThan prefers stronger hash families first (bcrypt > SHA-512 > SHA-256)
+// and uses the bcrypt cost as a tiebreaker within the same algorithm family.
 func (s verifierStrength) betterThan(other verifierStrength) bool {
 	if s.algorithm != other.algorithm {
 		return s.algorithm > other.algorithm
