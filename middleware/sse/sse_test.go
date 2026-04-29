@@ -85,6 +85,30 @@ func Test_SSE_EventJSONEncodesData(t *testing.T) {
 	require.JSONEq(t, `{"hello":"world"}`, stringsTrimData(buf.String()))
 }
 
+func Test_SSE_NewUsesAppJSONEncoder(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{
+		JSONEncoder: func(any) ([]byte, error) {
+			return []byte(`{"encoded":"custom"}`), nil
+		},
+	})
+	app.Get("/events", New(Config{
+		DisableHeartbeat: true,
+		Handler: func(_ fiber.Ctx, stream *Stream) error {
+			return stream.Event(Event{Data: map[string]string{"hello": "world"}})
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "data: {\"encoded\":\"custom\"}\n\n", string(body))
+}
+
 func Test_SSE_EventJSONEncodesTypedNilStringer(t *testing.T) {
 	t.Parallel()
 

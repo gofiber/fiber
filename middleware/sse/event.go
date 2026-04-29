@@ -31,8 +31,8 @@ type Event struct {
 	Retry time.Duration
 }
 
-func writeEvent(w *bufio.Writer, event Event) error {
-	data, err := eventData(event.Data)
+func writeEvent(w *bufio.Writer, event Event, jsonMarshal ...utils.JSONMarshal) error {
+	data, err := eventData(event.Data, jsonMarshalOrDefault(jsonMarshal))
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ type eventPayload struct {
 	hasData bool
 }
 
-func eventData(data any) (eventPayload, error) {
+func eventData(data any, jsonMarshal utils.JSONMarshal) (eventPayload, error) {
 	switch value := data.(type) {
 	case nil:
 		return eventPayload{}, nil
@@ -105,12 +105,19 @@ func eventData(data any) (eventPayload, error) {
 	case json.RawMessage:
 		return eventPayload{data: string(value), hasData: true}, nil
 	default:
-		encoded, err := json.Marshal(value)
+		encoded, err := jsonMarshal(value)
 		if err != nil {
 			return eventPayload{}, fmt.Errorf("sse: marshal data: %w", err)
 		}
 		return eventPayload{data: string(encoded), hasData: true}, nil
 	}
+}
+
+func jsonMarshalOrDefault(jsonMarshal []utils.JSONMarshal) utils.JSONMarshal {
+	if len(jsonMarshal) > 0 && jsonMarshal[0] != nil {
+		return jsonMarshal[0]
+	}
+	return json.Marshal
 }
 
 func writeData(w *bufio.Writer, data string) error {

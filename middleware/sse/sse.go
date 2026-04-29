@@ -15,9 +15,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
-
-const mimeTextEventStream = "text/event-stream"
 
 var errStreamClosed = errors.New("sse: stream closed")
 
@@ -44,7 +43,7 @@ func New(config ...Config) fiber.Handler {
 		lastEventID := c.Get(fiber.HeaderLastEventID)
 
 		return c.SendStreamWriter(func(w *bufio.Writer) {
-			stream := newStream(streamContext, w, lastEventID)
+			stream := newStream(streamContext, w, lastEventID, c.App().Config().JSONEncoder)
 			var streamErr error
 			defer func() {
 				if cfg.OnClose != nil {
@@ -86,13 +85,14 @@ type Stream struct {
 	err         error
 	w           *bufio.Writer
 	done        chan struct{}
+	jsonMarshal utils.JSONMarshal
 	lastEventID string
 	closed      bool
 	once        sync.Once
 	mu          sync.Mutex
 }
 
-func newStream(ctx context.Context, w *bufio.Writer, lastEventID string) *Stream { //nolint:contextcheck // ctx is the parent for the derived stream lifecycle context.
+func newStream(ctx context.Context, w *bufio.Writer, lastEventID string, jsonMarshal ...utils.JSONMarshal) *Stream { //nolint:contextcheck // ctx is the parent for the derived stream lifecycle context.
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -102,6 +102,7 @@ func newStream(ctx context.Context, w *bufio.Writer, lastEventID string) *Stream
 		cancel:      cancel,
 		w:           w,
 		done:        make(chan struct{}),
+		jsonMarshal: jsonMarshalOrDefault(jsonMarshal),
 		lastEventID: lastEventID,
 	}
 }
@@ -131,7 +132,7 @@ func (s *Stream) Err() error {
 // Event writes one SSE event and flushes it to the client.
 func (s *Stream) Event(event Event) error {
 	return s.write(func(w *bufio.Writer) error {
-		return writeEvent(w, event)
+		return writeEvent(w, event, s.jsonMarshal)
 	})
 }
 
