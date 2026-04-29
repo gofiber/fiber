@@ -14,9 +14,24 @@ var _ AllLogger[*log.Logger] = (*defaultLogger)(nil)
 
 type defaultLogger struct {
 	stdlog *log.Logger
-	ctx    any // WithContext intentionally returns a logger bound to this context-like value.
+	ctx    *retainedContext
 	level  Level
 	depth  int
+}
+
+// retainedContext documents that WithContext intentionally returns a logger
+// bound to a caller-provided context-like value. The value may be fiber.Ctx,
+// *fasthttp.RequestCtx, context.Context, or another value understood by
+// ContextTagFunc implementations.
+type retainedContext struct {
+	value any
+}
+
+func newRetainedContext(value any) *retainedContext {
+	if value == nil {
+		return nil
+	}
+	return &retainedContext{value: value}
 }
 
 // privateLog logs a message at a given level log the default logger.
@@ -236,7 +251,7 @@ func (l *defaultLogger) writeContext(buf Buffer) {
 	scratch := bytebufferpool.Get()
 	defer bytebufferpool.Put(scratch)
 
-	if err := tmpl.Execute(scratch, l.ctx, &ContextData{}); err != nil {
+	if err := tmpl.Execute(scratch, l.ctx.value, &ContextData{}); err != nil {
 		return
 	}
 
@@ -249,7 +264,7 @@ func (l *defaultLogger) writeContext(buf Buffer) {
 func (l *defaultLogger) WithContext(ctx any) CommonLogger {
 	return &defaultLogger{
 		stdlog: l.stdlog,
-		ctx:    ctx,
+		ctx:    newRetainedContext(ctx),
 		level:  l.level,
 		depth:  l.depth - 1,
 	}
