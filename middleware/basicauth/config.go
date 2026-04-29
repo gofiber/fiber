@@ -125,16 +125,27 @@ func configDefault(config ...Config) Config {
 
 	if cfg.Authorizer == nil {
 		verifiers := make(map[string]func(string) bool, len(cfg.Users))
+		dummyVerify := func(string) bool { return false }
+		hasDummy := false
 		for u, hpw := range cfg.Users {
 			v, err := parseHashedPassword(hpw)
 			if err != nil {
 				panic(err)
 			}
 			verifiers[u] = v
+			if !hasDummy {
+				dummyVerify = v
+				hasDummy = true
+			}
 		}
 		cfg.Authorizer = func(user, pass string, _ fiber.Ctx) bool {
 			verify, ok := verifiers[user]
-			return ok && verify(pass)
+			v := dummyVerify
+			if ok {
+				v = verify
+			}
+			res := v(pass)
+			return ok && res
 		}
 	}
 
