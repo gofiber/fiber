@@ -19,6 +19,8 @@ import (
 
 var ErrInvalidSHA256PasswordLength = errors.New("decode SHA256 password: invalid length")
 
+// fallbackDummySHA512 is SHA-512("fiber-basicauth-dummy"), used as a
+// constant-time comparison target when no users are configured.
 var fallbackDummySHA512 = [sha512.Size]byte{
 	0x85, 0xc7, 0xd4, 0xbc, 0xec, 0x5f, 0xdf, 0xef, 0xe0, 0x4d, 0xd4, 0x3e, 0xd3, 0xac, 0x45, 0x7c,
 	0x5e, 0x48, 0x60, 0x74, 0x12, 0x8e, 0xf8, 0xc0, 0xde, 0x39, 0x89, 0xf9, 0x84, 0x0c, 0x50, 0x24,
@@ -151,11 +153,10 @@ func configDefault(config ...Config) Config {
 		}
 		cfg.Authorizer = func(user, pass string, _ fiber.Ctx) bool {
 			verify, ok := verifiers[user]
-			v := dummyVerify
-			if ok {
-				v = verify
+			if !ok {
+				verify = dummyVerify
 			}
-			res := v(pass)
+			res := verify(pass)
 			return ok && res
 		}
 	}
@@ -188,7 +189,12 @@ type verifierStrength struct {
 
 // buildVerifiers parses each configured user hash, stores the verifier by user,
 // and selects the strongest configured verifier for the dummy verification path.
-// It returns an error if any configured hash cannot be parsed.
+// The dummy verifier is used for unknown-user requests to equalize timing.
+//
+// Note: in mixed-hash deployments (e.g. bcrypt + SHA-256), the dummy matches
+// the strongest configured hash. Users with weaker hashes may still be
+// distinguishable from unknown users by timing. This is an accepted trade-off
+// since running all verifier types per request would be prohibitively expensive.
 func buildVerifiers(users map[string]string) (userVerifiers, passwordVerifier, error) {
 	verifiers := make(userVerifiers, len(users))
 	dummyVerify := fallbackDummyVerify
@@ -199,7 +205,6 @@ func buildVerifiers(users map[string]string) (userVerifiers, passwordVerifier, e
 	sort.Strings(keys)
 
 	var dummyStrength verifierStrength
-	hasDummy := false
 	for _, user := range keys {
 		hashedPassword := users[user]
 		verify, err := parseHashedPassword(hashedPassword)
@@ -209,10 +214,9 @@ func buildVerifiers(users map[string]string) (userVerifiers, passwordVerifier, e
 		verifiers[user] = verify
 
 		strength := verifierStrengthForHash(hashedPassword)
-		if !hasDummy || strength.betterThan(dummyStrength) {
+		if strength.betterThan(dummyStrength) {
 			dummyVerify = verify
 			dummyStrength = strength
-			hasDummy = true
 		}
 	}
 

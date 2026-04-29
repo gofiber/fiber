@@ -602,11 +602,7 @@ func Test_buildVerifiers(t *testing.T) {
 		verifiers, dummyVerify, err := buildVerifiers(nil)
 		require.NoError(t, err)
 		require.Empty(t, verifiers)
-		// "fiber-basicauth-dummy"
-		fallbackInput := string([]byte{
-			0x66, 0x69, 0x62, 0x65, 0x72, 0x2d, 0x62, 0x61, 0x73, 0x69, 0x63, 0x61,
-			0x75, 0x74, 0x68, 0x2d, 0x64, 0x75, 0x6d, 0x6d, 0x79,
-		})
+		fallbackInput := "fiber-basicauth-dummy"
 		require.True(t, dummyVerify(fallbackInput))
 		require.False(t, dummyVerify("wrong"))
 	})
