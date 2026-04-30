@@ -8,9 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -456,6 +456,7 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	app := fiber.New()
 	handlerDone := make(chan error, 1)
 	onCloseDone := make(chan error, 1)
+	largeEventData := strings.Repeat("x", 64<<10)
 
 	app.Get("/events", New(Config{
 		DisableHeartbeat: true,
@@ -467,7 +468,14 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 
 			time.Sleep(200 * time.Millisecond)
 
-			err := stream.Event(Event{Data: "late"})
+			var err error
+			for range 64 {
+				err = stream.Event(Event{Data: largeEventData})
+				if err != nil {
+					break
+				}
+			}
+
 			handlerDone <- err
 			return err
 		},
@@ -476,12 +484,43 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody), fiber.TestConfig{
-		Timeout:       100 * time.Millisecond,
-		FailOnTimeout: true,
-	})
-	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
-	require.Nil(t, resp)
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+
+	serverDone := make(chan struct{})
+	go func() {
+		require.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
+		close(serverDone)
+	}()
+	defer func() {
+		require.NoError(t, app.Shutdown())
+		select {
+		case <-serverDone:
+		case <-time.After(time.Second):
+			t.Fatal("SSE test server did not stop")
+		}
+	}()
+
+	conn, err := net.Dial(fiber.NetworkTCP4, ln.Addr().String())
+	require.NoError(t, err)
+	defer conn.Close() //nolint:errcheck // Closed explicitly to interrupt the stream.
+
+	_, err = fmt.Fprintf(conn, "GET /events HTTP/1.1\r\nHost: %s\r\n\r\n", ln.Addr())
+	require.NoError(t, err)
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
+
+	reader := bufio.NewReader(conn)
+	var response bytes.Buffer
+	for !strings.Contains(response.String(), "data: ready\n\n") {
+		chunk := make([]byte, 256)
+		n, readErr := reader.Read(chunk)
+		require.NoError(t, readErr)
+		response.Write(chunk[:n])
+	}
+
+	require.Contains(t, response.String(), "HTTP/1.1 200 OK")
+	require.Contains(t, response.String(), "data: ready\n\n")
+	require.NoError(t, conn.Close())
 
 	select {
 	case err := <-handlerDone:
