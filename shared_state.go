@@ -3,6 +3,7 @@ package fiber
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"time"
@@ -28,36 +29,41 @@ type SharedState struct {
 }
 
 func newSharedState(
-	storage Storage,
-	prefix string,
-	jsonEncoder utils.JSONMarshal,
-	jsonDecoder utils.JSONUnmarshal,
-	msgPackEncoder utils.MsgPackMarshal,
-	msgPackDecoder utils.MsgPackUnmarshal,
-	cborEncoder utils.CBORMarshal,
-	cborDecoder utils.CBORUnmarshal,
-	xmlEncoder utils.XMLMarshal,
-	xmlDecoder utils.XMLUnmarshal,
+	cfg Config,
 ) *SharedState {
+	prefix := cfg.SharedStatePrefix
 	if prefix == "" {
 		prefix = defaultSharedStatePrefix
+		if cfg.AppName != "" {
+			prefix += cfg.AppName + "-"
+		}
 	}
 
+	jsonEncoder := cfg.JSONEncoder
 	if jsonEncoder == nil {
 		jsonEncoder = json.Marshal
 	}
+	jsonDecoder := cfg.JSONDecoder
 	if jsonDecoder == nil {
 		jsonDecoder = json.Unmarshal
 	}
+	xmlEncoder := cfg.XMLEncoder
+	if xmlEncoder == nil {
+		xmlEncoder = xml.Marshal
+	}
+	xmlDecoder := cfg.XMLDecoder
+	if xmlDecoder == nil {
+		xmlDecoder = xml.Unmarshal
+	}
 
 	return &SharedState{
-		storage:        storage,
+		storage:        cfg.SharedStorage,
 		jsonEncoder:    jsonEncoder,
 		jsonDecoder:    jsonDecoder,
-		msgPackEncoder: msgPackEncoder,
-		msgPackDecoder: msgPackDecoder,
-		cborEncoder:    cborEncoder,
-		cborDecoder:    cborDecoder,
+		msgPackEncoder: cfg.MsgPackEncoder,
+		msgPackDecoder: cfg.MsgPackDecoder,
+		cborEncoder:    cfg.CBOREncoder,
+		cborDecoder:    cfg.CBORDecoder,
 		xmlEncoder:     xmlEncoder,
 		xmlDecoder:     xmlDecoder,
 		prefix:         prefix,
@@ -69,11 +75,16 @@ func (s *SharedState) Set(key string, val []byte, ttl time.Duration) error {
 }
 
 func (s *SharedState) SetWithContext(ctx context.Context, key string, val []byte, ttl time.Duration) error {
-	if s == nil || s.storage == nil {
-		return ErrSharedStorageNotConfigured
+	if err := s.ensureStorage(); err != nil {
+		return err
 	}
 
-	return s.storage.SetWithContext(ctx, s.key(key), val, ttl)
+	storageKey, ok := s.storageKey(key)
+	if !ok {
+		return nil
+	}
+
+	return s.storage.SetWithContext(ctx, storageKey, val, ttl)
 }
 
 func (s *SharedState) Get(key string) ([]byte, bool, error) { //nolint:gocritic // Keep unnamed returns for clarity.
@@ -81,11 +92,16 @@ func (s *SharedState) Get(key string) ([]byte, bool, error) { //nolint:gocritic 
 }
 
 func (s *SharedState) GetWithContext(ctx context.Context, key string) ([]byte, bool, error) { //nolint:gocritic // Keep unnamed returns for clarity.
-	if s == nil || s.storage == nil {
-		return nil, false, ErrSharedStorageNotConfigured
+	if err := s.ensureStorage(); err != nil {
+		return nil, false, err
 	}
 
-	data, err := s.storage.GetWithContext(ctx, s.key(key))
+	storageKey, ok := s.storageKey(key)
+	if !ok {
+		return nil, false, nil
+	}
+
+	data, err := s.storage.GetWithContext(ctx, storageKey)
 	if err != nil {
 		return nil, false, err
 	}
@@ -101,19 +117,11 @@ func (s *SharedState) SetJSON(key string, v any, ttl time.Duration) error {
 }
 
 func (s *SharedState) SetJSONWithContext(ctx context.Context, key string, v any, ttl time.Duration) error {
-	if s == nil || s.storage == nil {
-		return ErrSharedStorageNotConfigured
-	}
-	if key == "" {
-		return nil
+	if err := s.ensureStorage(); err != nil {
+		return err
 	}
 
-	encoded, err := s.jsonEncoder(v)
-	if err != nil {
-		return fmt.Errorf("fiber: failed to encode shared state value: %w", err)
-	}
-
-	return s.storage.SetWithContext(ctx, s.key(key), encoded, ttl)
+	return s.setEncodedWithContext(ctx, key, v, ttl, s.jsonEncoder, "json")
 }
 
 func (s *SharedState) GetJSON(key string, out any) ([]byte, bool, error) { //nolint:gocritic // Keep unnamed returns for clarity.
@@ -121,23 +129,11 @@ func (s *SharedState) GetJSON(key string, out any) ([]byte, bool, error) { //nol
 }
 
 func (s *SharedState) GetJSONWithContext(ctx context.Context, key string, out any) ([]byte, bool, error) { //nolint:gocritic // Keep unnamed returns for clarity.
-	if s == nil || s.storage == nil {
-		return nil, false, ErrSharedStorageNotConfigured
-	}
-
-	data, err := s.storage.GetWithContext(ctx, s.key(key))
-	if err != nil {
+	if err := s.ensureStorage(); err != nil {
 		return nil, false, err
 	}
-	if data == nil {
-		return nil, false, nil
-	}
 
-	if err := s.jsonDecoder(data, out); err != nil {
-		return nil, false, fmt.Errorf("fiber: failed to decode shared state value: %w", err)
-	}
-
-	return append([]byte(nil), data...), true, nil
+	return s.getEncodedWithContext(ctx, key, out, s.jsonDecoder, "json")
 }
 
 func (s *SharedState) SetMsgPack(key string, v any, ttl time.Duration) error {
@@ -145,19 +141,11 @@ func (s *SharedState) SetMsgPack(key string, v any, ttl time.Duration) error {
 }
 
 func (s *SharedState) SetMsgPackWithContext(ctx context.Context, key string, v any, ttl time.Duration) error {
-	if s == nil || s.storage == nil {
-		return ErrSharedStorageNotConfigured
-	}
-	if key == "" {
-		return nil
+	if err := s.ensureStorage(); err != nil {
+		return err
 	}
 
-	encoded, err := s.msgPackEncoder(v)
-	if err != nil {
-		return fmt.Errorf("fiber: failed to encode shared state msgpack value: %w", err)
-	}
-
-	return s.storage.SetWithContext(ctx, s.key(key), encoded, ttl)
+	return s.setEncodedWithContext(ctx, key, v, ttl, s.msgPackEncoder, "msgpack")
 }
 
 func (s *SharedState) GetMsgPack(key string, out any) ([]byte, bool, error) { //nolint:gocritic // Keep unnamed returns for clarity.
@@ -165,23 +153,11 @@ func (s *SharedState) GetMsgPack(key string, out any) ([]byte, bool, error) { //
 }
 
 func (s *SharedState) GetMsgPackWithContext(ctx context.Context, key string, out any) ([]byte, bool, error) { //nolint:gocritic // Keep unnamed returns for clarity.
-	if s == nil || s.storage == nil {
-		return nil, false, ErrSharedStorageNotConfigured
-	}
-
-	data, err := s.storage.GetWithContext(ctx, s.key(key))
-	if err != nil {
+	if err := s.ensureStorage(); err != nil {
 		return nil, false, err
 	}
-	if data == nil {
-		return nil, false, nil
-	}
 
-	if err := s.msgPackDecoder(data, out); err != nil {
-		return nil, false, fmt.Errorf("fiber: failed to decode shared state msgpack value: %w", err)
-	}
-
-	return append([]byte(nil), data...), true, nil
+	return s.getEncodedWithContext(ctx, key, out, s.msgPackDecoder, "msgpack")
 }
 
 func (s *SharedState) SetCBOR(key string, v any, ttl time.Duration) error {
@@ -189,19 +165,11 @@ func (s *SharedState) SetCBOR(key string, v any, ttl time.Duration) error {
 }
 
 func (s *SharedState) SetCBORWithContext(ctx context.Context, key string, v any, ttl time.Duration) error {
-	if s == nil || s.storage == nil {
-		return ErrSharedStorageNotConfigured
-	}
-	if key == "" {
-		return nil
+	if err := s.ensureStorage(); err != nil {
+		return err
 	}
 
-	encoded, err := s.cborEncoder(v)
-	if err != nil {
-		return fmt.Errorf("fiber: failed to encode shared state cbor value: %w", err)
-	}
-
-	return s.storage.SetWithContext(ctx, s.key(key), encoded, ttl)
+	return s.setEncodedWithContext(ctx, key, v, ttl, s.cborEncoder, "cbor")
 }
 
 func (s *SharedState) GetCBOR(key string, out any) ([]byte, bool, error) { //nolint:gocritic // Keep unnamed returns for clarity.
@@ -209,23 +177,11 @@ func (s *SharedState) GetCBOR(key string, out any) ([]byte, bool, error) { //nol
 }
 
 func (s *SharedState) GetCBORWithContext(ctx context.Context, key string, out any) ([]byte, bool, error) { //nolint:gocritic // Keep unnamed returns for clarity.
-	if s == nil || s.storage == nil {
-		return nil, false, ErrSharedStorageNotConfigured
-	}
-
-	data, err := s.storage.GetWithContext(ctx, s.key(key))
-	if err != nil {
+	if err := s.ensureStorage(); err != nil {
 		return nil, false, err
 	}
-	if data == nil {
-		return nil, false, nil
-	}
 
-	if err := s.cborDecoder(data, out); err != nil {
-		return nil, false, fmt.Errorf("fiber: failed to decode shared state cbor value: %w", err)
-	}
-
-	return append([]byte(nil), data...), true, nil
+	return s.getEncodedWithContext(ctx, key, out, s.cborDecoder, "cbor")
 }
 
 func (s *SharedState) SetXML(key string, v any, ttl time.Duration) error {
@@ -233,19 +189,11 @@ func (s *SharedState) SetXML(key string, v any, ttl time.Duration) error {
 }
 
 func (s *SharedState) SetXMLWithContext(ctx context.Context, key string, v any, ttl time.Duration) error {
-	if s == nil || s.storage == nil {
-		return ErrSharedStorageNotConfigured
-	}
-	if key == "" {
-		return nil
+	if err := s.ensureStorage(); err != nil {
+		return err
 	}
 
-	encoded, err := s.xmlEncoder(v)
-	if err != nil {
-		return fmt.Errorf("fiber: failed to encode shared state xml value: %w", err)
-	}
-
-	return s.storage.SetWithContext(ctx, s.key(key), encoded, ttl)
+	return s.setEncodedWithContext(ctx, key, v, ttl, s.xmlEncoder, "xml")
 }
 
 func (s *SharedState) GetXML(key string, out any) ([]byte, bool, error) { //nolint:gocritic // Keep unnamed returns for clarity.
@@ -253,23 +201,11 @@ func (s *SharedState) GetXML(key string, out any) ([]byte, bool, error) { //noli
 }
 
 func (s *SharedState) GetXMLWithContext(ctx context.Context, key string, out any) ([]byte, bool, error) { //nolint:gocritic // Keep unnamed returns for clarity.
-	if s == nil || s.storage == nil {
-		return nil, false, ErrSharedStorageNotConfigured
-	}
-
-	data, err := s.storage.GetWithContext(ctx, s.key(key))
-	if err != nil {
+	if err := s.ensureStorage(); err != nil {
 		return nil, false, err
 	}
-	if data == nil {
-		return nil, false, nil
-	}
 
-	if err := s.xmlDecoder(data, out); err != nil {
-		return nil, false, fmt.Errorf("fiber: failed to decode shared state xml value: %w", err)
-	}
-
-	return append([]byte(nil), data...), true, nil
+	return s.getEncodedWithContext(ctx, key, out, s.xmlDecoder, "xml")
 }
 
 func (s *SharedState) Delete(key string) error {
@@ -277,11 +213,16 @@ func (s *SharedState) Delete(key string) error {
 }
 
 func (s *SharedState) DeleteWithContext(ctx context.Context, key string) error {
-	if s == nil || s.storage == nil {
-		return ErrSharedStorageNotConfigured
+	if err := s.ensureStorage(); err != nil {
+		return err
 	}
 
-	return s.storage.DeleteWithContext(ctx, s.key(key))
+	storageKey, ok := s.storageKey(key)
+	if !ok {
+		return nil
+	}
+
+	return s.storage.DeleteWithContext(ctx, storageKey)
 }
 
 func (s *SharedState) Has(key string) (bool, error) {
@@ -289,11 +230,16 @@ func (s *SharedState) Has(key string) (bool, error) {
 }
 
 func (s *SharedState) HasWithContext(ctx context.Context, key string) (bool, error) {
-	if s == nil || s.storage == nil {
-		return false, ErrSharedStorageNotConfigured
+	if err := s.ensureStorage(); err != nil {
+		return false, err
 	}
 
-	data, err := s.storage.GetWithContext(ctx, s.key(key))
+	storageKey, ok := s.storageKey(key)
+	if !ok {
+		return false, nil
+	}
+
+	data, err := s.storage.GetWithContext(ctx, storageKey)
 	if err != nil {
 		return false, err
 	}
@@ -301,10 +247,148 @@ func (s *SharedState) HasWithContext(ctx context.Context, key string) (bool, err
 	return data != nil, nil
 }
 
-func (s *SharedState) key(key string) string {
-	if key == "" {
-		return ""
+func (s *SharedState) Reset() error {
+	return s.ResetWithContext(context.Background())
+}
+
+func (s *SharedState) ResetWithContext(ctx context.Context) error {
+	if err := s.ensureStorage(); err != nil {
+		return err
 	}
 
-	return s.prefix + key
+	return s.storage.ResetWithContext(ctx)
+}
+
+func (s *SharedState) Close() error {
+	if err := s.ensureStorage(); err != nil {
+		return err
+	}
+
+	return s.storage.Close()
+}
+
+func (s *SharedState) ensureStorage() error {
+	if s == nil || s.storage == nil {
+		return ErrSharedStorageNotConfigured
+	}
+
+	return nil
+}
+
+func (s *SharedState) setEncodedWithContext(
+	ctx context.Context,
+	key string,
+	v any,
+	ttl time.Duration,
+	encoder func(any) ([]byte, error),
+	format string,
+) error {
+	if err := s.ensureStorage(); err != nil {
+		return err
+	}
+
+	storageKey, ok := s.storageKey(key)
+	if !ok {
+		return nil
+	}
+
+	encoded, err := encodeSharedStateValue(v, encoder, format)
+	if err != nil {
+		return err
+	}
+
+	return s.storage.SetWithContext(ctx, storageKey, encoded, ttl)
+}
+
+func (s *SharedState) getEncodedWithContext(
+	ctx context.Context,
+	key string,
+	out any,
+	decoder func([]byte, any) error,
+	format string,
+) ([]byte, bool, error) {
+	if err := s.ensureStorage(); err != nil {
+		return nil, false, err
+	}
+
+	storageKey, ok := s.storageKey(key)
+	if !ok {
+		return nil, false, nil
+	}
+
+	data, err := s.storage.GetWithContext(ctx, storageKey)
+	if err != nil {
+		return nil, false, err
+	}
+	if data == nil {
+		return nil, false, nil
+	}
+
+	if err := decodeSharedStateValue(data, out, decoder, format); err != nil {
+		return nil, false, err
+	}
+
+	return append([]byte(nil), data...), true, nil
+}
+
+func encodeSharedStateValue(v any, encoder func(any) ([]byte, error), format string) (encoded []byte, err error) {
+	if encoder == nil {
+		return nil, sharedStateCodecNotConfiguredError(format, "encoder")
+	}
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = sharedStateCodecPanicError("encode", format, recovered)
+		}
+	}()
+
+	encoded, err = encoder(v)
+	if err != nil {
+		return nil, fmt.Errorf("fiber: failed to encode shared state %s value: %w", format, err)
+	}
+
+	return encoded, nil
+}
+
+func decodeSharedStateValue(data []byte, out any, decoder func([]byte, any) error, format string) (err error) {
+	if decoder == nil {
+		return sharedStateCodecNotConfiguredError(format, "decoder")
+	}
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = sharedStateCodecPanicError("decode", format, recovered)
+		}
+	}()
+
+	if err = decoder(data, out); err != nil {
+		return fmt.Errorf("fiber: failed to decode shared state %s value: %w", format, err)
+	}
+
+	return nil
+}
+
+func sharedStateCodecNotConfiguredError(format, direction string) error {
+	return fmt.Errorf("fiber: shared state %s %s is not configured", format, direction)
+}
+
+func sharedStateCodecPanicError(operation, format string, recovered any) error {
+	if err, ok := recovered.(error); ok {
+		return fmt.Errorf("fiber: failed to %s shared state %s value: %w", operation, format, err)
+	}
+
+	return fmt.Errorf("fiber: failed to %s shared state %s value: %v", operation, format, recovered)
+}
+
+func (s *SharedState) storageKey(key string) (string, bool) {
+	if key == "" {
+		return "", false
+	}
+
+	return s.prefix + key, true
+}
+
+func (s *SharedState) key(key string) string {
+	storageKey, _ := s.storageKey(key)
+	return storageKey
 }

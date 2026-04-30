@@ -84,7 +84,7 @@ We have made several changes to the Fiber app, including:
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
 - **NewWithCustomCtx**: Initialize an app with a custom context in one step.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
-- **SharedState**: Introduces storage-backed app state for prefork-safe/multi-process coordination via `Config.SharedStorage`, with optional `Config.SharedStatePrefix` namespacing and JSON/context-aware helpers (`SetJSON`, `GetJSON`, `Has`, `Delete`, and `WithContext` variants).
+- **SharedState**: Introduces storage-backed app state for prefork-safe/multi-process coordination via `Config.SharedStorage`, with optional `Config.SharedStatePrefix` namespacing, codec-aware helpers (`SetJSON`, `SetMsgPack`, `SetCBOR`, `SetXML`, matching getters, and `WithContext` variants), empty-key no-op handling, and `Reset`/`Close` passthrough helpers.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
 - **GetBytes / GetString**: Helpers that detach values only when `Immutable` is enabled and the data still references request or response buffers. Access via `c.App().GetString` and `c.App().GetBytes`.
 - **ReloadViews**: Lets you re-run the configured view engine's `Load()` logic at runtime, including guard rails for missing or nil view engines so development hot-reload hooks can refresh templates safely.

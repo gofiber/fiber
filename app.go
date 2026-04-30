@@ -654,25 +654,7 @@ func New(config ...Config) *App {
 		app.config.XMLDecoder = xml.Unmarshal
 	}
 
-	sharedStatePrefix := app.config.SharedStatePrefix
-	if sharedStatePrefix == "" {
-		sharedStatePrefix = defaultSharedStatePrefix
-		if app.config.AppName != "" {
-			sharedStatePrefix += app.config.AppName + "-"
-		}
-	}
-	app.sharedState = newSharedState(
-		app.config.SharedStorage,
-		sharedStatePrefix,
-		app.config.JSONEncoder,
-		app.config.JSONDecoder,
-		app.config.MsgPackEncoder,
-		app.config.MsgPackDecoder,
-		app.config.CBOREncoder,
-		app.config.CBORDecoder,
-		app.config.XMLEncoder,
-		app.config.XMLDecoder,
-	)
+	app.sharedState = newSharedState(app.config)
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
 	}

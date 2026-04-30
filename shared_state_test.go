@@ -28,7 +28,8 @@ type contextCheckingStorage struct {
 }
 
 type errorStorage struct {
-	err error
+	err      error
+	closeErr error
 }
 
 func (s *errorStorage) GetWithContext(context.Context, string) ([]byte, error) {
@@ -63,8 +64,8 @@ func (s *errorStorage) Reset() error {
 	return s.err
 }
 
-func (*errorStorage) Close() error {
-	return nil
+func (s *errorStorage) Close() error {
+	return s.closeErr
 }
 
 func (s *contextCheckingStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
@@ -152,6 +153,12 @@ func TestSharedState_NotConfigured(t *testing.T) {
 
 	has, err := app.SharedState().Has("key")
 	require.False(t, has)
+	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
+
+	err = app.SharedState().Reset()
+	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
+
+	err = app.SharedState().Close()
 	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
 }
 
@@ -280,7 +287,7 @@ func TestSharedState_StorageErrorsArePropagated(t *testing.T) {
 
 	expectedErr := errors.New("storage failed")
 	app := New(Config{
-		SharedStorage: &errorStorage{err: expectedErr},
+		SharedStorage: &errorStorage{err: expectedErr, closeErr: expectedErr},
 		MsgPackEncoder: func(any) ([]byte, error) {
 			return []byte("msgpack"), nil
 		},
@@ -330,6 +337,12 @@ func TestSharedState_StorageErrorsArePropagated(t *testing.T) {
 
 	err = app.SharedState().Delete("k")
 	require.ErrorIs(t, err, expectedErr)
+
+	err = app.SharedState().Reset()
+	require.ErrorIs(t, err, expectedErr)
+
+	err = app.SharedState().Close()
+	require.ErrorIs(t, err, expectedErr)
 }
 
 func TestSharedState_NilReceiver(t *testing.T) {
@@ -366,12 +379,18 @@ func TestSharedState_NilReceiver(t *testing.T) {
 
 	_, err = state.Has("k")
 	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
+
+	err = state.Reset()
+	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
+
+	err = state.Close()
+	require.ErrorIs(t, err, ErrSharedStorageNotConfigured)
 }
 
 func TestSharedState_DefaultPrefixFallback(t *testing.T) {
 	t.Parallel()
 
-	state := newSharedState(newSharedStateMemoryStorage(t), "", nil, nil, nil, nil, nil, nil, nil, nil)
+	state := newSharedState(Config{SharedStorage: newSharedStateMemoryStorage(t)})
 	require.Equal(t, defaultSharedStatePrefix, state.prefix)
 }
 
@@ -580,6 +599,31 @@ func TestSharedState_UsesAppMsgPackCodec(t *testing.T) {
 	require.Equal(t, "msgpack-payload", out)
 	require.True(t, encoderCalled)
 	require.True(t, decoderCalled)
+}
+
+func TestSharedState_UnconfiguredCodecsReturnErrorInsteadOfPanic(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SharedStorage: newSharedStateMemoryStorage(t)})
+
+	err := app.SharedState().SetMsgPack("codec", Map{"ignored": true}, time.Minute)
+	require.ErrorContains(t, err, "shared state msgpack")
+
+	require.NoError(t, app.SharedState().Set("msgpack-payload", []byte("payload"), time.Minute))
+
+	var out Map
+	_, found, err := app.SharedState().GetMsgPack("msgpack-payload", &out)
+	require.False(t, found)
+	require.ErrorContains(t, err, "shared state msgpack")
+
+	err = app.SharedState().SetCBOR("codec", Map{"ignored": true}, time.Minute)
+	require.ErrorContains(t, err, "shared state cbor")
+
+	require.NoError(t, app.SharedState().Set("cbor-payload", []byte("payload"), time.Minute))
+
+	_, found, err = app.SharedState().GetCBOR("cbor-payload", &out)
+	require.False(t, found)
+	require.ErrorContains(t, err, "shared state cbor")
 }
 
 func TestSharedState_UsesAppCBORCodec(t *testing.T) {

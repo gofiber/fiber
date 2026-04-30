@@ -26,6 +26,8 @@ app := fiber.New(fiber.Config{
 
 If `SharedStatePrefix` is empty, Fiber derives a default namespace and includes `AppName` (when set) to reduce collisions between apps/services.
 
+MsgPack and CBOR helpers require the corresponding `Config` encoders/decoders to be configured. If they are unavailable, the helper methods return an error instead of panicking.
+
 :::warning Memory storage caveat
 `SharedState` is only cross-worker / cross-process when the configured `SharedStorage` backend is shared.
 
@@ -72,6 +74,10 @@ func (s *SharedState) DeleteWithContext(ctx context.Context, key string) error
 
 func (s *SharedState) Has(key string) (bool, error)
 func (s *SharedState) HasWithContext(ctx context.Context, key string) (bool, error)
+
+func (s *SharedState) Reset() error
+func (s *SharedState) ResetWithContext(ctx context.Context) error
+func (s *SharedState) Close() error
 ```
 
 ### SharedState Example
