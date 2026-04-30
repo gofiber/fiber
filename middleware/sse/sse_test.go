@@ -459,9 +459,16 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	const (
 		// Wait long enough for the client-side close to propagate before the
 		// server starts the larger follow-up writes that should observe it.
+		// This keeps the test fast while still giving the closed socket time
+		// to surface as a write error under the race detector.
 		disconnectDetectionDelay = 100 * time.Millisecond
-		largeEventSizeBytes      = 64 << 10
-		responseReadChunkSize    = 256
+		// Use 64 KiB events so a few writes will overrun typical socket buffers
+		// and make the disconnect visible to the server-side flush path.
+		largeEventSizeBytes = 64 << 10
+		// Keep trying enough large writes to reliably trip the broken
+		// connection without making the test unbounded.
+		disconnectWriteAttempts = 64
+		responseReadChunkSize   = 256
 	)
 	largeEventData := strings.Repeat("x", largeEventSizeBytes)
 
@@ -476,7 +483,7 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 			time.Sleep(disconnectDetectionDelay)
 
 			var err error
-			for range 64 {
+			for range disconnectWriteAttempts {
 				err = stream.Event(Event{Data: largeEventData})
 				if err != nil {
 					break
