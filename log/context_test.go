@@ -50,6 +50,28 @@ func Test_ContextTemplate_ValueTagFromUserValueContext(t *testing.T) {
 	require.Equal(t, "[req-42]", buf.String())
 }
 
+func Test_ContextTemplate_ValueTagWritesSupportedValues(t *testing.T) {
+	t.Parallel()
+
+	tmpl, err := logtemplate.Build[any, ContextData](
+		"${value:bytes}|${value:string}|${value:number}|${value:missing}",
+		createContextTagMap(nil),
+	)
+	require.NoError(t, err)
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	ctx := testUserValueContext{
+		"bytes":  []byte("raw"),
+		"string": "text",
+		"number": 42,
+	}
+	err = tmpl.Execute(buf, ctx, &ContextData{})
+	require.NoError(t, err)
+	require.Equal(t, "raw|text|42|", buf.String())
+}
+
 func Test_ContextTemplate_CustomTag(t *testing.T) {
 	t.Parallel()
 
@@ -71,6 +93,16 @@ func Test_ContextTemplate_CustomTag(t *testing.T) {
 	require.Equal(t, "[req-42]", buf.String())
 }
 
+func Test_MustSetContextTemplate_PanicsOnBuildError(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithError(t, `logtemplate: template parameter missing: "missing:value"`, func() {
+		MustSetContextTemplate(ContextConfig{
+			Format: "${missing:value}",
+		})
+	})
+}
+
 func Test_SetContextTemplate_ReturnsBuildError(t *testing.T) {
 	t.Parallel()
 
@@ -78,4 +110,30 @@ func Test_SetContextTemplate_ReturnsBuildError(t *testing.T) {
 		Format: "${missing:value}",
 	})
 	require.ErrorIs(t, err, logtemplate.ErrParameterMissing)
+}
+
+func Test_ContextValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		ctx  any
+		want any
+		name string
+	}{
+		{
+			name: "nil",
+		},
+		{
+			name: "unsupported",
+			ctx:  "ctx",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, contextValue(tt.ctx, "key"))
+		})
+	}
 }

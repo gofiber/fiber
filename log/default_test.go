@@ -30,7 +30,11 @@ func (w *byteSliceWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Test_WithContextCaller runs serially because it mutates the package-global
+// logger and output to verify caller attribution.
 func Test_WithContextCaller(t *testing.T) {
+	t.Cleanup(initDefaultLogger)
+
 	logger = &defaultLogger{
 		stdlog: log.New(os.Stderr, "", log.Lshortfile),
 		depth:  4,
@@ -43,10 +47,14 @@ func Test_WithContextCaller(t *testing.T) {
 	WithContext(ctx).Info("")
 	Info("")
 
-	require.Equal(t, "default_test.go:43: [Info] \ndefault_test.go:44: [Info] \n", string(w.b))
+	require.Equal(t, "default_test.go:47: [Info] \ndefault_test.go:48: [Info] \n", string(w.b))
 }
 
+// Test_WithContextNilCaller runs serially because it mutates the package-global
+// logger and output to verify caller attribution.
 func Test_WithContextNilCaller(t *testing.T) {
+	t.Cleanup(initDefaultLogger)
+
 	logger = &defaultLogger{
 		stdlog: log.New(os.Stderr, "", log.Lshortfile),
 		depth:  4,
@@ -58,7 +66,7 @@ func Test_WithContextNilCaller(t *testing.T) {
 	WithContext(nil).Info("")
 	Info("")
 
-	require.Equal(t, "default_test.go:58: [Info] \ndefault_test.go:59: [Info] \n", string(w.b))
+	require.Equal(t, "default_test.go:66: [Info] \ndefault_test.go:67: [Info] \n", string(w.b))
 }
 
 func Test_DefaultLogger(t *testing.T) {

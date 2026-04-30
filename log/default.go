@@ -14,7 +14,7 @@ var _ AllLogger[*log.Logger] = (*defaultLogger)(nil)
 
 type defaultLogger struct {
 	stdlog *log.Logger
-	ctx    *retainedContext
+	ctx    retainedContext
 	level  Level
 	depth  int
 }
@@ -25,13 +25,14 @@ type defaultLogger struct {
 // ContextTagFunc implementations.
 type retainedContext struct {
 	value any
+	ok    bool
 }
 
-func newRetainedContext(value any) *retainedContext {
-	if value == nil {
-		return nil
+func newRetainedContext(value any) retainedContext {
+	return retainedContext{
+		value: value,
+		ok:    value != nil,
 	}
-	return &retainedContext{value: value}
 }
 
 // privateLog logs a message at a given level log the default logger.
@@ -239,7 +240,7 @@ func (l *defaultLogger) Panicw(msg string, keysAndValues ...any) {
 }
 
 func (l *defaultLogger) writeContext(buf Buffer) {
-	if l.ctx == nil {
+	if !l.ctx.ok {
 		return
 	}
 
