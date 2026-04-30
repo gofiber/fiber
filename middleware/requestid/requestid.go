@@ -1,7 +1,10 @@
 package requestid
 
 import (
+	"sync"
+
 	"github.com/gofiber/fiber/v3"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -14,8 +17,12 @@ const (
 	requestIDKey contextKey = iota
 )
 
+var registerLogContextTagsOnce sync.Once
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
+	registerLogContextTagsOnce.Do(registerLogContextTags)
+
 	// Set default config
 	cfg := configDefault(config...)
 
@@ -36,6 +43,14 @@ func New(config ...Config) fiber.Handler {
 		// Continue stack
 		return c.Next()
 	}
+}
+
+func registerLogContextTags() {
+	tag := func(output fiberlog.Buffer, ctx any, _ *fiberlog.ContextData, _ string) (int, error) {
+		return output.WriteString(FromContext(ctx))
+	}
+	fiberlog.MustRegisterContextTag("requestid", tag)
+	fiberlog.MustRegisterContextTag("request-id", tag)
 }
 
 // sanitizeRequestID returns the provided request ID when it is valid, otherwise

@@ -93,6 +93,32 @@ func Test_ContextTemplate_CustomTag(t *testing.T) {
 	require.Equal(t, "[req-42]", buf.String())
 }
 
+// Test_FormatWithRegisteredContextTag runs serially because Format and
+// MustRegisterContextTag mutate the package-global context template registry.
+func Test_FormatWithRegisteredContextTag(t *testing.T) {
+	t.Cleanup(func() { MustFormat(DefaultFormat) })
+
+	MustRegisterContextTag("traceid", func(output Buffer, ctx any, _ *ContextData, _ string) (int, error) {
+		traceID, ok := contextValue(ctx, "trace_id").(string)
+		if !ok {
+			return 0, nil
+		}
+		return output.WriteString(traceID)
+	})
+	require.NoError(t, Format("[${traceid}] "))
+
+	tmpl := contextTemplate.Load()
+	require.NotNil(t, tmpl)
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	ctx := context.WithValue(context.Background(), "trace_id", "trace-42") //nolint:revive,staticcheck // Context-value string keys are part of the public template contract.
+	err := tmpl.Execute(buf, ctx, &ContextData{})
+	require.NoError(t, err)
+	require.Equal(t, "[trace-42] ", buf.String())
+}
+
 func Test_MustSetContextTemplate_PanicsOnBuildError(t *testing.T) {
 	t.Parallel()
 
@@ -110,6 +136,22 @@ func Test_SetContextTemplate_ReturnsBuildError(t *testing.T) {
 		Format: "${missing:value}",
 	})
 	require.ErrorIs(t, err, logtemplate.ErrParameterMissing)
+}
+
+func Test_Format_ReturnsBuildError(t *testing.T) {
+	t.Parallel()
+
+	err := Format("${missing:value}")
+	require.ErrorIs(t, err, logtemplate.ErrParameterMissing)
+}
+
+func Test_RegisterContextTagRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	require.ErrorIs(t, RegisterContextTag("", func(Buffer, any, *ContextData, string) (int, error) {
+		return 0, nil
+	}), errContextTagInvalid)
+	require.ErrorIs(t, RegisterContextTag("missing", nil), errContextTagInvalid)
 }
 
 func Test_ContextValue(t *testing.T) {

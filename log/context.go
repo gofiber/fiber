@@ -1,8 +1,10 @@
 package log
 
 import (
+	"errors"
 	"fmt"
 	"maps"
+	"sync"
 	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
@@ -10,6 +12,15 @@ import (
 
 // TagContextValue reads a value from the bound context-like value using the tag parameter as the key.
 const TagContextValue = "value:"
+
+const (
+	// DefaultFormat disables contextual fields for the default logger.
+	DefaultFormat = ""
+	// RequestIDFormat renders the request ID registered by the requestid middleware.
+	RequestIDFormat = "[${requestid}] "
+	// KeyValueFormat renders commonly registered middleware context values as key/value fields.
+	KeyValueFormat = "request-id=${requestid} username=${username} api-key=${api-key} csrf-token=${csrf-token} session-id=${session-id} "
+)
 
 // Buffer abstracts the buffer operations used when rendering contextual log fields.
 type Buffer = logtemplate.Buffer
@@ -31,19 +42,34 @@ type ContextConfig struct {
 
 var contextTemplate atomic.Pointer[logtemplate.Template[any, ContextData]]
 
+var (
+	contextMu     sync.RWMutex
+	contextFormat = DefaultFormat
+	contextTags   = defaultContextTagMap()
+)
+
+var errContextTagInvalid = errors.New("log: context tag name and function are required")
+
 // SetContextTemplate configures contextual fields rendered by WithContext for Fiber's default logger.
 // It returns an error if config.Format cannot be parsed.
 func SetContextTemplate(config ContextConfig) error {
-	if config.Format == "" {
-		contextTemplate.Store(nil)
-		return nil
+	contextMu.Lock()
+	defer contextMu.Unlock()
+
+	tags := maps.Clone(contextTags)
+	maps.Copy(tags, config.CustomTags)
+
+	var tmpl *logtemplate.Template[any, ContextData]
+	if config.Format != "" {
+		var err error
+		tmpl, err = buildContextTemplate(config.Format, tags)
+		if err != nil {
+			return err
+		}
 	}
 
-	tmpl, err := logtemplate.Build[any, ContextData](config.Format, createContextTagMap(config.CustomTags))
-	if err != nil {
-		return err
-	}
-
+	contextFormat = config.Format
+	contextTags = tags
 	contextTemplate.Store(tmpl)
 	return nil
 }
@@ -55,8 +81,82 @@ func MustSetContextTemplate(config ContextConfig) {
 	}
 }
 
+// Format configures the contextual fields rendered by WithContext for Fiber's default logger.
+// Pass DefaultFormat to disable contextual fields.
+func Format(format string) error {
+	contextMu.Lock()
+	defer contextMu.Unlock()
+
+	var tmpl *logtemplate.Template[any, ContextData]
+	if format != "" {
+		var err error
+		tmpl, err = buildContextTemplate(format, contextTags)
+		if err != nil {
+			return err
+		}
+	}
+
+	contextFormat = format
+	contextTemplate.Store(tmpl)
+	return nil
+}
+
+// MustFormat configures contextual fields and panics if the format cannot be parsed.
+func MustFormat(format string) {
+	if err := Format(format); err != nil {
+		panic(err)
+	}
+}
+
+// RegisterContextTag registers a contextual tag that can be used by Format.
+// Re-registering a tag replaces the existing tag function.
+func RegisterContextTag(tag string, fn ContextTagFunc) error {
+	if tag == "" || fn == nil {
+		return errContextTagInvalid
+	}
+
+	contextMu.Lock()
+	defer contextMu.Unlock()
+
+	tags := maps.Clone(contextTags)
+	tags[tag] = fn
+
+	var tmpl *logtemplate.Template[any, ContextData]
+	if contextFormat != "" {
+		var err error
+		tmpl, err = buildContextTemplate(contextFormat, tags)
+		if err != nil {
+			return err
+		}
+	}
+
+	contextTags = tags
+	contextTemplate.Store(tmpl)
+	return nil
+}
+
+// MustRegisterContextTag registers a contextual tag and panics if registration fails.
+func MustRegisterContextTag(tag string, fn ContextTagFunc) {
+	if err := RegisterContextTag(tag, fn); err != nil {
+		panic(err)
+	}
+}
+
 func createContextTagMap(customTags map[string]ContextTagFunc) map[string]ContextTagFunc {
-	tags := map[string]ContextTagFunc{
+	tags := defaultContextTagMap()
+	maps.Copy(tags, customTags)
+
+	return tags
+}
+
+func defaultContextTagMap() map[string]ContextTagFunc {
+	return map[string]ContextTagFunc{
+		"api-key":    emptyContextTag,
+		"csrf-token": emptyContextTag,
+		"request-id": emptyContextTag,
+		"requestid":  emptyContextTag,
+		"session-id": emptyContextTag,
+		"username":   emptyContextTag,
 		TagContextValue: func(output Buffer, ctx any, _ *ContextData, extraParam string) (int, error) {
 			switch v := contextValue(ctx, extraParam).(type) {
 			case []byte:
@@ -70,10 +170,14 @@ func createContextTagMap(customTags map[string]ContextTagFunc) map[string]Contex
 			}
 		},
 	}
+}
 
-	maps.Copy(tags, customTags)
+func emptyContextTag(_ Buffer, _ any, _ *ContextData, _ string) (int, error) {
+	return 0, nil
+}
 
-	return tags
+func buildContextTemplate(format string, tags map[string]ContextTagFunc) (*logtemplate.Template[any, ContextData], error) {
+	return logtemplate.Build[any, ContextData](format, tags)
 }
 
 type valueContext interface {

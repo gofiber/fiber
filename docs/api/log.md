@@ -200,21 +200,14 @@ commonLogger := log.WithContext(ctx)
 commonLogger.Info("info")
 ```
 
-Context binding can render request-specific data for easier tracing. Configure the default logger with `SetContextTemplate` and custom tags when the value is stored by middleware using package-private context keys.
+Context binding can render request-specific data for easier tracing. The default context format is `log.DefaultFormat`, which is empty, so `log.WithContext(ctx)` does not add fields until you configure a format.
 
-`SetContextTemplate` configures Fiber's built-in default logger. Custom loggers registered with `SetLogger` keep full control over their own `WithContext` behavior and should implement equivalent enrichment themselves when needed.
+Use `log.Format` to configure Fiber's built-in default logger. Custom loggers registered with `SetLogger` keep full control over their own `WithContext` behavior and should implement equivalent enrichment themselves when needed.
 
 ```go
 app.Use(requestid.New())
 
-if err := log.SetContextTemplate(log.ContextConfig{
-    Format: "[${requestid}] ",
-    CustomTags: map[string]log.ContextTagFunc{
-        "requestid": func(output log.Buffer, ctx any, _ *log.ContextData, _ string) (int, error) {
-            return output.WriteString(requestid.FromContext(ctx))
-        },
-    },
-}); err != nil {
+if err := log.Format(log.RequestIDFormat); err != nil {
     log.Fatal(err)
 }
 
@@ -224,7 +217,41 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-Use `log.WithContext(c)` inside handlers when you want tags to read values stored by Fiber middleware. Passing `c.Context()` only exposes values propagated into the standard request context. For ordinary string keys on values with `Value` or `UserValue` lookup methods, use the built-in `${value:key}` tag.
+Middleware that stores request values can register log context tags automatically when the middleware is initialized. For example, after `requestid.New()` has been used, `${requestid}` and `${request-id}` can be used directly in `log.Format` without defining custom tags.
+
+Use `log.WithContext(c)` inside handlers when you want tags to read values stored by Fiber middleware. Passing `c.Context()` only exposes values propagated into the standard request context.
+
+### Context Formats
+
+| Format Constant | Format String | Description |
+| :-- | :-- | :-- |
+| `DefaultFormat` | `""` | Disables contextual fields. |
+| `RequestIDFormat` | `"[${requestid}] "` | Prepends the request ID when the requestid middleware is used. |
+| `KeyValueFormat` | `"request-id=${requestid} username=${username} api-key=${api-key} csrf-token=${csrf-token} session-id=${session-id} "` | Prepends common middleware context values as key/value fields. Sensitive values are redacted by the registering middleware. |
+
+### Context Tags
+
+| Tag | Source |
+| :-- | :-- |
+| `${requestid}` / `${request-id}` | `requestid` middleware |
+| `${username}` | `basicauth` middleware |
+| `${api-key}` | `keyauth` middleware, redacted |
+| `${csrf-token}` | `csrf` middleware, redacted |
+| `${session-id}` | `session` middleware, redacted |
+| `${value:key}` | Any bound value with `Value(key)` or `UserValue(key)` lookup methods |
+
+### Custom Context Tags
+
+Register custom tags with `log.RegisterContextTag`, then reference them from `log.Format`.
+
+```go
+log.MustRegisterContextTag("tenant", func(output log.Buffer, ctx any, _ *log.ContextData, _ string) (int, error) {
+    tenant, _ := ctx.(fiber.Ctx).Locals("tenant").(string)
+    return output.WriteString(tenant)
+})
+
+log.MustFormat("[${tenant}] ")
+```
 
 ## Logger
 

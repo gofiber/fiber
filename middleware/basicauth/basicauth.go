@@ -4,10 +4,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"golang.org/x/text/unicode/norm"
 )
@@ -23,8 +25,12 @@ const (
 
 const basicScheme = "Basic"
 
+var registerLogContextTagsOnce sync.Once
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
+	registerLogContextTagsOnce.Do(registerLogContextTags)
+
 	// Set default config
 	cfg := configDefault(config...)
 
@@ -108,6 +114,12 @@ func New(config ...Config) fiber.Handler {
 		// Authentication failed
 		return cfg.Unauthorized(c)
 	}
+}
+
+func registerLogContextTags() {
+	fiberlog.MustRegisterContextTag("username", func(output fiberlog.Buffer, ctx any, _ *fiberlog.ContextData, _ string) (int, error) {
+		return output.WriteString(UsernameFromContext(ctx))
+	})
 }
 
 func containsCTL(s string) bool {
