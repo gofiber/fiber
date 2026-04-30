@@ -28,9 +28,11 @@ type SharedState struct {
 	prefix         string
 }
 
-func newSharedState(
-	cfg Config,
-) *SharedState {
+func newSharedState(cfg *Config) *SharedState {
+	if cfg == nil {
+		cfg = &Config{}
+	}
+
 	prefix := cfg.SharedStatePrefix
 	if prefix == "" {
 		prefix = defaultSharedStatePrefix
@@ -300,6 +302,7 @@ func (s *SharedState) setEncodedWithContext(
 	return s.storage.SetWithContext(ctx, storageKey, encoded, ttl)
 }
 
+//nolint:gocritic // Keep unnamed returns for clarity.
 func (s *SharedState) getEncodedWithContext(
 	ctx context.Context,
 	key string,
@@ -331,18 +334,30 @@ func (s *SharedState) getEncodedWithContext(
 	return append([]byte(nil), data...), true, nil
 }
 
-func encodeSharedStateValue(v any, encoder func(any) ([]byte, error), format string) (encoded []byte, err error) {
+func encodeSharedStateValue(v any, encoder func(any) ([]byte, error), format string) ([]byte, error) {
 	if encoder == nil {
 		return nil, sharedStateCodecNotConfiguredError(format, "encoder")
 	}
 
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			err = sharedStateCodecPanicError("encode", format, recovered)
-		}
+	var (
+		encoded   []byte
+		err       error
+		recovered any
+	)
+	func() {
+		// App-configured codecs may be nil or may still use Fiber's
+		// binder.Unimplemented* placeholders, which panic instead of returning an
+		// error, so recover here and surface a regular error.
+		defer func() {
+			recovered = recover()
+		}()
+
+		encoded, err = encoder(v)
 	}()
 
-	encoded, err = encoder(v)
+	if recovered != nil {
+		return nil, sharedStateCodecPanicError("encode", format, recovered)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("fiber: failed to encode shared state %s value: %w", format, err)
 	}
@@ -350,18 +365,30 @@ func encodeSharedStateValue(v any, encoder func(any) ([]byte, error), format str
 	return encoded, nil
 }
 
-func decodeSharedStateValue(data []byte, out any, decoder func([]byte, any) error, format string) (err error) {
+func decodeSharedStateValue(data []byte, out any, decoder func([]byte, any) error, format string) error {
 	if decoder == nil {
 		return sharedStateCodecNotConfiguredError(format, "decoder")
 	}
 
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			err = sharedStateCodecPanicError("decode", format, recovered)
-		}
+	var (
+		err       error
+		recovered any
+	)
+	func() {
+		// App-configured codecs may be nil or may still use Fiber's
+		// binder.Unimplemented* placeholders, which panic instead of returning an
+		// error, so recover here and surface a regular error.
+		defer func() {
+			recovered = recover()
+		}()
+
+		err = decoder(data, out)
 	}()
 
-	if err = decoder(data, out); err != nil {
+	if recovered != nil {
+		return sharedStateCodecPanicError("decode", format, recovered)
+	}
+	if err != nil {
 		return fmt.Errorf("fiber: failed to decode shared state %s value: %w", format, err)
 	}
 
@@ -386,9 +413,4 @@ func (s *SharedState) storageKey(key string) (string, bool) {
 	}
 
 	return s.prefix + key, true
-}
-
-func (s *SharedState) key(key string) string {
-	storageKey, _ := s.storageKey(key)
-	return storageKey
 }

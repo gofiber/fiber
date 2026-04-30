@@ -286,8 +286,9 @@ func TestSharedState_StorageErrorsArePropagated(t *testing.T) {
 	t.Parallel()
 
 	expectedErr := errors.New("storage failed")
+	closeErr := errors.New("close failed")
 	app := New(Config{
-		SharedStorage: &errorStorage{err: expectedErr, closeErr: expectedErr},
+		SharedStorage: &errorStorage{err: expectedErr, closeErr: closeErr},
 		MsgPackEncoder: func(any) ([]byte, error) {
 			return []byte("msgpack"), nil
 		},
@@ -342,7 +343,7 @@ func TestSharedState_StorageErrorsArePropagated(t *testing.T) {
 	require.ErrorIs(t, err, expectedErr)
 
 	err = app.SharedState().Close()
-	require.ErrorIs(t, err, expectedErr)
+	require.ErrorIs(t, err, closeErr)
 }
 
 func TestSharedState_NilReceiver(t *testing.T) {
@@ -390,7 +391,7 @@ func TestSharedState_NilReceiver(t *testing.T) {
 func TestSharedState_DefaultPrefixFallback(t *testing.T) {
 	t.Parallel()
 
-	state := newSharedState(Config{SharedStorage: newSharedStateMemoryStorage(t)})
+	state := newSharedState(&Config{SharedStorage: newSharedStateMemoryStorage(t)})
 	require.Equal(t, defaultSharedStatePrefix, state.prefix)
 }
 
@@ -407,7 +408,9 @@ func TestSharedState_GetJSON_UnmarshalError(t *testing.T) {
 	store := newSharedStateMemoryStorage(t)
 	app := New(Config{SharedStorage: store})
 
-	require.NoError(t, store.Set(app.SharedState().key("broken"), []byte("{"), 0))
+	storageKey, ok := app.SharedState().storageKey("broken")
+	require.True(t, ok)
+	require.NoError(t, store.Set(storageKey, []byte("{"), 0))
 
 	var out map[string]any
 	_, found, err := app.SharedState().GetJSON("broken", &out)

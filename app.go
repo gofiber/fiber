@@ -654,7 +654,7 @@ func New(config ...Config) *App {
 		app.config.XMLDecoder = xml.Unmarshal
 	}
 
-	app.sharedState = newSharedState(app.config)
+	app.sharedState = newSharedState(&app.config)
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
 	}
