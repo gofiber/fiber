@@ -17,8 +17,9 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// AllowedHostsFunc is a dynamic validator called when static AllowedHosts
-	// don't match. Receives the hostname (port stripped, lowercased).
+	// AllowedHostsFunc is a dynamic validator called only when no static
+	// AllowedHosts rule matches. Receives the normalized hostname: port stripped,
+	// trailing dot removed, IPv6 brackets removed, lowercased.
 	// Return true to allow.
 	//
 	// Optional. Default: nil
@@ -27,7 +28,7 @@ type Config struct {
 	// ErrorHandler is called when a request is rejected.
 	// Receives ErrForbiddenHost as the error.
 	//
-	// Optional. Default: returns 403 Forbidden with "Forbidden" body.
+	// Optional. Default: returns 403 Forbidden.
 	ErrorHandler fiber.ErrorHandler
 
 	// AllowedHosts is the list of permitted host values.
@@ -35,6 +36,8 @@ type Config struct {
 	//   - Exact:     "api.myapp.com"
 	//   - Subdomain: ".myapp.com" (leading dot matches any subdomain, NOT the bare domain)
 	//   - CIDR:      "10.0.0.0/8" (matches hosts that are IPs in the range)
+	//
+	// Entries containing "/" are always treated as CIDR; a parse failure panics at startup.
 	//
 	// Required if AllowedHostsFunc is nil.
 	AllowedHosts []string
@@ -55,7 +58,7 @@ func configDefault(config ...Config) Config {
 
 	if cfg.ErrorHandler == nil {
 		cfg.ErrorHandler = func(c fiber.Ctx, _ error) error {
-			return c.Status(fiber.StatusForbidden).SendString("Forbidden")
+			return c.SendStatus(fiber.StatusForbidden)
 		}
 	}
 

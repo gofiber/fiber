@@ -156,7 +156,7 @@ app.Get("/healthz", healthCheck)
 |:-----------------|:------------------------------|:--------------------------------------------------------------------------------------------------|:--------|
 | Next             | `func(fiber.Ctx) bool`        | Defines a function to skip this middleware when returned true.                                     | `nil`   |
 | AllowedHosts     | `[]string`                    | List of permitted hosts. Supports exact match, subdomain wildcard (`.example.com`), and CIDR.     | `nil`   |
-| AllowedHostsFunc | `func(string) bool`           | Dynamic validator called when static AllowedHosts don't match. Receives the normalized hostname.  | `nil`   |
+| AllowedHostsFunc | `func(string) bool`           | Dynamic validator called only when no static AllowedHosts rule matches. Receives the normalized hostname: port stripped, trailing dot removed, IPv6 brackets removed, lowercased.  | `nil`   |
 | ErrorHandler     | `fiber.ErrorHandler`          | Called when a request is rejected. Receives `ErrForbiddenHost` as the error.                      | 403     |
 
 Either `AllowedHosts` or `AllowedHostsFunc` (or both) must be provided. The middleware panics at startup if neither is set.
@@ -195,9 +195,21 @@ Before matching, the incoming host is normalized:
 
 The middleware uses Fiber's `c.Hostname()`, which respects `X-Forwarded-Host` when [`TrustProxy`](https://docs.gofiber.io/api/fiber#config) is enabled. When `TrustProxy` is disabled (the default), `X-Forwarded-Host` is ignored and the raw `Host` header is used.
 
+fasthttp itself is HTTP/1.x only. HTTP/2 support requires an external library (e.g. `fasthttp2`) plugged in via `Server.NextProto`. Those libraries are responsible for mapping the HTTP/2 `:authority` pseudo-header to a Host value before the request reaches Fiber handlers, so the middleware should work transparently once H2 is wired up — but this is the H2 library's responsibility, not fasthttp's or this middleware's.
+
 ## RFC Compliance
 
 - **RFC 9110 Section 7.2** — Host and port are separate components; port is stripped before matching
 - **RFC 9110 Section 17.1** — Origin servers should reject misdirected requests
 - **RFC 9112 Section 3.2** — Requests with missing Host headers should be rejected
 - Returns **403 Forbidden** (not 400) because the request is syntactically valid but semantically unauthorized
+
+:::note
+**RFC 9110 §15.5.20** defines **421 Misdirected Request** as a semantically closer response for host mismatches ("the request was directed at a server unable or unwilling to produce an authoritative response for the target URI"). CDNs like Cloudflare and Fastly use 421 for this case. To use 421 instead of 403, set a custom `ErrorHandler`:
+
+```go
+ErrorHandler: func(c fiber.Ctx, err error) error {
+    return c.SendStatus(fiber.StatusMisdirectedRequest) // 421
+},
+```
+:::

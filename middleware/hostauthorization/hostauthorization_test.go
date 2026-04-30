@@ -58,17 +58,17 @@ func Test_ConfigAllowedHostsFuncOnly(t *testing.T) {
 	require.NotNil(t, cfg.AllowedHostsFunc)
 }
 
-func Test_ConfigInvalidCIDRTreatedAsExact(t *testing.T) {
+func Test_ConfigPanicInvalidCIDRFormat(t *testing.T) {
 	t.Parallel()
 
-	// "not-a-cidr/99" fails net.ParseCIDR, so it falls through to an exact-match
-	// entry that will never match a real host (no valid hostname contains "/").
-	// The middleware should be created without panicking.
-	require.NotPanics(t, func() {
-		h := New(Config{
+	// Any entry containing "/" is treated as a CIDR attempt. A broken CIDR like
+	// "not-a-cidr/99" that fails net.ParseCIDR panics at startup so the
+	// misconfiguration is immediately visible instead of silently becoming an
+	// exact entry that can never match a real host.
+	require.Panics(t, func() {
+		New(Config{
 			AllowedHosts: []string{"not-a-cidr/99"},
 		})
-		require.NotNil(t, h)
 	})
 }
 
@@ -288,14 +288,10 @@ func Test_HostAuthorization_EmptyHost(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = ""
 
-	// An empty Host must always be rejected. Two valid outcomes depending on Go version:
-	//   - fasthttp rejects the missing Host at the protocol level → app.Test returns an error
-	//   - Go 1.26+ serializes a default Host value so the request reaches the middleware,
-	//     which rejects it with 403 Forbidden → app.Test returns a response with no error
+	// app.Test() injects req.Host = "localhost" when req.Host is empty (app.go:1217).
+	// fasthttp then receives "localhost" as the Host header, which is not in AllowedHosts.
 	resp, err := app.Test(req)
-	if err != nil {
-		return
-	}
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
@@ -709,6 +705,47 @@ func Test_HostAuthorization_XForwardedHost_NoTrustProxy(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "X-Forwarded-Host should be ignored without TrustProxy")
 }
 
+func Test_ErrForbiddenHostString(t *testing.T) {
+	t.Parallel()
+
+	// Lock in the exported error message text so callers who match on
+	// err.Error() are notified of any future change via a failing test.
+	require.Equal(t, "hostauthorization: forbidden host", ErrForbiddenHost.Error())
+}
+
+func Test_AllowedHostsFuncFallback(t *testing.T) {
+	t.Parallel()
+
+	// AllowedHostsFunc must be called only when no static rule matches.
+	called := 0
+	parsed := parseAllowedHosts([]string{"example.com"})
+	fn := func(host string) bool {
+		called++
+		return false
+	}
+
+	// Static match — func must not be invoked.
+	result := matchHost("example.com", parsed, fn)
+	require.True(t, result)
+	require.Equal(t, 0, called, "AllowedHostsFunc must not be called when a static host matches")
+
+	// No static match — func should be invoked as fallback.
+	result = matchHost("other.com", parsed, fn)
+	require.False(t, result)
+	require.Equal(t, 1, called, "AllowedHostsFunc must be called when no static rule matches")
+}
+
+func Test_NormalizeHost_IPv6WithPortInConfig(t *testing.T) {
+	t.Parallel()
+
+	// An AllowedHosts entry of "[::1]:8080" should normalize to "::1" and
+	// match a request whose Host header is "[::1]:8080" (or just "[::1]").
+	parsed := parseAllowedHosts([]string{"[::1]:8080"})
+
+	require.True(t, matchHost("::1", parsed, nil))
+	require.False(t, matchHost("::2", parsed, nil))
+}
+
 // --- Benchmarks ---
 
 // --- Low-level matchHost benchmarks (isolate matching cost from HTTP pipeline) ---
@@ -828,4 +865,19 @@ func Benchmark_HostAuthorization_Mixed(b *testing.B) {
 		}
 		resp.Body.Close() //nolint:errcheck // benchmark cleanup
 	}
+}
+
+// --- Fuzz targets ---
+
+func FuzzNormalizeHost(f *testing.F) {
+	f.Add("example.com")
+	f.Add("example.com.")
+	f.Add("[::1]:8080")
+	f.Add("[::1]")
+	f.Add(".myapp.com")
+	f.Add("192.168.1.1:443")
+	f.Add("")
+	f.Fuzz(func(t *testing.T, input string) {
+		_ = normalizeHost(input)
+	})
 }
