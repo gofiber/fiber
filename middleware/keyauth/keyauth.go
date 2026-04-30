@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -102,6 +103,13 @@ func New(config ...Config) fiber.Handler {
 func registerLogContextTags() {
 	fiberlog.MustRegisterContextTag("api-key", func(output fiberlog.Buffer, ctx any, _ *fiberlog.ContextData, _ string) (int, error) {
 		token := TokenFromContext(ctx)
+		if token == "" {
+			return 0, nil
+		}
+		return output.WriteString(redactContextValue(token))
+	})
+	logger.MustRegisterTag("api-key", func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
+		token := TokenFromContext(c)
 		if token == "" {
 			return 0, nil
 		}

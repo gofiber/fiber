@@ -10,6 +10,8 @@ Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP r
 
 ```go
 func New(config ...Config) fiber.Handler
+func RegisterTag(tag string, fn LogFunc) error
+func MustRegisterTag(tag string, fn LogFunc)
 ```
 
 ## Examples
@@ -43,13 +45,7 @@ app.Use(logger.New(logger.Config{
 // Logging Request ID
 app.Use(requestid.New()) // Ensure requestid middleware is used before the logger
 app.Use(logger.New(logger.Config{
-    CustomTags: map[string]logger.LogFunc{
-        "requestid": func(output logger.Buffer, c fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
-            return output.WriteString(requestid.FromContext(c))
-        },
-    },
-    // For more options, see the Config section
-    // Use the custom tag ${requestid} as defined above.
+    // requestid.New() registers ${requestid} automatically.
     Format: "${pid} ${requestid} ${status} - ${method} ${path}\n",
 }))
 
@@ -118,6 +114,90 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+### Auto-Registered Tags
+
+Some Fiber middleware registers logger middleware tags automatically. Register the producing middleware before `logger.New()` and then use the tag in `Format`.
+
+```go
+app.Use(requestid.New())
+app.Use(logger.New(logger.Config{
+    Format: "${requestid} ${status} ${method} ${path}\n",
+}))
+```
+
+The logger middleware resolves tags in this order:
+
+1. Built-in logger tags, such as `${method}`, `${path}`, and `${status}`.
+2. Globally registered tags from Fiber middleware or `logger.RegisterTag`.
+3. `Config.CustomTags`, which override tags with the same name for that logger instance.
+
+The following tags are registered by Fiber middleware when the middleware is initialized:
+
+| Tag | Registered by | Value |
+| :-- | :------------ | :---- |
+| `${requestid}` | `requestid.New()` | Request ID stored by the requestid middleware. |
+| `${username}` | `basicauth.New()` | Authenticated username stored by the basicauth middleware. |
+| `${api-key}` | `keyauth.New()` | Redacted API key stored by the keyauth middleware. |
+| `${csrf-token}` | `csrf.New()` | Redacted marker when the csrf middleware stores a token. |
+| `${session-id}` | `session.New()` or `session.NewWithStore()` | Redacted session ID stored by the session middleware. |
+
+:::note
+Auto-registered tags are access-log tags for `middleware/logger`. Application logs from the `log` package use their own context tag registry.
+:::
+
+### Register Tags from Custom Middleware
+
+Third-party middleware can expose logger tags with `logger.RegisterTag` or `logger.MustRegisterTag`. Use `sync.Once` so the tag is registered once even when the middleware is initialized multiple times.
+
+```go
+package tenantmw
+
+import (
+    "sync"
+
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/logger"
+)
+
+var registerLoggerTagsOnce sync.Once
+
+func New() fiber.Handler {
+    registerLoggerTagsOnce.Do(func() {
+        logger.MustRegisterTag("tenant", func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
+            tenant, _ := c.Locals("tenant").(string)
+            return output.WriteString(tenant)
+        })
+    })
+
+    return func(c fiber.Ctx) error {
+        c.Locals("tenant", "acme")
+        return c.Next()
+    }
+}
+```
+
+Use the registered tag in the logger format after installing the middleware:
+
+```go
+app.Use(tenantmw.New())
+app.Use(logger.New(logger.Config{
+    Format: "${tenant} ${status} ${method} ${path}\n",
+}))
+```
+
+Use `Config.CustomTags` when one logger instance needs a local override without changing the global tag registration:
+
+```go
+app.Use(logger.New(logger.Config{
+    Format: "${tenant} ${status} ${method} ${path}\n",
+    CustomTags: map[string]logger.LogFunc{
+        "tenant": func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
+            return output.WriteString("override")
+        },
+    },
+}))
+```
+
 ### Use Logger Middleware with Other Loggers
 
 To combine the logger middleware with loggers like Zerolog, Zap, or Logrus, use the `LoggerToWriter` helper to adapt them to an `io.Writer`.
@@ -167,7 +247,7 @@ Writing to `os.File` is goroutine-safe, but custom streams may require locking t
 | Next          | `func(fiber.Ctx) bool`                            | Next defines a function to skip this middleware when it returns true.                                                                           | `nil`                                                                 |
 | Skip          | `func(fiber.Ctx) bool`                            | Skip is a function to determine if logging is skipped or written to Stream.                                                                   | `nil`                                                                 |
 | Done          | `func(fiber.Ctx, []byte)`                         | Done is a function that is called after the log string for a request is written to Stream, and pass the log string as parameter.              | `nil`                                                                 |
-| CustomTags    | `map[string]LogFunc`                              | tagFunctions defines the custom tag action.                                                                                                   | `map[string]LogFunc`                                                  |
+| CustomTags    | `map[string]LogFunc`                              | Defines custom tag actions for this logger instance. These tags override built-in and globally registered tags with the same name.             | `map[string]LogFunc`                                                  |
 | `Format`   | `string`  | Defines the logging tags. See more in [Predefined Formats](#predefined-formats), or create your own using [Tags](#constants). | `[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n` (same as `DefaultFormat`) |
 | TimeFormat    | `string`                                          | TimeFormat defines the time format for log timestamps.                                                                                        | `15:04:05`                                                            |
 | TimeZone      | `string`                                          | TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc                                                     | `"Local"`                                                             |

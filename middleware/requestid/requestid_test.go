@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/stretchr/testify/require"
 )
 
@@ -192,6 +193,30 @@ func Test_RequestID_FromContext(t *testing.T) {
 	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, reqID, ctxVal)
+}
+
+func Test_RequestID_LoggerMiddlewareTag(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return "req-42"
+		},
+	}))
+	app.Use(logger.New(logger.Config{
+		Format: "${requestid}",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "req-42", buf.String())
 }
 
 // Test_RequestID_LogWithContextFormat runs serially because it mutates the

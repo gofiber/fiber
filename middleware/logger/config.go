@@ -32,7 +32,8 @@ type Config struct {
 	// Optional. Default: nil
 	Done func(c fiber.Ctx, logString []byte)
 
-	// tagFunctions defines the custom tag action
+	// CustomTags defines per-middleware tag functions.
+	// CustomTags override built-in and globally registered tags with the same name.
 	//
 	// Optional. Default: map[string]LogFunc
 	CustomTags map[string]LogFunc

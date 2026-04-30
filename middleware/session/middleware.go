@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 )
 
 // Middleware holds session data and configuration.
@@ -115,6 +116,13 @@ var registerLogContextTagsOnce sync.Once
 func registerLogContextTags() {
 	fiberlog.MustRegisterContextTag("session-id", func(output fiberlog.Buffer, ctx any, _ *fiberlog.ContextData, _ string) (int, error) {
 		m := FromContext(ctx)
+		if m == nil {
+			return 0, nil
+		}
+		return output.WriteString(redactSessionID(m.ID()))
+	})
+	logger.MustRegisterTag("session-id", func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
+		m := FromContext(c)
 		if m == nil {
 			return 0, nil
 		}

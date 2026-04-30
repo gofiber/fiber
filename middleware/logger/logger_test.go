@@ -24,7 +24,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	fiberlog "github.com/gofiber/fiber/v3/log"
-	"github.com/gofiber/fiber/v3/middleware/requestid"
 )
 
 const (
@@ -884,11 +883,10 @@ func Test_Response_Header(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(requestid.New(requestid.Config{
-		Next:      nil,
-		Header:    fiber.HeaderXRequestID,
-		Generator: func() string { return "Hello fiber!" },
-	}))
+	app.Use(func(c fiber.Ctx) error {
+		c.Response().Header.Set(fiber.HeaderXRequestID, "Hello fiber!")
+		return c.Next()
+	})
 	app.Use(New(Config{
 		Format: "${respHeader:X-Request-ID}",
 		Stream: buf,
@@ -902,6 +900,74 @@ func Test_Response_Header(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "Hello fiber!", buf.String())
+}
+
+func Test_Logger_RegisteredTag(t *testing.T) {
+	t.Parallel()
+
+	const tag = "registered-test-tag"
+
+	require.NoError(t, RegisterTag(tag, func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+		return output.WriteString("registered")
+	}))
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${" + tag + "}",
+		Stream: buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "registered", buf.String())
+}
+
+func Test_Logger_CustomTagOverridesRegisteredTag(t *testing.T) {
+	t.Parallel()
+
+	const tag = "registered-override-test-tag"
+
+	require.NoError(t, RegisterTag(tag, func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+		return output.WriteString("registered")
+	}))
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${" + tag + "}",
+		CustomTags: map[string]LogFunc{
+			tag: func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+				return output.WriteString("override")
+			},
+		},
+		Stream: buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "override", buf.String())
+}
+
+func Test_Logger_RegisterTagRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	require.ErrorIs(t, RegisterTag("", func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+		return output.WriteString("ignored")
+	}), errTagInvalid)
+	require.ErrorIs(t, RegisterTag("missing", nil), errTagInvalid)
 }
 
 // go test -run Test_Req_Header
