@@ -1683,7 +1683,7 @@ For more details on these changes and migration instructions, check the [Session
 
 ### SSE
 
-Fiber now includes an [SSE handler](./middleware/sse.md) for Server-Sent Events. It handles native
+Fiber now includes an [SSE middleware](./middleware/sse.md) for Server-Sent Events. It handles native
 `SendStreamWriter` setup, SSE response headers, event formatting, flushing, heartbeat comments, and
 disconnect detection through flush errors while leaving application-level hubs, topics, replay stores, and
 pub/sub bridges to user code or recipes.
