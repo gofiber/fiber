@@ -459,7 +459,7 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	const (
 		// Wait long enough for the client-side close to propagate before the
 		// server starts the larger follow-up writes that should observe it.
-		disconnectDetectionDelay = 200 * time.Millisecond
+		disconnectDetectionDelay = 100 * time.Millisecond
 		largeEventSizeBytes      = 64 << 10
 		responseReadChunkSize    = 256
 	)
@@ -510,7 +510,6 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 
 	conn, err := net.Dial(fiber.NetworkTCP4, ln.Addr().String())
 	require.NoError(t, err)
-	defer conn.Close() //nolint:errcheck // Closed explicitly to interrupt the stream.
 
 	_, err = fmt.Fprintf(conn, "GET /events HTTP/1.1\r\nHost: %s\r\n\r\n", ln.Addr())
 	require.NoError(t, err)
