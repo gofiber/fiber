@@ -456,7 +456,11 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	app := fiber.New()
 	handlerDone := make(chan error, 1)
 	onCloseDone := make(chan error, 1)
-	largeEventData := strings.Repeat("x", 64<<10)
+	const (
+		disconnectDetectionDelay = 200 * time.Millisecond
+		largeEventSizeBytes      = 64 << 10
+	)
+	largeEventData := strings.Repeat("x", largeEventSizeBytes)
 
 	app.Get("/events", New(Config{
 		DisableHeartbeat: true,
@@ -466,7 +470,7 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 				return err
 			}
 
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(disconnectDetectionDelay)
 
 			var err error
 			for range 64 {
