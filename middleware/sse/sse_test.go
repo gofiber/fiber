@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -449,27 +450,52 @@ func Test_SSE_StreamWriteError(t *testing.T) {
 	}
 }
 
-func Test_SSE_NextSkipsMiddleware(t *testing.T) {
+func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Next: func(fiber.Ctx) bool {
-			return true
-		},
+	handlerDone := make(chan error, 1)
+	onCloseDone := make(chan error, 1)
+
+	app.Get("/events", New(Config{
+		DisableHeartbeat: true,
 		Handler: func(_ fiber.Ctx, stream *Stream) error {
-			return stream.Event(Event{Data: "ignored"})
+			if err := stream.Event(Event{Data: "ready"}); err != nil {
+				handlerDone <- err
+				return err
+			}
+
+			time.Sleep(200 * time.Millisecond)
+
+			err := stream.Event(Event{Data: "late"})
+			handlerDone <- err
+			return err
+		},
+		OnClose: func(_ fiber.Ctx, err error) {
+			onCloseDone <- err
 		},
 	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("next")
-	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "next", string(body))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody), fiber.TestConfig{
+		Timeout:       100 * time.Millisecond,
+		FailOnTimeout: true,
+	})
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	require.Nil(t, resp)
+
+	select {
+	case err := <-handlerDone:
+		require.Error(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("handler did not observe the interrupted client")
+	}
+
+	select {
+	case err := <-onCloseDone:
+		require.Error(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("OnClose was not called after the interrupted client")
+	}
 }
 
 func Test_SSE_HandlerErrorCallsOnClose(t *testing.T) {

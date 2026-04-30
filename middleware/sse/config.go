@@ -11,11 +11,6 @@ type Handler func(c fiber.Ctx, stream *Stream) error
 
 // Config defines the config for middleware.
 type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c fiber.Ctx) bool
-
 	// Handler writes events to the stream.
 	//
 	// Required.
@@ -48,7 +43,6 @@ type Config struct {
 
 // ConfigDefault is the default config.
 var ConfigDefault = Config{
-	Next:              nil,
 	Handler:           nil,
 	OnClose:           nil,
 	Retry:             0,

@@ -1,4 +1,4 @@
-// Package sse provides small Server-Sent Events middleware for Fiber.
+// Package sse provides a small Server-Sent Events handler for Fiber.
 //
 // The package focuses on the SSE transport: response headers, wire formatting,
 // flushing, heartbeat comments, and disconnect detection via flush errors.
@@ -20,7 +20,7 @@ import (
 
 var errStreamClosed = errors.New("sse: stream closed")
 
-// New creates a new middleware handler.
+// New creates a new SSE handler.
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 	if cfg.Handler == nil {
@@ -28,10 +28,6 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	return func(c fiber.Ctx) error {
-		if cfg.Next != nil && cfg.Next(c) {
-			return c.Next()
-		}
-
 		c.Set(fiber.HeaderContentType, mimeTextEventStream)
 		c.Set(fiber.HeaderCacheControl, "no-cache")
 		c.Set(fiber.HeaderConnection, "keep-alive")
