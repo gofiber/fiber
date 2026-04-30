@@ -457,8 +457,11 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	handlerDone := make(chan error, 1)
 	onCloseDone := make(chan error, 1)
 	const (
+		// Wait long enough for the client-side close to propagate before the
+		// server starts the larger follow-up writes that should observe it.
 		disconnectDetectionDelay = 200 * time.Millisecond
 		largeEventSizeBytes      = 64 << 10
+		responseReadChunkSize    = 256
 	)
 	largeEventData := strings.Repeat("x", largeEventSizeBytes)
 
@@ -516,7 +519,7 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	reader := bufio.NewReader(conn)
 	var response bytes.Buffer
 	for !strings.Contains(response.String(), "data: ready\n\n") {
-		chunk := make([]byte, 256)
+		chunk := make([]byte, responseReadChunkSize)
 		n, readErr := reader.Read(chunk)
 		require.NoError(t, readErr)
 		response.Write(chunk[:n])
