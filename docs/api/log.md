@@ -246,7 +246,11 @@ Register custom tags with `log.RegisterContextTag`, then reference them from `lo
 
 ```go
 log.MustRegisterContextTag("tenant", func(output log.Buffer, ctx any, _ *log.ContextData, _ string) (int, error) {
-    tenant, _ := ctx.(fiber.Ctx).Locals("tenant").(string)
+    c, ok := ctx.(fiber.Ctx)
+    if !ok {
+        return 0, nil
+    }
+    tenant, _ := c.Locals("tenant").(string)
     return output.WriteString(tenant)
 })
 

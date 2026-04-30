@@ -39,3 +39,11 @@ func Test_Template_MissingParameterTag(t *testing.T) {
 	require.ErrorIs(t, err, ErrParameterMissing)
 	require.ErrorContains(t, err, "missing:name")
 }
+
+func Test_Template_MissingTag(t *testing.T) {
+	t.Parallel()
+
+	_, err := Build[string, testData]("${missing}", nil)
+	require.ErrorIs(t, err, ErrParameterMissing)
+	require.ErrorContains(t, err, "missing")
+}

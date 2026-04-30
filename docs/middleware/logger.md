@@ -135,7 +135,7 @@ The following tags are registered by Fiber middleware when the middleware is ini
 
 | Tag | Registered by | Value |
 | :-- | :------------ | :---- |
-| `${requestid}` | `requestid.New()` | Request ID stored by the requestid middleware. |
+| `${requestid}` / `${request-id}` | `requestid.New()` | Request ID stored by the requestid middleware. |
 | `${username}` | `basicauth.New()` | Authenticated username stored by the basicauth middleware. |
 | `${api-key}` | `keyauth.New()` | Redacted API key stored by the keyauth middleware. |
 | `${csrf-token}` | `csrf.New()` | Redacted marker when the csrf middleware stores a token. |

@@ -478,6 +478,12 @@ func Test_Logger_TemplateParameterMissingCompatibility(t *testing.T) {
 			Format: "${missing:value}",
 		})
 	})
+
+	require.PanicsWithError(t, `logger: template parameter missing: "missing"`, func() {
+		New(Config{
+			Format: "${missing}",
+		})
+	})
 }
 
 // go test -run Test_Logger_All
@@ -489,7 +495,7 @@ func Test_Logger_All(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
+		Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}",
 		Stream: buf,
 	}))
 
@@ -1060,18 +1066,23 @@ func Test_Logger_DataLegacyTemplateChains(t *testing.T) {
 		DisableColors: true,
 		Format:        "${method} ${path}",
 		LoggerFunc: func(c fiber.Ctx, data *Data, _ *Config) error {
-			require.Len(t, data.TemplateChain, len(data.LogFuncChain))
+			if len(data.TemplateChain) != len(data.LogFuncChain) {
+				return fmt.Errorf("template/log func chain length mismatch: template=%d logfunc=%d", len(data.TemplateChain), len(data.LogFuncChain))
+			}
 			for i, logFunc := range data.LogFuncChain {
 				switch {
 				case logFunc == nil:
-					_, err := buf.Write(data.TemplateChain[i])
-					require.NoError(t, err)
+					if _, err := buf.Write(data.TemplateChain[i]); err != nil {
+						return fmt.Errorf("write template chain: %w", err)
+					}
 				case data.TemplateChain[i] == nil:
-					_, err := logFunc(buf, c, data, "")
-					require.NoError(t, err)
+					if _, err := logFunc(buf, c, data, ""); err != nil {
+						return err
+					}
 				default:
-					_, err := logFunc(buf, c, data, string(data.TemplateChain[i]))
-					require.NoError(t, err)
+					if _, err := logFunc(buf, c, data, string(data.TemplateChain[i])); err != nil {
+						return err
+					}
 				}
 			}
 			return nil

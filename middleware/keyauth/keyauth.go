@@ -118,6 +118,9 @@ func registerLogContextTags() {
 }
 
 func redactContextValue(value string) string {
+	if value == "" {
+		return ""
+	}
 	if len(value) <= 4 {
 		return "****"
 	}

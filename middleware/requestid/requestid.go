@@ -52,9 +52,11 @@ func registerLogContextTags() {
 	}
 	fiberlog.MustRegisterContextTag("requestid", tag)
 	fiberlog.MustRegisterContextTag("request-id", tag)
-	logger.MustRegisterTag("requestid", func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
+	loggerTag := func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
 		return output.WriteString(FromContext(c))
-	})
+	}
+	logger.MustRegisterTag("requestid", loggerTag)
+	logger.MustRegisterTag("request-id", loggerTag)
 }
 
 // sanitizeRequestID returns the provided request ID when it is valid, otherwise

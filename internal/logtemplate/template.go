@@ -76,6 +76,8 @@ func Build[C, D any](format string, tagFunctions map[string]Func[C, D]) (*Templa
 		} else if fn, ok := tagFunctions[utils.UnsafeString(before)]; ok {
 			funcChain = append(funcChain, fn)
 			fixedParts = append(fixedParts, nil)
+		} else {
+			return nil, fmt.Errorf("%w: %q", ErrParameterMissing, utils.UnsafeString(before))
 		}
 
 		templateB = after

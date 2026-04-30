@@ -206,7 +206,7 @@ func Test_RequestID_LoggerMiddlewareTag(t *testing.T) {
 		},
 	}))
 	app.Use(logger.New(logger.Config{
-		Format: "${requestid}",
+		Format: "${requestid} ${request-id}",
 		Stream: &buf,
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
@@ -216,7 +216,7 @@ func Test_RequestID_LoggerMiddlewareTag(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "req-42", buf.String())
+	require.Equal(t, "req-42"+" req-42", buf.String())
 }
 
 // Test_RequestID_LogWithContextFormat runs serially because it mutates the
