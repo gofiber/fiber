@@ -212,4 +212,5 @@ ErrorHandler: func(c fiber.Ctx, err error) error {
     return c.SendStatus(fiber.StatusMisdirectedRequest) // 421
 },
 ```
+
 :::
