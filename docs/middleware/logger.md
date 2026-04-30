@@ -19,7 +19,6 @@ Import the package:
 ```go
 import (
     "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/fiber/v3/log"
     "github.com/gofiber/fiber/v3/middleware/logger"
     "github.com/gofiber/fiber/v3/middleware/requestid"
 )
@@ -53,26 +52,6 @@ app.Use(logger.New(logger.Config{
     // Use the custom tag ${requestid} as defined above.
     Format: "${pid} ${requestid} ${status} - ${method} ${path}\n",
 }))
-
-// Reuse the same tag approach for application logs emitted inside handlers.
-// This configures Fiber's built-in default logger. Custom loggers registered
-// with log.SetLogger should implement their own WithContext enrichment.
-if err := log.SetContextTemplate(log.ContextConfig{
-    Format: "[${requestid}] ",
-    CustomTags: map[string]log.ContextTagFunc{
-        "requestid": func(output log.Buffer, c any, _ *log.ContextData, _ string) (int, error) {
-            return output.WriteString(requestid.FromContext(c))
-        },
-    },
-}); err != nil {
-    log.Fatal(err)
-}
-
-app.Get("/", func(c fiber.Ctx) error {
-    // Pass c so middleware values stored on Fiber's request context can be read.
-    log.WithContext(c).Info("handling request")
-    return c.SendString("OK")
-})
 
 // Changing TimeZone & TimeFormat
 app.Use(logger.New(logger.Config{
