@@ -7,6 +7,9 @@ on:
     types: [after-release]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   parse-tag:
     if: github.event_name == 'release'

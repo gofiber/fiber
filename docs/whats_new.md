@@ -57,6 +57,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Proxy](#proxy)
   - [Recover](#recover)
   - [Session](#session)
+  - [SSE](#sse)
 - [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
@@ -1704,6 +1705,13 @@ The session middleware has undergone significant improvements in v3, focusing on
 - **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
+
+### SSE
+
+Fiber now includes an [SSE middleware](./middleware/sse.md) for Server-Sent Events. It handles native
+`SendStreamWriter` setup, SSE response headers, event formatting, flushing, heartbeat comments, and
+disconnect detection through flush errors while leaving application-level hubs, topics, replay stores, and
+pub/sub bridges to user code or recipes.
 
 ### Timeout
 
