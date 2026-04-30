@@ -487,15 +487,15 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
 
-	serverDone := make(chan struct{})
+	serverErr := make(chan error, 1)
 	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
-		close(serverDone)
+		serverErr <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
 	}()
 	defer func() {
 		require.NoError(t, app.Shutdown())
 		select {
-		case <-serverDone:
+		case listenErr := <-serverErr:
+			require.NoError(t, listenErr)
 		case <-time.After(time.Second):
 			t.Fatal("SSE test server did not stop")
 		}
