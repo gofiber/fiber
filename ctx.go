@@ -11,7 +11,6 @@ import (
 	"io"
 	"maps"
 	"mime/multipart"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -109,7 +108,13 @@ func (c *DefaultCtx) BaseURL() string {
 	if c.baseURI != "" {
 		return c.baseURI
 	}
-	c.baseURI = c.Scheme() + "://" + c.Host()
+	scheme := c.Scheme()
+	host := c.Host()
+	buf := make([]byte, 0, len(scheme)+len("://")+len(host))
+	buf = append(buf, scheme...)
+	buf = append(buf, "://"...)
+	buf = append(buf, host...)
+	c.baseURI = c.app.toString(buf)
 	return c.baseURI
 }
 
@@ -574,13 +579,14 @@ func (c *DefaultCtx) String() string {
 
 	// Start with the ID, converting it to a hex string without fmt.Sprintf
 	buf.WriteByte('#')
-	// Convert ID to hexadecimal
-	id := strconv.FormatUint(c.fasthttp.ID(), 16)
-	// Pad with leading zeros to ensure 16 characters
-	for i := 0; i < (16 - len(id)); i++ {
-		buf.WriteByte('0')
+	const hex = "0123456789abcdef"
+	var id [16]byte
+	ctxID := c.fasthttp.ID()
+	for i := len(id) - 1; i >= 0; i-- {
+		id[i] = hex[ctxID&0xf]
+		ctxID >>= 4
 	}
-	buf.WriteString(id)
+	buf.Write(id[:])
 	buf.WriteString(" - ")
 
 	// Add local and remote addresses directly

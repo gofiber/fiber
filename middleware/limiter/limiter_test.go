@@ -1080,7 +1080,7 @@ func Test_Limiter_Sliding_Window_RecalculatesAfterHandlerDelay(t *testing.T) {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	}
 
-	time.Sleep(time.Second + 100*time.Millisecond)
+	time.Sleep(2*time.Second + 100*time.Millisecond)
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)

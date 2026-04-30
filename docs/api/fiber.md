@@ -152,7 +152,18 @@ Prefork is a feature that allows you to spawn multiple Go processes listening on
 app.Listen(":8080", fiber.ListenConfig{EnablePrefork: true})
 ```
 
-This distributes the incoming connections between the spawned processes and allows more requests to be handled simultaneously.
+Depending on the operating system, prefork can distribute incoming connections between the spawned processes and allow more requests to be handled simultaneously.
+
+On Linux, prefork typically relies on the `SO_REUSEPORT` socket option for kernel-assisted load distribution across workers. On Windows, Fiber falls back to `SO_REUSEADDR`; this is not a functional equivalent to Linux `SO_REUSEPORT` as it lacks native load balancing and may allow other processes to bind to the same port. Operators should validate this behavior against their security and availability requirements.
+
+##### Security Considerations
+
+Prefork changes the port-ownership model from strict single-owner binding to an intentional multi-listener setup. In shared hosts, a local co-resident attacker with sufficient privileges may be able to race for shared binds or receive a portion of traffic, depending on platform behavior and user boundaries.
+
+- Run prefork only within a trusted boundary (same deployment unit / same trust domain).
+- Use a dedicated service account for Fiber workers; avoid broad shared-user deployments.
+- Prefer container or VM isolation and avoid shared host namespaces for unrelated workloads.
+- If strict single-owner port semantics are required, run Fiber without prefork.
 
 #### TLS
 

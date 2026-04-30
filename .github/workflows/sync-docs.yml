@@ -16,6 +16,9 @@ on:
         options: [push, release-all]
         default: push
 
+permissions:
+  contents: read
+
 jobs:
   sync:
     uses: gofiber/.github/.github/workflows/sync-docs.yml@main

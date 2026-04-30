@@ -52,6 +52,8 @@ type Req interface {
 	// https://godoc.org/github.com/valyala/fasthttp#Request
 	Request() *fasthttp.Request
 	// FormFile returns the first file by key from a MultipartForm.
+	// The multipart form is parsed using the application's BodyLimit to prevent
+	// unbounded memory usage.
 	FormFile(key string) (*multipart.FileHeader, error)
 	// FormValue returns the first value by key from a MultipartForm.
 	// Search is performed in QueryArgs, PostArgs, MultipartForm and FormFile in this particular order.
@@ -59,6 +61,8 @@ type Req interface {
 	// If a default value is given, it will return that value if the form value does not exist.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
+	// When the request is a multipart form, it is parsed using the application's
+	// BodyLimit so the configured limit is consistently enforced.
 	FormValue(key string, defaultValue ...string) string
 	// Fresh returns true when the response is still “fresh” in the client's cache,
 	// otherwise false is returned to indicate that the client cache is now stale
