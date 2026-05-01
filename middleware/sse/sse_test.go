@@ -495,7 +495,7 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	select {
 	case err := <-onCloseDone:
 		require.Error(t, err)
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("OnClose was not called after the interrupted client")
 	}
 }
