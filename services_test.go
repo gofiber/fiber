@@ -36,6 +36,10 @@ type shutdownHookStorage struct {
 	closeCalled atomic.Bool
 }
 
+type stringsLogger struct {
+	strings.Builder
+}
+
 func (*shutdownHookStorage) GetWithContext(context.Context, string) ([]byte, error) {
 	return nil, nil
 }
@@ -221,10 +225,6 @@ func Test_InitServices(t *testing.T) {
 
 		require.NotPanics(t, app.initServices)
 
-		type stringsLogger struct {
-			strings.Builder
-		}
-
 		var buf stringsLogger
 		log.SetOutput(&buf)
 
@@ -245,10 +245,6 @@ func Test_InitServices(t *testing.T) {
 
 		require.NotPanics(t, app.initServices)
 
-		type stringsLogger struct {
-			strings.Builder
-		}
-
 		var buf stringsLogger
 		log.SetOutput(&buf)
 
@@ -265,10 +261,6 @@ func Test_InitServices(t *testing.T) {
 		})
 
 		require.NotPanics(t, app.initServices)
-
-		type stringsLogger struct {
-			strings.Builder
-		}
 
 		var buf stringsLogger
 		log.SetOutput(&buf)
@@ -291,10 +283,6 @@ func Test_InitServices(t *testing.T) {
 		})
 
 		require.NotPanics(t, app.initServices)
-
-		type stringsLogger struct {
-			strings.Builder
-		}
 
 		var buf stringsLogger
 		log.SetOutput(&buf)
