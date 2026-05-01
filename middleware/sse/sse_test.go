@@ -452,6 +452,8 @@ func Test_SSE_StreamWriteError(t *testing.T) {
 func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	t.Parallel()
 
+	const disconnectObservationTimeout = 3 * time.Second
+
 	app := fiber.New()
 	handlerDone := make(chan error, 1)
 	onCloseDone := make(chan error, 1)
@@ -488,14 +490,14 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	select {
 	case err := <-handlerDone:
 		require.Error(t, err)
-	case <-time.After(3 * time.Second):
+	case <-time.After(disconnectObservationTimeout):
 		t.Fatal("handler did not observe the interrupted client")
 	}
 
 	select {
 	case err := <-onCloseDone:
 		require.Error(t, err)
-	case <-time.After(3 * time.Second):
+	case <-time.After(disconnectObservationTimeout):
 		t.Fatal("OnClose was not called after the interrupted client")
 	}
 }
