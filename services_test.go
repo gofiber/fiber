@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	stdlog "log" //nolint:depguard // Test needs the concrete stdlib logger type to restore the previous writer.
 	"strings"
 	"sync"
@@ -43,6 +44,27 @@ type stringsLogger struct {
 }
 
 var servicesTestLogOutputMu sync.Mutex
+
+func withCapturedLogOutput(t *testing.T, writer io.Writer) {
+	t.Helper()
+
+	servicesTestLogOutputMu.Lock()
+	cleanupRegistered := false
+	defer func() {
+		if !cleanupRegistered {
+			servicesTestLogOutputMu.Unlock()
+		}
+	}()
+
+	currentOutput := log.DefaultLogger[*stdlog.Logger]().Logger().Writer()
+	t.Cleanup(func() {
+		log.SetOutput(currentOutput)
+		servicesTestLogOutputMu.Unlock()
+	})
+	cleanupRegistered = true
+
+	log.SetOutput(writer)
+}
 
 func (*shutdownHookStorage) GetWithContext(context.Context, string) ([]byte, error) {
 	return nil, nil
@@ -271,13 +293,7 @@ func Test_InitServices(t *testing.T) {
 		require.NotPanics(t, app.initServices)
 
 		var buf stringsLogger
-		currentOutput := log.DefaultLogger[*stdlog.Logger]().Logger().Writer()
-		servicesTestLogOutputMu.Lock()
-		log.SetOutput(&buf)
-		t.Cleanup(func() {
-			log.SetOutput(currentOutput)
-			servicesTestLogOutputMu.Unlock()
-		})
+		withCapturedLogOutput(t, &buf)
 
 		app.Hooks().executeOnPostShutdownHooks(nil)
 
@@ -300,13 +316,7 @@ func Test_InitServices(t *testing.T) {
 		require.NotPanics(t, app.initServices)
 
 		var buf stringsLogger
-		currentOutput := log.DefaultLogger[*stdlog.Logger]().Logger().Writer()
-		servicesTestLogOutputMu.Lock()
-		log.SetOutput(&buf)
-		t.Cleanup(func() {
-			log.SetOutput(currentOutput)
-			servicesTestLogOutputMu.Unlock()
-		})
+		withCapturedLogOutput(t, &buf)
 
 		app.Hooks().executeOnPostShutdownHooks(nil)
 
