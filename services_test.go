@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	stdlog "log" //nolint:depguard // Test needs the concrete stdlib logger type to restore the previous writer.
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -39,6 +41,8 @@ type shutdownHookStorage struct {
 type stringsLogger struct {
 	strings.Builder
 }
+
+var servicesTestLogOutputMu sync.Mutex
 
 func (*shutdownHookStorage) GetWithContext(context.Context, string) ([]byte, error) {
 	return nil, nil
@@ -174,6 +178,8 @@ func Test_HasConfiguredServices(t *testing.T) {
 }
 
 func Test_InitServices(t *testing.T) {
+	t.Parallel()
+
 	t.Run("no-services", func(t *testing.T) {
 		app := &App{configured: Config{}}
 		require.NotPanics(t, app.initServices)
@@ -254,6 +260,8 @@ func Test_InitServices(t *testing.T) {
 	})
 
 	t.Run("shutdown-hooks/close-shared-state", func(t *testing.T) {
+		t.Parallel()
+
 		storage := &shutdownHookStorage{}
 		app := New(Config{
 			Services:      []Service{&mockService{name: "dep1"}},
@@ -263,8 +271,13 @@ func Test_InitServices(t *testing.T) {
 		require.NotPanics(t, app.initServices)
 
 		var buf stringsLogger
+		currentOutput := log.DefaultLogger[*stdlog.Logger]().Logger().Writer()
+		servicesTestLogOutputMu.Lock()
 		log.SetOutput(&buf)
-		t.Cleanup(func() { log.SetOutput(bytes.NewBuffer(nil)) })
+		t.Cleanup(func() {
+			log.SetOutput(currentOutput)
+			servicesTestLogOutputMu.Unlock()
+		})
 
 		app.Hooks().executeOnPostShutdownHooks(nil)
 
@@ -273,6 +286,8 @@ func Test_InitServices(t *testing.T) {
 	})
 
 	t.Run("shutdown-hooks/close-shared-state-after-service-error", func(t *testing.T) {
+		t.Parallel()
+
 		storage := &shutdownHookStorage{closeErr: errors.New("close error")}
 		app := New(Config{
 			Services: []Service{
@@ -285,8 +300,13 @@ func Test_InitServices(t *testing.T) {
 		require.NotPanics(t, app.initServices)
 
 		var buf stringsLogger
+		currentOutput := log.DefaultLogger[*stdlog.Logger]().Logger().Writer()
+		servicesTestLogOutputMu.Lock()
 		log.SetOutput(&buf)
-		t.Cleanup(func() { log.SetOutput(bytes.NewBuffer(nil)) })
+		t.Cleanup(func() {
+			log.SetOutput(currentOutput)
+			servicesTestLogOutputMu.Unlock()
+		})
 
 		app.Hooks().executeOnPostShutdownHooks(nil)
 
