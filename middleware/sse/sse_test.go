@@ -452,7 +452,10 @@ func Test_SSE_StreamWriteError(t *testing.T) {
 func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	t.Parallel()
 
-	const disconnectObservationTimeout = 3 * time.Second
+	const (
+		testTimeout                  = time.Second
+		disconnectObservationTimeout = 2 * time.Second
+	)
 
 	app := fiber.New()
 	handlerDone := make(chan error, 1)
@@ -478,7 +481,7 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody), fiber.TestConfig{
 		FailOnTimeout: false,
-		Timeout:       time.Second,
+		Timeout:       testTimeout,
 	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
