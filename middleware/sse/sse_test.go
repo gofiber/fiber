@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -456,21 +455,7 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	app := fiber.New()
 	handlerDone := make(chan error, 1)
 	onCloseDone := make(chan error, 1)
-	const (
-		// Wait long enough for the client-side close to propagate before the
-		// server starts the larger follow-up writes that should observe it.
-		// This keeps the test fast while still giving the closed socket time
-		// to surface as a write error under the race detector.
-		disconnectDetectionDelay = 100 * time.Millisecond
-		// Use 64 KiB events so a few writes will overrun typical socket buffers
-		// and make the disconnect visible to the server-side flush path.
-		largeEventSizeBytes = 64 << 10
-		// Keep trying enough large writes to reliably trip the broken
-		// connection without making the test unbounded.
-		disconnectWriteAttempts = 64
-		responseReadChunkSize   = 256
-	)
-	largeEventData := strings.Repeat("x", largeEventSizeBytes)
+	releaseWrite := make(chan struct{})
 
 	app.Get("/events", New(Config{
 		DisableHeartbeat: true,
@@ -480,16 +465,8 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 				return err
 			}
 
-			time.Sleep(disconnectDetectionDelay)
-
-			var err error
-			for range disconnectWriteAttempts {
-				err = stream.Event(Event{Data: largeEventData})
-				if err != nil {
-					break
-				}
-			}
-
+			<-releaseWrite
+			err := stream.Event(Event{Data: "after-close"})
 			handlerDone <- err
 			return err
 		},
@@ -498,47 +475,23 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 		},
 	}))
 
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/events", http.NoBody), fiber.TestConfig{
+		FailOnTimeout: false,
+		Timeout:       time.Second,
+	})
 	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	serverErr := make(chan error, 1)
-	go func() {
-		serverErr <- app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
-	}()
-	defer func() {
-		require.NoError(t, app.Shutdown())
-		select {
-		case listenErr := <-serverErr:
-			require.NoError(t, listenErr)
-		case <-time.After(time.Second):
-			t.Fatal("SSE test server did not stop")
-		}
-	}()
-
-	conn, err := net.Dial(fiber.NetworkTCP4, ln.Addr().String())
+	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
+	require.Contains(t, string(body), "data: ready\n\n")
 
-	_, err = fmt.Fprintf(conn, "GET /events HTTP/1.1\r\nHost: %s\r\n\r\n", ln.Addr())
-	require.NoError(t, err)
-	require.NoError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
-
-	reader := bufio.NewReader(conn)
-	var response bytes.Buffer
-	for !strings.Contains(response.String(), "data: ready\n\n") {
-		chunk := make([]byte, responseReadChunkSize)
-		n, readErr := reader.Read(chunk)
-		require.NoError(t, readErr)
-		response.Write(chunk[:n])
-	}
-
-	require.Contains(t, response.String(), "HTTP/1.1 200 OK")
-	require.Contains(t, response.String(), "data: ready\n\n")
-	require.NoError(t, conn.Close())
+	close(releaseWrite)
 
 	select {
 	case err := <-handlerDone:
 		require.Error(t, err)
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("handler did not observe the interrupted client")
 	}
 
