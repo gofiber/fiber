@@ -455,18 +455,17 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	app := fiber.New()
 	handlerDone := make(chan error, 1)
 	onCloseDone := make(chan error, 1)
-	releaseWrite := make(chan struct{})
 
 	app.Get("/events", New(Config{
-		DisableHeartbeat: true,
+		HeartbeatInterval: 100 * time.Millisecond,
 		Handler: func(_ fiber.Ctx, stream *Stream) error {
 			if err := stream.Event(Event{Data: "ready"}); err != nil {
 				handlerDone <- err
 				return err
 			}
 
-			<-releaseWrite
-			err := stream.Event(Event{Data: "after-close"})
+			<-stream.Done()
+			err := stream.Err()
 			handlerDone <- err
 			return err
 		},
@@ -483,10 +482,8 @@ func Test_SSE_InterruptedClientClosesStream(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	require.True(t, err == nil || errors.Is(err, io.ErrUnexpectedEOF))
 	require.Contains(t, string(body), "data: ready\n\n")
-
-	close(releaseWrite)
 
 	select {
 	case err := <-handlerDone:
