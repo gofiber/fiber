@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,48 @@ type mockService struct {
 	terminated     bool
 	startDelay     time.Duration
 	terminateDelay time.Duration
+}
+
+type shutdownHookStorage struct {
+	closeErr    error
+	closeCalled atomic.Bool
+}
+
+func (*shutdownHookStorage) GetWithContext(context.Context, string) ([]byte, error) {
+	return nil, nil
+}
+
+func (*shutdownHookStorage) Get(string) ([]byte, error) {
+	return nil, nil
+}
+
+func (*shutdownHookStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
+	return nil
+}
+
+func (*shutdownHookStorage) Set(string, []byte, time.Duration) error {
+	return nil
+}
+
+func (*shutdownHookStorage) DeleteWithContext(context.Context, string) error {
+	return nil
+}
+
+func (*shutdownHookStorage) Delete(string) error {
+	return nil
+}
+
+func (*shutdownHookStorage) ResetWithContext(context.Context) error {
+	return nil
+}
+
+func (*shutdownHookStorage) Reset() error {
+	return nil
+}
+
+func (s *shutdownHookStorage) Close() error {
+	s.closeCalled.Store(true)
+	return s.closeErr
 }
 
 func (m *mockService) Start(ctx context.Context) error {
@@ -212,6 +255,56 @@ func Test_InitServices(t *testing.T) {
 		app.Hooks().executeOnPostShutdownHooks(nil)
 
 		require.Contains(t, buf.String(), "failed to shutdown services: service dep2 terminate: terminate error 2")
+	})
+
+	t.Run("shutdown-hooks/close-shared-state", func(t *testing.T) {
+		storage := &shutdownHookStorage{}
+		app := New(Config{
+			Services:      []Service{&mockService{name: "dep1"}},
+			SharedStorage: storage,
+		})
+
+		require.NotPanics(t, app.initServices)
+
+		type stringsLogger struct {
+			strings.Builder
+		}
+
+		var buf stringsLogger
+		log.SetOutput(&buf)
+		t.Cleanup(func() { log.SetOutput(bytes.NewBuffer(nil)) })
+
+		app.Hooks().executeOnPostShutdownHooks(nil)
+
+		require.True(t, storage.closeCalled.Load())
+		require.NotContains(t, buf.String(), "failed to close sharedState:")
+	})
+
+	t.Run("shutdown-hooks/close-shared-state-after-service-error", func(t *testing.T) {
+		storage := &shutdownHookStorage{closeErr: errors.New("close error")}
+		app := New(Config{
+			Services: []Service{
+				&mockService{name: "dep1"},
+				&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
+			},
+			SharedStorage: storage,
+		})
+
+		require.NotPanics(t, app.initServices)
+
+		type stringsLogger struct {
+			strings.Builder
+		}
+
+		var buf stringsLogger
+		log.SetOutput(&buf)
+		t.Cleanup(func() { log.SetOutput(bytes.NewBuffer(nil)) })
+
+		app.Hooks().executeOnPostShutdownHooks(nil)
+
+		require.True(t, storage.closeCalled.Load())
+		require.Contains(t, buf.String(), "failed to shutdown services: service dep2 terminate: terminate error 2")
+		require.Contains(t, buf.String(), "failed to close sharedState: close error")
 	})
 }
 

@@ -1386,6 +1386,11 @@ func (app *App) init() *App {
 		if err := app.shutdownServices(app.servicesShutdownCtx()); err != nil {
 			log.Errorf("failed to shutdown services: %v", err)
 		}
+		if app.sharedState != nil && app.sharedState.storage != nil {
+			if err := app.sharedState.Close(); err != nil {
+				log.Errorf("failed to close sharedState: %v", err)
+			}
+		}
 		return nil
 	})
 
