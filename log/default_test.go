@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -118,8 +117,8 @@ func Test_WithContextRenderError(t *testing.T) {
 	WithContext(context.Background()).Info("payload")
 
 	out := string(w.b)
-	require.True(t, strings.Contains(out, "ctx-render-error"), "expected render-error marker, got %q", out)
-	require.True(t, strings.Contains(out, "payload"), "expected payload to still be emitted, got %q", out)
+	require.Contains(t, out, "ctx-render-error", "expected render-error marker, got %q", out)
+	require.Contains(t, out, "payload", "expected payload to still be emitted, got %q", out)
 }
 
 func Test_DefaultLogger(t *testing.T) {

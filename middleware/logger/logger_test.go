@@ -496,7 +496,7 @@ func Test_Logger_UnknownTagPanicsWithTypedError(t *testing.T) {
 				require.ErrorIs(t, err, ErrUnknownTag)
 
 				var typed *UnknownTagError
-				require.True(t, errors.As(err, &typed))
+				require.ErrorAs(t, err, &typed)
 				require.Equal(t, tt.wantTag, typed.Tag)
 				require.Equal(t, tt.wantPara, typed.Param)
 				require.EqualError(t, err, `logger: unknown template tag: "`+tt.wantTag+`"`)

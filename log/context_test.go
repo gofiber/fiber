@@ -3,6 +3,7 @@ package log
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -137,10 +138,11 @@ func Test_ContextTemplate_DefaultTagsRenderEmpty(t *testing.T) {
 	defaults := defaultContextTagMap()
 	delete(defaults, TagContextValue)
 
-	var format string
+	parts := make([]string, 0, len(defaults))
 	for name := range defaults {
-		format += "${" + name + "}|"
+		parts = append(parts, "${"+name+"}|")
 	}
+	format := strings.Join(parts, "")
 
 	tmpl, err := logtemplate.Build[any, ContextData](format, defaults)
 	require.NoError(t, err)
@@ -150,7 +152,7 @@ func Test_ContextTemplate_DefaultTagsRenderEmpty(t *testing.T) {
 
 	require.NoError(t, tmpl.Execute(buf, context.Background(), &ContextData{}))
 	// Each stub renders empty, so the only bytes left are the "|" separators.
-	require.Equal(t, len(defaults), len(buf.String()))
+	require.Len(t, buf.String(), len(defaults))
 }
 
 func Test_ContextTemplate_CustomTag(t *testing.T) {
@@ -270,7 +272,7 @@ func Test_SetContextTemplate_ReturnsBuildError(t *testing.T) {
 	require.ErrorIs(t, err, logtemplate.ErrUnknownTag)
 
 	var typed *logtemplate.UnknownTagError
-	require.True(t, errors.As(err, &typed))
+	require.ErrorAs(t, err, &typed)
 	require.Equal(t, "missing:value", typed.Tag)
 	require.Equal(t, "value", typed.Param)
 }
@@ -340,6 +342,7 @@ func Test_ContextTemplate_ConcurrentRegistration(t *testing.T) {
 	register := func(id int) {
 		defer wg.Done()
 		for i := 0; i < iterations; i++ {
+			//nolint:errcheck // race-stress test intentionally ignores transient errors
 			_ = RegisterContextTag("tenant", func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
 				return output.WriteString("acme")
 			})
@@ -349,6 +352,7 @@ func Test_ContextTemplate_ConcurrentRegistration(t *testing.T) {
 	reformat := func() {
 		defer wg.Done()
 		for i := 0; i < iterations; i++ {
+			//nolint:errcheck // race-stress test intentionally ignores transient errors
 			_ = SetContextTemplate(ContextConfig{Format: "[${tenant}]"})
 		}
 	}
@@ -360,6 +364,7 @@ func Test_ContextTemplate_ConcurrentRegistration(t *testing.T) {
 				continue
 			}
 			buf := bytebufferpool.Get()
+			//nolint:errcheck // race-stress test intentionally ignores transient errors
 			_ = tmpl.Execute(buf, context.Background(), &ContextData{})
 			bytebufferpool.Put(buf)
 		}

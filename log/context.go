@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -240,21 +242,13 @@ func writeSanitizedString(output Buffer, s string) (int, error) {
 }
 
 func needsControlSanitize(p []byte) bool {
-	for _, b := range p {
-		if isControlByte(b) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(p, isControlByte)
 }
 
 func needsControlSanitizeString(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if isControlByte(s[i]) {
-			return true
-		}
-	}
-	return false
+	return strings.IndexFunc(s, func(r rune) bool {
+		return r < 0x80 && isControlByte(byte(r))
+	}) >= 0
 }
 
 // isControlByte reports whether b is an ASCII control byte that must not pass

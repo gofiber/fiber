@@ -263,7 +263,7 @@ func (l *defaultLogger) writeContext(buf Buffer) {
 		return
 	}
 
-	_, _ = buf.Write(scratch.Bytes())
+	_, _ = buf.Write(scratch.Bytes()) //nolint:errcheck // best-effort write; outer log.Output reports IO errors
 }
 
 // WithContext returns a logger that shares the underlying output and renders configured contextual fields.

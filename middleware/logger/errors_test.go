@@ -15,7 +15,7 @@ func Test_UnknownTagErrorIsAndAs(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnknownTag)
 
 	var typed *UnknownTagError
-	require.True(t, errors.As(err, &typed))
+	require.ErrorAs(t, err, &typed)
 	require.Equal(t, "method", typed.Tag)
 	require.EqualError(t, err, `logger: unknown template tag: "method"`)
 }
@@ -25,10 +25,10 @@ func Test_TranslateBuildError(t *testing.T) {
 
 	got := translateBuildError(&logtemplate.UnknownTagError{Tag: "missing:value", Param: "value"})
 	var typed *UnknownTagError
-	require.True(t, errors.As(got, &typed))
+	require.ErrorAs(t, got, &typed)
 	require.Equal(t, "missing:value", typed.Tag)
 	require.Equal(t, "value", typed.Param)
 	require.ErrorIs(t, got, ErrUnknownTag)
 
-	require.Nil(t, translateBuildError(errors.New("unrelated")))
+	require.NoError(t, translateBuildError(errors.New("unrelated")))
 }

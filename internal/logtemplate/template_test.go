@@ -72,7 +72,7 @@ func Test_Template_UnknownParametricTag(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnknownTag)
 
 	var typed *UnknownTagError
-	require.True(t, errors.As(err, &typed))
+	require.ErrorAs(t, err, &typed)
 	require.Equal(t, "missing:name", typed.Tag)
 	require.Equal(t, "name", typed.Param)
 	require.EqualError(t, err, `logtemplate: unknown tag: "missing:name"`)
@@ -85,7 +85,7 @@ func Test_Template_UnknownBareTag(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnknownTag)
 
 	var typed *UnknownTagError
-	require.True(t, errors.As(err, &typed))
+	require.ErrorAs(t, err, &typed)
 	require.Equal(t, "missing", typed.Tag)
 	require.Empty(t, typed.Param)
 }
@@ -101,7 +101,7 @@ func Test_Template_UnknownBareTagHintsParametric(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnknownTag)
 
 	var typed *UnknownTagError
-	require.True(t, errors.As(err, &typed))
+	require.ErrorAs(t, err, &typed)
 	require.Equal(t, "reqHeader", typed.Tag)
 	require.Equal(t, "did you mean ${reqHeader:PARAM}?", typed.Hint)
 	require.Contains(t, err.Error(), "did you mean ${reqHeader:PARAM}?")
