@@ -35,7 +35,7 @@ type Config struct {
 	// CustomTags defines per-middleware tag functions.
 	// CustomTags override built-in and globally registered tags with the same name.
 	//
-	// Optional. Default: map[string]LogFunc
+	// Optional. Default: nil
 	CustomTags map[string]LogFunc
 
 	// You can define specific things before returning the handler: colors, template, etc.
