@@ -406,11 +406,13 @@ func Test_BasicAuth_HeaderControlCharEdges(t *testing.T) {
 
 	handler := app.Handler()
 	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+	// Note: \r and \n are sanitized to spaces by fasthttp at the protocol level,
+	// so we use other control chars (SOH, BEL) that pass through unchanged.
 	headers := [][]byte{
-		[]byte("\rBasic " + creds),
-		[]byte("\nBasic " + creds),
-		[]byte("Basic " + creds + "\r"),
-		[]byte("Basic " + creds + "\n"),
+		[]byte("\x01Basic " + creds),
+		[]byte("\x07Basic " + creds),
+		[]byte("Basic " + creds + "\x01"),
+		[]byte("Basic " + creds + "\x07"),
 	}
 
 	for _, h := range headers {
@@ -570,6 +572,40 @@ func Test_parseHashedPassword(t *testing.T) {
 			require.False(t, verify("wrong"))
 		})
 	}
+}
+
+func Test_buildVerifiers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("selects the strongest configured verifier deterministically", func(t *testing.T) {
+		t.Parallel()
+
+		strongestPassword := "bcrypt-pass"
+		strongestHash, err := bcrypt.GenerateFromPassword([]byte(strongestPassword), bcrypt.MinCost+1)
+		require.NoError(t, err)
+
+		verifiers, dummyVerify, err := buildVerifiers(map[string]string{
+			"zeta":  sha256Hash("sha256-pass"),
+			"alpha": string(strongestHash),
+			"beta":  sha512Hash("sha512-pass"),
+		})
+		require.NoError(t, err)
+		require.Len(t, verifiers, 3)
+		require.True(t, dummyVerify(strongestPassword))
+		require.False(t, dummyVerify("sha512-pass"))
+		require.False(t, dummyVerify("sha256-pass"))
+	})
+
+	t.Run("uses a fixed-work fallback when no users are configured", func(t *testing.T) {
+		t.Parallel()
+
+		verifiers, dummyVerify, err := buildVerifiers(nil)
+		require.NoError(t, err)
+		require.Empty(t, verifiers)
+		fallbackInput := "fiber-basicauth-dummy"
+		require.True(t, dummyVerify(fallbackInput))
+		require.False(t, dummyVerify("wrong"))
+	})
 }
 
 func Test_BasicAuth_HashVariants(t *testing.T) {

@@ -57,6 +57,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Proxy](#proxy)
   - [Recover](#recover)
   - [Session](#session)
+  - [SSE](#sse)
 - [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
@@ -415,6 +416,8 @@ app.RouteChain("/api").RouteChain("/user/:id?")
 </details>
 
 You can find more information about `app.RouteChain` and `app.Route` in the API documentation ([RouteChain](./api/app#routechain), [Route](./api/app#route)).
+
+Named routes retrieved with `app.GetRoute(name)` also support `route.URL(params)` for generating relative URLs directly from the route definition, including parameter substitution for named, wildcard (`*`), and plus (`+`) segments.
 
 ### Domain routing
 
@@ -1366,6 +1369,10 @@ Cached responses now include an RFC-compliant Age header, providing a standardiz
 
 Cache keys are now redacted in logs and error messages by default, and a `DisableValueRedaction` boolean (default `false`) lets you opt out when you need the raw value for troubleshooting.
 
+The default cache key strategy was also hardened. Instead of path-only behavior, keys now use structured request dimensions: method partitioning, path, canonical query string, and selected representation headers (`Accept`, `Accept-Encoding`, `Accept-Language`). This avoids collisions such as `/items?id=1` vs `/items?id=2` while keeping key generation deterministic. New config fields were added for explicit control: `DisableQueryKeys`, `KeyHeaders`, `KeyCookies`, and `DisableVaryHeaders`.
+
+As a security/performance default, request body/form values are not part of the default cache key. Cache handling is limited to `GET` and `HEAD` requests by default, configurable via the `Methods` field.
+
 :::note
 The deprecated `Store` and `Key` options have been removed in v3. Use `Storage` and `KeyGenerator` instead.
 :::
@@ -1402,6 +1409,8 @@ Additionally, panic messages and logs redact misconfigured origins by default, a
 - Compression is bypassed for responses that already specify `Content-Encoding`, for range requests or `206` statuses, and when either side sends `Cache-Control: no-transform`.
 - `HEAD` requests still negotiate compression so `Content-Encoding`, `Content-Length`, `ETag`, and `Vary` match a corresponding `GET`, but the body is omitted.
 - `Vary: Accept-Encoding` is merged into responses even when compression is skipped, preventing caches from mixing encoded and unencoded variants.
+- Decoding compressed request bodies now enforces the app `BodyLimit` through fasthttp `WithLimit` helpers, including when the compression middleware is active.
+- Multipart form parsing now enforces the app `BodyLimit` by using fasthttp `MultipartFormWithLimit`.
 
 ### CSRF
 
@@ -1672,6 +1681,13 @@ The session middleware has undergone significant improvements in v3, focusing on
 - **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
+
+### SSE
+
+Fiber now includes an [SSE middleware](./middleware/sse.md) for Server-Sent Events. It handles native
+`SendStreamWriter` setup, SSE response headers, event formatting, flushing, heartbeat comments, and
+disconnect detection through flush errors while leaving application-level hubs, topics, replay stores, and
+pub/sub bridges to user code or recipes.
 
 ### Timeout
 
@@ -2879,6 +2895,15 @@ To restore v2 behavior:
 - Set `DisableCacheControl` to `true` to suppress automatic `Cache-Control` headers.
 - Configure `Expiration` to `1*time.Minute`.
 - Set `MaxBytes` to `0` (or a higher value) when caching large responses.
+- Disable structured key dimensions as needed (for example `DisableQueryKeys: true`), or provide a custom `KeyGenerator`.
+
+Additional v3 cache key options:
+
+- `Methods`: HTTP methods eligible for caching (default `GET`, `HEAD`)
+- `DisableQueryKeys`: disable canonicalized query args in keys (default `false`)
+- `KeyHeaders`: request header allow-list for key partitioning
+- `KeyCookies`: explicit cookie allow-list for key partitioning
+- `DisableVaryHeaders`: disable response `Vary` dimensions in lookup/storage partitioning (default `false`)
 
 #### CORS
 

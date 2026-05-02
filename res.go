@@ -2,7 +2,6 @@ package fiber
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"html/template"
 	"io"
@@ -430,6 +429,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // AutoFormat performs content-negotiation on the Accept HTTP header.
 // It uses Accepts to select a proper format.
 // The supported content types are text/html, text/plain, application/json, application/xml, application/vnd.msgpack, and application/cbor.
+// When text/html is selected, the body is treated as plain text and HTML-escaped before being wrapped in a `<p>` element.
 // For more flexible content negotiation, use Format.
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
@@ -458,7 +458,7 @@ func (r *DefaultRes) AutoFormat(body any) error {
 	case "xml":
 		return r.XML(body)
 	case "html":
-		return r.SendString("<p>" + b + "</p>")
+		return r.SendString("<p>" + template.HTMLEscapeString(b) + "</p>")
 	case "msgpack":
 		return r.MsgPack(body)
 	case "cbor":
@@ -646,38 +646,14 @@ func (r *DefaultRes) ViewBind(vars Map) error {
 	return r.c.ViewBind(vars)
 }
 
-// getLocationFromRoute get URL location from route using parameters
+// getLocationFromRoute gets the URL location from a route using parameters.
+// Nil receivers and missing routes return ErrNotFound to match Route.URL semantics.
 func (r *DefaultRes) getLocationFromRoute(route *Route, params Map) (string, error) {
-	if route == nil || route.Path == "" {
+	if r == nil || route == nil || route.Path == "" {
 		return "", ErrNotFound
 	}
 
-	app := r.c.app
-	buf := bytebufferpool.Get()
-	for _, segment := range route.routeParser.segs {
-		if !segment.IsParam {
-			_, err := buf.WriteString(segment.Const)
-			if err != nil {
-				return "", fmt.Errorf("failed to write string: %w", err)
-			}
-			continue
-		}
-
-		for key, val := range params {
-			isSame := key == segment.ParamName || (!app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) >= 0
-			if isSame || isGreedy {
-				_, err := buf.WriteString(utils.ToString(val))
-				if err != nil {
-					return "", fmt.Errorf("failed to write string: %w", err)
-				}
-			}
-		}
-	}
-	location := buf.String()
-	// release buffer
-	bytebufferpool.Put(buf)
-	return location, nil
+	return buildRouteURL(route, params)
 }
 
 // GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
@@ -833,10 +809,6 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
 				ctx.Response.SetStatusCode(StatusNotFound)
 			},
-		}
-
-		if cfg.FS != nil {
-			fasthttpFS.Root = "."
 		}
 
 		sf := &sendFileStore{

@@ -2,8 +2,10 @@ package binder
 
 import (
 	"bytes"
+	"compress/gzip"
 	"io"
 	"mime/multipart"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -203,6 +205,43 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	content, err = io.ReadAll(file)
 	require.NoError(t, err)
 	require.Equal(t, "avatar2", string(content))
+}
+
+func Test_FormBinder_BindMultipart_BodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	b := &FormBinding{
+		MaxBodySize: 64,
+	}
+
+	type User struct {
+		Name string `form:"name"`
+	}
+	var user User
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	multipartBody := &bytes.Buffer{}
+	mw := multipart.NewWriter(multipartBody)
+	require.NoError(t, mw.WriteField("name", strings.Repeat("a", 1024)))
+	require.NoError(t, mw.Close())
+
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	_, err := gz.Write(multipartBody.Bytes())
+	require.NoError(t, err)
+	require.NoError(t, gz.Flush())
+	require.NoError(t, gz.Close())
+
+	req.Header.SetContentType(mw.FormDataContentType())
+	req.Header.SetContentEncoding("gzip")
+	req.SetBody(compressed.Bytes())
+
+	err = b.Bind(req, &user)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 }
 
 func Test_FormBinder_BindMultipart_ValueError(t *testing.T) {

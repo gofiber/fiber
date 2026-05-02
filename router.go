@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 
@@ -58,11 +59,122 @@ type Route struct {
 	routeParser routeParser // Parameter parser
 
 	// Data for routing
-	use      bool // USE matches path prefixes
-	mount    bool // Indicated a mounted app on a specific route
-	star     bool // Path equals '*'
-	root     bool // Path equals '/'
-	autoHead bool // Automatically generated HEAD route
+	use           bool // USE matches path prefixes
+	mount         bool // Indicated a mounted app on a specific route
+	star          bool // Path equals '*'
+	root          bool // Path equals '/'
+	autoHead      bool // Automatically generated HEAD route
+	caseSensitive bool // Whether parameter matching is case-sensitive
+}
+
+var (
+	defaultGreedyParameterKeys        = []string{"*", "+"}
+	preferredWildcardGreedyParameters = []string{"*", "+"}
+	preferredPlusGreedyParameters     = []string{"+", "*"}
+)
+
+// URL generates a URL from the route path and parameters.
+// This method fills in the route parameters with the provided values.
+// Parameter matching respects the app's CaseSensitive configuration:
+// case-insensitive by default, case-sensitive when CaseSensitive is true.
+//
+// Example:
+//
+//	app.Get("/user/:name/:id", handler).Name("user")
+//	url, err := app.GetRoute("user").URL(Map{"name": "john", "id": "123"})
+//	// Returns: "/user/john/123"
+//
+//nolint:gocritic // hugeParam: app.GetRoute returns a value, so URL must be callable on that value directly.
+func (r Route) URL(params Map) (string, error) {
+	if r.Path == "" {
+		return "", ErrNotFound
+	}
+
+	return buildRouteURL(&r, params)
+}
+
+// buildRouteURL generates a URL from route segments and parameters.
+// This shared helper is used by both Route.URL() and DefaultRes.getLocationFromRoute()
+// to ensure consistent URL generation behavior across APIs.
+//
+// Parameter resolution uses a deterministic three-step lookup:
+//  1. Exact key match on segment.ParamName
+//  2. Case-insensitive fallback picking the lexicographically-smallest matching key (when !caseSensitive)
+//  3. Greedy parameter fallback for wildcard (*) and plus (+) parameters
+func buildRouteURL(route *Route, params Map) (string, error) {
+	if len(route.routeParser.segs) == 0 {
+		return route.Path, nil
+	}
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	for _, segment := range route.routeParser.segs {
+		if !segment.IsParam {
+			_, err := buf.WriteString(segment.Const)
+			if err != nil {
+				return "", fmt.Errorf("failed to write string: %w", err)
+			}
+			continue
+		}
+
+		var (
+			val   any
+			found bool
+		)
+
+		// Prefer an exact parameter name match
+		if val, found = params[segment.ParamName]; !found && !route.caseSensitive {
+			// Fall back to a case-insensitive match using a deterministic winner
+			var matchedKey string
+			foundMatch := false
+			for key := range params {
+				if utils.EqualFold(key, segment.ParamName) && (!foundMatch || key < matchedKey) {
+					matchedKey = key
+					foundMatch = true
+				}
+			}
+			if foundMatch {
+				val = params[matchedKey]
+				found = true
+			}
+		}
+
+		// For greedy parameters, fall back to generic greedy keys
+		if !found && segment.IsGreedy {
+			for _, greedyKey := range preferredGreedyParameters(segment.ParamName) {
+				if val, found = params[greedyKey]; found {
+					break
+				}
+			}
+		}
+
+		if found {
+			_, err := buf.WriteString(utils.ToString(val))
+			if err != nil {
+				return "", fmt.Errorf("failed to write string: %w", err)
+			}
+		}
+	}
+
+	return buf.String(), nil
+}
+
+// preferredGreedyParameters returns the generic greedy fallback lookup order
+// for a route parameter name.
+// Parameter names starting with '+' prefer '+' before '*', names starting with
+// '*' prefer '*' before '+', and all other names fall back to the default order.
+func preferredGreedyParameters(paramName string) []string {
+	if paramName != "" {
+		switch paramName[0] {
+		case plusParam:
+			return preferredPlusGreedyParameters
+		case wildcardParam:
+			return defaultGreedyParameterKeys
+		}
+	}
+
+	return defaultGreedyParameterKeys
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
@@ -84,9 +196,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 	// Does this route have parameters?
 	if len(r.Params) > 0 {
 		// Match params using precomputed routeParser
-		if r.routeParser.getMatch(detectionPath, path, params, r.use) {
-			return true
-		}
+		return r.routeParser.getMatch(detectionPath, path, params, r.use)
 	}
 
 	// Middleware route?
@@ -369,6 +479,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	route.routeParser = parseRoute(prettyPath, app.customConstraints...)
 	route.root = false
 	route.star = false
+	route.caseSensitive = app.config.CaseSensitive
 
 	return route
 }
@@ -376,11 +487,12 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 func (*App) copyRoute(route *Route) *Route {
 	return &Route{
 		// Router booleans
-		use:      route.use,
-		mount:    route.mount,
-		star:     route.star,
-		root:     route.root,
-		autoHead: route.autoHead,
+		use:           route.use,
+		mount:         route.mount,
+		star:          route.star,
+		root:          route.root,
+		autoHead:      route.autoHead,
+		caseSensitive: route.caseSensitive,
 
 		// Path data
 		path:        route.path,
@@ -554,10 +666,11 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		isRoot := pathClean == "/"
 
 		route := Route{
-			use:   isUse,
-			mount: isMount,
-			star:  isStar,
-			root:  isRoot,
+			use:           isUse,
+			mount:         isMount,
+			star:          isStar,
+			root:          isRoot,
+			caseSensitive: app.config.CaseSensitive,
 
 			path:        pathClean,
 			routeParser: parsedPretty,

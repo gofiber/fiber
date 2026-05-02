@@ -45,6 +45,7 @@ type Res interface {
 	// AutoFormat performs content-negotiation on the Accept HTTP header.
 	// It uses Accepts to select a proper format.
 	// The supported content types are text/html, text/plain, application/json, application/xml, application/vnd.msgpack, and application/cbor.
+	// When text/html is selected, the body is treated as plain text and HTML-escaped before being wrapped in a `<p>` element.
 	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
 	AutoFormat(body any) error
@@ -98,7 +99,8 @@ type Res interface {
 	// ViewBind Add vars to default view var map binding to template engine.
 	// Variables are read by the Render method and may be overwritten.
 	ViewBind(vars Map) error
-	// getLocationFromRoute get URL location from route using parameters
+	// getLocationFromRoute gets the URL location from a route using parameters.
+	// Nil receivers and missing routes return ErrNotFound to match Route.URL semantics.
 	getLocationFromRoute(route *Route, params Map) (string, error)
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
@@ -159,5 +161,8 @@ type Res interface {
 	// or when blocking access to sensitive endpoints.
 	Drop() error
 	// End immediately flushes the current response and closes the underlying connection.
+	//
+	// Note: End does not work when using streaming (e.g. fasthttp's HijackConn or SendStream),
+	// because in streaming mode the connection is managed asynchronously and ctx.Conn() may return nil.
 	End() error
 }

@@ -1,10 +1,12 @@
 package cache
 
 import (
+	"sort"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
 // Config defines the config for middleware.
@@ -24,11 +26,17 @@ type Config struct {
 	// Optional. Default: nil
 	CacheInvalidator func(fiber.Ctx) bool
 
-	// Key allows you to generate custom keys, by default c.Path() is used
+	// KeyGenerator allows you to generate custom keys.
 	//
-	// Default: func(c fiber.Ctx) string {
-	//   return utils.CopyString(c.Path())
-	// }
+	// When nil, the middleware uses a structured key based on:
+	//   - Request path (bounded to 192 bytes, hashed if longer)
+	//   - Canonical query string (sorted parameters, bounded)
+	//   - Selected request headers (from KeyHeaders)
+	//   - Selected cookies (from KeyCookies)
+	//
+	// The resulting cache key is always partitioned by request method internally.
+	//
+	// Default: nil
 	KeyGenerator func(fiber.Ctx) string
 
 	// ExpirationGenerator allows you to generate a custom expiration per request.
@@ -44,8 +52,25 @@ type Config struct {
 	// Optional. Default: X-Cache
 	CacheHeader string
 
-	// You can specify HTTP methods to cache.
-	// The middleware just caches the routes of its methods in this slice.
+	// KeyHeaders is the set of request headers that can change the selected representation and
+	// therefore should partition cache entries. Set this to an empty slice to disable
+	// header-based partitioning.
+	//
+	// Header names are normalized to lowercase for case-insensitive matching.
+	//
+	// Optional. Default: []string{"Accept", "Accept-Encoding", "Accept-Language"}
+	KeyHeaders []string
+
+	// KeyCookies is an explicit allow-list of request cookies that should partition cache entries.
+	// Cookies are excluded by default to avoid accidental per-user cache fragmentation.
+	//
+	// Optional. Default: nil
+	KeyCookies []string
+
+	// Methods specifies which HTTP methods are eligible for caching.
+	// Requests with methods not in this list bypass the cache entirely.
+	// Method names are normalized to uppercase automatically.
+	// Set to nil to use the default; set to an empty slice to disable caching for all methods.
 	//
 	// Default: []string{fiber.MethodGet, fiber.MethodHead}
 	Methods []string
@@ -61,6 +86,16 @@ type Config struct {
 	//
 	// Optional. Default: 1 * 1024 * 1024
 	MaxBytes uint
+
+	// DisableQueryKeys disables query-string partitioning in cache keys.
+	//
+	// Optional. Default: false
+	DisableQueryKeys bool
+
+	// DisableVaryHeaders disables response Vary-based lookup partitioning.
+	//
+	// Optional. Default: false
+	DisableVaryHeaders bool
 
 	// DisableValueRedaction turns off masking cache keys in logs and error messages when set to true.
 	//
@@ -87,21 +122,31 @@ var ConfigDefault = Config{
 	DisableCacheControl:   false,
 	CacheInvalidator:      nil,
 	DisableValueRedaction: false,
-	KeyGenerator: func(c fiber.Ctx) string {
-		return utils.CopyString(c.Path())
-	},
-	ExpirationGenerator:  nil,
-	StoreResponseHeaders: false,
-	Storage:              nil,
-	MaxBytes:             1 * 1024 * 1024,
-	Methods:              []string{fiber.MethodGet, fiber.MethodHead},
+	KeyGenerator:          nil,
+	DisableQueryKeys:      false,
+	KeyHeaders:            []string{fiber.HeaderAccept, fiber.HeaderAcceptEncoding, fiber.HeaderAcceptLanguage},
+	KeyCookies:            nil,
+	Methods:               []string{fiber.MethodGet, fiber.MethodHead},
+	DisableVaryHeaders:    false,
+	ExpirationGenerator:   nil,
+	StoreResponseHeaders:  false,
+	Storage:               nil,
+	MaxBytes:              1 * 1024 * 1024,
 }
 
 // Helper function to set default values
 func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
 	if len(config) < 1 {
-		return ConfigDefault
+		cfg := ConfigDefault
+		cfg.KeyHeaders = normalizeHeaderDimensions(cfg.KeyHeaders, ConfigDefault.KeyHeaders)
+		cfg.KeyCookies = normalizeCookieDimensions(cfg.KeyCookies, nil)
+		if cfg.KeyGenerator == nil {
+			cfg.KeyGenerator = func(c fiber.Ctx) string {
+				return defaultKeyGenerator(c, &cfg)
+			}
+		}
+		return cfg
 	}
 
 	// Override default config
@@ -117,11 +162,67 @@ func configDefault(config ...Config) Config {
 	if cfg.CacheHeader == "" {
 		cfg.CacheHeader = ConfigDefault.CacheHeader
 	}
-	if cfg.KeyGenerator == nil {
-		cfg.KeyGenerator = ConfigDefault.KeyGenerator
-	}
-	if len(cfg.Methods) == 0 {
+	cfg.KeyHeaders = normalizeHeaderDimensions(cfg.KeyHeaders, ConfigDefault.KeyHeaders)
+	cfg.KeyCookies = normalizeCookieDimensions(cfg.KeyCookies, nil)
+	// nil = use default methods; explicit empty slice = cache no methods
+	if cfg.Methods == nil {
 		cfg.Methods = ConfigDefault.Methods
+	} else {
+		// Normalize method names to uppercase (HTTP methods are case-sensitive
+		// and c.Method() returns uppercase, e.g. "GET" not "get").
+		// Copy first to avoid mutating the caller's slice.
+		normalized := make([]string, len(cfg.Methods))
+		for i, m := range cfg.Methods {
+			normalized[i] = utilsstrings.ToUpper(m)
+		}
+		cfg.Methods = normalized
+	}
+	if cfg.KeyGenerator == nil {
+		cfg.KeyGenerator = func(c fiber.Ctx) string {
+			return defaultKeyGenerator(c, &cfg)
+		}
 	}
 	return cfg
+}
+
+func normalizeHeaderDimensions(values, defaults []string) []string {
+	return normalizeKeyDimensions(values, defaults, utilsstrings.ToLower)
+}
+
+func normalizeCookieDimensions(values, defaults []string) []string {
+	return normalizeKeyDimensions(values, defaults, nil)
+}
+
+func normalizeKeyDimensions(values, defaults []string, normalize func(string) string) []string {
+	if values == nil {
+		if len(defaults) == 0 {
+			return nil
+		}
+		values = defaults
+	}
+
+	if len(values) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := utils.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		normalized := trimmed
+		if normalize != nil {
+			normalized = normalize(trimmed)
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+
+	sort.Strings(out)
+	return out
 }
