@@ -2,8 +2,6 @@ package logtemplate
 
 import (
 	"bytes"
-	"fmt"
-	"io"
 
 	"github.com/gofiber/utils/v2"
 )
@@ -14,18 +12,15 @@ const (
 	paramSeparator = ":"
 )
 
-// Buffer abstracts the buffer operations used when rendering log templates.
+// Buffer is the minimal write surface required by template renderers.
+// It is intentionally narrow (Write/WriteByte/WriteString plus Write so
+// fmt.Fprintf works) so any byte-buffer implementation — including the
+// pooled *bytebufferpool.ByteBuffer used internally — satisfies it without
+// having to expose its full machinery.
 type Buffer interface {
-	Len() int
-	ReadFrom(r io.Reader) (int64, error)
-	WriteTo(w io.Writer) (int64, error)
-	Bytes() []byte
 	Write(p []byte) (int, error)
 	WriteByte(c byte) error
 	WriteString(s string) (int, error)
-	Set(p []byte)
-	SetString(s string)
-	String() string
 }
 
 // Func renders one dynamic template tag.
@@ -69,7 +64,7 @@ func Build[C, D any](format string, tagFunctions map[string]Func[C, D]) (*Templa
 		if foundParam {
 			fn, ok := tagFunctions[utils.UnsafeString(tag)+paramSeparator]
 			if !ok {
-				return nil, fmt.Errorf("%w: %q", ErrParameterMissing, utils.UnsafeString(before))
+				return nil, &UnknownTagError{Tag: string(before), Param: string(param)}
 			}
 			funcChain = append(funcChain, fn)
 			fixedParts = append(fixedParts, param)
@@ -77,7 +72,13 @@ func Build[C, D any](format string, tagFunctions map[string]Func[C, D]) (*Templa
 			funcChain = append(funcChain, fn)
 			fixedParts = append(fixedParts, nil)
 		} else {
-			return nil, fmt.Errorf("%w: %q", ErrParameterMissing, utils.UnsafeString(before))
+			tagErr := &UnknownTagError{Tag: string(before)}
+			// Common typo: user wrote ${reqHeader} when reqHeader: is registered
+			// as a parametric tag. Surface the parametric form as a hint.
+			if _, hasParametric := tagFunctions[utils.UnsafeString(before)+paramSeparator]; hasParametric {
+				tagErr.Hint = `did you mean ${` + string(before) + `:PARAM}?`
+			}
+			return nil, tagErr
 		}
 
 		templateB = after

@@ -149,10 +149,13 @@ func beforeHandlerFunc(cfg *Config) {
 	}
 }
 
+// appendInt writes the decimal form of v into output without going through
+// fmt boxing. The 20-byte stack scratch fits any int64; strconv.AppendInt
+// only grows the slice when the formatted value exceeds that capacity, which
+// cannot happen for a fixed-width int.
 func appendInt(output Buffer, v int) (int, error) {
-	old := output.Len()
-	output.Set(strconv.AppendInt(output.Bytes(), int64(v), 10))
-	return output.Len() - old, nil
+	var scratch [20]byte
+	return output.Write(strconv.AppendInt(scratch[:0], int64(v), 10))
 }
 
 // writeLog writes a msg to w, printing a warning to stderr if the log fails.

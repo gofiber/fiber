@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
@@ -357,14 +357,7 @@ func Test_SessionLoggerTagRedactsSessionID(t *testing.T) {
 // Test_SessionLogContextTagRedactsSessionID runs serially because it mutates
 // package-global default logger output and context format.
 func Test_SessionLogContextTagRedactsSessionID(t *testing.T) {
-	t.Cleanup(func() {
-		fiberlog.MustFormat(fiberlog.DefaultFormat)
-		fiberlog.SetOutput(os.Stderr)
-	})
-
-	var buf bytes.Buffer
-	fiberlog.SetOutput(&buf)
-	fiberlog.MustFormat("session-id=${session-id} ")
+	buf := loggertest.CaptureContextLog(t, "session-id=${session-id} ")
 
 	app := fiber.New()
 	app.Use(New())
@@ -378,14 +371,6 @@ func Test_SessionLogContextTagRedactsSessionID(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Contains(t, buf.String(), "[Info] session-id=")
 	require.Contains(t, buf.String(), "**** start")
-}
-
-func Test_RedactSessionID(t *testing.T) {
-	t.Parallel()
-
-	require.Empty(t, redactSessionID(""))
-	require.Equal(t, "****", redactSessionID("short"))
-	require.Equal(t, "sess****", redactSessionID("session-value"))
 }
 
 func Test_Session_NewWithStore(t *testing.T) {

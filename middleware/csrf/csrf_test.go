@@ -7,13 +7,13 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/session"
@@ -658,14 +658,7 @@ func Test_CSRFLoggerTagRedactsToken(t *testing.T) {
 // Test_CSRFLogContextTagRedactsToken runs serially because it mutates
 // package-global default logger output and context format.
 func Test_CSRFLogContextTagRedactsToken(t *testing.T) {
-	t.Cleanup(func() {
-		fiberlog.MustFormat(fiberlog.DefaultFormat)
-		fiberlog.SetOutput(os.Stderr)
-	})
-
-	var buf bytes.Buffer
-	fiberlog.SetOutput(&buf)
-	fiberlog.MustFormat("csrf-token=${csrf-token} ")
+	buf := loggertest.CaptureContextLog(t, "csrf-token=${csrf-token} ")
 
 	app := fiber.New()
 	app.Use(New())

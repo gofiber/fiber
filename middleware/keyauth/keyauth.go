@@ -8,7 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
-	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
 )
@@ -101,30 +101,9 @@ func New(config ...Config) fiber.Handler {
 }
 
 func registerLogContextTags() {
-	fiberlog.MustRegisterContextTag("api-key", func(output fiberlog.Buffer, ctx any, _ *fiberlog.ContextData, _ string) (int, error) {
-		token := TokenFromContext(ctx)
-		if token == "" {
-			return 0, nil
-		}
-		return output.WriteString(redactContextValue(token))
+	logger.RegisterContextTag("api-key", func(ctx any) string {
+		return redact.Prefix(TokenFromContext(ctx))
 	})
-	logger.MustRegisterTag("api-key", func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
-		token := TokenFromContext(c)
-		if token == "" {
-			return 0, nil
-		}
-		return output.WriteString(redactContextValue(token))
-	})
-}
-
-func redactContextValue(value string) string {
-	if value == "" {
-		return ""
-	}
-	if len(value) <= 4 {
-		return "****"
-	}
-	return value[:4] + "****"
 }
 
 // TokenFromContext returns the bearer token from the request context.

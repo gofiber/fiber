@@ -1,18 +1,34 @@
 package logger
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/gofiber/fiber/v3/internal/logtemplate"
 	"github.com/stretchr/testify/require"
 )
 
-func Test_TemplateParameterMissingErrorUnwrap(t *testing.T) {
+func Test_UnknownTagErrorIsAndAs(t *testing.T) {
 	t.Parallel()
 
-	err := errTemplateParameterMissing("method")
-	require.ErrorIs(t, err, ErrTemplateParameterMissing)
+	err := &UnknownTagError{Tag: "method"}
+	require.ErrorIs(t, err, ErrUnknownTag)
 
-	var typed templateParameterMissingError
-	require.ErrorAs(t, err, &typed)
-	require.EqualError(t, err, "logger: template parameter missing: method")
+	var typed *UnknownTagError
+	require.True(t, errors.As(err, &typed))
+	require.Equal(t, "method", typed.Tag)
+	require.EqualError(t, err, `logger: unknown template tag: "method"`)
+}
+
+func Test_TranslateBuildError(t *testing.T) {
+	t.Parallel()
+
+	got := translateBuildError(&logtemplate.UnknownTagError{Tag: "missing:value", Param: "value"})
+	var typed *UnknownTagError
+	require.True(t, errors.As(got, &typed))
+	require.Equal(t, "missing:value", typed.Tag)
+	require.Equal(t, "value", typed.Param)
+	require.ErrorIs(t, got, ErrUnknownTag)
+
+	require.Nil(t, translateBuildError(errors.New("unrelated")))
 }

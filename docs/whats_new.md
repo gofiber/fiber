@@ -1594,9 +1594,7 @@ The same template/tag mechanism is also available for application logs emitted t
 app.Use(requestid.New())
 
 // The requestid middleware automatically registers the ${requestid} tag.
-if err := log.Format("[${requestid}] "); err != nil {
-    log.Fatal(err)
-}
+log.MustSetContextTemplate(log.ContextConfig{Format: "[${requestid}] "})
 
 app.Get("/", func(c fiber.Ctx) error {
     // Pass c so middleware values stored on Fiber's request context can be read.
@@ -1606,6 +1604,24 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 `SetContextTemplate` configures Fiber's built-in default logger. Custom loggers registered with `log.SetLogger` keep control over their own `WithContext` behavior.
+
+#### Breaking change: `WithContext(ctx any)`
+
+The signature of `log.WithContext`, `baseLogger.WithContext`, and `AllLogger[T].WithContext` changed from `WithContext(ctx context.Context)` to `WithContext(ctx any)`. The wider parameter type is what allows the same call site to receive `fiber.Ctx`, `*fasthttp.RequestCtx`, or a standard `context.Context` and still resolve middleware-stored values via `Value` / `UserValue`. Adapter packages that implement `AllLogger[T]` directly (for example community Zap, Zerolog, or Logrus integrations) must update their `WithContext` method signature accordingly. Direct call sites that already pass a `context.Context` or a `fiber.Ctx` continue to compile.
+
+#### New API surface
+
+The `log` and `middleware/logger` packages gained the following exported symbols:
+
+- `log.SetContextTemplate(ContextConfig) error` / `log.MustSetContextTemplate(ContextConfig)` — configure the active context template.
+- `log.RegisterContextTag(name string, fn ContextTagFunc) error` / `log.MustRegisterContextTag` — register a global context tag.
+- `log.ContextConfig`, `log.ContextData`, `log.ContextTagFunc`, `log.Buffer` — supporting types.
+- `log.DefaultFormat`, `log.RequestIDFormat`, `log.KeyValueFormat`, `log.TagContextValue` — built-in format and tag constants.
+- `logger.RegisterTag(name string, fn LogFunc) error` / `logger.MustRegisterTag` — register a global access-log tag (in addition to per-instance `Config.CustomTags`).
+- `logger.RegisterContextTag(name string, extract func(ctx any) string)` — convenience helper that registers a string-valued tag in **both** the access-log registry and the `log.RegisterContextTag` registry, so middleware authors do not have to maintain two parallel renderers.
+- `logger.ErrUnknownTag` (sentinel) and `logger.UnknownTagError` (typed) — replace the older `ErrTemplateParameterMissing` sentinel that was never exported in a stable release. `New(Config{})` panics with `*UnknownTagError` when the format references a tag that has no registered renderer; `errors.As` retrieves the offending tag name.
+
+The `requestid`, `basicauth`, `keyauth`, `csrf`, and `session` middlewares automatically register their respective context tags (`${requestid}`, `${request-id}`, `${username}`, `${api-key}`, `${csrf-token}`, `${session-id}`) on first `New(...)`. Empty stubs for the same names are pre-registered at package init, so a logger format that references one of them compiles even when the corresponding middleware has not been initialized — the renderer is filled in once `middleware.New(...)` runs.
 
 The `Skip` is a function to determine if logging is skipped or written to `Stream`.
 

@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,6 +33,25 @@ func (w *byteSliceWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// callSiteLine returns the line number of the call that invoked it. Pair it
+// with a call on the next line to capture an absolute line number that stays
+// in sync when surrounding code shifts.
+func callSiteLine(t *testing.T) int {
+	t.Helper()
+	_, _, line, ok := runtime.Caller(1)
+	require.True(t, ok)
+	return line
+}
+
+// expectCallerOutput asserts that w contains exactly two log lines, the first
+// emitted from withContextLine and the second from infoLine, both annotated
+// with default_test.go via the standard library's Lshortfile flag.
+func expectCallerOutput(t *testing.T, w *byteSliceWriter, withContextLine, infoLine int) {
+	t.Helper()
+	want := fmt.Sprintf("default_test.go:%d: [Info] \ndefault_test.go:%d: [Info] \n", withContextLine, infoLine)
+	require.Equal(t, want, string(w.b), "log output should attribute the WithContext call site (line %d) and the bare Info call site (line %d)", withContextLine, infoLine)
+}
+
 // Test_WithContextCaller runs serially because it mutates the package-global
 // logger and output to verify caller attribution.
 func Test_WithContextCaller(t *testing.T) {
@@ -44,10 +66,12 @@ func Test_WithContextCaller(t *testing.T) {
 	SetOutput(&w)
 	ctx := context.TODO()
 
+	withContextLine := callSiteLine(t) + 1
 	WithContext(ctx).Info("")
+	infoLine := callSiteLine(t) + 1
 	Info("")
 
-	require.Equal(t, "default_test.go:47: [Info] \ndefault_test.go:48: [Info] \n", string(w.b))
+	expectCallerOutput(t, &w, withContextLine, infoLine)
 }
 
 // Test_WithContextNilCaller runs serially because it mutates the package-global
@@ -63,10 +87,39 @@ func Test_WithContextNilCaller(t *testing.T) {
 	var w byteSliceWriter
 	SetOutput(&w)
 
+	withContextLine := callSiteLine(t) + 1
 	WithContext(nil).Info("")
+	infoLine := callSiteLine(t) + 1
 	Info("")
 
-	require.Equal(t, "default_test.go:66: [Info] \ndefault_test.go:67: [Info] \n", string(w.b))
+	expectCallerOutput(t, &w, withContextLine, infoLine)
+}
+
+// Test_WithContextRenderErrorSurfacesMarker locks in M8: a misconfigured
+// context tag must not silently drop context — the failure should leave a
+// visible marker in the log line so operators notice.
+func Test_WithContextRenderError(t *testing.T) {
+	t.Cleanup(initDefaultLogger)
+
+	templateErr := errors.New("tag boom")
+	require.NoError(t, SetContextTemplate(ContextConfig{
+		Format: "[${broken}] ",
+		CustomTags: map[string]ContextTagFunc{
+			"broken": func(_ Buffer, _ any, _ *ContextData, _ string) (int, error) {
+				return 0, templateErr
+			},
+		},
+	}))
+	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
+
+	var w byteSliceWriter
+	SetOutput(&w)
+
+	WithContext(context.Background()).Info("payload")
+
+	out := string(w.b)
+	require.True(t, strings.Contains(out, "ctx-render-error"), "expected render-error marker, got %q", out)
+	require.True(t, strings.Contains(out, "payload"), "expected payload to still be emitted, got %q", out)
 }
 
 func Test_DefaultLogger(t *testing.T) {
@@ -178,8 +231,10 @@ func Test_WithContextTemplate(t *testing.T) {
 	require.Equal(t, "[Info] [req-42] start\n", string(w.b))
 }
 
-// Test_WithContextTemplateFailureOmitsPartialContext runs serially because it
-// mutates the same global logger state as Test_WithContextTemplate.
+// Test_WithContextTemplateFailureOmitsPartialContext locks in the scratch-buffer
+// guarantee from M8: a tag that writes some bytes before erroring must not
+// leak its prefix into the real log line. Instead, the render-error marker
+// stands in for the entire context block.
 func Test_WithContextTemplateFailureOmitsPartialContext(t *testing.T) {
 	initDefaultLogger()
 
@@ -188,8 +243,7 @@ func Test_WithContextTemplateFailureOmitsPartialContext(t *testing.T) {
 		Format: "[${broken}] ",
 		CustomTags: map[string]ContextTagFunc{
 			"broken": func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
-				_, err := output.WriteString("partial")
-				if err != nil {
+				if _, err := output.WriteString("partial"); err != nil {
 					return 0, err
 				}
 				return 0, templateErr
@@ -203,7 +257,10 @@ func Test_WithContextTemplateFailureOmitsPartialContext(t *testing.T) {
 
 	WithContext(context.Background()).Info("start")
 
-	require.Equal(t, "[Info] start\n", string(w.b))
+	out := string(w.b)
+	require.NotContains(t, out, "partial", "scratch buffer must isolate partial writes from the live log line")
+	require.Contains(t, out, "ctx-render-error", "render error must be surfaced rather than silently dropped")
+	require.Contains(t, out, "start", "log payload must still reach the writer")
 }
 
 func Test_LogfKeyAndValues(t *testing.T) {

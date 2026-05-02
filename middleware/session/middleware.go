@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
-	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 )
 
@@ -114,30 +114,13 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 var registerLogContextTagsOnce sync.Once
 
 func registerLogContextTags() {
-	fiberlog.MustRegisterContextTag("session-id", func(output fiberlog.Buffer, ctx any, _ *fiberlog.ContextData, _ string) (int, error) {
+	logger.RegisterContextTag("session-id", func(ctx any) string {
 		m := FromContext(ctx)
 		if m == nil {
-			return 0, nil
+			return ""
 		}
-		return output.WriteString(redactSessionID(m.ID()))
+		return redact.Prefix(m.ID())
 	})
-	logger.MustRegisterTag("session-id", func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
-		m := FromContext(c)
-		if m == nil {
-			return 0, nil
-		}
-		return output.WriteString(redactSessionID(m.ID()))
-	})
-}
-
-func redactSessionID(id string) string {
-	if id == "" {
-		return ""
-	}
-	if len(id) <= 8 {
-		return "****"
-	}
-	return id[:4] + "****"
 }
 
 // initialize sets up middleware for the request.

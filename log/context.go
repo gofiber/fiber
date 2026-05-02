@@ -11,21 +11,45 @@ import (
 )
 
 // TagContextValue reads a value from the bound context-like value using the tag parameter as the key.
+// Use it inside a format string as `${value:KEY}`. The trailing colon is required: it marks the tag
+// as parametric. Registering a tag named "value:" via RegisterContextTag is rejected — the
+// renderer is reserved for context-value lookups.
 const TagContextValue = "value:"
+
+// Tag names registered by Fiber's built-in middlewares. Treat them as the
+// canonical identifiers for the values produced by requestid, basicauth,
+// keyauth, csrf, and session — keeping format strings derived from these
+// constants means renaming a tag here cascades automatically.
+const (
+	TagRequestID       = "requestid"
+	TagRequestIDDashed = "request-id"
+	TagUsername        = "username"
+	TagAPIKey          = "api-key"
+	TagCSRFToken       = "csrf-token"
+	TagSessionID       = "session-id"
+)
 
 const (
 	// DefaultFormat disables contextual fields for the default logger.
 	DefaultFormat = ""
 	// RequestIDFormat renders the request ID registered by the requestid middleware.
-	RequestIDFormat = "[${requestid}] "
-	// KeyValueFormat renders commonly registered middleware context values as key/value fields.
-	KeyValueFormat = "request-id=${requestid} username=${username} api-key=${api-key} csrf-token=${csrf-token} session-id=${session-id} "
+	RequestIDFormat = "[${" + TagRequestID + "}] "
+	// KeyValueFormat renders commonly registered middleware context values as
+	// key/value fields. Sensitive values (api-key, csrf-token, session-id) are
+	// redacted by the registering middleware before reaching the log line.
+	KeyValueFormat = "request-id=${" + TagRequestIDDashed + "} " +
+		"username=${" + TagUsername + "} " +
+		"api-key=${" + TagAPIKey + "} " +
+		"csrf-token=${" + TagCSRFToken + "} " +
+		"session-id=${" + TagSessionID + "} "
 )
 
 // Buffer abstracts the buffer operations used when rendering contextual log fields.
 type Buffer = logtemplate.Buffer
 
-// ContextData is reserved for data shared by contextual log tags.
+// ContextData is reserved for data shared by contextual log tags. It currently
+// has no fields; the type exists so the ContextTagFunc signature can evolve
+// without breaking custom-tag implementations.
 type ContextData struct{}
 
 // ContextTagFunc renders one contextual log tag.
@@ -41,25 +65,42 @@ type ContextConfig struct {
 	Format string
 }
 
+// contextTemplate holds the precompiled format. Loads on the log hot path
+// happen lock-free; rebuilds (write side) hold contextMu.
 var contextTemplate atomic.Pointer[logtemplate.Template[any, ContextData]]
 
 var (
+	// contextMu guards rebuilds of contextFormat / contextTags. Readers of
+	// the compiled template (writeContext) use contextTemplate.Load directly.
 	contextMu     sync.RWMutex
 	contextFormat = DefaultFormat
 	contextTags   = defaultContextTagMap()
 )
 
 var (
-	errContextTagInvalid  = errors.New("log: context tag name and function are required")
-	errContextTagReserved = errors.New("log: context tag is reserved")
+	// ErrContextTagInvalid is returned by RegisterContextTag and SetContextTemplate
+	// when the supplied tag name or renderer is empty.
+	ErrContextTagInvalid = errors.New("log: context tag name and function are required")
+	// ErrContextTagReserved is returned by RegisterContextTag and SetContextTemplate
+	// when the caller attempts to override the reserved TagContextValue ("value:") tag.
+	ErrContextTagReserved = errors.New("log: context tag is reserved")
 )
 
 // SetContextTemplate configures contextual fields rendered by WithContext for Fiber's default logger.
-// It returns an error if config.Format cannot be parsed.
+// Pass an empty ContextConfig (or ContextConfig{Format: DefaultFormat}) to disable contextual fields.
+// It returns an error if config.Format cannot be parsed or if config.CustomTags attempts to
+// override the reserved TagContextValue tag.
 func SetContextTemplate(config ContextConfig) error {
+	if _, ok := config.CustomTags[TagContextValue]; ok {
+		return ErrContextTagReserved
+	}
+
 	contextMu.Lock()
 	defer contextMu.Unlock()
 
+	// Cloning the live tag map preserves prior RegisterContextTag entries —
+	// callers that interleave RegisterContextTag with SetContextTemplate
+	// expect the registration to remain visible. CustomTags layer on top.
 	tags := maps.Clone(contextTags)
 	maps.Copy(tags, config.CustomTags)
 	tags[TagContextValue] = defaultContextValueTag
@@ -67,7 +108,7 @@ func SetContextTemplate(config ContextConfig) error {
 	var tmpl *logtemplate.Template[any, ContextData]
 	if config.Format != "" {
 		var err error
-		tmpl, err = buildContextTemplate(config.Format, tags)
+		tmpl, err = logtemplate.Build[any, ContextData](config.Format, tags)
 		if err != nil {
 			return err
 		}
@@ -86,41 +127,16 @@ func MustSetContextTemplate(config ContextConfig) {
 	}
 }
 
-// Format configures the contextual fields rendered by WithContext for Fiber's default logger.
-// Pass DefaultFormat to disable contextual fields.
-func Format(format string) error {
-	contextMu.Lock()
-	defer contextMu.Unlock()
-
-	var tmpl *logtemplate.Template[any, ContextData]
-	if format != "" {
-		var err error
-		tmpl, err = buildContextTemplate(format, contextTags)
-		if err != nil {
-			return err
-		}
-	}
-
-	contextFormat = format
-	contextTemplate.Store(tmpl)
-	return nil
-}
-
-// MustFormat configures contextual fields and panics if the format cannot be parsed.
-func MustFormat(format string) {
-	if err := Format(format); err != nil {
-		panic(err)
-	}
-}
-
-// RegisterContextTag registers a contextual tag that can be used by Format.
-// Re-registering a tag replaces the existing tag function.
+// RegisterContextTag registers a contextual tag that can be used by SetContextTemplate.
+// Re-registering a tag replaces the existing tag function. Registration is package-global;
+// prefer ContextConfig.CustomTags for per-application overrides. The reserved TagContextValue
+// tag cannot be registered.
 func RegisterContextTag(tag string, fn ContextTagFunc) error {
 	if tag == "" || fn == nil {
-		return errContextTagInvalid
+		return ErrContextTagInvalid
 	}
 	if tag == TagContextValue {
-		return errContextTagReserved
+		return ErrContextTagReserved
 	}
 
 	contextMu.Lock()
@@ -132,7 +148,7 @@ func RegisterContextTag(tag string, fn ContextTagFunc) error {
 	var tmpl *logtemplate.Template[any, ContextData]
 	if contextFormat != "" {
 		var err error
-		tmpl, err = buildContextTemplate(contextFormat, tags)
+		tmpl, err = logtemplate.Build[any, ContextData](contextFormat, tags)
 		if err != nil {
 			return err
 		}
@@ -150,36 +166,37 @@ func MustRegisterContextTag(tag string, fn ContextTagFunc) {
 	}
 }
 
-func createContextTagMap(customTags map[string]ContextTagFunc) map[string]ContextTagFunc {
-	tags := defaultContextTagMap()
-	maps.Copy(tags, customTags)
-	tags[TagContextValue] = defaultContextValueTag
-
-	return tags
-}
-
+// defaultContextTagMap pre-seeds renderers for the tag names used by Fiber's
+// built-in middleware (basicauth, csrf, keyauth, requestid, session). The
+// stubs render empty strings so a format that references e.g. ${requestid}
+// compiles even when the corresponding middleware has not been initialized
+// yet — the slot is filled in once the middleware's New() runs.
 func defaultContextTagMap() map[string]ContextTagFunc {
 	return map[string]ContextTagFunc{
-		"api-key":       emptyContextTag,
-		"csrf-token":    emptyContextTag,
-		"request-id":    emptyContextTag,
-		"requestid":     emptyContextTag,
-		"session-id":    emptyContextTag,
-		"username":      emptyContextTag,
-		TagContextValue: defaultContextValueTag,
+		TagAPIKey:          emptyContextTag,
+		TagCSRFToken:       emptyContextTag,
+		TagRequestIDDashed: emptyContextTag,
+		TagRequestID:       emptyContextTag,
+		TagSessionID:       emptyContextTag,
+		TagUsername:        emptyContextTag,
+		TagContextValue:    defaultContextValueTag,
 	}
 }
 
 func defaultContextValueTag(output Buffer, ctx any, _ *ContextData, extraParam string) (int, error) {
 	switch v := contextValue(ctx, extraParam).(type) {
 	case []byte:
-		return output.Write(v)
+		return writeSanitized(output, v)
 	case string:
-		return output.WriteString(v)
+		return writeSanitizedString(output, v)
 	case nil:
 		return 0, nil
 	default:
-		n, err := fmt.Fprintf(output, "%v", v)
+		// fmt.Fprintf can produce arbitrary text (e.g. %v on a struct). Buffer
+		// the formatted output through a small intermediate so the same
+		// sanitization applies.
+		formatted := fmt.Sprintf("%v", v)
+		n, err := writeSanitizedString(output, formatted)
 		if err != nil {
 			return n, fmt.Errorf("write context value: %w", err)
 		}
@@ -187,12 +204,73 @@ func defaultContextValueTag(output Buffer, ctx any, _ *ContextData, extraParam s
 	}
 }
 
-func emptyContextTag(_ Buffer, _ any, _ *ContextData, _ string) (int, error) {
-	return 0, nil
+// writeSanitized writes p to output with ASCII control bytes replaced by
+// spaces. Tabs are preserved. The replacement is done in-place on a single
+// pass so the hot path stays alloc-free for inputs that are already clean
+// (the common case): clean inputs forward directly to output.Write.
+func writeSanitized(output Buffer, p []byte) (int, error) {
+	if !needsControlSanitize(p) {
+		return output.Write(p)
+	}
+	scrubbed := make([]byte, len(p))
+	for i, b := range p {
+		if isControlByte(b) {
+			scrubbed[i] = ' '
+		} else {
+			scrubbed[i] = b
+		}
+	}
+	return output.Write(scrubbed)
 }
 
-func buildContextTemplate(format string, tags map[string]ContextTagFunc) (*logtemplate.Template[any, ContextData], error) {
-	return logtemplate.Build[any, ContextData](format, tags)
+func writeSanitizedString(output Buffer, s string) (int, error) {
+	if !needsControlSanitizeString(s) {
+		return output.WriteString(s)
+	}
+	scrubbed := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if isControlByte(b) {
+			scrubbed[i] = ' '
+		} else {
+			scrubbed[i] = b
+		}
+	}
+	return output.Write(scrubbed)
+}
+
+func needsControlSanitize(p []byte) bool {
+	for _, b := range p {
+		if isControlByte(b) {
+			return true
+		}
+	}
+	return false
+}
+
+func needsControlSanitizeString(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if isControlByte(s[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// isControlByte reports whether b is an ASCII control byte that must not pass
+// through to a log line. Tab is preserved because operators frequently use it
+// for delimiting structured fields. CR, LF, NUL, and the other C0/DEL bytes
+// are replaced — they are the bytes attackers use to forge log lines or
+// corrupt terminal output via ANSI escape sequences.
+func isControlByte(b byte) bool {
+	if b == '\t' {
+		return false
+	}
+	return b < 0x20 || b == 0x7f
+}
+
+func emptyContextTag(_ Buffer, _ any, _ *ContextData, _ string) (int, error) {
+	return 0, nil
 }
 
 type valueContext interface {

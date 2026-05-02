@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 
@@ -17,6 +16,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
+	"github.com/gofiber/fiber/v3/internal/redact"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 )
@@ -581,20 +582,13 @@ func Test_LogTagsRedactToken(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "corr****", buf.String())
+	require.Equal(t, redact.Prefix(CorrectKey), buf.String())
 }
 
 // Test_LogContextTagRedactsToken runs serially because it mutates package-global
 // default logger output and context format.
 func Test_LogContextTagRedactsToken(t *testing.T) {
-	t.Cleanup(func() {
-		fiberlog.MustFormat(fiberlog.DefaultFormat)
-		fiberlog.SetOutput(os.Stderr)
-	})
-
-	var buf bytes.Buffer
-	fiberlog.SetOutput(&buf)
-	fiberlog.MustFormat("api-key=${api-key} ")
+	buf := loggertest.CaptureContextLog(t, "api-key=${api-key} ")
 
 	app := fiber.New()
 	app.Use(New(Config{
@@ -613,15 +607,7 @@ func Test_LogContextTagRedactsToken(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Contains(t, buf.String(), "[Info] api-key=corr**** start")
-}
-
-func Test_RedactContextValue(t *testing.T) {
-	t.Parallel()
-
-	require.Empty(t, redactContextValue(""))
-	require.Equal(t, "****", redactContextValue("key"))
-	require.Equal(t, "toke****", redactContextValue("token-value"))
+	require.Contains(t, buf.String(), "[Info] api-key="+redact.Prefix(CorrectKey)+" start")
 }
 
 func Test_TokenFromContext_Types(t *testing.T) {

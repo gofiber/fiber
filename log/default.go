@@ -239,6 +239,12 @@ func (l *defaultLogger) Panicw(msg string, keysAndValues ...any) {
 	l.privateLogw(LevelPanic, msg, keysAndValues)
 }
 
+// writeContext renders the configured context template directly into buf.
+// Rendering uses a scratch buffer so that a partially-rendered template (one
+// that errors mid-tag) does not leak its prefix into the real log line. When
+// rendering fails, a short marker is appended instead of the prefix so the
+// failure is visible in the log stream rather than silently producing
+// context-less log lines forever.
 func (l *defaultLogger) writeContext(buf Buffer) {
 	if !l.ctx.ok {
 		return
@@ -253,12 +259,11 @@ func (l *defaultLogger) writeContext(buf Buffer) {
 	defer bytebufferpool.Put(scratch)
 
 	if err := tmpl.Execute(scratch, l.ctx.value, &ContextData{}); err != nil {
+		_, _ = fmt.Fprintf(buf, "[ctx-render-error: %s] ", err.Error())
 		return
 	}
 
-	if _, err := buf.Write(scratch.Bytes()); err != nil {
-		return
-	}
+	_, _ = buf.Write(scratch.Bytes())
 }
 
 // WithContext returns a logger that shares the underlying output and renders configured contextual fields.

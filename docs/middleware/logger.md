@@ -142,7 +142,7 @@ The following tags are registered by Fiber middleware when the middleware is ini
 | `${session-id}` | `session.New()` or `session.NewWithStore()` | Redacted session ID stored by the session middleware. |
 
 :::note
-Auto-registered tags are access-log tags for `middleware/logger`. Application logs from the `log` package use their own context tag registry.
+Auto-registered tags are access-log tags for `middleware/logger`. The same names are also registered for application logs in the `log` package via `logger.RegisterContextTag` — see [api/log#context-tags](../api/log.md#context-tags) for details on `log.WithContext` enrichment.
 :::
 
 ### Register Tags from Custom Middleware

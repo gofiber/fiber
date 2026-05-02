@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
-	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
 )
@@ -47,16 +46,8 @@ func New(config ...Config) fiber.Handler {
 }
 
 func registerLogContextTags() {
-	tag := func(output fiberlog.Buffer, ctx any, _ *fiberlog.ContextData, _ string) (int, error) {
-		return output.WriteString(FromContext(ctx))
-	}
-	fiberlog.MustRegisterContextTag("requestid", tag)
-	fiberlog.MustRegisterContextTag("request-id", tag)
-	loggerTag := func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
-		return output.WriteString(FromContext(c))
-	}
-	logger.MustRegisterTag("requestid", loggerTag)
-	logger.MustRegisterTag("request-id", loggerTag)
+	logger.RegisterContextTag("requestid", FromContext)
+	logger.RegisterContextTag("request-id", FromContext)
 }
 
 // sanitizeRequestID returns the provided request ID when it is valid, otherwise

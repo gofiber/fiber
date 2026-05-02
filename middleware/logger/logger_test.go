@@ -470,20 +470,41 @@ func Test_Logger_ErrorOutput_TemplateFailure(t *testing.T) {
 	require.Equal(t, templateErr.Error(), buf.String())
 }
 
-func Test_Logger_TemplateParameterMissingCompatibility(t *testing.T) {
+func Test_Logger_UnknownTagPanicsWithTypedError(t *testing.T) {
 	t.Parallel()
 
-	require.PanicsWithError(t, `logger: template parameter missing: "missing:value"`, func() {
-		New(Config{
-			Format: "${missing:value}",
-		})
-	})
+	tests := []struct {
+		name     string
+		format   string
+		wantTag  string
+		wantPara string
+	}{
+		{name: "parametric tag", format: "${missing:value}", wantTag: "missing:value", wantPara: "value"},
+		{name: "bare tag", format: "${missing}", wantTag: "missing"},
+	}
 
-	require.PanicsWithError(t, `logger: template parameter missing: "missing"`, func() {
-		New(Config{
-			Format: "${missing}",
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				r := recover()
+				require.NotNil(t, r, "New must panic for unknown tag")
+
+				err, ok := r.(error)
+				require.True(t, ok, "panic value must be an error, got %T", r)
+				require.ErrorIs(t, err, ErrUnknownTag)
+
+				var typed *UnknownTagError
+				require.True(t, errors.As(err, &typed))
+				require.Equal(t, tt.wantTag, typed.Tag)
+				require.Equal(t, tt.wantPara, typed.Param)
+				require.EqualError(t, err, `logger: unknown template tag: "`+tt.wantTag+`"`)
+			}()
+
+			New(Config{Format: tt.format})
 		})
-	})
+	}
 }
 
 // go test -run Test_Logger_All
@@ -972,14 +993,14 @@ func Test_Logger_RegisterTagRejectsInvalidInput(t *testing.T) {
 
 	require.ErrorIs(t, RegisterTag("", func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
 		return output.WriteString("ignored")
-	}), errTagInvalid)
-	require.ErrorIs(t, RegisterTag("missing", nil), errTagInvalid)
+	}), ErrTagInvalid)
+	require.ErrorIs(t, RegisterTag("missing", nil), ErrTagInvalid)
 }
 
 func Test_Logger_MustRegisterTagPanicsOnInvalidInput(t *testing.T) {
 	t.Parallel()
 
-	require.PanicsWithError(t, errTagInvalid.Error(), func() {
+	require.PanicsWithError(t, ErrTagInvalid.Error(), func() {
 		MustRegisterTag("", func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.WriteString("ignored")
 		})

@@ -52,7 +52,9 @@ const (
 	TagReset             = "reset"
 )
 
-var errTagInvalid = errors.New("logger: tag name and function are required")
+// ErrTagInvalid is returned by RegisterTag and panicked from MustRegisterTag
+// when the supplied tag name or renderer is empty.
+var ErrTagInvalid = errors.New("logger: tag name and function are required")
 
 var registeredTags = struct {
 	m map[string]LogFunc
@@ -67,7 +69,7 @@ var registeredTags = struct {
 // Re-registering a tag replaces the existing tag function.
 func RegisterTag(tag string, fn LogFunc) error {
 	if tag == "" || fn == nil {
-		return errTagInvalid
+		return ErrTagInvalid
 	}
 
 	registeredTags.Lock()

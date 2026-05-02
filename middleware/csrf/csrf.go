@@ -14,7 +14,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
-	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 )
 
@@ -229,17 +228,11 @@ func New(config ...Config) fiber.Handler {
 }
 
 func registerLogContextTags() {
-	fiberlog.MustRegisterContextTag("csrf-token", func(output fiberlog.Buffer, ctx any, _ *fiberlog.ContextData, _ string) (int, error) {
+	logger.RegisterContextTag("csrf-token", func(ctx any) string {
 		if TokenFromContext(ctx) == "" {
-			return 0, nil
+			return ""
 		}
-		return output.WriteString(redactedKey)
-	})
-	logger.MustRegisterTag("csrf-token", func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
-		if TokenFromContext(c) == "" {
-			return 0, nil
-		}
-		return output.WriteString(redactedKey)
+		return redactedKey
 	})
 }
 

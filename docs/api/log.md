@@ -155,11 +155,16 @@ Setting the log level allows you to control the verbosity of the logs, filtering
 
 ### Writing Logs to Stderr
 
+`log.SetOutput(os.Stderr)` redirects the default logger to standard error.
+
 ```go
-var logger fiberlog.AllLogger[*log.Logger] = &defaultLogger{
-    stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
-    depth:  4,
-}
+import (
+    "os"
+
+    fiberlog "github.com/gofiber/fiber/v3/log"
+)
+
+fiberlog.SetOutput(os.Stderr)
 ```
 
 This lets you route logs to a file, service, or any destination.
@@ -200,16 +205,20 @@ commonLogger := log.WithContext(ctx)
 commonLogger.Info("info")
 ```
 
-Context binding can render request-specific data for easier tracing. The default context format is `log.DefaultFormat`, which is empty, so `log.WithContext(ctx)` does not add fields until you configure a format.
+Context binding can render request-specific data for easier tracing. The default context format is `log.DefaultFormat` (the empty string), so `log.WithContext(ctx)` adds no fields until you configure a format with `log.SetContextTemplate` (or its `MustSetContextTemplate` panic-on-error variant).
 
-Use `log.Format` to configure Fiber's built-in default logger. Custom loggers registered with `SetLogger` keep full control over their own `WithContext` behavior and should implement equivalent enrichment themselves when needed.
+`SetContextTemplate` configures Fiber's built-in default logger. Custom loggers registered with `SetLogger` keep full control over their own `WithContext` behavior and should implement equivalent enrichment themselves when needed.
 
 ```go
+import (
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/log"
+    "github.com/gofiber/fiber/v3/middleware/requestid"
+)
+
 app.Use(requestid.New())
 
-if err := log.Format(log.RequestIDFormat); err != nil {
-    log.Fatal(err)
-}
+log.MustSetContextTemplate(log.ContextConfig{Format: log.RequestIDFormat})
 
 app.Get("/", func(c fiber.Ctx) error {
     log.WithContext(c).Info("start")
@@ -217,9 +226,55 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-Middleware that stores request values can register log context tags automatically when the middleware is initialized. For example, after `requestid.New()` has been used, `${requestid}` and `${request-id}` can be used directly in `log.Format` without defining custom tags.
+Middleware that stores request values registers its log context tags automatically. For example, importing `requestid` makes `${requestid}` and `${request-id}` available; the actual value is filled in once `requestid.New()` runs in your handler stack. Until then the tag renders as an empty string, so a format that references `${requestid}` still compiles without `requestid.New()` in the chain.
 
 Use `log.WithContext(c)` inside handlers when you want tags to read values stored by Fiber middleware. Passing `c.Context()` only exposes values propagated into the standard request context.
+
+:::tip
+Cross-reference: the access-log integration uses the same tag names — see [middleware/logger](../middleware/logger.md#config) for the request-time format.
+:::
+
+### Glossary
+
+- **Format** — the string with `${...}` placeholders, e.g. `"[${requestid}] "`.
+- **Template** — the compiled, reusable form of a format produced by `SetContextTemplate`.
+- **Tag** — a single `${name}` (bare) or `${name:param}` (parametric) placeholder inside a format.
+
+### Signatures
+
+```go
+// Configure the active context template (or pass log.ContextConfig{} to disable).
+func SetContextTemplate(config ContextConfig) error
+func MustSetContextTemplate(config ContextConfig)
+
+// Register a tag globally; the new renderer becomes available to subsequent
+// SetContextTemplate calls. The reserved TagContextValue ("value:") name
+// cannot be registered.
+func RegisterContextTag(tag string, fn ContextTagFunc) error
+func MustRegisterContextTag(tag string, fn ContextTagFunc)
+
+// Bind a context to the default logger. ctx accepts fiber.Ctx,
+// *fasthttp.RequestCtx, context.Context, or any value exposing
+// Value(key any)/UserValue(key any).
+func WithContext(ctx any) CommonLogger
+
+// Public types referenced by the API above.
+type ContextConfig struct {
+    CustomTags map[string]ContextTagFunc
+    Format     string
+}
+type ContextData struct{}
+type ContextTagFunc = logtemplate.Func[any, ContextData]
+type Buffer        = logtemplate.Buffer
+
+// Format constants.
+const (
+    DefaultFormat   = ""
+    RequestIDFormat = "[${requestid}] "
+    KeyValueFormat  = "request-id=${requestid} username=${username} api-key=${api-key} csrf-token=${csrf-token} session-id=${session-id} "
+    TagContextValue = "value:"
+)
+```
 
 ### Context Formats
 
@@ -235,15 +290,18 @@ Use `log.WithContext(c)` inside handlers when you want tags to read values store
 | :-- | :-- |
 | `${requestid}` / `${request-id}` | `requestid` middleware |
 | `${username}` | `basicauth` middleware |
-| `${api-key}` | `keyauth` middleware, redacted |
-| `${csrf-token}` | `csrf` middleware, redacted |
-| `${session-id}` | `session` middleware, redacted |
+| `${api-key}` | `keyauth` middleware, redacted to a 4-byte prefix |
+| `${csrf-token}` | `csrf` middleware, redacted to a constant placeholder |
+| `${session-id}` | `session` middleware, redacted to a 4-byte prefix |
 | `${value:key}` | Any bound value with `Value(key)` or `UserValue(key)` lookup methods |
+
+:::caution
+`${value:KEY}` looks up arbitrary context values. CR, LF, NUL, and other ASCII control bytes (except tab) are replaced with spaces before they reach the log line, so attacker-controlled values cannot forge log lines via header smuggling. The lookup still writes the value verbatim apart from that scrub — strip or hash sensitive fields before storing them on the context if you do not want them in operator logs.
+:::
 
 ### Custom Context Tags
 
-Register custom tags with `log.RegisterContextTag`, then reference them from `log.Format`.
-The built-in `${value:key}` tag is reserved for context value lookups and cannot be overridden.
+Register custom tags with `log.RegisterContextTag`, then reference them from a format passed to `SetContextTemplate`. The built-in `${value:key}` tag is reserved for context-value lookups and cannot be overridden.
 
 ```go
 log.MustRegisterContextTag("tenant", func(output log.Buffer, ctx any, _ *log.ContextData, _ string) (int, error) {
@@ -255,8 +313,12 @@ log.MustRegisterContextTag("tenant", func(output log.Buffer, ctx any, _ *log.Con
     return output.WriteString(tenant)
 })
 
-log.MustFormat("[${tenant}] ")
+log.MustSetContextTemplate(log.ContextConfig{Format: "[${tenant}] "})
 ```
+
+:::note
+Register tags **before** referencing them in `SetContextTemplate`. Compiling a format that references an unregistered name returns `*logtemplate.UnknownTagError` (or panics from `MustSetContextTemplate`).
+:::
 
 ## Logger
 

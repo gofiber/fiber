@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -12,6 +11,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
 )
+
+// defaultErrPadding is the initial column width used by the default access-log
+// formatter to align the request path against the optional error suffix. The
+// width grows on first request to fit the longest registered route, but a
+// non-zero default keeps short-lived test apps (with no routes) readable.
+const defaultErrPadding = 15
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -53,8 +58,9 @@ func New(config ...Config) fiber.Handler {
 		dataPool = sync.Pool{New: func() any { return new(Data) }}
 	)
 
-	// Err padding
-	errPadding := 15
+	// Err padding starts at the documented default and grows once on first
+	// request to fit the longest registered route path.
+	errPadding := defaultErrPadding
 	errPaddingStr := strconv.Itoa(errPadding)
 
 	// Before handling func
@@ -65,9 +71,8 @@ func New(config ...Config) fiber.Handler {
 	// and we create several slices of the same length with the functions to be executed and fixed parts.
 	template, err := logtemplate.Build[fiber.Ctx, Data](cfg.Format, createTagMap(&cfg))
 	if err != nil {
-		if errors.Is(err, logtemplate.ErrParameterMissing) {
-			msg := strings.TrimPrefix(err.Error(), logtemplate.ErrParameterMissing.Error()+": ")
-			panic(errTemplateParameterMissing(msg))
+		if translated := translateBuildError(err); translated != nil {
+			panic(translated)
 		}
 		panic(err)
 	}

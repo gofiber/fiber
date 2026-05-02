@@ -10,11 +10,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/stretchr/testify/require"
@@ -143,14 +143,7 @@ func Test_BasicAuthLoggerTagWritesUsername(t *testing.T) {
 // Test_BasicAuthLogContextTagWritesUsername runs serially because it mutates
 // package-global default logger output and context format.
 func Test_BasicAuthLogContextTagWritesUsername(t *testing.T) {
-	t.Cleanup(func() {
-		fiberlog.MustFormat(fiberlog.DefaultFormat)
-		fiberlog.SetOutput(os.Stderr)
-	})
-
-	var buf bytes.Buffer
-	fiberlog.SetOutput(&buf)
-	fiberlog.MustFormat("username=${username} ")
+	buf := loggertest.CaptureContextLog(t, "username=${username} ")
 
 	app := fiber.New()
 	app.Use(New(Config{
