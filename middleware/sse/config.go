@@ -9,7 +9,7 @@ import (
 // Handler writes events to a single SSE stream.
 type Handler func(c fiber.Ctx, stream *Stream) error
 
-// Config defines the config for middleware.
+// Config defines the config for the SSE handler.
 type Config struct {
 	// Handler writes events to the stream.
 	//
