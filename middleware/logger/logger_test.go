@@ -1349,7 +1349,7 @@ func Benchmark_Logger(b *testing.B) {
 	b.Run("WithAllTags", func(bb *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
-			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
+			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}",
 			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
@@ -1529,7 +1529,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 	b.Run("WithAllTags", func(bb *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
-			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
+			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}",
 			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {

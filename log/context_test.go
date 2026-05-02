@@ -328,9 +328,16 @@ func Test_ContextValue(t *testing.T) {
 // Test_ContextTemplate_ConcurrentRegistration exercises the lock split between
 // the atomic-pointer read path and the mutex-guarded rebuild path. It must be
 // run with -race to be meaningful.
+//
+// The test is order-independent: it registers its own "tenant" tag rather
+// than relying on a sibling test having already done so, which matters when
+// the test runner is invoked with -shuffle=on.
 func Test_ContextTemplate_ConcurrentRegistration(t *testing.T) {
 	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
 
+	require.NoError(t, RegisterContextTag("tenant", func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
+		return output.WriteString("acme")
+	}))
 	require.NoError(t, SetContextTemplate(ContextConfig{Format: "[${tenant}]"}))
 
 	const goroutines = 8
