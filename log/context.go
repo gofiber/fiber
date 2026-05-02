@@ -34,6 +34,7 @@ type ContextTagFunc = logtemplate.Func[any, ContextData]
 // ContextConfig defines how WithContext enriches logs emitted by Fiber's default logger.
 type ContextConfig struct {
 	// CustomTags defines additional contextual tags available to Format.
+	// The built-in TagContextValue ("value:") tag cannot be overridden.
 	CustomTags map[string]ContextTagFunc
 	// Format defines the contextual prefix rendered before the log message.
 	// Use CustomTags to expose package-specific values such as request IDs.
@@ -48,7 +49,10 @@ var (
 	contextTags   = defaultContextTagMap()
 )
 
-var errContextTagInvalid = errors.New("log: context tag name and function are required")
+var (
+	errContextTagInvalid  = errors.New("log: context tag name and function are required")
+	errContextTagReserved = errors.New("log: context tag is reserved")
+)
 
 // SetContextTemplate configures contextual fields rendered by WithContext for Fiber's default logger.
 // It returns an error if config.Format cannot be parsed.
@@ -58,6 +62,7 @@ func SetContextTemplate(config ContextConfig) error {
 
 	tags := maps.Clone(contextTags)
 	maps.Copy(tags, config.CustomTags)
+	tags[TagContextValue] = defaultContextValueTag
 
 	var tmpl *logtemplate.Template[any, ContextData]
 	if config.Format != "" {
@@ -114,6 +119,9 @@ func RegisterContextTag(tag string, fn ContextTagFunc) error {
 	if tag == "" || fn == nil {
 		return errContextTagInvalid
 	}
+	if tag == TagContextValue {
+		return errContextTagReserved
+	}
 
 	contextMu.Lock()
 	defer contextMu.Unlock()
@@ -145,30 +153,37 @@ func MustRegisterContextTag(tag string, fn ContextTagFunc) {
 func createContextTagMap(customTags map[string]ContextTagFunc) map[string]ContextTagFunc {
 	tags := defaultContextTagMap()
 	maps.Copy(tags, customTags)
+	tags[TagContextValue] = defaultContextValueTag
 
 	return tags
 }
 
 func defaultContextTagMap() map[string]ContextTagFunc {
 	return map[string]ContextTagFunc{
-		"api-key":    emptyContextTag,
-		"csrf-token": emptyContextTag,
-		"request-id": emptyContextTag,
-		"requestid":  emptyContextTag,
-		"session-id": emptyContextTag,
-		"username":   emptyContextTag,
-		TagContextValue: func(output Buffer, ctx any, _ *ContextData, extraParam string) (int, error) {
-			switch v := contextValue(ctx, extraParam).(type) {
-			case []byte:
-				return output.Write(v)
-			case string:
-				return output.WriteString(v)
-			case nil:
-				return 0, nil
-			default:
-				return fmt.Fprintf(output, "%v", v)
-			}
-		},
+		"api-key":       emptyContextTag,
+		"csrf-token":    emptyContextTag,
+		"request-id":    emptyContextTag,
+		"requestid":     emptyContextTag,
+		"session-id":    emptyContextTag,
+		"username":      emptyContextTag,
+		TagContextValue: defaultContextValueTag,
+	}
+}
+
+func defaultContextValueTag(output Buffer, ctx any, _ *ContextData, extraParam string) (int, error) {
+	switch v := contextValue(ctx, extraParam).(type) {
+	case []byte:
+		return output.Write(v)
+	case string:
+		return output.WriteString(v)
+	case nil:
+		return 0, nil
+	default:
+		n, err := fmt.Fprintf(output, "%v", v)
+		if err != nil {
+			return n, fmt.Errorf("write context value: %w", err)
+		}
+		return n, nil
 	}
 }
 

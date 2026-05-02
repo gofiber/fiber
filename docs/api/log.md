@@ -243,6 +243,7 @@ Use `log.WithContext(c)` inside handlers when you want tags to read values store
 ### Custom Context Tags
 
 Register custom tags with `log.RegisterContextTag`, then reference them from `log.Format`.
+The built-in `${value:key}` tag is reserved for context value lookups and cannot be overridden.
 
 ```go
 log.MustRegisterContextTag("tenant", func(output log.Buffer, ctx any, _ *log.ContextData, _ string) (int, error) {

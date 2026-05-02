@@ -93,6 +93,54 @@ func Test_ContextTemplate_CustomTag(t *testing.T) {
 	require.Equal(t, "[req-42]", buf.String())
 }
 
+func Test_ContextTemplate_CustomTagsCannotOverrideValueTag(t *testing.T) {
+	t.Parallel()
+
+	tmpl, err := logtemplate.Build[any, ContextData](
+		"[${value:request_id}]",
+		createContextTagMap(map[string]ContextTagFunc{
+			TagContextValue: func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
+				return output.WriteString("override")
+			},
+		}),
+	)
+	require.NoError(t, err)
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	ctx := context.WithValue(context.Background(), "request_id", "req-42") //nolint:revive,staticcheck // ${value:key} intentionally reads string context keys.
+	err = tmpl.Execute(buf, ctx, &ContextData{})
+	require.NoError(t, err)
+	require.Equal(t, "[req-42]", buf.String())
+}
+
+// Test_SetContextTemplateCannotOverrideValueTag runs serially because it
+// mutates the package-global context template registry.
+func Test_SetContextTemplateCannotOverrideValueTag(t *testing.T) {
+	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
+
+	require.NoError(t, SetContextTemplate(ContextConfig{
+		Format: "[${value:request_id}]",
+		CustomTags: map[string]ContextTagFunc{
+			TagContextValue: func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
+				return output.WriteString("override")
+			},
+		},
+	}))
+
+	tmpl := contextTemplate.Load()
+	require.NotNil(t, tmpl)
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	ctx := context.WithValue(context.Background(), "request_id", "req-42") //nolint:revive,staticcheck // ${value:key} intentionally reads string context keys.
+	err := tmpl.Execute(buf, ctx, &ContextData{})
+	require.NoError(t, err)
+	require.Equal(t, "[req-42]", buf.String())
+}
+
 // Test_FormatWithRegisteredContextTag runs serially because Format and
 // MustRegisterContextTag mutate the package-global context template registry.
 func Test_FormatWithRegisteredContextTag(t *testing.T) {
@@ -152,6 +200,9 @@ func Test_RegisterContextTagRejectsInvalidInput(t *testing.T) {
 		return 0, nil
 	}), errContextTagInvalid)
 	require.ErrorIs(t, RegisterContextTag("missing", nil), errContextTagInvalid)
+	require.ErrorIs(t, RegisterContextTag(TagContextValue, func(Buffer, any, *ContextData, string) (int, error) {
+		return 0, nil
+	}), errContextTagReserved)
 }
 
 func Test_ContextValue(t *testing.T) {
