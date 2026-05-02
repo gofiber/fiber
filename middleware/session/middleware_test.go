@@ -1,9 +1,11 @@
 package session
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -12,6 +14,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -327,6 +331,61 @@ func Test_Session_Middleware(t *testing.T) {
 	require.Len(t, parts, 2, "Expected two keys in the session")
 	sort.Strings(parts)
 	require.Equal(t, []string{"key1", "key2"}, parts)
+}
+
+func Test_SessionLoggerTagRedactsSessionID(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	app := fiber.New()
+	app.Use(New())
+	app.Use(logger.New(logger.Config{
+		Format: "${session-id}",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, buf.String(), "****")
+}
+
+// Test_SessionLogContextTagRedactsSessionID runs serially because it mutates
+// package-global default logger output and context format.
+func Test_SessionLogContextTagRedactsSessionID(t *testing.T) {
+	t.Cleanup(func() {
+		fiberlog.MustFormat(fiberlog.DefaultFormat)
+		fiberlog.SetOutput(os.Stderr)
+	})
+
+	var buf bytes.Buffer
+	fiberlog.SetOutput(&buf)
+	fiberlog.MustFormat("session-id=${session-id} ")
+
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("start")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, buf.String(), "[Info] session-id=")
+	require.Contains(t, buf.String(), "**** start")
+}
+
+func Test_RedactSessionID(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, redactSessionID(""))
+	require.Equal(t, "****", redactSessionID("short"))
+	require.Equal(t, "sess****", redactSessionID("session-value"))
 }
 
 func Test_Session_NewWithStore(t *testing.T) {

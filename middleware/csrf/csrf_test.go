@@ -1,17 +1,21 @@
 package csrf
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -628,6 +632,52 @@ func Test_CSRF_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+func Test_CSRFLoggerTagRedactsToken(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	app := fiber.New()
+	app.Use(New())
+	app.Use(logger.New(logger.Config{
+		Format: "${csrf-token}",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, redactedKey, buf.String())
+}
+
+// Test_CSRFLogContextTagRedactsToken runs serially because it mutates
+// package-global default logger output and context format.
+func Test_CSRFLogContextTagRedactsToken(t *testing.T) {
+	t.Cleanup(func() {
+		fiberlog.MustFormat(fiberlog.DefaultFormat)
+		fiberlog.SetOutput(os.Stderr)
+	})
+
+	var buf bytes.Buffer
+	fiberlog.SetOutput(&buf)
+	fiberlog.MustFormat("csrf-token=${csrf-token} ")
+
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("start")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, buf.String(), "[Info] csrf-token="+redactedKey+" start")
 }
 
 func Test_CSRF_From_Form(t *testing.T) {

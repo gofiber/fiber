@@ -976,6 +976,16 @@ func Test_Logger_RegisterTagRejectsInvalidInput(t *testing.T) {
 	require.ErrorIs(t, RegisterTag("missing", nil), errTagInvalid)
 }
 
+func Test_Logger_MustRegisterTagPanicsOnInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithError(t, errTagInvalid.Error(), func() {
+		MustRegisterTag("", func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+			return output.WriteString("ignored")
+		})
+	})
+}
+
 // go test -run Test_Req_Header
 func Test_Req_Header(t *testing.T) {
 	t.Parallel()

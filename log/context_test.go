@@ -2,12 +2,34 @@ package log
 
 import (
 	"context"
+	"errors"
+	"io"
 	"testing"
 
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 )
+
+var errContextTestWrite = errors.New("context test write failure")
+
+type failingContextBuffer struct{}
+
+func (failingContextBuffer) Len() int { return 0 }
+func (failingContextBuffer) ReadFrom(_ io.Reader) (int64, error) {
+	return 0, errContextTestWrite
+}
+
+func (failingContextBuffer) WriteTo(_ io.Writer) (int64, error) {
+	return 0, errContextTestWrite
+}
+func (failingContextBuffer) Bytes() []byte                   { return nil }
+func (failingContextBuffer) Write(_ []byte) (int, error)     { return 0, errContextTestWrite }
+func (failingContextBuffer) WriteByte(byte) error            { return errContextTestWrite }
+func (failingContextBuffer) WriteString(string) (int, error) { return 0, errContextTestWrite }
+func (failingContextBuffer) Set([]byte)                      {}
+func (failingContextBuffer) SetString(string)                {}
+func (failingContextBuffer) String() string                  { return "" }
 
 func Test_ContextTemplate_ValueTag(t *testing.T) {
 	t.Parallel()
@@ -70,6 +92,33 @@ func Test_ContextTemplate_ValueTagWritesSupportedValues(t *testing.T) {
 	err = tmpl.Execute(buf, ctx, &ContextData{})
 	require.NoError(t, err)
 	require.Equal(t, "raw|text|42|", buf.String())
+}
+
+func Test_ContextTemplate_ValueTagWrapsWriteError(t *testing.T) {
+	t.Parallel()
+
+	_, err := defaultContextValueTag(failingContextBuffer{}, testUserValueContext{
+		"number": 42,
+	}, &ContextData{}, "number")
+	require.ErrorIs(t, err, errContextTestWrite)
+	require.ErrorContains(t, err, "write context value")
+}
+
+func Test_ContextTemplate_DefaultTagsRenderEmpty(t *testing.T) {
+	t.Parallel()
+
+	tmpl, err := logtemplate.Build[any, ContextData](
+		"${api-key}|${csrf-token}|${request-id}|${requestid}|${session-id}|${username}",
+		createContextTagMap(nil),
+	)
+	require.NoError(t, err)
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	err = tmpl.Execute(buf, context.Background(), &ContextData{})
+	require.NoError(t, err)
+	require.Equal(t, "|||||", buf.String())
 }
 
 func Test_ContextTemplate_CustomTag(t *testing.T) {
@@ -167,6 +216,48 @@ func Test_FormatWithRegisteredContextTag(t *testing.T) {
 	require.Equal(t, "[trace-42] ", buf.String())
 }
 
+// Test_RegisterContextTagWithoutActiveFormat runs serially because it mutates
+// the package-global context tag registry.
+func Test_RegisterContextTagWithoutActiveFormat(t *testing.T) {
+	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
+
+	require.NoError(t, Format(DefaultFormat))
+	require.NoError(t, RegisterContextTag("tenant", func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
+		return output.WriteString("acme")
+	}))
+	require.Nil(t, contextTemplate.Load())
+
+	require.NoError(t, Format("[${tenant}]"))
+	tmpl := contextTemplate.Load()
+	require.NotNil(t, tmpl)
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	err := tmpl.Execute(buf, context.Background(), &ContextData{})
+	require.NoError(t, err)
+	require.Equal(t, "[acme]", buf.String())
+}
+
+// Test_FormatDefaultDisablesContextTemplate runs serially because Format
+// mutates the package-global context template registry.
+func Test_FormatDefaultDisablesContextTemplate(t *testing.T) {
+	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
+
+	MustSetContextTemplate(ContextConfig{
+		Format: "[${requestid}] ",
+		CustomTags: map[string]ContextTagFunc{
+			"requestid": func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
+				return output.WriteString("req-42")
+			},
+		},
+	})
+	require.NotNil(t, contextTemplate.Load())
+
+	require.NoError(t, Format(DefaultFormat))
+	require.Nil(t, contextTemplate.Load())
+}
+
 func Test_MustSetContextTemplate_PanicsOnBuildError(t *testing.T) {
 	t.Parallel()
 
@@ -193,6 +284,14 @@ func Test_Format_ReturnsBuildError(t *testing.T) {
 	require.ErrorIs(t, err, logtemplate.ErrParameterMissing)
 }
 
+func Test_MustFormat_PanicsOnBuildError(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithError(t, `logtemplate: template parameter missing: "missing:value"`, func() {
+		MustFormat("${missing:value}")
+	})
+}
+
 func Test_RegisterContextTagRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 
@@ -203,6 +302,16 @@ func Test_RegisterContextTagRejectsInvalidInput(t *testing.T) {
 	require.ErrorIs(t, RegisterContextTag(TagContextValue, func(Buffer, any, *ContextData, string) (int, error) {
 		return 0, nil
 	}), errContextTagReserved)
+}
+
+func Test_MustRegisterContextTag_PanicsOnInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithError(t, errContextTagInvalid.Error(), func() {
+		MustRegisterContextTag("", func(Buffer, any, *ContextData, string) (int, error) {
+			return 0, nil
+		})
+	})
 }
 
 func Test_ContextValue(t *testing.T) {
