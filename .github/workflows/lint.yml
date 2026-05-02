@@ -18,6 +18,4 @@ permissions:
 
 jobs:
   lint:
-    uses: gofiber/.github/.github/workflows/go-lint.yml@main
-    with:
-      repo-type: single
+    uses: gofiber/.github/.github/workflows/go-lint-single.yml@main
