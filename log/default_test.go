@@ -94,10 +94,13 @@ func Test_WithContextNilCaller(t *testing.T) {
 	expectCallerOutput(t, &w, withContextLine, infoLine)
 }
 
-// Test_WithContextRenderErrorSurfacesMarker locks in M8: a misconfigured
-// context tag must not silently drop context — the failure should leave a
-// visible marker in the log line so operators notice.
+// Test_WithContextRenderError locks in M8: a misconfigured context tag must
+// not silently drop context — the failure should leave a visible marker in
+// the log line so operators notice. Calls initDefaultLogger up front because
+// under -shuffle=on this test may run before any other log test, in which
+// case the package-global logger.stdlog could still be nil.
 func Test_WithContextRenderError(t *testing.T) {
+	initDefaultLogger()
 	t.Cleanup(initDefaultLogger)
 
 	templateErr := errors.New("tag boom")
