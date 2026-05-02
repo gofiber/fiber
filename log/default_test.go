@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -96,14 +97,17 @@ func Test_WithContextNilCaller(t *testing.T) {
 
 // Test_WithContextRenderError locks in M8: a misconfigured context tag must
 // not silently drop context — the failure should leave a visible marker in
-// the log line so operators notice. Calls initDefaultLogger up front because
-// under -shuffle=on this test may run before any other log test, in which
-// case the package-global logger.stdlog could still be nil.
+// the log line so operators notice. The error message is also sanitized for
+// control bytes so a tag that wraps attacker-controlled data in its error
+// cannot inject CR/LF into the log stream. Calls initDefaultLogger up front
+// because under -shuffle=on this test may run before any other log test, in
+// which case the package-global logger.stdlog could still be nil.
 func Test_WithContextRenderError(t *testing.T) {
 	initDefaultLogger()
 	t.Cleanup(initDefaultLogger)
 
-	templateErr := errors.New("tag boom")
+	// Embed CR/LF in the error to exercise the sanitiser.
+	templateErr := errors.New("tag\r\nboom")
 	require.NoError(t, SetContextTemplate(ContextConfig{
 		Format: "[${broken}] ",
 		CustomTags: map[string]ContextTagFunc{
@@ -122,6 +126,40 @@ func Test_WithContextRenderError(t *testing.T) {
 	out := string(w.b)
 	require.Contains(t, out, "ctx-render-error", "expected render-error marker, got %q", out)
 	require.Contains(t, out, "payload", "expected payload to still be emitted, got %q", out)
+	require.NotContains(t, out, "\r", "CR in error message must be sanitized")
+	// One trailing newline from log.Output is expected; reject any embedded ones.
+	require.Equal(t, 1, strings.Count(out, "\n"), "embedded LF in error message must be sanitized; got %q", out)
+}
+
+// Test_NewRetainedContext_TypedNil locks in the reflect-based nil detection
+// in newRetainedContext: a typed-nil pointer wrapped in `any` must be treated
+// as "no context" so tag renderers don't fault on a nil receiver.
+func Test_NewRetainedContext_TypedNil(t *testing.T) {
+	t.Parallel()
+
+	type fakeCtx struct{}
+	var typedNil *fakeCtx
+
+	tests := []struct {
+		value any
+		name  string
+		want  bool
+	}{
+		{name: "untyped nil", value: nil, want: false},
+		{name: "typed nil pointer", value: typedNil, want: false},
+		{name: "typed nil map", value: map[string]string(nil), want: false},
+		{name: "typed nil slice", value: []byte(nil), want: false},
+		{name: "typed nil chan", value: chan int(nil), want: false},
+		{name: "non-nil pointer", value: &fakeCtx{}, want: true},
+		{name: "string", value: "context", want: true},
+		{name: "non-nil map", value: map[string]string{"k": "v"}, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, newRetainedContext(tt.value).ok)
+		})
+	}
 }
 
 func Test_DefaultLogger(t *testing.T) {

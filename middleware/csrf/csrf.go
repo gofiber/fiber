@@ -14,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 )
 
@@ -229,10 +230,10 @@ func New(config ...Config) fiber.Handler {
 
 func registerLogContextTags() {
 	logger.RegisterContextTag("csrf-token", func(ctx any) string {
-		if TokenFromContext(ctx) == "" {
-			return ""
-		}
-		return redactedKey
+		// redact.Prefix matches the masking shape used by keyauth and session
+		// (4-byte clear prefix + "****"), so log consumers see a uniform
+		// redaction format across the framework's security-sensitive tags.
+		return redact.Prefix(TokenFromContext(ctx))
 	})
 }
 

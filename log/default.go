@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"reflect"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
@@ -28,11 +29,28 @@ type retainedContext struct {
 	ok    bool
 }
 
+// newRetainedContext wraps value, treating both untyped nil and typed-nil
+// pointers/interfaces/maps/slices/channels/funcs as "no context". A typed nil
+// (e.g. (*fasthttp.RequestCtx)(nil) stored in an `any`) compares non-nil under
+// `value != nil` because the interface header carries a non-nil type
+// descriptor; passing it through to a tag renderer would cause the renderer
+// to dereference a nil receiver. Reflection here is one-shot per WithContext
+// call — far off the per-log-line hot path.
 func newRetainedContext(value any) retainedContext {
-	return retainedContext{
-		value: value,
-		ok:    value != nil,
+	if value == nil {
+		return retainedContext{}
 	}
+	switch rv := reflect.ValueOf(value); rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface,
+		reflect.Map, reflect.Pointer, reflect.Slice:
+		if rv.IsNil() {
+			return retainedContext{}
+		}
+	default:
+		// Non-nilable kinds (struct, int, string, ...) cannot be typed-nil;
+		// fall through to wrap the value as-is.
+	}
+	return retainedContext{value: value, ok: true}
 }
 
 // privateLog logs a message at a given level log the default logger.
@@ -259,7 +277,13 @@ func (l *defaultLogger) writeContext(buf Buffer) {
 	defer bytebufferpool.Put(scratch)
 
 	if err := tmpl.Execute(scratch, l.ctx.value, &ContextData{}); err != nil {
-		_, _ = fmt.Fprintf(buf, "[ctx-render-error: %s] ", err.Error())
+		// The error string can carry CR/LF/ANSI bytes derived from request data
+		// (e.g. when a tag wraps an upstream parsing error around a header). Run
+		// it through the same sanitiser the ${value:KEY} renderer uses so a
+		// misconfigured tag cannot become a log-injection vector.
+		_, _ = buf.WriteString("[ctx-render-error: ") //nolint:errcheck // best-effort marker
+		_, _ = writeSanitizedString(buf, err.Error()) //nolint:errcheck // best-effort marker
+		_, _ = buf.WriteString("] ")                  //nolint:errcheck // best-effort marker
 		return
 	}
 

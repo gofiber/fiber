@@ -271,7 +271,7 @@ type Buffer        = logtemplate.Buffer
 const (
     DefaultFormat   = ""
     RequestIDFormat = "[${requestid}] "
-    KeyValueFormat  = "request-id=${requestid} username=${username} api-key=${api-key} csrf-token=${csrf-token} session-id=${session-id} "
+    KeyValueFormat  = "request-id=${request-id} username=${username} api-key=${api-key} csrf-token=${csrf-token} session-id=${session-id} "
     TagContextValue = "value:"
 )
 ```
@@ -282,16 +282,16 @@ const (
 | :-- | :-- | :-- |
 | `DefaultFormat` | `""` | Disables contextual fields. |
 | `RequestIDFormat` | `"[${requestid}] "` | Prepends the request ID when the requestid middleware is used. |
-| `KeyValueFormat` | `"request-id=${requestid} username=${username} api-key=${api-key} csrf-token=${csrf-token} session-id=${session-id} "` | Prepends common middleware context values as key/value fields. Sensitive values are redacted by the registering middleware. |
+| `KeyValueFormat` | `"request-id=${request-id} username=${username} api-key=${api-key} csrf-token=${csrf-token} session-id=${session-id} "` | Prepends common middleware context values as key/value fields. Sensitive values are redacted by the registering middleware. |
 
 ### Context Tags
 
 | Tag | Source |
 | :-- | :-- |
 | `${requestid}` / `${request-id}` | `requestid` middleware |
-| `${username}` | `basicauth` middleware |
+| `${username}` | `basicauth` middleware — written **in clear text** for audit-log use cases. Avoid this tag if your usernames are PII. |
 | `${api-key}` | `keyauth` middleware, redacted to a 4-byte prefix |
-| `${csrf-token}` | `csrf` middleware, redacted to a constant placeholder |
+| `${csrf-token}` | `csrf` middleware, redacted to a 4-byte prefix |
 | `${session-id}` | `session` middleware, redacted to a 4-byte prefix |
 | `${value:key}` | Any bound value with `Value(key)` or `UserValue(key)` lookup methods |
 

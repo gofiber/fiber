@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
+	"github.com/gofiber/fiber/v3/internal/redact"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/session"
@@ -652,7 +655,11 @@ func Test_CSRFLoggerTagRedactsToken(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, redactedKey, buf.String())
+	// CSRF tokens are randomly generated per request, so assert on the
+	// redaction shape (4-byte prefix + Mask) rather than a fixed value.
+	got := buf.String()
+	require.Len(t, got, redact.PrefixLength+len(redact.Mask))
+	require.True(t, strings.HasSuffix(got, redact.Mask), "expected suffix %q in %q", redact.Mask, got)
 }
 
 // Test_CSRFLogContextTagRedactsToken runs serially because it mutates
@@ -670,7 +677,7 @@ func Test_CSRFLogContextTagRedactsToken(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Contains(t, buf.String(), "[Info] csrf-token="+redactedKey+" start")
+	require.Regexp(t, `\[Info\] csrf-token=.{`+strconv.Itoa(redact.PrefixLength)+`}`+regexp.QuoteMeta(redact.Mask)+` start`, buf.String())
 }
 
 func Test_CSRF_From_Form(t *testing.T) {
