@@ -618,6 +618,78 @@ func (d *domainRouter) Domain(host string) Router {
 	}
 }
 
+// Summary assigns a short summary to the most recently added route.
+func (d *domainRouter) Summary(sum string) Router {
+	d.app.Summary(sum)
+	return d
+}
+
+// Description assigns a description to the most recently added route.
+func (d *domainRouter) Description(desc string) Router {
+	d.app.Description(desc)
+	return d
+}
+
+// Consumes assigns a request media type to the most recently added route.
+func (d *domainRouter) Consumes(typ string) Router {
+	d.app.Consumes(typ)
+	return d
+}
+
+// Produces assigns a response media type to the most recently added route.
+func (d *domainRouter) Produces(typ string) Router {
+	d.app.Produces(typ)
+	return d
+}
+
+// RequestBody documents the request payload for the most recently added route.
+func (d *domainRouter) RequestBody(description string, required bool, mediaTypes ...string) Router {
+	d.app.RequestBody(description, required, mediaTypes...)
+	return d
+}
+
+// RequestBodyWithExample documents the request payload for the most recently added route with schema references and examples.
+func (d *domainRouter) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	d.app.RequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...)
+	return d
+}
+
+// Parameter documents an input parameter for the most recently added route.
+func (d *domainRouter) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+	d.app.Parameter(name, in, required, schema, description)
+	return d
+}
+
+// ParameterWithExample documents an input parameter for the most recently added route with schema references and examples.
+func (d *domainRouter) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
+	d.app.ParameterWithExample(name, in, required, schema, schemaRef, description, example, examples)
+	return d
+}
+
+// Response documents an HTTP response for the most recently added route.
+func (d *domainRouter) Response(status int, description string, mediaTypes ...string) Router {
+	d.app.Response(status, description, mediaTypes...)
+	return d
+}
+
+// ResponseWithExample documents an HTTP response for the most recently added route with schema references and examples.
+func (d *domainRouter) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	d.app.ResponseWithExample(status, description, schema, schemaRef, example, examples, mediaTypes...)
+	return d
+}
+
+// Tags assigns tags to the most recently added route.
+func (d *domainRouter) Tags(tags ...string) Router {
+	d.app.Tags(tags...)
+	return d
+}
+
+// Deprecated marks the most recently added route as deprecated.
+func (d *domainRouter) Deprecated() Router {
+	d.app.Deprecated()
+	return d
+}
+
 // domainRegistering provides route registration helpers for a specific path
 // on a domain router, implementing the [Register] interface.
 type domainRegistering struct {
