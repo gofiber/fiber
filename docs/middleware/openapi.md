@@ -6,6 +6,8 @@ id: openapi
 
 OpenAPI middleware for [Fiber](https://github.com/gofiber/fiber) that generates an OpenAPI specification based on the routes registered in your application.
 
+This middleware supports both OpenAPI 3.0.0 and 3.1.0 specifications.
+
 ## Signatures
 
 ```go
@@ -42,6 +44,7 @@ app.Use(openapi.New(openapi.Config{
     Title:   "My API",
     Version: "1.0.0",
     ServerURL: "https://example.com",
+    OpenAPIVersion: "3.1.0", // or "3.0.0"
 }))
 
 // Routes may optionally document themselves using Summary, Description,
@@ -85,14 +88,15 @@ If no responses are declared, the middleware adds a sensible default: `200 OK` f
 
 ## Config
 
-| Property    | Type                    | Description                                                     | Default            |
-|:------------|:------------------------|:----------------------------------------------------------------|:------------------:|
-| Next        | `func(fiber.Ctx) bool`  | Next defines a function to skip this middleware when returned true. | `nil` |
-| Title       | `string`                | Title is the title for the generated OpenAPI specification.     | `"Fiber API"`     |
-| Version     | `string`                | Version is the version for the generated OpenAPI specification. | `"1.0.0"`         |
-| Description | `string`                | Description is the description for the generated specification. | `""`             |
-| ServerURL   | `string`                | ServerURL is the server URL used in the generated specification.| `""`             |
-| Path        | `string`                | Path is the route where the specification will be served.       | `"/openapi.json"` |
+| Property       | Type                    | Description                                                     | Default            |
+|:---------------|:------------------------|:----------------------------------------------------------------|:------------------:|
+| Next           | `func(fiber.Ctx) bool`  | Next defines a function to skip this middleware when returned true. | `nil` |
+| Title          | `string`                | Title is the title for the generated OpenAPI specification.     | `"Fiber API"`     |
+| Version        | `string`                | Version is the version for the generated OpenAPI specification. | `"1.0.0"`         |
+| Description    | `string`                | Description is the description for the generated specification. | `""`             |
+| ServerURL      | `string`                | ServerURL is the server URL used in the generated specification.| `""`             |
+| Path           | `string`                | Path is the route where the specification will be served.       | `"/openapi.json"` |
+| OpenAPIVersion | `string`                | OpenAPI specification version to generate (`"3.0.0"` or `"3.1.0"`) | `"3.1.0"`     |
 
 When the middleware is attached to a group or mounted under a prefixed `Use`, the configured `Path` is resolved relative to that
 prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global
@@ -102,12 +106,13 @@ prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specificat
 
 ```go
 var ConfigDefault = Config{
-    Next:        nil,
-    Title:       "Fiber API",
-    Version:     "1.0.0",
-    Description: "",
-    ServerURL:   "",
-    Path:        "/openapi.json",
+    Next:           nil,
+    Title:          "Fiber API",
+    Version:        "1.0.0",
+    Description:    "",
+    ServerURL:      "",
+    Path:           "/openapi.json",
+    OpenAPIVersion: "3.1.0",
 }
 ```
 

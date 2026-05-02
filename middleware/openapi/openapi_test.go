@@ -57,7 +57,7 @@ func Test_OpenAPI_JSONEquality(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := openAPISpec{
-		OpenAPI: "3.0.0",
+		OpenAPI: "3.1.0",
 		Info:    openAPIInfo{Title: "Fiber API", Version: "1.0.0"},
 		Paths: map[string]map[string]operation{
 			"/users": {
@@ -94,7 +94,7 @@ func Test_OpenAPI_RawJSON(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := openAPISpec{
-		OpenAPI: "3.0.0",
+		OpenAPI: "3.1.0",
 		Info:    openAPIInfo{Title: "Fiber API", Version: "1.0.0"},
 		Paths: map[string]map[string]operation{
 			"/users": {
@@ -557,6 +557,89 @@ func Test_OpenAPI_ConfigValues(t *testing.T) {
 	require.Equal(t, cfg.Description, spec.Info.Description)
 	require.Len(t, spec.Servers, 1)
 	require.Equal(t, cfg.ServerURL, spec.Servers[0].URL)
+}
+
+func Test_OpenAPI_Version310(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	cfg := Config{
+		OpenAPIVersion: "3.1.0",
+	}
+	app.Use(New(cfg))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Equal(t, "3.1.0", spec.OpenAPI)
+}
+
+func Test_OpenAPI_Version300(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	cfg := Config{
+		OpenAPIVersion: "3.0.0",
+	}
+	app.Use(New(cfg))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Equal(t, "3.0.0", spec.OpenAPI)
+}
+
+func Test_OpenAPI_VersionDefault(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	// No version specified, should default to 3.1.0
+	app.Use(New())
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Equal(t, "3.1.0", spec.OpenAPI)
+}
+
+func Test_OpenAPI_VersionInvalid(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	// Invalid version should fall back to default 3.1.0
+	cfg := Config{
+		OpenAPIVersion: "2.0.0",
+	}
+	app.Use(New(cfg))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Equal(t, "3.1.0", spec.OpenAPI)
 }
 
 func Test_OpenAPI_Next(t *testing.T) {

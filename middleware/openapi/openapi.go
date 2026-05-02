@@ -203,7 +203,7 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 	}
 
 	spec := openAPISpec{
-		OpenAPI: "3.0.0",
+		OpenAPI: cfg.OpenAPIVersion,
 		Info: openAPIInfo{
 			Title:       cfg.Title,
 			Version:     cfg.Version,
