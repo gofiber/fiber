@@ -4,7 +4,7 @@ id: sse
 
 # SSE
 
-The SSE middleware provides the transport pieces for Server-Sent Events: response headers, event formatting, flushing, heartbeat comments, and disconnect detection through `Flush` errors.
+The SSE handler provides the transport pieces for Server-Sent Events: response headers, event formatting, flushing, heartbeat comments, and disconnect detection through `Flush` errors.
 
 It intentionally does not include a hub, topics, authentication, replay storage, metrics, or external pub/sub bridges. Those are application concerns that can be composed around the stream handler.
 
@@ -16,7 +16,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package:
+Import the SSE package:
 
 ```go
 import (
@@ -92,9 +92,9 @@ app.Get("/events", sse.New(sse.Config{
 
 ## Config
 
-| Property          | Type                     | Description                                                                                          | Default            |
-|:------------------|:-------------------------|:-----------------------------------------------------------------------------------------------------|:-------------------|
-| Handler           | `sse.Handler`            | Writes events to the stream.                                                                         | `nil`              |
+| Property          | Type                     | Description                                                                                          | Default               |
+|:------------------|:-------------------------|:-----------------------------------------------------------------------------------------------------|:----------------------|
+| Handler           | `sse.Handler`            | Required. Writes events to the stream. `New` panics if this field is omitted or `nil`.              | required (`nil` panics) |
 | OnClose           | `func(fiber.Ctx, error)` | Called when the stream ends, with `nil` when the handler returned successfully and no stream write failed. | `nil`              |
 | Retry             | `time.Duration`          | Initial EventSource reconnect delay.                                                                 | `0`                |
 | HeartbeatInterval | `time.Duration`          | Interval for SSE comment heartbeats.                                                                 | `15 * time.Second` |
@@ -111,6 +111,8 @@ var ConfigDefault = Config{
     DisableHeartbeat:  false,
 }
 ```
+
+`ConfigDefault.Handler` is `nil`, but `Handler` is still required. Set it before calling `New`, or `New` will panic.
 
 ## Stream
 
