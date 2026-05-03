@@ -9,7 +9,10 @@ import (
 // middlewares register through RegisterContextTag. They are pre-registered
 // here as no-op stubs so a logger format that references e.g. ${api-key}
 // compiles even when the corresponding middleware (here keyauth) has not yet
-// been initialized — the slot is filled in once the middleware's New() runs.
+// been initialized. For access logs, the producing middleware (or another
+// RegisterTag caller) must still register before logger.New() compiles that
+// logger instance if the tag should render non-empty values. Existing logger
+// middleware instances keep the function chain they compiled at construction.
 //
 // The names are sourced from the canonical fiberlog tag constants so that
 // renames in one place cascade automatically.

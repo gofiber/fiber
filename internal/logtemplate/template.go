@@ -2,6 +2,7 @@ package logtemplate
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 
 	"github.com/gofiber/utils/v2"
@@ -119,6 +120,10 @@ func (t *Template[C, D]) Execute(output Buffer, ctx C, data *D) error {
 
 // ExecuteChains renders precompiled template chains into output.
 func ExecuteChains[C, D any](output Buffer, ctx C, data *D, fixedParts [][]byte, funcChain []Func[C, D]) error {
+	if len(fixedParts) != len(funcChain) {
+		return fmt.Errorf("logtemplate: invalid chain lengths: fixedParts=%d funcChain=%d", len(fixedParts), len(funcChain))
+	}
+
 	for i, fn := range funcChain {
 		switch {
 		case fn == nil:
