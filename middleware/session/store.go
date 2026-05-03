@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -124,8 +125,20 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	var err error
 
 	id, ok := c.Locals(sessionIDContextKey).(string)
+
+	// writableSource tracks whether the session ID came from a writable source
+	// (cookie or header). For writable sources, an unknown ID is discarded and a new
+	// one is generated to prevent session fixation. For read-only sources (query,
+	// form, param, custom), the client-provided ID is preserved so that subsequent
+	// requests using the same query parameter are associated with the same session.
+	var writableSource bool
 	if !ok {
-		id = s.getSessionID(c)
+		id, writableSource = s.getSessionID(c)
+	} else {
+		// ID was cached from a prior call within this request; derive writability
+		// from the primary (first or only) extractor source.
+		src := s.Extractor.Source
+		writableSource = src == extractors.SourceCookie || src == extractors.SourceHeader
 	}
 
 	fresh := false // Session is not fresh initially; only set to true if we generate a new ID
@@ -137,8 +150,22 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 			return nil, err
 		}
 		if rawData == nil {
-			// Data not found, prepare to generate a new session
-			id = ""
+			if writableSource {
+				// For writable sources (cookie, header), discard the client-provided
+				// ID and generate a new one to prevent session fixation attacks.
+				id = ""
+			} else {
+				// For read-only sources (query, form, param, custom), preserve the
+				// client-provided ID and create a fresh session under it so that
+				// subsequent requests carrying the same ID are served the same session.
+				//
+				// Security note: using a read-only source (e.g. FromQuery) means the
+				// client controls the session ID on every request and the server cannot
+				// rotate it in the response. Callers that require strong session
+				// fixation protection should use a cookie or header extractor instead.
+				fresh = true
+				c.Locals(sessionIDContextKey, id)
+			}
 		}
 	}
 
@@ -185,25 +212,56 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	return sess, nil
 }
 
-// getSessionID returns the session ID using the configured extractor.
-// The extractor is provided by the shared extractors package.
+// getSessionID returns the session ID using the configured extractor, and whether
+// the extraction source is writable (cookie or header). A writable source means
+// the middleware sets the session ID back in the response (e.g. Set-Cookie), so
+// an unrecognized client-supplied ID should be discarded to prevent session
+// fixation. A non-writable source (query, form, param, custom) is read-only; the
+// client controls the ID on every request, so an unrecognized ID is preserved and
+// a fresh session is stored under it.
+//
+// For chained extractors the function iterates the sub-extractors in order and
+// returns the source of the first one that provides a value.
 //
 // Parameters:
 //   - c: The Fiber context.
 //
 // Returns:
 //   - string: The session ID.
+//   - bool: true when the source is writable (cookie or header).
 //
 // Usage:
 //
-//	id := store.getSessionID(c)
-func (s *Store) getSessionID(c fiber.Ctx) string {
-	sessionID, err := s.Extractor.Extract(c)
+//	id, writable := store.getSessionID(c)
+func (s *Store) getSessionID(c fiber.Ctx) (string, bool) {
+	isWritable := func(src extractors.Source) bool {
+		return src == extractors.SourceCookie || src == extractors.SourceHeader
+	}
+
+	ext := s.Extractor
+
+	// For chained extractors, try each sub-extractor in order so we can identify
+	// which source actually provided the value.
+	if len(ext.Chain) > 0 {
+		for _, chainExt := range ext.Chain {
+			if chainExt.Extract == nil {
+				continue
+			}
+			v, err := chainExt.Extract(c)
+			if err == nil && v != "" {
+				return v, isWritable(chainExt.Source)
+			}
+		}
+		return "", false
+	}
+
+	// Single extractor.
+	sessionID, err := ext.Extract(c)
 	if err != nil {
 		// If extraction fails, return empty string to generate a new session
-		return ""
+		return "", false
 	}
-	return sessionID
+	return sessionID, isWritable(ext.Source)
 }
 
 // Reset deletes all sessions from the storage.
