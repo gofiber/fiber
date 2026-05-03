@@ -1,7 +1,6 @@
 package log
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log"
@@ -14,7 +13,7 @@ type baseLogger interface {
 	CommonLogger
 	SetLevel(Level)
 	SetOutput(io.Writer)
-	WithContext(ctx context.Context) CommonLogger
+	WithContext(ctx any) CommonLogger
 }
 
 var logger baseLogger = &defaultLogger{
@@ -77,14 +76,14 @@ type ConfigurableLogger[T any] interface {
 	Logger() T
 }
 
-// AllLogger is the combination of Logger, FormatLogger, CtxLogger and ConfigurableLogger.
+// AllLogger is the combination of CommonLogger, context binding, and ConfigurableLogger.
 // Custom extensions can be made through AllLogger
 type AllLogger[T any] interface {
 	CommonLogger
 	ConfigurableLogger[T]
 
 	// WithContext returns a new logger with the given context.
-	WithContext(ctx context.Context) CommonLogger
+	WithContext(ctx any) CommonLogger
 }
 
 // Level defines the priority of a log message.

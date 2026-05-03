@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/logtemplate"
 )
 
 // Config defines the config for middleware.
@@ -31,9 +32,10 @@ type Config struct {
 	// Optional. Default: nil
 	Done func(c fiber.Ctx, logString []byte)
 
-	// tagFunctions defines the custom tag action
+	// CustomTags defines per-middleware tag functions.
+	// CustomTags override built-in and globally registered tags with the same name.
 	//
-	// Optional. Default: map[string]LogFunc
+	// Optional. Default: nil
 	CustomTags map[string]LogFunc
 
 	// You can define specific things before returning the handler: colors, template, etc.
@@ -64,7 +66,6 @@ type Config struct {
 	//   - CombinedFormat   → Uses the Apache Combined Log Format: "${ip} - - [${time}] \"${method} ${url} ${protocol}\" ${status} ${bytesSent} \"${referer}\" \"${ua}\"\n"
 	//   - JSONFormat      → Uses the JSON log format: "{\"time\":\"${time}\",\"ip\":\"${ip}\",\"method\":\"${method}\",\"url\":\"${url}\",\"status\":${status},\"bytesSent\":${bytesSent}}\n"
 	//   - ECSFormat        → Uses the Elastic Common Schema (ECS) log format: {\"@timestamp\":\"${time}\",\"ecs\":{\"version\":\"1.6.0\"},\"client\":{\"ip\":\"${ip}\"},\"http\":{\"request\":{\"method\":\"${method}\",\"url\":\"${url}\",\"protocol\":\"${protocol}\"},\"response\":{\"status_code\":${status},\"body\":{\"bytes\":${bytesSent}}}},\"log\":{\"level\":\"INFO\",\"logger\":\"fiber\"},\"message\":\"${method} ${url} responded with ${status}\"}"
-	// If both `Format` and `CustomFormat` are provided, the `CustomFormat` will be used, and the `Format` field will be ignored.
 	// If no format is specified, the default format is used:
 	// "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}"
 	Format string
@@ -98,28 +99,11 @@ type Config struct {
 	enableLatency bool
 }
 
-const (
-	startTag       = "${"
-	endTag         = "}"
-	paramSeparator = ":"
-)
-
 // Buffer abstracts the buffer operations used when rendering log entries.
-type Buffer interface {
-	Len() int
-	ReadFrom(r io.Reader) (int64, error)
-	WriteTo(w io.Writer) (int64, error)
-	Bytes() []byte
-	Write(p []byte) (int, error)
-	WriteByte(c byte) error
-	WriteString(s string) (int, error)
-	Set(p []byte)
-	SetString(s string)
-	String() string
-}
+type Buffer = logtemplate.Buffer
 
 // LogFunc formats logging output using the provided buffer and request data.
-type LogFunc func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error)
+type LogFunc = logtemplate.Func[fiber.Ctx, Data]
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
