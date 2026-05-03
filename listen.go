@@ -133,6 +133,20 @@ type ListenConfig struct {
 	// Default: runtime.GOMAXPROCS(0) / 2
 	PreforkRecoverThreshold int `json:"prefork_recover_threshold"`
 
+	// PreforkRecoverInterval defines how long the master process waits before
+	// restarting a crashed child process.
+	// This only applies when EnablePrefork is true.
+	//
+	// Default: 0
+	PreforkRecoverInterval time.Duration `json:"prefork_recover_interval"`
+
+	// PreforkShutdownGracePeriod defines how long the master process waits for
+	// child processes to exit after shutdown before killing them.
+	// This only applies when EnablePrefork is true.
+	//
+	// Default: 5 * time.Second
+	PreforkShutdownGracePeriod time.Duration `json:"prefork_shutdown_grace_period"`
+
 	// PreforkLogger sets a custom logger for the prefork process manager.
 	// This only applies when EnablePrefork is true.
 	//
