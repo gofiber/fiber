@@ -351,6 +351,18 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 	require.Equal(t, int64(len(body)), resp.ContentLength)
 }
 
+func Test_App_AcquireDefaultCtx_CustomCtxFallback(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	ctx, ok := app.prepareDefaultCtx(&customCtx{
+		DefaultCtx: *NewDefaultCtx(app),
+	}, &fasthttp.RequestCtx{})
+	require.False(t, ok)
+	require.Nil(t, ctx)
+}
+
 func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
 	t.Parallel()
 

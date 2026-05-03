@@ -81,12 +81,45 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 	return ctx
 }
 
+func (app *App) acquireDefaultCtx(fctx *fasthttp.RequestCtx) (*DefaultCtx, bool) {
+	rawCtx := app.pool.Get()
+	ctx, ok := app.prepareDefaultCtx(rawCtx, fctx)
+	if !ok {
+		app.pool.Put(rawCtx)
+		return nil, false
+	}
+
+	return ctx, true
+}
+
+func (*App) prepareDefaultCtx(rawCtx any, fctx *fasthttp.RequestCtx) (*DefaultCtx, bool) {
+	ctx, ok := rawCtx.(*DefaultCtx)
+	if !ok {
+		if _, ok := rawCtx.(CustomCtx); ok {
+			return nil, false
+		}
+		panic(errDefaultCtxTypeAssertion)
+	}
+
+	ctx.Reset(fctx)
+
+	return ctx, true
+}
+
 // ReleaseCtx releases the ctx back into the pool.
 // If the context was abandoned (e.g., by timeout middleware), this is a no-op.
 // Call ForceRelease only when you can guarantee no goroutines (including the
 // requestHandler and ErrorHandler) still touch the context; the timeout
 // middleware intentionally leaves abandoned contexts unreleased to avoid races.
 func (app *App) ReleaseCtx(c CustomCtx) {
+	if c.IsAbandoned() {
+		return
+	}
+	c.release()
+	app.pool.Put(c)
+}
+
+func (app *App) releaseDefaultCtx(c *DefaultCtx) {
 	if c.IsAbandoned() {
 		return
 	}
