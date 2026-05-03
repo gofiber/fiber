@@ -3,6 +3,7 @@ package log
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -16,9 +17,21 @@ var errContextTestWrite = errors.New("context test write failure")
 
 type failingContextBuffer struct{}
 
+func (failingContextBuffer) Len() int { return 0 }
+func (failingContextBuffer) ReadFrom(_ io.Reader) (int64, error) {
+	return 0, errContextTestWrite
+}
+
+func (failingContextBuffer) WriteTo(_ io.Writer) (int64, error) {
+	return 0, errContextTestWrite
+}
+func (failingContextBuffer) Bytes() []byte                   { return nil }
 func (failingContextBuffer) Write(_ []byte) (int, error)     { return 0, errContextTestWrite }
 func (failingContextBuffer) WriteByte(byte) error            { return errContextTestWrite }
 func (failingContextBuffer) WriteString(string) (int, error) { return 0, errContextTestWrite }
+func (failingContextBuffer) Set([]byte)                      {}
+func (failingContextBuffer) SetString(string)                {}
+func (failingContextBuffer) String() string                  { return "" }
 
 // buildTestTemplate compiles a context template using the package-default tag
 // map merged with the supplied custom tags. It mirrors the production merge

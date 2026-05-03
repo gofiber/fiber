@@ -2,6 +2,7 @@ package logtemplate
 
 import (
 	"bytes"
+	"io"
 
 	"github.com/gofiber/utils/v2"
 )
@@ -12,15 +13,22 @@ const (
 	paramSeparator = ":"
 )
 
-// Buffer is the minimal write surface required by template renderers.
-// It is intentionally narrow (Write/WriteByte/WriteString plus Write so
-// fmt.Fprintf works) so any byte-buffer implementation — including the
-// pooled *bytebufferpool.ByteBuffer used internally — satisfies it without
-// having to expose its full machinery.
+// Buffer is the render buffer exposed to template functions.
+// The template renderer only requires Write, WriteByte, and WriteString, but
+// the wider bytebufferpool-compatible surface is kept so existing custom
+// logger tags that use methods such as Len, Bytes, Set, or String continue to
+// compile when switching to the shared template renderer.
 type Buffer interface {
+	Len() int
+	ReadFrom(r io.Reader) (int64, error)
+	WriteTo(w io.Writer) (int64, error)
+	Bytes() []byte
 	Write(p []byte) (int, error)
 	WriteByte(c byte) error
 	WriteString(s string) (int, error)
+	Set(p []byte)
+	SetString(s string)
+	String() string
 }
 
 // Func renders one dynamic template tag.
