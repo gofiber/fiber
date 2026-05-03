@@ -336,3 +336,8 @@ const (
 	ConstraintDatetime        = "datetime"
 	ConstraintRegex           = "regex"
 )
+
+// OS identifiers
+const (
+	windowsOS = "windows"
+)
