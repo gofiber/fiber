@@ -1,5 +1,5 @@
-github.com/ReneWerner87/fasthttp v1.62.1-0.20260502143141-602275614f62 h1:MdsWtCjkNpc+x306qsLPgGZlzhNSOOoTOF8xxWfD8A0=
-github.com/ReneWerner87/fasthttp v1.62.1-0.20260502143141-602275614f62/go.mod h1:z1sDUvOShhXq/C9mwH/fSm1Vb71tUJwmQdgkBrBNwnA=
+github.com/ReneWerner87/fasthttp v1.62.1-0.20260503114457-b2c87c11216b h1:+XXOHI5EDUJyqlcNQkOYWl4jGL4+luJBTcDq62z9voA=
+github.com/ReneWerner87/fasthttp v1.62.1-0.20260503114457-b2c87c11216b/go.mod h1:z1sDUvOShhXq/C9mwH/fSm1Vb71tUJwmQdgkBrBNwnA=
 github.com/andybalholm/brotli v1.2.1 h1:R+f5xP285VArJDRgowrfb9DqL18yVK0gKAW/F+eTWro=
 github.com/andybalholm/brotli v1.2.1/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
