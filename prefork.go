@@ -45,11 +45,13 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 	}
 
 	p := &prefork.Prefork{
-		Network:          cfg.ListenerNetwork,
-		Reuseport:        true,
-		RecoverThreshold: recoverThreshold,
-		Logger:           logger,
-		OnMasterDeath:    func() { os.Exit(1) }, //nolint:revive // Exiting child process is intentional
+		Network:             cfg.ListenerNetwork,
+		Reuseport:           true,
+		RecoverThreshold:    recoverThreshold,
+		RecoverInterval:     cfg.PreforkRecoverInterval,
+		ShutdownGracePeriod: cfg.PreforkShutdownGracePeriod,
+		Logger:              logger,
+		OnMasterDeath:       func() { os.Exit(1) }, //nolint:revive // Exiting child process is intentional
 	}
 
 	// Use test command producer if in test mode
