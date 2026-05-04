@@ -56,6 +56,36 @@ type Config struct {
 	// Optional. Default: extractors.FromCookie("session_id")
 	Extractor extractors.Extractor
 
+	// TrustClientSessionID controls whether client-supplied session IDs from
+	// read-only sources (query, form, URL param, custom extractor) are accepted
+	// as-is when no session data exists yet for that ID.
+	//
+	// When false (default), unknown IDs from read-only sources are discarded
+	// and the server generates a new ID via KeyGenerator — the same behaviour
+	// already applied to cookie/header sources to prevent session fixation.
+	//
+	// When true, the client-supplied ID is preserved and a fresh session is
+	// stored under it, so subsequent requests carrying the same ID load the
+	// same session. ClientSessionIDValidator must be set in this case;
+	// otherwise the client ID is rejected and a new one is generated.
+	//
+	// SECURITY: Enabling this opens the door to session fixation and storage
+	// poisoning by clients that can choose arbitrary IDs. Use only with a
+	// strong validator (HMAC-signed, length/format-checked, monotonically
+	// issued, etc.) and prefer cookie/header extractors when possible.
+	//
+	// Optional. Default: false
+	TrustClientSessionID bool
+
+	// ClientSessionIDValidator is invoked for client-supplied session IDs from
+	// read-only sources before they are persisted. Return true to accept the
+	// ID, false to reject it (a fresh server-generated ID is used instead).
+	//
+	// Required when TrustClientSessionID is true; nil = reject all.
+	//
+	// Optional. Default: nil
+	ClientSessionIDValidator func(id string) bool
+
 	// IdleTimeout defines the maximum duration of inactivity before the session expires.
 	//
 	// Note: The idle timeout is updated on each `Save()` call. If a middleware handler is used, `Save()` is called automatically.

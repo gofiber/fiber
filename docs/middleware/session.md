@@ -369,6 +369,37 @@ extractors.Chain(
 )
 ```
 
+### Trusting Client-Supplied IDs from Read-Only Sources
+
+By default, an unknown session ID from any source is discarded and a new one is generated via `KeyGenerator`. For cookie/header sources that is also the response channel for the new ID, so the next request continues with it. Read-only sources (query, form, URL param, custom extractors) cannot communicate a new ID back, so the same client request would otherwise create a new orphan session every time.
+
+If your application needs read-only sources to drive a persistent session — for example a non-browser client that always sends the same `?SESSIONID=...` — opt in explicitly:
+
+```go
+app.Use(session.New(session.Config{
+    Extractor:                extractors.FromQuery("SESSIONID"),
+    TrustClientSessionID:     true,
+    ClientSessionIDValidator: func(id string) bool {
+        // Verify the format/origin of the ID. Reject anything you did not issue.
+        // Example: HMAC-signed IDs, length checks, allow-list lookups, ...
+        return isValidSignedID(id)
+    },
+}))
+```
+
+**Security implications.** Trusting client-supplied IDs without validation enables:
+
+- **Session fixation** — an attacker can craft a link such as `?SESSIONID=ATTACKER_KNOWN_VALUE`; once the victim follows it, the server creates a session under that ID and the attacker can hijack it.
+- **Storage poisoning** — any caller can populate your session storage with arbitrary keys.
+
+Mitigations:
+
+1. Always supply a `ClientSessionIDValidator` that rejects IDs you did not issue (HMAC signature, registered allow-list, signed JWT, etc.).
+2. Combine the read-only source with a server-issued token bootstrap step.
+3. Prefer cookie or header extractors whenever the client can store them.
+
+Cookie and header sources are unaffected by this flag — their unknown IDs are always discarded to prevent fixation.
+
 ### Custom Extractors (Session-specific)
 
 Prefer the helper constructors from the extractors module. See the Extractors Guide for the full API; below are session-specific examples and notes.
@@ -681,6 +712,8 @@ extractors.Chain(extractors ...extractors.Extractor) extractors.Extractor
 | `Store`             | `*session.Store`            | Pre-built session store (use when you need to share/register types) | `nil` (auto-created)                       |
 | `Storage`           | `fiber.Storage`             | Session storage backend (used when creating a store if `Store` is nil) | `memory.New()`                             |
 | `Extractor`         | `extractors.Extractor`      | Session ID extraction       | `extractors.FromCookie("session_id")`     |
+| `TrustClientSessionID` | `bool`                   | Accept client-supplied IDs from read-only sources (query/form/param/custom) when no data exists. Requires `ClientSessionIDValidator`. | `false` |
+| `ClientSessionIDValidator` | `func(string) bool` | Validates a client-supplied session ID before persisting it. Required when `TrustClientSessionID` is `true`; `nil` rejects all. | `nil` |
 | `KeyGenerator`      | `func() string`             | Session ID generator        | `utils.SecureToken`                             |
 | `IdleTimeout`       | `time.Duration`             | Inactivity timeout          | `30 * time.Minute`                         |
 | `AbsoluteTimeout`   | `time.Duration`             | Maximum session duration    | `0` (unlimited)                            |

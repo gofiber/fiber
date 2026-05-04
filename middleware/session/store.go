@@ -28,6 +28,16 @@ const (
 	sessionIDContextKey sessionIDKey = iota
 )
 
+// sessionIDInfo bundles the resolved session ID with the extractor source that
+// produced it. Both pieces are cached together in the request locals so that a
+// second Store.Get within the same request returns a consistent answer — in
+// particular, chained extractors keep their original source decision instead of
+// being re-derived from the wrapper Extractor.Source.
+type sessionIDInfo struct {
+	id     string
+	source extractors.Source
+}
+
 // Store manages session data using the configured storage backend.
 type Store struct {
 	Config
@@ -124,22 +134,16 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	var rawData []byte
 	var err error
 
-	id, ok := c.Locals(sessionIDContextKey).(string)
-
-	// writableSource tracks whether the session ID came from a writable source
-	// (cookie or header). For writable sources, an unknown ID is discarded and a new
-	// one is generated to prevent session fixation. For read-only sources (query,
-	// form, param, custom), the client-provided ID is preserved so that subsequent
-	// requests using the same query parameter are associated with the same session.
-	var writableSource bool
-	if !ok {
-		id, writableSource = s.getSessionID(c)
-	} else {
-		// ID was cached from a prior call within this request; derive writability
-		// from the primary (first or only) extractor source.
-		src := s.Extractor.Source
-		writableSource = src == extractors.SourceCookie || src == extractors.SourceHeader
+	// Resolve the session ID and the source that produced it. The pair is cached
+	// in the request locals so a second call within the same request returns the
+	// same answer — including for chained extractors where the source is decided
+	// at extraction time and would otherwise be lost.
+	info, alreadyResolved := c.Locals(sessionIDContextKey).(sessionIDInfo)
+	if !alreadyResolved {
+		info = s.resolveSessionID(c)
+		c.Locals(sessionIDContextKey, info)
 	}
+	id := info.id
 
 	fresh := false // Session is not fresh initially; only set to true if we generate a new ID
 
@@ -150,21 +154,22 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 			return nil, err
 		}
 		if rawData == nil {
-			if writableSource {
-				// For writable sources (cookie, header), discard the client-provided
-				// ID and generate a new one to prevent session fixation attacks.
-				id = ""
-			} else {
-				// For read-only sources (query, form, param, custom), preserve the
-				// client-provided ID and create a fresh session under it so that
-				// subsequent requests carrying the same ID are served the same session.
-				//
-				// Security note: using a read-only source (e.g. FromQuery) means the
-				// client controls the session ID on every request and the server cannot
-				// rotate it in the response. Callers that require strong session
-				// fixation protection should use a cookie or header extractor instead.
+			switch {
+			case alreadyResolved:
+				// A prior call within this request already committed to this ID.
+				// Keep it so multiple Store.Get calls in the same request observe
+				// the same session.
 				fresh = true
-				c.Locals(sessionIDContextKey, id)
+			case s.acceptClientID(info):
+				// Read-only source with an opt-in trusted client ID — preserve so
+				// that subsequent requests carrying the same ID load the same
+				// session.
+				fresh = true
+			default:
+				// Writable source (cookie/header) with an unknown ID, or
+				// untrusted read-only ID — discard and generate a fresh one to
+				// prevent session fixation and storage poisoning.
+				id = ""
 			}
 		}
 	}
@@ -173,7 +178,9 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	if id == "" {
 		fresh = true // The session is fresh if a new ID is generated
 		id = s.KeyGenerator()
-		c.Locals(sessionIDContextKey, id)
+		// Mark the cached source as cookie so the regenerated ID is treated as
+		// server-issued (writable) on any subsequent call within this request.
+		c.Locals(sessionIDContextKey, sessionIDInfo{id: id, source: extractors.SourceCookie})
 	}
 
 	// Create session object
@@ -212,36 +219,20 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	return sess, nil
 }
 
-// getSessionID returns the session ID using the configured extractor, and whether
-// the extraction source is writable (cookie or header). A writable source means
-// the middleware sets the session ID back in the response (e.g. Set-Cookie), so
-// an unrecognized client-supplied ID should be discarded to prevent session
-// fixation. A non-writable source (query, form, param, custom) is read-only; the
-// client controls the ID on every request, so an unrecognized ID is preserved and
-// a fresh session is stored under it.
-//
-// For chained extractors the function iterates the sub-extractors in order and
-// returns the source of the first one that provides a value.
+// resolveSessionID extracts the session ID from the request and reports the
+// source that produced it. For chained extractors the sub-extractors are tried
+// in order so the source of the first one that yields a value wins; for a
+// single extractor the source on the wrapper is used. When extraction fails the
+// returned ID is empty and the source falls back to the wrapper's source.
 //
 // Parameters:
 //   - c: The Fiber context.
 //
 // Returns:
-//   - string: The session ID.
-//   - bool: true when the source is writable (cookie or header).
-//
-// Usage:
-//
-//	id, writable := store.getSessionID(c)
-func (s *Store) getSessionID(c fiber.Ctx) (string, bool) {
-	isWritable := func(src extractors.Source) bool {
-		return src == extractors.SourceCookie || src == extractors.SourceHeader
-	}
-
+//   - sessionIDInfo: The resolved ID together with its originating source.
+func (s *Store) resolveSessionID(c fiber.Ctx) sessionIDInfo {
 	ext := s.Extractor
 
-	// For chained extractors, try each sub-extractor in order so we can identify
-	// which source actually provided the value.
 	if len(ext.Chain) > 0 {
 		for _, chainExt := range ext.Chain {
 			if chainExt.Extract == nil {
@@ -249,19 +240,33 @@ func (s *Store) getSessionID(c fiber.Ctx) (string, bool) {
 			}
 			v, err := chainExt.Extract(c)
 			if err == nil && v != "" {
-				return v, isWritable(chainExt.Source)
+				return sessionIDInfo{id: v, source: chainExt.Source}
 			}
 		}
-		return "", false
+		return sessionIDInfo{source: ext.Source}
 	}
 
-	// Single extractor.
-	sessionID, err := ext.Extract(c)
+	v, err := ext.Extract(c)
 	if err != nil {
-		// If extraction fails, return empty string to generate a new session
-		return "", false
+		return sessionIDInfo{source: ext.Source}
 	}
-	return sessionID, isWritable(ext.Source)
+	return sessionIDInfo{id: v, source: ext.Source}
+}
+
+// acceptClientID reports whether a client-supplied session ID from a read-only
+// source should be persisted as-is. Writable sources (cookie/header) are never
+// accepted here — they are subject to fixation protection. For read-only
+// sources the application must explicitly opt in via TrustClientSessionID and
+// supply a ClientSessionIDValidator that accepts the ID; otherwise the ID is
+// rejected and a server-generated one is used.
+func (s *Store) acceptClientID(info sessionIDInfo) bool {
+	if info.id == "" || info.source.IsWritable() {
+		return false
+	}
+	if !s.TrustClientSessionID || s.ClientSessionIDValidator == nil {
+		return false
+	}
+	return s.ClientSessionIDValidator(info.id)
 }
 
 // Reset deletes all sessions from the storage.

@@ -60,6 +60,15 @@ const (
 	SourceCustom
 )
 
+// IsWritable reports whether the source allows the server to send a value back
+// to the client in the response (e.g. Set-Cookie, response header). Cookie and
+// header sources are writable; query, form, param, custom and auth-header
+// sources are read-only — the client controls the value on every request and
+// the server cannot rotate it in the response.
+func (s Source) IsWritable() bool {
+	return s == SourceCookie || s == SourceHeader
+}
+
 // ErrNotFound is returned when the requested value is missing or empty.
 var ErrNotFound = errors.New("value not found")
 
