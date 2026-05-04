@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -10,6 +11,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+// errOnGetStorage wraps a fiber.Storage and forces GetWithContext to fail.
+type errOnGetStorage struct {
+	fiber.Storage
+	err error
+}
+
+func (e *errOnGetStorage) GetWithContext(_ context.Context, _ string) ([]byte, error) {
+	return nil, e.err
+}
 
 // go test -run Test_Store_resolveSessionID
 func Test_Store_resolveSessionID(t *testing.T) {
@@ -85,7 +96,7 @@ func Test_Store_resolveSessionID(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
-		// Cookie absent → query wins; source must reflect query, not the
+		// Cookie absent: query wins; source must reflect query, not the
 		// chain wrapper's primary source.
 		ctx.Request().SetRequestURI("/path?session_id=" + expectedID)
 
@@ -93,6 +104,57 @@ func Test_Store_resolveSessionID(t *testing.T) {
 		require.Equal(t, expectedID, info.id)
 		require.Equal(t, extractors.SourceQuery, info.source)
 		require.False(t, info.source.IsWritable())
+	})
+
+	t.Run("chain skips sub-extractor with nil Extract func", func(t *testing.T) {
+		t.Parallel()
+		// First entry has a nil Extract; second is a real query extractor.
+		// resolveSessionID must continue past the nil and use the value from
+		// the next extractor.
+		store := NewStore(Config{
+			Extractor: extractors.Chain(
+				extractors.Extractor{Source: extractors.SourceCustom},
+				extractors.FromQuery("session_id"),
+			),
+		})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().SetRequestURI("/path?session_id=" + expectedID)
+
+		info := store.resolveSessionID(ctx)
+		require.Equal(t, expectedID, info.id)
+		require.Equal(t, extractors.SourceQuery, info.source)
+	})
+
+	t.Run("chain with no value returns wrapper source", func(t *testing.T) {
+		t.Parallel()
+		// Neither cookie nor query is present; resolveSessionID returns an
+		// empty ID and the wrapper's primary source.
+		store := NewStore(Config{
+			Extractor: extractors.Chain(
+				extractors.FromCookie("session_id"),
+				extractors.FromQuery("session_id"),
+			),
+		})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		info := store.resolveSessionID(ctx)
+		require.Empty(t, info.id)
+		require.Equal(t, extractors.SourceCookie, info.source)
+	})
+
+	t.Run("single extractor with no value returns wrapper source", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore(Config{
+			Extractor: extractors.FromQuery("session_id"),
+		})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		info := store.resolveSessionID(ctx)
+		require.Empty(t, info.id)
+		require.Equal(t, extractors.SourceQuery, info.source)
 	})
 }
 
@@ -170,7 +232,7 @@ func Test_Store_Get(t *testing.T) {
 		require.True(t, acquiredSession.Fresh())
 	})
 
-	t.Run("query extractor: opt-in but validator rejects → fall back to generated ID", func(t *testing.T) {
+	t.Run("query extractor: opt-in but validator rejects falls back to generated ID", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore(Config{
 			Extractor:                extractors.FromQuery("session_id"),
@@ -353,6 +415,21 @@ func Test_Store_Get(t *testing.T) {
 		require.Equal(t, first, sess2.ID(),
 			"second Get within same request must return the same regenerated ID")
 		sess1.Release()
+	})
+
+	// Storage failure on Get must be propagated to the caller.
+	t.Run("storage GetWithContext error is returned", func(t *testing.T) {
+		t.Parallel()
+		storageErr := errors.New("storage down")
+		store := NewStore(Config{
+			Storage: &errOnGetStorage{err: storageErr},
+		})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().Header.SetCookie(store.Extractor.Key, "any-id")
+
+		_, err := store.Get(ctx)
+		require.ErrorIs(t, err, storageErr)
 	})
 
 	// Empty client-supplied query ID falls through to server generation

@@ -937,3 +937,27 @@ func Test_isValidToken68(t *testing.T) {
 		})
 	}
 }
+
+// go test -run Test_Source_IsWritable
+func Test_Source_IsWritable(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		src  Source
+		want bool
+	}{
+		{name: "cookie is writable", src: SourceCookie, want: true},
+		{name: "header is writable", src: SourceHeader, want: true},
+		{name: "auth header is read-only", src: SourceAuthHeader, want: false},
+		{name: "query is read-only", src: SourceQuery, want: false},
+		{name: "form is read-only", src: SourceForm, want: false},
+		{name: "param is read-only", src: SourceParam, want: false},
+		{name: "custom is read-only", src: SourceCustom, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, tc.src.IsWritable())
+		})
+	}
+}
