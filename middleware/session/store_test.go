@@ -124,7 +124,7 @@ func Test_Store_Get(t *testing.T) {
 
 	// Regression: https://github.com/gofiber/fiber/issues/4234
 	// Without TrustClientSessionID, an unknown ID from a read-only source
-	// (query/form/param/custom) must be discarded — same fixation protection
+	// (query/form/param/custom) must be discarded; same fixation protection
 	// as the cookie/header default.
 	t.Run("query extractor: client ID is rejected by default", func(t *testing.T) {
 		t.Parallel()
@@ -193,7 +193,7 @@ func Test_Store_Get(t *testing.T) {
 	t.Run("query extractor: opt-in without validator is rejected", func(t *testing.T) {
 		t.Parallel()
 		// TrustClientSessionID alone (nil validator) must NOT trust the client
-		// ID — fail closed.
+		// ID. Fail closed.
 		store := NewStore(Config{
 			Extractor:            extractors.FromQuery("session_id"),
 			TrustClientSessionID: true,
@@ -296,7 +296,7 @@ func Test_Store_Get(t *testing.T) {
 	})
 
 	// Regression: two Store.Get calls in the same request must return the
-	// same ID — covers the chain case where source decision was previously
+	// same ID. Covers the chain case where source decision was previously
 	// re-derived from the wrapper instead of being cached.
 	t.Run("chain extractor: two Get calls in same request return same query ID", func(t *testing.T) {
 		t.Parallel()
@@ -332,7 +332,7 @@ func Test_Store_Get(t *testing.T) {
 	})
 
 	// Two Get calls in same request with cookie source generate the same ID
-	// after regeneration — guards against the regenerate-loop bug.
+	// after regeneration. Guards against the regenerate-loop bug.
 	t.Run("cookie extractor: two Get calls return same regenerated ID", func(t *testing.T) {
 		t.Parallel()
 		store := NewStore()

@@ -61,8 +61,9 @@ type Config struct {
 	// as-is when no session data exists yet for that ID.
 	//
 	// When false (default), unknown IDs from read-only sources are discarded
-	// and the server generates a new ID via KeyGenerator — the same behaviour
-	// already applied to cookie/header sources to prevent session fixation.
+	// and the server generates a new ID via KeyGenerator. This matches the
+	// behaviour already applied to cookie/header sources to prevent session
+	// fixation.
 	//
 	// When true, the client-supplied ID is preserved and a fresh session is
 	// stored under it, so subsequent requests carrying the same ID load the

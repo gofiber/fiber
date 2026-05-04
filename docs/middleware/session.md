@@ -373,7 +373,7 @@ extractors.Chain(
 
 By default, an unknown session ID from any source is discarded and a new one is generated via `KeyGenerator`. For cookie/header sources that is also the response channel for the new ID, so the next request continues with it. Read-only sources (query, form, URL param, custom extractors) cannot communicate a new ID back, so the same client request would otherwise create a new orphan session every time.
 
-If your application needs read-only sources to drive a persistent session — for example a non-browser client that always sends the same `?SESSIONID=...` — opt in explicitly:
+If your application needs read-only sources to drive a persistent session, for example a non-browser client that always sends the same `?SESSIONID=...`, opt in explicitly:
 
 ```go
 app.Use(session.New(session.Config{
@@ -389,8 +389,8 @@ app.Use(session.New(session.Config{
 
 **Security implications.** Trusting client-supplied IDs without validation enables:
 
-- **Session fixation** — an attacker can craft a link such as `?SESSIONID=ATTACKER_KNOWN_VALUE`; once the victim follows it, the server creates a session under that ID and the attacker can hijack it.
-- **Storage poisoning** — any caller can populate your session storage with arbitrary keys.
+- **Session fixation**: an attacker can craft a link such as `?SESSIONID=ATTACKER_KNOWN_VALUE`; once the victim follows it, the server creates a session under that ID and the attacker can hijack it.
+- **Storage poisoning**: any caller can populate your session storage with arbitrary keys.
 
 Mitigations:
 
@@ -398,7 +398,7 @@ Mitigations:
 2. Combine the read-only source with a server-issued token bootstrap step.
 3. Prefer cookie or header extractors whenever the client can store them.
 
-Cookie and header sources are unaffected by this flag — their unknown IDs are always discarded to prevent fixation.
+Cookie and header sources are unaffected by this flag; their unknown IDs are always discarded to prevent fixation.
 
 ### Custom Extractors (Session-specific)
 

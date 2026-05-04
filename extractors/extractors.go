@@ -63,7 +63,7 @@ const (
 // IsWritable reports whether the source allows the server to send a value back
 // to the client in the response (e.g. Set-Cookie, response header). Cookie and
 // header sources are writable; query, form, param, custom and auth-header
-// sources are read-only — the client controls the value on every request and
+// sources are read-only; the client controls the value on every request and
 // the server cannot rotate it in the response.
 func (s Source) IsWritable() bool {
 	return s == SourceCookie || s == SourceHeader

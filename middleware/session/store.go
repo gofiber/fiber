@@ -30,7 +30,7 @@ const (
 
 // sessionIDInfo bundles the resolved session ID with the extractor source that
 // produced it. Both pieces are cached together in the request locals so that a
-// second Store.Get within the same request returns a consistent answer — in
+// second Store.Get within the same request returns a consistent answer. In
 // particular, chained extractors keep their original source decision instead of
 // being re-derived from the wrapper Extractor.Source.
 type sessionIDInfo struct {
@@ -136,7 +136,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 
 	// Resolve the session ID and the source that produced it. The pair is cached
 	// in the request locals so a second call within the same request returns the
-	// same answer — including for chained extractors where the source is decided
+	// same answer, including for chained extractors where the source is decided
 	// at extraction time and would otherwise be lost.
 	info, alreadyResolved := c.Locals(sessionIDContextKey).(sessionIDInfo)
 	if !alreadyResolved {
@@ -161,13 +161,13 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 				// the same session.
 				fresh = true
 			case s.acceptClientID(info):
-				// Read-only source with an opt-in trusted client ID — preserve so
+				// Read-only source with an opt-in trusted client ID; preserve so
 				// that subsequent requests carrying the same ID load the same
 				// session.
 				fresh = true
 			default:
 				// Writable source (cookie/header) with an unknown ID, or
-				// untrusted read-only ID — discard and generate a fresh one to
+				// untrusted read-only ID; discard and generate a fresh one to
 				// prevent session fixation and storage poisoning.
 				id = ""
 			}
@@ -255,7 +255,7 @@ func (s *Store) resolveSessionID(c fiber.Ctx) sessionIDInfo {
 
 // acceptClientID reports whether a client-supplied session ID from a read-only
 // source should be persisted as-is. Writable sources (cookie/header) are never
-// accepted here — they are subject to fixation protection. For read-only
+// accepted here; they are subject to fixation protection. For read-only
 // sources the application must explicitly opt in via TrustClientSessionID and
 // supply a ClientSessionIDValidator that accepts the ID; otherwise the ID is
 // rejected and a server-generated one is used.
