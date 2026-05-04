@@ -9,7 +9,6 @@ package fiber
 import (
 	"bytes"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -77,7 +76,7 @@ type TypeConstraint uint16
 // Constraint describes the validation rules that apply to a dynamic route
 // segment when matching incoming requests.
 type Constraint struct {
-	RegexCompiler     *regexp.Regexp
+	RegexCompiler     RegexCompiler
 	Name              string
 	Data              []string
 	customConstraints []CustomConstraint
@@ -158,6 +157,10 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	if len(cfg) > 0 {
 		config = cfg[0]
 	}
+	// Use default regex engine if not configured
+	if config.RegexEngine == nil {
+		config.RegexEngine = DefaultRegexEngine
+	}
 
 	if path == "" {
 		path = "/"
@@ -187,7 +190,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	parser, _ := routerParserPool.Get().(*routeParser) //nolint:errcheck // only contains routeParser
 	parser.reset()
 	patternStr := string(patternPretty)
-	parser.parseRoute(patternStr)
+	parser.parseRoute(patternStr, config.RegexEngine)
 	defer routerParserPool.Put(parser)
 
 	// '*' wildcard matches any path
@@ -216,14 +219,14 @@ func (parser *routeParser) reset() {
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
-func (parser *routeParser) parseRoute(pattern string, customConstraints ...CustomConstraint) {
+func (parser *routeParser) parseRoute(pattern string, regexEngine RegexEngine, customConstraints ...CustomConstraint) {
 	var n int
 	var seg *routeSegment
 	for pattern != "" {
 		nextParamPosition := findNextParamPosition(pattern)
 		// handle the parameter part
 		if nextParamPosition == 0 {
-			n, seg = parser.analyseParameterPart(pattern, customConstraints...)
+			n, seg = parser.analyseParameterPart(pattern, regexEngine, customConstraints...)
 			parser.params, parser.segs = append(parser.params, seg.ParamName), append(parser.segs, seg)
 		} else {
 			n, seg = parser.analyseConstantPart(pattern, nextParamPosition)
@@ -240,9 +243,9 @@ func (parser *routeParser) parseRoute(pattern string, customConstraints ...Custo
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
-func parseRoute(pattern string, customConstraints ...CustomConstraint) routeParser {
+func parseRoute(pattern string, regexEngine RegexEngine, customConstraints ...CustomConstraint) routeParser {
 	parser := routeParser{}
-	parser.parseRoute(pattern, customConstraints...)
+	parser.parseRoute(pattern, regexEngine, customConstraints...)
 
 	// Check if the route has too many parameters
 	if len(parser.params) > maxParams {
@@ -337,7 +340,7 @@ func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (
 }
 
 // analyseParameterPart find the parameter end and create the route segment
-func (parser *routeParser) analyseParameterPart(pattern string, customConstraints ...CustomConstraint) (int, *routeSegment) {
+func (parser *routeParser) analyseParameterPart(pattern string, regexEngine RegexEngine, customConstraints ...CustomConstraint) (int, *routeSegment) {
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
 
@@ -416,7 +419,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 				// Precompile regex if has regex constraint
 				if constraint.ID == regexConstraint {
 					constraint.Data = []string{c[start+1 : end]}
-					constraint.RegexCompiler = regexp.MustCompile(constraint.Data[0])
+					constraint.RegexCompiler = regexEngine.MustCompile(constraint.Data[0])
 				}
 
 				constraints = append(constraints, constraint)

@@ -476,7 +476,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
-	route.routeParser = parseRoute(prettyPath, app.customConstraints...)
+	route.routeParser = parseRoute(prettyPath, app.config.RegexEngine, app.customConstraints...)
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
@@ -650,8 +650,8 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 	pathClean := RemoveEscapeChar(pathPretty)
 
-	parsedRaw := parseRoute(pathRaw, app.customConstraints...)
-	parsedPretty := parseRoute(pathPretty, app.customConstraints...)
+	parsedRaw := parseRoute(pathRaw, app.config.RegexEngine, app.customConstraints...)
+	parsedPretty := parseRoute(pathPretty, app.config.RegexEngine, app.customConstraints...)
 
 	isMount := group != nil && group.app != app
 

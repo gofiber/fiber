@@ -452,6 +452,13 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Optional. Default: a provider that returns context.Background()
 	ServicesShutdownContextProvider func() context.Context
+
+	// RegexEngine allows using alternative regex implementations for route pattern matching.
+	// This can be used to configure high-performance regex engines (e.g., coregex) as a drop-in
+	// replacement for the standard library regexp package.
+	//
+	// Optional. Default: DefaultRegexEngine (stdlib regexp)
+	RegexEngine RegexEngine `json:"-"`
 }
 
 // Default TrustProxyConfig
@@ -652,6 +659,9 @@ func New(config ...Config) *App {
 	}
 	if app.config.XMLDecoder == nil {
 		app.config.XMLDecoder = xml.Unmarshal
+	}
+	if app.config.RegexEngine == nil {
+		app.config.RegexEngine = DefaultRegexEngine
 	}
 
 	app.sharedState = newSharedState(&app.config)
