@@ -4,7 +4,9 @@
 
 package fiber
 
-import "regexp"
+import (
+	"regexp"
+)
 
 // RegexCompiler defines the interface for regex pattern compilation and matching.
 // This abstraction allows alternative regex engines to be used for routing constraints.

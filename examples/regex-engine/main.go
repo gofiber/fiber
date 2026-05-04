@@ -7,7 +7,8 @@
 // Example demonstrating how to use coregex (high-performance regex engine) with Fiber.
 //
 // To run this example:
-//   go run -tags=ignore ./examples/regex-engine/main.go
+//
+//	go run -tags=ignore ./examples/regex-engine/main.go
 //
 // The coregex package provides a drop-in replacement for Go's standard regexp package
 // with significant performance improvements (3-3000x faster in many cases).

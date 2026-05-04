@@ -26,8 +26,8 @@ func (m *mockRegexCompiler) MatchString(s string) bool {
 
 // mockRegexEngine is a mock implementation of RegexEngine for testing
 type mockRegexEngine struct {
-	compileCalled bool
 	lastPattern   string
+	compileCalled bool
 }
 
 func (m *mockRegexEngine) MustCompile(pattern string) RegexCompiler {
@@ -85,12 +85,12 @@ func Test_RegexEngine_CustomEngine(t *testing.T) {
 	require.Equal(t, `\d+`, mockEngine.lastPattern, "Pattern should match")
 
 	// Test the route
-	resp, err := app.Test(httptest.NewRequest("GET", "/api/123", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
 	// Test with non-matching pattern
-	resp, err = app.Test(httptest.NewRequest("GET", "/api/abc", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/api/abc", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
 }
@@ -128,7 +128,7 @@ func Test_RegexEngine_NilDefaultsToStdlib(t *testing.T) {
 	})
 
 	// Test the route works
-	resp, err := app.Test(httptest.NewRequest("GET", "/api/123", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
@@ -144,11 +144,11 @@ func Test_RegexEngine_ComplexPattern(t *testing.T) {
 		return c.SendString("date: " + c.Params("date"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/date/2024-01-15", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/date/2024-01-15", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest("GET", "/date/2024-1-5", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/date/2024-1-5", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
 }

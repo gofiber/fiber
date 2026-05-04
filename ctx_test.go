@@ -1559,7 +1559,8 @@ func Test_Ctx_Cookie_DefaultPath(t *testing.T) {
 	}
 
 	c.Res().Cookie(ck)
-	require.Equal(t,
+	require.Equal(
+		t,
 		"p=v; path=/; SameSite=Lax",
 		c.Res().Get(HeaderSetCookie),
 	)
@@ -1578,7 +1579,8 @@ func Test_Ctx_Cookie_MaxAgeOnly(t *testing.T) {
 	}
 	c.Res().Cookie(ck)
 
-	require.Equal(t,
+	require.Equal(
+		t,
 		"ttl=v; max-age=3600; path=/; SameSite=Lax",
 		c.Res().Get(HeaderSetCookie),
 	)
@@ -1599,7 +1601,8 @@ func Test_Ctx_Cookie_StrictPartitioned(t *testing.T) {
 	}
 	c.Res().Cookie(ck)
 
-	require.Equal(t,
+	require.Equal(
+		t,
 		"sp=v; path=/; secure; SameSite=Strict; Partitioned",
 		c.Res().Get(HeaderSetCookie),
 	)
@@ -2088,7 +2091,8 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	err := c.AutoFormat(data)
 	require.NoError(t, err)
 	require.Equal(t, MIMEApplicationJSONCharsetUTF8, c.GetRespHeader(HeaderContentType)) //nolint:testifylint // this is comparing content-type headers, not JSON content
-	require.JSONEq(t,
+	require.JSONEq(
+		t,
 		`{"Sender":"Carol","Recipients":["Alice","Bob"],"Urgency":3}`,
 		string(c.Response().Body()),
 	)
@@ -2119,7 +2123,8 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	err = c.AutoFormat(data)
 	require.NoError(t, err)
 	require.Equal(t, MIMEApplicationXMLCharsetUTF8, c.GetRespHeader(HeaderContentType))
-	require.Equal(t,
+	require.Equal(
+		t,
 		`<Message sender="Carol" urgency="3"><Recipients>Alice</Recipients><Recipients>Bob</Recipients></Message>`,
 		string(c.Response().Body()),
 	)
@@ -8691,7 +8696,8 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 	t.Run("plus_wildcard_params", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Get("/files+/+",
+		app.Get(
+			"/files+/+",
 			func(c Ctx) error {
 				c.OverrideParam("+", "changed")
 				c.OverrideParam("+2", "changed2")
