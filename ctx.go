@@ -692,7 +692,9 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 // release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
 	if c.userContextSet {
-		c.fasthttp.SetUserValue(userContextKey, nil)
+		if c.fasthttp != nil {
+			c.fasthttp.SetUserValue(userContextKey, nil)
+		}
 		c.userContextSet = false
 	}
 	c.route = nil

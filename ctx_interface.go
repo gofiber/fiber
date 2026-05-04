@@ -70,15 +70,27 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 		panic(errCustomCtxTypeAssertion)
 	}
 
-	if app.hasCustomCtx {
-		if setter, ok := ctx.(interface{ setHandlerCtx(CustomCtx) }); ok {
-			setter.setHandlerCtx(ctx)
-		}
-	}
+	app.setHandlerCtxIfNeeded(ctx)
 
 	ctx.Reset(fctx)
 
 	return ctx
+}
+
+func (app *App) setHandlerCtxIfNeeded(ctx CustomCtx) {
+	if app.hasCustomCtx || isCustomCtx(ctx) {
+		if setter, ok := ctx.(interface{ setHandlerCtx(CustomCtx) }); ok {
+			setter.setHandlerCtx(ctx)
+		}
+	}
+}
+
+func isCustomCtx(ctx CustomCtx) bool {
+	if ctx == nil {
+		return false
+	}
+	_, ok := ctx.(*DefaultCtx)
+	return !ok
 }
 
 func (app *App) acquireDefaultCtx(fctx *fasthttp.RequestCtx) (*DefaultCtx, bool) {

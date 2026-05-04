@@ -363,6 +363,28 @@ func Test_App_AcquireDefaultCtx_CustomCtxFallback(t *testing.T) {
 	require.Nil(t, ctx)
 }
 
+func Test_App_SetHandlerCtxIfNeeded_CustomCtxFallback(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	ctx := &customCtx{
+		DefaultCtx: *NewDefaultCtx(app),
+	}
+
+	app.setHandlerCtxIfNeeded(ctx)
+	require.Same(t, ctx, ctx.handlerCtx)
+}
+
+func Test_Ctx_Release_UserContextSetWithoutFastHTTP(t *testing.T) {
+	t.Parallel()
+
+	ctx := NewDefaultCtx(New())
+	ctx.userContextSet = true
+
+	require.NotPanics(t, ctx.release)
+	require.False(t, ctx.userContextSet)
+}
+
 func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
 	t.Parallel()
 
