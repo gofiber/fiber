@@ -71,9 +71,15 @@ func adaptExpressHandler(handler any) (Handler, bool) {
 			return nil, false
 		}
 		return func(c Ctx) error {
-			return h(c.Req(), c.Res(), func() error {
-				return c.Next()
+			var nextErr error
+			err := h(c.Req(), c.Res(), func() error {
+				nextErr = c.Next()
+				return nextErr
 			})
+			if err != nil {
+				return err
+			}
+			return nextErr
 		}, true
 	case func(Req, Res, func() error): // (6) Express-style handler with error-returning next callback
 		if h == nil {
