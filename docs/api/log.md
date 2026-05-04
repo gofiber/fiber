@@ -304,16 +304,21 @@ const (
 Register custom tags with `log.RegisterContextTag`, then reference them from a format passed to `SetContextTemplate`. The built-in `${value:key}` tag is reserved for context-value lookups and cannot be overridden.
 
 ```go
+type tenantContextKey struct{}
+
+var tenantKey tenantContextKey
+
 log.MustRegisterContextTag("tenant", func(output log.Buffer, ctx any, _ *log.ContextData, _ string) (int, error) {
-    c, ok := ctx.(fiber.Ctx)
-    if !ok {
-        return 0, nil
-    }
-    tenant, _ := c.Locals("tenant").(string)
+    tenant, _ := fiber.ValueFromContext[string](ctx, tenantKey)
     return output.WriteString(tenant)
 })
 
 log.MustSetContextTemplate(log.ContextConfig{Format: "[${tenant}] "})
+
+app.Use(func(c fiber.Ctx) error {
+    fiber.StoreInContext(c, tenantKey, "acme")
+    return c.Next()
+})
 ```
 
 :::note

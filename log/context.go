@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
 )
 
@@ -267,23 +268,10 @@ func emptyContextTag(_ Buffer, _ any, _ *ContextData, _ string) (int, error) {
 	return 0, nil
 }
 
-type valueContext interface {
-	Value(key any) any
-}
-
-type userValueContext interface {
-	UserValue(key any) any
-}
-
 func contextValue(ctx, key any) any {
-	switch typed := ctx.(type) {
-	case nil:
-		return nil
-	case userValueContext:
-		return typed.UserValue(key)
-	case valueContext:
-		return typed.Value(key)
-	default:
+	value, ok := contextvalue.Value[any](ctx, key)
+	if !ok {
 		return nil
 	}
+	return value
 }

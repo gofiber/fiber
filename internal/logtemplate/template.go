@@ -43,10 +43,10 @@ type Template[C, D any] struct {
 
 // Build parses format once and returns a reusable template.
 func Build[C, D any](format string, tagFunctions map[string]Func[C, D]) (*Template[C, D], error) {
-	templateB := utils.UnsafeBytes(format)
-	startTagB := utils.UnsafeBytes(startTag)
-	endTagB := utils.UnsafeBytes(endTag)
-	paramSeparatorB := utils.UnsafeBytes(paramSeparator)
+	templateB := []byte(format)
+	startTagB := []byte(startTag)
+	endTagB := []byte(endTag)
+	paramSeparatorB := []byte(paramSeparator)
 
 	chainCapacity := 2*bytes.Count(templateB, startTagB) + 1
 	fixedParts := make([][]byte, 0, chainCapacity)
@@ -71,20 +71,20 @@ func Build[C, D any](format string, tagFunctions map[string]Func[C, D]) (*Templa
 
 		tag, param, foundParam := bytes.Cut(before, paramSeparatorB)
 		if foundParam {
-			fn, ok := tagFunctions[utils.UnsafeString(tag)+paramSeparator]
+			fn, ok := tagFunctions[string(tag)+paramSeparator]
 			if !ok {
 				return nil, &UnknownTagError{Tag: string(before), Param: string(param)}
 			}
 			funcChain = append(funcChain, fn)
-			fixedParts = append(fixedParts, param)
-		} else if fn, ok := tagFunctions[utils.UnsafeString(before)]; ok {
+			fixedParts = append(fixedParts, append([]byte(nil), param...))
+		} else if fn, ok := tagFunctions[string(before)]; ok {
 			funcChain = append(funcChain, fn)
 			fixedParts = append(fixedParts, nil)
 		} else {
 			tagErr := &UnknownTagError{Tag: string(before)}
 			// Common typo: user wrote ${reqHeader} when reqHeader: is registered
 			// as a parametric tag. Surface the parametric form as a hint.
-			if _, hasParametric := tagFunctions[utils.UnsafeString(before)+paramSeparator]; hasParametric {
+			if _, hasParametric := tagFunctions[string(before)+paramSeparator]; hasParametric {
 				tagErr.Hint = `did you mean ${` + string(before) + `:PARAM}?`
 			}
 			return nil, tagErr

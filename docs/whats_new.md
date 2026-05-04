@@ -1611,7 +1611,7 @@ The signature of `log.WithContext`, `baseLogger.WithContext`, and `AllLogger[T].
 
 #### New API surface
 
-The `log` and `middleware/logger` packages gained the following exported symbols:
+The `log` and `middleware/logger` packages now expose the following exported symbols:
 
 - `log.SetContextTemplate(ContextConfig) error` / `log.MustSetContextTemplate(ContextConfig)` — configure the active context template.
 - `log.RegisterContextTag(name string, fn ContextTagFunc) error` / `log.MustRegisterContextTag` — register a global context tag.

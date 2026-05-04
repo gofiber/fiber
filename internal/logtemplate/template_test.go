@@ -3,6 +3,7 @@ package logtemplate
 import (
 	"errors"
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
@@ -63,6 +64,28 @@ func Test_Template_UnterminatedTagPreserved(t *testing.T) {
 
 	require.NoError(t, tmpl.Execute(buf, "ctx", &testData{}))
 	require.Equal(t, "prefix ${unterminated", buf.String())
+}
+
+func Test_Template_BuildCopiesFormat(t *testing.T) {
+	t.Parallel()
+
+	mutable := []byte("prefix ${tag} suffix")
+	format := unsafe.String(&mutable[0], len(mutable)) //nolint:gosec // Test intentionally simulates an unsafe mutable string source.
+
+	tmpl, err := Build[string, testData](format, map[string]Func[string, testData]{
+		"tag": func(output Buffer, _ string, _ *testData, _ string) (int, error) {
+			return output.WriteString("value")
+		},
+	})
+	require.NoError(t, err)
+
+	clear(mutable)
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	require.NoError(t, tmpl.Execute(buf, "ctx", &testData{}))
+	require.Equal(t, "prefix value suffix", buf.String())
 }
 
 func Test_Template_UnknownParametricTag(t *testing.T) {

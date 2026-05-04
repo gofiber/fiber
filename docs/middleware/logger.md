@@ -159,18 +159,22 @@ import (
     "github.com/gofiber/fiber/v3/middleware/logger"
 )
 
+type tenantContextKey struct{}
+
+var tenantKey tenantContextKey
+
 var registerLoggerTagsOnce sync.Once
 
 func New() fiber.Handler {
     registerLoggerTagsOnce.Do(func() {
         logger.MustRegisterTag("tenant", func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
-            tenant, _ := c.Locals("tenant").(string)
+            tenant, _ := fiber.ValueFromContext[string](c, tenantKey)
             return output.WriteString(tenant)
         })
     })
 
     return func(c fiber.Ctx) error {
-        c.Locals("tenant", "acme")
+        fiber.StoreInContext(c, tenantKey, "acme")
         return c.Next()
     }
 }
