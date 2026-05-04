@@ -371,7 +371,7 @@ extractors.Chain(
 
 ### Trusting Client-Supplied IDs from Read-Only Sources
 
-By default, an unknown session ID from any source is discarded and a new one is generated via `KeyGenerator`. For cookie/header sources that is also the response channel for the new ID, so the next request continues with it. Read-only sources (query, form, URL param, custom extractors) cannot communicate a new ID back, so the same client request would otherwise create a new orphan session every time.
+By default, an unknown session ID from any source is discarded and a new one is generated via `KeyGenerator`. For cookie/header sources that is also the response channel for the new ID, so the next request continues with it. Read-only sources (Authorization header, query, form, URL param, custom extractors) cannot communicate a new ID back, so the same client request would otherwise create a new orphan session every time.
 
 If your application needs read-only sources to drive a persistent session, for example a non-browser client that always sends the same `?SESSIONID=...`, opt in explicitly:
 
@@ -712,7 +712,7 @@ extractors.Chain(extractors ...extractors.Extractor) extractors.Extractor
 | `Store`             | `*session.Store`            | Pre-built session store (use when you need to share/register types) | `nil` (auto-created)                       |
 | `Storage`           | `fiber.Storage`             | Session storage backend (used when creating a store if `Store` is nil) | `memory.New()`                             |
 | `Extractor`         | `extractors.Extractor`      | Session ID extraction       | `extractors.FromCookie("session_id")`     |
-| `TrustClientSessionID` | `bool`                   | Accept client-supplied IDs from read-only sources (query/form/param/custom) when no data exists. Requires `ClientSessionIDValidator`. | `false` |
+| `TrustClientSessionID` | `bool`                   | Accept client-supplied IDs from read-only sources (Authorization header/query/form/param/custom) when no data exists. Requires `ClientSessionIDValidator`. | `false` |
 | `ClientSessionIDValidator` | `func(string) bool` | Validates a client-supplied session ID before persisting it. Required when `TrustClientSessionID` is `true`; `nil` rejects all. | `nil` |
 | `KeyGenerator`      | `func() string`             | Session ID generator        | `utils.SecureToken`                             |
 | `IdleTimeout`       | `time.Duration`             | Inactivity timeout          | `30 * time.Minute`                         |

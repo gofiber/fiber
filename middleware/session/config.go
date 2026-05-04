@@ -98,7 +98,8 @@ type Config struct {
 	CookieSessionOnly bool
 
 	// TrustClientSessionID controls whether client-supplied session IDs from
-	// read-only sources (query, form, URL param, custom extractor) are accepted
+	// read-only sources (Authorization header, query, form, URL param, custom
+	// extractor) are accepted
 	// as-is when no session data exists yet for that ID.
 	//
 	// When false (default), unknown IDs from read-only sources are discarded

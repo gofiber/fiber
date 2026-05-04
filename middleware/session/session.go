@@ -206,6 +206,7 @@ func (s *Session) Destroy() error {
 
 	// Expire session
 	s.delSession()
+	s.clearSessionIDContext()
 	return nil
 }
 
@@ -278,6 +279,23 @@ func (s *Session) Reset() error {
 func (s *Session) refresh() {
 	s.id = s.config.KeyGenerator()
 	s.fresh = true
+	s.setSessionIDContext()
+}
+
+// setSessionIDContext records a server-issued session ID for subsequent Store.Get
+// calls in the same request.
+func (s *Session) setSessionIDContext() {
+	if s.ctx != nil {
+		s.ctx.Locals(sessionIDContextKey, sessionIDInfo{id: s.id, source: extractors.SourceCookie})
+	}
+}
+
+// clearSessionIDContext prevents a destroyed session ID from being reused by a
+// later Store.Get call in the same request.
+func (s *Session) clearSessionIDContext() {
+	if s.ctx != nil {
+		s.ctx.Locals(sessionIDContextKey, sessionIDInfo{})
+	}
 }
 
 // Save saves the session data and updates the cookie

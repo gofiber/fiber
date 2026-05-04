@@ -453,6 +453,85 @@ func Test_Store_Get(t *testing.T) {
 		require.NotEmpty(t, acquiredSession.ID())
 		require.True(t, acquiredSession.Fresh())
 	})
+
+	t.Run("regenerate updates cached ID for later Get in same request", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		sess, err := store.Get(ctx)
+		require.NoError(t, err)
+		originalID := sess.ID()
+
+		require.NoError(t, sess.Regenerate())
+		regeneratedID := sess.ID()
+		require.NotEqual(t, originalID, regeneratedID)
+
+		sess2, err := store.Get(ctx)
+		require.NoError(t, err)
+		defer sess2.Release()
+
+		require.Equal(t, regeneratedID, sess2.ID())
+		sess.Release()
+	})
+
+	t.Run("reset updates cached ID for later Get in same request", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore(Config{
+			Extractor:                extractors.FromQuery("session_id"),
+			TrustClientSessionID:     true,
+			ClientSessionIDValidator: func(string) bool { return true },
+		})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		clientID := "reset-client-session-id"
+		ctx.Request().SetRequestURI("/path?session_id=" + clientID)
+
+		sess, err := store.Get(ctx)
+		require.NoError(t, err)
+		require.Equal(t, clientID, sess.ID())
+
+		require.NoError(t, sess.Reset())
+		resetID := sess.ID()
+		require.NotEqual(t, clientID, resetID)
+
+		sess2, err := store.Get(ctx)
+		require.NoError(t, err)
+		defer sess2.Release()
+
+		require.Equal(t, resetID, sess2.ID())
+		sess.Release()
+	})
+
+	t.Run("destroy clears cached ID for later Get in same request", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore(Config{
+			Extractor:                extractors.FromQuery("session_id"),
+			TrustClientSessionID:     true,
+			ClientSessionIDValidator: func(string) bool { return true },
+		})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		clientID := "destroy-client-session-id"
+		ctx.Request().SetRequestURI("/path?session_id=" + clientID)
+
+		sess, err := store.Get(ctx)
+		require.NoError(t, err)
+		require.Equal(t, clientID, sess.ID())
+
+		require.NoError(t, sess.Destroy())
+
+		sess2, err := store.Get(ctx)
+		require.NoError(t, err)
+		defer sess2.Release()
+
+		require.NotEqual(t, clientID, sess2.ID())
+		require.True(t, sess2.Fresh())
+		sess.Release()
+	})
 }
 
 // go test -run Test_Store_DeleteSession
