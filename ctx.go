@@ -666,17 +666,6 @@ func (c *DefaultCtx) configDependentPaths() {
 	}
 }
 
-func appendLowerBytes(dst, src []byte) []byte {
-	dst = dst[:0]
-	for _, c := range src {
-		if 'A' <= c && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		dst = append(dst, c)
-	}
-	return dst
-}
-
 // Reset is a method to reset context fields by given request when to use server handlers.
 func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Reset route and handler index
