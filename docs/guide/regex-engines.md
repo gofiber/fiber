@@ -164,10 +164,6 @@ func (e *CachedRegexEngine) MustCompile(pattern string) fiber.RegexCompiler {
 }
 ```
 
-## Example
-
-See the complete working example in [`examples/regex-engine/`](https://github.com/gofiber/fiber/tree/main/examples/regex-engine).
-
 ## Notes
 
 - Regex patterns are compiled once during route registration, so the performance improvement is in the matching phase
