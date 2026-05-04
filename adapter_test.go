@@ -191,7 +191,7 @@ func TestToFiberHandler_ExpressThreeParamsWithError_PropagatesNextErrorWhenNoRet
 	handler := func(req Req, res Res, next func() error) error {
 		assert.Equal(t, app, req.App())
 		assert.Equal(t, app, res.App())
-		_ = next()
+		require.ErrorIs(t, next(), nextErr)
 		return nil
 	}
 
