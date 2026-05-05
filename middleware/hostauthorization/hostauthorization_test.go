@@ -719,7 +719,7 @@ func Test_AllowedHostsFuncFallback(t *testing.T) {
 	// AllowedHostsFunc must be called only when no static rule matches.
 	called := 0
 	parsed := parseAllowedHosts([]string{"example.com"})
-	fn := func(host string) bool {
+	fn := func(_ string) bool {
 		called++
 		return false
 	}
@@ -877,7 +877,7 @@ func FuzzNormalizeHost(f *testing.F) {
 	f.Add(".myapp.com")
 	f.Add("192.168.1.1:443")
 	f.Add("")
-	f.Fuzz(func(t *testing.T, input string) {
+	f.Fuzz(func(_ *testing.T, input string) {
 		_ = normalizeHost(input)
 	})
 }

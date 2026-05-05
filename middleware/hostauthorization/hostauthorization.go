@@ -35,7 +35,8 @@ func parseAllowedHosts(hosts []string) parsedHosts {
 			continue
 		}
 
-		if strings.Contains(h, "/") {
+		switch {
+		case strings.Contains(h, "/"):
 			hostIP, cidr, err := net.ParseCIDR(h)
 			if err != nil {
 				panic("hostauthorization: invalid CIDR entry: " + h)
@@ -46,10 +47,10 @@ func parseAllowedHosts(hosts []string) parsedHosts {
 				panic("hostauthorization: CIDR has host bits set, use canonical form: " + h)
 			}
 			parsed.cidrNets = append(parsed.cidrNets, cidr)
-		} else if strings.HasPrefix(h, ".") {
+		case strings.HasPrefix(h, "."):
 			// Subdomain wildcard — store with leading dot to avoid allocation in hot path
 			parsed.wildcardSuffixes = append(parsed.wildcardSuffixes, h)
-		} else {
+		default:
 			parsed.exact[h] = struct{}{}
 		}
 	}
@@ -65,7 +66,7 @@ func normalizeHost(host string) string {
 	// Fast path for plain hostnames (no IPv6 brackets, no port).
 	// net.SplitHostPort allocates a *AddrError on every error path; skipping
 	// it for the common case avoids one allocation per request.
-	if len(host) > 0 && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
+	if host != "" && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
 		host = strings.TrimSuffix(host, ".")
 		return utilsstrings.ToLower(host)
 	}
@@ -106,7 +107,7 @@ func matchHost(host string, parsed parsedHosts, allowedHostsFunc func(string) bo
 	//   - IPv4 addresses start with a digit
 	//   - IPv6 addresses always contain ":" (port is already stripped by normalizeHost)
 	// Regular hostnames won't match either condition.
-	if len(parsed.cidrNets) > 0 && len(host) > 0 {
+	if len(parsed.cidrNets) > 0 && host != "" {
 		firstByte := host[0]
 		if (firstByte >= '0' && firstByte <= '9') || strings.IndexByte(host, ':') >= 0 {
 			if ip := net.ParseIP(host); ip != nil {
