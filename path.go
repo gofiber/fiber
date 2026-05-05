@@ -9,6 +9,7 @@ package fiber
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -34,29 +35,42 @@ type RegexCompiler interface {
 	FindAllStringSubmatch(s string, n int) [][]string
 }
 
-// RegexHandler is a function that compiles a regex pattern and returns a compiled regex.
-// This allows using alternative regex engines (e.g., coregex) as drop-in replacements.
+// RegexHandler is a function that compiles regex patterns. It accepts any function
+// with signature func(string) T where T has MatchString and FindAllStringSubmatch methods.
+// This allows using regexp.MustCompile or coregex.MustCompile directly without wrappers.
 //
-// Example with standard library:
+// Example with standard library (default):
 //
+//	import "regexp"
 //	app := fiber.New(fiber.Config{
-//	    RegexHandler: func(pattern string) fiber.RegexCompiler {
-//	        return regexp.MustCompile(pattern)
-//	    },
+//	    RegexHandler: regexp.MustCompile,
 //	})
 //
 // Example with coregex:
 //
 //	import "github.com/coregx/coregex"
 //	app := fiber.New(fiber.Config{
-//	    RegexHandler: func(pattern string) fiber.RegexCompiler {
-//	        return coregex.MustCompile(pattern)
-//	    },
+//	    RegexHandler: coregex.MustCompile,
 //	})
-type RegexHandler func(pattern string) RegexCompiler
+type RegexHandler any
 
-// defaultRegexHandler is the default handler using Go's standard library regexp.
-func defaultRegexHandler(pattern string) RegexCompiler {
+// compileRegex calls the RegexHandler function and returns a RegexCompiler.
+// This helper handles the type assertion from any to the actual regex type.
+func compileRegex(handler RegexHandler, pattern string) RegexCompiler {
+	if handler == nil {
+		return regexp.MustCompile(pattern)
+	}
+
+	// Call the handler function using reflection
+	// handler should be func(string) T where T implements RegexCompiler
+	result := reflect.ValueOf(handler).Call([]reflect.Value{reflect.ValueOf(pattern)})
+	if len(result) > 0 {
+		if compiler, ok := result[0].Interface().(RegexCompiler); ok {
+			return compiler
+		}
+	}
+
+	// Fallback to stdlib if something goes wrong
 	return regexp.MustCompile(pattern)
 }
 
@@ -198,7 +212,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	}
 	// Use default regex handler if not configured
 	if config.RegexHandler == nil {
-		config.RegexHandler = defaultRegexHandler
+		config.RegexHandler = regexp.MustCompile
 	}
 
 	if path == "" {
@@ -458,7 +472,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler Reg
 				// Precompile regex if has regex constraint
 				if constraint.ID == regexConstraint {
 					constraint.Data = []string{c[start+1 : end]}
-					constraint.RegexCompiler = regexHandler(constraint.Data[0])
+					constraint.RegexCompiler = compileRegex(regexHandler, constraint.Data[0])
 				}
 
 				constraints = append(constraints, constraint)

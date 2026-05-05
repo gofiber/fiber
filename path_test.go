@@ -20,7 +20,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	t.Parallel()
 	var rp routeParser
 
-	rp = parseRoute("/shop/product/::filter/color::color/size::size", defaultRegexHandler)
+	rp = parseRoute("/shop/product/::filter/color::color/size::size", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/shop/product/:", Length: 15},
@@ -33,7 +33,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: []string{"filter", "color", "size"},
 	}, rp)
 
-	rp = parseRoute("/api/v1/:param/abc/*", defaultRegexHandler)
+	rp = parseRoute("/api/v1/:param/abc/*", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/v1/", Length: 8},
@@ -45,7 +45,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		wildCardCount: 1,
 	}, rp)
 
-	rp = parseRoute("/v1/some/resource/name\\:customVerb", defaultRegexHandler)
+	rp = parseRoute("/v1/some/resource/name\\:customVerb", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/name:customVerb", Length: 33, IsLast: true},
@@ -53,7 +53,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: nil,
 	}, rp)
 
-	rp = parseRoute("/v1/some/resource/:name\\:customVerb", defaultRegexHandler)
+	rp = parseRoute("/v1/some/resource/:name\\:customVerb", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/", Length: 18},
@@ -64,7 +64,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 
 	// heavy test with escaped characters
-	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*", defaultRegexHandler)
+	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/name:customVerb??/", Length: 36},
@@ -76,7 +76,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		wildCardCount: 1,
 	}, rp)
 
-	rp = parseRoute("/api/*/:param/:param2", defaultRegexHandler)
+	rp = parseRoute("/api/*/:param/:param2", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/", Length: 5, HasOptionalSlash: true},
@@ -90,7 +90,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		wildCardCount: 1,
 	}, rp)
 
-	rp = parseRoute("/test:optional?:optional2?", defaultRegexHandler)
+	rp = parseRoute("/test:optional?:optional2?", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/test", Length: 5},
@@ -100,7 +100,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: []string{"optional", "optional2"},
 	}, rp)
 
-	rp = parseRoute("/config/+.json", defaultRegexHandler)
+	rp = parseRoute("/config/+.json", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/config/", Length: 8},
@@ -111,7 +111,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		plusCount: 1,
 	}, rp)
 
-	rp = parseRoute("/api/:day.:month?.:year?", defaultRegexHandler)
+	rp = parseRoute("/api/:day.:month?.:year?", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/", Length: 5},
@@ -124,7 +124,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: []string{"day", "month", "year"},
 	}, rp)
 
-	rp = parseRoute("/*v1*/proxy", defaultRegexHandler)
+	rp = parseRoute("/*v1*/proxy", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/", Length: 1, HasOptionalSlash: true},
@@ -143,7 +143,7 @@ func Test_Path_matchParams(t *testing.T) {
 	t.Parallel()
 	var ctxParams [maxParams]string
 	testCaseFn := func(testCollection routeCaseCollection) {
-		parser := parseRoute(testCollection.pattern, defaultRegexHandler)
+		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
 		for _, c := range testCollection.testCases {
 			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
 			require.Equal(t, c.match, match, "route: '%s', url: '%s'", testCollection.pattern, c.url)
@@ -337,7 +337,7 @@ func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 func Benchmark_Path_matchParams(t *testing.B) {
 	var ctxParams [maxParams]string
 	benchCaseFn := func(testCollection routeCaseCollection) {
-		parser := parseRoute(testCollection.pattern, defaultRegexHandler)
+		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
 		for _, c := range testCollection.testCases {
 			var matchRes bool
 			state := "match"
@@ -402,7 +402,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams)
 		require.NotPanics(t, func() {
-			parseRoute(route, defaultRegexHandler)
+			parseRoute(route, regexp.MustCompile)
 		})
 	})
 
@@ -411,7 +411,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams+1)
 		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
-			parseRoute(route, defaultRegexHandler)
+			parseRoute(route, regexp.MustCompile)
 		})
 	})
 
@@ -420,7 +420,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams+5)
 		require.PanicsWithValue(t, "Route '"+route+"' has 35 parameters, which exceeds the maximum of 30", func() {
-			parseRoute(route, defaultRegexHandler)
+			parseRoute(route, regexp.MustCompile)
 		})
 	})
 }

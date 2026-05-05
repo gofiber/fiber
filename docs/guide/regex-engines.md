@@ -14,18 +14,16 @@ The default Go `regexp` package is intentionally simple and guarantees O(n) time
 
 ## RegexHandler Configuration
 
-The `RegexHandler` field in `fiber.Config` is a simple function that compiles regex patterns:
+The `RegexHandler` field in `fiber.Config` accepts any regex compile function directly:
 
 ```go
 type Config struct {
     // ... other fields ...
 
     // RegexHandler is a function that compiles regex patterns for route constraints.
-    // This allows using alternative regex engines (e.g., coregex) as drop-in replacements.
-    RegexHandler RegexHandler
+    // Both regexp.MustCompile and coregex.MustCompile can be assigned directly.
+    RegexHandler any
 }
-
-type RegexHandler func(pattern string) RegexCompiler
 ```
 
 **Default:** `regexp.MustCompile` (Go's standard library)
@@ -54,9 +52,7 @@ import (
 
 func main() {
     app := fiber.New(fiber.Config{
-        RegexHandler: func(pattern string) fiber.RegexCompiler {
-            return coregex.MustCompile(pattern)
-        },
+        RegexHandler: coregex.MustCompile,
     })
 
     // All regex constraints will now use coregex
@@ -68,7 +64,7 @@ func main() {
 }
 ```
 
-That's it! No adapter types or interface implementations needed.
+That's it! No adapter types or wrappers needed - just pass `coregex.MustCompile` directly.
 
 ## Using Standard Library (Explicit)
 
@@ -97,7 +93,7 @@ Coregex excels at these pattern types:
 
 ## Compatibility
 
-The simplified handler maintains full compatibility with Fiber's existing regex constraint syntax:
+Both `regexp.MustCompile` and `coregex.MustCompile` work seamlessly with Fiber's regex constraint syntax:
 
 ```go
 // Single constraint

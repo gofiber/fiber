@@ -20,6 +20,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -455,23 +456,21 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 
 	// RegexHandler is a function that compiles regex patterns for route constraints.
 	// This allows using alternative regex engines (e.g., coregex) as drop-in replacements.
+	// Both regexp.MustCompile and coregex.MustCompile can be assigned directly.
 	//
 	// Example with standard library (default):
+	//     import "regexp"
 	//     app := fiber.New(fiber.Config{
-	//         RegexHandler: func(pattern string) fiber.RegexCompiler {
-	//             return regexp.MustCompile(pattern)
-	//         },
+	//         RegexHandler: regexp.MustCompile,
 	//     })
 	//
 	// Example with coregex:
 	//     import "github.com/coregx/coregex"
 	//     app := fiber.New(fiber.Config{
-	//         RegexHandler: func(pattern string) fiber.RegexCompiler {
-	//             return coregex.MustCompile(pattern)
-	//         },
+	//         RegexHandler: coregex.MustCompile,
 	//     })
 	//
-	// Optional. Default: defaultRegexHandler (uses regexp.MustCompile)
+	// Optional. Default: regexp.MustCompile
 	RegexHandler RegexHandler `json:"-"`
 }
 
@@ -675,7 +674,7 @@ func New(config ...Config) *App {
 		app.config.XMLDecoder = xml.Unmarshal
 	}
 	if app.config.RegexHandler == nil {
-		app.config.RegexHandler = defaultRegexHandler
+		app.config.RegexHandler = regexp.MustCompile
 	}
 
 	app.sharedState = newSharedState(&app.config)
