@@ -6,6 +6,11 @@ on:
   pull_request_target:
     types: [opened, edited, reopened, synchronize]
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   auto-labeler:
     uses: gofiber/.github/.github/workflows/auto-labeler.yml@main

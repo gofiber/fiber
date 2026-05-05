@@ -57,6 +57,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Proxy](#proxy)
   - [Recover](#recover)
   - [Session](#session)
+  - [SSE](#sse)
 - [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
@@ -84,6 +85,7 @@ We have made several changes to the Fiber app, including:
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
 - **NewWithCustomCtx**: Initialize an app with a custom context in one step.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
+- **SharedState**: Introduces storage-backed app state for prefork-safe/multi-process coordination via `Config.SharedStorage`, with optional `Config.SharedStatePrefix` namespacing, codec-aware helpers (`SetJSON`, `SetMsgPack`, `SetCBOR`, `SetXML`, matching getters, and `WithContext` variants), empty-key no-op handling, and `Reset`/`Close` passthrough helpers.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
 - **GetBytes / GetString**: Helpers that detach values only when `Immutable` is enabled and the data still references request or response buffers. Access via `c.App().GetString` and `c.App().GetBytes`.
 - **ReloadViews**: Lets you re-run the configured view engine's `Load()` logic at runtime, including guard rails for missing or nil view engines so development hot-reload hooks can refresh templates safely.
@@ -1679,6 +1681,13 @@ The session middleware has undergone significant improvements in v3, focusing on
 - **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
+
+### SSE
+
+Fiber now includes an [SSE middleware](./middleware/sse.md) for Server-Sent Events. It handles native
+`SendStreamWriter` setup, SSE response headers, event formatting, flushing, heartbeat comments, and
+disconnect detection through flush errors while leaving application-level hubs, topics, replay stores, and
+pub/sub bridges to user code or recipes.
 
 ### Timeout
 

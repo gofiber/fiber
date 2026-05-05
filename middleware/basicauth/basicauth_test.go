@@ -574,6 +574,40 @@ func Test_parseHashedPassword(t *testing.T) {
 	}
 }
 
+func Test_buildVerifiers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("selects the strongest configured verifier deterministically", func(t *testing.T) {
+		t.Parallel()
+
+		strongestPassword := "bcrypt-pass"
+		strongestHash, err := bcrypt.GenerateFromPassword([]byte(strongestPassword), bcrypt.MinCost+1)
+		require.NoError(t, err)
+
+		verifiers, dummyVerify, err := buildVerifiers(map[string]string{
+			"zeta":  sha256Hash("sha256-pass"),
+			"alpha": string(strongestHash),
+			"beta":  sha512Hash("sha512-pass"),
+		})
+		require.NoError(t, err)
+		require.Len(t, verifiers, 3)
+		require.True(t, dummyVerify(strongestPassword))
+		require.False(t, dummyVerify("sha512-pass"))
+		require.False(t, dummyVerify("sha256-pass"))
+	})
+
+	t.Run("uses a fixed-work fallback when no users are configured", func(t *testing.T) {
+		t.Parallel()
+
+		verifiers, dummyVerify, err := buildVerifiers(nil)
+		require.NoError(t, err)
+		require.Empty(t, verifiers)
+		fallbackInput := "fiber-basicauth-dummy"
+		require.True(t, dummyVerify(fallbackInput))
+		require.False(t, dummyVerify("wrong"))
+	})
+}
+
 func Test_BasicAuth_HashVariants(t *testing.T) {
 	t.Parallel()
 	pass := "doe"
