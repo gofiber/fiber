@@ -738,7 +738,7 @@ func (app *App) setCtxFunc(function func(app *App) CustomCtx) {
 	app.hasCustomCtx = function != nil
 
 	if app.server != nil {
-		app.server.Handler = app.requestHandler
+		app.server.Handler = app.selectRequestHandler()
 	}
 }
 
@@ -1113,7 +1113,14 @@ func (app *App) Config() Config {
 func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
-	return app.requestHandler
+	return app.selectRequestHandler()
+}
+
+func (app *App) selectRequestHandler() fasthttp.RequestHandler {
+	if app.hasCustomCtx {
+		return app.customRequestHandler
+	}
+	return app.defaultRequestHandler
 }
 
 // Stack returns the raw router stack.
@@ -1372,7 +1379,7 @@ func (app *App) init() *App {
 	}
 
 	// fasthttp server settings
-	app.server.Handler = app.requestHandler
+	app.server.Handler = app.selectRequestHandler()
 	app.server.Name = app.config.ServerHeader
 	app.server.Concurrency = app.config.Concurrency
 	app.server.NoDefaultDate = app.config.DisableDefaultDate
