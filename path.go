@@ -22,9 +22,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// RegexCompiler defines the interface for regex pattern compilation and matching.
-// This abstraction allows alternative regex engines to be used for routing constraints.
-// The default implementation uses Go's standard library regexp package.
+// RegexCompiler defines the interface for regex pattern matching.
+// Both *regexp.Regexp and alternative engines like *coregex.Regex implement these methods.
 type RegexCompiler interface {
 	// MatchString reports whether the string s contains any match of the regex pattern.
 	MatchString(s string) bool
@@ -35,33 +34,31 @@ type RegexCompiler interface {
 	FindAllStringSubmatch(s string, n int) [][]string
 }
 
-// RegexEngine provides methods for creating compiled regex patterns.
-// Implementations can provide optimized regex engines (e.g., coregex) as alternatives
-// to the standard library regexp package.
-type RegexEngine interface {
-	// MustCompile compiles a regex pattern and panics if the pattern is invalid.
-	// This behavior matches regexp.MustCompile for drop-in compatibility.
-	MustCompile(pattern string) RegexCompiler
+// RegexHandler is a function that compiles a regex pattern and returns a compiled regex.
+// This allows using alternative regex engines (e.g., coregex) as drop-in replacements.
+//
+// Example with standard library:
+//
+//	app := fiber.New(fiber.Config{
+//	    RegexHandler: func(pattern string) fiber.RegexCompiler {
+//	        return regexp.MustCompile(pattern)
+//	    },
+//	})
+//
+// Example with coregex:
+//
+//	import "github.com/coregx/coregex"
+//	app := fiber.New(fiber.Config{
+//	    RegexHandler: func(pattern string) fiber.RegexCompiler {
+//	        return coregex.MustCompile(pattern)
+//	    },
+//	})
+type RegexHandler func(pattern string) RegexCompiler
+
+// defaultRegexHandler is the default handler using Go's standard library regexp.
+func defaultRegexHandler(pattern string) RegexCompiler {
+	return regexp.MustCompile(pattern)
 }
-
-// stdlibRegexEngine is the default regex engine using Go's standard library regexp.
-type stdlibRegexEngine struct{}
-
-// MustCompile compiles a regex pattern using the standard library.
-func (stdlibRegexEngine) MustCompile(pattern string) RegexCompiler {
-	return &stdlibRegexCompiler{
-		Regexp: regexp.MustCompile(pattern),
-	}
-}
-
-// stdlibRegexCompiler wraps *regexp.Regexp to implement RegexCompiler.
-type stdlibRegexCompiler struct {
-	*regexp.Regexp
-}
-
-// DefaultRegexEngine is the default regex engine implementation using Go's standard library.
-// This can be replaced with alternative implementations (e.g., coregex) for better performance.
-var DefaultRegexEngine RegexEngine = stdlibRegexEngine{}
 
 // routeParser holds the path segments and param names
 type routeParser struct {
@@ -199,9 +196,9 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	if len(cfg) > 0 {
 		config = cfg[0]
 	}
-	// Use default regex engine if not configured
-	if config.RegexEngine == nil {
-		config.RegexEngine = DefaultRegexEngine
+	// Use default regex handler if not configured
+	if config.RegexHandler == nil {
+		config.RegexHandler = defaultRegexHandler
 	}
 
 	if path == "" {
@@ -232,7 +229,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	parser, _ := routerParserPool.Get().(*routeParser) //nolint:errcheck // only contains routeParser
 	parser.reset()
 	patternStr := string(patternPretty)
-	parser.parseRoute(patternStr, config.RegexEngine)
+	parser.parseRoute(patternStr, config.RegexHandler)
 	defer routerParserPool.Put(parser)
 
 	// '*' wildcard matches any path
@@ -261,14 +258,14 @@ func (parser *routeParser) reset() {
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
-func (parser *routeParser) parseRoute(pattern string, regexEngine RegexEngine, customConstraints ...CustomConstraint) {
+func (parser *routeParser) parseRoute(pattern string, regexHandler RegexHandler, customConstraints ...CustomConstraint) {
 	var n int
 	var seg *routeSegment
 	for pattern != "" {
 		nextParamPosition := findNextParamPosition(pattern)
 		// handle the parameter part
 		if nextParamPosition == 0 {
-			n, seg = parser.analyseParameterPart(pattern, regexEngine, customConstraints...)
+			n, seg = parser.analyseParameterPart(pattern, regexHandler, customConstraints...)
 			parser.params, parser.segs = append(parser.params, seg.ParamName), append(parser.segs, seg)
 		} else {
 			n, seg = parser.analyseConstantPart(pattern, nextParamPosition)
@@ -285,9 +282,9 @@ func (parser *routeParser) parseRoute(pattern string, regexEngine RegexEngine, c
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
-func parseRoute(pattern string, regexEngine RegexEngine, customConstraints ...CustomConstraint) routeParser {
+func parseRoute(pattern string, regexHandler RegexHandler, customConstraints ...CustomConstraint) routeParser {
 	parser := routeParser{}
-	parser.parseRoute(pattern, regexEngine, customConstraints...)
+	parser.parseRoute(pattern, regexHandler, customConstraints...)
 
 	// Check if the route has too many parameters
 	if len(parser.params) > maxParams {
@@ -382,7 +379,7 @@ func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (
 }
 
 // analyseParameterPart find the parameter end and create the route segment
-func (parser *routeParser) analyseParameterPart(pattern string, regexEngine RegexEngine, customConstraints ...CustomConstraint) (int, *routeSegment) {
+func (parser *routeParser) analyseParameterPart(pattern string, regexHandler RegexHandler, customConstraints ...CustomConstraint) (int, *routeSegment) {
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
 
@@ -461,7 +458,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexEngine Rege
 				// Precompile regex if has regex constraint
 				if constraint.ID == regexConstraint {
 					constraint.Data = []string{c[start+1 : end]}
-					constraint.RegexCompiler = regexEngine.MustCompile(constraint.Data[0])
+					constraint.RegexCompiler = regexHandler(constraint.Data[0])
 				}
 
 				constraints = append(constraints, constraint)

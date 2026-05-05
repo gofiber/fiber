@@ -453,12 +453,26 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Optional. Default: a provider that returns context.Background()
 	ServicesShutdownContextProvider func() context.Context
 
-	// RegexEngine allows using alternative regex implementations for route pattern matching.
-	// This can be used to configure high-performance regex engines (e.g., coregex) as a drop-in
-	// replacement for the standard library regexp package.
+	// RegexHandler is a function that compiles regex patterns for route constraints.
+	// This allows using alternative regex engines (e.g., coregex) as drop-in replacements.
 	//
-	// Optional. Default: DefaultRegexEngine (stdlib regexp)
-	RegexEngine RegexEngine `json:"-"`
+	// Example with standard library (default):
+	//     app := fiber.New(fiber.Config{
+	//         RegexHandler: func(pattern string) fiber.RegexCompiler {
+	//             return regexp.MustCompile(pattern)
+	//         },
+	//     })
+	//
+	// Example with coregex:
+	//     import "github.com/coregx/coregex"
+	//     app := fiber.New(fiber.Config{
+	//         RegexHandler: func(pattern string) fiber.RegexCompiler {
+	//             return coregex.MustCompile(pattern)
+	//         },
+	//     })
+	//
+	// Optional. Default: defaultRegexHandler (uses regexp.MustCompile)
+	RegexHandler RegexHandler `json:"-"`
 }
 
 // Default TrustProxyConfig
@@ -660,8 +674,8 @@ func New(config ...Config) *App {
 	if app.config.XMLDecoder == nil {
 		app.config.XMLDecoder = xml.Unmarshal
 	}
-	if app.config.RegexEngine == nil {
-		app.config.RegexEngine = DefaultRegexEngine
+	if app.config.RegexHandler == nil {
+		app.config.RegexHandler = defaultRegexHandler
 	}
 
 	app.sharedState = newSharedState(&app.config)

@@ -1,6 +1,6 @@
 # Alternative Regex Engines
 
-Fiber v3+ supports using alternative regex implementations for route pattern matching through the `RegexEngine` configuration option. This allows you to use high-performance regex engines like [coregex](https://github.com/coregx/coregex) as a drop-in replacement for Go's standard library `regexp` package.
+Fiber v3+ supports using alternative regex implementations for route pattern matching through the `RegexHandler` configuration option. This allows you to use high-performance regex engines like [coregex](https://github.com/coregx/coregex) as a drop-in replacement for Go's standard library `regexp` package.
 
 ## Why Use an Alternative Regex Engine?
 
@@ -12,21 +12,23 @@ The default Go `regexp` package is intentionally simple and guarantees O(n) time
 - Zero-allocation iterators
 - O(n) time complexity guarantee (no ReDoS vulnerabilities)
 
-## RegexEngine Configuration
+## RegexHandler Configuration
 
-The `RegexEngine` field in `fiber.Config` allows you to specify a custom regex implementation:
+The `RegexHandler` field in `fiber.Config` is a simple function that compiles regex patterns:
 
 ```go
 type Config struct {
     // ... other fields ...
 
-    // RegexEngine allows using alternative regex implementations for route pattern matching.
-    // Custom engines must implement the RegexEngine interface.
-    RegexEngine RegexEngine
+    // RegexHandler is a function that compiles regex patterns for route constraints.
+    // This allows using alternative regex engines (e.g., coregex) as drop-in replacements.
+    RegexHandler RegexHandler
 }
+
+type RegexHandler func(pattern string) RegexCompiler
 ```
 
-**Default:** `DefaultRegexEngine` (uses Go's standard library `regexp`)
+**Default:** `regexp.MustCompile` (Go's standard library)
 
 ## Using Coregex
 
@@ -40,7 +42,7 @@ go get github.com/coregx/coregex
 
 **Note:** Coregex requires Go 1.25+
 
-### 2. Create a Coregex Adapter
+### 2. Configure Fiber to Use Coregex
 
 ```go
 package main
@@ -50,27 +52,11 @@ import (
     "github.com/coregx/coregex"
 )
 
-// CoregexEngine implements fiber.RegexEngine using coregex
-type CoregexEngine struct{}
-
-func (CoregexEngine) MustCompile(pattern string) fiber.RegexCompiler {
-    return &CoregexCompiler{
-        Regex: coregex.MustCompile(pattern),
-    }
-}
-
-// CoregexCompiler implements fiber.RegexCompiler using coregex.Regex
-type CoregexCompiler struct {
-    *coregex.Regex
-}
-```
-
-### 3. Configure Fiber to Use Coregex
-
-```go
 func main() {
     app := fiber.New(fiber.Config{
-        RegexEngine: CoregexEngine{},
+        RegexHandler: func(pattern string) fiber.RegexCompiler {
+            return coregex.MustCompile(pattern)
+        },
     })
 
     // All regex constraints will now use coregex
@@ -80,6 +66,20 @@ func main() {
 
     app.Listen(":3000")
 }
+```
+
+That's it! No adapter types or interface implementations needed.
+
+## Using Standard Library (Explicit)
+
+If you want to explicitly set the standard library regex handler:
+
+```go
+import "regexp"
+
+app := fiber.New(fiber.Config{
+    RegexHandler: regexp.MustCompile,
+})
 ```
 
 ## Performance Benefits
@@ -97,7 +97,7 @@ Coregex excels at these pattern types:
 
 ## Compatibility
 
-The adapter maintains full compatibility with Fiber's existing regex constraint syntax:
+The simplified handler maintains full compatibility with Fiber's existing regex constraint syntax:
 
 ```go
 // Single constraint
@@ -113,60 +113,9 @@ app.Get("/date/:date<regex(\\d{4}-\\d{2}-\\d{2})>", handler)
 app.Get("/user/:email<regex([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})>", handler)
 ```
 
-## Custom Regex Engine Implementation
-
-You can implement your own regex engine by implementing the `RegexEngine` and `RegexCompiler` interfaces:
-
-```go
-// RegexEngine provides methods for creating compiled regex patterns
-type RegexEngine interface {
-    // MustCompile compiles a regex pattern and panics if invalid
-    MustCompile(pattern string) RegexCompiler
-}
-
-// RegexCompiler defines methods for regex pattern matching
-type RegexCompiler interface {
-    // MatchString reports whether the string contains any match
-    MatchString(s string) bool
-
-    // FindAllStringSubmatch returns all successive matches
-    FindAllStringSubmatch(s string, n int) [][]string
-}
-```
-
-### Example: Custom Engine with Caching
-
-```go
-type CachedRegexEngine struct {
-    cache map[string]fiber.RegexCompiler
-    mu    sync.RWMutex
-}
-
-func (e *CachedRegexEngine) MustCompile(pattern string) fiber.RegexCompiler {
-    e.mu.RLock()
-    if cached, ok := e.cache[pattern]; ok {
-        e.mu.RUnlock()
-        return cached
-    }
-    e.mu.RUnlock()
-
-    e.mu.Lock()
-    defer e.mu.Unlock()
-
-    // Double-check after acquiring write lock
-    if cached, ok := e.cache[pattern]; ok {
-        return cached
-    }
-
-    compiled := /* your implementation */
-    e.cache[pattern] = compiled
-    return compiled
-}
-```
-
 ## Notes
 
 - Regex patterns are compiled once during route registration, so the performance improvement is in the matching phase
-- The regex engine is used for all `regex()` constraints in route patterns
+- The regex handler is used for all `regex()` constraints in route patterns
 - Falls back gracefully if pattern compilation fails
 - No changes required to existing route definitions

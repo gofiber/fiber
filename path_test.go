@@ -20,7 +20,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	t.Parallel()
 	var rp routeParser
 
-	rp = parseRoute("/shop/product/::filter/color::color/size::size", DefaultRegexEngine)
+	rp = parseRoute("/shop/product/::filter/color::color/size::size", defaultRegexHandler)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/shop/product/:", Length: 15},
@@ -33,7 +33,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: []string{"filter", "color", "size"},
 	}, rp)
 
-	rp = parseRoute("/api/v1/:param/abc/*", DefaultRegexEngine)
+	rp = parseRoute("/api/v1/:param/abc/*", defaultRegexHandler)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/v1/", Length: 8},
@@ -45,7 +45,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		wildCardCount: 1,
 	}, rp)
 
-	rp = parseRoute("/v1/some/resource/name\\:customVerb", DefaultRegexEngine)
+	rp = parseRoute("/v1/some/resource/name\\:customVerb", defaultRegexHandler)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/name:customVerb", Length: 33, IsLast: true},
@@ -53,7 +53,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: nil,
 	}, rp)
 
-	rp = parseRoute("/v1/some/resource/:name\\:customVerb", DefaultRegexEngine)
+	rp = parseRoute("/v1/some/resource/:name\\:customVerb", defaultRegexHandler)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/", Length: 18},
@@ -64,7 +64,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 
 	// heavy test with escaped characters
-	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*", DefaultRegexEngine)
+	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*", defaultRegexHandler)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/name:customVerb??/", Length: 36},
@@ -76,7 +76,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		wildCardCount: 1,
 	}, rp)
 
-	rp = parseRoute("/api/*/:param/:param2", DefaultRegexEngine)
+	rp = parseRoute("/api/*/:param/:param2", defaultRegexHandler)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/", Length: 5, HasOptionalSlash: true},
@@ -90,7 +90,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		wildCardCount: 1,
 	}, rp)
 
-	rp = parseRoute("/test:optional?:optional2?", DefaultRegexEngine)
+	rp = parseRoute("/test:optional?:optional2?", defaultRegexHandler)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/test", Length: 5},
@@ -100,7 +100,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: []string{"optional", "optional2"},
 	}, rp)
 
-	rp = parseRoute("/config/+.json", DefaultRegexEngine)
+	rp = parseRoute("/config/+.json", defaultRegexHandler)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/config/", Length: 8},
@@ -111,7 +111,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		plusCount: 1,
 	}, rp)
 
-	rp = parseRoute("/api/:day.:month?.:year?", DefaultRegexEngine)
+	rp = parseRoute("/api/:day.:month?.:year?", defaultRegexHandler)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/", Length: 5},
@@ -124,7 +124,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: []string{"day", "month", "year"},
 	}, rp)
 
-	rp = parseRoute("/*v1*/proxy", DefaultRegexEngine)
+	rp = parseRoute("/*v1*/proxy", defaultRegexHandler)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/", Length: 1, HasOptionalSlash: true},
@@ -143,7 +143,7 @@ func Test_Path_matchParams(t *testing.T) {
 	t.Parallel()
 	var ctxParams [maxParams]string
 	testCaseFn := func(testCollection routeCaseCollection) {
-		parser := parseRoute(testCollection.pattern, DefaultRegexEngine)
+		parser := parseRoute(testCollection.pattern, defaultRegexHandler)
 		for _, c := range testCollection.testCases {
 			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
 			require.Equal(t, c.match, match, "route: '%s', url: '%s'", testCollection.pattern, c.url)
@@ -337,7 +337,7 @@ func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 func Benchmark_Path_matchParams(t *testing.B) {
 	var ctxParams [maxParams]string
 	benchCaseFn := func(testCollection routeCaseCollection) {
-		parser := parseRoute(testCollection.pattern, DefaultRegexEngine)
+		parser := parseRoute(testCollection.pattern, defaultRegexHandler)
 		for _, c := range testCollection.testCases {
 			var matchRes bool
 			state := "match"
@@ -402,7 +402,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams)
 		require.NotPanics(t, func() {
-			parseRoute(route, DefaultRegexEngine)
+			parseRoute(route, defaultRegexHandler)
 		})
 	})
 
@@ -411,7 +411,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams+1)
 		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
-			parseRoute(route, DefaultRegexEngine)
+			parseRoute(route, defaultRegexHandler)
 		})
 	})
 
@@ -420,7 +420,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams+5)
 		require.PanicsWithValue(t, "Route '"+route+"' has 35 parameters, which exceeds the maximum of 30", func() {
-			parseRoute(route, DefaultRegexEngine)
+			parseRoute(route, defaultRegexHandler)
 		})
 	})
 }
@@ -466,15 +466,12 @@ func paramsRoute(t *testing.T, n int) string {
 	return "/" + strings.Join(params, "/")
 }
 
-// Test_RegexEngine_Default verifies the default regex engine works correctly
-func Test_RegexEngine_Default(t *testing.T) {
+// Test_RegexHandler_Default verifies the default regex handler works correctly
+func Test_RegexHandler_Default(t *testing.T) {
 	t.Parallel()
 
-	// Test that DefaultRegexEngine is set
-	require.NotNil(t, DefaultRegexEngine)
-
-	// Test compilation
-	compiler := DefaultRegexEngine.MustCompile(`\d+`)
+	// Test compilation using regexp.MustCompile
+	compiler := regexp.MustCompile(`\d+`)
 	require.NotNil(t, compiler)
 
 	// Test matching
@@ -482,7 +479,7 @@ func Test_RegexEngine_Default(t *testing.T) {
 	require.False(t, compiler.MatchString("abc"))
 
 	// Test FindAllStringSubmatch
-	compiler = DefaultRegexEngine.MustCompile(`(\w+)@(\w+)\.(\w+)`)
+	compiler = regexp.MustCompile(`(\w+)@(\w+)\.(\w+)`)
 	matches := compiler.FindAllStringSubmatch("test@example.com", -1)
 	require.Len(t, matches, 1)
 	require.Len(t, matches[0], 4)
@@ -503,29 +500,27 @@ func (m *mockRegexCompiler) MatchString(s string) bool {
 	return m.Regexp.MatchString(s)
 }
 
-// mockRegexEngine is a mock implementation of RegexEngine for testing
-type mockRegexEngine struct {
-	lastPattern   string
-	compileCalled bool
-}
-
-func (m *mockRegexEngine) MustCompile(pattern string) RegexCompiler {
-	m.compileCalled = true
-	m.lastPattern = pattern
-	return &mockRegexCompiler{
-		Regexp: regexp.MustCompile(pattern),
+// mockRegexHandler is a mock regex handler function for testing
+func mockRegexHandler(lastPattern *string, compileCalled *bool) RegexHandler {
+	return func(pattern string) RegexCompiler {
+		*compileCalled = true
+		*lastPattern = pattern
+		return &mockRegexCompiler{
+			Regexp: regexp.MustCompile(pattern),
+		}
 	}
 }
 
-// Test_RegexEngine_CustomEngine verifies that a custom regex engine can be used
-func Test_RegexEngine_CustomEngine(t *testing.T) {
+// Test_RegexHandler_Custom verifies that a custom regex handler can be used
+func Test_RegexHandler_Custom(t *testing.T) {
 	t.Parallel()
 
-	mockEngine := &mockRegexEngine{}
+	var lastPattern string
+	var compileCalled bool
 
-	// Create app with custom regex engine
+	// Create app with custom regex handler
 	app := New(Config{
-		RegexEngine: mockEngine,
+		RegexHandler: mockRegexHandler(&lastPattern, &compileCalled),
 	})
 
 	// Register a route with regex constraint
@@ -533,9 +528,9 @@ func Test_RegexEngine_CustomEngine(t *testing.T) {
 		return c.SendString("matched")
 	})
 
-	// Verify the mock engine was used during route registration
-	require.True(t, mockEngine.compileCalled, "MustCompile should have been called")
-	require.Equal(t, `\d+`, mockEngine.lastPattern, "Pattern should match")
+	// Verify the mock handler was used during route registration
+	require.True(t, compileCalled, "RegexHandler should have been called")
+	require.Equal(t, `\d+`, lastPattern, "Pattern should match")
 
 	// Test the route
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
@@ -552,28 +547,28 @@ func Test_RegexEngine_CustomEngine(t *testing.T) {
 func Test_RoutePatternMatch_WithRegex(t *testing.T) {
 	t.Parallel()
 
-	// Test with default engine
+	// Test with default handler
 	require.True(t, RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>"))
 	require.False(t, RoutePatternMatch("/api/abc", "/api/:id<regex(\\d+)>"))
 
 	// Test with custom config
-	mockEngine := &mockRegexEngine{}
+	var lastPattern string
+	var compileCalled bool
 	require.True(t, RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>", Config{
-		RegexEngine: mockEngine,
+		RegexHandler: mockRegexHandler(&lastPattern, &compileCalled),
 	}))
-	require.True(t, mockEngine.compileCalled, "MustCompile should have been called")
+	require.True(t, compileCalled, "RegexHandler should have been called")
 }
 
-// Test_RegexEngine_NilDefaultsToStdlib verifies that nil RegexEngine defaults to stdlib
-func Test_RegexEngine_NilDefaultsToStdlib(t *testing.T) {
+// Test_RegexHandler_NilDefaultsToStdlib verifies that nil RegexHandler defaults to stdlib
+func Test_RegexHandler_NilDefaultsToStdlib(t *testing.T) {
 	t.Parallel()
 
-	// Create app without specifying RegexEngine (should default)
+	// Create app without specifying RegexHandler (should default)
 	app := New()
 
 	// Verify it's set to the default
-	require.NotNil(t, app.config.RegexEngine)
-	require.Equal(t, DefaultRegexEngine, app.config.RegexEngine)
+	require.NotNil(t, app.config.RegexHandler)
 
 	// Register a route with regex constraint
 	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
@@ -586,8 +581,8 @@ func Test_RegexEngine_NilDefaultsToStdlib(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode)
 }
 
-// Test_RegexEngine_ComplexPattern tests complex regex patterns
-func Test_RegexEngine_ComplexPattern(t *testing.T) {
+// Test_RegexHandler_ComplexPattern tests complex regex patterns
+func Test_RegexHandler_ComplexPattern(t *testing.T) {
 	t.Parallel()
 
 	app := New()
