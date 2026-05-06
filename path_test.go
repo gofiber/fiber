@@ -493,6 +493,8 @@ func (m *matchOnlyRegexCompiler) MatchString(s string) bool {
 	return m.re.MatchString(s)
 }
 
+type regexPattern string
+
 // mockRegexHandler is a mock regex handler function for testing
 func mockRegexHandler(lastPattern *string, compileCalled *bool) RegexHandler {
 	return func(pattern string) RegexCompiler {
@@ -558,6 +560,17 @@ func Test_RegexHandler_MatchOnlyCompiler(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+// Test_RegexHandler_DefaultCompilerPreservesConstraintField verifies stdlib handlers still populate the exported regexp field.
+func Test_RegexHandler_DefaultCompilerPreservesConstraintField(t *testing.T) {
+	t.Parallel()
+
+	parser := parseRoute("/api/:id<regex(\\d+)>", regexp.MustCompile)
+	require.Len(t, parser.segs, 2)
+	require.Len(t, parser.segs[1].Constraints, 1)
+	require.NotNil(t, parser.segs[1].Constraints[0].RegexCompiler)
+	require.Nil(t, parser.segs[1].Constraints[0].regexMatcher)
 }
 
 // Test_RoutePatternMatch_WithRegex verifies RoutePatternMatch works with regex constraints
@@ -644,6 +657,14 @@ func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
 
 		require.PanicsWithValue(t, "fiber: Config.RegexHandler must have signature func(string) T", func() {
 			New(Config{RegexHandler: func(int) *regexp.Regexp { return nil }})
+		})
+	})
+
+	t.Run("named_string_parameter", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler must have signature func(string) T", func() {
+			New(Config{RegexHandler: func(regexPattern) *regexp.Regexp { return nil }})
 		})
 	})
 

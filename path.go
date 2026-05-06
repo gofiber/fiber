@@ -49,7 +49,10 @@ type RegexCompiler interface {
 //	})
 type RegexHandler any
 
-var regexCompilerType = reflect.TypeFor[RegexCompiler]()
+var (
+	regexCompilerType = reflect.TypeFor[RegexCompiler]()
+	stringType        = reflect.TypeFor[string]()
+)
 
 func validateRegexHandler(handler RegexHandler) RegexHandler {
 	if handler == nil {
@@ -62,7 +65,7 @@ func validateRegexHandler(handler RegexHandler) RegexHandler {
 	if handlerType.Kind() != reflect.Func || handlerValue.IsNil() {
 		panic("fiber: Config.RegexHandler must be a non-nil function")
 	}
-	if handlerType.NumIn() != 1 || handlerType.In(0).Kind() != reflect.String || handlerType.NumOut() != 1 {
+	if handlerType.NumIn() != 1 || handlerType.In(0) != stringType || handlerType.NumOut() != 1 {
 		panic("fiber: Config.RegexHandler must have signature func(string) T")
 	}
 	if !handlerType.Out(0).Implements(regexCompilerType) {
@@ -150,10 +153,11 @@ type TypeConstraint uint16
 // Constraint describes the validation rules that apply to a dynamic route
 // segment when matching incoming requests.
 type Constraint struct {
-	RegexCompiler     RegexCompiler
+	RegexCompiler     *regexp.Regexp
 	Name              string
 	Data              []string
 	customConstraints []CustomConstraint
+	regexMatcher      RegexCompiler
 	ID                TypeConstraint
 }
 
@@ -506,7 +510,12 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler Reg
 				// Precompile regex if has regex constraint
 				if constraint.ID == regexConstraint {
 					constraint.Data = []string{c[start+1 : end]}
-					constraint.RegexCompiler = compileRegex(regexHandler, constraint.Data[0])
+					compiler := compileRegex(regexHandler, constraint.Data[0])
+					if regexpCompiler, ok := compiler.(*regexp.Regexp); ok {
+						constraint.RegexCompiler = regexpCompiler
+					} else {
+						constraint.regexMatcher = compiler
+					}
 				}
 
 				constraints = append(constraints, constraint)
@@ -918,10 +927,16 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			return false
 		}
 	case regexConstraint:
-		if c.RegexCompiler == nil {
+		var matcher RegexCompiler
+		if c.regexMatcher != nil {
+			matcher = c.regexMatcher
+		} else if c.RegexCompiler != nil {
+			matcher = c.RegexCompiler
+		}
+		if matcher == nil {
 			return false
 		}
-		if match := c.RegexCompiler.MatchString(param); !match {
+		if match := matcher.MatchString(param); !match {
 			return false
 		}
 	default:
