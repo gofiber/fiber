@@ -1,6 +1,6 @@
 # Alternative Regex Engines
 
-Fiber v3+ supports using alternative regex implementations for route pattern matching through the `RegexHandler` configuration option. This allows you to use high-performance regex engines like [coregex](https://github.com/coregx/coregex) as a drop-in replacement for Go's standard library `regexp` package.
+Fiber v3+ supports using alternative regex implementations for `regex()` parameter constraints through the `RegexHandler` configuration option. This allows you to use high-performance regex engines like [coregex](https://github.com/coregx/coregex) as a drop-in replacement for Go's standard library `regexp` package when compiling those constraint patterns.
 
 ## Why Use an Alternative Regex Engine?
 
