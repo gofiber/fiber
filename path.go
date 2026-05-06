@@ -49,7 +49,7 @@ type RegexCompiler interface {
 //	})
 type RegexHandler any
 
-var regexCompilerType = reflect.TypeOf((*RegexCompiler)(nil)).Elem()
+var regexCompilerType = reflect.TypeFor[RegexCompiler]()
 
 func validateRegexHandler(handler RegexHandler) RegexHandler {
 	if handler == nil {
@@ -75,7 +75,10 @@ func validateRegexHandler(handler RegexHandler) RegexHandler {
 // compileRegex calls the RegexHandler function and returns a RegexCompiler.
 func compileRegex(handler RegexHandler, pattern string) RegexCompiler {
 	result := reflect.ValueOf(handler).Call([]reflect.Value{reflect.ValueOf(pattern)})
-	compiler, _ := result[0].Interface().(RegexCompiler)
+	compiler, ok := result[0].Interface().(RegexCompiler)
+	if !ok {
+		panic("fiber: Config.RegexHandler return type must implement fiber.RegexCompiler")
+	}
 	if compiler == nil {
 		panic("fiber: Config.RegexHandler must not return nil")
 	}
