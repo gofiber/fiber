@@ -671,7 +671,7 @@ func Test_RegexHandler_NilReturnPanics(t *testing.T) {
 	})
 }
 
-// Test_RoutePatternMatch_InvalidRegexHandlerPanics verifies helper config is validated too.
+// Test_RoutePatternMatch_InvalidRegexHandlerPanics verifies RoutePatternMatch also validates RegexHandler configuration.
 func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
 	t.Parallel()
 
