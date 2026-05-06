@@ -153,11 +153,11 @@ type TypeConstraint uint16
 // Constraint describes the validation rules that apply to a dynamic route
 // segment when matching incoming requests.
 type Constraint struct {
+	regexMatcher      RegexCompiler
 	RegexCompiler     *regexp.Regexp
 	Name              string
 	Data              []string
 	customConstraints []CustomConstraint
-	regexMatcher      RegexCompiler
 	ID                TypeConstraint
 }
 
