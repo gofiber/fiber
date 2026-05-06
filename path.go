@@ -153,6 +153,8 @@ type TypeConstraint uint16
 // Constraint describes the validation rules that apply to a dynamic route
 // segment when matching incoming requests.
 type Constraint struct {
+	// regexMatcher stores non-stdlib regex implementations internally while
+	// RegexCompiler preserves the exported *regexp.Regexp field for compatibility.
 	regexMatcher      RegexCompiler
 	RegexCompiler     *regexp.Regexp
 	Name              string
@@ -927,10 +929,8 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			return false
 		}
 	case regexConstraint:
-		var matcher RegexCompiler
-		if c.regexMatcher != nil {
-			matcher = c.regexMatcher
-		} else if c.RegexCompiler != nil {
+		matcher := c.regexMatcher
+		if matcher == nil {
 			matcher = c.RegexCompiler
 		}
 		if matcher == nil {
