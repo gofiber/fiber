@@ -24,19 +24,14 @@ import (
 )
 
 // RegexCompiler defines the interface for regex pattern matching.
-// Both *regexp.Regexp and alternative engines like *coregex.Regex implement these methods.
+// Both *regexp.Regexp and alternative engines like *coregex.Regex implement this method.
 type RegexCompiler interface {
 	// MatchString reports whether the string s contains any match of the regex pattern.
 	MatchString(s string) bool
-
-	// FindAllStringSubmatch returns a slice of all successive matches of the expression.
-	// The return value is a slice of slices of strings. Each slice contains the full match
-	// followed by any captured submatches. A return value of nil indicates no match.
-	FindAllStringSubmatch(s string, n int) [][]string
 }
 
 // RegexHandler is a function that compiles regex patterns. It accepts any function
-// with signature func(string) T where T has MatchString and FindAllStringSubmatch methods.
+// with signature func(string) T where T has a MatchString method.
 // This allows using regexp.MustCompile or coregex.MustCompile directly without wrappers.
 //
 // Example with standard library (default):
@@ -54,24 +49,47 @@ type RegexCompiler interface {
 //	})
 type RegexHandler any
 
-// compileRegex calls the RegexHandler function and returns a RegexCompiler.
-// This helper handles the type assertion from any to the actual regex type.
-func compileRegex(handler RegexHandler, pattern string) RegexCompiler {
+var regexCompilerType = reflect.TypeOf((*RegexCompiler)(nil)).Elem()
+
+func validateRegexHandler(handler RegexHandler) RegexHandler {
 	if handler == nil {
-		return regexp.MustCompile(pattern)
+		return regexp.MustCompile
 	}
 
-	// Call the handler function using reflection
-	// handler should be func(string) T where T implements RegexCompiler
+	handlerValue := reflect.ValueOf(handler)
+	handlerType := handlerValue.Type()
+
+	if handlerType.Kind() != reflect.Func || handlerValue.IsNil() {
+		panic("fiber: Config.RegexHandler must be a non-nil function")
+	}
+	if handlerType.NumIn() != 1 || handlerType.In(0).Kind() != reflect.String || handlerType.NumOut() != 1 {
+		panic("fiber: Config.RegexHandler must have signature func(string) T")
+	}
+	if !handlerType.Out(0).Implements(regexCompilerType) {
+		panic("fiber: Config.RegexHandler return type must implement fiber.RegexCompiler")
+	}
+
+	return handler
+}
+
+// compileRegex calls the RegexHandler function and returns a RegexCompiler.
+func compileRegex(handler RegexHandler, pattern string) RegexCompiler {
 	result := reflect.ValueOf(handler).Call([]reflect.Value{reflect.ValueOf(pattern)})
-	if len(result) > 0 {
-		if compiler, ok := result[0].Interface().(RegexCompiler); ok {
-			return compiler
-		}
+	compiler, _ := result[0].Interface().(RegexCompiler)
+	if compiler == nil {
+		panic("fiber: Config.RegexHandler must not return nil")
+	}
+	compilerValue := reflect.ValueOf(compiler)
+	if (compilerValue.Kind() == reflect.Chan ||
+		compilerValue.Kind() == reflect.Func ||
+		compilerValue.Kind() == reflect.Interface ||
+		compilerValue.Kind() == reflect.Map ||
+		compilerValue.Kind() == reflect.Pointer ||
+		compilerValue.Kind() == reflect.Slice) && compilerValue.IsNil() {
+		panic("fiber: Config.RegexHandler must not return nil")
 	}
 
-	// Fallback to stdlib if something goes wrong
-	return regexp.MustCompile(pattern)
+	return compiler
 }
 
 // routeParser holds the path segments and param names
@@ -226,10 +244,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	if len(cfg) > 0 {
 		config = cfg[0]
 	}
-	// Use default regex handler if not configured
-	if config.RegexHandler == nil {
-		config.RegexHandler = regexp.MustCompile
-	}
+	config.RegexHandler = validateRegexHandler(config.RegexHandler)
 
 	if path == "" {
 		path = "/"

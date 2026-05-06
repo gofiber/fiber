@@ -466,27 +466,12 @@ func paramsRoute(t *testing.T, n int) string {
 	return "/" + strings.Join(params, "/")
 }
 
-// Test_RegexHandler_Default verifies the default regex handler works correctly
+// Test_RegexHandler_Default verifies the default regex handler works correctly.
 func Test_RegexHandler_Default(t *testing.T) {
 	t.Parallel()
 
-	// Test compilation using regexp.MustCompile
-	compiler := regexp.MustCompile(`\d+`)
-	require.NotNil(t, compiler)
-
-	// Test matching
-	require.True(t, compiler.MatchString("123"))
-	require.False(t, compiler.MatchString("abc"))
-
-	// Test FindAllStringSubmatch
-	compiler = regexp.MustCompile(`(\w+)@(\w+)\.(\w+)`)
-	matches := compiler.FindAllStringSubmatch("test@example.com", -1)
-	require.Len(t, matches, 1)
-	require.Len(t, matches[0], 4)
-	require.Equal(t, "test@example.com", matches[0][0])
-	require.Equal(t, "test", matches[0][1])
-	require.Equal(t, "example", matches[0][2])
-	require.Equal(t, "com", matches[0][3])
+	require.True(t, regexp.MustCompile(`\d+`).MatchString("123"))
+	require.False(t, regexp.MustCompile(`\d+`).MatchString("abc"))
 }
 
 // mockRegexCompiler is a mock implementation of RegexCompiler for testing
@@ -498,6 +483,14 @@ type mockRegexCompiler struct {
 func (m *mockRegexCompiler) MatchString(s string) bool {
 	m.matchCalled = true
 	return m.Regexp.MatchString(s)
+}
+
+type matchOnlyRegexCompiler struct {
+	re *regexp.Regexp
+}
+
+func (m *matchOnlyRegexCompiler) MatchString(s string) bool {
+	return m.re.MatchString(s)
 }
 
 // mockRegexHandler is a mock regex handler function for testing
@@ -541,6 +534,30 @@ func Test_RegexHandler_Custom(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/api/abc", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
+}
+
+// Test_RegexHandler_MatchOnlyCompiler verifies Fiber accepts compilers that only implement MatchString.
+func Test_RegexHandler_MatchOnlyCompiler(t *testing.T) {
+	t.Parallel()
+
+	var compileCalled bool
+
+	app := New(Config{
+		RegexHandler: func(pattern string) *matchOnlyRegexCompiler {
+			compileCalled = true
+			return &matchOnlyRegexCompiler{re: regexp.MustCompile(pattern)}
+		},
+	})
+
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
+		return c.SendString("matched")
+	})
+
+	require.True(t, compileCalled)
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
 // Test_RoutePatternMatch_WithRegex verifies RoutePatternMatch works with regex constraints
@@ -599,4 +616,66 @@ func Test_RegexHandler_ComplexPattern(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/date/2024-1-5", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
+}
+
+// Test_RegexHandler_InvalidConfigurationPanics verifies invalid handlers fail fast.
+func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
+	t.Parallel()
+
+	t.Run("typed_nil_function", func(t *testing.T) {
+		t.Parallel()
+
+		var handler func(string) *regexp.Regexp
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
+			New(Config{RegexHandler: handler})
+		})
+	})
+
+	t.Run("non_function", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
+			New(Config{RegexHandler: "invalid"})
+		})
+	})
+
+	t.Run("invalid_signature", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler must have signature func(string) T", func() {
+			New(Config{RegexHandler: func(int) *regexp.Regexp { return nil }})
+		})
+	})
+
+	t.Run("invalid_return_type", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler return type must implement fiber.RegexCompiler", func() {
+			New(Config{RegexHandler: func(string) string { return "" }})
+		})
+	})
+}
+
+// Test_RegexHandler_NilReturnPanics verifies a nil compiled matcher is rejected.
+func Test_RegexHandler_NilReturnPanics(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		RegexHandler: func(string) *regexp.Regexp { return nil },
+	})
+
+	require.PanicsWithValue(t, "fiber: Config.RegexHandler must not return nil", func() {
+		app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
+			return c.SendString("matched")
+		})
+	})
+}
+
+// Test_RoutePatternMatch_InvalidRegexHandlerPanics verifies helper config is validated too.
+func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
+		RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>", Config{RegexHandler: "invalid"})
+	})
 }

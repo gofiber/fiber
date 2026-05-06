@@ -1,6 +1,18 @@
-# Alternative Regex Engines
+---
+id: regex-engines
+title: 🔎 Alternative Regex Engines
+description: >-
+  Configure Fiber's regex() route constraints to use an alternative regex
+  compiler such as coregex.
+sidebar_position: 8
+toc_max_heading_level: 4
+---
 
-Fiber v3+ supports using alternative regex implementations for `regex()` parameter constraints through the `RegexHandler` configuration option. This allows you to use high-performance regex engines like [coregex](https://github.com/coregx/coregex) as a drop-in replacement for Go's standard library `regexp` package when compiling those constraint patterns.
+Fiber v3+ lets you configure the compiler used for `regex()` parameter
+constraints through the `RegexHandler` option. This allows you to use
+high-performance regex engines like
+[coregex](https://github.com/coregx/coregex) as a drop-in replacement for Go's
+standard library `regexp` package when compiling those constraint patterns.
 
 ## Why Use an Alternative Regex Engine?
 
@@ -14,7 +26,8 @@ The default Go `regexp` package is intentionally simple and guarantees O(n) time
 
 ## RegexHandler Configuration
 
-The `RegexHandler` field in `fiber.Config` accepts any regex compile function directly:
+The `RegexHandler` field in `fiber.Config` accepts any regex compile function
+directly:
 
 ```go
 type Config struct {
@@ -30,7 +43,8 @@ type Config struct {
 
 ## Using Coregex
 
-Coregex provides excellent performance improvements for most regex patterns. Here's how to integrate it:
+Coregex provides excellent performance improvements for most regex patterns.
+Here's how to integrate it:
 
 ### 1. Install Coregex
 
@@ -55,7 +69,7 @@ func main() {
         RegexHandler: coregex.MustCompile,
     })
 
-    // All regex constraints will now use coregex
+    // All regex() constraints will now use coregex
     app.Get("/api/v1/:id<regex(\\d+)>", func(c fiber.Ctx) error {
         return c.SendString("ID: " + c.Params("id"))
     })
@@ -64,7 +78,8 @@ func main() {
 }
 ```
 
-That's it! No adapter types or wrappers needed - just pass `coregex.MustCompile` directly.
+That's it! No adapter types or wrappers needed—just pass
+`coregex.MustCompile` directly.
 
 ## Using Standard Library (Explicit)
 
@@ -93,7 +108,8 @@ Coregex excels at these pattern types:
 
 ## Compatibility
 
-Both `regexp.MustCompile` and `coregex.MustCompile` work seamlessly with Fiber's regex constraint syntax:
+Both `regexp.MustCompile` and `coregex.MustCompile` work seamlessly with
+Fiber's regex constraint syntax:
 
 ```go
 // Single constraint
@@ -113,5 +129,6 @@ app.Get("/user/:email<regex([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})>", 
 
 - Regex patterns are compiled once during route registration, so the performance improvement is in the matching phase
 - The regex handler is used for all `regex()` constraints in route patterns
-- Invalid regex patterns still panic during route registration because Fiber uses `MustCompile`-style semantics; fallback only applies when the configured handler returns an unexpected type
+- Invalid regex patterns still panic during route registration because Fiber uses `MustCompile`-style semantics
+- The compiled matcher is reused across requests, so custom matchers must be safe for concurrent use
 - No changes required to existing route definitions
