@@ -1,13 +1,9 @@
 package basicauth
 
 import (
-	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/subtle"
-	"encoding/base64"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,8 +12,6 @@ import (
 	"github.com/gofiber/utils/v2"
 	"golang.org/x/crypto/bcrypt"
 )
-
-var ErrInvalidSHA256PasswordLength = errors.New("decode SHA256 password: invalid length")
 
 // fallbackDummySHA512 is SHA-512("fiber-basicauth-dummy"), used as a
 // constant-time comparison target when no users are configured.
@@ -32,13 +26,9 @@ type passwordVerifier func(string) bool
 
 type userVerifiers map[string]passwordVerifier
 
-// Verifier strengths are ordered by expected verification work:
-// bcrypt is strongest because it is adaptive and cost-based, SHA-512 follows
-// as the larger fixed-cost digest, and SHA-256 is the lightest fixed-cost hash.
+// Verifier strengths are ordered by expected verification work.
 const (
-	verifierStrengthSHA256 = iota + 1
-	verifierStrengthSHA512
-	verifierStrengthBcrypt
+	verifierStrengthBcrypt = iota + 1
 )
 
 // Config defines the config for middleware.
@@ -230,21 +220,14 @@ func fallbackDummyVerify(pass string) bool {
 	return subtle.ConstantTimeCompare(sum[:], fallbackDummySHA512[:]) == 1
 }
 
-// verifierStrengthForHash ranks a configured password hash by algorithm family
-// and cost so the middleware can choose the strongest verifier for dummy work.
+// verifierStrengthForHash ranks a configured bcrypt hash by cost so the
+// middleware can choose the strongest verifier for dummy work.
 func verifierStrengthForHash(h string) verifierStrength {
-	switch {
-	case strings.HasPrefix(h, "$2"):
-		cost, err := bcrypt.Cost([]byte(h))
-		if err != nil {
-			return verifierStrength{algorithm: verifierStrengthBcrypt}
-		}
-		return verifierStrength{algorithm: verifierStrengthBcrypt, cost: cost}
-	case strings.HasPrefix(h, "{SHA512}"):
-		return verifierStrength{algorithm: verifierStrengthSHA512}
-	default:
-		return verifierStrength{algorithm: verifierStrengthSHA256}
+	cost, err := bcrypt.Cost([]byte(h))
+	if err != nil {
+		return verifierStrength{algorithm: verifierStrengthBcrypt}
 	}
+	return verifierStrength{algorithm: verifierStrengthBcrypt, cost: cost}
 }
 
 // betterThan prefers stronger hash families first (bcrypt > SHA-512 > SHA-256)
@@ -258,43 +241,11 @@ func (s verifierStrength) betterThan(other verifierStrength) bool {
 }
 
 func parseHashedPassword(h string) (passwordVerifier, error) {
-	switch {
-	case strings.HasPrefix(h, "$2"):
-		hash := []byte(h)
-		return func(p string) bool {
-			return bcrypt.CompareHashAndPassword(hash, []byte(p)) == nil
-		}, nil
-	case strings.HasPrefix(h, "{SHA512}"):
-		b, err := base64.StdEncoding.DecodeString(h[len("{SHA512}"):])
-		if err != nil {
-			return nil, fmt.Errorf("decode SHA512 password: %w", err)
-		}
-		return func(p string) bool {
-			sum := sha512.Sum512([]byte(p))
-			return subtle.ConstantTimeCompare(sum[:], b) == 1
-		}, nil
-	case strings.HasPrefix(h, "{SHA256}"):
-		b, err := base64.StdEncoding.DecodeString(h[len("{SHA256}"):])
-		if err != nil {
-			return nil, fmt.Errorf("decode SHA256 password: %w", err)
-		}
-		return func(p string) bool {
-			sum := sha256.Sum256([]byte(p))
-			return subtle.ConstantTimeCompare(sum[:], b) == 1
-		}, nil
-	default:
-		b, err := hex.DecodeString(h)
-		if err != nil || len(b) != sha256.Size {
-			if b, err = base64.StdEncoding.DecodeString(h); err != nil {
-				return nil, fmt.Errorf("decode SHA256 password: %w", err)
-			}
-			if len(b) != sha256.Size {
-				return nil, ErrInvalidSHA256PasswordLength
-			}
-		}
-		return func(p string) bool {
-			sum := sha256.Sum256([]byte(p))
-			return subtle.ConstantTimeCompare(sum[:], b) == 1
-		}, nil
+	if !strings.HasPrefix(h, "$2") {
+		return nil, errors.New("basicauth: only bcrypt password hashes are supported; SHA-256 and SHA-512 are not suitable for password storage")
 	}
+	hash := []byte(h)
+	return func(p string) bool {
+		return bcrypt.CompareHashAndPassword(hash, []byte(p)) == nil
+	}, nil
 }
