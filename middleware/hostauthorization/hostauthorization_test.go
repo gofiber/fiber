@@ -1,15 +1,15 @@
 package hostauthorization
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 )
-
-// --- Config tests ---
 
 func Test_ConfigDefault(t *testing.T) {
 	t.Parallel()
@@ -58,28 +58,34 @@ func Test_ConfigAllowedHostsFuncOnly(t *testing.T) {
 	require.NotNil(t, cfg.AllowedHostsFunc)
 }
 
-func Test_ConfigPanicInvalidCIDRFormat(t *testing.T) {
+func Test_ConfigPanicHostExceedsRFC1035TotalLength(t *testing.T) {
 	t.Parallel()
 
-	// Any entry containing "/" is treated as a CIDR attempt. A broken CIDR like
-	// "not-a-cidr/99" that fails net.ParseCIDR panics at startup so the
-	// misconfiguration is immediately visible instead of silently becoming an
-	// exact entry that can never match a real host.
+	tooLong := strings.Repeat("a", 254)
 	require.Panics(t, func() {
 		New(Config{
-			AllowedHosts: []string{"not-a-cidr/99"},
+			AllowedHosts: []string{tooLong},
 		})
 	})
 }
 
-func Test_ConfigPanicNonCanonicalCIDR(t *testing.T) {
+func Test_ConfigPanicLeadingDotForm(t *testing.T) {
 	t.Parallel()
 
-	// "10.0.0.5/8" passes net.ParseCIDR but has host bits set — it would silently
-	// expand to 10.0.0.0/8, allowing far more than the developer intended.
 	require.Panics(t, func() {
 		New(Config{
-			AllowedHosts: []string{"10.0.0.5/8"},
+			AllowedHosts: []string{".myapp.com"},
+		})
+	})
+}
+
+func Test_ConfigPanicLabelExceedsRFC1035Length(t *testing.T) {
+	t.Parallel()
+
+	tooLong := strings.Repeat("a", 64) + ".example.com"
+	require.Panics(t, func() {
+		New(Config{
+			AllowedHosts: []string{tooLong},
 		})
 	})
 }
@@ -98,13 +104,9 @@ func Test_ConfigCustomErrorHandler(t *testing.T) {
 	require.NotNil(t, cfg.ErrorHandler)
 }
 
-// --- normalizeHost tests ---
-
 func Test_NormalizeHost(t *testing.T) {
 	t.Parallel()
 
-	// normalizeHost receives output from c.Hostname() which already strips ports.
-	// It handles trailing dots, IPv6 brackets, and lowercasing.
 	tests := []struct {
 		name     string
 		input    string
@@ -121,6 +123,8 @@ func Test_NormalizeHost(t *testing.T) {
 		{"ipv6 bare", "::1", "::1"},
 		{"ipv6 with port", "[::1]:8080", "::1"},
 		{"empty", "", ""},
+		{"idn unicode → punycode", "münchen.example.com", "xn--mnchen-3ya.example.com"},
+		{"idn already punycode", "xn--mnchen-3ya.example.com", "xn--mnchen-3ya.example.com"},
 	}
 
 	for _, tt := range tests {
@@ -134,13 +138,11 @@ func Test_NormalizeHost(t *testing.T) {
 func Test_ParseAllowedHosts_SkipsBlankEntries(t *testing.T) {
 	t.Parallel()
 
-	parsed := parseAllowedHosts([]string{"", "   ", ".", "example.com"})
+	parsed := parseAllowedHosts([]string{"", "   ", "example.com"})
 
 	require.True(t, matchHost("example.com", parsed, nil))
 	require.False(t, matchHost("", parsed, nil))
 }
-
-// --- Matching logic tests ---
 
 func Test_MatchExact(t *testing.T) {
 	t.Parallel()
@@ -163,7 +165,7 @@ func Test_MatchExactCaseInsensitive(t *testing.T) {
 func Test_MatchSubdomainWildcard(t *testing.T) {
 	t.Parallel()
 
-	parsed := parseAllowedHosts([]string{".myapp.com"})
+	parsed := parseAllowedHosts([]string{"*.myapp.com"})
 
 	require.True(t, matchHost("api.myapp.com", parsed, nil))
 	require.True(t, matchHost("www.myapp.com", parsed, nil))
@@ -172,24 +174,14 @@ func Test_MatchSubdomainWildcard(t *testing.T) {
 	require.False(t, matchHost("evil.com", parsed, nil))
 }
 
-func Test_MatchCIDRv4(t *testing.T) {
+func Test_MatchSubdomainWildcard_IDN(t *testing.T) {
 	t.Parallel()
 
-	parsed := parseAllowedHosts([]string{"10.0.0.0/8"})
+	parsed := parseAllowedHosts([]string{"*.münchen.example.com"})
 
-	require.True(t, matchHost("10.0.50.3", parsed, nil))
-	require.True(t, matchHost("10.255.255.255", parsed, nil))
-	require.False(t, matchHost("192.168.1.1", parsed, nil))
-	require.False(t, matchHost("169.254.169.254", parsed, nil))
-}
-
-func Test_MatchCIDRv6(t *testing.T) {
-	t.Parallel()
-
-	parsed := parseAllowedHosts([]string{"fd00::/8"})
-
-	require.True(t, matchHost("fd00::1", parsed, nil))
-	require.False(t, matchHost("2001:db8::1", parsed, nil))
+	require.True(t, matchHost(normalizeHost("api.münchen.example.com"), parsed, nil))
+	require.True(t, matchHost("api.xn--mnchen-3ya.example.com", parsed, nil))
+	require.False(t, matchHost("xn--mnchen-3ya.example.com", parsed, nil), "bare domain must NOT match subdomain wildcard")
 }
 
 func Test_MatchAllowedHostsFunc(t *testing.T) {
@@ -210,14 +202,12 @@ func Test_MatchMixedCategories(t *testing.T) {
 
 	parsed := parseAllowedHosts([]string{
 		"example.com",
-		".myapp.com",
-		"10.0.0.0/8",
+		"*.myapp.com",
 		"127.0.0.1",
 	})
 
 	require.True(t, matchHost("example.com", parsed, nil))
 	require.True(t, matchHost("api.myapp.com", parsed, nil))
-	require.True(t, matchHost("10.0.50.3", parsed, nil))
 	require.True(t, matchHost("127.0.0.1", parsed, nil))
 	require.False(t, matchHost("evil.com", parsed, nil))
 	require.False(t, matchHost("192.168.1.1", parsed, nil))
@@ -230,8 +220,6 @@ func Test_MatchEmptyHost(t *testing.T) {
 
 	require.False(t, matchHost("", parsed, nil))
 }
-
-// --- Integration tests ---
 
 func Test_HostAuthorization_AllowedHost(t *testing.T) {
 	t.Parallel()
@@ -288,8 +276,7 @@ func Test_HostAuthorization_EmptyHost(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = ""
 
-	// app.Test() injects req.Host = "localhost" when req.Host is empty (app.go:1217).
-	// fasthttp then receives "localhost" as the Host header, which is not in AllowedHosts.
+	// app.Test() substitutes "localhost" when req.Host is empty, which isn't in the allowlist.
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
@@ -315,10 +302,6 @@ func Test_HostAuthorization_HostWithPort(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
-// Test_HostAuthorization_AllowedHostWithPort verifies that configuring AllowedHosts
-// with an explicit port (e.g. "example.com:8080") still matches correctly.
-// c.Hostname() strips ports from the request Host header, so the AllowedHosts
-// entry must also have its port stripped during config parsing.
 func Test_HostAuthorization_AllowedHostWithPort(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -331,7 +314,6 @@ func Test_HostAuthorization_AllowedHostWithPort(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	// Request with matching host (port in Host header is stripped by c.Hostname())
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com:8080"
 
@@ -339,7 +321,6 @@ func Test_HostAuthorization_AllowedHostWithPort(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	// Request without port should also match (both normalize to "example.com")
 	req2 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req2.Host = "example.com"
 
@@ -376,7 +357,7 @@ func Test_HostAuthorization_SubdomainWildcard_Allowed(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		AllowedHosts: []string{".myapp.com"},
+		AllowedHosts: []string{"*.myapp.com"},
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -396,7 +377,7 @@ func Test_HostAuthorization_SubdomainWildcard_BareDomainRejected(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		AllowedHosts: []string{".myapp.com"},
+		AllowedHosts: []string{"*.myapp.com"},
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -405,46 +386,6 @@ func Test_HostAuthorization_SubdomainWildcard_BareDomainRejected(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "myapp.com"
-
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
-}
-
-func Test_HostAuthorization_CIDR_Allowed(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		AllowedHosts: []string{"10.0.0.0/8"},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("OK")
-	})
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = "10.0.50.3"
-
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-}
-
-func Test_HostAuthorization_CIDR_CloudMetadataRejected(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		AllowedHosts: []string{"10.0.0.0/8"},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("OK")
-	})
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = "169.254.169.254"
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -581,6 +522,26 @@ func Test_HostAuthorization_ExactIP(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
+func Test_HostAuthorization_IDN_PunycodeRequest(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		AllowedHosts: []string{"münchen.example.com"},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "xn--mnchen-3ya.example.com"
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 func Test_HostAuthorization_OverlappingRules(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -588,8 +549,7 @@ func Test_HostAuthorization_OverlappingRules(t *testing.T) {
 	app.Use(New(Config{
 		AllowedHosts: []string{
 			"api.myapp.com",
-			".myapp.com",
-			"10.0.0.0/8",
+			"*.myapp.com",
 		},
 	}))
 
@@ -597,29 +557,8 @@ func Test_HostAuthorization_OverlappingRules(t *testing.T) {
 		return c.SendString("OK")
 	})
 
-	// Matches both exact and wildcard
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "api.myapp.com"
-
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-}
-
-func Test_HostAuthorization_IPv6Brackets(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		AllowedHosts: []string{"fd00::/8"},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("OK")
-	})
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = "[fd00::1]"
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
@@ -629,8 +568,7 @@ func Test_HostAuthorization_IPv6Brackets(t *testing.T) {
 func Test_HostAuthorization_XForwardedHost_TrustProxy_Allowed(t *testing.T) {
 	t.Parallel()
 
-	// With TrustProxy enabled, X-Forwarded-Host should be used
-	// app.Test() uses remote address 0.0.0.0, so we trust that proxy IP
+	// app.Test() uses remote address 0.0.0.0; trust that proxy IP.
 	app := fiber.New(fiber.Config{
 		TrustProxy: true,
 		TrustProxyConfig: fiber.TrustProxyConfig{
@@ -685,7 +623,6 @@ func Test_HostAuthorization_XForwardedHost_TrustProxy_Rejected(t *testing.T) {
 func Test_HostAuthorization_XForwardedHost_NoTrustProxy(t *testing.T) {
 	t.Parallel()
 
-	// Without TrustProxy, X-Forwarded-Host should be ignored
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -708,15 +645,13 @@ func Test_HostAuthorization_XForwardedHost_NoTrustProxy(t *testing.T) {
 func Test_ErrForbiddenHostString(t *testing.T) {
 	t.Parallel()
 
-	// Lock in the exported error message text so callers who match on
-	// err.Error() are notified of any future change via a failing test.
+	// Locked in so callers matching on err.Error() get a failing test on change.
 	require.Equal(t, "hostauthorization: forbidden host", ErrForbiddenHost.Error())
 }
 
 func Test_AllowedHostsFuncFallback(t *testing.T) {
 	t.Parallel()
 
-	// AllowedHostsFunc must be called only when no static rule matches.
 	called := 0
 	parsed := parseAllowedHosts([]string{"example.com"})
 	fn := func(_ string) bool {
@@ -724,12 +659,10 @@ func Test_AllowedHostsFuncFallback(t *testing.T) {
 		return false
 	}
 
-	// Static match — func must not be invoked.
 	result := matchHost("example.com", parsed, fn)
 	require.True(t, result)
 	require.Equal(t, 0, called, "AllowedHostsFunc must not be called when a static host matches")
 
-	// No static match — func should be invoked as fallback.
 	result = matchHost("other.com", parsed, fn)
 	require.False(t, result)
 	require.Equal(t, 1, called, "AllowedHostsFunc must be called when no static rule matches")
@@ -738,8 +671,6 @@ func Test_AllowedHostsFuncFallback(t *testing.T) {
 func Test_NormalizeHost_IPv6WithPortInConfig(t *testing.T) {
 	t.Parallel()
 
-	// An AllowedHosts entry of "[::1]:8080" should normalize to "::1" and
-	// match a request whose Host header is "[::1]:8080" (or just "[::1]").
 	parsed := parseAllowedHosts([]string{"[::1]:8080"})
 
 	require.True(t, matchHost("::1", parsed, nil))
@@ -747,8 +678,6 @@ func Test_NormalizeHost_IPv6WithPortInConfig(t *testing.T) {
 }
 
 // --- Benchmarks ---
-
-// --- Low-level matchHost benchmarks (isolate matching cost from HTTP pipeline) ---
 
 func Benchmark_matchHost_ExactMatch(b *testing.B) {
 	parsed := parseAllowedHosts([]string{"example.com"})
@@ -760,7 +689,7 @@ func Benchmark_matchHost_ExactMatch(b *testing.B) {
 }
 
 func Benchmark_matchHost_WildcardMatch(b *testing.B) {
-	parsed := parseAllowedHosts([]string{".myapp.com"})
+	parsed := parseAllowedHosts([]string{"*.myapp.com"})
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -768,20 +697,10 @@ func Benchmark_matchHost_WildcardMatch(b *testing.B) {
 	}
 }
 
-func Benchmark_matchHost_CIDRMatch(b *testing.B) {
-	parsed := parseAllowedHosts([]string{"10.0.0.0/8"})
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		matchHost("10.0.50.3", parsed, nil)
-	}
-}
-
 func Benchmark_matchHost_Mixed(b *testing.B) {
 	parsed := parseAllowedHosts([]string{
 		"example.com",
-		".myapp.com",
-		"10.0.0.0/8",
+		"*.myapp.com",
 		"127.0.0.1",
 	})
 	b.ReportAllocs()
@@ -791,7 +710,22 @@ func Benchmark_matchHost_Mixed(b *testing.B) {
 	}
 }
 
-// --- Full HTTP pipeline benchmarks (includes app.Test() overhead) ---
+// Worst-case linear HasSuffix scan: target only matches the last entry.
+func Benchmark_matchHost_ManyWildcards(b *testing.B) {
+	const n = 100
+	hosts := make([]string, n)
+	for i := 0; i < n; i++ {
+		hosts[i] = fmt.Sprintf("*.tenant%d.example.com", i)
+	}
+	parsed := parseAllowedHosts(hosts)
+	target := fmt.Sprintf("api.tenant%d.example.com", n-1)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		matchHost(target, parsed, nil)
+	}
+}
 
 func Benchmark_HostAuthorization_ExactMatch(b *testing.B) {
 	app := fiber.New()
@@ -816,36 +750,12 @@ func Benchmark_HostAuthorization_ExactMatch(b *testing.B) {
 	}
 }
 
-func Benchmark_HostAuthorization_CIDR(b *testing.B) {
-	app := fiber.New()
-	app.Use(New(Config{
-		AllowedHosts: []string{"10.0.0.0/8"},
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("OK")
-	})
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = "10.0.50.3"
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		resp, err := app.Test(req)
-		if err != nil {
-			b.Fatal(err)
-		}
-		resp.Body.Close() //nolint:errcheck // benchmark cleanup
-	}
-}
-
 func Benchmark_HostAuthorization_Mixed(b *testing.B) {
 	app := fiber.New()
 	app.Use(New(Config{
 		AllowedHosts: []string{
 			"example.com",
-			".myapp.com",
-			"10.0.0.0/8",
+			"*.myapp.com",
 			"127.0.0.1",
 		},
 	}))
@@ -867,15 +777,14 @@ func Benchmark_HostAuthorization_Mixed(b *testing.B) {
 	}
 }
 
-// --- Fuzz targets ---
-
 func FuzzNormalizeHost(f *testing.F) {
 	f.Add("example.com")
 	f.Add("example.com.")
 	f.Add("[::1]:8080")
 	f.Add("[::1]")
-	f.Add(".myapp.com")
+	f.Add("*.myapp.com")
 	f.Add("192.168.1.1:443")
+	f.Add("münchen.example.com")
 	f.Add("")
 	f.Fuzz(func(_ *testing.T, input string) {
 		_ = normalizeHost(input)

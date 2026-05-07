@@ -32,12 +32,13 @@ type Config struct {
 	ErrorHandler fiber.ErrorHandler
 
 	// AllowedHosts is the list of permitted host values.
-	// Supports three match types:
+	// Supports two match types:
 	//   - Exact:     "api.myapp.com"
-	//   - Subdomain: ".myapp.com" (leading dot matches any subdomain, NOT the bare domain)
-	//   - CIDR:      "10.0.0.0/8" (matches hosts that are IPs in the range)
+	//   - Subdomain: "*.myapp.com" (matches any subdomain, NOT the bare domain — list both for apex+subdomains)
 	//
-	// Entries containing "/" are always treated as CIDR; a parse failure panics at startup.
+	// Entries are normalized at startup: port stripped, trailing dot removed,
+	// lowercased, IDN labels converted to Punycode, RFC 1035 length limits enforced
+	// (≤253 total / ≤63 per-label).
 	//
 	// Required if AllowedHostsFunc is nil.
 	AllowedHosts []string

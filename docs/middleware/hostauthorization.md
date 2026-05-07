@@ -42,11 +42,11 @@ app.Get("/users", func(c fiber.Ctx) error {
 
 ### Subdomain Wildcards
 
-A leading dot matches any subdomain but **not** the bare domain itself:
+A `*.` prefix matches any subdomain but **not** the bare domain itself:
 
 ```go
 app.Use(hostauthorization.New(hostauthorization.Config{
-    AllowedHosts: []string{".myapp.com"},
+    AllowedHosts: []string{"*.myapp.com"},
 }))
 
 // Host: api.myapp.com  → 200 OK
@@ -57,26 +57,19 @@ app.Use(hostauthorization.New(hostauthorization.Config{
 To allow both the bare domain and all subdomains, include both:
 
 ```go
-AllowedHosts: []string{"myapp.com", ".myapp.com"},
+AllowedHosts: []string{"myapp.com", "*.myapp.com"},
 ```
 
-### CIDR Ranges
+### Internationalized Domain Names (IDN)
 
-Useful for services accessed directly by IP (e.g. internal tooling) where the `Host` header will be a raw IP address. This matches the **Host header value** against a CIDR range — it does not filter by client IP address:
+Browsers always transmit the `Host` header in ASCII (Punycode) form, so IDN entries in `AllowedHosts` are converted to Punycode at startup. You can configure entries in either form — they are equivalent:
 
 ```go
-app.Use(hostauthorization.New(hostauthorization.Config{
-    AllowedHosts: []string{
-        "internal.myapp.com",
-        "10.0.0.0/8",       // Host header IPs in this range are allowed
-        "127.0.0.1",        // Host header must be exactly this IP
-    },
-}))
-
-// Host: internal.myapp.com → 200 OK
-// Host: 10.0.50.3          → 200 OK  (Host header IP is in 10.0.0.0/8)
-// Host: 169.254.169.254    → 403 Forbidden (Host header IP not in allowlist)
+AllowedHosts: []string{"münchen.example.com"}                 // Unicode
+AllowedHosts: []string{"xn--mnchen-3ya.example.com"}          // Punycode (what the browser sends)
 ```
+
+Both match an incoming request whose Host header is `xn--mnchen-3ya.example.com`.
 
 ### Skipping Health Checks
 
@@ -84,7 +77,7 @@ Use `Next` to bypass host validation for specific paths:
 
 ```go
 app.Use(hostauthorization.New(hostauthorization.Config{
-    AllowedHosts: []string{"myapp.com", ".myapp.com"},
+    AllowedHosts: []string{"myapp.com", "*.myapp.com"},
     Next: func(c fiber.Ctx) bool {
         return c.Path() == "/healthz"
     },
@@ -111,7 +104,7 @@ app.Use(hostauthorization.New(hostauthorization.Config{
 
 ```go
 app.Use(hostauthorization.New(hostauthorization.Config{
-    AllowedHosts: []string{"myapp.com", ".myapp.com"},
+    AllowedHosts: []string{"myapp.com", "*.myapp.com"},
     AllowedHostsFunc: func(host string) bool {
         return isRegisteredCustomDomain(host)
     },
@@ -120,13 +113,24 @@ app.Use(hostauthorization.New(hostauthorization.Config{
 
 ### Custom Error Response
 
+The default response is **403 Forbidden**. **421 Misdirected Request** ([RFC 9110 §15.5.20](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.20)) is a semantically closer choice for "wrong host for this server" — CDNs like Cloudflare and Fastly use it for this case. Either is reasonable; pick one via `ErrorHandler`:
+
 ```go
+// 403 with a JSON body
 app.Use(hostauthorization.New(hostauthorization.Config{
     AllowedHosts: []string{"myapp.com"},
     ErrorHandler: func(c fiber.Ctx, err error) error {
         return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
             "error": "unauthorized host",
         })
+    },
+}))
+
+// 421 Misdirected Request — closer to the RFC-defined semantics
+app.Use(hostauthorization.New(hostauthorization.Config{
+    AllowedHosts: []string{"myapp.com"},
+    ErrorHandler: func(c fiber.Ctx, _ error) error {
+        return c.SendStatus(fiber.StatusMisdirectedRequest) // 421
     },
 }))
 ```
@@ -138,7 +142,7 @@ app.Use(hostauthorization.New(hostauthorization.Config{
 ```go
 // Security layer — reject anything not from our hosts
 app.Use(hostauthorization.New(hostauthorization.Config{
-    AllowedHosts: []string{"myapp.com", ".myapp.com"},
+    AllowedHosts: []string{"myapp.com", "*.myapp.com"},
     Next: func(c fiber.Ctx) bool {
         return c.Path() == "/healthz"
     },
@@ -155,8 +159,8 @@ app.Get("/healthz", healthCheck)
 | Property         | Type                          | Description                                                                                       | Default |
 |:-----------------|:------------------------------|:--------------------------------------------------------------------------------------------------|:--------|
 | Next             | `func(fiber.Ctx) bool`        | Defines a function to skip this middleware when returned true.                                     | `nil`   |
-| AllowedHosts     | `[]string`                    | List of permitted hosts. Supports exact match, subdomain wildcard (`.example.com`), and CIDR.     | `nil`   |
-| AllowedHostsFunc | `func(string) bool`           | Dynamic validator called only when no static AllowedHosts rule matches. Receives the normalized hostname: port stripped, trailing dot removed, IPv6 brackets removed, lowercased.  | `nil`   |
+| AllowedHosts     | `[]string`                    | List of permitted hosts. Supports exact match and subdomain wildcard (`*.example.com`).            | `nil`   |
+| AllowedHostsFunc | `func(string) bool`           | Dynamic validator called only when no static AllowedHosts rule matches. Receives the normalized hostname: port stripped, trailing dot removed, IPv6 brackets removed, lowercased, IDN converted to Punycode.  | `nil`   |
 | ErrorHandler     | `fiber.ErrorHandler`          | Called when a request is rejected. Receives `ErrForbiddenHost` as the error.                      | 403     |
 
 Either `AllowedHosts` or `AllowedHostsFunc` (or both) must be provided. The middleware panics at startup if neither is set.
@@ -173,23 +177,26 @@ There is no useful default — you must provide at least `AllowedHosts` or `Allo
 
 The middleware matches hosts in this order:
 
-1. **Exact match** — case-insensitive, port and trailing dot stripped
-2. **Subdomain wildcard** — `".myapp.com"` matches `api.myapp.com` but not `myapp.com`
-3. **CIDR range** — host is parsed as IP and checked against the network
-4. **AllowedHostsFunc** — called only if no static rule matched
+1. **Exact match** — case-insensitive, port and trailing dot stripped, IDN labels in Punycode form
+2. **Subdomain wildcard** — `"*.myapp.com"` matches `api.myapp.com` but not `myapp.com`
+3. **AllowedHostsFunc** — called only if no static rule matched
 
 The first match wins. If nothing matches, `ErrorHandler` is called.
 
 ## Host Normalization
 
-Before matching, the incoming host is normalized:
+Before matching, both incoming hosts and `AllowedHosts` entries are normalized at startup:
 
-- Port is stripped (via `c.Hostname()`)
+- Port is stripped (`example.com:8080` → `example.com`)
 - Trailing dot removed (`example.com.` → `example.com`)
 - IPv6 brackets removed (`[::1]` → `::1`)
 - Lowercased
+- IDN labels converted to ASCII/Punycode (`münchen.example.com` → `xn--mnchen-3ya.example.com`)
+- RFC 1035 length limits enforced at startup: ≤253 chars total, ≤63 chars per label (panic on violation)
 
-`AllowedHosts` entries are also lowercased at initialization.
+## Filtering by Client IP
+
+This middleware filters by the `Host` *header*, not by the client's source IP. To restrict access by client IP, use Fiber's [`TrustProxy` / `TrustProxyConfig`](https://docs.gofiber.io/whats_new#trusted-proxies) configuration — those are the correct knobs for IP allowlisting and CIDR ranges of trusted proxies.
 
 ## Proxy Support
 
@@ -202,6 +209,7 @@ fasthttp itself is HTTP/1.x only. HTTP/2 support requires an external library (e
 - **RFC 9110 Section 7.2** — Host and port are separate components; port is stripped before matching
 - **RFC 9110 Section 17.1** — Origin servers should reject misdirected requests
 - **RFC 9112 Section 3.2** — Requests with missing Host headers should be rejected
+- **RFC 1035** — `AllowedHosts` entries are validated against the 253-char total / 63-char per-label limits
 - Returns **403 Forbidden** (not 400) because the request is syntactically valid but semantically unauthorized
 
 :::note
