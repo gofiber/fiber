@@ -279,7 +279,7 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 		if !strings.HasPrefix(server, "http") {
 			server = "http://" + server
 		}
-		c.Request().Header.Add("X-Real-IP", c.IP())
+		c.Request().Header.Set("X-Real-IP", c.IP())
 		return Do(c, server+c.OriginalURL(), clients...)
 	}
 }

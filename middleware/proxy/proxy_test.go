@@ -985,6 +985,30 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 	require.Equal(t, "forwarded", string(b))
 }
 
+func Test_Proxy_Balancer_Forward_OverwritesXRealIP(t *testing.T) {
+	t.Parallel()
+
+	spoofedIP := "10.0.0.1"
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		values := c.GetReqHeaders()["X-Real-Ip"]
+		require.Len(t, values, 1)
+		require.NotEqual(t, spoofedIP, values[0])
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app := fiber.New()
+	app.Use(BalancerForward([]string{addr}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set("X-Real-IP", spoofedIP)
+	req.RemoteAddr = "198.51.100.10:12345"
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 func Test_Proxy_Immutable(t *testing.T) {
 	t.Parallel()
 
