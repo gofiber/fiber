@@ -70,15 +70,52 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 		panic(errCustomCtxTypeAssertion)
 	}
 
-	if app.hasCustomCtx {
-		if setter, ok := ctx.(interface{ setHandlerCtx(CustomCtx) }); ok {
-			setter.setHandlerCtx(ctx)
-		}
-	}
+	app.setHandlerCtxIfNeeded(ctx)
 
 	ctx.Reset(fctx)
 
 	return ctx
+}
+
+func (app *App) setHandlerCtxIfNeeded(ctx CustomCtx) {
+	if app.hasCustomCtx || isCustomCtx(ctx) {
+		if setter, ok := ctx.(interface{ setHandlerCtx(CustomCtx) }); ok {
+			setter.setHandlerCtx(ctx)
+		}
+	}
+}
+
+func isCustomCtx(ctx CustomCtx) bool {
+	if ctx == nil {
+		return false
+	}
+	_, ok := ctx.(*DefaultCtx)
+	return !ok
+}
+
+func (app *App) acquireDefaultCtx(fctx *fasthttp.RequestCtx) (*DefaultCtx, bool) {
+	rawCtx := app.pool.Get()
+	ctx, ok := app.prepareDefaultCtx(rawCtx, fctx)
+	if !ok {
+		app.pool.Put(rawCtx)
+		return nil, false
+	}
+
+	return ctx, true
+}
+
+func (*App) prepareDefaultCtx(rawCtx any, fctx *fasthttp.RequestCtx) (*DefaultCtx, bool) {
+	ctx, ok := rawCtx.(*DefaultCtx)
+	if !ok {
+		if _, ok := rawCtx.(CustomCtx); ok {
+			return nil, false
+		}
+		panic(errDefaultCtxTypeAssertion)
+	}
+
+	ctx.Reset(fctx)
+
+	return ctx, true
 }
 
 // ReleaseCtx releases the ctx back into the pool.
@@ -87,6 +124,14 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 // requestHandler and ErrorHandler) still touch the context; the timeout
 // middleware intentionally leaves abandoned contexts unreleased to avoid races.
 func (app *App) ReleaseCtx(c CustomCtx) {
+	if c.IsAbandoned() {
+		return
+	}
+	c.release()
+	app.pool.Put(c)
+}
+
+func (app *App) releaseDefaultCtx(c *DefaultCtx) {
 	if c.IsAbandoned() {
 		return
 	}

@@ -187,7 +187,5 @@ type Req interface {
 	IsProxyTrusted() bool
 	// IsFromLocal will return true if request came from local.
 	IsFromLocal() bool
-	// Release is a method to reset Req fields when to use ReleaseCtx()
-	release()
 	getBody() []byte
 }

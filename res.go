@@ -1084,11 +1084,6 @@ func (r *DefaultRes) WriteString(s string) (int, error) {
 	return len(s), nil
 }
 
-// Release is a method to reset Res fields when to use ReleaseCtx()
-func (r *DefaultRes) release() {
-	r.c = nil
-}
-
 // Drop closes the underlying connection without sending any response headers or body.
 // This can be useful for silently terminating client connections, such as in DDoS mitigation
 // or when blocking access to sensitive endpoints.

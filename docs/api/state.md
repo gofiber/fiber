@@ -10,6 +10,128 @@ State management provides a global key–value store for application dependencie
 When prefork is enabled, each worker process has an independent state store, meaning state is not shared between them.
 :::
 
+## SharedState (Prefork-safe)
+
+For data that must be shared across prefork workers or multiple app processes, use `app.SharedState()` backed by `fiber.Storage`.
+
+Configure storage in `fiber.Config`:
+
+```go
+app := fiber.New(fiber.Config{
+    AppName:           "billing-api",
+    SharedStorage:     redisStorage, // any implementation of fiber.Storage
+    SharedStatePrefix: "billing-shared-", // optional
+})
+```
+
+If `SharedStatePrefix` is empty, Fiber derives a default namespace and includes `AppName` (when set) to reduce collisions between apps/services.
+
+MsgPack and CBOR helpers require the corresponding `Config` encoders/decoders to be configured. If they are unavailable, the helper methods return an error instead of panicking.
+
+:::warning Memory storage caveat
+`SharedState` is only cross-worker / cross-process when the configured `SharedStorage` backend is shared.
+
+If you use an in-memory backend (for example memory storage), data remains process-local. In prefork mode, each worker process has its own independent in-memory store.
+:::
+
+### SharedState Methods
+
+```go title="Signature"
+func (app *App) SharedState() *SharedState
+
+func (s *SharedState) Set(key string, val []byte, ttl time.Duration) error
+func (s *SharedState) SetWithContext(ctx context.Context, key string, val []byte, ttl time.Duration) error
+
+func (s *SharedState) Get(key string) (val []byte, found bool, err error)
+func (s *SharedState) GetWithContext(ctx context.Context, key string) (val []byte, found bool, err error)
+
+func (s *SharedState) SetJSON(key string, v any, ttl time.Duration) error
+func (s *SharedState) SetJSONWithContext(ctx context.Context, key string, v any, ttl time.Duration) error
+
+func (s *SharedState) GetJSON(key string, out any) (raw []byte, found bool, err error)
+func (s *SharedState) GetJSONWithContext(ctx context.Context, key string, out any) (raw []byte, found bool, err error)
+
+func (s *SharedState) SetMsgPack(key string, v any, ttl time.Duration) error
+func (s *SharedState) SetMsgPackWithContext(ctx context.Context, key string, v any, ttl time.Duration) error
+
+func (s *SharedState) GetMsgPack(key string, out any) (raw []byte, found bool, err error)
+func (s *SharedState) GetMsgPackWithContext(ctx context.Context, key string, out any) (raw []byte, found bool, err error)
+
+func (s *SharedState) SetCBOR(key string, v any, ttl time.Duration) error
+func (s *SharedState) SetCBORWithContext(ctx context.Context, key string, v any, ttl time.Duration) error
+
+func (s *SharedState) GetCBOR(key string, out any) (raw []byte, found bool, err error)
+func (s *SharedState) GetCBORWithContext(ctx context.Context, key string, out any) (raw []byte, found bool, err error)
+
+func (s *SharedState) SetXML(key string, v any, ttl time.Duration) error
+func (s *SharedState) SetXMLWithContext(ctx context.Context, key string, v any, ttl time.Duration) error
+
+func (s *SharedState) GetXML(key string, out any) (raw []byte, found bool, err error)
+func (s *SharedState) GetXMLWithContext(ctx context.Context, key string, out any) (raw []byte, found bool, err error)
+
+func (s *SharedState) Delete(key string) error
+func (s *SharedState) DeleteWithContext(ctx context.Context, key string) error
+
+func (s *SharedState) Has(key string) (bool, error)
+func (s *SharedState) HasWithContext(ctx context.Context, key string) (bool, error)
+
+func (s *SharedState) Reset() error
+func (s *SharedState) ResetWithContext(ctx context.Context) error
+func (s *SharedState) Close() error
+```
+
+### SharedState Example
+
+```go
+type SessionSnapshot struct {
+    UserID    string    `json:"user_id"`
+    UpdatedAt time.Time `json:"updated_at"`
+}
+
+app.Post("/sessions/:id", func(c fiber.Ctx) error {
+    key := "session:" + c.Params("id")
+    value := SessionSnapshot{
+        UserID:    c.Params("id"),
+        UpdatedAt: time.Now().UTC(),
+    }
+
+    if err := app.SharedState().SetJSON(key, value, 30*time.Minute); err != nil {
+        return err
+    }
+
+    return c.SendStatus(fiber.StatusAccepted)
+})
+
+app.Get("/sessions/:id", func(c fiber.Ctx) error {
+    key := "session:" + c.Params("id")
+    var snapshot SessionSnapshot
+
+    _, found, err := app.SharedState().GetJSON(key, &snapshot)
+    if err != nil {
+        return err
+    }
+    if !found {
+        return c.SendStatus(fiber.StatusNotFound)
+    }
+
+    return c.JSON(snapshot)
+})
+```
+
+### SharedState with Context (timeouts/cancellation)
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+defer cancel()
+
+err := app.SharedState().SetJSONWithContext(ctx, "job:42", fiber.Map{
+    "status": "queued",
+}, 2*time.Minute)
+if err != nil {
+    // timeout, cancellation, storage error, or JSON serialization error
+}
+```
+
 ## State Type
 
 `State` is a key–value store built on top of `sync.Map` to ensure safe concurrent access. It allows storage and retrieval of dependencies and configurations in a Fiber application as well as thread–safe access to runtime data.

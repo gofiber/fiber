@@ -1163,11 +1163,6 @@ func (r *DefaultReq) IsFromLocal() bool {
 	return false
 }
 
-// Release is a method to reset Req fields when to use ReleaseCtx()
-func (r *DefaultReq) release() {
-	r.c = nil
-}
-
 func (r *DefaultReq) getBody() []byte {
 	return r.c.app.GetBytes(r.c.fasthttp.Request.Body())
 }
