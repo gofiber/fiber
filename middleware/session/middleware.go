@@ -7,6 +7,8 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/redact"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 )
 
 // Middleware holds session data and configuration.
@@ -75,6 +77,8 @@ func New(config ...Config) fiber.Handler {
 //
 //	handler, store := session.NewWithStore()
 func NewWithStore(config ...Config) (fiber.Handler, *Store) {
+	registerLogContextTagsOnce.Do(registerLogContextTags)
+
 	cfg := configDefault(config...)
 
 	if cfg.Store == nil {
@@ -105,6 +109,18 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 	}
 
 	return handler, cfg.Store
+}
+
+var registerLogContextTagsOnce sync.Once
+
+func registerLogContextTags() {
+	logger.RegisterContextTag("session-id", func(ctx any) string {
+		m := FromContext(ctx)
+		if m == nil {
+			return ""
+		}
+		return redact.Prefix(m.ID())
+	})
 }
 
 // initialize sets up middleware for the request.
