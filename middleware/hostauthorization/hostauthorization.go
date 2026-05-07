@@ -73,7 +73,7 @@ func validateHostLength(host string) {
 	if strings.IndexByte(host, ':') >= 0 {
 		return
 	}
-	for _, label := range strings.Split(host, ".") {
+	for label := range strings.SplitSeq(host, ".") {
 		if len(label) > maxLabelLength {
 			panic(fmt.Sprintf("hostauthorization: host %q has label %q exceeding RFC 1035 limit of %d characters (%d chars)",
 				host, label, maxLabelLength, len(label)))
