@@ -1,6 +1,7 @@
 package keyauth
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -15,6 +16,10 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
+	"github.com/gofiber/fiber/v3/internal/redact"
+	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 )
 
 const CorrectKey = "correct-token_123./~+"
@@ -550,6 +555,59 @@ func Test_TokenFromContext(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
 	require.Equal(t, CorrectKey, string(body))
+}
+
+func Test_LogTagsRedactToken(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Extractor: extractors.FromAuthHeader("Bearer"),
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
+			return key == CorrectKey, nil
+		},
+	}))
+	app.Use(logger.New(logger.Config{
+		Format: "${api-key}",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer "+CorrectKey)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, redact.Prefix(CorrectKey), buf.String())
+}
+
+// Test_LogContextTagRedactsToken runs serially because it mutates package-global
+// default logger output and context format.
+func Test_LogContextTagRedactsToken(t *testing.T) {
+	buf := loggertest.CaptureContextLog(t, "api-key=${api-key} ")
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Extractor: extractors.FromAuthHeader("Bearer"),
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
+			return key == CorrectKey, nil
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("start")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer "+CorrectKey)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, buf.String(), "[Info] api-key="+redact.Prefix(CorrectKey)+" start")
 }
 
 func Test_TokenFromContext_Types(t *testing.T) {

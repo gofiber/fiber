@@ -4,10 +4,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
 	"golang.org/x/text/unicode/norm"
 )
@@ -23,8 +25,12 @@ const (
 
 const basicScheme = "Basic"
 
+var registerLogContextTagsOnce sync.Once
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
+	registerLogContextTagsOnce.Do(registerLogContextTags)
+
 	// Set default config
 	cfg := configDefault(config...)
 
@@ -108,6 +114,21 @@ func New(config ...Config) fiber.Handler {
 		// Authentication failed
 		return cfg.Unauthorized(c)
 	}
+}
+
+// registerLogContextTags exposes the authenticated username under the
+// ${username} tag for both middleware/logger access logs and fiberlog
+// WithContext lines. The full clear-text username is intentionally written
+// (not redacted) because the primary use case for ${username} is auditability:
+// who hit which endpoint, when. Username strings have already passed
+// containsCTL stripping, so they are safe with respect to log injection.
+//
+// If full usernames are PII in your jurisdiction (GDPR, CCPA, etc.), do not
+// include ${username} in your log format and obtain the value via
+// UsernameFromContext at the application layer where you can hash, prefix,
+// or otherwise minimize it before emitting.
+func registerLogContextTags() {
+	logger.RegisterContextTag("username", UsernameFromContext)
 }
 
 func containsCTL(s string) bool {

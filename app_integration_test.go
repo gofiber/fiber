@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -576,6 +577,45 @@ func Test_Integration_App_ServerErrorHandler_PreservesHelmetHeadersOnBodyLimit(t
 	require.Equal(t, "same-origin", string(resp.Header.Peek("Cross-Origin-Opener-Policy")))
 	require.Equal(t, "same-origin", string(resp.Header.Peek("Cross-Origin-Resource-Policy")))
 	require.Equal(t, "require-corp", string(resp.Header.Peek("Cross-Origin-Embedder-Policy")))
+}
+
+func Test_Integration_App_ServerErrorHandler_CustomMultipartBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{
+		BodyLimit: 128,
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			code := fiber.StatusInternalServerError
+			var fiberErr *fiber.Error
+			if errors.As(err, &fiberErr) {
+				code = fiberErr.Code
+			}
+			return c.Status(code).JSON(fiber.Map{
+				"code":    code,
+				"message": err.Error(),
+			})
+		},
+	})
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	fileWriter, err := writer.CreateFormFile("file", "large.txt")
+	require.NoError(t, err)
+	_, err = fileWriter.Write(bytes.Repeat([]byte{'a'}, 256))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	resp := performOversizedRequest(t, app, func(req *fasthttp.Request) {
+		req.Header.Set(fiber.HeaderContentType, writer.FormDataContentType())
+		req.SetBody(body.Bytes())
+	})
+
+	require.Equal(t, fiber.StatusRequestEntityTooLarge, resp.StatusCode())
+	require.Contains(t, string(resp.Header.ContentType()), fiber.MIMEApplicationJSON)
+	require.JSONEq(t, `{"code":413,"message":"Request Entity Too Large"}`, string(resp.Body()))
 }
 
 func Test_Integration_App_ServerErrorHandler_PreservesRequestID(t *testing.T) {
