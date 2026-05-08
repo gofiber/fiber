@@ -17,8 +17,7 @@ import (
 )
 
 func Test_App_Prefork_Child_Process(t *testing.T) {
-	// Reset test var
-	testPreforkMaster = true
+	enableTestPreforkMaster(t)
 
 	setupIsChild(t)
 
@@ -54,8 +53,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {
-	// Reset test var
-	testPreforkMaster = true
+	enableTestPreforkMaster(t)
 
 	app := New()
 
@@ -125,4 +123,25 @@ func setupIsChild(t *testing.T) {
 
 	// Set the environment variable that fasthttp's prefork.IsChild() checks
 	t.Setenv("FASTHTTP_PREFORK_CHILD", "1")
+}
+
+func enableTestPreforkMaster(t *testing.T) {
+	t.Helper()
+
+	previous := testPreforkMaster
+	testPreforkMaster = true
+	t.Cleanup(func() {
+		testPreforkMaster = previous
+		dummyChildCmd.Store("go")
+	})
+}
+
+func enableTestOnPrefork(t *testing.T) {
+	t.Helper()
+
+	previous := testOnPrefork
+	testOnPrefork = true
+	t.Cleanup(func() {
+		testOnPrefork = previous
+	})
 }

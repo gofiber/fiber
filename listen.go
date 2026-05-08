@@ -51,7 +51,7 @@ type ListenConfig struct {
 	// This only applies when EnablePrefork is true.
 	//
 	// Default: Fiber's built-in logger (log.Infof)
-	PreforkLogger PreforkLoggerInterface `json:"prefork_logger"`
+	PreforkLogger PreforkLogger `json:"prefork_logger"`
 
 	// TLSConfigFunc allows customizing tls.Config as you want.
 	//
@@ -136,7 +136,7 @@ type ListenConfig struct {
 	// can be restarted after crashing before the master process exits with an error.
 	// This only applies when EnablePrefork is true.
 	//
-	// Default: runtime.GOMAXPROCS(0) / 2
+	// Default: max(1, runtime.GOMAXPROCS(0) / 2)
 	PreforkRecoverThreshold int `json:"prefork_recover_threshold"`
 
 	// If set to true, will print all routes with their method, path and handler.

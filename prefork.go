@@ -39,9 +39,11 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 	}
 
 	// Use configured logger or default to Fiber's log package
-	var logger prefork.Logger = preforkLogger{} //nolint:wastedassign // fallback default
+	var logger prefork.Logger
 	if cfg.PreforkLogger != nil {
 		logger = cfg.PreforkLogger
+	} else {
+		logger = preforkLogger{}
 	}
 
 	p := &prefork.Prefork{

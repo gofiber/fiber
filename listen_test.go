@@ -166,7 +166,7 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 
 // go test -run Test_Listen_Prefork
 func Test_Listen_Prefork(t *testing.T) {
-	testPreforkMaster = true
+	enableTestPreforkMaster(t)
 
 	app := New()
 
@@ -180,7 +180,7 @@ func Test_Listen_Prefork(t *testing.T) {
 
 // go test -run Test_Listen_TLSMinVersion
 func Test_Listen_TLSMinVersion(t *testing.T) {
-	testPreforkMaster = true
+	enableTestPreforkMaster(t)
 
 	app := New()
 
@@ -240,7 +240,7 @@ func Test_Listen_TLS(t *testing.T) {
 
 // go test -run Test_Listen_TLS_Prefork
 func Test_Listen_TLS_Prefork(t *testing.T) {
-	testPreforkMaster = true
+	enableTestPreforkMaster(t)
 
 	app := New()
 
@@ -287,7 +287,7 @@ func Test_Listen_MutualTLS(t *testing.T) {
 
 // go test -run Test_Listen_MutualTLS_Prefork
 func Test_Listen_MutualTLS_Prefork(t *testing.T) {
-	testPreforkMaster = true
+	enableTestPreforkMaster(t)
 
 	app := New()
 

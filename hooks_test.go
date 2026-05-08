@@ -520,7 +520,7 @@ func Test_ListenData_Hook_HelperFunctions(t *testing.T) {
 }
 
 func Test_Hook_OnListenPrefork(t *testing.T) {
-	testPreforkMaster = true
+	enableTestPreforkMaster(t)
 
 	app := New()
 
@@ -546,9 +546,8 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 func Test_Hook_OnHook(t *testing.T) {
 	app := New()
 
-	// Reset test var
-	testPreforkMaster = true
-	testOnPrefork = true
+	enableTestPreforkMaster(t)
+	enableTestOnPrefork(t)
 
 	app.Hooks().OnFork(func(pid int) error {
 		require.Equal(t, 1, pid)
