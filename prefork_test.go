@@ -79,21 +79,6 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 	dummyChildCmd.Store("go")
 }
 
-func Test_App_Prefork_Master_Process_Uses_Recover_Interval(t *testing.T) {
-	enableTestPreforkMaster(t)
-
-	app := New()
-
-	cfg := listenConfigDefault()
-	cfg.PreforkRecoverThreshold = 1
-	cfg.PreforkRecoverInterval = 25 * time.Millisecond
-
-	start := time.Now()
-	err := app.prefork("127.0.0.1:", nil, &cfg)
-	require.ErrorIs(t, err, prefork.ErrOverRecovery)
-	require.GreaterOrEqual(t, time.Since(start), cfg.PreforkRecoverInterval)
-}
-
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	setupIsChild(t)
 

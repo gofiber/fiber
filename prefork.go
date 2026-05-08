@@ -45,13 +45,11 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 	}
 
 	p := &prefork.Prefork{
-		Network:             cfg.ListenerNetwork,
-		Reuseport:           true,
-		RecoverThreshold:    recoverThreshold,
-		RecoverInterval:     cfg.PreforkRecoverInterval,
-		ShutdownGracePeriod: cfg.PreforkShutdownGracePeriod,
-		Logger:              logger,
-		OnMasterDeath:       func() { os.Exit(1) }, //nolint:revive // Exiting child process is intentional
+		Network:          cfg.ListenerNetwork,
+		Reuseport:        true,
+		RecoverThreshold: recoverThreshold,
+		Logger:           logger,
+		OnMasterDeath:    func() { os.Exit(1) }, //nolint:revive // Exiting child process is intentional
 	}
 
 	// Use test command producer if in test mode
@@ -106,9 +104,8 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 	}
 
 	// Master callback: child recovered after crash
-	p.OnChildRecover = func(oldPID, newPID int) error {
+	p.OnChildRecover = func(oldPID, newPID int) {
 		logger.Printf("prefork: child %d crashed, recovered with new PID %d", oldPID, newPID)
-		return nil
 	}
 
 	if err := p.ListenAndServe(addr); err != nil {
