@@ -1075,3 +1075,57 @@ func Test_Proxy_DropConnectionHeader(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, resp.Header.Get(fiber.HeaderConnection))
 }
+
+func Test_Proxy_Forward_OverwritesXRealIP(t *testing.T) {
+	t.Parallel()
+
+	const (
+		spoofedIP       = "10.0.0.1"
+		appTestClientIP = "0.0.0.0"
+	)
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		value := c.Get("X-Real-IP")
+		require.Equal(t, appTestClientIP, value)
+		require.NotEqual(t, spoofedIP, value)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app := fiber.New()
+	app.Use(Forward(addr))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set("X-Real-IP", spoofedIP)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func Test_Proxy_DomainForward_OverwritesXRealIP(t *testing.T) {
+	t.Parallel()
+
+	const (
+		spoofedIP       = "10.0.0.1"
+		appTestClientIP = "0.0.0.0"
+		testHostname    = "example.com"
+	)
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		value := c.Get("X-Real-IP")
+		require.Equal(t, appTestClientIP, value)
+		require.NotEqual(t, spoofedIP, value)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app := fiber.New()
+	app.Use(DomainForward(testHostname, addr))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = testHostname
+	req.Header.Set("X-Real-IP", spoofedIP)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
