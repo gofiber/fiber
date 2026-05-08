@@ -994,9 +994,9 @@ func Test_Proxy_Balancer_Forward_OverwritesXRealIP(t *testing.T) {
 	)
 
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		values := c.GetReqHeaders()["X-Real-Ip"]
-		require.Len(t, values, 1)
-		require.Equal(t, appTestClientIP, values[0])
+		value := c.Get("X-Real-IP")
+		require.Equal(t, appTestClientIP, value)
+		require.NotEqual(t, spoofedIP, value)
 		return c.SendStatus(fiber.StatusOK)
 	})
 
