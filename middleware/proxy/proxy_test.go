@@ -1092,7 +1092,7 @@ func Test_Proxy_Forward_OverwritesXRealIP(t *testing.T) {
 	})
 
 	app := fiber.New()
-	app.Use(Forward(addr))
+	app.Use(Forward("http://" + addr))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("X-Real-IP", spoofedIP)
@@ -1119,7 +1119,7 @@ func Test_Proxy_DomainForward_OverwritesXRealIP(t *testing.T) {
 	})
 
 	app := fiber.New()
-	app.Use(DomainForward(testHostname, addr))
+	app.Use(DomainForward(testHostname, "http://"+addr))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = testHostname
