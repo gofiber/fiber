@@ -27,6 +27,18 @@ func DomainForward(hostname string, addr string, clients ...*fasthttp.Client) fi
 func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler
 ```
 
+## Security
+
+The `Forward`, `DomainForward`, and `BalancerForward` functions automatically set the `X-Real-IP` header to the actual client IP address obtained from `c.IP()`. This protects against IP spoofing attacks where a malicious client attempts to forge their IP address by sending a fake `X-Real-IP` header. Any existing `X-Real-IP` header in the incoming request will be overwritten with the real client IP.
+
+If you're using the `Balancer` function with the `Config` struct, you can achieve the same protection by using the `ModifyRequest` callback as shown in the examples below.
+
+When using `Do`, `DoRedirects`, `DoDeadline`, or `DoTimeout` directly, the `X-Real-IP` header is not automatically set. You should set it manually if your upstream server requires it:
+
+```go
+c.Request().Header.Set("X-Real-IP", c.IP())
+```
+
 ## Examples
 
 Import the middleware package:
