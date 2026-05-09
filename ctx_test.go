@@ -351,6 +351,40 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 	require.Equal(t, int64(len(body)), resp.ContentLength)
 }
 
+func Test_App_AcquireDefaultCtx_CustomCtxFallback(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	ctx, ok := app.prepareDefaultCtx(&customCtx{
+		DefaultCtx: *NewDefaultCtx(app),
+	}, &fasthttp.RequestCtx{})
+	require.False(t, ok)
+	require.Nil(t, ctx)
+}
+
+func Test_App_SetHandlerCtxIfNeeded_CustomCtxFallback(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	ctx := &customCtx{
+		DefaultCtx: *NewDefaultCtx(app),
+	}
+
+	app.setHandlerCtxIfNeeded(ctx)
+	require.Same(t, ctx, ctx.handlerCtx)
+}
+
+func Test_Ctx_Release_UserContextSetWithoutFastHTTP(t *testing.T) {
+	t.Parallel()
+
+	ctx := NewDefaultCtx(New())
+	ctx.userContextSet = true
+
+	require.NotPanics(t, ctx.release)
+	require.False(t, ctx.userContextSet)
+}
+
 func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
 	t.Parallel()
 
@@ -806,6 +840,35 @@ func Benchmark_Ctx_BaseURL(b *testing.B) {
 	require.Equal(b, "http://google.com:1337", res)
 }
 
+func Benchmark_Ctx_BaseURL_Uncached(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	c.Request().SetHost("google.com:1337")
+	c.Request().URI().SetPath("/haha/oke/lol")
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		c.baseURI = ""
+		res = c.BaseURL()
+	}
+	require.Equal(b, "http://google.com:1337", res)
+}
+
+func Benchmark_Ctx_FullURL(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	c.Request().SetRequestURI("/haha/oke/lol?name=fiber")
+	c.Request().URI().SetHost("google.com:1337")
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.FullURL()
+	}
+	require.Equal(b, "http://google.com:1337/haha/oke/lol?name=fiber", res)
+}
+
 // go test -run Test_Ctx_Body
 func Test_Ctx_Body(t *testing.T) {
 	t.Parallel()
@@ -1022,6 +1085,32 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			)
 		})
 	}
+}
+
+func Test_Ctx_Body_With_Compression_BodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		BodyLimit: 8,
+	})
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	c.Request().Header.Set(HeaderContentEncoding, StrGzip)
+
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+	_, err := gz.Write([]byte("payload-over-limit"))
+	require.NoError(t, err)
+	require.NoError(t, gz.Flush())
+	require.NoError(t, gz.Close())
+
+	compressedBody := b.Bytes()
+	c.Request().SetBody(compressedBody)
+
+	body := c.Body()
+	require.Equal(t, []byte(fasthttp.ErrBodyTooLarge.Error()), body)
+	require.Equal(t, compressedBody, c.Request().Body())
+	require.Equal(t, StatusRequestEntityTooLarge, c.Response().StatusCode())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression -benchmem -count=4
@@ -2070,6 +2159,93 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	)
 }
 
+// go test -run Test_Ctx_AutoFormat_XSS_Prevention
+func Test_Ctx_AutoFormat_XSS_Prevention(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() {
+		app.ReleaseCtx(c)
+	})
+
+	// Test basic XSS with script tag
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err := c.AutoFormat("<script>alert('XSS')</script>")
+	require.NoError(t, err)
+	require.Equal(t, MIMETextHTMLCharsetUTF8, c.GetRespHeader(HeaderContentType))
+	require.Equal(t, "<p>&lt;script&gt;alert(&#39;XSS&#39;)&lt;/script&gt;</p>", string(c.Response().Body()))
+	require.NotContains(t, string(c.Response().Body()), "<script>", "Script tags should be escaped")
+
+	// Test XSS with img onerror
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.AutoFormat("<img src=x onerror=alert('XSS')>")
+	require.NoError(t, err)
+	require.Equal(t, "<p>&lt;img src=x onerror=alert(&#39;XSS&#39;)&gt;</p>", string(c.Response().Body()))
+	require.NotContains(t, string(c.Response().Body()), "<img", "Img tags should be escaped")
+
+	// Test XSS with iframe
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.AutoFormat("<iframe src='javascript:alert(\"XSS\")'></iframe>")
+	require.NoError(t, err)
+	require.Equal(t, "<p>&lt;iframe src=&#39;javascript:alert(&#34;XSS&#34;)&#39;&gt;&lt;/iframe&gt;</p>", string(c.Response().Body()))
+	require.NotContains(t, string(c.Response().Body()), "<iframe", "Iframe tags should be escaped")
+
+	// Test XSS with event handler attributes
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.AutoFormat("<div onload=alert('XSS')>test</div>")
+	require.NoError(t, err)
+	require.Equal(t, "<p>&lt;div onload=alert(&#39;XSS&#39;)&gt;test&lt;/div&gt;</p>", string(c.Response().Body()))
+	require.NotContains(t, string(c.Response().Body()), "<div", "Div tags should be escaped")
+
+	// Test XSS with link javascript protocol
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.AutoFormat("<a href='javascript:alert(\"XSS\")'>Click me</a>")
+	require.NoError(t, err)
+	require.Equal(t, "<p>&lt;a href=&#39;javascript:alert(&#34;XSS&#34;)&#39;&gt;Click me&lt;/a&gt;</p>", string(c.Response().Body()))
+	require.NotContains(t, string(c.Response().Body()), "<a href", "Anchor tags should be escaped")
+
+	// Test XSS with mixed quotes
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.AutoFormat(`"><script>alert('XSS')</script><"`)
+	require.NoError(t, err)
+	require.Equal(t, `<p>&#34;&gt;&lt;script&gt;alert(&#39;XSS&#39;)&lt;/script&gt;&lt;&#34;</p>`, string(c.Response().Body()))
+	require.NotContains(t, string(c.Response().Body()), "<script>", "Script tags with quotes should be escaped")
+
+	// Test legitimate HTML special characters are escaped
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.AutoFormat("Price: 5 < 10 & 20 > 15")
+	require.NoError(t, err)
+	require.Equal(t, "<p>Price: 5 &lt; 10 &amp; 20 &gt; 15</p>", string(c.Response().Body()))
+
+	// Test that pre-rendered HTML is treated as plain text
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.AutoFormat("<b>Hello, World!</b>")
+	require.NoError(t, err)
+	require.Equal(t, "<p>&lt;b&gt;Hello, World!&lt;/b&gt;</p>", string(c.Response().Body()))
+
+	// Test that normal text without special chars works fine
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.AutoFormat("Hello, World!")
+	require.NoError(t, err)
+	require.Equal(t, "<p>Hello, World!</p>", string(c.Response().Body()))
+
+	// Test XSS prevention with byte slice
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.AutoFormat([]byte("<script>alert('XSS')</script>"))
+	require.NoError(t, err)
+	require.Equal(t, "<p>&lt;script&gt;alert(&#39;XSS&#39;)&lt;/script&gt;</p>", string(c.Response().Body()))
+
+	// Test XSS prevention with complex struct formatting
+	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
+	err = c.AutoFormat(struct {
+		Value string
+	}{Value: "<script>alert('XSS')</script>"})
+	require.NoError(t, err)
+	// When formatted as a string via fmt.Sprintf with %v, the struct becomes something like {<script>...}
+	require.NotContains(t, string(c.Response().Body()), "<script>", "Script tags in struct should be escaped")
+	require.Contains(t, string(c.Response().Body()), "&lt;script&gt;", "Escaped script tags should be present")
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat -benchmem -count=4
 func Benchmark_Ctx_AutoFormat(b *testing.B) {
 	app := New()
@@ -2236,7 +2412,129 @@ func Test_Ctx_FormValue(t *testing.T) {
 	require.Equal(t, int64(0), resp.ContentLength)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_StaleEtag -benchmem -count=4
+func Test_Ctx_FormFile_BodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		BodyLimit: 64,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	ioWriter, err := writer.CreateFormFile("file", "test.txt")
+	require.NoError(t, err)
+	_, err = ioWriter.Write([]byte(strings.Repeat("a", 256)))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().SetBody(body.Bytes())
+
+	_, err = c.FormFile("file")
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+}
+
+func Test_Ctx_FormValue_BodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		BodyLimit: 64,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	require.NoError(t, writer.WriteField("name", strings.Repeat("a", 256)))
+	require.NoError(t, writer.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().SetBody(body.Bytes())
+
+	// FormValue should return empty string (default) when the body limit is exceeded.
+	val := c.FormValue("name")
+	require.Empty(t, val)
+}
+
+// Test_Ctx_FormValue_QueryArgs covers the path where the key is found in QueryArgs
+// for a multipart request, which is checked before the multipart form is parsed.
+func Test_Ctx_FormValue_QueryArgs(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	require.NoError(t, writer.WriteField("other", "value"))
+	require.NoError(t, writer.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().SetBody(body.Bytes())
+	// Set the key in QueryArgs so the QueryArgs branch returns it.
+	c.Request().URI().QueryArgs().Set("name", "alice")
+
+	require.Equal(t, "alice", c.FormValue("name"))
+}
+
+// Test_Ctx_FormValue_PostArgs covers the path where the key is found in PostArgs
+// for a multipart request, which is checked before the multipart form is parsed.
+func Test_Ctx_FormValue_PostArgs(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	require.NoError(t, writer.WriteField("other", "value"))
+	require.NoError(t, writer.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().SetBody(body.Bytes())
+	// Manually set a PostArg so that the PostArgs branch returns it.
+	c.Request().PostArgs().Set("name", "bob")
+
+	require.Equal(t, "bob", c.FormValue("name"))
+}
+
+// Test_Ctx_FormValue_MultipartKeyNotFound covers the path where the key is absent
+// from the multipart form: returns "" without a default and the provided default otherwise.
+func Test_Ctx_FormValue_MultipartKeyNotFound(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	require.NoError(t, writer.WriteField("other", "value"))
+	require.NoError(t, writer.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().SetBody(body.Bytes())
+
+	// Key not present → empty string.
+	require.Empty(t, c.FormValue("missing"))
+	// Key not present + default → default value.
+	require.Equal(t, "fallback", c.FormValue("missing", "fallback"))
+}
+
+// Test_Ctx_FormValue_NonMultipart covers the non-multipart branch (e.g. URL-encoded body).
+func Test_Ctx_FormValue_NonMultipart(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	c.Request().Header.Set(HeaderContentType, MIMEApplicationForm)
+	c.Request().SetBodyString("name=carol")
+
+	require.Equal(t, "carol", c.FormValue("name"))
+	// Key not present + default → default value.
+	require.Equal(t, "fallback", c.FormValue("missing", "fallback"))
+}
+
 func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -3930,6 +4228,34 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+func Test_Ctx_MultipartForm_BodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		BodyLimit: 64,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	multipartBody := &bytes.Buffer{}
+	writer := multipart.NewWriter(multipartBody)
+	require.NoError(t, writer.WriteField("name", strings.Repeat("a", 1024)))
+	require.NoError(t, writer.Close())
+
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	_, err := gz.Write(multipartBody.Bytes())
+	require.NoError(t, err)
+	require.NoError(t, gz.Flush())
+	require.NoError(t, gz.Close())
+
+	c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+	c.Request().Header.Set(HeaderContentEncoding, StrGzip)
+	c.Request().SetBody(compressed.Bytes())
+
+	_, err = c.MultipartForm()
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_MultipartForm -benchmem -count=4
 func Benchmark_Ctx_MultipartForm(b *testing.B) {
 	app := New()
@@ -5472,7 +5798,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 
 	// test not modified
 	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().Header.Set(HeaderIfModifiedSince, fI.ModTime().Format(time.RFC1123))
+	c.Request().Header.Set(HeaderIfModifiedSince, fI.ModTime().UTC().Format(http.TimeFormat))
 	err = c.SendFile("ctx.go")
 	// check expectation
 	require.NoError(t, err)

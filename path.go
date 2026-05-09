@@ -124,8 +124,6 @@ const (
 var (
 	// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
 	routeDelimiter = []byte{slashDelimiter, '-', '.'}
-	// list of greedy parameters
-	greedyParameters = []byte{wildcardParam, plusParam}
 	// list of chars for the parameter recognizing
 	parameterStartChars = [256]bool{
 		wildcardParam:    true,
@@ -144,6 +142,22 @@ var (
 		'.':              true,
 	}
 )
+
+func appendLowerBytes(dst, src []byte) []byte {
+	dst = dst[:0]
+	if cap(dst) < len(src) {
+		dst = make([]byte, len(src))
+	} else {
+		dst = dst[:len(src)]
+	}
+	for i, c := range src {
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		dst[i] = c
+	}
+	return dst
+}
 
 // RoutePatternMatch reports whether path matches the provided Fiber route pattern.
 //

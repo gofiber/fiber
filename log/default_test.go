@@ -3,8 +3,12 @@ package log
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"os"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,6 +21,7 @@ func initDefaultLogger() {
 		stdlog: log.New(os.Stderr, "", 0),
 		depth:  4,
 	}
+	MustSetContextTemplate(ContextConfig{})
 }
 
 type byteSliceWriter struct {
@@ -28,7 +33,30 @@ func (w *byteSliceWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// callSiteLine returns the line number of the call that invoked it. Pair it
+// with a call on the next line to capture an absolute line number that stays
+// in sync when surrounding code shifts.
+func callSiteLine(t *testing.T) int {
+	t.Helper()
+	_, _, line, ok := runtime.Caller(1)
+	require.True(t, ok)
+	return line
+}
+
+// expectCallerOutput asserts that w contains exactly two log lines, the first
+// emitted from withContextLine and the second from infoLine, both annotated
+// with default_test.go via the standard library's Lshortfile flag.
+func expectCallerOutput(t *testing.T, w *byteSliceWriter, withContextLine, infoLine int) {
+	t.Helper()
+	want := fmt.Sprintf("default_test.go:%d: [Info] \ndefault_test.go:%d: [Info] \n", withContextLine, infoLine)
+	require.Equal(t, want, string(w.b), "log output should attribute the WithContext call site (line %d) and the bare Info call site (line %d)", withContextLine, infoLine)
+}
+
+// Test_WithContextCaller runs serially because it mutates the package-global
+// logger and output to verify caller attribution.
 func Test_WithContextCaller(t *testing.T) {
+	t.Cleanup(initDefaultLogger)
+
 	logger = &defaultLogger{
 		stdlog: log.New(os.Stderr, "", log.Lshortfile),
 		depth:  4,
@@ -38,10 +66,100 @@ func Test_WithContextCaller(t *testing.T) {
 	SetOutput(&w)
 	ctx := context.TODO()
 
+	withContextLine := callSiteLine(t) + 1
 	WithContext(ctx).Info("")
+	infoLine := callSiteLine(t) + 1
 	Info("")
 
-	require.Equal(t, "default_test.go:41: [Info] \ndefault_test.go:42: [Info] \n", string(w.b))
+	expectCallerOutput(t, &w, withContextLine, infoLine)
+}
+
+// Test_WithContextNilCaller runs serially because it mutates the package-global
+// logger and output to verify caller attribution.
+func Test_WithContextNilCaller(t *testing.T) {
+	t.Cleanup(initDefaultLogger)
+
+	logger = &defaultLogger{
+		stdlog: log.New(os.Stderr, "", log.Lshortfile),
+		depth:  4,
+	}
+
+	var w byteSliceWriter
+	SetOutput(&w)
+
+	withContextLine := callSiteLine(t) + 1
+	WithContext(nil).Info("")
+	infoLine := callSiteLine(t) + 1
+	Info("")
+
+	expectCallerOutput(t, &w, withContextLine, infoLine)
+}
+
+// Test_WithContextRenderError locks in M8: a misconfigured context tag must
+// not silently drop context — the failure should leave a visible marker in
+// the log line so operators notice. The error message is also sanitized for
+// control bytes so a tag that wraps attacker-controlled data in its error
+// cannot inject CR/LF into the log stream. Calls initDefaultLogger up front
+// because under -shuffle=on this test may run before any other log test, in
+// which case the package-global logger.stdlog could still be nil.
+func Test_WithContextRenderError(t *testing.T) {
+	initDefaultLogger()
+	t.Cleanup(initDefaultLogger)
+
+	// Embed CR/LF in the error to exercise the sanitiser.
+	templateErr := errors.New("tag\r\nboom")
+	require.NoError(t, SetContextTemplate(ContextConfig{
+		Format: "[${broken}] ",
+		CustomTags: map[string]ContextTagFunc{
+			"broken": func(_ Buffer, _ any, _ *ContextData, _ string) (int, error) {
+				return 0, templateErr
+			},
+		},
+	}))
+	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
+
+	var w byteSliceWriter
+	SetOutput(&w)
+
+	WithContext(context.Background()).Info("payload")
+
+	out := string(w.b)
+	require.Contains(t, out, "ctx-render-error", "expected render-error marker, got %q", out)
+	require.Contains(t, out, "payload", "expected payload to still be emitted, got %q", out)
+	require.NotContains(t, out, "\r", "CR in error message must be sanitized")
+	// One trailing newline from log.Output is expected; reject any embedded ones.
+	require.Equal(t, 1, strings.Count(out, "\n"), "embedded LF in error message must be sanitized; got %q", out)
+}
+
+// Test_NewRetainedContext_TypedNil locks in the reflect-based nil detection
+// in newRetainedContext: a typed-nil pointer wrapped in `any` must be treated
+// as "no context" so tag renderers don't fault on a nil receiver.
+func Test_NewRetainedContext_TypedNil(t *testing.T) {
+	t.Parallel()
+
+	type fakeCtx struct{}
+	var typedNil *fakeCtx
+
+	tests := []struct {
+		value any
+		name  string
+		want  bool
+	}{
+		{name: "untyped nil", value: nil, want: false},
+		{name: "typed nil pointer", value: typedNil, want: false},
+		{name: "typed nil map", value: map[string]string(nil), want: false},
+		{name: "typed nil slice", value: []byte(nil), want: false},
+		{name: "typed nil chan", value: chan int(nil), want: false},
+		{name: "non-nil pointer", value: &fakeCtx{}, want: true},
+		{name: "string", value: "context", want: true},
+		{name: "non-nil map", value: map[string]string{"k": "v"}, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, newRetainedContext(tt.value).ok)
+		})
+	}
 }
 
 func Test_DefaultLogger(t *testing.T) {
@@ -116,6 +234,73 @@ func Test_CtxLogger(t *testing.T) {
 		"[Warn] work may fail\n"+
 		"[Error] work failed 50\n"+
 		"[Panic] work panic\n", string(w.b))
+}
+
+// Test_WithContextTemplate runs serially because initDefaultLogger,
+// SetContextTemplate, MustSetContextTemplate, and SetOutput mutate package
+// globals shared with other log tests.
+func Test_WithContextTemplate(t *testing.T) {
+	initDefaultLogger()
+
+	type requestIDKey struct{}
+	ctx := context.WithValue(context.Background(), requestIDKey{}, "req-42")
+
+	require.NoError(t, SetContextTemplate(ContextConfig{
+		Format: "[${requestid}] ",
+		CustomTags: map[string]ContextTagFunc{
+			"requestid": func(output Buffer, ctx any, _ *ContextData, _ string) (int, error) {
+				ctxTyped, ok := ctx.(context.Context)
+				if !ok {
+					return 0, nil
+				}
+				id, ok := ctxTyped.Value(requestIDKey{}).(string)
+				if !ok {
+					return 0, nil
+				}
+				return output.WriteString(id)
+			},
+		},
+	}))
+	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
+
+	var w byteSliceWriter
+	SetOutput(&w)
+
+	WithContext(ctx).Info("start")
+
+	require.Equal(t, "[Info] [req-42] start\n", string(w.b))
+}
+
+// Test_WithContextTemplateFailureOmitsPartialContext locks in the scratch-buffer
+// guarantee from M8: a tag that writes some bytes before erroring must not
+// leak its prefix into the real log line. Instead, the render-error marker
+// stands in for the entire context block.
+func Test_WithContextTemplateFailureOmitsPartialContext(t *testing.T) {
+	initDefaultLogger()
+
+	templateErr := errors.New("template failure")
+	require.NoError(t, SetContextTemplate(ContextConfig{
+		Format: "[${broken}] ",
+		CustomTags: map[string]ContextTagFunc{
+			"broken": func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
+				if _, err := output.WriteString("partial"); err != nil {
+					return 0, err
+				}
+				return 0, templateErr
+			},
+		},
+	}))
+	t.Cleanup(func() { MustSetContextTemplate(ContextConfig{}) })
+
+	var w byteSliceWriter
+	SetOutput(&w)
+
+	WithContext(context.Background()).Info("start")
+
+	out := string(w.b)
+	require.NotContains(t, out, "partial", "scratch buffer must isolate partial writes from the live log line")
+	require.Contains(t, out, "ctx-render-error", "render error must be surfaced rather than silently dropped")
+	require.Contains(t, out, "start", "log payload must still reach the writer")
 }
 
 func Test_LogfKeyAndValues(t *testing.T) {

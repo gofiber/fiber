@@ -57,6 +57,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Proxy](#proxy)
   - [Recover](#recover)
   - [Session](#session)
+  - [SSE](#sse)
 - [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
@@ -84,6 +85,7 @@ We have made several changes to the Fiber app, including:
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
 - **NewWithCustomCtx**: Initialize an app with a custom context in one step.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
+- **SharedState**: Introduces storage-backed app state for prefork-safe/multi-process coordination via `Config.SharedStorage`, with optional `Config.SharedStatePrefix` namespacing, codec-aware helpers (`SetJSON`, `SetMsgPack`, `SetCBOR`, `SetXML`, matching getters, and `WithContext` variants), empty-key no-op handling, and `Reset`/`Close` passthrough helpers.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
 - **GetBytes / GetString**: Helpers that detach values only when `Immutable` is enabled and the data still references request or response buffers. Access via `c.App().GetString` and `c.App().GetBytes`.
 - **ReloadViews**: Lets you re-run the configured view engine's `Load()` logic at runtime, including guard rails for missing or nil view engines so development hot-reload hooks can refresh templates safely.
@@ -414,6 +416,64 @@ app.RouteChain("/api").RouteChain("/user/:id?")
 </details>
 
 You can find more information about `app.RouteChain` and `app.Route` in the API documentation ([RouteChain](./api/app#routechain), [Route](./api/app#route)).
+
+Named routes retrieved with `app.GetRoute(name)` also support `route.URL(params)` for generating relative URLs directly from the route definition, including parameter substitution for named, wildcard (`*`), and plus (`+`) segments.
+
+### Domain routing
+
+`Domain` creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose hostname (from `c.Hostname()`) matches the pattern. When `TrustProxy` is enabled and the proxy is trusted (as defined by [`TrustProxyConfig`](./api/app#trustproxyconfig)), the hostname may be derived from the `X-Forwarded-Host` header. Be sure to configure `TrustProxyConfig` to restrict which proxies are trusted and prevent header spoofing when enabling `TrustProxy`.
+
+The pattern can contain parameters prefixed with `:`, accessible via `fiber.DomainParam`.
+
+Domain routing has **zero performance impact** on routes that don't use it because the hostname check is applied as a handler wrapper, not a change to the core router.
+
+> **Note:** Because domain filtering happens at handler-execution time, Fiber's `405 Method Not Allowed` responses may advertise methods from domain-scoped routes even when the requesting host does not match. This is a known trade-off of the handler-wrapping approach.
+>
+> When mounting sub-applications via `Domain(...).Use(*fiber.App)`, routes are cloned at mount time. The same sub-app can safely be mounted on multiple domains, but routes added to the sub-app after mounting will not inherit domain filtering. Register all sub-app routes before mounting.
+
+```go
+Domain(host string) Router
+```
+
+<details>
+<summary>Example</summary>
+
+```go
+app := fiber.New()
+
+// Static domain
+app.Domain("api.example.com").Get("/users", func(c fiber.Ctx) error {
+    return c.SendString("API users")
+})
+
+// Domain with parameter
+app.Domain(":user.blog.example.com").Get("/", func(c fiber.Ctx) error {
+    user := fiber.DomainParam(c, "user")
+    return c.SendString(user + "'s blog")
+})
+
+// Domain with groups
+api := app.Domain("api.example.com")
+v1 := api.Group("/v1")
+v1.Get("/posts", listPosts)
+
+// Domain with middleware
+admin := app.Domain("admin.example.com")
+admin.Use(authMiddleware)
+admin.Get("/dashboard", dashboardHandler)
+
+// Mount sub-applications on domain routers
+subApp := fiber.New()
+subApp.Get("/users", listUsers)
+app.Domain("api.example.com").Use("/api", subApp)
+
+// Fallback for unmatched domains
+app.Get("/", func(c fiber.Ctx) error {
+    return c.SendString("default site")
+})
+```
+
+</details>
 
 ### Automatic HEAD routes for GET
 
@@ -1309,6 +1369,10 @@ Cached responses now include an RFC-compliant Age header, providing a standardiz
 
 Cache keys are now redacted in logs and error messages by default, and a `DisableValueRedaction` boolean (default `false`) lets you opt out when you need the raw value for troubleshooting.
 
+The default cache key strategy was also hardened. Instead of path-only behavior, keys now use structured request dimensions: method partitioning, path, canonical query string, and selected representation headers (`Accept`, `Accept-Encoding`, `Accept-Language`). This avoids collisions such as `/items?id=1` vs `/items?id=2` while keeping key generation deterministic. New config fields were added for explicit control: `DisableQueryKeys`, `KeyHeaders`, `KeyCookies`, and `DisableVaryHeaders`.
+
+As a security/performance default, request body/form values are not part of the default cache key. Cache handling is limited to `GET` and `HEAD` requests by default, configurable via the `Methods` field.
+
 :::note
 The deprecated `Store` and `Key` options have been removed in v3. Use `Storage` and `KeyGenerator` instead.
 :::
@@ -1345,6 +1409,8 @@ Additionally, panic messages and logs redact misconfigured origins by default, a
 - Compression is bypassed for responses that already specify `Content-Encoding`, for range requests or `206` statuses, and when either side sends `Cache-Control: no-transform`.
 - `HEAD` requests still negotiate compression so `Content-Encoding`, `Content-Length`, `ETag`, and `Vary` match a corresponding `GET`, but the body is omitted.
 - `Vary: Accept-Encoding` is merged into responses even when compression is skipped, preventing caches from mixing encoded and unencoded variants.
+- Decoding compressed request bodies now enforces the app `BodyLimit` through fasthttp `WithLimit` helpers, including when the compression middleware is active.
+- Multipart form parsing now enforces the app `BodyLimit` by using fasthttp `MultipartFormWithLimit`.
 
 ### CSRF
 
@@ -1523,6 +1589,41 @@ app.Use(logger.New(logger.Config{
 
 Both approaches ensure your logger can access these values while respecting Go's context practices.
 
+The same template/tag mechanism is also available for application logs emitted through `log.WithContext`. This keeps request logging and handler logging consistent without hard-coding middleware-specific values into the `log` package:
+
+```go
+app.Use(requestid.New())
+
+// The requestid middleware automatically registers the ${requestid} tag.
+log.MustSetContextTemplate(log.ContextConfig{Format: "[${requestid}] "})
+
+app.Get("/", func(c fiber.Ctx) error {
+    // Pass c so middleware values stored on Fiber's request context can be read.
+    log.WithContext(c).Info("handling request")
+    return c.SendString("OK")
+})
+```
+
+`SetContextTemplate` configures Fiber's built-in default logger. Custom loggers registered with `log.SetLogger` keep control over their own `WithContext` behavior.
+
+#### Breaking change: `WithContext(ctx any)`
+
+The signature of `log.WithContext`, `baseLogger.WithContext`, and `AllLogger[T].WithContext` changed from `WithContext(ctx context.Context)` to `WithContext(ctx any)`. The wider parameter type is what allows the same call site to receive `fiber.Ctx`, `*fasthttp.RequestCtx`, or a standard `context.Context` and still resolve middleware-stored values via `Value` / `UserValue`. Adapter packages that implement `AllLogger[T]` directly (for example community Zap, Zerolog, or Logrus integrations) must update their `WithContext` method signature accordingly. Direct call sites that already pass a `context.Context` or a `fiber.Ctx` continue to compile.
+
+#### New API surface
+
+The `log` and `middleware/logger` packages now expose the following exported symbols:
+
+- `log.SetContextTemplate(ContextConfig) error` / `log.MustSetContextTemplate(ContextConfig)` — configure the active context template.
+- `log.RegisterContextTag(name string, fn ContextTagFunc) error` / `log.MustRegisterContextTag` — register a global context tag.
+- `log.ContextConfig`, `log.ContextData`, `log.ContextTagFunc`, `log.Buffer` — supporting types.
+- `log.DefaultFormat`, `log.RequestIDFormat`, `log.KeyValueFormat`, `log.TagContextValue` — built-in format and tag constants.
+- `logger.RegisterTag(name string, fn LogFunc) error` / `logger.MustRegisterTag` — register a global access-log tag (in addition to per-instance `Config.CustomTags`).
+- `logger.RegisterContextTag(name string, extract func(ctx any) string)` — convenience helper that registers a string-valued tag in **both** the access-log registry and the `log.RegisterContextTag` registry, so middleware authors do not have to maintain two parallel renderers.
+- `logger.ErrUnknownTag` (sentinel) and `logger.UnknownTagError` (typed) — replace the older `ErrTemplateParameterMissing` sentinel that was never exported in a stable release. `New(Config{})` panics with `*UnknownTagError` when the format references a tag that has no registered renderer; `errors.As` retrieves the offending tag name.
+
+The `requestid`, `basicauth`, `keyauth`, `csrf`, and `session` middlewares automatically register their respective context tags (`${requestid}`, `${request-id}`, `${username}`, `${api-key}`, `${csrf-token}`, `${session-id}`) on first `New(...)`. Empty stubs for the same names are pre-registered at package init, so a logger format that references one of them compiles even when the corresponding middleware has not been initialized. For `log.WithContext`, later registration rebuilds the active context template. For `middleware/logger` access logs, construct the producing middleware (or call `logger.RegisterTag`) before `logger.New(...)`; existing logger instances keep the function chain compiled at construction time and do not retroactively pick up later registrations.
+
 The `Skip` is a function to determine if logging is skipped or written to `Stream`.
 
 <details>
@@ -1615,6 +1716,13 @@ The session middleware has undergone significant improvements in v3, focusing on
 - **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
+
+### SSE
+
+Fiber now includes an [SSE middleware](./middleware/sse.md) for Server-Sent Events. It handles native
+`SendStreamWriter` setup, SSE response headers, event formatting, flushing, heartbeat comments, and
+disconnect detection through flush errors while leaving application-level hubs, topics, replay stores, and
+pub/sub bridges to user code or recipes.
 
 ### Timeout
 
@@ -2822,6 +2930,15 @@ To restore v2 behavior:
 - Set `DisableCacheControl` to `true` to suppress automatic `Cache-Control` headers.
 - Configure `Expiration` to `1*time.Minute`.
 - Set `MaxBytes` to `0` (or a higher value) when caching large responses.
+- Disable structured key dimensions as needed (for example `DisableQueryKeys: true`), or provide a custom `KeyGenerator`.
+
+Additional v3 cache key options:
+
+- `Methods`: HTTP methods eligible for caching (default `GET`, `HEAD`)
+- `DisableQueryKeys`: disable canonicalized query args in keys (default `false`)
+- `KeyHeaders`: request header allow-list for key partitioning
+- `KeyCookies`: explicit cookie allow-list for key partitioning
+- `DisableVaryHeaders`: disable response `Vary` dimensions in lookup/storage partitioning (default `false`)
 
 #### CORS
 

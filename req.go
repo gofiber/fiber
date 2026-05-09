@@ -102,6 +102,7 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 	encodings []string,
 ) (body []byte, decodesRealized uint8, err error) {
 	request := &r.c.fasthttp.Request
+	maxBodySize := r.c.app.config.BodyLimit
 	for idx := range encodings {
 		i := len(encodings) - 1 - idx
 		encoding := encodings[i]
@@ -109,13 +110,13 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 		var decodeErr error
 		switch encoding {
 		case StrGzip, "x-gzip":
-			body, decodeErr = request.BodyGunzip()
+			body, decodeErr = request.BodyGunzipWithLimit(maxBodySize)
 		case StrBr, StrBrotli:
-			body, decodeErr = request.BodyUnbrotli()
+			body, decodeErr = request.BodyUnbrotliWithLimit(maxBodySize)
 		case StrDeflate:
-			body, decodeErr = request.BodyInflate()
+			body, decodeErr = request.BodyInflateWithLimit(maxBodySize)
 		case StrZstd:
-			body, decodeErr = request.BodyUnzstd()
+			body, decodeErr = request.BodyUnzstdWithLimit(maxBodySize)
 		case StrIdentity:
 			body = request.Body()
 		case StrCompress, "x-compress":
@@ -187,6 +188,8 @@ func (r *DefaultReq) Body() []byte {
 			_ = r.c.DefaultRes.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		case errors.Is(err, ErrNotImplemented):
 			_ = r.c.DefaultRes.SendStatus(StatusNotImplemented) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
+		case errors.Is(err, fasthttp.ErrBodyTooLarge):
+			_ = r.c.DefaultRes.SendStatus(StatusRequestEntityTooLarge) //nolint:errcheck,staticcheck // It is fine to ignore the error and the static check
 		default:
 			// do nothing
 		}
@@ -350,7 +353,12 @@ func (r *DefaultReq) Request() *fasthttp.Request {
 }
 
 // FormFile returns the first file by key from a MultipartForm.
+// The multipart form is parsed using the application's BodyLimit to prevent
+// unbounded memory usage.
 func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
+	if _, err := r.MultipartForm(); err != nil {
+		return nil, err
+	}
 	return r.c.fasthttp.FormFile(key)
 }
 
@@ -360,7 +368,30 @@ func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
 // If a default value is given, it will return that value if the form value does not exist.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
+// When the request is a multipart form, it is parsed using the application's
+// BodyLimit so the configured limit is consistently enforced.
 func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
+	if r.c.IsMultipart() {
+		// For multipart requests, parse the form using the application's BodyLimit.
+		// fasthttp's FormValue would otherwise re-parse with its default 8 MiB limit,
+		// effectively bypassing the configured BodyLimit.
+		//
+		// Preserve the original search order: QueryArgs → PostArgs → MultipartForm.
+		if v := r.c.fasthttp.QueryArgs().Peek(key); len(v) > 0 {
+			return r.c.app.toString(v)
+		}
+		if v := r.c.fasthttp.PostArgs().Peek(key); len(v) > 0 {
+			return r.c.app.toString(v)
+		}
+		mf, err := r.MultipartForm()
+		if err != nil {
+			return defaultString("", defaultValue)
+		}
+		if vals := mf.Value[key]; len(vals) > 0 {
+			return vals[0]
+		}
+		return defaultString("", defaultValue)
+	}
 	return defaultString(r.c.app.toString(r.c.fasthttp.FormValue(key)), defaultValue)
 }
 
@@ -721,7 +752,7 @@ func (r *DefaultReq) Method(override ...string) string {
 // MultipartForm parse form entries from binary.
 // This returns a map[string][]string, so given a key, the value will be a string slice.
 func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
-	return r.c.fasthttp.MultipartForm()
+	return r.c.fasthttp.MultipartFormWithLimit(r.c.app.config.BodyLimit)
 }
 
 // OriginalURL contains the original request URL.
@@ -1130,11 +1161,6 @@ func (r *DefaultReq) IsFromLocal() bool {
 		return ip.IsLoopback()
 	}
 	return false
-}
-
-// Release is a method to reset Req fields when to use ReleaseCtx()
-func (r *DefaultReq) release() {
-	r.c = nil
 }
 
 func (r *DefaultReq) getBody() []byte {

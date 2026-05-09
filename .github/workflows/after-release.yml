@@ -1,0 +1,48 @@
+name: After Release
+
+on:
+  release:
+    types: [published]
+  repository_dispatch:
+    types: [after-release]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parse-tag:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    outputs:
+      major: ${{ steps.parse.outputs.major }}
+    steps:
+      - name: Extract major version from tag
+        id: parse
+        run: echo "major=${TAG%%.*}" >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+
+  move-milestone:
+    needs: parse-tag
+    if: github.event_name == 'release'
+    uses: ./.github/workflows/move-closed-milestone-items.yml
+    with:
+      source_milestone: ${{ needs.parse-tag.outputs.major }}
+      target_milestone: ${{ github.event.release.tag_name }}
+    secrets:
+      ISSUE_PR_TOKEN: ${{ secrets.ISSUE_PR_TOKEN }}
+
+  notify:
+    uses: gofiber/.github/.github/workflows/after-release.yml@main
+    with:
+      skip-wait: ${{ github.event_name == 'workflow_dispatch' }}
+      repos: |
+        - gofiber/contrib
+        - gofiber/storage
+        - gofiber/template
+        - gofiber/cli
+        - gofiber/boilerplate
+        - gofiber/recipes
+    secrets:
+      dispatch-token: ${{ secrets.DISPATCH_TOKEN }}

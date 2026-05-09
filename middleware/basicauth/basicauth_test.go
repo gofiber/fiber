@@ -1,6 +1,7 @@
 package basicauth
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
@@ -13,6 +14,9 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
+	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/crypto/bcrypt"
@@ -107,6 +111,57 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 			require.Equal(t, tt.username, string(body))
 		}
 	}
+}
+
+func Test_BasicAuthLoggerTagWritesUsername(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Users: map[string]string{
+			"john": sha256Hash("doe"),
+		},
+	}))
+	app.Use(logger.New(logger.Config{
+		Format: "${username}",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.SetBasicAuth("john", "doe")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "john", buf.String())
+}
+
+// Test_BasicAuthLogContextTagWritesUsername runs serially because it mutates
+// package-global default logger output and context format.
+func Test_BasicAuthLogContextTagWritesUsername(t *testing.T) {
+	buf := loggertest.CaptureContextLog(t, "username=${username} ")
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Users: map[string]string{
+			"john": sha256Hash("doe"),
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("start")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.SetBasicAuth("john", "doe")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, buf.String(), "[Info] username=john start")
 }
 
 func Test_BasicAuth_UsernameFromContext_Types(t *testing.T) {
@@ -406,11 +461,13 @@ func Test_BasicAuth_HeaderControlCharEdges(t *testing.T) {
 
 	handler := app.Handler()
 	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+	// Note: \r and \n are sanitized to spaces by fasthttp at the protocol level,
+	// so we use other control chars (SOH, BEL) that pass through unchanged.
 	headers := [][]byte{
-		[]byte("\rBasic " + creds),
-		[]byte("\nBasic " + creds),
-		[]byte("Basic " + creds + "\r"),
-		[]byte("Basic " + creds + "\n"),
+		[]byte("\x01Basic " + creds),
+		[]byte("\x07Basic " + creds),
+		[]byte("Basic " + creds + "\x01"),
+		[]byte("Basic " + creds + "\x07"),
 	}
 
 	for _, h := range headers {
@@ -570,6 +627,40 @@ func Test_parseHashedPassword(t *testing.T) {
 			require.False(t, verify("wrong"))
 		})
 	}
+}
+
+func Test_buildVerifiers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("selects the strongest configured verifier deterministically", func(t *testing.T) {
+		t.Parallel()
+
+		strongestPassword := "bcrypt-pass"
+		strongestHash, err := bcrypt.GenerateFromPassword([]byte(strongestPassword), bcrypt.MinCost+1)
+		require.NoError(t, err)
+
+		verifiers, dummyVerify, err := buildVerifiers(map[string]string{
+			"zeta":  sha256Hash("sha256-pass"),
+			"alpha": string(strongestHash),
+			"beta":  sha512Hash("sha512-pass"),
+		})
+		require.NoError(t, err)
+		require.Len(t, verifiers, 3)
+		require.True(t, dummyVerify(strongestPassword))
+		require.False(t, dummyVerify("sha512-pass"))
+		require.False(t, dummyVerify("sha256-pass"))
+	})
+
+	t.Run("uses a fixed-work fallback when no users are configured", func(t *testing.T) {
+		t.Parallel()
+
+		verifiers, dummyVerify, err := buildVerifiers(nil)
+		require.NoError(t, err)
+		require.Empty(t, verifiers)
+		fallbackInput := "fiber-basicauth-dummy"
+		require.True(t, dummyVerify(fallbackInput))
+		require.False(t, dummyVerify("wrong"))
+	})
 }
 
 func Test_BasicAuth_HashVariants(t *testing.T) {

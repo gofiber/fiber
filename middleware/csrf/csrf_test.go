@@ -1,17 +1,24 @@
 package csrf
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
+	"github.com/gofiber/fiber/v3/internal/redact"
+	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -628,6 +635,49 @@ func Test_CSRF_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+func Test_CSRFLoggerTagRedactsToken(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	app := fiber.New()
+	app.Use(New())
+	app.Use(logger.New(logger.Config{
+		Format: "${csrf-token}",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	// CSRF tokens are randomly generated per request, so assert on the
+	// redaction shape (4-byte prefix + Mask) rather than a fixed value.
+	got := buf.String()
+	require.Len(t, got, redact.PrefixLength+len(redact.Mask))
+	require.True(t, strings.HasSuffix(got, redact.Mask), "expected suffix %q in %q", redact.Mask, got)
+}
+
+// Test_CSRFLogContextTagRedactsToken runs serially because it mutates
+// package-global default logger output and context format.
+func Test_CSRFLogContextTagRedactsToken(t *testing.T) {
+	buf := loggertest.CaptureContextLog(t, "csrf-token=${csrf-token} ")
+
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("start")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Regexp(t, `\[Info\] csrf-token=.{`+strconv.Itoa(redact.PrefixLength)+`}`+regexp.QuoteMeta(redact.Mask)+` start`, buf.String())
 }
 
 func Test_CSRF_From_Form(t *testing.T) {
@@ -1336,6 +1386,38 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
 	require.Equal(t, 403, ctx.Response.StatusCode())
+
+	// Test Trusted Referer with path — referer URL includes a path component
+	// which must not prevent matching against the trusted origin
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+	ctx.Request.URI().SetScheme("https")
+	ctx.Request.URI().SetHost("example.com")
+	ctx.Request.Header.SetProtocol("https")
+	ctx.Request.Header.SetHost("example.com")
+	ctx.Request.Header.Set(fiber.HeaderReferer, "https://safe.example.com/some/path?q=1")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 200, ctx.Response.StatusCode())
+
+	// Test Trusted Referer Wildcard with path — wildcard subdomain referer
+	// that includes a path must still match the trusted sub-origin
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+	ctx.Request.URI().SetScheme("https")
+	ctx.Request.URI().SetHost("domain-1.com")
+	ctx.Request.Header.SetProtocol("https")
+	ctx.Request.Header.SetHost("domain-1.com")
+	ctx.Request.Header.Set(fiber.HeaderReferer, "https://safe.domain-1.com/api/callback?code=abc")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 200, ctx.Response.StatusCode())
 }
 
 func Test_CSRF_TrustedOrigins_InvalidOrigins(t *testing.T) {

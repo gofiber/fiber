@@ -34,7 +34,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "3.1.0"
+const Version = "3.2.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
@@ -90,6 +90,8 @@ type App struct {
 	mountFields *mountFields
 	// state management
 	state *State
+	// shared state management (prefork-safe, storage-backed)
+	sharedState *SharedState
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -278,6 +280,19 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: nil
 	AppName string `json:"app_name"`
+
+	// SharedStorage configures storage-backed shared state that can be used
+	// safely across prefork workers and processes.
+	//
+	// Default: nil
+	SharedStorage Storage `json:"-"`
+
+	// SharedStatePrefix customizes the namespace prefix for keys written to
+	// SharedStorage. If empty, Fiber derives a prefixed namespace using
+	// AppName (when set) or an internal default.
+	//
+	// Default: ""
+	SharedStatePrefix string `json:"shared_state_prefix"`
 
 	// StreamRequestBody enables request body streaming,
 	// and calls the handler sooner when given body is
@@ -638,6 +653,8 @@ func New(config ...Config) *App {
 	if app.config.XMLDecoder == nil {
 		app.config.XMLDecoder = xml.Unmarshal
 	}
+
+	app.sharedState = newSharedState(&app.config)
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
 	}
@@ -721,7 +738,7 @@ func (app *App) setCtxFunc(function func(app *App) CustomCtx) {
 	app.hasCustomCtx = function != nil
 
 	if app.server != nil {
-		app.server.Handler = app.requestHandler
+		app.server.Handler = app.selectRequestHandler()
 	}
 }
 
@@ -979,6 +996,35 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 	return grp
 }
 
+// Domain creates a new router scoped to the given hostname pattern. Routes
+// registered through the returned Router only match requests whose hostname
+// (from c.Hostname()) matches the pattern. When TrustProxy is enabled and the
+// proxy is trusted, the hostname may be derived from the X-Forwarded-Host header.
+// The pattern can contain parameters prefixed with ":" whose values are accessible
+// via [DomainParam].
+//
+// Domain routing has zero performance impact on routes that don't use it because
+// the hostname check is applied as a handler wrapper, not a core router change.
+//
+// To prevent header spoofing, configure Config.TrustProxy together with Config.TrustProxyConfig
+// (trusted proxy IPs/ranges) and, where appropriate, Config.ProxyHeader; see:
+// https://docs.gofiber.io/api/fiber#trustproxy
+//
+//	// Static domain
+//	app.Domain("api.example.com").Get("/users", listUsers)
+//
+//	// Domain with parameter
+//	app.Domain(":user.example.com").Get("/", func(c fiber.Ctx) error {
+//	    user := fiber.DomainParam(c, "user")
+//	    return c.SendString("Hello, " + user)
+//	})
+func (app *App) Domain(host string) Router {
+	return &domainRouter{
+		app:     app,
+		matcher: parseDomainPattern(host),
+	}
+}
+
 // RouteChain creates a Registering instance that lets you declare a stack of
 // handlers for the same route. Handlers defined via the returned Register are
 // scoped to the provided path.
@@ -1067,7 +1113,14 @@ func (app *App) Config() Config {
 func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
-	return app.requestHandler
+	return app.selectRequestHandler()
+}
+
+func (app *App) selectRequestHandler() fasthttp.RequestHandler {
+	if app.hasCustomCtx {
+		return app.customRequestHandler
+	}
+	return app.defaultRequestHandler
 }
 
 // Stack returns the raw router stack.
@@ -1143,9 +1196,16 @@ func (app *App) Hooks() *Hooks {
 	return app.hooks
 }
 
-// State returns the state struct to store global data in order to share it between handlers.
+// State returns the in-process state struct to store global data between handlers.
+// State is process-local and is not shared across prefork workers.
 func (app *App) State() *State {
 	return app.state
+}
+
+// SharedState returns storage-backed shared state.
+// SharedState is prefork-safe when Config.SharedStorage is configured.
+func (app *App) SharedState() *SharedState {
+	return app.sharedState
 }
 
 var ErrTestGotEmptyResponse = errors.New("test: got empty response")
@@ -1183,6 +1243,19 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	if req.Body != http.NoBody && req.Header.Get(HeaderContentLength) == "" {
 		req.Header.Add(HeaderContentLength, strconv.FormatInt(req.ContentLength, 10))
 	}
+
+	// Ensure Host header is present in the dump (required by fasthttp)
+	if req.Host == "" {
+		if req.URL != nil && req.URL.Host != "" {
+			req.Host = req.URL.Host
+		} else {
+			req.Host = "localhost"
+		}
+	}
+
+	// Clear RequestURI so DumpRequest writes origin-form request line with
+	// Host header instead of absolute-form URI without Host header.
+	req.RequestURI = ""
 
 	// Dump raw http request
 	dump, err := httputil.DumpRequest(req, true)
@@ -1306,7 +1379,7 @@ func (app *App) init() *App {
 	}
 
 	// fasthttp server settings
-	app.server.Handler = app.requestHandler
+	app.server.Handler = app.selectRequestHandler()
 	app.server.Name = app.config.ServerHeader
 	app.server.Concurrency = app.config.Concurrency
 	app.server.NoDefaultDate = app.config.DisableDefaultDate
@@ -1332,6 +1405,11 @@ func (app *App) init() *App {
 	app.Hooks().OnPostShutdown(func(_ error) error {
 		if err := app.shutdownServices(app.servicesShutdownCtx()); err != nil {
 			log.Errorf("failed to shutdown services: %v", err)
+		}
+		if app.sharedState != nil && app.sharedState.storage != nil {
+			if err := app.sharedState.Close(); err != nil {
+				log.Errorf("failed to close sharedState: %v", err)
+			}
 		}
 		return nil
 	})

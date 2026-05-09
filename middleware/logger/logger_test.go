@@ -24,7 +24,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	fiberlog "github.com/gofiber/fiber/v3/log"
-	"github.com/gofiber/fiber/v3/middleware/requestid"
 )
 
 const (
@@ -447,6 +446,67 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	require.EqualValues(t, 2, *o)
 }
 
+func Test_Logger_ErrorOutput_TemplateFailure(t *testing.T) {
+	t.Parallel()
+
+	templateErr := errors.New("template failure")
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${fail}",
+		Stream: buf,
+		CustomTags: map[string]LogFunc{
+			"fail": func(_ Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+				return 0, templateErr
+			},
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	require.Equal(t, templateErr.Error(), buf.String())
+}
+
+func Test_Logger_UnknownTagPanicsWithTypedError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		format   string
+		wantTag  string
+		wantPara string
+	}{
+		{name: "parametric tag", format: "${missing:value}", wantTag: "missing:value", wantPara: "value"},
+		{name: "bare tag", format: "${missing}", wantTag: "missing"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				r := recover()
+				require.NotNil(t, r, "New must panic for unknown tag")
+
+				err, ok := r.(error)
+				require.True(t, ok, "panic value must be an error, got %T", r)
+				require.ErrorIs(t, err, ErrUnknownTag)
+
+				var typed *UnknownTagError
+				require.ErrorAs(t, err, &typed)
+				require.Equal(t, tt.wantTag, typed.Tag)
+				require.Equal(t, tt.wantPara, typed.Param)
+				require.EqualError(t, err, `logger: unknown template tag: "`+tt.wantTag+`"`)
+			}()
+
+			New(Config{Format: tt.format})
+		})
+	}
+}
+
 // go test -run Test_Logger_All
 func Test_Logger_All(t *testing.T) {
 	t.Parallel()
@@ -456,7 +516,7 @@ func Test_Logger_All(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
+		Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}",
 		Stream: buf,
 	}))
 
@@ -850,11 +910,10 @@ func Test_Response_Header(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(requestid.New(requestid.Config{
-		Next:      nil,
-		Header:    fiber.HeaderXRequestID,
-		Generator: func() string { return "Hello fiber!" },
-	}))
+	app.Use(func(c fiber.Ctx) error {
+		c.Response().Header.Set(fiber.HeaderXRequestID, "Hello fiber!")
+		return c.Next()
+	})
 	app.Use(New(Config{
 		Format: "${respHeader:X-Request-ID}",
 		Stream: buf,
@@ -868,6 +927,84 @@ func Test_Response_Header(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "Hello fiber!", buf.String())
+}
+
+func Test_Logger_RegisteredTag(t *testing.T) {
+	t.Parallel()
+
+	const tag = "registered-test-tag"
+
+	require.NoError(t, RegisterTag(tag, func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+		return output.WriteString("registered")
+	}))
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${" + tag + "}",
+		Stream: buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "registered", buf.String())
+}
+
+func Test_Logger_CustomTagOverridesRegisteredTag(t *testing.T) {
+	t.Parallel()
+
+	const tag = "registered-override-test-tag"
+
+	require.NoError(t, RegisterTag(tag, func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+		return output.WriteString("registered")
+	}))
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${" + tag + "}",
+		CustomTags: map[string]LogFunc{
+			tag: func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+				return output.WriteString("override")
+			},
+		},
+		Stream: buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "override", buf.String())
+}
+
+func Test_Logger_RegisterTagRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	require.ErrorIs(t, RegisterTag("", func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+		return output.WriteString("ignored")
+	}), ErrTagInvalid)
+	require.ErrorIs(t, RegisterTag("missing", nil), ErrTagInvalid)
+}
+
+func Test_Logger_MustRegisterTagPanicsOnInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithError(t, ErrTagInvalid.Error(), func() {
+		MustRegisterTag("", func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
+			return output.WriteString("ignored")
+		})
+	})
 }
 
 // go test -run Test_Req_Header
@@ -947,6 +1084,49 @@ func Test_CustomTags(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, customTag, buf.String())
+}
+
+func Test_Logger_DataLegacyTemplateChains(t *testing.T) {
+	t.Parallel()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		DisableColors: true,
+		Format:        "${method} ${path}",
+		LoggerFunc: func(c fiber.Ctx, data *Data, _ *Config) error {
+			if len(data.TemplateChain) != len(data.LogFuncChain) {
+				return fmt.Errorf("template/log func chain length mismatch: template=%d logfunc=%d", len(data.TemplateChain), len(data.LogFuncChain))
+			}
+			for i, logFunc := range data.LogFuncChain {
+				switch {
+				case logFunc == nil:
+					if _, err := buf.Write(data.TemplateChain[i]); err != nil {
+						return fmt.Errorf("write template chain: %w", err)
+					}
+				case data.TemplateChain[i] == nil:
+					if _, err := logFunc(buf, c, data, ""); err != nil {
+						return err
+					}
+				default:
+					if _, err := logFunc(buf, c, data, string(data.TemplateChain[i])); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello fiber!")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "GET /", buf.String())
 }
 
 // go test -run Test_Logger_ByteSent_Streaming
@@ -1169,7 +1349,7 @@ func Benchmark_Logger(b *testing.B) {
 	b.Run("WithAllTags", func(bb *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
-			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
+			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}",
 			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
@@ -1349,7 +1529,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 	b.Run("WithAllTags", func(bb *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
-			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
+			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}",
 			Stream: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {

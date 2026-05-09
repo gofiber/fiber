@@ -2,8 +2,10 @@ package binder
 
 import (
 	"bytes"
+	"compress/gzip"
 	"io"
 	"mime/multipart"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -205,6 +207,43 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	require.Equal(t, "avatar2", string(content))
 }
 
+func Test_FormBinder_BindMultipart_BodyLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	b := &FormBinding{
+		MaxBodySize: 64,
+	}
+
+	type User struct {
+		Name string `form:"name"`
+	}
+	var user User
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	multipartBody := &bytes.Buffer{}
+	mw := multipart.NewWriter(multipartBody)
+	require.NoError(t, mw.WriteField("name", strings.Repeat("a", 1024)))
+	require.NoError(t, mw.Close())
+
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	_, err := gz.Write(multipartBody.Bytes())
+	require.NoError(t, err)
+	require.NoError(t, gz.Flush())
+	require.NoError(t, gz.Close())
+
+	req.Header.SetContentType(mw.FormDataContentType())
+	req.Header.SetContentEncoding("gzip")
+	req.SetBody(compressed.Bytes())
+
+	err = b.Bind(req, &user)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+}
+
 func Test_FormBinder_BindMultipart_ValueError(t *testing.T) {
 	b := &FormBinding{}
 	req := fasthttp.AcquireRequest()
@@ -362,4 +401,191 @@ func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	require.Equal(b, "john", user.Name)
 	require.Equal(b, 42, user.Age)
 	require.Len(b, user.Posts, 3)
+}
+
+func Test_FormBinder_Bind_PointerScalars(t *testing.T) {
+	t.Parallel()
+
+	binder := &FormBinding{
+		EnableSplitting: false,
+	}
+
+	type Form struct {
+		ID     *int64   `form:"id"`
+		Name   *string  `form:"name"`
+		Active *bool    `form:"active"`
+		Score  *float64 `form:"score"`
+	}
+
+	t.Run("all fields provided", func(t *testing.T) {
+		t.Parallel()
+
+		var f Form
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("id=123&name=test&active=true&score=98.5")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &f)
+		require.NoError(t, err)
+
+		require.NotNil(t, f.ID)
+		require.Equal(t, int64(123), *f.ID)
+
+		require.NotNil(t, f.Name)
+		require.Equal(t, "test", *f.Name)
+
+		require.NotNil(t, f.Active)
+		require.True(t, *f.Active)
+
+		require.NotNil(t, f.Score)
+		require.InDelta(t, 98.5, *f.Score, 0.001)
+	})
+
+	t.Run("no fields provided", func(t *testing.T) {
+		t.Parallel()
+
+		var f Form
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &f)
+		require.NoError(t, err)
+
+		require.Nil(t, f.ID)
+		require.Nil(t, f.Name)
+		require.Nil(t, f.Active)
+		require.Nil(t, f.Score)
+	})
+
+	t.Run("partial fields provided", func(t *testing.T) {
+		t.Parallel()
+
+		var f Form
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("id=456&active=false")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &f)
+		require.NoError(t, err)
+
+		require.NotNil(t, f.ID)
+		require.Equal(t, int64(456), *f.ID)
+
+		require.Nil(t, f.Name)
+
+		require.NotNil(t, f.Active)
+		require.False(t, *f.Active)
+
+		require.Nil(t, f.Score)
+	})
+
+	t.Run("explicit zero and empty values provided", func(t *testing.T) {
+		t.Parallel()
+
+		var f Form
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("id=0&name=&active=false&score=0")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &f)
+		require.NoError(t, err)
+
+		require.NotNil(t, f.ID)
+		require.Equal(t, int64(0), *f.ID)
+
+		require.NotNil(t, f.Name)
+		require.Empty(t, *f.Name)
+
+		require.NotNil(t, f.Active)
+		require.False(t, *f.Active)
+
+		require.NotNil(t, f.Score)
+		require.InDelta(t, 0.0, *f.Score, 0.001)
+	})
+}
+
+func Test_FormBinder_Bind_OptionalIDParam(t *testing.T) {
+	t.Parallel()
+
+	binder := &FormBinding{
+		EnableSplitting: false,
+	}
+
+	// Use case from original issue
+	type OptionalIDParam struct {
+		IDPtr *int64 `form:"id"`
+	}
+
+	t.Run("id provided", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("id=123")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.NotNil(t, param.IDPtr)
+		require.Equal(t, int64(123), *param.IDPtr)
+	})
+
+	t.Run("id not provided", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.Nil(t, param.IDPtr)
+	})
+
+	t.Run("id zero", func(t *testing.T) {
+		t.Parallel()
+
+		var param OptionalIDParam
+		req := fasthttp.AcquireRequest()
+		req.SetBodyString("id=0")
+		req.Header.SetContentType("application/x-www-form-urlencoded")
+
+		t.Cleanup(func() {
+			fasthttp.ReleaseRequest(req)
+		})
+
+		err := binder.Bind(req, &param)
+		require.NoError(t, err)
+
+		require.NotNil(t, param.IDPtr)
+		require.Equal(t, int64(0), *param.IDPtr)
+	})
 }

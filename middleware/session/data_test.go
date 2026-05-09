@@ -15,9 +15,7 @@ func TestKeys(t *testing.T) {
 	t.Run("Empty data", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		keys := d.Keys()
 		require.Empty(t, keys, "Expected no keys in empty data")
 	})
@@ -26,9 +24,7 @@ func TestKeys(t *testing.T) {
 	t.Run("Single key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		d.Set("key1", "value1")
 		keys := d.Keys()
 		require.Len(t, keys, 1, "Expected one key")
@@ -39,9 +35,7 @@ func TestKeys(t *testing.T) {
 	t.Run("Multiple keys", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		d.Set("key1", "value1")
 		d.Set("key2", "value2")
 		d.Set("key3", "value3")
@@ -56,9 +50,7 @@ func TestKeys(t *testing.T) {
 	t.Run("Concurrent access", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		d.Set("key1", "value1")
 		d.Set("key2", "value2")
 		d.Set("key3", "value3")
@@ -86,9 +78,7 @@ func TestData_Len(t *testing.T) {
 	t.Run("Empty data", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		length := d.Len()
 		require.Equal(t, 0, length, "Expected length to be 0 for empty data")
 	})
@@ -97,9 +87,7 @@ func TestData_Len(t *testing.T) {
 	t.Run("Single key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		d.Set("key1", "value1")
 		length := d.Len()
 		require.Equal(t, 1, length, "Expected length to be 1 when one key is set")
@@ -109,9 +97,7 @@ func TestData_Len(t *testing.T) {
 	t.Run("Multiple keys", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		d.Set("key1", "value1")
 		d.Set("key2", "value2")
 		d.Set("key3", "value3")
@@ -123,9 +109,7 @@ func TestData_Len(t *testing.T) {
 	t.Run("Concurrent access", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		d.Set("key1", "value1")
 		d.Set("key2", "value2")
 		d.Set("key3", "value3")
@@ -153,9 +137,7 @@ func TestData_Get(t *testing.T) {
 	t.Run("Nonexistent key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		value := d.Get("nonexistent-key")
 		require.Nil(t, value, "Expected nil for nonexistent key")
 	})
@@ -164,9 +146,7 @@ func TestData_Get(t *testing.T) {
 	t.Run("Existing key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		d.Set("key1", "value1")
 		value := d.Get("key1")
 		require.Equal(t, "value1", value, "Expected value1 for key1")
@@ -180,8 +160,7 @@ func TestData_Reset(t *testing.T) {
 	t.Run("Reset data", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
+		defer releaseData(d)
 		d.Set("key1", "value1")
 		d.Set("key2", "value2")
 		d.Reset()
@@ -210,10 +189,8 @@ func TestData_ResetPreservesAllocation(t *testing.T) {
 	t.Parallel()
 
 	d := acquireData()
-	d.Reset() // Ensure clean state from pool
 	t.Cleanup(func() {
-		d.Reset()
-		dataPool.Put(d)
+		releaseData(d)
 	})
 
 	originalPtr := lockedMapPointer(d)
@@ -237,8 +214,7 @@ func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
 	acquired := make([]*data, 0, 6)
 	t.Cleanup(func() {
 		for _, item := range acquired {
-			item.Reset()
-			dataPool.Put(item)
+			releaseData(item)
 		}
 	})
 
@@ -248,13 +224,15 @@ func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
 		return d
 	}
 
-	first := acquireWithCleanup()
+	// Acquire first outside acquireWithCleanup to avoid double-put:
+	// it is explicitly released via releaseData below.
+	first := acquireData()
 	first.Set("key1", "value1")
 	first.Set("key2", "value2")
 	first.Reset()
 
 	originalPtr := lockedMapPointer(first)
-	dataPool.Put(first)
+	releaseData(first)
 
 	var reused *data
 	for i := 0; i < 5; i++ {
@@ -287,9 +265,7 @@ func TestData_Delete(t *testing.T) {
 	t.Run("Delete existing key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		d.Set("key1", "value1")
 		d.Delete("key1")
 		value := d.Get("key1")
@@ -300,9 +276,7 @@ func TestData_Delete(t *testing.T) {
 	t.Run("Delete nonexistent key", func(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
-		d.Reset() // Ensure clean state from pool
-		defer dataPool.Put(d)
-		defer d.Reset()
+		defer releaseData(d)
 		d.Delete("nonexistent-key")
 		// No assertion needed, just ensure no panic or error
 	})
