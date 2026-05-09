@@ -36,8 +36,9 @@ func acquireData() *data {
 		d.Reset()
 		return d
 	}
-	// Handle unexpected type in the pool
-	panic("unexpected type in data pool")
+	d := new(data)
+	d.Data = make(map[any]any)
+	return d
 }
 
 // releaseData resets the data object and returns it to the pool.
