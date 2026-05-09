@@ -47,10 +47,12 @@ func TestDefaultErrorHandler(t *testing.T) {
 }
 
 func TestAbsoluteTimeoutValidation(t *testing.T) {
-	require.PanicsWithValue(t, "[session] AbsoluteTimeout must be greater than or equal to IdleTimeout", func() {
-		configDefault(Config{
-			IdleTimeout:     30 * time.Minute,
-			AbsoluteTimeout: 15 * time.Minute, // Less than IdleTimeout
-		})
+	// When AbsoluteTimeout is less than IdleTimeout, it should be adjusted to match IdleTimeout
+	// to prevent application crashes during middleware initialization.
+	cfg := configDefault(Config{
+		IdleTimeout:     30 * time.Minute,
+		AbsoluteTimeout: 15 * time.Minute, // Less than IdleTimeout
 	})
+	require.Equal(t, 30*time.Minute, cfg.IdleTimeout)
+	require.Equal(t, 30*time.Minute, cfg.AbsoluteTimeout, "AbsoluteTimeout should be adjusted to match IdleTimeout")
 }

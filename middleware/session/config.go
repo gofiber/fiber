@@ -143,8 +143,10 @@ func configDefault(config ...Config) Config {
 	}
 
 	// Ensure AbsoluteTimeout is greater than or equal to IdleTimeout.
+	// Silently adjust to IdleTimeout to prevent application crashes.
 	if cfg.AbsoluteTimeout > 0 && cfg.AbsoluteTimeout < cfg.IdleTimeout {
-		panic("[session] AbsoluteTimeout must be greater than or equal to IdleTimeout")
+		log.Warnf("session: AbsoluteTimeout (%v) adjusted to match IdleTimeout (%v)", cfg.AbsoluteTimeout, cfg.IdleTimeout)
+		cfg.AbsoluteTimeout = cfg.IdleTimeout
 	}
 
 	// Check if we have a zero-value Extractor

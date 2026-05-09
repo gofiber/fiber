@@ -1,9 +1,9 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"bytes"
 	"fmt"
 	"io"
 	"net/http"

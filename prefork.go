@@ -110,7 +110,8 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 		cmd.Stderr = os.Stderr
 
 		// add fiber prefork child flag into child proc env
-		cmd.Env = append(os.Environ(),
+		cmd.Env = append(
+			os.Environ(),
 			fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
 		)
 
