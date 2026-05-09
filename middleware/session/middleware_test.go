@@ -372,6 +372,7 @@ func Test_SessionLoggerTagWithOuterLoggerDoesNotPanic(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Empty(t, buf.String())
 }
 
 // Test_SessionLogContextTagRedactsSessionID runs serially because it mutates

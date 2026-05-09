@@ -127,7 +127,12 @@ func registerLogContextTags() {
 			return ""
 		}
 
-		return redact.Prefix(session.ID())
+		id := session.ID()
+		if id == "" {
+			return ""
+		}
+
+		return redact.Prefix(id)
 	})
 }
 
