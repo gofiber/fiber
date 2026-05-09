@@ -119,7 +119,15 @@ func registerLogContextTags() {
 		if m == nil {
 			return ""
 		}
-		return redact.Prefix(m.ID())
+
+		m.mu.RLock()
+		session := m.Session
+		m.mu.RUnlock()
+		if session == nil {
+			return ""
+		}
+
+		return redact.Prefix(session.ID())
 	})
 }
 
