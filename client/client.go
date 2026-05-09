@@ -313,6 +313,8 @@ func (c *Client) SetProxyURL(proxyURL string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// Build the fasthttp proxy dialer directly so invalid proxy URLs are returned
+	// to callers instead of being swallowed by FasthttpHTTPDialer.
 	dialer := fasthttpproxy.Dialer{
 		Config: httpproxy.Config{HTTPProxy: proxyURL, HTTPSProxy: proxyURL},
 	}
