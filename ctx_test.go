@@ -5315,6 +5315,7 @@ func Test_Ctx_SaveFileToStorage_ErrorMessageContainsFilename(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "test-file.png")
+	require.Contains(t, err.Error(), "test-path")
 }
 
 // go test -run Test_Ctx_SaveFileToStorage_ContextPropagation
