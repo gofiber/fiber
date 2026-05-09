@@ -126,9 +126,15 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	var rawData []byte
 	var err error
 
-	id, ok := fiber.ValueFromContext[string](c, sessionIDContextKey)
-	if !ok {
-		id = s.getSessionID(c)
+	id := s.getSessionID(c)
+	if id == "" {
+		var ok bool
+		id, ok = fiber.ValueFromContext[string](c, sessionIDContextKey)
+		if !ok {
+			id = ""
+		}
+	} else {
+		fiber.StoreInContext(c, sessionIDContextKey, id)
 	}
 
 	fresh := false // Session is not fresh initially; only set to true if we generate a new ID
@@ -331,7 +337,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 
 	if s.AbsoluteTimeout > 0 {
 		if sess.isAbsExpired() {
-			if err := sess.Destroy(); err != nil {
+			if err := sess.Destroy(); err != nil { //nolint:contextcheck // Destroy uses sess.gctx, which is set from ctx above.
 				log.Errorf("failed to destroy session: %v", err)
 			}
 			sess.Release()
