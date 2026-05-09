@@ -127,6 +127,8 @@ func Test_Store_DeleteSession(t *testing.T) {
 }
 
 func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
+	t.Parallel()
+
 	// Create a new Fiber app
 	app := fiber.New()
 
@@ -136,7 +138,7 @@ func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
 
 	// Mock middleware and set it in the context
 	middleware := &Middleware{}
-	ctx.Locals(middlewareContextKey, middleware)
+	fiber.StoreInContext(ctx, middlewareContextKey, middleware)
 
 	// Create a new store
 	store := &Store{}
@@ -147,6 +149,32 @@ func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
 	// Assert that the error is ErrSessionAlreadyLoadedByMiddleware
 	require.Nil(t, sess)
 	require.Equal(t, ErrSessionAlreadyLoadedByMiddleware, err)
+}
+
+func TestStore_Get_StoresSessionIDInContext(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	store := NewStore(Config{
+		KeyGenerator: func() string {
+			return "generated-session-id"
+		},
+	})
+
+	sess, err := store.Get(ctx)
+	require.NoError(t, err)
+	defer sess.Release()
+
+	id, ok := fiber.ValueFromContext[string](ctx, sessionIDContextKey)
+	require.True(t, ok)
+	require.Equal(t, sess.ID(), id)
+
+	id, ok = fiber.ValueFromContext[string](ctx.Context(), sessionIDContextKey)
+	require.True(t, ok)
+	require.Equal(t, sess.ID(), id)
 }
 
 func TestStore_Delete(t *testing.T) {

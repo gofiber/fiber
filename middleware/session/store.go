@@ -100,8 +100,7 @@ func (*Store) RegisterType(i any) {
 func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	// If session is already loaded in the context,
 	// it should not be loaded again
-	_, ok := c.Locals(middlewareContextKey).(*Middleware)
-	if ok {
+	if FromContext(c) != nil {
 		return nil, ErrSessionAlreadyLoadedByMiddleware
 	}
 
@@ -127,7 +126,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	var rawData []byte
 	var err error
 
-	id, ok := c.Locals(sessionIDContextKey).(string)
+	id, ok := fiber.ValueFromContext[string](c, sessionIDContextKey)
 	if !ok {
 		id = s.getSessionID(c)
 	}
@@ -150,7 +149,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	if id == "" {
 		fresh = true // The session is fresh if a new ID is generated
 		id = s.KeyGenerator()
-		c.Locals(sessionIDContextKey, id)
+		fiber.StoreInContext(c, sessionIDContextKey, id)
 	}
 
 	// Create session object
@@ -332,7 +331,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 
 	if s.AbsoluteTimeout > 0 {
 		if sess.isAbsExpired() {
-			if err := sess.Destroy(); err != nil { //nolint:contextcheck // sess.gctx is set to ctx above; Destroy honors it.
+			if err := sess.Destroy(); err != nil {
 				log.Errorf("failed to destroy session: %v", err)
 			}
 			sess.Release()
