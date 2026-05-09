@@ -3,6 +3,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -115,20 +116,8 @@ var registerLogContextTagsOnce sync.Once
 
 func registerLogContextTags() {
 	logger.RegisterContextTag("session-id", func(ctx any) string {
-		m := FromContext(ctx)
-		if m == nil {
-			return ""
-		}
-
-		m.mu.RLock()
-		session := m.Session
-		m.mu.RUnlock()
-		if session == nil {
-			return ""
-		}
-
-		id := session.ID()
-		if id == "" {
+		id, ok := fiber.ValueFromContext[string](ctx, sessionIDContextKey)
+		if !ok || id == "" {
 			return ""
 		}
 
@@ -150,6 +139,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
 	m.Session = session
 	m.ctx = c
 
+	fiber.StoreInContext(c, sessionIDContextKey, session.ID())
 	fiber.StoreInContext(c, middlewareContextKey, m)
 }
 
@@ -185,6 +175,15 @@ func acquireMiddleware() *Middleware {
 //	releaseMiddleware(m)
 func releaseMiddleware(m *Middleware) {
 	m.mu.Lock()
+	if m.ctx != nil {
+		m.ctx.Locals(sessionIDContextKey, "")
+		m.ctx.Locals(middlewareContextKey, nil)
+		m.ctx.SetContext(context.WithValue(
+			context.WithValue(m.ctx.Context(), sessionIDContextKey, ""),
+			middlewareContextKey,
+			(*Middleware)(nil),
+		))
+	}
 	m.config = Config{}
 	m.Session = nil
 	m.ctx = nil

@@ -359,12 +359,15 @@ func Test_SessionLoggerTagWithOuterLoggerDoesNotPanic(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	app := fiber.New()
-	app.Use(logger.New(logger.Config{
+	sessionHandler := New()
+	requestLogger := logger.New(logger.Config{
 		Format: "${session-id}",
 		Stream: &buf,
-	}))
-	app.Use(New())
+	})
+
+	app := fiber.New()
+	app.Use(requestLogger)
+	app.Use(sessionHandler)
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
