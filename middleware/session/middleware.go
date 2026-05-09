@@ -125,6 +125,20 @@ func registerLogContextTags() {
 	})
 }
 
+func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) {
+	fiber.StoreInContext(c, sessionIDContextKey, session.ID())
+	fiber.StoreInContext(c, middlewareContextKey, m)
+}
+
+// clearMiddlewareContext clears both Fiber locals and the request context
+// because session middleware stores these values in both layers.
+func clearMiddlewareContext(c fiber.Ctx) {
+	c.Locals(sessionIDContextKey, "")
+	c.Locals(middlewareContextKey, nil)
+	ctx := context.WithValue(c.Context(), sessionIDContextKey, "")
+	c.SetContext(context.WithValue(ctx, middlewareContextKey, (*Middleware)(nil)))
+}
+
 // initialize sets up middleware for the request.
 func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
 	m.mu.Lock()
@@ -139,8 +153,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
 	m.Session = session
 	m.ctx = c
 
-	fiber.StoreInContext(c, sessionIDContextKey, session.ID())
-	fiber.StoreInContext(c, middlewareContextKey, m)
+	storeMiddlewareContext(c, session, m)
 }
 
 // saveSession handles session saving and error management after the response.
@@ -176,10 +189,7 @@ func acquireMiddleware() *Middleware {
 func releaseMiddleware(m *Middleware) {
 	m.mu.Lock()
 	if m.ctx != nil {
-		m.ctx.Locals(sessionIDContextKey, "")
-		m.ctx.Locals(middlewareContextKey, nil)
-		ctx := context.WithValue(m.ctx.Context(), sessionIDContextKey, "")
-		m.ctx.SetContext(context.WithValue(ctx, middlewareContextKey, (*Middleware)(nil)))
+		clearMiddlewareContext(m.ctx)
 	}
 	m.config = Config{}
 	m.Session = nil
