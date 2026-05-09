@@ -154,27 +154,57 @@ func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
 func TestStore_Get_StoresSessionIDInContext(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New(fiber.Config{PassLocalsToContext: true})
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	t.Run("locals only", func(t *testing.T) {
+		t.Parallel()
 
-	store := NewStore(Config{
-		KeyGenerator: func() string {
-			return "generated-session-id"
-		},
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		store := NewStore(Config{
+			KeyGenerator: func() string {
+				return "generated-session-id"
+			},
+		})
+
+		sess, err := store.Get(ctx)
+		require.NoError(t, err)
+		defer sess.Release()
+
+		id, ok := fiber.ValueFromContext[string](ctx, sessionIDContextKey)
+		require.True(t, ok)
+		require.Equal(t, sess.ID(), id)
+
+		id, ok = fiber.ValueFromContext[string](ctx.Context(), sessionIDContextKey)
+		require.False(t, ok)
+		require.Empty(t, id)
 	})
 
-	sess, err := store.Get(ctx)
-	require.NoError(t, err)
-	defer sess.Release()
+	t.Run("propagated context", func(t *testing.T) {
+		t.Parallel()
 
-	id, ok := fiber.ValueFromContext[string](ctx, sessionIDContextKey)
-	require.True(t, ok)
-	require.Equal(t, sess.ID(), id)
+		app := fiber.New(fiber.Config{PassLocalsToContext: true})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
 
-	id, ok = fiber.ValueFromContext[string](ctx.Context(), sessionIDContextKey)
-	require.True(t, ok)
-	require.Equal(t, sess.ID(), id)
+		store := NewStore(Config{
+			KeyGenerator: func() string {
+				return "generated-session-id"
+			},
+		})
+
+		sess, err := store.Get(ctx)
+		require.NoError(t, err)
+		defer sess.Release()
+
+		id, ok := fiber.ValueFromContext[string](ctx, sessionIDContextKey)
+		require.True(t, ok)
+		require.Equal(t, sess.ID(), id)
+
+		id, ok = fiber.ValueFromContext[string](ctx.Context(), sessionIDContextKey)
+		require.True(t, ok)
+		require.Equal(t, sess.ID(), id)
+	})
 }
 
 func TestStore_Delete(t *testing.T) {

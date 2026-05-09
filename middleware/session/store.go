@@ -128,11 +128,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 
 	id := s.getSessionID(c)
 	if id == "" {
-		var ok bool
-		id, ok = fiber.ValueFromContext[string](c, sessionIDContextKey)
-		if !ok {
-			id = ""
-		}
+		id, _ = fiber.ValueFromContext[string](c, sessionIDContextKey)
 	} else {
 		fiber.StoreInContext(c, sessionIDContextKey, id)
 	}
