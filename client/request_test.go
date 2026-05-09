@@ -1120,7 +1120,8 @@ func Test_Request_Cookie_With_Server(t *testing.T) {
 	t.Parallel()
 	handler := func(c fiber.Ctx) error {
 		return c.SendString(
-			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
+			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"),
+		)
 	}
 
 	wrapAgent := func(req *Request) {
@@ -1187,7 +1188,8 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 	t.Run("json body", func(t *testing.T) {
 		t.Parallel()
-		testRequest(t,
+		testRequest(
+			t,
 			func(c fiber.Ctx) error {
 				require.Equal(t, "application/json", string(c.Request().Header.ContentType()))
 				return c.SendString(string(c.Request().Body()))
@@ -1203,7 +1205,8 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 	t.Run("xml body", func(t *testing.T) {
 		t.Parallel()
-		testRequest(t,
+		testRequest(
+			t,
 			func(c fiber.Ctx) error {
 				require.Equal(t, "application/xml", string(c.Request().Header.ContentType()))
 				return c.SendString(string(c.Request().Body()))
@@ -1222,7 +1225,8 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 	t.Run("cbor body", func(t *testing.T) {
 		t.Parallel()
-		testRequest(t,
+		testRequest(
+			t,
 			func(c fiber.Ctx) error {
 				require.Equal(t, "application/cbor", string(c.Request().Header.ContentType()))
 				return c.SendString(string(c.Request().Body()))
@@ -1382,7 +1386,8 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 	t.Run("raw body", func(t *testing.T) {
 		t.Parallel()
-		testRequest(t,
+		testRequest(
+			t,
 			func(c fiber.Ctx) error {
 				return c.SendString(string(c.Request().Body()))
 			},
@@ -1458,7 +1463,8 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 	t.Parallel()
 	t.Run("json error", func(t *testing.T) {
 		t.Parallel()
-		testRequestFail(t,
+		testRequestFail(
+			t,
 			func(c fiber.Ctx) error {
 				return c.SendString("")
 			},
@@ -1471,7 +1477,8 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 
 	t.Run("xml error", func(t *testing.T) {
 		t.Parallel()
-		testRequestFail(t,
+		testRequestFail(
+			t,
 			func(c fiber.Ctx) error {
 				return c.SendString("")
 			},
