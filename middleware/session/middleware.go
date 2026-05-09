@@ -178,11 +178,8 @@ func releaseMiddleware(m *Middleware) {
 	if m.ctx != nil {
 		m.ctx.Locals(sessionIDContextKey, "")
 		m.ctx.Locals(middlewareContextKey, nil)
-		m.ctx.SetContext(context.WithValue(
-			context.WithValue(m.ctx.Context(), sessionIDContextKey, ""),
-			middlewareContextKey,
-			(*Middleware)(nil),
-		))
+		ctx := context.WithValue(m.ctx.Context(), sessionIDContextKey, "")
+		m.ctx.SetContext(context.WithValue(ctx, middlewareContextKey, (*Middleware)(nil)))
 	}
 	m.config = Config{}
 	m.Session = nil
