@@ -191,7 +191,8 @@ func (app *App) quoteRawString(raw string) string {
 			bb.B = append(bb.B, '\\', 'r')
 		case c < 0x20 || c == 0x7f:
 			// percent-encode control and DEL
-			bb.B = append(bb.B,
+			bb.B = append(
+				bb.B,
 				'%',
 				hex[c>>4],
 				hex[c&0x0f],
