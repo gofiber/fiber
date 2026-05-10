@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Wait for check is finished
         id: wait_for_checks
-        uses: poseidon/wait-for-status-checks@v0.6.0
+        uses: poseidon/wait-for-status-checks@899c768d191b56eef585c18f8558da19e1f3e707 # v0.6.0
         with:
           token: ${{ secrets.PR_TOKEN }}
           match_pattern: ^unit
@@ -26,7 +26,7 @@ jobs:
     steps:
       - name: Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v3.1.0
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
           github-token: "${{ secrets.PR_TOKEN }}"
       - name: Enable auto-merge for Dependabot PRs
