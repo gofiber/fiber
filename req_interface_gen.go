@@ -187,5 +187,7 @@ type Req interface {
 	IsProxyTrusted() bool
 	// IsFromLocal will return true if request came from local.
 	IsFromLocal() bool
+	// IsFromUnixSocket returns true if the request arrived over a Unix domain socket.
+	IsFromUnixSocket() bool
 	getBody() []byte
 }
