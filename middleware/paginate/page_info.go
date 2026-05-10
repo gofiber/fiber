@@ -69,7 +69,7 @@ func (p *PageInfo) Start() int {
 	}
 
 	const maxInt = int(^uint(0) >> 1)
-	if p.Page > (maxInt/p.Limit)+1 {
+	if p.Page-1 > maxInt/p.Limit {
 		return maxInt
 	}
 

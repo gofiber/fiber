@@ -121,7 +121,9 @@ func Test_PageInfoStart(t *testing.T) {
 		expected int
 	}{
 		{"Page 1, limit 10", PageInfo{Page: 1, Limit: 10}, 0},
+		{"Page 1, limit 1", PageInfo{Page: 1, Limit: 1}, 0},
 		{"Page 2, limit 10", PageInfo{Page: 2, Limit: 10}, 10},
+		{"Page 2, limit 1", PageInfo{Page: 2, Limit: 1}, 1},
 		{"Page 3, limit 20", PageInfo{Page: 3, Limit: 20}, 40},
 		{"With offset", PageInfo{Page: 2, Limit: 10, Offset: 25}, 25},
 		{"Zero page", PageInfo{Page: 0, Limit: 10}, 0},
