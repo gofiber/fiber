@@ -1689,6 +1689,23 @@ func TestValueFromContext(t *testing.T) {
 		require.Equal(t, "value", value)
 	})
 
+	t.Run("released fiber.Ctx", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+
+		c.Locals("key", "value")
+		app.ReleaseCtx(c)
+
+		require.NotPanics(t, func() {
+			value, ok := ValueFromContext[string](c, "key")
+			require.False(t, ok)
+			require.Empty(t, value)
+		})
+	})
+
 	t.Run("fiber.CustomCtx", func(t *testing.T) {
 		t.Parallel()
 
