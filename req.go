@@ -1149,7 +1149,7 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 	return false
 }
 
-// IsFromLocal will return true if request came from local.
+// IsFromLocal will return true if request came from a loopback IP.
 func (r *DefaultReq) IsFromLocal() bool {
 	if ip := r.c.fasthttp.RemoteIP(); ip != nil {
 		return ip.IsLoopback()
