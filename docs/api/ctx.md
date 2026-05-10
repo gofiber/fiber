@@ -1264,6 +1264,21 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### IsFromUnixSocket
+
+Returns `true` if the request came in over a Unix domain socket.
+
+```go title="Signature"
+func (c fiber.Ctx) IsFromUnixSocket() bool
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.IsFromUnixSocket()
+  return nil
+})
+```
+
 ### IsJSON
 
 Reports whether the `Content-Type` header is JSON.

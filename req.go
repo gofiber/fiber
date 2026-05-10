@@ -1151,16 +1151,16 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 
 // IsFromLocal will return true if request came from local.
 func (r *DefaultReq) IsFromLocal() bool {
-	// Unix sockets are inherently local - only processes on the same host can connect.
-	remoteAddr := r.c.fasthttp.RemoteAddr()
-	if _, ok := remoteAddr.(*net.UnixAddr); ok {
-		return true
-	}
-
 	if ip := r.c.fasthttp.RemoteIP(); ip != nil {
 		return ip.IsLoopback()
 	}
 	return false
+}
+
+// IsFromUnixSocket returns true if the request arrived over a Unix domain socket.
+func (r *DefaultReq) IsFromUnixSocket() bool {
+	_, ok := r.c.fasthttp.RemoteAddr().(*net.UnixAddr)
+	return ok
 }
 
 func (r *DefaultReq) getBody() []byte {
