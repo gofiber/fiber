@@ -8424,7 +8424,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		require.False(t, c.IsFromLocal())
 	}
 	// Test for the case fasthttp remoteAddr is set to a Unix socket.
-	// Unix sockets are inherently local - only processes on the same host can connect.
+	// IsFromLocal only treats loopback IPs as local.
 	{
 		app := New()
 		fastCtx := &fasthttp.RequestCtx{}
@@ -8432,7 +8432,32 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx.SetRemoteAddr(unixAddr)
 		c := app.AcquireCtx(fastCtx)
 		defer app.ReleaseCtx(c)
-		require.True(t, c.IsFromLocal())
+		require.False(t, c.IsFromLocal())
+	}
+}
+
+// go test -run Test_Ctx_IsFromUnixSocket_RemoteAddr
+func Test_Ctx_IsFromUnixSocket_RemoteAddr(t *testing.T) {
+	t.Parallel()
+
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+		require.False(t, c.IsFromUnixSocket())
+		require.False(t, c.Req().IsFromUnixSocket())
+	}
+
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(&net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"})
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+		require.True(t, c.IsFromUnixSocket())
+		require.True(t, c.Req().IsFromUnixSocket())
 	}
 }
 
