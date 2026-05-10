@@ -116,6 +116,7 @@ server {
         proxy_set_header Host $host;
         # Overwrite untrusted inbound forwarding headers at the edge.
         proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
