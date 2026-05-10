@@ -5309,6 +5309,26 @@ func Test_Ctx_SaveFile_NilFileHeader(t *testing.T) {
 	require.ErrorIs(t, err, ErrFileHeaderNil)
 }
 
+func Test_Ctx_SaveFileToStorage_DefaultBodyLimitFallback(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.config.BodyLimit = 0 // bypass app default coercion to exercise the fallback branch
+	storage := memory.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	fileHeader := createMultipartFileHeader(t, "small.txt", []byte("hello"))
+
+	err := ctx.SaveFileToStorage(fileHeader, "key", storage)
+	require.NoError(t, err)
+
+	stored, err := storage.Get("key")
+	require.NoError(t, err)
+	require.Equal(t, []byte("hello"), stored)
+}
+
 func Test_Ctx_SaveFileToStorage_ErrorMessageContainsFilename(t *testing.T) {
 	t.Parallel()
 
@@ -5357,13 +5377,13 @@ type failingStorage struct {
 	err error
 }
 
-func (s *failingStorage) Get(string) ([]byte, error)              { return nil, nil }
+func (*failingStorage) Get(string) ([]byte, error)                { return nil, nil }
 func (s *failingStorage) Set(string, []byte, time.Duration) error { return s.err }
-func (s *failingStorage) Delete(string) error                     { return nil }
-func (s *failingStorage) Reset() error                            { return nil }
-func (s *failingStorage) Close() error                            { return nil }
+func (*failingStorage) Delete(string) error                       { return nil }
+func (*failingStorage) Reset() error                              { return nil }
+func (*failingStorage) Close() error                              { return nil }
 
-func (s *failingStorage) GetWithContext(context.Context, string) ([]byte, error) {
+func (*failingStorage) GetWithContext(context.Context, string) ([]byte, error) {
 	return nil, nil
 }
 
@@ -5371,8 +5391,8 @@ func (s *failingStorage) SetWithContext(_ context.Context, _ string, _ []byte, _
 	return s.err
 }
 
-func (s *failingStorage) DeleteWithContext(context.Context, string) error { return nil }
-func (s *failingStorage) ResetWithContext(context.Context) error          { return nil }
+func (*failingStorage) DeleteWithContext(context.Context, string) error { return nil }
+func (*failingStorage) ResetWithContext(context.Context) error          { return nil }
 
 // go test -run Test_Ctx_SaveFileToStorage_ContextPropagation
 func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
