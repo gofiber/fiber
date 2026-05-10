@@ -47,6 +47,12 @@ type ListenConfig struct {
 	// Default: nil
 	GracefulContext context.Context `json:"graceful_context"` //nolint:containedctx // It's needed to set context inside Listen.
 
+	// PreforkLogger sets a custom logger for the prefork process manager.
+	// This only applies when EnablePrefork is true.
+	//
+	// Default: Fiber's built-in logger (log.Infof)
+	PreforkLogger PreforkLogger `json:"prefork_logger"`
+
 	// TLSConfigFunc allows customizing tls.Config as you want.
 	//
 	// Default: nil
@@ -125,6 +131,13 @@ type ListenConfig struct {
 	//
 	// Default: false
 	EnablePrefork bool `json:"enable_prefork"`
+
+	// PreforkRecoverThreshold defines the maximum number of times a child process
+	// can be restarted after crashing before the master process exits with an error.
+	// This only applies when EnablePrefork is true.
+	//
+	// Default: max(1, runtime.GOMAXPROCS(0) / 2)
+	PreforkRecoverThreshold int `json:"prefork_recover_threshold"`
 
 	// If set to true, will print all routes with their method, path and handler.
 	//
