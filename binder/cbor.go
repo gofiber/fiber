@@ -26,16 +26,18 @@ func (b *CBORBinding) Reset() {
 	b.CBORDecoder = nil
 }
 
-var errUnimplementedCBOR = errors.New("must explicitly set up CBOR, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
+// ErrUnimplementedCBOR signals that CBOR support must be explicitly configured
+// before it can be used.
+var ErrUnimplementedCBOR = errors.New("must explicitly set up CBOR, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
 
 // UnimplementedCborMarshal returns an error to signal that a CBOR marshaler
 // must be configured before CBOR support can be used.
 func UnimplementedCborMarshal(_ any) ([]byte, error) {
-	return nil, errUnimplementedCBOR
+	return nil, ErrUnimplementedCBOR
 }
 
 // UnimplementedCborUnmarshal returns an error to signal that a CBOR unmarshaler
 // must be configured before CBOR support can be used.
 func UnimplementedCborUnmarshal(_ []byte, _ any) error {
-	return errUnimplementedCBOR
+	return ErrUnimplementedCBOR
 }

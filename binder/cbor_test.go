@@ -94,7 +94,7 @@ func Test_UnimplementedCborMarshal_ReturnsError(t *testing.T) {
 	t.Parallel()
 
 	_, err := UnimplementedCborMarshal(struct{ Name string }{Name: "test"})
-	require.ErrorIs(t, err, errUnimplementedCBOR)
+	require.ErrorIs(t, err, ErrUnimplementedCBOR)
 }
 
 func Test_UnimplementedCborUnmarshal_ReturnsError(t *testing.T) {
@@ -102,5 +102,5 @@ func Test_UnimplementedCborUnmarshal_ReturnsError(t *testing.T) {
 
 	var out any
 	err := UnimplementedCborUnmarshal([]byte{0xa0}, &out)
-	require.ErrorIs(t, err, errUnimplementedCBOR)
+	require.ErrorIs(t, err, ErrUnimplementedCBOR)
 }
