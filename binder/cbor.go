@@ -26,7 +26,7 @@ func (b *CBORBinding) Reset() {
 	b.CBORDecoder = nil
 }
 
-var errUnimplementedCBOR = errors.New("must explicitly setup CBOR, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
+var errUnimplementedCBOR = errors.New("must explicitly set up CBOR, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
 
 // UnimplementedCborMarshal returns an error to signal that a CBOR marshaler
 // must be configured before CBOR support can be used.

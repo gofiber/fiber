@@ -94,7 +94,7 @@ func Test_UnimplementedCborMarshal_ReturnsError(t *testing.T) {
 	t.Parallel()
 
 	_, err := UnimplementedCborMarshal(struct{ Name string }{Name: "test"})
-	require.EqualError(t, err, "must explicitly setup CBOR, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
+	require.ErrorIs(t, err, errUnimplementedCBOR)
 }
 
 func Test_UnimplementedCborUnmarshal_ReturnsError(t *testing.T) {
@@ -102,5 +102,5 @@ func Test_UnimplementedCborUnmarshal_ReturnsError(t *testing.T) {
 
 	var out any
 	err := UnimplementedCborUnmarshal([]byte{0xa0}, &out)
-	require.EqualError(t, err, "must explicitly setup CBOR, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
+	require.ErrorIs(t, err, errUnimplementedCBOR)
 }
