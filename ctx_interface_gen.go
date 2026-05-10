@@ -374,7 +374,7 @@ type Ctx interface {
 	// If Config.TrustProxy false, it returns false.
 	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
 	IsProxyTrusted() bool
-	// IsFromLocal will return true if request came from local.
+	// IsFromLocal will return true if request came from a loopback IP.
 	IsFromLocal() bool
 	// IsFromUnixSocket returns true if the request arrived over a Unix domain socket.
 	IsFromUnixSocket() bool

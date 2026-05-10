@@ -124,6 +124,8 @@ func Test_PageInfoStart(t *testing.T) {
 		{"Page 2, limit 10", PageInfo{Page: 2, Limit: 10}, 10},
 		{"Page 3, limit 20", PageInfo{Page: 3, Limit: 20}, 40},
 		{"With offset", PageInfo{Page: 2, Limit: 10, Offset: 25}, 25},
+		{"Zero page", PageInfo{Page: 0, Limit: 10}, 0},
+		{"Overflow clamps to MaxInt", PageInfo{Page: int(^uint(0) >> 1), Limit: 100}, int(^uint(0) >> 1)},
 	}
 
 	for _, tt := range tests {
