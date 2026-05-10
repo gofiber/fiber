@@ -5314,9 +5314,52 @@ func Test_Ctx_SaveFileToStorage_ErrorMessageContainsFilename(t *testing.T) {
 	err := ctx.SaveFileToStorage(fileHeader, "test-path", storage)
 
 	require.Error(t, err)
+	require.ErrorIs(t, err, ErrFileRead)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 	require.Contains(t, err.Error(), "test-file.png")
-	require.Contains(t, err.Error(), "test-path")
 }
+
+func Test_Ctx_SaveFileToStorage_StoreErrorIncludesPath(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	wantErr := errors.New("backend down")
+	storage := &failingStorage{err: wantErr}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	fileHeader := createMultipartFileHeader(t, "report.pdf", []byte("payload"))
+
+	err := ctx.SaveFileToStorage(fileHeader, "uploads/report.pdf", storage)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrFileStore)
+	require.ErrorIs(t, err, wantErr)
+	require.Contains(t, err.Error(), "report.pdf")
+	require.Contains(t, err.Error(), "uploads/report.pdf")
+}
+
+type failingStorage struct {
+	err error
+}
+
+func (s *failingStorage) Get(string) ([]byte, error)              { return nil, nil }
+func (s *failingStorage) Set(string, []byte, time.Duration) error { return s.err }
+func (s *failingStorage) Delete(string) error                     { return nil }
+func (s *failingStorage) Reset() error                            { return nil }
+func (s *failingStorage) Close() error                            { return nil }
+
+func (s *failingStorage) GetWithContext(context.Context, string) ([]byte, error) {
+	return nil, nil
+}
+
+func (s *failingStorage) SetWithContext(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return s.err
+}
+
+func (s *failingStorage) DeleteWithContext(context.Context, string) error { return nil }
+func (s *failingStorage) ResetWithContext(context.Context) error          { return nil }
 
 // go test -run Test_Ctx_SaveFileToStorage_ContextPropagation
 func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
