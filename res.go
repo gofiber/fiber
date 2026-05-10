@@ -429,6 +429,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // AutoFormat performs content-negotiation on the Accept HTTP header.
 // It uses Accepts to select a proper format.
 // The supported content types are text/html, text/plain, application/json, application/xml, application/vnd.msgpack, and application/cbor.
+// When text/html is selected, the body is treated as plain text and HTML-escaped before being wrapped in a `<p>` element.
 // For more flexible content negotiation, use Format.
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
@@ -457,7 +458,7 @@ func (r *DefaultRes) AutoFormat(body any) error {
 	case "xml":
 		return r.XML(body)
 	case "html":
-		return r.SendString("<p>" + b + "</p>")
+		return r.SendString("<p>" + template.HTMLEscapeString(b) + "</p>")
 	case "msgpack":
 		return r.MsgPack(body)
 	case "cbor":
@@ -1081,11 +1082,6 @@ func (r *DefaultRes) Writef(f string, a ...any) (int, error) {
 func (r *DefaultRes) WriteString(s string) (int, error) {
 	r.c.fasthttp.Response.AppendBodyString(s)
 	return len(s), nil
-}
-
-// Release is a method to reset Res fields when to use ReleaseCtx()
-func (r *DefaultRes) release() {
-	r.c = nil
 }
 
 // Drop closes the underlying connection without sending any response headers or body.

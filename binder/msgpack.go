@@ -1,8 +1,12 @@
 package binder
 
 import (
+	"errors"
+
 	"github.com/gofiber/utils/v2"
 )
+
+var ErrMsgPackNotConfigured = errors.New("binder: msgpack is not configured, please check docs: https://docs.gofiber.io/next/guide/advance-format#msgpack")
 
 // MsgPackBinding is the MsgPack binder for MsgPack request body.
 type MsgPackBinding struct {
@@ -24,14 +28,14 @@ func (b *MsgPackBinding) Reset() {
 	b.MsgPackDecoder = nil
 }
 
-// UnimplementedMsgpackMarshal panics to signal that a Msgpack marshaler must
+// UnimplementedMsgpackMarshal returns an error to signal that a MsgPack marshaler must
 // be configured before MsgPack support can be used.
 func UnimplementedMsgpackMarshal(_ any) ([]byte, error) {
-	panic("Must explicit setup Msgpack, please check docs: https://docs.gofiber.io/next/guide/advance-format#msgpack")
+	return nil, ErrMsgPackNotConfigured
 }
 
-// UnimplementedMsgpackUnmarshal panics to signal that a Msgpack unmarshaler
+// UnimplementedMsgpackUnmarshal returns an error to signal that a MsgPack unmarshaler
 // must be configured before MsgPack support can be used.
 func UnimplementedMsgpackUnmarshal(_ []byte, _ any) error {
-	panic("Must explicit setup Msgpack, please check docs: https://docs.gofiber.io/next/guide/advance-format#msgpack")
+	return ErrMsgPackNotConfigured
 }

@@ -1149,23 +1149,18 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 	return false
 }
 
-// IsFromLocal will return true if request came from local.
+// IsFromLocal will return true if request came from a loopback IP.
 func (r *DefaultReq) IsFromLocal() bool {
-	// Unix sockets are inherently local - only processes on the same host can connect.
-	remoteAddr := r.c.fasthttp.RemoteAddr()
-	if _, ok := remoteAddr.(*net.UnixAddr); ok {
-		return true
-	}
-
 	if ip := r.c.fasthttp.RemoteIP(); ip != nil {
 		return ip.IsLoopback()
 	}
 	return false
 }
 
-// Release is a method to reset Req fields when to use ReleaseCtx()
-func (r *DefaultReq) release() {
-	r.c = nil
+// IsFromUnixSocket returns true if the request arrived over a Unix domain socket.
+func (r *DefaultReq) IsFromUnixSocket() bool {
+	_, ok := r.c.fasthttp.RemoteAddr().(*net.UnixAddr)
+	return ok
 }
 
 func (r *DefaultReq) getBody() []byte {

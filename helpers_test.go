@@ -640,7 +640,8 @@ func Test_Utils_UniqueRouteStack(t *testing.T) {
 			route1,
 			route2,
 			route3,
-		}))
+		}),
+	)
 }
 
 func Test_Utils_getGroupPath(t *testing.T) {

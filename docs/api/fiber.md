@@ -119,6 +119,8 @@ app.Listen(":8080", fiber.ListenConfig{
 | <Reference id="ShutdownTimeout">ShutdownTimeout</Reference>             | `time.Duration`               | Specifies the maximum duration to wait for the server to gracefully shutdown. When the timeout is reached, the graceful shutdown process is interrupted and forcibly terminated, and the `context.DeadlineExceeded` error is passed to the `OnPostShutdown` callback. Set to 0 to disable the timeout and wait indefinitely. | `10 * time.Second` |
 | <Reference id="listeneraddrfunc">ListenerAddrFunc</Reference>           | `func(addr net.Addr)`         | Allows accessing and customizing `net.Listener`.                                                                                                                                                                                                                                                                             | `nil`              |
 | <Reference id="listenernetwork">ListenerNetwork</Reference>             | `string`                      | Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), "unix" (Unix Domain Sockets). WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.                                                                                                                                                  | `tcp4`             |
+| <Reference id="preforkrecoverthreshold">PreforkRecoverThreshold</Reference> | `int`                      | Defines the maximum number of child process restarts after crashes before the prefork master exits with an error. Only applies when prefork is enabled.                                                                                                                                                                        | `max(1, runtime.GOMAXPROCS(0) / 2)` |
+| <Reference id="preforklogger">PreforkLogger</Reference>                 | `PreforkLogger`      | Sets a custom logger for the prefork process manager. Only applies when prefork is enabled.                                                                                                                                                                                                                                  | Fiber logger       |
 | <Reference id="unixsocketfilemode">UnixSocketFileMode</Reference>       | `os.FileMode`                 | FileMode to set for Unix Domain Socket (ListenerNetwork must be "unix")                                                                                                                                                                                                                                                      | `0770`             |
 | <Reference id="tlsconfigfunc">TLSConfigFunc</Reference>                 | `func(tlsConfig *tls.Config)` | Allows customizing `tls.Config` as you want. Ignored when `TLSConfig` is set.                                                                                                                                                                                                                                                | `nil`              |
 | <Reference id="tlsconfig">TLSConfig</Reference>                         | `*tls.Config`                 | Recommended base TLS configuration (cloned). Use for external certificate providers via `GetCertificate`. When set, other TLS fields are ignored.                                                                                                                                                                             | `nil`              |
@@ -152,7 +154,18 @@ Prefork is a feature that allows you to spawn multiple Go processes listening on
 app.Listen(":8080", fiber.ListenConfig{EnablePrefork: true})
 ```
 
-This distributes the incoming connections between the spawned processes and allows more requests to be handled simultaneously.
+Depending on the operating system, prefork can distribute incoming connections between the spawned processes and allow more requests to be handled simultaneously.
+
+On Linux, prefork typically relies on the `SO_REUSEPORT` socket option for kernel-assisted load distribution across workers. On Windows, Fiber falls back to `SO_REUSEADDR`; this is not a functional equivalent to Linux `SO_REUSEPORT` as it lacks native load balancing and may allow other processes to bind to the same port. Operators should validate this behavior against their security and availability requirements.
+
+##### Security Considerations
+
+Prefork changes the port-ownership model from strict single-owner binding to an intentional multi-listener setup. In shared hosts, a local co-resident attacker with sufficient privileges may be able to race for shared binds or receive a portion of traffic, depending on platform behavior and user boundaries.
+
+- Run prefork only within a trusted boundary (same deployment unit / same trust domain).
+- Use a dedicated service account for Fiber workers; avoid broad shared-user deployments.
+- Prefer container or VM isolation and avoid shared host namespaces for unrelated workloads.
+- If strict single-owner port semantics are required, run Fiber without prefork.
 
 #### TLS
 

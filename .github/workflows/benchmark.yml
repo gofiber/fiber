@@ -61,7 +61,7 @@ jobs:
 
       # This will only run if we have Benchmark Results from main branch
       - name: Compare PR Benchmark Results with main branch
-        uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1.22.0
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
         if: steps.cache.outputs.cache-hit == 'true'
         with:
           tool: 'go'
@@ -78,7 +78,7 @@ jobs:
           go-force-package-suffix: true
 
       - name: Store Benchmark Results for main branch
-        uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1.22.0
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'
@@ -93,7 +93,7 @@ jobs:
           go-force-package-suffix: true
 
       - name: Publish Benchmark Results to GitHub Pages
-        uses: benchmark-action/github-action-benchmark@a60cea5bc7b49e15c1f58f411161f99e0df48372 # v1.22.0
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'
