@@ -5296,6 +5296,19 @@ func Test_Ctx_SaveFileToStorage_NilFileHeader(t *testing.T) {
 	require.ErrorIs(t, err, ErrFileHeaderNil)
 }
 
+func Test_Ctx_SaveFile_NilFileHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	err := ctx.SaveFile(nil, "test")
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrFileHeaderNil)
+}
+
 func Test_Ctx_SaveFileToStorage_ErrorMessageContainsFilename(t *testing.T) {
 	t.Parallel()
 

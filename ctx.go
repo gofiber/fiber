@@ -512,6 +512,9 @@ func (c *DefaultCtx) IsPreflight() bool {
 
 // SaveFile saves any multipart file to disk.
 func (*DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) error {
+	if fileheader == nil {
+		return ErrFileHeaderNil
+	}
 	return fasthttp.SaveMultipartFile(fileheader, path)
 }
 
