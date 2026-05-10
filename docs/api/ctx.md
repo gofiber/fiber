@@ -1274,8 +1274,10 @@ func (c fiber.Ctx) IsFromUnixSocket() bool
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
-  c.IsFromUnixSocket()
-  return nil
+  if c.IsFromUnixSocket() {
+    return c.SendString("Connected via Unix socket")
+  }
+  return c.SendString("Connected via TCP")
 })
 ```
 
