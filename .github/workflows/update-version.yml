@@ -22,6 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          # PAT with bypass rights for the protected `main` branch.
+          # The default GITHUB_TOKEN cannot push directly to `main`.
+          token: ${{ secrets.PR_TOKEN }}
 
       - name: Determine version
         id: version

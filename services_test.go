@@ -5,7 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	stdlog "log" //nolint:depguard // Test needs the concrete stdlib logger type to restore the previous writer.
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +32,75 @@ type mockService struct {
 	terminated     bool
 	startDelay     time.Duration
 	terminateDelay time.Duration
+}
+
+type shutdownHookStorage struct {
+	closeErr    error
+	closeCalled atomic.Bool
+}
+
+type stringsLogger struct {
+	strings.Builder
+}
+
+var servicesTestLogOutputMu sync.Mutex
+
+func withCapturedLogOutput(t *testing.T, writer io.Writer) {
+	t.Helper()
+
+	servicesTestLogOutputMu.Lock()
+	cleanupRegistered := false
+	defer func() {
+		if !cleanupRegistered {
+			servicesTestLogOutputMu.Unlock()
+		}
+	}()
+
+	currentOutput := log.DefaultLogger[*stdlog.Logger]().Logger().Writer()
+	t.Cleanup(func() {
+		log.SetOutput(currentOutput)
+		servicesTestLogOutputMu.Unlock()
+	})
+	cleanupRegistered = true
+
+	log.SetOutput(writer)
+}
+
+func (*shutdownHookStorage) GetWithContext(context.Context, string) ([]byte, error) {
+	return nil, nil
+}
+
+func (*shutdownHookStorage) Get(string) ([]byte, error) {
+	return nil, nil
+}
+
+func (*shutdownHookStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
+	return nil
+}
+
+func (*shutdownHookStorage) Set(string, []byte, time.Duration) error {
+	return nil
+}
+
+func (*shutdownHookStorage) DeleteWithContext(context.Context, string) error {
+	return nil
+}
+
+func (*shutdownHookStorage) Delete(string) error {
+	return nil
+}
+
+func (*shutdownHookStorage) ResetWithContext(context.Context) error {
+	return nil
+}
+
+func (*shutdownHookStorage) Reset() error {
+	return nil
+}
+
+func (s *shutdownHookStorage) Close() error {
+	s.closeCalled.Store(true)
+	return s.closeErr
 }
 
 func (m *mockService) Start(ctx context.Context) error {
@@ -127,6 +200,8 @@ func Test_HasConfiguredServices(t *testing.T) {
 }
 
 func Test_InitServices(t *testing.T) {
+	t.Parallel()
+
 	t.Run("no-services", func(t *testing.T) {
 		app := &App{configured: Config{}}
 		require.NotPanics(t, app.initServices)
@@ -178,10 +253,6 @@ func Test_InitServices(t *testing.T) {
 
 		require.NotPanics(t, app.initServices)
 
-		type stringsLogger struct {
-			strings.Builder
-		}
-
 		var buf stringsLogger
 		log.SetOutput(&buf)
 
@@ -202,16 +273,56 @@ func Test_InitServices(t *testing.T) {
 
 		require.NotPanics(t, app.initServices)
 
-		type stringsLogger struct {
-			strings.Builder
-		}
-
 		var buf stringsLogger
 		log.SetOutput(&buf)
 
 		app.Hooks().executeOnPostShutdownHooks(nil)
 
 		require.Contains(t, buf.String(), "failed to shutdown services: service dep2 terminate: terminate error 2")
+	})
+
+	t.Run("shutdown-hooks/close-shared-state", func(t *testing.T) {
+		t.Parallel()
+
+		storage := &shutdownHookStorage{}
+		app := New(Config{
+			Services:      []Service{&mockService{name: "dep1"}},
+			SharedStorage: storage,
+		})
+
+		require.NotPanics(t, app.initServices)
+
+		var buf stringsLogger
+		withCapturedLogOutput(t, &buf)
+
+		app.Hooks().executeOnPostShutdownHooks(nil)
+
+		require.True(t, storage.closeCalled.Load())
+		require.NotContains(t, buf.String(), "failed to close sharedState:")
+	})
+
+	t.Run("shutdown-hooks/close-shared-state-after-service-error", func(t *testing.T) {
+		t.Parallel()
+
+		storage := &shutdownHookStorage{closeErr: errors.New("close error")}
+		app := New(Config{
+			Services: []Service{
+				&mockService{name: "dep1"},
+				&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
+			},
+			SharedStorage: storage,
+		})
+
+		require.NotPanics(t, app.initServices)
+
+		var buf stringsLogger
+		withCapturedLogOutput(t, &buf)
+
+		app.Hooks().executeOnPostShutdownHooks(nil)
+
+		require.True(t, storage.closeCalled.Load())
+		require.Contains(t, buf.String(), "failed to shutdown services: service dep2 terminate: terminate error 2")
+		require.Contains(t, buf.String(), "failed to close sharedState: close error")
 	})
 }
 

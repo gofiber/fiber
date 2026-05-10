@@ -143,6 +143,22 @@ var (
 	}
 )
 
+func appendLowerBytes(dst, src []byte) []byte {
+	dst = dst[:0]
+	if cap(dst) < len(src) {
+		dst = make([]byte, len(src))
+	} else {
+		dst = dst[:len(src)]
+	}
+	for i, c := range src {
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		dst[i] = c
+	}
+	return dst
+}
+
 // RoutePatternMatch reports whether path matches the provided Fiber route pattern.
 //
 // Patterns use the same syntax as routes registered on an App, including
