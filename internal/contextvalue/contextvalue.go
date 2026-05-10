@@ -1,6 +1,8 @@
 package contextvalue
 
-import "github.com/valyala/fasthttp"
+import (
+	"github.com/valyala/fasthttp"
+)
 
 type fiberLocalContext interface {
 	Locals(key any, value ...any) any
@@ -17,14 +19,14 @@ type valueContext interface {
 // Value retrieves a value stored under key from supported Fiber context types.
 func Value[T any](ctx, key any) (T, bool) {
 	switch typed := ctx.(type) {
+	case *fasthttp.RequestCtx:
+		val, ok := typed.UserValue(key).(T)
+		return val, ok
 	case valueContext:
 		val, ok := typed.Value(key).(T)
 		return val, ok
 	case fiberLocalContext:
 		val, ok := typed.Locals(key).(T)
-		return val, ok
-	case *fasthttp.RequestCtx:
-		val, ok := typed.UserValue(key).(T)
 		return val, ok
 	case userValueContext:
 		val, ok := typed.UserValue(key).(T)
