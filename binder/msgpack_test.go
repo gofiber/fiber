@@ -90,7 +90,7 @@ func Test_UnimplementedMsgpackMarshal_ReturnsError(t *testing.T) {
 	t.Parallel()
 
 	_, err := UnimplementedMsgpackMarshal(struct{ Name string }{Name: "test"})
-	require.ErrorIs(t, err, ErrMsgpackNotConfigured)
+	require.ErrorIs(t, err, ErrMsgPackNotConfigured)
 }
 
 func Test_UnimplementedMsgpackUnmarshal_ReturnsError(t *testing.T) {
@@ -98,5 +98,5 @@ func Test_UnimplementedMsgpackUnmarshal_ReturnsError(t *testing.T) {
 
 	var out any
 	err := UnimplementedMsgpackUnmarshal([]byte{0x80}, &out)
-	require.ErrorIs(t, err, ErrMsgpackNotConfigured)
+	require.ErrorIs(t, err, ErrMsgPackNotConfigured)
 }
