@@ -1,6 +1,8 @@
 package contextvalue
 
 import (
+	"context"
+
 	"github.com/valyala/fasthttp"
 )
 
@@ -21,6 +23,9 @@ func Value[T any](ctx, key any) (T, bool) {
 	switch typed := ctx.(type) {
 	case *fasthttp.RequestCtx:
 		val, ok := typed.UserValue(key).(T)
+		return val, ok
+	case context.Context:
+		val, ok := typed.Value(key).(T)
 		return val, ok
 	case valueContext:
 		val, ok := typed.Value(key).(T)
