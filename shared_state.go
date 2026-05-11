@@ -413,5 +413,5 @@ func (s *SharedState) storageKey(key string) (string, bool) {
 		return "", false
 	}
 
-return s.prefix + hex.EncodeToString(utils.UnsafeBytes(key)), true
+	return s.prefix + hex.EncodeToString(utils.UnsafeBytes(key)), true
 }
