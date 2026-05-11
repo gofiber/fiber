@@ -173,7 +173,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 			var fsRootPrefix []byte
 			if config.FS != nil && root != "" && root != "." && !rootIsFile {
-				fsRootPrefix = make([]byte, len(root)+1)
+				fsRootPrefix = make([]byte, len(root)+1, len(root)+1)
 				fsRootPrefix[0] = '/'
 				copy(fsRootPrefix[1:], root)
 			}
@@ -216,8 +216,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 						needsTrailingSlash := len(path) == 0 || path[len(path)-1] != '/'
 						if len(fsRootPrefix) > 0 {
 							rewrittenPath := make([]byte, len(fsRootPrefix)+len(path))
-							offset := copy(rewrittenPath, fsRootPrefix)
-							copy(rewrittenPath[offset:], path)
+							copy(rewrittenPath, fsRootPrefix)
+							copy(rewrittenPath[len(fsRootPrefix):], path)
 							path = rewrittenPath
 						}
 						if needsTrailingSlash {
