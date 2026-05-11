@@ -191,6 +191,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 			fileServer.PathRewrite = func(fctx *fasthttp.RequestCtx) []byte {
 				path := fctx.Path()
+				fsRootPath := root
 
 				if len(path) >= prefixLen {
 					checkFile, err := isFile(root, fileServer.FS)
@@ -206,6 +207,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 						path = utils.UnsafeBytes(root)
 					default:
 						path = path[prefixLen:]
+						if fileServer.FS != nil && fsRootPath != "" && fsRootPath != "." {
+							path = append([]byte("/"+fsRootPath), path...)
+						}
 						if len(path) == 0 || path[len(path)-1] != '/' {
 							path = append(path, '/')
 						}

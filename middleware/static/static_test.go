@@ -697,6 +697,23 @@ func Test_Static_FS_Prefix_Wildcard(t *testing.T) {
 	require.Contains(t, string(body), "Test file")
 }
 
+func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/static*", New("fs", Config{
+		FS: os.DirFS("../../.github/testdata"),
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/static/index.html", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/fs/index.html", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "Status code")
+}
+
 func Test_isFile(t *testing.T) {
 	t.Parallel()
 
