@@ -264,6 +264,8 @@ func Test_Ctx_HeaderHelpers(t *testing.T) {
 func Test_Ctx_FullURL_DoesNotAliasPooledBuffer(t *testing.T) {
 	t.Parallel()
 
+	const bufferPoolReuseAttempts = 128
+
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -273,7 +275,7 @@ func Test_Ctx_FullURL_DoesNotAliasPooledBuffer(t *testing.T) {
 	fullURL := c.FullURL()
 	require.Equal(t, "http://example.com/search?q=fiber", fullURL)
 
-	for range 128 {
+	for range bufferPoolReuseAttempts {
 		buf := bytebufferpool.Get()
 		buf.Reset()
 		buf.WriteString("https://mutated.example/rewritten")
