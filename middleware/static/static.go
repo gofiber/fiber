@@ -215,7 +215,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 						path = path[prefixLen:]
 						needsTrailingSlash := len(path) == 0 || path[len(path)-1] != '/'
 						if len(fsRootPrefix) > 0 {
-							rewrittenPath := make([]byte, len(fsRootPrefix)+len(path), len(fsRootPrefix)+len(path)+1)
+							rewrittenPath := make([]byte, len(fsRootPrefix)+len(path))
 							offset := copy(rewrittenPath, fsRootPrefix)
 							copy(rewrittenPath[offset:], path)
 							path = rewrittenPath
