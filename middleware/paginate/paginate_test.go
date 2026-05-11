@@ -783,6 +783,13 @@ func Test_ParseSortQuery(t *testing.T) {
 			[]SortField{{Field: "id", Order: ASC}},
 		},
 		{
+			"Empty AllowedSorts falls back to default sort",
+			"email,-phone",
+			[]string{},
+			"id",
+			[]SortField{{Field: "id", Order: ASC}},
+		},
+		{
 			"Bare dash is skipped",
 			"-",
 			nil,
