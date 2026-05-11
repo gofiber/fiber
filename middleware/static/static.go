@@ -171,6 +171,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 				fsRoot = ""
 			}
 
+			var fsRootPrefix []byte
+			if config.FS != nil && root != "" && root != "." && !rootIsFile {
+				fsRootPrefix = make([]byte, len(root)+1)
+				fsRootPrefix[0] = '/'
+				copy(fsRootPrefix[1:], root)
+			}
+
 			fileServer := &fasthttp.FS{
 				Root:                   fsRoot,
 				FS:                     config.FS,
@@ -191,7 +198,6 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 			fileServer.PathRewrite = func(fctx *fasthttp.RequestCtx) []byte {
 				path := fctx.Path()
-				fsRootPath := root
 
 				if len(path) >= prefixLen {
 					checkFile, err := isFile(root, fileServer.FS)
@@ -207,10 +213,14 @@ func New(root string, cfg ...Config) fiber.Handler {
 						path = utils.UnsafeBytes(root)
 					default:
 						path = path[prefixLen:]
-						if fileServer.FS != nil && fsRootPath != "" && fsRootPath != "." {
-							path = append([]byte("/"+fsRootPath), path...)
+						needsTrailingSlash := len(path) == 0 || path[len(path)-1] != '/'
+						if len(fsRootPrefix) > 0 {
+							rewrittenPath := make([]byte, len(fsRootPrefix)+len(path), len(fsRootPrefix)+len(path)+1)
+							offset := copy(rewrittenPath, fsRootPrefix)
+							copy(rewrittenPath[offset:], path)
+							path = rewrittenPath
 						}
-						if len(path) == 0 || path[len(path)-1] != '/' {
+						if needsTrailingSlash {
 							path = append(path, '/')
 						}
 					}
