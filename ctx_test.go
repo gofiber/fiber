@@ -260,6 +260,31 @@ func Test_Ctx_HeaderHelpers(t *testing.T) {
 	require.False(t, c.HasHeader("X-Trace-Id"))
 }
 
+// go test -run Test_Ctx_FullURL_DoesNotAliasPooledBuffer
+func Test_Ctx_FullURL_DoesNotAliasPooledBuffer(t *testing.T) {
+	t.Parallel()
+
+	const bufferPoolReuseAttempts = 128
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.SetHost("example.com")
+	c.Request().SetRequestURI("/search?q=fiber")
+
+	fullURL := c.FullURL()
+	require.Equal(t, "http://example.com/search?q=fiber", fullURL)
+
+	for range bufferPoolReuseAttempts {
+		buf := bytebufferpool.Get()
+		buf.Reset()
+		buf.WriteString("https://mutated.example/rewritten")
+		bytebufferpool.Put(buf)
+	}
+
+	require.Equal(t, "http://example.com/search?q=fiber", fullURL)
+}
+
 // go test -run Test_Ctx_TypedParsingDefaults
 func Test_Ctx_TypedParsingDefaults(t *testing.T) {
 	t.Parallel()

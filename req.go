@@ -215,7 +215,7 @@ func (c *DefaultCtx) FullURL() string {
 	buf.WriteString(c.Host())
 	buf.WriteString(c.OriginalURL())
 
-	return c.app.toString(buf.Bytes())
+	return buf.String()
 }
 
 // UserAgent returns the User-Agent request header.
