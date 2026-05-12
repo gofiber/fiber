@@ -64,9 +64,15 @@ func (p *PageInfo) Start() int {
 	if p.Offset > 0 {
 		return p.Offset
 	}
-	if p.Page < 1 {
+	if p.Page < 1 || p.Limit < 1 {
 		return 0
 	}
+
+	const maxInt = int(^uint(0) >> 1)
+	if p.Page-1 > maxInt/p.Limit {
+		return maxInt
+	}
+
 	return (p.Page - 1) * p.Limit
 }
 

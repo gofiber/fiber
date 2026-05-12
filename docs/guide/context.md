@@ -98,10 +98,14 @@ app.Get("/raw", func(c fiber.Ctx) error {
 ```
 
 `fasthttpctx` enables `fasthttp` to satisfy the `context.Context` interface.
-`Deadline` always reports no deadline, `Done` is closed when the client
-connection ends, and once it fires `Err` reports `context.Canceled`. This
-means handlers can detect client disconnects while still passing
-`c.RequestCtx()` into APIs that expect a `context.Context`.
+`Deadline` always reports no deadline. `Done` closes only when the server
+shuts down, and `Err` then returns `context.Canceled`.
+
+:::caution
+`Done` does not fire when an individual client disconnects. To stop a
+long-running handler at a deadline, wrap the request with
+`context.WithTimeout` as shown below.
+:::
 
 ## Context Helpers
 
@@ -216,7 +220,7 @@ When starting asynchronous work inside a handler, Fiber does not cancel the base
 By wrapping the request context with `context.WithTimeout`, you can create a derived context that honors deadlines and cancellation signals.
 
 The goroutine checks `ctx.Done()` before sending a result.
-If the request times out or the client disconnects the goroutine exits early and avoids leaking resources.
+If the deadline elapses, the goroutine exits early and avoids leaking resources.
 
 The handler then waits for either:
 
@@ -260,8 +264,8 @@ This approach provides safe cancellation semantics for goroutine-based work whil
 
 - `fiber.Ctx` satisfies `context.Context` but its `Deadline`, `Done`, and `Err`
   methods are currently no-ops.
-- `RequestCtx` exposes the raw `fasthttp` context, whose `Done` channel closes
-  when the client connection ends.
+- `RequestCtx` exposes the raw `fasthttp` context. Its `Done` channel
+  closes only on server shutdown, not on client disconnect.
 - Use `fiber.StoreInContext(c, key, value)` to store request-scoped values in both
   `c.Locals()` and `c.Context()` when values must be available through either API.
 - Middleware helpers like `requestid.FromContext` or `session.FromContext`

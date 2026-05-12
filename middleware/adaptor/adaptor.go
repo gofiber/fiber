@@ -312,6 +312,10 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			return
 		}
 
+		defer func() {
+			_ = fctx.Response.CloseBodyStream() //nolint:errcheck // not needed
+		}()
+
 		// Stream fctx.Response.BodyStream() -> w
 		// in chunks.
 		bufPtr, ok := bufferPool.Get().(*[bufferSize]byte)

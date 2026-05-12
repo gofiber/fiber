@@ -125,7 +125,7 @@ app.Use(paginate.New(paginate.Config{
 | DefaultLimit | `int`                    | Default items per page.                                            | `10`       |
 | SortKey      | `string`                 | Query string key for sort.                                         | `""`       |
 | DefaultSort  | `string`                 | Default sort field.                                                | `"id"`     |
-| AllowedSorts | `[]string`               | Whitelist of allowed sort fields. If nil, all fields are allowed.  | `nil`      |
+| AllowedSorts | `[]string`               | Whitelist of allowed sort fields. If nil or empty, request sort fields are ignored and the default sort is used.  | `nil`      |
 | OffsetKey    | `string`                 | Query string key for offset.                                       | `"offset"` |
 | CursorKey    | `string`                 | Query string key for cursor-based pagination.                      | `"cursor"` |
 | CursorParam  | `string`                 | Optional alias for the cursor query key.                           | `""`       |
