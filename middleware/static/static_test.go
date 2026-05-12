@@ -713,6 +713,13 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 	require.Contains(t, string(responseBody), "Hello, World!")
 	require.NotContains(t, string(responseBody), "Hello, Fiber!")
 
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	expectedBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/fs/index.html"))
+	require.NoError(t, err)
+	require.Equal(t, string(expectedBody), string(body))
+
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/fs/index.html", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "Status code")
