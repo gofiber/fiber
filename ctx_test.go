@@ -260,6 +260,31 @@ func Test_Ctx_HeaderHelpers(t *testing.T) {
 	require.False(t, c.HasHeader("X-Trace-Id"))
 }
 
+// go test -run Test_Ctx_FullURL_DoesNotAliasPooledBuffer
+func Test_Ctx_FullURL_DoesNotAliasPooledBuffer(t *testing.T) {
+	t.Parallel()
+
+	const bufferPoolReuseAttempts = 128
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.SetHost("example.com")
+	c.Request().SetRequestURI("/search?q=fiber")
+
+	fullURL := c.FullURL()
+	require.Equal(t, "http://example.com/search?q=fiber", fullURL)
+
+	for range bufferPoolReuseAttempts {
+		buf := bytebufferpool.Get()
+		buf.Reset()
+		buf.WriteString("https://mutated.example/rewritten")
+		bytebufferpool.Put(buf)
+	}
+
+	require.Equal(t, "http://example.com/search?q=fiber", fullURL)
+}
+
 // go test -run Test_Ctx_TypedParsingDefaults
 func Test_Ctx_TypedParsingDefaults(t *testing.T) {
 	t.Parallel()
@@ -1593,7 +1618,8 @@ func Test_Ctx_Cookie_DefaultPath(t *testing.T) {
 	}
 
 	c.Res().Cookie(ck)
-	require.Equal(t,
+	require.Equal(
+		t,
 		"p=v; path=/; SameSite=Lax",
 		c.Res().Get(HeaderSetCookie),
 	)
@@ -1612,7 +1638,8 @@ func Test_Ctx_Cookie_MaxAgeOnly(t *testing.T) {
 	}
 	c.Res().Cookie(ck)
 
-	require.Equal(t,
+	require.Equal(
+		t,
 		"ttl=v; max-age=3600; path=/; SameSite=Lax",
 		c.Res().Get(HeaderSetCookie),
 	)
@@ -1633,7 +1660,8 @@ func Test_Ctx_Cookie_StrictPartitioned(t *testing.T) {
 	}
 	c.Res().Cookie(ck)
 
-	require.Equal(t,
+	require.Equal(
+		t,
 		"sp=v; path=/; secure; SameSite=Strict; Partitioned",
 		c.Res().Get(HeaderSetCookie),
 	)
@@ -2122,7 +2150,8 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	err := c.AutoFormat(data)
 	require.NoError(t, err)
 	require.Equal(t, MIMEApplicationJSONCharsetUTF8, c.GetRespHeader(HeaderContentType)) //nolint:testifylint // this is comparing content-type headers, not JSON content
-	require.JSONEq(t,
+	require.JSONEq(
+		t,
 		`{"Sender":"Carol","Recipients":["Alice","Bob"],"Urgency":3}`,
 		string(c.Response().Body()),
 	)
@@ -2153,7 +2182,8 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	err = c.AutoFormat(data)
 	require.NoError(t, err)
 	require.Equal(t, MIMEApplicationXMLCharsetUTF8, c.GetRespHeader(HeaderContentType))
-	require.Equal(t,
+	require.Equal(
+		t,
 		`<Message sender="Carol" urgency="3"><Recipients>Alice</Recipients><Recipients>Bob</Recipients></Message>`,
 		string(c.Response().Body()),
 	)
@@ -5431,6 +5461,119 @@ func (s *mockContextAwareStorage) Close() error {
 	return nil
 }
 
+func Test_Ctx_SaveFileToStorage_NilFileHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	storage := memory.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	err := ctx.SaveFileToStorage(nil, "test", storage)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrFileHeaderNil)
+}
+
+func Test_Ctx_SaveFile_NilFileHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	err := ctx.SaveFile(nil, "test")
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrFileHeaderNil)
+}
+
+func Test_Ctx_SaveFileToStorage_DefaultBodyLimitFallback(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.config.BodyLimit = 0 // bypass app default coercion to exercise the fallback branch
+	storage := memory.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	fileHeader := createMultipartFileHeader(t, "small.txt", []byte("hello"))
+
+	err := ctx.SaveFileToStorage(fileHeader, "key", storage)
+	require.NoError(t, err)
+
+	stored, err := storage.Get("key")
+	require.NoError(t, err)
+	require.Equal(t, []byte("hello"), stored)
+}
+
+func Test_Ctx_SaveFileToStorage_ErrorMessageContainsFilename(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{BodyLimit: 10}) // small limit to force error
+	storage := memory.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	fileHeader := createMultipartFileHeader(
+		t,
+		"test-file.png",
+		bytes.Repeat([]byte{'a'}, 100), // bigger than limit
+	)
+
+	err := ctx.SaveFileToStorage(fileHeader, "test-path", storage)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrFileRead)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+	require.Contains(t, err.Error(), "test-file.png")
+}
+
+func Test_Ctx_SaveFileToStorage_StoreErrorIncludesPath(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	wantErr := errors.New("backend down")
+	storage := &failingStorage{err: wantErr}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	fileHeader := createMultipartFileHeader(t, "report.pdf", []byte("payload"))
+
+	err := ctx.SaveFileToStorage(fileHeader, "uploads/report.pdf", storage)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrFileStore)
+	require.ErrorIs(t, err, wantErr)
+	require.Contains(t, err.Error(), "report.pdf")
+	require.Contains(t, err.Error(), "uploads/report.pdf")
+}
+
+type failingStorage struct {
+	err error
+}
+
+func (*failingStorage) Get(string) ([]byte, error)                { return nil, nil }
+func (s *failingStorage) Set(string, []byte, time.Duration) error { return s.err }
+func (*failingStorage) Delete(string) error                       { return nil }
+func (*failingStorage) Reset() error                              { return nil }
+func (*failingStorage) Close() error                              { return nil }
+
+func (*failingStorage) GetWithContext(context.Context, string) ([]byte, error) {
+	return nil, nil
+}
+
+func (s *failingStorage) SetWithContext(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return s.err
+}
+
+func (*failingStorage) DeleteWithContext(context.Context, string) error { return nil }
+func (*failingStorage) ResetWithContext(context.Context) error          { return nil }
+
 // go test -run Test_Ctx_SaveFileToStorage_ContextPropagation
 func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
 	t.Parallel()
@@ -8419,7 +8562,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		require.False(t, c.IsFromLocal())
 	}
 	// Test for the case fasthttp remoteAddr is set to a Unix socket.
-	// Unix sockets are inherently local - only processes on the same host can connect.
+	// IsFromLocal only treats loopback IPs as local.
 	{
 		app := New()
 		fastCtx := &fasthttp.RequestCtx{}
@@ -8427,7 +8570,32 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx.SetRemoteAddr(unixAddr)
 		c := app.AcquireCtx(fastCtx)
 		defer app.ReleaseCtx(c)
-		require.True(t, c.IsFromLocal())
+		require.False(t, c.IsFromLocal())
+	}
+}
+
+// go test -run Test_Ctx_IsFromUnixSocket_RemoteAddr
+func Test_Ctx_IsFromUnixSocket_RemoteAddr(t *testing.T) {
+	t.Parallel()
+
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+		require.False(t, c.IsFromUnixSocket())
+		require.False(t, c.Req().IsFromUnixSocket())
+	}
+
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(&net.UnixAddr{Name: "/tmp/fiber.sock", Net: "unix"})
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+		require.True(t, c.IsFromUnixSocket())
+		require.True(t, c.Req().IsFromUnixSocket())
 	}
 }
 
@@ -8725,7 +8893,8 @@ func Test_Ctx_OverrideParam(t *testing.T) {
 	t.Run("plus_wildcard_params", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Get("/files+/+",
+		app.Get(
+			"/files+/+",
 			func(c Ctx) error {
 				c.OverrideParam("+", "changed")
 				c.OverrideParam("+2", "changed2")

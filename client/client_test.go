@@ -1446,7 +1446,8 @@ func Test_Client_Cookie_With_Server(t *testing.T) {
 
 	handler := func(c fiber.Ctx) error {
 		return c.SendString(
-			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
+			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"),
+		)
 	}
 
 	wrapAgent := func(c *Client) {
@@ -1464,7 +1465,8 @@ func Test_Client_Cookie_With_Server(t *testing.T) {
 func Test_Client_CookieJar(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
 		return c.SendString(
-			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"))
+			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"),
+		)
 	}
 
 	jar := AcquireCookieJar()
@@ -1491,7 +1493,8 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 				Value: "v4",
 			})
 			return c.SendString(
-				c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"))
+				c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"),
+			)
 		}
 
 		jar := AcquireCookieJar()
@@ -1518,7 +1521,8 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 				Expires: time.Now().Add(1 * time.Nanosecond),
 			})
 			return c.SendString(
-				c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"))
+				c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"),
+			)
 		}
 
 		jar := AcquireCookieJar()
@@ -1544,7 +1548,8 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 				Value: "v2",
 			})
 			return c.SendString(
-				c.Cookies("k1") + c.Cookies("k2"))
+				c.Cookies("k1") + c.Cookies("k2"),
+			)
 		}
 
 		jar := AcquireCookieJar()
@@ -2230,10 +2235,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		t.Parallel()
 		client := New()
 
-		err := client.SetProxyURL(":this is not a proxy")
-		require.NoError(t, err)
-
-		_, err = client.Get("http://localhost:3000")
+		err := client.SetProxyURL("ftp://127.0.0.1:8080")
 		require.Error(t, err)
 	})
 }

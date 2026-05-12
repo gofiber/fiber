@@ -42,7 +42,8 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			if data.ChainErr != nil {
 				formatErr = colors.Red + " | " + data.ChainErr.Error() + colors.Reset
 			}
-			fmt.Fprintf(buf,
+			fmt.Fprintf(
+				buf,
 				"%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
 				data.Timestamp.Load().(string), //nolint:forcetypeassert,errcheck // Timestamp is always a string
 				statusColor(c.Response().StatusCode(), &colors), c.Response().StatusCode(), colors.Reset,
