@@ -700,27 +700,61 @@ func Test_Static_FS_Prefix_Wildcard(t *testing.T) {
 func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 	t.Parallel()
 
+	expectedBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/fs/index.html"))
+	require.NoError(t, err)
+
+	newApp := func() *fiber.App {
+		app := fiber.New()
+		app.Get("/static*", New("fs", Config{
+			FS: os.DirFS("../../.github/testdata"),
+		}))
+
+		return app
+	}
+
+	testCases := []struct {
+		name       string
+		target     string
+		wantBody   string
+		wantStatus int
+	}{
+		{name: "index file", target: "/static/index.html", wantStatus: fiber.StatusOK, wantBody: string(expectedBody)},
+		{name: "empty path", target: "/static", wantStatus: fiber.StatusOK, wantBody: string(expectedBody)},
+		{name: "trailing slash", target: "/static/", wantStatus: fiber.StatusOK, wantBody: string(expectedBody)},
+		{name: "double prefix", target: "/static/fs/index.html", wantStatus: fiber.StatusNotFound},
+		{name: "raw traversal", target: "/static/../index.html", wantStatus: fiber.StatusNotFound},
+		{name: "encoded dot dot", target: "/static/%2E%2E/index.html", wantStatus: fiber.StatusNotFound},
+		{name: "encoded slash", target: "/static/..%2Findex.html", wantStatus: fiber.StatusNotFound},
+		{name: "encoded backslash", target: "/static/..%5Cindex.html", wantStatus: fiber.StatusNotFound},
+		{name: "null byte", target: "/static/%00", wantStatus: fiber.StatusNotFound},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			resp, err := newApp().Test(httptest.NewRequest(fiber.MethodGet, tc.target, http.NoBody))
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, tc.wantStatus, resp.StatusCode, "Status code")
+
+			responseBody, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			if tc.wantStatus == fiber.StatusOK {
+				require.Equal(t, tc.wantBody, string(responseBody))
+			}
+		})
+	}
+}
+
+func Test_Static_FS_MissingRootDoesNotFallback(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
-	app.Get("/static*", New("fs", Config{
+	app.Get("/static*", New("missing", Config{
 		FS: os.DirFS("../../.github/testdata"),
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/static/index.html", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
-	responseBody, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(responseBody), "Hello, World!")
-	require.NotContains(t, string(responseBody), "Hello, Fiber!")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	expectedBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/fs/index.html"))
-	require.NoError(t, err)
-	require.Equal(t, string(expectedBody), string(body))
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/fs/index.html", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "Status code")
 }
