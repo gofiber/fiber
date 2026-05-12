@@ -154,8 +154,6 @@ type Res interface {
 	Writef(f string, a ...any) (int, error)
 	// WriteString appends s to response body.
 	WriteString(s string) (int, error)
-	// Release is a method to reset Res fields when to use ReleaseCtx()
-	release()
 	// Drop closes the underlying connection without sending any response headers or body.
 	// This can be useful for silently terminating client connections, such as in DDoS mitigation
 	// or when blocking access to sensitive endpoints.

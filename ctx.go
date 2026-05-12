@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
-	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -74,6 +73,7 @@ type DefaultCtx struct {
 	abandoned        atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
 	matched          bool                 // Non use route matched
 	skipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
+	userContextSet   bool                 // User context was stored in fasthttp user values
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -144,6 +144,7 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 		return
 	}
 	c.fasthttp.SetUserValue(userContextKey, ctx)
+	c.userContextSet = true
 }
 
 // Deadline returns the time when work done on behalf of this context
@@ -517,14 +518,21 @@ func (c *DefaultCtx) IsPreflight() bool {
 
 // SaveFile saves any multipart file to disk.
 func (*DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) error {
+	if fileheader == nil {
+		return ErrFileHeaderNil
+	}
 	return fasthttp.SaveMultipartFile(fileheader, path)
 }
 
 // SaveFileToStorage saves any multipart file to an external storage system.
 func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
+	if fileheader == nil {
+		return ErrFileHeaderNil
+	}
+
 	file, err := fileheader.Open()
 	if err != nil {
-		return fmt.Errorf("failed to open: %w", err)
+		return fmt.Errorf("%w: %q: %w", ErrFileOpen, fileheader.Filename, err)
 	}
 	defer file.Close() //nolint:errcheck // not needed
 
@@ -534,7 +542,7 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	}
 
 	if fileheader.Size > 0 && fileheader.Size > int64(maxUploadSize) {
-		return fmt.Errorf("failed to read: %w", fasthttp.ErrBodyTooLarge)
+		return fmt.Errorf("%w: %q: %w", ErrFileRead, fileheader.Filename, fasthttp.ErrBodyTooLarge)
 	}
 
 	buf := bytebufferpool.Get()
@@ -542,17 +550,17 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 
 	limitedReader := io.LimitReader(file, int64(maxUploadSize)+1)
 	if _, err = buf.ReadFrom(limitedReader); err != nil {
-		return fmt.Errorf("failed to read: %w", err)
+		return fmt.Errorf("%w: %q: %w", ErrFileRead, fileheader.Filename, err)
 	}
 
 	if buf.Len() > maxUploadSize {
-		return fmt.Errorf("failed to read: %w", fasthttp.ErrBodyTooLarge)
+		return fmt.Errorf("%w: %q: %w", ErrFileRead, fileheader.Filename, fasthttp.ErrBodyTooLarge)
 	}
 
 	data := append([]byte(nil), buf.Bytes()...)
 
 	if err := storage.SetWithContext(c.Context(), path, data, 0); err != nil {
-		return fmt.Errorf("failed to store: %w", err)
+		return fmt.Errorf("%w: %q to %q: %w", ErrFileStore, fileheader.Filename, path, err)
 	}
 
 	return nil
@@ -644,10 +652,11 @@ func (c *DefaultCtx) configDependentPaths() {
 
 	// another path is specified which is for routing recognition only
 	// use the path that was changed by the previous configuration flags
-	c.detectionPath = append(c.detectionPath[:0], c.path...)
 	// If CaseSensitive is disabled, we lowercase the original path
 	if !c.app.config.CaseSensitive {
-		c.detectionPath = utilsbytes.UnsafeToLower(c.detectionPath)
+		c.detectionPath = appendLowerBytes(c.detectionPath, c.path)
+	} else {
+		c.detectionPath = append(c.detectionPath[:0], c.path...)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPath) > 1 && c.detectionPath[len(c.detectionPath)-1] == '/' {
@@ -685,11 +694,16 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 	c.DefaultReq.c = c
 	c.DefaultRes.c = c
-	c.fasthttp.SetUserValue(userContextKey, nil)
 }
 
 // release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
+	if c.userContextSet {
+		if c.fasthttp != nil {
+			c.fasthttp.SetUserValue(userContextKey, nil)
+		}
+		c.userContextSet = false
+	}
 	c.route = nil
 	c.fasthttp = nil
 	if c.bind != nil {
@@ -698,7 +712,9 @@ func (c *DefaultCtx) release() {
 	}
 	c.flashMessages = c.flashMessages[:0]
 	// Clear viewBindMap by deleting all keys (reuse underlying map if possible)
-	clear(c.viewBindMap)
+	if c.viewBindMap != nil {
+		clear(c.viewBindMap)
+	}
 	if c.redirect != nil {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
@@ -706,8 +722,6 @@ func (c *DefaultCtx) release() {
 	c.skipNonUseRoutes = false
 	// performance: no need for using c.abandoned.Store(false) here, as it is always set to false when it was true in ForceRelease
 	c.handlerCtx = nil
-	c.DefaultReq.release()
-	c.DefaultRes.release()
 }
 
 // Abandon marks this context as abandoned. An abandoned context will not be

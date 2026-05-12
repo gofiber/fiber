@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/redact"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 )
 
 var (
@@ -28,6 +31,8 @@ var (
 	dummyValue          = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
 
 )
+
+var registerLogContextTagsOnce sync.Once
 
 // Handler for CSRF middleware
 type Handler struct {
@@ -48,6 +53,8 @@ const (
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
+	registerLogContextTagsOnce.Do(registerLogContextTags)
+
 	// Set default config
 	cfg := configDefault(config...)
 
@@ -219,6 +226,15 @@ func New(config ...Config) fiber.Handler {
 		// Continue stack
 		return c.Next()
 	}
+}
+
+func registerLogContextTags() {
+	logger.RegisterContextTag("csrf-token", func(ctx any) string {
+		// redact.Prefix matches the masking shape used by keyauth and session
+		// (4-byte clear prefix + "****"), so log consumers see a uniform
+		// redaction format across the framework's security-sensitive tags.
+		return redact.Prefix(TokenFromContext(ctx))
+	})
 }
 
 // TokenFromContext returns the token found in the context.

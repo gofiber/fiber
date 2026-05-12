@@ -91,6 +91,8 @@ type App struct {
 	mountFields *mountFields
 	// state management
 	state *State
+	// shared state management (prefork-safe, storage-backed)
+	sharedState *SharedState
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -279,6 +281,19 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: nil
 	AppName string `json:"app_name"`
+
+	// SharedStorage configures storage-backed shared state that can be used
+	// safely across prefork workers and processes.
+	//
+	// Default: nil
+	SharedStorage Storage `json:"-"`
+
+	// SharedStatePrefix customizes the namespace prefix for keys written to
+	// SharedStorage. If empty, Fiber derives a prefixed namespace using
+	// AppName (when set) or an internal default.
+	//
+	// Default: ""
+	SharedStatePrefix string `json:"shared_state_prefix"`
 
 	// StreamRequestBody enables request body streaming,
 	// and calls the handler sooner when given body is
@@ -639,6 +654,8 @@ func New(config ...Config) *App {
 	if app.config.XMLDecoder == nil {
 		app.config.XMLDecoder = xml.Unmarshal
 	}
+
+	app.sharedState = newSharedState(&app.config)
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
 	}
@@ -722,7 +739,7 @@ func (app *App) setCtxFunc(function func(app *App) CustomCtx) {
 	app.hasCustomCtx = function != nil
 
 	if app.server != nil {
-		app.server.Handler = app.requestHandler
+		app.server.Handler = app.selectRequestHandler()
 	}
 }
 
@@ -1349,7 +1366,14 @@ func (app *App) Config() Config {
 func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
-	return app.requestHandler
+	return app.selectRequestHandler()
+}
+
+func (app *App) selectRequestHandler() fasthttp.RequestHandler {
+	if app.hasCustomCtx {
+		return app.customRequestHandler
+	}
+	return app.defaultRequestHandler
 }
 
 // Stack returns the raw router stack.
@@ -1425,9 +1449,16 @@ func (app *App) Hooks() *Hooks {
 	return app.hooks
 }
 
-// State returns the state struct to store global data in order to share it between handlers.
+// State returns the in-process state struct to store global data between handlers.
+// State is process-local and is not shared across prefork workers.
 func (app *App) State() *State {
 	return app.state
+}
+
+// SharedState returns storage-backed shared state.
+// SharedState is prefork-safe when Config.SharedStorage is configured.
+func (app *App) SharedState() *SharedState {
+	return app.sharedState
 }
 
 var ErrTestGotEmptyResponse = errors.New("test: got empty response")
@@ -1601,7 +1632,7 @@ func (app *App) init() *App {
 	}
 
 	// fasthttp server settings
-	app.server.Handler = app.requestHandler
+	app.server.Handler = app.selectRequestHandler()
 	app.server.Name = app.config.ServerHeader
 	app.server.Concurrency = app.config.Concurrency
 	app.server.NoDefaultDate = app.config.DisableDefaultDate
@@ -1627,6 +1658,11 @@ func (app *App) init() *App {
 	app.Hooks().OnPostShutdown(func(_ error) error {
 		if err := app.shutdownServices(app.servicesShutdownCtx()); err != nil {
 			log.Errorf("failed to shutdown services: %v", err)
+		}
+		if app.sharedState != nil && app.sharedState.storage != nil {
+			if err := app.sharedState.Close(); err != nil {
+				log.Errorf("failed to close sharedState: %v", err)
+			}
 		}
 		return nil
 	})

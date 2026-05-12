@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/fiber/v3/internal/logtemplate"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/bytebufferpool"
@@ -42,7 +42,8 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			if data.ChainErr != nil {
 				formatErr = colors.Red + " | " + data.ChainErr.Error() + colors.Reset
 			}
-			fmt.Fprintf(buf,
+			fmt.Fprintf(
+				buf,
 				"%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
 				data.Timestamp.Load().(string), //nolint:forcetypeassert,errcheck // Timestamp is always a string
 				statusColor(c.Response().StatusCode(), &colors), c.Response().StatusCode(), colors.Reset,
@@ -116,22 +117,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 		return nil
 	}
 
-	var err error
-	// Loop over template parts execute dynamic parts and add fixed parts to the buffer
-	for i, logFunc := range data.LogFuncChain {
-		switch {
-		case logFunc == nil:
-			buf.Write(data.TemplateChain[i])
-		case data.TemplateChain[i] == nil:
-			_, err = logFunc(buf, c, data, "")
-		default:
-			_, err = logFunc(buf, c, data, utils.UnsafeString(data.TemplateChain[i]))
-		}
-		if err != nil {
-			break
-		}
-	}
-
+	err := logtemplate.ExecuteChains(buf, c, data, data.TemplateChain, data.LogFuncChain)
 	// Also write errors to the buffer
 	if err != nil {
 		buf.WriteString(err.Error())
@@ -164,10 +150,13 @@ func beforeHandlerFunc(cfg *Config) {
 	}
 }
 
+// appendInt writes the decimal form of v into output without going through
+// fmt boxing. The 20-byte stack scratch fits any int64; strconv.AppendInt
+// only grows the slice when the formatted value exceeds that capacity, which
+// cannot happen for a fixed-width int.
 func appendInt(output Buffer, v int) (int, error) {
-	old := output.Len()
-	output.Set(strconv.AppendInt(output.Bytes(), int64(v), 10))
-	return output.Len() - old, nil
+	var scratch [20]byte
+	return output.Write(strconv.AppendInt(scratch[:0], int64(v), 10))
 }
 
 // writeLog writes a msg to w, printing a warning to stderr if the log fails.

@@ -25,6 +25,7 @@ import (
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 
+	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/valyala/bytebufferpool"
@@ -59,21 +60,9 @@ type headerParams map[string][]byte
 //   - Ctx (including CustomCtx implementations)
 //   - *fasthttp.RequestCtx
 //   - context.Context
+//   - any value exposing UserValue(key any) any or Value(key any) any
 func ValueFromContext[T any](ctx, key any) (T, bool) {
-	switch typed := ctx.(type) {
-	case Ctx:
-		val, ok := typed.Locals(key).(T)
-		return val, ok
-	case *fasthttp.RequestCtx:
-		val, ok := typed.UserValue(key).(T)
-		return val, ok
-	case context.Context:
-		val, ok := typed.Value(key).(T)
-		return val, ok
-	default:
-		var zero T
-		return zero, false
-	}
+	return contextvalue.Value[T](ctx, key)
 }
 
 // StoreInContext stores key/value in both Fiber locals and request context.
@@ -202,7 +191,8 @@ func (app *App) quoteRawString(raw string) string {
 			bb.B = append(bb.B, '\\', 'r')
 		case c < 0x20 || c == 0x7f:
 			// percent-encode control and DEL
-			bb.B = append(bb.B,
+			bb.B = append(
+				bb.B,
 				'%',
 				hex[c>>4],
 				hex[c&0x0f],

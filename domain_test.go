@@ -834,7 +834,8 @@ func Test_Domain_MultipleHandlers(t *testing.T) {
 
 	app := New()
 
-	app.Domain("api.example.com").Get("/test",
+	app.Domain("api.example.com").Get(
+		"/test",
 		func(c Ctx) error {
 			c.Set("X-First", "true")
 			return c.Next()
@@ -1334,7 +1335,8 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 	t.Run("express next-err returns-err", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Domain("api.example.com").Get("/test",
+		app.Domain("api.example.com").Get(
+			"/test",
 			func(_ Req, res Res, next func() error) error {
 				res.Set("X-MW", "yes")
 				return next()
@@ -1357,7 +1359,8 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 	t.Run("express with next error", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Domain("api.example.com").Get("/test",
+		app.Domain("api.example.com").Get(
+			"/test",
 			func(_ Req, res Res, next func() error) {
 				res.Set("X-MW", "yes")
 				_ = next() //nolint:errcheck // test
@@ -1377,7 +1380,8 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 	t.Run("express with noarg next error", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Domain("api.example.com").Get("/test",
+		app.Domain("api.example.com").Get(
+			"/test",
 			func(_ Req, res Res, next func()) error {
 				res.Set("X-MW", "yes")
 				next()
@@ -1398,7 +1402,8 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 	t.Run("express with noarg next", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Domain("api.example.com").Get("/test",
+		app.Domain("api.example.com").Get(
+			"/test",
 			func(_ Req, res Res, next func()) {
 				res.Set("X-MW", "yes")
 				next()
@@ -1418,7 +1423,8 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 	t.Run("express with error next", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Domain("api.example.com").Get("/test",
+		app.Domain("api.example.com").Get(
+			"/test",
 			func(_ Req, res Res, next func(error)) {
 				res.Set("X-MW", "yes")
 				next(nil)
@@ -1438,7 +1444,8 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 	t.Run("express with error next error", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Domain("api.example.com").Get("/test",
+		app.Domain("api.example.com").Get(
+			"/test",
 			func(_ Req, res Res, next func(error)) error {
 				res.Set("X-MW", "yes")
 				next(nil)
@@ -1459,7 +1466,8 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 	t.Run("express errnext-err returns-err", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Domain("api.example.com").Get("/test",
+		app.Domain("api.example.com").Get(
+			"/test",
 			func(_ Req, res Res, next func(error) error) {
 				res.Set("X-MW", "yes")
 				_ = next(nil) //nolint:errcheck // test
@@ -1479,7 +1487,8 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 	t.Run("express errnext-err returns-err err", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Domain("api.example.com").Get("/test",
+		app.Domain("api.example.com").Get(
+			"/test",
 			func(_ Req, res Res, next func(error) error) error {
 				res.Set("X-MW", "yes")
 				return next(nil)
@@ -1555,7 +1564,8 @@ func Test_Domain_HandlerTypes(t *testing.T) {
 	t.Run("non-matching domain skips all handler types", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		app.Domain("api.example.com").Get("/test",
+		app.Domain("api.example.com").Get(
+			"/test",
 			func(c Ctx) error {
 				c.Set("X-Handler", "ran")
 				return c.SendString("should-not-run")
