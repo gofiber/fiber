@@ -24,9 +24,7 @@ var ErrInvalidPath = errors.New("invalid path")
 
 const invalidPathSentinel = "/__fiber_invalid__"
 
-func hasParentDirSegment(p []byte) (bool, error) {
-	var s string
-
+func bytesToPathString(p []byte) string {
 	if bytes.IndexByte(p, '\\') >= 0 {
 		b := make([]byte, len(p))
 		copy(b, p)
@@ -35,15 +33,17 @@ func hasParentDirSegment(p []byte) (bool, error) {
 				b[i] = '/'
 			}
 		}
-		s = utils.UnsafeString(b)
-	} else {
-		s = utils.UnsafeString(p)
+		return utils.UnsafeString(b)
 	}
 
+	return utils.UnsafeString(p)
+}
+
+func unescapePathString(s string) (string, error) {
 	for strings.IndexByte(s, '%') >= 0 {
 		us, err := url.PathUnescape(s)
 		if err != nil {
-			return false, ErrInvalidPath
+			return "", ErrInvalidPath
 		}
 		if us == s {
 			break
@@ -51,40 +51,38 @@ func hasParentDirSegment(p []byte) (bool, error) {
 		s = us
 	}
 
+	return s, nil
+}
+
+func hasParentDirSegment(p []byte) (bool, error) {
+	s, err := unescapePathString(bytesToPathString(p))
+	if err != nil {
+		return false, err
+	}
+
 	trimmed := utils.TrimLeft(filepath.ToSlash(s), '/')
-	return trimmed != "" && slices.Contains(strings.Split(trimmed, "/"), ".."), nil
+	for trimmed != "" {
+		segment, rest, found := strings.Cut(trimmed, "/")
+		if segment == ".." {
+			return true, nil
+		}
+		if !found {
+			return false, nil
+		}
+		trimmed = rest
+	}
+
+	return false, nil
 }
 
 // sanitizePath validates and cleans the requested path.
 // It returns an error if the path attempts to traverse directories.
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
-	var s string
-
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
-	if bytes.IndexByte(p, '\\') >= 0 {
-		b := make([]byte, len(p))
-		copy(b, p)
-		for i := range b {
-			if b[i] == '\\' {
-				b[i] = '/'
-			}
-		}
-		s = utils.UnsafeString(b)
-	} else {
-		s = utils.UnsafeString(p)
-	}
-
-	// repeatedly unescape until it no longer changes, catching errors
-	for strings.IndexByte(s, '%') >= 0 {
-		us, err := url.PathUnescape(s)
-		if err != nil {
-			return nil, ErrInvalidPath
-		}
-		if us == s {
-			break
-		}
-		s = us
+	s, err := unescapePathString(bytesToPathString(p))
+	if err != nil {
+		return nil, err
 	}
 
 	if strings.IndexByte(s, '\\') >= 0 {
