@@ -723,7 +723,7 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 		{name: "trailing slash", target: "/static/", wantStatus: fiber.StatusOK, wantBody: string(expectedBody)},
 		{name: "double prefix", target: "/static/fs/index.html", wantStatus: fiber.StatusNotFound},
 		{name: "raw traversal", target: "/static/../index.html", wantStatus: fiber.StatusNotFound},
-		{name: "encoded dot dot", target: "/static/%2E%2E/index.html", wantStatus: fiber.StatusNotFound},
+		{name: "encoded parent traversal", target: "/static/%2E%2E/index.html", wantStatus: fiber.StatusNotFound},
 		{name: "encoded slash", target: "/static/..%2Findex.html", wantStatus: fiber.StatusNotFound},
 		{name: "encoded backslash", target: "/static/..%5Cindex.html", wantStatus: fiber.StatusNotFound},
 		{name: "null byte", target: "/static/%00", wantStatus: fiber.StatusNotFound},
