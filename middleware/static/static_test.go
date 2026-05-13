@@ -777,6 +777,7 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 
 			responseBody, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
+			require.Equal(t, "Not Found", string(responseBody))
 			require.NotEqual(t, string(externalBody), string(responseBody))
 		})
 	}
