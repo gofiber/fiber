@@ -3753,6 +3753,26 @@ func Test_Ctx_Value_AfterRelease(t *testing.T) {
 	})
 }
 
+// go test -run Test_Ctx_Locals_AfterRelease
+func Test_Ctx_Locals_AfterRelease(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		c.Locals("test", "value")
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	require.NotPanics(t, func() {
+		val := ctx.Locals("test")
+		require.Nil(t, val)
+	})
+}
+
 // go test -run Test_Ctx_Value_InGoroutine
 func Test_Ctx_Value_InGoroutine(t *testing.T) {
 	t.Parallel()
