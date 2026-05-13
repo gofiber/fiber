@@ -3851,12 +3851,14 @@ func Test_Ctx_Context(t *testing.T) {
 	})
 }
 
-func Test_Ctx_Locals_AfterHandlerDoesNotPanic(t *testing.T) {
+func Test_Ctx_Locals_AfterRelease_DoesNotPanic(t *testing.T) {
 	t.Parallel()
 	app := New()
 	var ctx Ctx
 	app.Get("/test", func(c Ctx) error {
 		ctx = c
+		c.Locals("foo", "value")
+		require.Equal(t, "value", c.Locals("foo"))
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
