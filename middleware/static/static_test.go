@@ -700,7 +700,13 @@ func Test_Static_FS_Prefix_Wildcard(t *testing.T) {
 func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 	t.Parallel()
 
-	expectedBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/fs/index.html"))
+	expectedIndexBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/fs/index.html"))
+	require.NoError(t, err)
+
+	expectedCSSBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/fs/css/style.css"))
+	require.NoError(t, err)
+
+	externalBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/testRoutes.json"))
 	require.NoError(t, err)
 
 	newApp := func() *fiber.App {
@@ -712,24 +718,19 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 		return app
 	}
 
-	testCases := []struct {
+	successCases := []struct {
 		name       string
 		target     string
 		wantBody   string
 		wantStatus int
 	}{
-		{name: "index file", target: "/static/index.html", wantStatus: fiber.StatusOK, wantBody: string(expectedBody)},
-		{name: "empty path", target: "/static", wantStatus: fiber.StatusOK, wantBody: string(expectedBody)},
-		{name: "trailing slash", target: "/static/", wantStatus: fiber.StatusOK, wantBody: string(expectedBody)},
-		{name: "double prefix", target: "/static/fs/index.html", wantStatus: fiber.StatusNotFound},
-		{name: "raw traversal", target: "/static/../index.html", wantStatus: fiber.StatusNotFound},
-		{name: "encoded parent traversal", target: "/static/%2E%2E/index.html", wantStatus: fiber.StatusNotFound},
-		{name: "encoded slash", target: "/static/..%2Findex.html", wantStatus: fiber.StatusNotFound},
-		{name: "encoded backslash", target: "/static/..%5Cindex.html", wantStatus: fiber.StatusNotFound},
-		{name: "null byte", target: "/static/%00", wantStatus: fiber.StatusNotFound},
+		{name: "index file", target: "/static/index.html", wantStatus: fiber.StatusOK, wantBody: string(expectedIndexBody)},
+		{name: "empty path", target: "/static", wantStatus: fiber.StatusOK, wantBody: string(expectedIndexBody)},
+		{name: "trailing slash", target: "/static/", wantStatus: fiber.StatusOK, wantBody: string(expectedIndexBody)},
+		{name: "nested file", target: "/static/css/style.css", wantStatus: fiber.StatusOK, wantBody: string(expectedCSSBody)},
 	}
 
-	for _, tc := range testCases {
+	for _, tc := range successCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -739,9 +740,44 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 
 			responseBody, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
-			if tc.wantStatus == fiber.StatusOK {
-				require.Equal(t, tc.wantBody, string(responseBody))
-			}
+			require.Equal(t, tc.wantBody, string(responseBody))
+		})
+	}
+
+	traversalCases := []struct {
+		name   string
+		target string
+	}{
+		{name: "double prefix", target: "/static/fs/index.html"},
+		{name: "raw traversal to root index", target: "/static/../index.html"},
+		{name: "raw traversal to external file", target: "/static/../testRoutes.json"},
+		{name: "nested raw traversal", target: "/static/css/../../testRoutes.json"},
+		{name: "encoded parent traversal", target: "/static/%2E%2E/index.html"},
+		{name: "encoded parent to external file", target: "/static/%2E%2E/testRoutes.json"},
+		{name: "lowercase encoded parent", target: "/static/%2e%2e/testRoutes.json"},
+		{name: "double encoded parent", target: "/static/%252E%252E/testRoutes.json"},
+		{name: "mixed dot encoding", target: "/static/%2E./testRoutes.json"},
+		{name: "encoded slash", target: "/static/..%2Findex.html"},
+		{name: "encoded slash to external file", target: "/static/..%2FtestRoutes.json"},
+		{name: "nested encoded slash traversal", target: "/static/css/%2E%2E/%2E%2E/testRoutes.json"},
+		{name: "encoded backslash", target: "/static/..%5Cindex.html"},
+		{name: "encoded backslash to external file", target: "/static/..%5CtestRoutes.json"},
+		{name: "nested encoded backslash traversal", target: "/static/css%5C..%5C..%5CtestRoutes.json"},
+		{name: "repeated parent segments", target: "/static/%2E%2E/%2E%2E/testRoutes.json"},
+		{name: "null byte", target: "/static/%00"},
+	}
+
+	for _, tc := range traversalCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			resp, err := newApp().Test(httptest.NewRequest(fiber.MethodGet, tc.target, http.NoBody))
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "Status code")
+
+			responseBody, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.NotEqual(t, string(externalBody), string(responseBody))
 		})
 	}
 }
