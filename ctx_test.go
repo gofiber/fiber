@@ -3851,7 +3851,7 @@ func Test_Ctx_Context(t *testing.T) {
 	})
 }
 
-func Test_Ctx_AccessAfterHandlerPanics(t *testing.T) {
+func Test_Ctx_Locals_AfterHandlerDoesNotPanic(t *testing.T) {
 	t.Parallel()
 	app := New()
 	var ctx Ctx
@@ -3862,8 +3862,8 @@ func Test_Ctx_AccessAfterHandlerPanics(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Panics(t, func() {
-		ctx.Locals("foo")
+	require.NotPanics(t, func() {
+		require.Nil(t, ctx.Locals("foo"))
 	})
 }
 
