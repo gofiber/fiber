@@ -3739,6 +3739,7 @@ func Test_Ctx_Value_AfterRelease(t *testing.T) {
 	app.Get("/test", func(c Ctx) error {
 		ctx = c
 		c.Locals("test", "value")
+		require.Equal(t, "value", c.Locals("test"))
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
@@ -3770,6 +3771,9 @@ func Test_Ctx_Locals_AfterRelease(t *testing.T) {
 	require.NotPanics(t, func() {
 		val := ctx.Locals("test")
 		require.Nil(t, val)
+	})
+	require.NotPanics(t, func() {
+		require.Equal(t, "fallback", ctx.Locals("test", "fallback"))
 	})
 }
 
@@ -3848,27 +3852,6 @@ func Test_Ctx_Context(t *testing.T) {
 		testValue := "Test Value"
 		ctx := context.WithValue(context.Background(), testKey, testValue)
 		require.Equal(t, testValue, ctx.Value(testKey))
-	})
-}
-
-func Test_Ctx_Locals_AfterRelease_DoesNotPanic(t *testing.T) {
-	t.Parallel()
-	app := New()
-	var ctx Ctx
-	app.Get("/test", func(c Ctx) error {
-		ctx = c
-		c.Locals("foo", "value")
-		require.Equal(t, "value", c.Locals("foo"))
-		return nil
-	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.NotPanics(t, func() {
-		require.Nil(t, ctx.Locals("foo"))
-	})
-	require.NotPanics(t, func() {
-		require.Equal(t, "fallback", ctx.Locals("foo", "fallback"))
 	})
 }
 
