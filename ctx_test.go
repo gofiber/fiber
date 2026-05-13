@@ -3865,6 +3865,9 @@ func Test_Ctx_Locals_AfterHandlerDoesNotPanic(t *testing.T) {
 	require.NotPanics(t, func() {
 		require.Nil(t, ctx.Locals("foo"))
 	})
+	require.NotPanics(t, func() {
+		require.Equal(t, "fallback", ctx.Locals("foo", "fallback"))
+	})
 }
 
 func Test_Ctx_Context_AfterHandlerPanics(t *testing.T) {

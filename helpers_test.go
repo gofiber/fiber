@@ -1698,16 +1698,16 @@ func TestValueFromContext(t *testing.T) {
 
 		c.Locals("key", "value")
 
-		value, ok := ValueFromContext[string](c, "key")
-		require.True(t, ok)
-		require.Equal(t, "value", value)
+		valueBeforeRelease, okBeforeRelease := ValueFromContext[string](c, "key")
+		require.True(t, okBeforeRelease)
+		require.Equal(t, "value", valueBeforeRelease)
 
 		app.ReleaseCtx(c)
 
 		require.NotPanics(t, func() {
-			value, ok = ValueFromContext[string](c, "key")
-			require.False(t, ok)
-			require.Empty(t, value)
+			valueAfterRelease, okAfterRelease := ValueFromContext[string](c, "key")
+			require.False(t, okAfterRelease)
+			require.Empty(t, valueAfterRelease)
 		})
 	})
 
@@ -1739,16 +1739,16 @@ func TestValueFromContext(t *testing.T) {
 
 		c.Locals("key", "value")
 
-		value, ok := ValueFromContext[string](c, "key")
-		require.True(t, ok)
-		require.Equal(t, "value", value)
+		valueBeforeRelease, okBeforeRelease := ValueFromContext[string](c, "key")
+		require.True(t, okBeforeRelease)
+		require.Equal(t, "value", valueBeforeRelease)
 
 		app.ReleaseCtx(c)
 
 		require.NotPanics(t, func() {
-			value, ok = ValueFromContext[string](c, "key")
-			require.False(t, ok)
-			require.Empty(t, value)
+			valueAfterRelease, okAfterRelease := ValueFromContext[string](c, "key")
+			require.False(t, okAfterRelease)
+			require.Empty(t, valueAfterRelease)
 		})
 	})
 
