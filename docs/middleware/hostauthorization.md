@@ -137,7 +137,7 @@ app.Use(hostauthorization.New(hostauthorization.Config{
 
 ### Combined with Domain() Router
 
-`hostauthorization` acts as a security gate; [`Domain()`](https://docs.gofiber.io) handles routing:
+`hostauthorization` acts as a security gate; [`Domain()`](https://docs.gofiber.io/api/app#domain) handles routing:
 
 ```go
 // Security layer — reject anything not from our hosts
