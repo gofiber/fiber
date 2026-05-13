@@ -719,12 +719,13 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 		name       string
 		target     string
 		wantBody   string
+		wantType   string
 		wantStatus int
 	}{
-		{name: "index file", target: "/static/index.html", wantStatus: fiber.StatusOK, wantBody: string(expectedIndexBody)},
-		{name: "empty path", target: "/static", wantStatus: fiber.StatusOK, wantBody: string(expectedIndexBody)},
-		{name: "trailing slash", target: "/static/", wantStatus: fiber.StatusOK, wantBody: string(expectedIndexBody)},
-		{name: "nested file", target: "/static/css/style.css", wantStatus: fiber.StatusOK, wantBody: string(expectedCSSBody)},
+		{name: "index file", target: "/static/index.html", wantStatus: fiber.StatusOK, wantBody: string(expectedIndexBody), wantType: fiber.MIMETextHTMLCharsetUTF8},
+		{name: "empty path", target: "/static", wantStatus: fiber.StatusOK, wantBody: string(expectedIndexBody), wantType: fiber.MIMETextHTMLCharsetUTF8},
+		{name: "trailing slash", target: "/static/", wantStatus: fiber.StatusOK, wantBody: string(expectedIndexBody), wantType: fiber.MIMETextHTMLCharsetUTF8},
+		{name: "nested file", target: "/static/css/style.css", wantStatus: fiber.StatusOK, wantBody: string(expectedCSSBody), wantType: fiber.MIMETextCSSCharsetUTF8},
 	}
 
 	for _, tc := range successCases {
@@ -734,6 +735,7 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 			resp, err := newApp().Test(httptest.NewRequest(fiber.MethodGet, tc.target, http.NoBody))
 			require.NoError(t, err, "app.Test(req)")
 			require.Equal(t, tc.wantStatus, resp.StatusCode, "Status code")
+			require.Equal(t, tc.wantType, resp.Header.Get(fiber.HeaderContentType))
 
 			responseBody, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
