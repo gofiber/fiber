@@ -745,7 +745,7 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 		name   string
 		target string
 	}{
-		{name: "double prefix", target: "/static/fs/index.html"},
+		{name: "path prefix manipulation", target: "/static/fs/index.html"},
 		{name: "raw traversal to root index", target: "/static/../index.html"},
 		{name: "raw traversal to external file", target: "/static/../testRoutes.json"},
 		{name: "nested raw traversal", target: "/static/css/../../testRoutes.json"},
@@ -760,6 +760,7 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 		{name: "encoded backslash", target: "/static/..%5Cindex.html"},
 		{name: "encoded backslash to external file", target: "/static/..%5CtestRoutes.json"},
 		{name: "nested encoded backslash traversal", target: "/static/css%5C..%5C..%5CtestRoutes.json"},
+		{name: "mixed separator traversal", target: "/static/css/..%5C..%5CtestRoutes.json"},
 		{name: "repeated parent segments", target: "/static/%2E%2E/%2E%2E/testRoutes.json"},
 		{name: "null byte", target: "/static/%00"},
 	}
