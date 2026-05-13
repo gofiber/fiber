@@ -706,9 +706,6 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 	expectedCSSBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/fs/css/style.css"))
 	require.NoError(t, err)
 
-	externalBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/testRoutes.json"))
-	require.NoError(t, err)
-
 	newApp := func() *fiber.App {
 		app := fiber.New()
 		app.Get("/static*", New("fs", Config{
@@ -778,7 +775,6 @@ func Test_Static_FS_RootDirectoryEnforced(t *testing.T) {
 			responseBody, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 			require.Equal(t, "Not Found", string(responseBody))
-			require.NotEqual(t, string(externalBody), string(responseBody))
 		})
 	}
 }
