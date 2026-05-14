@@ -349,6 +349,8 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 					jar.Set(hostOnlyOrigin, hostOnlyCookie)
 				case "domain":
 					jar.Set(domainOrigin, domainCookie)
+				default:
+					t.Fatalf("unexpected cookie type %q", cookieType)
 				}
 			}
 
