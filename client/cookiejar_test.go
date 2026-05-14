@@ -329,9 +329,11 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 			jar := &CookieJar{}
 
 			hostOnlyOrigin := fasthttp.AcquireURI()
+			defer fasthttp.ReleaseURI(hostOnlyOrigin)
 			require.NoError(t, hostOnlyOrigin.Parse(nil, []byte("http://example.com/")))
 
 			domainOrigin := fasthttp.AcquireURI()
+			defer fasthttp.ReleaseURI(domainOrigin)
 			require.NoError(t, domainOrigin.Parse(nil, []byte("http://sub.example.com/")))
 
 			hostOnlyCookie := &fasthttp.Cookie{}
@@ -354,9 +356,10 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 				}
 			}
 
-			subdomain := fasthttp.AcquireURI()
-			require.NoError(t, subdomain.Parse(nil, []byte("http://child.example.com/")))
-			require.Equal(t, []string{"domain"}, cookieKeys(jar.Get(subdomain)))
+			anotherSubdomain := fasthttp.AcquireURI()
+			defer fasthttp.ReleaseURI(anotherSubdomain)
+			require.NoError(t, anotherSubdomain.Parse(nil, []byte("http://child.example.com/")))
+			require.Equal(t, []string{"domain"}, cookieKeys(jar.Get(anotherSubdomain)))
 
 			require.ElementsMatch(t, []string{"domain", "host-only"}, cookieKeys(jar.Get(hostOnlyOrigin)))
 		})
