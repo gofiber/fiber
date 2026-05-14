@@ -326,6 +326,42 @@ func Test_CookieJar_RejectUnrelatedResponseDomain(t *testing.T) {
 	require.Empty(t, jar.Get(uri))
 }
 
+func Test_CookieJar_RejectPublicSuffixResponseDomain(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sess")
+	c.SetValue("evil")
+	c.SetDomain("com")
+	resp.Header.SetCookie(c)
+
+	jar.parseCookiesFromResp([]byte("attacker.com"), nil, resp)
+
+	require.Empty(t, jar.hostCookies)
+}
+
+func Test_CookieJar_RejectIPAddressSuffixResponseDomain(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sess")
+	c.SetValue("evil")
+	c.SetDomain("2.3.4")
+	resp.Header.SetCookie(c)
+
+	jar.parseCookiesFromResp([]byte("1.2.3.4"), nil, resp)
+
+	require.Empty(t, jar.hostCookies)
+}
+
 func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 	t.Parallel()
 

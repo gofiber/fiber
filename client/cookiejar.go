@@ -12,6 +12,7 @@ import (
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
+	"golang.org/x/net/publicsuffix"
 )
 
 var cookieJarPool = sync.Pool{
@@ -277,12 +278,18 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 			tmp.SetDomain(hostStr)
 		} else {
 			domain := utils.UnsafeString(domainBytes)
-			if !domainMatch(hostStr, domain) {
+			acceptedDomain, acceptedHostOnly, ok := acceptCookieDomain(hostStr, domain)
+			if !ok {
 				fasthttp.ReleaseCookie(tmp)
 				continue
 			}
-			key = utils.CopyString(utils.UnsafeString(domainBytes))
-			tmp.SetDomainBytes(domainBytes)
+			hostOnly = acceptedHostOnly
+			if hostOnly {
+				tmp.SetDomain(hostStr)
+			} else {
+				key = utils.CopyString(acceptedDomain)
+				tmp.SetDomain(acceptedDomain)
+			}
 		}
 
 		cookies := cj.hostCookies[key]
@@ -371,4 +378,33 @@ func domainMatch(host, domain string) bool {
 		return true
 	}
 	return strings.HasSuffix(host, "."+domain)
+}
+
+func acceptCookieDomain(host, domain string) (string, bool, bool) {
+	if host == domain {
+		if isIPLiteral(host) || isPublicSuffixDomain(domain) {
+			return host, true, true
+		}
+		return domain, false, true
+	}
+
+	if isIPLiteral(host) || isPublicSuffixDomain(domain) || !domainMatch(host, domain) {
+		return "", false, false
+	}
+
+	return domain, false, true
+}
+
+func isIPLiteral(host string) bool {
+	if len(host) >= 2 && host[0] == '[' && host[len(host)-1] == ']' {
+		host = host[1 : len(host)-1]
+	}
+
+	return net.ParseIP(host) != nil
+}
+
+func isPublicSuffixDomain(domain string) bool {
+	suffix, _ := publicsuffix.PublicSuffix(domain)
+
+	return suffix == domain
 }
