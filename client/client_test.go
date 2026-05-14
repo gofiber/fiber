@@ -2235,10 +2235,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		t.Parallel()
 		client := New()
 
-		err := client.SetProxyURL(":this is not a proxy")
-		require.NoError(t, err)
-
-		_, err = client.Get("http://localhost:3000")
+		err := client.SetProxyURL("ftp://127.0.0.1:8080")
 		require.Error(t, err)
 	})
 }

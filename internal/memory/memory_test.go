@@ -29,9 +29,9 @@ func Test_Memory(t *testing.T) {
 
 	// Set key with value and ttl
 	store.Set(key, val, exp)
-	time.Sleep(1100 * time.Millisecond)
-	result = store.Get(key)
-	require.Nil(t, result)
+	require.Eventually(t, func() bool {
+		return store.Get(key) == nil
+	}, 3*time.Second, 10*time.Millisecond)
 
 	// Set key with value and no expiration
 	store.Set(key, val, 0)

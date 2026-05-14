@@ -282,6 +282,25 @@ func TestSharedState_KeyNamespacing(t *testing.T) {
 	require.Equal(t, 2, outTwo["app"])
 }
 
+func TestSharedState_KeyNamespacingWithOverlappingPrefixes(t *testing.T) {
+	t.Parallel()
+
+	store := newSharedStateMemoryStorage(t)
+	shortPrefixApp := New(Config{AppName: "app", SharedStorage: store})
+	longPrefixApp := New(Config{AppName: "app-one", SharedStorage: store})
+
+	err := longPrefixApp.SharedState().Set("session:123", []byte("victim-secret"), time.Minute)
+	require.NoError(t, err)
+
+	err = shortPrefixApp.SharedState().Set("one-session:123", []byte("attacker-value"), time.Minute)
+	require.NoError(t, err)
+
+	data, found, err := longPrefixApp.SharedState().Get("session:123")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, []byte("victim-secret"), data)
+}
+
 func TestSharedState_StorageErrorsArePropagated(t *testing.T) {
 	t.Parallel()
 
