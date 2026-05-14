@@ -896,29 +896,40 @@ func Benchmark_Compress_Levels_Parallel(b *testing.B) {
 	}
 }
 
-// go test -run Test_Compress_Streaming_Without_AcceptEncoding
-func Test_Compress_Streaming_Without_AcceptEncoding(t *testing.T) {
+type failOnReadStream struct {
+	readCalls  int
+	closeCalls int
+}
+
+func (s *failOnReadStream) Read(_ []byte) (int, error) {
+	s.readCalls++
+	return 0, errors.New("stream should not be read")
+}
+
+func (s *failOnReadStream) Close() error {
+	s.closeCalls++
+	return nil
+}
+
+func Test_Compress_ShouldSkip_DoesNotMaterialize_BodyStream(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
 
-	app.Use(New())
-
-	app.Get("/stream", func(c fiber.Ctx) error {
-		// Send a stream without Accept-Encoding header to trigger shouldSkip
-		return c.SendStream(bytes.NewReader([]byte("streaming data")))
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() {
+		app.ReleaseCtx(c)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/stream", http.NoBody)
-	// No Accept-Encoding header set
+	stream := &failOnReadStream{}
+	c.Response().SetStatusCode(fiber.StatusOK)
+	c.Response().SetBodyStream(stream, -1)
 
-	resp, err := app.Test(req, testConfig)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "streaming data", string(body))
+	require.False(t, shouldSkip(c))
+	require.True(t, c.Response().IsBodyStream())
+	require.Zero(t, stream.readCalls)
+	require.Zero(t, stream.closeCalls)
 }
 
 // go test -run Test_Compress_Streaming_With_Compression
@@ -929,8 +940,7 @@ func Test_Compress_Streaming_With_Compression(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/stream", func(c fiber.Ctx) error {
-		// Send a stream with Accept-Encoding header
-		// The stream should be compressed by fasthttp's compressor
+		// Send a stream when the client explicitly requests compression.
 		return c.SendStream(bytes.NewReader(filedata))
 	})
 
