@@ -48,6 +48,12 @@ type storedCookie struct {
 	hostOnly bool
 }
 
+type cookieDomainAcceptance struct {
+	domain   string
+	hostOnly bool
+	ok       bool
+}
+
 // Get returns all cookies stored for a given URI. If there are no cookies for the
 // provided host, the returned slice will be nil.
 //
@@ -278,17 +284,17 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 			tmp.SetDomain(hostStr)
 		} else {
 			domain := utils.UnsafeString(domainBytes)
-			acceptedDomain, acceptedHostOnly, ok := acceptCookieDomain(hostStr, domain)
-			if !ok {
+			acceptance := acceptCookieDomain(hostStr, domain)
+			if !acceptance.ok {
 				fasthttp.ReleaseCookie(tmp)
 				continue
 			}
-			hostOnly = acceptedHostOnly
+			hostOnly = acceptance.hostOnly
 			if hostOnly {
 				tmp.SetDomain(hostStr)
 			} else {
-				key = utils.CopyString(acceptedDomain)
-				tmp.SetDomain(acceptedDomain)
+				key = utils.CopyString(acceptance.domain)
+				tmp.SetDomain(acceptance.domain)
 			}
 		}
 
@@ -380,19 +386,19 @@ func domainMatch(host, domain string) bool {
 	return strings.HasSuffix(host, "."+domain)
 }
 
-func acceptCookieDomain(host, domain string) (string, bool, bool) {
+func acceptCookieDomain(host, domain string) cookieDomainAcceptance {
 	if host == domain {
 		if isIPLiteral(host) || isPublicSuffixDomain(domain) {
-			return host, true, true
+			return cookieDomainAcceptance{domain: host, hostOnly: true, ok: true}
 		}
-		return domain, false, true
+		return cookieDomainAcceptance{domain: domain, ok: true}
 	}
 
 	if isIPLiteral(host) || isPublicSuffixDomain(domain) || !domainMatch(host, domain) {
-		return "", false, false
+		return cookieDomainAcceptance{}
 	}
 
-	return domain, false, true
+	return cookieDomainAcceptance{domain: domain, ok: true}
 }
 
 func isIPLiteral(host string) bool {
