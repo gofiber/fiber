@@ -895,3 +895,55 @@ func Benchmark_Compress_Levels_Parallel(b *testing.B) {
 		}
 	}
 }
+
+// go test -run Test_Compress_Streaming_Without_AcceptEncoding
+func Test_Compress_Streaming_Without_AcceptEncoding(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/stream", func(c fiber.Ctx) error {
+		// Send a stream without Accept-Encoding header to trigger shouldSkip
+		return c.SendStream(bytes.NewReader([]byte("streaming data")))
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/stream", http.NoBody)
+	// No Accept-Encoding header set
+
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "streaming data", string(body))
+}
+
+// go test -run Test_Compress_Streaming_With_Compression
+func Test_Compress_Streaming_With_Compression(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/stream", func(c fiber.Ctx) error {
+		// Send a stream with Accept-Encoding header
+		// The stream should be compressed by fasthttp's compressor
+		return c.SendStream(bytes.NewReader(filedata))
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/stream", http.NoBody)
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+
+	// Validate that the response is compressed
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Less(t, len(body), len(filedata), "Compressed size should be smaller than original")
+}
