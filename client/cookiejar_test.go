@@ -22,6 +22,15 @@ func checkKeyValue(t *testing.T, cj *CookieJar, cookie *fasthttp.Cookie, uri *fa
 	require.Equal(t, string(c.Value()), string(cookie.Value()))
 }
 
+func cookieKeys(cookies []*fasthttp.Cookie) []string {
+	keys := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		keys = append(keys, string(cookie.Key()))
+	}
+
+	return keys
+}
+
 func Test_CookieJarGet(t *testing.T) {
 	t.Parallel()
 
@@ -294,6 +303,62 @@ func Test_CookieJar_RejectUnrelatedResponseDomain(t *testing.T) {
 	uri := fasthttp.AcquireURI()
 	require.NoError(t, uri.Parse(nil, []byte("http://victim.example/")))
 	require.Empty(t, jar.Get(uri))
+}
+
+func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name  string
+		order []string
+	}{
+		{
+			name:  "host-only first",
+			order: []string{"host-only", "domain"},
+		},
+		{
+			name:  "domain first",
+			order: []string{"domain", "host-only"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			jar := &CookieJar{}
+
+			hostOnlyOrigin := fasthttp.AcquireURI()
+			require.NoError(t, hostOnlyOrigin.Parse(nil, []byte("http://example.com/")))
+
+			domainOrigin := fasthttp.AcquireURI()
+			require.NoError(t, domainOrigin.Parse(nil, []byte("http://sub.example.com/")))
+
+			hostOnlyCookie := &fasthttp.Cookie{}
+			hostOnlyCookie.SetKey("host-only")
+			hostOnlyCookie.SetValue("123")
+
+			domainCookie := &fasthttp.Cookie{}
+			domainCookie.SetKey("domain")
+			domainCookie.SetValue("456")
+			domainCookie.SetDomain("example.com")
+
+			for _, cookieType := range testCase.order {
+				switch cookieType {
+				case "host-only":
+					jar.Set(hostOnlyOrigin, hostOnlyCookie)
+				case "domain":
+					jar.Set(domainOrigin, domainCookie)
+				}
+			}
+
+			subdomain := fasthttp.AcquireURI()
+			require.NoError(t, subdomain.Parse(nil, []byte("http://child.example.com/")))
+			require.Equal(t, []string{"domain"}, cookieKeys(jar.Get(subdomain)))
+
+			require.ElementsMatch(t, []string{"domain", "host-only"}, cookieKeys(jar.Get(hostOnlyOrigin)))
+		})
+	}
 }
 
 func Test_CookieJar_Secure(t *testing.T) {

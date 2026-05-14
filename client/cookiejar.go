@@ -121,9 +121,6 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 		if len(cookies) == 0 {
 			continue
 		}
-		if cookies[0].hostOnly && host != domain {
-			continue
-		}
 		if !domainMatch(host, domain) {
 			continue
 		}
@@ -137,6 +134,9 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 			}
 			kept = append(kept, sc)
 
+			if sc.hostOnly && host != domain {
+				continue
+			}
 			if !pathMatch(path, c.Path()) {
 				continue
 			}
