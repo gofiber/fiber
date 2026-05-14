@@ -386,6 +386,10 @@ func domainMatch(host, domain string) bool {
 	return strings.HasSuffix(host, "."+domain)
 }
 
+// acceptCookieDomain enforces RFC 6265 response-domain acceptance. Exact-match
+// public-suffix and IP-literal Domain attributes are downgraded to host-only so
+// same-host behavior is preserved without storing cookies under shared suffixes
+// or allowing IP suffix matching across unrelated hosts.
 func acceptCookieDomain(host, domain string) cookieDomainAcceptance {
 	if host == domain {
 		if isIPLiteral(host) || isPublicSuffixDomain(domain) {
