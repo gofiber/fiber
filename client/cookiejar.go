@@ -114,6 +114,7 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 	cj.mu.Lock()
 	defer cj.mu.Unlock()
 
+	host = utilsstrings.ToLower(host)
 	now := time.Now()
 	var matched []*fasthttp.Cookie
 
@@ -205,6 +206,7 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 			for i := range hostCookies {
 				if hostCookies[i].cookie == existing {
 					hostCookies[i].hostOnly = hostOnly
+					break
 				}
 			}
 		}
@@ -292,6 +294,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 			for i := range cookies {
 				if cookies[i].cookie == c {
 					cookies[i].hostOnly = hostOnly
+					break
 				}
 			}
 		}
