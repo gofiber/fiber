@@ -285,6 +285,31 @@ func Test_CookieJar_HostOnlyCookieNotSentToSubdomain(t *testing.T) {
 	require.Empty(t, jar.Get(subdomain))
 }
 
+func Test_CookieJar_ResponseHostOnlyCookieNotSentToSubdomain(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sid")
+	c.SetValue("123")
+	resp.Header.SetCookie(c)
+
+	jar.parseCookiesFromResp([]byte("example.com"), nil, resp)
+
+	origin := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(origin)
+	require.NoError(t, origin.Parse(nil, []byte("http://example.com/")))
+	require.Equal(t, []string{"sid"}, cookieKeys(jar.Get(origin)))
+
+	subdomain := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(subdomain)
+	require.NoError(t, subdomain.Parse(nil, []byte("http://attacker.example.com/")))
+	require.Empty(t, jar.Get(subdomain))
+}
+
 func Test_CookieJar_HostOnlyCookieMatchesMixedCaseHost(t *testing.T) {
 	t.Parallel()
 
@@ -324,6 +349,27 @@ func Test_CookieJar_RejectUnrelatedResponseDomain(t *testing.T) {
 	uri := fasthttp.AcquireURI()
 	require.NoError(t, uri.Parse(nil, []byte("http://victim.example/")))
 	require.Empty(t, jar.Get(uri))
+}
+
+func Test_CookieJar_SetRejectUnrelatedDomain(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	origin := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(origin)
+	require.NoError(t, origin.Parse(nil, []byte("http://attacker.example/")))
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sess")
+	c.SetValue("evil")
+	c.SetDomain("victim.example")
+
+	jar.Set(origin, c)
+
+	target := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(target)
+	require.NoError(t, target.Parse(nil, []byte("http://victim.example/")))
+	require.Empty(t, jar.Get(target))
 }
 
 func Test_CookieJar_RejectPublicSuffixResponseDomain(t *testing.T) {

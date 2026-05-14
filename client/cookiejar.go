@@ -195,17 +195,26 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 		domain := utils.TrimLeft(cookie.Domain(), '.')
 		utilsbytes.UnsafeToLower(domain)
 		key := hostKey
-		if len(domain) == 0 {
+		hostOnly := len(domain) == 0
+		if hostOnly {
 			cookie.SetDomain(hostStr)
 		} else {
-			key = utils.CopyString(utils.UnsafeString(domain))
-			cookie.SetDomainBytes(domain)
+			acceptance := acceptCookieDomain(hostStr, utils.UnsafeString(domain))
+			if !acceptance.ok {
+				continue
+			}
+			hostOnly = acceptance.hostOnly
+			if hostOnly {
+				cookie.SetDomain(hostStr)
+			} else {
+				key = utils.CopyString(acceptance.domain)
+				cookie.SetDomain(acceptance.domain)
+			}
 		}
 
 		hostCookies := cj.hostCookies[key]
 
 		existing := searchCookieByKeyAndPath(cookie.Key(), cookie.Path(), hostCookies)
-		hostOnly := len(domain) == 0
 		if existing == nil {
 			existing = fasthttp.AcquireCookie()
 			hostCookies = append(hostCookies, storedCookie{cookie: existing, hostOnly: hostOnly})
