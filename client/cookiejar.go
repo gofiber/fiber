@@ -39,6 +39,9 @@ func ReleaseCookieJar(c *CookieJar) {
 
 // CookieJar manages cookie storage for the client. It stores cookies keyed by host.
 type CookieJar struct {
+	// hostCookies stores wrapped cookies keyed by host.
+	// If release logic is re-enabled for these entries, iterate as storedCookie
+	// values and call fasthttp.ReleaseCookie(stored.cookie) on the wrapped cookie.
 	hostCookies map[string][]storedCookie
 	mu          sync.Mutex
 }
