@@ -1689,6 +1689,28 @@ func TestValueFromContext(t *testing.T) {
 		require.Equal(t, "value", value)
 	})
 
+	t.Run("released fiber.Ctx", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+
+		c.Locals("key", "value")
+
+		valueBeforeRelease, okBeforeRelease := ValueFromContext[string](c, "key")
+		require.True(t, okBeforeRelease)
+		require.Equal(t, "value", valueBeforeRelease)
+
+		app.ReleaseCtx(c)
+
+		require.NotPanics(t, func() {
+			valueAfterRelease, okAfterRelease := ValueFromContext[string](c, "key")
+			require.False(t, okAfterRelease)
+			require.Empty(t, valueAfterRelease)
+		})
+	})
+
 	t.Run("fiber.CustomCtx", func(t *testing.T) {
 		t.Parallel()
 
@@ -1704,6 +1726,30 @@ func TestValueFromContext(t *testing.T) {
 		value, ok := ValueFromContext[string](c, "key")
 		require.True(t, ok)
 		require.Equal(t, "value", value)
+	})
+
+	t.Run("released fiber.CustomCtx", func(t *testing.T) {
+		t.Parallel()
+
+		app := NewWithCustomCtx(func(app *App) CustomCtx {
+			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+		})
+		raw := &fasthttp.RequestCtx{}
+		c := app.AcquireCtx(raw)
+
+		c.Locals("key", "value")
+
+		valueBeforeRelease, okBeforeRelease := ValueFromContext[string](c, "key")
+		require.True(t, okBeforeRelease)
+		require.Equal(t, "value", valueBeforeRelease)
+
+		app.ReleaseCtx(c)
+
+		require.NotPanics(t, func() {
+			valueAfterRelease, okAfterRelease := ValueFromContext[string](c, "key")
+			require.False(t, okAfterRelease)
+			require.Empty(t, valueAfterRelease)
+		})
 	})
 
 	t.Run("fasthttp request ctx", func(t *testing.T) {
