@@ -22,13 +22,9 @@ import (
 
 var ErrInvalidPath = errors.New("invalid path")
 
-// sanitizePath validates and cleans the requested path.
-// It returns an error if the path attempts to traverse directories.
-func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
-	var s string
+const invalidPathSentinel = "/__fiber_invalid__"
 
-	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
-
+func bytesToPathString(p []byte) string {
 	if bytes.IndexByte(p, '\\') >= 0 {
 		b := make([]byte, len(p))
 		copy(b, p)
@@ -37,21 +33,56 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 				b[i] = '/'
 			}
 		}
-		s = utils.UnsafeString(b)
-	} else {
-		s = utils.UnsafeString(p)
+		return utils.UnsafeString(b)
 	}
 
-	// repeatedly unescape until it no longer changes, catching errors
+	return utils.UnsafeString(p)
+}
+
+func unescapePathString(s string) (string, error) {
 	for strings.IndexByte(s, '%') >= 0 {
 		us, err := url.PathUnescape(s)
 		if err != nil {
-			return nil, ErrInvalidPath
+			return "", ErrInvalidPath
 		}
 		if us == s {
 			break
 		}
 		s = us
+	}
+
+	return s, nil
+}
+
+func hasParentDirSegment(p []byte) (bool, error) {
+	s, err := unescapePathString(bytesToPathString(p))
+	if err != nil {
+		return false, err
+	}
+
+	trimmed := utils.TrimLeft(filepath.ToSlash(s), '/')
+	for trimmed != "" {
+		segment, rest, found := strings.Cut(trimmed, "/")
+		if segment == ".." {
+			return true, nil
+		}
+		if !found {
+			return false, nil
+		}
+		trimmed = rest
+	}
+
+	return false, nil
+}
+
+// sanitizePath validates and cleans the requested path.
+// It returns an error if the path attempts to traverse directories.
+func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
+	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
+
+	s, err := unescapePathString(bytesToPathString(p))
+	if err != nil {
+		return nil, err
 	}
 
 	if strings.IndexByte(s, '\\') >= 0 {
@@ -124,6 +155,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 	var createFS sync.Once
 	var fileHandler fasthttp.RequestHandler
 	var cacheControlValue string
+	var rootCheckErr error
 	var rootIsFile bool
 
 	// adjustments for io/fs compatibility
@@ -147,9 +179,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 		createFS.Do(func() {
 			prefix := c.Route().Path
 
-			if check, err := isFile(root, config.FS); err == nil {
-				rootIsFile = check
-			}
+			rootIsFile, rootCheckErr = isFile(root, config.FS)
 
 			// Is prefix a partial wildcard?
 			if before, _, found := strings.Cut(prefix, "*"); found {
@@ -169,6 +199,16 @@ func New(root string, cfg ...Config) fiber.Handler {
 			fsRoot := root
 			if config.FS != nil {
 				fsRoot = ""
+			}
+
+			var fsRootPrefix []byte
+			if config.FS != nil && root != "" && root != "." && !rootIsFile {
+				// fasthttp.FS.Root is forced to "" for io/fs.FS so pathToFilePath
+				// returns clean relative paths. PathRewrite prepends the caller's
+				// configured subdirectory after sanitizing the request path.
+				fsRootPrefix = make([]byte, len(root)+1)
+				fsRootPrefix[0] = '/'
+				copy(fsRootPrefix[1:], root)
 			}
 
 			fileServer := &fasthttp.FS{
@@ -193,19 +233,24 @@ func New(root string, cfg ...Config) fiber.Handler {
 				path := fctx.Path()
 
 				if len(path) >= prefixLen {
-					checkFile, err := isFile(root, fileServer.FS)
-					if err != nil {
-						return path
+					if rootCheckErr != nil && fileServer.FS != nil {
+						return []byte(invalidPathSentinel)
 					}
 
 					// If the root is a file, we need to reset the path to "/" always.
 					switch {
-					case checkFile && fileServer.FS == nil:
+					case rootIsFile && fileServer.FS == nil:
 						path = []byte("/")
-					case checkFile && fileServer.FS != nil:
+					case rootIsFile && fileServer.FS != nil:
 						path = utils.UnsafeBytes(root)
 					default:
 						path = path[prefixLen:]
+						if len(fsRootPrefix) > 0 {
+							hasTraversal, err := hasParentDirSegment(path)
+							if err != nil || hasTraversal {
+								return []byte(invalidPathSentinel)
+							}
+						}
 						if len(path) == 0 || path[len(path)-1] != '/' {
 							path = append(path, '/')
 						}
@@ -219,7 +264,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 				sanitized, err := sanitizePath(path, fileServer.FS)
 				if err != nil {
 					// return a guaranteed-missing path so fs responds with 404
-					return []byte("/__fiber_invalid__")
+					return []byte(invalidPathSentinel)
+				}
+				if len(fsRootPrefix) > 0 {
+					rewrittenPath := make([]byte, len(fsRootPrefix)+len(sanitized))
+					copy(rewrittenPath, fsRootPrefix)
+					copy(rewrittenPath[len(fsRootPrefix):], sanitized)
+					return rewrittenPath
 				}
 				return sanitized
 			}
