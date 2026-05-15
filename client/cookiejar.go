@@ -399,18 +399,18 @@ func domainMatch(host, domain string) bool {
 }
 
 // acceptCookieDomain enforces RFC 6265 response-domain acceptance. Exact-match
-// public-suffix and IP-literal Domain attributes are downgraded to host-only so
-// same-host behavior is preserved without storing cookies under shared suffixes
-// or allowing IP suffix matching across unrelated hosts.
+// public-suffix and exact-match IP-literal Domain attributes are downgraded to
+// host-only so same-host behavior is preserved without storing cookies under
+// shared suffixes or allowing IP suffix matching across unrelated hosts.
 func acceptCookieDomain(host, domain string) cookieDomainAcceptance {
 	if host == domain {
-		if isIPLiteral(host) || isPublicSuffixDomain(domain) {
+		if isIPLiteral(domain) || isPublicSuffixDomain(domain) {
 			return cookieDomainAcceptance{domain: host, hostOnly: true, ok: true}
 		}
 		return cookieDomainAcceptance{domain: domain, ok: true}
 	}
 
-	if isIPLiteral(host) || isPublicSuffixDomain(domain) || !domainMatch(host, domain) {
+	if isIPLiteral(host) || isIPLiteral(domain) || isPublicSuffixDomain(domain) || !domainMatch(host, domain) {
 		return cookieDomainAcceptance{}
 	}
 

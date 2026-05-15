@@ -408,6 +408,52 @@ func Test_CookieJar_RejectIPAddressSuffixResponseDomain(t *testing.T) {
 	require.Empty(t, jar.hostCookies)
 }
 
+func Test_CookieJar_RejectIPAddressResponseDomainFromHostname(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sess")
+	c.SetValue("evil")
+	c.SetDomain("127.0.0.1")
+	resp.Header.SetCookie(c)
+
+	jar.parseCookiesFromResp([]byte("evil.127.0.0.1"), nil, resp)
+
+	require.Empty(t, jar.hostCookies)
+
+	uri := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(uri)
+	require.NoError(t, uri.Parse(nil, []byte("http://127.0.0.1/")))
+	require.Empty(t, jar.Get(uri))
+}
+
+func Test_CookieJar_SetRejectIPAddressDomainFromHostname(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	origin := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(origin)
+	require.NoError(t, origin.Parse(nil, []byte("http://evil.127.0.0.1/")))
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sess")
+	c.SetValue("evil")
+	c.SetDomain("127.0.0.1")
+
+	jar.Set(origin, c)
+
+	require.Empty(t, jar.hostCookies)
+
+	target := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(target)
+	require.NoError(t, target.Parse(nil, []byte("http://127.0.0.1/")))
+	require.Empty(t, jar.Get(target))
+}
+
 func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 	t.Parallel()
 
