@@ -390,7 +390,7 @@ func Test_CookieJar_RejectPublicSuffixResponseDomain(t *testing.T) {
 	require.Empty(t, jar.hostCookies)
 }
 
-func Test_CookieJar_ExactPublicSuffixResponseDomainBecomesHostOnly(t *testing.T) {
+func Test_CookieJar_ExactPublicSuffixDomainDowngradedToHostOnly(t *testing.T) {
 	t.Parallel()
 
 	jar := &CookieJar{}
@@ -436,7 +436,7 @@ func Test_CookieJar_RejectIPAddressSuffixResponseDomain(t *testing.T) {
 	require.Empty(t, jar.hostCookies)
 }
 
-func Test_CookieJar_ExactIPAddressResponseDomainBecomesHostOnly(t *testing.T) {
+func Test_CookieJar_ExactIPAddressDomainDowngradedToHostOnly(t *testing.T) {
 	t.Parallel()
 
 	jar := &CookieJar{}
@@ -531,7 +531,7 @@ func Test_CookieJar_ResponseDomainCookieSentToMatchingSiblingSubdomain(t *testin
 	require.Equal(t, []string{"sess"}, cookieKeys(jar.Get(other)))
 }
 
-func Test_CookieJar_TrailingDotResponseDomainBecomesHostOnly(t *testing.T) {
+func Test_CookieJar_TrailingDotDomainDowngradedToHostOnly(t *testing.T) {
 	t.Parallel()
 
 	jar := &CookieJar{}
@@ -556,6 +556,34 @@ func Test_CookieJar_TrailingDotResponseDomainBecomesHostOnly(t *testing.T) {
 	other := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(other)
 	require.NoError(t, other.Parse(nil, []byte("http://other.example.com./")))
+	require.Empty(t, jar.Get(other))
+}
+
+func Test_CookieJar_TrailingDotDomainDowngradedToHostOnlyOnPlainHost(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sess")
+	c.SetValue("123")
+	c.SetDomain("example.com.")
+	resp.Header.SetCookie(c)
+
+	jar.parseCookiesFromResp([]byte("sub.example.com"), nil, resp)
+	require.Len(t, jar.hostCookies["sub.example.com"], 1)
+	require.True(t, jar.hostCookies["sub.example.com"][0].hostOnly)
+
+	origin := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(origin)
+	require.NoError(t, origin.Parse(nil, []byte("http://sub.example.com/")))
+	require.Equal(t, []string{"sess"}, cookieKeys(jar.Get(origin)))
+
+	other := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(other)
+	require.NoError(t, other.Parse(nil, []byte("http://other.example.com/")))
 	require.Empty(t, jar.Get(other))
 }
 
