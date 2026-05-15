@@ -390,6 +390,34 @@ func Test_CookieJar_RejectPublicSuffixResponseDomain(t *testing.T) {
 	require.Empty(t, jar.hostCookies)
 }
 
+func Test_CookieJar_ExactPublicSuffixResponseDomainBecomesHostOnly(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sess")
+	c.SetValue("ok")
+	c.SetDomain("com")
+	resp.Header.SetCookie(c)
+
+	jar.parseCookiesFromResp([]byte("com"), nil, resp)
+	require.Len(t, jar.hostCookies["com"], 1)
+	require.True(t, jar.hostCookies["com"][0].hostOnly)
+
+	origin := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(origin)
+	require.NoError(t, origin.Parse(nil, []byte("http://com/")))
+	require.Equal(t, []string{"sess"}, cookieKeys(jar.Get(origin)))
+
+	other := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(other)
+	require.NoError(t, other.Parse(nil, []byte("http://example.com/")))
+	require.Empty(t, jar.Get(other))
+}
+
 func Test_CookieJar_RejectIPAddressSuffixResponseDomain(t *testing.T) {
 	t.Parallel()
 
@@ -406,6 +434,34 @@ func Test_CookieJar_RejectIPAddressSuffixResponseDomain(t *testing.T) {
 	jar.parseCookiesFromResp([]byte("1.2.3.4"), nil, resp)
 
 	require.Empty(t, jar.hostCookies)
+}
+
+func Test_CookieJar_ExactIPAddressResponseDomainBecomesHostOnly(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sess")
+	c.SetValue("ok")
+	c.SetDomain("127.0.0.1")
+	resp.Header.SetCookie(c)
+
+	jar.parseCookiesFromResp([]byte("127.0.0.1"), nil, resp)
+	require.Len(t, jar.hostCookies["127.0.0.1"], 1)
+	require.True(t, jar.hostCookies["127.0.0.1"][0].hostOnly)
+
+	origin := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(origin)
+	require.NoError(t, origin.Parse(nil, []byte("http://127.0.0.1/")))
+	require.Equal(t, []string{"sess"}, cookieKeys(jar.Get(origin)))
+
+	other := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(other)
+	require.NoError(t, other.Parse(nil, []byte("http://evil.127.0.0.1/")))
+	require.Empty(t, jar.Get(other))
 }
 
 func Test_CookieJar_RejectIPAddressResponseDomainFromHostname(t *testing.T) {
@@ -452,6 +508,55 @@ func Test_CookieJar_SetRejectIPAddressDomainFromHostname(t *testing.T) {
 	defer fasthttp.ReleaseURI(target)
 	require.NoError(t, target.Parse(nil, []byte("http://127.0.0.1/")))
 	require.Empty(t, jar.Get(target))
+}
+
+func Test_CookieJar_ResponseDomainCookieSentToMatchingSiblingSubdomain(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sess")
+	c.SetValue("shared")
+	c.SetDomain("example.com")
+	resp.Header.SetCookie(c)
+
+	jar.parseCookiesFromResp([]byte("sub.example.com"), nil, resp)
+
+	other := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(other)
+	require.NoError(t, other.Parse(nil, []byte("http://other.example.com/")))
+	require.Equal(t, []string{"sess"}, cookieKeys(jar.Get(other)))
+}
+
+func Test_CookieJar_TrailingDotResponseDomainBecomesHostOnly(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("sess")
+	c.SetValue("123")
+	c.SetDomain("example.com.")
+	resp.Header.SetCookie(c)
+
+	jar.parseCookiesFromResp([]byte("sub.example.com."), nil, resp)
+	require.Len(t, jar.hostCookies["sub.example.com."], 1)
+	require.True(t, jar.hostCookies["sub.example.com."][0].hostOnly)
+
+	origin := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(origin)
+	require.NoError(t, origin.Parse(nil, []byte("http://sub.example.com./")))
+	require.Equal(t, []string{"sess"}, cookieKeys(jar.Get(origin)))
+
+	other := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(other)
+	require.NoError(t, other.Parse(nil, []byte("http://other.example.com./")))
+	require.Empty(t, jar.Get(other))
 }
 
 func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {

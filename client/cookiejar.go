@@ -37,9 +37,11 @@ func ReleaseCookieJar(c *CookieJar) {
 	cookieJarPool.Put(c)
 }
 
-// CookieJar manages cookie storage for the client. It stores cookies keyed by host.
+// CookieJar manages cookie storage for the client.
 type CookieJar struct {
-	// hostCookies stores wrapped cookies keyed by host.
+	// hostCookies stores wrapped cookies keyed by storage scope:
+	// host-only cookies use the request host, while domain cookies use the
+	// accepted Domain attribute.
 	// If release logic is re-enabled for these entries, iterate as storedCookie
 	// values and call fasthttp.ReleaseCookie(stored.cookie) on the wrapped cookie.
 	hostCookies map[string][]storedCookie
@@ -398,11 +400,16 @@ func domainMatch(host, domain string) bool {
 	return strings.HasSuffix(host, "."+domain)
 }
 
-// acceptCookieDomain enforces RFC 6265 response-domain acceptance. Exact-match
-// public-suffix and exact-match IP-literal Domain attributes are downgraded to
-// host-only so same-host behavior is preserved without storing cookies under
-// shared suffixes or allowing IP suffix matching across unrelated hosts.
+// acceptCookieDomain enforces RFC 6265 response-domain acceptance. Trailing-dot,
+// exact-match public-suffix, and exact-match IP-literal Domain attributes are
+// downgraded to host-only so same-host behavior is preserved without storing
+// cookies under shared suffixes or allowing IP suffix matching across
+// unrelated hosts.
 func acceptCookieDomain(host, domain string) cookieDomainAcceptance {
+	if strings.HasSuffix(domain, ".") {
+		return cookieDomainAcceptance{domain: host, hostOnly: true, ok: true}
+	}
+
 	if host == domain {
 		if isIPLiteral(domain) || isPublicSuffixDomain(domain) {
 			return cookieDomainAcceptance{domain: host, hostOnly: true, ok: true}
