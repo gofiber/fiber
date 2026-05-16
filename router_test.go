@@ -2041,6 +2041,73 @@ func Test_AddRoute_MergeHandlers(t *testing.T) {
 	require.Len(t, app.stack[app.methodInt(MethodGet)][0].Handlers, 2)
 }
 
+func Test_AddRoute_MergeHandlers_OpenAPIHelpersUpdateStoredRoute(t *testing.T) {
+	t.Parallel()
+	app := New()
+	handler := func(_ Ctx) error { return nil }
+
+	app.Get("/merge", handler)
+	app.Get("/merge", handler).
+		Summary("merged summary").
+		Description("merged description").
+		Consumes(MIMEApplicationJSON).
+		Produces(MIMEApplicationXML).
+		Parameter("trace-id", "query", false, nil, "trace id").
+		Response(StatusOK, "OK", MIMEApplicationXML).
+		Tags("merged").
+		Deprecated()
+
+	routes := app.stack[app.methodInt(MethodGet)]
+	require.Len(t, routes, 1)
+	route := routes[0]
+	require.Len(t, route.Handlers, 2)
+	require.Equal(t, "merged summary", route.Summary)
+	require.Equal(t, "merged description", route.Description)
+	require.Condition(t, func() bool { return route.Consumes == MIMEApplicationJSON })
+	require.Equal(t, MIMEApplicationXML, route.Produces)
+	require.Len(t, route.Parameters, 1)
+	require.Equal(t, "trace-id", route.Parameters[0].Name)
+	require.True(t, route.Deprecated)
+	require.Equal(t, []string{"merged"}, route.Tags)
+	require.Contains(t, route.Responses, "200")
+}
+
+func Test_CopyAnyMap_DeepCopy(t *testing.T) {
+	t.Parallel()
+
+	src := map[string]any{
+		"properties": map[string]any{
+			"id": map[string]any{
+				"type": "string",
+			},
+		},
+		"required": []any{"id"},
+	}
+
+	cloned := copyAnyMap(src)
+	require.NotNil(t, cloned)
+
+	props, ok := cloned["properties"].(map[string]any)
+	require.True(t, ok)
+	id, ok := props["id"].(map[string]any)
+	require.True(t, ok)
+	id["type"] = "integer"
+
+	required, ok := cloned["required"].([]any)
+	require.True(t, ok)
+	required[0] = "changed"
+
+	origProps, ok := src["properties"].(map[string]any)
+	require.True(t, ok)
+	origID, ok := origProps["id"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "string", origID["type"])
+
+	origRequired, ok := src["required"].([]any)
+	require.True(t, ok)
+	require.Equal(t, "id", origRequired[0])
+}
+
 func Test_Route_InvalidMediaType(t *testing.T) {
 	t.Run("produces", func(t *testing.T) {
 		app := New()

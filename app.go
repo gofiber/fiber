@@ -826,7 +826,9 @@ func (app *App) Name(name string) Router {
 // Summary assigns a short summary to the most recently added route.
 func (app *App) Summary(sum string) Router {
 	app.mutex.Lock()
-	app.latestRoute.Summary = sum
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Summary = sum
+	})
 	app.mutex.Unlock()
 	return app
 }
@@ -834,7 +836,9 @@ func (app *App) Summary(sum string) Router {
 // Description assigns a description to the most recently added route.
 func (app *App) Description(desc string) Router {
 	app.mutex.Lock()
-	app.latestRoute.Description = desc
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Description = desc
+	})
 	app.mutex.Unlock()
 	return app
 }
@@ -848,7 +852,9 @@ func (app *App) Consumes(typ string) Router {
 		}
 	}
 	app.mutex.Lock()
-	app.latestRoute.Consumes = typ
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Consumes = typ
+	})
 	app.mutex.Unlock()
 	return app
 }
@@ -862,7 +868,9 @@ func (app *App) Produces(typ string) Router {
 		}
 	}
 	app.mutex.Lock()
-	app.latestRoute.Produces = typ
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Produces = typ
+	})
 	app.mutex.Unlock()
 	return app
 }
@@ -891,10 +899,12 @@ func (app *App) RequestBodyWithExample(description string, required bool, schema
 	}
 
 	app.mutex.Lock()
-	app.latestRoute.RequestBody = body
-	if len(sanitized) > 0 {
-		app.latestRoute.Consumes = sanitized[0]
-	}
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.RequestBody = cloneRouteRequestBody(body)
+		if len(sanitized) > 0 {
+			route.Consumes = sanitized[0]
+		}
+	})
 	app.mutex.Unlock()
 
 	return app
@@ -954,7 +964,12 @@ func (app *App) addParameter(name, in string, required bool, schema map[string]a
 	}
 
 	app.mutex.Lock()
-	app.latestRoute.Parameters = append(app.latestRoute.Parameters, param)
+	app.applyToLatestRouteLocked(func(route *Route) {
+		paramCopy := param
+		paramCopy.Schema = copyAnyMap(param.Schema)
+		paramCopy.Examples = copyAnyMap(param.Examples)
+		route.Parameters = append(route.Parameters, paramCopy)
+	})
 	app.mutex.Unlock()
 
 	return app
@@ -1006,13 +1021,19 @@ func (app *App) addResponse(status int, description string, schema map[string]an
 	resp.Examples = copyAnyMap(examples)
 
 	app.mutex.Lock()
-	if app.latestRoute.Responses == nil {
-		app.latestRoute.Responses = make(map[string]RouteResponse)
-	}
-	app.latestRoute.Responses[key] = resp
-	if status == StatusOK && len(resp.MediaTypes) > 0 {
-		app.latestRoute.Produces = resp.MediaTypes[0]
-	}
+	app.applyToLatestRouteLocked(func(route *Route) {
+		if route.Responses == nil {
+			route.Responses = make(map[string]RouteResponse)
+		}
+		copyResp := resp
+		copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
+		copyResp.Schema = copyAnyMap(resp.Schema)
+		copyResp.Examples = copyAnyMap(resp.Examples)
+		route.Responses[key] = copyResp
+		if status == StatusOK && len(copyResp.MediaTypes) > 0 {
+			route.Produces = copyResp.MediaTypes[0]
+		}
+	})
 	app.mutex.Unlock()
 
 	return app
@@ -1061,7 +1082,9 @@ func (app *App) Tags(tags ...string) Router {
 		copied = make([]string, len(tags))
 		copy(copied, tags)
 	}
-	app.latestRoute.Tags = copied
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Tags = append([]string(nil), copied...)
+	})
 	app.mutex.Unlock()
 	return app
 }
@@ -1069,9 +1092,33 @@ func (app *App) Tags(tags ...string) Router {
 // Deprecated marks the most recently added route as deprecated.
 func (app *App) Deprecated() Router {
 	app.mutex.Lock()
-	app.latestRoute.Deprecated = true
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Deprecated = true
+	})
 	app.mutex.Unlock()
 	return app
+}
+
+func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
+	if app.latestRoute == nil || apply == nil {
+		return
+	}
+
+	apply(app.latestRoute)
+
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if route == app.latestRoute {
+				continue
+			}
+
+			isMethodValid := route.Method == app.latestRoute.Method || app.latestRoute.use ||
+				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
+			if route.Path == app.latestRoute.Path && isMethodValid {
+				apply(route)
+			}
+		}
+	}
 }
 
 // GetRoute Get route by name

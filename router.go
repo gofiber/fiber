@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"fmt"
-	"maps"
 	"slices"
 	"sync/atomic"
 
@@ -689,8 +688,25 @@ func copyAnyMap(src map[string]any) map[string]any {
 		return nil
 	}
 	dst := make(map[string]any, len(src))
-	maps.Copy(dst, src)
+	for key, value := range src {
+		dst[key] = copyAnyValue(value)
+	}
 	return dst
+}
+
+func copyAnyValue(src any) any {
+	switch value := src.(type) {
+	case map[string]any:
+		return copyAnyMap(value)
+	case []any:
+		copied := make([]any, len(value))
+		for i := range value {
+			copied[i] = copyAnyValue(value[i])
+		}
+		return copied
+	default:
+		return src
+	}
 }
 
 func (app *App) normalizePath(path string) string {
