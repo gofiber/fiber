@@ -775,12 +775,18 @@ func (app *App) ReloadViews() error {
 			continue
 		}
 
-		targetApp.viewsMutex.Lock()
-		if err := targetApp.config.Views.Load(); err != nil {
-			targetApp.viewsMutex.Unlock()
-			return fmt.Errorf("fiber: failed to reload views: %w", err)
+		if err := func() error {
+			targetApp.viewsMutex.Lock()
+			defer targetApp.viewsMutex.Unlock()
+
+			if err := targetApp.config.Views.Load(); err != nil {
+				return fmt.Errorf("fiber: failed to reload views: %w", err)
+			}
+
+			return nil
+		}(); err != nil {
+			return err
 		}
-		targetApp.viewsMutex.Unlock()
 
 		reloaded = true
 	}

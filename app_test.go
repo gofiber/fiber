@@ -2056,6 +2056,26 @@ func (v *blockingView) Render(io.Writer, string, any, ...string) error {
 	return nil
 }
 
+type panicLoadView struct {
+	loads int
+}
+
+func (v *panicLoadView) Load() error {
+	v.loads++
+	if v.loads > 1 {
+		panic("panic load")
+	}
+	return nil
+}
+
+func (*panicLoadView) Render(io.Writer, string, any, ...string) error { return nil }
+
+type panicRenderView struct{}
+
+func (*panicRenderView) Load() error { return nil }
+
+func (*panicRenderView) Render(io.Writer, string, any, ...string) error { panic("panic render") }
+
 func Test_App_ReloadViews_Success(t *testing.T) {
 	t.Parallel()
 	view := &countingView{}
@@ -2125,6 +2145,104 @@ func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
 		require.NoError(t, err)
 	case <-time.After(time.Second):
 		t.Fatal("render request did not finish")
+	}
+}
+
+func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
+	t.Parallel()
+
+	view := &panicLoadView{}
+	app := New(Config{Views: view})
+	app.Get("/", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+
+	type reloadResult struct {
+		err       error
+		recovered any
+	}
+
+	reloadDone := make(chan reloadResult, 1)
+	go func() {
+		result := reloadResult{}
+		defer func() {
+			result.recovered = recover()
+			reloadDone <- result
+		}()
+
+		result.err = app.ReloadViews()
+	}()
+
+	select {
+	case result := <-reloadDone:
+		require.NoError(t, result.err)
+		require.Equal(t, "panic load", result.recovered)
+	case <-time.After(time.Second):
+		t.Fatal("reload panic was not recovered")
+	}
+
+	renderDone := make(chan error, 1)
+	go func() {
+		_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		renderDone <- err
+	}()
+
+	select {
+	case err := <-renderDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("render request did not finish after reload panic")
+	}
+}
+
+func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{Views: &panicRenderView{}})
+	app.Get("/", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+
+	type renderResult struct {
+		err       error
+		recovered any
+	}
+
+	renderDone := make(chan renderResult, 1)
+	go func() {
+		result := renderResult{}
+		defer func() {
+			result.recovered = recover()
+			renderDone <- result
+		}()
+
+		app.startupProcess()
+
+		request := &fasthttp.RequestCtx{}
+		request.Request.Header.SetMethod(MethodGet)
+		request.URI().SetPath("/")
+
+		app.defaultRequestHandler(request)
+	}()
+
+	select {
+	case result := <-renderDone:
+		require.NoError(t, result.err)
+		require.Equal(t, "panic render", result.recovered)
+	case <-time.After(time.Second):
+		t.Fatal("render panic was not recovered")
+	}
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- app.ReloadViews()
+	}()
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish after render panic")
 	}
 }
 
