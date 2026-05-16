@@ -200,20 +200,17 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 		domain := utils.TrimLeft(cookie.Domain(), '.')
 		utilsbytes.UnsafeToLower(domain)
 		key := hostKey
+		storedDomain := hostStr
 		hostOnly := len(domain) == 0
-		if hostOnly {
-			cookie.SetDomain(hostStr)
-		} else {
+		if !hostOnly {
 			acceptance := acceptCookieDomain(hostStr, utils.UnsafeString(domain))
 			if !acceptance.ok {
 				continue
 			}
 			hostOnly = acceptance.hostOnly
-			if hostOnly {
-				cookie.SetDomain(hostStr)
-			} else {
+			if !hostOnly {
 				key = utils.CopyString(acceptance.domain)
-				cookie.SetDomain(acceptance.domain)
+				storedDomain = acceptance.domain
 			}
 		}
 
@@ -232,6 +229,7 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 			}
 		}
 		existing.CopyTo(cookie)
+		existing.SetDomain(storedDomain)
 		cj.hostCookies[key] = hostCookies
 	}
 }

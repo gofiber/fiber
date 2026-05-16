@@ -158,7 +158,9 @@ func Test_CookieJarSetRepeatedCookieKeys(t *testing.T) {
 
 	cookies := cj.Get(uri)
 	require.Len(t, cookies, 2)
-	require.Equal(t, cookies[0].String(), cookie2.String())
+	require.Equal(t, "k", string(cookies[0].Key()))
+	require.Equal(t, "v2", string(cookies[0].Value()))
+	require.Equal(t, host, string(cookies[0].Domain()))
 	require.True(t, bytes.Equal(cookies[0].Value(), cookie2.Value()))
 }
 
@@ -283,6 +285,29 @@ func Test_CookieJar_HostOnlyCookieNotSentToSubdomain(t *testing.T) {
 	subdomain := fasthttp.AcquireURI()
 	require.NoError(t, subdomain.Parse(nil, []byte("http://attacker.example.com/")))
 	require.Empty(t, jar.Get(subdomain))
+}
+
+func Test_CookieJar_SetByHostDoesNotMutateHostOnlyCookieToDomainCookie(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	c := &fasthttp.Cookie{}
+	c.SetKey("sid")
+	c.SetValue("123")
+
+	jar.SetByHost([]byte("example.com"), c)
+	require.Empty(t, c.Domain())
+
+	subOrigin := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(subOrigin)
+	require.NoError(t, subOrigin.Parse(nil, []byte("http://sub.example.com/")))
+	jar.Set(subOrigin, c)
+	require.Empty(t, c.Domain())
+
+	sibling := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(sibling)
+	require.NoError(t, sibling.Parse(nil, []byte("http://other.example.com/")))
+	require.Empty(t, jar.Get(sibling))
 }
 
 func Test_CookieJar_ResponseHostOnlyCookieNotSentToSubdomain(t *testing.T) {
