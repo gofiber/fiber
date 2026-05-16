@@ -54,6 +54,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [KeyAuth](#keyauth)
   - [Logger](#logger)
   - [Monitor](#monitor)
+  - [OpenAPI](#openapi)
   - [Proxy](#proxy)
   - [Recover](#recover)
   - [Session](#session)

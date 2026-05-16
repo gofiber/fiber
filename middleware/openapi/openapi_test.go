@@ -750,6 +750,13 @@ func requireSlice(t *testing.T, value any) []any {
 	return s
 }
 
+func requireString(t *testing.T, value any) string {
+	t.Helper()
+	s, ok := value.(string)
+	require.True(t, ok)
+	return s
+}
+
 func Test_OpenAPI_MiddlewareRoutesExcluded(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -800,6 +807,8 @@ func Test_OpenAPI_AutoHeadExcluded(t *testing.T) {
 }
 
 func Test_ConvertToOpenAPIPath(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		fiberPath  string
@@ -864,9 +873,72 @@ func Test_ConvertToOpenAPIPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := convertToOpenAPIPath(tt.fiberPath, tt.params)
 			require.Equal(t, tt.expectPath, result)
 		})
+	}
+}
+
+func Test_BuildOpenAPIPathVariants(t *testing.T) {
+	t.Parallel()
+
+	t.Run("optional parameter emits both variants", func(t *testing.T) {
+		t.Parallel()
+		variants := buildOpenAPIPathVariants("/items/:id?", []string{"id"})
+		require.Len(t, variants, 2)
+		require.Equal(t, "/items/{id}", variants[0].Path)
+		require.Equal(t, []string{"id"}, variants[0].ParamNames)
+		require.Equal(t, "/items", variants[1].Path)
+		require.Empty(t, variants[1].ParamNames)
+	})
+
+	t.Run("wildcard uses openapi-compatible parameter name", func(t *testing.T) {
+		t.Parallel()
+		variants := buildOpenAPIPathVariants("/files/*", []string{"*1"})
+		require.Len(t, variants, 1)
+		require.Equal(t, "/files/{wildcard1}", variants[0].Path)
+		require.Equal(t, []string{"wildcard1"}, variants[0].ParamNames)
+		require.Equal(t, "wildcard1", variants[0].PathParamAliases["*1"])
+	})
+}
+
+func Test_OpenAPI_OptionalPathParameterVariants(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/items/:id?", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+	require.Contains(t, paths, "/items")
+	require.Contains(t, paths, "/items/{id}")
+
+	baseParams := requireMap(t, paths["/items"]["get"])["parameters"]
+	require.Nil(t, baseParams)
+
+	optionalOp := requireMap(t, paths["/items/{id}"]["get"])
+	optionalParams := requireSlice(t, optionalOp["parameters"])
+	require.Len(t, optionalParams, 1)
+	param := requireMap(t, optionalParams[0])
+	require.Equal(t, "id", param["name"])
+}
+
+func Test_OpenAPI_WildcardPathParameterNameMatchesTemplate(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/files/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+	require.Len(t, paths, 1)
+	for template, ops := range paths {
+		op := requireMap(t, ops["get"])
+		params := requireSlice(t, op["parameters"])
+		require.Len(t, params, 1)
+		name := requireString(t, requireMap(t, params[0])["name"])
+		require.Contains(t, template, "{"+name+"}")
+		require.NotContains(t, name, "*")
+		require.NotContains(t, name, "+")
 	}
 }
 
@@ -977,7 +1049,7 @@ func Test_OpenAPI_ParameterEdgeCases(t *testing.T) {
 	app := fiber.New()
 
 	// Route parameter helpers should force path parameters to required=true.
-	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+	app.Get("/test/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		Parameter("id", "path", false, nil, "resource identifier")
 	app.Use(New())
 
@@ -987,7 +1059,7 @@ func Test_OpenAPI_ParameterEdgeCases(t *testing.T) {
 
 	var spec openAPISpec
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
-	op := spec.Paths["/test"]["get"]
+	op := spec.Paths["/test/{id}"]["get"]
 	require.Len(t, op.Parameters, 1)
 	require.Equal(t, "id", op.Parameters[0].Name)
 	require.Equal(t, "path", op.Parameters[0].In)

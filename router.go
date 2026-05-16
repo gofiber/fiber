@@ -626,6 +626,95 @@ func (*App) copyRoute(route *Route) *Route {
 	}
 }
 
+func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {
+	if body == nil {
+		return nil
+	}
+	clone := &RouteRequestBody{
+		Description: body.Description,
+		Required:    body.Required,
+	}
+	if len(body.Schema) > 0 {
+		clone.Schema = copyAnyMap(body.Schema)
+	}
+	clone.SchemaRef = body.SchemaRef
+	if len(body.Examples) > 0 {
+		clone.Examples = copyAnyMap(body.Examples)
+	}
+	clone.Example = body.Example
+	if len(body.MediaTypes) > 0 {
+		clone.MediaTypes = append([]string(nil), body.MediaTypes...)
+	}
+	return clone
+}
+
+func cloneRouteParameters(params []RouteParameter) []RouteParameter {
+	if len(params) == 0 {
+		return nil
+	}
+	cloned := make([]RouteParameter, len(params))
+	for i, p := range params {
+		cloned[i] = RouteParameter{
+			Name:        p.Name,
+			In:          p.In,
+			Required:    p.Required,
+			Description: p.Description,
+		}
+		cloned[i].Schema = copyAnyMap(p.Schema)
+		cloned[i].SchemaRef = p.SchemaRef
+		cloned[i].Examples = copyAnyMap(p.Examples)
+		cloned[i].Example = p.Example
+	}
+	return cloned
+}
+
+func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteResponse {
+	if len(responses) == 0 {
+		return nil
+	}
+	cloned := make(map[string]RouteResponse, len(responses))
+	for code, resp := range responses {
+		copyResp := RouteResponse{
+			Description: resp.Description,
+			Schema:      copyAnyMap(resp.Schema),
+			SchemaRef:   resp.SchemaRef,
+			Examples:    copyAnyMap(resp.Examples),
+			Example:     resp.Example,
+		}
+		if len(resp.MediaTypes) > 0 {
+			copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
+		}
+		cloned[code] = copyResp
+	}
+	return cloned
+}
+
+func copyAnyMap(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	for key, value := range src {
+		dst[key] = copyAnyValue(value)
+	}
+	return dst
+}
+
+func copyAnyValue(src any) any {
+	switch value := src.(type) {
+	case map[string]any:
+		return copyAnyMap(value)
+	case []any:
+		copied := make([]any, len(value))
+		for i := range value {
+			copied[i] = copyAnyValue(value[i])
+		}
+		return copied
+	default:
+		return src
+	}
+}
+
 func (app *App) normalizePath(path string) string {
 	if path == "" {
 		path = "/"

@@ -126,6 +126,19 @@ type requestBody struct {
 	Required    bool                      `json:"required,omitempty"`
 }
 
+type pathVariant struct {
+	PathParamAliases map[string]string
+	Path             string
+	ParamNames       []string
+}
+
+type resolvedParamName struct {
+	openAPI string
+	raw     string
+}
+
+const wildcardParamName = "wildcard"
+
 func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 	paths := make(map[string]map[string]operation)
 	stack := app.Stack()
@@ -144,11 +157,11 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 				continue
 			}
 
-			path := convertToOpenAPIPath(r.Path, r.Params)
-			params := make([]parameter, 0, len(r.Params))
-			paramIndex := make(map[string]int, len(r.Params))
-			if len(r.Params) > 0 {
-				for _, p := range r.Params {
+			variants := buildOpenAPIPathVariants(r.Path, r.Params)
+			for _, variant := range variants {
+				params := make([]parameter, 0, len(variant.ParamNames))
+				paramIndex := make(map[string]int, len(variant.ParamNames))
+				for _, p := range variant.ParamNames {
 					param := parameter{
 						Name:     p,
 						In:       "path",
@@ -158,46 +171,47 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 					params = append(params, param)
 					paramIndex[param.In+":"+param.Name] = len(params) - 1
 				}
-			}
 
-			methodLower := utilsstrings.ToLower(r.Method)
-			if paths[path] == nil {
-				paths[path] = make(map[string]operation)
-			}
+				extras := remapRouteParameters(r.Parameters, variant.PathParamAliases, variant.ParamNames)
+				params = mergeRouteParameters(params, paramIndex, extras)
 
-			params = mergeRouteParameters(params, paramIndex, r.Parameters)
-
-			summary := r.Summary
-			if summary == "" {
-				summary = r.Method + " " + r.Path
-			}
-			description := r.Description
-
-			respType := r.Produces
-
-			responses := convertRouteResponses(r.Responses)
-			if len(responses) == 0 {
-				status, defaultResp := defaultResponseForMethod(r.Method, respType)
-				responses = map[string]response{status: defaultResp}
-			}
-
-			reqBody := buildRequestBody(r.RequestBody)
-			if reqBody == nil {
-				reqType := r.Consumes
-				if shouldIncludeRequestBody(reqType, r) {
-					reqBody = &requestBody{Content: map[string]map[string]any{reqType: {}}}
+				summary := r.Summary
+				if summary == "" {
+					summary = r.Method + " " + r.Path
 				}
-			}
+				description := r.Description
 
-			paths[path][methodLower] = operation{
-				OperationID: r.Name,
-				Summary:     summary,
-				Description: description,
-				Tags:        r.Tags,
-				Deprecated:  r.Deprecated,
-				Parameters:  params,
-				RequestBody: reqBody,
-				Responses:   responses,
+				respType := r.Produces
+
+				responses := convertRouteResponses(r.Responses)
+				if len(responses) == 0 {
+					status, defaultResp := defaultResponseForMethod(r.Method, respType)
+					responses = map[string]response{status: defaultResp}
+				}
+
+				reqBody := buildRequestBody(r.RequestBody)
+				if reqBody == nil {
+					reqType := r.Consumes
+					if shouldIncludeRequestBody(reqType, r) {
+						reqBody = &requestBody{Content: map[string]map[string]any{reqType: {}}}
+					}
+				}
+
+				methodLower := utilsstrings.ToLower(r.Method)
+				if paths[variant.Path] == nil {
+					paths[variant.Path] = make(map[string]operation)
+				}
+
+				paths[variant.Path][methodLower] = operation{
+					OperationID: r.Name,
+					Summary:     summary,
+					Description: description,
+					Tags:        r.Tags,
+					Deprecated:  r.Deprecated,
+					Parameters:  params,
+					RequestBody: reqBody,
+					Responses:   responses,
+				}
 			}
 		}
 	}
@@ -316,6 +330,31 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse) map[st
 	return merged
 }
 
+func remapRouteParameters(extras []fiber.RouteParameter, aliases map[string]string, pathParams []string) []fiber.RouteParameter {
+	if len(extras) == 0 {
+		return nil
+	}
+	pathSet := make(map[string]struct{}, len(pathParams))
+	for _, name := range pathParams {
+		pathSet[name] = struct{}{}
+	}
+	out := make([]fiber.RouteParameter, 0, len(extras))
+	for _, extra := range extras {
+		copyExtra := extra
+		location := strings.ToLower(strings.TrimSpace(copyExtra.In))
+		if location == "path" {
+			if mapped, ok := aliases[copyExtra.Name]; ok {
+				copyExtra.Name = mapped
+			}
+			if _, ok := pathSet[copyExtra.Name]; !ok {
+				continue
+			}
+		}
+		out = append(out, copyExtra)
+	}
+	return out
+}
+
 func mediaTypesToContent(mediaTypes []string, schema map[string]any, schemaRef string, example any, examples map[string]any) map[string]map[string]any {
 	if len(mediaTypes) == 0 {
 		return nil
@@ -393,87 +432,225 @@ func defaultResponseForMethod(method, mediaType string) (string, response) {
 	return status, resp
 }
 
-// convertToOpenAPIPath converts Fiber route path patterns to OpenAPI path templates.
-// It handles parameter constraints (:id<int>), wildcards (*), plus params (+), and optional markers (?).
-// Examples:
-//   - /users/:id<int> -> /users/{id}
-//   - /files/* -> /files/{wildcard}
-//   - /items/:id? -> /items/{id}
-//   - /posts/:slug+ -> /posts/{slug}
+// convertToOpenAPIPath converts a Fiber route path pattern to one OpenAPI path template.
+// When the path contains optional parameters and therefore yields multiple variants,
+// this helper returns the first generated variant for backward compatibility.
 func convertToOpenAPIPath(fiberPath string, params []string) string {
-	if len(params) == 0 && !strings.ContainsAny(fiberPath, ":*+") {
+	variants := buildOpenAPIPathVariants(fiberPath, params)
+	if len(variants) == 0 {
 		return fiberPath
 	}
+	return variants[0].Path
+}
 
-	// Build a map of parameter names for quick lookup
-	paramSet := make(map[string]struct{}, len(params))
-	for _, p := range params {
-		paramSet[p] = struct{}{}
+func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
+	type state struct {
+		aliases  map[string]string
+		path     string
+		params   []string
+		paramIdx int
 	}
 
-	var result strings.Builder
-	result.Grow(len(fiberPath))
-	i := 0
-	length := len(fiberPath)
+	var (
+		length   = len(fiberPath)
+		variants []pathVariant
+	)
 
-	for i < length {
-		ch := fiberPath[i]
-
-		switch ch {
-		case ':':
-			// Named parameter - extract name until we hit a constraint, optional marker, or delimiter
-			i++
-			paramStart := i
-			for i < length {
-				c := fiberPath[i]
-				if c == '<' || c == '?' || c == '/' || c == '-' || c == '.' {
-					break
-				}
-				i++
-			}
-			paramName := fiberPath[paramStart:i]
-
-			// Skip constraints like <int>, <regex(...)>, etc.
-			if i < length && fiberPath[i] == '<' {
-				depth := 1
-				i++ // skip '<'
-				for i < length && depth > 0 {
-					switch fiberPath[i] {
-					case '<':
-						depth++
-					case '>':
-						depth--
-					default:
-						// Other characters inside constraints are ignored
+	var walk func(i int, current state)
+	walk = func(i int, current state) {
+		for i < length {
+			switch fiberPath[i] {
+			case ':':
+				tokenStart := i + 1
+				i = tokenStart
+				for i < length {
+					c := fiberPath[i]
+					if c == '<' || c == '?' || c == '/' || c == '-' || c == '.' {
+						break
 					}
 					i++
 				}
-			}
+				tokenName := fiberPath[tokenStart:i]
 
-			// Skip optional marker '?'
-			if i < length && fiberPath[i] == '?' {
+				if i < length && fiberPath[i] == '<' {
+					depth := 1
+					i++
+					for i < length && depth > 0 {
+						switch fiberPath[i] {
+						case '<':
+							depth++
+						case '>':
+							depth--
+						default:
+						}
+						i++
+					}
+				}
+
+				isOptional := i < length && fiberPath[i] == '?'
+				if isOptional {
+					i++
+				}
+
+				resolved := resolveOpenAPIPathParamName(current.paramIdx, tokenName, params)
+				includeState := clonePathState(current)
+				includeState.path += "{" + resolved.openAPI + "}"
+				includeState.params = append(includeState.params, resolved.openAPI)
+				includeState.aliases[resolved.raw] = resolved.openAPI
+				if tokenName != "" {
+					includeState.aliases[tokenName] = resolved.openAPI
+				}
+				includeState.paramIdx++
+
+				if isOptional {
+					excludeState := clonePathState(current)
+					if strings.HasSuffix(excludeState.path, "/") && (i == length || fiberPath[i] == '/') && len(excludeState.path) > 1 {
+						excludeState.path = strings.TrimSuffix(excludeState.path, "/")
+					}
+					excludeState.paramIdx++
+					walk(i, includeState)
+					walk(i, excludeState)
+					return
+				}
+				current = includeState
+
+			case '*', '+':
+				resolved := resolveOpenAPIWildcardParamName(current.paramIdx, params)
+				current.path += "{" + resolved.openAPI + "}"
+				current.params = append(current.params, resolved.openAPI)
+				current.aliases[resolved.raw] = resolved.openAPI
+				current.paramIdx++
+				i++
+
+			default:
+				current.path += string(fiberPath[i])
 				i++
 			}
-
-			// Write OpenAPI parameter placeholder
-			if paramName != "" {
-				_ = result.WriteByte('{')            //nolint:errcheck // strings.Builder.WriteByte never returns an error
-				_, _ = result.WriteString(paramName) //nolint:errcheck // strings.Builder.WriteString never returns an error
-				_ = result.WriteByte('}')            //nolint:errcheck // strings.Builder.WriteByte never returns an error
-			}
-
-		case '*', '+':
-			// Wildcard or plus param - use a generic name
-			// In Fiber, * and + are greedy params that match everything
-			// We represent them as {wildcard} or the named param if it exists
-			_, _ = result.WriteString("{wildcard}") //nolint:errcheck // strings.Builder.WriteString never returns an error
-			i++
-
-		default:
-			_ = result.WriteByte(ch) //nolint:errcheck // strings.Builder.WriteByte never returns an error
-			i++
 		}
+
+		finalPath := current.path
+		if finalPath == "" {
+			finalPath = "/"
+		}
+		variants = append(variants, pathVariant{
+			Path:             finalPath,
+			ParamNames:       append([]string(nil), current.params...),
+			PathParamAliases: current.aliases,
+		})
 	}
 
-	return result.String()
+	walk(0, state{
+		path:     "",
+		params:   nil,
+		aliases:  map[string]string{},
+		paramIdx: 0,
+	})
+
+	seen := make(map[string]struct{}, len(variants))
+	unique := make([]pathVariant, 0, len(variants))
+	for _, variant := range variants {
+		key := variant.Path + "|" + strings.Join(variant.ParamNames, ",")
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, variant)
+	}
+
+	return unique
+}
+
+func clonePathState(current struct {
+	aliases  map[string]string
+	path     string
+	params   []string
+	paramIdx int
+}) struct {
+	aliases  map[string]string
+	path     string
+	params   []string
+	paramIdx int
+} {
+	aliases := make(map[string]string, len(current.aliases))
+	maps.Copy(aliases, current.aliases)
+	return struct {
+		aliases  map[string]string
+		path     string
+		params   []string
+		paramIdx int
+	}{
+		path:     current.path,
+		params:   append([]string(nil), current.params...),
+		aliases:  aliases,
+		paramIdx: current.paramIdx,
+	}
+}
+
+func resolveOpenAPIPathParamName(paramIdx int, extracted string, params []string) resolvedParamName {
+	raw := extracted
+	if paramIdx < len(params) && params[paramIdx] != "" {
+		raw = params[paramIdx]
+	}
+	if raw == "" {
+		raw = extracted
+	}
+	return resolvedParamName{
+		raw:     raw,
+		openAPI: sanitizeOpenAPIPathParamName(raw, paramIdx+1),
+	}
+}
+
+func resolveOpenAPIWildcardParamName(paramIdx int, params []string) resolvedParamName {
+	raw := wildcardParamName
+	if paramIdx < len(params) && params[paramIdx] != "" {
+		raw = params[paramIdx]
+	}
+	return resolvedParamName{
+		raw:     raw,
+		openAPI: sanitizeOpenAPIWildcardParamName(raw, paramIdx+1),
+	}
+}
+
+func sanitizeOpenAPIPathParamName(name string, idx int) string {
+	return sanitizeOpenAPIParamName(name, idx)
+}
+
+func sanitizeOpenAPIWildcardParamName(name string, idx int) string {
+	trimmed := strings.TrimLeft(name, "*+")
+	if trimmed == "" {
+		trimmed = wildcardParamName
+	}
+	trimmed = strings.TrimLeft(trimmed, "_.-")
+	if trimmed == "" {
+		trimmed = wildcardParamName
+	}
+	if trimmed[0] >= '0' && trimmed[0] <= '9' {
+		trimmed = wildcardParamName + trimmed
+	}
+	if !strings.HasPrefix(trimmed, wildcardParamName) {
+		trimmed = wildcardParamName + trimmed
+	}
+	return sanitizeOpenAPIParamName(trimmed, idx)
+}
+
+func sanitizeOpenAPIParamName(name string, idx int) string {
+	trimmed := strings.TrimLeft(name, "*+")
+	if trimmed == "" {
+		trimmed = name
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(trimmed))
+	for _, r := range trimmed {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-' {
+			_, _ = builder.WriteRune(r) //nolint:errcheck // strings.Builder.WriteRune never returns an error
+			continue
+		}
+		_ = builder.WriteByte('_') //nolint:errcheck // strings.Builder.WriteByte never returns an error
+	}
+	sanitized := builder.String()
+	if sanitized == "" {
+		return fmt.Sprintf("param%d", idx)
+	}
+	return sanitized
 }
