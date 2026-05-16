@@ -2035,6 +2035,27 @@ func (v *countingView) Load() error {
 
 func (*countingView) Render(io.Writer, string, any, ...string) error { return nil }
 
+type blockingView struct {
+	loadStarted   chan struct{}
+	loadRelease   chan struct{}
+	renderEntered chan struct{}
+	loads         int
+}
+
+func (v *blockingView) Load() error {
+	v.loads++
+	if v.loads > 1 {
+		close(v.loadStarted)
+		<-v.loadRelease
+	}
+	return nil
+}
+
+func (v *blockingView) Render(io.Writer, string, any, ...string) error {
+	close(v.renderEntered)
+	return nil
+}
+
 func Test_App_ReloadViews_Success(t *testing.T) {
 	t.Parallel()
 	view := &countingView{}
@@ -2057,6 +2078,54 @@ func Test_App_ReloadViews_Error(t *testing.T) {
 	err := app.ReloadViews()
 	require.Error(t, err)
 	require.ErrorIs(t, err, wantedErr)
+}
+
+func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
+	t.Parallel()
+	view := &blockingView{
+		loadStarted:   make(chan struct{}),
+		loadRelease:   make(chan struct{}),
+		renderEntered: make(chan struct{}),
+	}
+	app := New(Config{Views: view})
+	app.Get("/", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- app.ReloadViews()
+	}()
+
+	<-view.loadStarted
+
+	renderDone := make(chan error, 1)
+	go func() {
+		_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		renderDone <- err
+	}()
+
+	select {
+	case <-view.renderEntered:
+		t.Fatal("render should wait until ReloadViews Load finishes")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(view.loadRelease)
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish")
+	}
+
+	select {
+	case err := <-renderDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("render request did not finish")
+	}
 }
 
 func Test_App_ReloadViews_NoEngine(t *testing.T) {

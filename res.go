@@ -691,9 +691,12 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 
 			// Render template from Views
 			if app.config.Views != nil {
+				app.viewsMutex.RLock()
 				if err := app.config.Views.Render(buf, name, bind, layouts...); err != nil {
+					app.viewsMutex.RUnlock()
 					return fmt.Errorf("failed to render: %w", err)
 				}
+				app.viewsMutex.RUnlock()
 
 				rendered = true
 				break

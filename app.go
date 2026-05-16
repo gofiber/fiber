@@ -104,6 +104,7 @@ type App struct {
 	treeStack []map[int][]*Route
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
+	viewsMutex     sync.RWMutex
 	mutex          sync.Mutex
 	// Amount of registered handlers
 	handlersCount uint32
@@ -774,9 +775,12 @@ func (app *App) ReloadViews() error {
 			continue
 		}
 
+		targetApp.viewsMutex.Lock()
 		if err := targetApp.config.Views.Load(); err != nil {
+			targetApp.viewsMutex.Unlock()
 			return fmt.Errorf("fiber: failed to reload views: %w", err)
 		}
+		targetApp.viewsMutex.Unlock()
 
 		reloaded = true
 	}
