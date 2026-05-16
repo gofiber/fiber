@@ -77,9 +77,10 @@ app.Post("/users", createUser).
     Tags("users", "admin").
     Produces(fiber.MIMEApplicationJSON)
 
-// If not specified, routes default to an empty summary and description, no tags,
-// not deprecated, and a "text/plain" request and response media type.
-// Consumes and Produces will panic if provided an invalid media type.
+// If not specified, generated operations default to a summary of "METHOD path",
+// an empty description, no tags, not deprecated, and a "text/plain" request
+// and response media type. Consumes and Produces will panic if provided an
+// invalid media type.
 ```
 
 If no responses are declared, the middleware adds a sensible default: `200 OK` for most methods and `204 No Content` for `DELETE` and `HEAD`. When any responses are provided via the route helpers, no automatic default is added.
