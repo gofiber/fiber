@@ -164,12 +164,6 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		bodyLimit := c.App().Config().BodyLimit
-		if bodyLimit > 0 && len(res.Body) > bodyLimit {
-			_ = c.Locals(localsKeyWasPutToCache, false)
-			return nil
-		}
-
 		// Marshal response
 		bs, err := res.MarshalMsg(nil)
 		if err != nil {
