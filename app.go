@@ -104,7 +104,6 @@ type App struct {
 	treeStack []map[int][]*Route
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
-	viewsMutex     sync.RWMutex
 	mutex          sync.Mutex
 	// Amount of registered handlers
 	handlersCount uint32
@@ -112,6 +111,47 @@ type App struct {
 	routesRefreshed bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
+}
+
+type viewsLockKey struct {
+	typ  reflect.Type
+	view Views
+	ptr  uintptr
+}
+
+var viewsLocks sync.Map
+
+func getViewsLock(views Views) *sync.RWMutex {
+	viewValue := reflect.ValueOf(views)
+	key := viewsLockKey{
+		typ: viewValue.Type(),
+	}
+
+	if viewValue.Type().Comparable() {
+		key.view = views
+	} else {
+		switch viewValue.Kind() {
+		case reflect.Pointer, reflect.Chan, reflect.Func, reflect.Map, reflect.Slice, reflect.UnsafePointer:
+			key.ptr = viewValue.Pointer()
+		default:
+		}
+	}
+
+	if lockValue, ok := viewsLocks.Load(key); ok {
+		lock, ok := lockValue.(*sync.RWMutex)
+		if !ok {
+			panic("fiber: invalid views lock")
+		}
+		return lock
+	}
+
+	lock := &sync.RWMutex{}
+	actual, _ := viewsLocks.LoadOrStore(key, lock)
+	viewsLock, ok := actual.(*sync.RWMutex)
+	if !ok {
+		panic("fiber: invalid views lock")
+	}
+	return viewsLock
 }
 
 // Config is a struct holding the server settings.
@@ -776,8 +816,9 @@ func (app *App) ReloadViews() error {
 		}
 
 		if err := func() error {
-			targetApp.viewsMutex.Lock()
-			defer targetApp.viewsMutex.Unlock()
+			viewsLock := getViewsLock(targetApp.config.Views)
+			viewsLock.Lock()
+			defer viewsLock.Unlock()
 
 			if err := targetApp.config.Views.Load(); err != nil {
 				return fmt.Errorf("fiber: failed to reload views: %w", err)

@@ -2056,6 +2056,28 @@ func (v *blockingView) Render(io.Writer, string, any, ...string) error {
 	return nil
 }
 
+type sharedBlockingView struct {
+	loadStarted   chan struct{}
+	loadRelease   chan struct{}
+	renderEntered chan struct{}
+	blockOnLoad   int
+	loads         int
+}
+
+func (v *sharedBlockingView) Load() error {
+	v.loads++
+	if v.loads == v.blockOnLoad {
+		close(v.loadStarted)
+		<-v.loadRelease
+	}
+	return nil
+}
+
+func (v *sharedBlockingView) Render(io.Writer, string, any, ...string) error {
+	close(v.renderEntered)
+	return nil
+}
+
 type panicLoadView struct {
 	loads int
 }
@@ -2315,6 +2337,60 @@ func Test_App_ReloadViews_MountedViews_MultipleApps(t *testing.T) {
 
 	require.Equal(t, initialLoadsA+1, viewA.loads)
 	require.Equal(t, initialLoadsB+1, viewB.loads)
+}
+
+func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testing.T) {
+	t.Parallel()
+
+	view := &sharedBlockingView{
+		loadStarted:   make(chan struct{}),
+		loadRelease:   make(chan struct{}),
+		renderEntered: make(chan struct{}),
+		blockOnLoad:   3,
+	}
+	subAppA := New(Config{Views: view})
+	subAppB := New(Config{Views: view})
+	subAppB.Get("/render", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+	app := New()
+	app.Use("/a", subAppA)
+	app.Use("/b", subAppB)
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- subAppA.ReloadViews()
+	}()
+
+	<-view.loadStarted
+
+	renderDone := make(chan error, 1)
+	go func() {
+		_, err := app.Test(httptest.NewRequest(MethodGet, "/b/render", http.NoBody))
+		renderDone <- err
+	}()
+
+	select {
+	case <-view.renderEntered:
+		t.Fatal("render should wait until shared view engine reload finishes")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(view.loadRelease)
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish")
+	}
+
+	select {
+	case err := <-renderDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("render request did not finish")
+	}
 }
 
 func Test_App_ReloadViews_MountedViews_WithParentViews(t *testing.T) {
