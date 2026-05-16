@@ -221,7 +221,7 @@ func TestClientResetClearsState(t *testing.T) {
 	client := New()
 
 	jar := AcquireCookieJar()
-	jar.hostCookies = map[string][]*fasthttp.Cookie{"example.com": {}}
+	jar.hostCookies = map[string][]storedCookie{"example.com": {}}
 	client.SetCookieJar(jar)
 
 	client.SetBaseURL("http://example.com")
