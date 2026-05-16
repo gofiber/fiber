@@ -37,7 +37,7 @@ type Config struct {
 	Path string
 
 	// OpenAPIVersion specifies the OpenAPI specification version to generate.
-	// Supported values: "3.0.0" (default), "3.1.0"
+	// Supported values: "3.0.0", "3.1.0" (default)
 	//
 	// Optional. Default: "3.1.0"
 	OpenAPIVersion string
