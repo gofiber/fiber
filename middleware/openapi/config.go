@@ -6,6 +6,9 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
+	// Config controls top-level OpenAPI document metadata only.
+	// Operation-level metadata is derived from route helper methods.
+	//
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
