@@ -2108,6 +2108,36 @@ func Test_CopyAnyMap_DeepCopy(t *testing.T) {
 	require.Equal(t, "id", origRequired[0])
 }
 
+func Test_CopyAnyMap_DeepCopyTypedSlices(t *testing.T) {
+	t.Parallel()
+
+	src := map[string]any{
+		"required": []string{"id"},
+		"oneOf": []map[string]any{
+			{"type": "string"},
+		},
+	}
+
+	cloned := copyAnyMap(src)
+	require.NotNil(t, cloned)
+
+	required, ok := cloned["required"].([]string)
+	require.True(t, ok)
+	required[0] = "changed"
+
+	oneOf, ok := cloned["oneOf"].([]map[string]any)
+	require.True(t, ok)
+	oneOf[0]["type"] = "integer"
+
+	origRequired, ok := src["required"].([]string)
+	require.True(t, ok)
+	require.Equal(t, "id", origRequired[0])
+
+	origOneOf, ok := src["oneOf"].([]map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "string", origOneOf[0]["type"])
+}
+
 func Test_Route_InvalidMediaType(t *testing.T) {
 	t.Run("produces", func(t *testing.T) {
 		app := New()

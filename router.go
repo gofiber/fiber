@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"sync/atomic"
 
@@ -695,6 +696,10 @@ func copyAnyMap(src map[string]any) map[string]any {
 }
 
 func copyAnyValue(src any) any {
+	if src == nil {
+		return nil
+	}
+
 	switch value := src.(type) {
 	case map[string]any:
 		return copyAnyMap(value)
@@ -704,6 +709,41 @@ func copyAnyValue(src any) any {
 			copied[i] = copyAnyValue(value[i])
 		}
 		return copied
+	case []map[string]any:
+		copied := make([]map[string]any, len(value))
+		for i := range value {
+			copied[i] = copyAnyMap(value[i])
+		}
+		return copied
+	default:
+		return copyCompositeValue(src)
+	}
+}
+
+func copyCompositeValue(src any) any {
+	value := reflect.ValueOf(src)
+
+	switch value.Kind() {
+	case reflect.Slice:
+		if value.IsNil() {
+			return src
+		}
+		copied := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
+		for i := range value.Len() {
+			copied.Index(i).Set(reflect.ValueOf(copyAnyValue(value.Index(i).Interface())))
+		}
+		return copied.Interface()
+	case reflect.Map:
+		if value.IsNil() {
+			return src
+		}
+		copied := reflect.MakeMapWithSize(value.Type(), value.Len())
+		iter := value.MapRange()
+		for iter.Next() {
+			val := reflect.ValueOf(copyAnyValue(iter.Value().Interface()))
+			copied.SetMapIndex(iter.Key(), val)
+		}
+		return copied.Interface()
 	default:
 		return src
 	}
