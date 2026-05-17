@@ -2078,6 +2078,14 @@ func (v *sharedBlockingView) Render(io.Writer, string, any, ...string) error {
 	return nil
 }
 
+func runHandlerRequest(handler fasthttp.RequestHandler, method, path string) int {
+	request := &fasthttp.RequestCtx{}
+	request.Request.Header.SetMethod(method)
+	request.Request.SetRequestURI(path)
+	handler(request)
+	return request.Response.StatusCode()
+}
+
 type panicLoadView struct {
 	loads int
 }
@@ -2133,6 +2141,7 @@ func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
 	app.Get("/", func(c Ctx) error {
 		return c.Render("home", nil)
 	})
+	handler := app.Handler()
 
 	reloadDone := make(chan error, 1)
 	go func() {
@@ -2141,10 +2150,9 @@ func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
 
 	<-view.loadStarted
 
-	renderDone := make(chan error, 1)
+	renderDone := make(chan int, 1)
 	go func() {
-		_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-		renderDone <- err
+		renderDone <- runHandlerRequest(handler, MethodGet, "/")
 	}()
 
 	select {
@@ -2163,8 +2171,8 @@ func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
 	}
 
 	select {
-	case err := <-renderDone:
-		require.NoError(t, err)
+	case status := <-renderDone:
+		require.Equal(t, StatusOK, status)
 	case <-time.After(time.Second):
 		t.Fatal("render request did not finish")
 	}
@@ -2178,6 +2186,7 @@ func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 	app.Get("/", func(c Ctx) error {
 		return c.Render("home", nil)
 	})
+	handler := app.Handler()
 
 	type reloadResult struct {
 		err       error
@@ -2203,15 +2212,14 @@ func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 		t.Fatal("reload panic was not recovered")
 	}
 
-	renderDone := make(chan error, 1)
+	renderDone := make(chan int, 1)
 	go func() {
-		_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-		renderDone <- err
+		renderDone <- runHandlerRequest(handler, MethodGet, "/")
 	}()
 
 	select {
-	case err := <-renderDone:
-		require.NoError(t, err)
+	case status := <-renderDone:
+		require.Equal(t, StatusOK, status)
 	case <-time.After(time.Second):
 		t.Fatal("render request did not finish after reload panic")
 	}
@@ -2356,6 +2364,7 @@ func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testin
 	app := New()
 	app.Use("/a", subAppA)
 	app.Use("/b", subAppB)
+	handler := app.Handler()
 
 	reloadDone := make(chan error, 1)
 	go func() {
@@ -2364,10 +2373,9 @@ func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testin
 
 	<-view.loadStarted
 
-	renderDone := make(chan error, 1)
+	renderDone := make(chan int, 1)
 	go func() {
-		_, err := app.Test(httptest.NewRequest(MethodGet, "/b/render", http.NoBody))
-		renderDone <- err
+		renderDone <- runHandlerRequest(handler, MethodGet, "/b/render")
 	}()
 
 	select {
@@ -2386,8 +2394,8 @@ func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testin
 	}
 
 	select {
-	case err := <-renderDone:
-		require.NoError(t, err)
+	case status := <-renderDone:
+		require.Equal(t, StatusOK, status)
 	case <-time.After(time.Second):
 		t.Fatal("render request did not finish")
 	}

@@ -438,6 +438,8 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 		}
 	}
 
+	subApp.setViewsLockStore(d.app.viewsLockStore)
+
 	d.app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subAppInstance := range subApp.mountFields.appList {

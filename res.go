@@ -692,7 +692,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 			// Render template from Views
 			if app.config.Views != nil {
 				if err := func() error {
-					viewsLock := getViewsLock(app.config.Views)
+					viewsLock := app.getViewsLock(app.config.Views)
 					viewsLock.RLock()
 					defer viewsLock.RUnlock()
 
