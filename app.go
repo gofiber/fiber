@@ -92,6 +92,8 @@ type App struct {
 	state *State
 	// shared state management (prefork-safe, storage-backed)
 	sharedState *SharedState
+	// view engine lock store shared with mounted apps that use the same root app
+	viewsLockStore *viewsLockStore
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -111,6 +113,65 @@ type App struct {
 	routesRefreshed bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
+}
+
+type viewsLockKey struct {
+	typ  reflect.Type
+	view Views
+	ptr  uintptr
+}
+
+type viewsLockStore struct {
+	locks map[viewsLockKey]*sync.RWMutex
+	mutex sync.Mutex
+}
+
+func newViewsLockStore() *viewsLockStore {
+	return &viewsLockStore{
+		locks: make(map[viewsLockKey]*sync.RWMutex),
+	}
+}
+
+func (s *viewsLockStore) get(views Views) *sync.RWMutex {
+	viewValue := reflect.ValueOf(views)
+	key := viewsLockKey{
+		typ: viewValue.Type(),
+	}
+
+	if viewValue.Type().Comparable() {
+		key.view = views
+	} else {
+		switch viewValue.Kind() {
+		case reflect.Pointer, reflect.Chan, reflect.Func, reflect.Map, reflect.Slice, reflect.UnsafePointer:
+			key.ptr = viewValue.Pointer()
+		default:
+		}
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if lock, ok := s.locks[key]; ok {
+		return lock
+	}
+
+	lock := &sync.RWMutex{}
+	s.locks[key] = lock
+	return lock
+}
+
+func (app *App) getViewsLock(views Views) *sync.RWMutex {
+	return app.viewsLockStore.get(views)
+}
+
+func (app *App) setViewsLockStore(store *viewsLockStore) {
+	for _, targetApp := range app.mountFields.appList {
+		if targetApp == nil {
+			continue
+		}
+
+		targetApp.viewsLockStore = store
+	}
 }
 
 // Config is a struct holding the server settings.
@@ -559,12 +620,13 @@ func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
 		// Create config
-		config:        Config{},
-		toBytes:       utils.UnsafeBytes,
-		toString:      utils.UnsafeString,
-		latestRoute:   &Route{},
-		customBinders: []CustomBinder{},
-		sendfiles:     []*sendFileStore{},
+		config:         Config{},
+		toBytes:        utils.UnsafeBytes,
+		toString:       utils.UnsafeString,
+		latestRoute:    &Route{},
+		customBinders:  []CustomBinder{},
+		sendfiles:      []*sendFileStore{},
+		viewsLockStore: newViewsLockStore(),
 	}
 
 	// Create Ctx pool
@@ -774,8 +836,18 @@ func (app *App) ReloadViews() error {
 			continue
 		}
 
-		if err := targetApp.config.Views.Load(); err != nil {
-			return fmt.Errorf("fiber: failed to reload views: %w", err)
+		if err := func() error {
+			viewsLock := targetApp.getViewsLock(targetApp.config.Views)
+			viewsLock.Lock()
+			defer viewsLock.Unlock()
+
+			if err := targetApp.config.Views.Load(); err != nil {
+				return fmt.Errorf("fiber: failed to reload views: %w", err)
+			}
+
+			return nil
+		}(); err != nil {
+			return err
 		}
 
 		reloaded = true

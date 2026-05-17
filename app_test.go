@@ -2035,6 +2035,77 @@ func (v *countingView) Load() error {
 
 func (*countingView) Render(io.Writer, string, any, ...string) error { return nil }
 
+type blockingView struct {
+	loadStarted   chan struct{}
+	loadRelease   chan struct{}
+	renderEntered chan struct{}
+	loads         int
+}
+
+func (v *blockingView) Load() error {
+	v.loads++
+	if v.loads > 1 {
+		close(v.loadStarted)
+		<-v.loadRelease
+	}
+	return nil
+}
+
+func (v *blockingView) Render(io.Writer, string, any, ...string) error {
+	close(v.renderEntered)
+	return nil
+}
+
+type sharedBlockingView struct {
+	loadStarted   chan struct{}
+	loadRelease   chan struct{}
+	renderEntered chan struct{}
+	blockOnLoad   int
+	loads         int
+}
+
+func (v *sharedBlockingView) Load() error {
+	v.loads++
+	if v.loads == v.blockOnLoad {
+		close(v.loadStarted)
+		<-v.loadRelease
+	}
+	return nil
+}
+
+func (v *sharedBlockingView) Render(io.Writer, string, any, ...string) error {
+	close(v.renderEntered)
+	return nil
+}
+
+func runHandlerRequest(handler fasthttp.RequestHandler, method, path string) int {
+	request := &fasthttp.RequestCtx{}
+	request.Request.Header.SetMethod(method)
+	request.Request.SetRequestURI(path)
+	handler(request)
+	return request.Response.StatusCode()
+}
+
+type panicLoadView struct {
+	loads int
+}
+
+func (v *panicLoadView) Load() error {
+	v.loads++
+	if v.loads > 1 {
+		panic("panic load")
+	}
+	return nil
+}
+
+func (*panicLoadView) Render(io.Writer, string, any, ...string) error { return nil }
+
+type panicRenderView struct{}
+
+func (*panicRenderView) Load() error { return nil }
+
+func (*panicRenderView) Render(io.Writer, string, any, ...string) error { panic("panic render") }
+
 func Test_App_ReloadViews_Success(t *testing.T) {
 	t.Parallel()
 	view := &countingView{}
@@ -2057,6 +2128,152 @@ func Test_App_ReloadViews_Error(t *testing.T) {
 	err := app.ReloadViews()
 	require.Error(t, err)
 	require.ErrorIs(t, err, wantedErr)
+}
+
+func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
+	t.Parallel()
+	view := &blockingView{
+		loadStarted:   make(chan struct{}),
+		loadRelease:   make(chan struct{}),
+		renderEntered: make(chan struct{}),
+	}
+	app := New(Config{Views: view})
+	app.Get("/", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+	handler := app.Handler()
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- app.ReloadViews()
+	}()
+
+	<-view.loadStarted
+
+	renderDone := make(chan int, 1)
+	go func() {
+		renderDone <- runHandlerRequest(handler, MethodGet, "/")
+	}()
+
+	select {
+	case <-view.renderEntered:
+		t.Fatal("render should wait until ReloadViews Load finishes")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(view.loadRelease)
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish")
+	}
+
+	select {
+	case status := <-renderDone:
+		require.Equal(t, StatusOK, status)
+	case <-time.After(time.Second):
+		t.Fatal("render request did not finish")
+	}
+}
+
+func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
+	t.Parallel()
+
+	view := &panicLoadView{}
+	app := New(Config{Views: view})
+	app.Get("/", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+	handler := app.Handler()
+
+	type reloadResult struct {
+		err       error
+		recovered any
+	}
+
+	reloadDone := make(chan reloadResult, 1)
+	go func() {
+		result := reloadResult{}
+		defer func() {
+			result.recovered = recover()
+			reloadDone <- result
+		}()
+
+		result.err = app.ReloadViews()
+	}()
+
+	select {
+	case result := <-reloadDone:
+		require.NoError(t, result.err)
+		require.Equal(t, "panic load", result.recovered)
+	case <-time.After(time.Second):
+		t.Fatal("reload panic was not recovered")
+	}
+
+	renderDone := make(chan int, 1)
+	go func() {
+		renderDone <- runHandlerRequest(handler, MethodGet, "/")
+	}()
+
+	select {
+	case status := <-renderDone:
+		require.Equal(t, StatusOK, status)
+	case <-time.After(time.Second):
+		t.Fatal("render request did not finish after reload panic")
+	}
+}
+
+func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{Views: &panicRenderView{}})
+	app.Get("/", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+
+	type renderResult struct {
+		err       error
+		recovered any
+	}
+
+	renderDone := make(chan renderResult, 1)
+	go func() {
+		result := renderResult{}
+		defer func() {
+			result.recovered = recover()
+			renderDone <- result
+		}()
+
+		app.startupProcess()
+
+		request := &fasthttp.RequestCtx{}
+		request.Request.Header.SetMethod(MethodGet)
+		request.URI().SetPath("/")
+
+		app.defaultRequestHandler(request)
+	}()
+
+	select {
+	case result := <-renderDone:
+		require.NoError(t, result.err)
+		require.Equal(t, "panic render", result.recovered)
+	case <-time.After(time.Second):
+		t.Fatal("render panic was not recovered")
+	}
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- app.ReloadViews()
+	}()
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish after render panic")
+	}
 }
 
 func Test_App_ReloadViews_NoEngine(t *testing.T) {
@@ -2128,6 +2345,60 @@ func Test_App_ReloadViews_MountedViews_MultipleApps(t *testing.T) {
 
 	require.Equal(t, initialLoadsA+1, viewA.loads)
 	require.Equal(t, initialLoadsB+1, viewB.loads)
+}
+
+func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testing.T) {
+	t.Parallel()
+
+	view := &sharedBlockingView{
+		loadStarted:   make(chan struct{}),
+		loadRelease:   make(chan struct{}),
+		renderEntered: make(chan struct{}),
+		blockOnLoad:   3,
+	}
+	subAppA := New(Config{Views: view})
+	subAppB := New(Config{Views: view})
+	subAppB.Get("/render", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+	app := New()
+	app.Use("/a", subAppA)
+	app.Use("/b", subAppB)
+	handler := app.Handler()
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- subAppA.ReloadViews()
+	}()
+
+	<-view.loadStarted
+
+	renderDone := make(chan int, 1)
+	go func() {
+		renderDone <- runHandlerRequest(handler, MethodGet, "/b/render")
+	}()
+
+	select {
+	case <-view.renderEntered:
+		t.Fatal("render should wait until shared view engine reload finishes")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(view.loadRelease)
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish")
+	}
+
+	select {
+	case status := <-renderDone:
+		require.Equal(t, StatusOK, status)
+	case <-time.After(time.Second):
+		t.Fatal("render request did not finish")
+	}
 }
 
 func Test_App_ReloadViews_MountedViews_WithParentViews(t *testing.T) {
