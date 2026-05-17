@@ -118,11 +118,15 @@ func New(config ...Config) fiber.Handler {
 		fiber.StoreInContext(c, handlerKey, handler)
 
 		var token string
+		cookieName := cfg.CookieName
+		if cfg.CookieNameFn != nil {
+			cookieName = cfg.CookieNameFn(c)
+		}
 
 		// Action depends on the HTTP method
 		switch c.Method() {
 		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
-			cookieToken := c.Cookies(cfg.CookieName)
+			cookieToken := c.Cookies(cookieName)
 
 			if cookieToken != "" {
 				raw, err := getRawFromStorage(c, cookieToken, &cfg, sessionManager, storageManager)
@@ -178,7 +182,7 @@ func New(config ...Config) fiber.Handler {
 			// This prevents CSRF attacks by requiring attackers to know both the cookie AND submit
 			// the same token through a different channel (header, form, etc.)
 			// WARNING: If using a custom extractor that reads from the same cookie, this provides no protection
-			if !compareStrings(extractedToken, c.Cookies(cfg.CookieName)) {
+			if !compareStrings(extractedToken, c.Cookies(cookieName)) {
 				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
 
@@ -220,8 +224,15 @@ func New(config ...Config) fiber.Handler {
 		// Tell the browser that a new header value is generated
 		c.Vary(fiber.HeaderCookie)
 
+		var t any
+		if cfg.CookieNameFn == nil {
+			t = tokenKey
+		} else {
+			t = cookieName
+		}
+
 		// Store the token in the context
-		fiber.StoreInContext(c, tokenKey, token)
+		fiber.StoreInContext(c, t, token)
 
 		// Continue stack
 		return c.Next()
@@ -240,8 +251,20 @@ func registerLogContextTags() {
 // TokenFromContext returns the token found in the context.
 // It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
 // It returns an empty string if the token does not exist.
-func TokenFromContext(ctx any) string {
-	if token, ok := fiber.ValueFromContext[string](ctx, tokenKey); ok {
+func TokenFromContext(ctx any, cookieKey ...string) string {
+
+	// variadic function in order not to introduce breaking changes, if cookie name is not sent it uses tokenKey as default
+	var tK any
+	if len(cookieKey) == 1 {
+		tK = cookieKey[0]
+		if tK == "" {
+			tK = tokenKey
+		}
+	} else {
+		tK = tokenKey
+	}
+
+	if token, ok := fiber.ValueFromContext[string](ctx, tK); ok {
 		return token
 	}
 
@@ -306,8 +329,12 @@ func expireCSRFCookie(c fiber.Ctx, cfg *Config) {
 }
 
 func setCSRFCookie(c fiber.Ctx, cfg *Config, token string, expiry time.Duration) {
+	cookieName := cfg.CookieName
+	if cfg.CookieNameFn != nil {
+		cookieName = cfg.CookieNameFn(c)
+	}
 	cookie := &fiber.Cookie{
-		Name:        cfg.CookieName,
+		Name:        cookieName,
 		Value:       token,
 		Domain:      cfg.CookieDomain,
 		Path:        cfg.CookiePath,
@@ -325,8 +352,14 @@ func setCSRFCookie(c fiber.Ctx, cfg *Config, token string, expiry time.Duration)
 // DeleteToken removes the token found in the context from the storage
 // and expires the CSRF cookie
 func (handler *Handler) DeleteToken(c fiber.Ctx) error {
+
+	cookieName := handler.config.CookieName
+	if handler.config.CookieNameFn != nil {
+		cookieName = handler.config.CookieNameFn(c)
+	}
+
 	// Extract token from the client request cookie
-	cookieToken := c.Cookies(handler.config.CookieName)
+	cookieToken := c.Cookies(cookieName)
 	if cookieToken == "" {
 		return handler.config.ErrorHandler(c, ErrTokenNotFound)
 	}

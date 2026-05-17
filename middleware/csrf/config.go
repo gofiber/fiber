@@ -45,6 +45,9 @@ type Config struct {
 	// Optional. Default: "csrf_"
 	CookieName string
 
+	// CookieNameFn dynamic cookie name .. overrides CookieName if not nil
+	CookieNameFn func(c fiber.Ctx) string
+
 	// CookieDomain is the domain of the CSRF cookie.
 	//
 	// Optional. Default: ""
@@ -184,17 +187,23 @@ func validateExtractorSecurity(cfg *Config) {
 	if cfg == nil {
 		return
 	}
+
+	cookieName := cfg.CookieName
+	if cfg.CookieNameFn != nil {
+		cookieName = cfg.CookieNameFn(nil)
+	}
+
 	// Check primary extractor
-	if isInsecureCookieExtractor(cfg.Extractor, cfg.CookieName) {
-		panic("CSRF: Extractor reads from the same cookie '" + cfg.CookieName +
+	if isInsecureCookieExtractor(cfg.Extractor, cookieName) {
+		panic("CSRF: Extractor reads from the same cookie '" + cookieName +
 			"' used for token storage. This completely defeats CSRF protection.")
 	}
 
 	// Check chained extractors
 	for i, extractor := range cfg.Extractor.Chain {
-		if isInsecureCookieExtractor(extractor, cfg.CookieName) {
+		if isInsecureCookieExtractor(extractor, cookieName) {
 			panic(fmt.Sprintf("CSRF: Chained extractor #%d reads from the same cookie '%s' "+
-				"used for token storage. This completely defeats CSRF protection.", i+1, cfg.CookieName))
+				"used for token storage. This completely defeats CSRF protection.", i+1, cookieName))
 		}
 	}
 
