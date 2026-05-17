@@ -54,6 +54,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [KeyAuth](#keyauth)
   - [Logger](#logger)
   - [Monitor](#monitor)
+  - [OpenAPI](#openapi)
   - [Proxy](#proxy)
   - [Recover](#recover)
   - [Session](#session)
@@ -1680,6 +1681,10 @@ Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `E
 ### Monitor
 
 Monitor middleware is migrated to the [Contrib package](https://github.com/gofiber/contrib/tree/main/monitor) with [PR #1172](https://github.com/gofiber/contrib/pull/1172).
+
+### OpenAPI
+
+Introduces an `openapi` middleware that inspects registered routes and serves a generated OpenAPI specification. The middleware supports both **OpenAPI 3.0.0 and 3.1.0** (default). Each operation includes a summary and a default response (typically `200`, or `204 No Content` for `DELETE` and `HEAD` operations, matching the middleware's behavior). Routes may attach descriptions, parameters, request bodies, and custom responses—alongside request/response media types—directly to route definitions. New helpers allow parameters, request bodies, and responses to include schema references and examples (including `$ref` targets under `components/schemas`), enabling richer generated documentation.
 
 ### Proxy
 
