@@ -566,7 +566,7 @@ func Test_OpenAPI_SwaggerUI_DefaultTemplate(t *testing.T) {
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/openapi", http.NoBody)
+	req := httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -625,7 +625,7 @@ func Test_OpenAPI_SwaggerUI_GroupPath(t *testing.T) {
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Group("/api").Use(New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/api/openapi", http.NoBody)
+	req := httptest.NewRequest(fiber.MethodGet, "/api/swagger", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)

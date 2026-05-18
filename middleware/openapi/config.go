@@ -43,7 +43,7 @@ type Config struct {
 
 	// UIPath is the route where the Swagger UI page will be served.
 	//
-	// Optional. Default: "/openapi"
+	// Optional. Default: "/swagger"
 	UIPath string
 
 	// SwaggerCSSURL is the stylesheet URL used by the generated Swagger UI page.
@@ -77,7 +77,7 @@ var ConfigDefault = Config{
 	Description:      "",
 	ServerURL:        "",
 	Path:             "/openapi.json",
-	UIPath:           "/openapi",
+	UIPath:           "/swagger",
 	SwaggerCSSURL:    "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css",
 	SwaggerBundleURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
 	SwaggerOptions:   nil,
