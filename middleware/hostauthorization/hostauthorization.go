@@ -3,7 +3,6 @@ package hostauthorization
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -118,13 +117,22 @@ func toPunycode(host string) string {
 
 func parseNormalizedAuthority(authority string) (string, bool) {
 	authority = utils.TrimSpace(authority)
-	if authority == "" || strings.Contains(authority, "@") {
+	if authority == "" {
 		return "", false
 	}
 
 	host := authority
-	if strings.HasPrefix(authority, "[") {
-		idx := strings.IndexByte(authority, ']')
+	if authority[0] == '[' {
+		idx := -1
+		for i := 1; i < len(authority); i++ {
+			switch authority[i] {
+			case '@', '[':
+				return "", false
+			case ']':
+				idx = i
+				i = len(authority)
+			}
+		}
 		if idx <= 1 {
 			return "", false
 		}
@@ -132,7 +140,7 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 		host = authority[1:idx]
 		rest := authority[idx+1:]
 		if rest != "" {
-			if !strings.HasPrefix(rest, ":") {
+			if rest[0] != ':' {
 				return "", false
 			}
 			if !isValidPort(rest[1:]) {
@@ -140,15 +148,22 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 			}
 		}
 	} else {
-		if strings.Contains(authority, "[") || strings.Contains(authority, "]") {
-			return "", false
+		colonIdx := -1
+		for i := 0; i < len(authority); i++ {
+			switch authority[i] {
+			case '@', '[', ']':
+				return "", false
+			case ':':
+				if colonIdx != -1 {
+					return "", false
+				}
+				colonIdx = i
+			}
 		}
 
-		if i := strings.LastIndexByte(authority, ':'); i != -1 {
-			host = authority[:i]
-			port := authority[i+1:]
-
-			if strings.IndexByte(host, ':') >= 0 || !isValidPort(port) {
+		if colonIdx != -1 {
+			host = authority[:colonIdx]
+			if !isValidPort(authority[colonIdx+1:]) {
 				return "", false
 			}
 		}
@@ -163,16 +178,19 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 }
 
 func isValidPort(raw string) bool {
-	if raw == "" {
+	if raw == "" || len(raw) > 5 {
 		return false
 	}
 
-	port, err := strconv.Atoi(raw)
-	if err != nil {
-		return false
+	var port int
+	for i := 0; i < len(raw); i++ {
+		if raw[i] < '0' || raw[i] > '9' {
+			return false
+		}
+		port = port*10 + int(raw[i]-'0')
 	}
 
-	return port >= 0 && port <= 65535
+	return port <= 65535
 }
 
 func isASCII(s string) bool {

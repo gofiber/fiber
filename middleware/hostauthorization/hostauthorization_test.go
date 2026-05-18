@@ -147,9 +147,15 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "plain host", input: "example.com", expected: "example.com", expectOK: true},
 		{name: "host with valid port", input: "example.com:8080", expected: "example.com", expectOK: true},
 		{name: "ipv6 with port", input: "[::1]:443", expected: "::1", expectOK: true},
+		{name: "ipv6 without port", input: "[::1]", expected: "::1", expectOK: true},
+		{name: "empty port", input: "example.com:", expectOK: false},
+		{name: "signed port", input: "example.com:+80", expectOK: false},
+		{name: "port out of range", input: "example.com:65536", expectOK: false},
 		{name: "userinfo style authority", input: "allowed.com:443@attacker.example", expectOK: false},
 		{name: "invalid port syntax", input: "allowed.com:http", expectOK: false},
+		{name: "bare ipv6", input: "::1", expectOK: false},
 		{name: "malformed bracket", input: "[::1", expectOK: false},
+		{name: "extra data after bracket", input: "[::1]extra", expectOK: false},
 	}
 
 	for _, tt := range tests {
