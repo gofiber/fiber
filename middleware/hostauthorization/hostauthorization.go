@@ -131,6 +131,7 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 			case ']':
 				idx = i
 				i = len(authority)
+			default:
 			}
 		}
 		if idx <= 1 {
@@ -158,6 +159,7 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 					return "", false
 				}
 				colonIdx = i
+			default:
 			}
 		}
 
