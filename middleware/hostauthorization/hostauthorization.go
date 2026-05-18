@@ -3,6 +3,7 @@ package hostauthorization
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -115,6 +116,65 @@ func toPunycode(host string) string {
 	return host
 }
 
+func parseNormalizedAuthority(authority string) (string, bool) {
+	authority = utils.TrimSpace(authority)
+	if authority == "" || strings.Contains(authority, "@") {
+		return "", false
+	}
+
+	host := authority
+	if strings.HasPrefix(authority, "[") {
+		idx := strings.IndexByte(authority, ']')
+		if idx <= 1 {
+			return "", false
+		}
+
+		host = authority[1:idx]
+		rest := authority[idx+1:]
+		if rest != "" {
+			if !strings.HasPrefix(rest, ":") {
+				return "", false
+			}
+			if !isValidPort(rest[1:]) {
+				return "", false
+			}
+		}
+	} else {
+		if strings.Contains(authority, "[") || strings.Contains(authority, "]") {
+			return "", false
+		}
+
+		if i := strings.LastIndexByte(authority, ':'); i != -1 {
+			host = authority[:i]
+			port := authority[i+1:]
+
+			if strings.IndexByte(host, ':') >= 0 || !isValidPort(port) {
+				return "", false
+			}
+		}
+	}
+
+	host = normalizeHost(host)
+	if host == "" {
+		return "", false
+	}
+
+	return host, true
+}
+
+func isValidPort(raw string) bool {
+	if raw == "" {
+		return false
+	}
+
+	port, err := strconv.Atoi(raw)
+	if err != nil {
+		return false
+	}
+
+	return port >= 0 && port <= 65535
+}
+
 func isASCII(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] >= 0x80 {
@@ -154,7 +214,10 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		host := normalizeHost(c.Hostname())
+		host, ok := parseNormalizedAuthority(c.Host())
+		if !ok {
+			return cfg.ErrorHandler(c, ErrForbiddenHost)
+		}
 
 		if matchHost(host, parsed, cfg.AllowedHostsFunc) {
 			return c.Next()

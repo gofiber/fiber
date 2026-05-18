@@ -135,6 +135,33 @@ func Test_NormalizeHost(t *testing.T) {
 	}
 }
 
+func Test_ParseNormalizedAuthority(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+		expectOK bool
+	}{
+		{name: "plain host", input: "example.com", expected: "example.com", expectOK: true},
+		{name: "host with valid port", input: "example.com:8080", expected: "example.com", expectOK: true},
+		{name: "ipv6 with port", input: "[::1]:443", expected: "::1", expectOK: true},
+		{name: "userinfo style authority", input: "allowed.com:443@attacker.example", expectOK: false},
+		{name: "invalid port syntax", input: "allowed.com:http", expectOK: false},
+		{name: "malformed bracket", input: "[::1", expectOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			host, ok := parseNormalizedAuthority(tt.input)
+			require.Equal(t, tt.expectOK, ok)
+			require.Equal(t, tt.expected, host)
+		})
+	}
+}
+
 func Test_ParseAllowedHosts_SkipsBlankEntries(t *testing.T) {
 	t.Parallel()
 
@@ -614,6 +641,33 @@ func Test_HostAuthorization_XForwardedHost_TrustProxy_Rejected(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = "example.com"
 	req.Header.Set("X-Forwarded-Host", "evil.com")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+}
+
+func Test_HostAuthorization_XForwardedHost_TrustProxy_RejectsMalformedAuthority(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{
+		TrustProxy: true,
+		TrustProxyConfig: fiber.TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+
+	app.Use(New(Config{
+		AllowedHosts: []string{"allowed.com"},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "proxy.internal"
+	req.Header.Set("X-Forwarded-Host", "allowed.com:443@attacker.example")
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
