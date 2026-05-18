@@ -370,7 +370,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 				paramConstraintStartPosition = i + 1
 				continue
 			}
-			if search[i] == paramConstraintEnd && (i == 0 || search[i-1] != escapeChar) {
+if paramConstraintStartPosition != -1 && search[i] == paramConstraintEnd && (i == 0 || search[i-1] != escapeChar) {
 				paramConstraintEndPosition = i + 1
 				continue
 			}
