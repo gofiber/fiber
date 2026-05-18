@@ -580,7 +580,7 @@ func Test_OpenAPI_SwaggerUI_DefaultTemplate(t *testing.T) {
 	require.Contains(t, bodyText, `href="https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"`)
 	require.Contains(t, bodyText, `src="https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"`)
 	require.Contains(t, bodyText, `url: "\/openapi.json"`)
-	require.Contains(t, bodyText, `const options = {};`)
+	require.Contains(t, bodyText, `id="swagger-ui" data-swagger-options='{}'`)
 }
 
 func Test_OpenAPI_SwaggerUI_ConfigurableAssetsAndOptions(t *testing.T) {
@@ -613,8 +613,9 @@ func Test_OpenAPI_SwaggerUI_ConfigurableAssetsAndOptions(t *testing.T) {
 	require.Contains(t, bodyText, `href="https://cdn.example.com/swagger-ui.css"`)
 	require.Contains(t, bodyText, `src="https://cdn.example.com/swagger-ui-bundle.js"`)
 	require.Contains(t, bodyText, `url: "\/spec.json"`)
-	require.Contains(t, bodyText, `"docExpansion":"list"`)
-	require.Contains(t, bodyText, `"deepLinking":true`)
+	require.Contains(t, bodyText, `id="swagger-ui" data-swagger-options='{&#34;`)
+	require.Contains(t, bodyText, `&#34;docExpansion&#34;:&#34;list&#34;`)
+	require.Contains(t, bodyText, `&#34;deepLinking&#34;:true`)
 }
 
 func Test_OpenAPI_SwaggerUI_GroupPath(t *testing.T) {

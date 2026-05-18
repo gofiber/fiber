@@ -71,17 +71,17 @@ type Config struct {
 
 // ConfigDefault is the default config.
 var ConfigDefault = Config{
-	Next:           nil,
-	Title:          "Fiber API",
-	Version:        "1.0.0",
-	Description:    "",
-	ServerURL:      "",
-	Path:           "/openapi.json",
-	UIPath:         "/openapi",
-	SwaggerCSSURL:  "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css",
-	SwaggerBundleURL:"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
-	SwaggerOptions: nil,
-	OpenAPIVersion: "3.1.0",
+	Next:             nil,
+	Title:            "Fiber API",
+	Version:          "1.0.0",
+	Description:      "",
+	ServerURL:        "",
+	Path:             "/openapi.json",
+	UIPath:           "/openapi",
+	SwaggerCSSURL:    "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css",
+	SwaggerBundleURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
+	SwaggerOptions:   nil,
+	OpenAPIVersion:   "3.1.0",
 }
 
 func configDefault(config ...Config) Config {
