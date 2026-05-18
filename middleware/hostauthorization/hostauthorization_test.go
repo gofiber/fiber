@@ -419,6 +419,31 @@ func Test_HostAuthorization_SubdomainWildcard_BareDomainRejected(t *testing.T) {
 	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
+func Test_HostAuthorization_AllowedHostsFunc_EmptyHostRejectedBeforeCallback(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	called := false
+	app.Use(New(Config{
+		AllowedHostsFunc: func(_ string) bool {
+			called = true
+			return true
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = ":443"
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	require.False(t, called)
+}
+
 func Test_HostAuthorization_AllowedHostsFunc_Allowed(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
