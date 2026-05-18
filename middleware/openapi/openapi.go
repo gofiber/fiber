@@ -69,7 +69,7 @@ func New(config ...Config) fiber.Handler {
 }
 
 type swaggerUITemplateData struct {
-	SwaggerOptionsJSON htemplate.JS
+	SwaggerOptionsJSON string
 	Title              string
 	OpenAPIURL         string
 	SwaggerCSSURL      string
@@ -88,16 +88,15 @@ var swaggerUITemplate = htemplate.Must(htemplate.New("swagger-ui").Parse(`<!doct
     />
   </head>
   <body>
-    <div id="swagger-ui"></div>
+    <div id="swagger-ui" data-swagger-options='{{ .SwaggerOptionsJSON }}'></div>
 
     <script
       src="{{ .SwaggerBundleURL }}"
       crossorigin="anonymous"
     ></script>
-
     <script>
       window.addEventListener("load", function () {
-        const options = {{ .SwaggerOptionsJSON }};
+        const options = JSON.parse(document.getElementById("swagger-ui").dataset.swaggerOptions);
 
         window.ui = SwaggerUIBundle({
           url: "{{ .OpenAPIURL }}",
@@ -126,7 +125,7 @@ func buildSwaggerUIPage(openAPIURL string, cfg *Config) ([]byte, error) {
 		OpenAPIURL:         openAPIURL,
 		SwaggerCSSURL:      cfg.SwaggerCSSURL,
 		SwaggerBundleURL:   cfg.SwaggerBundleURL,
-		SwaggerOptionsJSON: htemplate.JS(swaggerOptionsJSON),
+		SwaggerOptionsJSON: string(swaggerOptionsJSON),
 	}
 
 	var builder strings.Builder
