@@ -2078,9 +2078,9 @@ func (v *sharedBlockingView) Render(io.Writer, string, any, ...string) error {
 	return nil
 }
 
-func runHandlerRequest(handler fasthttp.RequestHandler, method, path string) int {
+func runGetHandlerRequest(handler fasthttp.RequestHandler, path string) int {
 	request := &fasthttp.RequestCtx{}
-	request.Request.Header.SetMethod(method)
+	request.Request.Header.SetMethod(MethodGet)
 	request.Request.SetRequestURI(path)
 	handler(request)
 	return request.Response.StatusCode()
@@ -2152,7 +2152,7 @@ func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
 
 	renderDone := make(chan int, 1)
 	go func() {
-		renderDone <- runHandlerRequest(handler, MethodGet, "/")
+		renderDone <- runGetHandlerRequest(handler, "/")
 	}()
 
 	select {
@@ -2214,7 +2214,7 @@ func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 
 	renderDone := make(chan int, 1)
 	go func() {
-		renderDone <- runHandlerRequest(handler, MethodGet, "/")
+		renderDone <- runGetHandlerRequest(handler, "/")
 	}()
 
 	select {
@@ -2375,7 +2375,68 @@ func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testin
 
 	renderDone := make(chan int, 1)
 	go func() {
-		renderDone <- runHandlerRequest(handler, MethodGet, "/b/render")
+		renderDone <- runGetHandlerRequest(handler, "/b/render")
+	}()
+
+	select {
+	case <-view.renderEntered:
+		t.Fatal("render should wait until shared view engine reload finishes")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(view.loadRelease)
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish")
+	}
+
+	select {
+	case status := <-renderDone:
+		require.Equal(t, StatusOK, status)
+	case <-time.After(time.Second):
+		t.Fatal("render request did not finish")
+	}
+}
+
+func Test_App_ReloadViews_SharedEngineBlocksRenderAfterReusableMount(t *testing.T) {
+	t.Parallel()
+
+	view := &sharedBlockingView{
+		loadStarted:   make(chan struct{}),
+		loadRelease:   make(chan struct{}),
+		renderEntered: make(chan struct{}),
+		blockOnLoad:   3,
+	}
+
+	reusableSubApp := New(Config{Views: view})
+	reusableSubApp.Get("/render", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+
+	siblingApp := New(Config{Views: view})
+
+	parentAppA := New()
+	parentAppA.Use("/shared", reusableSubApp)
+	parentAppA.Use("/sibling", siblingApp)
+
+	parentAppB := New()
+	parentAppB.Use("/shared", reusableSubApp)
+
+	handler := parentAppA.Handler()
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- siblingApp.ReloadViews()
+	}()
+
+	<-view.loadStarted
+
+	renderDone := make(chan int, 1)
+	go func() {
+		renderDone <- runGetHandlerRequest(handler, "/shared/render")
 	}()
 
 	select {

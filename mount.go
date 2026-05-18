@@ -45,8 +45,6 @@ func (app *App) mount(prefix string, subApp *App) Router {
 		prefix = "/"
 	}
 
-	subApp.setViewsLockStore(app.viewsLockStore)
-
 	app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subApp := range subApp.mountFields.appList {
@@ -78,8 +76,6 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 	if groupPath == "" {
 		groupPath = "/"
 	}
-
-	subApp.setViewsLockStore(grp.app.viewsLockStore)
 
 	grp.app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps
