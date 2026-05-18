@@ -34,6 +34,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 // the first time a matching request (for example, GET /openapi.json) is served.
 // That spec is then cached for the lifetime of the process, so any routes
 // registered after the first OpenAPI request will not appear in the spec.
+// The middleware also serves a Swagger UI page at GET /openapi by default.
 //
 // To avoid surprises, register the middleware *after* all routes have been
 // added and before you start serving traffic.
@@ -41,10 +42,22 @@ app.Use(openapi.New())
 
 // Or extend your config for customization
 app.Use(openapi.New(openapi.Config{
-    Title:   "My API",
-    Version: "1.0.0",
-    ServerURL: "https://example.com",
+    Title:          "My API",
+    Version:        "1.0.0",
+    ServerURL:      "https://example.com",
     OpenAPIVersion: "3.1.0", // or "3.0.0"
+}))
+
+// Customize the generated Swagger UI page and CDN asset URLs.
+app.Use(openapi.New(openapi.Config{
+    Path:             "/spec.json",
+    UIPath:           "/docs",
+    SwaggerCSSURL:    "https://cdn.example.com/swagger-ui.css",
+    SwaggerBundleURL: "https://cdn.example.com/swagger-ui-bundle.js",
+    SwaggerOptions: map[string]any{
+        "docExpansion": "list",
+        "deepLinking":  true,
+    },
 }))
 
 // Routes may optionally document themselves using Summary, Description,
@@ -97,11 +110,17 @@ If no responses are declared, the middleware adds a sensible default: `200 OK` f
 | Description    | `string`                | Description is the description for the generated specification. | `""`             |
 | ServerURL      | `string`                | ServerURL is the server URL used in the generated specification.| `""`             |
 | Path           | `string`                | Path is the route where the specification will be served.       | `"/openapi.json"` |
+| UIPath         | `string`                | Path is the route where the Swagger UI page will be served.     | `"/openapi"` |
+| SwaggerCSSURL  | `string`                | Stylesheet URL used by the generated Swagger UI page.           | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"` |
+| SwaggerBundleURL | `string`              | Script URL used by the generated Swagger UI page.               | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"` |
+| SwaggerOptions | `map[string]any`        | Additional options merged into the generated `SwaggerUIBundle` call. | `nil` |
 | OpenAPIVersion | `string`                | OpenAPI specification version to generate (`"3.0.0"` or `"3.1.0"`) | `"3.1.0"`     |
 
 When the middleware is attached to a group or mounted under a prefixed `Use`, the configured `Path` is resolved relative to that
 prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global
 `app.Use(openapi.New())` only intercepts `/openapi.json` and will not affect other endpoints ending in `openapi.json`.
+The same prefix resolution applies to `UIPath`, so `app.Group("/v1").Use(openapi.New())` also serves the Swagger UI page at
+`/v1/openapi` by default.
 
 ## Default Config
 
@@ -113,6 +132,10 @@ var ConfigDefault = Config{
     Description:    "",
     ServerURL:      "",
     Path:           "/openapi.json",
+    UIPath:         "/openapi",
+    SwaggerCSSURL:  "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css",
+    SwaggerBundleURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
+    SwaggerOptions: nil,
     OpenAPIVersion: "3.1.0",
 }
 ```

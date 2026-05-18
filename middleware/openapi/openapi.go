@@ -3,6 +3,7 @@ package openapi
 import (
 	"encoding/json"
 	"fmt"
+	htemplate "html/template"
 	"maps"
 	"strings"
 	"sync"
@@ -16,9 +17,12 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	var (
-		data   []byte
-		once   sync.Once
-		genErr error
+		specData    []byte
+		specOnce    sync.Once
+		specErr     error
+		swaggerData []byte
+		swaggerOnce sync.Once
+		swaggerErr  error
 	)
 
 	return func(c fiber.Ctx) error {
@@ -27,23 +31,110 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		targetPath := resolvedSpecPath(c, cfg.Path)
-		if c.Path() != targetPath || (c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead) {
+		targetUIPath := resolvedSpecPath(c, cfg.UIPath)
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
 			return c.Next()
 		}
 
-		once.Do(func() {
-			spec := generateSpec(c.App(), &cfg)
-			data, genErr = json.Marshal(spec)
-			if genErr != nil {
-				genErr = fmt.Errorf("openapi: marshal spec: %w", genErr)
+		switch c.Path() {
+		case targetPath:
+			specOnce.Do(func() {
+				spec := generateSpec(c.App(), &cfg)
+				specData, specErr = json.Marshal(spec)
+				if specErr != nil {
+					specErr = fmt.Errorf("openapi: marshal spec: %w", specErr)
+				}
+			})
+			if specErr != nil {
+				return specErr
 			}
-		})
-		if genErr != nil {
-			return genErr
+			c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSONCharsetUTF8)
+			return c.Status(fiber.StatusOK).Send(specData)
+		case targetUIPath:
+			swaggerOnce.Do(func() {
+				swaggerData, swaggerErr = buildSwaggerUIPage(targetPath, &cfg)
+				if swaggerErr != nil {
+					swaggerErr = fmt.Errorf("openapi: build swagger ui page: %w", swaggerErr)
+				}
+			})
+			if swaggerErr != nil {
+				return swaggerErr
+			}
+			c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
+			return c.Status(fiber.StatusOK).Send(swaggerData)
+		default:
+			return c.Next()
 		}
-		c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSONCharsetUTF8)
-		return c.Status(fiber.StatusOK).Send(data)
 	}
+}
+
+type swaggerUITemplateData struct {
+	SwaggerOptionsJSON htemplate.JS
+	Title              string
+	OpenAPIURL         string
+	SwaggerCSSURL      string
+	SwaggerBundleURL   string
+}
+
+var swaggerUITemplate = htemplate.Must(htemplate.New("swagger-ui").Parse(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ .Title }} - Swagger UI</title>
+    <link
+      rel="stylesheet"
+      href="{{ .SwaggerCSSURL }}"
+    />
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+
+    <script
+      src="{{ .SwaggerBundleURL }}"
+      crossorigin="anonymous"
+    ></script>
+
+    <script>
+      window.addEventListener("load", function () {
+        const options = {{ .SwaggerOptionsJSON }};
+
+        window.ui = SwaggerUIBundle({
+          url: "{{ .OpenAPIURL }}",
+          dom_id: "#swagger-ui",
+          presets: [SwaggerUIBundle.presets.apis],
+          persistAuthorization: true,
+          ...options,
+        });
+      });
+    </script>
+  </body>
+</html>
+`))
+
+func buildSwaggerUIPage(openAPIURL string, cfg *Config) ([]byte, error) {
+	swaggerOptionsJSON, err := json.Marshal(cfg.SwaggerOptions)
+	if err != nil {
+		return nil, fmt.Errorf("marshal swagger options: %w", err)
+	}
+	if len(swaggerOptionsJSON) == 0 || string(swaggerOptionsJSON) == "null" {
+		swaggerOptionsJSON = []byte("{}")
+	}
+
+	data := swaggerUITemplateData{
+		Title:              cfg.Title,
+		OpenAPIURL:         openAPIURL,
+		SwaggerCSSURL:      cfg.SwaggerCSSURL,
+		SwaggerBundleURL:   cfg.SwaggerBundleURL,
+		SwaggerOptionsJSON: htemplate.JS(swaggerOptionsJSON),
+	}
+
+	var builder strings.Builder
+	if err := swaggerUITemplate.Execute(&builder, data); err != nil {
+		return nil, fmt.Errorf("execute swagger ui template: %w", err)
+	}
+
+	return []byte(builder.String()), nil
 }
 
 func resolvedSpecPath(c fiber.Ctx, cfgPath string) string {
