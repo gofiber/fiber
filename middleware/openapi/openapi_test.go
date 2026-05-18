@@ -559,6 +559,81 @@ func Test_OpenAPI_ConfigValues(t *testing.T) {
 	require.Equal(t, cfg.ServerURL, spec.Servers[0].URL)
 }
 
+func Test_OpenAPI_SwaggerUI_DefaultTemplate(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New())
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	bodyText := string(body)
+	require.Contains(t, bodyText, "<title>Fiber API - Swagger UI</title>")
+	require.Contains(t, bodyText, `href="https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"`)
+	require.Contains(t, bodyText, `src="https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"`)
+	require.Contains(t, bodyText, `url: "\/openapi.json"`)
+	require.Contains(t, bodyText, `const options = {};`)
+}
+
+func Test_OpenAPI_SwaggerUI_ConfigurableAssetsAndOptions(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{
+		Title:            "Custom API",
+		Path:             "/spec.json",
+		UIPath:           "/docs",
+		SwaggerCSSURL:    "https://cdn.example.com/swagger-ui.css",
+		SwaggerBundleURL: "https://cdn.example.com/swagger-ui-bundle.js",
+		SwaggerOptions: map[string]any{
+			"docExpansion": "list",
+			"deepLinking":  true,
+		},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/docs", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	bodyText := string(body)
+	require.Contains(t, bodyText, "<title>Custom API - Swagger UI</title>")
+	require.Contains(t, bodyText, `href="https://cdn.example.com/swagger-ui.css"`)
+	require.Contains(t, bodyText, `src="https://cdn.example.com/swagger-ui-bundle.js"`)
+	require.Contains(t, bodyText, `url: "\/spec.json"`)
+	require.Contains(t, bodyText, `"docExpansion":"list"`)
+	require.Contains(t, bodyText, `"deepLinking":true`)
+}
+
+func Test_OpenAPI_SwaggerUI_GroupPath(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Group("/api").Use(New())
+
+	req := httptest.NewRequest(fiber.MethodGet, "/api/openapi", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `url: "\/api\/openapi.json"`)
+}
+
 func Test_OpenAPI_Version310(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
