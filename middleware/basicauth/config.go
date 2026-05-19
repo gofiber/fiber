@@ -5,7 +5,6 @@ import (
 	"crypto/sha512"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -283,18 +282,6 @@ func parseHashedPassword(h string) (passwordVerifier, error) {
 			return subtle.ConstantTimeCompare(sum[:], b) == 1
 		}, nil
 	default:
-		b, err := hex.DecodeString(h)
-		if err != nil || len(b) != sha256.Size {
-			if b, err = base64.StdEncoding.DecodeString(h); err != nil {
-				return nil, fmt.Errorf("decode SHA256 password: %w", err)
-			}
-			if len(b) != sha256.Size {
-				return nil, ErrInvalidSHA256PasswordLength
-			}
-		}
-		return func(p string) bool {
-			sum := sha256.Sum256([]byte(p))
-			return subtle.ConstantTimeCompare(sum[:], b) == 1
-		}, nil
+		return nil, fmt.Errorf("basicauth: unsupported password hash format; use bcrypt ($2…), {SHA512}, or {SHA256}")
 	}
 }
