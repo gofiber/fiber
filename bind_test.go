@@ -37,15 +37,15 @@ func Test_returnErr(t *testing.T) {
 // go test -run Test_AcquireReleaseBind -v
 func Test_AcquireReleaseBind(t *testing.T) {
 	b := AcquireBind()
-	b.dontHandleErrs = false
-	b.skipValidation = true
+	b.shouldSkipErrHandling = false
+	b.shouldSkipValidation = true
 	b.ctx = &DefaultCtx{}
 	ReleaseBind(b)
 
 	b2 := AcquireBind()
 	require.Nil(t, b2.ctx)
-	require.True(t, b2.dontHandleErrs)
-	require.False(t, b2.skipValidation)
+	require.True(t, b2.shouldSkipErrHandling)
+	require.False(t, b2.shouldSkipValidation)
 	ReleaseBind(b2)
 }
 

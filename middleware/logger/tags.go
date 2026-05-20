@@ -180,7 +180,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		},
 		TagError: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
 			if data.ChainErr != nil {
-				if cfg.enableColors {
+				if cfg.areColorsEnabled {
 					colors := c.App().Config().ColorScheme
 					return fmt.Fprintf(output, "%s%s%s", colors.Red, data.ChainErr.Error(), colors.Reset)
 				}
@@ -216,14 +216,14 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 		},
 		TagStatus: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			if cfg.enableColors {
+			if cfg.areColorsEnabled {
 				colors := c.App().Config().ColorScheme
 				return fmt.Fprintf(output, "%s%3d%s", statusColor(c.Response().StatusCode(), &colors), c.Response().StatusCode(), colors.Reset)
 			}
 			return appendInt(output, c.Response().StatusCode())
 		},
 		TagMethod: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			if cfg.enableColors {
+			if cfg.areColorsEnabled {
 				colors := c.App().Config().ColorScheme
 				return fmt.Fprintf(output, "%s%s%s", methodColor(c.Method(), &colors), c.Method(), colors.Reset)
 			}

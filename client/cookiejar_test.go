@@ -430,7 +430,7 @@ func Test_CookieJar_ExactPublicSuffixDomainDowngradedToHostOnly(t *testing.T) {
 
 	jar.parseCookiesFromResp([]byte("com"), nil, resp)
 	require.Len(t, jar.hostCookies["com"], 1)
-	require.True(t, jar.hostCookies["com"][0].hostOnly)
+	require.True(t, jar.hostCookies["com"][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)
@@ -476,7 +476,7 @@ func Test_CookieJar_ExactIPAddressDomainDowngradedToHostOnly(t *testing.T) {
 
 	jar.parseCookiesFromResp([]byte("127.0.0.1"), nil, resp)
 	require.Len(t, jar.hostCookies["127.0.0.1"], 1)
-	require.True(t, jar.hostCookies["127.0.0.1"][0].hostOnly)
+	require.True(t, jar.hostCookies["127.0.0.1"][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)
@@ -571,7 +571,7 @@ func Test_CookieJar_TrailingDotDomainDowngradedToHostOnly(t *testing.T) {
 
 	jar.parseCookiesFromResp([]byte("sub.example.com."), nil, resp)
 	require.Len(t, jar.hostCookies["sub.example.com."], 1)
-	require.True(t, jar.hostCookies["sub.example.com."][0].hostOnly)
+	require.True(t, jar.hostCookies["sub.example.com."][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)
@@ -599,7 +599,7 @@ func Test_CookieJar_TrailingDotDomainDowngradedToHostOnlyOnPlainHost(t *testing.
 
 	jar.parseCookiesFromResp([]byte("sub.example.com"), nil, resp)
 	require.Len(t, jar.hostCookies["sub.example.com"], 1)
-	require.True(t, jar.hostCookies["sub.example.com"][0].hostOnly)
+	require.True(t, jar.hostCookies["sub.example.com"][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)
@@ -635,17 +635,17 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 
 			jar := &CookieJar{}
 
-			hostOnlyOrigin := fasthttp.AcquireURI()
-			defer fasthttp.ReleaseURI(hostOnlyOrigin)
-			require.NoError(t, hostOnlyOrigin.Parse(nil, []byte("http://example.com/")))
+			isHostOnlyOrigin := fasthttp.AcquireURI()
+			defer fasthttp.ReleaseURI(isHostOnlyOrigin)
+			require.NoError(t, isHostOnlyOrigin.Parse(nil, []byte("http://example.com/")))
 
 			domainOrigin := fasthttp.AcquireURI()
 			defer fasthttp.ReleaseURI(domainOrigin)
 			require.NoError(t, domainOrigin.Parse(nil, []byte("http://sub.example.com/")))
 
-			hostOnlyCookie := &fasthttp.Cookie{}
-			hostOnlyCookie.SetKey("host-only")
-			hostOnlyCookie.SetValue("123")
+			isHostOnlyCookie := &fasthttp.Cookie{}
+			isHostOnlyCookie.SetKey("host-only")
+			isHostOnlyCookie.SetValue("123")
 
 			domainCookie := &fasthttp.Cookie{}
 			domainCookie.SetKey("domain")
@@ -655,7 +655,7 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 			for _, cookieType := range testCase.order {
 				switch cookieType {
 				case "host-only":
-					jar.Set(hostOnlyOrigin, hostOnlyCookie)
+					jar.Set(isHostOnlyOrigin, isHostOnlyCookie)
 				case "domain":
 					jar.Set(domainOrigin, domainCookie)
 				default:
@@ -668,7 +668,7 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 			require.NoError(t, anotherSubdomain.Parse(nil, []byte("http://child.example.com/")))
 			require.Equal(t, []string{"domain"}, cookieKeys(jar.Get(anotherSubdomain)))
 
-			require.ElementsMatch(t, []string{"domain", "host-only"}, cookieKeys(jar.Get(hostOnlyOrigin)))
+			require.ElementsMatch(t, []string{"domain", "host-only"}, cookieKeys(jar.Get(isHostOnlyOrigin)))
 		})
 	}
 }
