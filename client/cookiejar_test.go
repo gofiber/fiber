@@ -635,17 +635,17 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 
 			jar := &CookieJar{}
 
-			isHostOnlyOrigin := fasthttp.AcquireURI()
-			defer fasthttp.ReleaseURI(isHostOnlyOrigin)
-			require.NoError(t, isHostOnlyOrigin.Parse(nil, []byte("http://example.com/")))
+			hostOnlyOrigin := fasthttp.AcquireURI()
+			defer fasthttp.ReleaseURI(hostOnlyOrigin)
+			require.NoError(t, hostOnlyOrigin.Parse(nil, []byte("http://example.com/")))
 
 			domainOrigin := fasthttp.AcquireURI()
 			defer fasthttp.ReleaseURI(domainOrigin)
 			require.NoError(t, domainOrigin.Parse(nil, []byte("http://sub.example.com/")))
 
-			isHostOnlyCookie := &fasthttp.Cookie{}
-			isHostOnlyCookie.SetKey("host-only")
-			isHostOnlyCookie.SetValue("123")
+			hostOnlyCookie := &fasthttp.Cookie{}
+			hostOnlyCookie.SetKey("host-only")
+			hostOnlyCookie.SetValue("123")
 
 			domainCookie := &fasthttp.Cookie{}
 			domainCookie.SetKey("domain")
@@ -655,7 +655,7 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 			for _, cookieType := range testCase.order {
 				switch cookieType {
 				case "host-only":
-					jar.Set(isHostOnlyOrigin, isHostOnlyCookie)
+					jar.Set(hostOnlyOrigin, hostOnlyCookie)
 				case "domain":
 					jar.Set(domainOrigin, domainCookie)
 				default:
@@ -668,7 +668,7 @@ func Test_CookieJar_MixedHostOnlyAndDomainCookies(t *testing.T) {
 			require.NoError(t, anotherSubdomain.Parse(nil, []byte("http://child.example.com/")))
 			require.Equal(t, []string{"domain"}, cookieKeys(jar.Get(anotherSubdomain)))
 
-			require.ElementsMatch(t, []string{"domain", "host-only"}, cookieKeys(jar.Get(isHostOnlyOrigin)))
+			require.ElementsMatch(t, []string{"domain", "host-only"}, cookieKeys(jar.Get(hostOnlyOrigin)))
 		})
 	}
 }

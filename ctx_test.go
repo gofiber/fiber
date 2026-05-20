@@ -404,10 +404,10 @@ func Test_Ctx_Release_UserContextSetWithoutFastHTTP(t *testing.T) {
 	t.Parallel()
 
 	ctx := NewDefaultCtx(New())
-	ctx.userContextSet = true
+	ctx.isUserContextSet = true
 
 	require.NotPanics(t, ctx.release)
-	require.False(t, ctx.userContextSet)
+	require.False(t, ctx.isUserContextSet)
 }
 
 func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {

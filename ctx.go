@@ -70,10 +70,10 @@ type DefaultCtx struct {
 	indexRoute             int                  // Index of the current route
 	indexHandler           int                  // Index of the current handler
 	methodInt              int                  // HTTP method INT equivalent
-	abandoned              atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
+	isAbandoned            atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
 	isMatched              bool                 // Non use route matched
 	shouldSkipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
-	userContextSet         bool                 // User context was stored in fasthttp user values
+	isUserContextSet         bool                 // User context was stored in fasthttp user values
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -144,7 +144,7 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 		return
 	}
 	c.fasthttp.SetUserValue(userContextKey, ctx)
-	c.userContextSet = true
+	c.isUserContextSet = true
 }
 
 // Deadline returns the time when work done on behalf of this context
@@ -698,11 +698,11 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 // release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
-	if c.userContextSet {
+	if c.isUserContextSet {
 		if c.fasthttp != nil {
 			c.fasthttp.SetUserValue(userContextKey, nil)
 		}
-		c.userContextSet = false
+		c.isUserContextSet = false
 	}
 	c.route = nil
 	c.fasthttp = nil
@@ -720,7 +720,7 @@ func (c *DefaultCtx) release() {
 		c.redirect = nil
 	}
 	c.shouldSkipNonUseRoutes = false
-	// performance: no need for using c.abandoned.Store(false) here, as it is always set to false when it was true in ForceRelease
+	// performance: no need for using c.isAbandoned.Store(false) here, as it is always set to false when it was true in ForceRelease
 	c.handlerCtx = nil
 }
 
@@ -736,12 +736,12 @@ func (c *DefaultCtx) release() {
 // races, which means timed-out requests leak their contexts until a safe
 // reclamation strategy exists.
 func (c *DefaultCtx) Abandon() {
-	c.abandoned.Store(true)
+	c.isAbandoned.Store(true)
 }
 
 // IsAbandoned returns true if Abandon() was called on this context.
 func (c *DefaultCtx) IsAbandoned() bool {
-	return c.abandoned.Load()
+	return c.isAbandoned.Load()
 }
 
 // ForceRelease releases an abandoned context back to the pool.
@@ -749,7 +749,7 @@ func (c *DefaultCtx) IsAbandoned() bool {
 // ErrorHandler) have completely finished using this context. Calling it while
 // any goroutine is still running causes races.
 func (c *DefaultCtx) ForceRelease() {
-	c.abandoned.Store(false)
+c.isAbandoned.Store(false)
 	c.app.ReleaseCtx(c)
 }
 

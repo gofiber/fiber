@@ -18,7 +18,7 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-var errStreamClosed = errors.New("sse: stream is closed")
+var errStreamClosed = errors.New("sse: stream closed")
 
 // New creates a new SSE handler.
 func New(config ...Config) fiber.Handler {
