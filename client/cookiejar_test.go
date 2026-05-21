@@ -430,7 +430,7 @@ func Test_CookieJar_ExactPublicSuffixDomainDowngradedToHostOnly(t *testing.T) {
 
 	jar.parseCookiesFromResp([]byte("com"), nil, resp)
 	require.Len(t, jar.hostCookies["com"], 1)
-	require.True(t, jar.hostCookies["com"][0].hostOnly)
+	require.True(t, jar.hostCookies["com"][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)
@@ -476,7 +476,7 @@ func Test_CookieJar_ExactIPAddressDomainDowngradedToHostOnly(t *testing.T) {
 
 	jar.parseCookiesFromResp([]byte("127.0.0.1"), nil, resp)
 	require.Len(t, jar.hostCookies["127.0.0.1"], 1)
-	require.True(t, jar.hostCookies["127.0.0.1"][0].hostOnly)
+	require.True(t, jar.hostCookies["127.0.0.1"][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)
@@ -571,7 +571,7 @@ func Test_CookieJar_TrailingDotDomainDowngradedToHostOnly(t *testing.T) {
 
 	jar.parseCookiesFromResp([]byte("sub.example.com."), nil, resp)
 	require.Len(t, jar.hostCookies["sub.example.com."], 1)
-	require.True(t, jar.hostCookies["sub.example.com."][0].hostOnly)
+	require.True(t, jar.hostCookies["sub.example.com."][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)
@@ -599,7 +599,7 @@ func Test_CookieJar_TrailingDotDomainDowngradedToHostOnlyOnPlainHost(t *testing.
 
 	jar.parseCookiesFromResp([]byte("sub.example.com"), nil, resp)
 	require.Len(t, jar.hostCookies["sub.example.com"], 1)
-	require.True(t, jar.hostCookies["sub.example.com"][0].hostOnly)
+	require.True(t, jar.hostCookies["sub.example.com"][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)

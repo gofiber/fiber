@@ -1500,7 +1500,7 @@ func Benchmark_App_RebuildTree(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		app.routesRefreshed = true
+		app.hasRoutesRefreshed = true
 		app.RebuildTree()
 	}
 }
@@ -1937,7 +1937,7 @@ func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 	useRoute := &Route{use: true, path: "/foo", Path: "/foo", routeParser: parseRoute("/foo")}
 	m := app.methodInt(MethodGet)
 	app.stack[m] = append([]*Route{useRoute}, app.stack[m]...)
-	app.routesRefreshed = true
+	app.hasRoutesRefreshed = true
 	app.ensureAutoHeadRoutes()
 	app.RebuildTree()
 
@@ -2014,7 +2014,7 @@ func Test_NextCustom_SkipMountAndNoHandlers(t *testing.T) {
 	mountR := &Route{path: "/skip", Path: "/skip", routeParser: parseRoute("/skip"), mount: true}
 	empty := &Route{path: "/foo", Path: "/foo", routeParser: parseRoute("/foo")}
 	app.stack[m] = []*Route{mountR, empty}
-	app.routesRefreshed = true
+	app.hasRoutesRefreshed = true
 	app.RebuildTree()
 
 	fctx := &fasthttp.RequestCtx{}
@@ -2332,7 +2332,7 @@ func Benchmark_App_RebuildTree_Parallel(b *testing.B) {
 		localApp := New()
 		registerDummyRoutes(localApp)
 		for pb.Next() {
-			localApp.routesRefreshed = true
+			localApp.hasRoutesRefreshed = true
 			localApp.RebuildTree()
 		}
 	})

@@ -86,7 +86,7 @@ func validateHostLength(host string) {
 func normalizeHost(host string) string {
 	// Fast path for plain hostnames — avoids net.SplitHostPort's error allocation.
 	if host != "" && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
-		host = strings.TrimSuffix(host, ".")
+		host = utils.TrimRight(host, '.')
 		host = utilsstrings.ToLower(host)
 		return toPunycode(host)
 	}
@@ -94,11 +94,11 @@ func normalizeHost(host string) string {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	} else {
-		host = strings.TrimPrefix(host, "[")
-		host = strings.TrimSuffix(host, "]")
+		host = utils.TrimLeft(host, '[')
+		host = utils.TrimRight(host, ']')
 	}
 
-	host = strings.TrimSuffix(host, ".")
+	host = utils.TrimRight(host, '.')
 	host = utilsstrings.ToLower(host)
 	return toPunycode(host)
 }
@@ -113,6 +113,86 @@ func toPunycode(host string) string {
 	// Non-convertible input falls through; it won't match any Punycode entry,
 	// which is the correct security default.
 	return host
+}
+
+func parseNormalizedAuthority(authority string) (string, bool) {
+	authority = utils.TrimSpace(authority)
+	if authority == "" {
+		return "", false
+	}
+
+	host := authority
+	if authority[0] == '[' {
+		idx := -1
+		for i := 1; i < len(authority); i++ {
+			switch authority[i] {
+			case '@', '[':
+				return "", false
+			case ']':
+				idx = i
+				i = len(authority)
+			default:
+			}
+		}
+		if idx <= 1 {
+			return "", false
+		}
+
+		host = authority[1:idx]
+		rest := authority[idx+1:]
+		if rest != "" {
+			if rest[0] != ':' {
+				return "", false
+			}
+			if !isValidPort(rest[1:]) {
+				return "", false
+			}
+		}
+	} else {
+		colonIdx := -1
+		for i := 0; i < len(authority); i++ {
+			switch authority[i] {
+			case '@', '[', ']':
+				return "", false
+			case ':':
+				if colonIdx != -1 {
+					return "", false
+				}
+				colonIdx = i
+			default:
+			}
+		}
+
+		if colonIdx != -1 {
+			host = authority[:colonIdx]
+			if !isValidPort(authority[colonIdx+1:]) {
+				return "", false
+			}
+		}
+	}
+
+	host = normalizeHost(host)
+	if host == "" {
+		return "", false
+	}
+
+	return host, true
+}
+
+func isValidPort(raw string) bool {
+	if raw == "" || len(raw) > 5 {
+		return false
+	}
+
+	var port int
+	for i := 0; i < len(raw); i++ {
+		if raw[i] < '0' || raw[i] > '9' {
+			return false
+		}
+		port = port*10 + int(raw[i]-'0')
+	}
+
+	return port <= 65535
 }
 
 func isASCII(s string) bool {
@@ -154,8 +234,8 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		host := normalizeHost(c.Hostname())
-		if host == "" {
+		host, ok := parseNormalizedAuthority(c.Host())
+		if !ok {
 			return cfg.ErrorHandler(c, ErrForbiddenHost)
 		}
 

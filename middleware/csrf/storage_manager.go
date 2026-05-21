@@ -20,13 +20,13 @@ const redactedKey = "[redacted]"
 //msgp:ignore manager
 //msgp:ignore storageManager
 type storageManager struct {
-	pool       sync.Pool       `msg:"-"` //nolint:revive // Ignore unexported type
-	memory     *memory.Storage `msg:"-"` //nolint:revive // Ignore unexported type
-	storage    fiber.Storage   `msg:"-"` //nolint:revive // Ignore unexported type
-	redactKeys bool
+	pool             sync.Pool       `msg:"-"` //nolint:revive // Ignore unexported type
+	memory           *memory.Storage `msg:"-"` //nolint:revive // Ignore unexported type
+	storage          fiber.Storage   `msg:"-"` //nolint:revive // Ignore unexported type
+	shouldRedactKeys bool
 }
 
-func newStorageManager(storage fiber.Storage, redactKeys bool) *storageManager {
+func newStorageManager(storage fiber.Storage, shouldRedactKeys bool) *storageManager {
 	// Create new storage handler
 	storageManager := &storageManager{
 		pool: sync.Pool{
@@ -34,7 +34,7 @@ func newStorageManager(storage fiber.Storage, redactKeys bool) *storageManager {
 				return new(item)
 			},
 		},
-		redactKeys: redactKeys,
+		shouldRedactKeys: shouldRedactKeys,
 	}
 	if storage != nil {
 		// Use provided storage if provided
@@ -94,7 +94,7 @@ func (m *storageManager) delRaw(ctx context.Context, key string) error {
 }
 
 func (m *storageManager) logKey(key string) string {
-	if m.redactKeys {
+	if m.shouldRedactKeys {
 		return redactedKey
 	}
 	return key

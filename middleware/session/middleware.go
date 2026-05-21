@@ -14,11 +14,11 @@ import (
 
 // Middleware holds session data and configuration.
 type Middleware struct {
-	Session   *Session
-	ctx       fiber.Ctx
-	config    Config
-	mu        sync.RWMutex
-	destroyed bool
+	Session     *Session
+	ctx         fiber.Ctx
+	config      Config
+	mu          sync.RWMutex
+	isDestroyed bool
 }
 
 // Context key for session middleware lookup.
@@ -98,10 +98,10 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		stackErr := c.Next()
 
 		m.mu.RLock()
-		destroyed := m.destroyed
+		isDestroyed := m.isDestroyed
 		m.mu.RUnlock()
 
-		if !destroyed {
+		if !isDestroyed {
 			m.saveSession()
 		}
 
@@ -194,7 +194,7 @@ func releaseMiddleware(m *Middleware) {
 	m.config = Config{}
 	m.Session = nil
 	m.ctx = nil
-	m.destroyed = false
+	m.isDestroyed = false
 	m.mu.Unlock()
 	middlewarePool.Put(m)
 }
@@ -296,7 +296,7 @@ func (m *Middleware) Destroy() error {
 	defer m.mu.Unlock()
 
 	err := m.Session.Destroy()
-	m.destroyed = true
+	m.isDestroyed = true
 	return err
 }
 

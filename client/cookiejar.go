@@ -49,14 +49,14 @@ type CookieJar struct {
 }
 
 type storedCookie struct {
-	cookie   *fasthttp.Cookie
-	hostOnly bool
+	cookie     *fasthttp.Cookie
+	isHostOnly bool
 }
 
 type cookieDomainAcceptance struct {
-	domain   string
-	hostOnly bool
-	ok       bool
+	domain     string
+	isHostOnly bool
+	isOk       bool
 }
 
 // Get returns all cookies stored for a given URI. If there are no cookies for the
@@ -147,7 +147,7 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 			}
 			kept = append(kept, sc)
 
-			if sc.hostOnly && host != domain {
+			if sc.isHostOnly && host != domain {
 				continue
 			}
 			if !pathMatch(path, c.Path()) {
@@ -201,14 +201,14 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 		utilsbytes.UnsafeToLower(domain)
 		key := hostKey
 		storedDomain := hostStr
-		hostOnly := len(domain) == 0
-		if !hostOnly {
+		isHostOnly := len(domain) == 0
+		if !isHostOnly {
 			acceptance := acceptCookieDomain(hostStr, utils.UnsafeString(domain))
-			if !acceptance.ok {
+			if !acceptance.isOk {
 				continue
 			}
-			hostOnly = acceptance.hostOnly
-			if !hostOnly {
+			isHostOnly = acceptance.isHostOnly
+			if !isHostOnly {
 				key = utils.CopyString(acceptance.domain)
 				storedDomain = acceptance.domain
 			}
@@ -219,11 +219,11 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 		existing := searchCookieByKeyAndPath(cookie.Key(), cookie.Path(), hostCookies)
 		if existing == nil {
 			existing = fasthttp.AcquireCookie()
-			hostCookies = append(hostCookies, storedCookie{cookie: existing, hostOnly: hostOnly})
+			hostCookies = append(hostCookies, storedCookie{cookie: existing, isHostOnly: isHostOnly})
 		} else {
 			for i := range hostCookies {
 				if hostCookies[i].cookie == existing {
-					hostCookies[i].hostOnly = hostOnly
+					hostCookies[i].isHostOnly = isHostOnly
 					break
 				}
 			}
@@ -291,18 +291,18 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 		domainBytes := utils.TrimLeft(tmp.Domain(), '.')
 		utilsbytes.UnsafeToLower(domainBytes)
 		key := hostKey
-		hostOnly := len(domainBytes) == 0
-		if hostOnly {
+		isHostOnly := len(domainBytes) == 0
+		if isHostOnly {
 			tmp.SetDomain(hostStr)
 		} else {
 			domain := utils.UnsafeString(domainBytes)
 			acceptance := acceptCookieDomain(hostStr, domain)
-			if !acceptance.ok {
+			if !acceptance.isOk {
 				fasthttp.ReleaseCookie(tmp)
 				continue
 			}
-			hostOnly = acceptance.hostOnly
-			if hostOnly {
+			isHostOnly = acceptance.isHostOnly
+			if isHostOnly {
 				tmp.SetDomain(hostStr)
 			} else {
 				key = utils.CopyString(acceptance.domain)
@@ -314,11 +314,11 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 		c := searchCookieByKeyAndPath(tmp.Key(), tmp.Path(), cookies)
 		if c == nil {
 			c = fasthttp.AcquireCookie()
-			cookies = append(cookies, storedCookie{cookie: c, hostOnly: hostOnly})
+			cookies = append(cookies, storedCookie{cookie: c, isHostOnly: isHostOnly})
 		} else {
 			for i := range cookies {
 				if cookies[i].cookie == c {
-					cookies[i].hostOnly = hostOnly
+					cookies[i].isHostOnly = isHostOnly
 					break
 				}
 			}
@@ -405,21 +405,21 @@ func domainMatch(host, domain string) bool {
 // unrelated hosts.
 func acceptCookieDomain(host, domain string) cookieDomainAcceptance {
 	if strings.HasSuffix(domain, ".") {
-		return cookieDomainAcceptance{domain: host, hostOnly: true, ok: true}
+		return cookieDomainAcceptance{domain: host, isHostOnly: true, isOk: true}
 	}
 
 	if host == domain {
 		if isIPLiteral(domain) || isPublicSuffixDomain(domain) {
-			return cookieDomainAcceptance{domain: host, hostOnly: true, ok: true}
+			return cookieDomainAcceptance{domain: host, isHostOnly: true, isOk: true}
 		}
-		return cookieDomainAcceptance{domain: domain, ok: true}
+		return cookieDomainAcceptance{domain: domain, isOk: true}
 	}
 
 	if isIPLiteral(host) || isIPLiteral(domain) || isPublicSuffixDomain(domain) || !domainMatch(host, domain) {
 		return cookieDomainAcceptance{}
 	}
 
-	return cookieDomainAcceptance{domain: domain, ok: true}
+	return cookieDomainAcceptance{domain: domain, isOk: true}
 }
 
 func isIPLiteral(host string) bool {

@@ -29,7 +29,7 @@ type StructValidator interface {
 var bindPool = sync.Pool{
 	New: func() any {
 		return &Bind{
-			dontHandleErrs: true,
+			shouldSkipErrHandling: true,
 		}
 	},
 }
@@ -38,9 +38,9 @@ var bindPool = sync.Pool{
 // By default (manual mode), parsing failures are returned as *BindError; use errors.As to extract source and field details.
 // With WithAutoHandling(), parsing failures set HTTP 400 and return *Error instead.
 type Bind struct {
-	ctx            Ctx
-	dontHandleErrs bool
-	skipValidation bool
+	ctx                   Ctx
+	shouldSkipErrHandling bool
+	shouldSkipValidation  bool
 }
 
 // BindError source constants for BindError.Source.
@@ -128,14 +128,14 @@ func releasePooledBinder[T interface{ Reset() }](pool *sync.Pool, bind T) {
 
 func (b *Bind) release() {
 	b.ctx = nil
-	b.dontHandleErrs = true
-	b.skipValidation = false
+	b.shouldSkipErrHandling = true
+	b.shouldSkipValidation = false
 }
 
 // WithoutAutoHandling If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
 // It's default behavior of binder.
 func (b *Bind) WithoutAutoHandling() *Bind {
-	b.dontHandleErrs = true
+	b.shouldSkipErrHandling = true
 
 	return b
 }
@@ -144,21 +144,21 @@ func (b *Bind) WithoutAutoHandling() *Bind {
 // If there's an error, it will return the error and set HTTP status to `400 Bad Request`.
 // You must still return on error explicitly
 func (b *Bind) WithAutoHandling() *Bind {
-	b.dontHandleErrs = false
+	b.shouldSkipErrHandling = false
 
 	return b
 }
 
 // SkipValidation enables or disables struct validation for the current bind chain.
 func (b *Bind) SkipValidation(skip bool) *Bind {
-	b.skipValidation = skip
+	b.shouldSkipValidation = skip
 
 	return b
 }
 
 // Check WithAutoHandling/WithoutAutoHandling errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
-	if err == nil || b.dontHandleErrs {
+	if err == nil || b.shouldSkipErrHandling {
 		return err
 	}
 
@@ -181,7 +181,7 @@ func (b *Bind) returnBindErr(err error, source string) error {
 
 // Struct validation.
 func (b *Bind) validateStruct(out any) error {
-	if b.skipValidation {
+	if b.shouldSkipValidation {
 		return nil
 	}
 
@@ -436,8 +436,8 @@ func (b *Bind) All(out any) error {
 		sources = append(sources, b.Body)
 	}
 	sources = append(sources, b.Query, b.Header, b.Cookie)
-	prevSkip := b.skipValidation
-	b.skipValidation = true
+	prevSkip := b.shouldSkipValidation
+	b.shouldSkipValidation = true
 
 	// TODO: Support custom precedence with an optional binding_source tag
 	// TODO: Create WithOverrideEmptyValues
@@ -445,7 +445,7 @@ func (b *Bind) All(out any) error {
 	for _, bindFunc := range sources {
 		tempStruct := reflect.New(outElem.Type()).Interface()
 		if err := bindFunc(tempStruct); err != nil {
-			b.skipValidation = prevSkip
+			b.shouldSkipValidation = prevSkip
 			return err
 		}
 
@@ -453,7 +453,7 @@ func (b *Bind) All(out any) error {
 		mergeStruct(outElem, tempStructVal)
 	}
 
-	b.skipValidation = prevSkip
+	b.shouldSkipValidation = prevSkip
 	return b.returnErr(b.validateStruct(out))
 }
 

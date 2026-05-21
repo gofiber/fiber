@@ -346,7 +346,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			continue
 		}
 
-		if c.skipNonUseRoutes && !route.use {
+		if c.shouldSkipNonUseRoutes && !route.use {
 			continue
 		}
 
@@ -354,7 +354,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		c.route = route
 		// Non use handler matched
 		if !route.use {
-			c.matched = true
+			c.isMatched = true
 		}
 		// Execute first handler of route
 		if len(route.Handlers) > 0 {
@@ -369,7 +369,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	// If c.Next() does not match, return 404
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	if c.matched {
+	if c.isMatched {
 		return false, ErrNotFound
 	}
 
@@ -821,7 +821,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			}
 
 			app.stack[m] = append(app.stack[m][:i], app.stack[m][i+1:]...)
-			app.routesRefreshed = true
+			app.hasRoutesRefreshed = true
 
 			// Decrement global handler count. In middleware routes, only decrement once
 			if _, ok := removedUseRoutes[route.path]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
@@ -858,7 +858,7 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 		}
 
 		app.stack[headIndex] = append(headStack[:i], headStack[i+1:]...)
-		app.routesRefreshed = true
+		app.hasRoutesRefreshed = true
 		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
 		return
 	}
@@ -966,7 +966,7 @@ func (app *App) addRoute(method string, route *Route) {
 		route.Method = method
 		// Add route to the stack
 		app.stack[m] = append(app.stack[m], route)
-		app.routesRefreshed = true
+		app.hasRoutesRefreshed = true
 	}
 
 	// Execute onRoute hooks & change latestRoute if not adding mounted route
@@ -1029,7 +1029,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 
 		headStack = append(headStack, headRoute)
 		existing[route.path] = struct{}{}
-		app.routesRefreshed = true
+		app.hasRoutesRefreshed = true
 		added = true
 
 		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
@@ -1063,7 +1063,7 @@ func (app *App) RebuildTree() *App {
 // buildTree build the prefix tree from the previously registered routes
 func (app *App) buildTree() *App {
 	// If routes haven't been refreshed, nothing to do
-	if !app.routesRefreshed {
+	if !app.hasRoutesRefreshed {
 		return app
 	}
 
@@ -1114,7 +1114,7 @@ func (app *App) buildTree() *App {
 	}
 
 	// reset the flag and return
-	app.routesRefreshed = false
+	app.hasRoutesRefreshed = false
 	return app
 }
 
