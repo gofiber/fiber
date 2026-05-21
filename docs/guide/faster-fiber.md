@@ -74,17 +74,17 @@ You can also set it explicitly to the standard library default:
 package main
 
 import (
-	"regexp"
+    "regexp"
 
-	"github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-	app := fiber.New(fiber.Config{
-		RegexHandler: regexp.MustCompile,
-	})
+    app := fiber.New(fiber.Config{
+        RegexHandler: regexp.MustCompile,
+    })
 
-	_ = app
+    _ = app
 }
 ```
 

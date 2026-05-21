@@ -119,12 +119,12 @@ var routerParserPool = &sync.Pool{
 
 // routeSegment holds the segment metadata
 type routeSegment struct {
+	regexMatchers map[*Constraint]RegexMatcher
 	// const information
 	Const       string        // constant part of the route
 	ParamName   string        // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
 	ComparePart string        // search part to find the end of the parameter
 	Constraints []*Constraint // Constraint type if segment is a parameter, if not it will be set to noConstraint by default
-	regexMatchers map[*Constraint]RegexMatcher
 	PartCount   int           // how often is the search part contained in the non-param segments? -> necessary for greedy search
 	Length      int           // length of the parameter for segment, when its 0 then the length is undetermined
 	// future TODO: add support for optional groups "/abc(/def)?"
@@ -483,7 +483,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler Reg
 
 	// Check has constraint
 	var (
-		constraints    []*Constraint
+		constraints   []*Constraint
 		regexMatchers map[*Constraint]RegexMatcher
 	)
 
