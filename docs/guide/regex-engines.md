@@ -127,7 +127,7 @@ app.Get("/user/:email<regex([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})>", 
 
 ## Notes
 
-- Regex patterns are compiled once during route registration, so the performance improvement is in the matching phase
+- Regex patterns are compiled during route registration and may be compiled more than once while Fiber parses raw and normalized route patterns, so the performance improvement is in the matching phase
 - The regex handler is used for all `regex()` constraints in route patterns
 - Invalid regex patterns still panic during route registration because Fiber uses `MustCompile`-style semantics
 - The compiled matcher is reused across requests, so custom matchers must be safe for concurrent use

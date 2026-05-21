@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -323,6 +324,34 @@ func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 	}
 }
 
+func Test_ConstraintCheckConstraint_NilRegexMatcher(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		constraint Constraint
+	}{
+		{
+			name:       "typed_nil_regexp",
+			constraint: Constraint{ID: regexConstraint, RegexCompiler: (*regexp.Regexp)(nil)},
+		},
+		{
+			name:       "typed_nil_custom_matcher",
+			constraint: Constraint{ID: regexConstraint, regexMatcher: (*matchOnlyRegexCompiler)(nil)},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.NotPanics(t, func() {
+				require.False(t, testCase.constraint.CheckConstraint("123"))
+			})
+		})
+	}
+}
+
 func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 	b.ReportAllocs()
 	var res string
@@ -466,15 +495,25 @@ func paramsRoute(t *testing.T, n int) string {
 	return "/" + strings.Join(params, "/")
 }
 
-// Test_RegexHandler_Default verifies the default regex handler works correctly.
+// Test_RegexHandler_Default verifies Fiber defaults RegexHandler to regexp.MustCompile.
 func Test_RegexHandler_Default(t *testing.T) {
 	t.Parallel()
 
-	require.True(t, regexp.MustCompile(`\d+`).MatchString("123"))
-	require.False(t, regexp.MustCompile(`\d+`).MatchString("abc"))
+	app := New()
+
+	require.NotNil(t, app.config.RegexHandler)
+	require.Equal(t, reflect.ValueOf(regexp.MustCompile).Pointer(), reflect.ValueOf(app.config.RegexHandler).Pointer())
+
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
+		return c.SendString("matched")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
-// mockRegexCompiler is a mock implementation of RegexCompiler for testing
+// mockRegexCompiler is a mock implementation of RegexMatcher for testing
 type mockRegexCompiler struct {
 	*regexp.Regexp
 	matchCalled bool
@@ -497,7 +536,7 @@ type regexPattern string
 
 // mockRegexHandler is a mock regex handler function for testing
 func mockRegexHandler(lastPattern *string, compileCalled *bool) RegexHandler {
-	return func(pattern string) RegexCompiler {
+	return func(pattern string) RegexMatcher {
 		*compileCalled = true
 		*lastPattern = pattern
 		return &mockRegexCompiler{
@@ -671,7 +710,7 @@ func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
 	t.Run("invalid_return_type", func(t *testing.T) {
 		t.Parallel()
 
-		require.PanicsWithValue(t, "fiber: Config.RegexHandler return type must implement fiber.RegexCompiler", func() {
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler return type must implement fiber.RegexMatcher", func() {
 			New(Config{RegexHandler: func(string) string { return "" }})
 		})
 	})

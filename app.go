@@ -509,8 +509,10 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// coregex.MustCompile can be assigned directly.
 	//
 	// The function must have signature func(string) T where T implements
-	// MatchString(string) bool, and the returned matcher must be safe for
-	// concurrent use because Fiber reuses it across requests.
+	// RegexMatcher, and the returned matcher must be safe for concurrent use
+	// because Fiber reuses it across requests. Fiber may invoke RegexHandler
+	// more than once per route while parsing raw and normalized route patterns
+	// during registration.
 	//
 	// Example with standard library (default):
 	//     import "regexp"

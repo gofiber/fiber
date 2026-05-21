@@ -23,15 +23,15 @@ import (
 	"github.com/google/uuid"
 )
 
-// RegexCompiler defines the interface for regex pattern matching.
+// RegexMatcher defines the interface for regex pattern matching.
 // Both *regexp.Regexp and alternative engines like *coregex.Regex implement this method.
-type RegexCompiler interface {
+type RegexMatcher interface {
 	// MatchString reports whether the string s contains any match of the regex pattern.
 	MatchString(s string) bool
 }
 
 // RegexHandler is a function that compiles regex patterns. It accepts any function
-// with signature func(string) T where T has a MatchString method.
+// with signature func(string) T where T implements RegexMatcher.
 // This allows using regexp.MustCompile or coregex.MustCompile directly without wrappers.
 //
 // Example with standard library (default):
@@ -50,8 +50,8 @@ type RegexCompiler interface {
 type RegexHandler any
 
 var (
-	regexCompilerType = reflect.TypeFor[RegexCompiler]()
-	stringType        = reflect.TypeFor[string]()
+	regexMatcherType = reflect.TypeFor[RegexMatcher]()
+	stringType       = reflect.TypeFor[string]()
 )
 
 func validateRegexHandler(handler RegexHandler) RegexHandler {
@@ -68,34 +68,39 @@ func validateRegexHandler(handler RegexHandler) RegexHandler {
 	if handlerType.NumIn() != 1 || handlerType.In(0) != stringType || handlerType.NumOut() != 1 {
 		panic("fiber: Config.RegexHandler must have signature func(string) T")
 	}
-	if !handlerType.Out(0).Implements(regexCompilerType) {
-		panic("fiber: Config.RegexHandler return type must implement fiber.RegexCompiler")
+	if !handlerType.Out(0).Implements(regexMatcherType) {
+		panic("fiber: Config.RegexHandler return type must implement fiber.RegexMatcher")
 	}
 
 	return handler
 }
 
-// compileRegex calls the RegexHandler function and returns a RegexCompiler.
-func compileRegex(handler RegexHandler, pattern string) RegexCompiler {
+func isNilRegexMatcher(matcher RegexMatcher) bool {
+	if matcher == nil {
+		return true
+	}
+
+	matcherValue := reflect.ValueOf(matcher)
+	switch matcherValue.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return matcherValue.IsNil()
+	default:
+		return false
+	}
+}
+
+// compileRegex calls the RegexHandler function and returns a RegexMatcher.
+func compileRegex(handler RegexHandler, pattern string) RegexMatcher {
 	result := reflect.ValueOf(handler).Call([]reflect.Value{reflect.ValueOf(pattern)})
-	compiler, ok := result[0].Interface().(RegexCompiler)
+	matcher, ok := result[0].Interface().(RegexMatcher)
 	if !ok {
-		panic("fiber: Config.RegexHandler return type must implement fiber.RegexCompiler")
+		panic("fiber: Config.RegexHandler return type must implement fiber.RegexMatcher")
 	}
-	if compiler == nil {
-		panic("fiber: Config.RegexHandler must not return nil")
-	}
-	compilerValue := reflect.ValueOf(compiler)
-	if (compilerValue.Kind() == reflect.Chan ||
-		compilerValue.Kind() == reflect.Func ||
-		compilerValue.Kind() == reflect.Interface ||
-		compilerValue.Kind() == reflect.Map ||
-		compilerValue.Kind() == reflect.Pointer ||
-		compilerValue.Kind() == reflect.Slice) && compilerValue.IsNil() {
+	if isNilRegexMatcher(matcher) {
 		panic("fiber: Config.RegexHandler must not return nil")
 	}
 
-	return compiler
+	return matcher
 }
 
 // routeParser holds the path segments and param names
@@ -155,7 +160,7 @@ type TypeConstraint uint16
 type Constraint struct {
 	// regexMatcher stores non-stdlib regex implementations internally while
 	// RegexCompiler preserves the exported *regexp.Regexp field for compatibility.
-	regexMatcher      RegexCompiler
+	regexMatcher      RegexMatcher
 	RegexCompiler     *regexp.Regexp
 	Name              string
 	Data              []string
@@ -929,8 +934,10 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			return false
 		}
 	case regexConstraint:
-		matcher := c.regexMatcher
-		if matcher == nil {
+		var matcher RegexMatcher
+		if !isNilRegexMatcher(c.regexMatcher) {
+			matcher = c.regexMatcher
+		} else if c.RegexCompiler != nil {
 			matcher = c.RegexCompiler
 		}
 		if matcher == nil {
