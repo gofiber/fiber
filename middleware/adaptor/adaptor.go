@@ -251,14 +251,19 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 				http.Error(w, utils.StatusMessage(fiber.StatusRequestEntityTooLarge), fiber.StatusRequestEntityTooLarge)
 				return
 			}
-			limitedReader := io.LimitReader(r.Body, maxBodySize)
+			limitedReader := io.LimitReader(r.Body, maxBodySize+1)
 			n, err := io.Copy(req.BodyWriter(), limitedReader)
-			req.Header.SetContentLength(int(n))
-
 			if err != nil {
 				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
 				return
 			}
+
+			if n > maxBodySize {
+				http.Error(w, utils.StatusMessage(fiber.StatusRequestEntityTooLarge), fiber.StatusRequestEntityTooLarge)
+				return
+			}
+
+			req.Header.SetContentLength(int(n))
 		}
 		req.Header.SetMethod(r.Method)
 		req.SetRequestURI(r.RequestURI)
