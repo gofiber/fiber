@@ -495,7 +495,7 @@ func Test_RegexHandler_Default(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
-// mockRegexCompiler is a mock implementation of RegexMatcher for testing
+// mockRegexCompiler is a mock implementation of regex matching for testing
 type mockRegexCompiler struct {
 	*regexp.Regexp
 	matchCalled bool
@@ -517,8 +517,8 @@ func (m *matchOnlyRegexCompiler) MatchString(s string) bool {
 type regexPattern string
 
 // mockRegexHandler is a mock regex handler function for testing
-func mockRegexHandler(lastPattern *string, compileCalled *bool) RegexHandler {
-	return func(pattern string) RegexMatcher {
+func mockRegexHandler(lastPattern *string, compileCalled *bool) any {
+	return func(pattern string) regexMatcher {
 		*compileCalled = true
 		*lastPattern = pattern
 		return &mockRegexCompiler{
@@ -706,7 +706,7 @@ func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
 	t.Run("invalid_return_type", func(t *testing.T) {
 		t.Parallel()
 
-		require.PanicsWithValue(t, "fiber: Config.RegexHandler return type must implement fiber.RegexMatcher", func() {
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler return type must support MatchString(string) bool", func() {
 			New(Config{RegexHandler: func(string) string { return "" }})
 		})
 	})

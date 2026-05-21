@@ -504,15 +504,13 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	ServicesShutdownContextProvider func() context.Context
 
 	// RegexHandler is a function that compiles regex patterns for `regex()`
-	// route constraints. This allows using alternative regex engines (for example,
-	// coregex) as drop-in replacements. Both regexp.MustCompile and
-	// coregex.MustCompile can be assigned directly.
+	// route constraints. Assign regexp.MustCompile or coregex.MustCompile
+	// directly to use the standard library or an alternative regex engine.
 	//
-	// The function must have signature func(string) T where T implements
-	// RegexMatcher, and the returned matcher must be safe for concurrent use
-	// because Fiber reuses it across requests. Fiber may invoke RegexHandler
-	// more than once per route while parsing raw and normalized route patterns
-	// during registration.
+	// Compiled matchers are reused across requests, so the returned value must
+	// be safe for concurrent use. Fiber may invoke RegexHandler more than once
+	// per route while parsing raw and normalized route patterns during
+	// registration.
 	//
 	// Example with standard library (default):
 	//     import "regexp"
@@ -527,7 +525,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//     })
 	//
 	// Optional. Default: regexp.MustCompile
-	RegexHandler RegexHandler `json:"-"`
+	RegexHandler any `json:"-"`
 }
 
 // Default TrustProxyConfig

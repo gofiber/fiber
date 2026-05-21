@@ -46,8 +46,8 @@ high-performance engines such as
 
 ### Configure `RegexHandler`
 
-`RegexHandler` accepts a function with the shape `func(string) T`, where `T`
-implements `fiber.RegexMatcher`.
+Set `RegexHandler` to the compile function you want Fiber to use for `regex()`
+constraints.
 
 ```go title="Example"
 package main

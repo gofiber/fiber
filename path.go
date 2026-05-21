@@ -23,38 +23,17 @@ import (
 	"github.com/google/uuid"
 )
 
-// RegexMatcher defines the interface for regex pattern matching.
-// Both *regexp.Regexp and alternative engines like *coregex.Regex implement this method.
-type RegexMatcher interface {
+type regexMatcher interface {
 	// MatchString reports whether the string s contains any match of the regex pattern.
 	MatchString(s string) bool
 }
 
-// RegexHandler is a function that compiles regex patterns. It accepts any function
-// with signature func(string) T where T implements RegexMatcher.
-// This allows using regexp.MustCompile or coregex.MustCompile directly without wrappers.
-//
-// Example with standard library (default):
-//
-//	import "regexp"
-//	app := fiber.New(fiber.Config{
-//	    RegexHandler: regexp.MustCompile,
-//	})
-//
-// Example with coregex:
-//
-//	import "github.com/coregx/coregex"
-//	app := fiber.New(fiber.Config{
-//	    RegexHandler: coregex.MustCompile,
-//	})
-type RegexHandler any
-
 var (
-	regexMatcherType = reflect.TypeFor[RegexMatcher]()
+	regexMatcherType = reflect.TypeFor[regexMatcher]()
 	stringType       = reflect.TypeFor[string]()
 )
 
-func validateRegexHandler(handler RegexHandler) RegexHandler {
+func validateRegexHandler(handler any) any {
 	if handler == nil {
 		return regexp.MustCompile
 	}
@@ -69,13 +48,13 @@ func validateRegexHandler(handler RegexHandler) RegexHandler {
 		panic("fiber: Config.RegexHandler must have signature func(string) T")
 	}
 	if !handlerType.Out(0).Implements(regexMatcherType) {
-		panic("fiber: Config.RegexHandler return type must implement fiber.RegexMatcher")
+		panic("fiber: Config.RegexHandler return type must support MatchString(string) bool")
 	}
 
 	return handler
 }
 
-func isNilRegexMatcher(matcher RegexMatcher) bool {
+func isNilRegexMatcher(matcher regexMatcher) bool {
 	if matcher == nil {
 		return true
 	}
@@ -89,12 +68,12 @@ func isNilRegexMatcher(matcher RegexMatcher) bool {
 	}
 }
 
-// compileRegex calls the RegexHandler function and returns a RegexMatcher.
-func compileRegex(handler RegexHandler, pattern string) RegexMatcher {
+// compileRegex calls the RegexHandler function and returns a regexMatcher.
+func compileRegex(handler any, pattern string) regexMatcher {
 	result := reflect.ValueOf(handler).Call([]reflect.Value{reflect.ValueOf(pattern)})
-	matcher, ok := result[0].Interface().(RegexMatcher)
+	matcher, ok := result[0].Interface().(regexMatcher)
 	if !ok {
-		panic("fiber: Config.RegexHandler return type must implement fiber.RegexMatcher")
+		panic("fiber: Config.RegexHandler return type must support MatchString(string) bool")
 	}
 	if isNilRegexMatcher(matcher) {
 		panic("fiber: Config.RegexHandler must not return nil")
@@ -119,7 +98,7 @@ var routerParserPool = &sync.Pool{
 
 // routeSegment holds the segment metadata
 type routeSegment struct {
-	regexMatchers map[*Constraint]RegexMatcher
+	regexMatchers map[*Constraint]regexMatcher
 	// const information
 	Const       string        // constant part of the route
 	ParamName   string        // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
@@ -315,7 +294,7 @@ func (parser *routeParser) reset() {
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
-func (parser *routeParser) parseRoute(pattern string, regexHandler RegexHandler, customConstraints ...CustomConstraint) {
+func (parser *routeParser) parseRoute(pattern string, regexHandler any, customConstraints ...CustomConstraint) {
 	var n int
 	var seg *routeSegment
 	for pattern != "" {
@@ -339,7 +318,7 @@ func (parser *routeParser) parseRoute(pattern string, regexHandler RegexHandler,
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
-func parseRoute(pattern string, regexHandler RegexHandler, customConstraints ...CustomConstraint) routeParser {
+func parseRoute(pattern string, regexHandler any, customConstraints ...CustomConstraint) routeParser {
 	parser := routeParser{}
 	parser.parseRoute(pattern, regexHandler, customConstraints...)
 
@@ -436,7 +415,7 @@ func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (
 }
 
 // analyseParameterPart find the parameter end and create the route segment
-func (parser *routeParser) analyseParameterPart(pattern string, regexHandler RegexHandler, customConstraints ...CustomConstraint) (int, *routeSegment) {
+func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any, customConstraints ...CustomConstraint) (int, *routeSegment) {
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
 
@@ -484,7 +463,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler Reg
 	// Check has constraint
 	var (
 		constraints   []*Constraint
-		regexMatchers map[*Constraint]RegexMatcher
+		regexMatchers map[*Constraint]regexMatcher
 	)
 
 	if hasConstraint := paramConstraintStartPosition != -1 && paramConstraintEndPosition != -1; hasConstraint {
@@ -523,7 +502,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler Reg
 						constraint.RegexCompiler = regexpCompiler
 					} else {
 						if regexMatchers == nil {
-							regexMatchers = make(map[*Constraint]RegexMatcher)
+							regexMatchers = make(map[*Constraint]regexMatcher)
 						}
 						regexMatchers[constraint] = compiler
 					}
