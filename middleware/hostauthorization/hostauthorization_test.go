@@ -115,6 +115,7 @@ func Test_NormalizeHost(t *testing.T) {
 		{"plain host", "example.com", "example.com"},
 		{"uppercase", "EXAMPLE.COM", "example.com"},
 		{"trailing dot", "example.com.", "example.com"},
+		{"multiple trailing dots only trims one", "example.com..", "example.com."},
 		{"host with port", "example.com:8080", "example.com"},
 		{"uppercase host with port", "EXAMPLE.COM:8080", "example.com"},
 		{"ipv4", "192.168.1.1", "192.168.1.1"},
@@ -146,6 +147,7 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 	}{
 		{name: "plain host", input: "example.com", expected: "example.com", expectOK: true},
 		{name: "host with valid port", input: "example.com:8080", expected: "example.com", expectOK: true},
+		{name: "multiple trailing dots with port only trims one", input: "api.example.com...:443", expected: "api.example.com..", expectOK: true},
 		{name: "ipv6 with port", input: "[::1]:443", expected: "::1", expectOK: true},
 		{name: "ipv6 without port", input: "[::1]", expected: "::1", expectOK: true},
 		{name: "empty port", input: "example.com:", expectOK: false},

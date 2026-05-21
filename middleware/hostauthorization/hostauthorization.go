@@ -86,7 +86,7 @@ func validateHostLength(host string) {
 func normalizeHost(host string) string {
 	// Fast path for plain hostnames — avoids net.SplitHostPort's error allocation.
 	if host != "" && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
-		host = utils.TrimRight(host, '.')
+		host = trimOneTrailingDot(host)
 		host = utilsstrings.ToLower(host)
 		return toPunycode(host)
 	}
@@ -98,9 +98,17 @@ func normalizeHost(host string) string {
 		host = utils.TrimRight(host, ']')
 	}
 
-	host = utils.TrimRight(host, '.')
+	host = trimOneTrailingDot(host)
 	host = utilsstrings.ToLower(host)
 	return toPunycode(host)
+}
+
+func trimOneTrailingDot(host string) string {
+	if host != "" && host[len(host)-1] == '.' {
+		return host[:len(host)-1]
+	}
+
+	return host
 }
 
 func toPunycode(host string) string {
