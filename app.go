@@ -34,7 +34,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "3.2.0"
+const Version = "3.3.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
@@ -111,6 +111,56 @@ type App struct {
 	routesRefreshed bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
+}
+
+type viewsLockKey struct {
+	typ  reflect.Type
+	view Views
+	ptr  uintptr
+}
+
+type viewsLockStore struct {
+	locks map[viewsLockKey]*sync.RWMutex
+	mutex sync.Mutex
+}
+
+var globalViewsLocks = newViewsLockStore()
+
+func newViewsLockStore() *viewsLockStore {
+	return &viewsLockStore{
+		locks: make(map[viewsLockKey]*sync.RWMutex),
+	}
+}
+
+func (s *viewsLockStore) get(views Views) *sync.RWMutex {
+	viewValue := reflect.ValueOf(views)
+	key := viewsLockKey{
+		typ: viewValue.Type(),
+	}
+
+	switch viewValue.Kind() {
+	case reflect.Pointer, reflect.Chan, reflect.Func, reflect.Map, reflect.Slice, reflect.UnsafePointer:
+		key.ptr = viewValue.Pointer()
+	default:
+		if viewValue.Type().Comparable() {
+			key.view = views
+		}
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if lock, ok := s.locks[key]; ok {
+		return lock
+	}
+
+	lock := &sync.RWMutex{}
+	s.locks[key] = lock
+	return lock
+}
+
+func getViewsLock(views Views) *sync.RWMutex {
+	return globalViewsLocks.get(views)
 }
 
 // Config is a struct holding the server settings.
@@ -774,8 +824,18 @@ func (app *App) ReloadViews() error {
 			continue
 		}
 
-		if err := targetApp.config.Views.Load(); err != nil {
-			return fmt.Errorf("fiber: failed to reload views: %w", err)
+		if err := func() error {
+			viewsLock := getViewsLock(targetApp.config.Views)
+			viewsLock.Lock()
+			defer viewsLock.Unlock()
+
+			if err := targetApp.config.Views.Load(); err != nil {
+				return fmt.Errorf("fiber: failed to reload views: %w", err)
+			}
+
+			return nil
+		}(); err != nil {
+			return err
 		}
 
 		reloaded = true

@@ -15,7 +15,7 @@ jobs:
         uses: poseidon/wait-for-status-checks@899c768d191b56eef585c18f8558da19e1f3e707 # v0.6.0
         with:
           token: ${{ secrets.PR_TOKEN }}
-          match_pattern: ^unit
+          match_pattern: ^unit|^lint /
           interval: 10
           timeout: 600
   dependabot:
