@@ -502,6 +502,30 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Optional. Default: a provider that returns context.Background()
 	ServicesShutdownContextProvider func() context.Context
+
+	// RegexHandler is a function that compiles regex patterns for `regex()`
+	// route constraints. Assign regexp.MustCompile or coregex.MustCompile
+	// directly to use the standard library or an alternative regex engine.
+	//
+	// Compiled matchers are reused across requests, so the returned value must
+	// be safe for concurrent use. Fiber may invoke RegexHandler more than once
+	// per route while parsing raw and normalized route patterns during
+	// registration.
+	//
+	// Example with standard library (default):
+	//     import "regexp"
+	//     app := fiber.New(fiber.Config{
+	//         RegexHandler: regexp.MustCompile,
+	//     })
+	//
+	// Example with coregex:
+	//     import "github.com/coregx/coregex"
+	//     app := fiber.New(fiber.Config{
+	//         RegexHandler: coregex.MustCompile,
+	//     })
+	//
+	// Optional. Default: regexp.MustCompile
+	RegexHandler any `json:"-"`
 }
 
 // Default TrustProxyConfig
@@ -703,6 +727,7 @@ func New(config ...Config) *App {
 	if app.config.XMLDecoder == nil {
 		app.config.XMLDecoder = xml.Unmarshal
 	}
+	app.config.RegexHandler = validateRegexHandler(app.config.RegexHandler)
 
 	app.sharedState = newSharedState(&app.config)
 	if len(app.config.RequestMethods) == 0 {
