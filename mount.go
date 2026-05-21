@@ -218,7 +218,7 @@ func (app *App) processSubAppsRoutes() {
 			i--
 
 			// Mark the parent app's routes as refreshed
-			app.routesRefreshed = true
+			app.hasRoutesRefreshed = true
 			// update stackLen after appending subRoutes to app.stack[m]
 			stackLen = len(app.stack[m])
 		}

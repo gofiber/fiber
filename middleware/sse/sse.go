@@ -88,7 +88,7 @@ type Stream struct {
 	done        chan struct{}
 	jsonMarshal utils.JSONMarshal
 	lastEventID string
-	closed      bool
+	isClosed    bool
 	once        sync.Once
 	mu          sync.Mutex
 }
@@ -165,7 +165,7 @@ func (s *Stream) write(fn func(w *bufio.Writer) error) error {
 	if s.err != nil {
 		return s.err
 	}
-	if s.closed {
+	if s.isClosed {
 		return errStreamClosed
 	}
 	if err := fn(s.w); err != nil {
@@ -179,7 +179,7 @@ func (s *Stream) write(fn func(w *bufio.Writer) error) error {
 
 func (s *Stream) failLocked(err error) error {
 	s.err = err
-	s.closed = true
+	s.isClosed = true
 	s.once.Do(func() {
 		s.cancel()
 		close(s.done)
@@ -189,7 +189,7 @@ func (s *Stream) failLocked(err error) error {
 
 func (s *Stream) closeStream() {
 	s.mu.Lock()
-	s.closed = true
+	s.isClosed = true
 	s.mu.Unlock()
 	s.once.Do(func() {
 		s.cancel()

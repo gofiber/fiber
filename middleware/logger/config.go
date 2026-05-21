@@ -95,8 +95,8 @@ type Config struct {
 	// Default: false
 	ForceColors bool
 
-	enableColors  bool
-	enableLatency bool
+	areColorsEnabled bool
+	isLatencyEnabled bool
 }
 
 // Buffer abstracts the buffer operations used when rendering log entries.
@@ -117,7 +117,7 @@ var ConfigDefault = Config{
 	Stream:            os.Stdout,
 	BeforeHandlerFunc: beforeHandlerFunc,
 	LoggerFunc:        defaultLoggerInstance,
-	enableColors:      true,
+	areColorsEnabled:  true,
 }
 
 // Helper function to set default values
@@ -166,7 +166,7 @@ func configDefault(config ...Config) Config {
 
 	// Enable colors if no custom format or output is given
 	if (!cfg.DisableColors && cfg.Stream == ConfigDefault.Stream) || cfg.ForceColors {
-		cfg.enableColors = true
+		cfg.areColorsEnabled = true
 	}
 
 	return cfg

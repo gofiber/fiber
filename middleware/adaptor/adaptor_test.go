@@ -537,6 +537,7 @@ func Test_FiberHandler_BodyLimit(t *testing.T) {
 		name           string
 		bodyLimit      int
 		bodySize       int
+		unknownLength  bool
 		expectedStatus int
 	}{
 		{
@@ -562,6 +563,13 @@ func Test_FiberHandler_BodyLimit(t *testing.T) {
 			bodySize:       fiber.DefaultBodyLimit - 256,
 			expectedStatus: fiber.StatusOK,
 		},
+		{
+			name:           "UnknownLengthExceededReturns413",
+			bodyLimit:      1 * 1024 * 1024,
+			bodySize:       (1 * 1024 * 1024) + 1,
+			unknownLength:  true,
+			expectedStatus: fiber.StatusRequestEntityTooLarge,
+		},
 	}
 
 	for _, tt := range tests {
@@ -579,7 +587,11 @@ func Test_FiberHandler_BodyLimit(t *testing.T) {
 			handlerFunc := FiberApp(app)
 			body := bytes.Repeat([]byte("a"), tt.bodySize)
 			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
-			req.ContentLength = int64(len(body))
+			if tt.unknownLength {
+				req.ContentLength = -1
+			} else {
+				req.ContentLength = int64(len(body))
+			}
 			resp := httptest.NewRecorder()
 
 			handlerFunc.ServeHTTP(resp, req)

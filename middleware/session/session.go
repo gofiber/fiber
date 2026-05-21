@@ -22,7 +22,7 @@ type Session struct {
 	id          string        // session id
 	idleTimeout time.Duration // idleTimeout of this session
 	mu          sync.RWMutex  // Mutex to protect non-data fields
-	fresh       bool          // if new session
+	isFresh     bool          // if new session
 }
 
 type absExpirationKeyType int
@@ -58,7 +58,7 @@ func acquireSession() *Session {
 	if s.data == nil {
 		s.data = acquireData()
 	}
-	s.fresh = true
+	s.isFresh = true
 	return s
 }
 
@@ -106,11 +106,11 @@ func releaseSession(s *Session) {
 //
 // Usage:
 //
-//	isFresh := s.Fresh()
+//	fresh := s.Fresh()
 func (s *Session) Fresh() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.fresh
+	return s.isFresh
 }
 
 // ID returns the session ID
@@ -277,7 +277,7 @@ func (s *Session) Reset() error {
 // refresh generates a new session, and sets session.fresh to be true.
 func (s *Session) refresh() {
 	s.id = s.config.KeyGenerator()
-	s.fresh = true
+	s.isFresh = true
 }
 
 // Save saves the session data and updates the cookie

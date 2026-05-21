@@ -895,3 +895,65 @@ func Benchmark_Compress_Levels_Parallel(b *testing.B) {
 		}
 	}
 }
+
+type failOnReadStream struct {
+	readCalls  int
+	closeCalls int
+}
+
+func (s *failOnReadStream) Read(_ []byte) (int, error) {
+	s.readCalls++
+	return 0, errors.New("stream should not be read")
+}
+
+func (s *failOnReadStream) Close() error {
+	s.closeCalls++
+	return nil
+}
+
+func Test_Compress_ShouldSkip_DoesNotMaterialize_BodyStream(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() {
+		app.ReleaseCtx(c)
+	})
+
+	stream := &failOnReadStream{}
+	c.Response().SetStatusCode(fiber.StatusOK)
+	c.Response().SetBodyStream(stream, -1)
+
+	require.False(t, shouldSkip(c))
+	require.True(t, c.Response().IsBodyStream())
+	require.Zero(t, stream.readCalls)
+	require.Zero(t, stream.closeCalls)
+}
+
+// go test -run Test_Compress_Streaming_With_Compression
+func Test_Compress_Streaming_With_Compression(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/stream", func(c fiber.Ctx) error {
+		// Send a stream when the client explicitly requests compression.
+		return c.SendStream(bytes.NewReader(filedata))
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/stream", http.NoBody)
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+
+	// Validate that the response is compressed
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Less(t, len(body), len(filedata), "Compressed size should be smaller than original")
+}
