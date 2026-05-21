@@ -137,6 +137,10 @@ func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
 			Name:  "test",
 			Value: "value",
 		})
+		c.Cookie(&fiber.Cookie{
+			Name:  "test2",
+			Value: "value2",
+		})
 		return nil
 	})
 
