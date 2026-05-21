@@ -109,6 +109,9 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 	if !val.IsValid() {
 		return nil
 	}
+	if val.Kind() != reflect.Struct {
+		return nil
+	}
 
 	field := val.FieldByName("config")
 	if !field.IsValid() {
