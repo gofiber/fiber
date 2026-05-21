@@ -701,6 +701,12 @@ func (r *DefaultReq) Is(extension string) bool {
 // RequestHandler. Additionally, Close method is called on each value
 // implementing io.Closer before removing the value from ctx.
 func (r *DefaultReq) Locals(key any, value ...any) any {
+	if r.c.fasthttp == nil {
+		if len(value) > 0 {
+			return value[0]
+		}
+		return nil
+	}
 	if len(value) == 0 {
 		return r.c.fasthttp.UserValue(key)
 	}
