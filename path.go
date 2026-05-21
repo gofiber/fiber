@@ -124,6 +124,7 @@ type routeSegment struct {
 	ParamName   string        // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
 	ComparePart string        // search part to find the end of the parameter
 	Constraints []*Constraint // Constraint type if segment is a parameter, if not it will be set to noConstraint by default
+	regexMatchers map[*Constraint]RegexMatcher
 	PartCount   int           // how often is the search part contained in the non-param segments? -> necessary for greedy search
 	Length      int           // length of the parameter for segment, when its 0 then the length is undetermined
 	// future TODO: add support for optional groups "/abc(/def)?"
@@ -158,9 +159,6 @@ type TypeConstraint uint16
 // Constraint describes the validation rules that apply to a dynamic route
 // segment when matching incoming requests.
 type Constraint struct {
-	// regexMatcher stores non-stdlib regex implementations internally while
-	// RegexCompiler preserves the exported *regexp.Regexp field for compatibility.
-	regexMatcher      RegexMatcher
 	RegexCompiler     *regexp.Regexp
 	Name              string
 	Data              []string
@@ -484,7 +482,10 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler Reg
 	paramName := RemoveEscapeChar(GetTrimmedParam(processedPart))
 
 	// Check has constraint
-	var constraints []*Constraint
+	var (
+		constraints    []*Constraint
+		regexMatchers map[*Constraint]RegexMatcher
+	)
 
 	if hasConstraint := paramConstraintStartPosition != -1 && paramConstraintEndPosition != -1; hasConstraint {
 		constraintString := pattern[paramConstraintStartPosition+1 : paramConstraintEndPosition]
@@ -521,7 +522,10 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler Reg
 					if regexpCompiler, ok := compiler.(*regexp.Regexp); ok {
 						constraint.RegexCompiler = regexpCompiler
 					} else {
-						constraint.regexMatcher = compiler
+						if regexMatchers == nil {
+							regexMatchers = make(map[*Constraint]RegexMatcher)
+						}
+						regexMatchers[constraint] = compiler
 					}
 				}
 
@@ -557,6 +561,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler Reg
 
 	if len(constraints) > 0 {
 		segment.Constraints = constraints
+		segment.regexMatchers = regexMatchers
 	}
 
 	return n, segment
@@ -635,7 +640,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			if !segment.IsOptional || i != 0 {
 				// check constraint
 				for _, c := range segment.Constraints {
-					if matched := c.CheckConstraint(params[paramsIterator]); !matched {
+					if matched := segment.checkConstraint(c, params[paramsIterator]); !matched {
 						return false
 					}
 				}
@@ -934,16 +939,10 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			return false
 		}
 	case regexConstraint:
-		var matcher RegexMatcher
-		if !isNilRegexMatcher(c.regexMatcher) {
-			matcher = c.regexMatcher
-		} else if c.RegexCompiler != nil {
-			matcher = c.RegexCompiler
-		}
-		if matcher == nil {
+		if c.RegexCompiler == nil {
 			return false
 		}
-		if match := matcher.MatchString(param); !match {
+		if match := c.RegexCompiler.MatchString(param); !match {
 			return false
 		}
 	default:
@@ -951,4 +950,16 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	}
 
 	return err == nil
+}
+
+func (segment *routeSegment) checkConstraint(constraint *Constraint, param string) bool {
+	if constraint.ID != regexConstraint {
+		return constraint.CheckConstraint(param)
+	}
+
+	if matcher, ok := segment.regexMatchers[constraint]; ok {
+		return matcher.MatchString(param)
+	}
+
+	return constraint.CheckConstraint(param)
 }

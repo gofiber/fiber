@@ -327,29 +327,11 @@ func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 func Test_ConstraintCheckConstraint_NilRegexMatcher(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
-		name       string
-		constraint Constraint
-	}{
-		{
-			name:       "typed_nil_regexp",
-			constraint: Constraint{ID: regexConstraint, RegexCompiler: (*regexp.Regexp)(nil)},
-		},
-		{
-			name:       "typed_nil_custom_matcher",
-			constraint: Constraint{ID: regexConstraint, regexMatcher: (*matchOnlyRegexCompiler)(nil)},
-		},
-	}
+	constraint := Constraint{ID: regexConstraint, RegexCompiler: (*regexp.Regexp)(nil)}
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
-
-			require.NotPanics(t, func() {
-				require.False(t, testCase.constraint.CheckConstraint("123"))
-			})
-		})
-	}
+	require.NotPanics(t, func() {
+		require.False(t, constraint.CheckConstraint("123"))
+	})
 }
 
 func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
@@ -609,7 +591,21 @@ func Test_RegexHandler_DefaultCompilerPreservesConstraintField(t *testing.T) {
 	require.Len(t, parser.segs, 2)
 	require.Len(t, parser.segs[1].Constraints, 1)
 	require.NotNil(t, parser.segs[1].Constraints[0].RegexCompiler)
-	require.Nil(t, parser.segs[1].Constraints[0].regexMatcher)
+	require.Nil(t, parser.segs[1].regexMatchers)
+}
+
+func Test_RegexHandler_CustomCompilerUsesSegmentMatcher(t *testing.T) {
+	t.Parallel()
+
+	parser := parseRoute("/api/:id<regex(\\d+)>", func(pattern string) *matchOnlyRegexCompiler {
+		return &matchOnlyRegexCompiler{re: regexp.MustCompile(pattern)}
+	})
+	require.Len(t, parser.segs, 2)
+	require.Len(t, parser.segs[1].Constraints, 1)
+	require.Nil(t, parser.segs[1].Constraints[0].RegexCompiler)
+	require.Len(t, parser.segs[1].regexMatchers, 1)
+	require.True(t, parser.segs[1].checkConstraint(parser.segs[1].Constraints[0], "123"))
+	require.False(t, parser.segs[1].checkConstraint(parser.segs[1].Constraints[0], "abc"))
 }
 
 // Test_RoutePatternMatch_WithRegex verifies RoutePatternMatch works with regex constraints
