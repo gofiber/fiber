@@ -137,6 +137,10 @@ func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
 			Name:  "test",
 			Value: "value",
 		})
+		c.Cookie(&fiber.Cookie{
+			Name:  "test2",
+			Value: "value2",
+		})
 		return nil
 	})
 
@@ -144,6 +148,7 @@ func Test_Middleware_EncryptionErrorPropagates(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 	require.ErrorIs(t, captured, expected)
+	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
 }
 
 func Test_Middleware_EncryptionErrorDoesNotMaskNextError(t *testing.T) {
