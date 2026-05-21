@@ -73,7 +73,7 @@ type DefaultCtx struct {
 	isAbandoned            atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
 	isMatched              bool                 // Non use route matched
 	shouldSkipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
-	isUserContextSet         bool                 // User context was stored in fasthttp user values
+	isUserContextSet       bool                 // User context was stored in fasthttp user values
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -749,7 +749,7 @@ func (c *DefaultCtx) IsAbandoned() bool {
 // ErrorHandler) have completely finished using this context. Calling it while
 // any goroutine is still running causes races.
 func (c *DefaultCtx) ForceRelease() {
-c.isAbandoned.Store(false)
+	c.isAbandoned.Store(false)
 	c.app.ReleaseCtx(c)
 }
 
