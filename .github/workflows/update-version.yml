@@ -39,15 +39,16 @@ jobs:
           if [ -n "$INPUT_VERSION" ]; then
             version="$INPUT_VERSION"
           else
-            # Find the latest draft release tag
-            tag=$(gh api "/repos/${{ github.repository }}/releases" --paginate \
-              | jq -r '[.[] | select(.draft == true)] | sort_by(.created_at) | reverse | .[0].tag_name // ""')
-            if [ -z "$tag" ]; then
+            # Prefer the release title (name) over tag_name, since GitHub
+            # assigns auto-tags like "untagged-<sha>" to drafts without a tag.
+            raw=$(gh api "/repos/${{ github.repository }}/releases" --paginate \
+              | jq -r '[.[] | select(.draft == true)] | sort_by(.created_at) | reverse | .[0] | (.name // "" | select(. != "")) // .tag_name // ""')
+            if [ -z "$raw" ]; then
               echo "::error::No draft release found and no version provided."
               exit 1
             fi
             # Strip leading 'v' if present
-            version="${tag#v}"
+            version="${raw#v}"
           fi
 
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
