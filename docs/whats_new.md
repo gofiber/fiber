@@ -2033,7 +2033,7 @@ app.RouteChain("/api").RouteChain("/user/:id?").
     Post(func(c fiber.Ctx) error {
         // Create user
         return c.JSON(fiber.Map{"message": "User created"})
-    });
+    })
 ```
 
 ### 🗺 RebuildTree
