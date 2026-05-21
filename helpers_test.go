@@ -157,6 +157,12 @@ func (ln *configMethodListener) Config() *tls.Config {
 	return ln.cfg
 }
 
+type nonStructListener int
+
+func (nonStructListener) Accept() (net.Conn, error) { return nil, net.ErrClosed }
+func (nonStructListener) Close() error              { return nil }
+func (nonStructListener) Addr() net.Addr            { return &net.TCPAddr{} }
+
 func Test_GetTLSConfig(t *testing.T) {
 	t.Parallel()
 
@@ -222,6 +228,15 @@ func Test_GetTLSConfig(t *testing.T) {
 		})
 
 		require.Nil(t, getTLSConfig(base), "plain listeners should not report TLS config")
+	})
+
+	t.Run("non-struct listener", func(t *testing.T) {
+		t.Parallel()
+
+		ln := nonStructListener(7)
+		require.NotPanics(t, func() {
+			require.Nil(t, getTLSConfig(ln), "non-struct listeners should not panic and should not report TLS config")
+		})
 	})
 }
 
