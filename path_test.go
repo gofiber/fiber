@@ -569,12 +569,12 @@ func Test_RegexHandler_Custom(t *testing.T) {
 	// Test the route
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
 	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, StatusOK, resp.StatusCode)
 
 	// Test with non-matching pattern
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/api/abc", http.NoBody))
 	require.NoError(t, err)
-	require.Equal(t, 404, resp.StatusCode)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
 // Test_RegexHandler_MatchOnlyCompiler verifies Fiber accepts compilers that only implement MatchString.
