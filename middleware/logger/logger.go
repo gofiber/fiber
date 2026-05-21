@@ -9,7 +9,14 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/logtemplate"
 )
+
+// defaultErrPadding is the initial column width used by the default access-log
+// formatter to align the request path against the optional error suffix. The
+// width grows on first request to fit the longest registered route, but a
+// non-zero default keeps short-lived test apps (with no routes) readable.
+const defaultErrPadding = 15
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -51,8 +58,9 @@ func New(config ...Config) fiber.Handler {
 		dataPool = sync.Pool{New: func() any { return new(Data) }}
 	)
 
-	// Err padding
-	errPadding := 15
+	// Err padding starts at the documented default and grows once on first
+	// request to fit the longest registered route path.
+	errPadding := defaultErrPadding
 	errPaddingStr := strconv.Itoa(errPadding)
 
 	// Before handling func
@@ -61,10 +69,14 @@ func New(config ...Config) fiber.Handler {
 	// Logger data
 	// instead of analyzing the template inside(handler) each time, this is done once before
 	// and we create several slices of the same length with the functions to be executed and fixed parts.
-	templateChain, logFunChain, err := buildLogFuncChain(&cfg, createTagMap(&cfg))
+	template, err := logtemplate.Build[fiber.Ctx, Data](cfg.Format, createTagMap(&cfg))
 	if err != nil {
+		if translated := translateBuildError(err); translated != nil {
+			panic(translated)
+		}
 		panic(err)
 	}
+	templateChain, logFuncChain := template.Chains()
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
@@ -95,8 +107,11 @@ func New(config ...Config) fiber.Handler {
 		data.Pid = pid
 		data.ErrPaddingStr = errPaddingStr
 		data.Timestamp = timestamp
+		// These compiled chains are shared across requests. The default logger and
+		// custom LoggerFunc implementations must only read them, for example via
+		// logtemplate.ExecuteChains.
 		data.TemplateChain = templateChain
-		data.LogFuncChain = logFunChain
+		data.LogFuncChain = logFuncChain
 		// put data back in the pool
 		defer dataPool.Put(data)
 

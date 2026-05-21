@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1057,6 +1058,75 @@ func Test_FiberHandler_WithSendStreamWriter(t *testing.T) {
 	require.Equal(t, fiber.StatusTeapot, w.StatusCode())
 	require.Equal(t, "Hello World!", string(w.body))
 }
+
+func Test_FiberHandler_ClosesBodyStream(t *testing.T) {
+	t.Parallel()
+
+	closed := &atomic.Bool{}
+	body := &closeTrackingReader{
+		ReadCloser: io.NopCloser(strings.NewReader("streamed body")),
+		closed:     closed,
+	}
+
+	fiberH := func(c fiber.Ctx) error {
+		return c.SendStream(body)
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+	w := httptest.NewRecorder()
+
+	handlerFunc.ServeHTTP(w, r)
+	require.True(t, closed.Load())
+}
+
+func Test_FiberHandler_ClosesBodyStreamOnWriteError(t *testing.T) {
+	t.Parallel()
+
+	closed := &atomic.Bool{}
+	body := &closeTrackingReader{
+		ReadCloser: io.NopCloser(strings.NewReader("streamed body")),
+		closed:     closed,
+	}
+
+	fiberH := func(c fiber.Ctx) error {
+		return c.SendStream(body)
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+	w := &failingStreamWriter{header: make(http.Header)}
+
+	handlerFunc.ServeHTTP(w, r)
+	require.True(t, closed.Load())
+}
+
+type closeTrackingReader struct {
+	io.ReadCloser
+	closed *atomic.Bool
+}
+
+func (r *closeTrackingReader) Close() error {
+	r.closed.Store(true)
+	_ = r.ReadCloser.Close() //nolint:errcheck // not needed
+	return nil
+}
+
+type failingStreamWriter struct {
+	header http.Header
+}
+
+func (f *failingStreamWriter) Header() http.Header {
+	return f.header
+}
+
+func (f *failingStreamWriter) Write([]byte) (int, error) {
+	return 0, errors.New("simulated write error")
+}
+
+func (f *failingStreamWriter) WriteHeader(int) {}
+
+func (f *failingStreamWriter) Flush() {}
 
 func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	t.Parallel()

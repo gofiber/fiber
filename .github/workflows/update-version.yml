@@ -21,7 +21,7 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           # PAT with bypass rights for the protected `main` branch.
           # The default GITHUB_TOKEN cannot push directly to `main`.
@@ -50,6 +50,14 @@ jobs:
             version="${tag#v}"
           fi
 
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            escaped_version="${version//'%'/'%25'}"
+            escaped_version="${escaped_version//$'\r'/'%0D'}"
+            escaped_version="${escaped_version//$'\n'/'%0A'}"
+            echo "::error::Invalid version '$escaped_version'. Expected semantic version like 3.2.0 or 3.2.0-rc.1"
+            exit 1
+          fi
+
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "Resolved version: **${version}**" >> "$GITHUB_STEP_SUMMARY"
 
@@ -67,7 +75,8 @@ jobs:
             exit 0
           fi
 
-          sed -i "s/const Version = \"${current}\"/const Version = \"${VERSION}\"/" app.go
+          escaped_version=$(printf '%s' "$VERSION" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])')
+          sed -i -E "s|^const Version = \"[^\"]+\"$|const Version = \"${escaped_version}\"|" app.go
           echo "Updated: ${current} → ${VERSION}"
 
           # Verify the change

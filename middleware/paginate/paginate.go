@@ -114,7 +114,7 @@ func parseSortQuery(query string, allowedSorts []string, defaultSort string) []S
 		if field == "" {
 			continue
 		}
-		if len(allowedSorts) == 0 || slices.Contains(allowedSorts, field) {
+		if slices.Contains(allowedSorts, field) {
 			sortFields = append(sortFields, SortField{Field: field, Order: order})
 		}
 	}

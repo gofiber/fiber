@@ -339,7 +339,7 @@ func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
 	require.Equal(t, 1, s.setCount)
 }
 
-func Test_New_SkipCache_WhenBodyTooLarge(t *testing.T) {
+func Test_New_Cache_WhenBodyTooLarge(t *testing.T) {
 	t.Parallel()
 	bodyLimit := 8
 	app := fiber.New(fiber.Config{BodyLimit: bodyLimit})
@@ -374,10 +374,10 @@ func Test_New_SkipCache_WhenBodyTooLarge(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
 	require.Equal(t, oversized, body2)
 
-	require.Equal(t, 2, count)
-	require.Equal(t, 0, s.setCount)
+	require.Equal(t, 1, count)
+	require.Equal(t, 1, s.setCount)
 	require.Len(t, wasPut, 2)
-	require.False(t, wasPut[0])
+	require.True(t, wasPut[0])
 	require.False(t, wasPut[1])
 }
 

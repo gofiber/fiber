@@ -4,9 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/redact"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -22,8 +25,12 @@ const (
 // ErrMissingOrMalformedAPIKey is returned when the API key is missing or invalid.
 var ErrMissingOrMalformedAPIKey = errors.New("missing or invalid API Key")
 
+var registerLogContextTagsOnce sync.Once
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
+	registerLogContextTagsOnce.Do(registerLogContextTags)
+
 	// Init config
 	cfg := configDefault(config...)
 
@@ -91,6 +98,12 @@ func New(config ...Config) fiber.Handler {
 
 		return handlerErr
 	}
+}
+
+func registerLogContextTags() {
+	logger.RegisterContextTag("api-key", func(ctx any) string {
+		return redact.Prefix(TokenFromContext(ctx))
+	})
 }
 
 // TokenFromContext returns the bearer token from the request context.

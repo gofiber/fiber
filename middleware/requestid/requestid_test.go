@@ -1,11 +1,15 @@
 package requestid
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
+	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/stretchr/testify/require"
 )
 
@@ -189,6 +193,52 @@ func Test_RequestID_FromContext(t *testing.T) {
 	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, reqID, ctxVal)
+}
+
+func Test_RequestID_LoggerMiddlewareTag(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return "req-42"
+		},
+	}))
+	app.Use(logger.New(logger.Config{
+		Format: "${requestid} ${request-id}",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "req-42"+" req-42", buf.String())
+}
+
+// Test_RequestID_LogWithContextFormat runs serially because it mutates the
+// package-global logger output and context format.
+func Test_RequestID_LogWithContextFormat(t *testing.T) {
+	buf := loggertest.CaptureContextLog(t, fiberlog.RequestIDFormat)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return "req-42"
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("start")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, buf.String(), "[Info] [req-42] start")
 }
 
 func Test_RequestID_FromContext_Empty(t *testing.T) {

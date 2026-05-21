@@ -1,11 +1,11 @@
 package log
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"reflect"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
@@ -15,8 +15,42 @@ var _ AllLogger[*log.Logger] = (*defaultLogger)(nil)
 
 type defaultLogger struct {
 	stdlog *log.Logger
+	ctx    retainedContext
 	level  Level
 	depth  int
+}
+
+// retainedContext documents that WithContext intentionally returns a logger
+// bound to a caller-provided context-like value. The value may be fiber.Ctx,
+// *fasthttp.RequestCtx, context.Context, or another value understood by
+// ContextTagFunc implementations.
+type retainedContext struct {
+	value any
+	ok    bool
+}
+
+// newRetainedContext wraps value, treating both untyped nil and typed-nil
+// pointers/interfaces/maps/slices/channels/funcs as "no context". A typed nil
+// (e.g. (*fasthttp.RequestCtx)(nil) stored in an `any`) compares non-nil under
+// `value != nil` because the interface header carries a non-nil type
+// descriptor; passing it through to a tag renderer would cause the renderer
+// to dereference a nil receiver. Reflection here is one-shot per WithContext
+// call — far off the per-log-line hot path.
+func newRetainedContext(value any) retainedContext {
+	if value == nil {
+		return retainedContext{}
+	}
+	switch rv := reflect.ValueOf(value); rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface,
+		reflect.Map, reflect.Pointer, reflect.Slice:
+		if rv.IsNil() {
+			return retainedContext{}
+		}
+	default:
+		// Non-nilable kinds (struct, int, string, ...) cannot be typed-nil;
+		// fall through to wrap the value as-is.
+	}
+	return retainedContext{value: value, ok: true}
 }
 
 // privateLog logs a message at a given level log the default logger.
@@ -28,6 +62,7 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	level := lv.toString()
 	buf := bytebufferpool.Get()
 	buf.WriteString(level)
+	l.writeContext(buf)
 	fmt.Fprint(buf, fmtArgs...)
 
 	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
@@ -51,6 +86,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	level := lv.toString()
 	buf := bytebufferpool.Get()
 	buf.WriteString(level)
+	l.writeContext(buf)
 
 	if len(fmtArgs) > 0 {
 		_, _ = fmt.Fprintf(buf, format, fmtArgs...)
@@ -78,6 +114,7 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 	level := lv.toString()
 	buf := bytebufferpool.Get()
 	buf.WriteString(level)
+	l.writeContext(buf)
 
 	// Write format privateLog buffer
 	if format != "" {
@@ -220,10 +257,44 @@ func (l *defaultLogger) Panicw(msg string, keysAndValues ...any) {
 	l.privateLogw(LevelPanic, msg, keysAndValues)
 }
 
-// WithContext returns a logger that shares the underlying output but adjusts the call depth.
-func (l *defaultLogger) WithContext(_ context.Context) CommonLogger {
+// writeContext renders the configured context template directly into buf.
+// Rendering uses a scratch buffer so that a partially-rendered template (one
+// that errors mid-tag) does not leak its prefix into the real log line. When
+// rendering fails, a short marker is appended instead of the prefix so the
+// failure is visible in the log stream rather than silently producing
+// context-less log lines forever.
+func (l *defaultLogger) writeContext(buf Buffer) {
+	if !l.ctx.ok {
+		return
+	}
+
+	tmpl := contextTemplate.Load()
+	if tmpl == nil {
+		return
+	}
+
+	scratch := bytebufferpool.Get()
+	defer bytebufferpool.Put(scratch)
+
+	if err := tmpl.Execute(scratch, l.ctx.value, &ContextData{}); err != nil {
+		// The error string can carry CR/LF/ANSI bytes derived from request data
+		// (e.g. when a tag wraps an upstream parsing error around a header). Run
+		// it through the same sanitiser the ${value:KEY} renderer uses so a
+		// misconfigured tag cannot become a log-injection vector.
+		_, _ = buf.WriteString("[ctx-render-error: ") //nolint:errcheck // best-effort marker
+		_, _ = writeSanitizedString(buf, err.Error()) //nolint:errcheck // best-effort marker
+		_, _ = buf.WriteString("] ")                  //nolint:errcheck // best-effort marker
+		return
+	}
+
+	_, _ = buf.Write(scratch.Bytes()) //nolint:errcheck // best-effort write; outer log.Output reports IO errors
+}
+
+// WithContext returns a logger that shares the underlying output and renders configured contextual fields.
+func (l *defaultLogger) WithContext(ctx any) CommonLogger {
 	return &defaultLogger{
 		stdlog: l.stdlog,
+		ctx:    newRetainedContext(ctx),
 		level:  l.level,
 		depth:  l.depth - 1,
 	}

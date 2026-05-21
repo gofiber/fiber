@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpproxy"
+	"golang.org/x/net/http/httpproxy"
 )
 
 var ErrFailedToAppendCert = errors.New("failed to append certificate")
@@ -311,7 +313,16 @@ func (c *Client) SetProxyURL(proxyURL string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.applyDial(fasthttpproxy.FasthttpHTTPDialer(proxyURL))
+	// Build the fasthttp proxy dialer directly so invalid proxy URLs are returned
+	// to callers instead of being swallowed by FasthttpHTTPDialer.
+	dialer := fasthttpproxy.Dialer{
+		Config: httpproxy.Config{HTTPProxy: proxyURL, HTTPSProxy: proxyURL},
+	}
+	dialFunc, err := dialer.GetDialFunc(false)
+	if err != nil {
+		return fmt.Errorf("client: invalid proxy URL: %w", err)
+	}
+	c.applyDial(dialFunc)
 	return nil
 }
 

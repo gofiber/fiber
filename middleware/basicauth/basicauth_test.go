@@ -1,6 +1,7 @@
 package basicauth
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
@@ -13,6 +14,9 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
+	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/crypto/bcrypt"
@@ -107,6 +111,57 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 			require.Equal(t, tt.username, string(body))
 		}
 	}
+}
+
+func Test_BasicAuthLoggerTagWritesUsername(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Users: map[string]string{
+			"john": sha256Hash("doe"),
+		},
+	}))
+	app.Use(logger.New(logger.Config{
+		Format: "${username}",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.SetBasicAuth("john", "doe")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "john", buf.String())
+}
+
+// Test_BasicAuthLogContextTagWritesUsername runs serially because it mutates
+// package-global default logger output and context format.
+func Test_BasicAuthLogContextTagWritesUsername(t *testing.T) {
+	buf := loggertest.CaptureContextLog(t, "username=${username} ")
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Users: map[string]string{
+			"john": sha256Hash("doe"),
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("start")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.SetBasicAuth("john", "doe")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, buf.String(), "[Info] username=john start")
 }
 
 func Test_BasicAuth_UsernameFromContext_Types(t *testing.T) {

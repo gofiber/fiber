@@ -1,17 +1,24 @@
 package csrf
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
+	"github.com/gofiber/fiber/v3/internal/redact"
+	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -628,6 +635,49 @@ func Test_CSRF_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+func Test_CSRFLoggerTagRedactsToken(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	app := fiber.New()
+	app.Use(New())
+	app.Use(logger.New(logger.Config{
+		Format: "${csrf-token}",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	// CSRF tokens are randomly generated per request, so assert on the
+	// redaction shape (4-byte prefix + Mask) rather than a fixed value.
+	got := buf.String()
+	require.Len(t, got, redact.PrefixLength+len(redact.Mask))
+	require.True(t, strings.HasSuffix(got, redact.Mask), "expected suffix %q in %q", redact.Mask, got)
+}
+
+// Test_CSRFLogContextTagRedactsToken runs serially because it mutates
+// package-global default logger output and context format.
+func Test_CSRFLogContextTagRedactsToken(t *testing.T) {
+	buf := loggertest.CaptureContextLog(t, "csrf-token=${csrf-token} ")
+
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		fiberlog.WithContext(c).Info("start")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Regexp(t, `\[Info\] csrf-token=.{`+strconv.Itoa(redact.PrefixLength)+`}`+regexp.QuoteMeta(redact.Mask)+` start`, buf.String())
 }
 
 func Test_CSRF_From_Form(t *testing.T) {
