@@ -31,4 +31,5 @@ jobs:
           cache: false
 
       - name: modernize
+        # Pinned: gopls v0.22.0 requires Go >= 1.26; we still build on Go 1.25.
         run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.21.1 -test=false ./...
