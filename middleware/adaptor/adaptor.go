@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"reflect"
@@ -251,7 +252,11 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 				http.Error(w, utils.StatusMessage(fiber.StatusRequestEntityTooLarge), fiber.StatusRequestEntityTooLarge)
 				return
 			}
-			limitedReader := io.LimitReader(r.Body, maxBodySize+1)
+			limit := maxBodySize
+			if limit < math.MaxInt64 {
+				limit++
+			}
+			limitedReader := io.LimitReader(r.Body, limit)
 			n, err := io.Copy(req.BodyWriter(), limitedReader)
 			if err != nil {
 				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
