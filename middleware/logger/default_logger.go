@@ -17,9 +17,9 @@ import (
 func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 	if cfg == nil {
 		cfg = &Config{
-			Stream:       os.Stdout,
-			Format:       DefaultFormat,
-			enableColors: true,
+			Stream:           os.Stdout,
+			Format:           DefaultFormat,
+			areColorsEnabled: true,
 		}
 	}
 	// Check if Skip is defined and call it.
@@ -38,7 +38,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 	if cfg.Format == DefaultFormat {
 		// Format error if exist
 		formatErr := ""
-		if cfg.enableColors {
+		if cfg.areColorsEnabled {
 			if data.ChainErr != nil {
 				formatErr = colors.Red + " | " + data.ChainErr.Error() + colors.Reset
 			}
@@ -142,7 +142,7 @@ func beforeHandlerFunc(cfg *Config) {
 	}
 
 	// If colors are enabled, check terminal compatibility
-	if cfg.enableColors && cfg.Stream == os.Stdout {
+	if cfg.areColorsEnabled && cfg.Stream == os.Stdout {
 		cfg.Stream = colorable.NewColorableStdout()
 		if !cfg.ForceColors && (os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd()))) {
 			cfg.Stream = colorable.NewNonColorable(os.Stdout)

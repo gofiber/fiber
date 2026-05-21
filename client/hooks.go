@@ -343,7 +343,7 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 
 // logger is a response hook that logs request and response data if debug mode is enabled.
 func logger(c *Client, resp *Response, req *Request) error {
-	if !c.debug {
+	if !c.isDebug {
 		return nil
 	}
 

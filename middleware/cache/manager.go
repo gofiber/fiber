@@ -45,17 +45,17 @@ type cachedHeader struct {
 
 //msgp:ignore manager
 type manager struct {
-	pool       sync.Pool
-	memory     *memory.Storage
-	storage    fiber.Storage
-	redactKeys bool
+	pool             sync.Pool
+	memory           *memory.Storage
+	storage          fiber.Storage
+	shouldRedactKeys bool
 }
 
 const redactedKey = "[redacted]"
 
 var errCacheMiss = errors.New("cache: miss")
 
-func newManager(storage fiber.Storage, redactKeys bool) *manager {
+func newManager(storage fiber.Storage, shouldRedactKeys bool) *manager {
 	// Create new storage handler
 	manager := &manager{
 		pool: sync.Pool{
@@ -63,7 +63,7 @@ func newManager(storage fiber.Storage, redactKeys bool) *manager {
 				return new(item)
 			},
 		},
-		redactKeys: redactKeys,
+		shouldRedactKeys: shouldRedactKeys,
 	}
 	if storage != nil {
 		// Use provided storage if provided
@@ -208,7 +208,7 @@ func (m *manager) del(ctx context.Context, key string) error {
 }
 
 func (m *manager) logKey(key string) string {
-	if m.redactKeys {
+	if m.shouldRedactKeys {
 		return redactedKey
 	}
 	return key

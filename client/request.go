@@ -69,7 +69,7 @@ type Request struct {
 
 	bodyType bodyType
 
-	disablePathNormalizing bool
+	isPathNormalizingDisabled bool
 }
 
 // Method returns the HTTP method set in the Request.
@@ -612,12 +612,12 @@ func (r *Request) SetMaxRedirects(count int) *Request {
 
 // DisablePathNormalizing reports whether path normalizing is disabled for the Request.
 func (r *Request) DisablePathNormalizing() bool {
-	return r.disablePathNormalizing
+	return r.isPathNormalizingDisabled
 }
 
 // SetDisablePathNormalizing configures the Request to disable or enable path normalizing.
 func (r *Request) SetDisablePathNormalizing(disable bool) *Request {
-	r.disablePathNormalizing = disable
+	r.isPathNormalizingDisabled = disable
 	r.RawRequest.URI().DisablePathNormalizing = disable
 	return r
 }
@@ -688,7 +688,7 @@ func (r *Request) Reset() {
 	r.maxRedirects = 0
 	r.bodyType = noBody
 	r.boundary = boundary
-	r.disablePathNormalizing = false
+	r.isPathNormalizingDisabled = false
 
 	for len(r.files) != 0 {
 		t := r.files[0]

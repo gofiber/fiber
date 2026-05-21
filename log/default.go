@@ -26,7 +26,7 @@ type defaultLogger struct {
 // ContextTagFunc implementations.
 type retainedContext struct {
 	value any
-	ok    bool
+	isOk  bool
 }
 
 // newRetainedContext wraps value, treating both untyped nil and typed-nil
@@ -50,7 +50,7 @@ func newRetainedContext(value any) retainedContext {
 		// Non-nilable kinds (struct, int, string, ...) cannot be typed-nil;
 		// fall through to wrap the value as-is.
 	}
-	return retainedContext{value: value, ok: true}
+	return retainedContext{value: value, isOk: true}
 }
 
 // privateLog logs a message at a given level log the default logger.
@@ -264,7 +264,7 @@ func (l *defaultLogger) Panicw(msg string, keysAndValues ...any) {
 // failure is visible in the log stream rather than silently producing
 // context-less log lines forever.
 func (l *defaultLogger) writeContext(buf Buffer) {
-	if !l.ctx.ok {
+	if !l.ctx.isOk {
 		return
 	}
 
