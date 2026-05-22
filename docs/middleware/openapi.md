@@ -155,3 +155,60 @@ var ConfigDefault = Config{
 ```
 
 Schema references (`SchemaRef`) are emitted as `$ref` entries in the generated JSON and can point to components such as `#/components/schemas/User`. To make these references resolve correctly, provide the corresponding definitions via the `Components` config field. `Example` and `Examples` follow the OpenAPI specification's mutual exclusivity rule: when both are provided, `Examples` takes precedence and `Example` is omitted.
+
+## Automatic Schema Inference
+
+The `SchemaOf` helper generates an OpenAPI JSON Schema from a Go struct using reflection:
+
+```go
+type User struct {
+    ID    int    `json:"id"`
+    Name  string `json:"name"`
+    Email string `json:"email" openapi:"format:email,description:User email address"`
+}
+
+// Generate schema automatically from struct
+app.Post("/users", createUser).
+    RequestBodyWithExample("Create user", true, openapi.SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON).
+    ResponseWithExample(201, "Created", openapi.SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON)
+
+// Or use it in Components for $ref reuse
+app.Use(openapi.New(openapi.Config{
+    Components: map[string]any{
+        "schemas": map[string]any{
+            "User": openapi.SchemaOf(User{}),
+        },
+    },
+}))
+```
+
+### Supported types
+
+| Go type | OpenAPI type |
+|:--------|:-------------|
+| `string` | `string` |
+| `bool` | `boolean` |
+| `int`, `int8`–`int64`, `uint`–`uint64` | `integer` |
+| `float32`, `float64` | `number` |
+| `time.Time` | `string` (format: `date-time`) |
+| `[]T` / `[N]T` | `array` (items: schema of `T`) |
+| `map[string]T` | `object` (additionalProperties: schema of `T`) |
+| struct | `object` (properties from fields) |
+| `*T` | schema of `T` (field not included in `required`) |
+
+### Struct field tags
+
+- **`json:"name"`** — sets the property name; `json:"-"` skips the field
+- **`json:",omitempty"`** — makes the field optional (not in `required`)
+- **`openapi:"description:text"`** — sets the property description
+- **`openapi:"example:value"`** — sets the property example (auto-converted to the correct type)
+- **`openapi:"format:fmt"`** — sets the format (e.g., `email`, `uuid`, `date-time`)
+- **`openapi:"enum:a|b|c"`** — sets allowed enum values (pipe-separated)
+
+Multiple `openapi` directives can be combined with commas:
+
+```go
+type Product struct {
+    Status string `json:"status" openapi:"enum:active|inactive,description:Product status"`
+}
+```
