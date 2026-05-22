@@ -567,7 +567,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
+func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) *Route {
 	prefixedPath := getGroupPath(prefix, route.Path)
 	prettyPath := prefixedPath
 	// Case-sensitive routing, all to lowercase
@@ -581,7 +581,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
-	route.routeParser = parseRoute(prettyPath, app.config.RegexHandler, app.customConstraints...)
+	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
