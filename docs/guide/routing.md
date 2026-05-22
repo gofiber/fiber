@@ -13,23 +13,15 @@ import TabItem from '@theme/TabItem';
 import RoutingHandler from './../partials/routing/handler.md';
 import RoutingUse from './../partials/routing/use.md';
 import RoutingHandlerTypes from './../partials/routing/handler-types.md';
+import RouteAnatomy from '@site/src/components/route-anatomy';
 
 ## Anatomy of a route
 
-A route ties together an HTTP method, a path, and one or more handlers. Each part below links to the section that covers it:
+A route ties together an HTTP method, a path, and one or more handlers. Hover or click any colored part to jump to the section that explains it:
 
-```go
-app.Get("/users/:id", func(c fiber.Ctx) error {
-    return c.SendString("GET /users")
-})
-```
+<RouteAnatomy />
 
-| Part                      | What it is                                                                       |
-| ------------------------- | -------------------------------------------------------------------------------- |
-| `Get`                     | the [routing method](#route-handlers): the HTTP verb the route answers           |
-| `"/users/:id"`            | the [route path](#paths) (the resource, in REST terms)                           |
-| `:id`                     | a [route parameter](#parameters) captured from the path                          |
-| `func(c fiber.Ctx) error` | the [handler](#route-handlers) (or [middleware](#middleware)) run when it matches |
+`Get` is the [routing method](#route-handlers), `"/users/:id"` is the [route path](#paths) (the resource, in REST terms) with `:id` a [route parameter](#parameters), and `func(c fiber.Ctx) error` is the [handler](#route-handlers) (or [middleware](#middleware)) run when the route matches.
 
 ## Route Handlers
 
