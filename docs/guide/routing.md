@@ -21,7 +21,7 @@ A route ties together an HTTP method, a path, and one or more handlers. Hover or
 
 <RouteAnatomy />
 
-`Get` is the [routing method](#route-handlers), `"/users/:id"` is the [route path](#paths) (the resource, in REST terms) with `:id` a [route parameter](#parameters), and `func(c fiber.Ctx) error` is the [handler](#route-handlers) (or [middleware](#middleware)) run when the route matches.
+`Get` is the [routing method](#route-handlers), `"/users/:id"` is the [route path](#paths) (the resource, in REST terms) with `:id` a [route parameter](#parameters), and `func(c fiber.Ctx) error` is the [handler](#handler-types) (or [middleware](#middleware)) run when the route matches.
 
 ## Route Handlers
 
