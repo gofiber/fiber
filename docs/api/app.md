@@ -3,6 +3,7 @@ id: app
 title: 🚀 App
 description: The `App` type represents your Fiber application.
 sidebar_position: 2
+toc_max_heading_level: 4
 ---
 
 import Reference from '@site/src/components/reference';
@@ -47,14 +48,21 @@ app.Get("/dev/reload", func(c fiber.Ctx) error {
 ## Routing
 
 import RoutingHandler from './../partials/routing/handler.md';
+import RoutingUse from './../partials/routing/use.md';
 
 ### Route Handlers
 
 <RoutingHandler />
 
+Beyond the native `func(fiber.Ctx)` forms, Fiber also adapts Express-style, `net/http`, and `fasthttp` handlers. See [Handler types](../guide/routing.md#handler-types) in the routing guide for the full list of supported shapes.
+
+### Use
+
+<RoutingUse />
+
 ### Mounting
 
-Mount another Fiber instance with [`app.Use`](./app.md#use), similar to Express's [`router.use`](https://expressjs.com/en/api.html#router.use).
+Mount another Fiber instance with [`app.Use`](#use), similar to Express's [`router.use`](https://expressjs.com/en/api.html#router.use).
 
 ```go title="Example"
 package main
@@ -80,17 +88,9 @@ func main() {
 }
 ```
 
-### State / SharedState
-
-`State()` returns in-process state (local to the current process).  
-`SharedState()` returns storage-backed state intended for prefork/multi-process sharing.
-
-```go title="Signature"
-func (app *App) State() *State
-func (app *App) SharedState() *SharedState
-```
-
-See [State Management](./state.md) for usage and examples.
+:::caution
+Unlike Express, Fiber does not strip the mount prefix. Inside the mounted app, `c.Path()` still returns the full request path (`/john/doe`, not `/doe`); there is no `req.baseUrl` equivalent.
+:::
 
 ### MountPath
 
@@ -223,6 +223,7 @@ func main() {
     app.RouteChain("/events").All(func(c fiber.Ctx) error {
         // Runs for all HTTP verbs first
         // Think of it as route-specific middleware!
+        return c.Next()
     }).
     Get(func(c fiber.Ctx) error {
         return c.SendString("GET /events")
@@ -375,6 +376,7 @@ package main
 
 import (
     "encoding/json"
+    "fmt"
     "log"
 
     "github.com/gofiber/fiber/v3"
@@ -650,6 +652,18 @@ func main() {
 
 </details>
 
+## State / SharedState
+
+`State()` returns in-process state (local to the current process).  
+`SharedState()` returns storage-backed state intended for prefork/multi-process sharing.
+
+```go title="Signature"
+func (app *App) State() *State
+func (app *App) SharedState() *SharedState
+```
+
+See [State Management](./state.md) for usage and examples.
+
 ## Config
 
 `Config` returns the [app config](./fiber.md#config) as a value (read-only).
@@ -660,7 +674,7 @@ func (app *App) Config() Config
 
 ## Handler
 
-`Handler` returns the server handler that can be used to serve custom [`\*fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx) requests.
+`Handler` returns the server handler that can be used to serve custom [`*fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx) requests.
 
 ```go title="Signature"
 func (app *App) Handler() fasthttp.RequestHandler
@@ -856,7 +870,7 @@ config := fiber.TestConfig{
 :::caution
 
 This is **not** the same as supplying an empty `TestConfig{}` to
-`app.Test(), but rather be the equivalent of supplying:
+`app.Test()`, but is rather the equivalent of supplying:
 
 ```go title="Empty TestConfig"
 cfg := fiber.TestConfig{
