@@ -1455,3 +1455,43 @@ func Test_OpenAPI_ExampleWithoutExamples(t *testing.T) {
 	require.Equal(t, map[string]any{"id": float64(1)}, respJSON["example"])
 	require.Nil(t, respJSON["examples"])
 }
+
+func Test_OpenAPI_SchemaOfIntegration(t *testing.T) {
+	t.Parallel()
+
+	type User struct {
+		Name string `json:"name"`
+		ID   int    `json:"id"`
+	}
+
+	app := fiber.New()
+	app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		ResponseWithExample(fiber.StatusOK, "User found", SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON)
+	app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
+		RequestBodyWithExample("Create user", true, SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON).
+		ResponseWithExample(fiber.StatusCreated, "Created", SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON)
+
+	paths := getPaths(t, app)
+
+	// Verify GET /users/:id response schema
+	getOp := requireMap(t, paths["/users/{id}"]["get"])
+	getResp := requireMap(t, requireMap(t, getOp["responses"])["200"])
+	getContent := requireMap(t, getResp["content"])
+	getJSON := requireMap(t, getContent[fiber.MIMEApplicationJSON])
+	schema := requireMap(t, getJSON["schema"])
+	require.Equal(t, "object", schema["type"])
+	props := requireMap(t, schema["properties"])
+	require.Contains(t, props, "id")
+	require.Contains(t, props, "name")
+
+	// Verify POST /users request body schema
+	postOp := requireMap(t, paths["/users"]["post"])
+	reqBody := requireMap(t, postOp["requestBody"])
+	reqContent := requireMap(t, reqBody["content"])
+	reqJSON := requireMap(t, reqContent[fiber.MIMEApplicationJSON])
+	reqSchema := requireMap(t, reqJSON["schema"])
+	require.Equal(t, "object", reqSchema["type"])
+	reqProps := requireMap(t, reqSchema["properties"])
+	require.Contains(t, reqProps, "id")
+	require.Contains(t, reqProps, "name")
+}
