@@ -9,10 +9,40 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func Test_App_Mount_PreservesSubAppRegexHandler(t *testing.T) {
+	t.Parallel()
+
+	parent := New(Config{
+		CaseSensitive: true,
+		RegexHandler: func(pattern string) *matchOnlyRegexCompiler {
+			return &matchOnlyRegexCompiler{re: regexp.MustCompile("(?i)" + pattern)}
+		},
+	})
+
+	sub := New(Config{
+		CaseSensitive: true,
+		RegexHandler:  regexp.MustCompile,
+	})
+	sub.Get("/resource/:id<regex(ALLOW)>", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	parent.Use("/mounted", sub)
+
+	resp, err := sub.Test(httptest.NewRequest(MethodGet, "/resource/allow", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+
+	resp, err = parent.Test(httptest.NewRequest(MethodGet, "/mounted/resource/allow", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
 
 // go test -run Test_App_Mount
 func Test_App_Mount(t *testing.T) {
