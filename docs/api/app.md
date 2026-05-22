@@ -8,43 +8,6 @@ toc_max_heading_level: 4
 
 import Reference from '@site/src/components/reference';
 
-## Helpers
-
-### GetString
-
-Returns `s` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `s` resides in read-only memory. Otherwise, it returns a detached copy using `strings.Clone`.
-
-```go title="Signature"
-func (app *App) GetString(s string) string
-```
-
-### GetBytes
-
-Returns `b` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `b` resides in read-only memory. Otherwise, it returns a detached copy.
-
-```go title="Signature"
-func (app *App) GetBytes(b []byte) []byte
-```
-
-### ReloadViews
-
-Reloads the configured view engine on demand by calling its `Load` method. Use this helper in development workflows (e.g., file watchers or debug-only routes) to pick up template changes without restarting the server. Returns an error if no view engine is configured or reloading fails.
-
-```go title="Signature"
-func (app *App) ReloadViews() error
-```
-
-```go title="Example"
-app := fiber.New(fiber.Config{Views: engine})
-
-app.Get("/dev/reload", func(c fiber.Ctx) error {
-    if err := app.ReloadViews(); err != nil {
-        return err
-    }
-    return c.SendString("Templates reloaded")
-})
-```
-
 ## Routing
 
 import RoutingHandler from './../partials/routing/handler.md';
@@ -652,18 +615,6 @@ func main() {
 
 </details>
 
-## State / SharedState
-
-`State()` returns in-process state (local to the current process).  
-`SharedState()` returns storage-backed state intended for prefork/multi-process sharing.
-
-```go title="Signature"
-func (app *App) State() *State
-func (app *App) SharedState() *SharedState
-```
-
-See [State Management](./state.md) for usage and examples.
-
 ## Config
 
 `Config` returns the [app config](./fiber.md#config) as a value (read-only).
@@ -812,6 +763,18 @@ Use `SetTLSHandler` to set [`ClientHelloInfo`](https://datatracker.ietf.org/doc/
 func (app *App) SetTLSHandler(tlsHandler *TLSHandler)
 ```
 
+## State / SharedState
+
+`State()` returns in-process state (local to the current process).  
+`SharedState()` returns storage-backed state intended for prefork/multi-process sharing.
+
+```go title="Signature"
+func (app *App) State() *State
+func (app *App) SharedState() *SharedState
+```
+
+See [State Management](./state.md) for usage and examples.
+
 ## Test
 
 Testing your application is done with the `Test` method. Use this method for creating `_test.go` files or when you need to debug your routing logic. The default timeout is `1s`; to disable a timeout altogether, pass a `TestConfig` struct with `Timeout: 0`.
@@ -891,7 +854,11 @@ This would make a Test that has no timeout.
 func (app *App) Hooks() *Hooks
 ```
 
-## RebuildTree
+## Route Management
+
+Routes are normally defined before the app starts. You can also add or remove them at runtime with the methods below, but these operations are **not thread-safe** and are performance-intensive, so use them sparingly and only in development.
+
+### RebuildTree
 
 The `RebuildTree` method is designed to rebuild the route tree and enable dynamic route registration. It returns a pointer to the `App` instance.
 
@@ -900,8 +867,6 @@ func (app *App) RebuildTree() *App
 ```
 
 **Note:** Use this method with caution. It is **not** thread-safe and calling it can be very performance-intensive, so it should be used sparingly and only in development mode. Avoid using it concurrently.
-
-### Example Usage
 
 Here’s an example of how to define and register routes dynamically:
 
@@ -935,7 +900,7 @@ func main() {
 
 In this example, a new route is defined and then `RebuildTree()` is called to ensure the new route is registered and available.
 
-## RemoveRoute
+### RemoveRoute
 
 This method removes a route by path. You must call the `RebuildTree()` method after the removal to finalize the update and rebuild the routing tree.
 If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
@@ -983,7 +948,7 @@ func main() {
 }
 ```
 
-## RemoveRouteByName
+### RemoveRouteByName
 
 This method removes a route by name.
 If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
@@ -992,11 +957,48 @@ If no methods are specified, the route will be removed for all HTTP methods defi
 func (app *App) RemoveRouteByName(name string, methods ...string)
 ```
 
-## RemoveRouteFunc
+### RemoveRouteFunc
 
 This method removes a route by function having `*Route` parameter.
 If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
 
 ```go title="Signature"
 func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string)
+```
+
+## Helpers
+
+### GetString
+
+Returns `s` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `s` resides in read-only memory. Otherwise, it returns a detached copy using `strings.Clone`.
+
+```go title="Signature"
+func (app *App) GetString(s string) string
+```
+
+### GetBytes
+
+Returns `b` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `b` resides in read-only memory. Otherwise, it returns a detached copy.
+
+```go title="Signature"
+func (app *App) GetBytes(b []byte) []byte
+```
+
+### ReloadViews
+
+Reloads the configured view engine on demand by calling its `Load` method. Use this helper in development workflows (e.g., file watchers or debug-only routes) to pick up template changes without restarting the server. Returns an error if no view engine is configured or reloading fails.
+
+```go title="Signature"
+func (app *App) ReloadViews() error
+```
+
+```go title="Example"
+app := fiber.New(fiber.Config{Views: engine})
+
+app.Get("/dev/reload", func(c fiber.Ctx) error {
+    if err := app.ReloadViews(); err != nil {
+        return err
+    }
+    return c.SendString("Templates reloaded")
+})
 ```

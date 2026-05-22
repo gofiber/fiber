@@ -109,6 +109,26 @@ app.Get("/api/users", func(c fiber.Ctx) error {
 //   3: handler
 ```
 
+You can also attach several handlers in a **single** registration: list the route-specific middleware before the business handler. They run in the order given, and each must call `c.Next()` to reach the next one.
+
+```go title="Multiple handlers on one route"
+app.Get("/users/:id",
+    func(c fiber.Ctx) error { // 1: require authentication
+        if c.Get("Authorization") == "" {
+            return c.SendStatus(fiber.StatusUnauthorized)
+        }
+        return c.Next()
+    },
+    func(c fiber.Ctx) error { // 2: load the user onto the context
+        c.Locals("userID", c.Params("id"))
+        return c.Next()
+    },
+    func(c fiber.Ctx) error { // 3: business handler
+        return c.SendString("user " + c.Params("id"))
+    },
+)
+```
+
 | Helper         | Methods matched | Path matching                              | Typical use                   |
 | -------------- | --------------- | ------------------------------------------ | ----------------------------- |
 | `Get`/`Post`/… | one             | exact                                      | a specific endpoint           |
@@ -120,8 +140,6 @@ A path that exists only for a different method returns **405 Method Not Allowed*
 ## Paths
 
 A route path paired with an HTTP method defines an endpoint. It can be a plain **string** or a **pattern**.
-
-### Examples of route paths based on strings
 
 ```go
 // This route path will match requests to the root route, "/":
@@ -140,8 +158,7 @@ app.Get("/random.txt", func(c fiber.Ctx) error {
 })
 ```
 
-As with the Express.js framework, the order in which routes are declared matters.
-Routes are evaluated sequentially, so more specific paths should appear before those with variables.
+The order in which you declare routes matters: routes are evaluated in registration order, so declare more specific paths before those that contain parameters. This works the same way as in Express.js.
 
 :::info
 Place routes with variable parameters after fixed paths to avoid unintended matches.
@@ -433,10 +450,10 @@ See [Get vs Use vs All](#get-vs-use-vs-all) for how `Use` prefix matching differ
 
 <RoutingUse />
 
-### Routes are fixed after startup
+### Adding or removing routes at runtime
 
 :::caution
-Adding routes dynamically after the application has started is not supported due to design and performance considerations. Make sure to define all your routes before the application starts.
+Defining all routes before the app starts is strongly recommended. You can still change them at runtime with [`RebuildTree`](../api/app.md#rebuildtree), [`RemoveRoute`](../api/app.md#removeroute), [`RemoveRouteByName`](../api/app.md#removeroutebyname), and [`RemoveRouteFunc`](../api/app.md#removeroutefunc), but these operations are not thread-safe and are performance-intensive, so use them sparingly and only in development.
 :::
 
 ## Grouping
