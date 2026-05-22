@@ -16,6 +16,20 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
+	// SwaggerOptions contains additional Swagger UI options merged into the
+	// generated SwaggerUIBundle call.
+	//
+	// Optional. Default: nil
+	SwaggerOptions map[string]any
+
+	// Components holds reusable OpenAPI component definitions such as schemas,
+	// responses, and parameters. These are emitted under the top-level
+	// "components" key of the generated specification, allowing $ref references
+	// (e.g. "#/components/schemas/User") to resolve correctly.
+	//
+	// Optional. Default: nil
+	Components map[string]any
+
 	// Title is the title for the generated OpenAPI specification.
 	//
 	// Optional. Default: "Fiber API"
@@ -55,12 +69,6 @@ type Config struct {
 	//
 	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"
 	SwaggerBundleURL string
-
-	// SwaggerOptions contains additional Swagger UI options merged into the
-	// generated SwaggerUIBundle call.
-	//
-	// Optional. Default: nil
-	SwaggerOptions map[string]any
 
 	// OpenAPIVersion specifies the OpenAPI specification version to generate.
 	// Supported values: "3.0.0", "3.1.0" (default)

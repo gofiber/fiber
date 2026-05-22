@@ -46,6 +46,18 @@ app.Use(openapi.New(openapi.Config{
     Version:        "1.0.0",
     ServerURL:      "https://example.com",
     OpenAPIVersion: "3.1.0", // or "3.0.0"
+    // Components holds reusable schema definitions that $ref targets resolve to.
+    Components: map[string]any{
+        "schemas": map[string]any{
+            "User": map[string]any{
+                "type": "object",
+                "properties": map[string]any{
+                    "name": map[string]any{"type": "string"},
+                    "email": map[string]any{"type": "string"},
+                },
+            },
+        },
+    },
 }))
 
 // Customize the generated Swagger UI page and CDN asset URLs.
@@ -92,8 +104,8 @@ app.Post("/users", createUser).
 
 // If not specified, generated operations default to a summary of "METHOD path",
 // an empty description, no tags, not deprecated, and a "text/plain" request
-// and response media type. Consumes and Produces will panic if provided an
-// invalid media type.
+// and response media type. Consumes, Produces, and RequestBody will panic if
+// provided an invalid or empty media type.
 ```
 
 If no responses are declared, the middleware adds a sensible default: `200 OK` for most methods and `204 No Content` for `DELETE` and `HEAD`. When any responses are provided via the route helpers, no automatic default is added.
@@ -115,6 +127,7 @@ If no responses are declared, the middleware adds a sensible default: `200 OK` f
 | SwaggerBundleURL | `string`              | Script URL used by the generated Swagger UI page.               | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"` |
 | SwaggerOptions | `map[string]any`        | Additional options merged into the generated `SwaggerUIBundle` call. | `nil` |
 | OpenAPIVersion | `string`                | OpenAPI specification version to generate (`"3.0.0"` or `"3.1.0"`) | `"3.1.0"`     |
+| Components     | `map[string]any`        | Reusable OpenAPI component definitions (schemas, responses, etc.) emitted under `"components"`. | `nil` |
 
 When the middleware is attached to a group or mounted under a prefixed `Use`, the configured `Path` is resolved relative to that
 prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global
@@ -137,7 +150,8 @@ var ConfigDefault = Config{
     SwaggerBundleURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
     SwaggerOptions: nil,
     OpenAPIVersion: "3.1.0",
+    Components:     nil,
 }
 ```
 
-Schema references (`SchemaRef`) are emitted as `$ref` entries in the generated JSON and can point to components such as `#/components/schemas/User`. `Example` and `Examples` are forwarded verbatim into operation parameters, request bodies, and responses so that client generators can surface realistic payloads.
+Schema references (`SchemaRef`) are emitted as `$ref` entries in the generated JSON and can point to components such as `#/components/schemas/User`. To make these references resolve correctly, provide the corresponding definitions via the `Components` config field. `Example` and `Examples` follow the OpenAPI specification's mutual exclusivity rule: when both are provided, `Examples` takes precedence and `Example` is omitted.
