@@ -166,10 +166,11 @@ func resolvedSpecPath(c fiber.Ctx, cfgPath string) string {
 }
 
 type openAPISpec struct {
-	Paths   map[string]map[string]operation `json:"paths"`
-	Info    openAPIInfo                     `json:"info"`
-	OpenAPI string                          `json:"openapi"`
-	Servers []openAPIServer                 `json:"servers,omitempty"`
+	Paths      map[string]map[string]operation `json:"paths"`
+	Components map[string]any                  `json:"components,omitempty"`
+	Info       openAPIInfo                     `json:"info"`
+	OpenAPI    string                          `json:"openapi"`
+	Servers    []openAPIServer                 `json:"servers,omitempty"`
 }
 
 type openAPIInfo struct {
@@ -318,6 +319,9 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 	if cfg.ServerURL != "" {
 		spec.Servers = []openAPIServer{{URL: cfg.ServerURL}}
 	}
+	if len(cfg.Components) > 0 {
+		spec.Components = cfg.Components
+	}
 	return spec
 }
 
@@ -333,14 +337,23 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		if location == "" {
 			location = "query"
 		}
+		// OpenAPI spec: "example" and "examples" are mutually exclusive.
+		// Prefer "examples" when both are provided.
+		var paramExample any
+		var paramExamples map[string]any
+		if copiedExamples := copyAnyMap(extra.Examples); len(copiedExamples) > 0 {
+			paramExamples = copiedExamples
+		} else {
+			paramExample = extra.Example
+		}
 		param := parameter{
 			Name:        extra.Name,
 			In:          location,
 			Description: extra.Description,
 			Required:    extra.Required,
 			Schema:      schemaFrom(extra.Schema, extra.SchemaRef, "string"),
-			Example:     extra.Example,
-			Examples:    copyAnyMap(extra.Examples),
+			Example:     paramExample,
+			Examples:    paramExamples,
 		}
 		if param.In == "path" {
 			param.Required = true
@@ -397,11 +410,12 @@ func contentEntry(schema map[string]any, schemaRef string, example any, examples
 	} else if copied := copyAnyMap(schema); len(copied) > 0 {
 		entry["schema"] = copied
 	}
-	if example != nil {
-		entry["example"] = example
-	}
+	// OpenAPI spec: "example" and "examples" are mutually exclusive.
+	// Prefer "examples" when both are provided.
 	if ex := copyAnyMap(examples); len(ex) > 0 {
 		entry["examples"] = ex
+	} else if example != nil {
+		entry["example"] = example
 	}
 	return entry
 }

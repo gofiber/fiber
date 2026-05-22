@@ -292,7 +292,8 @@ func Test_OpenAPI_SchemaRefsAndExamples(t *testing.T) {
 	require.Len(t, params, 1)
 	param := requireMap(t, params[0])
 	require.Equal(t, "search query", param["description"])
-	require.Equal(t, "abc", param["example"])
+	// OpenAPI spec: "example" and "examples" are mutually exclusive; "examples" takes precedence.
+	require.Nil(t, param["example"])
 	require.Equal(t, map[string]any{"sample": "abc"}, requireMap(t, param["examples"]))
 	paramSchema := requireMap(t, param["schema"])
 	require.Equal(t, "#/components/schemas/Query", paramSchema["$ref"])
@@ -302,7 +303,8 @@ func Test_OpenAPI_SchemaRefsAndExamples(t *testing.T) {
 	jsonContent := requireMap(t, bodyContent[fiber.MIMEApplicationJSON])
 	bodySchema := requireMap(t, jsonContent["schema"])
 	require.Equal(t, "#/components/schemas/User", bodySchema["$ref"])
-	require.Equal(t, map[string]any{"name": "john"}, jsonContent["example"])
+	// OpenAPI spec: "example" and "examples" are mutually exclusive; "examples" takes precedence.
+	require.Nil(t, jsonContent["example"])
 	require.Equal(t, map[string]any{"sample": map[string]any{"name": "doe"}}, requireMap(t, jsonContent["examples"]))
 
 	resp := requireMap(t, requireMap(t, op["responses"])["201"])
@@ -310,7 +312,8 @@ func Test_OpenAPI_SchemaRefsAndExamples(t *testing.T) {
 	respJSON := requireMap(t, respContent[fiber.MIMEApplicationJSON])
 	respSchema := requireMap(t, respJSON["schema"])
 	require.Equal(t, "#/components/schemas/UserResponse", respSchema["$ref"])
-	require.Equal(t, map[string]any{"id": float64(1)}, respJSON["example"])
+	// OpenAPI spec: "example" and "examples" are mutually exclusive; "examples" takes precedence.
+	require.Nil(t, respJSON["example"])
 	require.Equal(t, map[string]any{"sample": map[string]any{"id": float64(2)}}, requireMap(t, respJSON["examples"]))
 }
 
@@ -1070,7 +1073,8 @@ func Test_OpenAPI_ResponseContentFromRoute(t *testing.T) {
 	schema, ok := jsonContent["schema"].(map[string]any)
 	require.True(t, ok, "schema should be a map")
 	require.Equal(t, "#/components/schemas/DefaultSchema", schema["$ref"])
-	require.Contains(t, jsonContent, "example")
+	// OpenAPI spec: "example" and "examples" are mutually exclusive; "examples" takes precedence.
+	require.NotContains(t, jsonContent, "example")
 	require.Contains(t, jsonContent, "examples")
 }
 
@@ -1388,6 +1392,66 @@ func Test_OpenAPI_ResponseWithSchemaRefAndExamples(t *testing.T) {
 	content := resp200.Content[fiber.MIMEApplicationJSON]
 
 	require.Contains(t, content, "schema")
-	require.Contains(t, content, "example")
+	// OpenAPI spec: "example" and "examples" are mutually exclusive; "examples" takes precedence.
+	require.NotContains(t, content, "example")
 	require.Contains(t, content, "examples")
+}
+
+func Test_OpenAPI_Components(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		ResponseWithExample(fiber.StatusOK, "User list", nil, "#/components/schemas/User", nil, nil, fiber.MIMEApplicationJSON)
+
+	components := map[string]any{
+		"schemas": map[string]any{
+			"User": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string"},
+				},
+			},
+		},
+	}
+	app.Use(New(Config{Components: components}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Contains(t, spec, "components")
+	comps, ok := spec["components"].(map[string]any)
+	require.True(t, ok, "components should be a map")
+	require.Contains(t, comps, "schemas")
+	schemas, ok := comps["schemas"].(map[string]any)
+	require.True(t, ok, "schemas should be a map")
+	require.Contains(t, schemas, "User")
+}
+
+func Test_OpenAPI_ExampleWithoutExamples(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	// When only "example" is provided (no "examples"), "example" should appear.
+	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		ParameterWithExample("q", "query", false, nil, "", "search", "abc", nil).
+		ResponseWithExample(fiber.StatusOK, "OK", nil, "", map[string]any{"id": 1}, nil, fiber.MIMEApplicationJSON)
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/test"]["get"])
+
+	params := requireSlice(t, op["parameters"])
+	require.Len(t, params, 1)
+	param := requireMap(t, params[0])
+	require.Equal(t, "abc", param["example"])
+	require.Nil(t, param["examples"])
+
+	resp := requireMap(t, requireMap(t, op["responses"])["200"])
+	respContent := requireMap(t, resp["content"])
+	respJSON := requireMap(t, respContent[fiber.MIMEApplicationJSON])
+	require.Equal(t, map[string]any{"id": float64(1)}, respJSON["example"])
+	require.Nil(t, respJSON["examples"])
 }
