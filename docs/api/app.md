@@ -832,8 +832,7 @@ config := fiber.TestConfig{
 
 :::caution
 
-This is **not** the same as supplying an empty `TestConfig{}` to
-`app.Test()`, but is rather the equivalent of supplying:
+Calling `app.Test(req)` uses the defaults above. Supplying an empty `fiber.TestConfig{}` instead is **not** equivalent; it is the same as supplying:
 
 ```go title="Empty TestConfig"
 cfg := fiber.TestConfig{
