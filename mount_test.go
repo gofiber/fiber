@@ -35,7 +35,15 @@ func Test_App_Mount_PreservesSubAppRegexHandler(t *testing.T) {
 
 	parent.Use("/mounted", sub)
 
-	resp, err := sub.Test(httptest.NewRequest(MethodGet, "/resource/allow", http.NoBody))
+	resp, err := sub.Test(httptest.NewRequest(MethodGet, "/resource/ALLOW", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	resp, err = parent.Test(httptest.NewRequest(MethodGet, "/mounted/resource/ALLOW", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	resp, err = sub.Test(httptest.NewRequest(MethodGet, "/resource/allow", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 
