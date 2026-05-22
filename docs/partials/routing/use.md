@@ -35,7 +35,7 @@ app.Use([]string{"/api", "/home"}, func(c fiber.Ctx) error {
 
 // Attach multiple handlers (they run in order; each must call c.Next() to continue)
 app.Use("/api", func(c fiber.Ctx) error {
-    c.Set("X-Custom-Header", random.String(32))
+    c.Set("X-Custom-Header", "value")
     return c.Next()
 }, func(c fiber.Ctx) error {
     return c.Next()

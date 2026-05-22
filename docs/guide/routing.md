@@ -44,7 +44,10 @@ Beyond the native `func(fiber.Ctx)` forms, Fiber also adapts Express-style, `net
 
 `Get` (and the other method helpers like `Post` and `Put`) match a **single HTTP method** at an **exact path**. `All` matches an **exact path** across **every** HTTP method. `Use` registers **middleware** that matches by **prefix** and runs in **declaration order**, calling [`c.Next()`](../api/ctx.md#next) to continue the chain.
 
-```go title="Get: one method, exact path"
+<Tabs>
+<TabItem value="get" label="Get (one method)">
+
+```go
 app.Get("/users", func(c fiber.Ctx) error {
     return c.SendString("GET /users")
 })
@@ -54,7 +57,10 @@ app.Get("/users", func(c fiber.Ctx) error {
 // GET    /users/42   -> 404 Not Found  (exact match only)
 ```
 
-```go title="All: every method, exact path"
+</TabItem>
+<TabItem value="all" label="All (every method)">
+
+```go
 app.All("/ping", func(c fiber.Ctx) error {
     return c.SendString(c.Method() + " /ping")
 })
@@ -65,7 +71,10 @@ app.All("/ping", func(c fiber.Ctx) error {
 // GET    /ping/extra  -> 404 Not Found  (still exact path)
 ```
 
-```go title="Use: prefix match, any method"
+</TabItem>
+<TabItem value="use" label="Use (prefix middleware)">
+
+```go
 // Empty Use: no path -> matches every request, any method, any path
 app.Use(func(c fiber.Ctx) error {
     c.Set("X-Powered-By", "Fiber")
@@ -85,9 +94,12 @@ app.Use("/api", func(c fiber.Ctx) error {
 // /anything   -> empty Use only
 ```
 
-Multiple handlers registered for the same match run in the order you declare them. Each must call `c.Next()` to pass control to the next handler; if one returns without calling it, the rest of the chain is skipped.
+</TabItem>
+<TabItem value="chain" label="Ordered chain">
 
-```go title="Ordered middleware chain"
+Multiple handlers that match the same request run in the order you declare them. Each must call `c.Next()` to pass control to the next; if one returns without calling it, the rest of the chain is skipped.
+
+```go
 app.Use("/api", func(c fiber.Ctx) error {
     fmt.Println("1: auth check")
     return c.Next()
@@ -109,25 +121,34 @@ app.Get("/api/users", func(c fiber.Ctx) error {
 //   3: handler
 ```
 
-You can also attach several handlers in a **single** registration: list the route-specific middleware before the business handler. They run in the order given, and each must call `c.Next()` to reach the next one.
+</TabItem>
+<TabItem value="multi" label="Multiple handlers in one call">
 
-```go title="Multiple handlers on one route"
+Attach several handlers in a single registration: list the route-specific middleware before the business handler.
+
+```go
 app.Get("/users/:id",
     func(c fiber.Ctx) error { // 1: require authentication
         if c.Get("Authorization") == "" {
-            return c.SendStatus(fiber.StatusUnauthorized)
+            return c.SendStatus(fiber.StatusUnauthorized) // returns without c.Next(): stops here
         }
         return c.Next()
     },
-    func(c fiber.Ctx) error { // 2: load the user onto the context
+    func(c fiber.Ctx) error { // 2: stash data for downstream handlers
         c.Locals("userID", c.Params("id"))
         return c.Next()
     },
-    func(c fiber.Ctx) error { // 3: business handler
-        return c.SendString("user " + c.Params("id"))
+    func(c fiber.Ctx) error { // 3: business handler reads the stashed value
+        return c.SendString("user " + c.Locals("userID").(string))
     },
 )
+
+// GET /users/42 (no Authorization header) -> 401, handlers 2 and 3 never run
+// GET /users/42 (with Authorization)      -> "user 42"
 ```
+
+</TabItem>
+</Tabs>
 
 | Helper         | Methods matched | Path matching                              | Typical use                   |
 | -------------- | --------------- | ------------------------------------------ | ----------------------------- |
@@ -158,7 +179,7 @@ app.Get("/random.txt", func(c fiber.Ctx) error {
 })
 ```
 
-The order in which you declare routes matters: routes are evaluated in registration order, so declare more specific paths before those that contain parameters. This works the same way as in Express.js.
+The order in which you declare routes matters: like Express.js, routes are matched in registration order (first match wins), so declare more specific paths before those that contain parameters. Note that method helpers such as `Get` match the exact path only.
 
 :::info
 Place routes with variable parameters after fixed paths to avoid unintended matches.
@@ -168,49 +189,39 @@ Place routes with variable parameters after fixed paths to avoid unintended matc
 
 Route parameters are dynamic segments in a path, either named or unnamed, used to capture values from the URL. Retrieve them with the [Params](../api/ctx.md#params) function using the parameter name or, for unnamed parameters, the wildcard (`*`) or plus (`+`) symbol with an index.
 
-The characters `:`, `+`, and `*` introduce parameters.
+The characters `:`, `+`, and `*` introduce parameters. Append `?` to a named segment to make it optional. `+` is a greedy, required wildcard (it must match at least one character); `*` is a greedy, optional wildcard (it can match nothing).
 
-Use `*` or `+` to capture segments greedily.
-
-Append `?` to a named segment to make it optional. `+` is a greedy, required wildcard (it must match at least one character), while `*` is a greedy, optional wildcard (it can match nothing).
-
-### Example of defining routes with route parameters
+<Tabs>
+<TabItem value="named" label="Named, optional, greedy">
 
 ```go
-// Parameters
+// Named parameters
 app.Get("/user/:name/books/:title", func(c fiber.Ctx) error {
     fmt.Fprintf(c, "%s\n", c.Params("name"))
     fmt.Fprintf(c, "%s\n", c.Params("title"))
     return nil
 })
-// Plus - greedy - not optional
+
+// Plus - greedy, required (matches at least one character)
 app.Get("/user/+", func(c fiber.Ctx) error {
     return c.SendString(c.Params("+"))
 })
 
-// Optional parameter
+// Optional named parameter
 app.Get("/user/:name?", func(c fiber.Ctx) error {
     return c.SendString(c.Params("name"))
 })
 
-// Wildcard - greedy - optional
+// Wildcard - greedy, optional (may match nothing)
 app.Get("/user/*", func(c fiber.Ctx) error {
     return c.SendString(c.Params("*"))
 })
-
-// This route path will match requests to "/v1/some/resource/name:customVerb", since the parameter character is escaped
-app.Get(`/v1/some/resource/name\:customVerb`, func(c fiber.Ctx) error {
-    return c.SendString("Hello, Community")
-})
 ```
 
-:::info
-The hyphen \(`-`\) and dot \(`.`\) are treated literally, so you can combine them with route parameters.
-:::
+</TabItem>
+<TabItem value="literal" label="Literal separators">
 
-:::info
-Escape special parameter characters with `\\` to treat them literally. This technique is useful for custom methods like those in the [Google API Design Guide](https://cloud.google.com/apis/design/custom_methods). Wrap routes in backticks to keep escape sequences clear.
-:::
+The hyphen (`-`), dot (`.`), and colon (`:`) are treated literally between parameters, so you can combine them with route parameters. Fiber's router detects when these characters belong to the literal path.
 
 ```go
 // http://localhost:3000/plantae/prunus.persica
@@ -218,19 +229,13 @@ app.Get("/plantae/:genus.:species", func(c fiber.Ctx) error {
     fmt.Fprintf(c, "%s.%s\n", c.Params("genus"), c.Params("species"))
     return nil // prunus.persica
 })
-```
 
-```go
 // http://localhost:3000/flights/LAX-SFO
 app.Get("/flights/:from-:to", func(c fiber.Ctx) error {
     fmt.Fprintf(c, "%s-%s\n", c.Params("from"), c.Params("to"))
     return nil // LAX-SFO
 })
-```
 
-Fiber's router detects when these characters belong to the literal path and handles them accordingly.
-
-```go
 // http://localhost:3000/shop/product/color:blue/size:xs
 app.Get("/shop/product/color::color/size::size", func(c fiber.Ctx) error {
     fmt.Fprintf(c, "%s:%s\n", c.Params("color"), c.Params("size"))
@@ -238,7 +243,22 @@ app.Get("/shop/product/color::color/size::size", func(c fiber.Ctx) error {
 })
 ```
 
-You can chain multiple named or unnamed parameters, including wildcard and plus segments, giving the router greater flexibility.
+</TabItem>
+<TabItem value="escaped" label="Escaped characters">
+
+Escape special parameter characters with `\\` to treat them literally. This is useful for custom methods like those in the [Google API Design Guide](https://cloud.google.com/apis/design/custom_methods). Wrap routes in backticks to keep escape sequences clear.
+
+```go
+// Matches "/v1/some/resource/name:customVerb" because the colon is escaped
+app.Get(`/v1/some/resource/name\:customVerb`, func(c fiber.Ctx) error {
+    return c.SendString("Hello, Community")
+})
+```
+
+</TabItem>
+<TabItem value="multi" label="Multiple params per segment">
+
+You can chain multiple named or unnamed parameters, including wildcard and plus segments, within a single segment.
 
 ```go
 // GET /@v1
@@ -261,6 +281,9 @@ app.Get("/v1/*/shop/*", handler)
 :::info
 Fiber lets multiple parameters share a single path segment, unlike routers such as Express, Gin, and Echo where `:param` always consumes a whole segment. When named parameters are adjacent, each leading one captures a single character and the last captures the rest. This does not raise an error, so an unexpected pattern silently captures differently than you might assume.
 :::
+
+</TabItem>
+</Tabs>
 
 When a route has several wildcard (`*`) or plus (`+`) segments, retrieve them positionally with a 1-based index matching the symbol: `c.Params("*1")` and `c.Params("*2")` for wildcards, `c.Params("+1")` and `c.Params("+2")` for plus segments. A single wildcard or plus is just `c.Params("*")` or `c.Params("+")`.
 

@@ -103,3 +103,7 @@ app.RouteChain("/events").
     Get(func(c fiber.Ctx) error { return c.SendString("GET /events") }).
     Post(func(c fiber.Ctx) error { return c.SendString("POST /events") })
 ```
+
+:::note
+Within a chain, `All` registers prefix-matched middleware (like [`app.Use`](../api/app.md#use)), not the exact-path `App.All`, so it also runs for sub-paths of the chain path.
+:::
