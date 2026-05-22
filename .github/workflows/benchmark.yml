@@ -18,6 +18,13 @@ permissions:
   pull-requests: write
 
 name: Benchmark
+
+# Cancel superseded in-progress runs on the same PR. Pushes to main store benchmark
+# data (cache + gh-pages), so they must never be cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   Compare:
     runs-on: ubuntu-latest

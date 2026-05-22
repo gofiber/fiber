@@ -14,6 +14,11 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded in-progress runs on the same PR; never cancel pushes to main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   unit:
     strategy:
@@ -30,8 +35,13 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      # Coverage is only uploaded from the ubuntu/1.25.x job, so compute it only there.
+      # The other matrix combinations skip the coverage instrumentation to run faster.
       - name: Test
-        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -coverprofile=coverage.txt -covermode=atomic -shuffle=on
+        run: >-
+          go run gotest.tools/gotestsum@latest -f testname --
+          ./... -race -count=1 -shuffle=on
+          ${{ (matrix.platform == 'ubuntu-latest' && matrix.go-version == '1.25.x') && '-coverprofile=coverage.txt -covermode=atomic' || '' }}
 
       - name: Upload coverage reports to Codecov
         if: ${{ matrix.platform == 'ubuntu-latest' && matrix.go-version == '1.25.x' }}
@@ -44,6 +54,10 @@ jobs:
 
   repeated:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - name: Fetch Repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -53,5 +67,10 @@ jobs:
         with:
           go-version: stable
 
+      # The full suite is run 15 times with -shuffle to catch flaky and order-dependent
+      # tests. The 15 runs are split across 3 parallel shards (5 each, each with its own
+      # shuffle seed) so the job's wall-clock is roughly one third. -race is kept: it is
+      # nearly free here because this job is dominated by fixed test latency (sleeps,
+      # timeouts), not CPU, and it adds extra race coverage across shuffled orderings.
       - name: Test
-        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=15 -shuffle=on
+        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=5 -shuffle=on
