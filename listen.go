@@ -264,11 +264,13 @@ func applyClientCert(tlsConfig *tls.Config, certClientFile string) error {
 
 	clientCACert, err := os.ReadFile(filepath.Clean(certClientFile))
 	if err != nil {
-		return fmt.Errorf("failed to read file: %w", err)
+		return fmt.Errorf("failed to read client CA file %q: %w", certClientFile, err)
 	}
 
 	clientCertPool := x509.NewCertPool()
-	clientCertPool.AppendCertsFromPEM(clientCACert)
+	if ok := clientCertPool.AppendCertsFromPEM(clientCACert); !ok {
+		return fmt.Errorf("failed to parse client CA certificate from %q", certClientFile)
+	}
 
 	tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 	tlsConfig.ClientCAs = clientCertPool

@@ -487,15 +487,42 @@ func Test_Listen_AutoCert_Conflicts(t *testing.T) {
 func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	invalidClientCAPath := filepath.Join(t.TempDir(), "client-ca.pem")
+	require.NoError(t, os.WriteFile(invalidClientCAPath, []byte("not a pem"), 0o600))
 
-	err := app.Listen(":0", ListenConfig{
-		CertClientFile: "./.github/testdata/does-not-exist-ca.pem",
-		AutoCertManager: &autocert.Manager{
-			Prompt: autocert.AcceptTOS,
+	testCases := []struct {
+		name           string
+		clientCAPath   string
+		expectedErrMsg string
+	}{
+		{
+			name:           "missing client CA file",
+			clientCAPath:   "./.github/testdata/does-not-exist-ca.pem",
+			expectedErrMsg: "./.github/testdata/does-not-exist-ca.pem",
 		},
-	})
-	require.Error(t, err)
+		{
+			name:           "invalid client CA pem",
+			clientCAPath:   invalidClientCAPath,
+			expectedErrMsg: invalidClientCAPath,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+
+			err := app.Listen(":0", ListenConfig{
+				CertClientFile: tc.clientCAPath,
+				AutoCertManager: &autocert.Manager{
+					Prompt: autocert.AcceptTOS,
+				},
+			})
+			require.Error(t, err)
+			require.ErrorContains(t, err, tc.expectedErrMsg)
+		})
+	}
 }
 
 // go test -run Test_Listen_ListenerAddrFunc
