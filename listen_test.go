@@ -484,6 +484,20 @@ func Test_Listen_AutoCert_Conflicts(t *testing.T) {
 	require.ErrorIs(t, err, ErrAutoCertWithCertFile)
 }
 
+func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	err := app.Listen(":0", ListenConfig{
+		CertClientFile: "./.github/testdata/does-not-exist-ca.pem",
+		AutoCertManager: &autocert.Manager{
+			Prompt: autocert.AcceptTOS,
+		},
+	})
+	require.Error(t, err)
+}
+
 // go test -run Test_Listen_ListenerAddrFunc
 func Test_Listen_ListenerAddrFunc(t *testing.T) {
 	var network string
