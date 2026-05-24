@@ -514,6 +514,16 @@ func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 			t.Parallel()
 
 			app := New()
+			done := make(chan struct{})
+			defer close(done)
+
+			go func() {
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+					assert.NoError(t, app.Shutdown())
+				}
+			}()
 
 			err := app.Listen(":0", ListenConfig{
 				CertClientFile: tc.clientCAPath,
@@ -525,6 +535,27 @@ func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 			require.ErrorContains(t, err, tc.expectedErrMsg)
 		})
 	}
+}
+
+func Test_Listen_ClientCertErrorDoesNotSetTLSHandler(t *testing.T) {
+	t.Parallel()
+
+	invalidClientCAPath := filepath.Join(t.TempDir(), "client-ca.pem")
+	require.NoError(t, os.WriteFile(invalidClientCAPath, []byte("not a pem"), 0o600))
+
+	app := New()
+
+	err := app.Listen(":0", ListenConfig{
+		CertFile:       "./.github/testdata/ssl.pem",
+		CertKeyFile:    "./.github/testdata/ssl.key",
+		CertClientFile: invalidClientCAPath,
+	})
+	require.ErrorContains(t, err, filepath.Base(invalidClientCAPath))
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	require.Nil(t, c.ClientHelloInfo())
 }
 
 // go test -run Test_Listen_ListenerAddrFunc

@@ -187,6 +187,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 	// Configure TLS
 	var tlsConfig *tls.Config
+	var tlsHandler *TLSHandler
 	if cfg.TLSConfig != nil {
 		tlsConfig = cfg.TLSConfig.Clone()
 	} else {
@@ -199,7 +200,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 				return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", cfg.CertFile, cfg.CertKeyFile, err)
 			}
 
-			tlsHandler := &TLSHandler{}
+			tlsHandler = &TLSHandler{}
 			tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
 				MinVersion: cfg.TLSMinVersion,
 				Certificates: []tls.Certificate{
@@ -208,8 +209,6 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 				GetCertificate: tlsHandler.GetClientInfo,
 			}
 
-			// Attach the tlsHandler to the config
-			app.SetTLSHandler(tlsHandler)
 		case cfg.AutoCertManager != nil:
 			tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
 				MinVersion:     cfg.TLSMinVersion,
@@ -222,6 +221,11 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		if tlsConfig != nil {
 			if err := applyClientCert(tlsConfig, cfg.CertClientFile); err != nil {
 				return err
+			}
+
+			if tlsHandler != nil {
+				// Attach the tlsHandler to the config
+				app.SetTLSHandler(tlsHandler)
 			}
 		}
 
