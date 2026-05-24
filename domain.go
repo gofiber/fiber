@@ -30,8 +30,8 @@ type domainParams struct {
 // It stores the matched domain params (if any) alongside the match status
 // to avoid allocating a new domainParams struct for every handler invocation.
 type domainCheckResult struct {
-	params  *domainParams // pre-built params (nil if no params or no match)
-	matched bool
+	params    *domainParams // pre-built params (nil if no params or no match)
+	isMatched bool
 }
 
 // domainMatcher holds the parsed domain pattern for matching against request hostnames.
@@ -294,9 +294,9 @@ func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 				check = cached
 			} else {
 				hostname := c.Hostname()
-				matched, values := d.matcher.match(hostname)
-				check = &domainCheckResult{matched: matched}
-				if matched && len(values) > 0 {
+				isMatched, values := d.matcher.match(hostname)
+				check = &domainCheckResult{isMatched: isMatched}
+				if isMatched && len(values) > 0 {
 					// Store values directly — match() returns a fresh slice each time.
 					// Build domainParams once and cache it alongside the match result
 					// so subsequent handlers reuse the same struct.
@@ -308,7 +308,7 @@ func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 				c.Locals(cacheKey, check)
 			}
 
-			if !check.matched {
+			if !check.isMatched {
 				return c.Next()
 			}
 
@@ -385,8 +385,8 @@ func (d *domainRouter) Use(args ...any) Router {
 
 	// Mark the underlying group so Name() can distinguish between
 	// group-name-prefix calls (before routes) and route-name calls (after routes).
-	if d.group != nil && !d.group.anyRouteDefined {
-		d.group.anyRouteDefined = true
+	if d.group != nil && !d.group.hasAnyRoute {
+		d.group.hasAnyRoute = true
 	}
 
 	return d
@@ -421,7 +421,9 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	wrapperApp := New(Config{
 		CaseSensitive: subApp.config.CaseSensitive,
 		StrictRouting: subApp.config.StrictRouting,
+		RegexHandler:  subApp.config.RegexHandler,
 	})
+	wrapperApp.customConstraints = subApp.customConstraints
 
 	// Clone routes from the sub-app with domain-wrapped handlers.
 	// Lock the sub-app while reading to prevent data races with concurrent
@@ -464,8 +466,8 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 
 	// Mark the underlying group so Name() can distinguish between
 	// group-name-prefix calls and route-name calls
-	if d.group != nil && !d.group.anyRouteDefined {
-		d.group.anyRouteDefined = true
+	if d.group != nil && !d.group.hasAnyRoute {
+		d.group.hasAnyRoute = true
 	}
 
 	return d
@@ -534,8 +536,8 @@ func (d *domainRouter) Add(methods []string, path string, handler any, handlers 
 
 	// Mark the underlying group so Name() can distinguish between
 	// group-name-prefix calls (before routes) and route-name calls (after routes).
-	if d.group != nil && !d.group.anyRouteDefined {
-		d.group.anyRouteDefined = true
+	if d.group != nil && !d.group.hasAnyRoute {
+		d.group.hasAnyRoute = true
 	}
 
 	return d

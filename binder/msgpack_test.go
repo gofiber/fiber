@@ -86,48 +86,17 @@ func Benchmark_Msgpack_Binding_Bind(b *testing.B) {
 	require.Equal(b, "post3", user.Posts[2])
 }
 
-func Test_UnimplementedMsgpackMarshal_Panics(t *testing.T) {
+func Test_UnimplementedMsgpackMarshal_ReturnsError(t *testing.T) {
 	t.Parallel()
 
-	require.Panics(t, func() {
-		_, err := UnimplementedMsgpackMarshal(struct{ Name string }{Name: "test"})
-		require.NoError(t, err)
-	})
-}
-
-func Test_UnimplementedMsgpackUnmarshal_Panics(t *testing.T) {
-	t.Parallel()
-
-	require.Panics(t, func() {
-		var out any
-		err := UnimplementedMsgpackUnmarshal([]byte{0x80}, &out)
-		require.NoError(t, err)
-	})
-}
-
-func Test_UnimplementedMsgpackMarshal_PanicMessage(t *testing.T) {
-	t.Parallel()
-
-	defer func() {
-		if r := recover(); r != nil {
-			require.Contains(t, r, "Must explicit setup Msgpack")
-		}
-	}()
 	_, err := UnimplementedMsgpackMarshal(struct{ Name string }{Name: "test"})
-
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrMsgPackNotConfigured)
 }
 
-func Test_UnimplementedMsgpackUnmarshal_PanicMessage(t *testing.T) {
+func Test_UnimplementedMsgpackUnmarshal_ReturnsError(t *testing.T) {
 	t.Parallel()
 
-	defer func() {
-		if r := recover(); r != nil {
-			require.Contains(t, r, "Must explicit setup Msgpack")
-		}
-	}()
 	var out any
 	err := UnimplementedMsgpackUnmarshal([]byte{0x80}, &out)
-
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrMsgPackNotConfigured)
 }

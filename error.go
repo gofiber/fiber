@@ -80,3 +80,11 @@ type (
 	// UnsupportedValueError exposes json.UnsupportedValueError to describe unsupported values encountered during encoding.
 	UnsupportedValueError = json.UnsupportedValueError
 )
+
+// File errors
+var (
+	ErrFileHeaderNil = errors.New("file: file header is nil")
+	ErrFileOpen      = errors.New("file: failed to open file")
+	ErrFileRead      = errors.New("file: failed to read file")
+	ErrFileStore     = errors.New("file: failed to store file")
+)

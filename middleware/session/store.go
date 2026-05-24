@@ -157,7 +157,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	sess.ctx = c
 	sess.config = s
 	sess.id = id
-	sess.fresh = fresh
+	sess.isFresh = fresh
 
 	// Decode session data if found
 	if rawData != nil {
@@ -294,7 +294,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 
 	sess.config = s
 	sess.id = id
-	sess.fresh = false
+	sess.isFresh = false
 
 	sess.data.Lock()
 	decodeErr := sess.decodeSessionData(rawData)

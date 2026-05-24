@@ -16,8 +16,8 @@ type Group struct {
 	parentGroup *Group
 	name        string
 
-	Prefix          string
-	anyRouteDefined bool
+	Prefix      string
+	hasAnyRoute bool
 }
 
 // Name Assign name to specific route or group itself.
@@ -25,7 +25,7 @@ type Group struct {
 // If this method is used before any route added to group, it'll set group name and OnGroupNameHook will be used.
 // Otherwise, it'll set route name and OnName hook will be used.
 func (grp *Group) Name(name string) Router {
-	if grp.anyRouteDefined {
+	if grp.hasAnyRoute {
 		grp.app.Name(name)
 
 		return grp
@@ -102,8 +102,8 @@ func (grp *Group) Use(args ...any) Router {
 		grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, handlers...)
 	}
 
-	if !grp.anyRouteDefined {
-		grp.anyRouteDefined = true
+	if !grp.hasAnyRoute {
+		grp.hasAnyRoute = true
 	}
 
 	return grp
@@ -167,8 +167,8 @@ func (grp *Group) Patch(path string, handler any, handlers ...any) Router {
 func (grp *Group) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("group", append([]any{handler}, handlers...)...)
 	grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, converted...)
-	if !grp.anyRouteDefined {
-		grp.anyRouteDefined = true
+	if !grp.hasAnyRoute {
+		grp.hasAnyRoute = true
 	}
 
 	return grp

@@ -137,6 +137,7 @@ func WithClient(cli *fasthttp.Client) {
 // This method will return a fiber.Handler
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
+		c.Request().Header.Set("X-Real-IP", c.IP())
 		return Do(c, addr, clients...)
 	}
 }
@@ -240,6 +241,7 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 	return func(c fiber.Ctx) error {
 		host := utils.UnsafeString(c.Request().Host())
 		if host == hostname {
+			c.Request().Header.Set("X-Real-IP", c.IP())
 			return Do(c, addr+c.OriginalURL(), clients...)
 		}
 		return nil

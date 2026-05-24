@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -1500,7 +1501,7 @@ func Benchmark_App_RebuildTree(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		app.routesRefreshed = true
+		app.hasRoutesRefreshed = true
 		app.RebuildTree()
 	}
 }
@@ -1748,7 +1749,7 @@ func Benchmark_Route_Match(b *testing.B) {
 	var match bool
 	var params [maxParams]string
 
-	parsed := parseRoute("/user/keys/:id")
+	parsed := parseRoute("/user/keys/:id", regexp.MustCompile)
 	route := &Route{
 		use:         false,
 		root:        false,
@@ -1776,7 +1777,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	var match bool
 	var params [maxParams]string
 
-	parsed := parseRoute("/*")
+	parsed := parseRoute("/*", regexp.MustCompile)
 	route := &Route{
 		use:         false,
 		root:        false,
@@ -1805,7 +1806,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 	var match bool
 	var params [maxParams]string
 
-	parsed := parseRoute("/")
+	parsed := parseRoute("/", regexp.MustCompile)
 	route := &Route{
 		use:         false,
 		root:        true,
@@ -1934,10 +1935,10 @@ func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
 	app := newCustomApp()
 	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
-	useRoute := &Route{use: true, path: "/foo", Path: "/foo", routeParser: parseRoute("/foo")}
+	useRoute := &Route{use: true, path: "/foo", Path: "/foo", routeParser: parseRoute("/foo", regexp.MustCompile)}
 	m := app.methodInt(MethodGet)
 	app.stack[m] = append([]*Route{useRoute}, app.stack[m]...)
-	app.routesRefreshed = true
+	app.hasRoutesRefreshed = true
 	app.ensureAutoHeadRoutes()
 	app.RebuildTree()
 
@@ -2011,10 +2012,10 @@ func Test_NextCustom_SkipMountAndNoHandlers(t *testing.T) {
 	t.Parallel()
 	app := newCustomApp()
 	m := app.methodInt(MethodGet)
-	mountR := &Route{path: "/skip", Path: "/skip", routeParser: parseRoute("/skip"), mount: true}
-	empty := &Route{path: "/foo", Path: "/foo", routeParser: parseRoute("/foo")}
+	mountR := &Route{path: "/skip", Path: "/skip", routeParser: parseRoute("/skip", regexp.MustCompile), mount: true}
+	empty := &Route{path: "/foo", Path: "/foo", routeParser: parseRoute("/foo", regexp.MustCompile)}
 	app.stack[m] = []*Route{mountR, empty}
-	app.routesRefreshed = true
+	app.hasRoutesRefreshed = true
 	app.RebuildTree()
 
 	fctx := &fasthttp.RequestCtx{}
@@ -2049,7 +2050,7 @@ func Benchmark_App_RebuildTree_Parallel(b *testing.B) {
 		localApp := New()
 		registerDummyRoutes(localApp)
 		for pb.Next() {
-			localApp.routesRefreshed = true
+			localApp.hasRoutesRefreshed = true
 			localApp.RebuildTree()
 		}
 	})
@@ -2227,7 +2228,7 @@ func Benchmark_Router_Next_Default_Immutable_Parallel(b *testing.B) {
 }
 
 func Benchmark_Route_Match_Parallel(b *testing.B) {
-	parsed := parseRoute("/user/keys/:id")
+	parsed := parseRoute("/user/keys/:id", regexp.MustCompile)
 	route := &Route{use: false, root: false, star: false, routeParser: parsed, Params: parsed.params, path: "/user/keys/:id", Path: "/user/keys/:id", Method: "DELETE"}
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
@@ -2250,7 +2251,7 @@ func Benchmark_Route_Match_Parallel(b *testing.B) {
 func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
 	var match bool
 	var params [maxParams]string
-	parsed := parseRoute("/*")
+	parsed := parseRoute("/*", regexp.MustCompile)
 	route := &Route{use: false, root: false, star: true, routeParser: parsed, Params: parsed.params, path: "/user/keys/bla", Path: "/user/keys/bla", Method: "DELETE"}
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
@@ -2267,7 +2268,7 @@ func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
 func Benchmark_Route_Match_Root_Parallel(b *testing.B) {
 	var match bool
 	var params [maxParams]string
-	parsed := parseRoute("/")
+	parsed := parseRoute("/", regexp.MustCompile)
 	route := &Route{use: false, root: true, star: false, path: "/", routeParser: parsed, Params: parsed.params, Path: "/", Method: "DELETE"}
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil

@@ -624,6 +624,13 @@ func init() {
 				},
 			},
 			{
+				pattern: "/api/v1/:param<regex(^[^>]+$)>",
+				testCases: []routeTestCase{
+					{url: "/api/v1/safe-value", params: []string{"safe-value"}, match: true},
+					{url: "/api/v1/bad>value", params: nil, match: false},
+				},
+			},
+			{
 				pattern: `/api/v1/:param<regex(\d{4}-\d{2}-\d{2})}>`,
 				testCases: []routeTestCase{
 					{url: "/api/v1/ent", params: nil, match: false},

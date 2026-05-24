@@ -2,6 +2,7 @@ package fiber
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -412,5 +413,5 @@ func (s *SharedState) storageKey(key string) (string, bool) {
 		return "", false
 	}
 
-	return s.prefix + key, true
+	return s.prefix + hex.EncodeToString(utils.UnsafeBytes(key)), true
 }

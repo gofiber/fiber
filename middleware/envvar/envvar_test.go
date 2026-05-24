@@ -32,7 +32,8 @@ func Test_EnvVarHandler(t *testing.T) {
 			Vars map[string]string `json:"vars"`
 		}{
 			Vars: map[string]string{"testKey": "testVal"},
-		})
+		},
+	)
 	require.NoError(t, err)
 
 	app := fiber.New()

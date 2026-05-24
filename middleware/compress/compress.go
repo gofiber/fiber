@@ -29,12 +29,17 @@ func shouldSkip(c fiber.Ctx) bool {
 		status == fiber.StatusResetContent ||
 		status == fiber.StatusNotModified ||
 		status == fiber.StatusPartialContent ||
-		len(c.Response().Body()) == 0 ||
 		c.Get(fiber.HeaderRange) != "" ||
 		hasToken(c.Get(fiber.HeaderCacheControl), "no-transform") ||
 		hasToken(c.GetRespHeader(fiber.HeaderCacheControl), "no-transform") {
 		return true
 	}
+
+	// Skip body length check for streaming responses to avoid materializing the stream
+	if !c.Response().IsBodyStream() && len(c.Response().Body()) == 0 {
+		return true
+	}
+
 	return false
 }
 
@@ -65,19 +70,22 @@ func New(config ...Config) fiber.Handler {
 	switch cfg.Level {
 	case LevelDefault:
 		// LevelDefault
-		compressor = fasthttp.CompressHandlerBrotliLevel(fctx,
+		compressor = fasthttp.CompressHandlerBrotliLevel(
+			fctx,
 			fasthttp.CompressBrotliDefaultCompression,
 			fasthttp.CompressDefaultCompression,
 		)
 	case LevelBestSpeed:
 		// LevelBestSpeed
-		compressor = fasthttp.CompressHandlerBrotliLevel(fctx,
+		compressor = fasthttp.CompressHandlerBrotliLevel(
+			fctx,
 			fasthttp.CompressBrotliBestSpeed,
 			fasthttp.CompressBestSpeed,
 		)
 	case LevelBestCompression:
 		// LevelBestCompression
-		compressor = fasthttp.CompressHandlerBrotliLevel(fctx,
+		compressor = fasthttp.CompressHandlerBrotliLevel(
+			fctx,
 			fasthttp.CompressBrotliBestCompression,
 			fasthttp.CompressBestCompression,
 		)

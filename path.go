@@ -9,6 +9,7 @@ package fiber
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -21,6 +22,65 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/google/uuid"
 )
+
+type regexMatcher interface {
+	// MatchString reports whether the string s contains any match of the regex pattern.
+	MatchString(s string) bool
+}
+
+var (
+	regexMatcherType = reflect.TypeFor[regexMatcher]()
+	stringType       = reflect.TypeFor[string]()
+)
+
+func validateRegexHandler(handler any) any {
+	if handler == nil {
+		return regexp.MustCompile
+	}
+
+	handlerValue := reflect.ValueOf(handler)
+	handlerType := handlerValue.Type()
+
+	if handlerType.Kind() != reflect.Func || handlerValue.IsNil() {
+		panic("fiber: Config.RegexHandler must be a non-nil function")
+	}
+	if handlerType.NumIn() != 1 || handlerType.In(0) != stringType || handlerType.NumOut() != 1 {
+		panic("fiber: Config.RegexHandler must have signature func(string) T")
+	}
+	if !handlerType.Out(0).Implements(regexMatcherType) {
+		panic("fiber: Config.RegexHandler return type must support MatchString(string) bool")
+	}
+
+	return handler
+}
+
+func isNilRegexMatcher(matcher regexMatcher) bool {
+	if matcher == nil {
+		return true
+	}
+
+	matcherValue := reflect.ValueOf(matcher)
+	switch matcherValue.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return matcherValue.IsNil()
+	default:
+		return false
+	}
+}
+
+// compileRegex calls the RegexHandler function and returns a regexMatcher.
+func compileRegex(handler any, pattern string) regexMatcher {
+	result := reflect.ValueOf(handler).Call([]reflect.Value{reflect.ValueOf(pattern)})
+	matcher, ok := result[0].Interface().(regexMatcher)
+	if !ok {
+		panic("fiber: Config.RegexHandler return type must support MatchString(string) bool")
+	}
+	if isNilRegexMatcher(matcher) {
+		panic("fiber: Config.RegexHandler must not return nil")
+	}
+
+	return matcher
+}
 
 // routeParser holds the path segments and param names
 type routeParser struct {
@@ -38,6 +98,7 @@ var routerParserPool = &sync.Pool{
 
 // routeSegment holds the segment metadata
 type routeSegment struct {
+	regexMatchers map[*Constraint]regexMatcher
 	// const information
 	Const       string        // constant part of the route
 	ParamName   string        // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
@@ -174,6 +235,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	if len(cfg) > 0 {
 		config = cfg[0]
 	}
+	config.RegexHandler = validateRegexHandler(config.RegexHandler)
 
 	if path == "" {
 		path = "/"
@@ -203,7 +265,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	parser, _ := routerParserPool.Get().(*routeParser) //nolint:errcheck // only contains routeParser
 	parser.reset()
 	patternStr := string(patternPretty)
-	parser.parseRoute(patternStr)
+	parser.parseRoute(patternStr, config.RegexHandler)
 	defer routerParserPool.Put(parser)
 
 	// '*' wildcard matches any path
@@ -232,14 +294,14 @@ func (parser *routeParser) reset() {
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
-func (parser *routeParser) parseRoute(pattern string, customConstraints ...CustomConstraint) {
+func (parser *routeParser) parseRoute(pattern string, regexHandler any, customConstraints ...CustomConstraint) {
 	var n int
 	var seg *routeSegment
 	for pattern != "" {
 		nextParamPosition := findNextParamPosition(pattern)
 		// handle the parameter part
 		if nextParamPosition == 0 {
-			n, seg = parser.analyseParameterPart(pattern, customConstraints...)
+			n, seg = parser.analyseParameterPart(pattern, regexHandler, customConstraints...)
 			parser.params, parser.segs = append(parser.params, seg.ParamName), append(parser.segs, seg)
 		} else {
 			n, seg = parser.analyseConstantPart(pattern, nextParamPosition)
@@ -256,9 +318,9 @@ func (parser *routeParser) parseRoute(pattern string, customConstraints ...Custo
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
-func parseRoute(pattern string, customConstraints ...CustomConstraint) routeParser {
+func parseRoute(pattern string, regexHandler any, customConstraints ...CustomConstraint) routeParser {
 	parser := routeParser{}
-	parser.parseRoute(pattern, customConstraints...)
+	parser.parseRoute(pattern, regexHandler, customConstraints...)
 
 	// Check if the route has too many parameters
 	if len(parser.params) > maxParams {
@@ -353,7 +415,7 @@ func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (
 }
 
 // analyseParameterPart find the parameter end and create the route segment
-func (parser *routeParser) analyseParameterPart(pattern string, customConstraints ...CustomConstraint) (int, *routeSegment) {
+func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any, customConstraints ...CustomConstraint) (int, *routeSegment) {
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
 
@@ -370,7 +432,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 				paramConstraintStartPosition = i + 1
 				continue
 			}
-			if paramConstraintEndPosition == -1 && search[i] == paramConstraintEnd && (i == 0 || search[i-1] != escapeChar) {
+			if paramConstraintStartPosition != -1 && search[i] == paramConstraintEnd && (i == 0 || search[i-1] != escapeChar) {
 				paramConstraintEndPosition = i + 1
 				continue
 			}
@@ -399,7 +461,10 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 	paramName := RemoveEscapeChar(GetTrimmedParam(processedPart))
 
 	// Check has constraint
-	var constraints []*Constraint
+	var (
+		constraints   []*Constraint
+		regexMatchers map[*Constraint]regexMatcher
+	)
 
 	if hasConstraint := paramConstraintStartPosition != -1 && paramConstraintEndPosition != -1; hasConstraint {
 		constraintString := pattern[paramConstraintStartPosition+1 : paramConstraintEndPosition]
@@ -432,7 +497,15 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 				// Precompile regex if has regex constraint
 				if constraint.ID == regexConstraint {
 					constraint.Data = []string{c[start+1 : end]}
-					constraint.RegexCompiler = regexp.MustCompile(constraint.Data[0])
+					compiler := compileRegex(regexHandler, constraint.Data[0])
+					if regexpCompiler, ok := compiler.(*regexp.Regexp); ok {
+						constraint.RegexCompiler = regexpCompiler
+					} else {
+						if regexMatchers == nil {
+							regexMatchers = make(map[*Constraint]regexMatcher)
+						}
+						regexMatchers[constraint] = compiler
+					}
 				}
 
 				constraints = append(constraints, constraint)
@@ -467,6 +540,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 
 	if len(constraints) > 0 {
 		segment.Constraints = constraints
+		segment.regexMatchers = regexMatchers
 	}
 
 	return n, segment
@@ -545,7 +619,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			if !segment.IsOptional || i != 0 {
 				// check constraint
 				for _, c := range segment.Constraints {
-					if matched := c.CheckConstraint(params[paramsIterator]); !matched {
+					if matched := segment.checkConstraint(c, params[paramsIterator]); !matched {
 						return false
 					}
 				}
@@ -855,4 +929,16 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	}
 
 	return err == nil
+}
+
+func (segment *routeSegment) checkConstraint(constraint *Constraint, param string) bool {
+	if constraint.ID != regexConstraint {
+		return constraint.CheckConstraint(param)
+	}
+
+	if matcher, ok := segment.regexMatchers[constraint]; ok {
+		return matcher.MatchString(param)
+	}
+
+	return constraint.CheckConstraint(param)
 }

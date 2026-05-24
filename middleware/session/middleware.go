@@ -3,6 +3,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -13,11 +14,11 @@ import (
 
 // Middleware holds session data and configuration.
 type Middleware struct {
-	Session   *Session
-	ctx       fiber.Ctx
-	config    Config
-	mu        sync.RWMutex
-	destroyed bool
+	Session     *Session
+	ctx         fiber.Ctx
+	config      Config
+	mu          sync.RWMutex
+	isDestroyed bool
 }
 
 // Context key for session middleware lookup.
@@ -97,10 +98,10 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		stackErr := c.Next()
 
 		m.mu.RLock()
-		destroyed := m.destroyed
+		isDestroyed := m.isDestroyed
 		m.mu.RUnlock()
 
-		if !destroyed {
+		if !isDestroyed {
 			m.saveSession()
 		}
 
@@ -115,12 +116,27 @@ var registerLogContextTagsOnce sync.Once
 
 func registerLogContextTags() {
 	logger.RegisterContextTag("session-id", func(ctx any) string {
-		m := FromContext(ctx)
-		if m == nil {
+		id, ok := fiber.ValueFromContext[string](ctx, sessionIDContextKey)
+		if !ok || id == "" {
 			return ""
 		}
-		return redact.Prefix(m.ID())
+
+		return redact.Prefix(id)
 	})
+}
+
+func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) {
+	fiber.StoreInContext(c, sessionIDContextKey, session.ID())
+	fiber.StoreInContext(c, middlewareContextKey, m)
+}
+
+// clearMiddlewareContext clears both Fiber locals and the request context
+// because session middleware stores these values in both layers.
+func clearMiddlewareContext(c fiber.Ctx) {
+	c.Locals(sessionIDContextKey, "")
+	c.Locals(middlewareContextKey, nil)
+	ctx := context.WithValue(c.Context(), sessionIDContextKey, "")
+	c.SetContext(context.WithValue(ctx, middlewareContextKey, (*Middleware)(nil)))
 }
 
 // initialize sets up middleware for the request.
@@ -137,7 +153,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
 	m.Session = session
 	m.ctx = c
 
-	fiber.StoreInContext(c, middlewareContextKey, m)
+	storeMiddlewareContext(c, session, m)
 }
 
 // saveSession handles session saving and error management after the response.
@@ -172,10 +188,13 @@ func acquireMiddleware() *Middleware {
 //	releaseMiddleware(m)
 func releaseMiddleware(m *Middleware) {
 	m.mu.Lock()
+	if m.ctx != nil {
+		clearMiddlewareContext(m.ctx)
+	}
 	m.config = Config{}
 	m.Session = nil
 	m.ctx = nil
-	m.destroyed = false
+	m.isDestroyed = false
 	m.mu.Unlock()
 	middlewarePool.Put(m)
 }
@@ -277,7 +296,7 @@ func (m *Middleware) Destroy() error {
 	defer m.mu.Unlock()
 
 	err := m.Session.Destroy()
-	m.destroyed = true
+	m.isDestroyed = true
 	return err
 }
 

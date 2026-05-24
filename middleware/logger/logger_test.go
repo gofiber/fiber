@@ -665,28 +665,31 @@ func Test_Logger_WithLatency(t *testing.T) {
 	defer bytebufferpool.Put(buff)
 	app := fiber.New()
 
+	var latencyDuration time.Duration
+	fixedStart := time.Unix(0, 0)
 	logger := New(Config{
 		Stream: buff,
 		Format: "${latency}",
+		LoggerFunc: func(c fiber.Ctx, data *Data, cfg *Config) error {
+			data.Start = fixedStart
+			data.Stop = fixedStart.Add(latencyDuration)
+			return defaultLoggerInstance(c, data, cfg)
+		},
 	})
 	app.Use(logger)
 
 	// Define a list of time units to test
 	timeUnits := getLatencyTimeUnits()
 
-	// Initialize a new time unit
-	sleepDuration := 1 * time.Nanosecond
-
-	// Define a test route that sleeps
+	// Define a test route
 	app.Get("/test", func(c fiber.Ctx) error {
-		time.Sleep(sleepDuration)
 		return c.SendStatus(fiber.StatusOK)
 	})
 
 	// Loop through each time unit and assert that the log output contains the expected latency value
 	for _, tu := range timeUnits {
-		// Update the sleep duration for the next iteration
-		sleepDuration = 1 * tu.div
+		// Update the latency duration for the next iteration
+		latencyDuration = tu.div
 
 		// Create a new HTTP request to the test route
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{
@@ -710,27 +713,30 @@ func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
 	defer bytebufferpool.Put(buff)
 	app := fiber.New()
 
+	var latencyDuration time.Duration
+	fixedStart := time.Unix(0, 0)
 	logger := New(Config{
 		Stream: buff,
+		LoggerFunc: func(c fiber.Ctx, data *Data, cfg *Config) error {
+			data.Start = fixedStart
+			data.Stop = fixedStart.Add(latencyDuration)
+			return defaultLoggerInstance(c, data, cfg)
+		},
 	})
 	app.Use(logger)
 
 	// Define a list of time units to test
 	timeUnits := getLatencyTimeUnits()
 
-	// Initialize a new time unit
-	sleepDuration := 1 * time.Nanosecond
-
-	// Define a test route that sleeps
+	// Define a test route
 	app.Get("/test", func(c fiber.Ctx) error {
-		time.Sleep(sleepDuration)
 		return c.SendStatus(fiber.StatusOK)
 	})
 
 	// Loop through each time unit and assert that the log output contains the expected latency value
 	for _, tu := range timeUnits {
-		// Update the sleep duration for the next iteration
-		sleepDuration = 1 * tu.div
+		// Update the latency duration for the next iteration
+		latencyDuration = tu.div
 
 		// Create a new HTTP request to the test route
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), fiber.TestConfig{

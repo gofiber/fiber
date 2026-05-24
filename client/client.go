@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpproxy"
+	"golang.org/x/net/http/httpproxy"
 )
 
 var ErrFailedToAppendCert = errors.New("failed to append certificate")
@@ -60,10 +62,10 @@ type Client struct {
 	userResponseHooks    []ResponseHook
 	builtinResponseHooks []ResponseHook
 
-	timeout                time.Duration
-	mu                     sync.RWMutex
-	debug                  bool
-	disablePathNormalizing bool
+	timeout                   time.Duration
+	mu                        sync.RWMutex
+	isDebug                   bool
+	isPathNormalizingDisabled bool
 }
 
 // Do executes the request using the underlying fasthttp transport.
@@ -311,7 +313,16 @@ func (c *Client) SetProxyURL(proxyURL string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.applyDial(fasthttpproxy.FasthttpHTTPDialer(proxyURL))
+	// Build the fasthttp proxy dialer directly so invalid proxy URLs are returned
+	// to callers instead of being swallowed by FasthttpHTTPDialer.
+	dialer := fasthttpproxy.Dialer{
+		Config: httpproxy.Config{HTTPProxy: proxyURL, HTTPSProxy: proxyURL},
+	}
+	dialFunc, err := dialer.GetDialFunc(false)
+	if err != nil {
+		return fmt.Errorf("client: invalid proxy URL: %w", err)
+	}
+	c.applyDial(dialFunc)
 	return nil
 }
 
@@ -435,12 +446,12 @@ func (c *Client) SetReferer(r string) *Client {
 
 // DisablePathNormalizing reports whether path normalizing is disabled for the client.
 func (c *Client) DisablePathNormalizing() bool {
-	return c.disablePathNormalizing
+	return c.isPathNormalizingDisabled
 }
 
 // SetDisablePathNormalizing configures the client to disable or enable path normalizing.
 func (c *Client) SetDisablePathNormalizing(disable bool) *Client {
-	c.disablePathNormalizing = disable
+	c.isPathNormalizingDisabled = disable
 	return c
 }
 
@@ -516,13 +527,13 @@ func (c *Client) SetTimeout(t time.Duration) *Client {
 
 // Debug enables debug-level logging output.
 func (c *Client) Debug() *Client {
-	c.debug = true
+	c.isDebug = true
 	return c
 }
 
 // DisableDebug disables debug-level logging output.
 func (c *Client) DisableDebug() *Client {
-	c.debug = false
+	c.isDebug = false
 	return c
 }
 
@@ -635,8 +646,8 @@ func (c *Client) Reset() {
 	c.userAgent = ""
 	c.referer = ""
 	c.retryConfig = nil
-	c.debug = false
-	c.disablePathNormalizing = false
+	c.isDebug = false
+	c.isPathNormalizingDisabled = false
 
 	if c.cookieJar != nil {
 		c.cookieJar.Release()
