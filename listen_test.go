@@ -505,7 +505,7 @@ func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
 		{
 			name:           "invalid client CA pem",
 			clientCAPath:   invalidClientCAPath,
-			expectedErrMsg: invalidClientCAPath,
+			expectedErrMsg: filepath.Base(invalidClientCAPath),
 		},
 	}
 
