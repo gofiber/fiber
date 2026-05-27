@@ -130,7 +130,7 @@ func TestTimeout_HandlerReturnsEarlyOnCancel(t *testing.T) {
 
 	app.Get("/early-return", New(func(c fiber.Ctx) error {
 		// Handler that would take 500ms but checks context
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			select {
 			case <-c.Context().Done():
 				return c.Context().Err()
