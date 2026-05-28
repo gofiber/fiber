@@ -645,6 +645,19 @@ func Test_DefaultErrorHandler_TypedNilFiberError(t *testing.T) {
 	require.Equal(t, utils.StatusMessage(StatusInternalServerError), string(c.fasthttp.Response.Body()))
 }
 
+func Test_DefaultErrorHandler_WrappedFiberErrorUsesWrappedMessage(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	err := fmt.Errorf("auth failed: %w", ErrUnauthorized)
+	require.NoError(t, DefaultErrorHandler(c, err))
+	require.Equal(t, StatusUnauthorized, c.fasthttp.Response.StatusCode())
+	require.Equal(t, err.Error(), string(c.fasthttp.Response.Body()))
+}
+
 func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
