@@ -61,6 +61,8 @@ func Test_Memory_CleansExpiredEntriesOnAccess(t *testing.T) {
 	store := New()
 	store.Set("expired", "value", time.Second)
 
+	time.Sleep(1100 * time.Millisecond)
+
 	require.Eventually(t, func() bool {
 		return store.Get("expired") == nil
 	}, 3*time.Second, 10*time.Millisecond)
