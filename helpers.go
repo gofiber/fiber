@@ -177,7 +177,7 @@ func (app *App) quoteString(raw string) string {
 // quoteRawString escapes only characters that need quoting according to
 // https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
 // contain non-ASCII bytes.
-func (app *App) quoteRawString(raw string) string {
+func (*App) quoteRawString(raw string) string {
 	const hex = "0123456789ABCDEF"
 	bb := bytebufferpool.Get()
 	defer bytebufferpool.Put(bb)
