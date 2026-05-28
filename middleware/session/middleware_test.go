@@ -40,11 +40,11 @@ func (*failingSessionStorage) SetWithContext(context.Context, string, []byte, ti
 	return nil
 }
 
-func (*failingSessionStorage) Delete(string) error                       { return nil }
+func (*failingSessionStorage) Delete(string) error                             { return nil }
 func (*failingSessionStorage) DeleteWithContext(context.Context, string) error { return nil }
-func (*failingSessionStorage) Reset() error                              { return nil }
-func (*failingSessionStorage) ResetWithContext(context.Context) error    { return nil }
-func (*failingSessionStorage) Close() error                              { return nil }
+func (*failingSessionStorage) Reset() error                                    { return nil }
+func (*failingSessionStorage) ResetWithContext(context.Context) error          { return nil }
+func (*failingSessionStorage) Close() error                                    { return nil }
 
 func Test_Session_Middleware(t *testing.T) {
 	t.Parallel()
