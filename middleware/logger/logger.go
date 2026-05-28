@@ -38,7 +38,7 @@ func New(config ...Config) fiber.Handler {
 	// Create correct timeformat
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
-	startTimestampUpdater(&timestamp, &cfg)
+	_ = startTimestampUpdater(&timestamp, &cfg)
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
 
@@ -135,12 +135,14 @@ func New(config ...Config) fiber.Handler {
 
 // startTimestampUpdater refreshes the cached formatted timestamp until TimeDone
 // is closed.
-func startTimestampUpdater(timestamp *atomic.Value, cfg *Config) {
+func startTimestampUpdater(timestamp *atomic.Value, cfg *Config) <-chan struct{} {
 	if !strings.Contains(cfg.Format, "${"+TagTime+"}") {
-		return
+		return nil
 	}
 
+	stopped := make(chan struct{})
 	go func() {
+		defer close(stopped)
 		ticker := time.NewTicker(cfg.TimeInterval)
 		defer ticker.Stop()
 
@@ -153,4 +155,5 @@ func startTimestampUpdater(timestamp *atomic.Value, cfg *Config) {
 			}
 		}
 	}()
+	return stopped
 }

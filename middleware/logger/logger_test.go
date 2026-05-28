@@ -192,14 +192,18 @@ func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
 		TimeDone:         done,
 	}
 
-	startTimestampUpdater(&timestamp, &cfg)
+	stoppedCh := startTimestampUpdater(&timestamp, &cfg)
 
 	initial := timestamp.Load().(string) //nolint:forcetypeassert // test setup stores a string value
 	time.Sleep(20 * time.Millisecond)
 	require.NotEqual(t, initial, timestamp.Load().(string)) //nolint:forcetypeassert // test setup stores a string value
 
 	close(done)
-	time.Sleep(20 * time.Millisecond)
+	select {
+	case <-stoppedCh:
+	case <-time.After(time.Second):
+		t.Fatal("timestamp updater did not stop")
+	}
 	stopped := timestamp.Load().(string) //nolint:forcetypeassert // test setup stores a string value
 	time.Sleep(20 * time.Millisecond)
 	require.Equal(t, stopped, timestamp.Load().(string)) //nolint:forcetypeassert // test setup stores a string value

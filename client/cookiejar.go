@@ -382,14 +382,13 @@ func (cj *CookieJar) ensureHostCapacityLocked(key string, now time.Time) {
 	}
 
 	var evictHost string
-	var evictCookies []storedCookie
-	for host, cookies := range cj.hostCookies {
-		evictHost = host
-		evictCookies = cookies
-		break
+	for host := range cj.hostCookies {
+		if evictHost == "" || host < evictHost {
+			evictHost = host
+		}
 	}
 	if evictHost != "" {
-		releaseStoredCookies(evictCookies)
+		releaseStoredCookies(cj.hostCookies[evictHost])
 		delete(cj.hostCookies, evictHost)
 	}
 }
