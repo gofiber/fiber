@@ -364,7 +364,9 @@ func New(config ...Config) fiber.Handler {
 				return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
 			}
 			relock()
+			heapMu.Lock()
 			removeHeapEntry(key, e.heapidx)
+			heapMu.Unlock()
 			if cfg.Storage != nil {
 				manager.release(e)
 			}
@@ -430,7 +432,9 @@ func New(config ...Config) fiber.Handler {
 				relock()
 				idx := e.heapidx
 				manager.release(e)
+				heapMu.Lock()
 				removeHeapEntry(key, idx)
+				heapMu.Unlock()
 				e = nil
 			case entryHasPrivate:
 				unlock()
@@ -441,7 +445,9 @@ func New(config ...Config) fiber.Handler {
 					return fmt.Errorf("cache: failed to delete private response for key %q: %w", maskKey(key), err)
 				}
 				relock()
+				heapMu.Lock()
 				removeHeapEntry(key, e.heapidx)
+				heapMu.Unlock()
 				if cfg.Storage != nil && e != nil {
 					manager.release(e)
 				}

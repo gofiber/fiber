@@ -43,20 +43,18 @@ func (l *Locker) Lock(key string) func() {
 			continue
 		}
 
-		wait := make(chan struct{})
-		s.owners[key] = wait
+		owner := make(chan struct{})
+		s.owners[key] = owner
 		s.mu.Unlock()
 
 		return func() {
 			s.mu.Lock()
-			wait, exists := s.owners[key]
-			if exists {
+			if s.owners[key] == owner {
 				delete(s.owners, key)
-			}
-			s.mu.Unlock()
-
-			if exists {
-				close(wait)
+				s.mu.Unlock()
+				close(owner)
+			} else {
+				s.mu.Unlock()
 			}
 		}
 	}
