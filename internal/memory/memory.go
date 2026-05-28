@@ -18,6 +18,7 @@ package memory
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -26,8 +27,9 @@ import (
 // Storage stores arbitrary values in memory for use in tests and benchmarks.
 // Storage is safe for concurrent use.
 type Storage struct {
-	data map[string]item // data
-	mu   sync.RWMutex
+	data   map[string]item // data
+	lastGC atomic.Uint32
+	mu     sync.RWMutex
 }
 
 type item struct {
@@ -42,7 +44,7 @@ func New() *Storage {
 		data: make(map[string]item),
 	}
 	utils.StartTimeStampUpdater()
-	go store.gc(1 * time.Second)
+	store.lastGC.Store(utils.Timestamp())
 	return store
 }
 
@@ -52,10 +54,13 @@ func New() *Storage {
 // For []byte values, this returns a defensive copy to prevent callers from
 // mutating the stored data. Other types are returned as-is.
 func (s *Storage) Get(key string) any {
+	ts := utils.Timestamp()
+	s.maybeGC(ts)
+
 	s.mu.RLock()
 	v, ok := s.data[key]
 	s.mu.RUnlock()
-	if !ok || v.e != 0 && v.e <= utils.Timestamp() {
+	if !ok || v.e != 0 && v.e <= ts {
 		return nil
 	}
 
@@ -74,9 +79,12 @@ func (s *Storage) Get(key string) any {
 // []byte values are also copied to prevent external mutation of stored data.
 // Other types are stored as-is (structs are copied by value automatically).
 func (s *Storage) Set(key string, val any, ttl time.Duration) {
+	ts := utils.Timestamp()
+	s.maybeGC(ts)
+
 	var exp uint32
 	if ttl > 0 {
-		exp = uint32(ttl.Seconds()) + utils.Timestamp()
+		exp = uint32(ttl.Seconds()) + ts
 	}
 
 	// Defensive copies to prevent unsafe reuse from sync.Pool
@@ -108,36 +116,22 @@ func (s *Storage) Reset() {
 	s.mu.Unlock()
 }
 
-func (s *Storage) gc(sleep time.Duration) {
-	ticker := time.NewTicker(sleep)
-	defer ticker.Stop()
-	var expired []string
-
-	for range ticker.C {
-		ts := utils.Timestamp()
-		expired = expired[:0]
-		s.mu.RLock()
-		for key, v := range s.data {
-			if v.e != 0 && v.e <= ts {
-				expired = append(expired, key)
-			}
+func (s *Storage) maybeGC(ts uint32) {
+	for {
+		lastGC := s.lastGC.Load()
+		if ts <= lastGC {
+			return
 		}
-		s.mu.RUnlock()
-
-		if len(expired) == 0 {
-			// avoid locking if nothing to delete
-			continue
+		if s.lastGC.CompareAndSwap(lastGC, ts) {
+			break
 		}
-
-		s.mu.Lock()
-		// Double-checked locking.
-		// We might have replaced the item in the meantime.
-		for i := range expired {
-			v := s.data[expired[i]]
-			if v.e != 0 && v.e <= ts {
-				delete(s.data, expired[i])
-			}
-		}
-		s.mu.Unlock()
 	}
+
+	s.mu.Lock()
+	for key, v := range s.data {
+		if v.e != 0 && v.e <= ts {
+			delete(s.data, key)
+		}
+	}
+	s.mu.Unlock()
 }

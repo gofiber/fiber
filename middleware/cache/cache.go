@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -23,11 +22,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 )
-
-// timestampUpdatePeriod is the period which is used to check the cache expiration.
-// It should not be too long to provide more or less acceptable expiration error, and in the same
-// time it should not be too short to avoid overwhelming of the system
-const timestampUpdatePeriod = 300 * time.Millisecond
 
 // buffer size for hexpool
 const (
@@ -151,7 +145,6 @@ func New(config ...Config) fiber.Handler {
 	var (
 		// Cache settings
 		mux       = &sync.RWMutex{}
-		timestamp = safeUnixSeconds(time.Now())
 	)
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, redactKeys)
@@ -168,15 +161,6 @@ func New(config ...Config) fiber.Handler {
 	}
 	hashAuthorization := makeHashAuthFunc(hexBufPool)
 	buildVaryKey := makeBuildVaryKeyFunc(hexBufPool)
-
-	// Update timestamp in the configured interval
-	go func() {
-		ticker := time.NewTicker(timestampUpdatePeriod)
-		defer ticker.Stop()
-		for range ticker.C {
-			atomic.StoreUint64(&timestamp, safeUnixSeconds(time.Now()))
-		}
-	}()
 
 	// Delete key from both manager and storage
 	deleteKey := func(ctx context.Context, dkey string) error {
@@ -325,7 +309,7 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 		// Get timestamp
-		ts := atomic.LoadUint64(&timestamp)
+		ts := safeUnixSeconds(time.Now())
 
 		// Cache Entry found
 		if e != nil {
@@ -815,7 +799,7 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		ts = atomic.LoadUint64(&timestamp)
+		ts = safeUnixSeconds(time.Now())
 		responseTS := max(ts, nowUnix)
 
 		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)

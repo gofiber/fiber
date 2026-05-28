@@ -908,6 +908,39 @@ func Test_Logger_Data_Race(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
 }
 
+func Test_Logger_TimeUpdatesAfterInterval(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format:       "${time}",
+		TimeFormat:   time.RFC3339Nano,
+		TimeInterval: 10 * time.Millisecond,
+		Stream:       &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+	first := buf.String()
+	require.NotEmpty(t, first)
+
+	buf.Reset()
+	time.Sleep(20 * time.Millisecond)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+	second := buf.String()
+	require.NotEmpty(t, second)
+	require.NotEqual(t, first, second)
+}
+
 // go test -run Test_Response_Header
 func Test_Response_Header(t *testing.T) {
 	t.Parallel()

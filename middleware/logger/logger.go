@@ -38,14 +38,28 @@ func New(config ...Config) fiber.Handler {
 	// Create correct timeformat
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
-	// Update date/time every 500 milliseconds in a separate go routine
-	if strings.Contains(cfg.Format, "${"+TagTime+"}") {
-		go func() {
-			for {
-				time.Sleep(cfg.TimeInterval)
-				timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
+	timeEnabled := strings.Contains(cfg.Format, "${"+TagTime+"}")
+	var nextTimestampUpdate atomic.Int64
+	if timeEnabled {
+		nextTimestampUpdate.Store(time.Now().Add(cfg.TimeInterval).UnixNano())
+	}
+
+	refreshTimestamp := func(now time.Time) {
+		if !timeEnabled {
+			return
+		}
+
+		nowUnix := now.UnixNano()
+		for {
+			next := nextTimestampUpdate.Load()
+			if nowUnix < next {
+				return
 			}
-		}()
+			if nextTimestampUpdate.CompareAndSwap(next, now.Add(cfg.TimeInterval).UnixNano()) {
+				timestamp.Store(now.In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
+				return
+			}
+		}
 	}
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
@@ -106,6 +120,9 @@ func New(config ...Config) fiber.Handler {
 		// no need for a reset, as long as we always override everything
 		data.Pid = pid
 		data.ErrPaddingStr = errPaddingStr
+		if timeEnabled {
+			refreshTimestamp(time.Now())
+		}
 		data.Timestamp = timestamp
 		// These compiled chains are shared across requests. The default logger and
 		// custom LoggerFunc implementations must only read them, for example via
