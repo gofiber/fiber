@@ -34,7 +34,7 @@ var (
 	// decoderPoolMap helps to improve binders
 	decoderPoolMap = map[string]*sync.Pool{}
 	// tags is used to classify parser's pool
-	tags = []string{"header", "respHeader", "cookie", "query", "form", "uri"}
+	tags = []string{bindingHeader, bindingRespHeader, bindingCookie, bindingQuery, bindingForm, bindingURI}
 )
 
 func getDecoderPool(tag string) *sync.Pool {
@@ -93,7 +93,7 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 	ptrVal := reflect.ValueOf(out)
 
 	// Get pointer value
-	if ptrVal.Kind() == reflect.Ptr {
+	if ptrVal.Kind() == reflect.Pointer {
 		ptrVal = ptrVal.Elem()
 	}
 
@@ -247,7 +247,7 @@ type fieldInfo struct {
 }
 
 func unwrapType(t reflect.Type) reflect.Type {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 
@@ -265,17 +265,17 @@ var (
 
 func getFieldCache(aliasTag string) *sync.Map {
 	switch aliasTag {
-	case "header":
+	case bindingHeader:
 		return &headerFieldCache
-	case "respHeader":
+	case bindingRespHeader:
 		return &respHeaderFieldCache
-	case "cookie":
+	case bindingCookie:
 		return &cookieFieldCache
-	case "form":
+	case bindingForm:
 		return &formFieldCache
-	case "uri":
+	case bindingURI:
 		return &uriFieldCache
-	case "query":
+	case bindingQuery:
 		return &queryFieldCache
 	}
 
