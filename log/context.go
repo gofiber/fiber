@@ -248,7 +248,7 @@ func needsControlSanitize(p []byte) bool {
 
 func needsControlSanitizeString(s string) bool {
 	return strings.IndexFunc(s, func(r rune) bool {
-		return r < 0x80 && isControlByte(byte(r))
+		return r < 0x80 && isControlByte(byte(r)) //nolint:gosec // G115: integer overflow conversion rune -> byte
 	}) >= 0
 }
 

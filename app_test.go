@@ -148,10 +148,7 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 
 			// Check final goroutine count
 			finalGoroutines := runtime.NumGoroutine()
-			leakedGoroutines := finalGoroutines - initialGoroutines
-			if leakedGoroutines < 0 {
-				leakedGoroutines = 0
-			}
+			leakedGoroutines := max(finalGoroutines-initialGoroutines, 0)
 			t.Logf("[%s] Final goroutines: %d (leaked: %d)",
 				tc.name, finalGoroutines, leakedGoroutines)
 
@@ -1197,7 +1194,7 @@ func Test_App_AutoHead_Compliance_SendFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "hello.txt")
 	fileContent := []byte("file-body")
-	require.NoError(t, os.WriteFile(filePath, fileContent, 0o644)) //nolint:gosec // permissions match test fixtures
+	require.NoError(t, os.WriteFile(filePath, fileContent, 0o644))
 
 	app := New()
 	app.Get("/file", func(c Ctx) error {
@@ -1331,19 +1328,19 @@ func Test_App_GetString(t *testing.T) {
 	heap := string([]byte("fiber"))
 	appMutable := New()
 	same := appMutable.GetString(heap)
-	if unsafe.StringData(same) != unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
+	if unsafe.StringData(same) != unsafe.StringData(heap) {
 		t.Error("expected original string when immutable is disabled")
 	}
 
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.GetString(heap)
-	if unsafe.StringData(copied) == unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
+	if unsafe.StringData(copied) == unsafe.StringData(heap) {
 		t.Error("expected a copy for heap-backed string when immutable is enabled")
 	}
 
 	literal := "fiber"
 	sameLit := appImmutable.GetString(literal)
-	if unsafe.StringData(sameLit) != unsafe.StringData(literal) { //nolint:gosec // compare pointer addresses
+	if unsafe.StringData(sameLit) != unsafe.StringData(literal) {
 		t.Error("expected original literal when immutable is enabled")
 	}
 }
@@ -1354,7 +1351,7 @@ func Test_App_GetBytes(t *testing.T) {
 	b := []byte("fiber")
 	appMutable := New()
 	same := appMutable.GetBytes(b)
-	if unsafe.SliceData(same) != unsafe.SliceData(b) { //nolint:gosec // compare pointer addresses
+	if unsafe.SliceData(same) != unsafe.SliceData(b) {
 		t.Error("expected original slice when immutable is disabled")
 	}
 
@@ -1363,14 +1360,14 @@ func Test_App_GetBytes(t *testing.T) {
 	sub := alias[:5]
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.GetBytes(sub)
-	if unsafe.SliceData(copied) == unsafe.SliceData(sub) { //nolint:gosec // compare pointer addresses
+	if unsafe.SliceData(copied) == unsafe.SliceData(sub) {
 		t.Error("expected a copy for aliased slice when immutable is enabled")
 	}
 
 	full := make([]byte, 5)
 	copy(full, b)
 	detached := appImmutable.GetBytes(full)
-	if unsafe.SliceData(detached) == unsafe.SliceData(full) { //nolint:gosec // compare pointer addresses
+	if unsafe.SliceData(detached) == unsafe.SliceData(full) {
 		t.Error("expected a copy even when cap==len")
 	}
 }

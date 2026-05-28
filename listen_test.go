@@ -330,10 +330,8 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 	if err != nil {
 		require.NoError(t, err)
 	}
-	//nolint:gosec // We're in a test so using old ciphers is fine
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
-	//nolint:gosec // We're in a test so listening on all interfaces is fine
 	ln, err := tls.Listen(NetworkTCP4, ":0", config)
 	require.NoError(t, err)
 

@@ -12,7 +12,7 @@ type CookieBinding struct {
 
 // Name returns the binding name.
 func (*CookieBinding) Name() string {
-	return "cookie"
+	return bindingCookie
 }
 
 // Bind parses the request cookie and returns the result.

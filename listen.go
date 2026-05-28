@@ -201,7 +201,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 			}
 
 			tlsHandler = &TLSHandler{}
-			tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
+			tlsConfig = &tls.Config{
 				MinVersion: cfg.TLSMinVersion,
 				Certificates: []tls.Certificate{
 					cert,
@@ -210,7 +210,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 			}
 
 		case cfg.AutoCertManager != nil:
-			tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
+			tlsConfig = &tls.Config{
 				MinVersion:     cfg.TLSMinVersion,
 				GetCertificate: cfg.AutoCertManager.GetCertificate,
 				NextProtos:     []string{"http/1.1", "acme-tls/1"},

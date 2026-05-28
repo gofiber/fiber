@@ -109,7 +109,7 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 		return
 	}
 	// Deref pointer chains
-	for v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return
 		}

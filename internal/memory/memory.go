@@ -24,6 +24,7 @@ import (
 )
 
 // Storage stores arbitrary values in memory for use in tests and benchmarks.
+// Storage is safe for concurrent use.
 type Storage struct {
 	data map[string]item // data
 	mu   sync.RWMutex
