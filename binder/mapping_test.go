@@ -502,7 +502,7 @@ func TestSetParserDecoderConcurrentAccess(t *testing.T) {
 		})
 	}
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		runWorker(func() error {
 			SetParserDecoder(parserConfig)
 			return nil
@@ -553,7 +553,7 @@ func Test_equalFieldType_CacheTypeMismatch(t *testing.T) {
 		Field string `query:"field"`
 	}
 	cache := getFieldCache("query")
-	typ := reflect.TypeOf(Sample{})
+	typ := reflect.TypeFor[Sample]()
 	cache.Store(typ, 1)
 	defer cache.Delete(typ)
 	var s Sample
@@ -571,7 +571,7 @@ func Test_buildFieldInfo_Unexported(t *testing.T) {
 		Name   string
 		Nested nested
 	}
-	info := buildFieldInfo(reflect.TypeOf(outer{}), "query")
+	info := buildFieldInfo(reflect.TypeFor[outer](), "query")
 	require.Contains(t, info.names, "name")
 	_, ok := info.nestedKinds[reflect.Int]
 	require.True(t, ok)

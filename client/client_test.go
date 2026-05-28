@@ -352,9 +352,9 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 			MaxRetryCount:   2,
 		})
 
-		var attempts int32
+		var attempts atomic.Int32
 		client.SetDial(func(address string) (net.Conn, error) {
-			if atomic.AddInt32(&attempts, 1) == 1 {
+			if attempts.Add(1) == 1 {
 				return nil, errors.New("dial failure")
 			}
 			return fasthttp.Dial(address)
@@ -364,7 +364,7 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
 		require.Equal(t, "retry", resp.String())
-		require.EqualValues(t, 2, atomic.LoadInt32(&attempts))
+		require.EqualValues(t, 2, attempts.Load())
 	})
 
 	t.Run("tls configuration propagates", func(t *testing.T) {
@@ -411,17 +411,17 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 		require.NoError(t, client.SetProxyURL("http://127.0.0.1:8080"))
 		require.NotNil(t, client.HostClient().Dial)
 
-		var called int32
+		var called atomic.Int32
 		customDial := func(addr string) (net.Conn, error) {
 			_ = addr
-			atomic.AddInt32(&called, 1)
+			called.Add(1)
 			return nil, errors.New("dial")
 		}
 		client.SetDial(customDial)
 
 		_, err := client.HostClient().Dial("example.com:80")
 		require.Error(t, err)
-		require.EqualValues(t, 1, atomic.LoadInt32(&called))
+		require.EqualValues(t, 1, called.Load())
 
 		client.Reset()
 		require.NotNil(t, client.FasthttpClient())
@@ -434,11 +434,11 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 
 		client := NewWithHostClient(&fasthttp.HostClient{Addr: "example.com:80"})
 
-		var dialCalls int32
+		var dialCalls atomic.Int32
 		dialErr := errors.New("dial failed")
 		client.HostClient().Dial = func(addr string) (net.Conn, error) {
 			_ = addr
-			atomic.AddInt32(&dialCalls, 1)
+			dialCalls.Add(1)
 			return nil, dialErr
 		}
 
@@ -456,7 +456,7 @@ func Test_Client_HostClient_Behavior(t *testing.T) {
 		fasthttp.ReleaseRequest(req)
 		fasthttp.ReleaseResponse(resp)
 
-		require.EqualValues(t, 2, atomic.LoadInt32(&dialCalls))
+		require.EqualValues(t, 2, dialCalls.Load())
 		require.NotPanics(t, client.CloseIdleConnections)
 	})
 }
@@ -518,9 +518,9 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 			MaxRetryCount:   2,
 		})
 
-		var attempts int32
+		var attempts atomic.Int32
 		client.SetDial(func(address string) (net.Conn, error) {
-			if atomic.AddInt32(&attempts, 1) == 1 {
+			if attempts.Add(1) == 1 {
 				return nil, errors.New("dial failure")
 			}
 			return fasthttp.Dial(address)
@@ -530,7 +530,7 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
 		require.Equal(t, "retry", resp.String())
-		require.EqualValues(t, 2, atomic.LoadInt32(&attempts))
+		require.EqualValues(t, 2, attempts.Load())
 	})
 
 	t.Run("tls configuration propagates", func(t *testing.T) {
@@ -591,17 +591,17 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 		require.True(t, ok)
 		require.NotNil(t, hc.Dial)
 
-		var called int32
+		var called atomic.Int32
 		customDial := func(addr string) (net.Conn, error) {
 			_ = addr
-			atomic.AddInt32(&called, 1)
+			called.Add(1)
 			return nil, errors.New("dial")
 		}
 		client.SetDial(customDial)
 
 		_, err := hc.Dial("example.com:80")
 		require.Error(t, err)
-		require.EqualValues(t, 1, atomic.LoadInt32(&called))
+		require.EqualValues(t, 1, called.Load())
 
 		client.Reset()
 		require.NotNil(t, client.FasthttpClient())
@@ -619,13 +619,13 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 			},
 		})
 
-		var dialCalls int32
+		var dialCalls atomic.Int32
 		dialErr := errors.New("dial failed")
 		for _, bc := range client.LBClient().Clients {
 			if hc, ok := bc.(*fasthttp.HostClient); ok {
 				hc.Dial = func(addr string) (net.Conn, error) {
 					_ = addr
-					atomic.AddInt32(&dialCalls, 1)
+					dialCalls.Add(1)
 					return nil, dialErr
 				}
 			}
@@ -645,7 +645,7 @@ func Test_Client_LBClient_Behavior(t *testing.T) {
 		fasthttp.ReleaseRequest(req)
 		fasthttp.ReleaseResponse(resp)
 
-		require.GreaterOrEqual(t, atomic.LoadInt32(&dialCalls), int32(2))
+		require.GreaterOrEqual(t, dialCalls.Load(), int32(2))
 		require.NotPanics(t, client.CloseIdleConnections)
 	})
 }
@@ -1959,7 +1959,7 @@ func Test_Client_R(t *testing.T) {
 	client := New()
 	req := client.R()
 
-	require.Equal(t, "Request", reflect.TypeOf(req).Elem().Name())
+	require.Equal(t, "Request", reflect.TypeFor[Request]().Name())
 	require.Equal(t, client, req.Client())
 }
 

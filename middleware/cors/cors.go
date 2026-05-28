@@ -1,7 +1,6 @@
 package cors
 
 import (
-	"slices"
 	"strconv"
 	"strings"
 
@@ -53,9 +52,9 @@ func New(config ...Config) fiber.Handler {
 		log.Warn("[CORS] Both 'AllowOrigins' and 'AllowOriginsFunc' have been defined.")
 	}
 
-	// allowOrigins is a slice of strings that contains the allowed origins
+	// allowOrigins is a set of strings that contains the allowed origins
 	// defined in the 'AllowOrigins' configuration.
-	allowOrigins := []string{}
+	allowOrigins := make(map[string]struct{}, len(cfg.AllowOrigins))
 	allowSubOrigins := []subdomain{}
 
 	// Validate and normalize static AllowOrigins
@@ -84,7 +83,7 @@ func New(config ...Config) fiber.Handler {
 			if !isValid {
 				panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
 			}
-			allowOrigins = append(allowOrigins, normalizedOrigin)
+			allowOrigins[normalizedOrigin] = struct{}{}
 		}
 	}
 
@@ -141,7 +140,7 @@ func New(config ...Config) fiber.Handler {
 			allowOrigin = "*"
 		} else {
 			// Check if the origin is in the list of allowed origins
-			if slices.Contains(allowOrigins, originHeader) {
+			if _, ok := allowOrigins[originHeader]; ok {
 				allowOrigin = originHeaderRaw
 			}
 

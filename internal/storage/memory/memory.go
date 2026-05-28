@@ -13,6 +13,8 @@ import (
 
 // Storage provides an in-memory implementation of the storage interface for
 // testing purposes.
+// Storage is safe for concurrent use, except when callers keep using the live
+// map returned by Conn. Access to that map requires external synchronization.
 type Storage struct {
 	db         map[string]Entry
 	done       chan struct{}
@@ -191,8 +193,9 @@ func (s *Storage) gc() {
 	}
 }
 
-// Conn returns the underlying storage map. The map must not be modified by
-// callers.
+// Conn returns the underlying storage map. The returned map remains shared with
+// the storage, so callers must not modify it and must synchronize any access
+// that overlaps with other storage operations.
 func (s *Storage) Conn() map[string]Entry {
 	s.mux.RLock()
 	defer s.mux.RUnlock()

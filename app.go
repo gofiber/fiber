@@ -65,6 +65,8 @@ type Error struct {
 }
 
 // App denotes the Fiber application.
+// App is safe for concurrent use, except for route mutation methods that
+// explicitly document otherwise.
 type App struct {
 	// App config
 	config Config
