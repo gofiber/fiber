@@ -38,6 +38,7 @@ func ReleaseCookieJar(c *CookieJar) {
 }
 
 // CookieJar manages cookie storage for the client.
+// CookieJar is safe for concurrent use.
 type CookieJar struct {
 	// hostCookies stores wrapped cookies keyed by storage scope:
 	// host-only cookies use the request host, while domain cookies use the

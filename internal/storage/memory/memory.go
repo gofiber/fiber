@@ -13,6 +13,7 @@ import (
 
 // Storage provides an in-memory implementation of the storage interface for
 // testing purposes.
+// Storage is safe for concurrent use.
 type Storage struct {
 	db         map[string]Entry
 	done       chan struct{}
