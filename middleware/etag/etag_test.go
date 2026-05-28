@@ -92,7 +92,7 @@ func Test_ETag_NewEtag(t *testing.T) {
 	})
 }
 
-func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:revive // We're in a test, so using bools as a flow-control is fine
+func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	t.Helper()
 
 	app := fiber.New()
@@ -146,7 +146,7 @@ func Test_ETag_WeakEtag(t *testing.T) {
 	})
 }
 
-func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:revive // We're in a test, so using bools as a flow-control is fine
+func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	t.Helper()
 
 	app := fiber.New()
@@ -200,7 +200,7 @@ func Test_ETag_CustomEtag(t *testing.T) {
 	})
 }
 
-func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:revive // We're in a test, so using bools as a flow-control is fine
+func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	t.Helper()
 
 	app := fiber.New()
