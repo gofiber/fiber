@@ -142,10 +142,8 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
-	var (
-		// Cache settings
-		mux       = &sync.RWMutex{}
-	)
+	// Cache settings
+	mux := &sync.RWMutex{}
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, redactKeys)
 	// Create indexed heap for tracking expirations ( see heap.go )

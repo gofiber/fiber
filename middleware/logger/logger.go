@@ -49,10 +49,10 @@ func New(config ...Config) fiber.Handler {
 			return
 		}
 
-		nowUnix := now.UnixNano()
+		nowUnixNano := now.UnixNano()
 		for {
 			next := nextTimestampUpdate.Load()
-			if nowUnix < next {
+			if nowUnixNano < next {
 				return
 			}
 			if nextTimestampUpdate.CompareAndSwap(next, now.Add(cfg.TimeInterval).UnixNano()) {
