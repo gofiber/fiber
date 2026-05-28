@@ -81,6 +81,18 @@ func createRedirectServer(t *testing.T) string {
 	return addr
 }
 
+func restoreGlobalProxyClient(t *testing.T) {
+	t.Helper()
+
+	lock.RLock()
+	prev := client
+	lock.RUnlock()
+
+	t.Cleanup(func() {
+		WithClient(prev)
+	})
+}
+
 // go test -run Test_Proxy_DefaultClient_MaxConnsPerHost
 func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
 	require.Equal(t, defaultMaxConnsPerHost, client.MaxConnsPerHost)
@@ -356,7 +368,7 @@ func Test_Proxy_Forward(t *testing.T) {
 
 // go test -run Test_Proxy_Forward_WithClient_TLSConfig
 func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
-	t.Parallel()
+	restoreGlobalProxyClient(t)
 
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
 	require.NoError(t, err)
@@ -759,7 +771,7 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 
 // go test -race -run Test_Proxy_Forward_Global_Client
 func Test_Proxy_Forward_Global_Client(t *testing.T) {
-	t.Parallel()
+	restoreGlobalProxyClient(t)
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
 	WithClient(&fasthttp.Client{
