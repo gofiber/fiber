@@ -11,9 +11,9 @@ import (
 const MIMEMultipartForm string = "multipart/form-data"
 
 var (
-	formMapPool = sync.Pool{
+	dataMapPool = sync.Pool{
 		New: func() any {
-			return make(map[string][]string)
+			return make(map[string][]string, 8)
 		},
 	}
 	formFileMapPool = sync.Pool{
@@ -22,6 +22,8 @@ var (
 		},
 	}
 )
+
+const maxPoolableDataMapSize = 64
 
 // FormBinding is the form binder for form request body.
 type FormBinding struct {
@@ -41,8 +43,8 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 		return b.bindMultipart(req, out)
 	}
 
-	data := acquireFormMap()
-	defer releaseFormMap(data)
+	data := acquireDataMap()
+	defer releaseDataMap(data)
 
 	for key, val := range req.PostArgs().All() {
 		k := utils.UnsafeString(key)
@@ -62,8 +64,8 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 		return err
 	}
 
-	data := acquireFormMap()
-	defer releaseFormMap(data)
+	data := acquireDataMap()
+	defer releaseDataMap(data)
 
 	for key, values := range multipartForm.Value {
 		err = formatBindData(b.Name(), out, data, key, values, b.EnableSplitting, true)
@@ -91,17 +93,21 @@ func (b *FormBinding) Reset() {
 	b.MaxBodySize = 0
 }
 
-func acquireFormMap() map[string][]string {
-	m, ok := formMapPool.Get().(map[string][]string)
+func acquireDataMap() map[string][]string {
+	m, ok := dataMapPool.Get().(map[string][]string)
 	if !ok {
-		m = make(map[string][]string)
+		m = make(map[string][]string, 8)
 	}
 	return m
 }
 
-func releaseFormMap(m map[string][]string) {
-	clearFormMap(m)
-	formMapPool.Put(m)
+func releaseDataMap(m map[string][]string) {
+	if len(m) > maxPoolableDataMapSize {
+		return
+	}
+
+	clearDataMap(m)
+	dataMapPool.Put(m)
 }
 
 func acquireFileHeaderMap() map[string][]*multipart.FileHeader {
@@ -117,7 +123,7 @@ func releaseFileHeaderMap(m map[string][]*multipart.FileHeader) {
 	formFileMapPool.Put(m)
 }
 
-func clearFormMap(m map[string][]string) {
+func clearDataMap(m map[string][]string) {
 	clear(m)
 }
 
