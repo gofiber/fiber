@@ -154,16 +154,18 @@ func (c *core) execFunc() (*Response, error) {
 
 // preHooks runs all request hooks before sending the request.
 func (c *core) preHooks() error {
-	c.client.mu.Lock()
-	defer c.client.mu.Unlock()
+	c.client.mu.RLock()
+	userHooks := c.client.userRequestHooks
+	builtinHooks := c.client.builtinRequestHooks
+	c.client.mu.RUnlock()
 
-	for _, f := range c.client.userRequestHooks {
+	for _, f := range userHooks {
 		if err := f(c.client, c.req); err != nil {
 			return err
 		}
 	}
 
-	for _, f := range c.client.builtinRequestHooks {
+	for _, f := range builtinHooks {
 		if err := f(c.client, c.req); err != nil {
 			return err
 		}
@@ -174,16 +176,18 @@ func (c *core) preHooks() error {
 
 // afterHooks runs all response hooks after receiving the response.
 func (c *core) afterHooks(resp *Response) error {
-	c.client.mu.Lock()
-	defer c.client.mu.Unlock()
+	c.client.mu.RLock()
+	builtinHooks := c.client.builtinResponseHooks
+	userHooks := c.client.userResponseHooks
+	c.client.mu.RUnlock()
 
-	for _, f := range c.client.builtinResponseHooks {
+	for _, f := range builtinHooks {
 		if err := f(c.client, resp, c.req); err != nil {
 			return err
 		}
 	}
 
-	for _, f := range c.client.userResponseHooks {
+	for _, f := range userHooks {
 		if err := f(c.client, resp, c.req); err != nil {
 			return err
 		}

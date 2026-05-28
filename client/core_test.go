@@ -327,6 +327,111 @@ func Test_Execute(t *testing.T) {
 	})
 }
 
+func Test_PreHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+
+	client.AddRequestHook(func(_ *Client, _ *Request) error {
+		entered <- struct{}{}
+		<-release
+		return nil
+	})
+
+	run := func() <-chan error {
+		done := make(chan error, 1)
+
+		go func() {
+			core := newCore()
+			core.client = client
+			core.req = AcquireRequest()
+			defer ReleaseRequest(core.req)
+			core.req.SetURL("http://example.com")
+
+			done <- core.preHooks()
+		}()
+
+		return done
+	}
+
+	firstDone := run()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("first request hook was not invoked")
+	}
+
+	secondDone := run()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("second request hook execution was serialized by the client lock")
+	}
+
+	close(release)
+
+	require.NoError(t, <-firstDone)
+	require.NoError(t, <-secondDone)
+}
+
+func Test_AfterHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+
+	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
+		entered <- struct{}{}
+		<-release
+		return nil
+	})
+
+	run := func() <-chan error {
+		done := make(chan error, 1)
+
+		go func() {
+			core := newCore()
+			core.client = client
+			core.req = AcquireRequest()
+			defer ReleaseRequest(core.req)
+			core.req.SetURL("http://example.com")
+
+			resp := AcquireResponse()
+			defer ReleaseResponse(resp)
+
+			done <- core.afterHooks(resp)
+		}()
+
+		return done
+	}
+
+	firstDone := run()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("first response hook was not invoked")
+	}
+
+	secondDone := run()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("second response hook execution was serialized by the client lock")
+	}
+
+	close(release)
+
+	require.NoError(t, <-firstDone)
+	require.NoError(t, <-secondDone)
+}
+
 type blockingErrTransport struct {
 	err error
 
