@@ -34,6 +34,17 @@ func Test_returnErr(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func Test_returnBindErr_TypedNilFiberError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *Error
+	require.NoError(t, c.Bind().WithoutAutoHandling().returnBindErr(err, BindSourceBody))
+}
+
 // go test -run Test_AcquireReleaseBind -v
 func Test_AcquireReleaseBind(t *testing.T) {
 	b := AcquireBind()
