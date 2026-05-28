@@ -70,6 +70,24 @@ func Test_FormBinder_Bind_ParseError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func Test_ReleaseDataMap(t *testing.T) {
+	t.Parallel()
+
+	small := map[string][]string{
+		"name": {"john"},
+	}
+	releaseDataMap(small)
+	require.Empty(t, small)
+
+	large := make(map[string][]string, maxPoolableDataMapSize+1)
+	for i := range maxPoolableDataMapSize + 1 {
+		large[strings.Repeat("a", i+1)] = []string{"value"}
+	}
+
+	releaseDataMap(large)
+	require.Len(t, large, maxPoolableDataMapSize+1)
+}
+
 func Benchmark_FormBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
 
