@@ -2222,6 +2222,47 @@ func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 	}
 }
 
+func Test_App_InitPanicUnlocksRouteRegistration(t *testing.T) {
+	t.Parallel()
+
+	view := &panicLoadView{}
+	app := New(Config{Views: view})
+
+	type initResult struct {
+		recovered any
+	}
+
+	initDone := make(chan initResult, 1)
+	go func() {
+		result := initResult{}
+		defer func() {
+			result.recovered = recover()
+			initDone <- result
+		}()
+
+		app.init()
+	}()
+
+	select {
+	case result := <-initDone:
+		require.Equal(t, "panic load", result.recovered)
+	case <-time.After(time.Second):
+		t.Fatal("init panic was not recovered")
+	}
+
+	registerDone := make(chan struct{}, 1)
+	go func() {
+		app.Get("/after-panic", func(Ctx) error { return nil })
+		registerDone <- struct{}{}
+	}()
+
+	select {
+	case <-registerDone:
+	case <-time.After(time.Second):
+		t.Fatal("route registration deadlocked after init panic")
+	}
+}
+
 func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
 	t.Parallel()
 
