@@ -226,7 +226,7 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	}
 
 	var addrErr *net.AddrError
-	if errors.As(err, &addrErr) && addrErr.Err == "missing port in address" {
+	if !isNilError(err) && errors.As(err, &addrErr) && addrErr != nil && addrErr.Err == "missing port in address" {
 		if len(remoteAddr) > 253 { // Max hostname length
 			return nil, ErrRemoteAddrTooLong
 		}
@@ -238,6 +238,19 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 		return resolved, nil
 	}
 	return nil, fmt.Errorf("failed to resolve TCP address: %w", err)
+}
+
+func isNilError(err error) bool {
+	if err == nil {
+		return true
+	}
+
+	switch rv := reflect.ValueOf(err); rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return rv.IsNil()
+	default:
+		return false
+	}
 }
 
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {

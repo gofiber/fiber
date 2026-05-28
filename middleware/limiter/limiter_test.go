@@ -196,6 +196,21 @@ func TestLimiterDefaultConfigNoPanic(t *testing.T) {
 	})
 }
 
+func TestGetEffectiveStatusCodeTypedNilFiberError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Response().SetStatusCode(fiber.StatusAccepted)
+
+	var err *fiber.Error
+	require.NotPanics(t, func() {
+		require.Equal(t, fiber.StatusAccepted, getEffectiveStatusCode(c, err))
+	})
+}
+
 func TestLimiterFixedStorageGetError(t *testing.T) {
 	t.Parallel()
 

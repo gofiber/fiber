@@ -76,7 +76,7 @@ var DefaultErrorHandler = func(c fiber.Ctx, err error) error {
 
     // Retrieve the custom status code if it's a *fiber.Error
     var e *fiber.Error
-    if errors.As(err, &e) {
+    if errors.As(err, &e) && e != nil {
         code = e.Code
     }
 
@@ -106,7 +106,7 @@ app := fiber.New(fiber.Config{
 
         // Retrieve the custom status code if it's a *fiber.Error
         var e *fiber.Error
-        if errors.As(err, &e) {
+        if errors.As(err, &e) && e != nil {
             code = e.Code
         }
 
