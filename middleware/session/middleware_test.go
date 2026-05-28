@@ -22,29 +22,29 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-type failingSessionStorage struct {
+type mockFailingSessionStorage struct {
 	getErr error
 }
 
-func (s *failingSessionStorage) Get(string) ([]byte, error) {
+func (s *mockFailingSessionStorage) Get(string) ([]byte, error) {
 	return nil, s.getErr
 }
 
-func (s *failingSessionStorage) GetWithContext(context.Context, string) ([]byte, error) {
+func (s *mockFailingSessionStorage) GetWithContext(context.Context, string) ([]byte, error) {
 	return nil, s.getErr
 }
 
-func (*failingSessionStorage) Set(string, []byte, time.Duration) error { return nil }
+func (*mockFailingSessionStorage) Set(string, []byte, time.Duration) error { return nil }
 
-func (*failingSessionStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
+func (*mockFailingSessionStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
 	return nil
 }
 
-func (*failingSessionStorage) Delete(string) error                             { return nil }
-func (*failingSessionStorage) DeleteWithContext(context.Context, string) error { return nil }
-func (*failingSessionStorage) Reset() error                                    { return nil }
-func (*failingSessionStorage) ResetWithContext(context.Context) error          { return nil }
-func (*failingSessionStorage) Close() error                                    { return nil }
+func (*mockFailingSessionStorage) Delete(string) error                             { return nil }
+func (*mockFailingSessionStorage) DeleteWithContext(context.Context, string) error { return nil }
+func (*mockFailingSessionStorage) Reset() error                                    { return nil }
+func (*mockFailingSessionStorage) ResetWithContext(context.Context) error          { return nil }
+func (*mockFailingSessionStorage) Close() error                                    { return nil }
 
 func Test_Session_Middleware(t *testing.T) {
 	t.Parallel()
@@ -689,7 +689,7 @@ func Test_Session_Middleware_GetSessionError(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Storage: &failingSessionStorage{getErr: fmt.Errorf("redis unavailable")},
+		Storage: &mockFailingSessionStorage{getErr: fmt.Errorf("redis unavailable")},
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
