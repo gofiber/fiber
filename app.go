@@ -65,6 +65,8 @@ type Error struct {
 }
 
 // App denotes the Fiber application.
+// App is safe for concurrent use, except for route mutation methods that
+// explicitly document otherwise.
 type App struct {
 	// App config
 	config Config
@@ -1442,49 +1444,49 @@ func (*disableLogger) Printf(string, ...any) {
 }
 
 func (app *App) init() *App {
-	// lock application
-	app.mutex.Lock()
+	func() {
+		// lock application
+		app.mutex.Lock()
+		defer app.mutex.Unlock()
 
-	// Initialize Services when needed,
-	// panics if there is an error starting them.
-	app.initServices()
+		// Initialize Services when needed,
+		// panics if there is an error starting them.
+		app.initServices()
 
-	// Only load templates if a view engine is specified
-	if app.config.Views != nil {
-		if err := app.config.Views.Load(); err != nil {
-			log.Warnf("failed to load views: %v", err)
+		// Only load templates if a view engine is specified
+		if app.config.Views != nil {
+			if err := app.config.Views.Load(); err != nil {
+				log.Warnf("failed to load views: %v", err)
+			}
 		}
-	}
 
-	// create fasthttp server
-	app.server = &fasthttp.Server{
-		Logger:       &disableLogger{},
-		LogAllErrors: false,
-		ErrorHandler: app.serverErrorHandler,
-	}
+		// create fasthttp server
+		app.server = &fasthttp.Server{
+			Logger:       &disableLogger{},
+			LogAllErrors: false,
+			ErrorHandler: app.serverErrorHandler,
+		}
 
-	// fasthttp server settings
-	app.server.Handler = app.selectRequestHandler()
-	app.server.Name = app.config.ServerHeader
-	app.server.Concurrency = app.config.Concurrency
-	app.server.NoDefaultDate = app.config.DisableDefaultDate
-	app.server.NoDefaultContentType = app.config.DisableDefaultContentType
-	app.server.DisableHeaderNamesNormalizing = app.config.DisableHeaderNormalizing
-	app.server.DisableKeepalive = app.config.DisableKeepalive
-	app.server.MaxRequestBodySize = app.config.BodyLimit
-	app.server.NoDefaultServerHeader = app.config.ServerHeader == ""
-	app.server.ReadTimeout = app.config.ReadTimeout
-	app.server.WriteTimeout = app.config.WriteTimeout
-	app.server.IdleTimeout = app.config.IdleTimeout
-	app.server.ReadBufferSize = app.config.ReadBufferSize
-	app.server.WriteBufferSize = app.config.WriteBufferSize
-	app.server.GetOnly = app.config.GETOnly
-	app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
-	app.server.StreamRequestBody = app.config.StreamRequestBody
-	app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm
-
-	// unlock application
-	app.mutex.Unlock()
+		// fasthttp server settings
+		app.server.Handler = app.selectRequestHandler()
+		app.server.Name = app.config.ServerHeader
+		app.server.Concurrency = app.config.Concurrency
+		app.server.NoDefaultDate = app.config.DisableDefaultDate
+		app.server.NoDefaultContentType = app.config.DisableDefaultContentType
+		app.server.DisableHeaderNamesNormalizing = app.config.DisableHeaderNormalizing
+		app.server.DisableKeepalive = app.config.DisableKeepalive
+		app.server.MaxRequestBodySize = app.config.BodyLimit
+		app.server.NoDefaultServerHeader = app.config.ServerHeader == ""
+		app.server.ReadTimeout = app.config.ReadTimeout
+		app.server.WriteTimeout = app.config.WriteTimeout
+		app.server.IdleTimeout = app.config.IdleTimeout
+		app.server.ReadBufferSize = app.config.ReadBufferSize
+		app.server.WriteBufferSize = app.config.WriteBufferSize
+		app.server.GetOnly = app.config.GETOnly
+		app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
+		app.server.StreamRequestBody = app.config.StreamRequestBody
+		app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm
+	}()
 
 	// Register the Services shutdown handler once the app is initialized and unlocked.
 	app.Hooks().OnPostShutdown(func(_ error) error {

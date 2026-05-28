@@ -30,7 +30,7 @@ func Test_Cache_Security_DoS_ExcessiveQueryParams(t *testing.T) {
 
 	// Build a URL with more than maxQueryParams (128) parameters
 	queryParams := make([]string, 150)
-	for i := 0; i < 150; i++ {
+	for i := range 150 {
 		queryParams[i] = fmt.Sprintf("param%d=value%d", i, i)
 	}
 	url := "/?" + strings.Join(queryParams, "&")
@@ -69,7 +69,7 @@ func Test_Cache_Security_DoS_ExcessiveQueryBuffer(t *testing.T) {
 	// Using characters that require escaping (e.g., "=" becomes "%3D", 3x larger)
 	specialChars := strings.Repeat("=", 50) // Each "=" becomes "%3D"
 	queryParams := make([]string, 30)
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		queryParams[i] = fmt.Sprintf("key%d=%s", i, specialChars)
 	}
 	url := "/?" + strings.Join(queryParams, "&")
@@ -100,7 +100,7 @@ func Test_Cache_Security_DoS_ExcessiveVaryHeaders(t *testing.T) {
 		count++
 		// Generate more than maxVaryHeaders (32) headers
 		varyHeaders := make([]string, 50)
-		for i := 0; i < 50; i++ {
+		for i := range 50 {
 			varyHeaders[i] = fmt.Sprintf("X-Custom-Header-%d", i)
 		}
 		c.Set(fiber.HeaderVary, strings.Join(varyHeaders, ", "))
@@ -277,7 +277,7 @@ func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 
 	// Build URL with excessive parameters
 	queryParams := make([]string, 200)
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		queryParams[i] = fmt.Sprintf("p%d=v%d", i, i)
 	}
 	url := "/?" + strings.Join(queryParams, "&")
@@ -290,7 +290,7 @@ func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 	// Track errors in goroutines
 	var errCount atomic.Int32
 
-	for i := 0; i < numRequests; i++ {
+	for range numRequests {
 		go func() {
 			defer wg.Done()
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, url, http.NoBody))
@@ -328,7 +328,7 @@ func Test_Cache_Security_QueryParameterRepeated(t *testing.T) {
 
 	// Test with 100 values for the same parameter
 	values := make([]string, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		values[i] = fmt.Sprintf("key=%d", i)
 	}
 	url := "/?" + strings.Join(values, "&")
