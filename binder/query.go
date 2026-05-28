@@ -12,7 +12,7 @@ type QueryBinding struct {
 
 // Name returns the binding name.
 func (*QueryBinding) Name() string {
-	return "query"
+	return bindingQuery
 }
 
 // Bind parses the request query and returns the result.

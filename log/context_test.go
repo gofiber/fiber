@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"strings"
 	"sync"
 	"testing"
@@ -39,9 +40,7 @@ func (failingContextBuffer) String() string                  { return "" }
 func buildTestTemplate(t *testing.T, format string, custom map[string]ContextTagFunc) *logtemplate.Template[any, ContextData] {
 	t.Helper()
 	tags := defaultContextTagMap()
-	for k, v := range custom {
-		tags[k] = v
-	}
+	maps.Copy(tags, custom)
 	tags[TagContextValue] = defaultContextValueTag
 	tmpl, err := logtemplate.Build[any, ContextData](format, tags)
 	require.NoError(t, err)
@@ -361,7 +360,7 @@ func Test_ContextTemplate_ConcurrentRegistration(t *testing.T) {
 
 	register := func(id int) {
 		defer wg.Done()
-		for i := 0; i < iterations; i++ {
+		for range iterations {
 			//nolint:errcheck // race-stress test intentionally ignores transient errors
 			_ = RegisterContextTag("tenant", func(output Buffer, _ any, _ *ContextData, _ string) (int, error) {
 				return output.WriteString("acme")
@@ -371,14 +370,14 @@ func Test_ContextTemplate_ConcurrentRegistration(t *testing.T) {
 	}
 	reformat := func() {
 		defer wg.Done()
-		for i := 0; i < iterations; i++ {
+		for range iterations {
 			//nolint:errcheck // race-stress test intentionally ignores transient errors
 			_ = SetContextTemplate(ContextConfig{Format: "[${tenant}]"})
 		}
 	}
 	emit := func() {
 		defer wg.Done()
-		for i := 0; i < iterations; i++ {
+		for range iterations {
 			tmpl := contextTemplate.Load()
 			if tmpl == nil {
 				continue
@@ -390,7 +389,7 @@ func Test_ContextTemplate_ConcurrentRegistration(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		go register(i)
 		go reformat()
 		go emit()

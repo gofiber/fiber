@@ -70,7 +70,7 @@ func Test_Template_BuildCopiesFormat(t *testing.T) {
 	t.Parallel()
 
 	mutable := []byte("prefix ${tag} suffix")
-	format := unsafe.String(&mutable[0], len(mutable)) //nolint:gosec // Test intentionally simulates an unsafe mutable string source.
+	format := unsafe.String(&mutable[0], len(mutable))
 
 	tmpl, err := Build[string, testData](format, map[string]Func[string, testData]{
 		"tag": func(output Buffer, _ string, _ *testData, _ string) (int, error) {

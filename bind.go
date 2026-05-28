@@ -196,7 +196,7 @@ func (b *Bind) validateStruct(out any) error {
 	}
 
 	// Unwrap pointers (e.g. *T, **T) to inspect the underlying destination type.
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 
@@ -422,7 +422,7 @@ func (b *Bind) Body(out any) error {
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) All(out any) error {
 	outVal := reflect.ValueOf(out)
-	if outVal.Kind() != reflect.Ptr || outVal.Elem().Kind() != reflect.Struct {
+	if outVal.Kind() != reflect.Pointer || outVal.Elem().Kind() != reflect.Struct {
 		return ErrUnprocessableEntity
 	}
 
