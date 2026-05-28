@@ -81,6 +81,30 @@ func createRedirectServer(t *testing.T) string {
 	return addr
 }
 
+// go test -run Test_Proxy_DefaultClient_MaxConnsPerHost
+func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
+	require.Equal(t, defaultMaxConnsPerHost, client.MaxConnsPerHost)
+}
+
+// go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost
+func Test_Proxy_ConfigDefault_MaxConnsPerHost(t *testing.T) {
+	t.Parallel()
+
+	cfg := configDefault(Config{Servers: []string{"127.0.0.1"}})
+	require.Equal(t, defaultMaxConnsPerHost, cfg.MaxConnsPerHost)
+}
+
+// go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost_Override
+func Test_Proxy_ConfigDefault_MaxConnsPerHost_Override(t *testing.T) {
+	t.Parallel()
+
+	cfg := configDefault(Config{
+		Servers:         []string{"127.0.0.1"},
+		MaxConnsPerHost: 2048,
+	})
+	require.Equal(t, 2048, cfg.MaxConnsPerHost)
+}
+
 // go test -run Test_Proxy_Empty_Host
 func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
 	t.Parallel()
