@@ -192,7 +192,7 @@ func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
 		TimeDone:         done,
 	}
 
-	stoppedCh := startTimestampUpdater(&timestamp, &cfg)
+	stoppedCh := startTimestampUpdaterWithStop(&timestamp, &cfg)
 
 	initial := timestamp.Load().(string) //nolint:forcetypeassert // test setup stores a string value
 	time.Sleep(20 * time.Millisecond)
