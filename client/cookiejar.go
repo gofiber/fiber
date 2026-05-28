@@ -38,7 +38,8 @@ func ReleaseCookieJar(c *CookieJar) {
 }
 
 // CookieJar manages cookie storage for the client.
-// CookieJar is safe for concurrent use.
+// CookieJar is safe for concurrent use, except Release. Release must not run
+// concurrently with other methods, and the jar must not be used after Release.
 type CookieJar struct {
 	// hostCookies stores wrapped cookies keyed by storage scope:
 	// host-only cookies use the request host, while domain cookies use the
@@ -342,7 +343,8 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 	}
 }
 
-// Release releases all stored cookies. After this, the CookieJar is empty.
+// Release releases all stored cookies. After this, the CookieJar is empty and
+// must not be used again.
 func (cj *CookieJar) Release() {
 	// FOLLOW-UP performance optimization:
 	// Currently, a race condition is found because the reset method modifies a value
