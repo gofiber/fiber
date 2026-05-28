@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,30 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+type failingSessionStorage struct {
+	getErr error
+}
+
+func (s *failingSessionStorage) Get(string) ([]byte, error) {
+	return nil, s.getErr
+}
+
+func (s *failingSessionStorage) GetWithContext(context.Context, string) ([]byte, error) {
+	return nil, s.getErr
+}
+
+func (*failingSessionStorage) Set(string, []byte, time.Duration) error { return nil }
+
+func (*failingSessionStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
+	return nil
+}
+
+func (*failingSessionStorage) Delete(string) error                       { return nil }
+func (*failingSessionStorage) DeleteWithContext(context.Context, string) error { return nil }
+func (*failingSessionStorage) Reset() error                              { return nil }
+func (*failingSessionStorage) ResetWithContext(context.Context) error    { return nil }
+func (*failingSessionStorage) Close() error                              { return nil }
 
 func Test_Session_Middleware(t *testing.T) {
 	t.Parallel()
@@ -657,4 +682,31 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+}
+
+func Test_Session_Middleware_GetSessionError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Storage: &failingSessionStorage{getErr: fmt.Errorf("redis unavailable")},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.AddCookie(&http.Cookie{
+		Name:  "session_id",
+		Value: "existing-session-id",
+	})
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+	body := new(bytes.Buffer)
+	_, err = body.ReadFrom(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "session: failed to get session: redis unavailable", body.String())
 }
