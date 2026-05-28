@@ -1998,6 +1998,53 @@ func Test_Replace(t *testing.T) {
 	C().SetDial(nil)
 }
 
+func Test_Replace_ConcurrentAccess(t *testing.T) {
+	original := C()
+	t.Cleanup(func() {
+		defaultClient.Store(original)
+	})
+
+	clients := []*Client{New(), New(), New()}
+
+	var nilLoads atomic.Int32
+	var wg sync.WaitGroup
+
+	for i := range 4 {
+		wg.Add(1)
+
+		go func(offset int) {
+			defer wg.Done()
+
+			for j := range 1_000 {
+				restore := Replace(clients[(offset+j)%len(clients)])
+				if C() == nil {
+					nilLoads.Add(1)
+				}
+				restore()
+			}
+		}(i)
+	}
+
+	for range 4 {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			for range 10_000 {
+				if C() == nil {
+					nilLoads.Add(1)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	require.Zero(t, nilLoads.Load())
+	require.NotNil(t, C())
+}
+
 func Test_Set_Config_To_Request(t *testing.T) {
 	t.Parallel()
 
