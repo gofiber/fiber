@@ -24,6 +24,9 @@ type MemoryLock struct {
 // Lock acquires the lock for the provided key, creating it when necessary.
 func (l *MemoryLock) Lock(key string) error {
 	l.mu.Lock()
+	if l.keys == nil {
+		l.keys = make(map[string]*countedLock)
+	}
 	lock, ok := l.keys[key]
 	if !ok {
 		lock = new(countedLock)
