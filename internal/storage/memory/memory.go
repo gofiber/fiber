@@ -38,7 +38,7 @@ func New(config ...Config) *Storage {
 	store := &Storage{
 		db:         make(map[string]Entry),
 		gcInterval: cfg.GCInterval,
-		done:       make(chan struct{}),
+		done:       make(chan struct{}, 1),
 	}
 
 	// Start garbage collector
@@ -150,7 +150,10 @@ func (s *Storage) ResetWithContext(ctx context.Context) error {
 // Close stops the background garbage collector and releases resources
 // associated with the storage instance.
 func (s *Storage) Close() error {
-	s.done <- struct{}{}
+	select {
+	case s.done <- struct{}{}:
+	default:
+	}
 	return nil
 }
 

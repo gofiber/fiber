@@ -299,6 +299,25 @@ func Test_Storage_Memory_Close(t *testing.T) {
 	require.NoError(t, testStore.Close())
 }
 
+func Test_Storage_Memory_Close_DoesNotBlockWhenRepeated(t *testing.T) {
+	t.Parallel()
+
+	testStore := New()
+	require.NoError(t, testStore.Close())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		require.NoError(t, testStore.Close())
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("repeated close blocked")
+	}
+}
+
 func Test_Storage_Memory_Conn(t *testing.T) {
 	t.Parallel()
 	testStore := New()

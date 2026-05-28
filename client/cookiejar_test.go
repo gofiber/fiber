@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 	"time"
 
@@ -180,6 +181,22 @@ func Test_CookieJarSetKeyValue(t *testing.T) {
 
 	cookies := cj.Get(uri)
 	require.Len(t, cookies, 2)
+}
+
+func Test_CookieJarHostStorageIsBounded(t *testing.T) {
+	t.Parallel()
+
+	cj := &CookieJar{}
+
+	for i := range maxCookieJarHosts + 32 {
+		host := fmt.Sprintf("host-%d.example.com", i)
+		cookie := &fasthttp.Cookie{}
+		cookie.SetKey("k")
+		cookie.SetValue("v")
+		cj.SetByHost([]byte(host), cookie)
+	}
+
+	require.LessOrEqual(t, len(cj.hostCookies), maxCookieJarHosts)
 }
 
 func Test_CookieJarGetFromResponse(t *testing.T) {

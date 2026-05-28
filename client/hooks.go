@@ -18,9 +18,11 @@ import (
 
 var protocolCheck = regexp.MustCompile(`^https?://.*$`)
 
+const fileCopyBufferSize = 32 << 10
+
 var fileBufPool = sync.Pool{
 	New: func() any {
-		b := make([]byte, 1<<20) // 1MB buffer
+		b := make([]byte, fileCopyBufferSize)
 		return &b
 	},
 }

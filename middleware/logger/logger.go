@@ -38,15 +38,7 @@ func New(config ...Config) fiber.Handler {
 	// Create correct timeformat
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
-	// Update date/time every 500 milliseconds in a separate go routine
-	if strings.Contains(cfg.Format, "${"+TagTime+"}") {
-		go func() {
-			for {
-				time.Sleep(cfg.TimeInterval)
-				timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
-			}
-		}()
-	}
+	startTimestampUpdater(&timestamp, &cfg)
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
 
@@ -139,4 +131,24 @@ func New(config ...Config) fiber.Handler {
 		// Logger instance & update some logger data fields
 		return cfg.LoggerFunc(c, data, &cfg)
 	}
+}
+
+func startTimestampUpdater(timestamp *atomic.Value, cfg *Config) {
+	if !strings.Contains(cfg.Format, "${"+TagTime+"}") {
+		return
+	}
+
+	go func() {
+		ticker := time.NewTicker(cfg.TimeInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
+			case <-cfg.TimeDone:
+				return
+			}
+		}
+	}()
 }
