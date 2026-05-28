@@ -48,12 +48,16 @@ type Map map[string]any
 //	cfg := fiber.Config{}
 //	cfg.ErrorHandler = func(c Ctx, err error) error {
 //	 code := StatusInternalServerError
+//	 message := utils.StatusMessage(code)
+//	 if !isNilError(err) {
+//	   message = err.Error()
+//	 }
 //	 var e *fiber.Error
 //	 if errors.As(err, &e) && e != nil {
 //	   code = e.Code
 //	 }
 //	 c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-//	 return c.Status(code).SendString(err.Error())
+//	 return c.Status(code).SendString(message)
 //	}
 //	app := fiber.New(cfg)
 type ErrorHandler = func(Ctx, error) error
@@ -616,12 +620,12 @@ func DefaultErrorHandler(c Ctx, err error) error {
 	code := StatusInternalServerError
 	message := utils.StatusMessage(code)
 	isNilErr := isNilError(err)
-	var e *Error
-	if !isNilErr && errors.As(err, &e) && e != nil {
-		code = e.Code
-		message = e.Message
-	} else if !isNilErr {
+	if !isNilErr {
 		message = err.Error()
+		var e *Error
+		if errors.As(err, &e) && e != nil {
+			code = e.Code
+		}
 	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	return c.Status(code).SendString(message)

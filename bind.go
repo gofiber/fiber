@@ -158,7 +158,10 @@ func (b *Bind) SkipValidation(skip bool) *Bind {
 
 // Check WithAutoHandling/WithoutAutoHandling errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
-	if err == nil || b.shouldSkipErrHandling {
+	if isNilError(err) {
+		return nil
+	}
+	if b.shouldSkipErrHandling {
 		return err
 	}
 
