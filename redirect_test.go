@@ -236,6 +236,48 @@ func Test_Redirect_Back_WithReferer(t *testing.T) {
 	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
+// go test -run Test_Redirect_Back_WithCrossOriginReferer
+func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.JSON("Home")
+	}).Name("home")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// Cross-origin referer should be rejected, fallback used
+	c.Request().Header.Set(HeaderReferer, "https://evil.com/phishing")
+	c.Request().URI().SetHost("example.com")
+	err := c.Redirect().Back("/")
+	require.NoError(t, err)
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+
+	// Cross-origin referer with no fallback should return error
+	c.Response().Reset()
+	c.Request().Header.Set(HeaderReferer, "https://evil.com/phishing")
+	err = c.Redirect().Back()
+	require.Equal(t, 500, c.Response().StatusCode())
+	require.ErrorAs(t, err, &ErrRedirectBackNoFallback)
+
+	// Same-origin referer with host should be accepted
+	c.Response().Reset()
+	c.Request().Header.Set(HeaderReferer, "https://example.com/dashboard")
+	c.Request().URI().SetHost("example.com")
+	err = c.Redirect().Back("/")
+	require.NoError(t, err)
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+	require.Equal(t, "https://example.com/dashboard", string(c.Response().Header.Peek(HeaderLocation)))
+
+	// Relative path referer should be accepted (no host in URL)
+	c.Response().Reset()
+	c.Request().Header.Set(HeaderReferer, "/back")
+	err = c.Redirect().Back("/")
+	require.NoError(t, err)
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
 // go test -run Test_Redirect_Route_WithFlashMessages
 func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	t.Parallel()
