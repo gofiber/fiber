@@ -8,10 +8,12 @@ import (
 	"bytes"
 	"encoding/hex"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 
@@ -380,7 +382,7 @@ func (r *Redirect) Back(fallback ...string) error {
 	location := r.c.Get(HeaderReferer)
 	if location != "" {
 		parsed, err := url.Parse(location)
-		if err != nil || (parsed.Host != "" && parsed.Hostname() != r.c.Hostname()) {
+		if err != nil || (parsed.Host != "" && !schemeAndHostMatch(parsed.Scheme, parsed.Host, r.c.Scheme(), r.c.Host())) {
 			location = "" // Reject cross-origin referers
 		}
 	}
@@ -397,6 +399,50 @@ func (r *Redirect) Back(fallback ...string) error {
 	}
 
 	return r.To(location)
+}
+
+func schemeAndHostMatch(schemeA, hostA, schemeB, hostB string) bool {
+	normalizedSchemeA := utilsstrings.ToLower(schemeA)
+	normalizedSchemeB := utilsstrings.ToLower(schemeB)
+
+	normalizedHostA := normalizeRedirectSchemeHost(normalizedSchemeA, hostA)
+	normalizedHostB := normalizeRedirectSchemeHost(normalizedSchemeB, hostB)
+
+	return normalizedSchemeA == normalizedSchemeB && normalizedHostA == normalizedHostB
+}
+
+func normalizeRedirectSchemeHost(scheme, host string) string {
+	host = utilsstrings.ToLower(host)
+
+	defaultPort := ""
+	switch scheme {
+	case schemeHTTP:
+		defaultPort = "80"
+	case schemeHTTPS:
+		defaultPort = "443"
+	default:
+		return host
+	}
+
+	parsedHost, err := url.Parse(scheme + "://" + host)
+	if err != nil {
+		return host
+	}
+
+	if port := parsedHost.Port(); port != "" {
+		return host
+	}
+
+	hostname := parsedHost.Hostname()
+	if hostname == "" {
+		return host
+	}
+
+	if strings.IndexByte(hostname, ':') >= 0 && !strings.HasPrefix(hostname, "[") {
+		hostname = "[" + hostname + "]"
+	}
+
+	return hostname + ":" + defaultPort
 }
 
 // parseAndClearFlashMessages is a method to get flash messages before they are getting removed

@@ -260,16 +260,40 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	require.Equal(t, 500, c.Response().StatusCode())
 	require.ErrorAs(t, err, &ErrRedirectBackNoFallback)
 
-	// Same-origin referer with host should be accepted
+	// Same-origin referer with host should be accepted.
 	c.Response().Reset()
-	c.Request().Header.Set(HeaderReferer, "https://example.com/dashboard")
+	c.Request().Header.Set(HeaderReferer, "http://example.com/dashboard")
 	c.Request().URI().SetHost("example.com")
 	err = c.Redirect().Back("/")
 	require.NoError(t, err)
 	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "https://example.com/dashboard", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, "http://example.com/dashboard", string(c.Response().Header.Peek(HeaderLocation)))
 
-	// Relative path referer should be accepted (no host in URL)
+	// Same-origin referer with a default port should be accepted.
+	c.Response().Reset()
+	c.Request().Header.Set(HeaderReferer, "http://example.com:80/dashboard")
+	err = c.Redirect().Back("/")
+	require.NoError(t, err)
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+	require.Equal(t, "http://example.com:80/dashboard", string(c.Response().Header.Peek(HeaderLocation)))
+
+	// Scheme mismatch should be rejected.
+	c.Response().Reset()
+	c.Request().Header.Set(HeaderReferer, "https://example.com/dashboard")
+	err = c.Redirect().Back("/")
+	require.NoError(t, err)
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+
+	// Port mismatch should be rejected.
+	c.Response().Reset()
+	c.Request().Header.Set(HeaderReferer, "http://example.com:8080/admin")
+	err = c.Redirect().Back("/")
+	require.NoError(t, err)
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+
+	// Relative path referer should be accepted (no host in URL).
 	c.Response().Reset()
 	c.Request().Header.Set(HeaderReferer, "/back")
 	err = c.Redirect().Back("/")
