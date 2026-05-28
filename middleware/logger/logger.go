@@ -133,6 +133,8 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
+// startTimestampUpdater refreshes the cached formatted timestamp until TimeDone
+// is closed.
 func startTimestampUpdater(timestamp *atomic.Value, cfg *Config) {
 	if !strings.Contains(cfg.Format, "${"+TagTime+"}") {
 		return

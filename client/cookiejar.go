@@ -355,6 +355,8 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 	}
 }
 
+// ensureHostCapacityLocked bounds the number of stored hosts by evicting
+// expired entries first and then one remaining host if the jar is still full.
 func (cj *CookieJar) ensureHostCapacityLocked(key string, now time.Time) {
 	if _, ok := cj.hostCookies[key]; ok || len(cj.hostCookies) < maxCookieJarHosts {
 		return
@@ -386,6 +388,7 @@ func (cj *CookieJar) ensureHostCapacityLocked(key string, now time.Time) {
 	}
 }
 
+// releaseStoredCookies releases pooled cookies for an evicted host entry.
 func releaseStoredCookies(cookies []storedCookie) {
 	for _, sc := range cookies {
 		fasthttp.ReleaseCookie(sc.cookie)
