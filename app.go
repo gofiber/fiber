@@ -1580,10 +1580,9 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 	switch {
 	case isNilErr:
-		switch err.(type) {
-		case net.Error:
+		if errors.As(err, &netErr) {
 			err = ErrBadGateway
-		default:
+		} else {
 			err = NewError(StatusBadRequest, errMessage)
 		}
 	case errors.As(err, new(*fasthttp.ErrSmallBuffer)):
