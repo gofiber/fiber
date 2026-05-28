@@ -34,8 +34,8 @@ const (
 var (
 	_                  io.Writer       = (*DefaultCtx)(nil) // Compile-time check
 	_                  context.Context = (*DefaultCtx)(nil) // Compile-time check
-	emptyRouteHandlers                 = []Handler{}
-	emptyRouteParams                   = []string{}
+	emptyRouteHandlers [0]Handler
+	emptyRouteParams   [0]string
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -64,7 +64,6 @@ type DefaultCtx struct {
 	viewBindMap            Map                  // Default view map to bind template engine
 	values                 [maxParams]string    // Route parameter values
 	baseURI                string               // HTTP base uri
-	baseURIBuf             []byte               // HTTP base uri buffer
 	pathOriginal           string               // Original HTTP path
 	flashMessages          redirectionMsgs      // Flash messages
 	path                   []byte               // HTTP path with the modifications by the configuration
@@ -109,14 +108,7 @@ func (c *DefaultCtx) BaseURL() string {
 	if c.baseURI != "" {
 		return c.baseURI
 	}
-	scheme := c.Scheme()
-	host := c.Host()
-	buf := c.baseURIBuf[:0]
-	buf = append(buf, scheme...)
-	buf = append(buf, "://"...)
-	buf = append(buf, host...)
-	c.baseURIBuf = buf
-	c.baseURI = c.app.toString(buf)
+	c.baseURI = c.Scheme() + "://" + c.Host()
 	return c.baseURI
 }
 
@@ -367,8 +359,8 @@ func (c *DefaultCtx) Route() *Route {
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
 			Method:   c.Method(),
-			Handlers: emptyRouteHandlers,
-			Params:   emptyRouteParams,
+			Handlers: emptyRouteHandlers[:],
+			Params:   emptyRouteParams[:],
 		}
 	}
 	return c.route

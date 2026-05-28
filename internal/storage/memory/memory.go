@@ -38,7 +38,8 @@ func New(config ...Config) *Storage {
 	store := &Storage{
 		db:         make(map[string]Entry),
 		gcInterval: cfg.GCInterval,
-		done:       make(chan struct{}, 1),
+		// Buffered so repeated Close calls do not block if gc has already exited.
+		done: make(chan struct{}, 1),
 	}
 
 	// Start garbage collector
