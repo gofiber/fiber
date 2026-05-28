@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/keylock"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -22,7 +22,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 	}
 
 	// Limiter variables
-	mux := &sync.RWMutex{}
+	locks := keylock.New(limiterKeyLockShards)
 
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, !cfg.DisableValueRedaction)
@@ -50,15 +50,13 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// Get key from request
 		key := cfg.KeyGenerator(c)
 
-		// Lock entry
-		mux.Lock()
-
 		reqCtx := c.Context()
+		releaseKey := locks.Lock(key)
 
 		// Get entry from pool and release when finished
 		e, err := manager.get(reqCtx, key)
 		if err != nil {
-			mux.Unlock()
+			releaseKey()
 			return err
 		}
 
@@ -94,12 +92,11 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// Otherwise, after the end of "sample window", attackers could launch
 		// a new request with the full window length.
 		if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
-			mux.Unlock()
+			releaseKey()
 			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 		}
 
-		// Unlock entry
-		mux.Unlock()
+		releaseKey()
 
 		// Check if hits exceed the allowed maximum for this request
 		if remaining < 0 {
@@ -124,11 +121,10 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest)
 
 		if skipHit || !cfg.DisableHeaders {
-			// Lock entry
-			mux.Lock()
+			releaseKey = locks.Lock(key)
 			entry, getErr := manager.get(reqCtx, key)
 			if getErr != nil {
-				mux.Unlock()
+				releaseKey()
 				return getErr
 			}
 			e = entry
@@ -146,11 +142,10 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 			rate = int(math.Ceil(float64(e.prevHits)*weight)) + e.currHits
 			remaining = maxRequests - rate
 			if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
-				mux.Unlock()
+				releaseKey()
 				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 			}
-			// Unlock entry
-			mux.Unlock()
+			releaseKey()
 
 			// We can continue, update RateLimit headers
 			if !cfg.DisableHeaders {

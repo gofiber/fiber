@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,88 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+type blockingSessionStorage struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newBlockingSessionStorage() *blockingSessionStorage {
+	return &blockingSessionStorage{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (s *blockingSessionStorage) GetWithContext(context.Context, string) ([]byte, error) {
+	s.once.Do(func() {
+		close(s.entered)
+	})
+	<-s.release
+	return nil, nil
+}
+
+func (s *blockingSessionStorage) Get(key string) ([]byte, error) {
+	return s.GetWithContext(context.Background(), key)
+}
+
+func (*blockingSessionStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
+	return nil
+}
+
+func (s *blockingSessionStorage) Set(key string, val []byte, exp time.Duration) error {
+	return s.SetWithContext(context.Background(), key, val, exp)
+}
+
+func (*blockingSessionStorage) DeleteWithContext(context.Context, string) error {
+	return nil
+}
+
+func (s *blockingSessionStorage) Delete(key string) error {
+	return s.DeleteWithContext(context.Background(), key)
+}
+
+func (*blockingSessionStorage) ResetWithContext(context.Context) error {
+	return nil
+}
+
+func (s *blockingSessionStorage) Reset() error {
+	return s.ResetWithContext(context.Background())
+}
+
+func (*blockingSessionStorage) Close() error {
+	return nil
+}
+
+func Test_Session_InitializeDoesNotHoldLockDuringStoreLoad(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Locals(sessionIDContextKey, "existing-session")
+
+	storage := newBlockingSessionStorage()
+	store := NewStore(Config{Storage: storage})
+	cfg := configDefault(Config{Store: store})
+	m := acquireMiddleware()
+	defer releaseMiddleware(m)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		m.initialize(ctx, &cfg)
+	}()
+
+	<-storage.entered
+
+	require.True(t, m.mu.TryLock(), "middleware mutex should not be held while loading session data")
+	m.mu.Unlock()
+
+	close(storage.release)
+	<-done
+}
 
 func Test_Session_Middleware(t *testing.T) {
 	t.Parallel()

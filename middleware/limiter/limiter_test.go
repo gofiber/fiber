@@ -3,6 +3,7 @@ package limiter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -69,6 +70,13 @@ type contextRecorderLimiterStorage struct {
 	sets []contextRecord
 }
 
+type blockingLimiterStorage struct {
+	*failingLimiterStorage
+	mu      sync.Mutex
+	enter   map[string]chan struct{}
+	release chan struct{}
+}
+
 func sleepForRetryAfter(t *testing.T, resp *http.Response) {
 	t.Helper()
 
@@ -95,6 +103,14 @@ func sleepForRetryAfter(t *testing.T, resp *http.Response) {
 
 func newContextRecorderLimiterStorage() *contextRecorderLimiterStorage {
 	return &contextRecorderLimiterStorage{failingLimiterStorage: newFailingLimiterStorage()}
+}
+
+func newBlockingLimiterStorage() *blockingLimiterStorage {
+	return &blockingLimiterStorage{
+		failingLimiterStorage: newFailingLimiterStorage(),
+		enter:                 make(map[string]chan struct{}),
+		release:               make(chan struct{}),
+	}
 }
 
 func contextRecordFrom(ctx context.Context, key string) contextRecord {
@@ -128,6 +144,46 @@ func (s *contextRecorderLimiterStorage) recordedSets() []contextRecord {
 	out := make([]contextRecord, len(s.sets))
 	copy(out, s.sets)
 	return out
+}
+
+func (s *blockingLimiterStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.mu.Lock()
+	ch, ok := s.enter[key]
+	if !ok {
+		ch = make(chan struct{})
+		s.enter[key] = ch
+		close(ch)
+	}
+	release := s.release
+	s.mu.Unlock()
+
+	<-release
+	return s.failingLimiterStorage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s *blockingLimiterStorage) waitForKey(t *testing.T, key string) {
+	t.Helper()
+
+	deadline := time.After(2 * time.Second)
+	for {
+		s.mu.Lock()
+		ch, ok := s.enter[key]
+		s.mu.Unlock()
+		if ok {
+			select {
+			case <-ch:
+				return
+			case <-deadline:
+				t.Fatalf("timed out waiting for storage key %q", key)
+			}
+		}
+
+		select {
+		case <-time.After(10 * time.Millisecond):
+		case <-deadline:
+			t.Fatalf("timed out waiting for storage key %q", key)
+		}
+	}
 }
 
 func (s *failingLimiterStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
@@ -317,6 +373,55 @@ func TestLimiterFixedPropagatesRequestContextToStorage(t *testing.T) {
 	verifyRecords(t, sets, "/rollback", "fixed-rollback", true)
 }
 
+func testLimiterDifferentKeysDoNotBlockStorage(t *testing.T, middleware Handler) {
+	t.Helper()
+
+	storage := newBlockingLimiterStorage()
+	app := fiber.New()
+	app.Use(New(Config{
+		Storage:           storage,
+		Max:               10,
+		Expiration:        time.Minute,
+		LimiterMiddleware: middleware,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Get("X-Limiter-Key")
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	runRequest := func(key string) <-chan error {
+		done := make(chan error, 1)
+		go func() {
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header.Set("X-Limiter-Key", key)
+			resp, err := app.Test(req)
+			if err == nil && resp.StatusCode != fiber.StatusOK {
+				err = fmt.Errorf("unexpected status for %s: %d", key, resp.StatusCode)
+			}
+			done <- err
+		}()
+		return done
+	}
+
+	firstDone := runRequest("alpha")
+	storage.waitForKey(t, "alpha")
+
+	secondDone := runRequest("bravo")
+	storage.waitForKey(t, "bravo")
+
+	close(storage.release)
+
+	require.NoError(t, <-firstDone)
+	require.NoError(t, <-secondDone)
+}
+
+func TestLimiterFixedDifferentKeysDoNotBlockStorage(t *testing.T) {
+	t.Parallel()
+	testLimiterDifferentKeysDoNotBlockStorage(t, FixedWindow{})
+}
+
 func TestLimiterFixedStorageGetErrorDisableRedaction(t *testing.T) {
 	t.Parallel()
 
@@ -466,6 +571,11 @@ func TestLimiterSlidingPropagatesRequestContextToStorage(t *testing.T) {
 	verifyRecords(t, gets, "/rollback", "sliding-rollback", true)
 	verifyRecords(t, sets, "/normal", "sliding-normal", false)
 	verifyRecords(t, sets, "/rollback", "sliding-rollback", true)
+}
+
+func TestLimiterSlidingDifferentKeysDoNotBlockStorage(t *testing.T) {
+	t.Parallel()
+	testLimiterDifferentKeysDoNotBlockStorage(t, SlidingWindow{})
 }
 
 func TestLimiterSlidingSkipsPostUpdateWhenHeadersDisabled(t *testing.T) {

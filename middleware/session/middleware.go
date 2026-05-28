@@ -141,17 +141,16 @@ func clearMiddlewareContext(c fiber.Ctx) {
 
 // initialize sets up middleware for the request.
 func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	session, err := cfg.Store.getSession(c)
 	if err != nil {
 		panic(err) // handle or log this error appropriately in production
 	}
 
+	m.mu.Lock()
 	m.config = *cfg
 	m.Session = session
 	m.ctx = c
+	m.mu.Unlock()
 
 	storeMiddlewareContext(c, session, m)
 }
