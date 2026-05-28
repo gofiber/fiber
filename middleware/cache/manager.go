@@ -15,15 +15,20 @@ import (
 // Default slice limits are sized for cache payloads, with tighter field caps below.
 //
 //go:generate msgp -o=manager_msgp.go -tests=true -unexported
-//nolint:revive // msgp requires tags on unexported fields for limit enforcement.
 type item struct {
-	headers         []cachedHeader `msg:",limit=1024"` // Typical HTTP header count stays well below this.
-	body            []byte         // Cache bodies are bounded by storage policy, not msgp limits.
-	ctype           []byte         `msg:",limit=256"`  // Content-Type values are short per RFCs.
-	cencoding       []byte         `msg:",limit=128"`  // Content-Encoding is typically a short token.
-	cacheControl    []byte         `msg:",limit=2048"` // Cache-Control directives are bounded.
-	expires         []byte         `msg:",limit=128"`  // Expires is a short HTTP-date string.
-	etag            []byte         `msg:",limit=256"`  // ETags are small tokens/quoted strings.
+	// revive:disable-next-line:struct-tag // msgp requires tags on unexported fields for limit enforcement.
+	headers []cachedHeader `msg:",limit=1024"` // Typical HTTP header count stays well below this.
+	body    []byte         // Cache bodies are bounded by storage policy, not msgp limits.
+	// revive:disable-next-line:struct-tag // msgp requires tags on unexported fields for limit enforcement.
+	ctype []byte `msg:",limit=256"` // Content-Type values are short per RFCs.
+	// revive:disable-next-line:struct-tag // msgp requires tags on unexported fields for limit enforcement.
+	cencoding []byte `msg:",limit=128"` // Content-Encoding is typically a short token.
+	// revive:disable-next-line:struct-tag // msgp requires tags on unexported fields for limit enforcement.
+	cacheControl []byte `msg:",limit=2048"` // Cache-Control directives are bounded.
+	// revive:disable-next-line:struct-tag // msgp requires tags on unexported fields for limit enforcement.
+	expires []byte `msg:",limit=128"` // Expires is a short HTTP-date string.
+	// revive:disable-next-line:struct-tag // msgp requires tags on unexported fields for limit enforcement.
+	etag            []byte `msg:",limit=256"` // ETags are small tokens/quoted strings.
 	date            uint64
 	status          int
 	age             uint64
@@ -37,9 +42,10 @@ type item struct {
 	heapidx int
 }
 
-//nolint:revive // msgp requires tags on unexported fields for limit enforcement.
 type cachedHeader struct {
-	key   []byte `msg:",limit=512"`   // Header names are small.
+	// revive:disable-next-line:struct-tag // msgp requires tags on unexported fields for limit enforcement.
+	key []byte `msg:",limit=512"` // Header names are small.
+	// revive:disable-next-line:struct-tag // msgp requires tags on unexported fields for limit enforcement.
 	value []byte `msg:",limit=16384"` // Header values are bounded to reasonable sizes.
 }
 
