@@ -16,6 +16,7 @@ type countedLock struct {
 }
 
 // MemoryLock coordinates access to idempotency keys using in-memory locks.
+// MemoryLock is safe for concurrent use.
 type MemoryLock struct {
 	keys map[string]*countedLock
 	mu   sync.Mutex
