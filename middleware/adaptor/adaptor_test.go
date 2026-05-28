@@ -211,7 +211,7 @@ func Test_HTTPHandler_Flush_App_Test(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Get("/", HTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	app.Get("/", HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			t.Fatal("w does not implement http.Flusher")
@@ -239,10 +239,10 @@ func Test_HTTPHandler_App_Test_Interrupted(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Get("/", HTTPHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	app.Get("/", HTTPHandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			t.Fatalf("w does not implement http.Flusher")
+			t.Fatal("w does not implement http.Flusher")
 		}
 		w.WriteHeader(fiber.StatusOK)
 		fmt.Fprintf(w, "Hello ")
@@ -527,7 +527,7 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 func Test_FiberHandler(t *testing.T) {
 	t.Parallel()
 
-	testFiberToHandlerFunc(t, false)
+	testFiberToHandlerFunc(t, "1.2.3.4:6789")
 }
 
 func Test_FiberHandler_BodyLimit(t *testing.T) {
@@ -604,30 +604,26 @@ func Test_FiberHandler_BodyLimit(t *testing.T) {
 func Test_FiberApp(t *testing.T) {
 	t.Parallel()
 
-	testFiberToHandlerFunc(t, false, fiber.New())
+	testFiberToHandlerFunc(t, "1.2.3.4:6789", fiber.New())
 }
 
 func Test_FiberHandlerDefaultPort(t *testing.T) {
 	t.Parallel()
 
-	testFiberToHandlerFunc(t, true)
+	testFiberToHandlerFunc(t, "1.2.3.4:80")
 }
 
 func Test_FiberAppDefaultPort(t *testing.T) {
 	t.Parallel()
 
-	testFiberToHandlerFunc(t, true, fiber.New())
+	testFiberToHandlerFunc(t, "1.2.3.4:80", fiber.New())
 }
 
-func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.App) {
+func testFiberToHandlerFunc(t *testing.T, expectedRemoteAddr string, app ...*fiber.App) {
 	t.Helper()
 
 	expectedMethod := fiber.MethodPost
 	expectedContentLength := len(expectedBody)
-	expectedRemoteAddr := "1.2.3.4:6789"
-	if checkDefaultPort {
-		expectedRemoteAddr = "1.2.3.4:80"
-	}
 	expectedHeader := map[string]string{
 		"Foo-Bar":         "baz",
 		"Abc":             "defg",
@@ -679,7 +675,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	r.ContentLength = int64(expectedContentLength)
 	r.Host = expectedHost
 	r.RemoteAddr = expectedRemoteAddr
-	if checkDefaultPort {
+	if expectedRemoteAddr == "1.2.3.4:80" {
 		r.RemoteAddr = "1.2.3.4"
 	}
 
@@ -809,7 +805,7 @@ func (w *netHTTPResponseWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (w *netHTTPResponseWriter) Flush() {}
+func (*netHTTPResponseWriter) Flush() {}
 
 func Test_ConvertRequest(t *testing.T) {
 	t.Parallel()
@@ -977,7 +973,7 @@ func Test_HTTPMiddleware_ErrorHandling(t *testing.T) {
 		})
 	}
 
-	fiberHandler := func(c fiber.Ctx) error {
+	fiberHandler := func(_ fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "test error")
 	}
 
@@ -1022,7 +1018,7 @@ func Test_FiberHandler_WithErrorInHandler(t *testing.T) {
 	t.Parallel()
 
 	// Test error handling in fiber handler
-	fiberH := func(c fiber.Ctx) error {
+	fiberH := func(_ fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusTeapot, "I'm a teapot")
 	}
 	handlerFunc := FiberHandlerFunc(fiberH)
@@ -1132,13 +1128,13 @@ func (f *failingStreamWriter) Header() http.Header {
 	return f.header
 }
 
-func (f *failingStreamWriter) Write([]byte) (int, error) {
+func (*failingStreamWriter) Write([]byte) (int, error) {
 	return 0, errors.New("simulated write error")
 }
 
-func (f *failingStreamWriter) WriteHeader(int) {}
+func (*failingStreamWriter) WriteHeader(int) {}
 
-func (f *failingStreamWriter) Flush() {}
+func (*failingStreamWriter) Flush() {}
 
 func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 	t.Parallel()
@@ -1188,11 +1184,11 @@ func Test_FiberHandler_WithInterruptedSendStreamWriter(t *testing.T) {
 // failingReader always returns an error when Read is called
 type failingReader struct{}
 
-func (f *failingReader) Read(p []byte) (int, error) {
+func (*failingReader) Read([]byte) (int, error) {
 	return 0, errors.New("simulated read error")
 }
 
-func (f *failingReader) Close() error {
+func (*failingReader) Close() error {
 	return nil
 }
 
@@ -1349,7 +1345,7 @@ func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
 }
 
 func Benchmark_HTTPHandler(b *testing.B) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok")) //nolint:errcheck // not needed
 	})
@@ -1380,7 +1376,7 @@ func Benchmark_HTTPHandler(b *testing.B) {
 }
 
 func Benchmark_HTTPHandlerWithContext(b *testing.B) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok")) //nolint:errcheck // not needed
 	})
