@@ -211,6 +211,22 @@ func Test_Exec_Func(t *testing.T) {
 			t.Fatal("transport Do did not finish")
 		}
 	})
+
+	t.Run("panic in transport returns error", func(t *testing.T) {
+		t.Parallel()
+		core, client, req := newCore(), New(), AcquireRequest()
+		core.ctx = context.Background()
+		core.client = client
+		core.req = req
+
+		req.RawRequest.SetRequestURI("http://example.com/panic")
+		client.transport = &panicTransport{value: "boom"}
+
+		resp, err := core.execFunc()
+
+		require.Nil(t, resp)
+		require.EqualError(t, err, "client panic: boom")
+	})
 }
 
 func Test_Execute(t *testing.T) {
@@ -393,6 +409,50 @@ func (*blockingErrTransport) SetStreamResponseBody(_ bool) {
 
 func (b *blockingErrTransport) release() {
 	b.releaseOnce.Do(func() { close(b.unblock) })
+}
+
+type panicTransport struct {
+	value any
+}
+
+func (p *panicTransport) Do(_ *fasthttp.Request, _ *fasthttp.Response) error {
+	panic(p.value)
+}
+
+func (p *panicTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+	return p.Do(req, resp)
+}
+
+func (p *panicTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, _ time.Time) error {
+	return p.Do(req, resp)
+}
+
+func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+	return p.Do(req, resp)
+}
+
+func (*panicTransport) CloseIdleConnections() {
+}
+
+func (*panicTransport) TLSConfig() *tls.Config {
+	return nil
+}
+
+func (*panicTransport) SetTLSConfig(_ *tls.Config) {
+}
+
+func (*panicTransport) SetDial(_ fasthttp.DialFunc) {
+}
+
+func (*panicTransport) Client() any {
+	return nil
+}
+
+func (*panicTransport) StreamResponseBody() bool {
+	return false
+}
+
+func (*panicTransport) SetStreamResponseBody(_ bool) {
 }
 
 func Test_Core_RequestBodyStream(t *testing.T) {
