@@ -43,7 +43,7 @@ func unsafeRandString(n int) (string, error) {
 
 	// Compute the largest multiple of inputLength ≤ 256 to avoid modulo bias.
 	// Any byte ≥ max will be rejected and re‑read.
-	maxLength := byte(256 - (256 % int(inputLength)))
+	maxLength := byte(256 - (256 % int(inputLength))) //nolint:gosec // G115: integer overflow conversion int -> byte
 
 	out := make([]byte, n)
 	buf := make([]byte, n)

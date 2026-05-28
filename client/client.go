@@ -36,6 +36,8 @@ var ErrFailedToAppendCert = errors.New("failed to append certificate")
 //
 // Settings configured on the client are shared across every request and may be
 // overridden per request when needed.
+// Client is safe for concurrent request execution after configuration is
+// complete. Concurrent configuration changes require external synchronization.
 type Client struct {
 	logger    log.CommonLogger
 	transport httpClientTransport

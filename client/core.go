@@ -6,6 +6,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -92,6 +93,16 @@ func (c *core) execFunc() (*Response, error) {
 			}
 		}()
 
+		var resp *Response
+		defer func() {
+			if r := recover(); r != nil {
+				if resp != nil {
+					ReleaseResponse(resp)
+				}
+				errChan <- fmt.Errorf("client panic: %v", r)
+			}
+		}()
+
 		c.req.RawRequest.CopyTo(reqv)
 		if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
 			reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
@@ -119,7 +130,7 @@ func (c *core) execFunc() (*Response, error) {
 			return
 		}
 
-		resp := AcquireResponse()
+		resp = AcquireResponse()
 		resp.setClient(c.client)
 		resp.setRequest(c.req)
 

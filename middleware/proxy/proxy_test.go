@@ -197,7 +197,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	})
 
 	addr := ln.Addr().String()
-	clientTLSConf := &tls.Config{InsecureSkipVerify: true} //nolint:gosec // We're in a test func, so this is fine
+	clientTLSConf := &tls.Config{InsecureSkipVerify: true}
 
 	// disable certificate verification in Balancer
 	app.Use(Balancer(Config{
@@ -373,7 +373,7 @@ func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 	})
 
 	addr := ln.Addr().String()
-	clientTLSConf := &tls.Config{InsecureSkipVerify: true} //nolint:gosec // We're in a test func, so this is fine
+	clientTLSConf := &tls.Config{InsecureSkipVerify: true}
 
 	// disable certificate verification
 	WithClient(&fasthttp.Client{

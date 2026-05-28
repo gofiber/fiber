@@ -337,7 +337,7 @@ func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {
 	req.Header.SetMethod(fasthttp.MethodPost)
 
 	calls := make([]stubRedirectCall, 0, defaultRedirectLimit+1)
-	for i := 0; i < defaultRedirectLimit+1; i++ {
+	for range defaultRedirectLimit + 1 {
 		calls = append(calls, stubRedirectCall{status: ptrInt(fasthttp.StatusFound), location: ptrString("/loop")})
 	}
 

@@ -35,6 +35,7 @@ linters:
     - makezero
     - mirror
     - misspell
+    - modernize
     - musttag
     - nakedret
     - nilerr
@@ -97,6 +98,7 @@ linters:
         - pattern: ^http\.Default(Client|ServeMux|Transport)$
       analyze-types: true
     goconst:
+      ignore-tests: true
       numbers: true
     gocritic:
       enabled-tags:
@@ -160,6 +162,8 @@ linters:
           arguments:
             - make
           disabled: true
+        - name: enforce-switch-style
+          disabled: true
         - name: exported
           disabled: true
         - name: file-header
@@ -179,11 +183,16 @@ linters:
           disabled: true
         - name: package-comments
           disabled: true
+        - name: package-naming
+          arguments:
+            - skip-collision-with-common-std: true
         - name: optimize-operands-order
           disabled: true
         - name: unchecked-type-assertion
           disabled: true
         - name: unhandled-error
+          disabled: true
+        - name: use-slices-sort
           disabled: true
     staticcheck:
       checks:
@@ -236,6 +245,7 @@ linters:
           - bodyclose
           - err113
           - goconst # disabling goconst in test files only
+          - gosec
       - source: (?i)fmt.Fprintf?
         linters:
           - errcheck

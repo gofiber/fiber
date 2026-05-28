@@ -62,9 +62,9 @@ func Test_Idempotency(t *testing.T) {
 	}))
 
 	nextCount := func() func() int {
-		var count int32
+		var count atomic.Int32
 		return func() int {
-			return int(atomic.AddInt32(&count, 1))
+			return int(count.Add(1))
 		}
 	}()
 

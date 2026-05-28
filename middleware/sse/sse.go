@@ -80,6 +80,7 @@ func New(config ...Config) fiber.Handler {
 }
 
 // Stream is an active SSE response stream.
+// Stream is safe for concurrent use.
 type Stream struct {
 	ctx         context.Context //nolint:containedctx // Stream exposes a per-stream context canceled with the stream lifecycle.
 	cancel      context.CancelFunc
