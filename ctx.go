@@ -105,10 +105,18 @@ func (c *DefaultCtx) App() *App {
 
 // BaseURL returns (protocol + host + base path).
 func (c *DefaultCtx) BaseURL() string {
+	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
+	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
 	if c.baseURI != "" {
 		return c.baseURI
 	}
-	c.baseURI = c.Scheme() + "://" + c.Host()
+	scheme := c.Scheme()
+	host := c.Host()
+	buf := make([]byte, 0, len(scheme)+len("://")+len(host))
+	buf = append(buf, scheme...)
+	buf = append(buf, "://"...)
+	buf = append(buf, host...)
+	c.baseURI = c.app.toString(buf)
 	return c.baseURI
 }
 
