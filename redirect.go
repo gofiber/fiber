@@ -383,7 +383,7 @@ func (r *Redirect) Back(fallback ...string) error {
 	if location != "" {
 		parsed, err := url.Parse(location)
 		if err != nil || (parsed.Host != "" && !schemeAndHostMatch(parsed.Scheme, parsed.Host, r.c.Scheme(), r.c.Host())) {
-			location = "" // Reject cross-origin referers
+			location = "" // Reject cross-origin referrers
 		}
 	}
 
