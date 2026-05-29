@@ -17,10 +17,10 @@ import (
 // map returned by Conn. Access to that map requires external synchronization.
 type Storage struct {
 	db         map[string]Entry
-	closeOnce  sync.Once
 	done       chan struct{}
 	gcInterval time.Duration
 	mux        sync.RWMutex
+	closeOnce  sync.Once
 }
 
 // Entry represents a value stored in memory along with its expiration.
