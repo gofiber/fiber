@@ -355,7 +355,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 			if !c.match {
 				state = "not match"
 			}
-			t.Run(testCollection.pattern+" | "+state+" | "+c.url, func(b *testing.B) {
+			t.Run(testCollection.pattern+"_"+state+"_"+c.url, func(b *testing.B) {
 				for b.Loop() {
 					if match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck); match {
 						// Get testCases from the original path
@@ -388,7 +388,7 @@ func Benchmark_RoutePatternMatch(t *testing.B) {
 			if !c.match {
 				state = "not match"
 			}
-			t.Run(testCollection.pattern+" | "+state+" | "+c.url, func(b *testing.B) {
+			t.Run(testCollection.pattern+"_"+state+"_"+c.url, func(b *testing.B) {
 				for b.Loop() {
 					if match := RoutePatternMatch(c.url, testCollection.pattern); match {
 						// Get testCases from the original path
