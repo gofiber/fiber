@@ -73,28 +73,14 @@ Fiber ships with a default error handler that sends **500 Internal Server Error*
 var DefaultErrorHandler = func(c fiber.Ctx, err error) error {
     // Status code defaults to 500
     code := fiber.StatusInternalServerError
-    message := http.StatusText(code)
-    isNilError := func(err error) bool {
-        if err == nil {
-            return true
-        }
-
-        switch rv := reflect.ValueOf(err); rv.Kind() {
-        case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-            return rv.IsNil()
-        default:
-            return false
-        }
-    }
-
-    if !isNilError(err) {
-        message = err.Error()
-    }
-
-    // Retrieve the custom status code if it's a *fiber.Error
     var e *fiber.Error
-    if errors.As(err, &e) && e != nil {
+    matched := errors.As(err, &e)
+    if matched && e != nil {
         code = e.Code
+    }
+    message := http.StatusText(code)
+    if err != nil && !(matched && e == nil) {
+        message = err.Error()
     }
 
     // Set Content-Type: text/plain; charset=utf-8

@@ -158,9 +158,16 @@ func (b *Bind) SkipValidation(skip bool) *Bind {
 
 // Check WithAutoHandling/WithoutAutoHandling errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
-	if isNilError(err) {
+	if err == nil {
 		return nil
 	}
+
+	var fiberErr *Error
+	matched := errors.As(err, &fiberErr)
+	if matched && fiberErr == nil {
+		return nil
+	}
+
 	if b.shouldSkipErrHandling {
 		return err
 	}
@@ -173,9 +180,6 @@ func (b *Bind) returnErr(err error) error {
 // Use for binding parse failures; use returnErr directly for Custom and validation errors.
 func (b *Bind) returnBindErr(err error, source string) error {
 	if retErr := b.returnErr(err); retErr != nil {
-		if isNilError(retErr) {
-			return nil
-		}
 		var fiberErr *Error
 		if errors.As(retErr, &fiberErr) && fiberErr != nil {
 			return fiberErr

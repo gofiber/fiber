@@ -48,13 +48,14 @@ type Map map[string]any
 //	cfg := fiber.Config{}
 //	cfg.ErrorHandler = func(c Ctx, err error) error {
 //	 code := StatusInternalServerError
-//	 message := utils.StatusMessage(code)
-//	 if !isNilError(err) {
-//	   message = err.Error()
-//	 }
 //	 var e *fiber.Error
-//	 if errors.As(err, &e) && e != nil {
+//	 matched := errors.As(err, &e)
+//	 if matched && e != nil {
 //	   code = e.Code
+//	 }
+//	 message := utils.StatusMessage(code)
+//	 if err != nil && !(matched && e == nil) {
+//	   message = err.Error()
 //	 }
 //	 c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 //	 return c.Status(code).SendString(message)
@@ -618,30 +619,17 @@ var httpReadResponse = http.ReadResponse
 // DefaultErrorHandler that process return errors from handlers
 func DefaultErrorHandler(c Ctx, err error) error {
 	code := StatusInternalServerError
+	var e *Error
+	matched := errors.As(err, &e)
+	if matched && e != nil {
+		code = e.Code
+	}
 	message := utils.StatusMessage(code)
-	isNilErr := isNilError(err)
-	if !isNilErr {
+	if err != nil && (!matched || e != nil) {
 		message = err.Error()
-		var e *Error
-		if errors.As(err, &e) && e != nil {
-			code = e.Code
-		}
 	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	return c.Status(code).SendString(message)
-}
-
-func isNilError(err error) bool {
-	if err == nil {
-		return true
-	}
-
-	switch rv := reflect.ValueOf(err); rv.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return rv.IsNil()
-	default:
-		return false
-	}
 }
 
 // New creates a new Fiber named instance.
@@ -1577,23 +1565,22 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	)
 
 	errMessage := utils.StatusMessage(StatusBadRequest)
-	isNilErr := isNilError(err)
-	if !isNilErr {
+	matchedNetOP := errors.As(err, &errNetOP)
+	if err != nil && (!matchedNetOP || errNetOP != nil) {
 		errMessage = err.Error()
 	}
+	matchedNetErr := errors.As(err, &netErr)
 
 	switch {
-	case isNilErr:
-		if errors.As(err, &netErr) {
-			err = ErrBadGateway
-		} else {
-			err = NewError(StatusBadRequest, errMessage)
-		}
+	case err == nil:
+		err = NewError(StatusBadRequest, errMessage)
+	case matchedNetOP && errNetOP == nil:
+		err = ErrBadGateway
 	case errors.As(err, new(*fasthttp.ErrSmallBuffer)):
 		err = ErrRequestHeaderFieldsTooLarge
-	case errors.As(err, &errNetOP) && errNetOP != nil && errNetOP.Timeout():
+	case matchedNetOP && errNetOP.Timeout():
 		err = ErrRequestTimeout
-	case errors.As(err, &netErr):
+	case matchedNetErr:
 		err = ErrBadGateway
 	case errors.Is(err, fasthttp.ErrBodyTooLarge):
 		err = ErrRequestEntityTooLarge

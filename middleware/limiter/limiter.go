@@ -2,7 +2,6 @@ package limiter
 
 import (
 	"errors"
-	"reflect"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -32,26 +31,11 @@ func New(config ...Config) fiber.Handler {
 // getEffectiveStatusCode returns the actual status code, considering both the error and response status
 func getEffectiveStatusCode(c fiber.Ctx, err error) int {
 	// If there's an error and it's a *fiber.Error, use its status code
-	if err != nil && !isNilError(err) {
-		var fiberErr *fiber.Error
-		if errors.As(err, &fiberErr) && fiberErr != nil {
-			return fiberErr.Code
-		}
+	var fiberErr *fiber.Error
+	if errors.As(err, &fiberErr) && fiberErr != nil {
+		return fiberErr.Code
 	}
 
 	// Otherwise, use the response status code
 	return c.Response().StatusCode()
-}
-
-func isNilError(err error) bool {
-	if err == nil {
-		return true
-	}
-
-	switch rv := reflect.ValueOf(err); rv.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return rv.IsNil()
-	default:
-		return false
-	}
 }
