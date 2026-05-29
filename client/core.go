@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -155,7 +156,7 @@ func (c *core) execFunc() (*Response, error) {
 // preHooks runs all request hooks before sending the request.
 func (c *core) preHooks() error {
 	c.client.mu.RLock()
-	userHooks := append([]RequestHook(nil), c.client.userRequestHooks...)
+	userHooks := slices.Clone(c.client.userRequestHooks)
 	c.client.mu.RUnlock()
 
 	for _, f := range userHooks {
@@ -179,7 +180,7 @@ func (c *core) preHooks() error {
 // afterHooks runs all response hooks after receiving the response.
 func (c *core) afterHooks(resp *Response) error {
 	c.client.mu.Lock()
-	userHooks := append([]ResponseHook(nil), c.client.userResponseHooks...)
+	userHooks := slices.Clone(c.client.userResponseHooks)
 	for _, f := range c.client.builtinResponseHooks {
 		if err := f(c.client, resp, c.req); err != nil {
 			c.client.mu.Unlock()
