@@ -7,13 +7,13 @@ import (
 
 // Locker serializes work per key while limiting global contention through shards.
 type Locker struct {
-	seed   maphash.Seed
 	shards []shard
+	seed   maphash.Seed
 }
 
 type shard struct {
-	mu     sync.Mutex
 	owners map[string]chan struct{}
+	mu     sync.Mutex
 }
 
 // New creates a Locker with the provided shard count.

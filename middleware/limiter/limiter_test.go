@@ -23,6 +23,7 @@ import (
 type failingLimiterStorage struct {
 	data map[string][]byte
 	errs map[string]error
+	mu   sync.Mutex
 }
 
 const testLimiterClientKey = "client-key"
@@ -72,9 +73,9 @@ type contextRecorderLimiterStorage struct {
 
 type blockingLimiterStorage struct {
 	*failingLimiterStorage
-	mu      sync.Mutex
 	enter   map[string]chan struct{}
 	release chan struct{}
+	mu      sync.Mutex
 }
 
 func sleepForRetryAfter(t *testing.T, resp *http.Response) {
@@ -148,9 +149,8 @@ func (s *contextRecorderLimiterStorage) recordedSets() []contextRecord {
 
 func (s *blockingLimiterStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
 	s.mu.Lock()
-	ch, ok := s.enter[key]
-	if !ok {
-		ch = make(chan struct{})
+	if _, ok := s.enter[key]; !ok {
+		ch := make(chan struct{})
 		s.enter[key] = ch
 		close(ch)
 	}
@@ -187,6 +187,8 @@ func (s *blockingLimiterStorage) waitForKey(t *testing.T, key string) {
 }
 
 func (s *failingLimiterStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err, ok := s.errs["get|"+key]; ok && err != nil {
 		return nil, err
 	}
@@ -201,6 +203,8 @@ func (s *failingLimiterStorage) Get(key string) ([]byte, error) {
 }
 
 func (s *failingLimiterStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err, ok := s.errs["set|"+key]; ok && err != nil {
 		return err
 	}
