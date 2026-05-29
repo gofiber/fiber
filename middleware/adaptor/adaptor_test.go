@@ -1693,5 +1693,3 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		t.Fatal("server shutdown timed out")
 	}
 }
-
-//revive:enable

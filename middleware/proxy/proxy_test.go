@@ -736,12 +736,24 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 // go test -race -run Test_Proxy_Forward_Global_Client
 func Test_Proxy_Forward_Global_Client(t *testing.T) {
 	t.Parallel()
+
+	prev := client.Load()
+	require.NotNil(t, prev)
+	t.Cleanup(func() {
+		WithClient(prev)
+	})
+
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
 	WithClient(&fasthttp.Client{
 		NoDefaultUserAgentHeader: true,
 		DisablePathNormalizing:   true,
+		MaxConnsPerHost:          123,
 	})
+	loadedClient := client.Load()
+	require.NotNil(t, loadedClient)
+	require.Equal(t, 123, loadedClient.MaxConnsPerHost)
+
 	app := fiber.New()
 	app.Get("/test_global_client", func(c fiber.Ctx) error {
 		return c.SendString("test_global_client")
