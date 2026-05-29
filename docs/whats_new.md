@@ -2141,6 +2141,11 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
 1. **BodyParser**: Use `c.Bind().Body()` instead of `c.BodyParser()`.
 
+    > [!WARNING]
+    > `BodyParser`/`Bind().Body` must receive your destination value, not the
+    > Fiber context itself. Calls such as `c.BodyParser(c)` were already
+    > invalid in v2 and must be rewritten manually during migration.
+
     <details>
     <summary>Example</summary>
 

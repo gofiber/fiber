@@ -1369,6 +1369,27 @@ func Test_Bind_Body(t *testing.T) {
 		testDecodeParserError(t, MIMEMultipartForm+`;boundary="b"`, "--b")
 	})
 
+	t.Run("ErrorContextTarget", func(t *testing.T) {
+		t.Parallel()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().SetBody([]byte(`{"name":"john"}`))
+		c.Request().Header.SetContentLength(len(`{"name":"john"}`))
+		err := c.Bind().Body(c)
+		require.ErrorIs(t, err, ErrUnprocessableEntity)
+	})
+
+	t.Run("ErrorPointerToContextTarget", func(t *testing.T) {
+		t.Parallel()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().SetBody([]byte(`{"name":"john"}`))
+		c.Request().Header.SetContentLength(len(`{"name":"john"}`))
+		ctx := Ctx(c)
+		err := c.Bind().Body(&ctx)
+		require.ErrorIs(t, err, ErrUnprocessableEntity)
+	})
+
 	type CollectionQuery struct {
 		Data []Demo `query:"data"`
 	}
@@ -1440,6 +1461,17 @@ func Test_Bind_Body(t *testing.T) {
 		require.Equal(t, "john", cq.Data[0].Name)
 		require.Equal(t, "doe", cq.Data[1].Name)
 	})
+}
+
+func Test_Bind_JSON_RejectsContextTarget(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().SetBody([]byte(`{"name":"john"}`))
+
+	err := c.Bind().JSON(c)
+	require.ErrorIs(t, err, ErrUnprocessableEntity)
 }
 
 // go test -run Test_Bind_Body_WithSetParserDecoder

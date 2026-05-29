@@ -34,6 +34,8 @@ var bindPool = sync.Pool{
 	},
 }
 
+var ctxInterfaceType = reflect.TypeOf((*Ctx)(nil)).Elem()
+
 // Bind provides helper methods for binding request data to Go values.
 // By default (manual mode), parsing failures are returned as *BindError; use errors.As to extract source and field details.
 // With WithAutoHandling(), parsing failures set HTTP 400 and return *Error instead.
@@ -207,6 +209,28 @@ func (b *Bind) validateStruct(out any) error {
 	return validator.Validate(out)
 }
 
+func isContextBindingTarget(out any) bool {
+	for t := reflect.TypeOf(out); t != nil; {
+		if t.Implements(ctxInterfaceType) {
+			return true
+		}
+		if t.Kind() != reflect.Pointer {
+			return false
+		}
+		t = t.Elem()
+	}
+
+	return false
+}
+
+func rejectContextBindingTarget(out any) error {
+	if isContextBindingTarget(out) {
+		return ErrUnprocessableEntity
+	}
+
+	return nil
+}
+
 // Custom To use custom binders, you have to use this method.
 // You can register them from RegisterCustomBinder method of Fiber instance.
 // They're checked by name, if it's not found, it will return an error.
@@ -289,6 +313,10 @@ func (b *Bind) Query(out any) error {
 // JSON binds the body string into the struct.
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) JSON(out any) error {
+	if err := rejectContextBindingTarget(out); err != nil {
+		return err
+	}
+
 	bind := binder.GetFromThePool[*binder.JSONBinding](&binder.JSONBinderPool)
 	bind.JSONDecoder = b.ctx.App().Config().JSONDecoder
 
@@ -304,6 +332,10 @@ func (b *Bind) JSON(out any) error {
 // CBOR binds the body string into the struct.
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) CBOR(out any) error {
+	if err := rejectContextBindingTarget(out); err != nil {
+		return err
+	}
+
 	bind := binder.GetFromThePool[*binder.CBORBinding](&binder.CBORBinderPool)
 	bind.CBORDecoder = b.ctx.App().Config().CBORDecoder
 
@@ -318,6 +350,10 @@ func (b *Bind) CBOR(out any) error {
 // XML binds the body string into the struct.
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) XML(out any) error {
+	if err := rejectContextBindingTarget(out); err != nil {
+		return err
+	}
+
 	bind := binder.GetFromThePool[*binder.XMLBinding](&binder.XMLBinderPool)
 	bind.XMLDecoder = b.ctx.App().config.XMLDecoder
 
@@ -335,6 +371,10 @@ func (b *Bind) XML(out any) error {
 // If Content-Type is "application/x-www-form-urlencoded" or "multipart/form-data", it will bind the form values.
 // Multipart file fields are supported using *multipart.FileHeader, []*multipart.FileHeader, or *[]*multipart.FileHeader.
 func (b *Bind) Form(out any) error {
+	if err := rejectContextBindingTarget(out); err != nil {
+		return err
+	}
+
 	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
 	bind.MaxBodySize = b.ctx.App().config.BodyLimit
@@ -365,6 +405,10 @@ func (b *Bind) URI(out any) error {
 // MsgPack binds the body string into the struct.
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) MsgPack(out any) error {
+	if err := rejectContextBindingTarget(out); err != nil {
+		return err
+	}
+
 	bind := binder.GetFromThePool[*binder.MsgPackBinding](&binder.MsgPackBinderPool)
 	bind.MsgPackDecoder = b.ctx.App().Config().MsgPackDecoder
 
@@ -384,6 +428,10 @@ func (b *Bind) MsgPack(out any) error {
 // If none of the content types above are matched, it'll take a look custom binders by checking the MIMETypes() method of custom binder.
 // If there is no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
 func (b *Bind) Body(out any) error {
+	if err := rejectContextBindingTarget(out); err != nil {
+		return err
+	}
+
 	// Get content-type
 	ctype := utils.UnsafeString(utilsbytes.UnsafeToLower(b.ctx.RequestCtx().Request.Header.ContentType()))
 	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))
