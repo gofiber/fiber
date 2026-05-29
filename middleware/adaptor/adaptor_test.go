@@ -1,4 +1,5 @@
-//nolint:contextcheck,revive // Much easier to just ignore memory leaks in tests
+//revive:disable
+//nolint:contextcheck // Much easier to just ignore memory leaks in tests
 package adaptor
 
 import (
@@ -1693,3 +1694,5 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		t.Fatal("server shutdown timed out")
 	}
 }
+
+//revive:enable

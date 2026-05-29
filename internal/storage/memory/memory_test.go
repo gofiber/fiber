@@ -306,16 +306,27 @@ func Test_Storage_Memory_Close_DoesNotBlockWhenRepeated(t *testing.T) {
 	require.NoError(t, testStore.Close())
 
 	done := make(chan struct{})
+	errCh := make(chan error, 1)
 	go func() {
 		defer close(done)
-		require.NoError(t, testStore.Close())
+		errCh <- testStore.Close()
 	}()
 
 	select {
 	case <-done:
+		require.NoError(t, <-errCh)
 	case <-time.After(time.Second):
 		t.Fatal("repeated close blocked")
 	}
+}
+
+func Test_Storage_Memory_Close_ReturnsWhenSignalAlreadyQueued(t *testing.T) {
+	t.Parallel()
+
+	testStore := &Storage{done: make(chan struct{}, 1)}
+	testStore.done <- struct{}{}
+
+	require.NoError(t, testStore.Close())
 }
 
 func Test_Storage_Memory_Conn(t *testing.T) {

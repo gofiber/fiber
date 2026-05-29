@@ -194,9 +194,12 @@ func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
 
 	stoppedCh := startTimestampUpdaterWithStop(&timestamp, &cfg)
 
-	initial := timestamp.Load().(string) //nolint:forcetypeassert // test setup stores a string value
+	initial, ok := timestamp.Load().(string)
+	require.True(t, ok)
 	time.Sleep(20 * time.Millisecond)
-	require.NotEqual(t, initial, timestamp.Load().(string)) //nolint:forcetypeassert // test setup stores a string value
+	updated, ok := timestamp.Load().(string)
+	require.True(t, ok)
+	require.NotEqual(t, initial, updated)
 
 	close(done)
 	select {
@@ -204,9 +207,29 @@ func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timestamp updater did not stop")
 	}
-	stopped := timestamp.Load().(string) //nolint:forcetypeassert // test setup stores a string value
+	stopped, ok := timestamp.Load().(string)
+	require.True(t, ok)
 	time.Sleep(20 * time.Millisecond)
-	require.Equal(t, stopped, timestamp.Load().(string)) //nolint:forcetypeassert // test setup stores a string value
+	finalValue, ok := timestamp.Load().(string)
+	require.True(t, ok)
+	require.Equal(t, stopped, finalValue)
+}
+
+func Test_Logger_TimeUpdaterWithoutTimeTagStopsImmediately(t *testing.T) {
+	t.Parallel()
+
+	var timestamp atomic.Value
+	timestamp.Store(time.Now().Format(time.RFC3339Nano))
+
+	stoppedCh := startTimestampUpdaterWithStop(&timestamp, &Config{
+		Format: "${pid}",
+	})
+
+	select {
+	case <-stoppedCh:
+	case <-time.After(time.Second):
+		t.Fatal("timestamp updater did not stop immediately")
+	}
 }
 
 // Test_Logger_Filter tests the Filter functionality of the logger middleware.

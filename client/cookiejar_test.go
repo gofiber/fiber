@@ -218,6 +218,35 @@ func Test_CookieJarHostEvictionIsDeterministic(t *testing.T) {
 	require.Len(t, cj.hostCookies, maxCookieJarHosts-1)
 }
 
+func Test_CookieJarHostCapacityPrefersExpiredEntries(t *testing.T) {
+	t.Parallel()
+
+	cj := &CookieJar{hostCookies: make(map[string][]storedCookie, maxCookieJarHosts)}
+	now := time.Now()
+
+	expired := fasthttp.AcquireCookie()
+	expired.SetKey("expired")
+	expired.SetValue("v")
+	expired.SetExpire(now.Add(-time.Minute))
+	cj.hostCookies["expired.example.com"] = []storedCookie{{cookie: expired, isHostOnly: true}}
+
+	for i := 1; i < maxCookieJarHosts; i++ {
+		host := fmt.Sprintf("host-%04d.example.com", i)
+		cookie := fasthttp.AcquireCookie()
+		cookie.SetKey("k")
+		cookie.SetValue("v")
+		cj.hostCookies[host] = []storedCookie{{cookie: cookie, isHostOnly: true}}
+	}
+
+	cj.ensureHostCapacityLocked("new.example.com", now)
+
+	_, ok := cj.hostCookies["expired.example.com"]
+	require.False(t, ok)
+	require.Len(t, cj.hostCookies, maxCookieJarHosts-1)
+	_, ok = cj.hostCookies["host-0001.example.com"]
+	require.True(t, ok)
+}
+
 func Test_CookieJarGetFromResponse(t *testing.T) {
 	t.Parallel()
 

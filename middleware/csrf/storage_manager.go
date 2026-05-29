@@ -20,9 +20,9 @@ const redactedKey = "[redacted]"
 //msgp:ignore manager
 //msgp:ignore storageManager
 type storageManager struct {
-	pool             sync.Pool       `msg:"-"` //nolint:revive // Ignore unexported type
-	memory           *memory.Storage `msg:"-"` //nolint:revive // Ignore unexported type
-	storage          fiber.Storage   `msg:"-"` //nolint:revive // Ignore unexported type
+	pool             sync.Pool       `msg:"-"` //revive:disable-line:struct-tag // msgp excludes runtime-only fields on this unexported type.
+	memory           *memory.Storage `msg:"-"` //revive:disable-line:struct-tag // msgp excludes runtime-only fields on this unexported type.
+	storage          fiber.Storage   `msg:"-"` //revive:disable-line:struct-tag // msgp excludes runtime-only fields on this unexported type.
 	shouldRedactKeys bool
 }
 
