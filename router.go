@@ -814,7 +814,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			continue // Skip invalid HTTP methods
 		}
 
-		for i := len(app.stack[m]) - 1; i >= 0; i-- {
+		for i := len(app.stack[m]) - 1; i >= 0; i-- { //nolint:modernize // false positive
 			route := app.stack[m][i]
 			if !matchFunc(route) {
 				continue // Skip if route does not match
@@ -851,8 +851,7 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 	norm := app.normalizePath(path)
 
 	headStack := app.stack[headIndex]
-	for i := len(headStack) - 1; i >= 0; i-- {
-		headRoute := headStack[i]
+	for i, headRoute := range slices.Backward(headStack) {
 		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead {
 			continue
 		}

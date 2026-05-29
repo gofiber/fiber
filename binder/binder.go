@@ -5,6 +5,15 @@ import (
 	"sync"
 )
 
+const (
+	bindingURI        = "uri"
+	bindingForm       = "form"
+	bindingQuery      = "query"
+	bindingHeader     = "header"
+	bindingRespHeader = "respHeader"
+	bindingCookie     = "cookie"
+)
+
 // Binder errors
 var (
 	ErrSuitableContentNotFound = errors.New("binder: suitable content not found to parse body")

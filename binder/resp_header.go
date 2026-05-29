@@ -12,7 +12,7 @@ type RespHeaderBinding struct {
 
 // Name returns the binding name.
 func (*RespHeaderBinding) Name() string {
-	return "respHeader"
+	return bindingRespHeader
 }
 
 // Bind parses the response header and returns the result.
