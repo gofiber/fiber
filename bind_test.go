@@ -1385,8 +1385,8 @@ func Test_Bind_Body(t *testing.T) {
 		c.Request().Header.SetContentType(MIMEApplicationJSON)
 		c.Request().SetBody([]byte(`{"name":"john"}`))
 		c.Request().Header.SetContentLength(len(`{"name":"john"}`))
-		ctx := Ctx(c)
-		err := c.Bind().Body(&ctx)
+		ctxValue := Ctx(c)
+		err := c.Bind().Body(&ctxValue)
 		require.ErrorIs(t, err, ErrUnprocessableEntity)
 	})
 
