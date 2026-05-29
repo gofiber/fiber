@@ -34,7 +34,7 @@ var bindPool = sync.Pool{
 	},
 }
 
-var ctxInterfaceType = reflect.TypeOf((*Ctx)(nil)).Elem()
+var ctxInterfaceType = reflect.TypeFor[Ctx]()
 
 // Bind provides helper methods for binding request data to Go values.
 // By default (manual mode), parsing failures are returned as *BindError; use errors.As to extract source and field details.
