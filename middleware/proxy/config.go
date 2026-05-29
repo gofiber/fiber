@@ -46,6 +46,11 @@ type Config struct {
 	// Optional. Default: 1 second
 	Timeout time.Duration
 
+	// Maximum number of connections per upstream host.
+	//
+	// Optional. Default: 1024
+	MaxConnsPerHost int
+
 	// Per-connection buffer size for requests' reading.
 	// This also limits the maximum header size.
 	// Increase this buffer if your clients send multi-KB RequestURIs
@@ -69,11 +74,14 @@ type Config struct {
 	DialDualStack bool
 }
 
+const defaultMaxConnsPerHost = 1024
+
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:                 nil,
 	ModifyRequest:        nil,
 	ModifyResponse:       nil,
+	MaxConnsPerHost:      defaultMaxConnsPerHost,
 	Timeout:              fasthttp.DefaultLBClientTimeout,
 	KeepConnectionHeader: false,
 }
@@ -91,6 +99,10 @@ func configDefault(config ...Config) Config {
 	// Set default values
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = ConfigDefault.Timeout
+	}
+
+	if cfg.MaxConnsPerHost <= 0 {
+		cfg.MaxConnsPerHost = ConfigDefault.MaxConnsPerHost
 	}
 
 	// Set default values
