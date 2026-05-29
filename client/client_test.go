@@ -2010,11 +2010,8 @@ func Test_Replace_ConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for i := range 4 {
-		wg.Add(1)
-
-		go func(offset int) {
-			defer wg.Done()
-
+		wg.Go(func() {
+			offset := i
 			for j := range 1_000 {
 				restore := Replace(clients[(offset+j)%len(clients)])
 				if C() == nil {
@@ -2022,21 +2019,17 @@ func Test_Replace_ConcurrentAccess(t *testing.T) {
 				}
 				restore()
 			}
-		}(i)
+		})
 	}
 
 	for range 4 {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			for range 10_000 {
 				if C() == nil {
 					nilLoads.Add(1)
 				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
