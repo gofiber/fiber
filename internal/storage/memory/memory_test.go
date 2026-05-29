@@ -320,7 +320,7 @@ func Test_Storage_Memory_Close_DoesNotBlockWhenRepeated(t *testing.T) {
 	}
 }
 
-func Test_Storage_Memory_Close_ReturnsWhenSignalAlreadyQueued(t *testing.T) {
+func Test_Storage_Memory_Close_WithQueuedSignal(t *testing.T) {
 	t.Parallel()
 
 	testStore := &Storage{done: make(chan struct{}, 1)}

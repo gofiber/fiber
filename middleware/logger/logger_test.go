@@ -215,7 +215,7 @@ func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
 	require.Equal(t, stopped, finalValue)
 }
 
-func Test_Logger_TimeUpdaterWithoutTimeTagStopsImmediately(t *testing.T) {
+func Test_Logger_TimestampUpdater_StopsImmediatelyWithoutTimeTag(t *testing.T) {
 	t.Parallel()
 
 	var timestamp atomic.Value
