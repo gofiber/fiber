@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -689,7 +690,7 @@ func Test_Session_Middleware_GetSessionError(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Storage: &mockFailingSessionStorage{getErr: fmt.Errorf("redis unavailable")},
+		Storage: &mockFailingSessionStorage{getErr: errors.New("redis unavailable")},
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
