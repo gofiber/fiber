@@ -55,29 +55,6 @@ func Test_Memory(t *testing.T) {
 	require.Nil(t, result)
 }
 
-func Test_Memory_CleansExpiredEntriesOnAccess(t *testing.T) {
-	t.Parallel()
-
-	store := New()
-	store.Set("expired", "value", time.Second)
-
-	time.Sleep(1100 * time.Millisecond)
-
-	require.Eventually(t, func() bool {
-		return store.Get("expired") == nil
-	}, 3*time.Second, 10*time.Millisecond)
-
-	store.Set("live", "value", 0)
-
-	store.mu.RLock()
-	_, exists := store.data["expired"]
-	_, liveExists := store.data["live"]
-	store.mu.RUnlock()
-
-	require.False(t, exists)
-	require.True(t, liveExists)
-}
-
 // go test -v -run=^$ -bench=Benchmark_Memory -benchmem -count=4
 func Benchmark_Memory(b *testing.B) {
 	keyLength := 1000

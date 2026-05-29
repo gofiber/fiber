@@ -299,6 +299,25 @@ func Test_Storage_Memory_Close(t *testing.T) {
 	require.NoError(t, testStore.Close())
 }
 
+func Test_Storage_Memory_Close_Idempotent(t *testing.T) {
+	t.Parallel()
+
+	testStore := New()
+	require.NoError(t, testStore.Close())
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- testStore.Close()
+	}()
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("second Close blocked")
+	}
+}
+
 func Test_Storage_Memory_Conn(t *testing.T) {
 	t.Parallel()
 	testStore := New()

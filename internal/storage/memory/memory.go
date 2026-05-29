@@ -17,6 +17,7 @@ import (
 // map returned by Conn. Access to that map requires external synchronization.
 type Storage struct {
 	db         map[string]Entry
+	closeOnce  sync.Once
 	done       chan struct{}
 	gcInterval time.Duration
 	mux        sync.RWMutex
@@ -38,7 +39,7 @@ func New(config ...Config) *Storage {
 	store := &Storage{
 		db:         make(map[string]Entry),
 		gcInterval: cfg.GCInterval,
-		done:       make(chan struct{}),
+		done:       make(chan struct{}, 1),
 	}
 
 	// Start garbage collector
@@ -150,7 +151,12 @@ func (s *Storage) ResetWithContext(ctx context.Context) error {
 // Close stops the background garbage collector and releases resources
 // associated with the storage instance.
 func (s *Storage) Close() error {
-	s.done <- struct{}{}
+	s.closeOnce.Do(func() {
+		select {
+		case s.done <- struct{}{}:
+		default:
+		}
+	})
 	return nil
 }
 
