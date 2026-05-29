@@ -73,11 +73,13 @@ func Test_FormBinder_Bind_ParseError(t *testing.T) {
 func Test_ReleaseDataMap(t *testing.T) {
 	t.Parallel()
 
-	small := map[string][]string{
-		"name": {"john"},
-	}
+	small := acquireDataMap()
+	small["name"] = []string{"john"}
 	releaseDataMap(small)
-	require.Empty(t, small)
+
+	reused := acquireDataMap()
+	require.Empty(t, reused)
+	releaseDataMap(reused)
 
 	large := make(map[string][]string, maxPoolableDataMapSize+1)
 	for i := range maxPoolableDataMapSize + 1 {
