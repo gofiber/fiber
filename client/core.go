@@ -74,25 +74,20 @@ func (c *core) getRetryConfig() *RetryConfig {
 // execFunc is the core logic to send the request and receive the response.
 // It leverages the fasthttp client, optionally with retries or redirects.
 func (c *core) execFunc() (*Response, error) {
+	// Fast-path: when context has no cancellation, execute synchronously
+	// to avoid goroutine + channel overhead.
+	if c.ctx.Done() == nil {
+		return c.execSync()
+	}
+
 	// do not close, these will be returned to the pool
 	errChan := acquireErrChan()
 	respChan := acquireResponseChan()
 
-	cfg := c.getRetryConfig()
 	go func() {
 		// retain both channels until they are drained
 		defer releaseErrChan(errChan)
 		defer releaseResponseChan(respChan)
-
-		reqv := fasthttp.AcquireRequest()
-		defer fasthttp.ReleaseRequest(reqv)
-
-		respv := fasthttp.AcquireResponse()
-		defer func() {
-			if respv != nil {
-				fasthttp.ReleaseResponse(respv)
-			}
-		}()
 
 		var resp *Response
 		defer func() {
@@ -104,46 +99,11 @@ func (c *core) execFunc() (*Response, error) {
 			}
 		}()
 
-		c.req.RawRequest.CopyTo(reqv)
-		if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
-			reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
-		}
-
-		var err error
-		if cfg != nil {
-			// Use an exponential backoff retry strategy.
-			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
-				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-					return c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
-				}
-				return c.client.Do(reqv, respv)
-			})
-		} else {
-			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-				err = c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
-			} else {
-				err = c.client.Do(reqv, respv)
-			}
-		}
-
+		resp, err := c.doRequest()
 		if err != nil {
 			errChan <- err
 			return
 		}
-
-		resp = AcquireResponse()
-		resp.setClient(c.client)
-		resp.setRequest(c.req)
-
-		// Swap the fasthttp response with the Fiber response's RawResponse field.
-		// This is required, as (*fasthttp.Response).CopyTo() explicitly does not
-		// copy body streams.
-		//
-		// See: https://github.com/valyala/fasthttp/blob/v1.69.0/http.go#L909-L923
-		//
-		// The defer statement above ensures that the original RawResponse
-		// (now stored in respv) will be properly released.
-		resp.RawResponse, respv = respv, resp.RawResponse
 		respChan <- resp
 	}()
 
@@ -162,6 +122,73 @@ func (c *core) execFunc() (*Response, error) {
 		}()
 		return nil, ErrTimeoutOrCancel
 	}
+}
+
+// execSync executes the request synchronously without goroutine or channel overhead.
+// Used when the context has no cancellation support (Done() == nil).
+func (c *core) execSync() (*Response, error) {
+	var resp *Response
+	var err error
+
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if resp != nil {
+					ReleaseResponse(resp)
+					resp = nil
+				}
+				err = fmt.Errorf("client panic: %v", r)
+			}
+		}()
+		resp, err = c.doRequest()
+	}()
+
+	return resp, err
+}
+
+// doRequest performs the actual HTTP request using fasthttp, handling retries and redirects.
+func (c *core) doRequest() (*Response, error) {
+	reqv := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(reqv)
+
+	respv := fasthttp.AcquireResponse()
+	defer func() {
+		if respv != nil {
+			fasthttp.ReleaseResponse(respv)
+		}
+	}()
+
+	c.req.RawRequest.CopyTo(reqv)
+	if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
+		reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
+	}
+
+	cfg := c.getRetryConfig()
+	var err error
+	if cfg != nil {
+		err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
+			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+				return c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
+			}
+			return c.client.Do(reqv, respv)
+		})
+	} else {
+		if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+			err = c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
+		} else {
+			err = c.client.Do(reqv, respv)
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	resp := AcquireResponse()
+	resp.setClient(c.client)
+	resp.setRequest(c.req)
+	resp.RawResponse, respv = respv, resp.RawResponse
+	return resp, nil
 }
 
 // preHooks runs all request hooks before sending the request.

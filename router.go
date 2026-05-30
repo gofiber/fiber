@@ -328,6 +328,10 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	methodInt := c.getMethodInt()
 	treeHash := c.getTreePathHash()
+	// Cache values before the loop to avoid repeated interface method calls per route iteration
+	detectionPath := c.getDetectionPath()
+	path := c.Path()
+	values := c.getValues()
 	// Get stack length
 	tree, ok := app.treeStack[methodInt][treeHash]
 	if !ok {
@@ -350,7 +354,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
+		if !route.match(detectionPath, path, values) {
 			continue
 		}
 		if c.getSkipNonUseRoutes() && !route.use {
@@ -407,7 +411,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
+			if route.match(detectionPath, path, values) {
 				// We matched
 				exists = true
 				// Add method to Allow header

@@ -334,6 +334,36 @@ func Test_ConstraintCheckConstraint_NilRegexMatcher(t *testing.T) {
 	})
 }
 
+func Benchmark_CheckConstraint(b *testing.B) {
+	// Benchmark the hot path: constraint with valid pre-parsed integer data
+	c := Constraint{
+		ID:           rangeConstraint,
+		Data:         []string{"10", "200"},
+		intData:      [2]int{10, 200},
+		intDataValid: true,
+	}
+	param := "150"
+	b.Run("range_preparsed", func(b *testing.B) {
+		for b.Loop() {
+			c.CheckConstraint(param)
+		}
+	})
+
+	// Also benchmark len constraint
+	cLen := Constraint{
+		ID:           minLenConstraint,
+		Data:         []string{"5"},
+		intData:      [2]int{5, 0},
+		intDataValid: true,
+	}
+	paramLen := "hello world"
+	b.Run("minLen_preparsed", func(b *testing.B) {
+		for b.Loop() {
+			cLen.CheckConstraint(paramLen)
+		}
+	})
+}
+
 func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 	b.ReportAllocs()
 	var res string
