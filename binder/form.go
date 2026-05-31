@@ -25,7 +25,7 @@ var (
 
 // Keep oversized maps out of the pool so a rare large bind doesn't get retained
 // and reused across subsequent requests.
-const maxPoolableDataMapSize = 64
+const maxPoolableDataMapSize = 256
 
 // FormBinding is the form binder for form request body.
 type FormBinding struct {
