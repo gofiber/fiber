@@ -87,9 +87,14 @@ func Test_ReleaseDataMap(t *testing.T) {
 	}
 	firstKey := "a"
 
-	releaseDataMap(large)
 	require.Len(t, large, maxPoolableDataMapSize+1)
 	require.Equal(t, []string{"value"}, large[firstKey])
+
+	releaseDataMap(large)
+
+	after := acquireDataMap()
+	require.Empty(t, after)
+	releaseDataMap(after)
 }
 
 func Benchmark_FormBinder_Bind(b *testing.B) {
