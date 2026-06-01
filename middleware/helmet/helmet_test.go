@@ -290,8 +290,17 @@ func hstsHeaderForRequest(t *testing.T, config *Config, scheme string) string {
 		},
 	}
 
-	resp, err := client.Get("https://" + ln.Addr().String() + "/")
-	require.NoError(t, err)
+	var resp *http.Response
+	for deadline := time.Now().Add(time.Second); ; {
+		resp, err = client.Get("https://" + ln.Addr().String() + "/")
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			require.NoError(t, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	header := resp.Header.Get(fiber.HeaderStrictTransportSecurity)
 	require.NoError(t, resp.Body.Close())

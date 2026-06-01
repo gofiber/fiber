@@ -5698,6 +5698,9 @@ func Test_Ctx_Secure(t *testing.T) {
 				tt.configure(freq)
 			}
 			c := tt.app.AcquireCtx(freq)
+			t.Cleanup(func() {
+				tt.app.ReleaseCtx(c)
+			})
 
 			require.Equal(t, tt.expected, c.Secure())
 		})
