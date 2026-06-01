@@ -64,7 +64,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Handle HSTS headers
-		if c.Protocol() == "https" && cfg.HSTSMaxAge != 0 {
+		if c.Scheme() == "https" && cfg.HSTSMaxAge != 0 {
 			subdomains := ""
 			if !cfg.HSTSExcludeSubdomains {
 				subdomains = "; includeSubDomains"
