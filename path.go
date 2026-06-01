@@ -866,59 +866,103 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	case guidConstraint:
 		_, err = uuid.Parse(param)
 	case minLenConstraint:
+		limit := c.intData[0]
 		if !c.intDataValid {
-			return false
+			v, parseErr := strconv.Atoi(c.Data[0])
+			if parseErr != nil {
+				return false
+			}
+			limit = v
 		}
-		if len(param) < c.intData[0] {
+		if len(param) < limit {
 			return false
 		}
 	case maxLenConstraint:
+		limit := c.intData[0]
 		if !c.intDataValid {
-			return false
+			v, parseErr := strconv.Atoi(c.Data[0])
+			if parseErr != nil {
+				return false
+			}
+			limit = v
 		}
-		if len(param) > c.intData[0] {
+		if len(param) > limit {
 			return false
 		}
 	case lenConstraint:
+		limit := c.intData[0]
 		if !c.intDataValid {
-			return false
+			v, parseErr := strconv.Atoi(c.Data[0])
+			if parseErr != nil {
+				return false
+			}
+			limit = v
 		}
-		if len(param) != c.intData[0] {
+		if len(param) != limit {
 			return false
 		}
 	case betweenLenConstraint:
+		lo := c.intData[0]
+		hi := c.intData[1]
 		if !c.intDataValid {
-			return false
+			v0, parseErr := strconv.Atoi(c.Data[0])
+			if parseErr != nil {
+				return false
+			}
+			v1, parseErr := strconv.Atoi(c.Data[1])
+			if parseErr != nil {
+				return false
+			}
+			lo = v0
+			hi = v1
 		}
 		length := len(param)
-		if length < c.intData[0] || length > c.intData[1] {
+		if length < lo || length > hi {
 			return false
 		}
 	case minConstraint:
+		limit := c.intData[0]
 		if !c.intDataValid {
-			return false
+			v, parseErr := strconv.Atoi(c.Data[0])
+			if parseErr != nil {
+				return false
+			}
+			limit = v
 		}
 		num, err = strconv.Atoi(param)
-
-		if err != nil || num < c.intData[0] {
+		if err != nil || num < limit {
 			return false
 		}
 	case maxConstraint:
+		limit := c.intData[0]
 		if !c.intDataValid {
-			return false
+			v, parseErr := strconv.Atoi(c.Data[0])
+			if parseErr != nil {
+				return false
+			}
+			limit = v
 		}
 		num, err = strconv.Atoi(param)
-
-		if err != nil || num > c.intData[0] {
+		if err != nil || num > limit {
 			return false
 		}
 	case rangeConstraint:
+		lo := c.intData[0]
+		hi := c.intData[1]
 		if !c.intDataValid {
-			return false
+			v0, parseErr := strconv.Atoi(c.Data[0])
+			if parseErr != nil {
+				return false
+			}
+			v1, parseErr := strconv.Atoi(c.Data[1])
+			if parseErr != nil {
+				return false
+			}
+			lo = v0
+			hi = v1
 		}
 		num, err = strconv.Atoi(param)
-
-		if err != nil || num < c.intData[0] || num > c.intData[1] {
+		if err != nil || num < lo || num > hi {
 			return false
 		}
 	case datetimeConstraint:

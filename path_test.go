@@ -334,6 +334,52 @@ func Test_ConstraintCheckConstraint_NilRegexMatcher(t *testing.T) {
 	})
 }
 
+// Test that manually-constructed constraints (without pre-parsed intData) still work.
+// This ensures backward compatibility for callers that use Constraint/CheckConstraint
+// directly without going through route registration.
+func Test_ConstraintCheckConstraint_ManualData(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		param      string
+		constraint Constraint
+		want       bool
+	}{
+		// minLen
+		{"minLen pass", "hello", Constraint{ID: minLenConstraint, Data: []string{"3"}}, true},
+		{"minLen fail", "hi", Constraint{ID: minLenConstraint, Data: []string{"3"}}, false},
+		// maxLen
+		{"maxLen pass", "hi", Constraint{ID: maxLenConstraint, Data: []string{"5"}}, true},
+		{"maxLen fail", "hello world", Constraint{ID: maxLenConstraint, Data: []string{"5"}}, false},
+		// len
+		{"len pass", "abc", Constraint{ID: lenConstraint, Data: []string{"3"}}, true},
+		{"len fail", "ab", Constraint{ID: lenConstraint, Data: []string{"3"}}, false},
+		// betweenLen
+		{"betweenLen pass", "abc", Constraint{ID: betweenLenConstraint, Data: []string{"2", "5"}}, true},
+		{"betweenLen fail low", "a", Constraint{ID: betweenLenConstraint, Data: []string{"2", "5"}}, false},
+		{"betweenLen fail high", "abcdef", Constraint{ID: betweenLenConstraint, Data: []string{"2", "5"}}, false},
+		// min
+		{"min pass", "10", Constraint{ID: minConstraint, Data: []string{"5"}}, true},
+		{"min fail", "3", Constraint{ID: minConstraint, Data: []string{"5"}}, false},
+		// max
+		{"max pass", "3", Constraint{ID: maxConstraint, Data: []string{"5"}}, true},
+		{"max fail", "10", Constraint{ID: maxConstraint, Data: []string{"5"}}, false},
+		// range
+		{"range pass", "10", Constraint{ID: rangeConstraint, Data: []string{"5", "20"}}, true},
+		{"range fail low", "3", Constraint{ID: rangeConstraint, Data: []string{"5", "20"}}, false},
+		{"range fail high", "25", Constraint{ID: rangeConstraint, Data: []string{"5", "20"}}, false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := tc.constraint.CheckConstraint(tc.param)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func Benchmark_CheckConstraint(b *testing.B) {
 	// Benchmark the hot path: constraint with valid pre-parsed integer data
 	c := Constraint{
