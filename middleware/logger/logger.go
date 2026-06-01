@@ -123,7 +123,7 @@ func New(config ...Config) fiber.Handler {
 		if timeEnabled {
 			refreshTimestamp(time.Now())
 		}
-		data.Timestamp = timestamp
+		data.Timestamp.Store(timestamp.Load())
 		// These compiled chains are shared across requests. The default logger and
 		// custom LoggerFunc implementations must only read them, for example via
 		// logtemplate.ExecuteChains.
