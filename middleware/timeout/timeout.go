@@ -3,6 +3,7 @@ package timeout
 import (
 	"context"
 	"errors"
+	"runtime"
 	"runtime/debug"
 
 	"github.com/gofiber/fiber/v3"
@@ -101,13 +102,9 @@ func handleTimeout(
 	cfg Config,
 ) error {
 	// Mark fiber context as abandoned - ReleaseCtx will skip pooling.
-	// The context will NOT be returned to the pool. This is an intentional
-	// trade-off: we accept the small memory cost of not recycling timed-out
-	// contexts in exchange for complete race-freedom.
-	//
-	// This is the same approach fasthttp uses - timed-out RequestCtx objects
-	// are never returned to the pool (see fasthttp's releaseCtx which panics
-	// if timeoutResponse is set).
+	// The context will NOT be returned to the pool immediately. This prevents
+	// the pool from recycling the context while the handler goroutine may
+	// still be using it.
 	ctx.Abandon()
 
 	// Prepare the timeout response before marking the RequestCtx as timed out so
@@ -128,11 +125,24 @@ func handleTimeout(
 	// OnTimeout). All ctx mutations after this call are ignored by fasthttp.
 	ctx.RequestCtx().TimeoutErrorWithResponse(&ctx.RequestCtx().Response)
 
+	// Register a GC finalizer that returns the abandoned context to the pool.
+	// The finalizer runs only after the GC determines the object is unreachable,
+	// which guarantees no goroutine (handler, ErrorHandler, etc.) holds a
+	// reference. This is safe because:
+	//   1. The cleanup goroutine waits for the handler goroutine to exit.
+	//   2. After ErrorHandler finishes, releaseDefaultCtx is a no-op (isAbandoned).
+	//   3. When defaultRequestHandler returns, all stack references to ctx drop.
+	//   4. GC detects unreachable → finalizer calls ForceRelease → ctx returns to pool.
+	if dc, ok := ctx.(*fiber.DefaultCtx); ok {
+		runtime.SetFinalizer(dc, func(c *fiber.DefaultCtx) {
+			c.ForceRelease()
+		})
+	}
+
 	// Spawn cleanup goroutine that waits for handler to finish.
-	// This only does context cleanup (cancel + restore parent), NOT ctx release.
-	// The fiber.Ctx is intentionally NOT released to avoid races with requestHandler
-	// which may still access ctx (e.g., ErrorHandler) after this function returns.
-	// ForceRelease cannot be called safely here for the same reason.
+	// This does context cleanup (cancel + restore parent) so the timeout context
+	// does not leak. The fiber.Ctx itself is returned to the pool later by the
+	// GC finalizer once all references (including ErrorHandler) are gone.
 	go func() {
 		select {
 		case <-done:
@@ -141,14 +151,6 @@ func handleTimeout(
 		// Handler finished - cancel timeout context and restore parent
 		cancel()
 		ctx.SetContext(parent)
-
-		// TODO: Currently the ctx is not returned to the pool (memory leak for timed-out requests).
-		// Future improvement: Implement a concurrent "garbage collector" list where abandoned
-		// contexts are queued after both the handler AND requestHandler are done. A background
-		// goroutine would periodically process this list and call ForceRelease() to recycle
-		// the contexts safely. This would require tracking when requestHandler finishes
-		// (e.g., via a channel signaled in ReleaseCtx) without adding per-request overhead
-		// for non-timeout cases.
 	}()
 
 	return timeoutErr

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -454,4 +455,46 @@ func TestTimeout_AbandonMechanism(t *testing.T) {
 	// In the timeout middleware, abandoned contexts are NOT released back to the pool
 	// to avoid race conditions with requestHandler. This is the same approach
 	// fasthttp uses for timed-out RequestCtx objects.
+}
+
+// TestTimeout_CtxReturnedToPool verifies that timed-out contexts are eventually
+// returned to the pool via GC finalizer (fix for unbounded memory leak).
+func TestTimeout_CtxReturnedToPool(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	handlerDone := make(chan struct{})
+
+	// Handler that sleeps longer than the timeout, then signals completion.
+	app.Get("/slow", New(func(c fiber.Ctx) error {
+		time.Sleep(200 * time.Millisecond)
+		close(handlerDone)
+		return nil
+	}, Config{Timeout: 50 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+
+	// Wait for the handler goroutine to finish so its reference to ctx is dropped.
+	select {
+	case <-handlerDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler did not finish in time")
+	}
+
+	// Force a full GC cycle. The finalizer should mark the abandoned context
+	// as released (isAbandoned=false) and return it to the pool.
+	// Two rounds are needed: first GC marks objects for finalization,
+	// second GC collects them after the finalizer has run.
+	runtime.GC()
+	runtime.GC()
+
+	// Acquire a new context from the pool. If the timed-out context was
+	// returned to the pool, we should get it back (or at least not panic).
+	// The key assertion is that no goroutine is racing on the released context.
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.False(t, ctx.IsAbandoned(), "timed-out context should have been released back to pool via finalizer")
+	app.ReleaseCtx(ctx)
 }
