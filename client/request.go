@@ -622,7 +622,7 @@ func (r *Request) SetDisablePathNormalizing(disable bool) *Request {
 	return r
 }
 
-// checkClient ensures that a Client is set. If none is set, it defaults to the global defaultClient.
+// checkClient ensures that a Client is set. If none is set, it defaults to the package default client via C().
 func (r *Request) checkClient() {
 	if r.client == nil {
 		r.SetClient(C())

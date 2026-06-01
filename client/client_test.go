@@ -2010,8 +2010,8 @@ func Test_Replace_ConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for i := range 4 {
+		offset := i
 		wg.Go(func() {
-			offset := i
 			for j := range 1_000 {
 				restore := Replace(clients[(offset+j)%len(clients)])
 				if C() == nil {
