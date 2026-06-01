@@ -39,9 +39,10 @@ func New(config ...Config) fiber.Handler {
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
 	timeEnabled := strings.Contains(cfg.Format, "${"+TagTime+"}")
-	var nextTimestampUpdate atomic.Int64
+	var nextTimestampUpdate atomic.Pointer[time.Time]
 	if timeEnabled {
-		nextTimestampUpdate.Store(time.Now().Add(cfg.TimeInterval).UnixNano())
+		next := time.Now().Add(cfg.TimeInterval)
+		nextTimestampUpdate.Store(&next)
 	}
 
 	refreshTimestamp := func(now time.Time) {
@@ -49,13 +50,13 @@ func New(config ...Config) fiber.Handler {
 			return
 		}
 
-		nowUnixNano := now.UnixNano()
 		for {
 			next := nextTimestampUpdate.Load()
-			if nowUnixNano < next {
+			if next != nil && now.Before(*next) {
 				return
 			}
-			if nextTimestampUpdate.CompareAndSwap(next, now.Add(cfg.TimeInterval).UnixNano()) {
+			updated := now.Add(cfg.TimeInterval)
+			if nextTimestampUpdate.CompareAndSwap(next, &updated) {
 				timestamp.Store(now.In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 				return
 			}

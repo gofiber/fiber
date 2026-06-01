@@ -930,15 +930,17 @@ func Test_Logger_TimeUpdatesAfterInterval(t *testing.T) {
 	first := buf.String()
 	require.NotEmpty(t, first)
 
-	buf.Reset()
-	time.Sleep(20 * time.Millisecond)
+	var second string
+	require.Eventually(t, func() bool {
+		buf.Reset()
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
-	second := buf.String()
-	require.NotEmpty(t, second)
-	require.NotEqual(t, first, second)
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+
+		second = buf.String()
+		return second != "" && second != first
+	}, 200*time.Millisecond, 5*time.Millisecond)
 }
 
 // go test -run Test_Response_Header

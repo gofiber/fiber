@@ -291,6 +291,9 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
+		// Get timestamp before locking to keep the critical section small.
+		ts := safeUnixSeconds(time.Now())
+
 		// Lock entry
 		mux.Lock()
 		locked := true
@@ -306,9 +309,6 @@ func New(config ...Config) fiber.Handler {
 				locked = true
 			}
 		}
-		// Get timestamp
-		ts := safeUnixSeconds(time.Now())
-
 		// Cache Entry found
 		if e != nil {
 			entryAge = cachedResponseAge(e, ts)
