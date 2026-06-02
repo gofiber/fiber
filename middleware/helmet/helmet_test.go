@@ -232,7 +232,6 @@ func Test_HSTSHeaders(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -265,8 +264,8 @@ func Test_HSTSPreloadIncludesSubdomains(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, "max-age=31536000; includeSubDomains; preload", hstsHeaderForRequest(t, &Config{
-		HSTSMaxAge:            31536000,
-		HSTSPreloadEnabled:    true,
+		HSTSMaxAge:         31536000,
+		HSTSPreloadEnabled: true,
 	}, "https"))
 }
 
