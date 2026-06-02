@@ -76,6 +76,7 @@ type Config struct {
 	CSPReportOnly bool
 
 	// HSTSPreloadEnabled
+	// Requires HSTSExcludeSubdomains to be false.
 	// Optional. Default value false.
 	HSTSPreloadEnabled bool
 }
@@ -107,6 +108,10 @@ func configDefault(config ...Config) Config {
 
 	if cfg.HSTSMaxAge < 0 {
 		panic("helmet: HSTSMaxAge must be greater than or equal to 0")
+	}
+
+	if cfg.HSTSPreloadEnabled && cfg.HSTSExcludeSubdomains {
+		panic("helmet: HSTSPreloadEnabled requires HSTSExcludeSubdomains to be false")
 	}
 
 	// Set default values

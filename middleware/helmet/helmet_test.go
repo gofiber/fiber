@@ -50,7 +50,6 @@ func Test_CustomValues_AllHeaders(t *testing.T) {
 		HSTSExcludeSubdomains:     true,
 		ContentSecurityPolicy:     "default-src 'none'",
 		CSPReportOnly:             true,
-		HSTSPreloadEnabled:        true,
 		ReferrerPolicy:            "origin",
 		PermissionPolicy:          "geolocation=(self)",
 		CrossOriginEmbedderPolicy: "custom-value",
@@ -233,6 +232,7 @@ func Test_HSTSHeaders(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -252,9 +252,20 @@ func Test_HSTSHeadersPanicsOnNegativeMaxAge(t *testing.T) {
 func Test_HSTSExcludeSubdomainsAndPreload(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "max-age=31536000; preload", hstsHeaderForRequest(t, &Config{
+	require.PanicsWithValue(t, "helmet: HSTSPreloadEnabled requires HSTSExcludeSubdomains to be false", func() {
+		New(Config{
+			HSTSMaxAge:            31536000,
+			HSTSExcludeSubdomains: true,
+			HSTSPreloadEnabled:    true,
+		})
+	})
+}
+
+func Test_HSTSPreloadIncludesSubdomains(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "max-age=31536000; includeSubDomains; preload", hstsHeaderForRequest(t, &Config{
 		HSTSMaxAge:            31536000,
-		HSTSExcludeSubdomains: true,
 		HSTSPreloadEnabled:    true,
 	}, "https"))
 }
