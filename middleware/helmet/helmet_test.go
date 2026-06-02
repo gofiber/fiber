@@ -233,12 +233,21 @@ func Test_HSTSHeaders(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			require.Equal(t, tt.expected, hstsHeaderForRequest(t, &tt.config, tt.scheme))
 		})
 	}
+}
+
+func Test_HSTSHeadersPanicsOnNegativeMaxAge(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t, "helmet: HSTSMaxAge must be greater than or equal to 0", func() {
+		New(Config{HSTSMaxAge: -1})
+	})
 }
 
 func Test_HSTSExcludeSubdomainsAndPreload(t *testing.T) {
@@ -285,6 +294,7 @@ func hstsHeaderForRequest(t *testing.T, config *Config, scheme string) string {
 	}()
 
 	client := &http.Client{
+		Timeout: time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: clientTLSConf,
 		},

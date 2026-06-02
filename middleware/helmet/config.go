@@ -105,6 +105,10 @@ func configDefault(config ...Config) Config {
 	// Override default config
 	cfg := config[0]
 
+	if cfg.HSTSMaxAge < 0 {
+		panic("helmet: HSTSMaxAge must be greater than or equal to 0")
+	}
+
 	// Set default values
 	if cfg.XSSProtection == "" {
 		cfg.XSSProtection = ConfigDefault.XSSProtection
