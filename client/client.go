@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -36,6 +37,8 @@ var ErrFailedToAppendCert = errors.New("failed to append certificate")
 //
 // Settings configured on the client are shared across every request and may be
 // overridden per request when needed.
+// Client is safe for concurrent request execution after configuration is
+// complete. Concurrent configuration changes require external synchronization.
 type Client struct {
 	logger    log.CommonLogger
 	transport httpClientTransport
@@ -750,13 +753,13 @@ func setConfigToRequest(req *Request, config ...Config) {
 }
 
 var (
-	defaultClient    *Client
+	defaultClient    atomic.Pointer[Client]
 	replaceMu        = sync.Mutex{}
 	defaultUserAgent = "fiber"
 )
 
 func init() {
-	defaultClient = New()
+	defaultClient.Store(New())
 }
 
 // New creates and returns a new Client object.
@@ -819,7 +822,7 @@ func newClient(transport httpClientTransport) *Client {
 
 // C returns the default client.
 func C() *Client {
-	return defaultClient
+	return defaultClient.Load()
 }
 
 // Replace replaces the defaultClient with a new one, returning a function to restore the old client.
@@ -827,14 +830,13 @@ func Replace(c *Client) func() {
 	replaceMu.Lock()
 	defer replaceMu.Unlock()
 
-	oldClient := defaultClient
-	defaultClient = c
+	oldClient := defaultClient.Swap(c)
 
 	return func() {
 		replaceMu.Lock()
 		defer replaceMu.Unlock()
 
-		defaultClient = oldClient
+		defaultClient.Store(oldClient)
 	}
 }
 

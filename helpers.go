@@ -169,7 +169,7 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 // Non-ASCII bytes are encoded as well so the result is always ASCII.
 func (app *App) quoteString(raw string) string {
 	bb := bytebufferpool.Get()
-	quoted := app.toString(fasthttp.AppendQuotedArg(bb.B, app.toBytes(raw)))
+	quoted := string(fasthttp.AppendQuotedArg(bb.B, app.toBytes(raw)))
 	bytebufferpool.Put(bb)
 	return quoted
 }
@@ -177,7 +177,7 @@ func (app *App) quoteString(raw string) string {
 // quoteRawString escapes only characters that need quoting according to
 // https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
 // contain non-ASCII bytes.
-func (app *App) quoteRawString(raw string) string {
+func (*App) quoteRawString(raw string) string {
 	const hex = "0123456789ABCDEF"
 	bb := bytebufferpool.Get()
 	defer bytebufferpool.Put(bb)
@@ -205,7 +205,7 @@ func (app *App) quoteRawString(raw string) string {
 		}
 	}
 
-	return app.toString(bb.B)
+	return string(bb.B)
 }
 
 // isASCII reports whether the provided string contains only ASCII characters.

@@ -15,6 +15,8 @@ import (
 )
 
 // Session represents a user session.
+// Session serializes access to its internal state with mutexes, but it is
+// request-scoped and must not be used after the request lifecycle ends.
 type Session struct {
 	ctx         fiber.Ctx     // fiber context
 	config      *Store        // store configuration

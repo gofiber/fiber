@@ -42,6 +42,7 @@ func Balancer(config ...Config) fiber.Handler {
 				NoDefaultUserAgentHeader: true,
 				DisablePathNormalizing:   true,
 				Addr:                     u.Host,
+				MaxConns:                 cfg.MaxConnsPerHost,
 
 				ReadBufferSize:  cfg.ReadBufferSize,
 				WriteBufferSize: cfg.WriteBufferSize,
@@ -112,6 +113,7 @@ func Balancer(config ...Config) fiber.Handler {
 var client = &fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,
+	MaxConnsPerHost:          defaultMaxConnsPerHost,
 }
 
 var (

@@ -101,6 +101,23 @@ func Test_CORS_Preserve_Origin_Case(t *testing.T) {
 	require.Equal(t, origin, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }
 
+func Test_CORS_AllowOrigins_NormalizedExactLookup(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{AllowOrigins: []string{" HTTP://EXAMPLE.COM/ "}}))
+
+	origin := "http://example.com"
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, origin)
+	app.Handler()(ctx)
+
+	require.Equal(t, origin, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+}
+
 func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	t.Helper()
 

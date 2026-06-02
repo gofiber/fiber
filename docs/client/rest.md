@@ -922,7 +922,7 @@ func Options(url string, cfg ...Config) (*Response, error)
 **Replace** replaces the default client with a new one. It returns a function that can restore the old client.
 
 :::caution
-Do not modify the default client concurrently.
+Replacing the default client is concurrency-safe, but mutating the same `Client` instance still requires external synchronization.
 :::
 
 ```go title="Signature"

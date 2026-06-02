@@ -801,7 +801,7 @@ func Benchmark_matchHost_Mixed(b *testing.B) {
 func Benchmark_matchHost_ManyWildcards(b *testing.B) {
 	const n = 100
 	hosts := make([]string, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		hosts[i] = fmt.Sprintf("*.tenant%d.example.com", i)
 	}
 	parsed := parseAllowedHosts(hosts)
