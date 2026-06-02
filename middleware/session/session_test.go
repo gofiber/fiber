@@ -1897,7 +1897,7 @@ func Test_Session_ResolveContext(t *testing.T) {
 		require.NotNil(t, ctx)
 	})
 
-	t.Run("resolve context returns background when ctx has no context", func(t *testing.T) {
+	t.Run("resolve context returns fiber context when ctx is not nil", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
 		fctx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1905,6 +1905,6 @@ func Test_Session_ResolveContext(t *testing.T) {
 
 		sess := &Session{ctx: fctx}
 		ctx := sess.resolveContext()
-		require.NotNil(t, ctx)
+		require.Equal(t, fctx, ctx)
 	})
 }
