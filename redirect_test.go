@@ -258,7 +258,7 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	c.Request().Header.Set(HeaderReferer, "https://evil.com/phishing")
 	err = c.Redirect().Back()
 	require.Equal(t, 500, c.Response().StatusCode())
-	require.ErrorAs(t, err, &ErrRedirectBackNoFallback)
+	require.ErrorIs(t, err, ErrRedirectBackNoFallback)
 
 	// Same-origin referer with host should be accepted.
 	c.Response().Reset()
