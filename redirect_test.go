@@ -300,6 +300,21 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
 	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
+
+	// Scheme-only referers should be rejected.
+	c.Response().Reset()
+	c.Request().Header.Set(HeaderReferer, "javascript:alert(1)")
+	err = c.Redirect().Back("/")
+	require.NoError(t, err)
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+
+	c.Response().Reset()
+	c.Request().Header.Set(HeaderReferer, "mailto:test@example.com")
+	err = c.Redirect().Back("/")
+	require.NoError(t, err)
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -run Test_Redirect_Route_WithFlashMessages

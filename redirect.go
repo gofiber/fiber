@@ -381,9 +381,11 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 func (r *Redirect) Back(fallback ...string) error {
 	location := r.c.Get(HeaderReferer)
 	if location != "" {
-		parsed, err := url.Parse(location)
-		if err != nil || (parsed.Host != "" && !schemeAndHostMatch(parsed.Scheme, parsed.Host, r.c.Scheme(), r.c.Host())) {
-			location = "" // Reject cross-origin referrers
+		if !(strings.HasPrefix(location, "/") && !strings.HasPrefix(location, "//")) {
+			parsed, err := url.Parse(location)
+			if err != nil || (parsed.Scheme != "" && parsed.Host == "") || (parsed.Host != "" && !schemeAndHostMatch(parsed.Scheme, parsed.Host, r.c.Scheme(), r.c.Host())) {
+				location = "" // Reject invalid or cross-origin referrers
+			}
 		}
 	}
 
