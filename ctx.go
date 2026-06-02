@@ -567,7 +567,7 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 
 // Secure returns whether a secure connection was established.
 func (c *DefaultCtx) Secure() bool {
-	return c.Protocol() == schemeHTTPS
+	return c.Scheme() == schemeHTTPS
 }
 
 // Status sets the HTTP status for the response.
