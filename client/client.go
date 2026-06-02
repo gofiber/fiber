@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -752,13 +753,13 @@ func setConfigToRequest(req *Request, config ...Config) {
 }
 
 var (
-	defaultClient    *Client
+	defaultClient    atomic.Pointer[Client]
 	replaceMu        = sync.Mutex{}
 	defaultUserAgent = "fiber"
 )
 
 func init() {
-	defaultClient = New()
+	defaultClient.Store(New())
 }
 
 // New creates and returns a new Client object.
@@ -821,7 +822,7 @@ func newClient(transport httpClientTransport) *Client {
 
 // C returns the default client.
 func C() *Client {
-	return defaultClient
+	return defaultClient.Load()
 }
 
 // Replace replaces the defaultClient with a new one, returning a function to restore the old client.
@@ -829,14 +830,13 @@ func Replace(c *Client) func() {
 	replaceMu.Lock()
 	defer replaceMu.Unlock()
 
-	oldClient := defaultClient
-	defaultClient = c
+	oldClient := defaultClient.Swap(c)
 
 	return func() {
 		replaceMu.Lock()
 		defer replaceMu.Unlock()
 
-		defaultClient = oldClient
+		defaultClient.Store(oldClient)
 	}
 }
 
