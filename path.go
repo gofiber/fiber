@@ -464,7 +464,9 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any
 			// Handle custom RegexHandler for regex constraints
 			if handler.Name() == ConstraintRegex && regexHandler != nil && len(data) > 0 {
 				compiler := compileRegex(regexHandler, data[0])
-				if _, ok := compiler.(*regexp.Regexp); !ok {
+				if re, ok := compiler.(*regexp.Regexp); ok {
+					constraint.precompiled = re
+				} else {
 					if regexMatchers == nil {
 						regexMatchers = make(map[*Constraint]regexMatcher)
 					}

@@ -103,7 +103,20 @@ func newConstraint(handler ConstraintHandler, data []string) *Constraint {
 
 // matchConstraint checks if a parameter value satisfies the constraint.
 func (c *Constraint) matchConstraint(param string) bool {
-	return c.handler.Execute(param, c.Data, c.precompiled)
+	handler := c.handler
+	precompiled := c.precompiled
+	if handler == nil {
+		handler = findConstraintHandler(resolveConstraintName(c.Name), nil)
+		if handler == nil {
+			return true
+		}
+		if analyser, ok := handler.(ConstraintAnalyzer); ok {
+			if pre, err := analyser.Analyze(c.Data); err == nil {
+				precompiled = pre
+			}
+		}
+	}
+	return handler.Execute(param, c.Data, precompiled)
 }
 
 // --- Built-in constraint types ---
