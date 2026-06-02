@@ -3464,7 +3464,7 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 			expected: "10.0.0.1",
 		},
 		{
-			name: "no trusted proxy config returns first valid",
+			name: "single trusted proxy stripped",
 			config: Config{
 				ProxyHeader:        HeaderXForwardedFor,
 				TrustProxy:         true,

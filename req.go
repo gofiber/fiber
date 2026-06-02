@@ -624,7 +624,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 	app := r.c.app
 
 	if !app.config.EnableIPValidation {
-		return r.Get(app.config.ProxyHeader)
+		return r.Get(header)
 	}
 
 	ips := r.extractIPsFromHeader(header)
@@ -672,7 +672,7 @@ func (r *DefaultReq) isTrustedProxyIP(ipStr string) bool {
 	if cfg.LinkLocal && ip.IsLinkLocalUnicast() {
 		return true
 	}
-	if _, trusted := cfg.ips[ipStr]; trusted {
+	if _, trusted := cfg.ips[ip.String()]; trusted {
 		return true
 	}
 	for _, ipNet := range cfg.ranges {
