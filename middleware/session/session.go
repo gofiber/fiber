@@ -330,19 +330,7 @@ func (s *Session) refresh() {
 //
 //	err := s.Save()
 func (s *Session) Save() error {
-	if s.ctx == nil {
-		return s.saveSessionWithContext(context.Background())
-	}
-
-	// If the session is being used in the handler, it should not be saved
-	if m, ok := s.ctx.Locals(middlewareContextKey).(*Middleware); ok {
-		if m.Session == s {
-			// Session is in use, so we do nothing and return
-			return nil
-		}
-	}
-
-	return s.saveSessionWithContext(s.resolveContext())
+	return s.SaveWithContext(s.resolveContext())
 }
 
 // SaveWithContext saves the session data and updates the cookie,

@@ -658,3 +658,106 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 }
+
+func Test_Middleware_DestroyWithContext(t *testing.T) {
+	t.Parallel()
+
+	handler, store := NewWithStore()
+	app := fiber.New()
+	app.Use(handler)
+
+	app.Get("/destroy", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		sess.Set("key", "value")
+		err := sess.DestroyWithContext(t.Context())
+		if err != nil {
+			return err
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/destroy")
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	_ = store
+}
+
+func Test_Middleware_ResetWithContext(t *testing.T) {
+	t.Parallel()
+
+	handler, store := NewWithStore()
+	app := fiber.New()
+	app.Use(handler)
+
+	app.Get("/reset", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		sess.Set("key", "value")
+		err := sess.ResetWithContext(t.Context())
+		if err != nil {
+			return err
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/reset")
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	_ = store
+}
+
+func Test_Middleware_RegenerateWithContext(t *testing.T) {
+	t.Parallel()
+
+	handler, store := NewWithStore()
+	app := fiber.New()
+	app.Use(handler)
+
+	app.Get("/regenerate", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		originalID := sess.ID()
+		err := sess.RegenerateWithContext(t.Context())
+		if err != nil {
+			return err
+		}
+		if sess.ID() == originalID {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/regenerate")
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	_ = store
+}
+
+func Test_Middleware_ResolveContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("resolve context returns fiber ctx when not nil", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		fctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(fctx)
+
+		m := &Middleware{ctx: fctx}
+		ctx := m.resolveContext()
+		require.Equal(t, fctx, ctx)
+	})
+
+	t.Run("resolve context returns background when ctx is nil", func(t *testing.T) {
+		t.Parallel()
+		m := &Middleware{ctx: nil}
+		ctx := m.resolveContext()
+		require.NotNil(t, ctx)
+	})
+}
