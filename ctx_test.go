@@ -5639,11 +5639,72 @@ func Test_Ctx_SaveFileToStorage_ContextPropagation(t *testing.T) {
 // go test -run Test_Ctx_Secure
 func Test_Ctx_Secure(t *testing.T) {
 	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	// TODO Add TLS conn
-	require.False(t, c.Secure())
+	tests := []struct {
+		app       *App
+		configure func(*fasthttp.RequestCtx)
+		name      string
+		expected  bool
+	}{
+		{
+			name:     "plain HTTP",
+			app:      New(),
+			expected: false,
+		},
+		{
+			name: "direct TLS",
+			app:  New(),
+			configure: func(freq *fasthttp.RequestCtx) {
+				freq.Init2(&tls.Conn{}, nil, true)
+			},
+			expected: true,
+		},
+		{
+			name: "trusted proxy HTTPS scheme",
+			app: New(Config{
+				TrustProxy: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"0.0.0.0"},
+				},
+			}),
+			configure: func(freq *fasthttp.RequestCtx) {
+				freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+				freq.Request.Header.Set(HeaderXForwardedProto, schemeHTTPS)
+			},
+			expected: true,
+		},
+		{
+			name: "untrusted proxy HTTPS scheme",
+			app: New(Config{
+				TrustProxy: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"1.1.1.1"},
+				},
+			}),
+			configure: func(freq *fasthttp.RequestCtx) {
+				freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+				freq.Request.Header.Set(HeaderXForwardedProto, schemeHTTPS)
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			freq := &fasthttp.RequestCtx{}
+			if tt.configure != nil {
+				tt.configure(freq)
+			}
+			c := tt.app.AcquireCtx(freq)
+			t.Cleanup(func() {
+				tt.app.ReleaseCtx(c)
+			})
+
+			require.Equal(t, tt.expected, c.Secure())
+		})
+	}
 }
 
 // go test -run Test_Ctx_Stale
