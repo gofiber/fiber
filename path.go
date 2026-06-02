@@ -795,7 +795,6 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 // format without hyphens, and the braced "{...}" and URN
 // "urn:uuid:..." wrapper forms.
 func isGUID(s string) bool {
-	orig := s
 	if strings.HasPrefix(s, "urn:uuid:") {
 		s = s[9:]
 	} else if len(s) > 2 && s[0] == '{' && s[len(s)-1] == '}' {
@@ -816,7 +815,6 @@ func isGUID(s string) bool {
 	if len(s) == 32 {
 		return isHexGroup(s, 32)
 	}
-	_ = orig
 	return false
 }
 
@@ -824,9 +822,9 @@ func isHexGroup(s string, n int) bool {
 	if len(s) < n {
 		return false
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		c := s[i]
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return false
 		}
 	}
