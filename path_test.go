@@ -271,47 +271,47 @@ func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 	}{
 		{
 			name:       "minLen invalid metadata",
-			constraint: Constraint{ID: minLenConstraint, Data: []string{"abc"}},
+			constraint: *newConstraint(minLenConstraintType{}, []string{"abc"}),
 			param:      "abcd",
 		},
 		{
 			name:       "maxLen invalid metadata",
-			constraint: Constraint{ID: maxLenConstraint, Data: []string{"abc"}},
+			constraint: *newConstraint(maxLenConstraintType{}, []string{"abc"}),
 			param:      "abcd",
 		},
 		{
 			name:       "len invalid metadata",
-			constraint: Constraint{ID: lenConstraint, Data: []string{"abc"}},
+			constraint: *newConstraint(lenConstraintType{}, []string{"abc"}),
 			param:      "abcd",
 		},
 		{
 			name:       "betweenLen invalid first metadata",
-			constraint: Constraint{ID: betweenLenConstraint, Data: []string{"abc", "5"}},
+			constraint: *newConstraint(betweenLenConstraintType{}, []string{"abc", "5"}),
 			param:      "abcd",
 		},
 		{
 			name:       "betweenLen invalid second metadata",
-			constraint: Constraint{ID: betweenLenConstraint, Data: []string{"1", "abc"}},
+			constraint: *newConstraint(betweenLenConstraintType{}, []string{"1", "abc"}),
 			param:      "abcd",
 		},
 		{
 			name:       "min invalid metadata",
-			constraint: Constraint{ID: minConstraint, Data: []string{"abc"}},
+			constraint: *newConstraint(minConstraintType{}, []string{"abc"}),
 			param:      "10",
 		},
 		{
 			name:       "max invalid metadata",
-			constraint: Constraint{ID: maxConstraint, Data: []string{"abc"}},
+			constraint: *newConstraint(maxConstraintType{}, []string{"abc"}),
 			param:      "10",
 		},
 		{
 			name:       "range invalid first metadata",
-			constraint: Constraint{ID: rangeConstraint, Data: []string{"abc", "10"}},
+			constraint: *newConstraint(rangeConstraintType{}, []string{"abc", "10"}),
 			param:      "7",
 		},
 		{
 			name:       "range invalid second metadata",
-			constraint: Constraint{ID: rangeConstraint, Data: []string{"1", "abc"}},
+			constraint: *newConstraint(rangeConstraintType{}, []string{"1", "abc"}),
 			param:      "7",
 		},
 	}
@@ -327,7 +327,7 @@ func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 func Test_ConstraintCheckConstraint_NilRegexMatcher(t *testing.T) {
 	t.Parallel()
 
-	constraint := Constraint{ID: regexConstraint, RegexCompiler: (*regexp.Regexp)(nil)}
+	constraint := *newConstraint(regexConstraintType{}, []string{"("})
 
 	require.NotPanics(t, func() {
 		require.False(t, constraint.CheckConstraint("123"))
@@ -590,7 +590,7 @@ func Test_RegexHandler_DefaultCompilerPreservesConstraintField(t *testing.T) {
 	parser := parseRoute("/api/:id<regex(\\d+)>", regexp.MustCompile)
 	require.Len(t, parser.segs, 2)
 	require.Len(t, parser.segs[1].Constraints, 1)
-	require.NotNil(t, parser.segs[1].Constraints[0].RegexCompiler)
+	require.NotNil(t, parser.segs[1].Constraints[0].precompiled)
 	require.Nil(t, parser.segs[1].regexMatchers)
 }
 
@@ -602,7 +602,7 @@ func Test_RegexHandler_CustomCompilerUsesSegmentMatcher(t *testing.T) {
 	})
 	require.Len(t, parser.segs, 2)
 	require.Len(t, parser.segs[1].Constraints, 1)
-	require.Nil(t, parser.segs[1].Constraints[0].RegexCompiler)
+	require.NotNil(t, parser.segs[1].Constraints[0].precompiled)
 	require.Len(t, parser.segs[1].regexMatchers, 1)
 	require.True(t, parser.segs[1].checkConstraint(parser.segs[1].Constraints[0], "123"))
 	require.False(t, parser.segs[1].checkConstraint(parser.segs[1].Constraints[0], "abc"))
