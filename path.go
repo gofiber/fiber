@@ -20,7 +20,6 @@ import (
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
-	"github.com/google/uuid"
 )
 
 type regexMatcher interface {
@@ -790,6 +789,50 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 	}
 }
 
+// isGUID validates that a string is a properly formatted GUID/UUID
+// without allocating. Supports the standard 8-4-4-4-12 hex format
+// (e.g., "f0fa66cc-d22e-445b-866d-1d76e776371d"), the 32-hex-char
+// format without hyphens, and the braced "{...}" and URN
+// "urn:uuid:..." wrapper forms.
+func isGUID(s string) bool {
+	orig := s
+	if strings.HasPrefix(s, "urn:uuid:") {
+		s = s[9:]
+	} else if len(s) > 2 && s[0] == '{' && s[len(s)-1] == '}' {
+		s = s[1 : len(s)-1]
+	}
+
+	if len(s) == 36 {
+		return isHexGroup(s, 8) &&
+			s[8] == '-' &&
+			isHexGroup(s[9:], 4) &&
+			s[13] == '-' &&
+			isHexGroup(s[14:], 4) &&
+			s[18] == '-' &&
+			isHexGroup(s[19:], 4) &&
+			s[23] == '-' &&
+			isHexGroup(s[24:], 12)
+	}
+	if len(s) == 32 {
+		return isHexGroup(s, 32)
+	}
+	_ = orig
+	return false
+}
+
+func isHexGroup(s string, n int) bool {
+	if len(s) < n {
+		return false
+	}
+	for i := 0; i < n; i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 // CheckConstraint validates if a param matches the given constraint
 // Returns true if the param passes the constraint check, false otherwise
 func (c *Constraint) CheckConstraint(param string) bool {
@@ -831,7 +874,9 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			}
 		}
 	case guidConstraint:
-		_, err = uuid.Parse(param)
+		if !isGUID(param) {
+			return false
+		}
 	case minLenConstraint:
 		data, parseErr := strconv.Atoi(c.Data[0])
 		if parseErr != nil {

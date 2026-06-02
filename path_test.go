@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -734,4 +735,72 @@ func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
 	require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
 		RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>", Config{RegexHandler: "invalid"})
 	})
+}
+
+func Test_isGUID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"f0fa66cc-d22e-445b-866d-1d76e776371d", true},
+		{"F0FA66CC-D22E-445B-866D-1D76E776371D", true},
+		{"{f0fa66cc-d22e-445b-866d-1d76e776371d}", true},
+		{"urn:uuid:f0fa66cc-d22e-445b-866d-1d76e776371d", true},
+		{"f0fa66ccd22e445b866d1d76e776371d", true},
+		{"F0FA66CCD22E445B866D1D76E776371D", true},
+		{"00000000-0000-0000-0000-000000000000", true},
+		{"", false},
+		{"f0fa66cc", false},
+		{"f0fa66cc-d22e-445b-866d", false},
+		{"g0fa66cc-d22e-445b-866d-1d76e776371d", false},
+		{"f0fa66cc-d22e-445b-866d-1d76e776371", false},
+		{"f0fa66cc-d22e-445b-866d-1d76e776371d1", false},
+		{"f0fa66cc-d22e-W45b-866d-1d76e776371d", false},
+		{"entity", false},
+		{"8728382", false},
+		{"#!?", false},
+	}
+
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, isGUID(tt.input), "isGUID(%q)", tt.input)
+	}
+}
+
+func Benchmark_isGUID(b *testing.B) {
+	val := "f0fa66cc-d22e-445b-866d-1d76e776371d"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = isGUID(val)
+	}
+}
+
+func Benchmark_isGUID_NoHyphens(b *testing.B) {
+	val := "f0fa66ccd22e445b866d1d76e776371d"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = isGUID(val)
+	}
+}
+
+func Benchmark_isGUID_Invalid(b *testing.B) {
+	val := "not-a-guid-at-all"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = isGUID(val)
+	}
+}
+
+func Benchmark_CheckConstraint_GUID(b *testing.B) {
+	b.ReportAllocs()
+	c := &Constraint{ID: guidConstraint}
+	val := "f0fa66cc-d22e-445b-866d-1d76e776371d"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.CheckConstraint(val)
+	}
 }
