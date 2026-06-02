@@ -7,6 +7,7 @@ import (
 	"math"
 	"mime/multipart"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -537,9 +538,11 @@ func (r *DefaultReq) Port() string {
 	return port
 }
 
-// IP returns the remote IP address of the request.
-// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
-// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
+// IP returns the client's IP address. When the request comes from a trusted proxy (see
+// [TrustProxyConfig]), the value is extracted from the configured ProxyHeader by walking the
+// X-Forwarded-For chain right-to-left and skipping all trusted proxy IPs; the first
+// non-trusted IP in the chain is returned. Please use Config.TrustProxy to prevent header
+// spoofing if your app is behind a proxy.
 func (r *DefaultReq) IP() string {
 	app := r.c.app
 	if r.IsProxyTrusted() && app.config.ProxyHeader != "" {
@@ -612,64 +615,72 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 	return ipsFound
 }
 
-// extractIPFromHeader will attempt to pull the real client IP from the given header when IP validation is enabled.
-// currently, it will return the first valid IP address in header.
-// when IP validation is disabled, it will simply return the value of the header without any inspection.
-// Implementation is almost the same as in extractIPsFromHeader, but without allocation of []string.
+// extractIPFromHeader returns the client IP from the given proxy header by walking the
+// X-Forwarded-For chain from right to left and stripping trusted proxy IPs. When trusted
+// proxies are configured, the rightmost non-trusted IP is returned; otherwise the first
+// valid IP (left-to-right) is returned. When IP validation is disabled, the raw header
+// value is returned as-is.
 func (r *DefaultReq) extractIPFromHeader(header string) string {
 	app := r.c.app
-	if app.config.EnableIPValidation {
-		headerValue := r.Get(header)
 
-		i := 0
-		j := -1
+	if !app.config.EnableIPValidation {
+		return r.Get(app.config.ProxyHeader)
+	}
 
-		for {
-			var v4, v6 bool
-
-			// Manually splitting string without allocating slice, working with parts directly
-			i, j = j+1, j+2
-
-			if j > len(headerValue) {
-				break
-			}
-
-			for j < len(headerValue) && headerValue[j] != ',' {
-				switch headerValue[j] {
-				case ':':
-					v6 = true
-				case '.':
-					v4 = true
-				default:
-					// do nothing
-				}
-				j++
-			}
-
-			for i < j && headerValue[i] == ' ' {
-				i++
-			}
-
-			s := utils.TrimRight(headerValue[i:j], ' ')
-
-			if app.config.EnableIPValidation {
-				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
-					continue
-				}
-			}
-
-			return s
-		}
-
+	ips := r.extractIPsFromHeader(header)
+	if len(ips) == 0 {
 		if ip := r.c.fasthttp.RemoteIP(); ip != nil {
 			return ip.String()
 		}
 		return ""
 	}
 
-	// default behavior if IP validation is not enabled is just to return whatever value is
-	// in the proxy header. Even if it is empty or invalid
-	return r.Get(app.config.ProxyHeader)
+	if !r.hasTrustedProxyConfig() {
+		return ips[0]
+	}
+
+	for _, ip := range slices.Backward(ips) {
+		if !r.isTrustedProxyIP(ip) {
+			return ip
+		}
+	}
+
+	return ips[0]
+}
+
+// hasTrustedProxyConfig returns true if any trusted proxy configuration is set.
+func (r *DefaultReq) hasTrustedProxyConfig() bool {
+	cfg := r.c.app.config.TrustProxyConfig
+	return len(cfg.ips) > 0 || len(cfg.ranges) > 0 || cfg.Loopback || cfg.Private || cfg.LinkLocal
+}
+
+// isTrustedProxyIP checks whether the given IP string matches any configured trusted proxy.
+func (r *DefaultReq) isTrustedProxyIP(ipStr string) bool {
+	cfg := r.c.app.config.TrustProxyConfig
+
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+
+	if cfg.Loopback && ip.IsLoopback() {
+		return true
+	}
+	if cfg.Private && ip.IsPrivate() {
+		return true
+	}
+	if cfg.LinkLocal && ip.IsLinkLocalUnicast() {
+		return true
+	}
+	if _, trusted := cfg.ips[ipStr]; trusted {
+		return true
+	}
+	for _, ipNet := range cfg.ranges {
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.
