@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"sync/atomic"
 	"time"
 )
 
@@ -13,7 +12,7 @@ type Data struct {
 	Start         time.Time
 	Stop          time.Time
 	ChainErr      error
-	Timestamp     atomic.Value
+	Timestamp     string
 	Pid           string
 	ErrPaddingStr string
 	TemplateChain [][]byte

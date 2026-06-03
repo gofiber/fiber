@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -34,33 +33,10 @@ func New(config ...Config) fiber.Handler {
 	// Check if format contains latency
 	cfg.isLatencyEnabled = strings.Contains(cfg.Format, "${"+TagLatency+"}")
 
-	var timestamp atomic.Value
-	// Create correct timeformat
-	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
-
 	timeEnabled := strings.Contains(cfg.Format, "${"+TagTime+"}")
-	var nextTimestampUpdate atomic.Pointer[time.Time]
+	var timestamp *sharedTimestamp
 	if timeEnabled {
-		next := time.Now().Add(cfg.TimeInterval)
-		nextTimestampUpdate.Store(&next)
-	}
-
-	refreshTimestamp := func(now time.Time) {
-		if !timeEnabled {
-			return
-		}
-
-		for {
-			next := nextTimestampUpdate.Load()
-			if next != nil && now.Before(*next) {
-				return
-			}
-			updated := now.Add(cfg.TimeInterval)
-			if nextTimestampUpdate.CompareAndSwap(next, &updated) {
-				timestamp.Store(now.In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
-				return
-			}
-		}
+		timestamp = sharedTimestamps.get(cfg.TimeFormat, cfg.timeZoneLocation, cfg.TimeInterval)
 	}
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
@@ -122,9 +98,10 @@ func New(config ...Config) fiber.Handler {
 		data.Pid = pid
 		data.ErrPaddingStr = errPaddingStr
 		if timeEnabled {
-			refreshTimestamp(time.Now())
+			data.Timestamp = timestamp.Load()
+		} else {
+			data.Timestamp = ""
 		}
-		data.Timestamp.Store(timestamp.Load())
 		// These compiled chains are shared across requests. The default logger and
 		// custom LoggerFunc implementations must only read them, for example via
 		// logtemplate.ExecuteChains.
