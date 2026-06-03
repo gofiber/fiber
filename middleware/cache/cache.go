@@ -142,6 +142,8 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
+	utils.StartTimeStampUpdater()
+
 	// Cache settings
 	mux := &sync.RWMutex{}
 	// Create manager to simplify storage operations ( see manager.go )
@@ -292,7 +294,13 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get timestamp before locking to keep the critical section small.
-		ts := safeUnixSeconds(time.Now())
+		ts := uint64(utils.Timestamp())
+		if e != nil && (reqDirectives.maxAgeSet ||
+			reqDirectives.minFreshSet ||
+			(e.exp != 0 && ts+1 >= e.exp) ||
+			(e.ttl != 0 && e.exp > e.ttl && ts < e.exp-e.ttl)) {
+			ts = safeUnixSeconds(time.Now())
+		}
 
 		// Lock entry
 		mux.Lock()
