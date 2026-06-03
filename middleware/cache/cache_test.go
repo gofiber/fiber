@@ -4373,6 +4373,43 @@ func Test_Cache_HelperFunctions(t *testing.T) {
 		require.Equal(t, uint64(1234567890), result)
 	})
 
+	t.Run("needsExactTimestamp nil entry", func(t *testing.T) {
+		t.Parallel()
+		require.False(t, needsExactTimestamp(nil, requestCacheDirectives{}, 100))
+	})
+
+	t.Run("needsExactTimestamp request directives", func(t *testing.T) {
+		t.Parallel()
+		e := &item{exp: 200}
+		require.True(t, needsExactTimestamp(e, requestCacheDirectives{maxAgeSet: true}, 100))
+		require.True(t, needsExactTimestamp(e, requestCacheDirectives{minFreshSet: true}, 100))
+	})
+
+	t.Run("needsExactTimestamp expiration boundary", func(t *testing.T) {
+		t.Parallel()
+		e := &item{exp: 100}
+		require.True(t, needsExactTimestamp(e, requestCacheDirectives{}, 99))
+		require.False(t, needsExactTimestamp(e, requestCacheDirectives{}, 98))
+	})
+
+	t.Run("needsExactTimestamp predates stored second", func(t *testing.T) {
+		t.Parallel()
+		e := &item{exp: 110, ttl: 10}
+		require.True(t, needsExactTimestamp(e, requestCacheDirectives{}, 99))
+	})
+
+	t.Run("timestampPredatesStoredSecond zero ttl", func(t *testing.T) {
+		t.Parallel()
+		require.False(t, timestampPredatesStoredSecond(&item{exp: 110}, 99))
+	})
+
+	t.Run("timestampPredatesStoredSecond lagging coarse timestamp", func(t *testing.T) {
+		t.Parallel()
+		e := &item{exp: 110, ttl: 10}
+		require.True(t, timestampPredatesStoredSecond(e, 99))
+		require.False(t, timestampPredatesStoredSecond(e, 100))
+	})
+
 	t.Run("remainingFreshness nil", func(t *testing.T) {
 		t.Parallel()
 		result := remainingFreshness(nil, 100)

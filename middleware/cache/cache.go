@@ -295,10 +295,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Get timestamp before locking to keep the critical section small.
 		ts := uint64(utils.Timestamp())
-		if e != nil && (reqDirectives.maxAgeSet ||
-			reqDirectives.minFreshSet ||
-			(e.exp != 0 && ts+1 >= e.exp) ||
-			(e.ttl != 0 && e.exp > e.ttl && ts < e.exp-e.ttl)) {
+		if needsExactTimestamp(e, reqDirectives, ts) {
 			ts = safeUnixSeconds(time.Now())
 		}
 
@@ -1156,6 +1153,34 @@ func parseRequestCacheControl(cc []byte) requestCacheDirectives {
 
 func parseRequestCacheControlString(cc string) requestCacheDirectives {
 	return parseRequestCacheControl(utils.UnsafeBytes(cc))
+}
+
+func needsExactTimestamp(e *item, directives requestCacheDirectives, ts uint64) bool {
+	if e == nil {
+		return false
+	}
+
+	if directives.maxAgeSet || directives.minFreshSet {
+		return true
+	}
+
+	if e.exp != 0 {
+		// utils.Timestamp() is refreshed on a 1s ticker, so it can lag the real
+		// wall clock by almost one second. Re-read precisely once the cached
+		// second is within 1s of expiring.
+		if ts+1 >= e.exp {
+			return true
+		}
+	}
+
+	return timestampPredatesStoredSecond(e, ts)
+}
+
+func timestampPredatesStoredSecond(e *item, ts uint64) bool {
+	// When the coarse timestamp falls behind the second used to compute this
+	// entry's exp value, resident age math can underflow. Re-read precisely
+	// until the shared timestamp has caught up to the stored second.
+	return e.ttl != 0 && ts < e.exp && e.ttl < e.exp-ts
 }
 
 func cachedResponseAge(e *item, now uint64) uint64 {
