@@ -376,6 +376,40 @@ func Benchmark_Path_matchParams(t *testing.B) {
 }
 
 // go test -race -run Test_RoutePatternMatch
+func Benchmark_ConstraintExecution(b *testing.B) {
+	var ctxParams [maxParams]string
+
+	constraintPatterns := []struct {
+		name    string
+		pattern string
+		url     string
+	}{
+		{"int", "/api/:id<int>", "/api/12345"},
+		{"bool", "/api/:flag<bool>", "/api/true"},
+		{"float", "/api/:val<float>", "/api/3.14"},
+		{"alpha", "/api/:name<alpha>", "/api/hello"},
+		{"guid", "/api/:id<guid>", "/api/12345678-1234-1234-1234-123456789abc"},
+		{"minLen", "/api/:name<minLen(3)>", "/api/hello"},
+		{"maxLen", "/api/:name<maxLen(10)>", "/api/hello"},
+		{"len", "/api/:name<len(5)>", "/api/hello"},
+		{"betweenLen", "/api/:name<betweenLen(2,10)>", "/api/hello"},
+		{"min", "/api/:id<min(5)>", "/api/10"},
+		{"max", "/api/:id<max(100)>", "/api/10"},
+		{"range", "/api/:id<range(1,20)>", "/api/10"},
+		{"datetime", "/api/:date<datetime(2006-01-02)>", "/api/2024-01-15"},
+		{"regex", "/api/:id<regex(^[0-9]+$)>", "/api/12345"},
+	}
+
+	for _, tc := range constraintPatterns {
+		b.Run(tc.name, func(b *testing.B) {
+			parser := parseRoute(tc.pattern, regexp.MustCompile)
+			for b.Loop() {
+				parser.getMatch(tc.url, tc.url, &ctxParams, false)
+			}
+		})
+	}
+}
+
 func Benchmark_RoutePatternMatch(t *testing.B) {
 	benchCaseFn := func(testCollection routeCaseCollection) {
 		for _, c := range testCollection.testCases {
