@@ -20,18 +20,17 @@ type ConstraintHandler interface {
 
 	// Execute validates a request parameter value against the constraint.
 	// param is the request parameter value to check.
-	// args are the constraint arguments from the route pattern.
-	// precompiled is data produced by Analyze() at registration time (may be nil).
-	Execute(param string, args []string, precompiled any) bool
+	// data contains the pre-typed constraint data produced by Analyze() at registration time.
+	Execute(param string, data []any) bool
 }
 
 // ConstraintAnalyzer is an optional interface that constraints can implement
-// to preprocess data at route registration time. The returned value is stored
-// and passed to Execute() on every request, avoiding repeated parsing.
+// to preprocess data at route registration time. The returned values are stored
+// in Constraint.Data and passed to Execute() on every request, avoiding repeated parsing.
 type ConstraintAnalyzer interface {
 	// Analyze preprocesses constraint data at route registration time.
-	// Returns an opaque value that will be passed to Execute().
-	Analyze(args []string) (any, error)
+	// Returns pre-typed values that will be stored in Constraint.Data.
+	Analyze(args []string) ([]any, error)
 }
 
 // CustomConstraint is the legacy interface for user-defined constraints.
@@ -46,7 +45,13 @@ type customConstraintWrapper struct {
 	CustomConstraint
 }
 
-func (w *customConstraintWrapper) Execute(param string, args []string, _ any) bool {
+func (w *customConstraintWrapper) Execute(param string, data []any) bool {
+	args := make([]string, len(data))
+	for i, d := range data {
+		if s, ok := d.(string); ok {
+			args[i] = s
+		}
+	}
 	return w.CustomConstraint.Execute(param, args...)
 }
 
@@ -86,37 +91,55 @@ func findConstraintHandler(name string, customs []CustomConstraint) ConstraintHa
 
 // newConstraint creates a Constraint with the given handler and data,
 // calling Analyze() if the handler implements ConstraintAnalyzer.
-func newConstraint(handler ConstraintHandler, data []string) *Constraint {
+func newConstraint(handler ConstraintHandler, args []string) *Constraint {
 	c := &Constraint{
 		Name:    handler.Name(),
-		Data:    data,
 		handler: handler,
 	}
 	if analyser, ok := handler.(ConstraintAnalyzer); ok {
-		pre, err := analyser.Analyze(data)
-		if err == nil {
-			c.precompiled = pre
+		if typed, err := analyser.Analyze(args); err == nil {
+			c.Data = typed
+		} else {
+			// Store raw strings as fallback for invalid data.
+			raw := make([]any, len(args))
+			for i, a := range args {
+				raw[i] = a
+			}
+			c.Data = raw
 		}
+	} else {
+		raw := make([]any, len(args))
+		for i, a := range args {
+			raw[i] = a
+		}
+		c.Data = raw
 	}
 	return c
 }
 
-// matchConstraint checks if a parameter value satisfies the constraint.
+// matchConstraint validates a parameter against this constraint.
 func (c *Constraint) matchConstraint(param string) bool {
 	handler := c.handler
-	precompiled := c.precompiled
+	data := c.Data
 	if handler == nil {
 		handler = findConstraintHandler(resolveConstraintName(c.Name), nil)
 		if handler == nil {
 			return true
 		}
 		if analyser, ok := handler.(ConstraintAnalyzer); ok {
-			if pre, err := analyser.Analyze(c.Data); err == nil {
-				precompiled = pre
+			// Convert raw string data to typed data.
+			rawArgs := make([]string, len(data))
+			for i, d := range data {
+				if s, ok := d.(string); ok {
+					rawArgs[i] = s
+				}
+			}
+			if typed, err := analyser.Analyze(rawArgs); err == nil {
+				data = typed
 			}
 		}
 	}
-	return handler.Execute(param, c.Data, precompiled)
+	return handler.Execute(param, data)
 }
 
 // --- Built-in constraint types ---
@@ -124,7 +147,7 @@ func (c *Constraint) matchConstraint(param string) bool {
 type intConstraintType struct{}
 
 func (intConstraintType) Name() string { return ConstraintInt }
-func (intConstraintType) Execute(param string, _ []string, _ any) bool {
+func (intConstraintType) Execute(param string, _ []any) bool {
 	_, err := strconv.Atoi(param)
 	return err == nil
 }
@@ -132,7 +155,7 @@ func (intConstraintType) Execute(param string, _ []string, _ any) bool {
 type boolConstraintType struct{}
 
 func (boolConstraintType) Name() string { return ConstraintBool }
-func (boolConstraintType) Execute(param string, _ []string, _ any) bool {
+func (boolConstraintType) Execute(param string, _ []any) bool {
 	_, err := strconv.ParseBool(param)
 	return err == nil
 }
@@ -140,27 +163,27 @@ func (boolConstraintType) Execute(param string, _ []string, _ any) bool {
 type floatConstraintType struct{}
 
 func (floatConstraintType) Name() string { return ConstraintFloat }
-func (floatConstraintType) Execute(param string, _ []string, _ any) bool {
-	_, err := strconv.ParseFloat(param, 32)
+func (floatConstraintType) Execute(param string, _ []any) bool {
+	_, err := strconv.ParseFloat(param, 64)
 	return err == nil
 }
 
 type alphaConstraintType struct{}
 
 func (alphaConstraintType) Name() string { return ConstraintAlpha }
-func (alphaConstraintType) Execute(param string, _ []string, _ any) bool {
-	for _, r := range param {
-		if !unicode.IsLetter(r) {
+func (alphaConstraintType) Execute(param string, _ []any) bool {
+	for _, c := range param {
+		if !unicode.IsLetter(c) {
 			return false
 		}
 	}
-	return true
+	return param != ""
 }
 
 type guidConstraintType struct{}
 
 func (guidConstraintType) Name() string { return ConstraintGUID }
-func (guidConstraintType) Execute(param string, _ []string, _ any) bool {
+func (guidConstraintType) Execute(param string, _ []any) bool {
 	_, err := uuid.Parse(param)
 	return err == nil
 }
@@ -168,15 +191,18 @@ func (guidConstraintType) Execute(param string, _ []string, _ any) bool {
 type datetimeConstraintType struct{}
 
 func (datetimeConstraintType) Name() string { return ConstraintDatetime }
-func (datetimeConstraintType) Analyze(args []string) (any, error) {
+func (datetimeConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("datetime constraint requires a layout argument")
 	}
-	return args[0], nil
+	return []any{args[0]}, nil
 }
 
-func (datetimeConstraintType) Execute(param string, _ []string, precompiled any) bool {
-	layout, ok := precompiled.(string)
+func (datetimeConstraintType) Execute(param string, data []any) bool {
+	if len(data) == 0 {
+		return false
+	}
+	layout, ok := data[0].(string)
 	if !ok || layout == "" {
 		return false
 	}
@@ -187,19 +213,22 @@ func (datetimeConstraintType) Execute(param string, _ []string, precompiled any)
 type minLenConstraintType struct{}
 
 func (minLenConstraintType) Name() string { return ConstraintMinLen }
-func (minLenConstraintType) Analyze(args []string) (any, error) {
+func (minLenConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("minLen constraint requires an argument")
 	}
 	n, err := strconv.Atoi(args[0])
 	if err != nil {
-		return 0, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, fmt.Errorf("parse constraint arg: %w", err)
 	}
-	return n, nil
+	return []any{n}, nil
 }
 
-func (minLenConstraintType) Execute(param string, _ []string, precompiled any) bool {
-	limit, ok := precompiled.(int)
+func (minLenConstraintType) Execute(param string, data []any) bool {
+	if len(data) == 0 {
+		return false
+	}
+	limit, ok := data[0].(int)
 	if !ok {
 		return false
 	}
@@ -209,19 +238,22 @@ func (minLenConstraintType) Execute(param string, _ []string, precompiled any) b
 type maxLenConstraintType struct{}
 
 func (maxLenConstraintType) Name() string { return ConstraintMaxLen }
-func (maxLenConstraintType) Analyze(args []string) (any, error) {
+func (maxLenConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("maxLen constraint requires an argument")
 	}
 	n, err := strconv.Atoi(args[0])
 	if err != nil {
-		return 0, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, fmt.Errorf("parse constraint arg: %w", err)
 	}
-	return n, nil
+	return []any{n}, nil
 }
 
-func (maxLenConstraintType) Execute(param string, _ []string, precompiled any) bool {
-	limit, ok := precompiled.(int)
+func (maxLenConstraintType) Execute(param string, data []any) bool {
+	if len(data) == 0 {
+		return false
+	}
+	limit, ok := data[0].(int)
 	if !ok {
 		return false
 	}
@@ -231,34 +263,32 @@ func (maxLenConstraintType) Execute(param string, _ []string, precompiled any) b
 type lenConstraintType struct{}
 
 func (lenConstraintType) Name() string { return ConstraintLen }
-func (lenConstraintType) Analyze(args []string) (any, error) {
+func (lenConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("len constraint requires an argument")
 	}
 	n, err := strconv.Atoi(args[0])
 	if err != nil {
-		return 0, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, fmt.Errorf("parse constraint arg: %w", err)
 	}
-	return n, nil
+	return []any{n}, nil
 }
 
-func (lenConstraintType) Execute(param string, _ []string, precompiled any) bool {
-	limit, ok := precompiled.(int)
+func (lenConstraintType) Execute(param string, data []any) bool {
+	if len(data) == 0 {
+		return false
+	}
+	limit, ok := data[0].(int)
 	if !ok {
 		return false
 	}
 	return len(param) == limit
 }
 
-type betweenLenPrecompiled struct {
-	lo int
-	hi int
-}
-
 type betweenLenConstraintType struct{}
 
 func (betweenLenConstraintType) Name() string { return ConstraintBetweenLen }
-func (betweenLenConstraintType) Analyze(args []string) (any, error) {
+func (betweenLenConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) < 2 {
 		return nil, errors.New("betweenLen constraint requires two arguments")
 	}
@@ -270,34 +300,44 @@ func (betweenLenConstraintType) Analyze(args []string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse constraint arg: %w", err)
 	}
-	return betweenLenPrecompiled{lo: lo, hi: hi}, nil
+	return []any{lo, hi}, nil
 }
 
-func (betweenLenConstraintType) Execute(param string, _ []string, precompiled any) bool {
-	pre, ok := precompiled.(betweenLenPrecompiled)
+func (betweenLenConstraintType) Execute(param string, data []any) bool {
+	if len(data) < 2 {
+		return false
+	}
+	lo, ok := data[0].(int)
+	if !ok {
+		return false
+	}
+	hi, ok := data[1].(int)
 	if !ok {
 		return false
 	}
 	length := len(param)
-	return length >= pre.lo && length <= pre.hi
+	return length >= lo && length <= hi
 }
 
 type minConstraintType struct{}
 
 func (minConstraintType) Name() string { return ConstraintMin }
-func (minConstraintType) Analyze(args []string) (any, error) {
+func (minConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("min constraint requires an argument")
 	}
 	n, err := strconv.Atoi(args[0])
 	if err != nil {
-		return 0, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, fmt.Errorf("parse constraint arg: %w", err)
 	}
-	return n, nil
+	return []any{n}, nil
 }
 
-func (minConstraintType) Execute(param string, _ []string, precompiled any) bool {
-	limit, ok := precompiled.(int)
+func (minConstraintType) Execute(param string, data []any) bool {
+	if len(data) == 0 {
+		return false
+	}
+	limit, ok := data[0].(int)
 	if !ok {
 		return false
 	}
@@ -308,19 +348,22 @@ func (minConstraintType) Execute(param string, _ []string, precompiled any) bool
 type maxConstraintType struct{}
 
 func (maxConstraintType) Name() string { return ConstraintMax }
-func (maxConstraintType) Analyze(args []string) (any, error) {
+func (maxConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("max constraint requires an argument")
 	}
 	n, err := strconv.Atoi(args[0])
 	if err != nil {
-		return 0, fmt.Errorf("parse constraint arg: %w", err)
+		return nil, fmt.Errorf("parse constraint arg: %w", err)
 	}
-	return n, nil
+	return []any{n}, nil
 }
 
-func (maxConstraintType) Execute(param string, _ []string, precompiled any) bool {
-	limit, ok := precompiled.(int)
+func (maxConstraintType) Execute(param string, data []any) bool {
+	if len(data) == 0 {
+		return false
+	}
+	limit, ok := data[0].(int)
 	if !ok {
 		return false
 	}
@@ -328,15 +371,10 @@ func (maxConstraintType) Execute(param string, _ []string, precompiled any) bool
 	return err == nil && num <= limit
 }
 
-type rangePrecompiled struct {
-	lo int
-	hi int
-}
-
 type rangeConstraintType struct{}
 
 func (rangeConstraintType) Name() string { return ConstraintRange }
-func (rangeConstraintType) Analyze(args []string) (any, error) {
+func (rangeConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) < 2 {
 		return nil, errors.New("range constraint requires two arguments")
 	}
@@ -348,22 +386,29 @@ func (rangeConstraintType) Analyze(args []string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse constraint arg: %w", err)
 	}
-	return rangePrecompiled{lo: lo, hi: hi}, nil
+	return []any{lo, hi}, nil
 }
 
-func (rangeConstraintType) Execute(param string, _ []string, precompiled any) bool {
-	pre, ok := precompiled.(rangePrecompiled)
+func (rangeConstraintType) Execute(param string, data []any) bool {
+	if len(data) < 2 {
+		return false
+	}
+	lo, ok := data[0].(int)
+	if !ok {
+		return false
+	}
+	hi, ok := data[1].(int)
 	if !ok {
 		return false
 	}
 	num, err := strconv.Atoi(param)
-	return err == nil && num >= pre.lo && num <= pre.hi
+	return err == nil && num >= lo && num <= hi
 }
 
 type regexConstraintType struct{}
 
 func (regexConstraintType) Name() string { return ConstraintRegex }
-func (regexConstraintType) Analyze(args []string) (any, error) {
+func (regexConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("regex constraint requires a pattern argument")
 	}
@@ -371,11 +416,14 @@ func (regexConstraintType) Analyze(args []string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse constraint arg: %w", err)
 	}
-	return re, nil
+	return []any{re}, nil
 }
 
-func (regexConstraintType) Execute(param string, _ []string, precompiled any) bool {
-	re, ok := precompiled.(*regexp.Regexp)
+func (regexConstraintType) Execute(param string, data []any) bool {
+	if len(data) == 0 {
+		return false
+	}
+	re, ok := data[0].(*regexp.Regexp)
 	if !ok || re == nil {
 		return false
 	}

@@ -624,7 +624,10 @@ func Test_RegexHandler_DefaultCompilerPreservesConstraintField(t *testing.T) {
 	parser := parseRoute("/api/:id<regex(\\d+)>", regexp.MustCompile)
 	require.Len(t, parser.segs, 2)
 	require.Len(t, parser.segs[1].Constraints, 1)
-	require.NotNil(t, parser.segs[1].Constraints[0].precompiled)
+	require.NotNil(t, parser.segs[1].Constraints[0].Data)
+	require.Len(t, parser.segs[1].Constraints[0].Data, 1)
+	_, ok := parser.segs[1].Constraints[0].Data[0].(*regexp.Regexp)
+	require.True(t, ok)
 	require.Nil(t, parser.segs[1].regexMatchers)
 }
 
@@ -636,7 +639,7 @@ func Test_RegexHandler_CustomCompilerUsesSegmentMatcher(t *testing.T) {
 	})
 	require.Len(t, parser.segs, 2)
 	require.Len(t, parser.segs[1].Constraints, 1)
-	require.NotNil(t, parser.segs[1].Constraints[0].precompiled)
+	require.NotNil(t, parser.segs[1].Constraints[0].Data)
 	require.Len(t, parser.segs[1].regexMatchers, 1)
 	require.True(t, parser.segs[1].checkConstraint(parser.segs[1].Constraints[0], "123"))
 	require.False(t, parser.segs[1].checkConstraint(parser.segs[1].Constraints[0], "abc"))

@@ -14,7 +14,7 @@ func Test_ConstraintMatchConstraint_NilHandler(t *testing.T) {
 		t.Parallel()
 		c := &Constraint{
 			Name: ConstraintMinLen,
-			Data: []string{"3"},
+			Data: []any{3},
 		}
 		require.True(t, c.matchConstraint("hello"))
 		require.False(t, c.matchConstraint("hi"))
@@ -24,7 +24,7 @@ func Test_ConstraintMatchConstraint_NilHandler(t *testing.T) {
 		t.Parallel()
 		c := &Constraint{
 			Name: "unknownConstraint",
-			Data: []string{"5"},
+			Data: []any{"5"},
 		}
 		require.True(t, c.matchConstraint("anything"))
 	})
@@ -33,7 +33,7 @@ func Test_ConstraintMatchConstraint_NilHandler(t *testing.T) {
 		t.Parallel()
 		c := &Constraint{
 			Name: ConstraintDatetime,
-			Data: []string{"2006-01-02"},
+			Data: []any{"2006-01-02"},
 		}
 		require.True(t, c.matchConstraint("2024-01-15"))
 		require.False(t, c.matchConstraint("not-a-date"))
@@ -99,113 +99,113 @@ func Test_ConstraintExecute_IntConstraint(t *testing.T) {
 	t.Parallel()
 
 	handler := intConstraintType{}
-	require.True(t, handler.Execute("42", nil, nil))
-	require.False(t, handler.Execute("abc", nil, nil))
+	require.True(t, handler.Execute("42", nil))
+	require.False(t, handler.Execute("abc", nil))
 }
 
 func Test_ConstraintExecute_BoolConstraint(t *testing.T) {
 	t.Parallel()
 
 	handler := boolConstraintType{}
-	require.True(t, handler.Execute("true", nil, nil))
-	require.True(t, handler.Execute("false", nil, nil))
-	require.True(t, handler.Execute("1", nil, nil))
-	require.True(t, handler.Execute("0", nil, nil))
-	require.False(t, handler.Execute("maybe", nil, nil))
+	require.True(t, handler.Execute("true", nil))
+	require.True(t, handler.Execute("false", nil))
+	require.True(t, handler.Execute("1", nil))
+	require.True(t, handler.Execute("0", nil))
+	require.False(t, handler.Execute("maybe", nil))
 }
 
 func Test_ConstraintExecute_FloatConstraint(t *testing.T) {
 	t.Parallel()
 
 	handler := floatConstraintType{}
-	require.True(t, handler.Execute("3.14", nil, nil))
-	require.False(t, handler.Execute("abc", nil, nil))
+	require.True(t, handler.Execute("3.14", nil))
+	require.False(t, handler.Execute("abc", nil))
 }
 
 func Test_ConstraintExecute_AlphaConstraint(t *testing.T) {
 	t.Parallel()
 
 	handler := alphaConstraintType{}
-	require.True(t, handler.Execute("hello", nil, nil))
-	require.False(t, handler.Execute("hello123", nil, nil))
+	require.True(t, handler.Execute("hello", nil))
+	require.False(t, handler.Execute("hello123", nil))
 }
 
 func Test_ConstraintExecute_GuidConstraint(t *testing.T) {
 	t.Parallel()
 
 	handler := guidConstraintType{}
-	require.True(t, handler.Execute("12345678-1234-1234-1234-123456789abc", nil, nil))
-	require.False(t, handler.Execute("not-a-guid", nil, nil))
+	require.True(t, handler.Execute("12345678-1234-1234-1234-123456789abc", nil))
+	require.False(t, handler.Execute("not-a-guid", nil))
 }
 
-func Test_ConstraintExecute_DatetimeConstraint_NilPrecompiled(t *testing.T) {
+func Test_ConstraintExecute_DatetimeConstraint_NilData(t *testing.T) {
 	t.Parallel()
 
 	handler := datetimeConstraintType{}
-	require.False(t, handler.Execute("2024-01-15", nil, nil))
+	require.False(t, handler.Execute("2024-01-15", nil))
 }
 
 func Test_ConstraintExecute_DatetimeConstraint_EmptyLayout(t *testing.T) {
 	t.Parallel()
 
 	handler := datetimeConstraintType{}
-	require.False(t, handler.Execute("2024-01-15", nil, ""))
+	require.False(t, handler.Execute("2024-01-15", []any{""}))
 }
 
-func Test_ConstraintExecute_MinLenConstraint_NilPrecompiled(t *testing.T) {
+func Test_ConstraintExecute_MinLenConstraint_NilData(t *testing.T) {
 	t.Parallel()
 
 	handler := minLenConstraintType{}
-	require.False(t, handler.Execute("hello", nil, nil))
+	require.False(t, handler.Execute("hello", nil))
 }
 
-func Test_ConstraintExecute_MaxLenConstraint_NilPrecompiled(t *testing.T) {
+func Test_ConstraintExecute_MaxLenConstraint_NilData(t *testing.T) {
 	t.Parallel()
 
 	handler := maxLenConstraintType{}
-	require.False(t, handler.Execute("hello", nil, nil))
+	require.False(t, handler.Execute("hello", nil))
 }
 
-func Test_ConstraintExecute_LenConstraint_NilPrecompiled(t *testing.T) {
+func Test_ConstraintExecute_LenConstraint_NilData(t *testing.T) {
 	t.Parallel()
 
 	handler := lenConstraintType{}
-	require.False(t, handler.Execute("hello", nil, nil))
+	require.False(t, handler.Execute("hello", nil))
 }
 
-func Test_ConstraintExecute_BetweenLenConstraint_NilPrecompiled(t *testing.T) {
+func Test_ConstraintExecute_BetweenLenConstraint_NilData(t *testing.T) {
 	t.Parallel()
 
 	handler := betweenLenConstraintType{}
-	require.False(t, handler.Execute("hello", nil, nil))
+	require.False(t, handler.Execute("hello", nil))
 }
 
-func Test_ConstraintExecute_MinConstraint_NilPrecompiled(t *testing.T) {
+func Test_ConstraintExecute_MinConstraint_NilData(t *testing.T) {
 	t.Parallel()
 
 	handler := minConstraintType{}
-	require.False(t, handler.Execute("10", nil, nil))
+	require.False(t, handler.Execute("10", nil))
 }
 
-func Test_ConstraintExecute_MaxConstraint_NilPrecompiled(t *testing.T) {
+func Test_ConstraintExecute_MaxConstraint_NilData(t *testing.T) {
 	t.Parallel()
 
 	handler := maxConstraintType{}
-	require.False(t, handler.Execute("10", nil, nil))
+	require.False(t, handler.Execute("10", nil))
 }
 
-func Test_ConstraintExecute_RangeConstraint_NilPrecompiled(t *testing.T) {
+func Test_ConstraintExecute_RangeConstraint_NilData(t *testing.T) {
 	t.Parallel()
 
 	handler := rangeConstraintType{}
-	require.False(t, handler.Execute("5", nil, nil))
+	require.False(t, handler.Execute("5", nil))
 }
 
-func Test_ConstraintExecute_RegexConstraint_NilPrecompiled(t *testing.T) {
+func Test_ConstraintExecute_RegexConstraint_NilData(t *testing.T) {
 	t.Parallel()
 
 	handler := regexConstraintType{}
-	require.False(t, handler.Execute("hello", nil, nil))
+	require.False(t, handler.Execute("hello", nil))
 }
 
 func Test_ConstraintExecute_RegexConstraint_Compiled(t *testing.T) {
@@ -213,23 +213,15 @@ func Test_ConstraintExecute_RegexConstraint_Compiled(t *testing.T) {
 
 	re := regexp.MustCompile(`^\d+$`)
 	handler := regexConstraintType{}
-	require.True(t, handler.Execute("123", nil, re))
-	require.False(t, handler.Execute("abc", nil, re))
+	require.True(t, handler.Execute("123", []any{re}))
+	require.False(t, handler.Execute("abc", []any{re}))
 }
 
-func Test_ConstraintMatchConstraint_WithPrecompiled(t *testing.T) {
+func Test_ConstraintMatchConstraint_WithTypedData(t *testing.T) {
 	t.Parallel()
 
 	handler := minLenConstraintType{}
-	pre, err := handler.Analyze([]string{"3"})
-	require.NoError(t, err)
-
-	c := &Constraint{
-		handler:     handler,
-		precompiled: pre,
-		Name:        ConstraintMinLen,
-		Data:        []string{"3"},
-	}
+	c := newConstraint(handler, []string{"3"})
 	require.True(t, c.matchConstraint("hello"))
 	require.False(t, c.matchConstraint("hi"))
 }
@@ -239,18 +231,9 @@ func Test_ConstraintMatchConstraint_NilHandlerWithAnalyzerError(t *testing.T) {
 
 	c := &Constraint{
 		Name: ConstraintMinLen,
-		Data: []string{"notanumber"},
+		Data: []any{"notanumber"},
 	}
 	require.False(t, c.matchConstraint("hello"))
-}
-
-type testCustomConstraintForCoverage struct {
-	allowed string
-}
-
-func (*testCustomConstraintForCoverage) Name() string { return "customTest" }
-func (t *testCustomConstraintForCoverage) Execute(param string, _ ...string) bool {
-	return param == t.allowed
 }
 
 func Test_FindConstraintHandler_CustomPriority(t *testing.T) {
@@ -274,4 +257,13 @@ func Test_FindConstraintHandler_Unknown(t *testing.T) {
 
 	handler := findConstraintHandler("nonexistent", nil)
 	require.Nil(t, handler)
+}
+
+type testCustomConstraintForCoverage struct {
+	allowed string
+}
+
+func (*testCustomConstraintForCoverage) Name() string { return "customTest" }
+func (t *testCustomConstraintForCoverage) Execute(param string, _ ...string) bool {
+	return param == t.allowed
 }

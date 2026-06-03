@@ -133,10 +133,9 @@ const (
 // segment when matching incoming requests.
 // See constraint.go for the ConstraintHandler and ConstraintAnalyser interfaces.
 type Constraint struct {
-	handler     ConstraintHandler
-	precompiled any
-	Name        string
-	Data        []string
+	handler ConstraintHandler
+	Name    string
+	Data    []any
 }
 
 // list of possible parameter and segment delimiter
@@ -465,7 +464,9 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any
 			if handler.Name() == ConstraintRegex && regexHandler != nil && len(data) > 0 {
 				compiler := compileRegex(regexHandler, data[0])
 				if re, ok := compiler.(*regexp.Regexp); ok {
-					constraint.precompiled = re
+					if len(constraint.Data) > 0 {
+						constraint.Data[0] = re
+					}
 				} else {
 					if regexMatchers == nil {
 						regexMatchers = make(map[*Constraint]regexMatcher)
