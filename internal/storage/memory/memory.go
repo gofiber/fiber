@@ -5,6 +5,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"sync"
 	"time"
 
@@ -72,10 +73,13 @@ func (s *Storage) Get(key string) ([]byte, error) {
 	if key == "" {
 		return nil, nil
 	}
-	s.mux.RLock()
-	v, ok := s.db[key]
-	s.mux.RUnlock()
 
+	shardID := getHash(key) % numShards
+	s.shards[shardID].mux.RLock()
+
+	v, ok := s.shards[shardID].db[key]
+
+	s.shards[shardID].mux.RUnlock()
 	if !ok || v.expiry != 0 && v.expiry <= utils.Timestamp() {
 		return nil, nil
 	}
@@ -251,4 +255,10 @@ func wrapContextError(ctx context.Context, op string) error {
 		return fmt.Errorf("memory storage %s: %w", op, err)
 	}
 	return nil
+}
+
+func getHash(key string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(key))
+	return h.Sum32()
 }
