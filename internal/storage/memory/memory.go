@@ -187,7 +187,7 @@ func (s *Storage) ResetWithContext(ctx context.Context) error {
 // associated with the storage instance.
 func (s *Storage) Close() error {
 	s.closeOnce.Do(func() {
-		s.done <- struct{}{}
+		close(s.done)
 	})
 	return nil
 }
