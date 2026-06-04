@@ -234,9 +234,21 @@ func (s *Storage) gc() {
 // the storage, so callers must not modify it and must synchronize any access
 // that overlaps with other storage operations.
 func (s *Storage) Conn() map[string]Entry {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-	return s.db
+	var allocatedMapLen = 0
+	for _, shard := range s.shards {
+		shard.mux.RLock()
+		allocatedMapLen += len(shard.db)
+		shard.mux.RUnlock()
+	}
+	mergedMaps := make(map[string]Entry, allocatedMapLen)
+	for _, shard := range s.shards {
+		shard.mux.RLock()
+		for k, v := range shard.db {
+			mergedMaps[k] = v
+		}
+		shard.mux.RUnlock()
+	}
+	return mergedMaps
 }
 
 // Keys returns all keys stored in the memory storage.
