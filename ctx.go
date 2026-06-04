@@ -765,7 +765,7 @@ func (c *DefaultCtx) ForceRelease() {
 }
 
 // ScheduleReclaim arms automatic reclamation of an abandoned context, returning
-// it to the pool once it is safe to do so. It must be called after Abandon().
+// it to the pool once it is safe to do so.
 //
 // handlerDone must be closed once the goroutine that still uses this context
 // (for the timeout middleware, the handler goroutine) has completely finished.
@@ -773,11 +773,16 @@ func (c *DefaultCtx) ForceRelease() {
 // goroutine and is invoked as soon as it finishes.
 //
 // ForceRelease is performed only after BOTH handlerDone is closed AND the request
-// handler has released the context (signalled from ReleaseCtx/releaseDefaultCtx),
+// handler has released the context (signaled from ReleaseCtx/releaseDefaultCtx),
 // which makes the reclamation race-free. If handlerDone never closes — a handler
 // that never returns — the context is intentionally never reclaimed, because the
 // handler still owns it.
+//
+// This method calls Abandon internally, so callers do not need to call Abandon
+// separately. Calling Abandon before ScheduleReclaim is still safe (idempotent).
 func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context.CancelFunc) {
+	c.Abandon()
+
 	latch := &reclaimLatch{releasedCh: make(chan struct{})}
 	c.reclaim = latch
 

@@ -105,14 +105,6 @@ func handleTimeout(
 	handlerDone <-chan struct{},
 	cfg Config,
 ) error {
-	// Mark fiber context as abandoned - ReleaseCtx will skip pooling so the
-	// handler goroutine can keep using the context safely after we return.
-	//
-	// This is the same approach fasthttp uses - timed-out RequestCtx objects
-	// are never returned to the pool (see fasthttp's releaseCtx which panics
-	// if timeoutResponse is set).
-	ctx.Abandon()
-
 	// Prepare the timeout response before marking the RequestCtx as timed out so
 	// custom OnTimeout handlers can shape the response body.
 	timeoutErr := invokeOnTimeout(ctx, cfg)
@@ -136,16 +128,24 @@ func handleTimeout(
 	// Fiber's requestHandler releases the context (after any ErrorHandler runs),
 	// so we never race with goroutines still using it. This fixes the unbounded
 	// fiber.Ctx leak that previously affected every timed-out request (#4359).
-	if r, ok := ctx.(interface {
-		ScheduleReclaim(<-chan struct{}, context.CancelFunc)
-	}); ok {
-		r.ScheduleReclaim(handlerDone, cancel)
+	//
+	// Use a concrete type assertion to *fiber.DefaultCtx rather than an interface
+	// assertion, because only *fiber.DefaultCtx has the signalReleased wiring in
+	// ReleaseCtx/releaseDefaultCtx. An interface assertion could accidentally match
+	// custom Ctx implementations that provide ScheduleReclaim but lack the release
+	// signal, causing the reclamation goroutine to block forever.
+	if dc, ok := ctx.(*fiber.DefaultCtx); ok {
+		dc.ScheduleReclaim(handlerDone, cancel)
 		return timeoutErr
 	}
 
-	// Custom context implementations that do not support ScheduleReclaim fall
-	// back to the previous behavior: once the handler finishes, cancel the
-	// timeout context and restore the parent. The context stays out of the pool.
+	// Custom context implementations fall back to the previous behavior: once the
+	// handler finishes, cancel the timeout context and restore the parent. The
+	// context stays out of the pool.
+	//
+	// Mark the context as abandoned so ReleaseCtx will skip pooling, allowing the
+	// handler goroutine to continue safely using the context.
+	ctx.Abandon()
 	go func() {
 		<-handlerDone
 		cancel()
