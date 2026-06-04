@@ -186,7 +186,9 @@ func (s *Storage) ResetWithContext(ctx context.Context) error {
 // Close stops the background garbage collector and releases resources
 // associated with the storage instance.
 func (s *Storage) Close() error {
-	s.done <- struct{}{}
+	s.closeOnce.Do(func() {
+		s.done <- struct{}{}
+	})
 	return nil
 }
 
