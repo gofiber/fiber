@@ -46,21 +46,31 @@ func NewMemoryLock() *MemoryLock {
 
 // Lock acquires the lock for the provided key, creating it when necessary.
 func (l *MemoryLock) Lock(key string) error {
-	l.mu.Lock()
-	if l.keys == nil {
-		l.keys = make(map[string]*countedLock)
-	}
-	lock, ok := l.keys[key]
-	if !ok {
-		lock = new(countedLock)
-		l.keys[key] = lock
-	}
-	lock.locked++
-	l.mu.Unlock()
+	shard := l.getShard(key)
 
-	lock.mu.Lock()
+	for {
+		shard.mu.Lock()
+		lock, ok := shard.keys[key]
+		if !ok {
+			lock = &countedLock{}
+			shard.keys[key] = lock
+		}
+		lock.locked++
+		shard.mu.Unlock()
 
-	return nil
+		lock.mu.Lock()
+
+		shard.mu.Lock()
+
+		currentLock, ok := shard.keys[key]
+		if ok && currentLock == lock {
+			shard.mu.Unlock()
+			return nil
+		}
+		lock.locked--
+		lock.mu.Unlock()
+		shard.mu.Unlock()
+	}
 }
 
 // Unlock releases the lock associated with the provided key.
