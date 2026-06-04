@@ -94,9 +94,16 @@ func (l *MemoryLock) Unlock(key string) error {
 }
 
 func (l *MemoryLock) getShard(key string) *lockerShard {
-	h := fnv.New32a()
-	h.Write([]byte(key))
-	return l.shards[h.Sum32()%numShards]
+	const (
+		offset32 = 2166136261
+		prime32  = 16777619
+	)
+	hash := uint32(offset32)
+	for i := 0; i < len(key); i++ {
+		hash ^= uint32(key[i])
+		hash *= prime32
+	}
+	return l.shards[hash%numShards]
 }
 
 var _ Locker = (*MemoryLock)(nil)
