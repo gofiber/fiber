@@ -11,13 +11,22 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
+const numShards = 32
+
 // Storage provides an in-memory implementation of the storage interface for
 // testing purposes.
 // Storage is safe for concurrent use, except when callers keep using the live
 // map returned by Conn. Access to that map requires external synchronization.
+
 type Storage struct {
+	shards    []*Shard
+	done      chan struct{}
+	closeOnce sync.Once
+}
+
+// Shard represents a shard of the storage.
+type Shard struct {
 	db         map[string]Entry
-	done       chan struct{}
 	gcInterval time.Duration
 	mux        sync.RWMutex
 }
@@ -34,11 +43,20 @@ func New(config ...Config) *Storage {
 	// Set default config
 	cfg := configDefault(config...)
 
+	//Implementation of shards
+	shards := make([]*Shard, numShards)
+	for i := range numShards {
+		shards[i] = &Shard{
+			db:         make(map[string]Entry),
+			gcInterval: cfg.GCInterval,
+			mux:        sync.RWMutex{},
+		}
+	}
+
 	// Create storage
 	store := &Storage{
-		db:         make(map[string]Entry),
-		gcInterval: cfg.GCInterval,
-		done:       make(chan struct{}),
+		shards: shards,
+		done:   make(chan struct{}),
 	}
 
 	// Start garbage collector
