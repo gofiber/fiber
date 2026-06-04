@@ -157,20 +157,11 @@ func (s *Storage) DeleteWithContext(ctx context.Context, key string) error {
 
 // Reset clears all keys and values from the storage map.
 func (s *Storage) Reset() error {
-	wg := &sync.WaitGroup{}
-
 	for _, shard := range s.shards {
-		wg.Add(1)
-		go func(shrd *Shard) {
-			defer wg.Done()
-
-			shrd.mux.Lock()
-			shrd.db = make(map[string]Entry)
-			shrd.mux.Unlock()
-		}(shard)
+		shard.mux.Lock()
+		shard.db = make(map[string]Entry)
+		shard.mux.Unlock()
 	}
-
-	wg.Wait()
 	return nil
 }
 
