@@ -75,26 +75,21 @@ func (l *MemoryLock) Lock(key string) error {
 
 // Unlock releases the lock associated with the provided key.
 func (l *MemoryLock) Unlock(key string) error {
-	l.mu.Lock()
-	lock, ok := l.keys[key]
+	shard := l.getShard(key)
+	shard.mu.Lock()
+	lock, ok := shard.keys[key]
 	if !ok {
 		// This happens if we try to unlock an unknown key
-		l.mu.Unlock()
+		shard.mu.Unlock()
 		return nil
 	}
-	l.mu.Unlock()
-
 	lock.mu.Unlock()
 
-	l.mu.Lock()
 	lock.locked--
-	if lock.locked <= 0 {
-		// This happens if countedLock is used to Lock and Unlock the same number of times
-		// So, we can delete the key to prevent memory leak
-		delete(l.keys, key)
+	if lock.locked == 0 {
+		delete(shard.keys, key)
 	}
-	l.mu.Unlock()
-
+	shard.mu.Unlock()
 	return nil
 }
 
