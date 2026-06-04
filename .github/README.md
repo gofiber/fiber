@@ -807,7 +807,7 @@ Fiber is an open-source project that runs on donations to pay the bills, e.g., o
 | ![](https://avatars.githubusercontent.com/u/132028505?s=25)   | [@CodeRabbit](https://www.coderabbit.ai/)           | 🔥 Fiber Guardian    |
 | ![](https://avatars.githubusercontent.com/u/13936519?s=25) | [@NdoleStudio](https://github.com/NdoleStudio) | ☕ Fiber Supporter    |
 | ![](https://avatars.githubusercontent.com/u/37613029?s=25) | [@petercool](https://github.com/petercool)   | ☕ Fiber Supporter    |
-| <img src="https://avatars.githubusercontent.com/u/56607882?s=25" alt="thomasvvugt" width="25" height="25">  | [@bsdrop](https://github.com/ekaputra07)     | ☕ Fiber Supporter    |
+| <img src="https://avatars.githubusercontent.com/u/202508784?s=25" alt="bsdrop" width="25" height="25">  | [@bsdrop](https://github.com/bsdrop)     | ☕ Fiber Supporter    |
 
 |                                                            | User                                             | Donation |
 | ---------------------------------------------------------- | ------------------------------------------------ | -------- |
