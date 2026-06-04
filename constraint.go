@@ -3,6 +3,7 @@ package fiber
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,6 +12,58 @@ import (
 
 	"github.com/google/uuid"
 )
+
+type regexMatcher interface {
+	MatchString(s string) bool
+}
+
+var (
+	regexMatcherType = reflect.TypeFor[regexMatcher]()
+	stringType       = reflect.TypeFor[string]()
+)
+
+func isNilRegexMatcher(matcher regexMatcher) bool {
+	if matcher == nil {
+		return true
+	}
+	matcherValue := reflect.ValueOf(matcher)
+	switch matcherValue.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return matcherValue.IsNil()
+	default:
+		return false
+	}
+}
+
+func compileRegex(handler any, pattern string) regexMatcher {
+	result := reflect.ValueOf(handler).Call([]reflect.Value{reflect.ValueOf(pattern)})
+	matcher, ok := result[0].Interface().(regexMatcher)
+	if !ok {
+		panic("fiber: Config.RegexHandler return type must support MatchString(string) bool")
+	}
+	if isNilRegexMatcher(matcher) {
+		panic("fiber: Config.RegexHandler must not return nil")
+	}
+	return matcher
+}
+
+func validateRegexHandler(handler any) any {
+	if handler == nil {
+		return regexp.MustCompile
+	}
+	handlerValue := reflect.ValueOf(handler)
+	handlerType := handlerValue.Type()
+	if handlerType.Kind() != reflect.Func || handlerValue.IsNil() {
+		panic("fiber: Config.RegexHandler must be a non-nil function")
+	}
+	if handlerType.NumIn() != 1 || handlerType.In(0) != stringType || handlerType.NumOut() != 1 {
+		panic("fiber: Config.RegexHandler must have signature func(string) T")
+	}
+	if !handlerType.Out(0).Implements(regexMatcherType) {
+		panic("fiber: Config.RegexHandler return type must support MatchString(string) bool")
+	}
+	return handler
+}
 
 // ConstraintHandler is the interface that all constraints must implement.
 // Built-in and custom constraints are treated uniformly through this interface.
@@ -45,6 +98,10 @@ type customConstraintWrapper struct {
 	CustomConstraint
 }
 
+func (*customConstraintWrapper) Analyze(args []string) ([]any, error) {
+	return stringArgsToAny(parseConstraintArgs(args)), nil
+}
+
 func (w *customConstraintWrapper) Execute(param string, data []any) bool {
 	args := make([]string, len(data))
 	for i, d := range data {
@@ -53,6 +110,28 @@ func (w *customConstraintWrapper) Execute(param string, data []any) bool {
 		}
 	}
 	return w.CustomConstraint.Execute(param, args...)
+}
+
+func stringArgsToAny(args []string) []any {
+	raw := make([]any, len(args))
+	for i, a := range args {
+		raw[i] = a
+	}
+	return raw
+}
+
+func parseConstraintArgs(args []string) []string {
+	if len(args) != 1 {
+		return args
+	}
+	parsed := splitNonEscaped(args[0], paramConstraintDataSeparator)
+	if len(parsed) == 1 {
+		parsed[0] = RemoveEscapeChar(parsed[0])
+	} else if len(parsed) == 2 {
+		parsed[0] = RemoveEscapeChar(parsed[0])
+		parsed[1] = RemoveEscapeChar(parsed[1])
+	}
+	return parsed
 }
 
 // builtinConstraints is the registry of all built-in constraint handlers.
@@ -70,16 +149,18 @@ var builtinConstraints = []ConstraintHandler{
 	minConstraintType{},
 	maxConstraintType{},
 	rangeConstraintType{},
-	regexConstraintType{},
 }
 
 // findConstraintHandler looks up a constraint handler by name from the merged
 // list of custom and built-in constraints. Custom constraints take priority.
-func findConstraintHandler(name string, customs []CustomConstraint) ConstraintHandler {
+func findConstraintHandler(name string, regexHandler any, customs []CustomConstraint) ConstraintHandler {
 	for _, cc := range customs {
 		if cc.Name() == name {
 			return &customConstraintWrapper{CustomConstraint: cc}
 		}
+	}
+	if name == ConstraintRegex {
+		return regexConstraintType{regexHandler: regexHandler}
 	}
 	for _, bc := range builtinConstraints {
 		if bc.Name() == name {
@@ -101,18 +182,10 @@ func newConstraint(handler ConstraintHandler, args []string) *Constraint {
 			c.Data = typed
 		} else {
 			// Store raw strings as fallback for invalid data.
-			raw := make([]any, len(args))
-			for i, a := range args {
-				raw[i] = a
-			}
-			c.Data = raw
+			c.Data = stringArgsToAny(args)
 		}
 	} else {
-		raw := make([]any, len(args))
-		for i, a := range args {
-			raw[i] = a
-		}
-		c.Data = raw
+		c.Data = stringArgsToAny(args)
 	}
 	return c
 }
@@ -122,7 +195,7 @@ func (c *Constraint) matchConstraint(param string) bool {
 	handler := c.handler
 	data := c.Data
 	if handler == nil {
-		handler = findConstraintHandler(resolveConstraintName(c.Name), nil)
+		handler = findConstraintHandler(resolveConstraintName(c.Name), nil, nil)
 		if handler == nil {
 			return true
 		}
@@ -192,6 +265,7 @@ type datetimeConstraintType struct{}
 
 func (datetimeConstraintType) Name() string { return ConstraintDatetime }
 func (datetimeConstraintType) Analyze(args []string) ([]any, error) {
+	args = parseConstraintArgs(args)
 	if len(args) == 0 {
 		return nil, errors.New("datetime constraint requires a layout argument")
 	}
@@ -214,6 +288,7 @@ type minLenConstraintType struct{}
 
 func (minLenConstraintType) Name() string { return ConstraintMinLen }
 func (minLenConstraintType) Analyze(args []string) ([]any, error) {
+	args = parseConstraintArgs(args)
 	if len(args) == 0 {
 		return nil, errors.New("minLen constraint requires an argument")
 	}
@@ -239,6 +314,7 @@ type maxLenConstraintType struct{}
 
 func (maxLenConstraintType) Name() string { return ConstraintMaxLen }
 func (maxLenConstraintType) Analyze(args []string) ([]any, error) {
+	args = parseConstraintArgs(args)
 	if len(args) == 0 {
 		return nil, errors.New("maxLen constraint requires an argument")
 	}
@@ -264,6 +340,7 @@ type lenConstraintType struct{}
 
 func (lenConstraintType) Name() string { return ConstraintLen }
 func (lenConstraintType) Analyze(args []string) ([]any, error) {
+	args = parseConstraintArgs(args)
 	if len(args) == 0 {
 		return nil, errors.New("len constraint requires an argument")
 	}
@@ -289,6 +366,7 @@ type betweenLenConstraintType struct{}
 
 func (betweenLenConstraintType) Name() string { return ConstraintBetweenLen }
 func (betweenLenConstraintType) Analyze(args []string) ([]any, error) {
+	args = parseConstraintArgs(args)
 	if len(args) < 2 {
 		return nil, errors.New("betweenLen constraint requires two arguments")
 	}
@@ -323,6 +401,7 @@ type minConstraintType struct{}
 
 func (minConstraintType) Name() string { return ConstraintMin }
 func (minConstraintType) Analyze(args []string) ([]any, error) {
+	args = parseConstraintArgs(args)
 	if len(args) == 0 {
 		return nil, errors.New("min constraint requires an argument")
 	}
@@ -349,6 +428,7 @@ type maxConstraintType struct{}
 
 func (maxConstraintType) Name() string { return ConstraintMax }
 func (maxConstraintType) Analyze(args []string) ([]any, error) {
+	args = parseConstraintArgs(args)
 	if len(args) == 0 {
 		return nil, errors.New("max constraint requires an argument")
 	}
@@ -375,6 +455,7 @@ type rangeConstraintType struct{}
 
 func (rangeConstraintType) Name() string { return ConstraintRange }
 func (rangeConstraintType) Analyze(args []string) ([]any, error) {
+	args = parseConstraintArgs(args)
 	if len(args) < 2 {
 		return nil, errors.New("range constraint requires two arguments")
 	}
@@ -405,29 +486,35 @@ func (rangeConstraintType) Execute(param string, data []any) bool {
 	return err == nil && num >= lo && num <= hi
 }
 
-type regexConstraintType struct{}
+type regexConstraintType struct {
+	regexHandler any
+}
 
 func (regexConstraintType) Name() string { return ConstraintRegex }
-func (regexConstraintType) Analyze(args []string) ([]any, error) {
+func (r regexConstraintType) Analyze(args []string) ([]any, error) {
 	if len(args) == 0 {
 		return nil, errors.New("regex constraint requires a pattern argument")
 	}
-	re, err := regexp.Compile(args[0])
-	if err != nil {
-		return nil, fmt.Errorf("parse constraint arg: %w", err)
+	if r.regexHandler == nil {
+		re, err := regexp.Compile(args[0])
+		if err != nil {
+			return nil, fmt.Errorf("parse constraint arg: %w", err)
+		}
+		return []any{re}, nil
 	}
-	return []any{re}, nil
+	matcher := compileRegex(r.regexHandler, args[0])
+	return []any{matcher}, nil
 }
 
 func (regexConstraintType) Execute(param string, data []any) bool {
 	if len(data) == 0 {
 		return false
 	}
-	re, ok := data[0].(*regexp.Regexp)
-	if !ok || re == nil {
+	matcher, ok := data[0].(regexMatcher)
+	if !ok || matcher == nil {
 		return false
 	}
-	return re.MatchString(param)
+	return matcher.MatchString(param)
 }
 
 // resolveConstraintName handles case-insensitive and alias matching for constraint names.

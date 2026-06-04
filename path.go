@@ -9,8 +9,6 @@ package fiber
 import (
 	"bytes"
 	"fmt"
-	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,65 +17,6 @@ import (
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
-
-type regexMatcher interface {
-	// MatchString reports whether the string s contains any match of the regex pattern.
-	MatchString(s string) bool
-}
-
-var (
-	regexMatcherType = reflect.TypeFor[regexMatcher]()
-	stringType       = reflect.TypeFor[string]()
-)
-
-func validateRegexHandler(handler any) any {
-	if handler == nil {
-		return regexp.MustCompile
-	}
-
-	handlerValue := reflect.ValueOf(handler)
-	handlerType := handlerValue.Type()
-
-	if handlerType.Kind() != reflect.Func || handlerValue.IsNil() {
-		panic("fiber: Config.RegexHandler must be a non-nil function")
-	}
-	if handlerType.NumIn() != 1 || handlerType.In(0) != stringType || handlerType.NumOut() != 1 {
-		panic("fiber: Config.RegexHandler must have signature func(string) T")
-	}
-	if !handlerType.Out(0).Implements(regexMatcherType) {
-		panic("fiber: Config.RegexHandler return type must support MatchString(string) bool")
-	}
-
-	return handler
-}
-
-func isNilRegexMatcher(matcher regexMatcher) bool {
-	if matcher == nil {
-		return true
-	}
-
-	matcherValue := reflect.ValueOf(matcher)
-	switch matcherValue.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return matcherValue.IsNil()
-	default:
-		return false
-	}
-}
-
-// compileRegex calls the RegexHandler function and returns a regexMatcher.
-func compileRegex(handler any, pattern string) regexMatcher {
-	result := reflect.ValueOf(handler).Call([]reflect.Value{reflect.ValueOf(pattern)})
-	matcher, ok := result[0].Interface().(regexMatcher)
-	if !ok {
-		panic("fiber: Config.RegexHandler return type must support MatchString(string) bool")
-	}
-	if isNilRegexMatcher(matcher) {
-		panic("fiber: Config.RegexHandler must not return nil")
-	}
-
-	return matcher
-}
 
 // routeParser holds the path segments and param names
 type routeParser struct {
@@ -95,7 +34,6 @@ var routerParserPool = &sync.Pool{
 
 // routeSegment holds the segment metadata
 type routeSegment struct {
-	regexMatchers map[*Constraint]regexMatcher // preserved for custom RegexHandler compat
 	// const information
 	Const       string        // constant part of the route
 	ParamName   string        // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
@@ -418,10 +356,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any
 	paramName := RemoveEscapeChar(GetTrimmedParam(processedPart))
 
 	// Check has constraint
-	var (
-		constraints   []*Constraint
-		regexMatchers map[*Constraint]regexMatcher
-	)
+	var constraints []*Constraint
 
 	if hasConstraint := paramConstraintStartPosition != -1 && paramConstraintEndPosition != -1; hasConstraint {
 		constraintString := pattern[paramConstraintStartPosition+1 : paramConstraintEndPosition]
@@ -437,51 +372,24 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any
 
 			if start != -1 && end != -1 {
 				constraintName = resolveConstraintName(c[:start])
-				if constraintName == ConstraintRegex {
-					data = []string{c[start+1 : end]}
-				} else {
-					data = splitNonEscaped(c[start+1:end], paramConstraintDataSeparator)
-					if len(data) == 1 {
-						data[0] = RemoveEscapeChar(data[0])
-					} else if len(data) == 2 {
-						data[0] = RemoveEscapeChar(data[0])
-						data[1] = RemoveEscapeChar(data[1])
-					}
-				}
+				data = []string{c[start+1 : end]}
 			} else {
 				constraintName = resolveConstraintName(c)
 				data = []string{}
 			}
 
-			handler := findConstraintHandler(constraintName, customConstraints)
+			handler := findConstraintHandler(constraintName, regexHandler, customConstraints)
 			if handler == nil {
 				continue
 			}
 
 			constraint := newConstraint(handler, data)
-
-			// Handle custom RegexHandler for regex constraints
-			if handler.Name() == ConstraintRegex && regexHandler != nil && len(data) > 0 {
-				compiler := compileRegex(regexHandler, data[0])
-				if re, ok := compiler.(*regexp.Regexp); ok {
-					if len(constraint.Data) > 0 {
-						constraint.Data[0] = re
-					}
-				} else {
-					if regexMatchers == nil {
-						regexMatchers = make(map[*Constraint]regexMatcher)
-					}
-					regexMatchers[constraint] = compiler
-				}
-			}
-
 			constraints = append(constraints, constraint)
 		}
 
 		paramName = RemoveEscapeChar(GetTrimmedParam(pattern[0:paramConstraintStartPosition]))
 	}
 
-	// add access iterator to wildcard and plus
 	if isWildCard {
 		parser.wildCardCount++
 		paramName += strconv.Itoa(parser.wildCardCount)
@@ -499,7 +407,6 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any
 
 	if len(constraints) > 0 {
 		segment.Constraints = constraints
-		segment.regexMatchers = regexMatchers
 	}
 
 	return n, segment
@@ -578,7 +485,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			if !segment.IsOptional || i != 0 {
 				// check constraint
 				for _, c := range segment.Constraints {
-					if matched := segment.checkConstraint(c, params[paramsIterator]); !matched {
+					if matched := c.matchConstraint(params[paramsIterator]); !matched {
 						return false
 					}
 				}
@@ -718,11 +625,4 @@ func RemoveEscapeCharBytes(word []byte) []byte {
 // Kept for backward compatibility with external callers.
 func (c *Constraint) CheckConstraint(param string) bool {
 	return c.matchConstraint(param)
-}
-
-func (segment *routeSegment) checkConstraint(constraint *Constraint, param string) bool {
-	if matcher, ok := segment.regexMatchers[constraint]; ok {
-		return matcher.MatchString(param)
-	}
-	return constraint.matchConstraint(param)
 }

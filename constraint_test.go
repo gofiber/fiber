@@ -240,14 +240,14 @@ func Test_FindConstraintHandler_CustomPriority(t *testing.T) {
 	t.Parallel()
 
 	custom := &testCustomConstraintForCoverage{allowed: "x"}
-	handler := findConstraintHandler("customTest", []CustomConstraint{custom})
+	handler := findConstraintHandler("customTest", nil, []CustomConstraint{custom})
 	require.NotNil(t, handler)
 }
 
 func Test_FindConstraintHandler_Builtin(t *testing.T) {
 	t.Parallel()
 
-	handler := findConstraintHandler("int", nil)
+	handler := findConstraintHandler("int", nil, nil)
 	require.NotNil(t, handler)
 	require.Equal(t, "int", handler.Name())
 }
@@ -255,7 +255,7 @@ func Test_FindConstraintHandler_Builtin(t *testing.T) {
 func Test_FindConstraintHandler_Unknown(t *testing.T) {
 	t.Parallel()
 
-	handler := findConstraintHandler("nonexistent", nil)
+	handler := findConstraintHandler("nonexistent", nil, nil)
 	require.Nil(t, handler)
 }
 
