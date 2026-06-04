@@ -191,42 +191,43 @@ func (s *Storage) Close() error {
 }
 
 func (s *Storage) gc() {
-	ticker := time.NewTicker(s.gcInterval)
+	ticker := time.NewTicker(s.shards[0].gcInterval)
 	defer ticker.Stop()
 	var expired []string
-
 	for {
 		select {
 		case <-s.done:
 			return
 		case <-ticker.C:
 			ts := utils.Timestamp()
-			expired = expired[:0]
-			s.mux.RLock()
-			for id, v := range s.db {
-				if v.expiry != 0 && v.expiry < ts {
-					expired = append(expired, id)
-				}
-			}
-			s.mux.RUnlock()
 
-			if len(expired) == 0 {
-				// avoid locking if nothing to delete
-				continue
+			for _, shard := range s.shards {
+				expired = expired[:0]
+				shard.mux.RLock()
+				for id, v := range shard.db {
+					if v.expiry != 0 && v.expiry < ts {
+						expired = append(expired, id)
+					}
+				}
+				shard.mux.RUnlock()
+
+				if len(expired) == 0 {
+					// avoid locking if nothing to delete
+					continue
+				}
+				shard.mux.Lock()
+				for _, key := range expired {
+					v, ok := shard.db[key]
+					if ok && v.expiry != 0 && v.expiry <= ts {
+						delete(shard.db, key)
+					}
+				}
+				shard.mux.Unlock()
 			}
 
-			s.mux.Lock()
-			// Double-checked locking.
-			// We might have replaced the item in the meantime.
-			for i := range expired {
-				v := s.db[expired[i]]
-				if v.expiry != 0 && v.expiry <= ts {
-					delete(s.db, expired[i])
-				}
-			}
-			s.mux.Unlock()
 		}
 	}
+
 }
 
 // Conn returns the underlying storage map. The returned map remains shared with
