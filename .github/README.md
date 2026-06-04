@@ -802,7 +802,7 @@ Run these commands to ensure your code adheres to project standards and best pra
 
 Fiber is an open-source project that runs on donations to pay the bills, e.g., our domain name, GitBook, Netlify, and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny) or sponsor the organization via ⭐ [**Github Sponsorship**](https://github.com/sponsors/gofiber).
 
-|                                                            | User                                             | Sponsorshiop |
+|                                                            | User                                             | Sponsorship |
 | ---------------------------------------------------------- | ------------------------------------------------ | -------- |
 | ![](https://avatars.githubusercontent.com/u/132028505?s=25)   | [@CodeRabbit](https://www.coderabbit.ai/)           | 🔥 Fiber Guardian    |
 | ![](https://avatars.githubusercontent.com/u/13936519?s=25) | [@NdoleStudio](https://github.com/dembygenesis) | ☕ Fiber Supporter    |
