@@ -24,7 +24,7 @@
   <a href="https://gofiber.io/discord">
     <img src="https://img.shields.io/discord/704680098577514527?style=flat-square&label=%F0%9F%92%AC%20discord&color=00ACD7">
   </a>
-  <a href="[https://gofiber.io/discord](https://github.com/sponsors/gofiber)">
+  <a href="https://github.com/sponsors/gofiber">
     <img src="https://img.shields.io/github/sponsors/gofiber?style=flat-square&label=%E2%AD%90%20sponsors&color=ec6cb9">
   </a>
 </h1>
