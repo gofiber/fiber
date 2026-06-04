@@ -12,6 +12,14 @@ import (
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
 )
 
+func loadTimestamp(value *atomic.Value) string {
+	if timestamp, ok := value.Load().(string); ok {
+		return timestamp
+	}
+
+	return ""
+}
+
 // defaultErrPadding is the initial column width used by the default access-log
 // formatter to align the request path against the optional error suffix. The
 // width grows on first request to fit the longest registered route, but a
@@ -99,7 +107,7 @@ func New(config ...Config) fiber.Handler {
 		data.Pid = pid
 		data.ErrPaddingStr = errPaddingStr
 		if timeEnabled {
-			data.Timestamp = timestamp.Load().(string)
+			data.Timestamp = loadTimestamp(timestamp)
 		} else {
 			data.Timestamp = ""
 		}

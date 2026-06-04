@@ -13,7 +13,7 @@ type timestampKey struct {
 }
 
 var (
-	tsMu    sync.Mutex
+	tsMu    sync.RWMutex
 	tsCache = map[timestampKey]*atomic.Value{}
 )
 
@@ -24,14 +24,21 @@ func sharedTimestamp(format string, location *time.Location, interval time.Durat
 		interval: interval,
 	}
 
-	tsMu.Lock()
-	defer tsMu.Unlock()
-
-	if value, ok := tsCache[key]; ok {
+	tsMu.RLock()
+	value, ok := tsCache[key]
+	tsMu.RUnlock()
+	if ok {
 		return value
 	}
 
-	value := &atomic.Value{}
+	tsMu.Lock()
+	defer tsMu.Unlock()
+
+	if value, ok = tsCache[key]; ok {
+		return value
+	}
+
+	value = &atomic.Value{}
 	value.Store(time.Now().In(location).Format(format))
 	tsCache[key] = value
 
