@@ -253,27 +253,46 @@ func (s *Storage) Conn() map[string]Entry {
 
 // Keys returns all keys stored in the memory storage.
 func (s *Storage) Keys() ([][]byte, error) {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
+	wg := &sync.WaitGroup{}
+	var keysLen = 0
+	for _, shard := range s.shards {
+		shard.mux.RLock()
+		keysLen += len(shard.db)
+		shard.mux.RUnlock()
+	}
 
-	if len(s.db) == 0 {
+	//  check if no valid keys were found
+	if keysLen == 0 {
 		return nil, nil
 	}
-
+	localKeys := make([][][]byte, numShards)
 	ts := utils.Timestamp()
-	keys := make([][]byte, 0, len(s.db))
-	for key, v := range s.db {
-		// Filter out the expired keys
-		if v.expiry == 0 || v.expiry > ts {
-			keys = append(keys, []byte(key))
-		}
+	for i, shard := range s.shards {
+		wg.Add(1)
+		go func(idx int, shrd *Shard) {
+			defer wg.Done()
+			shrd.mux.RLock()
+			defer shrd.mux.RUnlock()
+			for key, v := range shard.db {
+				// Filter out the expired keys
+				if v.expiry == 0 || v.expiry > ts {
+					localKeys[idx] = append(localKeys[idx], []byte(key))
+				}
+			}
+		}(i, shard)
+
 	}
 
+	wg.Wait()
+
+	keys := make([][]byte, 0, keysLen)
+	for _, shardKeys := range localKeys {
+		keys = append(keys, shardKeys...)
+	}
 	// Double check if no valid keys were found
 	if len(keys) == 0 {
 		return nil, nil
 	}
-
 	return keys, nil
 }
 
