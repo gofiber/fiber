@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -34,9 +35,9 @@ func New(config ...Config) fiber.Handler {
 	cfg.isLatencyEnabled = strings.Contains(cfg.Format, "${"+TagLatency+"}")
 
 	timeEnabled := strings.Contains(cfg.Format, "${"+TagTime+"}")
-	var timestamp *sharedTimestamp
+	var timestamp *atomic.Value
 	if timeEnabled {
-		timestamp = sharedTimestamps.get(cfg.TimeFormat, cfg.timeZoneLocation, cfg.TimeInterval)
+		timestamp = sharedTimestamp(cfg.TimeFormat, cfg.timeZoneLocation, cfg.TimeInterval)
 	}
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
@@ -98,7 +99,7 @@ func New(config ...Config) fiber.Handler {
 		data.Pid = pid
 		data.ErrPaddingStr = errPaddingStr
 		if timeEnabled {
-			data.Timestamp = timestamp.Load()
+			data.Timestamp = timestamp.Load().(string)
 		} else {
 			data.Timestamp = ""
 		}

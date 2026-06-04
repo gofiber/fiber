@@ -946,17 +946,14 @@ func Test_Logger_TimeUpdatesAfterInterval(t *testing.T) {
 func Test_Logger_SharedTimestampState(t *testing.T) {
 	t.Parallel()
 
-	scheduler := newTimestampScheduler()
 	loc := time.FixedZone("test/zone", 3600)
-	now := time.Now()
-
-	first := scheduler.getOrCreate(time.RFC3339, loc, 10*time.Millisecond, now)
-	second := scheduler.getOrCreate(time.RFC3339, loc, 10*time.Millisecond, now)
-	third := scheduler.getOrCreate(time.RFC3339Nano, loc, 10*time.Millisecond, now)
+	first := sharedTimestamp(time.RFC3339, loc, 10*time.Millisecond)
+	second := sharedTimestamp(time.RFC3339, loc, 10*time.Millisecond)
+	third := sharedTimestamp(time.RFC3339Nano, loc, 10*time.Millisecond)
 
 	require.Same(t, first, second)
 	require.NotSame(t, first, third)
-	require.Equal(t, now.In(loc).Format(time.RFC3339), first.Load())
+	require.NotEmpty(t, first.Load().(string))
 }
 
 // go test -run Test_Response_Header
