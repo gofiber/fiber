@@ -138,9 +138,11 @@ func (s *Storage) Delete(key string) error {
 	if key == "" {
 		return nil
 	}
-	s.mux.Lock()
-	delete(s.db, key)
-	s.mux.Unlock()
+
+	getShardID := getHash(key) % numShards
+	s.shards[getShardID].mux.Lock()
+	delete(s.shards[getShardID].db, key)
+	s.shards[getShardID].mux.Unlock()
 	return nil
 }
 
