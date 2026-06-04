@@ -800,7 +800,7 @@ Run these commands to ensure your code adheres to project standards and best pra
 
 ## ☕ Supporters
 
-Fiber is an open-source project that runs on donations to pay the bills, e.g., our domain name, GitBook, Netlify, and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny) or sponsor the organization via ⭐ [**Github Sponsorship**](https://github.com/sponsors/gofiber).
+Fiber is an open-source project that runs on donations to pay the bills, e.g., our domain name, GitBook, Netlify, and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny) or sponsor the organization via ⭐ [**GitHub Sponsors**](https://github.com/sponsors/gofiber).
 
 |                                                            | User                                             | Sponsorship |
 | ---------------------------------------------------------- | ------------------------------------------------ | -------- |
