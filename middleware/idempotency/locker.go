@@ -1,8 +1,11 @@
 package idempotency
 
 import (
+	"hash/fnv"
 	"sync"
 )
+
+const numShards = 32
 
 // Locker implements a spinlock for a string key.
 type Locker interface {
@@ -15,11 +18,30 @@ type countedLock struct {
 	locked int
 }
 
+type lockerShard struct {
+	keys map[string]*countedLock
+	mu   sync.Mutex
+}
+
 // MemoryLock coordinates access to idempotency keys using in-memory locks.
 // MemoryLock is safe for concurrent use.
 type MemoryLock struct {
-	keys map[string]*countedLock
-	mu   sync.Mutex
+	shards []*lockerShard
+}
+
+// NewMemoryLock creates a MemoryLock ready for use.
+func NewMemoryLock() *MemoryLock {
+
+	shards := make([]*lockerShard, numShards)
+	for i := range numShards {
+		shards[i] = &lockerShard{
+			keys: make(map[string]*countedLock),
+		}
+	}
+
+	return &MemoryLock{
+		shards: shards,
+	}
 }
 
 // Lock acquires the lock for the provided key, creating it when necessary.
@@ -66,11 +88,10 @@ func (l *MemoryLock) Unlock(key string) error {
 	return nil
 }
 
-// NewMemoryLock creates a MemoryLock ready for use.
-func NewMemoryLock() *MemoryLock {
-	return &MemoryLock{
-		keys: make(map[string]*countedLock),
-	}
+func (l *MemoryLock) getShard(key string) *lockerShard {
+	h := fnv.New32a()
+	h.Write([]byte(key))
+	return l.shards[h.Sum32()%numShards]
 }
 
 var _ Locker = (*MemoryLock)(nil)
