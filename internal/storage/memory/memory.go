@@ -275,7 +275,7 @@ func (s *Storage) Keys() ([][]byte, error) {
 			defer wg.Done()
 			shrd.mux.RLock()
 			defer shrd.mux.RUnlock()
-			for key, v := range shard.db {
+			for key, v := range shrd.db {
 				// Filter out the expired keys
 				if v.expiry == 0 || v.expiry > ts {
 					localKeys[idx] = append(localKeys[idx], []byte(key))
