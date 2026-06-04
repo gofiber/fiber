@@ -301,7 +301,7 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
 	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
 
-	// Scheme-only referers should be rejected.
+	// Scheme-only referrers should be rejected.
 	c.Response().Reset()
 	c.Request().Header.Set(HeaderReferer, "javascript:alert(1)")
 	err = c.Redirect().Back("/")
