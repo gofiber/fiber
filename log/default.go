@@ -73,7 +73,7 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
-		os.Exit(1) //nolint:revive // we want to exit the program when Fatal is called
+		os.Exit(1) //revive:disable-line:deep-exit // Fatal logs intentionally terminate the process.
 	}
 }
 
@@ -101,7 +101,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
-		os.Exit(1) //nolint:revive // we want to exit the program when Fatal is called
+		os.Exit(1) //revive:disable-line:deep-exit // Fatal logs intentionally terminate the process.
 	}
 }
 
@@ -148,7 +148,7 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
-		os.Exit(1) //nolint:revive // we want to exit the program when Fatal is called
+		os.Exit(1) //revive:disable-line:deep-exit // Fatal logs intentionally terminate the process.
 	}
 }
 

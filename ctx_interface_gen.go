@@ -32,7 +32,8 @@ type Ctx interface {
 	// should be canceled. Deadline returns ok==false when no deadline is
 	// set. Successive calls to Deadline return the same results.
 	//
-	// Due to current limitations in how fasthttp works, Deadline operates as a nop.
+	// If no context was set with SetContext, Deadline operates as a nop due to
+	// current limitations in how fasthttp works.
 	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
 	Deadline() (time.Time, bool)
 	// Done returns a channel that's closed when work done on behalf of this
@@ -41,12 +42,14 @@ type Ctx interface {
 	// The close of the Done channel may happen asynchronously,
 	// after the cancel function returns.
 	//
-	// Due to current limitations in how fasthttp works, Done operates as a nop.
+	// If no context was set with SetContext, Done operates as a nop due to
+	// current limitations in how fasthttp works.
 	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
 	Done() <-chan struct{}
 	// Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
 	//
-	// Due to current limitations in how fasthttp works, Err operates as a nop.
+	// If no context was set with SetContext, Err operates as a nop due to
+	// current limitations in how fasthttp works.
 	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
 	Err() error
 	// Request return the *fasthttp.Request object
