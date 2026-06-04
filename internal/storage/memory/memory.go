@@ -5,7 +5,6 @@ package memory
 import (
 	"context"
 	"fmt"
-	"hash/fnv"
 	"sync"
 	"time"
 

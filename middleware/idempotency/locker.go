@@ -1,7 +1,6 @@
 package idempotency
 
 import (
-	"hash/fnv"
 	"sync"
 )
 
