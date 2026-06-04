@@ -110,14 +110,16 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 		expire = uint32(exp.Seconds()) + utils.Timestamp()
 	}
 
+	shardID := getHash(key) % numShards
+
 	// Copy both key and value to avoid unsafe reuse from sync.Pool
 	keyCopy := utils.CopyString(key)
 	valCopy := utils.CopyBytes(val)
 
 	e := Entry{data: valCopy, expiry: expire}
-	s.mux.Lock()
-	s.db[keyCopy] = e
-	s.mux.Unlock()
+	s.shards[shardID].mux.Lock()
+	s.shards[shardID].db[keyCopy] = e
+	s.shards[shardID].mux.Unlock()
 	return nil
 }
 
