@@ -24,6 +24,9 @@
   <a href="https://gofiber.io/discord">
     <img src="https://img.shields.io/discord/704680098577514527?style=flat-square&label=%F0%9F%92%AC%20discord&color=00ACD7">
   </a>
+  <a href="https://github.com/sponsors/gofiber">
+    <img src="https://img.shields.io/github/sponsors/gofiber?style=flat-square&label=%E2%AD%90%20sponsors&color=ec6cb9">
+  </a>
 </h1>
 <p align="center">
   <em><b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <a href="https://docs.gofiber.io/#zero-allocation"><b>zero memory allocation</b></a> and <b>performance</b> in mind.</em>
@@ -797,7 +800,14 @@ Run these commands to ensure your code adheres to project standards and best pra
 
 ## ☕ Supporters
 
-Fiber is an open-source project that runs on donations to pay the bills, e.g., our domain name, GitBook, Netlify, and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny).
+Fiber is an open-source project that runs on donations to pay the bills, e.g., our domain name, GitBook, Netlify, and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny) or sponsor the organization via ⭐ [**GitHub Sponsors**](https://github.com/sponsors/gofiber).
+
+|                                                            | User                                             | Sponsorship |
+| ---------------------------------------------------------- | ------------------------------------------------ | -------- |
+| ![](https://avatars.githubusercontent.com/u/132028505?s=25)   | [@CodeRabbit](https://www.coderabbit.ai/)           | 🔥 Fiber Guardian    |
+| ![](https://avatars.githubusercontent.com/u/13936519?s=25) | [@NdoleStudio](https://github.com/NdoleStudio) | ☕ Fiber Supporter    |
+| ![](https://avatars.githubusercontent.com/u/37613029?s=25) | [@petercool](https://github.com/petercool)   | ☕ Fiber Supporter    |
+| <img src="https://avatars.githubusercontent.com/u/202508784?s=25" alt="bsdrop" width="25" height="25">  | [@bsdrop](https://github.com/bsdrop)     | ☕ Fiber Supporter    |
 
 |                                                            | User                                             | Donation |
 | ---------------------------------------------------------- | ------------------------------------------------ | -------- |
@@ -805,20 +815,6 @@ Fiber is an open-source project that runs on donations to pay the bills, e.g., o
 | ![](https://avatars.githubusercontent.com/u/63164982?s=25) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5    |
 | <img src="https://avatars.githubusercontent.com/u/56607882?s=25" alt="thomasvvugt" style="width: 25px; height: 25px;"> | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/27820675?s=25) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5    |
-| ![](https://avatars.githubusercontent.com/u/1094221?s=25)  | [@ekaputra07](https://github.com/ekaputra07)     | ☕ x 5    |
-| ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5    |
-| ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5    |
-| ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3    |
-| ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3    |
-| ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3    |
-| ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1    |
-| ![](https://avatars.githubusercontent.com/u/29042462?s=25) | [@lapolinar](https://github.com/lapolinar)       | ☕ x 1    |
-| ![](https://avatars.githubusercontent.com/u/2978730?s=25)  | [@diegowifi](https://github.com/diegowifi)       | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/44171355?s=25) | [@ssimk0](https://github.com/ssimk0)             | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/5638101?s=25)  | [@raymayemir](https://github.com/raymayemir)     | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/619996?s=25)   | [@melkorm](https://github.com/melkorm)           | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1   |
 
 ## 💻 Code Contributors
 
