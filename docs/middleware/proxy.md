@@ -57,6 +57,7 @@ Once your Fiber app is initialized, you can use the middleware as shown:
 proxy.WithClient(&fasthttp.Client{
     NoDefaultUserAgentHeader: true,
     DisablePathNormalizing:   true,
+    MaxConnsPerHost:          2048,
     // Allow self-signed certificates when proxying to HTTPS targets.
     TLSConfig: &tls.Config{
         InsecureSkipVerify: true,
@@ -137,6 +138,7 @@ app.Use(proxy.Balancer(proxy.Config{
         "http://localhost:3002",
         "http://localhost:3003",
     },
+    MaxConnsPerHost: 2048,
     ModifyRequest: func(c fiber.Ctx) error {
         c.Request().Header.Set("X-Real-IP", c.IP())
         return nil
@@ -176,6 +178,7 @@ app.Use(proxy.Balancer(proxy.Config{
 | ModifyRequest   | `fiber.Handler`                                | ModifyRequest allows you to alter the request.                                                                                                                                                                                     | `nil`           |
 | ModifyResponse  | `fiber.Handler`                                | ModifyResponse allows you to alter the response.                                                                                                                                                                                   | `nil`           |
 | Timeout         | `time.Duration`                                | Timeout is the request timeout used when calling the proxy client.                                                                                                                                                                 | 1 second        |
+| MaxConnsPerHost | `int`                                          | Maximum number of connections per upstream host. The default proxy client and balancer host clients use this limit unless you override it with `WithClient`, a per-handler client, or `proxy.Config`.                         | `1024`          |
 | ReadBufferSize  | `int`                                          | Per-connection buffer size for requests' reading. This also limits the maximum header size. Increase this buffer if your clients send multi-KB RequestURIs and/or multi-KB headers (for example, BIG cookies).                     | (Not specified) |
 | WriteBufferSize | `int`                                          | Per-connection buffer size for responses' writing.                                                                                                                                                                                 | (Not specified) |
 | KeepConnectionHeader | `bool` | Keeps the `Connection` header when set to `true`. By default the header is removed to comply with RFC 7230 §6.1 and avoid proxy loops. | `false` |
@@ -187,10 +190,11 @@ app.Use(proxy.Balancer(proxy.Config{
 
 ```go
 var ConfigDefault = Config{
-    Next:           nil,
-    ModifyRequest:  nil,
-    ModifyResponse: nil,
-    Timeout:        fasthttp.DefaultLBClientTimeout,
+    Next:                 nil,
+    ModifyRequest:        nil,
+    ModifyResponse:       nil,
+    MaxConnsPerHost:      1024,
+    Timeout:              fasthttp.DefaultLBClientTimeout,
     KeepConnectionHeader: false,
 }
 ```
