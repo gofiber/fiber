@@ -134,20 +134,21 @@ func (c *DefaultCtx) Context() context.Context {
 
 	ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context)
 	if !ok || ctx == nil {
-		return context.Background()
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(context.Background())
+		c.cancelFunc = cancel
+		c.SetContext(ctx)
 	}
-	c.SetContext(ctx)
 
 	if c.cancelFunc != nil && c.fasthttp.Conn() != nil {
 		fastHttpDone := c.fasthttp.Done()
 		reqCtx := ctx
 		cancel := c.cancelFunc
-		c.cancelFunc = nil
 
 		go func() {
-			defer cancel()
 			select {
 			case <-fastHttpDone:
+				cancel()
 			case <-reqCtx.Done():
 			}
 		}()
@@ -725,6 +726,10 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 // release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
+	if c.cancelFunc != nil {
+		c.cancelFunc()
+		c.cancelFunc = nil
+	}
 	if c.isUserContextSet {
 		if c.fasthttp != nil {
 			c.fasthttp.SetUserValue(userContextKey, nil)
