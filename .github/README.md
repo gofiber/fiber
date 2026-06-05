@@ -781,7 +781,7 @@ If you want to say **Thank You** and/or support the active development of `Fiber
 1. Add a [GitHub Star](https://github.com/gofiber/fiber/stargazers) to the project.
 2. Tweet about the project [on your 𝕏 (Twitter)](https://x.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or your personal blog.
-4. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+4. Support the project by becoming a [GitHub Sponsor](https://github.com/sponsors/gofiber).
 
 ## 💻 Development
 
@@ -800,21 +800,24 @@ Run these commands to ensure your code adheres to project standards and best pra
 
 ## ☕ Supporters
 
-Fiber is an open-source project that runs on donations to pay the bills, e.g., our domain name, GitBook, Netlify, and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny) or sponsor the organization via ⭐ [**GitHub Sponsors**](https://github.com/sponsors/gofiber).
+Fiber is an open-source project that runs on donations to pay the bills, e.g., our domain name, GitBook, Netlify, and serverless hosting. If you want to support Fiber, please sponsor the organization via ⭐ [**GitHub Sponsors**](https://github.com/sponsors/gofiber).
 
-|                                                            | User                                             | Sponsorship |
-| ---------------------------------------------------------- | ------------------------------------------------ | -------- |
-| ![](https://avatars.githubusercontent.com/u/132028505?s=25)   | [@CodeRabbit](https://www.coderabbit.ai/)           | 🔥 Fiber Guardian    |
-| ![](https://avatars.githubusercontent.com/u/13936519?s=25) | [@NdoleStudio](https://github.com/NdoleStudio) | ☕ Fiber Supporter    |
-| ![](https://avatars.githubusercontent.com/u/37613029?s=25) | [@petercool](https://github.com/petercool)   | ☕ Fiber Supporter    |
-| <img src="https://avatars.githubusercontent.com/u/202508784?s=25" alt="bsdrop" width="25" height="25">  | [@bsdrop](https://github.com/bsdrop)     | ☕ Fiber Supporter    |
+<!-- sponsors -->
+### 📅 Monthly Sponsors
 
-|                                                            | User                                             | Donation |
-| ---------------------------------------------------------- | ------------------------------------------------ | -------- |
-| ![](https://avatars.githubusercontent.com/u/204341?s=25)   | [@destari](https://github.com/destari)           | ☕ x 10   |
-| ![](https://avatars.githubusercontent.com/u/63164982?s=25) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5    |
-| <img src="https://avatars.githubusercontent.com/u/56607882?s=25" alt="thomasvvugt" style="width: 25px; height: 25px;"> | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5    |
-| ![](https://avatars.githubusercontent.com/u/27820675?s=25) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5    |
+<table>
+<tr><td valign="top"><strong>🔥 Fiber Guardian</strong></td><td><a href="https://www.coderabbit.ai/?utm_source=cr_org&amp;utm_medium=github" title="@coderabbitai"><img src="https://github.com/coderabbitai.png" width="50" alt="@coderabbitai" /></a></td></tr>
+<tr><td valign="top"><strong>☕ Fiber Supporter</strong></td><td><a href="https://ndole.studio" title="@NdoleStudio"><img src="https://github.com/NdoleStudio.png" width="34" alt="@NdoleStudio" /></a>&nbsp;<a href="https://cyberapper.ai" title="@petercool"><img src="https://github.com/petercool.png" width="34" alt="@petercool" /></a></td></tr>
+</table>
+
+### 🎁 One-time Sponsors
+
+<table>
+<tr><td valign="top"><strong>💎 Fiber Visionary</strong></td><td><a href="https://github.com/about" title="@github"><img src="https://github.com/github.png" width="45" alt="@github" /></a></td></tr>
+<tr><td valign="top"><strong>🚀 Fiber Hero</strong></td><td><a href="https://www.thanks.dev" title="@thnxdev"><img src="https://github.com/thnxdev.png" width="40" alt="@thnxdev" /></a>&nbsp;<a href="http://modulus.org" title="@andys"><img src="https://github.com/andys.png" width="40" alt="@andys" /></a></td></tr>
+<tr><td valign="top"><strong>☕ Fiber Supporter</strong></td><td><a href="https://hectorgray.com" title="@defstream"><img src="https://github.com/defstream.png" width="28" alt="@defstream" /></a>&nbsp;<a href="https://docs.webp.sh/" title="@webp-sh"><img src="https://github.com/webp-sh.png" width="28" alt="@webp-sh" /></a>&nbsp;<a href="https://zergo0.dev" title="@ZerGo0"><img src="https://github.com/ZerGo0.png" width="28" alt="@ZerGo0" /></a>&nbsp;<a href="https://f.style" title="@hiifong"><img src="https://github.com/hiifong.png" width="28" alt="@hiifong" /></a>&nbsp;<a href="https://github.com/decomoraes" title="@decomoraes"><img src="https://github.com/decomoraes.png" width="28" alt="@decomoraes" /></a>&nbsp;<a href="https://github.com/bsdrop" title="@bsdrop"><img src="https://github.com/bsdrop.png" width="28" alt="@bsdrop" /></a>&nbsp;<a href="https://kos.sh" title="@prplx"><img src="https://github.com/prplx.png" width="28" alt="@prplx" /></a>&nbsp;<a href="https://github.com/sebajax" title="@sebajax"><img src="https://github.com/sebajax.png" width="28" alt="@sebajax" /></a>&nbsp;<a href="https://theaceix.site" title="@Aceix"><img src="https://github.com/Aceix.png" width="28" alt="@Aceix" /></a>&nbsp;<a href="https://rjd.app" title="@rj-davidson"><img src="https://github.com/rj-davidson.png" width="28" alt="@rj-davidson" /></a>&nbsp;<a href="https://mesutgenez.com" title="@mstgnz"><img src="https://github.com/mstgnz.png" width="28" alt="@mstgnz" /></a></td></tr>
+</table>
+<!-- sponsors -->
 
 ## 💻 Code Contributors
 
