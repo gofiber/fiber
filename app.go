@@ -49,11 +49,16 @@ type Map map[string]any
 //	cfg.ErrorHandler = func(c Ctx, err error) error {
 //	 code := StatusInternalServerError
 //	 var e *fiber.Error
-//	 if errors.As(err, &e) {
+//	 matched := errors.As(err, &e)
+//	 if matched && e != nil {
 //	   code = e.Code
 //	 }
+//	 message := utils.StatusMessage(code)
+//	 if err != nil && !(matched && e == nil) {
+//	   message = err.Error()
+//	 }
 //	 c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-//	 return c.Status(code).SendString(err.Error())
+//	 return c.Status(code).SendString(message)
 //	}
 //	app := fiber.New(cfg)
 type ErrorHandler = func(Ctx, error) error
@@ -615,11 +620,16 @@ var httpReadResponse = http.ReadResponse
 func DefaultErrorHandler(c Ctx, err error) error {
 	code := StatusInternalServerError
 	var e *Error
-	if errors.As(err, &e) {
+	matched := errors.As(err, &e)
+	if matched && e != nil {
 		code = e.Code
 	}
+	message := utils.StatusMessage(code)
+	if err != nil && (!matched || e != nil) {
+		message = err.Error()
+	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-	return c.Status(code).SendString(err.Error())
+	return c.Status(code).SendString(message)
 }
 
 // New creates a new Fiber named instance.
@@ -1554,23 +1564,34 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		netErr   net.Error
 	)
 
+	errMessage := utils.StatusMessage(StatusBadRequest)
+	matchedNetOP := errors.As(err, &errNetOP)
+	if err != nil && (!matchedNetOP || errNetOP != nil) {
+		errMessage = err.Error()
+	}
+	matchedNetErr := errors.As(err, &netErr)
+
 	switch {
+	case err == nil:
+		err = NewError(StatusBadRequest, errMessage)
+	case matchedNetOP && errNetOP == nil:
+		err = ErrBadGateway
 	case errors.As(err, new(*fasthttp.ErrSmallBuffer)):
 		err = ErrRequestHeaderFieldsTooLarge
-	case errors.As(err, &errNetOP) && errNetOP.Timeout():
+	case matchedNetOP && errNetOP.Timeout():
 		err = ErrRequestTimeout
-	case errors.As(err, &netErr):
+	case matchedNetErr:
 		err = ErrBadGateway
 	case errors.Is(err, fasthttp.ErrBodyTooLarge):
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
-	case strings.Contains(err.Error(), "unsupported http request method"):
+	case strings.Contains(errMessage, "unsupported http request method"):
 		err = ErrNotImplemented
-	case strings.Contains(err.Error(), "timeout"):
+	case strings.Contains(errMessage, "timeout"):
 		err = ErrRequestTimeout
 	default:
-		err = NewError(StatusBadRequest, err.Error())
+		err = NewError(StatusBadRequest, errMessage)
 	}
 
 	if c.getMethodInt() != -1 {
