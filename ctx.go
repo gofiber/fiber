@@ -713,29 +713,6 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 		c.fasthttp.SetUserValue(userContextKey, reqCtx)
 		c.isUserContextSet = true
-
-		go func() {
-			defer cancel()
-
-			ticker := time.NewTicker(10 * time.Millisecond)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-reqCtx.Done():
-					return
-				case <-ticker.C:
-					if c.fasthttp == nil {
-						return
-					}
-					if currentCtx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok {
-						if currentCtx.Err() != nil {
-							return
-						}
-					}
-				}
-			}
-		}()
 	}
 	// reset base uri
 	c.baseURI = ""
