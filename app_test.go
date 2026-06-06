@@ -37,6 +37,14 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
+type typedNilHandlerError struct {
+	message string
+}
+
+func (e *typedNilHandlerError) Error() string {
+	return e.message
+}
+
 type fileView struct {
 	path    string
 	content string
@@ -638,6 +646,21 @@ func Test_DefaultErrorHandler_TypedNilFiberError(t *testing.T) {
 	t.Cleanup(func() { app.ReleaseCtx(c) })
 
 	var err *Error
+	require.NotPanics(t, func() {
+		require.NoError(t, DefaultErrorHandler(c, err))
+	})
+	require.Equal(t, StatusInternalServerError, c.fasthttp.Response.StatusCode())
+	require.Equal(t, utils.StatusMessage(StatusInternalServerError), string(c.fasthttp.Response.Body()))
+}
+
+func Test_DefaultErrorHandler_TypedNilCustomError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *typedNilHandlerError
 	require.NotPanics(t, func() {
 		require.NoError(t, DefaultErrorHandler(c, err))
 	})
