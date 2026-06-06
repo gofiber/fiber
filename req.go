@@ -7,7 +7,7 @@ import (
 	"math"
 	"mime/multipart"
 	"net"
-	"slices"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -627,25 +627,64 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 		return r.Get(header)
 	}
 
-	ips := r.extractIPsFromHeader(header)
-	if len(ips) == 0 {
-		if ip := r.c.fasthttp.RemoteIP(); ip != nil {
-			return ip.String()
+	headerValue := r.Get(header)
+	hasTrustedProxyConfig := r.hasTrustedProxyConfig()
+	if !hasTrustedProxyConfig {
+		start := 0
+		for {
+			end := start
+			for end < len(headerValue) && headerValue[end] != ',' {
+				end++
+			}
+
+			ipStr := utils.Trim(headerValue[start:end], ' ')
+			if isValidProxyIP(ipStr) {
+				return ipStr
+			}
+			if end == len(headerValue) {
+				break
+			}
+			start = end + 1
 		}
-		return ""
 	}
 
-	if !r.hasTrustedProxyConfig() {
-		return ips[0]
-	}
+	var leftmostIP string
 
-	for _, ip := range slices.Backward(ips) {
-		if !r.isTrustedProxyIP(ip) {
-			return ip
+	for end := len(headerValue); end > 0; {
+		start := end
+		for start > 0 && headerValue[start-1] != ',' {
+			start--
 		}
+
+		ipStr := utils.Trim(headerValue[start:end], ' ')
+		if isValidProxyIP(ipStr) {
+			leftmostIP = ipStr
+			if !r.isTrustedProxyIP(ipStr) {
+				return ipStr
+			}
+		}
+
+		if start == 0 {
+			break
+		}
+		end = start - 1
 	}
 
-	return ips[0]
+	if leftmostIP != "" {
+		return leftmostIP
+	}
+	if ip := r.c.fasthttp.RemoteIP(); ip != nil {
+		return ip.String()
+	}
+	return ""
+}
+
+func isValidProxyIP(ipStr string) bool {
+	hasIPv4Separator := strings.IndexByte(ipStr, '.') >= 0
+	hasIPv6Separator := strings.IndexByte(ipStr, ':') >= 0
+	return (hasIPv4Separator || hasIPv6Separator) &&
+		(!hasIPv4Separator || utils.IsIPv4(ipStr)) &&
+		(!hasIPv6Separator || utils.IsIPv6(ipStr))
 }
 
 // hasTrustedProxyConfig returns true if any trusted proxy configuration is set.
@@ -658,8 +697,8 @@ func (r *DefaultReq) hasTrustedProxyConfig() bool {
 func (r *DefaultReq) isTrustedProxyIP(ipStr string) bool {
 	cfg := r.c.app.config.TrustProxyConfig
 
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
+	ip, err := netip.ParseAddr(ipStr)
+	if err != nil {
 		return false
 	}
 
@@ -672,11 +711,28 @@ func (r *DefaultReq) isTrustedProxyIP(ipStr string) bool {
 	if cfg.LinkLocal && ip.IsLinkLocalUnicast() {
 		return true
 	}
-	if _, trusted := cfg.ips[ip.String()]; trusted {
+
+	var canonicalIP [net.IPv6len * 3]byte
+	if _, trusted := cfg.ips[utils.UnsafeString(ip.AppendTo(canonicalIP[:0]))]; trusted {
 		return true
 	}
+	if len(cfg.ranges) == 0 {
+		return false
+	}
+
+	if ip.Is4() {
+		ipv4 := ip.As4()
+		for _, ipNet := range cfg.ranges {
+			if ipNet.Contains(ipv4[:]) {
+				return true
+			}
+		}
+		return false
+	}
+
+	ipv6 := ip.As16()
 	for _, ipNet := range cfg.ranges {
-		if ipNet.Contains(ip) {
+		if ipNet.Contains(ipv6[:]) {
 			return true
 		}
 	}

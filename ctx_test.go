@@ -3539,18 +3539,43 @@ func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
 		ProxyHeader:        HeaderXForwardedFor,
-		TrustProxy:         true,
+		EnableIPValidation: true,
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	c := app.AcquireCtx(fastCtx)
+
+	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 203.0.113.50, 10.0.0.1")
+	require.Equal(t, "203.0.113.50", c.extractIPFromHeader(HeaderXForwardedFor))
+}
+
+func Test_Ctx_IP_ProxyHeader_InvalidIPs(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
 		EnableIPValidation: true,
 		TrustProxyConfig: TrustProxyConfig{
 			Proxies: []string{"10.0.0.1"},
 		},
 	})
 	fastCtx := &fasthttp.RequestCtx{}
-	fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("10.0.0.1")}))
+	fastCtx.SetRemoteAddr(testNetAddr{network: "tcp", address: "invalid"})
 	c := app.AcquireCtx(fastCtx)
 
-	c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.50, 10.0.0.1")
-	require.Equal(t, "203.0.113.50", c.IP())
+	c.Request().Header.Set(HeaderXForwardedFor, "invalid")
+	require.Equal(t, "0.0.0.0", c.extractIPFromHeader(HeaderXForwardedFor))
+	require.False(t, c.isTrustedProxyIP("invalid"))
+}
+
+func Test_Ctx_IP_TrustedProxyIPv6Range(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"2001:db8::/32"},
+		},
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	require.True(t, c.isTrustedProxyIP("2001:db8::1"))
+	require.False(t, c.isTrustedProxyIP("2001:db9::1"))
 }
 
 func Test_Ctx_ProxyTrust_UnixRemoteAddr(t *testing.T) {
