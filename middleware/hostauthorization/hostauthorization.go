@@ -176,7 +176,44 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 		return "", false
 	}
 
+	if !isValidHostSyntax(host) {
+		return "", false
+	}
+
 	return host, true
+}
+
+func isValidHostSyntax(host string) bool {
+	if host == "" {
+		return false
+	}
+
+	// IPv4 / IPv6 literals.
+	if net.ParseIP(host) != nil {
+		return true
+	}
+
+	if strings.HasPrefix(host, ".") || strings.HasSuffix(host, ".") {
+		return false
+	}
+
+	for label := range strings.SplitSeq(host, ".") {
+		if label == "" || len(label) > maxLabelLength {
+			return false
+		}
+		if label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for i := 0; i < len(label); i++ {
+			ch := label[i]
+			if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' {
+				continue
+			}
+			return false
+		}
+	}
+
+	return true
 }
 
 func isValidPort(raw string) bool {

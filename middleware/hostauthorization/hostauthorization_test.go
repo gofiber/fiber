@@ -156,6 +156,9 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "bare ipv6", input: "::1", expectOK: false},
 		{name: "malformed bracket", input: "[::1", expectOK: false},
 		{name: "extra data after bracket", input: "[::1]extra", expectOK: false},
+		{name: "path delimiter in host", input: "attacker.test/.example.com", expectOK: false},
+		{name: "query delimiter in host", input: "attacker.test?.example.com", expectOK: false},
+		{name: "space in host", input: "bad host.example.com", expectOK: false},
 	}
 
 	for _, tt := range tests {
