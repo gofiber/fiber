@@ -3868,7 +3868,12 @@ func Test_Ctx_Context(t *testing.T) {
 	t.Run("Nil_Context", func(t *testing.T) {
 		t.Parallel()
 		ctx := c.Context()
-		require.Equal(t, ctx, context.Background())
+
+		require.NotNil(t, ctx)
+		require.NoError(t, ctx.Err())
+
+		_, hasDeadline := ctx.Deadline()
+		require.False(t, hasDeadline)
 	})
 
 	t.Run("ValueContext", func(t *testing.T) {

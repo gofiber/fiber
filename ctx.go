@@ -143,14 +143,14 @@ func (c *DefaultCtx) Context() context.Context {
 	}
 
 	if c.cancelFunc != nil && c.fasthttp.Conn() != nil {
-		fastHttpDone := c.fasthttp.Done()
+		fastHTTPDone := c.fasthttp.Done()
 		reqCtx := ctx
 		cancel := c.cancelFunc
 		c.cancelFunc = nil
 
 		go func() {
 			select {
-			case <-fastHttpDone:
+			case <-fastHTTPDone:
 				cancel()
 			case <-reqCtx.Done():
 			}
