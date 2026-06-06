@@ -9637,7 +9637,7 @@ func Test_Ctx_Context_Lazy_Initialization_Suite(t *testing.T) {
 
 		app.ReleaseCtx(c)
 	})
-	//Scenario without fake network connection
+	// Scenario without fake network connection
 	t.Run("Lazy_Initialization_Without_Conn", func(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c, ok := ctx.(*DefaultCtx)
@@ -9658,7 +9658,7 @@ func Test_Ctx_Context_Lazy_Initialization_Suite(t *testing.T) {
 		app.ReleaseCtx(c)
 	})
 
-	//Scenario without .Context()
+	// Scenario without .Context()
 	t.Run("Release_Without_Context_Access", func(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c, ok := ctx.(*DefaultCtx)
@@ -9700,7 +9700,7 @@ func Test_Ctx_Context_Cancel_On_Disconnect(t *testing.T) {
 	default:
 	}
 
-	//close net connection
+	// close net connection
 	cancelNet()
 
 	select {
