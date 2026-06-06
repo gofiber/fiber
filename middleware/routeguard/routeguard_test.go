@@ -350,6 +350,82 @@ func TestMultiAppIsolation(t *testing.T) {
 	}
 }
 
+func TestRouteguardCaseInsensitive(t *testing.T) {
+	app := fiber.New(fiber.Config{
+		CaseSensitive: false,
+	})
+	app.Use(New())
+	app.Get("/API/Users", func(c fiber.Ctx) error { return c.SendString("ok") })
+	Build(app)
+
+	req := httptest.NewRequest("GET", "/api/users", nil)
+	resp, _ := app.Test(req)
+	if resp.StatusCode != 200 {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestRouteguardStrictRouting(t *testing.T) {
+	app := fiber.New(fiber.Config{
+		StrictRouting: true,
+	})
+	app.Use(New())
+	app.Get("/api/users/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	Build(app)
+
+	// Should match with trailing slash
+	req1 := httptest.NewRequest("GET", "/api/users/", nil)
+	resp1, _ := app.Test(req1)
+	if resp1.StatusCode != 200 {
+		t.Errorf("expected 200, got %d", resp1.StatusCode)
+	}
+
+	// Should NOT match without trailing slash
+	req2 := httptest.NewRequest("GET", "/api/users", nil)
+	resp2, _ := app.Test(req2)
+	if resp2.StatusCode != 404 {
+		t.Errorf("expected 404, got %d", resp2.StatusCode)
+	}
+}
+
+func TestRouteguardMultiAppIsolation(t *testing.T) {
+	app1 := fiber.New()
+	app1.Use(New())
+	app1.Get("/app1", func(c fiber.Ctx) error { return c.SendString("app1") })
+	Build(app1)
+
+	app2 := fiber.New()
+	app2.Use(New())
+	app2.Get("/app2", func(c fiber.Ctx) error { return c.SendString("app2") })
+	Build(app2)
+
+	// app1 should match /app1 but not /app2
+	req1 := httptest.NewRequest("GET", "/app1", nil)
+	resp1, _ := app1.Test(req1)
+	if resp1.StatusCode != 200 {
+		t.Errorf("app1: expected 200 for /app1, got %d", resp1.StatusCode)
+	}
+
+	req2 := httptest.NewRequest("GET", "/app2", nil)
+	resp2, _ := app1.Test(req2)
+	if resp2.StatusCode != 404 {
+		t.Errorf("app1: expected 404 for /app2, got %d", resp2.StatusCode)
+	}
+
+	// app2 should match /app2 but not /app1
+	req3 := httptest.NewRequest("GET", "/app2", nil)
+	resp3, _ := app2.Test(req3)
+	if resp3.StatusCode != 200 {
+		t.Errorf("app2: expected 200 for /app2, got %d", resp3.StatusCode)
+	}
+
+	req4 := httptest.NewRequest("GET", "/app1", nil)
+	resp4, _ := app2.Test(req4)
+	if resp4.StatusCode != 404 {
+		t.Errorf("app2: expected 404 for /app1, got %d", resp4.StatusCode)
+	}
+}
+
 func getRouter(app *fiber.App) *Router {
 	r, _ := app.State().Get(stateKey)
 	return r.(*Router)
