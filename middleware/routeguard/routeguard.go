@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
 const stateKey = "routeguard:router"
@@ -48,7 +49,7 @@ func (r *Router) insert(method, path string) {
 
 	for seg := range strings.SplitSeq(path, "/") {
 		if !r.caseSensitive {
-			seg = strings.ToLower(seg)
+			seg = utilsstrings.ToLower(seg)
 		}
 		switch {
 		case seg == "*" || strings.HasPrefix(seg, "+"):
@@ -110,7 +111,7 @@ func (r *Router) walk(n *node, path string, offset int, method string, hasTraili
 	}
 	seg := path[offset:end]
 	if !r.caseSensitive {
-		seg = strings.ToLower(seg)
+		seg = utilsstrings.ToLower(seg)
 	}
 	nextOffset := end + 1
 

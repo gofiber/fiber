@@ -71,6 +71,7 @@ func newTestApp() *fiber.App {
 }
 
 func TestRouteguard(t *testing.T) {
+	t.Parallel()
 	app := newTestApp()
 
 	cases := []struct {
@@ -136,6 +137,7 @@ func TestRouteguard(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			resp, err := app.Test(req)
 			if err != nil {
@@ -150,6 +152,7 @@ func TestRouteguard(t *testing.T) {
 }
 
 func TestNextSkipsMiddleware(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(c fiber.Ctx) bool {
@@ -159,13 +162,17 @@ func TestNextSkipsMiddleware(t *testing.T) {
 	Build(app)
 
 	req := httptest.NewRequest("GET", "/bypass", nil)
-	resp, _ := app.Test(req)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
 	if resp.StatusCode != 404 {
 		t.Errorf("got %d, want 404", resp.StatusCode)
 	}
 }
 
 func TestCustomErrorHandler(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		ErrorHandler: func(c fiber.Ctx) error {
@@ -175,13 +182,17 @@ func TestCustomErrorHandler(t *testing.T) {
 	Build(app)
 
 	req := httptest.NewRequest("GET", "/nope", nil)
-	resp, _ := app.Test(req)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
 	if resp.StatusCode != 418 {
 		t.Errorf("got %d, want 418", resp.StatusCode)
 	}
 }
 
 func TestCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	app := fiber.New(fiber.Config{CaseSensitive: false})
 	app.Use(New())
 	app.Get("/Api/Users", func(c fiber.Ctx) error { return c.SendString("ok") })
@@ -198,7 +209,10 @@ func TestCaseInsensitive(t *testing.T) {
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest("GET", tc.path, nil)
-		resp, _ := app.Test(req)
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
 		if resp.StatusCode != tc.want {
 			t.Errorf("%s: got %d, want %d", tc.path, resp.StatusCode, tc.want)
 		}
@@ -206,6 +220,7 @@ func TestCaseInsensitive(t *testing.T) {
 }
 
 func TestCaseSensitive(t *testing.T) {
+	t.Parallel()
 	app := fiber.New(fiber.Config{CaseSensitive: true})
 	app.Use(New())
 	app.Get("/Api/Users", func(c fiber.Ctx) error { return c.SendString("ok") })
@@ -221,7 +236,10 @@ func TestCaseSensitive(t *testing.T) {
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest("GET", tc.path, nil)
-		resp, _ := app.Test(req)
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
 		if resp.StatusCode != tc.want {
 			t.Errorf("%s: got %d, want %d", tc.path, resp.StatusCode, tc.want)
 		}
@@ -229,6 +247,7 @@ func TestCaseSensitive(t *testing.T) {
 }
 
 func TestStrictRouting(t *testing.T) {
+	t.Parallel()
 	app := fiber.New(fiber.Config{StrictRouting: true})
 	app.Use(New())
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendString("ok") })
@@ -246,7 +265,10 @@ func TestStrictRouting(t *testing.T) {
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest("GET", tc.path, nil)
-		resp, _ := app.Test(req)
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
 		if resp.StatusCode != tc.want {
 			t.Errorf("%s: got %d, want %d", tc.path, resp.StatusCode, tc.want)
 		}
@@ -254,6 +276,7 @@ func TestStrictRouting(t *testing.T) {
 }
 
 func TestNonStrictRouting(t *testing.T) {
+	t.Parallel()
 	app := fiber.New(fiber.Config{StrictRouting: false})
 	app.Use(New())
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendString("ok") })
@@ -268,7 +291,10 @@ func TestNonStrictRouting(t *testing.T) {
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest("GET", tc.path, nil)
-		resp, _ := app.Test(req)
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("app.Test: %v", err)
+		}
 		if resp.StatusCode != tc.want {
 			t.Errorf("%s: got %d, want %d", tc.path, resp.StatusCode, tc.want)
 		}
@@ -276,6 +302,7 @@ func TestNonStrictRouting(t *testing.T) {
 }
 
 func TestMultiAppIsolation(t *testing.T) {
+	t.Parallel()
 	app1 := fiber.New()
 	app1.Use(New())
 	app1.Get("/app1-only", func(c fiber.Ctx) error { return c.SendString("app1") })
@@ -287,25 +314,37 @@ func TestMultiAppIsolation(t *testing.T) {
 	Build(app2)
 
 	req1 := httptest.NewRequest("GET", "/app1-only", nil)
-	resp1, _ := app1.Test(req1)
+	resp1, err := app1.Test(req1)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
 	if resp1.StatusCode != 200 {
 		t.Errorf("app1 /app1-only: got %d, want 200", resp1.StatusCode)
 	}
 
 	req2 := httptest.NewRequest("GET", "/app2-only", nil)
-	resp2, _ := app1.Test(req2)
+	resp2, err := app1.Test(req2)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
 	if resp2.StatusCode != 404 {
 		t.Errorf("app1 /app2-only: got %d, want 404", resp2.StatusCode)
 	}
 
 	req3 := httptest.NewRequest("GET", "/app2-only", nil)
-	resp3, _ := app2.Test(req3)
+	resp3, err := app2.Test(req3)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
 	if resp3.StatusCode != 200 {
 		t.Errorf("app2 /app2-only: got %d, want 200", resp3.StatusCode)
 	}
 
 	req4 := httptest.NewRequest("GET", "/app1-only", nil)
-	resp4, _ := app2.Test(req4)
+	resp4, err := app2.Test(req4)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
 	if resp4.StatusCode != 404 {
 		t.Errorf("app2 /app1-only: got %d, want 404", resp4.StatusCode)
 	}
@@ -321,7 +360,7 @@ func BenchmarkTrieLookup(b *testing.B) {
 	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		r.lookup("GET", "/api/v1/contacts/abc-uuid-1234/companies")
+		r.lookup("POST", "/api/v1/contacts/abc-uuid-1234/companies")
 	}
 }
 
@@ -466,6 +505,6 @@ func BenchmarkLateMiss(b *testing.B) {
 	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		r.lookup("GET", "/api/v1/contacts/123/unknown/extra")
+		r.lookup("POST", "/api/v1/contacts/123/unknown/extra")
 	}
 }
