@@ -26,6 +26,14 @@ type failingLimiterStorage struct {
 
 const testLimiterClientKey = "client-key"
 
+type typedNilLimiterError struct {
+	message string
+}
+
+func (e *typedNilLimiterError) Error() string {
+	return e.message
+}
+
 func newFailingLimiterStorage() *failingLimiterStorage {
 	return &failingLimiterStorage{
 		data: make(map[string][]byte),
@@ -206,6 +214,21 @@ func TestGetEffectiveStatusCodeTypedNilFiberError(t *testing.T) {
 	c.Response().SetStatusCode(fiber.StatusAccepted)
 
 	var err *fiber.Error
+	require.NotPanics(t, func() {
+		require.Equal(t, fiber.StatusAccepted, getEffectiveStatusCode(c, err))
+	})
+}
+
+func TestGetEffectiveStatusCodeTypedNilCustomError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Response().SetStatusCode(fiber.StatusAccepted)
+
+	var err *typedNilLimiterError
 	require.NotPanics(t, func() {
 		require.Equal(t, fiber.StatusAccepted, getEffectiveStatusCode(c, err))
 	})
