@@ -81,6 +81,16 @@ func Test_MemoryLock(t *testing.T) {
 		err := l.Unlock("d")
 		require.NoError(t, err)
 	}
+
+	t.Run("zero value", func(t *testing.T) {
+		t.Parallel()
+
+		var l idempotency.MemoryLock
+
+		require.NoError(t, l.Lock("zero"))
+		require.NoError(t, l.Unlock("zero"))
+		require.NoError(t, l.Unlock("missing"))
+	})
 }
 
 func Benchmark_MemoryLock(b *testing.B) {

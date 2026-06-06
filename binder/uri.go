@@ -5,7 +5,7 @@ type URIBinding struct{}
 
 // Name returns the binding name.
 func (*URIBinding) Name() string {
-	return "uri"
+	return bindingURI
 }
 
 // Bind parses the URI parameters and returns the result.

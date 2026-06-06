@@ -26,6 +26,10 @@ jobs:
   move-milestone:
     needs: parse-tag
     if: github.event_name == 'release'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     uses: ./.github/workflows/move-closed-milestone-items.yml
     with:
       source_milestone: ${{ needs.parse-tag.outputs.major }}

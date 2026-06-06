@@ -49,11 +49,16 @@ type Map map[string]any
 //	cfg.ErrorHandler = func(c Ctx, err error) error {
 //	 code := StatusInternalServerError
 //	 var e *fiber.Error
-//	 if errors.As(err, &e) {
+//	 matched := errors.As(err, &e)
+//	 if matched && e != nil {
 //	   code = e.Code
 //	 }
+//	 message := utils.StatusMessage(code)
+//	 if err != nil && !(matched && e == nil) {
+//	   message = err.Error()
+//	 }
 //	 c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-//	 return c.Status(code).SendString(err.Error())
+//	 return c.Status(code).SendString(message)
 //	}
 //	app := fiber.New(cfg)
 type ErrorHandler = func(Ctx, error) error
@@ -65,6 +70,8 @@ type Error struct {
 }
 
 // App denotes the Fiber application.
+// App is safe for concurrent use, except for route mutation methods that
+// explicitly document otherwise.
 type App struct {
 	// App config
 	config Config
@@ -502,6 +509,30 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Optional. Default: a provider that returns context.Background()
 	ServicesShutdownContextProvider func() context.Context
+
+	// RegexHandler is a function that compiles regex patterns for `regex()`
+	// route constraints. Assign regexp.MustCompile or coregex.MustCompile
+	// directly to use the standard library or an alternative regex engine.
+	//
+	// Compiled matchers are reused across requests, so the returned value must
+	// be safe for concurrent use. Fiber may invoke RegexHandler more than once
+	// per route while parsing raw and normalized route patterns during
+	// registration.
+	//
+	// Example with standard library (default):
+	//     import "regexp"
+	//     app := fiber.New(fiber.Config{
+	//         RegexHandler: regexp.MustCompile,
+	//     })
+	//
+	// Example with coregex:
+	//     import "github.com/coregx/coregex"
+	//     app := fiber.New(fiber.Config{
+	//         RegexHandler: coregex.MustCompile,
+	//     })
+	//
+	// Optional. Default: regexp.MustCompile
+	RegexHandler any `json:"-"`
 }
 
 // Default TrustProxyConfig
@@ -589,11 +620,16 @@ var httpReadResponse = http.ReadResponse
 func DefaultErrorHandler(c Ctx, err error) error {
 	code := StatusInternalServerError
 	var e *Error
-	if errors.As(err, &e) {
+	matched := errors.As(err, &e)
+	if matched && e != nil {
 		code = e.Code
 	}
+	message := utils.StatusMessage(code)
+	if err != nil && (!matched || e != nil) {
+		message = err.Error()
+	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-	return c.Status(code).SendString(err.Error())
+	return c.Status(code).SendString(message)
 }
 
 // New creates a new Fiber named instance.
@@ -703,6 +739,7 @@ func New(config ...Config) *App {
 	if app.config.XMLDecoder == nil {
 		app.config.XMLDecoder = xml.Unmarshal
 	}
+	app.config.RegexHandler = validateRegexHandler(app.config.RegexHandler)
 
 	app.sharedState = newSharedState(&app.config)
 	if len(app.config.RequestMethods) == 0 {
@@ -1417,49 +1454,49 @@ func (*disableLogger) Printf(string, ...any) {
 }
 
 func (app *App) init() *App {
-	// lock application
-	app.mutex.Lock()
+	func() {
+		// lock application
+		app.mutex.Lock()
+		defer app.mutex.Unlock()
 
-	// Initialize Services when needed,
-	// panics if there is an error starting them.
-	app.initServices()
+		// Initialize Services when needed,
+		// panics if there is an error starting them.
+		app.initServices()
 
-	// Only load templates if a view engine is specified
-	if app.config.Views != nil {
-		if err := app.config.Views.Load(); err != nil {
-			log.Warnf("failed to load views: %v", err)
+		// Only load templates if a view engine is specified
+		if app.config.Views != nil {
+			if err := app.config.Views.Load(); err != nil {
+				log.Warnf("failed to load views: %v", err)
+			}
 		}
-	}
 
-	// create fasthttp server
-	app.server = &fasthttp.Server{
-		Logger:       &disableLogger{},
-		LogAllErrors: false,
-		ErrorHandler: app.serverErrorHandler,
-	}
+		// create fasthttp server
+		app.server = &fasthttp.Server{
+			Logger:       &disableLogger{},
+			LogAllErrors: false,
+			ErrorHandler: app.serverErrorHandler,
+		}
 
-	// fasthttp server settings
-	app.server.Handler = app.selectRequestHandler()
-	app.server.Name = app.config.ServerHeader
-	app.server.Concurrency = app.config.Concurrency
-	app.server.NoDefaultDate = app.config.DisableDefaultDate
-	app.server.NoDefaultContentType = app.config.DisableDefaultContentType
-	app.server.DisableHeaderNamesNormalizing = app.config.DisableHeaderNormalizing
-	app.server.DisableKeepalive = app.config.DisableKeepalive
-	app.server.MaxRequestBodySize = app.config.BodyLimit
-	app.server.NoDefaultServerHeader = app.config.ServerHeader == ""
-	app.server.ReadTimeout = app.config.ReadTimeout
-	app.server.WriteTimeout = app.config.WriteTimeout
-	app.server.IdleTimeout = app.config.IdleTimeout
-	app.server.ReadBufferSize = app.config.ReadBufferSize
-	app.server.WriteBufferSize = app.config.WriteBufferSize
-	app.server.GetOnly = app.config.GETOnly
-	app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
-	app.server.StreamRequestBody = app.config.StreamRequestBody
-	app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm
-
-	// unlock application
-	app.mutex.Unlock()
+		// fasthttp server settings
+		app.server.Handler = app.selectRequestHandler()
+		app.server.Name = app.config.ServerHeader
+		app.server.Concurrency = app.config.Concurrency
+		app.server.NoDefaultDate = app.config.DisableDefaultDate
+		app.server.NoDefaultContentType = app.config.DisableDefaultContentType
+		app.server.DisableHeaderNamesNormalizing = app.config.DisableHeaderNormalizing
+		app.server.DisableKeepalive = app.config.DisableKeepalive
+		app.server.MaxRequestBodySize = app.config.BodyLimit
+		app.server.NoDefaultServerHeader = app.config.ServerHeader == ""
+		app.server.ReadTimeout = app.config.ReadTimeout
+		app.server.WriteTimeout = app.config.WriteTimeout
+		app.server.IdleTimeout = app.config.IdleTimeout
+		app.server.ReadBufferSize = app.config.ReadBufferSize
+		app.server.WriteBufferSize = app.config.WriteBufferSize
+		app.server.GetOnly = app.config.GETOnly
+		app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
+		app.server.StreamRequestBody = app.config.StreamRequestBody
+		app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm
+	}()
 
 	// Register the Services shutdown handler once the app is initialized and unlocked.
 	app.Hooks().OnPostShutdown(func(_ error) error {
@@ -1527,23 +1564,34 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		netErr   net.Error
 	)
 
+	errMessage := utils.StatusMessage(StatusBadRequest)
+	matchedNetOP := errors.As(err, &errNetOP)
+	if err != nil && (!matchedNetOP || errNetOP != nil) {
+		errMessage = err.Error()
+	}
+	matchedNetErr := errors.As(err, &netErr)
+
 	switch {
+	case err == nil:
+		err = NewError(StatusBadRequest, errMessage)
+	case matchedNetOP && errNetOP == nil:
+		err = ErrBadGateway
 	case errors.As(err, new(*fasthttp.ErrSmallBuffer)):
 		err = ErrRequestHeaderFieldsTooLarge
-	case errors.As(err, &errNetOP) && errNetOP.Timeout():
+	case matchedNetOP && errNetOP.Timeout():
 		err = ErrRequestTimeout
-	case errors.As(err, &netErr):
+	case matchedNetErr:
 		err = ErrBadGateway
 	case errors.Is(err, fasthttp.ErrBodyTooLarge):
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
-	case strings.Contains(err.Error(), "unsupported http request method"):
+	case strings.Contains(errMessage, "unsupported http request method"):
 		err = ErrNotImplemented
-	case strings.Contains(err.Error(), "timeout"):
+	case strings.Contains(errMessage, "timeout"):
 		err = ErrRequestTimeout
 	default:
-		err = NewError(StatusBadRequest, err.Error())
+		err = NewError(StatusBadRequest, errMessage)
 	}
 
 	if c.getMethodInt() != -1 {

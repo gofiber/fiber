@@ -847,7 +847,7 @@ func Test_Response_Save_Streaming(t *testing.T) {
 		err = resp.Save(testFile)
 		require.NoError(t, err)
 
-		data, err := os.ReadFile(testFile) //nolint:gosec // test file is created in a temp directory
+		data, err := os.ReadFile(testFile)
 		require.NoError(t, err)
 		require.Equal(t, "streaming file content", string(data))
 	})
@@ -894,7 +894,7 @@ func Test_Response_Save_Streaming(t *testing.T) {
 		err = resp.Save(testFile)
 		require.NoError(t, err)
 
-		data, err := os.ReadFile(testFile) //nolint:gosec // test file is created in a temp directory
+		data, err := os.ReadFile(testFile)
 		require.NoError(t, err)
 		require.Equal(t, "regular file content", string(data))
 	})

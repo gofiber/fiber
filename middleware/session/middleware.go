@@ -13,6 +13,8 @@ import (
 )
 
 // Middleware holds session data and configuration.
+// Middleware serializes access to its internal state with a mutex, but it is
+// request-scoped and must not be used after the request lifecycle ends.
 type Middleware struct {
 	Session     *Session
 	ctx         fiber.Ctx

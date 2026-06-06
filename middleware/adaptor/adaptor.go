@@ -109,7 +109,7 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 		return
 	}
 	// Deref pointer chains
-	for v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return
 		}
@@ -226,7 +226,7 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	}
 
 	var addrErr *net.AddrError
-	if errors.As(err, &addrErr) && addrErr.Err == "missing port in address" {
+	if errors.As(err, &addrErr) && addrErr != nil && addrErr.Err == "missing port in address" {
 		if len(remoteAddr) > 253 { // Max hostname length
 			return nil, ErrRemoteAddrTooLong
 		}

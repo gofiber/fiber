@@ -2563,12 +2563,9 @@ func Test_CacheClampsFutureStoredDate(t *testing.T) {
 		}
 
 		future := time.Now().Add(2 * time.Second).UTC()
-		sec := future.Unix()
-		if sec < 0 {
-			sec = 0
-		}
+		sec := max(future.Unix(), 0)
 
-		it.date = uint64(sec) //nolint:gosec // safe: sec is clamped to non-negative range
+		it.date = uint64(sec)
 		updated, err := it.MarshalMsg(nil)
 		if err != nil {
 			return val
@@ -2748,18 +2745,12 @@ func Test_CacheHeuristicFreshnessAddsWarning113AfterThreshold(t *testing.T) {
 		}
 
 		oldDate := time.Now().Add(-25 * time.Hour).UTC()
-		sec := oldDate.Unix()
-		if sec < 0 {
-			sec = 0
-		}
-		it.date = uint64(sec) //nolint:gosec // safe: sec is clamped to non-negative range
+		sec := max(oldDate.Unix(), 0)
+		it.date = uint64(sec)
 
 		future := time.Now().Add(48 * time.Hour).UTC()
-		expSec := future.Unix()
-		if expSec < 0 {
-			expSec = 0
-		}
-		it.exp = uint64(expSec) //nolint:gosec // safe: expSec is clamped to non-negative range
+		expSec := max(future.Unix(), 0)
+		it.exp = uint64(expSec)
 		it.ttl = uint64((48 * time.Hour) / time.Second)
 
 		updated, err := it.MarshalMsg(nil)
@@ -4284,12 +4275,9 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 		var wg sync.WaitGroup
 		errChan := make(chan error, numGoroutines*requestsPerGoroutine)
 
-		for i := 0; i < numGoroutines; i++ {
-			id := i
-			wg.Add(1) //nolint:revive // Standard WaitGroup pattern is appropriate here
-			go func() {
-				defer wg.Done()
-				for j := 0; j < requestsPerGoroutine; j++ {
+		for id := range numGoroutines {
+			wg.Go(func() {
+				for j := range requestsPerGoroutine {
 					path := fmt.Sprintf("/test-%d-%d", id, j)
 					req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
 					_, err := app.Test(req)
@@ -4297,7 +4285,7 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 						errChan <- err
 					}
 				}
-			}()
+			})
 		}
 
 		wg.Wait()
@@ -4330,18 +4318,15 @@ func Test_Cache_MaxBytes_ConcurrencyAndRaceConditions(t *testing.T) {
 
 		// Make concurrent requests that will trigger evictions
 		var wg sync.WaitGroup
-		for i := 0; i < numRequests; i++ {
-			id := i
-			wg.Add(1) //nolint:revive // Standard WaitGroup pattern is appropriate here
-			go func() {
-				defer wg.Done()
+		for id := range numRequests {
+			wg.Go(func() {
 				path := fmt.Sprintf("/item-%d", id)
 				req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
 				_, err := app.Test(req)
 				if err != nil {
 					t.Logf("request error: %v", err)
 				}
-			}()
+			})
 		}
 
 		wg.Wait()

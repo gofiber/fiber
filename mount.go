@@ -202,7 +202,7 @@ func (app *App) processSubAppsRoutes() {
 				subAppRouteClone := app.copyRoute(subAppRoute)
 
 				// Add the parent route's path as a prefix to the sub-app's route
-				app.addPrefixToRoute(route.path, subAppRouteClone)
+				app.addPrefixToRoute(route.path, subAppRouteClone, route.group.app.config.RegexHandler, route.group.app.customConstraints...)
 
 				// Add the cloned sub-app's route to the slice of sub-app routes
 				subRoutes[j] = subAppRouteClone

@@ -196,6 +196,21 @@ func TestLimiterDefaultConfigNoPanic(t *testing.T) {
 	})
 }
 
+func TestGetEffectiveStatusCodeTypedNilFiberError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Response().SetStatusCode(fiber.StatusAccepted)
+
+	var err *fiber.Error
+	require.NotPanics(t, func() {
+		require.Equal(t, fiber.StatusAccepted, getEffectiveStatusCode(c, err))
+	})
+}
+
 func TestLimiterFixedStorageGetError(t *testing.T) {
 	t.Parallel()
 
@@ -1074,7 +1089,7 @@ func Test_Limiter_Sliding_Window_RecalculatesAfterHandlerDelay(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)

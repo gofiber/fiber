@@ -187,6 +187,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 	// Configure TLS
 	var tlsConfig *tls.Config
+	var tlsHandler *TLSHandler
 	if cfg.TLSConfig != nil {
 		tlsConfig = cfg.TLSConfig.Clone()
 	} else {
@@ -199,8 +200,8 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 				return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", cfg.CertFile, cfg.CertKeyFile, err)
 			}
 
-			tlsHandler := &TLSHandler{}
-			tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
+			tlsHandler = &TLSHandler{}
+			tlsConfig = &tls.Config{
 				MinVersion: cfg.TLSMinVersion,
 				Certificates: []tls.Certificate{
 					cert,
@@ -208,28 +209,24 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 				GetCertificate: tlsHandler.GetClientInfo,
 			}
 
-			if cfg.CertClientFile != "" {
-				clientCACert, err := os.ReadFile(filepath.Clean(cfg.CertClientFile))
-				if err != nil {
-					return fmt.Errorf("failed to read file: %w", err)
-				}
-
-				clientCertPool := x509.NewCertPool()
-				clientCertPool.AppendCertsFromPEM(clientCACert)
-
-				tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
-				tlsConfig.ClientCAs = clientCertPool
-			}
-
-			// Attach the tlsHandler to the config
-			app.SetTLSHandler(tlsHandler)
 		case cfg.AutoCertManager != nil:
-			tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
+			tlsConfig = &tls.Config{
 				MinVersion:     cfg.TLSMinVersion,
 				GetCertificate: cfg.AutoCertManager.GetCertificate,
 				NextProtos:     []string{"http/1.1", "acme-tls/1"},
 			}
 		default:
+		}
+
+		if tlsConfig != nil {
+			if err := applyClientCert(tlsConfig, cfg.CertClientFile); err != nil {
+				return err
+			}
+
+			if tlsHandler != nil {
+				// Attach the tlsHandler to the config
+				app.SetTLSHandler(tlsHandler)
+			}
 		}
 
 		if tlsConfig != nil && cfg.TLSConfigFunc != nil {
@@ -275,6 +272,27 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	}
 
 	return app.server.Serve(ln)
+}
+
+func applyClientCert(tlsConfig *tls.Config, certClientFile string) error {
+	if certClientFile == "" {
+		return nil
+	}
+
+	clientCACert, err := os.ReadFile(filepath.Clean(certClientFile))
+	if err != nil {
+		return fmt.Errorf("failed to read client CA file %q: %w", certClientFile, err)
+	}
+
+	clientCertPool := x509.NewCertPool()
+	if ok := clientCertPool.AppendCertsFromPEM(clientCACert); !ok {
+		return fmt.Errorf("failed to parse client CA certificate from %q", certClientFile)
+	}
+
+	tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+	tlsConfig.ClientCAs = clientCertPool
+
+	return nil
 }
 
 // Listener serves HTTP requests from the given listener.

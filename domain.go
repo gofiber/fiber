@@ -421,7 +421,9 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	wrapperApp := New(Config{
 		CaseSensitive: subApp.config.CaseSensitive,
 		StrictRouting: subApp.config.StrictRouting,
+		RegexHandler:  subApp.config.RegexHandler,
 	})
+	wrapperApp.customConstraints = subApp.customConstraints
 
 	// Clone routes from the sub-app with domain-wrapped handlers.
 	// Lock the sub-app while reading to prevent data races with concurrent

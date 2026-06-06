@@ -474,7 +474,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
+func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) *Route {
 	prefixedPath := getGroupPath(prefix, route.Path)
 	prettyPath := prefixedPath
 	// Case-sensitive routing, all to lowercase
@@ -488,7 +488,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
-	route.routeParser = parseRoute(prettyPath, app.customConstraints...)
+	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
@@ -584,7 +584,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			continue // Skip invalid HTTP methods
 		}
 
-		for i := len(app.stack[m]) - 1; i >= 0; i-- {
+		for i := len(app.stack[m]) - 1; i >= 0; i-- { //nolint:modernize // false positive
 			route := app.stack[m][i]
 			if !matchFunc(route) {
 				continue // Skip if route does not match
@@ -621,8 +621,7 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 	norm := app.normalizePath(path)
 
 	headStack := app.stack[headIndex]
-	for i := len(headStack) - 1; i >= 0; i-- {
-		headRoute := headStack[i]
+	for i, headRoute := range slices.Backward(headStack) {
 		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead {
 			continue
 		}
@@ -662,8 +661,8 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 	pathClean := RemoveEscapeChar(pathPretty)
 
-	parsedRaw := parseRoute(pathRaw, app.customConstraints...)
-	parsedPretty := parseRoute(pathPretty, app.customConstraints...)
+	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
+	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)
 
 	isMount := group != nil && group.app != app
 
