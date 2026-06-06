@@ -6,6 +6,8 @@ id: routeguard
 
 RouteGuard middleware for [Fiber](https://github.com/gofiber/fiber) validates incoming requests against registered routes before they reach the middleware chain. Unmatched routes are rejected immediately with a 404 response.
 
+RouteGuard respects Fiber's `CaseSensitive` and `StrictRouting` configuration options.
+
 ## Signatures
 
 ```go
@@ -69,10 +71,10 @@ app.Use(routeguard.New(routeguard.Config{
 
 ## Config
 
-| Property | Type | Description | Default |
-|:---------|:-----|:------------|:--------|
-| Next | `func(fiber.Ctx) bool` | Defines a function to skip this middleware when returned true. | `nil` |
-| ErrorHandler | `fiber.Handler` | Custom handler for unmatched routes. | Returns 404 JSON |
+| Property     | Type                   | Description                                                    | Default          |
+| :----------- | :--------------------- | :------------------------------------------------------------- | :--------------- |
+| Next         | `func(fiber.Ctx) bool` | Defines a function to skip this middleware when returned true. | `nil`            |
+| ErrorHandler | `fiber.Handler`        | Custom handler for unmatched routes.                           | Returns 404 JSON |
 
 ## Default Config
 
@@ -94,13 +96,27 @@ func defaultErrorHandler(c fiber.Ctx) error {
 RouteGuard uses a trie-based lookup with zero allocations:
 
 ```
-BenchmarkRootPath-16              65475970    18.30 ns/op    0 B/op    0 allocs/op
-BenchmarkStaticShort-16           48553028    24.82 ns/op    0 B/op    0 allocs/op
-BenchmarkStaticDeep-16            24663532    50.09 ns/op    0 B/op    0 allocs/op
-BenchmarkSingleParam-16           22362229    53.24 ns/op    0 B/op    0 allocs/op
-BenchmarkMultipleParams-16        16619850    72.28 ns/op    0 B/op    0 allocs/op
-BenchmarkWildcardShort-16         39936240    30.16 ns/op    0 B/op    0 allocs/op
-BenchmarkWildcardDeep-16          42687034    28.26 ns/op    0 B/op    0 allocs/op
-BenchmarkEarlyMiss-16             53622060    22.34 ns/op    0 B/op    0 allocs/op
-BenchmarkLateMiss-16              21642680    55.49 ns/op    0 B/op    0 allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/gofiber/fiber/v3/middleware/routeguard
+cpu: AMD Ryzen 7 9700X 8-Core Processor
+BenchmarkTrieLookup-16                     11993240               103.9 ns/op             0 B/op          0 allocs/op
+BenchmarkTrieMiss-16                       23933238                50.66 ns/op            0 B/op          0 allocs/op
+BenchmarkStaticShort-16                    37706788                31.27 ns/op            0 B/op          0 allocs/op
+BenchmarkStaticDeep-16                     17711882                66.27 ns/op            0 B/op          0 allocs/op
+BenchmarkRootPath-16                       60888026                19.63 ns/op            0 B/op          0 allocs/op
+BenchmarkSingleParam-16                    15804783                74.96 ns/op            0 B/op          0 allocs/op
+BenchmarkMultipleParams-16                 10212600               119.7 ns/op             0 B/op          0 allocs/op
+BenchmarkTripleParams-16                   10914847               108.5 ns/op             0 B/op          0 allocs/op
+BenchmarkWildcardShort-16                  24468232                48.26 ns/op            0 B/op          0 allocs/op
+BenchmarkWildcardDeep-16                   33341594                35.45 ns/op            0 B/op          0 allocs/op
+BenchmarkNestedWildcard-16                 20657456                57.51 ns/op            0 B/op          0 allocs/op
+BenchmarkStaticVsParamPriority-16          18075568                69.50 ns/op            0 B/op          0 allocs/op
+BenchmarkHeadFallback-16                   16402279                74.89 ns/op            0 B/op          0 allocs/op
+BenchmarkMethodVariation-16                35615319                33.65 ns/op            0 B/op          0 allocs/op
+BenchmarkLongPath-16                       19078210                63.70 ns/op            0 B/op          0 allocs/op
+BenchmarkEarlyMiss-16                      45598905                26.25 ns/op            0 B/op          0 allocs/op
+BenchmarkLateMiss-16                       14966178                81.96 ns/op            0 B/op          0 allocs/op
+PASS
+ok         github.com/gofiber/fiber/v3/middleware/routeguard       21.570s)
 ```

@@ -7,32 +7,49 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+const stateKey = "routeguard:router"
+
 type node struct {
-	static   map[string]*node
-	param    *node
-	wildcard *node
-	methods  map[string]bool
+	static        map[string]*node
+	param         *node
+	wildcard      *node
+	methods       map[string]bool
+	trailMethods  map[string]bool // methods for paths with trailing slash
 }
 
 func newNode() *node {
-	return &node{static: make(map[string]*node), methods: make(map[string]bool)}
+	return &node{
+		static:       make(map[string]*node),
+		methods:      make(map[string]bool),
+		trailMethods: make(map[string]bool),
+	}
 }
 
 type Router struct {
-	mu   sync.RWMutex
-	root *node
+	mu            sync.RWMutex
+	root          *node
+	caseSensitive bool
+	strictRouting bool
 }
-
-var matcher = &Router{root: newNode()}
 
 func (r *Router) insert(method, path string) {
 	cur := r.root
+	hasTrailingSlash := len(path) > 1 && path[len(path)-1] == '/'
 	path = strings.Trim(path, "/")
+
 	if path == "" {
-		cur.methods[method] = true
+		if r.strictRouting && hasTrailingSlash {
+			cur.trailMethods[method] = true
+		} else {
+			cur.methods[method] = true
+		}
 		return
 	}
+
 	for seg := range strings.SplitSeq(path, "/") {
+		if !r.caseSensitive {
+			seg = strings.ToLower(seg)
+		}
 		switch {
 		case seg == "*" || strings.HasPrefix(seg, "+"):
 			if cur.wildcard == nil {
@@ -55,51 +72,56 @@ func (r *Router) insert(method, path string) {
 			cur = child
 		}
 	}
-	cur.methods[method] = true
+
+	if r.strictRouting && hasTrailingSlash {
+		cur.trailMethods[method] = true
+	} else {
+		cur.methods[method] = true
+	}
 }
 
 func (r *Router) lookup(method, path string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	// strip leading slash once
-	if len(path) > 0 && path[0] == '/' {
-		path = path[1:]
-	}
-	// strip trailing slash
-	if len(path) > 0 && path[len(path)-1] == '/' {
-		path = path[:len(path)-1]
-	}
-	return walk(r.root, path, 0, method)
+
+	hasTrailingSlash := len(path) > 1 && path[len(path)-1] == '/'
+	path = strings.Trim(path, "/")
+
+	return r.walk(r.root, path, 0, method, hasTrailingSlash)
 }
 
-func walk(n *node, path string, offset int, method string) bool {
+func (r *Router) walk(n *node, path string, offset int, method string, hasTrailingSlash bool) bool {
 	if n == nil {
 		return false
 	}
+
 	if offset >= len(path) {
+		if r.strictRouting && hasTrailingSlash {
+			return n.trailMethods[method] ||
+				(method == fiber.MethodHead && n.trailMethods[fiber.MethodGet])
+		}
 		return n.methods[method] ||
 			(method == fiber.MethodHead && n.methods[fiber.MethodGet])
 	}
 
-	// find next segment boundary
 	end := offset
 	for end < len(path) && path[end] != '/' {
 		end++
 	}
-	seg := path[offset:end] // substring, no allocation
-	nextOffset := end + 1   // skip the '/'
+	seg := path[offset:end]
+	if !r.caseSensitive {
+		seg = strings.ToLower(seg)
+	}
+	nextOffset := end + 1
 
-	// 1. static child
 	if child, ok := n.static[seg]; ok {
-		if walk(child, path, nextOffset, method) {
+		if r.walk(child, path, nextOffset, method, hasTrailingSlash) {
 			return true
 		}
 	}
-	// 2. param child
-	if walk(n.param, path, nextOffset, method) {
+	if r.walk(n.param, path, nextOffset, method, hasTrailingSlash) {
 		return true
 	}
-	// 3. wildcard
 	if n.wildcard != nil {
 		return n.wildcard.methods[method] ||
 			(method == fiber.MethodHead && n.wildcard.methods[fiber.MethodGet])
@@ -108,12 +130,16 @@ func walk(n *node, path string, offset int, method string) bool {
 }
 
 func Build(app *fiber.App) {
-	matcher.mu.Lock()
-	defer matcher.mu.Unlock()
-	matcher.root = newNode()
-	for _, r := range app.GetRoutes(true) {
-		matcher.insert(r.Method, r.Path)
+	cfg := app.Config()
+	router := &Router{
+		root:          newNode(),
+		caseSensitive: cfg.CaseSensitive,
+		strictRouting: cfg.StrictRouting,
 	}
+	for _, r := range app.GetRoutes(true) {
+		router.insert(r.Method, r.Path)
+	}
+	app.State().Set(stateKey, router)
 }
 
 func New(config ...Config) fiber.Handler {
@@ -123,7 +149,14 @@ func New(config ...Config) fiber.Handler {
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
-		if !matcher.lookup(c.Method(), c.Path()) {
+
+		router, ok := c.App().State().Get(stateKey)
+		if !ok {
+			return c.Next()
+		}
+
+		r := router.(*Router)
+		if !r.lookup(c.Method(), c.Path()) {
 			return cfg.ErrorHandler(c)
 		}
 		return c.Next()

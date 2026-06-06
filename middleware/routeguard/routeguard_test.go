@@ -156,6 +156,7 @@ func TestNextSkipsMiddleware(t *testing.T) {
 			return c.Path() == "/bypass"
 		},
 	}))
+	Build(app)
 
 	req := httptest.NewRequest("GET", "/bypass", nil)
 	resp, _ := app.Test(req)
@@ -171,6 +172,7 @@ func TestCustomErrorHandler(t *testing.T) {
 			return c.Status(418).SendString("teapot")
 		},
 	}))
+	Build(app)
 
 	req := httptest.NewRequest("GET", "/nope", nil)
 	resp, _ := app.Test(req)
@@ -179,139 +181,291 @@ func TestCustomErrorHandler(t *testing.T) {
 	}
 }
 
+func TestCaseInsensitive(t *testing.T) {
+	app := fiber.New(fiber.Config{CaseSensitive: false})
+	app.Use(New())
+	app.Get("/Api/Users", func(c fiber.Ctx) error { return c.SendString("ok") })
+	Build(app)
+
+	cases := []struct {
+		path string
+		want int
+	}{
+		{"/Api/Users", 200},
+		{"/api/users", 200},
+		{"/API/USERS", 200},
+		{"/ApI/uSeRs", 200},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest("GET", tc.path, nil)
+		resp, _ := app.Test(req)
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s: got %d, want %d", tc.path, resp.StatusCode, tc.want)
+		}
+	}
+}
+
+func TestCaseSensitive(t *testing.T) {
+	app := fiber.New(fiber.Config{CaseSensitive: true})
+	app.Use(New())
+	app.Get("/Api/Users", func(c fiber.Ctx) error { return c.SendString("ok") })
+	Build(app)
+
+	cases := []struct {
+		path string
+		want int
+	}{
+		{"/Api/Users", 200},
+		{"/api/users", 404},
+		{"/API/USERS", 404},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest("GET", tc.path, nil)
+		resp, _ := app.Test(req)
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s: got %d, want %d", tc.path, resp.StatusCode, tc.want)
+		}
+	}
+}
+
+func TestStrictRouting(t *testing.T) {
+	app := fiber.New(fiber.Config{StrictRouting: true})
+	app.Use(New())
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendString("ok") })
+	app.Get("/items/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	Build(app)
+
+	cases := []struct {
+		path string
+		want int
+	}{
+		{"/users", 200},
+		{"/users/", 404},
+		{"/items/", 200},
+		{"/items", 404},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest("GET", tc.path, nil)
+		resp, _ := app.Test(req)
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s: got %d, want %d", tc.path, resp.StatusCode, tc.want)
+		}
+	}
+}
+
+func TestNonStrictRouting(t *testing.T) {
+	app := fiber.New(fiber.Config{StrictRouting: false})
+	app.Use(New())
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendString("ok") })
+	Build(app)
+
+	cases := []struct {
+		path string
+		want int
+	}{
+		{"/users", 200},
+		{"/users/", 200},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest("GET", tc.path, nil)
+		resp, _ := app.Test(req)
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s: got %d, want %d", tc.path, resp.StatusCode, tc.want)
+		}
+	}
+}
+
+func TestMultiAppIsolation(t *testing.T) {
+	app1 := fiber.New()
+	app1.Use(New())
+	app1.Get("/app1-only", func(c fiber.Ctx) error { return c.SendString("app1") })
+	Build(app1)
+
+	app2 := fiber.New()
+	app2.Use(New())
+	app2.Get("/app2-only", func(c fiber.Ctx) error { return c.SendString("app2") })
+	Build(app2)
+
+	req1 := httptest.NewRequest("GET", "/app1-only", nil)
+	resp1, _ := app1.Test(req1)
+	if resp1.StatusCode != 200 {
+		t.Errorf("app1 /app1-only: got %d, want 200", resp1.StatusCode)
+	}
+
+	req2 := httptest.NewRequest("GET", "/app2-only", nil)
+	resp2, _ := app1.Test(req2)
+	if resp2.StatusCode != 404 {
+		t.Errorf("app1 /app2-only: got %d, want 404", resp2.StatusCode)
+	}
+
+	req3 := httptest.NewRequest("GET", "/app2-only", nil)
+	resp3, _ := app2.Test(req3)
+	if resp3.StatusCode != 200 {
+		t.Errorf("app2 /app2-only: got %d, want 200", resp3.StatusCode)
+	}
+
+	req4 := httptest.NewRequest("GET", "/app1-only", nil)
+	resp4, _ := app2.Test(req4)
+	if resp4.StatusCode != 404 {
+		t.Errorf("app2 /app1-only: got %d, want 404", resp4.StatusCode)
+	}
+}
+
+func getRouter(app *fiber.App) *Router {
+	r, _ := app.State().Get(stateKey)
+	return r.(*Router)
+}
+
 func BenchmarkTrieLookup(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/api/v1/contacts/abc-uuid-1234/companies")
+		r.lookup("GET", "/api/v1/contacts/abc-uuid-1234/companies")
 	}
 }
 
 func BenchmarkTrieMiss(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/api/v1/totally/nonexistent/path")
+		r.lookup("GET", "/api/v1/totally/nonexistent/path")
 	}
 }
 
 func BenchmarkStaticShort(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/health")
+		r.lookup("GET", "/health")
 	}
 }
 
 func BenchmarkStaticDeep(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/api/v1/contacts/list")
+		r.lookup("GET", "/api/v1/contacts/list")
 	}
 }
 
 func BenchmarkRootPath(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/")
+		r.lookup("GET", "/")
 	}
 }
 
 func BenchmarkSingleParam(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/api/v1/contacts/uuid-12345")
+		r.lookup("GET", "/api/v1/contacts/uuid-12345")
 	}
 }
 
 func BenchmarkMultipleParams(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/api/v1/orgs/org123/teams/team456/members/member789")
+		r.lookup("GET", "/api/v1/orgs/org123/teams/team456/members/member789")
 	}
 }
 
 func BenchmarkTripleParams(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/api/v1/users/u1/posts/p2/comments/c3")
+		r.lookup("GET", "/api/v1/users/u1/posts/p2/comments/c3")
 	}
 }
 
 func BenchmarkWildcardShort(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/swagger/index.html")
+		r.lookup("GET", "/swagger/index.html")
 	}
 }
 
 func BenchmarkWildcardDeep(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/docs/a/b/c/d/e/f/g.md")
+		r.lookup("GET", "/docs/a/b/c/d/e/f/g.md")
 	}
 }
 
 func BenchmarkNestedWildcard(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/assets/images/icons/dark/large/icon.svg")
+		r.lookup("GET", "/assets/images/icons/dark/large/icon.svg")
 	}
 }
 
 func BenchmarkStaticVsParamPriority(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/api/v1/items/special")
+		r.lookup("GET", "/api/v1/items/special")
 	}
 }
 
 func BenchmarkHeadFallback(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("HEAD", "/api/v1/contacts/123")
+		r.lookup("HEAD", "/api/v1/contacts/123")
 	}
 }
 
 func BenchmarkMethodVariation(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	methods := []string{"GET", "POST", "PUT", "DELETE"}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup(methods[i%4], "/resource")
+		r.lookup(methods[i%4], "/resource")
 	}
 }
 
 func BenchmarkLongPath(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/api/v1/files/very/long/nested/path/to/some/file.json")
+		r.lookup("GET", "/api/v1/files/very/long/nested/path/to/some/file.json")
 	}
 }
 
 func BenchmarkEarlyMiss(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/unknown")
+		r.lookup("GET", "/unknown")
 	}
 }
 
 func BenchmarkLateMiss(b *testing.B) {
-	newTestApp()
+	app := newTestApp()
+	r := getRouter(app)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.lookup("GET", "/api/v1/contacts/123/unknown/extra")
+		r.lookup("GET", "/api/v1/contacts/123/unknown/extra")
 	}
 }
