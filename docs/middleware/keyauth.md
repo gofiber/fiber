@@ -181,7 +181,6 @@ import (
     "crypto/sha256"
     "crypto/subtle"
     "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/fiber/v3/extractors"
     "github.com/gofiber/fiber/v3/middleware/keyauth"
 )
 
