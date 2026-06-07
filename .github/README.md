@@ -28,9 +28,29 @@
     <img src="https://img.shields.io/github/sponsors/gofiber?style=flat-square&label=%E2%AD%90%20sponsors&color=ec6cb9">
   </a>
 </h1>
+
 <p align="center">
   <em><b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <a href="https://docs.gofiber.io/#zero-allocation"><b>zero memory allocation</b></a> and <b>performance</b> in mind.</em>
 </p>
+
+---
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="left">
+        <a href="https://www.coderabbit.ai/?utm_source=gofiber&utm_medium=sponsor&utm_content=homepage">
+          <img src="https://www.coderabbit.ai/images/logo-dark.svg" height="52" alt="CodeRabbit">
+        </a>
+      </td>
+      <td align="right">
+        <a href="https://github.com/sponsors/gofiber">
+          <img src="https://img.shields.io/badge/OFFICIAL_SPONSORS-%23FF69B4?style=for-the-badge&logo=github&logoColor=white" alt="Become a Sponsor">
+        </a>
+      </td>
+    </tr>
+  </table>
+</div>
 
 ---
 
