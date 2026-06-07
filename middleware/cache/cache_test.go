@@ -5467,3 +5467,222 @@ func Test_hasDirective(t *testing.T) {
 		})
 	}
 }
+
+func Test_secondsToTime_Overflow(t *testing.T) {
+	t.Parallel()
+	result := secondsToTime(uint64(math.MaxInt64) + 1)
+	require.Equal(t, time.Unix(math.MaxInt64, 0).UTC(), result)
+}
+
+func Test_secondsToDuration_Overflow(t *testing.T) {
+	t.Parallel()
+	result := secondsToDuration(math.MaxUint64)
+	require.Equal(t, time.Duration(math.MaxInt64), result)
+}
+
+func Test_storeVaryManifest_EmptyNames(t *testing.T) {
+	t.Parallel()
+	storage := newFailingCacheStorage()
+	mgr := &manager{storage: storage}
+	err := storeVaryManifest(context.Background(), mgr, "manifest", nil, time.Hour)
+	require.NoError(t, err)
+	// Verify nothing was stored
+	val, getErr := storage.GetWithContext(context.Background(), "manifest")
+	require.NoError(t, getErr)
+	require.Nil(t, val)
+}
+
+func Test_loadVaryManifest_StorageError(t *testing.T) {
+	t.Parallel()
+	storage := newFailingCacheStorage()
+	storage.errs["get|manifest"] = errors.New("storage fail")
+	mgr := &manager{storage: storage}
+	names, found, err := loadVaryManifest(context.Background(), mgr, "manifest")
+	require.Error(t, err)
+	require.False(t, found)
+	require.Nil(t, names)
+}
+
+func Test_loadVaryManifest_StarVary(t *testing.T) {
+	t.Parallel()
+	storage := newFailingCacheStorage()
+	mgr := &manager{storage: storage}
+	// Store a manifest with star
+	err := storage.SetWithContext(context.Background(), "manifest", []byte("*"), 0)
+	require.NoError(t, err)
+	names, found, err := loadVaryManifest(context.Background(), mgr, "manifest")
+	require.NoError(t, err)
+	require.False(t, found)
+	require.Nil(t, names)
+}
+
+func Test_loadVaryManifest_ValidManifest(t *testing.T) {
+	t.Parallel()
+	storage := newFailingCacheStorage()
+	mgr := &manager{storage: storage}
+	err := storage.SetWithContext(context.Background(), "manifest", []byte("Accept,Accept-Encoding"), 0)
+	require.NoError(t, err)
+	names, found, loadErr := loadVaryManifest(context.Background(), mgr, "manifest")
+	require.NoError(t, loadErr)
+	require.True(t, found)
+	require.Equal(t, []string{"accept", "accept-encoding"}, names)
+}
+
+func Test_makeHashAuthFunc_PoolFallback(t *testing.T) {
+	t.Parallel()
+	pool := &sync.Pool{
+		New: func() any {
+			// Return invalid type to trigger the fallback
+			return "not-a-pointer"
+		},
+	}
+	hashFn := makeHashAuthFunc(pool)
+	result := hashFn([]byte("******"))
+	require.Len(t, result, hexLen)
+	// Verify deterministic
+	result2 := hashFn([]byte("******"))
+	require.Equal(t, result, result2)
+}
+
+func Test_makeHashAuthFunc_UndersizedBuffer(t *testing.T) {
+	t.Parallel()
+	pool := &sync.Pool{
+		New: func() any {
+			// Return buffer that's too small
+			b := make([]byte, 1)
+			return &b
+		},
+	}
+	hashFn := makeHashAuthFunc(pool)
+	result := hashFn([]byte("******"))
+	require.Len(t, result, hexLen)
+}
+
+func Test_Cache_NegativeExpiration(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: -1 * time.Second,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("hello")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "hello", string(body))
+}
+
+func Test_defaultKeyGenerator_OversizedBuffer(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	cfg := configDefault()
+
+	// Create a request with a very long path to trigger the oversized buffer path
+	longPath := "/" + strings.Repeat("a", defaultKeyBufferCap*5)
+
+	app.Get(longPath, func(c fiber.Ctx) error {
+		key := defaultKeyGenerator(c, &cfg)
+		require.NotEmpty(t, key)
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, longPath, http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func Test_canonicalQueryString_EmptyQuery(t *testing.T) {
+	t.Parallel()
+	uri := &fasthttp.URI{}
+	result := canonicalQueryString(uri)
+	require.Empty(t, result)
+}
+
+func Test_canonicalQueryString_SortedKeys(t *testing.T) {
+	t.Parallel()
+	uri := &fasthttp.URI{}
+	uri.SetQueryString("z=1&a=2&m=3")
+	result := canonicalQueryString(uri)
+	require.Contains(t, result, "a=2")
+	// Should be sorted: a before m before z
+	aIdx := strings.Index(result, "a=2")
+	mIdx := strings.Index(result, "m=3")
+	zIdx := strings.Index(result, "z=1")
+	require.Less(t, aIdx, mIdx)
+	require.Less(t, mIdx, zIdx)
+}
+
+func Test_canonicalHeaderSubset_EmptyNames(t *testing.T) {
+	t.Parallel()
+	header := &fasthttp.RequestHeader{}
+	result := canonicalHeaderSubset(header, nil)
+	require.Empty(t, result)
+}
+
+func Test_canonicalHeaderSubset_MissingHeader(t *testing.T) {
+	t.Parallel()
+	header := &fasthttp.RequestHeader{}
+	header.Set("Accept", "application/json")
+	result := canonicalHeaderSubset(header, []string{"Accept", "X-Missing"})
+	require.Contains(t, result, "Accept")
+	require.Contains(t, result, "application/json")
+}
+
+func Test_canonicalCookieSubset_EmptyNames(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		result := canonicalCookieSubset(c, nil)
+		require.Empty(t, result)
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func Test_Cache_MaxBytes_EvictionDeleteError(t *testing.T) {
+	t.Parallel()
+	storage := newFailingCacheStorage()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 10 * time.Second,
+		MaxBytes:   100,
+		Storage:    storage,
+	}))
+
+	app.Get("/:id", func(c fiber.Ctx) error {
+		c.Set("Cache-Control", "public, max-age=3600")
+		return c.SendString(strings.Repeat("x", 40))
+	})
+
+	// First request - fill cache
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/first", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	// Second request - fill more cache
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/second", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	// Inject delete error for eviction
+	storage.mu.Lock()
+	for k := range storage.data {
+		storage.errs["delete|"+k] = errors.New("delete fail")
+	}
+	storage.mu.Unlock()
+
+	// Third request should trigger eviction, which will fail
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/third", http.NoBody))
+	require.NoError(t, err)
+	// Should still return a response (eviction error is handled internally)
+	require.NotEqual(t, 0, resp.StatusCode)
+}

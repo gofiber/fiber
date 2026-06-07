@@ -22,12 +22,15 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/keylock"
 )
 
 // timestampUpdatePeriod is the period which is used to check the cache expiration.
 // It should not be too long to provide more or less acceptable expiration error, and in the same
 // time it should not be too short to avoid overwhelming of the system
 const timestampUpdatePeriod = 300 * time.Millisecond
+
+const cacheKeyLockShards = 128
 
 // buffer size for hexpool
 const (
@@ -150,7 +153,8 @@ func New(config ...Config) fiber.Handler {
 
 	var (
 		// Cache settings
-		mux       = &sync.RWMutex{}
+		heapMu    = &sync.Mutex{}
+		keyLocks  = keylock.New(cacheKeyLockShards)
 		timestamp = safeUnixSeconds(time.Now())
 	)
 	// Create manager to simplify storage operations ( see manager.go )
@@ -310,17 +314,17 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Lock entry
-		mux.Lock()
+		releaseKey := keyLocks.Lock(key)
 		locked := true
 		unlock := func() {
 			if locked {
-				mux.Unlock()
+				releaseKey()
 				locked = false
 			}
 		}
 		relock := func() {
 			if !locked {
-				mux.Lock()
+				releaseKey = keyLocks.Lock(key)
 				locked = true
 			}
 		}
@@ -360,7 +364,9 @@ func New(config ...Config) fiber.Handler {
 				return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
 			}
 			relock()
+			heapMu.Lock()
 			removeHeapEntry(key, e.heapidx)
+			heapMu.Unlock()
 			if cfg.Storage != nil {
 				manager.release(e)
 			}
@@ -426,7 +432,9 @@ func New(config ...Config) fiber.Handler {
 				relock()
 				idx := e.heapidx
 				manager.release(e)
+				heapMu.Lock()
 				removeHeapEntry(key, idx)
+				heapMu.Unlock()
 				e = nil
 			case entryHasPrivate:
 				unlock()
@@ -437,7 +445,9 @@ func New(config ...Config) fiber.Handler {
 					return fmt.Errorf("cache: failed to delete private response for key %q: %w", maskKey(key), err)
 				}
 				relock()
+				heapMu.Lock()
 				removeHeapEntry(key, e.heapidx)
+				heapMu.Unlock()
 				if cfg.Storage != nil && e != nil {
 					manager.release(e)
 				}
@@ -574,13 +584,13 @@ func New(config ...Config) fiber.Handler {
 					}
 					return fmt.Errorf("cache: failed to delete cached response for key %q: %w", maskKey(key), err)
 				}
-				mux.Lock()
+				heapMu.Lock()
 				removeHeapEntry(key, e.heapidx)
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
 				e = nil
-				mux.Unlock()
+				heapMu.Unlock()
 			}
 
 			if !cfg.DisableVaryHeaders && hasVaryManifest {
@@ -641,14 +651,14 @@ func New(config ...Config) fiber.Handler {
 		defer func() {
 			// If we reserved space but the entry was not successfully added to heap, unreserve it
 			if cfg.MaxBytes > 0 && spaceReserved {
-				mux.Lock()
+				heapMu.Lock()
 				storedBytes -= bodySize
-				mux.Unlock()
+				heapMu.Unlock()
 			}
 		}()
 
 		if cfg.MaxBytes > 0 {
-			mux.Lock()
+			heapMu.Lock()
 			// Reserve space for the new entry first
 			storedBytes += bodySize
 			spaceReserved = true
@@ -664,7 +674,7 @@ func New(config ...Config) fiber.Handler {
 					storedBytes -= bodySize
 					// Set spaceReserved to false so the deferred cleanup does not unreserve again
 					spaceReserved = false
-					mux.Unlock()
+					heapMu.Unlock()
 					return errors.New("cache: insufficient space and no entries to evict")
 				}
 				next := heap.entries[0]
@@ -678,7 +688,7 @@ func New(config ...Config) fiber.Handler {
 				})
 				storedBytes -= size
 			}
-			mux.Unlock()
+			heapMu.Unlock()
 
 			// Perform deletions outside the lock
 			if len(keysToRemove) > 0 {
@@ -689,7 +699,7 @@ func New(config ...Config) fiber.Handler {
 					}
 
 					// Deletion failed: restore storedBytes for failed deletions
-					mux.Lock()
+					heapMu.Lock()
 					// Restore sizes of entries we failed to delete
 					for j := i; j < len(sizesToRemove); j++ {
 						storedBytes += sizesToRemove[j]
@@ -705,7 +715,7 @@ func New(config ...Config) fiber.Handler {
 						candidate.heapIdx = heap.put(candidate.key, candidate.exp, candidate.size)
 						restored = append(restored, candidate)
 					}
-					mux.Unlock()
+					heapMu.Unlock()
 
 					var restoreErr error
 					for _, candidate := range restored {
@@ -858,22 +868,22 @@ func New(config ...Config) fiber.Handler {
 		// Store entry in heap (space already reserved in eviction phase)
 		var heapIdx int
 		if cfg.MaxBytes > 0 {
-			mux.Lock()
+			heapMu.Lock()
 			heapIdx = heap.put(key, e.exp, bodySize)
 			e.heapidx = heapIdx
 			// Note: storedBytes was incremented during reservation, and evictions
 			// have already been accounted for, so no additional increment is needed
 			spaceReserved = false // Clear flag to prevent defer from unreserving
-			mux.Unlock()
+			heapMu.Unlock()
 		}
 
 		cleanupOnStoreError := func(ctx context.Context, releaseEntry, rawStored bool) error {
 			var cleanupErr error
 			if cfg.MaxBytes > 0 {
-				mux.Lock()
+				heapMu.Lock()
 				_, size := heap.remove(heapIdx)
 				storedBytes -= size
-				mux.Unlock()
+				heapMu.Unlock()
 			}
 			if releaseEntry {
 				manager.release(e)
@@ -915,9 +925,9 @@ func New(config ...Config) fiber.Handler {
 
 		// If revalidating, remove old heap entry now that replacement is successfully stored
 		if cfg.MaxBytes > 0 && revalidate && oldHeapIdx >= 0 {
-			mux.Lock()
+			heapMu.Lock()
 			removeHeapEntry(key, oldHeapIdx)
-			mux.Unlock()
+			heapMu.Unlock()
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)
