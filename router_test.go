@@ -2566,3 +2566,194 @@ func Test_Route_URL(t *testing.T) {
 		require.Equal(t, "/api/v1/users/user123/posts/post456/comments", url)
 	})
 }
+
+func Test_App_SkipUnmatchedRoutes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("skips middleware for unmatched routes", func(t *testing.T) {
+		t.Parallel()
+		middlewareCalled := false
+
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Use(func(c Ctx) error {
+			middlewareCalled = true
+			return c.Next()
+		})
+		app.Get("/users", emptyHandler)
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/notfound", nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.False(t, middlewareCalled, "middleware should not be called for unmatched routes")
+	})
+
+	t.Run("runs middleware for matched routes", func(t *testing.T) {
+		t.Parallel()
+		middlewareCalled := false
+
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Use(func(c Ctx) error {
+			middlewareCalled = true
+			return c.Next()
+		})
+		app.Get("/users", emptyHandler)
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/users", nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.True(t, middlewareCalled, "middleware should be called for matched routes")
+	})
+
+	t.Run("disabled by default", func(t *testing.T) {
+		t.Parallel()
+		middlewareCalled := false
+
+		app := New() // SkipUnmatchedRoutes is false by default
+		app.Use(func(c Ctx) error {
+			middlewareCalled = true
+			return c.Next()
+		})
+		app.Get("/users", emptyHandler)
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/notfound", nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.True(t, middlewareCalled, "middleware should be called when SkipUnmatchedRoutes is disabled")
+	})
+
+	t.Run("respects case sensitivity", func(t *testing.T) {
+		t.Parallel()
+		middlewareCalled := false
+
+		app := New(Config{
+			SkipUnmatchedRoutes: true,
+			CaseSensitive:       true,
+		})
+		app.Use(func(c Ctx) error {
+			middlewareCalled = true
+			return c.Next()
+		})
+		app.Get("/users", emptyHandler)
+
+		// Wrong case should be skipped
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/Users", nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.False(t, middlewareCalled, "middleware should not be called for case mismatch")
+	})
+
+	t.Run("respects strict routing", func(t *testing.T) {
+		t.Parallel()
+		middlewareCalled := false
+
+		app := New(Config{
+			SkipUnmatchedRoutes: true,
+			StrictRouting:       true,
+		})
+		app.Use(func(c Ctx) error {
+			middlewareCalled = true
+			return c.Next()
+		})
+		app.Get("/users", emptyHandler)
+
+		// Trailing slash should be skipped with strict routing
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/users/", nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.False(t, middlewareCalled, "middleware should not be called for trailing slash mismatch")
+	})
+}
+
+
+// go test -v ./... -run=^$ -bench=Benchmark_SkipUnmatchedRoutes -benchmem -count=4
+func Benchmark_SkipUnmatchedRoutes_Unmatched(b *testing.B) {
+	b.Run("without_skip", func(b *testing.B) {
+		app := New()
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		registerDummyRoutes(app)
+		appHandler := app.Handler()
+
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("GET")
+		c.URI().SetPath("/this/route/does/not/exist")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			appHandler(c)
+		}
+	})
+
+	b.Run("with_skip", func(b *testing.B) {
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		registerDummyRoutes(app)
+		appHandler := app.Handler()
+
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("GET")
+		c.URI().SetPath("/this/route/does/not/exist")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_SkipUnmatchedRoutes_Matched(b *testing.B) {
+	b.Run("without_skip", func(b *testing.B) {
+		app := New()
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		registerDummyRoutes(app)
+		appHandler := app.Handler()
+
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("GET")
+		c.URI().SetPath("/user/keys/1337")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			appHandler(c)
+		}
+	})
+
+	b.Run("with_skip", func(b *testing.B) {
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		registerDummyRoutes(app)
+		appHandler := app.Handler()
+
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("GET")
+		c.URI().SetPath("/user/keys/1337")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			appHandler(c)
+		}
+	})
+}

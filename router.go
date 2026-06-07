@@ -424,6 +424,28 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	return false, ErrNotFound
 }
 
+// routeExists checks if a non-middleware route matches the given method and path.
+func (app *App) routeExists(methodInt, treeHash int, detectionPath, path string) bool {
+	tree, ok := app.treeStack[methodInt][treeHash]
+	if !ok {
+		tree = app.treeStack[methodInt][0]
+	}
+
+	var params [maxParams]string
+
+	for _, route := range tree {
+		// Skip middleware and mounts - only check actual endpoint routes
+		if route.use || route.mount {
+			continue
+		}
+		if route.match(detectionPath, path, &params) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	ctx, ok := app.acquireDefaultCtx(rctx)
 	if !ok {
@@ -436,6 +458,15 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	if ctx.methodInt == -1 {
 		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
+	}
+
+	// Skip unmatched routes before middleware chain
+	if app.config.SkipUnmatchedRoutes {
+		if !app.routeExists(ctx.methodInt, ctx.treePathHash,
+			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path)) {
+			_ = ctx.SendStatus(StatusNotFound) //nolint:errcheck // Always return nil
+			return
+		}
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie).
@@ -459,6 +490,15 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	if ctx.getMethodInt() == -1 {
 		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
+	}
+
+	// Skip unmatched routes before middleware chain
+	if app.config.SkipUnmatchedRoutes {
+		if !app.routeExists(ctx.getMethodInt(), ctx.getTreePathHash(),
+			ctx.getDetectionPath(), ctx.Path()) {
+			_ = ctx.SendStatus(StatusNotFound) //nolint:errcheck // Always return nil
+			return
+		}
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie).
