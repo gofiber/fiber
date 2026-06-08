@@ -35,22 +35,19 @@
 
 ---
 <!-- skip-docs -->
-<div align="center">
-  <table>
-    <tr>
-      <td align="left">
-        <a href="https://www.coderabbit.ai/?utm_source=gofiber&utm_medium=sponsor&utm_content=homepage">
-          <img src="https://www.coderabbit.ai/images/logo-dark.svg" height="52" alt="CodeRabbit">
-        </a>
-      </td>
-      <td align="right">
-        <a href="https://github.com/sponsors/gofiber">
-          <img src="https://img.shields.io/badge/OFFICIAL_SPONSORS-%23FF69B4?style=for-the-badge&logo=github&logoColor=white" alt="Become a Sponsor">
-        </a>
-      </td>
-    </tr>
-  </table>
-</div>
+<p align="center">
+  <a href="https://github.com/sponsors/gofiber">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/OFFICIAL%20SPONSORS.png?variant=outline&color=ffffff&logo=github&logoColor=ffffff">
+      <img alt="Official Sponsors" src="https://shieldcn.dev/badge/OFFICIAL%20SPONSORS.png?variant=outline&color=000000&logo=github&logoColor=000000">
+    </picture>
+  </a>
+</p>
+<p align="center">
+  <a href="https://www.coderabbit.ai/?utm_source=gofiber&utm_medium=sponsor&utm_content=homepage">
+    <img src="https://www.coderabbit.ai/images/logo-dark.svg" height="52" alt="CodeRabbit">
+  </a>
+</p>
 
 ---
 <!-- skip-docs -->
