@@ -587,7 +587,7 @@ func Test_Integration_App_ServerErrorHandler_CustomMultipartBodyLimit(t *testing
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			var fiberErr *fiber.Error
-			if errors.As(err, &fiberErr) {
+			if errors.As(err, &fiberErr) && fiberErr != nil {
 				code = fiberErr.Code
 			}
 			return c.Status(code).JSON(fiber.Map{
@@ -1024,7 +1024,7 @@ func Test_Integration_Domain_WithLimiter(t *testing.T) {
 	})
 
 	// Make requests up to the limit
-	for i := 0; i < maxRequests; i++ {
+	for range maxRequests {
 		req := httptest.NewRequest(http.MethodGet, "/limited", http.NoBody)
 		req.Host = "api.example.com"
 		resp, err := app.Test(req)

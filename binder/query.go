@@ -12,13 +12,16 @@ type QueryBinding struct {
 
 // Name returns the binding name.
 func (*QueryBinding) Name() string {
-	return "query"
+	return bindingQuery
 }
 
 // Bind parses the request query and returns the result.
 func (b *QueryBinding) Bind(reqCtx *fasthttp.Request, out any) error {
-	data := make(map[string][]string)
-	for key, val := range reqCtx.URI().QueryArgs().All() {
+	args := reqCtx.URI().QueryArgs()
+	data := acquireDataMap()
+	defer releaseDataMap(data)
+
+	for key, val := range args.All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
 		if err := formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, true); err != nil {

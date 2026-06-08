@@ -37,6 +37,14 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
+type typedNilHandlerError struct {
+	message string
+}
+
+func (e *typedNilHandlerError) Error() string {
+	return e.message
+}
+
 type fileView struct {
 	path    string
 	content string
@@ -148,10 +156,7 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 
 			// Check final goroutine count
 			finalGoroutines := runtime.NumGoroutine()
-			leakedGoroutines := finalGoroutines - initialGoroutines
-			if leakedGoroutines < 0 {
-				leakedGoroutines = 0
-			}
+			leakedGoroutines := max(finalGoroutines-initialGoroutines, 0)
 			t.Logf("[%s] Final goroutines: %d (leaked: %d)",
 				tc.name, finalGoroutines, leakedGoroutines)
 
@@ -633,6 +638,49 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 	require.Equal(t, "1: USE error", string(body))
 }
 
+func Test_DefaultErrorHandler_TypedNilFiberError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *Error
+	require.NotPanics(t, func() {
+		require.NoError(t, DefaultErrorHandler(c, err))
+	})
+	require.Equal(t, StatusInternalServerError, c.fasthttp.Response.StatusCode())
+	require.Equal(t, utils.StatusMessage(StatusInternalServerError), string(c.fasthttp.Response.Body()))
+}
+
+func Test_DefaultErrorHandler_TypedNilCustomError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *typedNilHandlerError
+	require.NotPanics(t, func() {
+		require.NoError(t, DefaultErrorHandler(c, err))
+	})
+	require.Equal(t, StatusInternalServerError, c.fasthttp.Response.StatusCode())
+	require.Equal(t, utils.StatusMessage(StatusInternalServerError), string(c.fasthttp.Response.Body()))
+}
+
+func Test_DefaultErrorHandler_WrappedFiberErrorUsesWrappedMessage(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	err := fmt.Errorf("auth failed: %w", ErrUnauthorized)
+	require.NoError(t, DefaultErrorHandler(c, err))
+	require.Equal(t, StatusUnauthorized, c.fasthttp.Response.StatusCode())
+	require.Equal(t, err.Error(), string(c.fasthttp.Response.Body()))
+}
+
 func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -642,6 +690,21 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	app.serverErrorHandler(c.fasthttp, errors.New(msg))
 	require.Equal(t, string(c.fasthttp.Response.Body()), msg)
 	require.Equal(t, StatusBadRequest, c.fasthttp.Response.StatusCode())
+}
+
+func Test_App_serverErrorHandler_TypedNilOpError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *net.OpError
+	require.NotPanics(t, func() {
+		app.serverErrorHandler(c.fasthttp, err)
+	})
+	require.Equal(t, utils.StatusMessage(StatusBadGateway), string(c.fasthttp.Response.Body()))
+	require.Equal(t, StatusBadGateway, c.fasthttp.Response.StatusCode())
 }
 
 func Test_App_serverErrorHandler_Network_Error(t *testing.T) {
@@ -1167,7 +1230,7 @@ func Test_App_AutoHead_Compliance_SendFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "hello.txt")
 	fileContent := []byte("file-body")
-	require.NoError(t, os.WriteFile(filePath, fileContent, 0o644)) //nolint:gosec // permissions match test fixtures
+	require.NoError(t, os.WriteFile(filePath, fileContent, 0o644))
 
 	app := New()
 	app.Get("/file", func(c Ctx) error {
@@ -1301,19 +1364,19 @@ func Test_App_GetString(t *testing.T) {
 	heap := string([]byte("fiber"))
 	appMutable := New()
 	same := appMutable.GetString(heap)
-	if unsafe.StringData(same) != unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
+	if unsafe.StringData(same) != unsafe.StringData(heap) {
 		t.Error("expected original string when immutable is disabled")
 	}
 
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.GetString(heap)
-	if unsafe.StringData(copied) == unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
+	if unsafe.StringData(copied) == unsafe.StringData(heap) {
 		t.Error("expected a copy for heap-backed string when immutable is enabled")
 	}
 
 	literal := "fiber"
 	sameLit := appImmutable.GetString(literal)
-	if unsafe.StringData(sameLit) != unsafe.StringData(literal) { //nolint:gosec // compare pointer addresses
+	if unsafe.StringData(sameLit) != unsafe.StringData(literal) {
 		t.Error("expected original literal when immutable is enabled")
 	}
 }
@@ -1324,7 +1387,7 @@ func Test_App_GetBytes(t *testing.T) {
 	b := []byte("fiber")
 	appMutable := New()
 	same := appMutable.GetBytes(b)
-	if unsafe.SliceData(same) != unsafe.SliceData(b) { //nolint:gosec // compare pointer addresses
+	if unsafe.SliceData(same) != unsafe.SliceData(b) {
 		t.Error("expected original slice when immutable is disabled")
 	}
 
@@ -1333,14 +1396,14 @@ func Test_App_GetBytes(t *testing.T) {
 	sub := alias[:5]
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.GetBytes(sub)
-	if unsafe.SliceData(copied) == unsafe.SliceData(sub) { //nolint:gosec // compare pointer addresses
+	if unsafe.SliceData(copied) == unsafe.SliceData(sub) {
 		t.Error("expected a copy for aliased slice when immutable is enabled")
 	}
 
 	full := make([]byte, 5)
 	copy(full, b)
 	detached := appImmutable.GetBytes(full)
-	if unsafe.SliceData(detached) == unsafe.SliceData(full) { //nolint:gosec // compare pointer addresses
+	if unsafe.SliceData(detached) == unsafe.SliceData(full) {
 		t.Error("expected a copy even when cap==len")
 	}
 }
@@ -2222,6 +2285,47 @@ func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
 		require.Equal(t, StatusOK, status)
 	case <-time.After(time.Second):
 		t.Fatal("render request did not finish after reload panic")
+	}
+}
+
+func Test_App_InitPanicUnlocksRouteRegistration(t *testing.T) {
+	t.Parallel()
+
+	view := &panicLoadView{}
+	app := New(Config{Views: view})
+
+	type initResult struct {
+		recovered any
+	}
+
+	initDone := make(chan initResult, 1)
+	go func() {
+		result := initResult{}
+		defer func() {
+			result.recovered = recover()
+			initDone <- result
+		}()
+
+		app.init()
+	}()
+
+	select {
+	case result := <-initDone:
+		require.Equal(t, "panic load", result.recovered)
+	case <-time.After(time.Second):
+		t.Fatal("init panic was not recovered")
+	}
+
+	registerDone := make(chan struct{}, 1)
+	go func() {
+		app.Get("/after-panic", func(Ctx) error { return nil })
+		registerDone <- struct{}{}
+	}()
+
+	select {
+	case <-registerDone:
+	case <-time.After(time.Second):
+		t.Fatal("route registration deadlocked after init panic")
 	}
 }
 

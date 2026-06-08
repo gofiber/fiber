@@ -26,6 +26,14 @@ type failingLimiterStorage struct {
 
 const testLimiterClientKey = "client-key"
 
+type typedNilLimiterError struct {
+	message string
+}
+
+func (e *typedNilLimiterError) Error() string {
+	return e.message
+}
+
 func newFailingLimiterStorage() *failingLimiterStorage {
 	return &failingLimiterStorage{
 		data: make(map[string][]byte),
@@ -193,6 +201,36 @@ func TestLimiterDefaultConfigNoPanic(t *testing.T) {
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	})
+}
+
+func TestGetEffectiveStatusCodeTypedNilFiberError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Response().SetStatusCode(fiber.StatusAccepted)
+
+	var err *fiber.Error
+	require.NotPanics(t, func() {
+		require.Equal(t, fiber.StatusAccepted, getEffectiveStatusCode(c, err))
+	})
+}
+
+func TestGetEffectiveStatusCodeTypedNilCustomError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Response().SetStatusCode(fiber.StatusAccepted)
+
+	var err *typedNilLimiterError
+	require.NotPanics(t, func() {
+		require.Equal(t, fiber.StatusAccepted, getEffectiveStatusCode(c, err))
 	})
 }
 
@@ -1074,7 +1112,7 @@ func Test_Limiter_Sliding_Window_RecalculatesAfterHandlerDelay(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)

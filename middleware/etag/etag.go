@@ -125,7 +125,7 @@ func appendUint(dst []byte, n uint32) []byte {
 	for n >= 10 {
 		i--
 		q = n / 10
-		buf[i] = '0' + byte(n-q*10)
+		buf[i] = '0' + byte(n-q*10) //nolint:gosec // G115: integer overflow conversion uint32 -> byte
 		n = q
 	}
 	i--

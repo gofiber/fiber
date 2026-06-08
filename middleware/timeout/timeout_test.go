@@ -130,7 +130,7 @@ func TestTimeout_HandlerReturnsEarlyOnCancel(t *testing.T) {
 
 	app.Get("/early-return", New(func(c fiber.Ctx) error {
 		// Handler that would take 500ms but checks context
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			select {
 			case <-c.Context().Done():
 				return c.Context().Err()
@@ -454,4 +454,92 @@ func TestTimeout_AbandonMechanism(t *testing.T) {
 	// In the timeout middleware, abandoned contexts are NOT released back to the pool
 	// to avoid race conditions with requestHandler. This is the same approach
 	// fasthttp uses for timed-out RequestCtx objects.
+}
+
+// TestTimeout_AbandonedCtxReclaimed verifies the fix for #4359: a timed-out
+// request's context is NOT reclaimed while its handler is still running, and IS
+// returned to the pool once the handler finishes (proven by IsAbandoned flipping
+// back to false, which only ForceRelease does).
+func TestTimeout_AbandonedCtxReclaimed(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	ctxCh := make(chan fiber.Ctx, 1)
+	release := make(chan struct{})
+	app.Get("/reclaim", New(func(c fiber.Ctx) error {
+		ctxCh <- c
+		// Keep "running" past the timeout until the test releases us, simulating
+		// a slow upstream.
+		<-release
+		return nil
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/reclaim", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+
+	var c fiber.Ctx
+	select {
+	case c = <-ctxCh:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not start")
+	}
+
+	// Handler is still running -> the abandoned context must NOT be reclaimed yet.
+	require.True(t, c.IsAbandoned(), "context reclaimed while handler still running")
+	time.Sleep(30 * time.Millisecond)
+	require.True(t, c.IsAbandoned(), "context reclaimed while handler still running")
+
+	// Let the handler finish; the context must now be reclaimed (pooled).
+	close(release)
+	require.Eventually(t, func() bool {
+		return !c.IsAbandoned()
+	}, time.Second, 5*time.Millisecond, "abandoned context was not reclaimed after handler finished")
+}
+
+// TestTimeout_PanicAfterTimeoutReclaimed verifies that the panic-after-timeout
+// path also reclaims the abandoned context once the handler goroutine unwinds.
+func TestTimeout_PanicAfterTimeoutReclaimed(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	ctxCh := make(chan fiber.Ctx, 1)
+	release := make(chan struct{})
+	app.Get("/panic-reclaim", New(func(c fiber.Ctx) error {
+		ctxCh <- c
+		<-release
+		panic("panic after timeout")
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/panic-reclaim", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+
+	var c fiber.Ctx
+	select {
+	case c = <-ctxCh:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not start")
+	}
+
+	close(release)
+	require.Eventually(t, func() bool {
+		return !c.IsAbandoned()
+	}, time.Second, 5*time.Millisecond, "abandoned context was not reclaimed after handler panicked")
+}
+
+// TestTimeout_AbandonWithoutReclaimNotPooled guards the SSE-style use of
+// Abandon(): a context that is abandoned but never armed for reclamation stays
+// out of the pool when ReleaseCtx is called.
+func TestTimeout_AbandonWithoutReclaimNotPooled(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(ctx.ForceRelease)
+
+	ctx.Abandon()
+	app.ReleaseCtx(ctx)
+	require.True(t, ctx.IsAbandoned(), "abandoned, un-armed context must not be auto-reclaimed")
 }

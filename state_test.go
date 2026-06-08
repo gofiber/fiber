@@ -1039,7 +1039,7 @@ func BenchmarkState_GetUint(b *testing.B) {
 	// Prepopulate the state with uint values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint(i)) //nolint:gosec // G115 - test values are small
+		st.Set(key, uint(i))
 	}
 	i := 0
 	for b.Loop() {
@@ -1056,7 +1056,7 @@ func BenchmarkState_GetInt8(b *testing.B) {
 	// Prepopulate the state with int8 values (using modulo to stay in range).
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, int8(i%128)) //nolint:gosec // G115 - modulo keeps value in range
+		st.Set(key, int8(i%128))
 	}
 	i := 0
 	for b.Loop() {
@@ -1073,7 +1073,7 @@ func BenchmarkState_GetInt16(b *testing.B) {
 	// Prepopulate the state with int16 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, int16(i)) //nolint:gosec // G115 - test values are small
+		st.Set(key, int16(i))
 	}
 	i := 0
 	for b.Loop() {
@@ -1090,7 +1090,7 @@ func BenchmarkState_GetInt32(b *testing.B) {
 	// Prepopulate the state with int32 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, int32(i)) //nolint:gosec // G115 - test values are small
+		st.Set(key, int32(i))
 	}
 	i := 0
 	for b.Loop() {
@@ -1124,7 +1124,7 @@ func BenchmarkState_GetUint8(b *testing.B) {
 	// Prepopulate the state with uint8 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint8(i%256)) //nolint:gosec // G115 - modulo keeps value in range
+		st.Set(key, uint8(i%256))
 	}
 	i := 0
 	for b.Loop() {
@@ -1141,7 +1141,7 @@ func BenchmarkState_GetUint16(b *testing.B) {
 	// Prepopulate the state with uint16 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint16(i)) //nolint:gosec // G115 - test values are small
+		st.Set(key, uint16(i))
 	}
 	i := 0
 	for b.Loop() {
@@ -1158,7 +1158,7 @@ func BenchmarkState_GetUint32(b *testing.B) {
 	// Prepopulate the state with uint32 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint32(i)) //nolint:gosec // G115 - test values are small
+		st.Set(key, uint32(i))
 	}
 	i := 0
 	for b.Loop() {
@@ -1175,7 +1175,7 @@ func BenchmarkState_GetUint64(b *testing.B) {
 	// Prepopulate the state with uint64 values.
 	for i := range n {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint64(i)) //nolint:gosec // G115 - test values are small
+		st.Set(key, uint64(i))
 	}
 	i := 0
 	for b.Loop() {

@@ -45,7 +45,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			fmt.Fprintf(
 				buf,
 				"%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
-				data.Timestamp.Load().(string), //nolint:forcetypeassert,errcheck // Timestamp is always a string
+				data.Timestamp,
 				statusColor(c.Response().StatusCode(), &colors), c.Response().StatusCode(), colors.Reset,
 				data.Stop.Sub(data.Start),
 				c.IP(),
@@ -74,7 +74,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			}
 
 			// Timestamp
-			buf.WriteString(data.Timestamp.Load().(string)) //nolint:forcetypeassert,errcheck // Timestamp is always a string
+			buf.WriteString(data.Timestamp)
 			buf.WriteString(" | ")
 
 			// Status Code with 3 fixed width, right aligned
