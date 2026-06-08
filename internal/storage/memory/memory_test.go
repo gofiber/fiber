@@ -314,8 +314,11 @@ func Test_Storage_Memory_Close_GCPanic(t *testing.T) {
 	}
 
 	// Launch gc directly; recover the expected panic so the test does not crash.
+	gcPanicked := make(chan any, 1)
 	go func() {
-		defer func() { _ = recover() }()
+		defer func() {
+			gcPanicked <- recover()
+		}()
 		store.gc()
 	}()
 
@@ -330,6 +333,8 @@ func Test_Storage_Memory_Close_GCPanic(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Close deadlocked after gc panic")
 	}
+
+	require.NotNil(t, <-gcPanicked, "expected gc() to panic on zero gcInterval")
 }
 
 func Test_Storage_Memory_Close_Idempotent(t *testing.T) {
@@ -348,12 +353,10 @@ func Test_Storage_Memory_Close_Idempotent(t *testing.T) {
 	// Subsequent concurrent Close calls must neither block nor panic.
 	var wg sync.WaitGroup
 	errCh := make(chan error, 4)
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 4 {
+		wg.Go(func() {
 			errCh <- testStore.Close()
-		}()
+		})
 	}
 
 	done := make(chan struct{})

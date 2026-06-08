@@ -5542,13 +5542,11 @@ func Test_CacheInvalidator_RaceWithExactTimestamp(t *testing.T) {
 	)
 	const workers = 16
 	const iterations = 50
-	wg.Add(workers)
-	for i := 0; i < workers; i++ {
-		go func(idx int) {
-			defer wg.Done()
-			for j := 0; j < iterations; j++ {
+	for i := range workers {
+		wg.Go(func() {
+			for j := range iterations {
 				target := "/"
-				if (idx+j)%4 == 0 {
+				if (i+j)%4 == 0 {
 					target = "/?invalidate=true"
 					invalidations.Add(1)
 				}
@@ -5563,7 +5561,7 @@ func Test_CacheInvalidator_RaceWithExactTimestamp(t *testing.T) {
 					errCount.Add(1)
 				}
 			}
-		}(i)
+		})
 	}
 	wg.Wait()
 

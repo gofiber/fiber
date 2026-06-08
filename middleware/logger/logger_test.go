@@ -953,7 +953,9 @@ func Test_Logger_SharedTimestampState(t *testing.T) {
 
 	require.Same(t, first, second)
 	require.NotSame(t, first, third)
-	require.NotEmpty(t, first.Load().(string))
+	loaded, ok := first.Load().(string)
+	require.True(t, ok)
+	require.NotEmpty(t, loaded)
 }
 
 // go test -run Test_Response_Header
