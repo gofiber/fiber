@@ -2662,6 +2662,25 @@ func Test_App_SkipUnmatchedRoutes(t *testing.T) {
 		require.Equal(t, StatusNotFound, resp.StatusCode)
 		require.False(t, middlewareCalled, "middleware should not be called for trailing slash mismatch")
 	})
+
+	t.Run("works with custom context", func(t *testing.T) {
+		t.Parallel()
+		middlewareCalled := false
+
+		app := NewWithCustomCtx(func(app *App) CustomCtx {
+			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+		}, Config{SkipUnmatchedRoutes: true})
+		app.Use(func(c Ctx) error {
+			middlewareCalled = true
+			return c.Next()
+		})
+		app.Get("/users", emptyHandler)
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/notfound", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.False(t, middlewareCalled, "middleware should not be called for unmatched routes with custom context")
+	})
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_SkipUnmatchedRoutes -benchmem -count=4
