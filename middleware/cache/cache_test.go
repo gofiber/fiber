@@ -5504,3 +5504,72 @@ func Test_hasDirective(t *testing.T) {
 		})
 	}
 }
+
+// Test_CacheInvalidator_RaceWithExactTimestamp exercises the path where one
+// request triggers CacheInvalidator (writing e.exp under mux.Lock) while
+// concurrent requests evaluate needsExactTimestamp(e, ...). The fields must be
+// read under the lock; -race will flag a regression. The test also asserts
+// the invalidator path actually drives fresh handler executions, so a
+// regression that silently disabled invalidation would also fail.
+func Test_CacheInvalidator_RaceWithExactTimestamp(t *testing.T) {
+	t.Parallel()
+
+	var handlerCalls atomic.Uint64
+	app := fiber.New()
+	app.Use(New(Config{
+		CacheInvalidator: func(c fiber.Ctx) bool {
+			return fiber.Query[bool](c, "invalidate")
+		},
+		// Long expiration so the only source of fresh handler executions
+		// after priming is the CacheInvalidator branch.
+		Expiration: time.Hour,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(strconv.FormatUint(handlerCalls.Add(1), 10))
+	})
+
+	// Prime the cache so the served-from-cache branch is reachable.
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	primed := handlerCalls.Load()
+
+	var (
+		wg            sync.WaitGroup
+		invalidations atomic.Uint64
+		errCount      atomic.Uint64
+	)
+	const workers = 16
+	const iterations = 50
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				target := "/"
+				if (idx+j)%4 == 0 {
+					target = "/?invalidate=true"
+					invalidations.Add(1)
+				}
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+				if err != nil {
+					t.Errorf("app.Test: %v", err)
+					errCount.Add(1)
+					return
+				}
+				if err := resp.Body.Close(); err != nil {
+					t.Errorf("Body.Close: %v", err)
+					errCount.Add(1)
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	require.Zero(t, errCount.Load(), "worker goroutines reported errors")
+	require.Positive(t, invalidations.Load(), "test never issued an invalidating request")
+	// Each invalidation must drive at least one fresh handler execution.
+	// Long Expiration guarantees natural expiry cannot account for the bump.
+	require.Greater(t, handlerCalls.Load(), primed, "invalidator never bypassed the cache")
+}

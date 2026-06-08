@@ -293,11 +293,10 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// Get timestamp before locking to keep the critical section small.
+		// Load the coarse-clock timestamp before locking. The needsExactTimestamp
+		// check below reads e.exp, which the CacheInvalidator branch writes
+		// under mux; both must therefore be serialized by mux.
 		ts := uint64(utils.Timestamp())
-		if needsExactTimestamp(e, reqDirectives, ts) {
-			ts = safeUnixSeconds(time.Now())
-		}
 
 		// Lock entry
 		mux.Lock()
@@ -313,6 +312,9 @@ func New(config ...Config) fiber.Handler {
 				mux.Lock()
 				locked = true
 			}
+		}
+		if needsExactTimestamp(e, reqDirectives, ts) {
+			ts = safeUnixSeconds(time.Now())
 		}
 		// Cache Entry found
 		if e != nil {
