@@ -2581,7 +2581,7 @@ func Test_App_SkipUnmatchedRoutes(t *testing.T) {
 		})
 		app.Get("/users", emptyHandler)
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/notfound", nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/notfound", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusNotFound, resp.StatusCode)
 		require.False(t, middlewareCalled, "middleware should not be called for unmatched routes")
@@ -2598,7 +2598,7 @@ func Test_App_SkipUnmatchedRoutes(t *testing.T) {
 		})
 		app.Get("/users", emptyHandler)
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/users", nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/users", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode)
 		require.True(t, middlewareCalled, "middleware should be called for matched routes")
@@ -2615,7 +2615,7 @@ func Test_App_SkipUnmatchedRoutes(t *testing.T) {
 		})
 		app.Get("/users", emptyHandler)
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/notfound", nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/notfound", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusNotFound, resp.StatusCode)
 		require.True(t, middlewareCalled, "middleware should be called when SkipUnmatchedRoutes is disabled")
@@ -2636,7 +2636,7 @@ func Test_App_SkipUnmatchedRoutes(t *testing.T) {
 		app.Get("/users", emptyHandler)
 
 		// Wrong case should be skipped
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/Users", nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/Users", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusNotFound, resp.StatusCode)
 		require.False(t, middlewareCalled, "middleware should not be called for case mismatch")
@@ -2657,13 +2657,12 @@ func Test_App_SkipUnmatchedRoutes(t *testing.T) {
 		app.Get("/users", emptyHandler)
 
 		// Trailing slash should be skipped with strict routing
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/users/", nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/users/", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusNotFound, resp.StatusCode)
 		require.False(t, middlewareCalled, "middleware should not be called for trailing slash mismatch")
 	})
 }
-
 
 // go test -v ./... -run=^$ -bench=Benchmark_SkipUnmatchedRoutes -benchmem -count=4
 func Benchmark_SkipUnmatchedRoutes_Unmatched(b *testing.B) {
