@@ -47,7 +47,7 @@
   <a href="https://www.coderabbit.ai/?utm_source=gofiber&utm_medium=sponsor&utm_content=homepage">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://www.coderabbit.ai/images/logo-dark.svg">
-      <img height="52" alt="CodeRabbit" src="https://www.coderabbit.ai/images/logo-orange.svg">
+      <img width="280" height="52" alt="CodeRabbit" src="https://www.coderabbit.ai/images/logo-orange.svg">
     </picture>
   </a>
 </p>
