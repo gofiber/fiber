@@ -18,8 +18,10 @@ import (
 type Storage struct {
 	db         map[string]Entry
 	done       chan struct{}
+	gcExited   chan struct{}
 	gcInterval time.Duration
 	mux        sync.RWMutex
+	closeOnce  sync.Once
 }
 
 // Entry represents a value stored in memory along with its expiration.
@@ -39,6 +41,7 @@ func New(config ...Config) *Storage {
 		db:         make(map[string]Entry),
 		gcInterval: cfg.GCInterval,
 		done:       make(chan struct{}),
+		gcExited:   make(chan struct{}),
 	}
 
 	// Start garbage collector
@@ -148,13 +151,20 @@ func (s *Storage) ResetWithContext(ctx context.Context) error {
 }
 
 // Close stops the background garbage collector and releases resources
-// associated with the storage instance.
+// associated with the storage instance. It blocks until the GC goroutine has
+// exited and is safe to call multiple times from any number of goroutines.
 func (s *Storage) Close() error {
-	s.done <- struct{}{}
+	s.closeOnce.Do(func() {
+		close(s.done)
+	})
+	<-s.gcExited
 	return nil
 }
 
 func (s *Storage) gc() {
+	// Close gcExited first so a panic in NewTicker (e.g. non-positive
+	// gcInterval) still unblocks Close.
+	defer close(s.gcExited)
 	ticker := time.NewTicker(s.gcInterval)
 	defer ticker.Stop()
 	var expired []string
