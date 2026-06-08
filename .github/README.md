@@ -28,12 +28,32 @@
     <img src="https://img.shields.io/github/sponsors/gofiber?style=flat-square&label=%E2%AD%90%20sponsors&color=ec6cb9">
   </a>
 </h1>
+
 <p align="center">
   <em><b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <a href="https://docs.gofiber.io/#zero-allocation"><b>zero memory allocation</b></a> and <b>performance</b> in mind.</em>
 </p>
 
 ---
+<!-- skip-docs -->
+<p align="center">
+  <a href="https://github.com/sponsors/gofiber">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/OFFICIAL%20SPONSORS.png?variant=outline&color=ffffff&logo=github&logoColor=ffffff">
+      <img alt="Official Sponsors" src="https://shieldcn.dev/badge/OFFICIAL%20SPONSORS.png?variant=outline&color=000000&logo=github&logoColor=000000">
+    </picture>
+  </a>
+</p>
+<p align="center">
+  <a href="https://www.coderabbit.ai/?utm_source=gofiber&utm_medium=sponsor&utm_content=homepage">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.coderabbit.ai/images/logo-dark.svg">
+      <img width="280" height="52" alt="CodeRabbit" src="https://www.coderabbit.ai/images/logo-orange.svg">
+    </picture>
+  </a>
+</p>
 
+---
+<!-- skip-docs -->
 ## ⚙️ Installation
 
 Fiber requires **Go version `1.25` or higher** to run. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/). To start setting up your project, create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
