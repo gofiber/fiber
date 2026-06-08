@@ -34,7 +34,7 @@
 </p>
 
 ---
-
+<!-- skip-docs -->
 <div align="center">
   <table>
     <tr>
@@ -53,7 +53,7 @@
 </div>
 
 ---
-
+<!-- skip-docs -->
 ## ⚙️ Installation
 
 Fiber requires **Go version `1.25` or higher** to run. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/). To start setting up your project, create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
