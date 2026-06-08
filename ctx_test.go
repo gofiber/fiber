@@ -3519,6 +3519,62 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 			header:   "10.0.0.1",
 			expected: "10.0.0.1",
 		},
+		{
+			name: "attacker injects invalid leftmost token",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "evil.attacker, 203.0.113.50, 10.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "attacker injects spoofed leftmost IP",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, 203.0.113.50, 10.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "whitespace around chain entries",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "203.0.113.50 , 10.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "trailing empty chain element",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "203.0.113.50, 10.0.0.1,",
+			expected: "203.0.113.50",
+		},
 	}
 
 	for _, tc := range tests {
