@@ -1,3 +1,5 @@
 package sse
 
-const mimeTextEventStream = "text/event-stream"
+import "github.com/gofiber/fiber/v3"
+
+const mimeTextEventStream = fiber.MIMETextEventStream

@@ -334,7 +334,7 @@ func (c *DefaultCtx) AcceptsXML() bool {
 
 // AcceptsEventStream reports whether the Accept header allows text/event-stream.
 func (c *DefaultCtx) AcceptsEventStream() bool {
-	return c.Accepts("text/event-stream") != ""
+	return c.Accepts(MIMETextEventStream) != ""
 }
 
 // Cookies are used for getting a cookie value by key.
