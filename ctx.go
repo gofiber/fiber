@@ -12,6 +12,7 @@ import (
 	"maps"
 	"mime/multipart"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -61,6 +62,7 @@ type DefaultCtx struct {
 	fasthttp               *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind                   *Bind                // Default bind reference
 	redirect               *Redirect            // Default redirect reference
+	reclaim                *reclaimLatch        // Coordinates safe pool reclamation of an abandoned ctx; nil on the hot path
 	viewBindMap            Map                  // Default view map to bind template engine
 	values                 [maxParams]string    // Route parameter values
 	baseURI                string               // HTTP base uri
@@ -569,7 +571,7 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 
 // Secure returns whether a secure connection was established.
 func (c *DefaultCtx) Secure() bool {
-	return c.Protocol() == schemeHTTPS
+	return c.Scheme() == schemeHTTPS
 }
 
 // Status sets the HTTP status for the response.
@@ -722,20 +724,30 @@ func (c *DefaultCtx) release() {
 	}
 	c.shouldSkipNonUseRoutes = false
 	// performance: no need for using c.isAbandoned.Store(false) here, as it is always set to false when it was true in ForceRelease
+	c.reclaim = nil
 	c.handlerCtx = nil
+}
+
+// reclaimLatch coordinates the safe, automatic reclamation of an abandoned
+// context back into the pool. It is armed only via ScheduleReclaim (currently by
+// the timeout middleware) and stays nil on the common request path, so requests
+// that are not abandoned pay no additional cost.
+type reclaimLatch struct {
+	releasedCh chan struct{} // closed once the request handler has released the ctx (event b)
+	once       sync.Once     // guards the close-exactly-once of releasedCh
 }
 
 // Abandon marks this context as abandoned. An abandoned context will not be
 // returned to the pool when ReleaseCtx is called.
 //
-// This is used by the timeout middleware to return immediately while the
-// handler goroutine continues using the context safely.
+// This is used by the timeout and SSE middlewares to return immediately while a
+// goroutine continues using the context safely.
 //
 // Only call ForceRelease after Abandon if you can guarantee no other goroutine
 // (including Fiber's requestHandler and ErrorHandler) will touch the context.
-// The timeout middleware intentionally does NOT call ForceRelease to avoid
-// races, which means timed-out requests leak their contexts until a safe
-// reclamation strategy exists.
+// Callers that cannot make that guarantee themselves can instead call
+// ScheduleReclaim, which arranges a race-free ForceRelease once the handler has
+// finished and the request handler has released the context.
 func (c *DefaultCtx) Abandon() {
 	c.isAbandoned.Store(true)
 }
@@ -752,6 +764,49 @@ func (c *DefaultCtx) IsAbandoned() bool {
 func (c *DefaultCtx) ForceRelease() {
 	c.isAbandoned.Store(false)
 	c.app.ReleaseCtx(c)
+}
+
+// ScheduleReclaim arms automatic reclamation of an abandoned context, returning
+// it to the pool once it is safe to do so.
+//
+// handlerDone must be closed once the goroutine that still uses this context
+// (for the timeout middleware, the handler goroutine) has completely finished.
+// cancel, if non-nil, is the CancelFunc of the context installed for that
+// goroutine and is invoked as soon as it finishes.
+//
+// ForceRelease is performed only after BOTH handlerDone is closed AND the request
+// handler has released the context (signaled from ReleaseCtx/releaseDefaultCtx),
+// which makes the reclamation race-free. If handlerDone never closes — a handler
+// that never returns — the context is intentionally never reclaimed, because the
+// handler still owns it.
+//
+// This method calls Abandon internally, so callers do not need to call Abandon
+// separately. Calling Abandon before ScheduleReclaim is still safe (idempotent).
+func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context.CancelFunc) {
+	c.Abandon()
+
+	latch := &reclaimLatch{releasedCh: make(chan struct{})}
+	c.reclaim = latch
+
+	go func() {
+		<-handlerDone
+		if cancel != nil {
+			cancel()
+		}
+		<-latch.releasedCh
+		c.ForceRelease()
+	}()
+}
+
+// signalReleased records that the request handler is done touching an abandoned,
+// reclaim-armed context (event b). It is a no-op when reclamation was not armed
+// and is safe to call multiple times.
+func (c *DefaultCtx) signalReleased() {
+	if c.reclaim != nil {
+		c.reclaim.once.Do(func() {
+			close(c.reclaim.releasedCh)
+		})
+	}
 }
 
 func (c *DefaultCtx) renderExtensions(bind any) {

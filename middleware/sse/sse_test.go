@@ -174,7 +174,7 @@ func Test_SSE_EventWritesByteSliceData(t *testing.T) {
 	require.Equal(t, "data: hello\ndata: world\n\n", buf.String())
 }
 
-func Test_SSE_EventTrimsSingleTrailingDataNewline(t *testing.T) {
+func Test_SSE_EventPreservesTrailingDataNewline(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
@@ -183,7 +183,7 @@ func Test_SSE_EventTrimsSingleTrailingDataNewline(t *testing.T) {
 	require.NoError(t, writeEvent(w, Event{Data: "hello\n"}))
 	require.NoError(t, w.Flush())
 
-	require.Equal(t, "data: hello\n\n", buf.String())
+	require.Equal(t, "data: hello\ndata: \n\n", buf.String())
 }
 
 func Test_SSE_EventPreservesIntentionalBlankDataLine(t *testing.T) {
@@ -195,7 +195,7 @@ func Test_SSE_EventPreservesIntentionalBlankDataLine(t *testing.T) {
 	require.NoError(t, writeEvent(w, Event{Data: "hello\n\n"}))
 	require.NoError(t, w.Flush())
 
-	require.Equal(t, "data: hello\ndata: \n\n", buf.String())
+	require.Equal(t, "data: hello\ndata: \ndata: \n\n", buf.String())
 }
 
 func Test_SSE_EventReturnsWriterError(t *testing.T) {
