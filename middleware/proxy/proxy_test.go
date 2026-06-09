@@ -81,6 +81,39 @@ func createRedirectServer(t *testing.T) string {
 	return addr
 }
 
+func restoreGlobalProxyClient(t *testing.T) {
+	t.Helper()
+
+	prev := client.Load()
+	t.Cleanup(func() {
+		WithClient(prev)
+	})
+}
+
+// go test -run Test_Proxy_DefaultClient_MaxConnsPerHost
+func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
+	require.Equal(t, defaultMaxConnsPerHost, client.Load().MaxConnsPerHost)
+}
+
+// go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost
+func Test_Proxy_ConfigDefault_MaxConnsPerHost(t *testing.T) {
+	t.Parallel()
+
+	cfg := configDefault(Config{Servers: []string{"127.0.0.1"}})
+	require.Equal(t, defaultMaxConnsPerHost, cfg.MaxConnsPerHost)
+}
+
+// go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost_Override
+func Test_Proxy_ConfigDefault_MaxConnsPerHost_Override(t *testing.T) {
+	t.Parallel()
+
+	cfg := configDefault(Config{
+		Servers:         []string{"127.0.0.1"},
+		MaxConnsPerHost: 2048,
+	})
+	require.Equal(t, 2048, cfg.MaxConnsPerHost)
+}
+
 // go test -run Test_Proxy_Empty_Host
 func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
 	t.Parallel()
@@ -332,7 +365,7 @@ func Test_Proxy_Forward(t *testing.T) {
 
 // go test -run Test_Proxy_Forward_WithClient_TLSConfig
 func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
-	t.Parallel()
+	restoreGlobalProxyClient(t)
 
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
 	require.NoError(t, err)
@@ -735,13 +768,18 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 
 // go test -race -run Test_Proxy_Forward_Global_Client
 func Test_Proxy_Forward_Global_Client(t *testing.T) {
-	t.Parallel()
+	restoreGlobalProxyClient(t)
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
 	WithClient(&fasthttp.Client{
 		NoDefaultUserAgentHeader: true,
 		DisablePathNormalizing:   true,
+		MaxConnsPerHost:          123,
 	})
+	loadedClient := client.Load()
+	require.NotNil(t, loadedClient)
+	require.Equal(t, 123, loadedClient.MaxConnsPerHost)
+
 	app := fiber.New()
 	app.Get("/test_global_client", func(c fiber.Ctx) error {
 		return c.SendString("test_global_client")

@@ -94,6 +94,8 @@ func (s *SharedState) Get(key string) ([]byte, bool, error) { //nolint:gocritic 
 	return s.GetWithContext(context.Background(), key)
 }
 
+// GetWithContext returns a defensive copy of the stored bytes so callers can
+// safely mutate the returned slice without changing the shared value.
 func (s *SharedState) GetWithContext(ctx context.Context, key string) ([]byte, bool, error) { //nolint:gocritic // Keep unnamed returns for clarity.
 	if err := s.ensureStorage(); err != nil {
 		return nil, false, err
@@ -303,6 +305,9 @@ func (s *SharedState) setEncodedWithContext(
 	return s.storage.SetWithContext(ctx, storageKey, encoded, ttl)
 }
 
+// getEncodedWithContext returns a defensive copy of the encoded payload after
+// decoding it into out, so callers can safely mutate the returned slice.
+//
 //nolint:gocritic // Keep unnamed returns for clarity.
 func (s *SharedState) getEncodedWithContext(
 	ctx context.Context,

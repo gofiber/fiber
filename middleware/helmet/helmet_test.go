@@ -1,13 +1,16 @@
 package helmet
 
 import (
+	"crypto/tls"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 func Test_Default(t *testing.T) {
@@ -47,7 +50,6 @@ func Test_CustomValues_AllHeaders(t *testing.T) {
 		HSTSExcludeSubdomains:     true,
 		ContentSecurityPolicy:     "default-src 'none'",
 		CSPReportOnly:             true,
-		HSTSPreloadEnabled:        true,
 		ReferrerPolicy:            "origin",
 		PermissionPolicy:          "geolocation=(self)",
 		CrossOriginEmbedderPolicy: "custom-value",
@@ -203,59 +205,133 @@ func Test_PermissionsPolicy(t *testing.T) {
 }
 
 func Test_HSTSHeaders(t *testing.T) {
-	hstsAge := 60
-	app := fiber.New()
+	t.Parallel()
 
-	app.Use(New(Config{HSTSMaxAge: hstsAge}))
+	tests := []struct {
+		name     string
+		scheme   string
+		expected string
+		config   Config
+	}{
+		{
+			name:     "TLS request with max age sets header",
+			config:   Config{HSTSMaxAge: 60},
+			scheme:   "https",
+			expected: "max-age=60; includeSubDomains",
+		},
+		{
+			name:   "TLS request with zero max age omits header",
+			config: Config{HSTSMaxAge: 0},
+			scheme: "https",
+		},
+		{
+			name:   "HTTP request with max age omits header",
+			config: Config{HSTSMaxAge: 60},
+			scheme: "http",
+		},
+	}
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.expected, hstsHeaderForRequest(t, &tt.config, tt.scheme))
+		})
+	}
+}
+
+func Test_HSTSHeadersPanicsOnNegativeMaxAge(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t, "helmet: HSTSMaxAge must be greater than or equal to 0", func() {
+		New(Config{HSTSMaxAge: -1})
 	})
-
-	handler := app.Handler()
-	ctx := &fasthttp.RequestCtx{}
-
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
-	ctx.Request.Header.SetProtocol("https")
-
-	handler(ctx)
-
-	require.Equal(t, "max-age=60; includeSubDomains", string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
-
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
-	ctx.Request.Header.SetProtocol("http")
-
-	handler(ctx)
-
-	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
 }
 
 func Test_HSTSExcludeSubdomainsAndPreload(t *testing.T) {
-	hstsAge := 31536000
+	t.Parallel()
+
+	require.PanicsWithValue(t, "helmet: HSTSPreloadEnabled requires HSTSExcludeSubdomains to be false", func() {
+		New(Config{
+			HSTSMaxAge:            31536000,
+			HSTSExcludeSubdomains: true,
+			HSTSPreloadEnabled:    true,
+		})
+	})
+}
+
+func Test_HSTSPreloadIncludesSubdomains(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "max-age=31536000; includeSubDomains; preload", hstsHeaderForRequest(t, &Config{
+		HSTSMaxAge:         31536000,
+		HSTSPreloadEnabled: true,
+	}, "https"))
+}
+
+func hstsHeaderForRequest(t *testing.T, config *Config, scheme string) string {
+	t.Helper()
+
 	app := fiber.New()
-
-	app.Use(New(Config{
-		HSTSMaxAge:            hstsAge,
-		HSTSExcludeSubdomains: true,
-		HSTSPreloadEnabled:    true,
-	}))
-
+	app.Use(New(*config))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
-	handler := app.Handler()
-	ctx := &fasthttp.RequestCtx{}
+	if scheme == "http" {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		header := resp.Header.Get(fiber.HeaderStrictTransportSecurity)
+		require.NoError(t, resp.Body.Close())
+		return header
+	}
 
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
-	ctx.Request.Header.SetProtocol("https")
+	require.Equal(t, "https", scheme)
 
-	handler(ctx)
+	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+	require.NoError(t, err)
 
-	require.Equal(t, "max-age=31536000; preload", string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+
+	tlsListener := tls.NewListener(ln, serverTLSConf)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Listener(tlsListener, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		})
+	}()
+
+	client := &http.Client{
+		Timeout: time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: clientTLSConf,
+		},
+	}
+
+	var resp *http.Response
+	for deadline := time.Now().Add(time.Second); ; {
+		resp, err = client.Get("https://" + ln.Addr().String() + "/")
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			require.NoError(t, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	header := resp.Header.Get(fiber.HeaderStrictTransportSecurity)
+	require.NoError(t, resp.Body.Close())
+	client.CloseIdleConnections()
+
+	require.NoError(t, app.Shutdown())
+	select {
+	case err = <-errCh:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for TLS test server shutdown")
+	}
+
+	return header
 }
