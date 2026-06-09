@@ -2,6 +2,8 @@ package session
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -657,4 +659,91 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+}
+
+// failingStorage is a fiber.Storage implementation whose Get always returns an error.
+type failingStorage struct{}
+
+var errStoreUnavailable = errors.New("store unavailable")
+
+func (*failingStorage) GetWithContext(_ context.Context, _ string) ([]byte, error) {
+	return nil, errStoreUnavailable
+}
+
+func (*failingStorage) Get(_ string) ([]byte, error) {
+	return nil, errStoreUnavailable
+}
+
+func (*failingStorage) SetWithContext(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return errStoreUnavailable
+}
+
+func (*failingStorage) Set(_ string, _ []byte, _ time.Duration) error {
+	return errStoreUnavailable
+}
+
+func (*failingStorage) DeleteWithContext(_ context.Context, _ string) error {
+	return nil
+}
+
+func (*failingStorage) Delete(_ string) error {
+	return nil
+}
+
+func (*failingStorage) ResetWithContext(_ context.Context) error {
+	return nil
+}
+
+func (*failingStorage) Reset() error {
+	return nil
+}
+
+func (*failingStorage) Close() error {
+	return nil
+}
+
+// Test_Session_Middleware_StoreError verifies that a store error during session
+// initialization is forwarded to the ErrorHandler instead of panicking the server.
+func Test_Session_Middleware_StoreError(t *testing.T) {
+	t.Parallel()
+
+	var (
+		handlerReached bool
+		mu             sync.Mutex
+	)
+
+	// Custom ErrorHandler that records the call.
+	var capturedErr error
+	app := fiber.New()
+	app.Use(New(Config{
+		Storage: &failingStorage{},
+		ErrorHandler: func(_ fiber.Ctx, err error) {
+			mu.Lock()
+			capturedErr = err
+			mu.Unlock()
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		mu.Lock()
+		handlerReached = true
+		mu.Unlock()
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	// Send a cookie so getSession tries Storage.GetWithContext and hits the error.
+	ctx.Request.Header.SetCookie("session_id", "some-existing-id")
+	h(ctx)
+
+	mu.Lock()
+	reached := handlerReached
+	err := capturedErr
+	mu.Unlock()
+
+	require.False(t, reached, "route handler must not be called when store fails")
+	require.ErrorIs(t, err, errStoreUnavailable, "ErrorHandler must receive the store error")
 }
