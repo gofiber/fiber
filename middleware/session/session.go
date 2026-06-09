@@ -187,6 +187,22 @@ func (s *Session) Delete(key any) {
 //
 //	err := s.Destroy()
 func (s *Session) Destroy() error {
+	return s.DestroyWithContext(s.resolveContext())
+}
+
+// DestroyWithContext deletes the session from storage and expires the session cookie,
+// using the provided context for cancellation and timeout control.
+//
+// Parameters:
+//   - ctx: The context to use for the storage operation.
+//
+// Returns:
+//   - error: An error if the destruction fails.
+//
+// Usage:
+//
+//	err := s.DestroyWithContext(ctx)
+func (s *Session) DestroyWithContext(ctx context.Context) error {
 	if s.data == nil {
 		return nil
 	}
@@ -198,10 +214,6 @@ func (s *Session) Destroy() error {
 	defer s.mu.RUnlock()
 
 	// Use external Storage if exist
-	var ctx context.Context = s.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
 		return err
 	}
@@ -220,14 +232,26 @@ func (s *Session) Destroy() error {
 //
 //	err := s.Regenerate()
 func (s *Session) Regenerate() error {
+	return s.RegenerateWithContext(s.resolveContext())
+}
+
+// RegenerateWithContext generates a new session id and deletes the old one from storage,
+// using the provided context for cancellation and timeout control.
+//
+// Parameters:
+//   - ctx: The context to use for the storage operation.
+//
+// Returns:
+//   - error: An error if the regeneration fails.
+//
+// Usage:
+//
+//	err := s.RegenerateWithContext(ctx)
+func (s *Session) RegenerateWithContext(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Delete old id from storage
-	var ctx context.Context = s.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
 		return err
 	}
@@ -247,6 +271,22 @@ func (s *Session) Regenerate() error {
 //
 //	err := s.Reset()
 func (s *Session) Reset() error {
+	return s.ResetWithContext(s.resolveContext())
+}
+
+// ResetWithContext generates a new session id, deletes the old one from storage, and resets the associated data,
+// using the provided context for cancellation and timeout control.
+//
+// Parameters:
+//   - ctx: The context to use for the storage operation.
+//
+// Returns:
+//   - error: An error if the reset fails.
+//
+// Usage:
+//
+//	err := s.ResetWithContext(ctx)
+func (s *Session) ResetWithContext(ctx context.Context) error {
 	// Reset local data
 	if s.data != nil {
 		s.data.Reset()
@@ -259,10 +299,6 @@ func (s *Session) Reset() error {
 	s.idleTimeout = 0
 
 	// Delete old id from storage
-	var ctx context.Context = s.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
 		return err
 	}
@@ -294,8 +330,27 @@ func (s *Session) refresh() {
 //
 //	err := s.Save()
 func (s *Session) Save() error {
+	return s.SaveWithContext(s.resolveContext())
+}
+
+// SaveWithContext saves the session data and updates the cookie,
+// using the provided context for cancellation and timeout control.
+//
+// Note: If the session is being used in the handler, calling SaveWithContext will have
+// no effect and the session will automatically be saved when the handler returns.
+//
+// Parameters:
+//   - ctx: The context to use for the storage operation.
+//
+// Returns:
+//   - error: An error if the save operation fails.
+//
+// Usage:
+//
+//	err := s.SaveWithContext(ctx)
+func (s *Session) SaveWithContext(ctx context.Context) error {
 	if s.ctx == nil {
-		return s.saveSession()
+		return s.saveSessionWithContext(ctx)
 	}
 
 	// If the session is being used in the handler, it should not be saved
@@ -306,11 +361,11 @@ func (s *Session) Save() error {
 		}
 	}
 
-	return s.saveSession()
+	return s.saveSessionWithContext(ctx)
 }
 
-// saveSession encodes session data to saves it to storage.
-func (s *Session) saveSession() error {
+// saveSessionWithContext encodes session data and saves it to storage using the provided context.
+func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	if s.data == nil {
 		return nil
 	}
@@ -335,10 +390,6 @@ func (s *Session) saveSession() error {
 	}
 
 	// Pass copied bytes with session id to provider
-	var ctx context.Context = s.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	return s.config.Storage.SetWithContext(ctx, s.id, encodedBytes, s.idleTimeout)
 }
 
@@ -580,4 +631,15 @@ func (s *Session) isAbsExpired() bool {
 //	s.setAbsExpiration(time.Now().Add(time.Hour))
 func (s *Session) setAbsExpiration(absExpiration time.Time) {
 	s.Set(absExpirationKey, absExpiration)
+}
+
+// resolveContext returns the session's stored fiber context if available,
+// otherwise returns context.Background().
+// fiber.Ctx implements context.Context directly, so no allocation is needed.
+// This is used as the default context for non-WithContext method variants.
+func (s *Session) resolveContext() context.Context {
+	if s.ctx != nil {
+		return s.ctx
+	}
+	return context.Background()
 }
