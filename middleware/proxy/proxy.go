@@ -1,9 +1,7 @@
 package proxy
 
 import (
-	"bytes"
 	"errors"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +17,7 @@ import (
 func Balancer(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
+	policy := resolvePolicy(cfg.SecurityPolicy)
 
 	// Load balanced client
 	lbc := &fasthttp.LBClient{}
@@ -27,13 +26,10 @@ func Balancer(config ...Config) fiber.Handler {
 	if cfg.Client == nil {
 		// Set timeout
 		lbc.Timeout = cfg.Timeout
-		// Scheme must be provided, falls back to http
+		// Validate each upstream against the configured policy and build
+		// a HostClient per server.
 		for _, server := range cfg.Servers {
-			if !strings.HasPrefix(server, "http") {
-				server = "http://" + server
-			}
-
-			u, err := url.Parse(server)
+			u, err := validateUpstream(server, policy)
 			if err != nil {
 				panic(err)
 			}
@@ -47,9 +43,14 @@ func Balancer(config ...Config) fiber.Handler {
 				ReadBufferSize:  cfg.ReadBufferSize,
 				WriteBufferSize: cfg.WriteBufferSize,
 
-				TLSConfig: cfg.TLSConfig,
+				TLSConfig: secureTLSConfig(cfg.TLSConfig),
 
 				DialDualStack: cfg.DialDualStack,
+
+				MaxResponseBodySize: cfg.MaxResponseBodySize,
+			}
+			if u.Scheme == "https" {
+				client.IsTLS = true
 			}
 
 			lbc.Clients = append(lbc.Clients, client)
@@ -70,9 +71,12 @@ func Balancer(config ...Config) fiber.Handler {
 		req := c.Request()
 		res := c.Response()
 
-		if !cfg.KeepConnectionHeader {
-			// Don't proxy "Connection" header
-			req.Header.Del(fiber.HeaderConnection)
+		if !policy.KeepHopByHopHeaders {
+			if cfg.KeepConnectionHeader {
+				stripHopByHopRequestHeaders(req, fiber.HeaderConnection)
+			} else {
+				stripHopByHopRequestHeaders(req)
+			}
 		}
 
 		// Modify request
@@ -93,9 +97,12 @@ func Balancer(config ...Config) fiber.Handler {
 			return err
 		}
 
-		if !cfg.KeepConnectionHeader {
-			// Don't proxy "Connection" header
-			res.Header.Del(fiber.HeaderConnection)
+		if !policy.KeepHopByHopHeaders {
+			if cfg.KeepConnectionHeader {
+				stripHopByHopResponseHeaders(res, fiber.HeaderConnection)
+			} else {
+				stripHopByHopResponseHeaders(res)
+			}
 		}
 
 		// Modify response
@@ -155,9 +162,14 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // DoRedirects performs the given http request and fills the given http response, following up to maxRedirectsCount redirects.
 // When the redirect count exceeds maxRedirectsCount, ErrTooManyRedirects is returned.
 // This method can be used within a fiber.Handler
+//
+// Each redirect target is re-validated against the active SecurityPolicy.
+// Unless AllowHTTPSDowngrade is enabled, redirects from an HTTPS origin
+// to a plaintext HTTP target are rejected with ErrRedirectDowngrade.
 func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
-	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
-		return cli.DoRedirects(req, resp, maxRedirectsCount)
+	policy := currentSecurityPolicy()
+	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+		return followRedirects(cli, req, resp, maxRedirectsCount, policy)
 	}, clients...)
 }
 
@@ -183,6 +195,16 @@ func doAction(
 	action func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error,
 	clients ...*fasthttp.Client,
 ) error {
+	return doActionWithPolicy(c, addr, currentSecurityPolicy(), action, clients...)
+}
+
+func doActionWithPolicy(
+	c fiber.Ctx,
+	addr string,
+	policy SecurityPolicy,
+	action func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error,
+	clients ...*fasthttp.Client,
+) error {
 	lock.RLock()
 	globalClient := client
 	lock.RUnlock()
@@ -192,25 +214,123 @@ func doAction(
 		return err
 	}
 
+	u, err := validateUpstream(addr, policy)
+	if err != nil {
+		return err
+	}
+
 	req := c.Request()
 	res := c.Response()
 	originalURL := utils.CopyString(c.OriginalURL())
 	defer req.SetRequestURI(originalURL)
 
-	copiedURL := utils.CopyString(addr)
-	req.SetRequestURI(copiedURL)
-	// NOTE: if req.isTLS is true, SetRequestURI keeps the scheme as https.
-	// Reference: https://github.com/gofiber/fiber/issues/1762
-	if scheme := getScheme(utils.UnsafeBytes(copiedURL)); len(scheme) > 0 {
-		req.URI().SetSchemeBytes(scheme)
-	}
+	// Snapshot scheme/target into freshly allocated buffers BEFORE any
+	// SetRequestURI call. Both u.Scheme and u.String() may alias the
+	// caller-supplied addr, which itself can be a slice of the request
+	// buffer that SetRequestURI is about to overwrite — without these
+	// copies, the scheme/host bytes get clobbered mid-request.
+	scheme := strings.Clone(u.Scheme)
+	targetURL := strings.Clone(u.String())
+	req.SetRequestURI(targetURL)
+	req.URI().SetSchemeBytes([]byte(scheme))
 
-	req.Header.Del(fiber.HeaderConnection)
+	if !policy.KeepHopByHopHeaders {
+		stripHopByHopRequestHeaders(req)
+	}
 	if err := action(cli, req, res); err != nil {
 		return err
 	}
-	res.Header.Del(fiber.HeaderConnection)
+	if !policy.KeepHopByHopHeaders {
+		stripHopByHopResponseHeaders(res)
+	}
 	return nil
+}
+
+// followRedirects implements a redirect loop that re-validates each
+// target against policy before issuing the next request. It replaces
+// fasthttp.Client.DoRedirects so we can reject HTTPS→HTTP downgrades and
+// reapply SSRF checks to caller-controlled Location headers.
+func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, policy SecurityPolicy) error {
+	if maxRedirects < 0 {
+		maxRedirects = 0
+	}
+	currentURL := string(req.URI().FullURI())
+	for redirects := 0; ; redirects++ {
+		req.SetRequestURI(currentURL)
+		if err := cli.Do(req, resp); err != nil {
+			return err
+		}
+		status := resp.Header.StatusCode()
+		if !fasthttp.StatusCodeIsRedirect(status) {
+			return nil
+		}
+		if redirects >= maxRedirects {
+			return fasthttp.ErrTooManyRedirects
+		}
+		location := resp.Header.Peek(fiber.HeaderLocation)
+		if len(location) == 0 {
+			return fasthttp.ErrMissingLocation
+		}
+		nextURL, err := resolveRedirect(currentURL, location, policy)
+		if err != nil {
+			return err
+		}
+		// POST→GET on 301/302/303 mirrors browser and fasthttp behavior.
+		if req.Header.IsPost() && (status == fasthttp.StatusMovedPermanently || status == fasthttp.StatusFound || status == fasthttp.StatusSeeOther) {
+			req.Header.SetMethod(fasthttp.MethodGet)
+			req.SetBody(nil)
+			req.Header.Del(fasthttp.HeaderContentType)
+			req.Header.Del(fasthttp.HeaderContentLength)
+		}
+		currentURL = nextURL
+	}
+}
+
+// resolveRedirect parses a redirect target relative to the current URL
+// and applies the SecurityPolicy. CRLF and other control bytes are
+// rejected to prevent header injection via Location.
+func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) (string, error) {
+	for _, b := range location {
+		if b < 0x20 || b == 0x7f {
+			return "", fasthttp.ErrorInvalidURI
+		}
+	}
+	uri := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(uri)
+	uri.Update(currentURL)
+	previousScheme := append([]byte(nil), uri.Scheme()...)
+	uri.UpdateBytes(location)
+	if len(uri.Host()) == 0 {
+		return "", fasthttp.ErrorInvalidURI
+	}
+	next := uri.String()
+	target, err := validateUpstream(next, policy)
+	if err != nil {
+		return "", err
+	}
+	if !policy.AllowHTTPSDowngrade && equalFoldASCII(previousScheme, []byte("https")) && target.Scheme == "http" {
+		return "", ErrRedirectDowngrade
+	}
+	return target.String(), nil
+}
+
+func equalFoldASCII(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		x, y := a[i], b[i]
+		if x >= 'A' && x <= 'Z' {
+			x += 'a' - 'A'
+		}
+		if y >= 'A' && y <= 'Z' {
+			y += 'a' - 'A'
+		}
+		if x != y {
+			return false
+		}
+	}
+	return true
 }
 
 func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*fasthttp.Client, error) {
@@ -229,14 +349,6 @@ func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*
 	return globalClient, nil
 }
 
-func getScheme(uri []byte) []byte {
-	i := bytes.IndexByte(uri, '/')
-	if i < 1 || uri[i-1] != ':' || i == len(uri)-1 || uri[i+1] != '/' {
-		return nil
-	}
-	return uri[:i-1]
-}
-
 // DomainForward performs an http request based on the given domain and populates the given http response.
 // This method will return a fiber.Handler
 func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
@@ -244,7 +356,15 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 		host := utils.UnsafeString(c.Request().Host())
 		if host == hostname {
 			c.Request().Header.Set("X-Real-IP", c.IP())
-			return Do(c, addr+c.OriginalURL(), clients...)
+			policy := currentSecurityPolicy()
+			base, err := validateUpstream(addr, policy)
+			if err != nil {
+				return err
+			}
+			return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), policy,
+				func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+					return cli.Do(req, resp)
+				}, clients...)
 		}
 		return nil
 	}
@@ -280,10 +400,15 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	}
 	return func(c fiber.Ctx) error {
 		server := r.get()
-		if !strings.HasPrefix(server, "http") {
-			server = "http://" + server
-		}
 		c.Request().Header.Set("X-Real-IP", c.IP())
-		return Do(c, server+c.OriginalURL(), clients...)
+		policy := currentSecurityPolicy()
+		base, err := validateUpstream(server, policy)
+		if err != nil {
+			return err
+		}
+		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), policy,
+			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+				return cli.Do(req, resp)
+			}, clients...)
 	}
 }

@@ -19,6 +19,16 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// TestMain relaxes the proxy security policy for the whole suite so the
+// existing loopback-based tests continue to work. Tests that exercise
+// the secure defaults install their own policy in their own scope.
+func TestMain(m *testing.M) {
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	WithSecurityPolicy(policy)
+	m.Run()
+}
+
 func startServer(app *fiber.App, ln net.Listener) {
 	go func() {
 		err := app.Listener(ln, fiber.ListenConfig{
