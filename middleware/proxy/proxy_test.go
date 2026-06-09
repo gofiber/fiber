@@ -84,10 +84,7 @@ func createRedirectServer(t *testing.T) string {
 func restoreGlobalProxyClient(t *testing.T) {
 	t.Helper()
 
-	lock.RLock()
-	prev := client
-	lock.RUnlock()
-
+	prev := client.Load()
 	t.Cleanup(func() {
 		WithClient(prev)
 	})
@@ -95,7 +92,7 @@ func restoreGlobalProxyClient(t *testing.T) {
 
 // go test -run Test_Proxy_DefaultClient_MaxConnsPerHost
 func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
-	require.Equal(t, defaultMaxConnsPerHost, client.MaxConnsPerHost)
+	require.Equal(t, defaultMaxConnsPerHost, client.Load().MaxConnsPerHost)
 }
 
 // go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost
@@ -777,7 +774,12 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 	WithClient(&fasthttp.Client{
 		NoDefaultUserAgentHeader: true,
 		DisablePathNormalizing:   true,
+		MaxConnsPerHost:          123,
 	})
+	loadedClient := client.Load()
+	require.NotNil(t, loadedClient)
+	require.Equal(t, 123, loadedClient.MaxConnsPerHost)
+
 	app := fiber.New()
 	app.Get("/test_global_client", func(c fiber.Ctx) error {
 		return c.SendString("test_global_client")

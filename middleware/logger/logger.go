@@ -45,7 +45,16 @@ func New(config ...Config) fiber.Handler {
 	timeEnabled := strings.Contains(cfg.Format, "${"+TagTime+"}")
 	var timestamp *atomic.Value
 	if timeEnabled {
-		timestamp = sharedTimestamp(cfg.TimeFormat, cfg.timeZoneLocation, cfg.TimeInterval)
+		if cfg.TimeDone != nil {
+			// Caller-managed lifecycle: dedicated updater so it can be stopped
+			// via TimeDone (useful for tests and short-lived apps).
+			timestamp = &atomic.Value{}
+			timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
+			startTimestampUpdater(timestamp, &cfg)
+		} else {
+			// Process-lifetime shared updater, deduplicated by format/zone/interval.
+			timestamp = sharedTimestamp(cfg.TimeFormat, cfg.timeZoneLocation, cfg.TimeInterval)
+		}
 	}
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
@@ -143,4 +152,34 @@ func New(config ...Config) fiber.Handler {
 		// Logger instance & update some logger data fields
 		return cfg.LoggerFunc(c, data, &cfg)
 	}
+}
+
+// startTimestampUpdater refreshes the cached formatted timestamp until TimeDone
+// is closed.
+func startTimestampUpdater(timestamp *atomic.Value, cfg *Config) {
+	_ = startTimestampUpdaterWithStop(timestamp, cfg)
+}
+
+func startTimestampUpdaterWithStop(timestamp *atomic.Value, cfg *Config) <-chan struct{} {
+	stopped := make(chan struct{})
+	if !strings.Contains(cfg.Format, "${"+TagTime+"}") {
+		close(stopped)
+		return stopped
+	}
+
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(cfg.TimeInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
+			case <-cfg.TimeDone:
+				return
+			}
+		}
+	}()
+	return stopped
 }
