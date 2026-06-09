@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -174,6 +175,61 @@ func Test_Logger_Done(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Positive(t, buf.Len(), 0)
+}
+
+func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
+	t.Parallel()
+
+	var timestamp atomic.Value
+	timestamp.Store(time.Now().Format(time.RFC3339Nano))
+
+	done := make(chan struct{})
+	cfg := Config{
+		Format:           "${time}",
+		TimeFormat:       time.RFC3339Nano,
+		TimeInterval:     5 * time.Millisecond,
+		timeZoneLocation: time.Local,
+		TimeDone:         done,
+	}
+
+	stoppedCh := startTimestampUpdaterWithStop(&timestamp, &cfg)
+
+	initial, ok := timestamp.Load().(string)
+	require.True(t, ok)
+	time.Sleep(20 * time.Millisecond)
+	updated, ok := timestamp.Load().(string)
+	require.True(t, ok)
+	require.NotEqual(t, initial, updated)
+
+	close(done)
+	select {
+	case <-stoppedCh:
+	case <-time.After(time.Second):
+		t.Fatal("timestamp updater did not stop")
+	}
+	stopped, ok := timestamp.Load().(string)
+	require.True(t, ok)
+	time.Sleep(20 * time.Millisecond)
+	finalValue, ok := timestamp.Load().(string)
+	require.True(t, ok)
+	require.Equal(t, stopped, finalValue)
+}
+
+func Test_Logger_TimestampUpdater_StopsImmediatelyWithoutTimeTag(t *testing.T) {
+	t.Parallel()
+
+	var timestamp atomic.Value
+	timestamp.Store(time.Now().Format(time.RFC3339Nano))
+
+	stoppedCh := startTimestampUpdaterWithStop(&timestamp, &Config{
+		Format: "${pid}",
+	})
+
+	select {
+	case <-stoppedCh:
+	case <-time.After(time.Second):
+		t.Fatal("timestamp updater did not stop immediately")
+	}
 }
 
 // Test_Logger_Filter tests the Filter functionality of the logger middleware.
