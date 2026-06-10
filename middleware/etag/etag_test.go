@@ -270,3 +270,54 @@ func Benchmark_Etag(b *testing.B) {
 	require.Equal(b, 200, fctx.Response.Header.StatusCode())
 	require.Equal(b, `"13-1831710635"`, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
 }
+
+// go test -run Test_ETag_WeakComparison
+func Test_ETag_WeakComparison(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		ifNoneMatch    string
+		weak           bool
+		expectedStatus int
+	}{
+		{name: "weak client tag matches strong server tag", ifNoneMatch: `W/"13-1831710635"`, weak: false, expectedStatus: fiber.StatusNotModified},
+		{name: "strong client tag matches weak server tag", ifNoneMatch: `"13-1831710635"`, weak: true, expectedStatus: fiber.StatusNotModified},
+		{name: "match in list after weak tag", ifNoneMatch: `W/"non-match", "13-1831710635"`, weak: false, expectedStatus: fiber.StatusNotModified},
+		{name: "weak match in list", ifNoneMatch: `"non-match", W/"13-1831710635"`, weak: false, expectedStatus: fiber.StatusNotModified},
+		{name: "wildcard", ifNoneMatch: `*`, weak: false, expectedStatus: fiber.StatusNotModified},
+		{name: "no match in list", ifNoneMatch: `W/"non-match", "other"`, weak: false, expectedStatus: fiber.StatusOK},
+		{name: "unquoted tag never matches", ifNoneMatch: `13-1831710635`, weak: false, expectedStatus: fiber.StatusOK},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Weak: tc.weak}))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("Hello, World!")
+			})
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header.Set(fiber.HeaderIfNoneMatch, tc.ifNoneMatch)
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedStatus, resp.StatusCode)
+
+			expectedTag := `"13-1831710635"`
+			if tc.weak {
+				expectedTag = `W/"13-1831710635"`
+			}
+			require.Equal(t, expectedTag, resp.Header.Get(fiber.HeaderETag))
+
+			if tc.expectedStatus == fiber.StatusNotModified {
+				b, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Empty(t, b)
+			}
+		})
+	}
+}
