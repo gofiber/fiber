@@ -2,6 +2,8 @@ package session
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -657,4 +659,44 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+}
+
+// failingStorage simulates a session store whose backend is unavailable.
+type failingStorage struct {
+	err error
+}
+
+func (s *failingStorage) GetWithContext(context.Context, string) ([]byte, error) { return nil, s.err }
+func (s *failingStorage) Get(string) ([]byte, error)                             { return nil, s.err }
+func (s *failingStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
+	return s.err
+}
+func (s *failingStorage) Set(string, []byte, time.Duration) error         { return s.err }
+func (s *failingStorage) DeleteWithContext(context.Context, string) error { return s.err }
+func (s *failingStorage) Delete(string) error                             { return s.err }
+func (s *failingStorage) ResetWithContext(context.Context) error          { return s.err }
+func (s *failingStorage) Reset() error                                    { return s.err }
+func (*failingStorage) Close() error                                      { return nil }
+
+// Regression: https://github.com/gofiber/fiber/issues/4348
+// A failing session store must result in an error response, not a panic.
+func Test_Session_Middleware_StoreError(t *testing.T) {
+	t.Parallel()
+
+	storage := &failingStorage{err: errors.New("storage unavailable")}
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	// Provide a session ID so the middleware attempts a storage lookup.
+	ctx.Request.Header.SetCookie("session_id", "some-session-id")
+	require.NotPanics(t, func() { h(ctx) })
+	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
 }
