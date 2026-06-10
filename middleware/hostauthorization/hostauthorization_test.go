@@ -147,7 +147,7 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 	}{
 		{name: "plain host", input: "example.com", expected: "example.com", expectOK: true},
 		{name: "host with valid port", input: "example.com:8080", expected: "example.com", expectOK: true},
-		{name: "multiple trailing dots with port only trims one", input: "api.example.com...:443", expected: "api.example.com..", expectOK: true},
+		{name: "multiple trailing dots are rejected as malformed", input: "api.example.com...:443", expectOK: false},
 		{name: "ipv6 with port", input: "[::1]:443", expected: "::1", expectOK: true},
 		{name: "ipv6 without port", input: "[::1]", expected: "::1", expectOK: true},
 		{name: "empty port", input: "example.com:", expectOK: false},
