@@ -69,7 +69,7 @@ const (
 
 // Constraint describes the validation rules that apply to a dynamic route
 // segment when matching incoming requests.
-// See constraint.go for the ConstraintHandler and ConstraintAnalyser interfaces.
+// See constraint.go for the ConstraintHandler and ConstraintAnalyzer interfaces.
 type Constraint struct {
 	handler ConstraintHandler
 	Name    string
@@ -367,18 +367,21 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any
 			start := findNextNonEscapedCharPosition(c, paramConstraintDataStart)
 			end := strings.LastIndexByte(c, paramConstraintDataEnd)
 
-			var constraintName string
+			var rawName string
 			var data []string
 
 			if start != -1 && end != -1 {
-				constraintName = resolveConstraintName(c[:start])
+				rawName = c[:start]
 				data = []string{c[start+1 : end]}
 			} else {
-				constraintName = resolveConstraintName(c)
+				rawName = c
 				data = []string{}
 			}
 
-			handler := findConstraintHandler(constraintName, regexHandler, customConstraints)
+			handler := findConstraintHandler(rawName, regexHandler, customConstraints)
+			if handler == nil {
+				handler = findConstraintHandler(resolveConstraintName(rawName), regexHandler, customConstraints)
+			}
 			if handler == nil {
 				continue
 			}

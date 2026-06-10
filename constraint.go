@@ -99,17 +99,17 @@ type customConstraintWrapper struct {
 }
 
 func (*customConstraintWrapper) Analyze(args []string) ([]any, error) {
-	return stringArgsToAny(parseConstraintArgs(args)), nil
+	parsed := parseConstraintArgs(args)
+	return []any{parsed}, nil
 }
 
 func (w *customConstraintWrapper) Execute(param string, data []any) bool {
-	args := make([]string, len(data))
-	for i, d := range data {
-		if s, ok := d.(string); ok {
-			args[i] = s
+	if len(data) > 0 {
+		if args, ok := data[0].([]string); ok {
+			return w.CustomConstraint.Execute(param, args...)
 		}
 	}
-	return w.CustomConstraint.Execute(param, args...)
+	return w.CustomConstraint.Execute(param)
 }
 
 func stringArgsToAny(args []string) []any {
@@ -125,11 +125,8 @@ func parseConstraintArgs(args []string) []string {
 		return args
 	}
 	parsed := splitNonEscaped(args[0], paramConstraintDataSeparator)
-	if len(parsed) == 1 {
-		parsed[0] = RemoveEscapeChar(parsed[0])
-	} else if len(parsed) == 2 {
-		parsed[0] = RemoveEscapeChar(parsed[0])
-		parsed[1] = RemoveEscapeChar(parsed[1])
+	for i := range parsed {
+		parsed[i] = RemoveEscapeChar(parsed[i])
 	}
 	return parsed
 }
@@ -195,19 +192,27 @@ func (c *Constraint) matchConstraint(param string) bool {
 	handler := c.handler
 	data := c.Data
 	if handler == nil {
-		handler = findConstraintHandler(resolveConstraintName(c.Name), nil, nil)
+		handler = findConstraintHandler(c.Name, nil, nil)
+		if handler == nil {
+			handler = findConstraintHandler(resolveConstraintName(c.Name), nil, nil)
+		}
 		if handler == nil {
 			return true
 		}
+		// Cache the resolved handler for future calls.
+		c.handler = handler
 		if analyser, ok := handler.(ConstraintAnalyzer); ok {
-			// Convert raw string data to typed data.
 			rawArgs := make([]string, len(data))
 			for i, d := range data {
-				if s, ok := d.(string); ok {
-					rawArgs[i] = s
+				switch v := d.(type) {
+				case string:
+					rawArgs[i] = v
+				default:
+					rawArgs[i] = fmt.Sprintf("%v", v)
 				}
 			}
 			if typed, err := analyser.Analyze(rawArgs); err == nil {
+				c.Data = typed
 				data = typed
 			}
 		}
@@ -237,7 +242,7 @@ type floatConstraintType struct{}
 
 func (floatConstraintType) Name() string { return ConstraintFloat }
 func (floatConstraintType) Execute(param string, _ []any) bool {
-	_, err := strconv.ParseFloat(param, 64)
+	_, err := strconv.ParseFloat(param, 32)
 	return err == nil
 }
 

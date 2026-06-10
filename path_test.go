@@ -378,6 +378,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 // go test -race -run Test_RoutePatternMatch
 func Benchmark_ConstraintExecution(b *testing.B) {
 	var ctxParams [maxParams]string
+	var match bool
 
 	constraintPatterns := []struct {
 		name    string
@@ -404,10 +405,11 @@ func Benchmark_ConstraintExecution(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			parser := parseRoute(tc.pattern, regexp.MustCompile)
 			for b.Loop() {
-				parser.getMatch(tc.url, tc.url, &ctxParams, false)
+				match = parser.getMatch(tc.url, tc.url, &ctxParams, false)
 			}
 		})
 	}
+	_ = match
 }
 
 func Benchmark_RoutePatternMatch(t *testing.B) {
