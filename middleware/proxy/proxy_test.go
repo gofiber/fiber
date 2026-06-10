@@ -1031,6 +1031,15 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 	require.Equal(t, "forwarded", string(b))
 }
 
+// go test -run Test_Proxy_Balancer_Forward_Empty_Servers
+func Test_Proxy_Balancer_Forward_Empty_Servers(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t, "Servers cannot be empty", func() {
+		BalancerForward([]string{})
+	})
+}
+
 func Test_Proxy_Balancer_Forward_OverwritesXRealIP(t *testing.T) {
 	t.Parallel()
 

@@ -274,6 +274,9 @@ func (r *roundrobin) get() string {
 // BalancerForward Forward performs the given http request with round robin algorithm to server and fills the given http response.
 // This method will return a fiber.Handler
 func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler {
+	if len(servers) == 0 {
+		panic("Servers cannot be empty")
+	}
 	r := &roundrobin{
 		current: 0,
 		pool:    servers,
