@@ -115,6 +115,35 @@ func Test_Redirect_Route_WithParams_WithQueries(t *testing.T) {
 	require.Equal(t, url.Values{"data[0][name]": []string{"john"}, "data[0][age]": []string{"10"}, "test": []string{"doe"}}, location.Query())
 }
 
+// go test -run Test_Redirect_Route_WithQueries_Encoded
+func Test_Redirect_Route_WithQueries_Encoded(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/user/:name", func(c Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// A query value containing reserved characters must be percent-encoded so it
+	// cannot inject additional parameters or a fragment into the Location URL.
+	err := c.Redirect().Route("user", RedirectConfig{
+		Params:  Map{"name": "fiber"},
+		Queries: map[string]string{"q": "1&admin=true#x"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+
+	rawLocation := string(c.Response().Header.Peek(HeaderLocation))
+	require.Contains(t, rawLocation, "q=1%26admin%3Dtrue%23x")
+
+	location, err := url.Parse(rawLocation)
+	require.NoError(t, err, "url.Parse(location)")
+	require.Equal(t, "/user/fiber", location.Path)
+	require.Empty(t, location.Fragment)
+	// The single injected key/value survives intact; no extra parameter leaks in.
+	require.Equal(t, url.Values{"q": []string{"1&admin=true#x"}}, location.Query())
+}
+
 // go test -run Test_Redirect_Route_WithOptionalParams
 func Test_Redirect_Route_WithOptionalParams(t *testing.T) {
 	t.Parallel()

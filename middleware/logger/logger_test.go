@@ -90,6 +90,79 @@ func Test_Logger(t *testing.T) {
 	require.Equal(t, "some random error", buf.String())
 }
 
+// go test -run Test_Logger_SanitizeControlChars
+func Test_Logger_SanitizeControlChars(t *testing.T) {
+	t.Parallel()
+
+	t.Run("writeSanitized", func(t *testing.T) {
+		t.Parallel()
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+
+		// Clean strings pass through unchanged.
+		buf.Reset()
+		n, err := writeSanitized(buf, "/clean/path")
+		require.NoError(t, err)
+		require.Equal(t, len("/clean/path"), n)
+		require.Equal(t, "/clean/path", buf.String())
+
+		// Control bytes are escaped so they cannot break out of the record.
+		buf.Reset()
+		_, err = writeSanitized(buf, "a\r\nb\tc\x00d\x7f")
+		require.NoError(t, err)
+		require.Equal(t, `a\r\nb\tc\x00d\x7f`, buf.String())
+		require.NotContains(t, buf.String(), "\n")
+		require.NotContains(t, buf.String(), "\r")
+	})
+
+	t.Run("query", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+
+		app.Use(New(Config{
+			Format: "${query:test}",
+			Stream: buf,
+		}))
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+		// A percent-encoded CRLF in a query value is decoded by c.Query; it must
+		// not reach the log output as a raw CRLF.
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?test=val%0d%0aHACK", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		require.NotContains(t, buf.String(), "\r")
+		require.NotContains(t, buf.String(), "\n")
+		require.Contains(t, buf.String(), `\r\n`)
+	})
+
+	t.Run("path_unescaped", func(t *testing.T) {
+		t.Parallel()
+		// With UnescapePath enabled, c.Path() returns the decoded path, so a
+		// percent-encoded CRLF in the target becomes a real CRLF that must be
+		// escaped before being logged.
+		app := fiber.New(fiber.Config{UnescapePath: true})
+
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+
+		app.Use(New(Config{
+			Format: "${path}",
+			Stream: buf,
+		}))
+		app.Get("/*", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/foo%0d%0aHACK", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		require.NotContains(t, buf.String(), "\r")
+		require.NotContains(t, buf.String(), "\n")
+		require.Contains(t, buf.String(), `\r\n`)
+	})
+}
+
 // go test -run Test_Logger_locals
 func Test_Logger_locals(t *testing.T) {
 	t.Parallel()

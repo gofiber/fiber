@@ -364,9 +364,9 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 				queryText.WriteByte('&')
 			}
 			first = false
-			queryText.WriteString(k)
+			queryText.WriteString(url.QueryEscape(k))
 			queryText.WriteByte('=')
-			queryText.WriteString(v)
+			queryText.WriteString(url.QueryEscape(v))
 		}
 
 		return r.To(location + "?" + r.c.app.toString(queryText.Bytes()))

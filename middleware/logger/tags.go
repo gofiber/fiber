@@ -56,6 +56,66 @@ const (
 // when the supplied tag name or renderer is empty.
 var ErrTagInvalid = errors.New("logger: tag name and function are required")
 
+// hasControlByte reports whether s contains an ASCII control byte (< 0x20 or
+// 0x7f). These bytes — most importantly CR (\r) and LF (\n) — can appear in
+// request-derived values such as the percent-decoded path or query and would
+// otherwise let an attacker forge log records ("log injection").
+func hasControlByte(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// writeSanitized writes s to output, escaping ASCII control bytes so that
+// attacker-controlled request values cannot inject newlines (or other control
+// characters) into the log output. Values without control bytes — the common
+// case — are written verbatim with no extra allocation.
+func writeSanitized(output Buffer, s string) (int, error) {
+	if !hasControlByte(s) {
+		return output.WriteString(s)
+	}
+
+	written := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\n':
+			n, err := output.WriteString(`\n`)
+			written += n
+			if err != nil {
+				return written, err
+			}
+		case c == '\r':
+			n, err := output.WriteString(`\r`)
+			written += n
+			if err != nil {
+				return written, err
+			}
+		case c == '\t':
+			n, err := output.WriteString(`\t`)
+			written += n
+			if err != nil {
+				return written, err
+			}
+		case c < 0x20 || c == 0x7f:
+			n, err := fmt.Fprintf(output, `\x%02x`, c)
+			written += n
+			if err != nil {
+				return written, err
+			}
+		default:
+			if err := output.WriteByte(c); err != nil {
+				return written, err
+			}
+			written++
+		}
+	}
+	return written, nil
+}
+
 var registeredTags = struct {
 	m map[string]LogFunc
 	sync.RWMutex
@@ -91,7 +151,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 	// Set default tags
 	tagFunctions := map[string]LogFunc{
 		TagReferer: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(c.Get(fiber.HeaderReferer))
+			return writeSanitized(output, c.Get(fiber.HeaderReferer))
 		},
 		TagProtocol: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.WriteString(c.Protocol())
@@ -106,19 +166,19 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(c.IP())
 		},
 		TagIPs: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(c.Get(fiber.HeaderXForwardedFor))
+			return writeSanitized(output, c.Get(fiber.HeaderXForwardedFor))
 		},
 		TagHost: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(c.Hostname())
+			return writeSanitized(output, c.Hostname())
 		},
 		TagPath: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(c.Path())
+			return writeSanitized(output, c.Path())
 		},
 		TagURL: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(c.OriginalURL())
+			return writeSanitized(output, c.OriginalURL())
 		},
 		TagUA: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(c.Get(fiber.HeaderUserAgent))
+			return writeSanitized(output, c.Get(fiber.HeaderUserAgent))
 		},
 		TagBody: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.Write(c.Body())
@@ -145,10 +205,10 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			for k, v := range out {
 				reqHeaders = append(reqHeaders, k+"="+strings.Join(v, ","))
 			}
-			return output.WriteString(strings.Join(reqHeaders, "&"))
+			return writeSanitized(output, strings.Join(reqHeaders, "&"))
 		},
 		TagQueryStringParams: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(c.Request().URI().QueryArgs().String())
+			return writeSanitized(output, c.Request().URI().QueryArgs().String())
 		},
 
 		TagBlack: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
@@ -182,26 +242,36 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			if data.ChainErr != nil {
 				if cfg.areColorsEnabled {
 					colors := c.App().Config().ColorScheme
-					return fmt.Fprintf(output, "%s%s%s", colors.Red, data.ChainErr.Error(), colors.Reset)
+					n, err := output.WriteString(colors.Red)
+					if err != nil {
+						return n, err
+					}
+					m, err := writeSanitized(output, data.ChainErr.Error())
+					n += m
+					if err != nil {
+						return n, err
+					}
+					m, err = output.WriteString(colors.Reset)
+					return n + m, err
 				}
-				return output.WriteString(data.ChainErr.Error())
+				return writeSanitized(output, data.ChainErr.Error())
 			}
 			return output.WriteString("-")
 		},
 		TagReqHeader: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
-			return output.WriteString(c.Get(extraParam))
+			return writeSanitized(output, c.Get(extraParam))
 		},
 		TagRespHeader: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
-			return output.WriteString(c.GetRespHeader(extraParam))
+			return writeSanitized(output, c.GetRespHeader(extraParam))
 		},
 		TagQuery: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
-			return output.WriteString(fiber.Query[string](c, extraParam))
+			return writeSanitized(output, fiber.Query[string](c, extraParam))
 		},
 		TagForm: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
-			return output.WriteString(c.FormValue(extraParam))
+			return writeSanitized(output, c.FormValue(extraParam))
 		},
 		TagCookie: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
-			return output.WriteString(c.Cookies(extraParam))
+			return writeSanitized(output, c.Cookies(extraParam))
 		},
 		TagLocals: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
 			switch v := c.Locals(extraParam).(type) {
