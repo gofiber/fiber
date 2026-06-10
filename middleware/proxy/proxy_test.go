@@ -1035,7 +1035,7 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 func Test_Proxy_Balancer_Forward_Empty_Servers(t *testing.T) {
 	t.Parallel()
 
-	require.Panics(t, func() {
+	require.PanicsWithValue(t, "Servers cannot be empty", func() {
 		BalancerForward([]string{})
 	})
 }
