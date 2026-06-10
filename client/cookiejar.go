@@ -252,6 +252,7 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 // This function helps prevent extra allocations by avoiding duplication of repeated cookies.
 func (cj *CookieJar) SetKeyValue(host, key, value string) {
 	c := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(c)
 	c.SetKey(key)
 	c.SetValue(value)
 
@@ -263,6 +264,7 @@ func (cj *CookieJar) SetKeyValue(host, key, value string) {
 // This function helps prevent extra allocations by avoiding duplication of repeated cookies.
 func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
 	c := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(c)
 	c.SetKeyBytes(key)
 	c.SetValueBytes(value)
 
