@@ -53,6 +53,14 @@ func createProxyTestServerIPv4(t *testing.T, handler fiber.Handler) (target *fib
 
 func createProxyTestServerIPv6(t *testing.T, handler fiber.Handler) (target *fiber.App, addr string) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming returned target app and address for readability
 	t.Helper()
+
+	// Skip instead of failing on hosts without IPv6 support (e.g. some CI containers).
+	probe, err := net.Listen(fiber.NetworkTCP6, "[::1]:0")
+	if err != nil {
+		t.Skipf("skipping: IPv6 is not available: %v", err)
+	}
+	require.NoError(t, probe.Close())
+
 	return createProxyTestServer(t, handler, fiber.NetworkTCP6, "[::1]:0")
 }
 

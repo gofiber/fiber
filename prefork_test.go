@@ -17,6 +17,8 @@ import (
 )
 
 func Test_App_Prefork_Child_Process(t *testing.T) {
+	skipIfNoIPv6(t)
+
 	enableTestPreforkMaster(t)
 
 	setupIsChild(t)
