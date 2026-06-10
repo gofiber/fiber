@@ -31,6 +31,7 @@ const (
     MIMETextPlain                        = "text/plain"
     MIMETextJavaScript                   = "text/javascript"
     MIMETextCSS                          = "text/css"
+    MIMETextEventStream                  = "text/event-stream"
     MIMEApplicationXML                   = "application/xml"
     MIMEApplicationJSON                  = "application/json"
     MIMEApplicationCBOR                  = "application/cbor"

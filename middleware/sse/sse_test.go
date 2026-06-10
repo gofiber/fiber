@@ -257,7 +257,7 @@ func Test_SSE_NewWritesHeadersAndEvents(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "last-1", capturedLastEventID)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, mimeTextEventStream, resp.Header.Get(fiber.HeaderContentType))
+	require.Equal(t, fiber.MIMETextEventStream, resp.Header.Get(fiber.HeaderContentType))
 	require.Equal(t, "no-cache", resp.Header.Get(fiber.HeaderCacheControl))
 	require.Equal(t, "keep-alive", resp.Header.Get(fiber.HeaderConnection))
 	require.Equal(t, "no", resp.Header.Get("X-Accel-Buffering"))

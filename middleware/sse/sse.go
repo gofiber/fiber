@@ -28,7 +28,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	return func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderContentType, mimeTextEventStream)
+		c.Set(fiber.HeaderContentType, fiber.MIMETextEventStream)
 		c.Set(fiber.HeaderCacheControl, "no-cache")
 		c.Set(fiber.HeaderConnection, "keep-alive")
 		c.Set("X-Accel-Buffering", "no")
