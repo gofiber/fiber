@@ -11,6 +11,10 @@ on:
     paths-ignore:
       - "**/*.md"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -21,6 +25,7 @@ jobs:
         go-version: [1.25.x, 1.26.x]
         platform: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 30
     steps:
       - name: Fetch Repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -31,7 +36,9 @@ jobs:
           go-version: ${{ matrix.go-version }}
 
       - name: Test
-        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -coverprofile=coverage.txt -covermode=atomic -shuffle=on
+        uses: gofiber/.github/.github/actions/gotestsum@main
+        with:
+          args: ./... -race -count=1 -coverprofile=coverage.txt -covermode=atomic -shuffle=on
 
       - name: Upload coverage reports to Codecov
         if: ${{ matrix.platform == 'ubuntu-latest' && matrix.go-version == '1.25.x' }}
@@ -44,6 +51,7 @@ jobs:
 
   repeated:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Fetch Repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -54,4 +62,6 @@ jobs:
           go-version: stable
 
       - name: Test
-        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=15 -shuffle=on
+        uses: gofiber/.github/.github/actions/gotestsum@main
+        with:
+          args: ./... -race -count=15 -shuffle=on
