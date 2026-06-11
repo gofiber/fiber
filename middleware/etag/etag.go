@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 )
 
@@ -105,18 +106,18 @@ func New(config ...Config) fiber.Handler {
 // matches the response ETag, using the weak comparison required for
 // If-None-Match by RFC 9110 §8.8.3.2.
 func isNoneMatch(header, etag []byte) bool {
-	header = bytes.TrimSpace(header)
+	header = utils.TrimSpace(header)
 	if len(header) == 0 {
 		return false
 	}
-	if bytes.Equal(header, []byte("*")) {
+	if len(header) == 1 && header[0] == '*' {
 		return true
 	}
 
 	for len(header) > 0 {
 		entry, rest, _ := bytes.Cut(header, []byte(","))
 		header = rest
-		if etagWeakMatch(bytes.TrimSpace(entry), etag) {
+		if etagWeakMatch(utils.TrimSpace(entry), etag) {
 			return true
 		}
 	}
