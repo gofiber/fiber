@@ -3621,6 +3621,75 @@ func Test_Ctx_IP_ProxyHeader_InvalidIPs(t *testing.T) {
 	require.False(t, c.isTrustedProxyIP("invalid"))
 }
 
+// go test -run Test_Ctx_IP_ProxyHeader_MalformedEntries
+func Test_Ctx_IP_ProxyHeader_MalformedEntries(t *testing.T) {
+	t.Parallel()
+	t.Run("no_trusted_proxy", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{
+			ProxyHeader:        HeaderXForwardedFor,
+			EnableIPValidation: true,
+		})
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(testNetAddr{network: "tcp", address: "0.0.0.0"})
+		c := app.AcquireCtx(fastCtx)
+
+		// Leading comma and space: ", 203.0.113.195, 70.41.3.18"
+		c.Request().Header.Set(HeaderXForwardedFor, ", 203.0.113.195, 70.41.3.18")
+		require.Equal(t, "203.0.113.195", c.IP(), "should skip leading empty entry")
+
+		// Empty entry in the middle: "203.0.113.195, , 70.41.3.18"
+		c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.195, , 70.41.3.18")
+		require.Equal(t, "203.0.113.195", c.IP(), "should skip middle empty entry")
+
+		// Trailing comma: "203.0.113.195, 70.41.3.18, "
+		c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.195, 70.41.3.18, ")
+		require.Equal(t, "203.0.113.195", c.IP(), "should skip trailing empty entry")
+
+		// Whitespace-only entry: "203.0.113.195,   , 70.41.3.18"
+		c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.195,   , 70.41.3.18")
+		require.Equal(t, "203.0.113.195", c.IP(), "should skip whitespace-only entry")
+
+		// Multiple consecutive commas: ",,,203.0.113.195,,,"
+		c.Request().Header.Set(HeaderXForwardedFor, ",,,203.0.113.195,,,")
+		require.Equal(t, "203.0.113.195", c.IP(), "should skip consecutive commas")
+
+		// All entries empty/invalid falls back to RemoteIP
+		c.Request().Header.Set(HeaderXForwardedFor, ", , , ")
+		require.Equal(t, "0.0.0.0", c.IP(), "all empty should fall back to RemoteIP")
+	})
+
+	t.Run("with_trusted_proxy", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{
+			ProxyHeader:        HeaderXForwardedFor,
+			EnableIPValidation: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"10.0.0.1"},
+			},
+		})
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(testNetAddr{network: "tcp", address: "10.0.0.1"})
+		c := app.AcquireCtx(fastCtx)
+
+		// Leading comma with trusted proxy chain
+		c.Request().Header.Set(HeaderXForwardedFor, ", 203.0.113.195, 10.0.0.1")
+		require.Equal(t, "203.0.113.195", c.IP(), "trusted proxy: should skip leading empty entry and return first non-trusted")
+
+		// Empty entry between trusted and non-trusted
+		c.Request().Header.Set(HeaderXForwardedFor, "10.0.0.1, , 203.0.113.195")
+		require.Equal(t, "203.0.113.195", c.IP(), "trusted proxy: should skip empty entry between IPs")
+
+		// All trusted proxies with empty entries
+		c.Request().Header.Set(HeaderXForwardedFor, ", 10.0.0.1, ")
+		require.Equal(t, "10.0.0.1", c.IP(), "trusted proxy: when all are trusted, return the last valid one")
+
+		// All entries empty with trusted proxy config falls back to RemoteIP
+		c.Request().Header.Set(HeaderXForwardedFor, ", , , ")
+		require.Equal(t, "10.0.0.1", c.IP(), "trusted proxy: all empty falls back to RemoteIP")
+	})
+}
+
 func Test_Ctx_IP_TrustedProxyIPv6Range(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
