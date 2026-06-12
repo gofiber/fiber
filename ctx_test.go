@@ -3636,27 +3636,27 @@ func Test_Ctx_IP_ProxyHeader_MalformedEntries(t *testing.T) {
 
 		// Leading comma and space: ", 203.0.113.195, 70.41.3.18"
 		c.Request().Header.Set(HeaderXForwardedFor, ", 203.0.113.195, 70.41.3.18")
-		require.Equal(t, "203.0.113.195", c.IP(), "should skip leading empty entry")
+		require.Equal(t, "203.0.113.195", c.extractIPFromHeader(HeaderXForwardedFor), "should skip leading empty entry")
 
 		// Empty entry in the middle: "203.0.113.195, , 70.41.3.18"
 		c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.195, , 70.41.3.18")
-		require.Equal(t, "203.0.113.195", c.IP(), "should skip middle empty entry")
+		require.Equal(t, "203.0.113.195", c.extractIPFromHeader(HeaderXForwardedFor), "should skip middle empty entry")
 
 		// Trailing comma: "203.0.113.195, 70.41.3.18, "
 		c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.195, 70.41.3.18, ")
-		require.Equal(t, "203.0.113.195", c.IP(), "should skip trailing empty entry")
+		require.Equal(t, "203.0.113.195", c.extractIPFromHeader(HeaderXForwardedFor), "should skip trailing empty entry")
 
 		// Whitespace-only entry: "203.0.113.195,   , 70.41.3.18"
 		c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.195,   , 70.41.3.18")
-		require.Equal(t, "203.0.113.195", c.IP(), "should skip whitespace-only entry")
+		require.Equal(t, "203.0.113.195", c.extractIPFromHeader(HeaderXForwardedFor), "should skip whitespace-only entry")
 
 		// Multiple consecutive commas: ",,,203.0.113.195,,,"
 		c.Request().Header.Set(HeaderXForwardedFor, ",,,203.0.113.195,,,")
-		require.Equal(t, "203.0.113.195", c.IP(), "should skip consecutive commas")
+		require.Equal(t, "203.0.113.195", c.extractIPFromHeader(HeaderXForwardedFor), "should skip consecutive commas")
 
 		// All entries empty/invalid falls back to RemoteIP
 		c.Request().Header.Set(HeaderXForwardedFor, ", , , ")
-		require.Equal(t, "0.0.0.0", c.IP(), "all empty should fall back to RemoteIP")
+		require.Equal(t, "0.0.0.0", c.extractIPFromHeader(HeaderXForwardedFor), "all empty should fall back to RemoteIP")
 	})
 
 	t.Run("with_trusted_proxy", func(t *testing.T) {
@@ -3664,6 +3664,7 @@ func Test_Ctx_IP_ProxyHeader_MalformedEntries(t *testing.T) {
 		app := New(Config{
 			ProxyHeader:        HeaderXForwardedFor,
 			EnableIPValidation: true,
+			TrustProxy:         true,
 			TrustProxyConfig: TrustProxyConfig{
 				Proxies: []string{"10.0.0.1"},
 			},
