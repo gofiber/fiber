@@ -9,6 +9,7 @@ package fiber
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,13 +68,76 @@ const (
 	paramConstraintDataSeparator byte = ','  // separator of data of type constraint for a parameter
 )
 
+// TypeConstraint parameter constraint types.
+//
+// Deprecated: Use the ConstraintHandler interface instead. Retained for
+// backward compatibility with external code that reads or compares IDs.
+type TypeConstraint uint16
+
 // Constraint describes the validation rules that apply to a dynamic route
 // segment when matching incoming requests.
 // See constraint.go for the ConstraintHandler and ConstraintAnalyzer interfaces.
 type Constraint struct {
-	handler ConstraintHandler
-	Name    string
-	Data    []any
+	handler   ConstraintHandler
+	typedData []any
+
+	// RegexCompiler is populated when the constraint is a regex and the
+	// default regexp.Compile engine is used.
+	//
+	// Deprecated: Use the ConstraintHandler interface instead. Retained for
+	// backward compatibility with external code that reads this field.
+	RegexCompiler *regexp.Regexp
+
+	// Name is the raw constraint name as it appeared in the route pattern
+	// (e.g. "minlen", not the canonical "minLen").
+	Name string
+
+	// Data holds the raw parsed constraint arguments from the route pattern.
+	Data []string
+
+	// ID identifies the built-in constraint kind.
+	//
+	// Deprecated: Use the ConstraintHandler interface instead. Retained for
+	// backward compatibility with external code that reads or compares IDs.
+	ID TypeConstraint
+}
+
+// Deprecated: Use the ConstraintHandler interface instead.
+const (
+	noConstraint TypeConstraint = 1 << iota
+	intConstraint
+	boolConstraint
+	floatConstraint
+	alphaConstraint
+	datetimeConstraint
+	guidConstraint
+	minLenConstraint
+	maxLenConstraint
+	lenConstraint
+	betweenLenConstraint
+	minConstraint
+	maxConstraint
+	rangeConstraint
+	regexConstraint
+)
+
+// constraintNameToID maps canonical constraint names to their TypeConstraint ID.
+// Deprecated: retained for populating Constraint.ID for backward compatibility.
+var constraintNameToID = map[string]TypeConstraint{
+	ConstraintInt:        intConstraint,
+	ConstraintBool:       boolConstraint,
+	ConstraintFloat:      floatConstraint,
+	ConstraintAlpha:      alphaConstraint,
+	ConstraintDatetime:   datetimeConstraint,
+	ConstraintGUID:       guidConstraint,
+	ConstraintMinLen:     minLenConstraint,
+	ConstraintMaxLen:     maxLenConstraint,
+	ConstraintLen:        lenConstraint,
+	ConstraintBetweenLen: betweenLenConstraint,
+	ConstraintMin:        minConstraint,
+	ConstraintMax:        maxConstraint,
+	ConstraintRange:      rangeConstraint,
+	ConstraintRegex:      regexConstraint,
 }
 
 // list of possible parameter and segment delimiter
@@ -386,7 +450,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any
 				continue
 			}
 
-			constraint := newConstraint(handler, data)
+			constraint := newConstraint(handler, rawName, data)
 			constraints = append(constraints, constraint)
 		}
 

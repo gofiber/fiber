@@ -98,9 +98,12 @@ type customConstraintWrapper struct {
 	CustomConstraint
 }
 
-func (*customConstraintWrapper) Analyze(args []string) ([]any, error) {
-	parsed := parseConstraintArgs(args)
-	return []any{parsed}, nil
+func (w *customConstraintWrapper) Analyze(args []string) ([]any, error) {
+	parsedArgs := parseConstraintArgs(args)
+	if analyzer, ok := w.CustomConstraint.(ConstraintAnalyzer); ok {
+		return analyzer.Analyze(parsedArgs)
+	}
+	return []any{parsedArgs}, nil
 }
 
 func (w *customConstraintWrapper) Execute(param string, data []any) bool {
@@ -169,20 +172,25 @@ func findConstraintHandler(name string, regexHandler any, customs []CustomConstr
 
 // newConstraint creates a Constraint with the given handler and data,
 // calling Analyze() if the handler implements ConstraintAnalyzer.
-func newConstraint(handler ConstraintHandler, args []string) *Constraint {
+// rawName is the constraint name as it appeared in the route pattern (e.g. "minlen").
+func newConstraint(handler ConstraintHandler, rawName string, args []string) *Constraint {
+	canonical := handler.Name()
 	c := &Constraint{
-		Name:    handler.Name(),
+		Name:    rawName,
+		ID:      constraintNameToID[canonical],
 		handler: handler,
+		Data:    args,
 	}
 	if analyser, ok := handler.(ConstraintAnalyzer); ok {
 		if typed, err := analyser.Analyze(args); err == nil {
-			c.Data = typed
-		} else {
-			// Store raw strings as fallback for invalid data.
-			c.Data = stringArgsToAny(args)
+			c.typedData = typed
 		}
-	} else {
-		c.Data = stringArgsToAny(args)
+	}
+	// Populate RegexCompiler for backward compat when using default engine.
+	if canonical == ConstraintRegex && len(c.typedData) > 0 {
+		if re, ok := c.typedData[0].(*regexp.Regexp); ok {
+			c.RegexCompiler = re
+		}
 	}
 	return c
 }
@@ -190,7 +198,6 @@ func newConstraint(handler ConstraintHandler, args []string) *Constraint {
 // matchConstraint validates a parameter against this constraint.
 func (c *Constraint) matchConstraint(param string) bool {
 	handler := c.handler
-	data := c.Data
 	if handler == nil {
 		handler = findConstraintHandler(c.Name, nil, nil)
 		if handler == nil {
@@ -199,25 +206,18 @@ func (c *Constraint) matchConstraint(param string) bool {
 		if handler == nil {
 			return true
 		}
-		// Cache the resolved handler for future calls.
 		c.handler = handler
 		if analyser, ok := handler.(ConstraintAnalyzer); ok {
-			rawArgs := make([]string, len(data))
-			for i, d := range data {
-				switch v := d.(type) {
-				case string:
-					rawArgs[i] = v
-				default:
-					rawArgs[i] = fmt.Sprintf("%v", v)
-				}
-			}
-			if typed, err := analyser.Analyze(rawArgs); err == nil {
-				c.Data = typed
-				data = typed
+			if typed, err := analyser.Analyze(c.Data); err == nil {
+				c.typedData = typed
 			}
 		}
+		c.ID = constraintNameToID[handler.Name()]
 	}
-	return handler.Execute(param, data)
+	if len(c.typedData) > 0 {
+		return handler.Execute(param, c.typedData)
+	}
+	return handler.Execute(param, stringArgsToAny(c.Data))
 }
 
 // --- Built-in constraint types ---
@@ -255,7 +255,7 @@ func (alphaConstraintType) Execute(param string, _ []any) bool {
 			return false
 		}
 	}
-	return param != ""
+	return true
 }
 
 type guidConstraintType struct{}
