@@ -274,9 +274,10 @@ type testCustomConstraintWithAnalyzer struct {
 }
 
 func (*testCustomConstraintWithAnalyzer) Name() string { return "customDatetime" }
-func (t *testCustomConstraintWithAnalyzer) Execute(param string, args ...string) bool {
+func (t *testCustomConstraintWithAnalyzer) Execute(param string, _ ...string) bool {
 	return param == t.layout
 }
+
 func (t *testCustomConstraintWithAnalyzer) Analyze(args []string) ([]any, error) {
 	if len(args) > 0 {
 		t.layout = args[0]

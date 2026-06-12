@@ -122,6 +122,7 @@ const (
 )
 
 // constraintNameToID maps canonical constraint names to their TypeConstraint ID.
+//
 // Deprecated: retained for populating Constraint.ID for backward compatibility.
 var constraintNameToID = map[string]TypeConstraint{
 	ConstraintInt:        intConstraint,
