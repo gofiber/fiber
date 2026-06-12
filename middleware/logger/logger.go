@@ -12,6 +12,14 @@ import (
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
 )
 
+func loadTimestamp(value *atomic.Value) string {
+	if timestamp, ok := value.Load().(string); ok {
+		return timestamp
+	}
+
+	return ""
+}
+
 // defaultErrPadding is the initial column width used by the default access-log
 // formatter to align the request path against the optional error suffix. The
 // width grows on first request to fit the longest registered route, but a
@@ -34,18 +42,19 @@ func New(config ...Config) fiber.Handler {
 	// Check if format contains latency
 	cfg.isLatencyEnabled = strings.Contains(cfg.Format, "${"+TagLatency+"}")
 
-	var timestamp atomic.Value
-	// Create correct timeformat
-	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
-
-	// Update date/time every 500 milliseconds in a separate go routine
-	if strings.Contains(cfg.Format, "${"+TagTime+"}") {
-		go func() {
-			for {
-				time.Sleep(cfg.TimeInterval)
-				timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
-			}
-		}()
+	timeEnabled := strings.Contains(cfg.Format, "${"+TagTime+"}")
+	var timestamp *atomic.Value
+	if timeEnabled {
+		if cfg.TimeDone != nil {
+			// Caller-managed lifecycle: dedicated updater so it can be stopped
+			// via TimeDone (useful for tests and short-lived apps).
+			timestamp = &atomic.Value{}
+			timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
+			startTimestampUpdater(timestamp, &cfg)
+		} else {
+			// Process-lifetime shared updater, deduplicated by format/zone/interval.
+			timestamp = sharedTimestamp(cfg.TimeFormat, cfg.timeZoneLocation, cfg.TimeInterval)
+		}
 	}
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
@@ -106,7 +115,11 @@ func New(config ...Config) fiber.Handler {
 		// no need for a reset, as long as we always override everything
 		data.Pid = pid
 		data.ErrPaddingStr = errPaddingStr
-		data.Timestamp = timestamp
+		if timeEnabled {
+			data.Timestamp = loadTimestamp(timestamp)
+		} else {
+			data.Timestamp = ""
+		}
 		// These compiled chains are shared across requests. The default logger and
 		// custom LoggerFunc implementations must only read them, for example via
 		// logtemplate.ExecuteChains.
@@ -139,4 +152,34 @@ func New(config ...Config) fiber.Handler {
 		// Logger instance & update some logger data fields
 		return cfg.LoggerFunc(c, data, &cfg)
 	}
+}
+
+// startTimestampUpdater refreshes the cached formatted timestamp until TimeDone
+// is closed.
+func startTimestampUpdater(timestamp *atomic.Value, cfg *Config) {
+	_ = startTimestampUpdaterWithStop(timestamp, cfg)
+}
+
+func startTimestampUpdaterWithStop(timestamp *atomic.Value, cfg *Config) <-chan struct{} {
+	stopped := make(chan struct{})
+	if !strings.Contains(cfg.Format, "${"+TagTime+"}") {
+		close(stopped)
+		return stopped
+	}
+
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(cfg.TimeInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
+			case <-cfg.TimeDone:
+				return
+			}
+		}
+	}()
+	return stopped
 }

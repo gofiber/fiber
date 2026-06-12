@@ -28,6 +28,7 @@ import (
     "crypto/sha256"
     "crypto/subtle"
     "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/extractors"
     "github.com/gofiber/fiber/v3/middleware/keyauth"
 )
 
@@ -50,7 +51,7 @@ func main() {
 
     // Register middleware before the routes that need it
     app.Use(keyauth.New(keyauth.Config{
-        Extractor:  keyauth.FromCookie("access_token"),
+        Extractor:  extractors.FromCookie("access_token"),
         Validator:  validateAPIKey,
     }))
 
@@ -91,6 +92,7 @@ import (
     "crypto/sha256"
     "crypto/subtle"
     "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/extractors"
     "github.com/gofiber/fiber/v3/middleware/keyauth"
     "regexp"
     "strings"
@@ -132,7 +134,7 @@ func main() {
 
     app.Use(keyauth.New(keyauth.Config{
         Next:      authFilter,
-        Extractor: keyauth.FromCookie("access_token"),
+        Extractor: extractors.FromCookie("access_token"),
         Validator: validateAPIKey,
     }))
 

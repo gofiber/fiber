@@ -5,6 +5,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -95,7 +96,10 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 
 		// Acquire session middleware
 		m := acquireMiddleware()
-		m.initialize(c, &cfg)
+		if err := m.initialize(c, &cfg); err != nil {
+			releaseMiddleware(m)
+			return fmt.Errorf("session: failed to get session: %w", err)
+		}
 
 		stackErr := c.Next()
 
@@ -141,14 +145,16 @@ func clearMiddlewareContext(c fiber.Ctx) {
 	c.SetContext(context.WithValue(ctx, middlewareContextKey, (*Middleware)(nil)))
 }
 
-// initialize sets up middleware for the request.
-func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
+// initialize sets up middleware for the request. It returns an error when the
+// session cannot be loaded from the store (e.g. the backing storage is down)
+// so the request can fail gracefully instead of crashing the server.
+func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	session, err := cfg.Store.getSession(c)
 	if err != nil {
-		panic(err) // handle or log this error appropriately in production
+		return err
 	}
 
 	m.config = *cfg
@@ -156,6 +162,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) {
 	m.ctx = c
 
 	storeMiddlewareContext(c, session, m)
+	return nil
 }
 
 // saveSession handles session saving and error management after the response.

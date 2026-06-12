@@ -121,6 +121,10 @@ func acquireFileHeaderMap() map[string][]*multipart.FileHeader {
 }
 
 func releaseFileHeaderMap(m map[string][]*multipart.FileHeader) {
+	if len(m) > maxPoolableDataMapSize {
+		return
+	}
+
 	clearFileHeaderMap(m)
 	formFileMapPool.Put(m)
 }

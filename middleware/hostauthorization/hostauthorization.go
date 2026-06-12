@@ -184,7 +184,57 @@ func parseNormalizedAuthority(authority string) (string, bool) {
 		return "", false
 	}
 
+	if !isValidHostSyntax(host) {
+		return "", false
+	}
+
 	return host, true
+}
+
+func isValidHostSyntax(host string) bool {
+	if host == "" {
+		return false
+	}
+
+	// A colon only appears in IPv6 literals; validate those via net.ParseIP.
+	// DNS names and IPv4 literals are accepted by the label scan below, which
+	// runs on the hot path of every request and avoids allocating.
+	if strings.IndexByte(host, ':') >= 0 {
+		return net.ParseIP(host) != nil
+	}
+
+	// Validate dotted DNS labels in a single pass without allocating.
+	labelLen := 0
+	for i := 0; i < len(host); i++ {
+		ch := host[i]
+
+		if ch == '.' {
+			// Reject empty labels (leading/trailing dot or consecutive dots)
+			// and labels that end with a hyphen.
+			if labelLen == 0 || host[i-1] == '-' {
+				return false
+			}
+			labelLen = 0
+			continue
+		}
+
+		// A label must not start with a hyphen.
+		if labelLen == 0 && ch == '-' {
+			return false
+		}
+
+		if (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') && ch != '-' {
+			return false
+		}
+
+		labelLen++
+		if labelLen > maxLabelLength {
+			return false
+		}
+	}
+
+	// The final label must be non-empty and must not end with a hyphen.
+	return labelLen != 0 && host[len(host)-1] != '-'
 }
 
 func isValidPort(raw string) bool {

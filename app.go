@@ -31,6 +31,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/fiber/v3/internal/nilerror"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -619,6 +620,10 @@ var httpReadResponse = http.ReadResponse
 
 // DefaultErrorHandler that process return errors from handlers
 func DefaultErrorHandler(c Ctx, err error) error {
+	if nilerror.IsNil(err) {
+		err = nil
+	}
+
 	code := StatusInternalServerError
 	var e *Error
 	matched := errors.As(err, &e)

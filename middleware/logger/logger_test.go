@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -174,6 +175,61 @@ func Test_Logger_Done(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Positive(t, buf.Len(), 0)
+}
+
+func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
+	t.Parallel()
+
+	var timestamp atomic.Value
+	timestamp.Store(time.Now().Format(time.RFC3339Nano))
+
+	done := make(chan struct{})
+	cfg := Config{
+		Format:           "${time}",
+		TimeFormat:       time.RFC3339Nano,
+		TimeInterval:     5 * time.Millisecond,
+		timeZoneLocation: time.Local,
+		TimeDone:         done,
+	}
+
+	stoppedCh := startTimestampUpdaterWithStop(&timestamp, &cfg)
+
+	initial, ok := timestamp.Load().(string)
+	require.True(t, ok)
+	time.Sleep(20 * time.Millisecond)
+	updated, ok := timestamp.Load().(string)
+	require.True(t, ok)
+	require.NotEqual(t, initial, updated)
+
+	close(done)
+	select {
+	case <-stoppedCh:
+	case <-time.After(time.Second):
+		t.Fatal("timestamp updater did not stop")
+	}
+	stopped, ok := timestamp.Load().(string)
+	require.True(t, ok)
+	time.Sleep(20 * time.Millisecond)
+	finalValue, ok := timestamp.Load().(string)
+	require.True(t, ok)
+	require.Equal(t, stopped, finalValue)
+}
+
+func Test_Logger_TimestampUpdater_StopsImmediatelyWithoutTimeTag(t *testing.T) {
+	t.Parallel()
+
+	var timestamp atomic.Value
+	timestamp.Store(time.Now().Format(time.RFC3339Nano))
+
+	stoppedCh := startTimestampUpdaterWithStop(&timestamp, &Config{
+		Format: "${pid}",
+	})
+
+	select {
+	case <-stoppedCh:
+	case <-time.After(time.Second):
+		t.Fatal("timestamp updater did not stop immediately")
+	}
 }
 
 // Test_Logger_Filter tests the Filter functionality of the logger middleware.
@@ -906,6 +962,56 @@ func Test_Logger_Data_Race(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp1.StatusCode)
 	require.NoError(t, err2)
 	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
+}
+
+func Test_Logger_TimeUpdatesAfterInterval(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format:       "${time}",
+		TimeFormat:   time.RFC3339Nano,
+		TimeInterval: 10 * time.Millisecond,
+		Stream:       &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+	first := buf.String()
+	require.NotEmpty(t, first)
+
+	var second string
+	require.Eventually(t, func() bool {
+		buf.Reset()
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+
+		second = buf.String()
+		return second != "" && second != first
+	}, 200*time.Millisecond, 5*time.Millisecond)
+}
+
+func Test_Logger_SharedTimestampState(t *testing.T) {
+	t.Parallel()
+
+	loc := time.FixedZone("test/zone", 3600)
+	first := sharedTimestamp(time.RFC3339, loc, 10*time.Millisecond)
+	second := sharedTimestamp(time.RFC3339, loc, 10*time.Millisecond)
+	third := sharedTimestamp(time.RFC3339Nano, loc, 10*time.Millisecond)
+
+	require.Same(t, first, second)
+	require.NotSame(t, first, third)
+	loaded, ok := first.Load().(string)
+	require.True(t, ok)
+	require.NotEmpty(t, loaded)
 }
 
 // go test -run Test_Response_Header

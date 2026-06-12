@@ -15,6 +15,8 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
+const maxCookieJarHosts = 1024
+
 var cookieJarPool = sync.Pool{
 	New: func() any {
 		return &CookieJar{}
@@ -112,7 +114,11 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 		}
 		kept = append(kept, sc)
 	}
-	cj.hostCookies[host] = kept
+	if len(kept) == 0 {
+		delete(cj.hostCookies, host)
+	} else {
+		cj.hostCookies[host] = kept
+	}
 
 	out := make([]*fasthttp.Cookie, 0, len(kept))
 	for _, sc := range kept {
@@ -162,7 +168,11 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 			nc.CopyTo(c)
 			matched = append(matched, nc)
 		}
-		cj.hostCookies[domain] = kept
+		if len(kept) == 0 {
+			delete(cj.hostCookies, domain)
+		} else {
+			cj.hostCookies[domain] = kept
+		}
 	}
 
 	return matched
@@ -216,6 +226,7 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 			}
 		}
 
+		cj.ensureHostCapacityLocked(key, time.Now())
 		hostCookies := cj.hostCookies[key]
 
 		existing := searchCookieByKeyAndPath(cookie.Key(), cookie.Path(), hostCookies)
@@ -241,6 +252,7 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 // This function helps prevent extra allocations by avoiding duplication of repeated cookies.
 func (cj *CookieJar) SetKeyValue(host, key, value string) {
 	c := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(c)
 	c.SetKey(key)
 	c.SetValue(value)
 
@@ -252,6 +264,7 @@ func (cj *CookieJar) SetKeyValue(host, key, value string) {
 // This function helps prevent extra allocations by avoiding duplication of repeated cookies.
 func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
 	c := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(c)
 	c.SetKeyBytes(key)
 	c.SetValueBytes(value)
 
@@ -312,6 +325,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 			}
 		}
 
+		cj.ensureHostCapacityLocked(key, now)
 		cookies := cj.hostCookies[key]
 		c := searchCookieByKeyAndPath(tmp.Key(), tmp.Path(), cookies)
 		if c == nil {
@@ -340,6 +354,51 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 			fasthttp.ReleaseCookie(c)
 		}
 		fasthttp.ReleaseCookie(tmp)
+	}
+}
+
+// ensureHostCapacityLocked bounds the number of stored hosts by evicting
+// expired entries first and then one remaining host if the jar is still full.
+func (cj *CookieJar) ensureHostCapacityLocked(key string, now time.Time) {
+	if _, ok := cj.hostCookies[key]; ok || len(cj.hostCookies) < maxCookieJarHosts {
+		return
+	}
+
+	for host, cookies := range cj.hostCookies {
+		kept := cookies[:0]
+		for _, sc := range cookies {
+			if !sc.cookie.Expire().Equal(fasthttp.CookieExpireUnlimited) && sc.cookie.Expire().Before(now) {
+				fasthttp.ReleaseCookie(sc.cookie)
+				continue
+			}
+			kept = append(kept, sc)
+		}
+		if len(kept) == 0 {
+			delete(cj.hostCookies, host)
+			if len(cj.hostCookies) < maxCookieJarHosts {
+				return
+			}
+			continue
+		}
+		cj.hostCookies[host] = kept
+	}
+
+	var evictHost string
+	for host := range cj.hostCookies {
+		if evictHost == "" || host < evictHost {
+			evictHost = host
+		}
+	}
+	if evictHost != "" {
+		releaseStoredCookies(cj.hostCookies[evictHost])
+		delete(cj.hostCookies, evictHost)
+	}
+}
+
+// releaseStoredCookies releases pooled cookies for an evicted host entry.
+func releaseStoredCookies(cookies []storedCookie) {
+	for _, sc := range cookies {
+		fasthttp.ReleaseCookie(sc.cookie)
 	}
 }
 

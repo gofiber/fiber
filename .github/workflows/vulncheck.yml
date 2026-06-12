@@ -11,12 +11,17 @@ on:
     paths-ignore:
       - "**/*.md"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   govulncheck-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       GO111MODULE: on
     steps:
@@ -28,7 +33,6 @@ jobs:
         with:
           go-version: "stable"
           check-latest: true
-          cache: false
 
       - name: Install Govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
