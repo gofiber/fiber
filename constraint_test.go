@@ -14,7 +14,7 @@ func Test_ConstraintMatchConstraint_NilHandler(t *testing.T) {
 		t.Parallel()
 		c := &Constraint{
 			Name: ConstraintMinLen,
-			Data: []any{3},
+			Data: []string{"3"},
 		}
 		require.True(t, c.matchConstraint("hello"))
 		require.False(t, c.matchConstraint("hi"))
@@ -24,7 +24,7 @@ func Test_ConstraintMatchConstraint_NilHandler(t *testing.T) {
 		t.Parallel()
 		c := &Constraint{
 			Name: "unknownConstraint",
-			Data: []any{"5"},
+			Data: []string{"5"},
 		}
 		require.True(t, c.matchConstraint("anything"))
 	})
@@ -33,7 +33,7 @@ func Test_ConstraintMatchConstraint_NilHandler(t *testing.T) {
 		t.Parallel()
 		c := &Constraint{
 			Name: ConstraintDatetime,
-			Data: []any{"2006-01-02"},
+			Data: []string{"2006-01-02"},
 		}
 		require.True(t, c.matchConstraint("2024-01-15"))
 		require.False(t, c.matchConstraint("not-a-date"))
@@ -127,6 +127,7 @@ func Test_ConstraintExecute_AlphaConstraint(t *testing.T) {
 
 	handler := alphaConstraintType{}
 	require.True(t, handler.Execute("hello", nil))
+	require.True(t, handler.Execute("", nil))
 	require.False(t, handler.Execute("hello123", nil))
 }
 
@@ -221,7 +222,7 @@ func Test_ConstraintMatchConstraint_WithTypedData(t *testing.T) {
 	t.Parallel()
 
 	handler := minLenConstraintType{}
-	c := newConstraint(handler, []string{"3"})
+	c := newConstraint(handler, ConstraintMinLen, []string{"3"})
 	require.True(t, c.matchConstraint("hello"))
 	require.False(t, c.matchConstraint("hi"))
 }
@@ -231,7 +232,7 @@ func Test_ConstraintMatchConstraint_NilHandlerWithAnalyzerError(t *testing.T) {
 
 	c := &Constraint{
 		Name: ConstraintMinLen,
-		Data: []any{"notanumber"},
+		Data: []string{"notanumber"},
 	}
 	require.False(t, c.matchConstraint("hello"))
 }
@@ -266,4 +267,36 @@ type testCustomConstraintForCoverage struct {
 func (*testCustomConstraintForCoverage) Name() string { return "customTest" }
 func (t *testCustomConstraintForCoverage) Execute(param string, _ ...string) bool {
 	return param == t.allowed
+}
+
+type testCustomConstraintWithAnalyzer struct {
+	layout string
+}
+
+func (*testCustomConstraintWithAnalyzer) Name() string { return "customDatetime" }
+func (t *testCustomConstraintWithAnalyzer) Execute(param string, args ...string) bool {
+	return param == t.layout
+}
+func (t *testCustomConstraintWithAnalyzer) Analyze(args []string) ([]any, error) {
+	if len(args) > 0 {
+		t.layout = args[0]
+	}
+	return stringArgsToAny(args), nil
+}
+
+func Test_CustomConstraintWrapper_DelegatesAnalyze(t *testing.T) {
+	t.Parallel()
+
+	custom := &testCustomConstraintWithAnalyzer{}
+	handler := findConstraintHandler("customDatetime", nil, []CustomConstraint{custom})
+	require.NotNil(t, handler)
+
+	analyzer, ok := handler.(ConstraintAnalyzer)
+	require.True(t, ok)
+
+	typed, err := analyzer.Analyze([]string{"2006-01-02"})
+	require.NoError(t, err)
+	require.Len(t, typed, 1)
+	require.Equal(t, "2006-01-02", typed[0])
+	require.Equal(t, "2006-01-02", custom.layout)
 }
