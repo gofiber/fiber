@@ -4040,6 +4040,27 @@ func Test_Ctx_Err(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_Ctx_ContextMethods_UseCustomContext
+func Test_Ctx_ContextMethods_UseCustomContext(t *testing.T) {
+	t.Parallel()
+	app := New()
+	deadline := time.Now().Add(time.Hour)
+	parent, cancel := context.WithDeadline(context.Background(), deadline)
+	cancel()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() {
+		app.ReleaseCtx(c)
+	})
+
+	c.SetContext(parent)
+
+	actualDeadline, ok := c.Deadline()
+	require.True(t, ok)
+	require.Equal(t, deadline, actualDeadline)
+	require.Equal(t, parent.Done(), c.Done())
+	require.ErrorIs(t, c.Err(), context.Canceled)
+}
+
 // go test -run Test_Ctx_Value
 func Test_Ctx_Value(t *testing.T) {
 	t.Parallel()

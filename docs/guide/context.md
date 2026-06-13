@@ -19,7 +19,8 @@ Fiber's [`Ctx`](../api/ctx.md) implements Go's
 You can pass `c` directly to functions that expect a `context.Context`
 without adapters.
 However, `fasthttp` doesn't support cancellation yet, so
-`Deadline`, `Done`, and `Err` are no-ops.
+`Deadline`, `Done`, and `Err` are no-ops unless you set a custom context with
+`c.SetContext`. When a custom context is set, those methods delegate to it.
 
 :::caution
 The `fiber.Ctx` instance is only valid within the lifetime of the handler.
@@ -262,8 +263,9 @@ This approach provides safe cancellation semantics for goroutine-based work whil
 
 ## Summary
 
-- `fiber.Ctx` satisfies `context.Context` but its `Deadline`, `Done`, and `Err`
-  methods are currently no-ops.
+- `fiber.Ctx` satisfies `context.Context`. Its `Deadline`, `Done`, and `Err`
+  methods delegate to `c.SetContext` when a custom context is set; otherwise
+  they remain no-ops.
 - `RequestCtx` exposes the raw `fasthttp` context. Its `Done` channel
   closes only on server shutdown, not on client disconnect.
 - Use `fiber.StoreInContext(c, key, value)` to store request-scoped values in both
