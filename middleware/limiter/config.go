@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 const defaultLimiterMax = 5
@@ -35,6 +36,12 @@ type Config struct {
 	//
 	// Default: A function that returns the static `Expiration` value from the config.
 	ExpirationFunc func(c fiber.Ctx) time.Duration
+
+	// clock overrides the timestamp source used for window accounting. It is
+	// unexported so it never becomes part of the public API and exists solely to
+	// make time-dependent tests deterministic. When nil, the cached
+	// utils.Timestamp() is used on the hot path.
+	clock func() time.Time
 
 	// KeyGenerator allows you to generate custom keys, by default c.IP() is used
 	//
@@ -143,4 +150,15 @@ func configDefault(config ...Config) Config {
 		}
 	}
 	return cfg
+}
+
+// currentSecond returns the current Unix time in whole seconds used for window
+// accounting. Production reads the cached utils.Timestamp() (refreshed by a 1s
+// ticker) to keep the hot path allocation- and syscall-free; tests can inject a
+// deterministic clock via the unexported clock field.
+func (cfg *Config) currentSecond() uint64 {
+	if cfg.clock != nil {
+		return uint64(cfg.clock().Unix())
+	}
+	return uint64(utils.Timestamp())
 }
