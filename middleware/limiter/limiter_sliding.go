@@ -63,7 +63,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		}
 
 		// Get timestamp
-		ts := uint64(utils.Timestamp())
+		ts := cfg.currentSecond()
 
 		// Rotate window
 		resetInSec := rotateWindow(e, ts, expiration)
@@ -133,7 +133,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 			}
 			e = entry
 
-			ts = uint64(utils.Timestamp())
+			ts = cfg.currentSecond()
 			resetInSec = rotateWindow(e, ts, expiration)
 			weight = float64(resetInSec) / float64(expiration)
 
