@@ -105,6 +105,71 @@ func (s *failingCSRFStorage) Reset() error {
 
 func (*failingCSRFStorage) Close() error { return nil }
 
+func Test_CSRF_Cookie_Security_Config(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		config         Config
+		expectSecure   bool
+		expectHTTPOnly bool
+	}{
+		{
+			name:           "default config sets secure and HttpOnly",
+			config:         Config{},
+			expectSecure:   true,
+			expectHTTPOnly: true,
+		},
+		{
+			name: "disable flags remove secure and HttpOnly",
+			config: Config{
+				DisableCookieSecure:   true,
+				DisableCookieHTTPOnly: true,
+			},
+			expectSecure:   false,
+			expectHTTPOnly: false,
+		},
+		{
+			name: "CookieSecure false and CookieHTTPOnly false use secure defaults",
+			config: Config{
+				CookieSecure:   false,
+				CookieHTTPOnly: false,
+			},
+			expectSecure:   true,
+			expectHTTPOnly: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(tc.config))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			ctx := &fasthttp.RequestCtx{}
+			ctx.Request.Header.SetMethod(fiber.MethodGet)
+			app.Handler()(ctx)
+
+			cookie := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+			require.Contains(t, cookie, "SameSite=Lax")
+			if tc.expectSecure {
+				require.Contains(t, cookie, "secure")
+			} else {
+				require.NotContains(t, cookie, "secure")
+			}
+			if tc.expectHTTPOnly {
+				require.Contains(t, cookie, "HttpOnly")
+			} else {
+				require.NotContains(t, cookie, "HttpOnly")
+			}
+		})
+	}
+}
+
 func TestCSRFStorageGetError(t *testing.T) {
 	t.Parallel()
 

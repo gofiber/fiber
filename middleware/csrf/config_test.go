@@ -11,6 +11,63 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+func TestConfigDefaultCookieSecurity(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		config           Config
+		expectedSecure   bool
+		expectedHTTPOnly bool
+	}{
+		{
+			name:             "empty config uses secure defaults",
+			config:           Config{},
+			expectedSecure:   true,
+			expectedHTTPOnly: true,
+		},
+		{
+			name: "false cookie flags use secure defaults",
+			config: Config{
+				CookieSecure:   false,
+				CookieHTTPOnly: false,
+			},
+			expectedSecure:   true,
+			expectedHTTPOnly: true,
+		},
+		{
+			name: "disable flags opt out of secure defaults",
+			config: Config{
+				DisableCookieSecure:   true,
+				DisableCookieHTTPOnly: true,
+			},
+			expectedSecure:   false,
+			expectedHTTPOnly: false,
+		},
+		{
+			name: "disable flags take precedence over explicit true",
+			config: Config{
+				CookieSecure:          true,
+				CookieHTTPOnly:        true,
+				DisableCookieSecure:   true,
+				DisableCookieHTTPOnly: true,
+			},
+			expectedSecure:   false,
+			expectedHTTPOnly: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := configDefault(tc.config)
+			require.Equal(t, tc.expectedSecure, cfg.CookieSecure)
+			require.Equal(t, tc.expectedHTTPOnly, cfg.CookieHTTPOnly)
+		})
+	}
+}
+
 // Test security validation functions
 func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 	t.Parallel()
