@@ -543,3 +543,72 @@ func TestTimeout_AbandonWithoutReclaimNotPooled(t *testing.T) {
 	app.ReleaseCtx(ctx)
 	require.True(t, ctx.IsAbandoned(), "abandoned, un-armed context must not be auto-reclaimed")
 }
+
+// TestTimeout_Integration_WithLazyContext verifies that the core's lazy context
+// activation works seamlessly during a standard timeout event.
+func TestTimeout_Integration_WithLazyContext(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/lazy-timeout", New(func(c fiber.Ctx) error {
+		_ = c.Context()
+
+		time.Sleep(50 * time.Millisecond)
+
+		select {
+		case <-c.Context().Done():
+			return c.Context().Err()
+		default:
+			return c.SendString("Should timeout")
+		}
+	}, Config{Timeout: 10 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/lazy-timeout", http.NoBody)
+	resp, err := app.Test(req)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+}
+
+func TestTimeout_Integration_PanicAfterTimeoutWithLazyCtx(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	ctxCh := make(chan fiber.Ctx, 1)
+	release := make(chan struct{})
+	panicDone := make(chan struct{})
+
+	app.Get("/lazy-panic", New(func(c fiber.Ctx) error {
+		_ = c.Context()
+		ctxCh <- c
+		<-release
+
+		defer close(panicDone)
+		panic("disaster after timeout")
+	}, Config{Timeout: 10 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/lazy-panic", http.NoBody)
+	resp, err := app.Test(req)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+
+	var c fiber.Ctx
+	select {
+	case c = <-ctxCh:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not start")
+	}
+
+	close(release)
+
+	select {
+	case <-panicDone:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not finish panic recovery")
+	}
+
+	require.Eventually(t, func() bool {
+		return !c.IsAbandoned()
+	}, time.Second, 5*time.Millisecond, "lazy context was not reclaimed properly after post-timeout panic")
+}
