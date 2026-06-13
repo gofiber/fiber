@@ -62,8 +62,7 @@ storage := redis.New(redis.Config{
 
 app.Use(session.New(session.Config{
     Storage:           storage,
-    CookieSecure:      true,              // HTTPS only
-    CookieHTTPOnly:    true,              // Prevent XSS
+
     CookieSameSite:    "Lax",             // CSRF protection
     IdleTimeout:       30 * time.Minute,  // Session timeout
     AbsoluteTimeout:   24 * time.Hour,    // Maximum session life
@@ -73,6 +72,7 @@ app.Use(session.New(session.Config{
 Notes:
 
 - AbsoluteTimeout must be greater than or equal to IdleTimeout; otherwise, the middleware panics during configuration.
+- CookieSecure and CookieHTTPOnly default to true. Use DisableCookieSecure or DisableCookieHTTPOnly only when you intentionally need to opt out.
 - If CookieSameSite is set to "None", the middleware automatically forces CookieSecure=true when setting the cookie.
 ```
 
@@ -439,8 +439,7 @@ app.Use(session.New(session.Config{
     Storage: redisStorage,
 
     // Security
-    CookieSecure:      true,    // HTTPS only (required in production)
-    CookieHTTPOnly:    true,    // No JavaScript access (prevents XSS)
+
     CookieSameSite:    "Lax",   // CSRF protection
 
     // Session Management
@@ -684,8 +683,10 @@ extractors.Chain(extractors ...extractors.Extractor) extractors.Extractor
 | `KeyGenerator`      | `func() string`             | Session ID generator        | `utils.SecureToken`                             |
 | `IdleTimeout`       | `time.Duration`             | Inactivity timeout          | `30 * time.Minute`                         |
 | `AbsoluteTimeout`   | `time.Duration`             | Maximum session duration    | `0` (unlimited)                            |
-| `CookieSecure`      | `bool`                      | HTTPS only                  | `false`                                    |
-| `CookieHTTPOnly`    | `bool`                      | No JavaScript access        | `false`                                    |
+| `CookieSecure`      | `bool`                      | HTTPS only                  | `true`                                     |
+| `DisableCookieSecure` | `bool`                    | Disable the Secure cookie flag | `false`                                 |
+| `CookieHTTPOnly`    | `bool`                      | No JavaScript access        | `true`                                     |
+| `DisableCookieHTTPOnly` | `bool`                  | Disable the HttpOnly cookie flag | `false`                               |
 | `CookieSameSite`    | `string`                    | SameSite attribute          | `"Lax"`                                    |
 | `CookiePath`        | `string`                    | Cookie path                 | `""`                                       |
 | `CookieDomain`      | `string`                    | Cookie domain               | `""`                                       |

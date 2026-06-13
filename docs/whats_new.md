@@ -1419,6 +1419,8 @@ The `Expiration` field in the CSRF middleware configuration has been renamed to 
 
 CSRF now redacts tokens and storage keys by default and exposes a `DisableValueRedaction` toggle (default `false`) if you must surface those values in diagnostics.
 
+CSRF cookies now default to `Secure` and `HttpOnly`. Use `DisableCookieSecure` or `DisableCookieHTTPOnly` when you intentionally need to opt out, such as local HTTP development or SPA token access.
+
 The CSRF middleware now validates the [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) header for unsafe HTTP methods. When present, requests with invalid `Sec-Fetch-Site` values (not one of "same-origin", "none", "same-site", or "cross-site") are rejected with `ErrFetchSiteInvalid`. Valid or absent headers proceed to standard origin and token validation checks, providing an early gate to catch malformed requests while maintaining compatibility with legitimate cross-site traffic.
 
 ### Idempotency
@@ -1715,6 +1717,8 @@ The session middleware has undergone significant improvements in v3, focusing on
 - **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
 
 - **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
+
+- **Secure Cookie Defaults**: `CookieSecure` and `CookieHTTPOnly` now default to `true`. Use `DisableCookieSecure` or `DisableCookieHTTPOnly` when you intentionally need to opt out.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
@@ -2983,6 +2987,7 @@ app.Use(csrf.New(csrf.Config{
 
 - **KeyLookup Field Removal**: The `KeyLookup` field has been removed from the CSRF middleware configuration. This field was deprecated and is no longer needed as the middleware now uses a more secure approach for token management.
 - **DisableValueRedaction Toggle**: CSRF redacts tokens and storage keys by default; set `DisableValueRedaction` to `true` when diagnostics require the raw values.
+- **Secure Cookie Defaults**: `CookieSecure` and `CookieHTTPOnly` now default to `true`. Use `DisableCookieSecure` or `DisableCookieHTTPOnly` when you intentionally need to opt out.
 
 - **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
 
@@ -3181,6 +3186,10 @@ Sessions obtained from a store must be released manually via `sess.Release()`.
 Additionally, replace the deprecated `KeyLookup` option with extractor
 functions such as `session.FromCookie()` or `session.FromHeader()`. Multiple
 extractors can be combined with `session.Chain()`.
+
+Session cookies now default to `Secure` and `HttpOnly`. Use
+`DisableCookieSecure` or `DisableCookieHTTPOnly` when you intentionally need to
+opt out.
 
 ```go
 // Before

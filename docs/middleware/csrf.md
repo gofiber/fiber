@@ -30,18 +30,25 @@ import (
     "github.com/gofiber/fiber/v3/middleware/csrf"
 )
 
-// Default config (development only)
+// Default config
 app.Use(csrf.New())
+
+// Local HTTP development only
+app.Use(csrf.New(csrf.Config{
+    DisableCookieSecure: true,
+}))
 
 // Production config
 app.Use(csrf.New(csrf.Config{
     CookieName:        "__Host-csrf_",
-    CookieSecure:      true,
-    CookieHTTPOnly:    true,  // false for SPAs
     CookieSameSite:    "Lax",
     CookieSessionOnly: true,
     Extractor:         extractors.FromHeader("X-Csrf-Token"),
     Session:           sessionStore,
+    // Secure cookie defaults are enabled by default. Set DisableCookieSecure to true to disable.
+    // DisableCookieSecure: true,
+    // Cookie HTTP Only is enabled by default. If JavaScript access is intentionally required, set DisableCookieHTTPOnly to true to disable.
+    // DisableCookieHTTPOnly: true,
     // Redaction is enabled by default. Set DisableValueRedaction when you must expose tokens or storage keys in diagnostics.
     // DisableValueRedaction: true,
 }))
@@ -50,8 +57,6 @@ app.Use(csrf.New(csrf.Config{
 ## Best Practices & Production Requirements
 
 :::danger Production Requirements
-
-- `CookieSecure: true` (HTTPS only)
 - `CookieSameSite: "Lax"` or `"Strict"`
 - Use `Session` store for better security
 
@@ -59,7 +64,7 @@ app.Use(csrf.New(csrf.Config{
 
 1. **Always use HTTPS** in production
 2. **Use sessions** for authenticated applications
-3. **Set `CookieSecure: true`** and appropriate SameSite values
+3. **Keep secure cookie defaults enabled** and choose appropriate SameSite values
 4. **Implement XSS protection** alongside CSRF
 5. **Regenerate tokens** after auth changes
 6. **Use `__Host-` cookie prefix** when possible
@@ -75,8 +80,6 @@ To mitigate BREACH attacks, ensure your pages are served over HTTPS, disable HTT
 ```go
 app.Use(csrf.New(csrf.Config{
     CookieName:        "__Host-csrf_",
-    CookieSecure:      true,
-    CookieHTTPOnly:    true,        // Secure - blocks JavaScript
     CookieSameSite:    "Lax",
     CookieSessionOnly: true,
     Extractor:         extractors.FromForm("_csrf"),
@@ -88,18 +91,17 @@ app.Use(csrf.New(csrf.Config{
 
 ```go
 app.Use(csrf.New(csrf.Config{
-    CookieName:        "__Host-csrf_",
-    CookieSecure:      true,
-    CookieHTTPOnly:    false,       // Required for JavaScript access to tokens
-    CookieSameSite:    "Lax",
-    CookieSessionOnly: true,
-    Extractor:         extractors.FromHeader("X-Csrf-Token"),
-    Session:           sessionStore,
+    CookieName:             "__Host-csrf_",
+    DisableCookieHTTPOnly:  true,   // Required for JavaScript access to tokens
+    CookieSameSite:         "Lax",
+    CookieSessionOnly:      true,
+    Extractor:              extractors.FromHeader("X-Csrf-Token"),
+    Session:                sessionStore,
 }))
 ```
 
 :::warning SPA Security Trade-off
-SPAs require `CookieHTTPOnly: false` to access tokens via JavaScript. This slightly increases XSS risk but is necessary for SPA functionality.
+SPAs require `DisableCookieHTTPOnly: true` to access tokens via JavaScript. This slightly increases XSS risk but is necessary for SPA functionality.
 :::
 
 ## Recipes for Common Use Cases
@@ -403,8 +405,10 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 | CookieName        | `string`                           | CSRF cookie name                                                                                                              | `"csrf_"`                    |
 | CookieDomain      | `string`                           | CSRF cookie domain                                                                                                            | `""`                         |
 | CookiePath        | `string`                           | CSRF cookie path                                                                                                              | `""`                         |
-| CookieSecure      | `bool`                             | HTTPS only cookie (**required for production**)                                                                               | `false`                      |
-| CookieHTTPOnly    | `bool`                             | Prevent JavaScript access (**use `false` for SPAs**)                                                                          | `false`                      |
+| CookieSecure      | `bool`                             | HTTPS only cookie                                                                                                             | `true`                       |
+| DisableCookieSecure | `bool`                           | Disable the Secure cookie flag                                                                                                | `false`                      |
+| CookieHTTPOnly    | `bool`                             | Prevent JavaScript access                                                                                                     | `true`                       |
+| DisableCookieHTTPOnly | `bool`                         | Disable the HttpOnly cookie flag (**required for JavaScript token access in SPAs**)                                           | `false`                      |
 | CookieSameSite    | `string`                           | SameSite attribute (**use "Lax" or "Strict"**)                                                                                | `"Lax"`                      |
 | CookieSessionOnly | `bool`                             | Session-only cookie (expires on browser close)                                                                                | `false`                      |
 | IdleTimeout       | `time.Duration`                    | Token expiration time                                                                                                         | `30 * time.Minute`           |
