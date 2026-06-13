@@ -57,6 +57,7 @@ app.Use(csrf.New(csrf.Config{
 ## Best Practices & Production Requirements
 
 :::danger Production Requirements
+
 - `CookieSameSite: "Lax"` or `"Strict"`
 - Use `Session` store for better security
 
