@@ -444,6 +444,33 @@ func Test_Session_NewWithStore(t *testing.T) {
 	require.Equal(t, "value="+token, string(ctx.Response.Body()))
 }
 
+func Test_Session_NewWithSuppliedStoreHonorsCookieOptOuts(t *testing.T) {
+	t.Parallel()
+
+	store := NewStore()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Store:                 store,
+		DisableCookieSecure:   true,
+		DisableCookieHTTPOnly: true,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		sess.Set("key", "value")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	cookie := resp.Header.Get(fiber.HeaderSetCookie)
+	require.Contains(t, cookie, "SameSite=Lax")
+	require.NotContains(t, cookie, "secure")
+	require.NotContains(t, cookie, "HttpOnly")
+}
+
 func Test_Session_FromSession(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
