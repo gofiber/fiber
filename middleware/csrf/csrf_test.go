@@ -111,12 +111,14 @@ func Test_CSRF_Cookie_Security_Config(t *testing.T) {
 	tests := []struct {
 		name           string
 		config         Config
+		expectSameSite string
 		expectSecure   bool
 		expectHTTPOnly bool
 	}{
 		{
 			name:           "default config sets secure and HttpOnly",
 			config:         Config{},
+			expectSameSite: "SameSite=Lax",
 			expectSecure:   true,
 			expectHTTPOnly: true,
 		},
@@ -126,6 +128,7 @@ func Test_CSRF_Cookie_Security_Config(t *testing.T) {
 				DisableCookieSecure:   true,
 				DisableCookieHTTPOnly: true,
 			},
+			expectSameSite: "SameSite=Lax",
 			expectSecure:   false,
 			expectHTTPOnly: false,
 		},
@@ -135,6 +138,17 @@ func Test_CSRF_Cookie_Security_Config(t *testing.T) {
 				CookieSecure:   false,
 				CookieHTTPOnly: false,
 			},
+			expectSameSite: "SameSite=Lax",
+			expectSecure:   true,
+			expectHTTPOnly: true,
+		},
+		{
+			name: "SameSite None forces secure with disabled secure",
+			config: Config{
+				CookieSameSite:      "None",
+				DisableCookieSecure: true,
+			},
+			expectSameSite: "SameSite=None",
 			expectSecure:   true,
 			expectHTTPOnly: true,
 		},
@@ -155,7 +169,7 @@ func Test_CSRF_Cookie_Security_Config(t *testing.T) {
 			app.Handler()(ctx)
 
 			cookie := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-			require.Contains(t, cookie, "SameSite=Lax")
+			require.Contains(t, cookie, tc.expectSameSite)
 			if tc.expectSecure {
 				require.Contains(t, cookie, "secure")
 			} else {

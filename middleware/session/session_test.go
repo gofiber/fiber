@@ -1026,11 +1026,13 @@ func Test_Session_Cookie_Secure_Config(t *testing.T) {
 		name             string
 		config           Config
 		expectSecure     bool
+		expectHTTPOnly   bool
 	}{
 		{
 			name:             "default config sets secure",
 			config:           Config{},
 			expectSecure:     true,
+			expectHTTPOnly:   true,
 			expectedInHeader: "SameSite=Lax",
 		},
 		{
@@ -1039,6 +1041,7 @@ func Test_Session_Cookie_Secure_Config(t *testing.T) {
 				CookieSecure: true,
 			},
 			expectSecure:     true,
+			expectHTTPOnly:   true,
 			expectedInHeader: "SameSite=Lax",
 		},
 		{
@@ -1047,6 +1050,7 @@ func Test_Session_Cookie_Secure_Config(t *testing.T) {
 				CookieSecure: false,
 			},
 			expectSecure:     true,
+			expectHTTPOnly:   true,
 			expectedInHeader: "SameSite=Lax",
 		},
 		{
@@ -1056,6 +1060,7 @@ func Test_Session_Cookie_Secure_Config(t *testing.T) {
 				DisableCookieSecure: true,
 			},
 			expectSecure:     false,
+			expectHTTPOnly:   true,
 			expectedInHeader: "SameSite=Lax",
 		},
 		{
@@ -1065,7 +1070,17 @@ func Test_Session_Cookie_Secure_Config(t *testing.T) {
 				DisableCookieSecure: true,
 			},
 			expectSecure:     false,
+			expectHTTPOnly:   true,
 			expectedInHeader: "SameSite=Strict",
+		},
+		{
+			name: "DisableCookieHTTPOnly disables HttpOnly",
+			config: Config{
+				DisableCookieHTTPOnly: true,
+			},
+			expectSecure:     true,
+			expectHTTPOnly:   false,
+			expectedInHeader: "SameSite=Lax",
 		},
 		{
 			name: "SameSite None forces secure despite DisableCookieSecure",
@@ -1074,6 +1089,7 @@ func Test_Session_Cookie_Secure_Config(t *testing.T) {
 				DisableCookieSecure: true,
 			},
 			expectSecure:     true,
+			expectHTTPOnly:   true,
 			expectedInHeader: "SameSite=None",
 		},
 	}
@@ -1100,6 +1116,11 @@ func Test_Session_Cookie_Secure_Config(t *testing.T) {
 				require.Contains(t, cookie, "secure")
 			} else {
 				require.NotContains(t, cookie, "secure")
+			}
+			if tc.expectHTTPOnly {
+				require.Contains(t, cookie, "HttpOnly")
+			} else {
+				require.NotContains(t, cookie, "HttpOnly")
 			}
 		})
 	}
