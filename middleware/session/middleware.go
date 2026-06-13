@@ -86,6 +86,8 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 
 	if cfg.Store == nil {
 		cfg.Store = NewStore(cfg)
+	} else {
+		applyStoreCookieOptOuts(&cfg)
 	}
 
 	handler := func(c fiber.Ctx) error {
@@ -116,6 +118,17 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 	}
 
 	return handler, cfg.Store
+}
+
+func applyStoreCookieOptOuts(cfg *Config) {
+	if cfg.DisableCookieSecure {
+		cfg.Store.DisableCookieSecure = true
+		cfg.Store.CookieSecure = false
+	}
+	if cfg.DisableCookieHTTPOnly {
+		cfg.Store.DisableCookieHTTPOnly = true
+		cfg.Store.CookieHTTPOnly = false
+	}
 }
 
 var registerLogContextTagsOnce sync.Once
