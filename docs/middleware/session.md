@@ -68,13 +68,13 @@ app.Use(session.New(session.Config{
     AbsoluteTimeout:   24 * time.Hour,    // Maximum session life
     Extractor:         extractors.FromCookie("__Host-session_id"),
 }))
+```
 
 Notes:
 
 - AbsoluteTimeout must be greater than or equal to IdleTimeout; otherwise, the middleware panics during configuration.
 - CookieSecure and CookieHTTPOnly default to true. Use DisableCookieSecure or DisableCookieHTTPOnly only when you intentionally need to opt out.
 - If CookieSameSite is set to "None", the middleware automatically forces CookieSecure=true when setting the cookie.
-```
 
 ## Usage Patterns
 
@@ -448,7 +448,6 @@ app.Use(session.New(session.Config{
 
     // Cookie Settings
     CookiePath:        "/",
-    CookieDomain:      "example.com",
     CookieSessionOnly: false,   // Persist across browser restarts
 
     // Session ID

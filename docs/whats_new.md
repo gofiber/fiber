@@ -3000,7 +3000,7 @@ app.Use(csrf.New(csrf.Config{
 
 // After - use Extractor instead
 app.Use(csrf.New(csrf.Config{
-    Extractor: csrf.FromHeader("X-Csrf-Token"),
+    Extractor: extractors.FromHeader("X-Csrf-Token"),
     // other config...
 }))
 ```
@@ -3008,22 +3008,15 @@ app.Use(csrf.New(csrf.Config{
 - **FromCookie Extractor Removal**: The `csrf.FromCookie` extractor has been intentionally removed for security reasons. Using cookie-based extraction defeats the purpose of CSRF protection by making the extracted token always match the cookie value.
 
 ```go
-// Before - This was a security vulnerability
-app.Use(csrf.New(csrf.Config{
-    Extractor: csrf.FromCookie("csrf_token"), // ❌ Insecure!
-}))
-
 // After - Use secure extractors instead
 app.Use(csrf.New(csrf.Config{
-    Extractor: csrf.FromHeader("X-Csrf-Token"), // ✅ Secure
+    Extractor: extractors.FromHeader("X-Csrf-Token"), // ✅ Secure
     // or
-    Extractor: csrf.FromForm("_csrf"),          // ✅ Secure
-    // or
-    Extractor: csrf.FromQuery("csrf_token"),    // ✅ Acceptable
+    Extractor: extractors.FromForm("_csrf"),          // ✅ Secure
 }))
 ```
 
-**Security Note**: The removal of `FromCookie` prevents a common misconfiguration that would completely bypass CSRF protection. The middleware uses the Double Submit Cookie pattern, which requires the token to be submitted through a different channel than the cookie to provide meaningful protection.
+**Security Note**: The removal of `FromCookie` prevents a common misconfiguration that would completely bypass CSRF protection. Query-based extraction is also discouraged because URLs can be logged, cached, and leaked through referrers. The middleware uses the Double Submit Cookie pattern, which requires the token to be submitted through a different channel than the cookie to provide meaningful protection.
 
 #### Idempotency
 
