@@ -343,7 +343,7 @@ func Test_Execute(t *testing.T) {
 	})
 }
 
-func Test_PreHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
+func Test_PreHooks_SerializesClientMutationAndBuiltins(t *testing.T) {
 	t.Parallel()
 
 	client := New()
@@ -384,17 +384,23 @@ func Test_PreHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
 
 	select {
 	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("second request hook execution was serialized by the client lock")
+		t.Fatal("second request hook ran before the first hook and built-in parsers completed")
+	case <-time.After(50 * time.Millisecond):
 	}
 
 	close(release)
 
 	require.NoError(t, <-firstDone)
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("second request hook was not invoked after the first request completed")
+	}
 	require.NoError(t, <-secondDone)
 }
 
-func Test_AfterHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
+func Test_AfterHooks_SerializesClientMutation(t *testing.T) {
 	t.Parallel()
 
 	client := New()
@@ -438,13 +444,19 @@ func Test_AfterHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
 
 	select {
 	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("second response hook execution was serialized by the client lock")
+		t.Fatal("second response hook ran before the first response hook completed")
+	case <-time.After(50 * time.Millisecond):
 	}
 
 	close(release)
 
 	require.NoError(t, <-firstDone)
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("second response hook was not invoked after the first response completed")
+	}
 	require.NoError(t, <-secondDone)
 }
 
