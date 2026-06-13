@@ -103,13 +103,23 @@ type Config struct {
 
 	// CookieSecure indicates if CSRF cookie is secure.
 	//
-	// Optional. Default: false
+	// Optional. Default: true
 	CookieSecure bool
+
+	// DisableCookieSecure disables the secure flag for the CSRF cookie.
+	//
+	// Optional. Default: false
+	DisableCookieSecure bool
 
 	// CookieHTTPOnly indicates if CSRF cookie is HTTP only.
 	//
-	// Optional. Default: false
+	// Optional. Default: true
 	CookieHTTPOnly bool
+
+	// DisableCookieHTTPOnly disables the HTTP only flag for the CSRF cookie.
+	//
+	// Optional. Default: false
+	DisableCookieHTTPOnly bool
 
 	// CookieSessionOnly decides whether cookie should last for only the browser session.
 	// Ignores Expiration if set to true.
@@ -136,6 +146,8 @@ var ConfigDefault = Config{
 	ErrorHandler:          defaultErrorHandler,
 	Extractor:             extractors.FromHeader(HeaderName),
 	DisableValueRedaction: false,
+	CookieSecure:          true,
+	CookieHTTPOnly:        true,
 }
 
 // defaultErrorHandler is the default error handler that processes errors from fiber.Handler.
@@ -172,6 +184,18 @@ func configDefault(config ...Config) Config {
 	// Check if Extractor is zero value (since it's a struct)
 	if cfg.Extractor.Extract == nil {
 		cfg.Extractor = ConfigDefault.Extractor
+	}
+	if !cfg.CookieSecure {
+		cfg.CookieSecure = ConfigDefault.CookieSecure
+	}
+	if !cfg.CookieHTTPOnly {
+		cfg.CookieHTTPOnly = ConfigDefault.CookieHTTPOnly
+	}
+	if cfg.DisableCookieHTTPOnly {
+		cfg.CookieHTTPOnly = false
+	}
+	if cfg.DisableCookieSecure {
+		cfg.CookieSecure = false
 	}
 	// Validate extractor security configurations
 	validateExtractorSecurity(&cfg)

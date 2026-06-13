@@ -72,13 +72,23 @@ type Config struct {
 
 	// CookieSecure specifies if the session cookie should be secure.
 	//
-	// Optional. Default: false
+	// Optional. Default: true
 	CookieSecure bool
+
+	// DisableCookieSecure disables the secure flag for the session cookie.
+	//
+	// Optional. Default: false
+	DisableCookieSecure bool
 
 	// CookieHTTPOnly specifies if the session cookie should be HTTP-only.
 	//
-	// Optional. Default: false
+	// Optional. Default: true
 	CookieHTTPOnly bool
+
+	// DisableCookieHTTPOnly disables the HTTP only flag for the session cookie.
+	//
+	// Optional. Default: false
+	DisableCookieHTTPOnly bool
 
 	// CookieSessionOnly determines if the cookie should expire when the browser session ends.
 	//
@@ -95,6 +105,8 @@ var ConfigDefault = Config{
 	KeyGenerator:   utils.SecureToken,
 	Extractor:      extractors.FromCookie("session_id"),
 	CookieSameSite: "Lax",
+	CookieSecure:   true,
+	CookieHTTPOnly: true,
 }
 
 // DefaultErrorHandler logs the error and sends a 500 status code.
@@ -158,6 +170,22 @@ func configDefault(config ...Config) Config {
 
 	if cfg.CookieSameSite == "" {
 		cfg.CookieSameSite = ConfigDefault.CookieSameSite
+	}
+
+	if !cfg.CookieSecure {
+		cfg.CookieSecure = ConfigDefault.CookieSecure
+	}
+
+	if !cfg.CookieHTTPOnly {
+		cfg.CookieHTTPOnly = ConfigDefault.CookieHTTPOnly
+	}
+
+	if cfg.DisableCookieSecure {
+		cfg.CookieSecure = false
+	}
+
+	if cfg.DisableCookieHTTPOnly {
+		cfg.CookieHTTPOnly = false
 	}
 
 	return cfg
