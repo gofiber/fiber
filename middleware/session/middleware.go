@@ -109,6 +109,10 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 
 		if !isDestroyed {
 			m.saveSession()
+		} else {
+			// saveSession is skipped for destroyed sessions, so the session must
+			// be returned to the pool here.
+			releaseSession(m.Session)
 		}
 
 		releaseMiddleware(m)

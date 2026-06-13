@@ -77,6 +77,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 
 		// Calculate when it resets in seconds
 		resetInSec := e.exp - ts
+		windowExpiresAt := e.exp
 
 		// Set how many hits we have left
 		remaining := maxRequests - e.currHits
@@ -120,8 +121,12 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 				return getErr
 			}
 			e = entry
-			e.currHits--
-			remaining++
+			// Only credit the hit back if it still belongs to the same window;
+			// after a rollover the original hit no longer counts toward e.currHits.
+			if e.exp == windowExpiresAt && e.currHits > 0 {
+				e.currHits--
+			}
+			remaining = maxRequests - e.currHits
 			if setErr := manager.set(reqCtx, key, e, expirationDuration); setErr != nil {
 				mux.Unlock()
 				return fmt.Errorf("limiter: failed to persist state: %w", setErr)

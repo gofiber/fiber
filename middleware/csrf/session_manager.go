@@ -47,6 +47,7 @@ func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) []byte {
 			// Handle error
 			return nil
 		}
+		defer storeSess.Release()
 		token, ok = storeSess.Get(sessionKey).(Token)
 	}
 
@@ -73,6 +74,7 @@ func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Du
 			// Handle error
 			return
 		}
+		defer storeSess.Release()
 		storeSess.Set(sessionKey, Token{Key: key, Raw: raw, Expiration: time.Now().Add(exp)})
 		if err := storeSess.Save(); err != nil {
 			log.Warn("csrf: failed to save session: ", err)
@@ -92,6 +94,7 @@ func (m *sessionManager) delRaw(c fiber.Ctx) {
 			// Handle error
 			return
 		}
+		defer storeSess.Release()
 		storeSess.Delete(sessionKey)
 		if err := storeSess.Save(); err != nil {
 			log.Warn("csrf: failed to save session: ", err)
