@@ -1789,3 +1789,16 @@ func Test_Sliding_Window(t *testing.T) {
 		singleRequest(true)
 	}
 }
+
+// Test_Config_currentSecond_NegativeClock verifies that an injected pre-epoch
+// (negative Unix) timestamp is clamped to 0 instead of wrapping to a huge
+// uint64, while a non-negative timestamp is converted unchanged.
+func Test_Config_currentSecond_NegativeClock(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{clock: func() time.Time { return time.Unix(-100, 0) }}
+	require.Equal(t, uint64(0), cfg.currentSecond())
+
+	cfg.clock = func() time.Time { return time.Unix(42, 0) }
+	require.Equal(t, uint64(42), cfg.currentSecond())
+}
