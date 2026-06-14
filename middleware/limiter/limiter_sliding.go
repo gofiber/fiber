@@ -152,6 +152,12 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 			// Unlock entry
 			mux.Unlock()
 
+			// rate can exceed maxRequests (blocked requests persist their
+			// increment), so clamp remaining to keep the header >= 0.
+			if remaining < 0 {
+				remaining = 0
+			}
+
 			// We can continue, update RateLimit headers
 			if !cfg.DisableHeaders {
 				c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))

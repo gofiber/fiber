@@ -47,6 +47,8 @@ func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) []byte {
 			// Handle error
 			return nil
 		}
+		// token.Raw stays valid after Release only because session Reset() does
+		// not scrub values; copy it before Release if that ever changes.
 		defer storeSess.Release()
 		token, ok = storeSess.Get(sessionKey).(Token)
 	}

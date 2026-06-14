@@ -115,6 +115,9 @@ func isNoneMatch(header, etag []byte) bool {
 	}
 
 	for len(header) > 0 {
+		// RFC 9110 allows a comma inside an opaque-tag, so this split can
+		// mis-parse such tags. It fails open and Fiber's ETags never contain
+		// commas, so it is acceptable here.
 		entry, rest, _ := bytes.Cut(header, []byte(","))
 		header = rest
 		if etagWeakMatch(utils.TrimSpace(entry), etag) {
