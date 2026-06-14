@@ -158,7 +158,13 @@ func configDefault(config ...Config) Config {
 // deterministic clock via the unexported clock field.
 func (cfg *Config) currentSecond() uint64 {
 	if cfg.clock != nil {
-		return uint64(cfg.clock().Unix())
+		// Guard against pre-epoch (negative) timestamps so the int64 -> uint64
+		// conversion never wraps to a huge value and corrupts window math.
+		sec := cfg.clock().Unix()
+		if sec < 0 {
+			return 0
+		}
+		return uint64(sec)
 	}
 	return uint64(utils.Timestamp())
 }
