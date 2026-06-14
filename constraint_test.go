@@ -297,7 +297,29 @@ func Test_CustomConstraintWrapper_DelegatesAnalyze(t *testing.T) {
 
 	typed, err := analyzer.Analyze([]string{"2006-01-02"})
 	require.NoError(t, err)
-	require.Len(t, typed, 1)
-	require.Equal(t, "2006-01-02", typed[0])
+	require.Equal(t, []any{[]string{"2006-01-02"}}, typed)
 	require.Equal(t, "2006-01-02", custom.layout)
+}
+
+type testCustomConstraintWithTypedAnalyzer struct{}
+
+func (*testCustomConstraintWithTypedAnalyzer) Name() string { return "customRole" }
+func (*testCustomConstraintWithTypedAnalyzer) Execute(param string, args ...string) bool {
+	return len(args) == 1 && args[0] == "admin" && param == "admin"
+}
+
+func (*testCustomConstraintWithTypedAnalyzer) Analyze(args []string) ([]any, error) {
+	return stringArgsToAny(args), nil
+}
+
+func Test_CustomConstraintWrapper_ExecuteKeepsLegacyArgsWithAnalyzer(t *testing.T) {
+	t.Parallel()
+
+	custom := &testCustomConstraintWithTypedAnalyzer{}
+	handler := findConstraintHandler("customRole", nil, []CustomConstraint{custom})
+	require.NotNil(t, handler)
+
+	c := newConstraint(handler, "customRole", []string{"admin"})
+	require.True(t, c.matchConstraint("admin"))
+	require.False(t, c.matchConstraint("guest"))
 }
