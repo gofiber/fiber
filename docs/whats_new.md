@@ -610,6 +610,29 @@ testConfig := fiber.TestConfig{
 }
 ```
 
+### Constraint System
+
+The internal constraint system has been unified into a single `ConstraintHandler` interface. Built-in and custom constraints are now treated uniformly through this interface, with an optional `ConstraintAnalyzer` phase for precomputation at route registration time.
+
+```go
+type ConstraintHandler interface {
+    Name() string
+    Execute(param string, data []any) bool
+}
+
+type ConstraintAnalyzer interface {
+    Analyze(args []string) ([]any, error)
+}
+```
+
+Key improvements:
+
+- **Zero per-request parsing**: `strconv.Atoi`, `time.Parse` layouts, and regex compilation happen once at registration via `Analyze()`, not on every request.
+- **Single dispatch**: The previous `TypeConstraint` bitmask switch has been replaced by a single `handler.Execute()` call.
+- **Backward compatible**: Existing `CustomConstraint` implementations continue to work unchanged. The `CustomConstraint` interface, `RegisterCustomConstraint()` API, and `CheckConstraint()` method are all preserved.
+
+The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` fields are retained but deprecated.
+
 ## 🧠 Context
 
 ### New Features

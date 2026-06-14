@@ -9,78 +9,15 @@ package fiber
 import (
 	"bytes"
 	"fmt"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
-	"unicode"
 
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
-	"github.com/google/uuid"
 )
-
-type regexMatcher interface {
-	// MatchString reports whether the string s contains any match of the regex pattern.
-	MatchString(s string) bool
-}
-
-var (
-	regexMatcherType = reflect.TypeFor[regexMatcher]()
-	stringType       = reflect.TypeFor[string]()
-)
-
-func validateRegexHandler(handler any) any {
-	if handler == nil {
-		return regexp.MustCompile
-	}
-
-	handlerValue := reflect.ValueOf(handler)
-	handlerType := handlerValue.Type()
-
-	if handlerType.Kind() != reflect.Func || handlerValue.IsNil() {
-		panic("fiber: Config.RegexHandler must be a non-nil function")
-	}
-	if handlerType.NumIn() != 1 || handlerType.In(0) != stringType || handlerType.NumOut() != 1 {
-		panic("fiber: Config.RegexHandler must have signature func(string) T")
-	}
-	if !handlerType.Out(0).Implements(regexMatcherType) {
-		panic("fiber: Config.RegexHandler return type must support MatchString(string) bool")
-	}
-
-	return handler
-}
-
-func isNilRegexMatcher(matcher regexMatcher) bool {
-	if matcher == nil {
-		return true
-	}
-
-	matcherValue := reflect.ValueOf(matcher)
-	switch matcherValue.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return matcherValue.IsNil()
-	default:
-		return false
-	}
-}
-
-// compileRegex calls the RegexHandler function and returns a regexMatcher.
-func compileRegex(handler any, pattern string) regexMatcher {
-	result := reflect.ValueOf(handler).Call([]reflect.Value{reflect.ValueOf(pattern)})
-	matcher, ok := result[0].Interface().(regexMatcher)
-	if !ok {
-		panic("fiber: Config.RegexHandler return type must support MatchString(string) bool")
-	}
-	if isNilRegexMatcher(matcher) {
-		panic("fiber: Config.RegexHandler must not return nil")
-	}
-
-	return matcher
-}
 
 // routeParser holds the path segments and param names
 type routeParser struct {
@@ -98,7 +35,6 @@ var routerParserPool = &sync.Pool{
 
 // routeSegment holds the segment metadata
 type routeSegment struct {
-	regexMatchers map[*Constraint]regexMatcher
 	// const information
 	Const       string        // constant part of the route
 	ParamName   string        // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
@@ -132,32 +68,41 @@ const (
 	paramConstraintDataSeparator byte = ','  // separator of data of type constraint for a parameter
 )
 
-// TypeConstraint parameter constraint types
+// TypeConstraint parameter constraint types.
+//
+// Deprecated: Use the ConstraintHandler interface instead. Retained for
+// backward compatibility with external code that reads or compares IDs.
 type TypeConstraint uint16
 
 // Constraint describes the validation rules that apply to a dynamic route
 // segment when matching incoming requests.
+// See constraint.go for the ConstraintHandler and ConstraintAnalyzer interfaces.
 type Constraint struct {
-	RegexCompiler     *regexp.Regexp
-	Name              string
-	Data              []string
-	customConstraints []CustomConstraint
-	ID                TypeConstraint
+	handler   ConstraintHandler
+	typedData []any
+
+	// RegexCompiler is populated when the constraint is a regex and the
+	// default regexp.Compile engine is used.
+	//
+	// Deprecated: Use the ConstraintHandler interface instead. Retained for
+	// backward compatibility with external code that reads this field.
+	RegexCompiler *regexp.Regexp
+
+	// Name is the raw constraint name as it appeared in the route pattern
+	// (e.g. "minlen", not the canonical "minLen").
+	Name string
+
+	// Data holds the raw parsed constraint arguments from the route pattern.
+	Data []string
+
+	// ID identifies the built-in constraint kind.
+	//
+	// Deprecated: Use the ConstraintHandler interface instead. Retained for
+	// backward compatibility with external code that reads or compares IDs.
+	ID TypeConstraint
 }
 
-// CustomConstraint is an interface for custom constraints
-type CustomConstraint interface {
-	// Name returns the name of the constraint.
-	// This name is used in the constraint matching.
-	Name() string
-
-	// Execute executes the constraint.
-	// It returns true if the constraint is matched and right.
-	// param is the parameter value to check.
-	// args are the constraint arguments.
-	Execute(param string, args ...string) bool
-}
-
+// Deprecated: Use the ConstraintHandler interface instead.
 const (
 	noConstraint TypeConstraint = 1 << iota
 	intConstraint
@@ -176,10 +121,25 @@ const (
 	regexConstraint
 )
 
-const (
-	needOneData = minLenConstraint | maxLenConstraint | lenConstraint | minConstraint | maxConstraint | datetimeConstraint | regexConstraint
-	needTwoData = betweenLenConstraint | rangeConstraint
-)
+// constraintNameToID maps canonical constraint names to their TypeConstraint ID.
+//
+// Deprecated: retained for populating Constraint.ID for backward compatibility.
+var constraintNameToID = map[string]TypeConstraint{
+	ConstraintInt:        intConstraint,
+	ConstraintBool:       boolConstraint,
+	ConstraintFloat:      floatConstraint,
+	ConstraintAlpha:      alphaConstraint,
+	ConstraintDatetime:   datetimeConstraint,
+	ConstraintGUID:       guidConstraint,
+	ConstraintMinLen:     minLenConstraint,
+	ConstraintMaxLen:     maxLenConstraint,
+	ConstraintLen:        lenConstraint,
+	ConstraintBetweenLen: betweenLenConstraint,
+	ConstraintMin:        minConstraint,
+	ConstraintMax:        maxConstraint,
+	ConstraintRange:      rangeConstraint,
+	ConstraintRegex:      regexConstraint,
+}
 
 // list of possible parameter and segment delimiter
 var (
@@ -461,10 +421,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any
 	paramName := RemoveEscapeChar(GetTrimmedParam(processedPart))
 
 	// Check has constraint
-	var (
-		constraints   []*Constraint
-		regexMatchers map[*Constraint]regexMatcher
-	)
+	var constraints []*Constraint
 
 	if hasConstraint := paramConstraintStartPosition != -1 && paramConstraintEndPosition != -1; hasConstraint {
 		constraintString := pattern[paramConstraintStartPosition+1 : paramConstraintEndPosition]
@@ -475,54 +432,32 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any
 			start := findNextNonEscapedCharPosition(c, paramConstraintDataStart)
 			end := strings.LastIndexByte(c, paramConstraintDataEnd)
 
-			// Assign constraint
+			var rawName string
+			var data []string
+
 			if start != -1 && end != -1 {
-				constraint := &Constraint{
-					ID:                getParamConstraintType(c[:start]),
-					Name:              c[:start],
-					customConstraints: customConstraints,
-				}
-
-				// remove escapes from data
-				if constraint.ID != regexConstraint {
-					constraint.Data = splitNonEscaped(c[start+1:end], paramConstraintDataSeparator)
-					if len(constraint.Data) == 1 {
-						constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
-					} else if len(constraint.Data) == 2 { // This is fine, we simply expect two parts
-						constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
-						constraint.Data[1] = RemoveEscapeChar(constraint.Data[1])
-					}
-				}
-
-				// Precompile regex if has regex constraint
-				if constraint.ID == regexConstraint {
-					constraint.Data = []string{c[start+1 : end]}
-					compiler := compileRegex(regexHandler, constraint.Data[0])
-					if regexpCompiler, ok := compiler.(*regexp.Regexp); ok {
-						constraint.RegexCompiler = regexpCompiler
-					} else {
-						if regexMatchers == nil {
-							regexMatchers = make(map[*Constraint]regexMatcher)
-						}
-						regexMatchers[constraint] = compiler
-					}
-				}
-
-				constraints = append(constraints, constraint)
+				rawName = c[:start]
+				data = []string{c[start+1 : end]}
 			} else {
-				constraints = append(constraints, &Constraint{
-					ID:                getParamConstraintType(c),
-					Data:              []string{},
-					Name:              c,
-					customConstraints: customConstraints,
-				})
+				rawName = c
+				data = []string{}
 			}
+
+			handler := findConstraintHandler(rawName, regexHandler, customConstraints)
+			if handler == nil {
+				handler = findConstraintHandler(resolveConstraintName(rawName), regexHandler, customConstraints)
+			}
+			if handler == nil {
+				continue
+			}
+
+			constraint := newConstraint(handler, rawName, data)
+			constraints = append(constraints, constraint)
 		}
 
 		paramName = RemoveEscapeChar(GetTrimmedParam(pattern[0:paramConstraintStartPosition]))
 	}
 
-	// add access iterator to wildcard and plus
 	if isWildCard {
 		parser.wildCardCount++
 		paramName += strconv.Itoa(parser.wildCardCount)
@@ -540,7 +475,6 @@ func (parser *routeParser) analyseParameterPart(pattern string, regexHandler any
 
 	if len(constraints) > 0 {
 		segment.Constraints = constraints
-		segment.regexMatchers = regexMatchers
 	}
 
 	return n, segment
@@ -619,7 +553,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			if !segment.IsOptional || i != 0 {
 				// check constraint
 				for _, c := range segment.Constraints {
-					if matched := segment.checkConstraint(c, params[paramsIterator]); !matched {
+					if matched := c.matchConstraint(params[paramsIterator]); !matched {
 						return false
 					}
 				}
@@ -755,190 +689,8 @@ func RemoveEscapeCharBytes(word []byte) []byte {
 	return word[:dst]
 }
 
-func getParamConstraintType(constraintPart string) TypeConstraint {
-	switch constraintPart {
-	case ConstraintInt:
-		return intConstraint
-	case ConstraintBool:
-		return boolConstraint
-	case ConstraintFloat:
-		return floatConstraint
-	case ConstraintAlpha:
-		return alphaConstraint
-	case ConstraintGUID:
-		return guidConstraint
-	case ConstraintMinLen, ConstraintMinLenLower:
-		return minLenConstraint
-	case ConstraintMaxLen, ConstraintMaxLenLower:
-		return maxLenConstraint
-	case ConstraintLen:
-		return lenConstraint
-	case ConstraintBetweenLen, ConstraintBetweenLenLower:
-		return betweenLenConstraint
-	case ConstraintMin:
-		return minConstraint
-	case ConstraintMax:
-		return maxConstraint
-	case ConstraintRange:
-		return rangeConstraint
-	case ConstraintDatetime:
-		return datetimeConstraint
-	case ConstraintRegex:
-		return regexConstraint
-	default:
-		return noConstraint
-	}
-}
-
-// CheckConstraint validates if a param matches the given constraint
-// Returns true if the param passes the constraint check, false otherwise
+// CheckConstraint validates if a param matches the given constraint.
+// Kept for backward compatibility with external callers.
 func (c *Constraint) CheckConstraint(param string) bool {
-	// First check if there's a custom constraint with the same name
-	// This allows custom constraints to override built-in constraints
-	for _, cc := range c.customConstraints {
-		if cc.Name() == c.Name {
-			return cc.Execute(param, c.Data...)
-		}
-	}
-
-	var (
-		err error
-		num int
-	)
-
-	// Validate constraint has required data
-	if c.ID&needOneData != 0 && len(c.Data) == 0 {
-		return false
-	}
-
-	if c.ID&needTwoData != 0 && len(c.Data) < 2 {
-		return false
-	}
-
-	switch c.ID {
-	case noConstraint:
-		return true
-	case intConstraint:
-		_, err = strconv.Atoi(param)
-	case boolConstraint:
-		_, err = strconv.ParseBool(param)
-	case floatConstraint:
-		_, err = strconv.ParseFloat(param, 32)
-	case alphaConstraint:
-		for _, r := range param {
-			if !unicode.IsLetter(r) {
-				return false
-			}
-		}
-	case guidConstraint:
-		_, err = uuid.Parse(param)
-	case minLenConstraint:
-		data, parseErr := strconv.Atoi(c.Data[0])
-		if parseErr != nil {
-			return false
-		}
-
-		if len(param) < data {
-			return false
-		}
-	case maxLenConstraint:
-		data, parseErr := strconv.Atoi(c.Data[0])
-		if parseErr != nil {
-			return false
-		}
-
-		if len(param) > data {
-			return false
-		}
-	case lenConstraint:
-		data, parseErr := strconv.Atoi(c.Data[0])
-		if parseErr != nil {
-			return false
-		}
-
-		if len(param) != data {
-			return false
-		}
-	case betweenLenConstraint:
-		data, parseErr := strconv.Atoi(c.Data[0])
-		if parseErr != nil {
-			return false
-		}
-
-		data2, parseErr := strconv.Atoi(c.Data[1])
-		if parseErr != nil {
-			return false
-		}
-
-		length := len(param)
-		if length < data || length > data2 {
-			return false
-		}
-	case minConstraint:
-		data, parseErr := strconv.Atoi(c.Data[0])
-		if parseErr != nil {
-			return false
-		}
-
-		num, err = strconv.Atoi(param)
-
-		if err != nil || num < data {
-			return false
-		}
-	case maxConstraint:
-		data, parseErr := strconv.Atoi(c.Data[0])
-		if parseErr != nil {
-			return false
-		}
-
-		num, err = strconv.Atoi(param)
-
-		if err != nil || num > data {
-			return false
-		}
-	case rangeConstraint:
-		data, parseErr := strconv.Atoi(c.Data[0])
-		if parseErr != nil {
-			return false
-		}
-
-		data2, parseErr := strconv.Atoi(c.Data[1])
-		if parseErr != nil {
-			return false
-		}
-
-		num, err = strconv.Atoi(param)
-
-		if err != nil || num < data || num > data2 {
-			return false
-		}
-	case datetimeConstraint:
-		_, err = time.Parse(c.Data[0], param)
-		if err != nil {
-			return false
-		}
-	case regexConstraint:
-		if c.RegexCompiler == nil {
-			return false
-		}
-		if match := c.RegexCompiler.MatchString(param); !match {
-			return false
-		}
-	default:
-		return false
-	}
-
-	return err == nil
-}
-
-func (segment *routeSegment) checkConstraint(constraint *Constraint, param string) bool {
-	if constraint.ID != regexConstraint {
-		return constraint.CheckConstraint(param)
-	}
-
-	if matcher, ok := segment.regexMatchers[constraint]; ok {
-		return matcher.MatchString(param)
-	}
-
-	return constraint.CheckConstraint(param)
+	return c.matchConstraint(param)
 }

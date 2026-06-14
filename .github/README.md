@@ -824,6 +824,7 @@ Run these commands to ensure your code adheres to project standards and best pra
 Fiber is an open-source project that runs on donations to pay the bills, e.g., our domain name, GitBook, Netlify, and serverless hosting. If you want to support Fiber, please sponsor the organization via ⭐ [**GitHub Sponsors**](https://github.com/sponsors/gofiber).
 
 <!-- sponsors -->
+
 ### 📅 Monthly Sponsors
 
 <table>
