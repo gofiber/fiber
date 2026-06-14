@@ -101,7 +101,9 @@ type customConstraintWrapper struct {
 func (w *customConstraintWrapper) Analyze(args []string) ([]any, error) {
 	parsedArgs := parseConstraintArgs(args)
 	if analyzer, ok := w.CustomConstraint.(ConstraintAnalyzer); ok {
-		return analyzer.Analyze(parsedArgs)
+		if _, err := analyzer.Analyze(parsedArgs); err != nil {
+			return nil, err
+		}
 	}
 	return []any{parsedArgs}, nil
 }
