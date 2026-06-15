@@ -110,7 +110,7 @@ func (r *Response) String() string {
 	return utils.TrimSpace(string(r.Body()))
 }
 
-// JSON unmarshal the response body into the given interface{} using JSON.
+// JSON unmarshal the response body into the given any using JSON.
 func (r *Response) JSON(v any) error {
 	if r.client == nil {
 		return ErrClientNil
@@ -119,7 +119,7 @@ func (r *Response) JSON(v any) error {
 	return r.client.jsonUnmarshal(r.Body(), v)
 }
 
-// CBOR unmarshal the response body into the given interface{} using CBOR.
+// CBOR unmarshal the response body into the given any using CBOR.
 func (r *Response) CBOR(v any) error {
 	if r.client == nil {
 		return ErrClientNil
@@ -128,7 +128,7 @@ func (r *Response) CBOR(v any) error {
 	return r.client.cborUnmarshal(r.Body(), v)
 }
 
-// XML unmarshal the response body into the given interface{} using XML.
+// XML unmarshal the response body into the given any using XML.
 func (r *Response) XML(v any) error {
 	if r.client == nil {
 		return ErrClientNil
