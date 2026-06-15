@@ -645,7 +645,7 @@ store.Reset(ctx context.Context) error
 store.Delete(ctx context.Context, sessionID string) error
 
 // Type registration
-store.RegisterType(any)
+store.RegisterType(User{})
 ```
 
 ### Session Methods (Store Pattern)
