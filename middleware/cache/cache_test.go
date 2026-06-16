@@ -29,6 +29,31 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// testClock is a manually advanced clock that makes time-dependent freshness
+// tests deterministic: instead of sleeping past a TTL boundary (which is racy
+// under -race -count -shuffle), tests advance the clock explicitly. It is safe
+// for the concurrent reads performed by the cache handler.
+type testClock struct {
+	now time.Time
+	mu  sync.Mutex
+}
+
+func newTestClock(start time.Time) *testClock {
+	return &testClock{now: start}
+}
+
+func (c *testClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *testClock) Add(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
 type failingCacheStorage struct {
 	data map[string][]byte
 	errs map[string]error
@@ -2161,8 +2186,12 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 func Test_CacheSMaxAgeOverridesMaxAgeWhenShorter(t *testing.T) {
 	t.Parallel()
 
+	// Drive freshness from a manually advanced clock so the immediate cache hit
+	// can never straddle a whole-second boundary (the previous time.Sleep based
+	// version flaked under -race -count -shuffle).
+	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
-	app.Use(New())
+	app.Use(New(Config{clock: clock.Now}))
 
 	var count int
 	app.Get("/", func(c fiber.Ctx) error {
@@ -2182,7 +2211,9 @@ func Test_CacheSMaxAgeOverridesMaxAgeWhenShorter(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1", string(body))
 
-	time.Sleep(1700 * time.Millisecond)
+	// Advance past the 1s s-maxage window; max-age=10 is longer, so the shorter
+	// s-maxage must win and the entry must be treated as stale.
+	clock.Add(1100 * time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
@@ -4373,43 +4404,6 @@ func Test_Cache_HelperFunctions(t *testing.T) {
 		require.Equal(t, uint64(1234567890), result)
 	})
 
-	t.Run("needsExactTimestamp nil entry", func(t *testing.T) {
-		t.Parallel()
-		require.False(t, needsExactTimestamp(nil, requestCacheDirectives{}, 100))
-	})
-
-	t.Run("needsExactTimestamp request directives", func(t *testing.T) {
-		t.Parallel()
-		e := &item{exp: 200}
-		require.True(t, needsExactTimestamp(e, requestCacheDirectives{maxAgeSet: true}, 100))
-		require.True(t, needsExactTimestamp(e, requestCacheDirectives{minFreshSet: true}, 100))
-	})
-
-	t.Run("needsExactTimestamp expiration boundary", func(t *testing.T) {
-		t.Parallel()
-		e := &item{exp: 100}
-		require.True(t, needsExactTimestamp(e, requestCacheDirectives{}, 99))
-		require.False(t, needsExactTimestamp(e, requestCacheDirectives{}, 98))
-	})
-
-	t.Run("needsExactTimestamp predates stored second", func(t *testing.T) {
-		t.Parallel()
-		e := &item{exp: 110, ttl: 10}
-		require.True(t, needsExactTimestamp(e, requestCacheDirectives{}, 99))
-	})
-
-	t.Run("timestampPredatesStoredSecond zero ttl", func(t *testing.T) {
-		t.Parallel()
-		require.False(t, timestampPredatesStoredSecond(&item{exp: 110}, 99))
-	})
-
-	t.Run("timestampPredatesStoredSecond lagging coarse timestamp", func(t *testing.T) {
-		t.Parallel()
-		e := &item{exp: 110, ttl: 10}
-		require.True(t, timestampPredatesStoredSecond(e, 99))
-		require.False(t, timestampPredatesStoredSecond(e, 100))
-	})
-
 	t.Run("remainingFreshness nil", func(t *testing.T) {
 		t.Parallel()
 		result := remainingFreshness(nil, 100)
@@ -5507,7 +5501,7 @@ func Test_hasDirective(t *testing.T) {
 
 // Test_CacheInvalidator_RaceWithExactTimestamp exercises the path where one
 // request triggers CacheInvalidator (writing e.exp under mux.Lock) while
-// concurrent requests evaluate needsExactTimestamp(e, ...). The fields must be
+// concurrent requests evaluate freshness (reading e.exp). The fields must be
 // read under the lock; -race will flag a regression. The test also asserts
 // the invalidator path actually drives fresh handler executions, so a
 // regression that silently disabled invalidation would also fail.

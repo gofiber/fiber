@@ -19,6 +19,31 @@ import (
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 )
 
+// testClock is a manually advanced clock that makes window-expiry tests
+// deterministic: instead of sleeping past a window boundary (racy under
+// -race -count -shuffle), tests advance the clock explicitly. It is safe for
+// the concurrent reads performed by the limiter handler.
+type testClock struct {
+	now time.Time
+	mu  sync.Mutex
+}
+
+func newTestClock(start time.Time) *testClock {
+	return &testClock{now: start}
+}
+
+func (c *testClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *testClock) Add(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
 type failingLimiterStorage struct {
 	data map[string][]byte
 	errs map[string]error
@@ -692,12 +717,14 @@ func Test_Limiter_With_Max_Func(t *testing.T) {
 // go test -run Test_Limiter_Fixed_ExpirationFuncOverridesStaticExpiration -race -v
 func Test_Limiter_Fixed_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
 	t.Parallel()
+	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
 
 	app.Use(New(Config{
 		Max:               2,
 		Expiration:        10 * time.Second,
 		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return 2 * time.Second },
+		clock:             clock.Now,
 		LimiterMiddleware: FixedWindow{},
 	}))
 
@@ -717,7 +744,8 @@ func Test_Limiter_Fixed_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 
-	time.Sleep(3 * time.Second)
+	// Advance past the 2s ExpirationFunc window so the fixed window resets.
+	clock.Add(3 * time.Second)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
@@ -1130,11 +1158,13 @@ func Test_Limiter_Sliding_Window_RecalculatesAfterHandlerDelay(t *testing.T) {
 
 func Test_Limiter_Sliding_Window_ExpiresStalePrevHits(t *testing.T) {
 	t.Parallel()
+	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
 
 	app.Use(New(Config{
 		Max:               1,
 		Expiration:        time.Second,
+		clock:             clock.Now,
 		LimiterMiddleware: SlidingWindow{},
 	}))
 
@@ -1146,7 +1176,8 @@ func Test_Limiter_Sliding_Window_ExpiresStalePrevHits(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	time.Sleep(2500 * time.Millisecond)
+	// Advance two full windows so the previous-window hits age out completely.
+	clock.Add(2500 * time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
@@ -1757,4 +1788,17 @@ func Test_Sliding_Window(t *testing.T) {
 	for range 5 {
 		singleRequest(true)
 	}
+}
+
+// Test_Config_currentSecond_NegativeClock verifies that an injected pre-epoch
+// (negative Unix) timestamp is clamped to 0 instead of wrapping to a huge
+// uint64, while a non-negative timestamp is converted unchanged.
+func Test_Config_currentSecond_NegativeClock(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{clock: func() time.Time { return time.Unix(-100, 0) }}
+	require.Equal(t, uint64(0), cfg.currentSecond())
+
+	cfg.clock = func() time.Time { return time.Unix(42, 0) }
+	require.Equal(t, uint64(42), cfg.currentSecond())
 }
