@@ -667,7 +667,9 @@ type failingStorage struct {
 }
 
 func (s *failingStorage) GetWithContext(context.Context, string) ([]byte, error) { return nil, s.err }
-func (s *failingStorage) Get(string) ([]byte, error)                             { return nil, s.err }
+
+func (s *failingStorage) Get(string) ([]byte, error) { return nil, s.err }
+
 func (s *failingStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
 	return s.err
 }
@@ -699,4 +701,35 @@ func Test_Session_Middleware_StoreError(t *testing.T) {
 	ctx.Request.Header.SetCookie("session_id", "some-session-id")
 	require.NotPanics(t, func() { h(ctx) })
 	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
+	require.Equal(t, "Internal Server Error", string(ctx.Response.Body()))
+	require.NotContains(t, string(ctx.Response.Body()), storage.err.Error())
+}
+
+func Test_Session_Middleware_StoreError_CustomErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	storageErr := errors.New("redis dial tcp redis.internal.corp:6379: connect: connection refused")
+	storage := &failingStorage{err: storageErr}
+	app := fiber.New()
+	var handledErr error
+	app.Use(New(Config{
+		Storage: storage,
+		ErrorHandler: func(c fiber.Ctx, err error) {
+			handledErr = err
+			require.NoError(t, c.Status(fiber.StatusInternalServerError).SendString("session unavailable"))
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetCookie("session_id", "some-session-id")
+	app.Handler()(ctx)
+
+	require.ErrorIs(t, handledErr, storageErr)
+	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
+	require.Equal(t, "session unavailable", string(ctx.Response.Body()))
 }

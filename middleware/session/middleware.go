@@ -5,7 +5,6 @@ package session
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -98,7 +97,8 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		m := acquireMiddleware()
 		if err := m.initialize(c, &cfg); err != nil {
 			releaseMiddleware(m)
-			return fmt.Errorf("session: failed to get session: %w", err)
+			handleSessionError(c, cfg.ErrorHandler, err)
+			return nil
 		}
 
 		stackErr := c.Next()
@@ -123,6 +123,14 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 }
 
 var registerLogContextTagsOnce sync.Once
+
+func handleSessionError(c fiber.Ctx, handler func(fiber.Ctx, error), err error) {
+	if handler != nil {
+		handler(c, err)
+		return
+	}
+	DefaultErrorHandler(c, err)
+}
 
 func registerLogContextTags() {
 	logger.RegisterContextTag("session-id", func(ctx any) string {
