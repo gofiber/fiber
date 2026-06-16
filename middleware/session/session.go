@@ -203,20 +203,23 @@ func (s *Session) Destroy() error {
 //
 //	err := s.DestroyWithContext(ctx)
 func (s *Session) DestroyWithContext(ctx context.Context) error {
+	ctx = backgroundIfNil(ctx)
+
 	if s.data == nil {
 		return nil
 	}
 
-	// Reset local data
-	s.data.Reset()
-
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// Use external Storage if exist
 	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
 		return err
 	}
+
+	// Reset local data only after the storage delete succeeded, so a
+	// canceled/failed delete leaves the session data intact.
+	s.data.Reset()
 
 	// Expire session
 	s.delSession()
@@ -248,6 +251,8 @@ func (s *Session) Regenerate() error {
 //
 //	err := s.RegenerateWithContext(ctx)
 func (s *Session) RegenerateWithContext(ctx context.Context) error {
+	ctx = backgroundIfNil(ctx)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -287,21 +292,22 @@ func (s *Session) Reset() error {
 //
 //	err := s.ResetWithContext(ctx)
 func (s *Session) ResetWithContext(ctx context.Context) error {
-	// Reset local data
-	if s.data != nil {
-		s.data.Reset()
-	}
+	ctx = backgroundIfNil(ctx)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	// Reset expiration
-	s.idleTimeout = 0
 
 	// Delete old id from storage
 	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
 		return err
 	}
+
+	// Reset local state only after the storage delete succeeded, so a
+	// canceled/failed delete leaves the session data intact.
+	if s.data != nil {
+		s.data.Reset()
+	}
+	s.idleTimeout = 0
 
 	// Expire session
 	s.delSession()
@@ -349,6 +355,8 @@ func (s *Session) Save() error {
 //
 //	err := s.SaveWithContext(ctx)
 func (s *Session) SaveWithContext(ctx context.Context) error {
+	ctx = backgroundIfNil(ctx)
+
 	if s.ctx == nil {
 		return s.saveSessionWithContext(ctx)
 	}
@@ -631,6 +639,16 @@ func (s *Session) isAbsExpired() bool {
 //	s.setAbsExpiration(time.Now().Add(time.Hour))
 func (s *Session) setAbsExpiration(absExpiration time.Time) {
 	s.Set(absExpirationKey, absExpiration)
+}
+
+// backgroundIfNil returns ctx unchanged when it is non-nil, and
+// context.Background() otherwise. It normalizes a caller-supplied context for
+// the *WithContext methods so a nil context never reaches storage.
+func backgroundIfNil(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
 }
 
 // resolveContext returns the session's stored fiber context if available,

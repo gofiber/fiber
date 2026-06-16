@@ -680,6 +680,32 @@ func (s *failingStorage) ResetWithContext(context.Context) error          { retu
 func (s *failingStorage) Reset() error                                    { return s.err }
 func (*failingStorage) Close() error                                      { return nil }
 
+// contextStorage is a storage that honors context cancellation by returning
+// ctx.Err() from its *WithContext methods. It is used to verify that the
+// session *WithContext variants propagate a canceled/deadline context.
+type contextStorage struct{}
+
+func (*contextStorage) GetWithContext(ctx context.Context, _ string) ([]byte, error) {
+	return nil, ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
+}
+
+func (*contextStorage) Get(string) ([]byte, error) { return nil, nil }
+
+func (*contextStorage) SetWithContext(ctx context.Context, _ string, _ []byte, _ time.Duration) error {
+	return ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
+}
+
+func (*contextStorage) Set(_ string, _ []byte, _ time.Duration) error { return nil }
+func (*contextStorage) DeleteWithContext(ctx context.Context, _ string) error {
+	return ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
+}
+func (*contextStorage) Delete(_ string) error { return nil }
+func (*contextStorage) ResetWithContext(ctx context.Context) error {
+	return ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
+}
+func (*contextStorage) Reset() error { return nil }
+func (*contextStorage) Close() error { return nil }
+
 // Regression: https://github.com/gofiber/fiber/issues/4348
 // A failing session store must result in an error response, not a panic.
 func Test_Session_Middleware_StoreError(t *testing.T) {
@@ -744,9 +770,13 @@ func Test_Middleware_DestroyWithContext(t *testing.T) {
 	app.Get("/destroy", func(c fiber.Ctx) error {
 		sess := FromContext(c)
 		sess.Set("key", "value")
-		err := sess.DestroyWithContext(t.Context())
-		if err != nil {
+		if err := sess.DestroyWithContext(t.Context()); err != nil {
 			return err
+		}
+		// Assert the actual effect, not just that no error occurred: the
+		// destroyed session must no longer hold its data.
+		if sess.Get("key") != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
 		}
 		return c.SendStatus(fiber.StatusOK)
 	})
@@ -769,10 +799,14 @@ func Test_Middleware_ResetWithContext(t *testing.T) {
 
 	app.Get("/reset", func(c fiber.Ctx) error {
 		sess := FromContext(c)
+		originalID := sess.ID()
 		sess.Set("key", "value")
-		err := sess.ResetWithContext(t.Context())
-		if err != nil {
+		if err := sess.ResetWithContext(t.Context()); err != nil {
 			return err
+		}
+		// Assert the actual effect: data is cleared and a new ID is issued.
+		if sess.ID() == originalID || sess.Get("key") != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
 		}
 		return c.SendStatus(fiber.StatusOK)
 	})

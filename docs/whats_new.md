@@ -1739,6 +1739,8 @@ The session middleware has undergone significant improvements in v3, focusing on
 
 - **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
 
+- **Context-Aware Lifecycle Methods**: The `DestroyWithContext`, `RegenerateWithContext`, `ResetWithContext`, and `SaveWithContext` methods (on both `Session` and `Middleware`) accept a `context.Context` to propagate cancellation and deadlines to the underlying storage I/O, mirroring the existing `Storage` and `SharedState` `WithContext` convention. The non-context variants delegate to these. A nil context is treated as `context.Background()`.
+
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
 ### SSE
