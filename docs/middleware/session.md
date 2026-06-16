@@ -684,7 +684,7 @@ defer cancel()
 
 // Persist the session, bounding the storage write by the deadline.
 if err := sess.SaveWithContext(ctx); err != nil {
-	// deadline exceeded, cancellation, or storage error
+    // deadline exceeded, cancellation, or storage error
 }
 
 // Destroy is also covered:
