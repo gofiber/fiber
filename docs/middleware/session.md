@@ -471,7 +471,7 @@ Session data supports basic Go types by default:
 - `uint`, `uint8`, `uint16`, `uint32`, `uint64`
 - `bool`, `float32`, `float64`
 - `[]byte`, `complex64`, `complex128`
-- `interface{}`
+- `any`
 
 For custom types (structs, maps, slices), you must register them for encoding/decoding:
 
@@ -645,7 +645,7 @@ store.Reset(ctx context.Context) error
 store.Delete(ctx context.Context, sessionID string) error
 
 // Type registration
-store.RegisterType(interface{})
+store.RegisterType(User{})
 ```
 
 ### Session Methods (Store Pattern)
