@@ -708,7 +708,7 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 ### Changed Methods
 
 - **Bind**: Now used for binding instead of view binding. Use `c.ViewBind()` for view binding.
-- **Format**: Parameter changed from `body interface{}` to `handlers ...ResFmt`.
+- **Format**: Parameter changed from `body any` to `handlers ...ResFmt`.
 - **Redirect**: Use `c.Redirect().To()` instead.
 - **SendFile**: Now supports different configurations using a config parameter.
 - **Attachment and Download**: Non-ASCII filenames now use `filename*` as
