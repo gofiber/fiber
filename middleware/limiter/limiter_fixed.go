@@ -61,7 +61,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		}
 
 		// Get timestamp
-		ts := uint64(utils.Timestamp())
+		ts := cfg.currentSecond()
 
 		// Set expiration if entry does not exist
 		if e.exp == 0 {
