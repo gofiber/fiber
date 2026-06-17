@@ -110,6 +110,10 @@ jobs:
           summary-always: true
           # Save the data to external file (GitHub Pages)
           save-data-file: true
+          # Cap history kept in benchmarks/data.js so the file stays below GitHub's
+          # 100 MB per-file push limit (the action never prunes by default).
+          # 185 runs ~= the last 3 months of main pushes (count-based, not time-based).
+          max-items-in-chart: 185
           alert-threshold: "150%"
           auto-push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           go-force-package-suffix: true
