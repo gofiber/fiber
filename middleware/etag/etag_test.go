@@ -321,3 +321,33 @@ func Test_ETag_WeakComparison(t *testing.T) {
 		})
 	}
 }
+
+// go test -run Test_ETag_etagWeakMatch
+func Test_ETag_etagWeakMatch(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		a        string
+		b        string
+		expected bool
+	}{
+		{name: "identical strong tags", a: `"abc"`, b: `"abc"`, expected: true},
+		{name: "weak client vs strong server", a: `W/"abc"`, b: `"abc"`, expected: true},
+		{name: "strong client vs weak server", a: `"abc"`, b: `W/"abc"`, expected: true},
+		{name: "both weak", a: `W/"abc"`, b: `W/"abc"`, expected: true},
+		{name: "different values", a: `"abc"`, b: `"def"`, expected: false},
+		{name: "unquoted client tag", a: `abc`, b: `"abc"`, expected: false},
+		{name: "unquoted server tag", a: `"abc"`, b: `abc`, expected: false},
+		{name: "empty client tag", a: ``, b: `"abc"`, expected: false},
+		{name: "empty server tag", a: `"abc"`, b: ``, expected: false},
+		{name: "weak prefix only", a: `W/`, b: `"abc"`, expected: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.expected, etagWeakMatch([]byte(tc.a), []byte(tc.b)))
+		})
+	}
+}
