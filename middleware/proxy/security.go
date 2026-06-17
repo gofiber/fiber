@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -186,7 +187,7 @@ func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
 
 func containsFold(haystack []string, needle string) bool {
 	for _, h := range haystack {
-		if strings.EqualFold(h, needle) {
+		if utils.EqualFold(h, needle) {
 			return true
 		}
 	}
@@ -202,7 +203,7 @@ func connectionListedHeaders(values [][]byte) []string {
 	var out []string
 	for _, v := range values {
 		for name := range strings.SplitSeq(string(v), ",") {
-			name = strings.TrimSpace(name)
+			name = utils.TrimSpace(name)
 			if name != "" {
 				out = append(out, name)
 			}
@@ -215,7 +216,7 @@ func connectionListedHeaders(values [][]byte) []string {
 // explicit scheme default to http:// to match the historical Balancer
 // behavior where bare "host:port" entries were accepted.
 func parseUpstream(raw string) (*url.URL, error) {
-	raw = strings.TrimSpace(raw)
+	raw = utils.TrimSpace(raw)
 	if raw == "" {
 		return nil, ErrUpstreamHostInvalid
 	}
@@ -281,7 +282,7 @@ func validateUpstreamForBalancer(raw string, policy SecurityPolicy) (*url.URL, e
 	if policy.AllowPrivateIPs {
 		return u, nil
 	}
-	if ip := net.ParseIP(strings.Trim(u.Hostname(), "[]")); ip != nil && isBlockedIP(ip) {
+	if ip := net.ParseIP(trimBrackets(u.Hostname())); ip != nil && isBlockedIP(ip) {
 		return nil, fmt.Errorf("%w: %s", ErrUpstreamHostBlocked, ip)
 	}
 	return u, nil
@@ -297,11 +298,19 @@ func schemeAllowed(scheme string, allowed []string) bool {
 		allowed = DefaultSecurityPolicy().AllowedSchemes
 	}
 	for _, s := range allowed {
-		if strings.EqualFold(s, scheme) {
+		if utils.EqualFold(s, scheme) {
 			return true
 		}
 	}
 	return false
+}
+
+// trimBrackets removes the surrounding "[" / "]" from an IPv6 literal
+// (defensive — url.Hostname() typically does this already). The fiber
+// utils Trim helpers only accept a single byte cutset, so we apply
+// TrimLeft + TrimRight to handle the bracket pair.
+func trimBrackets(host string) string {
+	return utils.TrimRight(utils.TrimLeft(host, '['), ']')
 }
 
 // validateHostForSSRF rejects hostnames that resolve to addresses inside
@@ -313,7 +322,7 @@ func validateHostForSSRF(host string) error {
 	}
 	// strip brackets from IPv6 literals (url.Hostname already does this
 	// in most cases, but keep the guard for defensive callers).
-	host = strings.Trim(host, "[]")
+	host = trimBrackets(host)
 	if ip := net.ParseIP(host); ip != nil {
 		if isBlockedIP(ip) {
 			return fmt.Errorf("%w: %s", ErrUpstreamHostBlocked, ip)
@@ -446,7 +455,7 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 	// network-path reference and parse a new authority. Collapse it to
 	// a single slash so the host stays pinned to the configured base.
 	for strings.HasPrefix(requestPath, "//") {
-		requestPath = "/" + strings.TrimLeft(requestPath, "/")
+		requestPath = "/" + utils.TrimLeft(requestPath, '/')
 	}
 	if requestPath[0] != '/' && requestPath[0] != '?' && requestPath[0] != '#' {
 		requestPath = "/" + requestPath
@@ -455,7 +464,7 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 	if err != nil || parsed.Host != "" || parsed.Scheme != "" {
 		// Either the path failed to parse cleanly or it introduced a
 		// new authority. Treat the remainder as an opaque path.
-		out.Path = "/" + strings.TrimLeft(requestPath, "/")
+		out.Path = "/" + utils.TrimLeft(requestPath, '/')
 		out.RawPath = ""
 		out.RawQuery = ""
 		out.Fragment = ""

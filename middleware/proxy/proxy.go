@@ -294,7 +294,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		// Strip credentials when the redirect crosses to a different host so
 		// secrets bound to the original origin are not leaked to a third
 		// party (RFC 9110 §15.4 advisory; matches browser behavior).
-		if nextHost := redirectHost(nextURL); !strings.EqualFold(nextHost, currentHost) {
+		if nextHost := redirectHost(nextURL); !utils.EqualFold(nextHost, currentHost) {
 			stripCrossHostHeaders(req)
 			currentHost = nextHost
 		}
