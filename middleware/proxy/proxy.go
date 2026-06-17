@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"sync"
@@ -30,7 +31,7 @@ func Balancer(config ...Config) fiber.Handler {
 		// Validate each upstream against the configured policy and build
 		// a HostClient per server.
 		for _, server := range cfg.Servers {
-			u, err := validateUpstream(server, policy)
+			u, err := validateUpstreamForBalancer(server, policy)
 			if err != nil {
 				panic(err)
 			}
@@ -52,6 +53,12 @@ func Balancer(config ...Config) fiber.Handler {
 			}
 			if u.Scheme == "https" {
 				client.IsTLS = true
+			}
+			// When private targets are disallowed, validate the resolved IP
+			// at dial time so DNS-rebinding cannot swap a public address for
+			// a private one between validation and connection.
+			if !policy.AllowPrivateIPs {
+				client.Dial = newSSRFDialer(cfg.DialDualStack)
 			}
 
 			lbc.Clients = append(lbc.Clients, client)
@@ -256,6 +263,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		maxRedirects = 0
 	}
 	currentURL := string(req.URI().FullURI())
+	currentHost := string(req.URI().Host())
 	for redirects := 0; ; redirects++ {
 		req.SetRequestURI(currentURL)
 		if err := cli.Do(req, resp); err != nil {
@@ -283,8 +291,38 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 			req.Header.Del(fasthttp.HeaderContentType)
 			req.Header.Del(fasthttp.HeaderContentLength)
 		}
+		// Strip credentials when the redirect crosses to a different host so
+		// secrets bound to the original origin are not leaked to a third
+		// party (RFC 9110 §15.4 advisory; matches browser behavior).
+		if nextHost := redirectHost(nextURL); !strings.EqualFold(nextHost, currentHost) {
+			stripCrossHostHeaders(req)
+			currentHost = nextHost
+		}
 		currentURL = nextURL
 	}
+}
+
+// crossHostSensitiveHeaders lists headers that carry credentials bound to
+// a specific origin and must not survive a redirect to a different host.
+var crossHostSensitiveHeaders = []string{
+	fiber.HeaderAuthorization,
+	fiber.HeaderProxyAuthorization,
+	fiber.HeaderCookie,
+}
+
+func stripCrossHostHeaders(req *fasthttp.Request) {
+	for _, h := range crossHostSensitiveHeaders {
+		req.Header.Del(h)
+	}
+}
+
+// redirectHost extracts the host (host:port) component of an absolute URL
+// without allocating a full *url.URL.
+func redirectHost(rawURL string) string {
+	uri := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(uri)
+	uri.Update(rawURL)
+	return string(uri.Host())
 }
 
 // resolveRedirect parses a redirect target relative to the current URL
@@ -309,29 +347,10 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) 
 	if err != nil {
 		return "", err
 	}
-	if !policy.AllowHTTPSDowngrade && equalFoldASCII(previousScheme, []byte("https")) && target.Scheme == "http" {
+	if !policy.AllowHTTPSDowngrade && bytes.EqualFold(previousScheme, []byte("https")) && target.Scheme == "http" {
 		return "", ErrRedirectDowngrade
 	}
 	return target.String(), nil
-}
-
-func equalFoldASCII(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		x, y := a[i], b[i]
-		if x >= 'A' && x <= 'Z' {
-			x += 'a' - 'A'
-		}
-		if y >= 'A' && y <= 'Z' {
-			y += 'a' - 'A'
-		}
-		if x != y {
-			return false
-		}
-	}
-	return true
 }
 
 func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*fasthttp.Client, error) {

@@ -33,7 +33,9 @@ The proxy middleware applies several defenses by default. They can be relaxed vi
 
 ### SSRF protection
 
-Upstream addresses that resolve to loopback, RFC 1918 private, link-local (including the `169.254.169.254` cloud-metadata address), multicast, unspecified, or RFC 6598 CGNAT ranges are rejected with `ErrUpstreamHostBlocked`. Hostnames are resolved at validation time; if any returned IP falls in a blocked range the upstream is rejected, mitigating DNS-rebinding attempts that return a mix of public and private answers.
+Upstream addresses that resolve to loopback, RFC 1918 private, link-local (including the `169.254.169.254` cloud-metadata address), multicast, unspecified, or RFC 6598 CGNAT ranges are rejected with `ErrUpstreamHostBlocked`. If any resolved IP falls in a blocked range the upstream is rejected, mitigating DNS-rebinding attempts that return a mix of public and private answers.
+
+For `Balancer`, the resolved IP is re-validated at **dial time** (via a guarded `Dial` on each upstream `fasthttp.HostClient`), which both defeats DNS-rebinding and avoids resolving hostnames at startup — a transient DNS failure won't panic your application. DNS lookups are bounded by a 5-second timeout.
 
 Set `SecurityPolicy.AllowPrivateIPs = true` to opt out — required when proxying to internal services on the same network.
 
@@ -44,6 +46,8 @@ Only `http` and `https` upstream schemes are accepted by default; `file://`, `go
 ### HTTPS-to-HTTP redirect downgrades
 
 `DoRedirects` rejects redirects from HTTPS origins to plaintext HTTP targets with `ErrRedirectDowngrade`. Following such a redirect would leak any cookies or `Authorization` headers established under TLS. Set `SecurityPolicy.AllowHTTPSDowngrade = true` to override.
+
+When a redirect crosses to a **different host**, `DoRedirects` strips the `Authorization`, `Proxy-Authorization`, and `Cookie` headers so credentials bound to the original origin are not forwarded to a third-party upstream. Same-host redirects retain these headers.
 
 ### RFC 7230 hop-by-hop header stripping
 

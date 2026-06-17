@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -101,16 +102,6 @@ func Test_Security_ResolvePolicy_OverrideEmptySchemes(t *testing.T) {
 	require.True(t, got.AllowPrivateIPs)
 }
 
-// Test_Security_EqualFoldASCII covers all branches: length mismatch,
-// case-insensitive match, byte mismatch.
-func Test_Security_EqualFoldASCII(t *testing.T) {
-	t.Parallel()
-	require.False(t, equalFoldASCII([]byte("https"), []byte("http")))
-	require.True(t, equalFoldASCII([]byte("HTTPS"), []byte("https")))
-	require.True(t, equalFoldASCII([]byte("http"), []byte("HTTP")))
-	require.False(t, equalFoldASCII([]byte("http"), []byte("file")))
-}
-
 // Test_Security_ResolveRedirect_RejectsControlChars covers the CRLF /
 // control-byte rejection at the top of resolveRedirect.
 func Test_Security_ResolveRedirect_RejectsControlChars(t *testing.T) {
@@ -143,7 +134,7 @@ func Test_Security_ResolveRedirect_AllowsDowngradeWhenOptIn(t *testing.T) {
 }
 
 // Test_Security_ResolveRedirect_HTTPSDowngradeBlocked verifies the
-// guard wired against equalFoldASCII("https", ...).
+// HTTPS→HTTP downgrade guard.
 func Test_Security_ResolveRedirect_HTTPSDowngradeBlocked(t *testing.T) {
 	t.Parallel()
 	policy := DefaultSecurityPolicy()
@@ -381,6 +372,59 @@ func Test_Security_Balancer_BuildsHTTPSHostClient(t *testing.T) {
 	require.NotNil(t, h)
 }
 
+// Test_Security_NewSSRFDialer_BlocksLoopback verifies the dial-time SSRF
+// guard rejects both literal and hostname loopback targets before any
+// connection is made — this is what defeats DNS rebinding.
+func Test_Security_NewSSRFDialer_BlocksLoopback(t *testing.T) {
+	t.Parallel()
+	dial := newSSRFDialer(false)
+
+	_, err := dial("127.0.0.1:80")
+	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+
+	_, err = dial("localhost:80")
+	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+}
+
+// Test_Security_NewSSRFDialer_RejectsMalformedAddr covers the
+// SplitHostPort error branch.
+func Test_Security_NewSSRFDialer_RejectsMalformedAddr(t *testing.T) {
+	t.Parallel()
+	dial := newSSRFDialer(false)
+	_, err := dial("no-port-here")
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
+}
+
+// Test_Security_Balancer_HostnameDefersToDial verifies that a hostname
+// upstream is NOT resolved at construction time (so transient DNS failures
+// cannot crash startup) and is instead validated at dial time.
+func Test_Security_Balancer_HostnameDefersToDial(t *testing.T) {
+	t.Parallel()
+
+	policy := DefaultSecurityPolicy() // AllowPrivateIPs == false
+
+	// Must not panic even though the host cannot be resolved right now.
+	var h fiber.Handler
+	require.NotPanics(t, func() {
+		h = Balancer(Config{
+			Servers:        []string{"http://does-not-exist.invalid:80"},
+			SecurityPolicy: &policy,
+		})
+	})
+	require.NotNil(t, h)
+
+	// At request time the dial-time guard fails the lookup, surfacing a 5xx
+	// rather than reaching any upstream.
+	app := fiber.New()
+	app.Use(h)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "does-not-exist.invalid"
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: 10 * time.Second, FailOnTimeout: false})
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+}
+
 // redirectStep / countingRedirectClient are minimal stubs for the
 // followRedirects branches without an actual network.
 type redirectStep struct {
@@ -391,6 +435,9 @@ type redirectStep struct {
 type countingRedirectClient struct {
 	client *fasthttp.Client
 	calls  *int
+	// onRequest, if set, is invoked with each request as it reaches the
+	// transport, letting tests inspect headers per hop.
+	onRequest func(req *fasthttp.Request)
 }
 
 // newCountingRedirectClient wires a fasthttp.Client to a recorder
@@ -404,6 +451,9 @@ func newCountingRedirectClient(steps map[string]redirectStep) (*countingRedirect
 	c.client = &fasthttp.Client{
 		Transport: roundTripperFunc(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 			calls++
+			if c.onRequest != nil {
+				c.onRequest(req)
+			}
 			step, ok := steps[req.URI().String()]
 			if !ok {
 				resp.Reset()

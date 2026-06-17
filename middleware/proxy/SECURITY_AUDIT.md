@@ -21,6 +21,40 @@ qualitative bands.
 | 8 | Medium   | No upstream response body size cap | Fixed (opt-in) |
 | 9 | Medium   | No per-host connection cap | Fixed (opt-in) |
 | 10| Low      | Aliasing of caller-supplied address into URI buffer | Fixed |
+| 11| High     | DNS-rebinding (check/use gap) between validation and dial | Fixed |
+| 12| High     | Credentials forwarded across host on redirect | Fixed |
+| 13| Medium   | Unbounded DNS lookup / startup panic on DNS failure | Fixed |
+
+## Post-review hardening
+
+The following were added in response to PR review (#4405):
+
+### 11. DNS-rebinding (check/use gap) — Balancer dial-time revalidation (High)
+
+Validating the hostname once up front does not stop a malicious resolver
+from returning a public IP during validation and a private one at connect
+time. The Balancer now installs an SSRF-guarded `fasthttp.HostClient.Dial`
+(`newSSRFDialer`) that re-resolves and re-validates every resolved address
+at dial time (rejecting if *any* answer is blocked) before connecting,
+when `AllowPrivateIPs` is false. Runtime helpers (`Do`/`Forward`/…) keep
+the best-effort up-front check; callers that need rebinding protection
+there should supply a client with their own guarded dialer.
+
+### 12. Cross-host credential stripping on redirect (High)
+
+`followRedirects` now drops `Authorization`, `Proxy-Authorization`, and
+`Cookie` when a redirect crosses to a different host, so origin-bound
+secrets are not leaked to a third-party upstream. Same-host redirects keep
+their headers.
+
+### 13. Bounded DNS resolution / no startup panic (Medium)
+
+DNS lookups during validation and dialing use `net.DefaultResolver` with a
+5s `context` timeout so a slow resolver cannot hang a request. The
+Balancer no longer performs DNS at construction time for hostname
+upstreams (only IP literals are checked eagerly); resolution/validation is
+deferred to the dial guard, avoiding crash loops when DNS is briefly
+unavailable at startup.
 
 ## Findings
 
@@ -183,6 +217,9 @@ go test ./middleware/proxy/ -run '^$' -fuzz FuzzJoinUpstreamPath -fuzztime=10s
 
 # Linting
 golangci-lint run ./middleware/proxy/... ./client/...
+
+# Lint Markdown docs (this file and docs/middleware/proxy.md)
+make markdown
 ```
 
 The `Test_Proxy_Balancer_IPv6_Upstream*` tests fail on hosts without

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -8,10 +9,16 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp"
 )
+
+// dnsLookupTimeout bounds DNS resolution performed during upstream
+// validation and dialing, so a slow or unresponsive resolver cannot hang
+// a request (or application startup) indefinitely.
+const dnsLookupTimeout = 5 * time.Second
 
 // Sentinel errors returned when an upstream target violates the configured
 // proxy security policy.
@@ -82,6 +89,19 @@ var (
 	activePolicy = DefaultSecurityPolicy()
 )
 
+// normalizePolicy returns a copy of policy whose AllowedSchemes slice is
+// always freshly allocated. This guarantees callers cannot mutate the
+// global allowlist out from under a balancer (or another goroutine) by
+// retaining a reference to the slice they passed in.
+func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
+	if len(policy.AllowedSchemes) == 0 {
+		policy.AllowedSchemes = []string{"http", "https"}
+	} else {
+		policy.AllowedSchemes = append([]string(nil), policy.AllowedSchemes...)
+	}
+	return policy
+}
+
 // WithSecurityPolicy installs policy as the global default consulted by
 // proxy.Do, proxy.Forward, proxy.DoRedirects, proxy.DoTimeout, and
 // proxy.DoDeadline (and by Balancer instances that do not set
@@ -89,21 +109,20 @@ var (
 // callers can restore it — useful in tests that need to relax
 // the policy for a single scope.
 func WithSecurityPolicy(policy SecurityPolicy) SecurityPolicy {
-	if len(policy.AllowedSchemes) == 0 {
-		policy.AllowedSchemes = DefaultSecurityPolicy().AllowedSchemes
-	}
+	policy = normalizePolicy(policy)
 	policyLock.Lock()
 	defer policyLock.Unlock()
 	prev := activePolicy
 	activePolicy = policy
-	return prev
+	return normalizePolicy(prev)
 }
 
-// currentSecurityPolicy returns a snapshot of the active global policy.
+// currentSecurityPolicy returns a snapshot of the active global policy
+// with a private copy of AllowedSchemes.
 func currentSecurityPolicy() SecurityPolicy {
 	policyLock.RLock()
 	defer policyLock.RUnlock()
-	return activePolicy
+	return normalizePolicy(activePolicy)
 }
 
 // resolvePolicy returns override when non-nil; otherwise the current
@@ -112,11 +131,7 @@ func currentSecurityPolicy() SecurityPolicy {
 // header stripping.
 func resolvePolicy(override *SecurityPolicy) SecurityPolicy {
 	if override != nil {
-		policy := *override
-		if len(policy.AllowedSchemes) == 0 {
-			policy.AllowedSchemes = DefaultSecurityPolicy().AllowedSchemes
-		}
-		return policy
+		return normalizePolicy(*override)
 	}
 	return currentSecurityPolicy()
 }
@@ -220,6 +235,24 @@ func parseUpstream(raw string) (*url.URL, error) {
 // single blocked answer mitigates DNS rebinding attempts in which the
 // resolver returns a mix of public and private IPs.
 func validateUpstream(raw string, policy SecurityPolicy) (*url.URL, error) {
+	u, err := parseUpstreamScheme(raw, policy)
+	if err != nil {
+		return nil, err
+	}
+	if policy.AllowPrivateIPs {
+		return u, nil
+	}
+	if err := validateHostForSSRF(u.Hostname()); err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+// parseUpstreamScheme parses raw and enforces the scheme allowlist and
+// host presence without performing any DNS resolution. url.Parse can
+// leave Host set while Hostname() is empty (e.g. "http://:8080"), so the
+// presence check uses Hostname.
+func parseUpstreamScheme(raw string, policy SecurityPolicy) (*url.URL, error) {
 	u, err := parseUpstream(raw)
 	if err != nil {
 		return nil, err
@@ -227,14 +260,29 @@ func validateUpstream(raw string, policy SecurityPolicy) (*url.URL, error) {
 	if !schemeAllowed(u.Scheme, policy.AllowedSchemes) {
 		return nil, fmt.Errorf("%w: %q", ErrUpstreamSchemeNotAllowed, u.Scheme)
 	}
-	if u.Host == "" {
+	if u.Hostname() == "" {
 		return nil, ErrUpstreamHostInvalid
+	}
+	return u, nil
+}
+
+// validateUpstreamForBalancer validates a statically configured Balancer
+// upstream. It enforces the scheme allowlist and rejects IP-literal hosts
+// in blocked ranges, but defers hostname resolution to the SSRF-guarded
+// dialer (see newSSRFDialer). Deferring DNS keeps a transient resolver
+// failure at startup from panicking the application (e.g. crash loops in
+// container orchestrators) and re-checks the resolved IP on every dial,
+// which also defeats DNS-rebinding.
+func validateUpstreamForBalancer(raw string, policy SecurityPolicy) (*url.URL, error) {
+	u, err := parseUpstreamScheme(raw, policy)
+	if err != nil {
+		return nil, err
 	}
 	if policy.AllowPrivateIPs {
 		return u, nil
 	}
-	if err := validateHostForSSRF(u.Hostname()); err != nil {
-		return nil, err
+	if ip := net.ParseIP(strings.Trim(u.Hostname(), "[]")); ip != nil && isBlockedIP(ip) {
+		return nil, fmt.Errorf("%w: %s", ErrUpstreamHostBlocked, ip)
 	}
 	return u, nil
 }
@@ -272,19 +320,80 @@ func validateHostForSSRF(host string) error {
 		}
 		return nil
 	}
-	addrs, err := net.LookupIP(host)
+	// Bound the lookup so a slow resolver cannot stall the caller.
+	ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
 		return fmt.Errorf("%w: %s lookup failed: %w", ErrUpstreamHostBlocked, host, err)
 	}
 	if len(addrs) == 0 {
 		return fmt.Errorf("%w: %s has no addresses", ErrUpstreamHostBlocked, host)
 	}
-	for _, ip := range addrs {
-		if isBlockedIP(ip) {
-			return fmt.Errorf("%w: %s -> %s", ErrUpstreamHostBlocked, host, ip)
+	for _, addr := range addrs {
+		if isBlockedIP(addr.IP) {
+			return fmt.Errorf("%w: %s -> %s", ErrUpstreamHostBlocked, host, addr.IP)
 		}
 	}
 	return nil
+}
+
+// newSSRFDialer returns a fasthttp DialFunc that resolves the target host
+// (with a bounded timeout), rejects the connection if any resolved
+// address falls in a blocked range, and then dials a validated address.
+// Performing the check at dial time — rather than only up front — defeats
+// DNS-rebinding attacks (the check/use gap) where a resolver returns a
+// public address during validation and a private one at connect time. It
+// is only installed when the active policy disallows private IPs.
+func newSSRFDialer(dialDualStack bool) fasthttp.DialFunc {
+	dialer := &net.Dialer{Timeout: dnsLookupTimeout}
+	return func(addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("proxy: invalid dial address %q: %w", addr, err)
+		}
+
+		var ips []net.IP
+		if ip := net.ParseIP(host); ip != nil {
+			ips = []net.IP{ip}
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
+			defer cancel()
+			resolved, lerr := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if lerr != nil {
+				return nil, fmt.Errorf("%w: %s lookup failed: %w", ErrUpstreamHostBlocked, host, lerr)
+			}
+			for _, r := range resolved {
+				ips = append(ips, r.IP)
+			}
+		}
+
+		// Reject if ANY resolved address is blocked, mirroring
+		// validateHostForSSRF so a mixed public/private answer cannot slip
+		// a private target past the guard.
+		for _, ip := range ips {
+			if isBlockedIP(ip) {
+				return nil, fmt.Errorf("%w: %s -> %s", ErrUpstreamHostBlocked, host, ip)
+			}
+		}
+
+		var lastErr error
+		for _, ip := range ips {
+			// Mirror fasthttp's default of IPv4-only unless DialDualStack.
+			if !dialDualStack && ip.To4() == nil {
+				continue
+			}
+			conn, derr := dialer.Dial("tcp", net.JoinHostPort(ip.String(), port))
+			if derr == nil {
+				return conn, nil
+			}
+			lastErr = derr
+		}
+		if lastErr == nil {
+			lastErr = fmt.Errorf("%w: %s has no usable address", ErrUpstreamHostBlocked, host)
+		}
+		return nil, lastErr
+	}
 }
 
 // isBlockedIP reports whether ip falls inside a range that proxy
@@ -353,8 +462,21 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 		return out.String()
 	}
 	if parsed.Path != "" {
-		out.Path = parsed.Path
-		out.RawPath = parsed.RawPath
+		// Preserve any path prefix configured on the upstream base (e.g.
+		// "http://upstream/api" + "/foo" -> "http://upstream/api/foo")
+		// rather than overwriting it with the request path alone.
+		out.Path = strings.TrimSuffix(base.Path, "/") + "/" + strings.TrimPrefix(parsed.Path, "/")
+		if base.RawPath != "" || parsed.RawPath != "" {
+			baseRaw := base.RawPath
+			if baseRaw == "" {
+				baseRaw = base.Path
+			}
+			parsedRaw := parsed.RawPath
+			if parsedRaw == "" {
+				parsedRaw = parsed.Path
+			}
+			out.RawPath = strings.TrimSuffix(baseRaw, "/") + "/" + strings.TrimPrefix(parsedRaw, "/")
+		}
 	}
 	out.RawQuery = parsed.RawQuery
 	out.Fragment = parsed.Fragment

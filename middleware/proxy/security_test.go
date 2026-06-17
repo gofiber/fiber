@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -180,10 +181,16 @@ func Test_Security_HopByHopRequestStripping(t *testing.T) {
 	}
 
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		// Use t.Errorf (not require) inside the handler goroutine so a
+		// failure marks the test instead of aborting the goroutine.
 		for _, h := range hops {
-			require.Empty(t, c.Get(h), "expected hop-by-hop %q stripped", h)
+			if v := c.Get(h); v != "" {
+				t.Errorf("expected hop-by-hop %q stripped, got %q", h, v)
+			}
 		}
-		require.Empty(t, c.Get("X-Custom-Hop"), "Connection-listed header should be stripped")
+		if v := c.Get("X-Custom-Hop"); v != "" {
+			t.Errorf("Connection-listed header should be stripped, got %q", v)
+		}
 		return c.SendString("ok")
 	})
 
@@ -231,8 +238,12 @@ func Test_Security_HopByHopResponseStripping(t *testing.T) {
 func Test_Security_KeepConnectionPreservesOtherHopByHop(t *testing.T) {
 	t.Parallel()
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		require.Empty(t, c.Get(fiber.HeaderProxyAuthorization), "Proxy-Authorization should still be stripped")
-		require.Equal(t, "keep-alive", c.Get(fiber.HeaderConnection))
+		if v := c.Get(fiber.HeaderProxyAuthorization); v != "" {
+			t.Errorf("Proxy-Authorization should still be stripped, got %q", v)
+		}
+		if v := c.Get(fiber.HeaderConnection); v != "keep-alive" {
+			t.Errorf("expected Connection %q, got %q", "keep-alive", v)
+		}
 		return c.SendString("ok")
 	})
 
@@ -264,7 +275,13 @@ func Test_Security_Do_BlocksFileScheme(t *testing.T) {
 }
 
 func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel: this test mutates the global SecurityPolicy and would
+	// otherwise race with other proxy tests that read it at runtime.
+	// Allow private IPs for the loopback test servers while keeping the
+	// downgrade protection enabled.
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	withSecurityPolicyForTest(t, policy)
 
 	// Start an HTTPS server that 302-redirects to a plaintext HTTP URL.
 	cert, err := generateLocalhostCert(t)
@@ -303,21 +320,15 @@ func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/test", func(c fiber.Ctx) error {
-		// Allow private IPs for the test loopback servers but keep the
-		// downgrade protection enabled.
-		policy := DefaultSecurityPolicy()
-		policy.AllowPrivateIPs = true
-		prev := WithSecurityPolicy(policy)
-		defer WithSecurityPolicy(prev)
 		return DoRedirects(c, "https://"+httpsLn.Addr().String(), 1, tlsClient)
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	body := make([]byte, 512)
-	n, _ := resp.Body.Read(body) //nolint:errcheck // bounded buffer, EOF is fine
-	require.Contains(t, string(body[:n]), "HTTPS to HTTP redirect blocked")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "HTTPS to HTTP redirect blocked")
 }
 
 func Test_Security_JoinUpstreamPath_BlocksNetworkPathInjection(t *testing.T) {
@@ -328,6 +339,84 @@ func Test_Security_JoinUpstreamPath_BlocksNetworkPathInjection(t *testing.T) {
 	out := joinUpstreamPath(base, "//attacker.example/path")
 	require.True(t, strings.HasPrefix(out, "http://upstream.example/"), "host must not change: %q", out)
 	require.NotContains(t, out, "//attacker.example/")
+}
+
+// Test_Security_JoinUpstreamPath_PreservesBasePathPrefix ensures a path
+// prefix configured on the upstream base survives request joining instead
+// of being overwritten by the request path.
+func Test_Security_JoinUpstreamPath_PreservesBasePathPrefix(t *testing.T) {
+	t.Parallel()
+	base, err := parseUpstream("http://upstream.example/api")
+	require.NoError(t, err)
+
+	require.Equal(t, "http://upstream.example/api/foo", joinUpstreamPath(base, "/foo"))
+	require.Equal(t, "http://upstream.example/api/foo?q=1", joinUpstreamPath(base, "/foo?q=1"))
+
+	// Trailing slash on the base should not double up.
+	baseSlash, err := parseUpstream("http://upstream.example/api/")
+	require.NoError(t, err)
+	require.Equal(t, "http://upstream.example/api/foo", joinUpstreamPath(baseSlash, "/foo"))
+}
+
+// Test_Security_FollowRedirects_StripsCredentialsCrossHost verifies that
+// Authorization/Cookie/Proxy-Authorization are dropped when a redirect
+// crosses to a different host, but preserved on same-host redirects.
+func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
+	t.Parallel()
+
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+
+	t.Run("cross-host strips", func(t *testing.T) {
+		t.Parallel()
+		var sawAuth, sawCookie string
+		client, _ := newCountingRedirectClient(map[string]redirectStep{
+			"http://first.example/": {status: fasthttp.StatusFound, location: "http://second.example/next"},
+		})
+		client.onRequest = func(req *fasthttp.Request) {
+			if string(req.URI().Host()) == "second.example" {
+				sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
+				sawCookie = string(req.Header.Peek(fiber.HeaderCookie))
+			}
+		}
+
+		req := fasthttp.AcquireRequest()
+		resp := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseRequest(req)
+		defer fasthttp.ReleaseResponse(resp)
+		req.SetRequestURI("http://first.example/")
+		req.Header.SetMethod(fasthttp.MethodGet)
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
+		req.Header.Set(fiber.HeaderCookie, "session=abc")
+
+		require.NoError(t, followRedirects(client.client, req, resp, 3, policy))
+		require.Empty(t, sawAuth, "Authorization must be stripped cross-host")
+		require.Empty(t, sawCookie, "Cookie must be stripped cross-host")
+	})
+
+	t.Run("same-host preserves", func(t *testing.T) {
+		t.Parallel()
+		var sawAuth string
+		client, _ := newCountingRedirectClient(map[string]redirectStep{
+			"http://same.example/": {status: fasthttp.StatusFound, location: "http://same.example/next"},
+		})
+		client.onRequest = func(req *fasthttp.Request) {
+			if string(req.URI().RequestURI()) == "/next" {
+				sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
+			}
+		}
+
+		req := fasthttp.AcquireRequest()
+		resp := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseRequest(req)
+		defer fasthttp.ReleaseResponse(resp)
+		req.SetRequestURI("http://same.example/")
+		req.Header.SetMethod(fasthttp.MethodGet)
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
+
+		require.NoError(t, followRedirects(client.client, req, resp, 3, policy))
+		require.Equal(t, "Bearer secret", sawAuth, "Authorization must survive same-host redirect")
+	})
 }
 
 func Test_Security_JoinUpstreamPath_PreservesQuery(t *testing.T) {
@@ -352,7 +441,7 @@ func Test_Security_SecureTLSConfig_DefaultMinVersion(t *testing.T) {
 }
 
 func Test_Security_WithSecurityPolicy_RestoresDefaults(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel: mutates the global SecurityPolicy.
 	custom := DefaultSecurityPolicy()
 	custom.AllowPrivateIPs = true
 	prev := WithSecurityPolicy(custom)
