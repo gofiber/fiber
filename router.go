@@ -42,6 +42,45 @@ type Router interface {
 	Route(prefix string, fn func(router Router), name ...string) Router
 
 	Name(name string) Router
+	// Summary sets a short summary for the most recently registered route.
+	Summary(sum string) Router
+	// Description sets a human-readable description for the most recently
+	// registered route.
+	Description(desc string) Router
+	// Consumes sets the request media type for the most recently
+	// registered route.
+	Consumes(typ string) Router
+	// Produces sets the response media type for the most recently
+	// registered route.
+	Produces(typ string) Router
+	// RequestBody documents the request body for the most recently
+	// registered route.
+	RequestBody(description string, required bool, mediaTypes ...string) Router
+	// RequestBodyWithExample documents the request body for the most recently
+	// registered route with schema references and examples.
+	RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
+	// Parameter documents an input parameter for the most recently
+	// registered route.
+	Parameter(name, in string, required bool, schema map[string]any, description string) Router
+	// ParameterWithExample documents an input parameter for the most recently
+	// registered route, including schema references and examples.
+	ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router
+	// Response documents an HTTP response for the most recently
+	// registered route.
+	Response(status int, description string, mediaTypes ...string) Router
+	// ResponseWithExample documents an HTTP response for the most recently
+	// registered route, including schema references and examples.
+	ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
+	// Tags sets the tags for the most recently registered route.
+	Tags(tags ...string) Router
+	// Deprecated marks the most recently registered route as deprecated.
+	Deprecated() Router
+	// Security sets the security requirements for the most recently registered
+	// route. Each requirement maps a security scheme name to its required
+	// scopes; multiple requirements are combined with OR semantics. Passing an
+	// empty requirement (an empty map) documents that the operation requires no
+	// authentication, overriding any document-level default.
+	Security(requirements ...map[string][]string) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
@@ -55,9 +94,18 @@ type Route struct {
 	Method string `json:"method"` // HTTP method
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
-	Path        string      `json:"path"`   // Original registered route path
-	Params      []string    `json:"params"` // Case-sensitive param keys
-	Handlers    []Handler   `json:"-"`      // Ctx handlers
+	Path        string `json:"path"` // Original registered route path
+	Summary     string `json:"summary"`
+	Description string `json:"description"`
+	Consumes    string `json:"consumes"`
+	Produces    string `json:"produces"`
+
+	Handlers   []Handler             `json:"-"` // Ctx handlers
+	Parameters []RouteParameter      `json:"parameters"`
+	Tags       []string              `json:"tags"`
+	Params     []string              `json:"params"`             // Case-sensitive param keys
+	Security   []map[string][]string `json:"security,omitempty"` // OpenAPI security requirements
+
 	routeParser routeParser // Parameter parser
 
 	// Data for routing
@@ -619,12 +667,37 @@ func (*App) copyRoute(route *Route) *Route {
 		routeParser: route.routeParser,
 
 		// Public data
-		Path:     route.Path,
-		Params:   route.Params,
-		Name:     route.Name,
-		Method:   route.Method,
-		Handlers: route.Handlers,
+		Path:        route.Path,
+		Params:      route.Params,
+		Name:        route.Name,
+		Method:      route.Method,
+		Handlers:    route.Handlers,
+		Summary:     route.Summary,
+		Description: route.Description,
+		Consumes:    route.Consumes,
+		Produces:    route.Produces,
+		RequestBody: cloneRouteRequestBody(route.RequestBody),
+		Parameters:  cloneRouteParameters(route.Parameters),
+		Responses:   cloneRouteResponses(route.Responses),
+		Tags:        append([]string(nil), route.Tags...),
+		Deprecated:  route.Deprecated,
+		Security:    cloneRouteSecurity(route.Security),
 	}
+}
+
+func cloneRouteSecurity(requirements []map[string][]string) []map[string][]string {
+	if len(requirements) == 0 {
+		return nil
+	}
+	cloned := make([]map[string][]string, len(requirements))
+	for i, requirement := range requirements {
+		entry := make(map[string][]string, len(requirement))
+		for scheme, scopes := range requirement {
+			entry[scheme] = append([]string(nil), scopes...)
+		}
+		cloned[i] = entry
+	}
+	return cloned
 }
 
 func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {

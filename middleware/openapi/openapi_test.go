@@ -788,6 +788,9 @@ func Test_OpenAPI_NoRequestBodyForGET(t *testing.T) {
 	require.NotContains(t, op, "requestBody")
 }
 
+// Test_OpenAPI_Cache verifies the spec is cached but regenerated whenever the
+// number of registered routes changes, so routes added after the first request
+// are reflected without a process restart.
 func Test_OpenAPI_Cache(t *testing.T) {
 	app := fiber.New()
 
@@ -812,7 +815,8 @@ func Test_OpenAPI_Cache(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
-	require.NotContains(t, spec.Paths, "/second")
+	require.Contains(t, spec.Paths, "/first")
+	require.Contains(t, spec.Paths, "/second")
 }
 
 func requireMap(t *testing.T, value any) map[string]any {
@@ -820,6 +824,222 @@ func requireMap(t *testing.T, value any) map[string]any {
 	m, ok := value.(map[string]any)
 	require.True(t, ok)
 	return m
+}
+
+// fetchJSON performs a GET request for the given path and decodes the JSON body
+// into a generic map. The middleware must already be registered on the app.
+func fetchJSON(t *testing.T, app *fiber.App, path string) map[string]any {
+	t.Helper()
+
+	req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var out map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	return out
+}
+
+func Test_OpenAPI_SecuritySchemes(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{
+		SecuritySchemes: map[string]any{
+			"bearerAuth": map[string]any{
+				"type":         "http",
+				"scheme":       "bearer",
+				"bearerFormat": "JWT",
+			},
+		},
+		Security: []map[string][]string{
+			{"bearerAuth": {}},
+		},
+	}))
+
+	spec := fetchJSON(t, app, "/openapi.json")
+
+	components := requireMap(t, spec["components"])
+	schemes := requireMap(t, components["securitySchemes"])
+	require.Contains(t, schemes, "bearerAuth")
+	bearer := requireMap(t, schemes["bearerAuth"])
+	require.Equal(t, "http", bearer["type"])
+
+	security, ok := spec["security"].([]any)
+	require.True(t, ok)
+	require.Len(t, security, 1)
+}
+
+func Test_OpenAPI_SecuritySchemes_MergeWithComponents(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{
+		Components: map[string]any{
+			"schemas": map[string]any{
+				"User": map[string]any{"type": "object"},
+			},
+		},
+		SecuritySchemes: map[string]any{
+			"apiKey": map[string]any{"type": "apiKey", "in": "header", "name": "X-API-Key"},
+		},
+	}))
+
+	spec := fetchJSON(t, app, "/openapi.json")
+	components := requireMap(t, spec["components"])
+	// User-provided components are preserved alongside the injected securitySchemes.
+	require.Contains(t, components, "schemas")
+	require.Contains(t, components, "securitySchemes")
+}
+
+func Test_OpenAPI_RouteSecurity(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/private", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Security(map[string][]string{"bearerAuth": {"read"}})
+	// An explicit empty requirement documents "no authentication".
+	app.Get("/public", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Security(map[string][]string{})
+
+	paths := getPaths(t, app)
+
+	privateOp := requireMap(t, paths["/private"]["get"])
+	sec, ok := privateOp["security"].([]any)
+	require.True(t, ok)
+	require.Len(t, sec, 1)
+	first := requireMap(t, sec[0])
+	require.Contains(t, first, "bearerAuth")
+
+	publicOp := requireMap(t, paths["/public"]["get"])
+	pub, ok := publicOp["security"].([]any)
+	require.True(t, ok)
+	require.Len(t, pub, 1)
+	require.Empty(t, requireMap(t, pub[0]))
+}
+
+func Test_OpenAPI_InfoMetadata(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{
+		Contact:        &Contact{Name: "API Team", Email: "api@example.com", URL: "https://example.com"},
+		License:        &License{Name: "MIT", URL: "https://opensource.org/licenses/MIT"},
+		TermsOfService: "https://example.com/terms",
+	}))
+
+	spec := fetchJSON(t, app, "/openapi.json")
+	info := requireMap(t, spec["info"])
+	require.Equal(t, "https://example.com/terms", info["termsOfService"])
+	contact := requireMap(t, info["contact"])
+	require.Equal(t, "API Team", contact["name"])
+	license := requireMap(t, info["license"])
+	require.Equal(t, "MIT", license["name"])
+}
+
+func Test_OpenAPI_MultipleServers(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{
+		Servers: []Server{
+			{URL: "https://prod.example.com", Description: "Production"},
+			{URL: "https://staging.example.com", Description: "Staging"},
+		},
+	}))
+
+	spec := fetchJSON(t, app, "/openapi.json")
+	servers, ok := spec["servers"].([]any)
+	require.True(t, ok)
+	require.Len(t, servers, 2)
+	first := requireMap(t, servers[0])
+	require.Equal(t, "https://prod.example.com", first["url"])
+	require.Equal(t, "Production", first["description"])
+}
+
+func Test_OpenAPI_ServerURLBackCompat(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{ServerURL: "https://example.com"}))
+
+	spec := fetchJSON(t, app, "/openapi.json")
+	servers, ok := spec["servers"].([]any)
+	require.True(t, ok)
+	require.Len(t, servers, 1)
+	require.Equal(t, "https://example.com", requireMap(t, servers[0])["url"])
+}
+
+func Test_OpenAPI_TopLevelTagsAndExternalDocs(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{
+		Tags: []Tag{
+			{Name: "users", Description: "User operations"},
+		},
+		ExternalDocs: &ExternalDocs{Description: "Docs", URL: "https://docs.example.com"},
+	}))
+
+	spec := fetchJSON(t, app, "/openapi.json")
+	tags, ok := spec["tags"].([]any)
+	require.True(t, ok)
+	require.Len(t, tags, 1)
+	require.Equal(t, "users", requireMap(t, tags[0])["name"])
+
+	ext := requireMap(t, spec["externalDocs"])
+	require.Equal(t, "https://docs.example.com", ext["url"])
+}
+
+func Test_OpenAPI_SwaggerUI_StandalonePreset(t *testing.T) {
+	t.Parallel()
+
+	// Default config loads the standalone preset and uses StandaloneLayout.
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New())
+
+	req := httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `src="https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"`)
+	require.Contains(t, string(body), "StandaloneLayout")
+
+	// A custom standalone preset URL is honored (self-hosting scenario).
+	app2 := fiber.New()
+	app2.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app2.Use(New(Config{SwaggerStandalonePresetURL: "https://cdn.example.com/standalone.js"}))
+
+	req = httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody)
+	resp, err = app2.Test(req)
+	require.NoError(t, err)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `src="https://cdn.example.com/standalone.js"`)
+}
+
+func Test_OpenAPI_PathTrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New())
+
+	for _, path := range []string{"/openapi.json/", "/swagger/"} {
+		req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "path %q should resolve", path)
+	}
 }
 
 func requireSlice(t *testing.T, value any) []any {

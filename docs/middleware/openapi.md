@@ -30,22 +30,31 @@ After you initiate your Fiber app, you can use the following possibilities:
 ```go
 // Initialize default config.
 //
-// The middleware inspects the app's routes and generates the OpenAPI spec
-// the first time a matching request (for example, GET /openapi.json) is served.
-// That spec is then cached for the lifetime of the process, so any routes
-// registered after the first OpenAPI request will not appear in the spec.
+// The middleware inspects the app's routes and generates the OpenAPI spec on
+// the first matching request (for example, GET /openapi.json). The spec is
+// cached, but the cache is automatically invalidated whenever the number of
+// registered routes changes, so routes added after the first request are
+// reflected without a process restart.
 // The middleware also serves a Swagger UI page at GET /swagger by default.
-//
-// To avoid surprises, register the middleware *after* all routes have been
-// added and before you start serving traffic.
 app.Use(openapi.New())
 
 // Or extend your config for customization
 app.Use(openapi.New(openapi.Config{
     Title:          "My API",
     Version:        "1.0.0",
-    ServerURL:      "https://example.com",
     OpenAPIVersion: "3.1.0", // or "3.0.0"
+    Description:    "Example API",
+    TermsOfService: "https://example.com/terms",
+    Contact:        &openapi.Contact{Name: "API Team", Email: "api@example.com"},
+    License:        &openapi.License{Name: "MIT", URL: "https://opensource.org/licenses/MIT"},
+    // Servers takes precedence over ServerURL and supports multiple entries.
+    Servers: []openapi.Server{
+        {URL: "https://prod.example.com", Description: "Production"},
+        {URL: "https://staging.example.com", Description: "Staging"},
+    },
+    // Top-level tag definitions and external documentation.
+    Tags:         []openapi.Tag{{Name: "users", Description: "User operations"}},
+    ExternalDocs: &openapi.ExternalDocs{Description: "Docs", URL: "https://docs.example.com"},
     // Components holds reusable schema definitions that $ref targets resolve to.
     Components: map[string]any{
         "schemas": map[string]any{
@@ -57,6 +66,23 @@ app.Use(openapi.New(openapi.Config{
                 },
             },
         },
+    },
+}))
+
+// Document authentication with security schemes.
+//
+// SecuritySchemes are emitted under components.securitySchemes; Security sets the
+// document-level (default) requirement applied to every operation.
+app.Use(openapi.New(openapi.Config{
+    SecuritySchemes: map[string]any{
+        "bearerAuth": map[string]any{
+            "type":         "http",
+            "scheme":       "bearer",
+            "bearerFormat": "JWT",
+        },
+    },
+    Security: []map[string][]string{
+        {"bearerAuth": {}},
     },
 }))
 
@@ -100,6 +126,9 @@ app.Post("/users", createUser).
         fiber.MIMEApplicationJSON,
     ).
     Tags("users", "admin").
+    // Per-operation security. Multiple requirements are combined with OR;
+    // pass an empty requirement (map[string][]string{}) to document "no auth".
+    Security(map[string][]string{"bearerAuth": {}}).
     Produces(fiber.MIMEApplicationJSON)
 
 // If not specified, generated operations default to a summary of "METHOD path",
@@ -125,9 +154,18 @@ If no responses are declared, the middleware adds a sensible default: `200 OK` f
 | UIPath         | `string`                | Path is the route where the Swagger UI page will be served.     | `"/swagger"` |
 | SwaggerCSSURL  | `string`                | Stylesheet URL used by the generated Swagger UI page.           | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"` |
 | SwaggerBundleURL | `string`              | Script URL used by the generated Swagger UI page.               | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"` |
+| SwaggerStandalonePresetURL | `string`    | Standalone preset script URL; when set the UI uses `StandaloneLayout` (top bar with the Authorize button). | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"` |
 | SwaggerOptions | `map[string]any`        | Additional options merged into the generated `SwaggerUIBundle` call. | `nil` |
 | OpenAPIVersion | `string`                | OpenAPI specification version to generate (`"3.0.0"` or `"3.1.0"`) | `"3.1.0"`     |
 | Components     | `map[string]any`        | Reusable OpenAPI component definitions (schemas, responses, etc.) emitted under `"components"`. | `nil` |
+| SecuritySchemes | `map[string]any`       | Reusable security scheme definitions, emitted under `"components.securitySchemes"`. | `nil` |
+| Security       | `[]map[string][]string` | Document-level (default) security requirements; each map is a requirement (OR semantics across entries). | `nil` |
+| Contact        | `*Contact`              | Contact information for the API (`info.contact`).               | `nil` |
+| License        | `*License`              | License information for the API (`info.license`).               | `nil` |
+| TermsOfService | `string`                | Terms of Service URL (`info.termsOfService`).                   | `""` |
+| Servers        | `[]Server`              | Servers hosting the API; takes precedence over `ServerURL`.     | `nil` |
+| Tags           | `[]Tag`                 | Top-level tag definitions (with descriptions).                  | `nil` |
+| ExternalDocs   | `*ExternalDocs`         | External documentation reference (`externalDocs`).             | `nil` |
 
 When the middleware is attached to a group or mounted under a prefixed `Use`, the configured `Path` is resolved relative to that
 prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global
@@ -139,20 +177,29 @@ The same prefix resolution applies to `UIPath`, so `app.Group("/v1").Use(openapi
 
 ```go
 var ConfigDefault = Config{
-    Next:           nil,
-    Title:          "Fiber API",
-    Version:        "1.0.0",
-    Description:    "",
-    ServerURL:      "",
-    Path:           "/openapi.json",
-    UIPath:         "/swagger",
-    SwaggerCSSURL:  "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css",
-    SwaggerBundleURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
-    SwaggerOptions: nil,
-    OpenAPIVersion: "3.1.0",
-    Components:     nil,
+    Next:                       nil,
+    Title:                      "Fiber API",
+    Version:                    "1.0.0",
+    Description:                "",
+    ServerURL:                  "",
+    Path:                       "/openapi.json",
+    UIPath:                     "/swagger",
+    SwaggerCSSURL:              "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css",
+    SwaggerBundleURL:           "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
+    SwaggerStandalonePresetURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js",
+    SwaggerOptions:             nil,
+    OpenAPIVersion:             "3.1.0",
+    Components:                 nil,
 }
 ```
+
+:::note Offline / self-hosted Swagger UI
+By default the Swagger UI page loads its assets from the `unpkg.com` CDN, which
+requires outbound internet access from the browser. For offline, air-gapped, or
+strict-CSP deployments, host the `swagger-ui` assets yourself and point
+`SwaggerCSSURL`, `SwaggerBundleURL`, and `SwaggerStandalonePresetURL` at your own
+URLs.
+:::
 
 Schema references (`SchemaRef`) are emitted as `$ref` entries in the generated JSON and can point to components such as `#/components/schemas/User`. To make these references resolve correctly, provide the corresponding definitions via the `Components` config field. `Example` and `Examples` follow the OpenAPI specification's mutual exclusivity rule: when both are provided, `Examples` takes precedence and `Example` is omitted.
 
