@@ -62,34 +62,34 @@ func typeSchema(t reflect.Type) map[string]any {
 	}
 
 	if t == timeType {
-		return map[string]any{"type": "string", "format": "date-time"}
+		return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "date-time"}
 	}
 
 	switch t.Kind() {
 	case reflect.String:
-		return map[string]any{"type": "string"}
+		return map[string]any{schemaKeyType: schemaTypeString}
 	case reflect.Bool:
-		return map[string]any{"type": "boolean"}
+		return map[string]any{schemaKeyType: "boolean"}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return map[string]any{"type": "integer"}
+		return map[string]any{schemaKeyType: "integer"}
 	case reflect.Float32, reflect.Float64:
-		return map[string]any{"type": "number"}
+		return map[string]any{schemaKeyType: "number"}
 	case reflect.Slice, reflect.Array:
 		items := typeSchema(t.Elem())
 		if items == nil {
 			items = map[string]any{}
 		}
-		return map[string]any{"type": "array", "items": items}
+		return map[string]any{schemaKeyType: "array", "items": items}
 	case reflect.Map:
 		if t.Key().Kind() != reflect.String {
-			return map[string]any{"type": "object"}
+			return map[string]any{schemaKeyType: schemaTypeObject}
 		}
 		additional := typeSchema(t.Elem())
 		if additional == nil {
 			additional = map[string]any{}
 		}
-		return map[string]any{"type": "object", "additionalProperties": additional}
+		return map[string]any{schemaKeyType: schemaTypeObject, "additionalProperties": additional}
 	case reflect.Struct:
 		return structSchema(t)
 	default:
@@ -144,8 +144,8 @@ func structSchema(t reflect.Type) map[string]any {
 	}
 
 	schema := map[string]any{
-		"type":       "object",
-		"properties": properties,
+		schemaKeyType: schemaTypeObject,
+		"properties":  properties,
 	}
 	if len(required) > 0 {
 		schema["required"] = required
@@ -198,7 +198,7 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 }
 
 func inferExampleValue(val string, schema map[string]any) any {
-	schemaType, ok := schema["type"].(string)
+	schemaType, ok := schema[schemaKeyType].(string)
 	if !ok {
 		return val
 	}

@@ -826,12 +826,12 @@ func requireMap(t *testing.T, value any) map[string]any {
 	return m
 }
 
-// fetchJSON performs a GET request for the given path and decodes the JSON body
-// into a generic map. The middleware must already be registered on the app.
-func fetchJSON(t *testing.T, app *fiber.App, path string) map[string]any {
+// fetchJSON requests the generated OpenAPI spec and decodes the JSON body into a
+// generic map. The middleware must already be registered on the app.
+func fetchJSON(t *testing.T, app *fiber.App) map[string]any {
 	t.Helper()
 
-	req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -859,7 +859,7 @@ func Test_OpenAPI_SecuritySchemes(t *testing.T) {
 		},
 	}))
 
-	spec := fetchJSON(t, app, "/openapi.json")
+	spec := fetchJSON(t, app)
 
 	components := requireMap(t, spec["components"])
 	schemes := requireMap(t, components["securitySchemes"])
@@ -888,7 +888,7 @@ func Test_OpenAPI_SecuritySchemes_MergeWithComponents(t *testing.T) {
 		},
 	}))
 
-	spec := fetchJSON(t, app, "/openapi.json")
+	spec := fetchJSON(t, app)
 	components := requireMap(t, spec["components"])
 	// User-provided components are preserved alongside the injected securitySchemes.
 	require.Contains(t, components, "schemas")
@@ -932,7 +932,7 @@ func Test_OpenAPI_InfoMetadata(t *testing.T) {
 		TermsOfService: "https://example.com/terms",
 	}))
 
-	spec := fetchJSON(t, app, "/openapi.json")
+	spec := fetchJSON(t, app)
 	info := requireMap(t, spec["info"])
 	require.Equal(t, "https://example.com/terms", info["termsOfService"])
 	contact := requireMap(t, info["contact"])
@@ -953,7 +953,7 @@ func Test_OpenAPI_MultipleServers(t *testing.T) {
 		},
 	}))
 
-	spec := fetchJSON(t, app, "/openapi.json")
+	spec := fetchJSON(t, app)
 	servers, ok := spec["servers"].([]any)
 	require.True(t, ok)
 	require.Len(t, servers, 2)
@@ -969,7 +969,7 @@ func Test_OpenAPI_ServerURLBackCompat(t *testing.T) {
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New(Config{ServerURL: "https://example.com"}))
 
-	spec := fetchJSON(t, app, "/openapi.json")
+	spec := fetchJSON(t, app)
 	servers, ok := spec["servers"].([]any)
 	require.True(t, ok)
 	require.Len(t, servers, 1)
@@ -988,7 +988,7 @@ func Test_OpenAPI_TopLevelTagsAndExternalDocs(t *testing.T) {
 		ExternalDocs: &ExternalDocs{Description: "Docs", URL: "https://docs.example.com"},
 	}))
 
-	spec := fetchJSON(t, app, "/openapi.json")
+	spec := fetchJSON(t, app)
 	tags, ok := spec["tags"].([]any)
 	require.True(t, ok)
 	require.Len(t, tags, 1)
