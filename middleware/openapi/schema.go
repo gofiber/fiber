@@ -177,8 +177,8 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 		if !found {
 			continue
 		}
-		key = strings.TrimSpace(key)
-		val = strings.TrimSpace(val)
+		key = utils.TrimSpace(key)
+		val = utils.TrimSpace(val)
 		switch key {
 		case "description":
 			schema["description"] = val
@@ -190,7 +190,7 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 			values := strings.Split(val, "|")
 			enumSlice := make([]any, len(values))
 			for i, v := range values {
-				enumSlice[i] = strings.TrimSpace(v)
+				enumSlice[i] = utils.TrimSpace(v)
 			}
 			schema["enum"] = enumSlice
 		default:

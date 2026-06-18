@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
@@ -471,10 +472,10 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		return params
 	}
 	for _, extra := range extras {
-		if strings.TrimSpace(extra.Name) == "" {
+		if utils.TrimSpace(extra.Name) == "" {
 			continue
 		}
-		location := strings.ToLower(strings.TrimSpace(extra.In))
+		location := utilsstrings.ToLower(utils.TrimSpace(extra.In))
 		if location == "" {
 			location = "query"
 		}
@@ -586,8 +587,7 @@ func remapRouteParameters(extras []fiber.RouteParameter, aliases map[string]stri
 	out := make([]fiber.RouteParameter, 0, len(extras))
 	for _, extra := range extras {
 		copyExtra := extra
-		location := strings.ToLower(strings.TrimSpace(copyExtra.In))
-		if location == paramLocationPath {
+		if utils.EqualFold(utils.TrimSpace(copyExtra.In), paramLocationPath) {
 			if mapped, ok := aliases[copyExtra.Name]; ok {
 				copyExtra.Name = mapped
 			}
