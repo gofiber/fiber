@@ -849,6 +849,38 @@ func Test_Middleware_RegenerateWithContext(t *testing.T) {
 	_ = store
 }
 
+// go test -run Test_Middleware_WithContext_ErrorPropagation
+func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
+	t.Parallel()
+
+	canceledCtx := func() context.Context {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		return ctx
+	}
+
+	t.Run("DestroyWithContext propagates canceled context and marks destroyed", func(t *testing.T) {
+		t.Parallel()
+		m := &Middleware{Session: newSessionWithStorage(t, &contextStorage{})}
+		require.ErrorIs(t, m.DestroyWithContext(canceledCtx()), context.Canceled)
+		require.True(t, m.isDestroyed)
+	})
+
+	t.Run("ResetWithContext propagates storage error", func(t *testing.T) {
+		t.Parallel()
+		storageErr := errors.New("storage unavailable")
+		m := &Middleware{Session: newSessionWithStorage(t, &failingStorage{err: storageErr})}
+		require.ErrorIs(t, m.ResetWithContext(t.Context()), storageErr)
+	})
+
+	t.Run("RegenerateWithContext propagates storage error", func(t *testing.T) {
+		t.Parallel()
+		storageErr := errors.New("storage unavailable")
+		m := &Middleware{Session: newSessionWithStorage(t, &failingStorage{err: storageErr})}
+		require.ErrorIs(t, m.RegenerateWithContext(t.Context()), storageErr)
+	})
+}
+
 func Test_Middleware_ResolveContext(t *testing.T) {
 	t.Parallel()
 
