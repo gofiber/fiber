@@ -1229,6 +1229,67 @@ func Test_Limiter_Sliding_Window_SkipFailedRequests_DecrementsPreviousWindow(t *
 	assert.NotEmpty(t, result.resp.Header.Get(xRateLimitReset))
 }
 
+// go test -run Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow -v
+func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:                    2,
+		Expiration:             300 * time.Millisecond,
+		SkipSuccessfulRequests: true,
+		LimiterMiddleware:      FixedWindow{},
+	}))
+
+	app.Get("/:mode", func(c fiber.Ctx) error {
+		switch c.Params("mode") {
+		case "slow":
+			// Hold the successful request open until the window has rolled over.
+			time.Sleep(600 * time.Millisecond)
+			return c.SendStatus(fiber.StatusOK)
+		case "fail":
+			// A failed request is not skipped, so it seeds the new window.
+			return c.SendStatus(fiber.StatusInternalServerError)
+		default:
+			return c.SendStatus(fiber.StatusOK)
+		}
+	})
+
+	type respErr struct {
+		resp *http.Response
+		err  error
+	}
+	slowCh := make(chan respErr, 1)
+
+	// The slow successful request increments currHits in the first window and
+	// only finishes after the window has rolled over. With SkipSuccessfulRequests
+	// it credits its hit back; the credit must not be applied to the new window,
+	// otherwise its currHits underflows and the next window grants extra requests.
+	go func() {
+		resp, err := app.Test(
+			httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody),
+			fiber.TestConfig{Timeout: 2 * time.Second},
+		)
+		slowCh <- respErr{resp: resp, err: err}
+	}()
+
+	// Let the first window expire, then seed the new window with one counted hit.
+	time.Sleep(400 * time.Millisecond)
+	failResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, failResp.StatusCode)
+
+	result := <-slowCh
+	require.NoError(t, result.err)
+	require.Equal(t, fiber.StatusOK, result.resp.StatusCode)
+	require.Equal(t, "2", result.resp.Header.Get(xRateLimitLimit))
+	// The credit is skipped after the rollover, so remaining reflects the new
+	// window's single counted hit (2 - 1). Before the fix the slow request
+	// wrongly decremented the new window's currHits and this read "2".
+	require.Equal(t, "1", result.resp.Header.Get(xRateLimitRemaining))
+	assert.NotEmpty(t, result.resp.Header.Get(xRateLimitReset))
+}
+
 // go test -run Test_Limiter_Fixed_Window_Skip_Failed_Requests -v
 func Test_Limiter_Fixed_Window_Skip_Failed_Requests(t *testing.T) {
 	t.Parallel()
