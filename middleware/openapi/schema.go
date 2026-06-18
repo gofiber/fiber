@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // SchemaOf generates an OpenAPI JSON Schema from a Go value using reflection.
@@ -204,11 +206,11 @@ func inferExampleValue(val string, schema map[string]any) any {
 	}
 	switch schemaType {
 	case "integer":
-		if n, err := strconv.ParseInt(val, 10, 64); err == nil {
+		if n, err := utils.ParseInt(val); err == nil {
 			return n
 		}
 	case "number":
-		if f, err := strconv.ParseFloat(val, 64); err == nil {
+		if f, err := utils.ParseFloat64(val); err == nil {
 			return f
 		}
 	case "boolean":
