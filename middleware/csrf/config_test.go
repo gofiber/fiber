@@ -83,6 +83,27 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 		}, "Should panic when chained extractor reads from same cookie")
 	})
 
+	// Test nested insecure chained extractors
+	t.Run("InsecureNestedChainedExtractor", func(t *testing.T) {
+		t.Parallel()
+		nestedChainedExtractor := extractors.Chain(
+			extractors.FromHeader("X-Csrf-Token"),
+			extractors.Chain(
+				extractors.FromHeader("X-Alt-Csrf-Token"),
+				extractors.FromCookie("csrf_"),
+			),
+		)
+
+		cfg := Config{
+			CookieName: "csrf_",
+			Extractor:  nestedChainedExtractor,
+		}
+
+		require.Panics(t, func() {
+			configDefault(cfg)
+		}, "Should panic when a nested chained extractor reads from same cookie")
+	})
+
 	// Test different cookie names - should be secure
 	t.Run("DifferentCookieNames", func(t *testing.T) {
 		t.Parallel()

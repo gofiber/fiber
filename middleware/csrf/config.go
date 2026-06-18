@@ -190,9 +190,10 @@ func validateExtractorSecurity(cfg *Config) {
 			"' used for token storage. This completely defeats CSRF protection.")
 	}
 
-	// Check chained extractors
+	// Check chained extractors recursively so a nested chain cannot hide a
+	// fallback that reads from the CSRF storage cookie.
 	for i, extractor := range cfg.Extractor.Chain {
-		if isInsecureCookieExtractor(extractor, cfg.CookieName) {
+		if isInsecureCookieExtractorRecursive(extractor, cfg.CookieName) {
 			panic(fmt.Sprintf("CSRF: Chained extractor #%d reads from the same cookie '%s' "+
 				"used for token storage. This completely defeats CSRF protection.", i+1, cfg.CookieName))
 		}
@@ -202,6 +203,22 @@ func validateExtractorSecurity(cfg *Config) {
 	if cfg.Extractor.Source == extractors.SourceQuery || cfg.Extractor.Source == extractors.SourceParam {
 		log.Warnf("[CSRF WARNING] Using %v extractor - URLs may be logged", cfg.Extractor.Source)
 	}
+}
+
+// isInsecureCookieExtractorRecursive checks if an extractor or any nested chain
+// unsafely reads from the CSRF cookie.
+func isInsecureCookieExtractorRecursive(extractor extractors.Extractor, cookieName string) bool {
+	if isInsecureCookieExtractor(extractor, cookieName) {
+		return true
+	}
+
+	for _, chainedExtractor := range extractor.Chain {
+		if isInsecureCookieExtractorRecursive(chainedExtractor, cookieName) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // isInsecureCookieExtractor checks if an extractor unsafely reads from the CSRF cookie
