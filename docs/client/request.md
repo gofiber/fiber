@@ -101,6 +101,14 @@ func (r *Request) Head(url string) (*Response, error)
 func (r *Request) Options(url string) (*Response, error)
 ```
 
+### Query
+
+**Query** sends a QUERY request. It sets the URL and method to QUERY, then sends the request.
+
+```go title="Signature"
+func (r *Request) Query(url string) (*Response, error)
+```
+
 ### Custom
 
 **Custom** sends a request using a custom HTTP method. For example, you can use this to send a TRACE or CONNECT request.
