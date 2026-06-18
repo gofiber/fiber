@@ -323,12 +323,7 @@ func (m *Middleware) Keys() []any {
 //
 //	err := m.Destroy()
 func (m *Middleware) Destroy() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	err := m.Session.Destroy()
-	m.isDestroyed = true
-	return err
+	return m.DestroyWithContext(m.resolveContext())
 }
 
 // DestroyWithContext destroys the session using the provided context for cancellation and timeout control.
@@ -384,10 +379,7 @@ func (m *Middleware) ID() string {
 //
 //	err := m.Reset()
 func (m *Middleware) Reset() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return m.Session.Reset()
+	return m.ResetWithContext(m.resolveContext())
 }
 
 // ResetWithContext resets the session using the provided context for cancellation and timeout control.
@@ -420,10 +412,7 @@ func (m *Middleware) ResetWithContext(ctx context.Context) error {
 //
 //	err := m.Regenerate()
 func (m *Middleware) Regenerate() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return m.Session.Regenerate()
+	return m.RegenerateWithContext(m.resolveContext())
 }
 
 // RegenerateWithContext generates a new session ID while preserving session data,

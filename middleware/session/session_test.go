@@ -1772,6 +1772,7 @@ func Test_Session_RegenerateWithContext(t *testing.T) {
 		require.NoError(t, err)
 
 		originalID := freshSession.ID()
+		freshSession.Set("name", "fenny")
 
 		err = freshSession.Save()
 		require.NoError(t, err)
@@ -1791,6 +1792,8 @@ func Test_Session_RegenerateWithContext(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEqual(t, originalID, sess.ID())
 		require.True(t, sess.Fresh())
+		// Regenerate must preserve session data (unlike Reset, which clears it).
+		require.Equal(t, "fenny", sess.Get("name"))
 	})
 }
 
@@ -1865,24 +1868,19 @@ func Test_Session_SaveWithContext(t *testing.T) {
 		require.NoError(t, sess.SaveWithContext(t.Context()))
 	})
 
-	t.Run("save with context when in middleware handler", func(t *testing.T) {
+	t.Run("save with context is a no-op when in middleware handler", func(t *testing.T) {
 		t.Parallel()
-		store := NewStore()
-		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		// Back the session with a storage that errors on any write: a real save
+		// would surface that error, so a nil return proves no write happened.
+		sess := newSessionWithStorage(t, &failingStorage{err: errors.New("Set must not be called")})
+		sess.Set("name", "fenny")
 
-		sess, err := store.Get(ctx)
-		require.NoError(t, err)
-		defer sess.Release()
-
-		// Simulate middleware context
+		// Simulate the session being in use by the middleware handler.
 		m := &Middleware{Session: sess}
-		ctx.Locals(middlewareContextKey, m)
+		sess.ctx.Locals(middlewareContextKey, m)
 
-		// SaveWithContext should be a no-op when session is in use by middleware
-		err = sess.SaveWithContext(t.Context())
-		require.NoError(t, err)
+		// SaveWithContext must be a no-op when the session is in use by middleware.
+		require.NoError(t, sess.SaveWithContext(t.Context()))
 	})
 }
 
@@ -2009,6 +2007,51 @@ func Test_Session_WithContext_CanceledContext(t *testing.T) {
 		sess := newSessionWithStorage(t, &contextStorage{})
 		sess.Set("name", "fenny")
 		require.ErrorIs(t, sess.SaveWithContext(canceledCtx()), context.Canceled)
+	})
+}
+
+// go test -run Test_Session_WithContext_DeadlineContext
+func Test_Session_WithContext_DeadlineContext(t *testing.T) {
+	t.Parallel()
+
+	// contextStorage honors a deadline by returning ctx.Err(). An already-expired
+	// deadline yields context.DeadlineExceeded, the primary motivation for the
+	// *WithContext variants (bounding slow or unresponsive backends).
+	expiredCtx := func() context.Context {
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Hour))
+		t.Cleanup(cancel)
+		return ctx
+	}
+
+	t.Run("DestroyWithContext honors expired deadline", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &contextStorage{})
+		sess.Set("name", "fenny")
+		require.ErrorIs(t, sess.DestroyWithContext(expiredCtx()), context.DeadlineExceeded)
+		// A timed-out delete must not wipe the in-memory session.
+		require.Equal(t, "fenny", sess.Get("name"))
+	})
+
+	t.Run("RegenerateWithContext honors expired deadline", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &contextStorage{})
+		require.ErrorIs(t, sess.RegenerateWithContext(expiredCtx()), context.DeadlineExceeded)
+	})
+
+	t.Run("ResetWithContext honors expired deadline", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &contextStorage{})
+		sess.Set("name", "fenny")
+		require.ErrorIs(t, sess.ResetWithContext(expiredCtx()), context.DeadlineExceeded)
+		// A timed-out delete must not wipe the in-memory session.
+		require.Equal(t, "fenny", sess.Get("name"))
+	})
+
+	t.Run("SaveWithContext honors expired deadline", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &contextStorage{})
+		sess.Set("name", "fenny")
+		require.ErrorIs(t, sess.SaveWithContext(expiredCtx()), context.DeadlineExceeded)
 	})
 }
 
