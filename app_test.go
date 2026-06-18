@@ -1298,6 +1298,9 @@ func Test_App_Methods(t *testing.T) {
 	app.Trace("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodTrace)
 
+	app.Query("/:john?/:doe?", dummyHandler)
+	testStatus200(t, app, "/john/doe", MethodQuery)
+
 	app.Get("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodGet)
 

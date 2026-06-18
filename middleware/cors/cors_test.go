@@ -140,7 +140,7 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	h(ctx)
 
-	require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)))
+	require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH, QUERY", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)))
 	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
 	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 }
@@ -642,7 +642,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			handler(ctx)
 			require.Equal(t, 204, ctx.Response.StatusCode(), "Status code should be 204")
 			require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should be set")
-			require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should be set (preflight request)")
+			require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH, QUERY", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should be set (preflight request)")
 			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should be set (preflight request)")
 		}
 	})
@@ -676,7 +676,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			handler(ctx)
 			require.Equal(t, 204, ctx.Response.StatusCode(), "Status code should be 204")
 			require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should be set")
-			require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should be set (preflight request)")
+			require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH, QUERY", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should be set (preflight request)")
 			require.Equal(t, "X-Custom-Header", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should be set (preflight request)")
 		}
 	})

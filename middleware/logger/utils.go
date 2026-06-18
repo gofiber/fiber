@@ -27,6 +27,8 @@ func methodColor(method string, colors *fiber.Colors) string {
 		return colors.Magenta
 	case fiber.MethodOptions:
 		return colors.Blue
+	case fiber.MethodQuery:
+		return colors.Cyan
 	default:
 		return colors.Reset
 	}

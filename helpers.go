@@ -935,6 +935,8 @@ func (app *App) methodInt(s string) int {
 			return methodTrace
 		case MethodPatch:
 			return methodPatch
+		case MethodQuery:
+			return methodQuery
 		default:
 			return -1
 		}
@@ -954,7 +956,8 @@ func IsMethodSafe(m string) bool {
 	case MethodGet,
 		MethodHead,
 		MethodOptions,
-		MethodTrace:
+		MethodTrace,
+		MethodQuery:
 		return true
 	default:
 		return false
