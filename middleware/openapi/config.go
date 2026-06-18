@@ -49,14 +49,14 @@ type ExternalDocs struct {
 }
 
 // Config defines the config for middleware.
+//
+// Config controls top-level OpenAPI document metadata only.
+// Operation-level metadata is derived from route helper methods.
 type Config struct {
-	// Config controls top-level OpenAPI document metadata only.
-	// Operation-level metadata is derived from route helper methods.
-	//
-	// Next defines a function to skip this middleware when returned true.
+	// ExternalDocs references external documentation for the API.
 	//
 	// Optional. Default: nil
-	Next func(c fiber.Ctx) bool
+	ExternalDocs *ExternalDocs
 
 	// SwaggerOptions contains additional Swagger UI options merged into the
 	// generated SwaggerUIBundle call.
@@ -79,12 +79,10 @@ type Config struct {
 	// Optional. Default: nil
 	SecuritySchemes map[string]any
 
-	// Security defines the document-level (default) security requirements.
-	// Each requirement maps a scheme name (declared in SecuritySchemes) to its
-	// required scopes; multiple requirements are combined with OR semantics.
+	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Security []map[string][]string
+	Next func(c fiber.Ctx) bool
 
 	// Contact holds contact information for the exposed API.
 	//
@@ -96,26 +94,29 @@ type Config struct {
 	// Optional. Default: nil
 	License *License
 
-	// Servers lists the servers hosting the API. When set, it takes precedence
-	// over ServerURL.
-	//
-	// Optional. Default: nil
-	Servers []Server
-
-	// Tags lists top-level tag definitions (with descriptions) used by operations.
-	//
-	// Optional. Default: nil
-	Tags []Tag
-
-	// ExternalDocs references external documentation for the API.
-	//
-	// Optional. Default: nil
-	ExternalDocs *ExternalDocs
-
 	// TermsOfService is a URL to the Terms of Service for the API.
 	//
 	// Optional. Default: ""
 	TermsOfService string
+
+	// ServerURL is the server URL used in the generated specification.
+	//
+	// Optional. Default: ""
+	ServerURL string
+
+	// OpenAPIVersion specifies the OpenAPI specification version to generate.
+	// Supported values: "3.0.0", "3.1.0" (default)
+	//
+	// Optional. Default: "3.1.0"
+	OpenAPIVersion string
+
+	// SwaggerStandalonePresetURL is the standalone preset script URL used by the
+	// generated Swagger UI page. When non-empty, the page loads it and renders
+	// with the "StandaloneLayout" (top bar with the Authorize button). Like the
+	// other Swagger asset URLs it can be overridden to self-host the assets.
+	//
+	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"
+	SwaggerStandalonePresetURL string
 
 	// Title is the title for the generated OpenAPI specification.
 	//
@@ -132,10 +133,10 @@ type Config struct {
 	// Optional. Default: ""
 	Description string
 
-	// ServerURL is the server URL used in the generated specification.
+	// SwaggerBundleURL is the script URL used by the generated Swagger UI page.
 	//
-	// Optional. Default: ""
-	ServerURL string
+	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"
+	SwaggerBundleURL string
 
 	// Path is the route where the specification will be served.
 	//
@@ -152,24 +153,23 @@ type Config struct {
 	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"
 	SwaggerCSSURL string
 
-	// SwaggerBundleURL is the script URL used by the generated Swagger UI page.
+	// Tags lists top-level tag definitions (with descriptions) used by operations.
 	//
-	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"
-	SwaggerBundleURL string
+	// Optional. Default: nil
+	Tags []Tag
 
-	// SwaggerStandalonePresetURL is the standalone preset script URL used by the
-	// generated Swagger UI page. When non-empty, the page loads it and renders
-	// with the "StandaloneLayout" (top bar with the Authorize button). Like the
-	// other Swagger asset URLs it can be overridden to self-host the assets.
+	// Security defines the document-level (default) security requirements.
+	// Each requirement maps a scheme name (declared in SecuritySchemes) to its
+	// required scopes; multiple requirements are combined with OR semantics.
 	//
-	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"
-	SwaggerStandalonePresetURL string
+	// Optional. Default: nil
+	Security []map[string][]string
 
-	// OpenAPIVersion specifies the OpenAPI specification version to generate.
-	// Supported values: "3.0.0", "3.1.0" (default)
+	// Servers lists the servers hosting the API. When set, it takes precedence
+	// over ServerURL.
 	//
-	// Optional. Default: "3.1.0"
-	OpenAPIVersion string
+	// Optional. Default: nil
+	Servers []Server
 }
 
 // ConfigDefault is the default config.

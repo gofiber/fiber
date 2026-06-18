@@ -216,12 +216,12 @@ func resolvedSpecPath(c fiber.Ctx, cfgPath string) string {
 type openAPISpec struct {
 	Paths        map[string]map[string]operation `json:"paths"`
 	Components   map[string]any                  `json:"components,omitempty"`
+	ExternalDocs *openAPIExternalDocs            `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Info         openAPIInfo                     `json:"info"`
 	OpenAPI      string                          `json:"openapi"`
 	Servers      []openAPIServer                 `json:"servers,omitempty"`
 	Security     []map[string][]string           `json:"security,omitempty"`
 	Tags         []openAPITag                    `json:"tags,omitempty"`
-	ExternalDocs *openAPIExternalDocs            `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 }
 
 type openAPIInfo struct {
@@ -296,6 +296,14 @@ type resolvedParamName struct {
 
 const wildcardParamName = "wildcard"
 
+const (
+	paramLocationPath = "path"
+	schemaKeyType     = "type"
+	schemaKeyFormat   = "format"
+	schemaTypeString  = "string"
+	schemaTypeObject  = "object"
+)
+
 func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 	paths := make(map[string]map[string]operation)
 	stack := app.Stack()
@@ -321,9 +329,9 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 				for _, p := range variant.ParamNames {
 					param := parameter{
 						Name:     p,
-						In:       "path",
+						In:       paramLocationPath,
 						Required: true,
-						Schema:   map[string]any{"type": "string"},
+						Schema:   map[string]any{schemaKeyType: schemaTypeString},
 					}
 					params = append(params, param)
 					paramIndex[param.In+":"+param.Name] = len(params) - 1
@@ -484,11 +492,11 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 			In:          location,
 			Description: extra.Description,
 			Required:    extra.Required,
-			Schema:      schemaFrom(extra.Schema, extra.SchemaRef, "string"),
+			Schema:      schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString),
 			Example:     paramExample,
 			Examples:    paramExamples,
 		}
-		if param.In == "path" {
+		if param.In == paramLocationPath {
 			param.Required = true
 		}
 		params = appendOrReplaceParameter(params, index, &param)
@@ -527,8 +535,8 @@ func schemaFrom(schema map[string]any, schemaRef, defaultType string) map[string
 	if copied == nil {
 		copied = map[string]any{}
 	}
-	if _, ok := copied["type"]; !ok && defaultType != "" {
-		copied["type"] = defaultType
+	if _, ok := copied[schemaKeyType]; !ok && defaultType != "" {
+		copied[schemaKeyType] = defaultType
 	}
 	if len(copied) == 0 {
 		return nil
@@ -579,7 +587,7 @@ func remapRouteParameters(extras []fiber.RouteParameter, aliases map[string]stri
 	for _, extra := range extras {
 		copyExtra := extra
 		location := strings.ToLower(strings.TrimSpace(copyExtra.In))
-		if location == "path" {
+		if location == paramLocationPath {
 			if mapped, ok := aliases[copyExtra.Name]; ok {
 				copyExtra.Name = mapped
 			}

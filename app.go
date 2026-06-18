@@ -925,6 +925,12 @@ func (app *App) Name(name string) Router {
 	return app
 }
 
+// OpenAPI schema literals reused by the route documentation helpers below.
+const (
+	openapiRefKey     = "$ref"
+	openapiTypeString = "string"
+)
+
 // Summary assigns a short summary to the most recently added route.
 func (app *App) Summary(sum string) Router {
 	app.mutex.Lock()
@@ -995,7 +1001,7 @@ func (app *App) RequestBodyWithExample(description string, required bool, schema
 		Examples:    copyAnyMap(examples),
 	}
 	if schemaRef != "" {
-		body.Schema = map[string]any{"$ref": schemaRef}
+		body.Schema = map[string]any{openapiRefKey: schemaRef}
 	} else if len(schema) > 0 {
 		body.Schema = copyAnyMap(schema)
 	}
@@ -1035,18 +1041,18 @@ func (app *App) addParameter(name, in string, required bool, schema map[string]a
 	}
 
 	if schemaRef != "" {
-		schema = map[string]any{"$ref": schemaRef}
+		schema = map[string]any{openapiRefKey: schemaRef}
 	} else if schema == nil {
-		schema = map[string]any{"type": "string"}
+		schema = map[string]any{"type": openapiTypeString}
 	}
 
 	schemaCopy := copyAnyMap(schema)
 	if schemaCopy == nil {
-		schemaCopy = map[string]any{"type": "string"}
+		schemaCopy = map[string]any{"type": openapiTypeString}
 	}
 	if schemaRef == "" {
 		if _, ok := schemaCopy["type"]; !ok {
-			schemaCopy["type"] = "string"
+			schemaCopy["type"] = openapiTypeString
 		}
 	}
 
@@ -1115,7 +1121,7 @@ func (app *App) addResponse(status int, description string, schema map[string]an
 	}
 	if schemaRef != "" {
 		resp.SchemaRef = schemaRef
-		resp.Schema = map[string]any{"$ref": schemaRef}
+		resp.Schema = map[string]any{openapiRefKey: schemaRef}
 	} else if len(schema) > 0 {
 		resp.Schema = copyAnyMap(schema)
 	}
