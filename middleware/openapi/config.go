@@ -6,6 +6,48 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// Contact holds contact information for the exposed API.
+type Contact struct {
+	// Name is the identifying name of the contact person/organization.
+	Name string `json:"name,omitempty"`
+	// URL is the URL pointing to the contact information.
+	URL string `json:"url,omitempty"`
+	// Email is the email address of the contact person/organization.
+	Email string `json:"email,omitempty"`
+}
+
+// License holds license information for the exposed API.
+type License struct {
+	// Name is the license name used for the API.
+	Name string `json:"name"`
+	// URL is a URL to the license used for the API.
+	URL string `json:"url,omitempty"`
+}
+
+// Server represents a server hosting the API.
+type Server struct {
+	// URL is the server URL.
+	URL string `json:"url"`
+	// Description is an optional description of the server.
+	Description string `json:"description,omitempty"`
+}
+
+// Tag adds metadata to a single tag used by operations.
+type Tag struct {
+	// Name is the name of the tag.
+	Name string `json:"name"`
+	// Description is an optional description for the tag.
+	Description string `json:"description,omitempty"`
+}
+
+// ExternalDocs references external documentation for the API.
+type ExternalDocs struct {
+	// Description is an optional description of the external documentation.
+	Description string `json:"description,omitempty"`
+	// URL is the URL for the external documentation.
+	URL string `json:"url"`
+}
+
 // Config defines the config for middleware.
 type Config struct {
 	// Config controls top-level OpenAPI document metadata only.
@@ -29,6 +71,51 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Components map[string]any
+
+	// SecuritySchemes holds reusable security scheme definitions (e.g. bearer,
+	// apiKey, oauth2). They are emitted under "components.securitySchemes" and
+	// can be referenced by the Security field or the route-level Security helper.
+	//
+	// Optional. Default: nil
+	SecuritySchemes map[string]any
+
+	// Security defines the document-level (default) security requirements.
+	// Each requirement maps a scheme name (declared in SecuritySchemes) to its
+	// required scopes; multiple requirements are combined with OR semantics.
+	//
+	// Optional. Default: nil
+	Security []map[string][]string
+
+	// Contact holds contact information for the exposed API.
+	//
+	// Optional. Default: nil
+	Contact *Contact
+
+	// License holds license information for the exposed API.
+	//
+	// Optional. Default: nil
+	License *License
+
+	// Servers lists the servers hosting the API. When set, it takes precedence
+	// over ServerURL.
+	//
+	// Optional. Default: nil
+	Servers []Server
+
+	// Tags lists top-level tag definitions (with descriptions) used by operations.
+	//
+	// Optional. Default: nil
+	Tags []Tag
+
+	// ExternalDocs references external documentation for the API.
+	//
+	// Optional. Default: nil
+	ExternalDocs *ExternalDocs
+
+	// TermsOfService is a URL to the Terms of Service for the API.
+	//
+	// Optional. Default: ""
+	TermsOfService string
 
 	// Title is the title for the generated OpenAPI specification.
 	//
@@ -70,6 +157,14 @@ type Config struct {
 	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"
 	SwaggerBundleURL string
 
+	// SwaggerStandalonePresetURL is the standalone preset script URL used by the
+	// generated Swagger UI page. When non-empty, the page loads it and renders
+	// with the "StandaloneLayout" (top bar with the Authorize button). Like the
+	// other Swagger asset URLs it can be overridden to self-host the assets.
+	//
+	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"
+	SwaggerStandalonePresetURL string
+
 	// OpenAPIVersion specifies the OpenAPI specification version to generate.
 	// Supported values: "3.0.0", "3.1.0" (default)
 	//
@@ -79,17 +174,18 @@ type Config struct {
 
 // ConfigDefault is the default config.
 var ConfigDefault = Config{
-	Next:             nil,
-	Title:            "Fiber API",
-	Version:          "1.0.0",
-	Description:      "",
-	ServerURL:        "",
-	Path:             "/openapi.json",
-	UIPath:           "/swagger",
-	SwaggerCSSURL:    "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css",
-	SwaggerBundleURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
-	SwaggerOptions:   nil,
-	OpenAPIVersion:   "3.1.0",
+	Next:                       nil,
+	Title:                      "Fiber API",
+	Version:                    "1.0.0",
+	Description:                "",
+	ServerURL:                  "",
+	Path:                       "/openapi.json",
+	UIPath:                     "/swagger",
+	SwaggerCSSURL:              "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css",
+	SwaggerBundleURL:           "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
+	SwaggerStandalonePresetURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js",
+	SwaggerOptions:             nil,
+	OpenAPIVersion:             "3.1.0",
 }
 
 func configDefault(config ...Config) Config {
@@ -126,8 +222,17 @@ func configDefault(config ...Config) Config {
 	if cfg.SwaggerBundleURL == "" {
 		cfg.SwaggerBundleURL = ConfigDefault.SwaggerBundleURL
 	}
+	if cfg.SwaggerStandalonePresetURL == "" {
+		cfg.SwaggerStandalonePresetURL = ConfigDefault.SwaggerStandalonePresetURL
+	}
 	if cfg.SwaggerOptions != nil {
 		cfg.SwaggerOptions = maps.Clone(cfg.SwaggerOptions)
+	}
+	if cfg.Components != nil {
+		cfg.Components = maps.Clone(cfg.Components)
+	}
+	if cfg.SecuritySchemes != nil {
+		cfg.SecuritySchemes = maps.Clone(cfg.SecuritySchemes)
 	}
 	if cfg.OpenAPIVersion == "" {
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion

@@ -1201,6 +1201,20 @@ func (app *App) Deprecated() Router {
 	return app
 }
 
+// Security sets the OpenAPI security requirements for the most recently added
+// route. Each requirement maps a security scheme name to its required scopes;
+// multiple requirements are combined with OR semantics. Passing an empty
+// requirement (an empty map) documents that the operation requires no
+// authentication, overriding any document-level default.
+func (app *App) Security(requirements ...map[string][]string) Router {
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Security = cloneRouteSecurity(requirements)
+	})
+	app.mutex.Unlock()
+	return app
+}
+
 func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
 	if app.latestRoute == nil || apply == nil {
 		return

@@ -74,6 +74,12 @@ type Router interface {
 	Tags(tags ...string) Router
 	// Deprecated marks the most recently registered route as deprecated.
 	Deprecated() Router
+	// Security sets the security requirements for the most recently registered
+	// route. Each requirement maps a security scheme name to its required
+	// scopes; multiple requirements are combined with OR semantics. Passing an
+	// empty requirement (an empty map) documents that the operation requires no
+	// authentication, overriding any document-level default.
+	Security(requirements ...map[string][]string) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
@@ -96,10 +102,11 @@ type Route struct {
 	Consumes    string `json:"consumes"`
 	Produces    string `json:"produces"`
 
-	Handlers   []Handler        `json:"-"` // Ctx handlers
-	Parameters []RouteParameter `json:"parameters"`
-	Tags       []string         `json:"tags"`
-	Params     []string         `json:"params"` // Case-sensitive param keys
+	Handlers   []Handler             `json:"-"` // Ctx handlers
+	Parameters []RouteParameter      `json:"parameters"`
+	Tags       []string              `json:"tags"`
+	Params     []string              `json:"params"`             // Case-sensitive param keys
+	Security   []map[string][]string `json:"security,omitempty"` // OpenAPI security requirements
 
 	routeParser routeParser // Parameter parser
 
@@ -618,7 +625,23 @@ func (*App) copyRoute(route *Route) *Route {
 		Responses:   cloneRouteResponses(route.Responses),
 		Tags:        append([]string(nil), route.Tags...),
 		Deprecated:  route.Deprecated,
+		Security:    cloneRouteSecurity(route.Security),
 	}
+}
+
+func cloneRouteSecurity(requirements []map[string][]string) []map[string][]string {
+	if len(requirements) == 0 {
+		return nil
+	}
+	cloned := make([]map[string][]string, len(requirements))
+	for i, requirement := range requirements {
+		entry := make(map[string][]string, len(requirement))
+		for scheme, scopes := range requirement {
+			entry[scheme] = append([]string(nil), scopes...)
+		}
+		cloned[i] = entry
+	}
+	return cloned
 }
 
 func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {

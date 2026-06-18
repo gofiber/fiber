@@ -118,6 +118,13 @@ func (grp *Group) Deprecated() Router {
 	return grp
 }
 
+// Security sets the OpenAPI security requirements for the most recently added
+// route in the group.
+func (grp *Group) Security(requirements ...map[string][]string) Router {
+	grp.app.Security(requirements...)
+	return grp
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 // Also, you can pass another app instance as a sub-router along a routing path.

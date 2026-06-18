@@ -692,6 +692,13 @@ func (d *domainRouter) Deprecated() Router {
 	return d
 }
 
+// Security sets the OpenAPI security requirements for the most recently added
+// route on the domain router.
+func (d *domainRouter) Security(requirements ...map[string][]string) Router {
+	d.app.Security(requirements...)
+	return d
+}
+
 // domainRegistering provides route registration helpers for a specific path
 // on a domain router, implementing the [Register] interface.
 type domainRegistering struct {

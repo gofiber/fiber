@@ -17,9 +17,9 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	var (
+		specMu      sync.Mutex
 		specData    []byte
-		specOnce    sync.Once
-		specErr     error
+		specCount   = -1
 		swaggerData []byte
 		swaggerOnce sync.Once
 		swaggerErr  error
@@ -30,27 +30,36 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		targetPath := resolvedSpecPath(c, cfg.Path)
-		targetUIPath := resolvedSpecPath(c, cfg.UIPath)
 		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
 			return c.Next()
 		}
 
-		switch c.Path() {
-		case targetPath:
-			specOnce.Do(func() {
+		targetPath := resolvedSpecPath(c, cfg.Path)
+		targetUIPath := resolvedSpecPath(c, cfg.UIPath)
+
+		switch {
+		case pathMatches(c.Path(), targetPath):
+			// The spec is cached but regenerated whenever the number of
+			// registered routes changes, so routes added after the first
+			// request are reflected without a process restart.
+			count := routeCount(c.App())
+			specMu.Lock()
+			if specData == nil || specCount != count {
 				spec := generateSpec(c.App(), &cfg)
-				specData, specErr = json.Marshal(spec)
-				if specErr != nil {
-					specErr = fmt.Errorf("openapi: marshal spec: %w", specErr)
+				data, err := json.Marshal(spec)
+				if err != nil {
+					specMu.Unlock()
+					return fmt.Errorf("openapi: marshal spec: %w", err)
 				}
-			})
-			if specErr != nil {
-				return specErr
+				specData = data
+				specCount = count
 			}
+			data := specData
+			specMu.Unlock()
+
 			c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSONCharsetUTF8)
-			return c.Status(fiber.StatusOK).Send(specData)
-		case targetUIPath:
+			return c.Status(fiber.StatusOK).Send(data)
+		case pathMatches(c.Path(), targetUIPath):
 			swaggerOnce.Do(func() {
 				swaggerData, swaggerErr = buildSwaggerUIPage(targetPath, &cfg)
 				if swaggerErr != nil {
@@ -68,12 +77,37 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
+// routeCount returns the total number of routes registered on the app across
+// all HTTP methods. It is used to invalidate the cached specification when
+// routes are added or removed.
+func routeCount(app *fiber.App) int {
+	count := 0
+	for _, routes := range app.Stack() {
+		count += len(routes)
+	}
+	return count
+}
+
+// pathMatches reports whether the request path matches the configured target
+// path, tolerating a single trailing slash on either side.
+func pathMatches(requestPath, target string) bool {
+	return trimTrailingSlash(requestPath) == trimTrailingSlash(target)
+}
+
+func trimTrailingSlash(p string) string {
+	if len(p) > 1 && p[len(p)-1] == '/' {
+		return p[:len(p)-1]
+	}
+	return p
+}
+
 type swaggerUITemplateData struct {
-	SwaggerOptionsJSON string
-	Title              string
-	OpenAPIURL         string
-	SwaggerCSSURL      string
-	SwaggerBundleURL   string
+	SwaggerOptionsJSON         string
+	Title                      string
+	OpenAPIURL                 string
+	SwaggerCSSURL              string
+	SwaggerBundleURL           string
+	SwaggerStandalonePresetURL string
 }
 
 var swaggerUITemplate = htemplate.Must(htemplate.New("swagger-ui").Parse(`<!doctype html>
@@ -94,15 +128,28 @@ var swaggerUITemplate = htemplate.Must(htemplate.New("swagger-ui").Parse(`<!doct
       src="{{ .SwaggerBundleURL }}"
       crossorigin="anonymous"
     ></script>
+    {{ if .SwaggerStandalonePresetURL }}<script
+      src="{{ .SwaggerStandalonePresetURL }}"
+      crossorigin="anonymous"
+    ></script>{{ end }}
     <script>
       window.addEventListener("load", function () {
         const options = JSON.parse(document.getElementById("swagger-ui").dataset.swaggerOptions);
 
-        window.ui = SwaggerUIBundle({
+        const presets = [SwaggerUIBundle.presets.apis];
+        const config = {
           url: "{{ .OpenAPIURL }}",
           dom_id: "#swagger-ui",
-          presets: [SwaggerUIBundle.presets.apis],
           persistAuthorization: true,
+        };
+        if (typeof SwaggerUIStandalonePreset !== "undefined") {
+          presets.push(SwaggerUIStandalonePreset);
+          config.layout = "StandaloneLayout";
+        }
+        config.presets = presets;
+
+        window.ui = SwaggerUIBundle({
+          ...config,
           ...options,
         });
       });
@@ -121,11 +168,12 @@ func buildSwaggerUIPage(openAPIURL string, cfg *Config) ([]byte, error) {
 	}
 
 	data := swaggerUITemplateData{
-		Title:              cfg.Title,
-		OpenAPIURL:         openAPIURL,
-		SwaggerCSSURL:      cfg.SwaggerCSSURL,
-		SwaggerBundleURL:   cfg.SwaggerBundleURL,
-		SwaggerOptionsJSON: string(swaggerOptionsJSON),
+		Title:                      cfg.Title,
+		OpenAPIURL:                 openAPIURL,
+		SwaggerCSSURL:              cfg.SwaggerCSSURL,
+		SwaggerBundleURL:           cfg.SwaggerBundleURL,
+		SwaggerStandalonePresetURL: cfg.SwaggerStandalonePresetURL,
+		SwaggerOptionsJSON:         string(swaggerOptionsJSON),
 	}
 
 	var builder strings.Builder
@@ -166,32 +214,50 @@ func resolvedSpecPath(c fiber.Ctx, cfgPath string) string {
 }
 
 type openAPISpec struct {
-	Paths      map[string]map[string]operation `json:"paths"`
-	Components map[string]any                  `json:"components,omitempty"`
-	Info       openAPIInfo                     `json:"info"`
-	OpenAPI    string                          `json:"openapi"`
-	Servers    []openAPIServer                 `json:"servers,omitempty"`
+	Paths        map[string]map[string]operation `json:"paths"`
+	Components   map[string]any                  `json:"components,omitempty"`
+	Info         openAPIInfo                     `json:"info"`
+	OpenAPI      string                          `json:"openapi"`
+	Servers      []openAPIServer                 `json:"servers,omitempty"`
+	Security     []map[string][]string           `json:"security,omitempty"`
+	Tags         []openAPITag                    `json:"tags,omitempty"`
+	ExternalDocs *openAPIExternalDocs            `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 }
 
 type openAPIInfo struct {
-	Title       string `json:"title"`
-	Version     string `json:"version"`
-	Description string `json:"description,omitempty"`
+	Contact        *Contact `json:"contact,omitempty"`
+	License        *License `json:"license,omitempty"`
+	Title          string   `json:"title"`
+	Version        string   `json:"version"`
+	Description    string   `json:"description,omitempty"`
+	TermsOfService string   `json:"termsOfService,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 }
 
 type openAPIServer struct {
-	URL string `json:"url"`
+	URL         string `json:"url"`
+	Description string `json:"description,omitempty"`
+}
+
+type openAPITag struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+type openAPIExternalDocs struct {
+	Description string `json:"description,omitempty"`
+	URL         string `json:"url"`
 }
 
 type operation struct {
 	Responses   map[string]response `json:"responses"`
 	RequestBody *requestBody        `json:"requestBody,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 
-	OperationID string      `json:"operationId,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Summary     string      `json:"summary"`
-	Description string      `json:"description"`
-	Parameters  []parameter `json:"parameters,omitempty"`
-	Tags        []string    `json:"tags,omitempty"`
+	OperationID string                `json:"operationId,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Summary     string                `json:"summary"`
+	Description string                `json:"description"`
+	Parameters  []parameter           `json:"parameters,omitempty"`
+	Tags        []string              `json:"tags,omitempty"`
+	Security    []map[string][]string `json:"security,omitempty"`
 
 	Deprecated bool `json:"deprecated,omitempty"`
 }
@@ -302,6 +368,7 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 					Parameters:  params,
 					RequestBody: reqBody,
 					Responses:   responses,
+					Security:    r.Security,
 				}
 			}
 		}
@@ -310,19 +377,85 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 	spec := openAPISpec{
 		OpenAPI: cfg.OpenAPIVersion,
 		Info: openAPIInfo{
-			Title:       cfg.Title,
-			Version:     cfg.Version,
-			Description: cfg.Description,
+			Title:          cfg.Title,
+			Version:        cfg.Version,
+			Description:    cfg.Description,
+			TermsOfService: cfg.TermsOfService,
+			Contact:        cfg.Contact,
+			License:        cfg.License,
 		},
 		Paths: paths,
 	}
-	if cfg.ServerURL != "" {
-		spec.Servers = []openAPIServer{{URL: cfg.ServerURL}}
+
+	spec.Servers = buildServers(cfg)
+
+	if len(cfg.Security) > 0 {
+		spec.Security = cfg.Security
 	}
-	if len(cfg.Components) > 0 {
-		spec.Components = cfg.Components
+
+	if len(cfg.Tags) > 0 {
+		tags := make([]openAPITag, 0, len(cfg.Tags))
+		for _, tag := range cfg.Tags {
+			tags = append(tags, openAPITag(tag))
+		}
+		spec.Tags = tags
 	}
+
+	if cfg.ExternalDocs != nil {
+		spec.ExternalDocs = &openAPIExternalDocs{
+			Description: cfg.ExternalDocs.Description,
+			URL:         cfg.ExternalDocs.URL,
+		}
+	}
+
+	spec.Components = buildComponents(cfg)
+
 	return spec
+}
+
+// buildServers resolves the server list, preferring Config.Servers and falling
+// back to the single Config.ServerURL for backward compatibility.
+func buildServers(cfg *Config) []openAPIServer {
+	if len(cfg.Servers) > 0 {
+		servers := make([]openAPIServer, 0, len(cfg.Servers))
+		for _, server := range cfg.Servers {
+			if server.URL == "" {
+				continue
+			}
+			servers = append(servers, openAPIServer(server))
+		}
+		if len(servers) > 0 {
+			return servers
+		}
+	}
+	if cfg.ServerURL != "" {
+		return []openAPIServer{{URL: cfg.ServerURL}}
+	}
+	return nil
+}
+
+// buildComponents merges the user-provided Components with the configured
+// SecuritySchemes without mutating either input.
+func buildComponents(cfg *Config) map[string]any {
+	if len(cfg.Components) == 0 && len(cfg.SecuritySchemes) == 0 {
+		return nil
+	}
+
+	components := make(map[string]any, len(cfg.Components)+1)
+	maps.Copy(components, cfg.Components)
+
+	if len(cfg.SecuritySchemes) > 0 {
+		// Preserve any securitySchemes the user already placed in Components by
+		// merging rather than overwriting.
+		schemes := make(map[string]any, len(cfg.SecuritySchemes))
+		if existing, ok := components["securitySchemes"].(map[string]any); ok {
+			maps.Copy(schemes, existing)
+		}
+		maps.Copy(schemes, cfg.SecuritySchemes)
+		components["securitySchemes"] = schemes
+	}
+
+	return components
 }
 
 func mergeRouteParameters(params []parameter, index map[string]int, extras []fiber.RouteParameter) []parameter {
