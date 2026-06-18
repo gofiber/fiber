@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
@@ -1726,4 +1727,327 @@ func Test_Session_Multiple_GetSession_Calls(t *testing.T) {
 	sess3.Release()
 	sess4.Release()
 	app.ReleaseCtx(ctx2)
+}
+
+// go test -run Test_Session_DestroyWithContext
+func Test_Session_DestroyWithContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("destroy with context from cookie", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore()
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		sess, err := store.Get(ctx)
+		defer sess.Release()
+		require.NoError(t, err)
+
+		sess.Set("name", "fenny")
+		require.NoError(t, sess.DestroyWithContext(t.Context()))
+		name := sess.Get("name")
+		require.Nil(t, name)
+	})
+
+	t.Run("destroy with nil data", func(t *testing.T) {
+		t.Parallel()
+		sess := &Session{data: nil}
+		require.NoError(t, sess.DestroyWithContext(t.Context()))
+	})
+}
+
+// go test -run Test_Session_RegenerateWithContext
+func Test_Session_RegenerateWithContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("regenerate with context preserves data pattern", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore()
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		freshSession, err := store.Get(ctx)
+		require.NoError(t, err)
+
+		originalID := freshSession.ID()
+
+		err = freshSession.Save()
+		require.NoError(t, err)
+
+		freshSession.Release()
+		app.ReleaseCtx(ctx)
+		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		ctx.Request().Header.SetCookie("session_id", originalID)
+
+		sess, err := store.Get(ctx)
+		require.NoError(t, err)
+		defer sess.Release()
+
+		err = sess.RegenerateWithContext(t.Context())
+		require.NoError(t, err)
+		require.NotEqual(t, originalID, sess.ID())
+		require.True(t, sess.Fresh())
+	})
+}
+
+// go test -run Test_Session_ResetWithContext
+func Test_Session_ResetWithContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reset with context clears data and changes id", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore()
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		sess, err := store.Get(ctx)
+		require.NoError(t, err)
+		defer sess.Release()
+
+		originalID := sess.ID()
+		sess.Set("name", "fenny")
+		sess.Set("email", "fenny@example.com")
+
+		err = sess.Save()
+		require.NoError(t, err)
+
+		err = sess.ResetWithContext(t.Context())
+		require.NoError(t, err)
+
+		require.NotEqual(t, originalID, sess.ID())
+		require.True(t, sess.Fresh())
+		require.Nil(t, sess.Get("name"))
+		require.Nil(t, sess.Get("email"))
+	})
+}
+
+// go test -run Test_Session_SaveWithContext
+func Test_Session_SaveWithContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("save with context persists data", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore()
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		sess, err := store.Get(ctx)
+		require.NoError(t, err)
+
+		sess.Set("name", "fenny")
+		err = sess.SaveWithContext(t.Context())
+		require.NoError(t, err)
+
+		// Verify data persisted by getting a new session with same ID
+		savedID := sess.ID()
+		sess.Release()
+		app.ReleaseCtx(ctx)
+		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		ctx.Request().Header.SetCookie("session_id", savedID)
+		sess2, err := store.Get(ctx)
+		require.NoError(t, err)
+		defer sess2.Release()
+
+		require.Equal(t, "fenny", sess2.Get("name"))
+	})
+
+	t.Run("save with context when nil data", func(t *testing.T) {
+		t.Parallel()
+		sess := &Session{data: nil}
+		require.NoError(t, sess.SaveWithContext(t.Context()))
+	})
+
+	t.Run("save with context when in middleware handler", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore()
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		sess, err := store.Get(ctx)
+		require.NoError(t, err)
+		defer sess.Release()
+
+		// Simulate middleware context
+		m := &Middleware{Session: sess}
+		ctx.Locals(middlewareContextKey, m)
+
+		// SaveWithContext should be a no-op when session is in use by middleware
+		err = sess.SaveWithContext(t.Context())
+		require.NoError(t, err)
+	})
+}
+
+// go test -run Test_Session_ResolveContext
+func Test_Session_ResolveContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("resolve context returns background when ctx is nil", func(t *testing.T) {
+		t.Parallel()
+		sess := &Session{ctx: nil}
+		ctx := sess.resolveContext()
+		require.NotNil(t, ctx)
+	})
+
+	t.Run("resolve context returns fiber context when ctx is not nil", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		fctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(fctx)
+
+		sess := &Session{ctx: fctx}
+		ctx := sess.resolveContext()
+		require.Equal(t, fctx, ctx)
+	})
+}
+
+// newSessionWithStorage returns a fresh session backed by the given storage and
+// a cleanup function that releases pooled resources. Because the request has no
+// session cookie, Get does not read from storage, so it succeeds even when the
+// storage backend is unavailable.
+// newSessionWithStorage returns a fresh session backed by the given storage.
+// Because the request has no session cookie, Get does not read from storage, so
+// it succeeds even when the storage backend is unavailable. Pooled resources
+// (the session and fiber ctx) are released automatically via t.Cleanup.
+func newSessionWithStorage(t *testing.T, storage fiber.Storage) *Session {
+	t.Helper()
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	store := NewStore(Config{Storage: storage})
+	sess, err := store.Get(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		sess.Release()
+		app.ReleaseCtx(ctx)
+	})
+	return sess
+}
+
+// go test -run Test_Session_WithContext_StorageError
+func Test_Session_WithContext_StorageError(t *testing.T) {
+	t.Parallel()
+
+	storageErr := errors.New("storage unavailable")
+
+	t.Run("DestroyWithContext propagates storage error", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &failingStorage{err: storageErr})
+		sess.Set("name", "fenny")
+		require.ErrorIs(t, sess.DestroyWithContext(t.Context()), storageErr)
+		// A failed delete must not wipe the in-memory session.
+		require.Equal(t, "fenny", sess.Get("name"))
+	})
+
+	t.Run("RegenerateWithContext propagates storage error", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &failingStorage{err: storageErr})
+		require.ErrorIs(t, sess.RegenerateWithContext(t.Context()), storageErr)
+	})
+
+	t.Run("ResetWithContext propagates storage error", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &failingStorage{err: storageErr})
+		sess.Set("name", "fenny")
+		require.ErrorIs(t, sess.ResetWithContext(t.Context()), storageErr)
+		// A failed delete must not wipe the in-memory session.
+		require.Equal(t, "fenny", sess.Get("name"))
+	})
+
+	t.Run("SaveWithContext propagates storage error", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &failingStorage{err: storageErr})
+		sess.Set("name", "fenny")
+		require.ErrorIs(t, sess.SaveWithContext(t.Context()), storageErr)
+	})
+}
+
+// go test -run Test_Session_WithContext_CanceledContext
+func Test_Session_WithContext_CanceledContext(t *testing.T) {
+	t.Parallel()
+
+	// contextStorage honors cancellation by returning ctx.Err().
+	canceledCtx := func() context.Context {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		return ctx
+	}
+
+	t.Run("DestroyWithContext honors canceled context", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &contextStorage{})
+		sess.Set("name", "fenny")
+		require.ErrorIs(t, sess.DestroyWithContext(canceledCtx()), context.Canceled)
+		// A canceled delete must not wipe the in-memory session.
+		require.Equal(t, "fenny", sess.Get("name"))
+	})
+
+	t.Run("RegenerateWithContext honors canceled context", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &contextStorage{})
+		require.ErrorIs(t, sess.RegenerateWithContext(canceledCtx()), context.Canceled)
+	})
+
+	t.Run("ResetWithContext honors canceled context", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &contextStorage{})
+		sess.Set("name", "fenny")
+		require.ErrorIs(t, sess.ResetWithContext(canceledCtx()), context.Canceled)
+		// A canceled delete must not wipe the in-memory session.
+		require.Equal(t, "fenny", sess.Get("name"))
+	})
+
+	t.Run("SaveWithContext honors canceled context", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, &contextStorage{})
+		sess.Set("name", "fenny")
+		require.ErrorIs(t, sess.SaveWithContext(canceledCtx()), context.Canceled)
+	})
+}
+
+// go test -run Test_Session_WithContext_NilContext
+func Test_Session_WithContext_NilContext(t *testing.T) {
+	t.Parallel()
+
+	// A nil context must be normalized to context.Background() instead of
+	// panicking when forwarded to storage (see PR #4393 review feedback).
+	assertNoNilPanic := func(t *testing.T, fn func() error) {
+		t.Helper()
+		require.NotPanics(t, func() {
+			require.NoError(t, fn())
+		})
+	}
+
+	t.Run("DestroyWithContext with nil context does not panic", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, memory.New())
+		sess.Set("name", "fenny")
+		assertNoNilPanic(t, func() error { return sess.DestroyWithContext(nil) }) //nolint:staticcheck // SA1012: nil is intentional — verifies the nil-context guard
+	})
+
+	t.Run("RegenerateWithContext with nil context does not panic", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, memory.New())
+		assertNoNilPanic(t, func() error { return sess.RegenerateWithContext(nil) }) //nolint:staticcheck // SA1012: nil is intentional — verifies the nil-context guard
+	})
+
+	t.Run("ResetWithContext with nil context does not panic", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, memory.New())
+		assertNoNilPanic(t, func() error { return sess.ResetWithContext(nil) }) //nolint:staticcheck // SA1012: nil is intentional — verifies the nil-context guard
+	})
+
+	t.Run("SaveWithContext with nil context does not panic", func(t *testing.T) {
+		t.Parallel()
+		sess := newSessionWithStorage(t, memory.New())
+		sess.Set("name", "fenny")
+		assertNoNilPanic(t, func() error { return sess.SaveWithContext(nil) }) //nolint:staticcheck // SA1012: nil is intentional — verifies the nil-context guard
+	})
 }
