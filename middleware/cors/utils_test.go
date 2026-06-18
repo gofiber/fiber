@@ -130,6 +130,8 @@ func Benchmark_CORS_SubdomainMatch(b *testing.B) {
 }
 
 func Test_CORS_SubdomainMatch(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		sub      subdomain
@@ -207,12 +209,19 @@ func Test_CORS_SubdomainMatch(t *testing.T) {
 			name:     "no match with malformed origin port before suffix",
 			sub:      subdomain{prefix: "https://", suffix: "example.com"},
 			origin:   "https://evil.com:any.example.com",
+      expected: false,
+    },
+			name:     "no match with empty label before suffix",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://foo..example.com",
 			expected: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := tt.sub.match(tt.origin)
 			assert.Equal(t, tt.expected, got, "subdomain.match()")
 		})
