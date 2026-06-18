@@ -612,6 +612,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 		fiber.MethodDelete,
 		fiber.MethodPatch,
 		fiber.MethodHead,
+		fiber.MethodQuery,
 	}
 
 	// Get handler pointer

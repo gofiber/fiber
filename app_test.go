@@ -1770,6 +1770,9 @@ func Test_App_Group(t *testing.T) {
 	grp.Trace("/TRACE", dummyHandler)
 	testStatus200(t, app, "/test/TRACE", MethodTrace)
 
+	grp.Query("/QUERY", dummyHandler)
+	testStatus200(t, app, "/test/QUERY", MethodQuery)
+
 	grp.All("/ALL", dummyHandler)
 	testStatus200(t, app, "/test/ALL", MethodPost)
 
@@ -1807,7 +1810,8 @@ func Test_App_RouteChain(t *testing.T) {
 		Connect(dummyHandler).
 		Options(dummyHandler).
 		Trace(dummyHandler).
-		Patch(dummyHandler)
+		Patch(dummyHandler).
+		Query(dummyHandler)
 
 	testStatus200(t, app, "/test", MethodGet)
 	testStatus200(t, app, "/test", MethodHead)
@@ -1818,6 +1822,7 @@ func Test_App_RouteChain(t *testing.T) {
 	testStatus200(t, app, "/test", MethodOptions)
 	testStatus200(t, app, "/test", MethodTrace)
 	testStatus200(t, app, "/test", MethodPatch)
+	testStatus200(t, app, "/test", MethodQuery)
 
 	register.RouteChain("/v1").Get(dummyHandler).Post(dummyHandler)
 
@@ -2606,6 +2611,7 @@ func Test_App_Stack(t *testing.T) {
 	app.Get("/path1", testEmptyHandler)
 	app.Get("/path2", testEmptyHandler)
 	app.Post("/path3", testEmptyHandler)
+	app.Query("/path4", testEmptyHandler)
 
 	app.startupProcess()
 
@@ -2621,6 +2627,7 @@ func Test_App_Stack(t *testing.T) {
 	require.Len(t, stack[app.methodInt(MethodConnect)], 1)
 	require.Len(t, stack[app.methodInt(MethodOptions)], 1)
 	require.Len(t, stack[app.methodInt(MethodTrace)], 1)
+	require.Len(t, stack[app.methodInt(MethodQuery)], 2)
 }
 
 // go test -run Test_App_HandlersCount
