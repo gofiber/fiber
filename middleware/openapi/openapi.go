@@ -43,8 +43,8 @@ func New(config ...Config) fiber.Handler {
 			// The spec is cached but regenerated whenever the number of
 			// registered routes changes, so routes added after the first
 			// request are reflected without a process restart.
-			count := routeCount(c.App())
 			specMu.Lock()
+			count := routeCount(c.App())
 			if specData == nil || specCount != count {
 				spec := generateSpec(c.App(), &cfg)
 				data, err := json.Marshal(spec)
@@ -265,6 +265,7 @@ type operation struct {
 
 type response struct {
 	Content     map[string]map[string]any `json:"content,omitempty"`
+	Headers     map[string]any            `json:"headers,omitempty"`
 	Description string                    `json:"description"`
 }
 
@@ -368,6 +369,10 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 			if r.IsAutoHead() {
 				continue
 			}
+			// Skip routes explicitly excluded from the spec via Hidden()
+			if r.IsHidden() {
+				continue
+			}
 
 			variants := buildOpenAPIPathVariants(r.Path, r.Params)
 			for _, variant := range variants {
@@ -413,6 +418,10 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 					if shouldIncludeRequestBody(reqType, r) {
 						reqBody = &requestBody{Content: map[string]map[string]any{reqType: {}}}
 					}
+				}
+				// GET and HEAD operations never carry a request body.
+				if r.Method == fiber.MethodGet || r.Method == fiber.MethodHead {
+					reqBody = nil
 				}
 
 				methodLower := utilsstrings.ToLower(r.Method)
@@ -622,6 +631,7 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse) map[st
 			merged[code] = response{
 				Description: resp.Description,
 				Content:     mediaTypesToContent(resp.MediaTypes, resp.Schema, resp.SchemaRef, resp.Example, resp.Examples),
+				Headers:     copyAnyMap(resp.Headers),
 			}
 		}
 	}

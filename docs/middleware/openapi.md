@@ -129,7 +129,12 @@ app.Post("/users", createUser).
     // Per-operation security. Multiple requirements are combined with OR;
     // pass an empty requirement (map[string][]string{}) to document "no auth".
     Security(map[string][]string{"bearerAuth": {}}).
+    // Document a response header for a given status code.
+    ResponseHeader(fiber.StatusCreated, "Location", "URL of the created user", map[string]any{"type": "string"}).
     Produces(fiber.MIMEApplicationJSON)
+
+// Exclude an internal route from the generated specification.
+app.Get("/internal/metrics", metricsHandler).Hidden()
 
 // If not specified, generated operations default to a summary of "METHOD path",
 // an empty description, no tags, not deprecated, and a "text/plain" request
@@ -140,6 +145,10 @@ app.Post("/users", createUser).
 If no responses are declared, the middleware adds a sensible default: `200 OK` for most methods and `204 No Content` for `DELETE` and `HEAD`. When any responses are provided via the route helpers, no automatic default is added.
 
 Each operation gets a unique `operationId`. Routes documented with `Name` use that name; routes without one get an id generated from the method and path (for example `GET /users/{id}` → `getUsersId`). If two operations would share an id, a numeric suffix (`_2`, `_3`, …) is appended so the generated document stays valid.
+
+`Hidden()` excludes a route from the generated specification entirely — useful for internal or admin endpoints. `ResponseHeader(status, name, description, schema)` documents a response header for a given status code, creating the response entry if it does not exist yet.
+
+`GET` and `HEAD` operations never emit a `requestBody`, even if `Consumes` or `RequestBody` is set, because those methods do not carry a request body.
 
 `CONNECT` routes are ignored because the OpenAPI specification does not define a `connect` operation.
 

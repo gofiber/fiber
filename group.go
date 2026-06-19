@@ -125,6 +125,20 @@ func (grp *Group) Security(requirements ...map[string][]string) Router {
 	return grp
 }
 
+// Hidden excludes the most recently added route in the group from the generated
+// OpenAPI specification.
+func (grp *Group) Hidden() Router {
+	grp.app.Hidden()
+	return grp
+}
+
+// ResponseHeader documents a response header for the most recently added route
+// in the group.
+func (grp *Group) ResponseHeader(status int, name, description string, schema map[string]any) Router {
+	grp.app.ResponseHeader(status, name, description, schema)
+	return grp
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 // Also, you can pass another app instance as a sub-router along a routing path.

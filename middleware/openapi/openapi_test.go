@@ -1416,10 +1416,10 @@ func Test_OpenAPI_ShouldIncludeRequestBody(t *testing.T) {
 			expectBody: false,
 		},
 		{
-			name:       "GET with custom consumes has body",
+			name:       "GET never has a body even with custom consumes",
 			method:     fiber.MethodGet,
 			consumes:   fiber.MIMEApplicationJSON,
-			expectBody: true, // non-default consumes triggers body
+			expectBody: false, // GET/HEAD never carry a request body
 		},
 		{
 			name:       "HEAD with text/plain no body",
@@ -1764,4 +1764,60 @@ func Test_OpenAPI_AutoSummaryUsesOpenAPIPath(t *testing.T) {
 	op := requireMap(t, paths["/users/{id}"]["get"])
 	// Auto-generated summary uses the OpenAPI path template, not Fiber syntax.
 	require.Equal(t, "GET /users/{id}", op["summary"])
+}
+
+func Test_OpenAPI_HiddenRouteExcluded(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/public", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Get("/internal", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).Hidden()
+
+	paths := getPaths(t, app)
+	require.Contains(t, paths, "/public")
+	require.NotContains(t, paths, "/internal")
+}
+
+func Test_OpenAPI_ResponseHeader(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Response(200, "OK", fiber.MIMEApplicationJSON).
+		ResponseHeader(200, "X-Rate-Limit", "Requests left", map[string]any{"type": "integer"})
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/users"]["get"])
+	resp200 := requireMap(t, requireMap(t, op["responses"])["200"])
+	headers := requireMap(t, resp200["headers"])
+	rateLimit := requireMap(t, headers["X-Rate-Limit"])
+	require.Equal(t, "Requests left", rateLimit["description"])
+	require.Equal(t, map[string]any{"type": "integer"}, rateLimit["schema"])
+}
+
+func Test_OpenAPI_ResponseHeaderCreatesResponse(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	// ResponseHeader without a preceding Response() should still create the entry.
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		ResponseHeader(200, "X-Trace-Id", "Trace identifier", nil)
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/users"]["get"])
+	resp200 := requireMap(t, requireMap(t, op["responses"])["200"])
+	headers := requireMap(t, resp200["headers"])
+	require.Contains(t, headers, "X-Trace-Id")
+}
+
+func Test_OpenAPI_GETExplicitRequestBodySuppressed(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/search", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		RequestBody("query", false, fiber.MIMEApplicationJSON)
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/search"]["get"])
+	require.NotContains(t, op, "requestBody")
 }

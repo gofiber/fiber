@@ -81,6 +81,12 @@ type Router interface {
 	// empty requirement (an empty map) documents that the operation requires no
 	// authentication, overriding any document-level default.
 	Security(requirements ...map[string][]string) Router
+	// ResponseHeader documents a response header for the given status code on the
+	// most recently registered route, creating the response entry if needed.
+	ResponseHeader(status int, name, description string, schema map[string]any) Router
+	// Hidden excludes the most recently registered route from the generated
+	// OpenAPI specification.
+	Hidden() Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
@@ -115,6 +121,7 @@ type Route struct {
 	root          bool // Path equals '/'
 	autoHead      bool // Automatically generated HEAD route
 	caseSensitive bool // Whether parameter matching is case-sensitive
+	hidden        bool // Excluded from the generated OpenAPI specification
 }
 
 var (
@@ -226,7 +233,60 @@ func preferredGreedyParameters(paramName string) []string {
 	return defaultGreedyParameterKeys
 }
 
-func (r *Route) match(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
+// IsMiddleware reports whether this route was registered via Use() and
+// therefore matches path prefixes rather than exact paths. This is useful
+// for filtering middleware routes from generated API specifications.
+func (r *Route) IsMiddleware() bool {
+	return r.use
+}
+
+// IsAutoHead reports whether this route was automatically generated as a
+// HEAD counterpart of a GET route.
+func (r *Route) IsAutoHead() bool {
+	return r.autoHead
+}
+
+// IsHidden reports whether this route is excluded from the generated OpenAPI
+// specification (set via the Hidden helper).
+func (r *Route) IsHidden() bool {
+	return r.hidden
+}
+
+// RouteParameter describes an input captured by a route.
+type RouteParameter struct {
+	Schema      map[string]any `json:"schema"`
+	SchemaRef   string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Example     any            `json:"example,omitempty"`
+	Examples    map[string]any `json:"examples,omitempty"`
+	Description string         `json:"description"`
+	Name        string         `json:"name"`
+	In          string         `json:"in"`
+	Required    bool           `json:"required"`
+}
+
+// RouteResponse describes a response emitted by a route.
+type RouteResponse struct {
+	Example     any            `json:"example,omitempty"`
+	Schema      map[string]any `json:"schema,omitempty"`
+	Examples    map[string]any `json:"examples,omitempty"`
+	Headers     map[string]any `json:"headers,omitempty"`
+	SchemaRef   string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Description string         `json:"description"`
+	MediaTypes  []string       `json:"mediaTypes"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+}
+
+// RouteRequestBody describes the request payload accepted by a route.
+type RouteRequestBody struct {
+	Example     any            `json:"example,omitempty"`
+	Schema      map[string]any `json:"schema,omitempty"`
+	Examples    map[string]any `json:"examples,omitempty"`
+	SchemaRef   string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Description string         `json:"description"`
+	MediaTypes  []string       `json:"mediaTypes"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Required    bool           `json:"required"`
+}
+
+func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
 	// root detectionPath check
 	if r.root && len(detectionPath) == 1 && detectionPath[0] == '/' {
 		return true
@@ -661,6 +721,7 @@ func (*App) copyRoute(route *Route) *Route {
 		root:          route.root,
 		autoHead:      route.autoHead,
 		caseSensitive: route.caseSensitive,
+		hidden:        route.hidden,
 
 		// Path data
 		path:        route.path,
@@ -754,6 +815,7 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 			SchemaRef:   resp.SchemaRef,
 			Examples:    copyAnyMap(resp.Examples),
 			Example:     resp.Example,
+			Headers:     copyAnyMap(resp.Headers),
 		}
 		if len(resp.MediaTypes) > 0 {
 			copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
