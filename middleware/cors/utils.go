@@ -72,6 +72,11 @@ type subdomain struct {
 }
 
 func (s subdomain) match(o string) bool {
+	isValid, normalizedOrigin := normalizeOrigin(o)
+	if !isValid || normalizedOrigin != o {
+		return false
+	}
+
 	// Not a subdomain if not long enough for a dot separator.
 	if len(o) < len(s.prefix)+len(s.suffix)+1 {
 		return false
@@ -95,7 +100,7 @@ func (s subdomain) match(o string) bool {
 	// Extract the subdomain part (without the trailing dot) and ensure it
 	// doesn't contain empty labels.
 	sub := o[len(s.prefix) : suffixStartIndex-1]
-	if sub == "" || strings.HasPrefix(sub, ".") || strings.Contains(sub, "..") {
+	if sub == "" || strings.HasPrefix(sub, ".") || strings.HasSuffix(sub, ".") || strings.Contains(sub, "..") {
 		return false
 	}
 

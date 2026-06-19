@@ -7,7 +7,7 @@ name: Sync Sponsors
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 6 * * 1'
+    - cron: '0 6 * * *'
 
 permissions:
   contents: write

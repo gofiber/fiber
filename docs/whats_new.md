@@ -610,6 +610,29 @@ testConfig := fiber.TestConfig{
 }
 ```
 
+### Constraint System
+
+The internal constraint system has been unified into a single `ConstraintHandler` interface. Built-in and custom constraints are now treated uniformly through this interface, with an optional `ConstraintAnalyzer` phase for precomputation at route registration time.
+
+```go
+type ConstraintHandler interface {
+    Name() string
+    Execute(param string, data []any) bool
+}
+
+type ConstraintAnalyzer interface {
+    Analyze(args []string) ([]any, error)
+}
+```
+
+Key improvements:
+
+- **Zero per-request parsing**: `strconv.Atoi`, `time.Parse` layouts, and regex compilation happen once at registration via `Analyze()`, not on every request.
+- **Single dispatch**: The previous `TypeConstraint` bitmask switch has been replaced by a single `handler.Execute()` call.
+- **Backward compatible**: Existing `CustomConstraint` implementations continue to work unchanged. The `CustomConstraint` interface, `RegisterCustomConstraint()` API, and `CheckConstraint()` method are all preserved.
+
+The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` fields are retained but deprecated.
+
 ## 🧠 Context
 
 ### New Features
@@ -685,7 +708,7 @@ testConfig := fiber.TestConfig{
 ### Changed Methods
 
 - **Bind**: Now used for binding instead of view binding. Use `c.ViewBind()` for view binding.
-- **Format**: Parameter changed from `body interface{}` to `handlers ...ResFmt`.
+- **Format**: Parameter changed from `body any` to `handlers ...ResFmt`.
 - **Redirect**: Use `c.Redirect().To()` instead.
 - **SendFile**: Now supports different configurations using a config parameter.
 - **Attachment and Download**: Non-ASCII filenames now use `filename*` as
@@ -1715,6 +1738,8 @@ The session middleware has undergone significant improvements in v3, focusing on
 - **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
 
 - **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
+
+- **Context-Aware Lifecycle Methods**: The `DestroyWithContext`, `RegenerateWithContext`, `ResetWithContext`, and `SaveWithContext` methods (on both `Session` and `Middleware`) accept a `context.Context` to propagate cancellation and deadlines to the underlying storage I/O, mirroring the existing `Storage` and `SharedState` `WithContext` convention. The non-context variants delegate to these. A nil context is treated as `context.Background()`.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 

@@ -128,9 +128,7 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 }
 
 // cookiesForRequest returns cookies that match the given host, path and security settings.
-//
-//nolint:revive // secure is required to filter Secure cookies based on scheme
-func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []*fasthttp.Cookie {
+func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []*fasthttp.Cookie { //nolint:revive // secure is a deliberate scheme filter, not a control-flow flag
 	cj.mu.Lock()
 	defer cj.mu.Unlock()
 

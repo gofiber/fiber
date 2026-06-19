@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
@@ -110,6 +110,10 @@ jobs:
           summary-always: true
           # Save the data to external file (GitHub Pages)
           save-data-file: true
+          # Cap history kept in benchmarks/data.js so the file stays below GitHub's
+          # 100 MB per-file push limit (the action never prunes by default).
+          # 185 runs ~= the last 3 months of main pushes (count-based, not time-based).
+          max-items-in-chart: 185
           alert-threshold: "150%"
           auto-push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           go-force-package-suffix: true
