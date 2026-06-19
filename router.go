@@ -80,6 +80,12 @@ type Router interface {
 	// empty requirement (an empty map) documents that the operation requires no
 	// authentication, overriding any document-level default.
 	Security(requirements ...map[string][]string) Router
+	// ResponseHeader documents a response header for the given status code on the
+	// most recently registered route, creating the response entry if needed.
+	ResponseHeader(status int, name, description string, schema map[string]any) Router
+	// Hidden excludes the most recently registered route from the generated
+	// OpenAPI specification.
+	Hidden() Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
@@ -119,6 +125,7 @@ type Route struct {
 	root          bool // Path equals '/'
 	autoHead      bool // Automatically generated HEAD route
 	caseSensitive bool // Whether parameter matching is case-sensitive
+	hidden        bool // Excluded from the generated OpenAPI specification
 }
 
 var (
@@ -244,6 +251,12 @@ func (r *Route) IsAutoHead() bool {
 	return r.autoHead
 }
 
+// IsHidden reports whether this route is excluded from the generated OpenAPI
+// specification (set via the Hidden helper).
+func (r *Route) IsHidden() bool {
+	return r.hidden
+}
+
 // RouteParameter describes an input captured by a route.
 type RouteParameter struct {
 	Schema      map[string]any `json:"schema"`
@@ -261,6 +274,7 @@ type RouteResponse struct {
 	Example     any            `json:"example,omitempty"`
 	Schema      map[string]any `json:"schema,omitempty"`
 	Examples    map[string]any `json:"examples,omitempty"`
+	Headers     map[string]any `json:"headers,omitempty"`
 	SchemaRef   string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Description string         `json:"description"`
 	MediaTypes  []string       `json:"mediaTypes"` //nolint:tagliatelle // OpenAPI spec uses camelCase
@@ -605,6 +619,7 @@ func (*App) copyRoute(route *Route) *Route {
 		root:          route.root,
 		autoHead:      route.autoHead,
 		caseSensitive: route.caseSensitive,
+		hidden:        route.hidden,
 
 		// Path data
 		path:        route.path,
@@ -698,6 +713,7 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 			SchemaRef:   resp.SchemaRef,
 			Examples:    copyAnyMap(resp.Examples),
 			Example:     resp.Example,
+			Headers:     copyAnyMap(resp.Headers),
 		}
 		if len(resp.MediaTypes) > 0 {
 			copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)

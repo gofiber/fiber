@@ -699,6 +699,20 @@ func (d *domainRouter) Security(requirements ...map[string][]string) Router {
 	return d
 }
 
+// Hidden excludes the most recently added route on the domain router from the
+// generated OpenAPI specification.
+func (d *domainRouter) Hidden() Router {
+	d.app.Hidden()
+	return d
+}
+
+// ResponseHeader documents a response header for the most recently added route
+// on the domain router.
+func (d *domainRouter) ResponseHeader(status int, name, description string, schema map[string]any) Router {
+	d.app.ResponseHeader(status, name, description, schema)
+	return d
+}
+
 // domainRegistering provides route registration helpers for a specific path
 // on a domain router, implementing the [Register] interface.
 type domainRegistering struct {

@@ -1093,6 +1093,21 @@ func (app *App) ResponseWithExample(status int, description string, schema map[s
 	return app.addResponse(status, description, schema, schemaRef, example, examples, mediaTypes...)
 }
 
+// defaultResponseKey is the OpenAPI key used for the "default" response entry.
+const defaultResponseKey = "default"
+
+// defaultResponseDescription returns a human-readable description for a response
+// status code (0 represents the "default" response).
+func defaultResponseDescription(status int) string {
+	if status == 0 {
+		return "Default response"
+	}
+	if text := http.StatusText(status); text != "" {
+		return text
+	}
+	return "Status " + strconv.Itoa(status)
+}
+
 func (app *App) addResponse(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	if status != 0 && (status < 100 || status > 599) {
 		panic("invalid status code")
@@ -1101,16 +1116,10 @@ func (app *App) addResponse(status int, description string, schema map[string]an
 	sanitized := sanitizeMediaTypes(mediaTypes)
 
 	if description == "" {
-		if status == 0 {
-			description = "Default response"
-		} else if text := http.StatusText(status); text != "" {
-			description = text
-		} else {
-			description = "Status " + strconv.Itoa(status)
-		}
+		description = defaultResponseDescription(status)
 	}
 
-	key := "default"
+	key := defaultResponseKey
 	if status > 0 {
 		key = strconv.Itoa(status)
 	}
@@ -1218,6 +1227,65 @@ func (app *App) Security(requirements ...map[string][]string) Router {
 		route.Security = cloneRouteSecurity(requirements)
 	})
 	app.mutex.Unlock()
+	return app
+}
+
+// Hidden excludes the most recently added route from the generated OpenAPI
+// specification.
+func (app *App) Hidden() Router {
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.hidden = true
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// ResponseHeader documents a response header for the given status code on the
+// most recently added route, creating the response entry if it does not exist
+// yet. A status of 0 documents the "default" response.
+func (app *App) ResponseHeader(status int, name, description string, schema map[string]any) Router {
+	if strings.TrimSpace(name) == "" {
+		panic("response header name is required")
+	}
+	if status != 0 && (status < 100 || status > 599) {
+		panic("invalid status code")
+	}
+
+	key := defaultResponseKey
+	if status > 0 {
+		key = strconv.Itoa(status)
+	}
+
+	header := map[string]any{}
+	if description != "" {
+		header["description"] = description
+	}
+	if len(schema) > 0 {
+		header["schema"] = copyAnyMap(schema)
+	}
+
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		if route.Responses == nil {
+			route.Responses = make(map[string]RouteResponse)
+		}
+		resp, ok := route.Responses[key]
+		if !ok {
+			resp = RouteResponse{Description: defaultResponseDescription(status)}
+		}
+		if resp.Headers == nil {
+			resp.Headers = make(map[string]any)
+		}
+		hdr := copyAnyMap(header)
+		if hdr == nil {
+			hdr = map[string]any{}
+		}
+		resp.Headers[name] = hdr
+		route.Responses[key] = resp
+	})
+	app.mutex.Unlock()
+
 	return app
 }
 
