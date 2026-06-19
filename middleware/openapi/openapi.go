@@ -305,8 +305,54 @@ const (
 	schemaTypeObject  = "object"
 )
 
+// generateOperationID derives a stable, readable operationId from an HTTP method
+// and an OpenAPI path, e.g. ("GET", "/users/{id}") -> "getUsersId". It is used
+// when a route has no explicit Name.
+func generateOperationID(method, path string) string {
+	var b strings.Builder
+	_, _ = b.WriteString(utilsstrings.ToLower(method)) //nolint:errcheck // strings.Builder.WriteString never returns an error
+	capNext := true
+	for i := 0; i < len(path); i++ {
+		c := path[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+			if capNext {
+				c -= 'a' - 'A'
+				capNext = false
+			}
+			_ = b.WriteByte(c) //nolint:errcheck // strings.Builder.WriteByte never returns an error
+		case (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'):
+			capNext = false
+			_ = b.WriteByte(c) //nolint:errcheck // strings.Builder.WriteByte never returns an error
+		default:
+			capNext = true
+		}
+	}
+	return b.String()
+}
+
+// uniqueOperationID returns id when unused, otherwise appends a numeric suffix
+// until the result is unique, recording the chosen value in used so the
+// generated document never repeats an operationId.
+func uniqueOperationID(id string, used map[string]struct{}) string {
+	if id == "" {
+		id = "operation"
+	}
+	candidate := id
+	for i := 2; ; i++ {
+		if _, exists := used[candidate]; !exists {
+			used[candidate] = struct{}{}
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s_%d", id, i)
+	}
+}
+
 func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 	paths := make(map[string]map[string]operation)
+	// usedOperationIDs guarantees operationId uniqueness across the document,
+	// which the OpenAPI specification requires.
+	usedOperationIDs := make(map[string]struct{})
 	stack := app.Stack()
 
 	for _, routes := range stack {
@@ -343,9 +389,15 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 
 				summary := r.Summary
 				if summary == "" {
-					summary = r.Method + " " + r.Path
+					summary = r.Method + " " + variant.Path
 				}
 				description := r.Description
+
+				operationID := r.Name
+				if operationID == "" {
+					operationID = generateOperationID(r.Method, variant.Path)
+				}
+				operationID = uniqueOperationID(operationID, usedOperationIDs)
 
 				respType := r.Produces
 
@@ -369,7 +421,7 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 				}
 
 				paths[variant.Path][methodLower] = operation{
-					OperationID: r.Name,
+					OperationID: operationID,
 					Summary:     summary,
 					Description: description,
 					Tags:        r.Tags,

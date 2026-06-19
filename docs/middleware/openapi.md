@@ -139,6 +139,8 @@ app.Post("/users", createUser).
 
 If no responses are declared, the middleware adds a sensible default: `200 OK` for most methods and `204 No Content` for `DELETE` and `HEAD`. When any responses are provided via the route helpers, no automatic default is added.
 
+Each operation gets a unique `operationId`. Routes documented with `Name` use that name; routes without one get an id generated from the method and path (for example `GET /users/{id}` → `getUsersId`). If two operations would share an id, a numeric suffix (`_2`, `_3`, …) is appended so the generated document stays valid.
+
 `CONNECT` routes are ignored because the OpenAPI specification does not define a `connect` operation.
 
 ## Config
@@ -238,10 +240,18 @@ app.Use(openapi.New(openapi.Config{
 | `int`, `int8`–`int64`, `uint`–`uint64` | `integer` |
 | `float32`, `float64` | `number` |
 | `time.Time` | `string` (format: `date-time`) |
+| `[]byte` | `string` (format: `byte`, base64) |
 | `[]T` / `[N]T` | `array` (items: schema of `T`) |
 | `map[string]T` | `object` (additionalProperties: schema of `T`) |
 | struct | `object` (properties from fields) |
 | `*T` | schema of `T` (field not included in `required`) |
+| `any` / `interface{}` | `{}` (accepts any value) |
+
+Embedded structs and embedded pointers to structs are flattened into the parent
+object (matching `encoding/json`). Self-referential or mutually recursive structs
+are handled safely by emitting a bare `{"type": "object"}` where the cycle
+repeats. Fields whose type has no JSON representation (channels, functions, etc.)
+are skipped.
 
 ### Struct field tags
 
@@ -259,3 +269,7 @@ type Product struct {
     Status string `json:"status" openapi:"enum:active|inactive,description:Product status"`
 }
 ```
+
+A directive value may itself contain commas and colons (for example a
+description); the only limitation is that a value cannot contain a comma
+immediately followed by another directive key such as `,description:`.

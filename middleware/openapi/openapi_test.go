@@ -1715,3 +1715,53 @@ func Test_OpenAPI_SchemaOfIntegration(t *testing.T) {
 	require.Contains(t, reqProps, "id")
 	require.Contains(t, reqProps, "name")
 }
+
+func Test_OpenAPI_OperationID_GeneratedAndUnique(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	// Two unnamed routes -> generated, non-empty, unique operationIds.
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+
+	listOp := requireMap(t, paths["/users"]["get"])
+	require.Equal(t, "getUsers", listOp["operationId"])
+
+	getOp := requireMap(t, paths["/users/{id}"]["get"])
+	require.Equal(t, "getUsersId", getOp["operationId"])
+}
+
+func Test_OpenAPI_OperationID_DuplicateNamesDeduped(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/a", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).Name("dup")
+	app.Get("/b", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).Name("dup")
+
+	paths := getPaths(t, app)
+
+	idA, ok := requireMap(t, paths["/a"]["get"])["operationId"].(string)
+	require.True(t, ok)
+	idB, ok := requireMap(t, paths["/b"]["get"])["operationId"].(string)
+	require.True(t, ok)
+
+	ids := map[string]bool{idA: true, idB: true}
+	// Both routes asked for "dup"; the generated document must keep them unique.
+	require.Len(t, ids, 2)
+	require.Contains(t, ids, "dup")
+	require.Contains(t, ids, "dup_2")
+}
+
+func Test_OpenAPI_AutoSummaryUsesOpenAPIPath(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users/:id<int>", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/users/{id}"]["get"])
+	// Auto-generated summary uses the OpenAPI path template, not Fiber syntax.
+	require.Equal(t, "GET /users/{id}", op["summary"])
+}

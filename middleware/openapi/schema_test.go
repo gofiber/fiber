@@ -378,3 +378,127 @@ func Test_SchemaOf_PlainType(t *testing.T) {
 	require.Equal(t, map[string]any{"type": "boolean"}, SchemaOf(true))
 	require.Equal(t, map[string]any{"type": "number"}, SchemaOf(3.14))
 }
+
+func Test_SchemaOf_RecursiveStruct(t *testing.T) {
+	t.Parallel()
+
+	type Node struct {
+		Next  *Node `json:"next"`
+		Value int   `json:"value"`
+	}
+
+	// Must not stack-overflow on a self-referential type.
+	schema := SchemaOf(Node{})
+	props := requireProps(t, schema)
+	require.Equal(t, map[string]any{"type": "integer"}, requireProp(t, props, "value"))
+	// The cyclic reference is broken with a bare object schema.
+	require.Equal(t, map[string]any{"type": "object"}, requireProp(t, props, "next"))
+}
+
+func Test_SchemaOf_MutuallyRecursiveStructs(t *testing.T) {
+	t.Parallel()
+
+	type B struct{}
+	type A struct {
+		B *B `json:"b"`
+	}
+	// Reusing the same type in sibling positions must still fully expand.
+	type Pair struct {
+		First  A `json:"first"`
+		Second A `json:"second"`
+	}
+
+	schema := SchemaOf(Pair{})
+	props := requireProps(t, schema)
+	first := requireProp(t, props, "first")
+	second := requireProp(t, props, "second")
+	require.Equal(t, "object", first["type"])
+	require.Equal(t, "object", second["type"])
+	require.Contains(t, requireProps(t, first), "b")
+	require.Contains(t, requireProps(t, second), "b")
+}
+
+func Test_SchemaOf_ByteSlice(t *testing.T) {
+	t.Parallel()
+
+	type WithBytes struct {
+		Data    []byte  `json:"data"`
+		FixedID [4]byte `json:"fixed_id"`
+	}
+
+	schema := SchemaOf(WithBytes{})
+	props := requireProps(t, schema)
+	// []byte marshals to a base64 string.
+	require.Equal(t, map[string]any{"type": "string", "format": "byte"}, requireProp(t, props, "data"))
+	// Fixed-size byte arrays marshal to arrays of numbers.
+	require.Equal(t, "array", requireProp(t, props, "fixed_id")["type"])
+}
+
+func Test_SchemaOf_EmbeddedPointerStruct(t *testing.T) {
+	t.Parallel()
+
+	type Inner struct {
+		ID int `json:"id"`
+	}
+	type Outer struct {
+		*Inner
+		Name string `json:"name"`
+	}
+
+	schema := SchemaOf(Outer{})
+	props := requireProps(t, schema)
+	// Embedded pointer fields are flattened into the parent.
+	require.Equal(t, map[string]any{"type": "integer"}, requireProp(t, props, "id"))
+	require.Equal(t, map[string]any{"type": "string"}, requireProp(t, props, "name"))
+	require.NotContains(t, props, "Inner")
+
+	// The embedded pointer may be nil, so its fields are not required; only the
+	// direct non-pointer field is.
+	required := requireRequired(t, schema)
+	require.Contains(t, required, "name")
+	require.NotContains(t, required, "id")
+}
+
+func Test_SchemaOf_AnyField(t *testing.T) {
+	t.Parallel()
+
+	type WithAny struct {
+		Meta any `json:"meta"`
+	}
+
+	schema := SchemaOf(WithAny{})
+	props := requireProps(t, schema)
+	// interface{}/any accepts any JSON value -> empty schema.
+	require.Equal(t, map[string]any{}, requireProp(t, props, "meta"))
+}
+
+func Test_SchemaOf_UnsupportedFieldSkipped(t *testing.T) {
+	t.Parallel()
+
+	type WithChan struct {
+		Ch   chan int    `json:"ch"`
+		Fn   func() bool `json:"fn"`
+		Name string      `json:"name"`
+	}
+
+	schema := SchemaOf(WithChan{})
+	props := requireProps(t, schema)
+	require.Contains(t, props, "name")
+	// Non-serializable fields are skipped entirely.
+	require.NotContains(t, props, "ch")
+	require.NotContains(t, props, "fn")
+}
+
+func Test_SchemaOf_OpenAPITagWithComma(t *testing.T) {
+	t.Parallel()
+
+	type Product struct {
+		Status string `json:"status" openapi:"enum:active|inactive,description:Status, including a comma"`
+	}
+
+	schema := SchemaOf(Product{})
+	props := requireProps(t, schema)
+	status := requireProp(t, props, "status")
+	require.Equal(t, "Status, including a comma", status["description"])
+	require.Equal(t, []any{"active", "inactive"}, status["enum"])
+}
