@@ -3,6 +3,7 @@ package openapi
 import (
 	"maps"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -18,10 +19,18 @@ import (
 // Supported types:
 //   - Primitives: string, bool, int*, uint*, float*
 //   - time.Time → {"type": "string", "format": "date-time"}
+//   - []byte → {"type": "string", "format": "byte"} (Go marshals it as base64)
 //   - Slices/arrays → {"type": "array", "items": {...}}
-//   - Maps → {"type": "object", "additionalProperties": {...}}
+//   - Maps with string keys → {"type": "object", "additionalProperties": {...}}
 //   - Structs → {"type": "object", "properties": {...}, "required": [...]}
 //   - Pointers → schema of the pointed-to type (nullable fields are not required)
+//   - interface{}/any → {} (accepts any value)
+//
+// Embedded structs and embedded pointers to structs are flattened into the
+// parent object (matching encoding/json). Self-referential or mutually
+// recursive structs are handled by emitting a bare {"type": "object"} at the
+// point the cycle repeats, so reflection never recurses forever. Fields whose
+// type has no JSON representation (chan, func, complex, ...) are skipped.
 //
 // Struct field tags:
 //   - `json:"name"` sets the property name; `json:"-"` skips the field
@@ -30,6 +39,10 @@ import (
 //   - `openapi:"example:value"` sets the property example
 //   - `openapi:"format:fmt"` overrides the format (e.g., "email", "uuid")
 //   - `openapi:"enum:a|b|c"` sets the enum values
+//
+// openapi directives are comma-separated and a value may contain commas and
+// colons; the only limitation is that a value cannot contain a comma immediately
+// followed by another directive key (e.g. ",description:").
 //
 // Example:
 //
@@ -53,12 +66,14 @@ func SchemaOf(v any) map[string]any {
 	if t == nil {
 		return nil
 	}
-	return typeSchema(t)
+	return typeSchema(t, nil)
 }
 
 var timeType = reflect.TypeFor[time.Time]()
 
-func typeSchema(t reflect.Type) map[string]any {
+// typeSchema builds the schema for a single type. visited tracks the struct
+// types currently on the recursion stack so that cyclic types terminate.
+func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
@@ -78,7 +93,12 @@ func typeSchema(t reflect.Type) map[string]any {
 	case reflect.Float32, reflect.Float64:
 		return map[string]any{schemaKeyType: "number"}
 	case reflect.Slice, reflect.Array:
-		items := typeSchema(t.Elem())
+		// Go marshals []byte (a slice of uint8) as a base64-encoded string.
+		// Fixed-size byte arrays are still marshaled as arrays of numbers.
+		if t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8 {
+			return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "byte"}
+		}
+		items := typeSchema(t.Elem(), visited)
 		if items == nil {
 			items = map[string]any{}
 		}
@@ -87,19 +107,35 @@ func typeSchema(t reflect.Type) map[string]any {
 		if t.Key().Kind() != reflect.String {
 			return map[string]any{schemaKeyType: schemaTypeObject}
 		}
-		additional := typeSchema(t.Elem())
+		additional := typeSchema(t.Elem(), visited)
 		if additional == nil {
 			additional = map[string]any{}
 		}
 		return map[string]any{schemaKeyType: schemaTypeObject, "additionalProperties": additional}
 	case reflect.Struct:
-		return structSchema(t)
+		return structSchema(t, visited)
+	case reflect.Interface:
+		// An interface value (e.g. any) accepts any JSON value.
+		return map[string]any{}
 	default:
+		// Unsupported kinds (chan, func, complex, uintptr, unsafe.Pointer) have
+		// no JSON representation.
 		return nil
 	}
 }
 
-func structSchema(t reflect.Type) map[string]any {
+func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
+	// Break reference cycles: if this struct type is already being expanded
+	// further up the stack, emit a bare object instead of recursing forever.
+	if visited[t] {
+		return map[string]any{schemaKeyType: schemaTypeObject}
+	}
+	if visited == nil {
+		visited = make(map[reflect.Type]bool)
+	}
+	visited[t] = true
+	defer delete(visited, t)
+
 	properties := make(map[string]any)
 	var required []string
 
@@ -114,13 +150,21 @@ func structSchema(t reflect.Type) map[string]any {
 			continue
 		}
 
-		// Handle embedded structs
-		if field.Anonymous && field.Type.Kind() == reflect.Struct && name == "" {
-			embedded := structSchema(field.Type)
+		// Flatten embedded structs and embedded pointers to structs, the way
+		// encoding/json promotes their fields into the parent object.
+		embeddedType := field.Type
+		for embeddedType.Kind() == reflect.Pointer {
+			embeddedType = embeddedType.Elem()
+		}
+		if field.Anonymous && embeddedType.Kind() == reflect.Struct && embeddedType != timeType && name == "" {
+			embedded := structSchema(embeddedType, visited)
 			if props, ok := embedded["properties"].(map[string]any); ok {
 				maps.Copy(properties, props)
 			}
-			if reqs, ok := embedded["required"].([]string); ok && !omit {
+			// An embedded pointer can be nil, so its fields are not guaranteed
+			// to be present and must not be marked required on the parent.
+			isPtrEmbed := field.Type.Kind() == reflect.Pointer
+			if reqs, ok := embedded["required"].([]string); ok && !omit && !isPtrEmbed {
 				required = append(required, reqs...)
 			}
 			continue
@@ -130,9 +174,11 @@ func structSchema(t reflect.Type) map[string]any {
 			name = field.Name
 		}
 
-		fieldSchema := typeSchema(field.Type)
+		fieldSchema := typeSchema(field.Type, visited)
 		if fieldSchema == nil {
-			fieldSchema = map[string]any{}
+			// The field type has no JSON representation; skip it entirely
+			// rather than emitting a meaningless empty schema.
+			continue
 		}
 
 		applyOpenAPITag(&field, fieldSchema)
@@ -167,18 +213,28 @@ func parseJSONTag(field *reflect.StructField) (string, bool, bool) { //nolint:go
 	return parts[0], len(parts) > 1 && strings.Contains(parts[1], "omitempty"), false
 }
 
+// openapiDirectiveRe locates the start of each recognized openapi tag directive.
+// A directive begins at the start of the tag or after a comma. Everything from a
+// directive's colon up to the next directive (or the end of the tag) is its
+// value, so values may freely contain commas and colons.
+var openapiDirectiveRe = regexp.MustCompile(`(?:^|,)\s*(description|example|format|enum):`)
+
 func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 	tag := field.Tag.Get("openapi")
 	if tag == "" {
 		return
 	}
-	for part := range strings.SplitSeq(tag, ",") {
-		key, val, found := strings.Cut(part, ":")
-		if !found {
-			continue
+
+	locs := openapiDirectiveRe.FindAllStringSubmatchIndex(tag, -1)
+	for i, loc := range locs {
+		key := tag[loc[2]:loc[3]]
+		valStart := loc[1]
+		valEnd := len(tag)
+		if i+1 < len(locs) {
+			valEnd = locs[i+1][0]
 		}
-		key = utils.TrimSpace(key)
-		val = utils.TrimSpace(val)
+		val := utils.TrimSpace(tag[valStart:valEnd])
+
 		switch key {
 		case "description":
 			schema["description"] = val
@@ -189,12 +245,12 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 		case "enum":
 			values := strings.Split(val, "|")
 			enumSlice := make([]any, len(values))
-			for i, v := range values {
-				enumSlice[i] = utils.TrimSpace(v)
+			for j, v := range values {
+				enumSlice[j] = utils.TrimSpace(v)
 			}
 			schema["enum"] = enumSlice
 		default:
-			// Unrecognized openapi tag directives are ignored.
+			// Unreachable: the regexp only matches the keys handled above.
 		}
 	}
 }
