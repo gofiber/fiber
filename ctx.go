@@ -831,9 +831,7 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 		}
 	}
 
-	if len(c.app.mountFields.appListKeys) == 0 {
-		c.app.generateAppListKeys()
-	}
+	c.app.mountFields.appListKeysOnce.Do(c.app.generateAppListKeys)
 }
 
 // Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
