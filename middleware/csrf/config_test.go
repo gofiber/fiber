@@ -104,6 +104,26 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 		}, "Should panic when a nested chained extractor reads from same cookie")
 	})
 
+	// A deeply nested chain must not cause unbounded recursion during validation.
+	t.Run("DeeplyNestedSecureChain", func(t *testing.T) {
+		t.Parallel()
+		// Build a chain nested well beyond maxExtractorChainDepth using only
+		// secure extractors so validation terminates without panicking.
+		deep := extractors.FromHeader("X-Csrf-Token")
+		for range maxExtractorChainDepth + 50 {
+			deep = extractors.Chain(extractors.FromHeader("X-Csrf-Token"), deep)
+		}
+
+		cfg := Config{
+			CookieName: "csrf_",
+			Extractor:  deep,
+		}
+
+		require.NotPanics(t, func() {
+			configDefault(cfg)
+		}, "Should terminate without panic for a deeply nested secure chain")
+	})
+
 	// Test different cookie names - should be secure
 	t.Run("DifferentCookieNames", func(t *testing.T) {
 		t.Parallel()

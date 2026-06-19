@@ -193,7 +193,7 @@ func validateExtractorSecurity(cfg *Config) {
 	// Check chained extractors recursively so a nested chain cannot hide a
 	// fallback that reads from the CSRF storage cookie.
 	for i, extractor := range cfg.Extractor.Chain {
-		if isInsecureCookieExtractorRecursive(extractor, cfg.CookieName) {
+		if isInsecureCookieExtractorRecursive(extractor, cfg.CookieName, 1) {
 			panic(fmt.Sprintf("CSRF: Chained extractor #%d reads from the same cookie '%s' "+
 				"used for token storage. This completely defeats CSRF protection.", i+1, cfg.CookieName))
 		}
@@ -205,15 +205,24 @@ func validateExtractorSecurity(cfg *Config) {
 	}
 }
 
+// maxExtractorChainDepth bounds recursion when validating chained extractors,
+// guarding against pathological or malformed configurations.
+const maxExtractorChainDepth = 100
+
 // isInsecureCookieExtractorRecursive checks if an extractor or any nested chain
-// unsafely reads from the CSRF cookie.
-func isInsecureCookieExtractorRecursive(extractor extractors.Extractor, cookieName string) bool {
+// unsafely reads from the CSRF cookie. The depth parameter bounds recursion so a
+// malformed or excessively nested chain cannot cause unbounded recursion.
+func isInsecureCookieExtractorRecursive(extractor extractors.Extractor, cookieName string, depth int) bool {
+	if depth > maxExtractorChainDepth {
+		return false
+	}
+
 	if isInsecureCookieExtractor(extractor, cookieName) {
 		return true
 	}
 
 	for _, chainedExtractor := range extractor.Chain {
-		if isInsecureCookieExtractorRecursive(chainedExtractor, cookieName) {
+		if isInsecureCookieExtractorRecursive(chainedExtractor, cookieName, depth+1) {
 			return true
 		}
 	}
