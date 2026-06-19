@@ -53,6 +53,14 @@ func createProxyTestServerIPv4(t *testing.T, handler fiber.Handler) (target *fib
 
 func createProxyTestServerIPv6(t *testing.T, handler fiber.Handler) (target *fiber.App, addr string) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming returned target app and address for readability
 	t.Helper()
+
+	// Skip instead of failing on hosts without IPv6 support (e.g. some CI containers).
+	probe, err := net.Listen(fiber.NetworkTCP6, "[::1]:0")
+	if err != nil {
+		t.Skipf("skipping: IPv6 is not available: %v", err)
+	}
+	require.NoError(t, probe.Close())
+
 	return createProxyTestServer(t, handler, fiber.NetworkTCP6, "[::1]:0")
 }
 
@@ -84,10 +92,7 @@ func createRedirectServer(t *testing.T) string {
 func restoreGlobalProxyClient(t *testing.T) {
 	t.Helper()
 
-	lock.RLock()
-	prev := client
-	lock.RUnlock()
-
+	prev := client.Load()
 	t.Cleanup(func() {
 		WithClient(prev)
 	})
@@ -95,7 +100,7 @@ func restoreGlobalProxyClient(t *testing.T) {
 
 // go test -run Test_Proxy_DefaultClient_MaxConnsPerHost
 func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
-	require.Equal(t, defaultMaxConnsPerHost, client.MaxConnsPerHost)
+	require.Equal(t, defaultMaxConnsPerHost, client.Load().MaxConnsPerHost)
 }
 
 // go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost
@@ -777,7 +782,12 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 	WithClient(&fasthttp.Client{
 		NoDefaultUserAgentHeader: true,
 		DisablePathNormalizing:   true,
+		MaxConnsPerHost:          123,
 	})
+	loadedClient := client.Load()
+	require.NotNil(t, loadedClient)
+	require.Equal(t, 123, loadedClient.MaxConnsPerHost)
+
 	app := fiber.New()
 	app.Get("/test_global_client", func(c fiber.Ctx) error {
 		return c.SendString("test_global_client")
@@ -1019,6 +1029,15 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "forwarded", string(b))
+}
+
+// go test -run Test_Proxy_Balancer_Forward_Empty_Servers
+func Test_Proxy_Balancer_Forward_Empty_Servers(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t, "Servers cannot be empty", func() {
+		BalancerForward([]string{})
+	})
 }
 
 func Test_Proxy_Balancer_Forward_OverwritesXRealIP(t *testing.T) {

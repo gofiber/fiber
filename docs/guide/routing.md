@@ -458,6 +458,37 @@ func main() {
 }
 ```
 
+#### ConstraintHandler Interface
+
+In addition to the `CustomConstraint` interface, Fiber v3 provides a more powerful `ConstraintHandler` interface that supports precomputation at route registration time. All built-in constraints implement this interface.
+
+```go
+// ConstraintHandler is the interface that all constraints must implement.
+type ConstraintHandler interface {
+    // Name returns the constraint identifier used in route patterns.
+    Name() string
+
+    // Execute validates a request parameter value against the constraint.
+    // data contains the pre-typed constraint data produced by Analyze().
+    Execute(param string, data []any) bool
+}
+```
+
+Optionally, a constraint can implement `ConstraintAnalyzer` to preprocess data at registration time, avoiding repeated parsing on every request:
+
+```go
+// ConstraintAnalyzer is an optional interface for registration-time precomputation.
+type ConstraintAnalyzer interface {
+    // Analyze preprocesses constraint data at route registration time.
+    // Returns pre-typed values that will be stored in Constraint.Data.
+    Analyze(args []string) ([]any, error)
+}
+```
+
+:::note
+Existing `CustomConstraint` implementations continue to work unchanged. They are automatically wrapped to satisfy `ConstraintHandler`. Custom constraints that also implement `ConstraintAnalyzer` will have their `Analyze` method called at registration time.
+:::
+
 ## Middleware
 
 Functions that are designed to make changes to the request or response are called **middleware functions**. [`c.Next()`](../api/ctx.md#next) passes control to the next handler in the matched chain (middleware or route handler); if a handler returns without calling it, the remaining handlers are skipped.

@@ -33,8 +33,10 @@ const (
 )
 
 var (
-	_ io.Writer       = (*DefaultCtx)(nil) // Compile-time check
-	_ context.Context = (*DefaultCtx)(nil) // Compile-time check
+	_                  io.Writer       = (*DefaultCtx)(nil) // Compile-time check
+	_                  context.Context = (*DefaultCtx)(nil) // Compile-time check
+	emptyRouteHandlers [0]Handler
+	emptyRouteParams   [0]string
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -367,8 +369,8 @@ func (c *DefaultCtx) Route() *Route {
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
 			Method:   c.Method(),
-			Handlers: make([]Handler, 0),
-			Params:   make([]string, 0),
+			Handlers: emptyRouteHandlers[:],
+			Params:   emptyRouteParams[:],
 		}
 	}
 	return c.route
@@ -829,9 +831,7 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 		}
 	}
 
-	if len(c.app.mountFields.appListKeys) == 0 {
-		c.app.generateAppListKeys()
-	}
+	c.app.mountFields.appListKeysOnce.Do(c.app.generateAppListKeys)
 }
 
 // Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.

@@ -173,6 +173,28 @@ func Test_Pprof_Other_WithPrefix(t *testing.T) {
 	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
 }
 
+func Test_Pprof_TrailingSlash_RedirectsWithinPrefix(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New())
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/heap/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
+	require.Equal(t, "/debug/pprof/heap", resp.Header.Get(fiber.HeaderLocation))
+}
+
+func Test_Pprof_TrailingSlash_RedirectsWithinPrefix_WithPrefix(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{Prefix: "/federated-fiber"}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/heap/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
+	require.Equal(t, "/federated-fiber/debug/pprof/heap", resp.Header.Get(fiber.HeaderLocation))
+}
+
 // go test -run Test_Pprof_Next
 func Test_Pprof_Next(t *testing.T) {
 	app := fiber.New()

@@ -121,7 +121,7 @@ func jsonMarshalOrDefault(jsonMarshal []utils.JSONMarshal) utils.JSONMarshal {
 }
 
 func writeData(w *bufio.Writer, data string) error {
-	data = trimSingleTrailingNewline(normalizeNewlines(data))
+	data = normalizeNewlines(data)
 	for line := range strings.SplitSeq(data, "\n") {
 		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
 			return fmt.Errorf("sse: write data: %w", err)
@@ -138,14 +138,10 @@ func appendField(w *bytes.Buffer, field, value string) {
 }
 
 func appendData(w *bytes.Buffer, data string) {
-	data = trimSingleTrailingNewline(normalizeNewlines(data))
+	data = normalizeNewlines(data)
 	for line := range strings.SplitSeq(data, "\n") {
 		appendField(w, "data", line)
 	}
-}
-
-func trimSingleTrailingNewline(value string) string {
-	return strings.TrimSuffix(value, "\n")
 }
 
 func sanitizeField(value string) (string, error) {

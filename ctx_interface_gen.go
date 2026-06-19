@@ -312,18 +312,25 @@ type Ctx interface {
 	Hostname() string
 	// Port returns the remote port of the request.
 	Port() string
-	// IP returns the remote IP address of the request.
-	// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
-	// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
+	// IP returns the client's IP address. When the request comes from a trusted proxy (see
+	// [TrustProxyConfig]), the value is extracted from the configured ProxyHeader by walking the
+	// X-Forwarded-For chain right-to-left and skipping all trusted proxy IPs; the first
+	// non-trusted IP in the chain is returned. Please use Config.TrustProxy to prevent header
+	// spoofing if your app is behind a proxy.
 	IP() string
 	// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
 	// When IP validation is enabled, any invalid IPs will be omitted.
 	extractIPsFromHeader(header string) []string
-	// extractIPFromHeader will attempt to pull the real client IP from the given header when IP validation is enabled.
-	// currently, it will return the first valid IP address in header.
-	// when IP validation is disabled, it will simply return the value of the header without any inspection.
-	// Implementation is almost the same as in extractIPsFromHeader, but without allocation of []string.
+	// extractIPFromHeader returns the client IP from the given proxy header by walking the
+	// X-Forwarded-For chain from right to left and stripping trusted proxy IPs. When trusted
+	// proxies are configured, the rightmost non-trusted IP is returned; otherwise the first
+	// valid IP (left-to-right) is returned. When IP validation is disabled, the raw header
+	// value is returned as-is.
 	extractIPFromHeader(header string) string
+	// hasTrustedProxyConfig returns true if any trusted proxy configuration is set.
+	hasTrustedProxyConfig() bool
+	// isTrustedProxyIP checks whether the given IP string matches any configured trusted proxy.
+	isTrustedProxyIP(ipStr string) bool
 	// IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.
 	// When IP validation is enabled, only valid IPs are returned.
 	IPs() []string

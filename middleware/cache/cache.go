@@ -142,8 +142,6 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
-	utils.StartTimeStampUpdater()
-
 	// Cache settings
 	mux := &sync.RWMutex{}
 	// Create manager to simplify storage operations ( see manager.go )
@@ -210,7 +208,7 @@ func New(config ...Config) fiber.Handler {
 
 		entry.heapidx = candidate.heapIdx
 
-		remainingTTL := max(time.Until(secondsToTime(entry.exp)), 0)
+		remainingTTL := max(secondsToTime(entry.exp).Sub(cfg.now()), 0)
 
 		if err := manager.set(ctx, candidate.key, entry, remainingTTL); err != nil {
 			return fmt.Errorf("cache: failed to restore heap index for key %q: %w", maskKey(candidate.key), err)
@@ -293,13 +291,10 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// Load the coarse-clock timestamp before locking. The needsExactTimestamp
-		// check below reads e.exp, which the CacheInvalidator branch writes
-		// under mux; both must therefore be serialized by mux.
-		ts := uint64(utils.Timestamp())
-
-		// Lock entry
+		// Lock entry before reading the current timestamp so freshness decisions
+		// are based on the time the protected cache entry is evaluated.
 		mux.Lock()
+		ts := safeUnixSeconds(cfg.now())
 		locked := true
 		unlock := func() {
 			if locked {
@@ -312,9 +307,6 @@ func New(config ...Config) fiber.Handler {
 				mux.Lock()
 				locked = true
 			}
-		}
-		if needsExactTimestamp(e, reqDirectives, ts) {
-			ts = safeUnixSeconds(time.Now())
 		}
 		// Cache Entry found
 		if e != nil {
@@ -736,7 +728,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		e.age = ageVal
 		e.shareable = isSharedCacheAllowed
-		now := time.Now().UTC()
+		now := cfg.now().UTC()
 		nowUnix := safeUnixSeconds(now)
 		dateHeader := c.Response().Header.Peek(fiber.HeaderDate)
 		parsedDate, _ := parseHTTPDate(dateHeader)
@@ -781,7 +773,7 @@ func New(config ...Config) fiber.Handler {
 					expiration = time.Nanosecond
 					expiresParseError = true
 				} else {
-					expiration = time.Until(expiresAt)
+					expiration = expiresAt.Sub(cfg.now())
 				}
 				expirationSource = expirationSourceExpires
 			}
@@ -804,7 +796,7 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		ts = safeUnixSeconds(time.Now())
+		ts = safeUnixSeconds(cfg.now())
 		responseTS := max(ts, nowUnix)
 
 		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)
@@ -1155,34 +1147,6 @@ func parseRequestCacheControl(cc []byte) requestCacheDirectives {
 
 func parseRequestCacheControlString(cc string) requestCacheDirectives {
 	return parseRequestCacheControl(utils.UnsafeBytes(cc))
-}
-
-func needsExactTimestamp(e *item, directives requestCacheDirectives, ts uint64) bool {
-	if e == nil {
-		return false
-	}
-
-	if directives.maxAgeSet || directives.minFreshSet {
-		return true
-	}
-
-	if e.exp != 0 {
-		// utils.Timestamp() is refreshed on a 1s ticker, so it can lag the real
-		// wall clock by almost one second. Re-read precisely once the cached
-		// second is within 1s of expiring.
-		if ts+1 >= e.exp {
-			return true
-		}
-	}
-
-	return timestampPredatesStoredSecond(e, ts)
-}
-
-func timestampPredatesStoredSecond(e *item, ts uint64) bool {
-	// When the coarse timestamp falls behind the second used to compute this
-	// entry's exp value, resident age math can underflow. Re-read precisely
-	// until the shared timestamp has caught up to the stored second.
-	return e.ttl != 0 && ts < e.exp && e.ttl < e.exp-ts
 }
 
 func cachedResponseAge(e *item, now uint64) uint64 {
