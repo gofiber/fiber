@@ -16,7 +16,9 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+### Import
+
+Import the middleware package that is part of the Fiber web framework:
 
 ```go
 import (
@@ -25,20 +27,27 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+### Quick start
+
+Register the middleware after your routes. With the default config it serves the
+generated specification at `GET /openapi.json` and a Swagger UI page at
+`GET /swagger`:
 
 ```go
-// Initialize default config.
-//
-// The middleware inspects the app's routes and generates the OpenAPI spec on
-// the first matching request (for example, GET /openapi.json). The spec is
-// cached, but the cache is automatically invalidated whenever the number of
-// registered routes changes, so routes added after the first request are
-// reflected without a process restart.
-// The middleware also serves a Swagger UI page at GET /swagger by default.
 app.Use(openapi.New())
+```
 
-// Or extend your config for customization
+The middleware inspects the app's routes and generates the spec on the first
+matching request. The spec is cached, but the cache is automatically invalidated
+whenever the number of registered routes changes, so routes added after the first
+request are still reflected without a restart.
+
+### Document metadata
+
+Set top-level information about the API — title, version, contact, license,
+servers, tags, external docs and reusable components:
+
+```go
 app.Use(openapi.New(openapi.Config{
     Title:          "My API",
     Version:        "1.0.0",
@@ -61,18 +70,21 @@ app.Use(openapi.New(openapi.Config{
             "User": map[string]any{
                 "type": "object",
                 "properties": map[string]any{
-                    "name": map[string]any{"type": "string"},
+                    "name":  map[string]any{"type": "string"},
                     "email": map[string]any{"type": "string"},
                 },
             },
         },
     },
 }))
+```
 
-// Document authentication with security schemes.
-//
-// SecuritySchemes are emitted under components.securitySchemes; Security sets the
-// document-level (default) requirement applied to every operation.
+### Authentication (security schemes)
+
+`SecuritySchemes` are emitted under `components.securitySchemes`; `Security` sets
+the document-level (default) requirement applied to every operation:
+
+```go
 app.Use(openapi.New(openapi.Config{
     SecuritySchemes: map[string]any{
         "bearerAuth": map[string]any{
@@ -85,8 +97,14 @@ app.Use(openapi.New(openapi.Config{
         {"bearerAuth": {}},
     },
 }))
+```
 
-// Customize the generated Swagger UI page and CDN asset URLs.
+### Customize the Swagger UI
+
+Change the spec/UI paths and the CDN asset URLs, and pass extra options to the
+`SwaggerUIBundle` call:
+
+```go
 app.Use(openapi.New(openapi.Config{
     Path:             "/spec.json",
     UIPath:           "/docs",
@@ -97,14 +115,18 @@ app.Use(openapi.New(openapi.Config{
         "deepLinking":  true,
     },
 }))
+```
 
-// Routes may optionally document themselves using Summary, Description,
-// RequestBody, Parameter, Response, Tags, Deprecated, Produces and Consumes.
+### Document a route
+
+Routes can document themselves with `Summary`, `Description`, `RequestBody`,
+`Parameter`, `Response`, `Tags`, `Deprecated`, `Produces` and `Consumes`. Use the
+`*WithExample` helpers to attach schemas and examples (including `$ref`):
+
+```go
 app.Post("/users", createUser).
     Summary("Create user").
     Description("Creates a new user").
-    RequestBody("User payload", true, fiber.MIMEApplicationJSON).
-    // Use *WithExample helpers to attach schemas and examples (including $ref).
     RequestBodyWithExample(
         "User payload", true,
         nil, "#/components/schemas/User",
@@ -112,12 +134,10 @@ app.Post("/users", createUser).
         map[string]any{"sample": map[string]any{"name": "bob"}},
         fiber.MIMEApplicationJSON,
     ).
-    Parameter("trace-id", "header", true, nil, "Tracing identifier").
     ParameterWithExample(
         "trace-id", "header", true, nil, "",
         "Tracing identifier", "abc-123", map[string]any{"sample": "xyz-789"},
     ).
-    Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON).
     ResponseWithExample(
         fiber.StatusCreated, "Created",
         nil, "#/components/schemas/UserResponse",
@@ -126,31 +146,57 @@ app.Post("/users", createUser).
         fiber.MIMEApplicationJSON,
     ).
     Tags("users", "admin").
-    // Per-operation security. Multiple requirements are combined with OR;
-    // pass an empty requirement (map[string][]string{}) to document "no auth".
-    Security(map[string][]string{"bearerAuth": {}}).
-    // Document a response header for a given status code.
-    ResponseHeader(fiber.StatusCreated, "Location", "URL of the created user", map[string]any{"type": "string"}).
     Produces(fiber.MIMEApplicationJSON)
-
-// Exclude an internal route from the generated specification.
-app.Get("/internal/metrics", metricsHandler).Hidden()
-
-// If not specified, generated operations default to a summary of "METHOD path",
-// an empty description, no tags, not deprecated, and a "text/plain" request
-// and response media type. Consumes, Produces, and RequestBody will panic if
-// provided an invalid or empty media type.
 ```
 
-If no responses are declared, the middleware adds a sensible default: `200 OK` for most methods and `204 No Content` for `DELETE` and `HEAD`. When any responses are provided via the route helpers, no automatic default is added.
+### Per-operation security
 
-Each operation gets a unique `operationId`. Routes documented with `Name` use that name; routes without one get an id generated from the method and path (for example `GET /users/{id}` → `getUsersId`). If two operations would share an id, a numeric suffix (`_2`, `_3`, …) is appended so the generated document stays valid.
+Attach security requirements to a single operation. Multiple requirements are
+combined with OR; pass an empty requirement (`map[string][]string{}`) to document
+"no auth" and override the document-level default:
 
-`Hidden()` excludes a route from the generated specification entirely — useful for internal or admin endpoints. `ResponseHeader(status, name, description, schema)` documents a response header for a given status code, creating the response entry if it does not exist yet.
+```go
+app.Get("/users", listUsers).
+    Security(map[string][]string{"bearerAuth": {}})
+```
 
-`GET` and `HEAD` operations never emit a `requestBody`, even if `Consumes` or `RequestBody` is set, because those methods do not carry a request body.
+### Response headers
 
-`CONNECT` routes are ignored because the OpenAPI specification does not define a `connect` operation.
+`ResponseHeader(status, name, description, schema)` documents a response header
+for a given status code, creating the response entry if it does not exist yet:
+
+```go
+app.Post("/users", createUser).
+    Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON).
+    ResponseHeader(fiber.StatusCreated, "Location", "URL of the created user", map[string]any{"type": "string"})
+```
+
+### Hide a route
+
+`Hidden()` excludes a route from the generated specification entirely — useful for
+internal or admin endpoints:
+
+```go
+app.Get("/internal/metrics", metricsHandler).Hidden()
+```
+
+### Behavior and defaults
+
+- If a route declares no responses, a sensible default is added: `200 OK` for most
+  methods and `204 No Content` for `DELETE` and `HEAD`. Declaring any response via
+  the helpers disables the automatic default.
+- Operations without metadata default to a summary of `"METHOD /path"`, an empty
+  description, no tags, not deprecated, and a `text/plain` request/response media
+  type. `Consumes`, `Produces` and `RequestBody` panic on an invalid or empty
+  media type.
+- Each operation gets a unique `operationId`: routes documented with `Name` use
+  that name; routes without one get an id generated from the method and path (for
+  example `GET /users/{id}` → `getUsersId`). Collisions get a numeric suffix
+  (`_2`, `_3`, …) so the document stays valid.
+- `GET` and `HEAD` operations never emit a `requestBody`, even if `Consumes` or
+  `RequestBody` is set, because those methods do not carry a request body.
+- `CONNECT` routes are ignored because the OpenAPI specification does not define a
+  `connect` operation.
 
 ## Config
 
@@ -216,7 +262,8 @@ Schema references (`SchemaRef`) are emitted as `$ref` entries in the generated J
 
 ## Automatic Schema Inference
 
-The `SchemaOf` helper generates an OpenAPI JSON Schema from a Go struct using reflection:
+The `SchemaOf` helper generates an OpenAPI JSON Schema from a Go struct using
+reflection. Given a struct:
 
 ```go
 type User struct {
@@ -224,13 +271,19 @@ type User struct {
     Name  string `json:"name"`
     Email string `json:"email" openapi:"format:email,description:User email address"`
 }
+```
 
-// Generate schema automatically from struct
+Use the generated schema directly in the route helpers:
+
+```go
 app.Post("/users", createUser).
     RequestBodyWithExample("Create user", true, openapi.SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON).
     ResponseWithExample(201, "Created", openapi.SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON)
+```
 
-// Or use it in Components for $ref reuse
+Or register it once under `Components` and reference it with `$ref` reuse:
+
+```go
 app.Use(openapi.New(openapi.Config{
     Components: map[string]any{
         "schemas": map[string]any{
