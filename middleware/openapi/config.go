@@ -6,6 +6,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// Supported OpenAPI specification versions.
+const (
+	versionOpenAPI30 = "3.0.0"
+	versionOpenAPI31 = "3.1.0"
+)
+
 // Contact holds contact information for the exposed API.
 type Contact struct {
 	// Name is the identifying name of the contact person/organization.
@@ -26,14 +32,28 @@ type License struct {
 
 // Server represents a server hosting the API.
 type Server struct {
+	// Variables is a map of server variables used for URL template substitution.
+	Variables map[string]ServerVariable `json:"variables,omitempty"`
 	// URL is the server URL.
 	URL string `json:"url"`
 	// Description is an optional description of the server.
 	Description string `json:"description,omitempty"`
 }
 
+// ServerVariable describes a single variable for server URL template substitution.
+type ServerVariable struct {
+	// Default is the value to use when none is supplied. Required.
+	Default string `json:"default"`
+	// Description is an optional description for the variable.
+	Description string `json:"description,omitempty"`
+	// Enum is an optional set of allowed values.
+	Enum []string `json:"enum,omitempty"`
+}
+
 // Tag adds metadata to a single tag used by operations.
 type Tag struct {
+	// ExternalDocs references external documentation for this tag.
+	ExternalDocs *ExternalDocs `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	// Name is the name of the tag.
 	Name string `json:"name"`
 	// Description is an optional description for the tag.
@@ -79,6 +99,12 @@ type Config struct {
 	// Optional. Default: nil
 	SecuritySchemes map[string]any
 
+	// Webhooks holds OpenAPI 3.1 webhook definitions, keyed by name. Each value is
+	// a Path Item object. Only emitted when OpenAPIVersion is "3.1.0".
+	//
+	// Optional. Default: nil
+	Webhooks map[string]any
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
@@ -98,6 +124,18 @@ type Config struct {
 	//
 	// Optional. Default: ""
 	TermsOfService string
+
+	// Summary is a short summary of the API (OpenAPI 3.1 info.summary). Only
+	// emitted when OpenAPIVersion is "3.1.0".
+	//
+	// Optional. Default: ""
+	Summary string
+
+	// JSONSchemaDialect sets the default JSON Schema dialect (OpenAPI 3.1). Only
+	// emitted when OpenAPIVersion is "3.1.0".
+	//
+	// Optional. Default: ""
+	JSONSchemaDialect string
 
 	// ServerURL is the server URL used in the generated specification.
 	//
@@ -185,7 +223,7 @@ var ConfigDefault = Config{
 	SwaggerBundleURL:           "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
 	SwaggerStandalonePresetURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js",
 	SwaggerOptions:             nil,
-	OpenAPIVersion:             "3.1.0",
+	OpenAPIVersion:             versionOpenAPI31,
 }
 
 func configDefault(config ...Config) Config {
@@ -234,11 +272,14 @@ func configDefault(config ...Config) Config {
 	if cfg.SecuritySchemes != nil {
 		cfg.SecuritySchemes = maps.Clone(cfg.SecuritySchemes)
 	}
+	if cfg.Webhooks != nil {
+		cfg.Webhooks = maps.Clone(cfg.Webhooks)
+	}
 	if cfg.OpenAPIVersion == "" {
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion
 	}
 	// Normalize OpenAPI version to supported values
-	if cfg.OpenAPIVersion != "3.0.0" && cfg.OpenAPIVersion != "3.1.0" {
+	if cfg.OpenAPIVersion != versionOpenAPI30 && cfg.OpenAPIVersion != versionOpenAPI31 {
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion
 	}
 	return cfg

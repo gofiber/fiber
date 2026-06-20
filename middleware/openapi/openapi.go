@@ -215,14 +215,16 @@ func resolvedSpecPath(c fiber.Ctx, cfgPath string) string {
 }
 
 type openAPISpec struct {
-	Paths        map[string]map[string]operation `json:"paths"`
-	Components   map[string]any                  `json:"components,omitempty"`
-	ExternalDocs *openAPIExternalDocs            `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Info         openAPIInfo                     `json:"info"`
-	OpenAPI      string                          `json:"openapi"`
-	Servers      []openAPIServer                 `json:"servers,omitempty"`
-	Security     []map[string][]string           `json:"security,omitempty"`
-	Tags         []openAPITag                    `json:"tags,omitempty"`
+	Paths             map[string]map[string]operation `json:"paths"`
+	Components        map[string]any                  `json:"components,omitempty"`
+	Webhooks          map[string]any                  `json:"webhooks,omitempty"`
+	ExternalDocs      *ExternalDocs                   `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Info              openAPIInfo                     `json:"info"`
+	OpenAPI           string                          `json:"openapi"`
+	JSONSchemaDialect string                          `json:"jsonSchemaDialect,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Servers           []openAPIServer                 `json:"servers,omitempty"`
+	Security          []map[string][]string           `json:"security,omitempty"`
+	Tags              []openAPITag                    `json:"tags,omitempty"`
 }
 
 type openAPIInfo struct {
@@ -230,53 +232,93 @@ type openAPIInfo struct {
 	License        *License `json:"license,omitempty"`
 	Title          string   `json:"title"`
 	Version        string   `json:"version"`
+	Summary        string   `json:"summary,omitempty"`
 	Description    string   `json:"description,omitempty"`
 	TermsOfService string   `json:"termsOfService,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 }
 
 type openAPIServer struct {
-	URL         string `json:"url"`
-	Description string `json:"description,omitempty"`
+	Variables   map[string]ServerVariable `json:"variables,omitempty"`
+	URL         string                    `json:"url"`
+	Description string                    `json:"description,omitempty"`
 }
 
 type openAPITag struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-}
-
-type openAPIExternalDocs struct {
-	Description string `json:"description,omitempty"`
-	URL         string `json:"url"`
+	ExternalDocs *ExternalDocs `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Name         string        `json:"name"`
+	Description  string        `json:"description,omitempty"`
 }
 
 type operation struct {
-	Responses   map[string]response `json:"responses"`
-	RequestBody *requestBody        `json:"requestBody,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Responses    map[string]response `json:"responses"`
+	RequestBody  *requestBody        `json:"requestBody,omitempty"`  //nolint:tagliatelle // OpenAPI spec uses camelCase
+	ExternalDocs map[string]any      `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	// extensions holds arbitrary operation-object fields (servers, callbacks,
+	// x-* extensions) merged at marshal time. Excluded from normal marshaling.
+	extensions map[string]any
 
-	OperationID string                `json:"operationId,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Summary     string                `json:"summary"`
-	Description string                `json:"description"`
-	Parameters  []parameter           `json:"parameters,omitempty"`
-	Tags        []string              `json:"tags,omitempty"`
-	Security    []map[string][]string `json:"security,omitempty"`
+	OperationID string `json:"operationId,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Summary     string `json:"summary"`
+	Description string `json:"description"`
+
+	Parameters []parameter           `json:"parameters,omitempty"`
+	Tags       []string              `json:"tags,omitempty"`
+	Security   []map[string][]string `json:"security,omitempty"`
 
 	Deprecated bool `json:"deprecated,omitempty"`
+}
+
+// MarshalJSON merges operation extensions into the operation object without
+// clobbering generated keys.
+//
+// are not addressable) are marshaled through this method.
+//
+//nolint:gocritic // hugeParam: a value receiver is required so map values (which
+func (o operation) MarshalJSON() ([]byte, error) {
+	type alias operation
+	base, err := json.Marshal(alias(o))
+	if err != nil {
+		return nil, fmt.Errorf("openapi: marshal operation: %w", err)
+	}
+	if len(o.extensions) == 0 {
+		return base, nil
+	}
+	merged := map[string]any{}
+	if err = json.Unmarshal(base, &merged); err != nil {
+		return nil, fmt.Errorf("openapi: merge operation extensions: %w", err)
+	}
+	for key, value := range o.extensions {
+		if _, exists := merged[key]; !exists {
+			merged[key] = value
+		}
+	}
+	out, err := json.Marshal(merged)
+	if err != nil {
+		return nil, fmt.Errorf("openapi: marshal operation: %w", err)
+	}
+	return out, nil
 }
 
 type response struct {
 	Content     map[string]map[string]any `json:"content,omitempty"`
 	Headers     map[string]any            `json:"headers,omitempty"`
+	Links       map[string]any            `json:"links,omitempty"`
 	Description string                    `json:"description"`
 }
 
 type parameter struct {
-	Schema      map[string]any `json:"schema,omitempty"`
-	Example     any            `json:"example,omitempty"`
-	Examples    map[string]any `json:"examples,omitempty"`
-	Description string         `json:"description,omitempty"`
-	Name        string         `json:"name"`
-	In          string         `json:"in"`
-	Required    bool           `json:"required"`
+	Schema          map[string]any `json:"schema,omitempty"`
+	Example         any            `json:"example,omitempty"`
+	Examples        map[string]any `json:"examples,omitempty"`
+	Explode         *bool          `json:"explode,omitempty"`
+	Description     string         `json:"description,omitempty"`
+	Name            string         `json:"name"`
+	In              string         `json:"in"`
+	Style           string         `json:"style,omitempty"`
+	Required        bool           `json:"required"`
+	Deprecated      bool           `json:"deprecated,omitempty"`
+	AllowEmptyValue bool           `json:"allowEmptyValue,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	AllowReserved   bool           `json:"allowReserved,omitempty"`   //nolint:tagliatelle // OpenAPI spec uses camelCase
 }
 
 type requestBody struct {
@@ -430,15 +472,17 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 				}
 
 				paths[variant.Path][methodLower] = operation{
-					OperationID: operationID,
-					Summary:     summary,
-					Description: description,
-					Tags:        r.Tags,
-					Deprecated:  r.Deprecated,
-					Parameters:  params,
-					RequestBody: reqBody,
-					Responses:   responses,
-					Security:    r.Security,
+					OperationID:  operationID,
+					Summary:      summary,
+					Description:  description,
+					Tags:         r.Tags,
+					Deprecated:   r.Deprecated,
+					Parameters:   params,
+					RequestBody:  reqBody,
+					Responses:    responses,
+					Security:     r.Security,
+					ExternalDocs: copyAnyMap(r.ExternalDocs),
+					extensions:   copyAnyMap(r.OperationExtensions),
 				}
 			}
 		}
@@ -472,9 +516,18 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 	}
 
 	if cfg.ExternalDocs != nil {
-		spec.ExternalDocs = &openAPIExternalDocs{
+		spec.ExternalDocs = &ExternalDocs{
 			Description: cfg.ExternalDocs.Description,
 			URL:         cfg.ExternalDocs.URL,
+		}
+	}
+
+	// OpenAPI 3.1-only document fields.
+	if cfg.OpenAPIVersion == versionOpenAPI31 {
+		spec.Info.Summary = cfg.Summary
+		spec.JSONSchemaDialect = cfg.JSONSchemaDialect
+		if len(cfg.Webhooks) > 0 {
+			spec.Webhooks = maps.Clone(cfg.Webhooks)
 		}
 	}
 
@@ -532,7 +585,8 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 	if len(extras) == 0 {
 		return params
 	}
-	for _, extra := range extras {
+	for i := range extras {
+		extra := &extras[i]
 		if utils.TrimSpace(extra.Name) == "" {
 			continue
 		}
@@ -550,13 +604,21 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 			paramExample = extra.Example
 		}
 		param := parameter{
-			Name:        extra.Name,
-			In:          location,
-			Description: extra.Description,
-			Required:    extra.Required,
-			Schema:      schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString),
-			Example:     paramExample,
-			Examples:    paramExamples,
+			Name:            extra.Name,
+			In:              location,
+			Description:     extra.Description,
+			Required:        extra.Required,
+			Schema:          schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString),
+			Example:         paramExample,
+			Examples:        paramExamples,
+			Deprecated:      extra.Deprecated,
+			Style:           extra.Style,
+			AllowEmptyValue: extra.AllowEmptyValue,
+			AllowReserved:   extra.AllowReserved,
+		}
+		if extra.Explode != nil {
+			explode := *extra.Explode
+			param.Explode = &explode
 		}
 		if param.In == paramLocationPath {
 			param.Required = true
@@ -623,15 +685,46 @@ func contentEntry(schema map[string]any, schemaRef string, example any, examples
 	return entry
 }
 
+// routeMediaTypeContent builds an OpenAPI content map from per-media-type
+// entries, allowing a different schema/example/encoding per content type.
+func routeMediaTypeContent(content map[string]fiber.RouteMediaType) map[string]map[string]any {
+	if len(content) == 0 {
+		return nil
+	}
+	out := make(map[string]map[string]any, len(content))
+	for mediaType, mt := range content {
+		if mediaType == "" {
+			continue
+		}
+		entry := contentEntry(mt.Schema, mt.SchemaRef, mt.Example, mt.Examples)
+		if enc := copyAnyMap(mt.Encoding); len(enc) > 0 {
+			entry["encoding"] = enc
+		}
+		if len(entry) == 0 {
+			entry = map[string]any{}
+		}
+		out[mediaType] = entry
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func convertRouteResponses(routeResponses map[string]fiber.RouteResponse) map[string]response {
 	var merged map[string]response
 	if len(routeResponses) > 0 {
 		merged = make(map[string]response, len(routeResponses))
 		for code, resp := range routeResponses {
+			content := routeMediaTypeContent(resp.Content)
+			if content == nil {
+				content = mediaTypesToContent(resp.MediaTypes, resp.Schema, resp.SchemaRef, resp.Example, resp.Examples)
+			}
 			merged[code] = response{
 				Description: resp.Description,
-				Content:     mediaTypesToContent(resp.MediaTypes, resp.Schema, resp.SchemaRef, resp.Example, resp.Examples),
+				Content:     content,
 				Headers:     copyAnyMap(resp.Headers),
+				Links:       copyAnyMap(resp.Links),
 			}
 		}
 	}
@@ -647,8 +740,8 @@ func remapRouteParameters(extras []fiber.RouteParameter, aliases map[string]stri
 		pathSet[name] = struct{}{}
 	}
 	out := make([]fiber.RouteParameter, 0, len(extras))
-	for _, extra := range extras {
-		copyExtra := extra
+	for i := range extras {
+		copyExtra := extras[i]
 		if utils.EqualFold(utils.TrimSpace(copyExtra.In), paramLocationPath) {
 			if mapped, ok := aliases[copyExtra.Name]; ok {
 				copyExtra.Name = mapped
@@ -687,10 +780,14 @@ func buildRequestBody(routeBody *fiber.RouteRequestBody) *requestBody {
 	if routeBody == nil {
 		return nil
 	}
+	content := routeMediaTypeContent(routeBody.Content)
+	if content == nil {
+		content = mediaTypesToContent(routeBody.MediaTypes, routeBody.Schema, routeBody.SchemaRef, routeBody.Example, routeBody.Examples)
+	}
 	merged := &requestBody{
 		Description: routeBody.Description,
 		Required:    routeBody.Required,
-		Content:     mediaTypesToContent(routeBody.MediaTypes, routeBody.Schema, routeBody.SchemaRef, routeBody.Example, routeBody.Examples),
+		Content:     content,
 	}
 	// Omit requestBody entirely when content could not be built, as the
 	// OpenAPI specification requires at least one media type in content.

@@ -235,25 +235,46 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 			Tags("users")
 
 		app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
-			RequestBodyWithExample("Create user", true, SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON).
-			ResponseWithExample(fiber.StatusCreated, "Created", SchemaOf(User{}), "", nil, nil, fiber.MIMEApplicationJSON).
+			RequestBodyContent("Create user", true, map[string]fiber.RouteMediaType{
+				fiber.MIMEApplicationJSON: {Schema: SchemaOf(User{})},
+				fiber.MIMEApplicationXML:  {SchemaRef: "#/components/schemas/User"},
+			}).
+			ResponseContent(fiber.StatusCreated, "Created", map[string]fiber.RouteMediaType{
+				fiber.MIMEApplicationJSON: {Schema: SchemaOf(User{}), Encoding: map[string]any{"id": map[string]any{"contentType": "text/plain"}}},
+			}).
+			ResponseHeader(fiber.StatusCreated, "Location", "Created URL", map[string]any{"type": "string"}).
+			ResponseLink(fiber.StatusCreated, "self", map[string]any{"operationId": "getUsersId"}).
+			OperationExternalDocs("docs", "https://docs.example.com/create").
+			OperationExtension(map[string]any{"servers": []any{map[string]any{"url": "https://op.example.com"}}}).
 			Security(map[string][]string{"bearerAuth": {}})
 
-		app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+		app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+			AddParameter(fiber.RouteParameter{
+				Name: "fields", In: "query", Style: "form", Explode: openapiBoolPtr(true),
+				Deprecated: true, AllowEmptyValue: true, AllowReserved: true,
+				Schema: map[string]any{"type": "array"},
+			})
 		app.Get("/files/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 		app.Get("/items/:id?", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 		app.Delete("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) }).Deprecated()
 		app.Get("/internal", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).Hidden()
 
 		app.Use(New(Config{
-			OpenAPIVersion: version,
-			Title:          "Validation API",
-			Version:        "1.2.3",
+			OpenAPIVersion:    version,
+			Title:             "Validation API",
+			Version:           "1.2.3",
+			Summary:           "Validation API summary",
+			JSONSchemaDialect: "https://spec.openapis.org/oas/3.1/dialect/base",
 			Servers: []Server{
-				{URL: "https://prod.example.com", Description: "prod"},
+				{URL: "https://{region}.example.com", Description: "prod", Variables: map[string]ServerVariable{
+					"region": {Default: "us", Enum: []string{"us", "eu"}},
+				}},
 			},
-			Tags:         []Tag{{Name: "users", Description: "User ops"}},
+			Tags:         []Tag{{Name: "users", Description: "User ops", ExternalDocs: &ExternalDocs{URL: "https://docs.example.com/users"}}},
 			ExternalDocs: &ExternalDocs{Description: "docs", URL: "https://docs.example.com"},
+			Webhooks: map[string]any{
+				"ping": map[string]any{"post": map[string]any{"responses": map[string]any{"200": map[string]any{"description": "ok"}}}},
+			},
 			Components: map[string]any{
 				"schemas": map[string]any{"User": SchemaOf(User{})},
 			},

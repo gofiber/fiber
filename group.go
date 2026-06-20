@@ -139,6 +139,50 @@ func (grp *Group) ResponseHeader(status int, name, description string, schema ma
 	return grp
 }
 
+// AddParameter documents an input parameter on the most recently added route in
+// the group using the full RouteParameter.
+//
+//nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
+func (grp *Group) AddParameter(param RouteParameter) Router {
+	grp.app.AddParameter(param)
+	return grp
+}
+
+// OperationExternalDocs sets the externalDocs of the most recently added route in
+// the group.
+func (grp *Group) OperationExternalDocs(description, url string) Router {
+	grp.app.OperationExternalDocs(description, url)
+	return grp
+}
+
+// RequestBodyContent documents a per-media-type request body on the most recently
+// added route in the group.
+func (grp *Group) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
+	grp.app.RequestBodyContent(description, required, content)
+	return grp
+}
+
+// ResponseContent documents a per-media-type response on the most recently added
+// route in the group.
+func (grp *Group) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
+	grp.app.ResponseContent(status, description, content)
+	return grp
+}
+
+// ResponseLink documents a response link on the most recently added route in the
+// group.
+func (grp *Group) ResponseLink(status int, name string, link map[string]any) Router {
+	grp.app.ResponseLink(status, name, link)
+	return grp
+}
+
+// OperationExtension merges arbitrary operation-object fields on the most recently
+// added route in the group.
+func (grp *Group) OperationExtension(fields map[string]any) Router {
+	grp.app.OperationExtension(fields)
+	return grp
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 // Also, you can pass another app instance as a sub-router along a routing path.
