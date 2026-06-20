@@ -719,6 +719,50 @@ func (d *domainRouter) ResponseHeader(status int, name, description string, sche
 	return d
 }
 
+// AddParameter documents an input parameter on the most recently added route on
+// the domain router using the full RouteParameter.
+//
+//nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
+func (d *domainRouter) AddParameter(param RouteParameter) Router {
+	d.app.AddParameter(param)
+	return d
+}
+
+// OperationExternalDocs sets the externalDocs of the most recently added route on
+// the domain router.
+func (d *domainRouter) OperationExternalDocs(description, url string) Router {
+	d.app.OperationExternalDocs(description, url)
+	return d
+}
+
+// RequestBodyContent documents a per-media-type request body on the most recently
+// added route on the domain router.
+func (d *domainRouter) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
+	d.app.RequestBodyContent(description, required, content)
+	return d
+}
+
+// ResponseContent documents a per-media-type response on the most recently added
+// route on the domain router.
+func (d *domainRouter) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
+	d.app.ResponseContent(status, description, content)
+	return d
+}
+
+// ResponseLink documents a response link on the most recently added route on the
+// domain router.
+func (d *domainRouter) ResponseLink(status int, name string, link map[string]any) Router {
+	d.app.ResponseLink(status, name, link)
+	return d
+}
+
+// OperationExtension merges arbitrary operation-object fields on the most recently
+// added route on the domain router.
+func (d *domainRouter) OperationExtension(fields map[string]any) Router {
+	d.app.OperationExtension(fields)
+	return d
+}
+
 // domainRegistering provides route registration helpers for a specific path
 // on a domain router, implementing the [Register] interface.
 type domainRegistering struct {

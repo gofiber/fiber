@@ -160,6 +160,24 @@ app.Get("/users", listUsers).
     Security(map[string][]string{"bearerAuth": {}})
 ```
 
+### Advanced parameters
+
+`AddParameter` takes a full `fiber.RouteParameter`, exposing the serialization
+fields (`Deprecated`, `Style`, `Explode`, `AllowEmptyValue`, `AllowReserved`) that
+the simpler `Parameter`/`ParameterWithExample` helpers do not:
+
+```go
+explode := false
+app.Get("/items", listItems).
+    AddParameter(fiber.RouteParameter{
+        Name:    "ids",
+        In:      "query",
+        Style:   "form",
+        Explode: &explode,
+        Schema:  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+    })
+```
+
 ### Response headers
 
 `ResponseHeader(status, name, description, schema)` documents a response header
@@ -169,6 +187,50 @@ for a given status code, creating the response entry if it does not exist yet:
 app.Post("/users", createUser).
     Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON).
     ResponseHeader(fiber.StatusCreated, "Location", "URL of the created user", map[string]any{"type": "string"})
+```
+
+### Response links
+
+`ResponseLink(status, name, link)` documents an OpenAPI link for a response:
+
+```go
+app.Post("/users", createUser).
+    Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON).
+    ResponseLink(fiber.StatusCreated, "getUserById", map[string]any{
+        "operationId": "getUsersId",
+        "parameters":  map[string]any{"id": "$response.body#/id"},
+    })
+```
+
+### Per-media-type content
+
+`RequestBodyContent` and `ResponseContent` accept a map of media type to
+`fiber.RouteMediaType`, so each content type can carry a different schema, example
+and `encoding`:
+
+```go
+app.Post("/users", createUser).
+    RequestBodyContent("User payload", true, map[string]fiber.RouteMediaType{
+        fiber.MIMEApplicationJSON: {Schema: openapi.SchemaOf(User{})},
+        fiber.MIMEApplicationXML:  {SchemaRef: "#/components/schemas/User"},
+    }).
+    ResponseContent(fiber.StatusCreated, "Created", map[string]fiber.RouteMediaType{
+        fiber.MIMEApplicationJSON: {Schema: openapi.SchemaOf(User{})},
+    })
+```
+
+### Operation external docs & extensions
+
+`OperationExternalDocs` sets the operation's `externalDocs`, and
+`OperationExtension` shallow-merges any other operation-object fields (such as
+`servers`, `callbacks` or `x-*` extensions) without clobbering generated keys:
+
+```go
+app.Get("/users", listUsers).
+    OperationExternalDocs("More info", "https://docs.example.com/list-users").
+    OperationExtension(map[string]any{
+        "servers": []any{map[string]any{"url": "https://users.example.com"}},
+    })
 ```
 
 ### Hide a route
@@ -220,9 +282,15 @@ app.Get("/internal/metrics", metricsHandler).Hidden()
 | Contact        | `*Contact`              | Contact information for the API (`info.contact`).               | `nil` |
 | License        | `*License`              | License information for the API (`info.license`).               | `nil` |
 | TermsOfService | `string`                | Terms of Service URL (`info.termsOfService`).                   | `""` |
-| Servers        | `[]Server`              | Servers hosting the API; takes precedence over `ServerURL`.     | `nil` |
-| Tags           | `[]Tag`                 | Top-level tag definitions (with descriptions).                  | `nil` |
+| Servers        | `[]Server`              | Servers hosting the API; takes precedence over `ServerURL`. Each `Server` supports `Variables` for URL templating. | `nil` |
+| Tags           | `[]Tag`                 | Top-level tag definitions (with descriptions and optional `ExternalDocs`). | `nil` |
 | ExternalDocs   | `*ExternalDocs`         | External documentation reference (`externalDocs`).             | `nil` |
+| Summary        | `string`                | Short API summary (`info.summary`, OpenAPI 3.1 only).          | `""` |
+| Webhooks       | `map[string]any`        | Webhook definitions (`webhooks`, OpenAPI 3.1 only).            | `nil` |
+| JSONSchemaDialect | `string`             | Default JSON Schema dialect (`jsonSchemaDialect`, OpenAPI 3.1 only). | `""` |
+
+`Summary`, `Webhooks` and `JSONSchemaDialect` are OpenAPI 3.1 fields and are only
+emitted when `OpenAPIVersion` is `"3.1.0"`.
 
 When the middleware is attached to a group or mounted under a prefixed `Use`, the configured `Path` is resolved relative to that
 prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global

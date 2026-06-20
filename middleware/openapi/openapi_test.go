@@ -1821,3 +1821,212 @@ func Test_OpenAPI_GETExplicitRequestBodySuppressed(t *testing.T) {
 	op := requireMap(t, paths["/search"]["get"])
 	require.NotContains(t, op, "requestBody")
 }
+
+func openapiBoolPtr(b bool) *bool { return &b }
+
+// fetchSpecWithConfig registers routes, mounts the middleware with cfg, and
+// returns the decoded /openapi.json document.
+//
+//nolint:gocritic // hugeParam: Config is passed by value to mirror the public New signature.
+func fetchSpecWithConfig(t *testing.T, cfg Config, register func(app *fiber.App)) map[string]any {
+	t.Helper()
+	app := fiber.New()
+	if register != nil {
+		register(app)
+	}
+	app.Use(New(cfg))
+	return fetchJSON(t, app)
+}
+
+func Test_OpenAPI_ParameterSerialization(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/items", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		AddParameter(fiber.RouteParameter{
+			Name:            "ids",
+			In:              "query",
+			Description:     "Item ids",
+			Style:           "form",
+			Explode:         openapiBoolPtr(false),
+			Deprecated:      true,
+			AllowEmptyValue: true,
+			AllowReserved:   true,
+			Schema:          map[string]any{"type": "array"},
+		})
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/items"]["get"])
+	params, ok := op["parameters"].([]any)
+	require.True(t, ok)
+	require.Len(t, params, 1)
+	p := requireMap(t, params[0])
+	require.Equal(t, "ids", p["name"])
+	require.Equal(t, "form", p["style"])
+	require.Equal(t, false, p["explode"])
+	require.Equal(t, true, p["deprecated"])
+	require.Equal(t, true, p["allowEmptyValue"])
+	require.Equal(t, true, p["allowReserved"])
+}
+
+func Test_OpenAPI_ServerVariables(t *testing.T) {
+	t.Parallel()
+
+	spec := fetchSpecWithConfig(t, Config{
+		Servers: []Server{{
+			URL:         "https://{region}.example.com",
+			Description: "Regional",
+			Variables: map[string]ServerVariable{
+				"region": {Default: "us", Enum: []string{"us", "eu"}, Description: "Region"},
+			},
+		}},
+	}, func(app *fiber.App) {
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	})
+
+	servers, ok := spec["servers"].([]any)
+	require.True(t, ok)
+	require.Len(t, servers, 1)
+	vars := requireMap(t, requireMap(t, servers[0])["variables"])
+	region := requireMap(t, vars["region"])
+	require.Equal(t, "us", region["default"])
+}
+
+func Test_OpenAPI_TagExternalDocs(t *testing.T) {
+	t.Parallel()
+
+	spec := fetchSpecWithConfig(t, Config{
+		Tags: []Tag{{
+			Name:         "users",
+			Description:  "User ops",
+			ExternalDocs: &ExternalDocs{Description: "more", URL: "https://docs.example.com/users"},
+		}},
+	}, func(app *fiber.App) {
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	})
+
+	tags, ok := spec["tags"].([]any)
+	require.True(t, ok)
+	ext := requireMap(t, requireMap(t, tags[0])["externalDocs"])
+	require.Equal(t, "https://docs.example.com/users", ext["url"])
+}
+
+func Test_OpenAPI_InfoSummaryVersionGated(t *testing.T) {
+	t.Parallel()
+
+	register := func(app *fiber.App) {
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	}
+
+	spec31 := fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.1.0", Summary: "Short summary"}, register)
+	require.Equal(t, "Short summary", requireMap(t, spec31["info"])["summary"])
+
+	spec30 := fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.0.0", Summary: "Short summary"}, register)
+	require.NotContains(t, requireMap(t, spec30["info"]), "summary")
+}
+
+func Test_OpenAPI_OperationExternalDocs(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		OperationExternalDocs("See more", "https://docs.example.com/x")
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/x"]["get"])
+	ext := requireMap(t, op["externalDocs"])
+	require.Equal(t, "https://docs.example.com/x", ext["url"])
+	require.Equal(t, "See more", ext["description"])
+}
+
+func Test_OpenAPI_PerMediaTypeContent(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Post("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
+		RequestBodyContent("payload", true, map[string]fiber.RouteMediaType{
+			fiber.MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
+			fiber.MIMEApplicationXML:  {SchemaRef: "#/components/schemas/X"},
+		}).
+		ResponseContent(fiber.StatusCreated, "Created", map[string]fiber.RouteMediaType{
+			fiber.MIMEApplicationJSON: {
+				Schema:   map[string]any{"type": "string"},
+				Encoding: map[string]any{"field": map[string]any{"contentType": "text/plain"}},
+			},
+		})
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/x"]["post"])
+
+	reqContent := requireMap(t, requireMap(t, op["requestBody"])["content"])
+	jsonSchema := requireMap(t, requireMap(t, reqContent[fiber.MIMEApplicationJSON])["schema"])
+	require.Equal(t, "object", jsonSchema["type"])
+	xmlSchema := requireMap(t, requireMap(t, reqContent[fiber.MIMEApplicationXML])["schema"])
+	require.Equal(t, "#/components/schemas/X", xmlSchema["$ref"])
+
+	respContent := requireMap(t, requireMap(t, requireMap(t, op["responses"])["201"])["content"])
+	jsonResp := requireMap(t, respContent[fiber.MIMEApplicationJSON])
+	require.Contains(t, jsonResp, "encoding")
+}
+
+func Test_OpenAPI_ResponseLinks(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Response(fiber.StatusOK, "OK", fiber.MIMEApplicationJSON).
+		ResponseLink(fiber.StatusOK, "next", map[string]any{"operationId": "getNext"})
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/x"]["get"])
+	links := requireMap(t, requireMap(t, requireMap(t, op["responses"])["200"])["links"])
+	next := requireMap(t, links["next"])
+	require.Equal(t, "getNext", next["operationId"])
+}
+
+func Test_OpenAPI_WebhooksAndDialectVersionGated(t *testing.T) {
+	t.Parallel()
+
+	register := func(app *fiber.App) {
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	}
+	cfg := func(version string) Config {
+		return Config{
+			OpenAPIVersion:    version,
+			JSONSchemaDialect: "https://spec.openapis.org/oas/3.1/dialect/base",
+			Webhooks: map[string]any{
+				"newItem": map[string]any{"post": map[string]any{"responses": map[string]any{"200": map[string]any{"description": "ok"}}}},
+			},
+		}
+	}
+
+	spec31 := fetchSpecWithConfig(t, cfg("3.1.0"), register)
+	require.Contains(t, spec31, "webhooks")
+	require.Contains(t, spec31, "jsonSchemaDialect")
+
+	spec30 := fetchSpecWithConfig(t, cfg("3.0.0"), register)
+	require.NotContains(t, spec30, "webhooks")
+	require.NotContains(t, spec30, "jsonSchemaDialect")
+}
+
+func Test_OpenAPI_OperationExtension(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		OperationExtension(map[string]any{
+			"servers":   []any{map[string]any{"url": "https://op.example.com"}},
+			"callbacks": map[string]any{"onData": map[string]any{}},
+			// Must not clobber a generated key:
+			"responses": map[string]any{"999": map[string]any{"description": "ignored"}},
+		})
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/x"]["get"])
+	servers, ok := op["servers"].([]any)
+	require.True(t, ok)
+	require.Len(t, servers, 1)
+	require.Contains(t, op, "callbacks")
+	// Generated responses must win over the extension's "responses".
+	require.NotContains(t, requireMap(t, op["responses"]), "999")
+}

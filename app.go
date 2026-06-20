@@ -1055,55 +1055,65 @@ func (app *App) RequestBodyWithExample(description string, required bool, schema
 
 // Parameter documents an input parameter for the most recently added route.
 func (app *App) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
-	return app.addParameter(name, in, required, schema, "", description, nil, nil)
+	return app.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
 }
 
 // ParameterWithExample documents an input parameter, including schema references and examples.
 func (app *App) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
-	return app.addParameter(name, in, required, schema, schemaRef, description, example, examples)
+	return app.AddParameter(RouteParameter{
+		Name:        name,
+		In:          in,
+		Required:    required,
+		Schema:      schema,
+		SchemaRef:   schemaRef,
+		Description: description,
+		Example:     example,
+		Examples:    examples,
+	})
 }
 
-func (app *App) addParameter(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
-	if strings.TrimSpace(name) == "" {
+// AddParameter documents an input parameter using the full RouteParameter,
+// exposing advanced fields (deprecated, style, explode, allowEmptyValue,
+// allowReserved) in addition to the basics.
+//
+//nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
+func (app *App) AddParameter(param RouteParameter) Router {
+	if strings.TrimSpace(param.Name) == "" {
 		panic("parameter name is required")
 	}
 
-	location := strings.ToLower(strings.TrimSpace(in))
+	location := strings.ToLower(strings.TrimSpace(param.In))
 	switch location {
 	case "path", "query", "header", "cookie":
 	default:
-		panic("invalid parameter location: " + in)
+		panic("invalid parameter location: " + param.In)
+	}
+	param.In = location
+
+	if param.SchemaRef != "" {
+		param.Schema = map[string]any{openapiRefKey: param.SchemaRef}
+	} else if param.Schema == nil {
+		param.Schema = map[string]any{"type": openapiTypeString}
 	}
 
-	if schemaRef != "" {
-		schema = map[string]any{openapiRefKey: schemaRef}
-	} else if schema == nil {
-		schema = map[string]any{"type": openapiTypeString}
-	}
-
-	schemaCopy := copyAnyMap(schema)
+	schemaCopy := copyAnyMap(param.Schema)
 	if schemaCopy == nil {
 		schemaCopy = map[string]any{"type": openapiTypeString}
 	}
-	if schemaRef == "" {
+	if param.SchemaRef == "" {
 		if _, ok := schemaCopy["type"]; !ok {
 			schemaCopy["type"] = openapiTypeString
 		}
 	}
-
-	if location == "path" {
-		required = true
+	param.Schema = schemaCopy
+	param.Examples = copyAnyMap(param.Examples)
+	if param.Explode != nil {
+		explode := *param.Explode
+		param.Explode = &explode
 	}
 
-	param := RouteParameter{
-		Name:        name,
-		In:          location,
-		Required:    required,
-		Description: description,
-		Schema:      schemaCopy,
-		SchemaRef:   schemaRef,
-		Example:     example,
-		Examples:    copyAnyMap(examples),
+	if location == "path" {
+		param.Required = true
 	}
 
 	app.mutex.Lock()
@@ -1111,6 +1121,10 @@ func (app *App) addParameter(name, in string, required bool, schema map[string]a
 		paramCopy := param
 		paramCopy.Schema = copyAnyMap(param.Schema)
 		paramCopy.Examples = copyAnyMap(param.Examples)
+		if param.Explode != nil {
+			explode := *param.Explode
+			paramCopy.Explode = &explode
+		}
 		route.Parameters = append(route.Parameters, paramCopy)
 	})
 	app.mutex.Unlock()
@@ -1321,6 +1335,119 @@ func (app *App) ResponseHeader(status int, name, description string, schema map[
 	})
 	app.mutex.Unlock()
 
+	return app
+}
+
+// OperationExternalDocs sets the externalDocs of the most recently added operation.
+func (app *App) OperationExternalDocs(description, url string) Router {
+	docs := map[string]any{"url": url}
+	if description != "" {
+		docs["description"] = description
+	}
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.ExternalDocs = copyAnyMap(docs)
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// OperationExtension shallow-merges arbitrary fields (e.g. servers, callbacks,
+// x-* extensions) into the most recently added operation object.
+func (app *App) OperationExtension(fields map[string]any) Router {
+	if len(fields) == 0 {
+		return app
+	}
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		if route.OperationExtensions == nil {
+			route.OperationExtensions = make(map[string]any, len(fields))
+		}
+		for key, value := range fields {
+			route.OperationExtensions[key] = copyAnyValue(value)
+		}
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// RequestBodyContent documents a request body with a different schema, example
+// and encoding per media type.
+func (app *App) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
+	body := &RouteRequestBody{
+		Description: description,
+		Required:    required,
+		Content:     cloneRouteMediaTypeMap(content),
+	}
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.RequestBody = cloneRouteRequestBody(body)
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// ResponseContent documents a response with a different schema, example and
+// encoding per media type for the given status code.
+func (app *App) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
+	if status != 0 && (status < 100 || status > 599) {
+		panic("invalid status code")
+	}
+	if description == "" {
+		description = defaultResponseDescription(status)
+	}
+	key := defaultResponseKey
+	if status > 0 {
+		key = strconv.Itoa(status)
+	}
+	cloned := cloneRouteMediaTypeMap(content)
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		if route.Responses == nil {
+			route.Responses = make(map[string]RouteResponse)
+		}
+		resp := route.Responses[key]
+		resp.Description = description
+		resp.Content = cloneRouteMediaTypeMap(cloned)
+		route.Responses[key] = resp
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// ResponseLink documents a response link for the given status code, creating the
+// response entry if needed.
+func (app *App) ResponseLink(status int, name string, link map[string]any) Router {
+	if strings.TrimSpace(name) == "" {
+		panic("response link name is required")
+	}
+	if status != 0 && (status < 100 || status > 599) {
+		panic("invalid status code")
+	}
+	key := defaultResponseKey
+	if status > 0 {
+		key = strconv.Itoa(status)
+	}
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		if route.Responses == nil {
+			route.Responses = make(map[string]RouteResponse)
+		}
+		resp, ok := route.Responses[key]
+		if !ok {
+			resp = RouteResponse{Description: defaultResponseDescription(status)}
+		}
+		if resp.Links == nil {
+			resp.Links = make(map[string]any)
+		}
+		linkCopy := copyAnyMap(link)
+		if linkCopy == nil {
+			linkCopy = map[string]any{}
+		}
+		resp.Links[name] = linkCopy
+		route.Responses[key] = resp
+	})
+	app.mutex.Unlock()
 	return app
 }
 
