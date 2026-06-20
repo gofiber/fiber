@@ -36,7 +36,7 @@ type Extractor struct {
 - `FromQuery(param string)`: Extract from URL query parameters
 - `FromCustom(key string, fn func(fiber.Ctx) (string, error))`: Define custom extraction logic with metadata
 - `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback
-- `Extractor.Contains(pred func(Extractor) bool)`: Check this extractor/chain against a predicate
+- `Extractor.Contains(pred func(Extractor) bool)`: Check whether this extractor, or any nested chained extractor, matches a predicate
 
 ### Source Inspection
 
@@ -74,7 +74,7 @@ The `Chain` function implements fallback logic:
 
 ### Chain Introspection
 
-Use `Contains` to inspect an extractor tree with a predicate.
+Use `Contains` to inspect a single extractor or extractor tree with a predicate.
 
 ```go
 chain := Chain(

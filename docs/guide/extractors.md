@@ -32,7 +32,7 @@ Extractors are utilities that middleware uses to get values from different parts
 - `FromQuery(param string)`: Extract from URL query parameters
 - `FromCustom(key string, fn func(fiber.Ctx) (string, error))`: Define custom extraction logic with metadata
 - `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback logic
-- `Extractor.Contains(pred func(Extractor) bool)`: Check whether an extractor/chain contains a matching extractor
+- `Extractor.Contains(pred func(Extractor) bool)`: Check whether this extractor, or any nested chained extractor, matches a predicate
 
 ### Extractor Structure
 
