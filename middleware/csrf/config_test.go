@@ -107,10 +107,10 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 	// A deeply nested chain must not cause unbounded recursion during validation.
 	t.Run("DeeplyNestedSecureChain", func(t *testing.T) {
 		t.Parallel()
-		// Build a chain nested well beyond maxExtractorChainDepth using only
-		// secure extractors so validation terminates without panicking.
+		// Build a deeply nested chain using only secure extractors so validation
+		// terminates without panicking.
 		deep := extractors.FromHeader("X-Csrf-Token")
-		for range maxExtractorChainDepth + 50 {
+		for range 150 {
 			deep = extractors.Chain(extractors.FromHeader("X-Csrf-Token"), deep)
 		}
 
