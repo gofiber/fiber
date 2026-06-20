@@ -1290,6 +1290,12 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 		buf = append(buf, canonicalCookieSubset(c, cfg.KeyCookies)...)
 	}
 
+	if c.Method() == fiber.MethodQuery {
+		bodyDigest := sha256.Sum256(c.Request().Body())
+		buf = append(buf, '|', 'b', '=')
+		buf = hex.AppendEncode(buf, bodyDigest[:])
+	}
+
 	result := string(buf)
 
 	// Reset buffer and return to pool, but discard if it grew too large
