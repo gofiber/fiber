@@ -37,6 +37,14 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
+type typedNilHandlerError struct {
+	message string
+}
+
+func (e *typedNilHandlerError) Error() string {
+	return e.message
+}
+
 type fileView struct {
 	path    string
 	content string
@@ -630,6 +638,49 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 	require.Equal(t, "1: USE error", string(body))
 }
 
+func Test_DefaultErrorHandler_TypedNilFiberError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *Error
+	require.NotPanics(t, func() {
+		require.NoError(t, DefaultErrorHandler(c, err))
+	})
+	require.Equal(t, StatusInternalServerError, c.fasthttp.Response.StatusCode())
+	require.Equal(t, utils.StatusMessage(StatusInternalServerError), string(c.fasthttp.Response.Body()))
+}
+
+func Test_DefaultErrorHandler_TypedNilCustomError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *typedNilHandlerError
+	require.NotPanics(t, func() {
+		require.NoError(t, DefaultErrorHandler(c, err))
+	})
+	require.Equal(t, StatusInternalServerError, c.fasthttp.Response.StatusCode())
+	require.Equal(t, utils.StatusMessage(StatusInternalServerError), string(c.fasthttp.Response.Body()))
+}
+
+func Test_DefaultErrorHandler_WrappedFiberErrorUsesWrappedMessage(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	err := fmt.Errorf("auth failed: %w", ErrUnauthorized)
+	require.NoError(t, DefaultErrorHandler(c, err))
+	require.Equal(t, StatusUnauthorized, c.fasthttp.Response.StatusCode())
+	require.Equal(t, err.Error(), string(c.fasthttp.Response.Body()))
+}
+
 func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -639,6 +690,21 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	app.serverErrorHandler(c.fasthttp, errors.New(msg))
 	require.Equal(t, string(c.fasthttp.Response.Body()), msg)
 	require.Equal(t, StatusBadRequest, c.fasthttp.Response.StatusCode())
+}
+
+func Test_App_serverErrorHandler_TypedNilOpError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *net.OpError
+	require.NotPanics(t, func() {
+		app.serverErrorHandler(c.fasthttp, err)
+	})
+	require.Equal(t, utils.StatusMessage(StatusBadGateway), string(c.fasthttp.Response.Body()))
+	require.Equal(t, StatusBadGateway, c.fasthttp.Response.StatusCode())
 }
 
 func Test_App_serverErrorHandler_Network_Error(t *testing.T) {

@@ -16,6 +16,10 @@ on:
         options: [push, release-all]
         default: push
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 

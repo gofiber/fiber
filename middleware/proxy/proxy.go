@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -110,18 +111,22 @@ func Balancer(config ...Config) fiber.Handler {
 	}
 }
 
-var client = &fasthttp.Client{
+var defaultClient = &fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,
 	MaxConnsPerHost:          defaultMaxConnsPerHost,
 }
+
+var client atomic.Pointer[fasthttp.Client]
 
 var (
 	errNilProxyClientOverride = errors.New("proxy: nil client override passed to Do/Forward")
 	errNilGlobalProxyClient   = errors.New("proxy: global client is nil, set a non-nil client with proxy.WithClient")
 )
 
-var lock sync.RWMutex
+func init() {
+	client.Store(defaultClient)
+}
 
 // WithClient sets the global proxy client.
 // This function should be called before Do and Forward.
@@ -130,9 +135,7 @@ func WithClient(cli *fasthttp.Client) {
 		panic("proxy: WithClient requires a non-nil *fasthttp.Client")
 	}
 
-	lock.Lock()
-	defer lock.Unlock()
-	client = cli
+	client.Store(cli)
 }
 
 // Forward performs the given http request and fills the given http response.
@@ -183,10 +186,7 @@ func doAction(
 	action func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error,
 	clients ...*fasthttp.Client,
 ) error {
-	lock.RLock()
-	globalClient := client
-	lock.RUnlock()
-
+	globalClient := client.Load()
 	cli, err := selectClient(globalClient, clients...)
 	if err != nil {
 		return err
@@ -274,6 +274,9 @@ func (r *roundrobin) get() string {
 // BalancerForward Forward performs the given http request with round robin algorithm to server and fills the given http response.
 // This method will return a fiber.Handler
 func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler {
+	if len(servers) == 0 {
+		panic("Servers cannot be empty")
+	}
 	r := &roundrobin{
 		current: 0,
 		pool:    servers,

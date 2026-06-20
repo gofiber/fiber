@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -23,11 +22,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 )
-
-// timestampUpdatePeriod is the period which is used to check the cache expiration.
-// It should not be too long to provide more or less acceptable expiration error, and in the same
-// time it should not be too short to avoid overwhelming of the system
-const timestampUpdatePeriod = 300 * time.Millisecond
 
 // buffer size for hexpool
 const (
@@ -148,11 +142,8 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
-	var (
-		// Cache settings
-		mux       = &sync.RWMutex{}
-		timestamp = safeUnixSeconds(time.Now())
-	)
+	// Cache settings
+	mux := &sync.RWMutex{}
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, redactKeys)
 	// Create indexed heap for tracking expirations ( see heap.go )
@@ -168,15 +159,6 @@ func New(config ...Config) fiber.Handler {
 	}
 	hashAuthorization := makeHashAuthFunc(hexBufPool)
 	buildVaryKey := makeBuildVaryKeyFunc(hexBufPool)
-
-	// Update timestamp in the configured interval
-	go func() {
-		ticker := time.NewTicker(timestampUpdatePeriod)
-		defer ticker.Stop()
-		for range ticker.C {
-			atomic.StoreUint64(&timestamp, safeUnixSeconds(time.Now()))
-		}
-	}()
 
 	// Delete key from both manager and storage
 	deleteKey := func(ctx context.Context, dkey string) error {
@@ -226,7 +208,7 @@ func New(config ...Config) fiber.Handler {
 
 		entry.heapidx = candidate.heapIdx
 
-		remainingTTL := max(time.Until(secondsToTime(entry.exp)), 0)
+		remainingTTL := max(secondsToTime(entry.exp).Sub(cfg.now()), 0)
 
 		if err := manager.set(ctx, candidate.key, entry, remainingTTL); err != nil {
 			return fmt.Errorf("cache: failed to restore heap index for key %q: %w", maskKey(candidate.key), err)
@@ -309,8 +291,10 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// Lock entry
+		// Lock entry before reading the current timestamp so freshness decisions
+		// are based on the time the protected cache entry is evaluated.
 		mux.Lock()
+		ts := safeUnixSeconds(cfg.now())
 		locked := true
 		unlock := func() {
 			if locked {
@@ -324,9 +308,6 @@ func New(config ...Config) fiber.Handler {
 				locked = true
 			}
 		}
-		// Get timestamp
-		ts := atomic.LoadUint64(&timestamp)
-
 		// Cache Entry found
 		if e != nil {
 			entryAge = cachedResponseAge(e, ts)
@@ -747,7 +728,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		e.age = ageVal
 		e.shareable = isSharedCacheAllowed
-		now := time.Now().UTC()
+		now := cfg.now().UTC()
 		nowUnix := safeUnixSeconds(now)
 		dateHeader := c.Response().Header.Peek(fiber.HeaderDate)
 		parsedDate, _ := parseHTTPDate(dateHeader)
@@ -792,7 +773,7 @@ func New(config ...Config) fiber.Handler {
 					expiration = time.Nanosecond
 					expiresParseError = true
 				} else {
-					expiration = time.Until(expiresAt)
+					expiration = expiresAt.Sub(cfg.now())
 				}
 				expirationSource = expirationSourceExpires
 			}
@@ -815,7 +796,7 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		ts = atomic.LoadUint64(&timestamp)
+		ts = safeUnixSeconds(cfg.now())
 		responseTS := max(ts, nowUnix)
 
 		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)

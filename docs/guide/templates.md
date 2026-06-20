@@ -53,7 +53,7 @@ type Views interface {
 
     // Outputs a template to the provided buffer using the provided template,
     // template name, and bound data
-    Render(io.Writer, string, interface{}, ...string) error
+    Render(io.Writer, string, any, ...string) error
 }
 ```
 
@@ -117,7 +117,7 @@ Fiber supports adding custom functions to templates.
 Adds a global function to all templates.
 
 ```go title="Signature"
-func (e *Engine) AddFunc(name string, fn interface{}) IEngineCore
+func (e *Engine) AddFunc(name string, fn any) IEngineCore
 ```
 
 <Tabs>
@@ -163,7 +163,7 @@ app.Get("/", func (c fiber.Ctx) error {
 Adds a Map of functions (keyed by name) to all templates.
 
 ```go title="Signature"
-func (e *Engine) AddFuncMap(m map[string]interface{}) IEngineCore
+func (e *Engine) AddFuncMap(m map[string]any) IEngineCore
 ```
 
 <Tabs>
@@ -172,7 +172,7 @@ func (e *Engine) AddFuncMap(m map[string]interface{}) IEngineCore
 ```go
 // Add `ToUpper` to engine
 engine := html.New("./views", ".html")
-engine.AddFuncMap(map[string]interface{}{
+engine.AddFuncMap(map[string]any{
     "ToUpper": func(s string) string {
         return strings.ToUpper(s)
     },

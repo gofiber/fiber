@@ -7,6 +7,7 @@ import (
 	"math"
 	"mime/multipart"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -333,7 +334,7 @@ func (c *DefaultCtx) AcceptsXML() bool {
 
 // AcceptsEventStream reports whether the Accept header allows text/event-stream.
 func (c *DefaultCtx) AcceptsEventStream() bool {
-	return c.Accepts("text/event-stream") != ""
+	return c.Accepts(MIMETextEventStream) != ""
 }
 
 // Cookies are used for getting a cookie value by key.
@@ -537,9 +538,11 @@ func (r *DefaultReq) Port() string {
 	return port
 }
 
-// IP returns the remote IP address of the request.
-// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
-// Please use Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
+// IP returns the client's IP address. When the request comes from a trusted proxy (see
+// [TrustProxyConfig]), the value is extracted from the configured ProxyHeader by walking the
+// X-Forwarded-For chain right-to-left and skipping all trusted proxy IPs; the first
+// non-trusted IP in the chain is returned. Please use Config.TrustProxy to prevent header
+// spoofing if your app is behind a proxy.
 func (r *DefaultReq) IP() string {
 	app := r.c.app
 	if r.IsProxyTrusted() && app.config.ProxyHeader != "" {
@@ -612,64 +615,128 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 	return ipsFound
 }
 
-// extractIPFromHeader will attempt to pull the real client IP from the given header when IP validation is enabled.
-// currently, it will return the first valid IP address in header.
-// when IP validation is disabled, it will simply return the value of the header without any inspection.
-// Implementation is almost the same as in extractIPsFromHeader, but without allocation of []string.
+// extractIPFromHeader returns the client IP from the given proxy header by walking the
+// X-Forwarded-For chain from right to left and stripping trusted proxy IPs. When trusted
+// proxies are configured, the rightmost non-trusted IP is returned; otherwise the first
+// valid IP (left-to-right) is returned. When IP validation is disabled, the raw header
+// value is returned as-is.
 func (r *DefaultReq) extractIPFromHeader(header string) string {
 	app := r.c.app
-	if app.config.EnableIPValidation {
-		headerValue := r.Get(header)
 
-		i := 0
-		j := -1
-
-		for {
-			var v4, v6 bool
-
-			// Manually splitting string without allocating slice, working with parts directly
-			i, j = j+1, j+2
-
-			if j > len(headerValue) {
-				break
-			}
-
-			for j < len(headerValue) && headerValue[j] != ',' {
-				switch headerValue[j] {
-				case ':':
-					v6 = true
-				case '.':
-					v4 = true
-				default:
-					// do nothing
-				}
-				j++
-			}
-
-			for i < j && headerValue[i] == ' ' {
-				i++
-			}
-
-			s := utils.TrimRight(headerValue[i:j], ' ')
-
-			if app.config.EnableIPValidation {
-				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
-					continue
-				}
-			}
-
-			return s
-		}
-
-		if ip := r.c.fasthttp.RemoteIP(); ip != nil {
-			return ip.String()
-		}
-		return ""
+	if !app.config.EnableIPValidation {
+		return r.Get(header)
 	}
 
-	// default behavior if IP validation is not enabled is just to return whatever value is
-	// in the proxy header. Even if it is empty or invalid
-	return r.Get(app.config.ProxyHeader)
+	headerValue := r.Get(header)
+	hasTrustedProxyConfig := r.hasTrustedProxyConfig()
+	if !hasTrustedProxyConfig {
+		start := 0
+		for {
+			end := start
+			for end < len(headerValue) && headerValue[end] != ',' {
+				end++
+			}
+
+			ipStr := utils.Trim(headerValue[start:end], ' ')
+			if isValidProxyIP(ipStr) {
+				return ipStr
+			}
+			if end == len(headerValue) {
+				break
+			}
+			start = end + 1
+		}
+	}
+
+	var leftmostIP string
+
+	for end := len(headerValue); end > 0; {
+		start := end
+		for start > 0 && headerValue[start-1] != ',' {
+			start--
+		}
+
+		ipStr := utils.Trim(headerValue[start:end], ' ')
+		if isValidProxyIP(ipStr) {
+			leftmostIP = ipStr
+			if !r.isTrustedProxyIP(ipStr) {
+				return ipStr
+			}
+		}
+
+		if start == 0 {
+			break
+		}
+		end = start - 1
+	}
+
+	if leftmostIP != "" {
+		return leftmostIP
+	}
+	if ip := r.c.fasthttp.RemoteIP(); ip != nil {
+		return ip.String()
+	}
+	return ""
+}
+
+func isValidProxyIP(ipStr string) bool {
+	hasIPv4Separator := strings.IndexByte(ipStr, '.') >= 0
+	hasIPv6Separator := strings.IndexByte(ipStr, ':') >= 0
+	return (hasIPv4Separator || hasIPv6Separator) &&
+		(!hasIPv4Separator || utils.IsIPv4(ipStr)) &&
+		(!hasIPv6Separator || utils.IsIPv6(ipStr))
+}
+
+// hasTrustedProxyConfig returns true if any trusted proxy configuration is set.
+func (r *DefaultReq) hasTrustedProxyConfig() bool {
+	cfg := r.c.app.config.TrustProxyConfig
+	return len(cfg.ips) > 0 || len(cfg.ranges) > 0 || cfg.Loopback || cfg.Private || cfg.LinkLocal
+}
+
+// isTrustedProxyIP checks whether the given IP string matches any configured trusted proxy.
+func (r *DefaultReq) isTrustedProxyIP(ipStr string) bool {
+	cfg := r.c.app.config.TrustProxyConfig
+
+	ip, err := netip.ParseAddr(ipStr)
+	if err != nil {
+		return false
+	}
+
+	if cfg.Loopback && ip.IsLoopback() {
+		return true
+	}
+	if cfg.Private && ip.IsPrivate() {
+		return true
+	}
+	if cfg.LinkLocal && ip.IsLinkLocalUnicast() {
+		return true
+	}
+
+	var canonicalIP [net.IPv6len * 3]byte
+	if _, trusted := cfg.ips[utils.UnsafeString(ip.AppendTo(canonicalIP[:0]))]; trusted {
+		return true
+	}
+	if len(cfg.ranges) == 0 {
+		return false
+	}
+
+	if ip.Is4() {
+		ipv4 := ip.As4()
+		for _, ipNet := range cfg.ranges {
+			if ipNet.Contains(ipv4[:]) {
+				return true
+			}
+		}
+		return false
+	}
+
+	ipv6 := ip.As16()
+	for _, ipNet := range cfg.ranges {
+		if ipNet.Contains(ipv6[:]) {
+			return true
+		}
+	}
+	return false
 }
 
 // IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.

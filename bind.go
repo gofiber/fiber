@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/fiber/v3/internal/nilerror"
 	"github.com/gofiber/schema"
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
@@ -158,7 +159,17 @@ func (b *Bind) SkipValidation(skip bool) *Bind {
 
 // Check WithAutoHandling/WithoutAutoHandling errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
-	if err == nil || b.shouldSkipErrHandling {
+	if nilerror.IsNil(err) {
+		return nil
+	}
+
+	var fiberErr *Error
+	matched := errors.As(err, &fiberErr)
+	if matched && fiberErr == nil {
+		return nil
+	}
+
+	if b.shouldSkipErrHandling {
 		return err
 	}
 
@@ -171,7 +182,7 @@ func (b *Bind) returnErr(err error) error {
 func (b *Bind) returnBindErr(err error, source string) error {
 	if retErr := b.returnErr(err); retErr != nil {
 		var fiberErr *Error
-		if errors.As(retErr, &fiberErr) {
+		if errors.As(retErr, &fiberErr) && fiberErr != nil {
 			return fiberErr
 		}
 		return newBindError(source, retErr)

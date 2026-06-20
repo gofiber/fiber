@@ -29,6 +29,31 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// testClock is a manually advanced clock that makes time-dependent freshness
+// tests deterministic: instead of sleeping past a TTL boundary (which is racy
+// under -race -count -shuffle), tests advance the clock explicitly. It is safe
+// for the concurrent reads performed by the cache handler.
+type testClock struct {
+	now time.Time
+	mu  sync.Mutex
+}
+
+func newTestClock(start time.Time) *testClock {
+	return &testClock{now: start}
+}
+
+func (c *testClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *testClock) Add(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
 type failingCacheStorage struct {
 	data map[string][]byte
 	errs map[string]error
@@ -2161,8 +2186,12 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 func Test_CacheSMaxAgeOverridesMaxAgeWhenShorter(t *testing.T) {
 	t.Parallel()
 
+	// Drive freshness from a manually advanced clock so the immediate cache hit
+	// can never straddle a whole-second boundary (the previous time.Sleep based
+	// version flaked under -race -count -shuffle).
+	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
-	app.Use(New())
+	app.Use(New(Config{clock: clock.Now}))
 
 	var count int
 	app.Get("/", func(c fiber.Ctx) error {
@@ -2182,7 +2211,9 @@ func Test_CacheSMaxAgeOverridesMaxAgeWhenShorter(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1", string(body))
 
-	time.Sleep(1700 * time.Millisecond)
+	// Advance past the 1s s-maxage window; max-age=10 is longer, so the shorter
+	// s-maxage must win and the entry must be treated as stale.
+	clock.Add(1100 * time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
@@ -5466,4 +5497,71 @@ func Test_hasDirective(t *testing.T) {
 			require.Equal(t, tc.want, got)
 		})
 	}
+}
+
+// Test_CacheInvalidator_RaceWithExactTimestamp exercises the path where one
+// request triggers CacheInvalidator (writing e.exp under mux.Lock) while
+// concurrent requests evaluate freshness (reading e.exp). The fields must be
+// read under the lock; -race will flag a regression. The test also asserts
+// the invalidator path actually drives fresh handler executions, so a
+// regression that silently disabled invalidation would also fail.
+func Test_CacheInvalidator_RaceWithExactTimestamp(t *testing.T) {
+	t.Parallel()
+
+	var handlerCalls atomic.Uint64
+	app := fiber.New()
+	app.Use(New(Config{
+		CacheInvalidator: func(c fiber.Ctx) bool {
+			return fiber.Query[bool](c, "invalidate")
+		},
+		// Long expiration so the only source of fresh handler executions
+		// after priming is the CacheInvalidator branch.
+		Expiration: time.Hour,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(strconv.FormatUint(handlerCalls.Add(1), 10))
+	})
+
+	// Prime the cache so the served-from-cache branch is reachable.
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	primed := handlerCalls.Load()
+
+	var (
+		wg            sync.WaitGroup
+		invalidations atomic.Uint64
+		errCount      atomic.Uint64
+	)
+	const workers = 16
+	const iterations = 50
+	for i := range workers {
+		wg.Go(func() {
+			for j := range iterations {
+				target := "/"
+				if (i+j)%4 == 0 {
+					target = "/?invalidate=true"
+					invalidations.Add(1)
+				}
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+				if err != nil {
+					t.Errorf("app.Test: %v", err)
+					errCount.Add(1)
+					return
+				}
+				if err := resp.Body.Close(); err != nil {
+					t.Errorf("Body.Close: %v", err)
+					errCount.Add(1)
+				}
+			}
+		})
+	}
+	wg.Wait()
+
+	require.Zero(t, errCount.Load(), "worker goroutines reported errors")
+	require.Positive(t, invalidations.Load(), "test never issued an invalidating request")
+	// Each invalidation must drive at least one fresh handler execution.
+	// Long Expiration guarantees natural expiry cannot account for the bump.
+	require.Greater(t, handlerCalls.Load(), primed, "invalidator never bypassed the cache")
 }

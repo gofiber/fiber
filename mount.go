@@ -20,6 +20,8 @@ type mountFields struct {
 	mountPath string
 	// Ordered keys of apps (sorted by key length for Render)
 	appListKeys []string
+	// guards one-time generation of appListKeys
+	appListKeysOnce sync.Once
 	// check added routes of sub-apps
 	subAppsRoutesAdded sync.Once
 	// check mounted sub-apps
@@ -115,7 +117,7 @@ func (app *App) mountStartupProcess() {
 		// add routes of sub-apps
 		app.mountFields.subAppsProcessed.Do(func() {
 			app.appendSubAppLists(app.mountFields.appList)
-			app.generateAppListKeys()
+			app.mountFields.appListKeysOnce.Do(app.generateAppListKeys)
 		})
 		// adds the routes of the sub-apps to the current application.
 		app.mountFields.subAppsRoutesAdded.Do(func() {

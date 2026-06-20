@@ -587,7 +587,7 @@ func Test_Integration_App_ServerErrorHandler_CustomMultipartBodyLimit(t *testing
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			var fiberErr *fiber.Error
-			if errors.As(err, &fiberErr) {
+			if errors.As(err, &fiberErr) && fiberErr != nil {
 				code = fiberErr.Code
 			}
 			return c.Status(code).JSON(fiber.Map{
