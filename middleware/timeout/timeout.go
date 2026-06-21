@@ -5,8 +5,6 @@ import (
 	"errors"
 	"runtime/debug"
 
-	"github.com/valyala/fasthttp"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -112,10 +110,9 @@ func handleTimeout(
 		// Build the default timeout response separately from the RequestCtx response.
 		// The timed-out handler can keep running and may have already buffered
 		// application data there, so reusing it could disclose partial output.
-		var timeoutResp fasthttp.Response
-		timeoutResp.SetStatusCode(fiber.StatusRequestTimeout)
-		timeoutResp.SetBodyString(fiber.ErrRequestTimeout.Message)
-		ctx.RequestCtx().TimeoutErrorWithResponse(&timeoutResp)
+		// TimeoutErrorWithCode constructs a fresh fasthttp.Response internally, so
+		// the active RequestCtx response is never read.
+		ctx.RequestCtx().TimeoutErrorWithCode(fiber.ErrRequestTimeout.Message, fiber.StatusRequestTimeout)
 	} else {
 		// Prepare the timeout response before marking the RequestCtx as timed out so
 		// custom OnTimeout handlers can shape the response body.
