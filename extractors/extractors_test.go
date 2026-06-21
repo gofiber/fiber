@@ -23,7 +23,7 @@ func Test_Extractors_Missing(t *testing.T) {
 		require.ErrorIs(t, err, ErrNotFound)
 		return nil
 	})
-	_, err := app.Test(newRequest(fiber.MethodGet, "/test"))
+	_, err := app.Test(newRequest("/test"))
 	require.NoError(t, err)
 
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -55,9 +55,9 @@ func Test_Extractors_Missing(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
-// newRequest creates a new *http.Request for Fiber's app.Test
-func newRequest(method, target string) *http.Request {
-	req, err := http.NewRequestWithContext(context.Background(), method, target, http.NoBody)
+// newRequest creates a new GET *http.Request for Fiber's app.Test.
+func newRequest(target string) *http.Request {
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, target, http.NoBody)
 	if err != nil {
 		panic(err)
 	}
@@ -78,7 +78,7 @@ func Test_Extractors(t *testing.T) {
 			require.Equal(t, "token_from_param", token)
 			return nil
 		})
-		_, err := app.Test(newRequest(fiber.MethodGet, "/test/token_from_param"))
+		_, err := app.Test(newRequest("/test/token_from_param"))
 		require.NoError(t, err)
 	})
 
@@ -280,6 +280,48 @@ func Test_Extractor_Chain_Introspection(t *testing.T) {
 	require.Equal(t, "token", chainExtractor.Chain[1].Key)
 	require.Equal(t, SourceCookie, chainExtractor.Chain[2].Source)
 	require.Equal(t, "auth", chainExtractor.Chain[2].Key)
+}
+
+func Test_Extractor_Contains(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil_predicate", func(t *testing.T) {
+		t.Parallel()
+
+		extractor := FromHeader("X-Token")
+		require.False(t, extractor.Contains(nil))
+	})
+
+	t.Run("single_extractor_match", func(t *testing.T) {
+		t.Parallel()
+
+		extractor := FromCookie("CSRF")
+		require.True(t, extractor.Contains(func(e Extractor) bool {
+			return e.Source == SourceCookie && e.Key == "CSRF"
+		}))
+	})
+
+	t.Run("nested_chain_match", func(t *testing.T) {
+		t.Parallel()
+
+		inner := Chain(FromHeader("X-Token"), FromCookie("CSRF"))
+		outer := Chain(FromQuery("token"), inner)
+
+		require.True(t, outer.Contains(func(e Extractor) bool {
+			return e.Source == SourceCookie && e.Key == "CSRF"
+		}))
+	})
+
+	t.Run("nested_chain_no_match", func(t *testing.T) {
+		t.Parallel()
+
+		inner := Chain(FromHeader("X-Token"), FromCookie("session"))
+		outer := Chain(FromQuery("token"), inner)
+
+		require.False(t, outer.Contains(func(e Extractor) bool {
+			return e.Source == SourceCookie && e.Key == "CSRF"
+		}))
+	})
 }
 
 // go test -run Test_Extractor_FromCustom
@@ -813,6 +855,92 @@ func Test_Extractor_Chain_MixedScenarios(t *testing.T) {
 	})
 }
 
+// go test -run Test_Extractor_Chain_Cycle_Prevention
+func Test_Extractor_Chain_Cycle_Prevention(t *testing.T) {
+	t.Parallel()
+
+	t.Run("direct_cycle_returns_err_chain_cycle", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		var chainExtractor Extractor
+		chainExtractor = Chain(FromCustom("cycle", func(c fiber.Ctx) (string, error) {
+			return chainExtractor.Extract(c)
+		}))
+
+		token, err := chainExtractor.Extract(ctx)
+		require.Empty(t, token)
+		require.ErrorIs(t, err, ErrChainCycle)
+	})
+
+	t.Run("indirect_cycle_returns_err_chain_cycle", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		var chainA, chainB Extractor
+		chainA = Chain(FromCustom("to-b", func(c fiber.Ctx) (string, error) {
+			return chainB.Extract(c)
+		}))
+		chainB = Chain(FromCustom("to-a", func(c fiber.Ctx) (string, error) {
+			return chainA.Extract(c)
+		}))
+
+		token, err := chainA.Extract(ctx)
+		require.Empty(t, token)
+		require.ErrorIs(t, err, ErrChainCycle)
+	})
+
+	t.Run("nested_non_cyclic_chain_still_works", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "token_from_header")
+
+		inner := Chain(FromHeader("X-Token"), FromQuery("token"))
+		outer := Chain(inner, FromCookie("token"))
+
+		token, err := outer.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "token_from_header", token)
+	})
+}
+
+func Test_Extractor_Chain_ReusedAcrossMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	shared := Chain(FromHeader("X-Token"), FromQuery("token"))
+
+	app.Use(func(c fiber.Ctx) error {
+		token, err := shared.Extract(c)
+		require.NoError(t, err)
+		require.Equal(t, "token_from_header", token)
+		return c.Next()
+	})
+
+	app.Get("/test", func(c fiber.Ctx) error {
+		token, err := shared.Extract(c)
+		require.NoError(t, err)
+		require.Equal(t, "token_from_header", token)
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
+	req := newRequest("/test")
+	req.Header.Set("X-Token", "token_from_header")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+}
+
 // go test -run Test_Extractor_SourceTypes
 func Test_Extractor_SourceTypes(t *testing.T) {
 	t.Parallel()
@@ -894,7 +1022,7 @@ func Test_Extractor_URL_Encoded(t *testing.T) {
 			require.Equal(t, "token/with/slashes", token)
 			return nil
 		})
-		_, err := app.Test(newRequest(fiber.MethodGet, "/test/token%2Fwith%2Fslashes"))
+		_, err := app.Test(newRequest("/test/token%2Fwith%2Fslashes"))
 		require.NoError(t, err)
 	})
 }
