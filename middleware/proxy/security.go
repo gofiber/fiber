@@ -21,6 +21,14 @@ import (
 // a request (or application startup) indefinitely.
 const dnsLookupTimeout = 5 * time.Second
 
+// Supported upstream schemes. Defined as constants so the literals don't
+// trip the goconst linter when referenced from policy defaults, scheme
+// comparisons, and redirect downgrade checks.
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
+
 // Sentinel errors returned when an upstream target violates the configured
 // proxy security policy.
 var (
@@ -50,7 +58,7 @@ var (
 // do not supply their own policy via Config.SecurityPolicy.
 type SecurityPolicy struct {
 	// AllowedSchemes restricts the URL schemes accepted as upstream
-	// targets. Empty defaults to []string{"http", "https"}.
+	// targets. Empty defaults to []string{schemeHTTP, schemeHTTPS}.
 	AllowedSchemes []string
 
 	// AllowPrivateIPs allows upstream hosts to resolve to loopback,
@@ -78,7 +86,7 @@ type SecurityPolicy struct {
 // via Config.SecurityPolicy or WithSecurityPolicy.
 func DefaultSecurityPolicy() SecurityPolicy {
 	return SecurityPolicy{
-		AllowedSchemes:      []string{"http", "https"},
+		AllowedSchemes:      []string{schemeHTTP, schemeHTTPS},
 		AllowPrivateIPs:     false,
 		AllowHTTPSDowngrade: false,
 		KeepHopByHopHeaders: false,
@@ -96,7 +104,7 @@ var (
 // retaining a reference to the slice they passed in.
 func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
 	if len(policy.AllowedSchemes) == 0 {
-		policy.AllowedSchemes = []string{"http", "https"}
+		policy.AllowedSchemes = []string{schemeHTTP, schemeHTTPS}
 	} else {
 		policy.AllowedSchemes = append([]string(nil), policy.AllowedSchemes...)
 	}
@@ -354,6 +362,8 @@ func validateHostForSSRF(host string) error {
 // DNS-rebinding attacks (the check/use gap) where a resolver returns a
 // public address during validation and a private one at connect time. It
 // is only installed when the active policy disallows private IPs.
+//
+//nolint:revive // dialDualStack mirrors fasthttp.HostClient.DialDualStack
 func newSSRFDialer(dialDualStack bool) fasthttp.DialFunc {
 	dialer := &net.Dialer{Timeout: dnsLookupTimeout}
 	return func(addr string) (net.Conn, error) {

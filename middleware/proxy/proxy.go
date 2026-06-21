@@ -51,7 +51,7 @@ func Balancer(config ...Config) fiber.Handler {
 
 				MaxResponseBodySize: cfg.MaxResponseBodySize,
 			}
-			if u.Scheme == "https" {
+			if u.Scheme == schemeHTTPS {
 				client.IsTLS = true
 			}
 			// When private targets are disallowed, validate the resolved IP
@@ -347,7 +347,7 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) 
 	if err != nil {
 		return "", err
 	}
-	if !policy.AllowHTTPSDowngrade && bytes.EqualFold(previousScheme, []byte("https")) && target.Scheme == "http" {
+	if !policy.AllowHTTPSDowngrade && bytes.EqualFold(previousScheme, []byte(schemeHTTPS)) && target.Scheme == schemeHTTP {
 		return "", ErrRedirectDowngrade
 	}
 	return target.String(), nil
