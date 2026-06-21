@@ -1110,6 +1110,114 @@ func Test_Cache_CustomMethods(t *testing.T) {
 	})
 }
 
+func Test_Cache_QueryMethod(t *testing.T) {
+	t.Parallel()
+
+	t.Run("same body hits cache", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{fiber.MethodQuery},
+		}))
+
+		var count atomic.Int32
+		app.Query("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		body := []byte(`{"filter":"active"}`)
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(body)))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		respBody, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "1", string(respBody))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(body)))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+		respBody, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "1", string(respBody))
+	})
+
+	t.Run("different body produces different cache key", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{fiber.MethodQuery},
+		}))
+
+		var count atomic.Int32
+		app.Query("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		bodyA := []byte(`{"filter":"active"}`)
+		bodyB := []byte(`{"filter":"archived"}`)
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(bodyA)))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(bodyB)))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(2), count.Load())
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(bodyA)))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	})
+
+	t.Run("empty body is cacheable", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{fiber.MethodQuery},
+		}))
+
+		var count atomic.Int32
+		app.Query("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodQuery, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodQuery, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(1), count.Load())
+	})
+
+	t.Run("not cached when QUERY not in Methods", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New()) // default Methods: GET, HEAD
+
+		var count atomic.Int32
+		app.Query("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader([]byte(`{}`))))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader([]byte(`{}`))))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(2), count.Load())
+	})
+}
+
 func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 	t.Parallel()
 
@@ -3770,6 +3878,32 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 	require.Equal(b, []byte("foobar"), fctx.Response.Header.Peek("X-Foobar"))
+}
+
+func Benchmark_Cache_QueryMethod(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Methods: []string{fiber.MethodQuery},
+	}))
+
+	app.Query("/demo", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodQuery)
+	fctx.Request.SetRequestURI("/demo")
+	fctx.Request.SetBody([]byte(`{"filter":"active","page":1}`))
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		h(fctx)
+	}
+
+	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
 }
 
 func Benchmark_Cache_MaxSize(b *testing.B) {
