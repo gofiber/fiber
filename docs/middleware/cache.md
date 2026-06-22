@@ -118,7 +118,7 @@ By default, cache keys include:
 
 This prevents common collisions from path-only keys (for example, `/?id=1` vs `/?id=2`) while keeping fragmentation bounded.
 
-The middleware **does not include request body/form values in the default cache key**.
+The middleware **does not include request body/form values in the default cache key**, with one exception: as required by [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html), `QUERY` requests incorporate the request body into the key. Small bodies are used verbatim; larger bodies are hashed (SHA-256) to keep the key bounded.
 
 Cache lookup/storage is applied only for `GET` and `HEAD` requests by default. Other HTTP methods bypass the cache middleware. You can change this via the `Methods` config field.
 

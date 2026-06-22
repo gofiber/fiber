@@ -1216,6 +1216,42 @@ func Test_Cache_QueryMethod(t *testing.T) {
 		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 		require.Equal(t, int32(2), count.Load())
 	})
+
+	t.Run("large bodies past the hashing threshold stay distinct", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{fiber.MethodQuery},
+		}))
+
+		var count atomic.Int32
+		app.Query("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		// Both bodies exceed maxKeyDimensionSegmentLength (192) and share the same
+		// 192-byte prefix, so they only differ on the hashed tail. Distinct keys
+		// prove the body is still fully incorporated, not truncated.
+		prefix := strings.Repeat("a", maxKeyDimensionSegmentLength)
+		bodyA := []byte(prefix + "-active")
+		bodyB := []byte(prefix + "-archived")
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(bodyA)))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(bodyB)))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(2), count.Load())
+
+		// Re-sending bodyA hits its own cached entry.
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(bodyA)))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(2), count.Load())
+	})
 }
 
 func Test_Cache_DefaultKeyDimensions(t *testing.T) {

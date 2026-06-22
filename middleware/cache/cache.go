@@ -1291,9 +1291,12 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 	}
 
 	if c.Method() == fiber.MethodQuery {
-		bodyDigest := sha256.Sum256(c.Request().Body())
+		// RFC 10008 requires the cache key to incorporate the request content.
+		// boundKeySegment keeps small bodies raw (no hashing on the hot path) and
+		// only hashes bodies larger than maxKeyDimensionSegmentLength, which bounds
+		// the key length for the in-memory map and external Storage backends.
 		buf = append(buf, '|', 'b', '=')
-		buf = hex.AppendEncode(buf, bodyDigest[:])
+		buf = append(buf, boundKeySegment(utils.UnsafeString(c.Request().Body()))...)
 	}
 
 	result := string(buf)
