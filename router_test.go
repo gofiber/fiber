@@ -2683,6 +2683,148 @@ func Test_App_SkipUnmatchedRoutes(t *testing.T) {
 	})
 }
 
+// Test_App_SkipUnmatchedRoutes_NestedGroups exercises the lookahead-index path:
+// a sibling endpoint registered before the matched one must be skipped without
+// re-matching, while every middleware in the nested chain still runs.
+func Test_App_SkipUnmatchedRoutes_NestedGroups(t *testing.T) {
+	t.Parallel()
+
+	newApp := func() (*App, *[]string) {
+		var trail []string
+		record := func(label string) Handler {
+			return func(c Ctx) error {
+				trail = append(trail, label)
+				return c.Next()
+			}
+		}
+		endpoint := func(label string) Handler {
+			return func(c Ctx) error {
+				trail = append(trail, label)
+				return c.SendStatus(StatusOK)
+			}
+		}
+
+		app := New(Config{SkipUnmatchedRoutes: true})
+		api := app.Group("/api/v1", record("auth"))
+		contacts := api.Group("/contacts", record("perm"))
+		contacts.Post("/", endpoint("addContact"))    // sibling endpoint (before the match)
+		contacts.Get("/", endpoint("getAllContacts")) // sibling endpoint (before the match)
+		cd := contacts.Group("/test", record("logger"))
+		cd.Post("/", endpoint("testEndpoint"))
+		cd.Get("/hello", endpoint("helloEndpoint"))
+		cd1 := cd.Group("/test2", record("logger2"))
+		cd1.Get("/hello2", endpoint("hello2Endpoint"))
+		cd1.Get("/hello2/hello3", record("logger3"), endpoint("hello3Endpoint"))
+
+		return app, &trail
+	}
+
+	t.Run("matched deep route runs full chain, skips sibling endpoint", func(t *testing.T) {
+		t.Parallel()
+		app, trail := newApp()
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/api/v1/contacts/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		// All three middlewares run, in order, then the matched endpoint.
+		// addContact / getAllContacts sit before the match and must NOT run.
+		require.Equal(t, []string{"auth", "perm", "logger", "testEndpoint"}, *trail)
+	})
+
+	t.Run("matched deep routefull chain 2, skips sibling endpoints", func(t *testing.T) {
+		t.Parallel()
+		app, trial := newApp()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/hello/", nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, []string{"auth", "perm", "logger", "helloEndpoint"}, *trial)
+	})
+
+	t.Run("matched deep routefull chain 2, full endpoints", func(t *testing.T) {
+		t.Parallel()
+		app, trial := newApp()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello2", nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, []string{"auth", "perm", "logger", "logger2", "hello2Endpoint"}, *trial)
+	})
+	t.Run("matched deep routefull chain 2, full endpoints 2", func(t *testing.T) {
+		t.Parallel()
+		app, trial := newApp()
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello2/hello3", nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, []string{"auth", "perm", "logger", "logger2", "logger3", "hello3Endpoint"}, *trial)
+	})
+	t.Run("wrong deep routefull chain 2, wrong full endpoints", func(t *testing.T) {
+		t.Parallel()
+		app, trial := newApp()
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello2/hello4", nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.Empty(t, *trial,"no middleware chain executed")
+	})
+	t.Run("matched deep routefull chain 2, wrong endpoints", func(t *testing.T) {
+		t.Parallel()
+		app, trial := newApp()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello3", nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.Empty(t, *trial, "no middleware chain executed")
+	})
+	t.Run("wrong deep routefull chain 2, wrong endpoints", func(t *testing.T) {
+		t.Parallel()
+		app, trial := newApp()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test5/test2/hello2", nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.Empty(t, *trial, "no middleware chain executed")
+	})
+
+	t.Run("matched route ignores non-strict trailing slash", func(t *testing.T) {
+		t.Parallel()
+		app, trail := newApp()
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/api/v1/contacts/test/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, []string{"auth", "perm", "logger", "testEndpoint"}, *trail)
+	})
+
+	t.Run("matched sibling endpoint runs only its own middleware", func(t *testing.T) {
+		t.Parallel()
+		app, trail := newApp()
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		// logger is scoped to /test, so it must not run here.
+		require.Equal(t, []string{"auth", "perm", "getAllContacts"}, *trail)
+	})
+
+	t.Run("deeper unmatched path 404s without any middleware", func(t *testing.T) {
+		t.Parallel()
+		app, trail := newApp()
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/api/v1/contacts/test/dead", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.Empty(t, *trail, "no middleware should run for an unmatched path")
+	})
+
+	t.Run("misspelled path 404s without any middleware", func(t *testing.T) {
+		t.Parallel()
+		app, trail := newApp()
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/api/v1/contakt/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.Empty(t, *trail, "no middleware should run for an unmatched path")
+	})
+}
+
 // go test -v ./... -run=^$ -bench=Benchmark_SkipUnmatchedRoutes -benchmem -count=4
 func Benchmark_SkipUnmatchedRoutes_Unmatched(b *testing.B) {
 	b.Run("without_skip", func(b *testing.B) {

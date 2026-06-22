@@ -248,6 +248,13 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			continue
 		}
 
+		// Endpoints before the lookahead's match were already ruled out, so
+		// skip re-matching them here (SkipUnmatchedRoutes). firstMatchIndex is
+		// -1 when the SkipUnmatchedRoutes is false.
+		if !route.use && indexRoute < c.firstMatchIndex {
+			continue
+		}
+
 		// Check if it matches the request path
 		if !route.match(detectionPath, path, &c.values) {
 			continue
@@ -349,6 +356,13 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			continue
 		}
 
+		// Endpoints before the lookahead's match were already ruled out, so
+		// skip re-matching them here (SkipUnmatchedRoutes). firstMatchIndex is
+		// -1 when the SkipUnmatchedRoutes is false.
+		if !route.use && indexRoute < c.getFirstMatchIndex() {
+			continue
+		}
+
 		// Check if it matches the request path
 		if !route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
 			continue
@@ -424,8 +438,13 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	return false, ErrNotFound
 }
 
-// routeExists checks if a non-middleware route matches the given method and path.
-func (app *App) routeExists(methodInt, treeHash int, detectionPath, path string) bool {
+// firstEndpointIndex returns the tree-stack index of the first non-middleware
+// route that matches the given method and path, or -1 if none matches.
+//
+// The returned index is relative to the same tree bucket that next/nextCustom
+// iterate, so it can be handed to them to skip re-matching the endpoints this
+// lookahead has already ruled out (see SkipUnmatchedRoutes).
+func (app *App) firstEndpointIndex(methodInt, treeHash int, detectionPath, path string) int {
 	tree, ok := app.treeStack[methodInt][treeHash]
 	if !ok {
 		tree = app.treeStack[methodInt][0]
@@ -433,17 +452,17 @@ func (app *App) routeExists(methodInt, treeHash int, detectionPath, path string)
 
 	var params [maxParams]string
 
-	for _, route := range tree {
+	for i, route := range tree {
 		// Skip middleware and mounts - only check actual endpoint routes
 		if route.use || route.mount {
 			continue
 		}
 		if route.match(detectionPath, path, &params) {
-			return true
+			return i
 		}
 	}
 
-	return false
+	return -1
 }
 
 func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
@@ -462,11 +481,15 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 
 	// Skip unmatched routes before middleware chain
 	if app.config.SkipUnmatchedRoutes {
-		if !app.routeExists(ctx.methodInt, ctx.treePathHash,
-			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path)) {
+		idx := app.firstEndpointIndex(ctx.methodInt, ctx.treePathHash,
+			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path))
+		if idx == -1 {
 			_ = ctx.SendStatus(StatusNotFound) //nolint:errcheck // Always return nil
 			return
 		}
+		// Hand the match position to next so it skips re-checking the
+		// endpoints already ruled out by the lookahead above.
+		ctx.firstMatchIndex = idx
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie).
@@ -494,11 +517,15 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 
 	// Skip unmatched routes before middleware chain
 	if app.config.SkipUnmatchedRoutes {
-		if !app.routeExists(ctx.getMethodInt(), ctx.getTreePathHash(),
-			ctx.getDetectionPath(), ctx.Path()) {
+		idx := app.firstEndpointIndex(ctx.getMethodInt(), ctx.getTreePathHash(),
+			ctx.getDetectionPath(), ctx.Path())
+		if idx == -1 {
 			_ = ctx.SendStatus(StatusNotFound) //nolint:errcheck // Always return nil
 			return
 		}
+		// Hand the match position to nextCustom so it skips re-checking the
+		// endpoints already ruled out by the lookahead above.
+		ctx.setFirstMatchIndex(idx)
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie).
