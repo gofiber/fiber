@@ -33,7 +33,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Get timezone location
 	tz, err := time.LoadLocation(cfg.TimeZone)
-	if err != nil || tz == nil {
+	if err != nil {
 		cfg.timeZoneLocation = time.Local
 	} else {
 		cfg.timeZoneLocation = tz
