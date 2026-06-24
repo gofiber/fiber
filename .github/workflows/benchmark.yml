@@ -59,7 +59,7 @@ jobs:
 
       - name: Get Benchmark Results from main branch
         id: cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
         with:
           path: ./cache
           key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-benchmark
@@ -119,7 +119,7 @@ jobs:
           go-force-package-suffix: true
 
       - name: Update Benchmark Results cache
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
         if: ${{ github.ref_name == 'main' }}
         with:
           path: ./cache
