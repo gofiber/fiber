@@ -132,6 +132,18 @@ func TestSubdomainMatch(t *testing.T) {
 			origin:   "https://..example.com",
 			expected: false,
 		},
+		{
+			name:     "no match with empty label before suffix",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://foo..example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with malformed origin port before suffix",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://evil.com:any.example.com",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
