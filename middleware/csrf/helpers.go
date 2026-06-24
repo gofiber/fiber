@@ -22,50 +22,6 @@ func compareStrings(a, b string) bool {
 	return subtle.ConstantTimeCompare(utils.UnsafeBytes(a), utils.UnsafeBytes(b)) == 1
 }
 
-func schemeAndHostMatch(schemeA, hostA, schemeB, hostB string) bool {
-	normalizedSchemeA := utilsstrings.ToLower(schemeA)
-	normalizedSchemeB := utilsstrings.ToLower(schemeB)
-
-	normalizedHostA := normalizeSchemeHost(normalizedSchemeA, hostA)
-	normalizedHostB := normalizeSchemeHost(normalizedSchemeB, hostB)
-
-	return normalizedSchemeA == normalizedSchemeB && normalizedHostA == normalizedHostB
-}
-
-func normalizeSchemeHost(scheme, host string) string {
-	host = utilsstrings.ToLower(host)
-
-	defaultPort := ""
-	switch scheme {
-	case schemeHTTP:
-		defaultPort = "80"
-	case schemeHTTPS:
-		defaultPort = "443"
-	default:
-		return host
-	}
-
-	parsedHost, err := url.Parse(scheme + "://" + host)
-	if err != nil {
-		return host
-	}
-
-	if port := parsedHost.Port(); port != "" {
-		return host
-	}
-
-	hostname := parsedHost.Hostname()
-	if hostname == "" {
-		return host
-	}
-
-	if strings.IndexByte(hostname, ':') >= 0 && !strings.HasPrefix(hostname, "[") {
-		hostname = "[" + hostname + "]"
-	}
-
-	return hostname + ":" + defaultPort
-}
-
 // normalizeOrigin checks if the provided origin is in a correct format
 // and normalizes it by removing any path or trailing slash.
 // It returns a boolean indicating whether the origin is valid
