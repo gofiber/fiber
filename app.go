@@ -626,8 +626,7 @@ func DefaultErrorHandler(c Ctx, err error) error {
 	}
 
 	code := StatusInternalServerError
-	var e *Error
-	matched := errors.As(err, &e)
+	e, matched := asFiberError(err)
 	if matched && e != nil {
 		code = e.Code
 	}
@@ -637,6 +636,22 @@ func DefaultErrorHandler(c Ctx, err error) error {
 	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	return c.Status(code).SendString(message)
+}
+
+// asFiberError reports whether err is or wraps a *Error and returns it. A direct
+// *Error is matched alloc-free by a type assertion; wrapped or joined errors
+// fall back to errors.As.
+func asFiberError(err error) (*Error, bool) {
+	if err == nil {
+		return nil, false
+	}
+	if e, ok := err.(*Error); ok { //nolint:errorlint // intentional fast path; wrapped/joined errors fall through to errors.As below
+		return e, true
+	}
+	// Declared here so errors.As's &target escapes only on this slow path.
+	var target *Error
+	matched := errors.As(err, &target)
+	return target, matched
 }
 
 // New creates a new Fiber named instance.
