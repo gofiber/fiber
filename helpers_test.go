@@ -970,7 +970,7 @@ func testGenericTypeInt[V GenericTypeInteger](t *testing.T, name string, cases [
 				require.NoError(t, err)
 				require.Equal(t, V(test.value), v)
 			} else {
-				require.ErrorIs(t, err, strconv.ErrRange)
+				require.ErrorIs(t, err, errParseValue)
 			}
 		}
 		testGenericParseError[V](t)
@@ -1041,7 +1041,7 @@ func testGenericTypeUint[V GenericTypeInteger](t *testing.T, name string, cases 
 				require.NoError(t, err)
 				require.Equal(t, V(test.value), v)
 			} else {
-				require.ErrorIs(t, err, strconv.ErrRange)
+				require.ErrorIs(t, err, errParseValue)
 			}
 		}
 		testGenericParseError[V](t)
@@ -1288,7 +1288,7 @@ func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, t
 			require.NoError(t, err)
 			require.Equal(t, V(test.value), v)
 		} else {
-			require.ErrorIs(t, err, strconv.ErrRange)
+			require.ErrorIs(t, err, errParseValue)
 		}
 	})
 }
@@ -1367,7 +1367,7 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 			require.NoError(t, err)
 			require.Equal(t, V(test.value), v)
 		} else {
-			require.ErrorIs(t, err, strconv.ErrRange)
+			require.ErrorIs(t, err, errParseValue)
 		}
 	})
 }
