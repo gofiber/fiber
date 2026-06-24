@@ -217,6 +217,18 @@ func Test_CORS_SubdomainMatch(t *testing.T) {
 			origin:   "https://foo..example.com",
 			expected: false,
 		},
+		{
+			name:     "no match with userinfo in origin",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://user@api.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with non-normalized origin",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://API.example.com",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {

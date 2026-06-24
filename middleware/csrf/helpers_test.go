@@ -27,6 +27,7 @@ func Test_normalizeOrigin(t *testing.T) {
 		{origin: "http://example.com/path", expectedValid: false, expectedOrigin: ""},                                   // Path should not be accepted.
 		{origin: "http://example.com?query=123", expectedValid: false, expectedOrigin: ""},                              // Query should not be accepted.
 		{origin: "http://example.com#fragment", expectedValid: false, expectedOrigin: ""},                               // Fragment should not be accepted.
+		{origin: "http://user:pass@example.com", expectedValid: false, expectedOrigin: ""},                              // Userinfo should not be accepted.
 		{origin: "http://localhost", expectedValid: true, expectedOrigin: "http://localhost"},                           // Localhost should be accepted.
 		{origin: "http://127.0.0.1", expectedValid: true, expectedOrigin: "http://127.0.0.1"},                           // IPv4 address should be accepted.
 		{origin: "http://[::1]", expectedValid: true, expectedOrigin: "http://[::1]"},                                   // IPv6 address should be accepted.
@@ -142,6 +143,18 @@ func TestSubdomainMatch(t *testing.T) {
 			name:     "no match with malformed origin port before suffix",
 			sub:      subdomain{prefix: "https://", suffix: "example.com"},
 			origin:   "https://evil.com:any.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with userinfo in origin",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://user@api.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with non-normalized origin",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://API.example.com",
 			expected: false,
 		},
 	}
