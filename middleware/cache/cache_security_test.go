@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -594,4 +596,53 @@ func Test_Cache_Security_EscapeKeyDelimiters_Unit(t *testing.T) {
 			require.NotEqual(t, a, b, "escapeKeyDelimiters(%q) must differ from escapeKeyDelimiters(%q)", pair[0], pair[1])
 		})
 	}
+}
+
+// Test_Cache_BoundKeySegment_ReservedPrefixHashed verifies that the bounding
+// helpers re-hash any segment that already starts with the reserved hashPrefix,
+// so a short literal "sha256:..." value cannot collide with a genuinely-hashed
+// long segment. Normal short values (including prefixes of "sha256:") must pass
+// through verbatim so the fast path is preserved.
+func Test_Cache_BoundKeySegment_ReservedPrefixHashed(t *testing.T) {
+	t.Parallel()
+
+	hashed := func(s string) string {
+		sum := sha256.Sum256([]byte(s))
+		return hashPrefix + hex.EncodeToString(sum[:])
+	}
+
+	t.Run("short reserved-prefix value is re-hashed", func(t *testing.T) {
+		t.Parallel()
+
+		// Short enough to skip the length bound, but starts with "sha256:".
+		input := hashPrefix + strings.Repeat("a", 8)
+		require.LessOrEqual(t, len(input), maxKeyDimensionSegmentLength)
+
+		got := boundKeySegment(input)
+		require.NotEqual(t, input, got, "reserved-prefix value must not pass through verbatim")
+		require.True(t, strings.HasPrefix(got, hashPrefix))
+		require.Equal(t, hashed(input), got)
+
+		// appendBoundKeySegment must agree with boundKeySegment.
+		require.Equal(t, got, string(appendBoundKeySegment(nil, input)))
+	})
+
+	t.Run("normal short value passes through verbatim", func(t *testing.T) {
+		t.Parallel()
+
+		const input = "plain"
+		require.Equal(t, input, boundKeySegment(input))
+		require.Equal(t, input, string(appendBoundKeySegment(nil, input)))
+	})
+
+	t.Run("prefix of reserved namespace is not over-hashed", func(t *testing.T) {
+		t.Parallel()
+
+		// "sha256" (no colon) is a prefix of "sha256:" but is NOT in the reserved
+		// namespace, so it must pass through verbatim (regression guard against
+		// reversed HasPrefix arguments).
+		const input = "sha256"
+		require.Equal(t, input, boundKeySegment(input))
+		require.Equal(t, input, string(appendBoundKeySegment(nil, input)))
+	})
 }

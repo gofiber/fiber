@@ -33,6 +33,9 @@ const (
 	maxQueryBufferSize           = 4096 // Maximum buffer size for query string canonicalization
 )
 
+// hashPrefix is the reserved namespace prefix for hashed key segments.
+const hashPrefix = "sha256:"
+
 // cache status
 // unreachable: when cache is bypass, or invalid
 // hit: cache is served
@@ -1451,27 +1454,31 @@ func escapeKeyDelimiters(s string) string {
 }
 
 func boundKeySegment(segment string) string {
-	if len(segment) <= maxKeyDimensionSegmentLength {
+	// Hash oversized segments, and also any segment that already starts with the
+	// reserved hashPrefix, so a literal "sha256:..." value cannot collide with a
+	// genuinely-hashed long segment (defense-in-depth alongside escapeKeyDelimiters).
+	if len(segment) <= maxKeyDimensionSegmentLength && !strings.HasPrefix(segment, hashPrefix) {
 		return segment
 	}
 	hash := sha256.Sum256(utils.UnsafeBytes(segment))
-	return "sha256:" + hex.EncodeToString(hash[:])
+	return hashPrefix + hex.EncodeToString(hash[:])
 }
 
 // appendBoundKeySegment appends segment to dst, hashing it first when it exceeds
-// the per-dimension length bound (same policy as boundKeySegment).
+// the per-dimension length bound or already starts with the reserved hashPrefix
+// (same policy as boundKeySegment).
 func appendBoundKeySegment(dst []byte, segment string) []byte {
-	if len(segment) <= maxKeyDimensionSegmentLength {
+	if len(segment) <= maxKeyDimensionSegmentLength && !strings.HasPrefix(segment, hashPrefix) {
 		return append(dst, segment...)
 	}
 	hash := sha256.Sum256(utils.UnsafeBytes(segment))
-	dst = append(dst, "sha256:"...)
+	dst = append(dst, hashPrefix...)
 	return hex.AppendEncode(dst, hash[:])
 }
 
 func appendHashedKeySegment(dst, segment []byte) []byte {
 	hash := sha256.Sum256(segment)
-	dst = append(dst, "sha256:"...)
+	dst = append(dst, hashPrefix...)
 	return hex.AppendEncode(dst, hash[:])
 }
 
