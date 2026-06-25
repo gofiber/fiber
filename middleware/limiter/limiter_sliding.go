@@ -185,8 +185,7 @@ func rotateWindow(e *item, ts, expiration uint64) uint64 {
 		} else {
 			e.prevHits = e.currHits
 			e.currHits = 0
-
-			e.exp = ts + expiration - elapsed
+			e.exp += expiration
 		}
 	}
 

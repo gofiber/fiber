@@ -36,6 +36,7 @@ type Extractor struct {
 - `FromQuery(param string)`: Extract from URL query parameters
 - `FromCustom(key string, fn func(fiber.Ctx) (string, error))`: Define custom extraction logic with metadata
 - `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback
+- `Extractor.Contains(pred func(Extractor) bool)`: Check whether this extractor, or any nested chained extractor, matches a predicate
 
 ### Source Inspection
 
@@ -67,8 +68,24 @@ The `Chain` function implements fallback logic:
 - Returns first successful extraction (non-empty value, no error)
 - If all extractors fail, returns the last error encountered or `ErrNotFound`
 - **Skips extractors with `nil` Extract functions** (graceful error handling)
+- Detects recursive chain re-entry and returns `ErrChainCycle`
 - Preserves metadata from first extractor for introspection
 - Stores defensive copy for runtime inspection via the `Chain` field
+
+### Chain Introspection
+
+Use `Contains` to inspect a single extractor or extractor tree with a predicate.
+
+```go
+chain := Chain(
+    FromHeader("X-CSRF-Token"),
+    FromCookie("CSRF"),
+)
+
+hasCSRFCookie := chain.Contains(func(e Extractor) bool {
+    return e.Source == SourceCookie && e.Key == "CSRF"
+})
+```
 
 ## Security Considerations
 

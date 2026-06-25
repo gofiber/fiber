@@ -7,32 +7,6 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
-// matchScheme compares the scheme of the domain and pattern
-func matchScheme(domain, pattern string) bool {
-	dScheme, _, dFound := strings.Cut(domain, ":")
-	pScheme, _, pFound := strings.Cut(pattern, ":")
-	return dFound && pFound && dScheme == pScheme
-}
-
-// normalizeDomain removes the scheme and port from the input domain
-func normalizeDomain(input string) string {
-	// Remove scheme
-	if after, found := strings.CutPrefix(input, "https://"); found {
-		input = after
-	} else if after, found := strings.CutPrefix(input, "http://"); found {
-		input = after
-	}
-
-	// Find and remove port, if present
-	if input != "" && input[0] != '[' {
-		if before, _, found := strings.Cut(input, ":"); found {
-			input = before
-		}
-	}
-
-	return input
-}
-
 // normalizeOrigin checks if the provided origin is in a correct format
 // and normalizes it by removing any path or trailing slash.
 // It returns a boolean indicating whether the origin is valid
@@ -72,6 +46,11 @@ type subdomain struct {
 }
 
 func (s subdomain) match(o string) bool {
+	isValid, normalizedOrigin := normalizeOrigin(o)
+	if !isValid || normalizedOrigin != o {
+		return false
+	}
+
 	// Not a subdomain if not long enough for a dot separator.
 	if len(o) < len(s.prefix)+len(s.suffix)+1 {
 		return false
@@ -95,7 +74,7 @@ func (s subdomain) match(o string) bool {
 	// Extract the subdomain part (without the trailing dot) and ensure it
 	// doesn't contain empty labels.
 	sub := o[len(s.prefix) : suffixStartIndex-1]
-	if sub == "" || strings.HasPrefix(sub, ".") || strings.Contains(sub, "..") {
+	if sub == "" || strings.HasPrefix(sub, ".") || strings.HasSuffix(sub, ".") || strings.Contains(sub, "..") {
 		return false
 	}
 

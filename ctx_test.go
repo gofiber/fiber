@@ -5050,6 +5050,23 @@ func Benchmark_Ctx_Query(b *testing.B) {
 	require.Equal(b, "john", res)
 }
 
+// Benchmark_Ctx_Query_Generic_Default exercises the typed Query[V] failure path,
+// where genericParseType returns an error for a missing or unparsable value and
+// the default is returned - the path the sentinel-error change makes alloc-free.
+func Benchmark_Ctx_Query_Generic_Default(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("age=notanumber")
+	var n, m int
+	b.ReportAllocs()
+	for b.Loop() {
+		n = Query[int](c, "missing", 7) // absent -> parse "" fails -> default
+		m = Query[int](c, "age", 3)     // unparsable -> fails -> default
+	}
+	require.Equal(b, 7, n)
+	require.Equal(b, 3, m)
+}
+
 // go test -run Test_Ctx_Range
 func Test_Ctx_Range(t *testing.T) {
 	t.Parallel()
