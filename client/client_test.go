@@ -1227,6 +1227,56 @@ func Test_Patch(t *testing.T) {
 	})
 }
 
+func Test_Query(t *testing.T) {
+	t.Parallel()
+
+	setupApp := func() (*fiber.App, string) {
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Query("/", func(c fiber.Ctx) error {
+				return c.Send(c.Body())
+			})
+		})
+
+		return app, addr
+	}
+
+	t.Run("global query function", func(t *testing.T) {
+		t.Parallel()
+
+		app, addr := setupApp()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
+
+		time.Sleep(1 * time.Second)
+
+		for range 5 {
+			resp, err := Query("http://"+addr, Config{Body: "query body"})
+
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode())
+			require.Equal(t, "query body", resp.String())
+		}
+	})
+
+	t.Run("client query", func(t *testing.T) {
+		t.Parallel()
+
+		app, addr := setupApp()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
+
+		for range 5 {
+			resp, err := New().Query("http://"+addr, Config{Body: "query body"})
+
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode())
+			require.Equal(t, "query body", resp.String())
+		}
+	})
+}
+
 func Test_Client_UserAgent(t *testing.T) {
 	t.Parallel()
 

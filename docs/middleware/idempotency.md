@@ -10,7 +10,7 @@ Refer to [IETF RFC 7231 §4.2.2](https://tools.ietf.org/html/rfc7231#section-4.2
 
 ## HTTP Method Categories
 
-* **Safe Methods** (do not modify server state): `GET`, `HEAD`, `OPTIONS`, `TRACE`
+* **Safe Methods** (do not modify server state): `GET`, `HEAD`, `OPTIONS`, `TRACE`, `QUERY`
 * **Idempotent Methods** (identical requests have the same effect as a single one): all safe methods **plus** `PUT` and `DELETE`
 
 > According to the RFC, safe methods never change server state, while idempotent methods may change state but remain safe to repeat.

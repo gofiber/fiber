@@ -1291,12 +1291,12 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 	}
 
 	if c.Method() == fiber.MethodQuery {
-		// RFC 10008 only requires the cache key to incorporate the request content,
-		// not that it be hashed. boundKeySegment keeps small bodies verbatim (no
-		// hashing on the hot path) and hashes only bodies larger than
-		// maxKeyDimensionSegmentLength, which still bounds the key length.
+		// RFC 10008: incorporate the request body so different QUERY bodies on the
+		// same URL get distinct keys. Escape delimiters like every other dimension
+		// (escapeKeyDelimiters has a no-alloc fast path), then bound the segment so
+		// large bodies are hashed and the key length stays capped.
 		buf = append(buf, '|', 'b', '=')
-		buf = append(buf, boundKeySegment(utils.UnsafeString(c.Request().Body()))...)
+		buf = appendBoundKeySegment(buf, escapeKeyDelimiters(utils.UnsafeString(c.Request().Body())))
 	}
 
 	result := string(buf)
