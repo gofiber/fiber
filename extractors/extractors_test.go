@@ -322,6 +322,18 @@ func Test_Extractor_Contains(t *testing.T) {
 			return e.Source == SourceCookie && e.Key == "CSRF"
 		}))
 	})
+
+	t.Run("cyclic_chain_no_match", func(t *testing.T) {
+		t.Parallel()
+
+		extractor := FromHeader("X-Token")
+		extractor.Chain = make([]Extractor, 1)
+		extractor.Chain[0] = extractor
+
+		require.False(t, extractor.Contains(func(e Extractor) bool {
+			return e.Source == SourceCookie && e.Key == "CSRF"
+		}))
+	})
 }
 
 // go test -run Test_Extractor_FromCustom
