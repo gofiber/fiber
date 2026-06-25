@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -208,60 +206,14 @@ func defaultContextValueTag(output Buffer, ctx any, _ *ContextData, extraParam s
 }
 
 // writeSanitized writes p to output with ASCII control bytes replaced by
-// spaces. Tabs are preserved. The replacement is done in-place on a single
-// pass so the hot path stays alloc-free for inputs that are already clean
-// (the common case): clean inputs forward directly to output.Write.
+// spaces. See logtemplate.WriteSanitized for the rationale; the helper is
+// shared with the logger middleware so both render untrusted input identically.
 func writeSanitized(output Buffer, p []byte) (int, error) {
-	if !needsControlSanitize(p) {
-		return output.Write(p)
-	}
-	scrubbed := make([]byte, len(p))
-	for i, b := range p {
-		if isControlByte(b) {
-			scrubbed[i] = ' '
-		} else {
-			scrubbed[i] = b
-		}
-	}
-	return output.Write(scrubbed)
+	return logtemplate.WriteSanitized(output, p)
 }
 
 func writeSanitizedString(output Buffer, s string) (int, error) {
-	if !needsControlSanitizeString(s) {
-		return output.WriteString(s)
-	}
-	scrubbed := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		b := s[i]
-		if isControlByte(b) {
-			scrubbed[i] = ' '
-		} else {
-			scrubbed[i] = b
-		}
-	}
-	return output.Write(scrubbed)
-}
-
-func needsControlSanitize(p []byte) bool {
-	return slices.ContainsFunc(p, isControlByte)
-}
-
-func needsControlSanitizeString(s string) bool {
-	return strings.IndexFunc(s, func(r rune) bool {
-		return r < 0x80 && isControlByte(byte(r)) //nolint:gosec // G115: integer overflow conversion rune -> byte
-	}) >= 0
-}
-
-// isControlByte reports whether b is an ASCII control byte that must not pass
-// through to a log line. Tab is preserved because operators frequently use it
-// for delimiting structured fields. CR, LF, NUL, and the other C0/DEL bytes
-// are replaced — they are the bytes attackers use to forge log lines or
-// corrupt terminal output via ANSI escape sequences.
-func isControlByte(b byte) bool {
-	if b == '\t' {
-		return false
-	}
-	return b < 0x20 || b == 0x7f
+	return logtemplate.WriteSanitizedString(output, s)
 }
 
 func emptyContextTag(_ Buffer, _ any, _ *ContextData, _ string) (int, error) {
