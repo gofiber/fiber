@@ -1453,6 +1453,9 @@ func appendCanonicalCookieSubset(dst []byte, c fiber.Ctx, names []string) []byte
 	return dst
 }
 
+// keyDelimiterEscaper escapes the delimiters in one pass: \ as \\, | as \p, : as \c.
+var keyDelimiterEscaper = strings.NewReplacer(`\`, `\\`, `|`, `\p`, `:`, `\c`)
+
 // escapeKeyDelimiters escapes pipe, colon, and backslash characters used as delimiters in cache keys
 // to prevent injection attacks where crafted values could collide with different inputs
 func escapeKeyDelimiters(s string) string {
@@ -1460,12 +1463,7 @@ func escapeKeyDelimiters(s string) string {
 	if !strings.ContainsAny(s, "|:\\") {
 		return s
 	}
-
-	// Escape | as \p and : as \c, and \ as \\ (backslash must be escaped first)
-	result := strings.ReplaceAll(s, "\\", "\\\\")
-	result = strings.ReplaceAll(result, "|", "\\p")
-	result = strings.ReplaceAll(result, ":", "\\c")
-	return result
+	return keyDelimiterEscaper.Replace(s)
 }
 
 func boundKeySegment(segment string) string {
