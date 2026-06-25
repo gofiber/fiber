@@ -122,7 +122,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Action depends on the HTTP method
 		switch c.Method() {
-		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
+		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace, fiber.MethodQuery:
 			cookieToken := c.Cookies(cfg.CookieName)
 
 			if cookieToken != "" {

@@ -386,6 +386,7 @@ func Test_Domain_HTTPMethods(t *testing.T) {
 		{method: MethodPut, reg: func(r Router, p string, h any, hs ...any) Router { return r.Put(p, h, hs...) }},
 		{method: MethodDelete, reg: func(r Router, p string, h any, hs ...any) Router { return r.Delete(p, h, hs...) }},
 		{method: MethodPatch, reg: func(r Router, p string, h any, hs ...any) Router { return r.Patch(p, h, hs...) }},
+		{method: MethodQuery, reg: func(r Router, p string, h any, hs ...any) Router { return r.Query(p, h, hs...) }},
 		{method: MethodOptions, reg: func(r Router, p string, h any, hs ...any) Router { return r.Options(p, h, hs...) }},
 		{method: MethodConnect, reg: func(r Router, p string, h any, hs ...any) Router { return r.Connect(p, h, hs...) }},
 		{method: MethodTrace, reg: func(r Router, p string, h any, hs ...any) Router { return r.Trace(p, h, hs...) }},
@@ -1189,8 +1190,11 @@ func Test_Domain_RouteChainAllMethods(t *testing.T) {
 	rc.Patch(func(c Ctx) error {
 		return c.SendString("patch")
 	})
+	rc.Query(func(c Ctx) error {
+		return c.SendString("query")
+	})
 
-	for _, method := range []string{MethodPut, MethodDelete, MethodPatch, MethodOptions} {
+	for _, method := range []string{MethodPut, MethodDelete, MethodPatch, MethodOptions, MethodQuery} {
 		req := httptest.NewRequest(method, "/test", http.NoBody)
 		req.Host = "api.example.com"
 		resp, err := app.Test(req)

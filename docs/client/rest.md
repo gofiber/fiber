@@ -149,6 +149,14 @@ Sends a PATCH request.
 func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
 ```
 
+### Query
+
+Sends a QUERY request.
+
+```go title="Signature"
+func (c *Client) Query(url string, cfg ...Config) (*Response, error)
+```
+
 ### Delete
 
 Sends a DELETE request.
@@ -891,6 +899,14 @@ Patch is a convenience method that sends a PATCH request using the `defaultClien
 
 ```go title="Signature"
 func Patch(url string, cfg ...Config) (*Response, error)
+```
+
+### Query
+
+Query is a convenience method that sends a QUERY request using the `defaultClient`.
+
+```go title="Signature"
+func Query(url string, cfg ...Config) (*Response, error)
 ```
 
 ### Delete

@@ -609,6 +609,13 @@ func (c *Client) Patch(url string, cfg ...Config) (*Response, error) {
 	return req.Patch(url)
 }
 
+// Query sends a QUERY request to the specified URL, similar to axios.
+func (c *Client) Query(url string, cfg ...Config) (*Response, error) {
+	req := AcquireRequest().SetClient(c)
+	setConfigToRequest(req, cfg...)
+	return req.Query(url)
+}
+
 // Custom sends a request with a custom method to the specified URL, similar to axios.
 func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
@@ -873,4 +880,9 @@ func Options(url string, cfg ...Config) (*Response, error) {
 // Patch sends a PATCH request using the default client.
 func Patch(url string, cfg ...Config) (*Response, error) {
 	return C().Patch(url, cfg...)
+}
+
+// Query sends a QUERY request using the default client.
+func Query(url string, cfg ...Config) (*Response, error) {
+	return C().Query(url, cfg...)
 }

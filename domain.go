@@ -527,6 +527,12 @@ func (d *domainRouter) Patch(path string, handler any, handlers ...any) Router {
 	return d.Add([]string{MethodPatch}, path, handler, handlers...)
 }
 
+// Query registers a route for QUERY methods.
+// The handler only executes when the request hostname matches the domain pattern.
+func (d *domainRouter) Query(path string, handler any, handlers ...any) Router {
+	return d.Add([]string{MethodQuery}, path, handler, handlers...)
+}
+
 // Add allows you to specify multiple HTTP methods to register a route.
 // The handler only executes when the request hostname matches the domain pattern.
 func (d *domainRouter) Add(methods []string, path string, handler any, handlers ...any) Router {
@@ -809,6 +815,10 @@ func (r *domainRegistering) Trace(handler any, handlers ...any) Register {
 
 func (r *domainRegistering) Patch(handler any, handlers ...any) Register {
 	return r.Add([]string{MethodPatch}, handler, handlers...)
+}
+
+func (r *domainRegistering) Query(handler any, handlers ...any) Register {
+	return r.Add([]string{MethodQuery}, handler, handlers...)
 }
 
 func (r *domainRegistering) Add(methods []string, handler any, handlers ...any) Register {

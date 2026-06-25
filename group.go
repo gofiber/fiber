@@ -300,6 +300,12 @@ func (grp *Group) Patch(path string, handler any, handlers ...any) Router {
 	return grp.Add([]string{MethodPatch}, path, handler, handlers...)
 }
 
+// Query registers a route for QUERY methods that performs a safe, idempotent
+// query with a request body.
+func (grp *Group) Query(path string, handler any, handlers ...any) Router {
+	return grp.Add([]string{MethodQuery}, path, handler, handlers...)
+}
+
 // Add allows you to specify multiple HTTP methods to register a route.
 // The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (grp *Group) Add(methods []string, path string, handler any, handlers ...any) Router {

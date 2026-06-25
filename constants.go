@@ -11,6 +11,7 @@ const (
 	MethodConnect = "CONNECT" // RFC 7231, 4.3.6
 	MethodOptions = "OPTIONS" // RFC 7231, 4.3.7
 	MethodTrace   = "TRACE"   // RFC 7231, 4.3.8
+	MethodQuery   = "QUERY"   // RFC 10008
 	methodUse     = "USE"
 )
 

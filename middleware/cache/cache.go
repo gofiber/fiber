@@ -1290,6 +1290,15 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 		buf = appendCanonicalCookieSubset(buf, c, cfg.KeyCookies)
 	}
 
+	if c.Method() == fiber.MethodQuery {
+		// RFC 10008: incorporate the request body so different QUERY bodies on the
+		// same URL get distinct keys. Escape delimiters like every other dimension
+		// (escapeKeyDelimiters has a no-alloc fast path), then bound the segment so
+		// large bodies are hashed and the key length stays capped.
+		buf = append(buf, '|', 'b', '=')
+		buf = appendBoundKeySegment(buf, escapeKeyDelimiters(utils.UnsafeString(c.Request().Body())))
+	}
+
 	result := string(buf)
 
 	// Reset buffer and return to pool, but discard if it grew too large
