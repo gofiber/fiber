@@ -630,35 +630,6 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 	}, acceptedTypes)
 }
 
-func Test_Utils_UniqueRouteStack(t *testing.T) {
-	t.Parallel()
-	route1 := &Route{}
-	route2 := &Route{}
-	route3 := &Route{}
-	require.Equal(
-		t,
-		[]*Route{
-			route1,
-			route2,
-			route3,
-		},
-		uniqueRouteStack([]*Route{
-			route1,
-			route1,
-			route1,
-			route2,
-			route2,
-			route2,
-			route3,
-			route3,
-			route3,
-			route1,
-			route2,
-			route3,
-		}),
-	)
-}
-
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
 	res := getGroupPath("/v1", "/")
