@@ -1101,15 +1101,6 @@ func parseResponseCacheControl(cc []byte) responseCacheControl {
 	return parsed
 }
 
-// parseMaxAge extracts the max-age directive from a Cache-Control header.
-func parseMaxAge(cc string) (time.Duration, bool) {
-	parsed := parseResponseCacheControl(utils.UnsafeBytes(cc))
-	if !parsed.maxAgeSet {
-		return 0, false
-	}
-	return secondsToDuration(parsed.maxAge), true
-}
-
 func parseRequestCacheControl(cc []byte) requestCacheDirectives {
 	directives := requestCacheDirectives{}
 	parseCacheControlDirectives(cc, func(key, value []byte) {
@@ -1143,10 +1134,6 @@ func parseRequestCacheControl(cc []byte) requestCacheDirectives {
 		}
 	})
 	return directives
-}
-
-func parseRequestCacheControlString(cc string) requestCacheDirectives {
-	return parseRequestCacheControl(utils.UnsafeBytes(cc))
 }
 
 func cachedResponseAge(e *item, now uint64) uint64 {
@@ -1586,10 +1573,6 @@ func allowsSharedCacheDirectives(cc responseCacheControl) bool {
 	// authenticated requests §3.6 requires an explicit shared-cache directive. Therefore,
 	// an Expires header alone MUST NOT allow sharing when Authorization is present.
 	return false
-}
-
-func allowsSharedCache(cc string) bool {
-	return allowsSharedCacheDirectives(parseResponseCacheControl(utils.UnsafeBytes(cc)))
 }
 
 func makeHashAuthFunc(hexBufPool *sync.Pool) func([]byte) string {
