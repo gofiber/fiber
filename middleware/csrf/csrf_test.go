@@ -214,7 +214,7 @@ func Test_CSRF(t *testing.T) {
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
 
-	methods := [4]string{fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace}
+	methods := [5]string{fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace, fiber.MethodQuery}
 
 	for _, method := range methods {
 		// Generate CSRF token
@@ -297,7 +297,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 
 	h := app.Handler()
 
-	methods := [4]string{fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace}
+	methods := [5]string{fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace, fiber.MethodQuery}
 
 	for _, method := range methods {
 		// Generate CSRF token

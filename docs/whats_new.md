@@ -512,6 +512,21 @@ app.Get("/health", handler) // HEAD /health now returns 405 unless you add it ma
 
 Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
 
+### QUERY method (RFC 10008)
+
+Fiber now supports the HTTP `QUERY` method ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html)) as a first-class verb. `QUERY` is safe and idempotent like `GET`, but allows a request body for complex queries.
+
+```go title="Register a QUERY route"
+app := fiber.New()
+
+app.Query("/search", func(c fiber.Ctx) error {
+    // QUERY carries a request body, unlike GET.
+    return c.Send(c.Body())
+})
+```
+
+`Query` is available on `App`, `Group`, the route-chaining `Register` interface, and domain routers, plus the HTTP client (`Request.Query`, `Client.Query`, and the package-level `Query`). `fiber.IsMethodSafe` and `fiber.IsMethodIdempotent` both return `true` for `QUERY`, so middleware that keys off method safety (CSRF, idempotency, early data) treats it like the other safe methods. The cache middleware can cache `QUERY` responses when `QUERY` is added to `Config.Methods`; the default key generator folds the request body into the cache key so different bodies on the same URL do not collide.
+
 ### Middleware registration
 
 We have aligned our method for middlewares closer to [`Express`](https://expressjs.com/en/api.html#app.use) and now also support the [`Use`](./api/app#use) of multiple prefixes.

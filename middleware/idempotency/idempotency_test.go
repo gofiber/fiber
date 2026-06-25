@@ -71,6 +71,7 @@ func Test_Idempotency(t *testing.T) {
 	app.Add([]string{
 		fiber.MethodGet,
 		fiber.MethodPost,
+		fiber.MethodQuery,
 	}, "/", func(c fiber.Ctx) error {
 		return c.SendString(strconv.Itoa(nextCount()))
 	})
@@ -129,6 +130,11 @@ func Test_Idempotency(t *testing.T) {
 	}
 	time.Sleep(3 * lifetime)
 	require.Equal(t, "12", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
+
+	// QUERY is safe (RFC 10008), so idempotency is skipped: each request runs the
+	// handler and increments the counter even with an idempotency key set.
+	require.Equal(t, "13", doReq(fiber.MethodQuery, "/", "33333333-3333-3333-3333-333333333333"))
+	require.Equal(t, "14", doReq(fiber.MethodQuery, "/", "33333333-3333-3333-3333-333333333333"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Idempotency -benchmem -count=4
