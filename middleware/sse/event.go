@@ -120,16 +120,6 @@ func jsonMarshalOrDefault(jsonMarshal []utils.JSONMarshal) utils.JSONMarshal {
 	return json.Marshal
 }
 
-func writeData(w *bufio.Writer, data string) error {
-	data = normalizeNewlines(data)
-	for line := range strings.SplitSeq(data, "\n") {
-		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
-			return fmt.Errorf("sse: write data: %w", err)
-		}
-	}
-	return nil
-}
-
 func appendField(w *bytes.Buffer, field, value string) {
 	w.WriteString(field) //nolint:errcheck // bytes.Buffer writes never fail.
 	w.WriteString(": ")  //nolint:errcheck // bytes.Buffer writes never fail.
