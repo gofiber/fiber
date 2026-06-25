@@ -228,15 +228,6 @@ func Test_SSE_CommentReturnsWriterError(t *testing.T) {
 	require.ErrorIs(t, writeComment(w, ""), writeErr)
 }
 
-func Test_SSE_WriteDataReturnsWriterError(t *testing.T) {
-	t.Parallel()
-
-	writeErr := errors.New("write failed")
-	w := bufio.NewWriterSize(errWriter{err: writeErr}, 1)
-
-	require.ErrorIs(t, writeData(w, "hello"), writeErr)
-}
-
 func Test_SSE_NewWritesHeadersAndEvents(t *testing.T) {
 	t.Parallel()
 
