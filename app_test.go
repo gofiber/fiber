@@ -232,6 +232,23 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 }
 
+func Test_App_QueryMethod_AllowHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Query("/", testEmptyHandler)
+
+	// OPTIONS auto-response advertises QUERY in the Allow header.
+	resp, err := app.Test(httptest.NewRequest(MethodOptions, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Contains(t, resp.Header.Get(HeaderAllow), MethodQuery)
+
+	// A non-registered method yields 405 with QUERY listed in Allow.
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	require.Contains(t, resp.Header.Get(HeaderAllow), MethodQuery)
+}
+
 func Test_App_RegisterNetHTTPHandler(t *testing.T) {
 	t.Parallel()
 
