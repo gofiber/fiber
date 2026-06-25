@@ -81,9 +81,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 
 func (app *App) setHandlerCtxIfNeeded(ctx CustomCtx) {
 	if app.hasCustomCtx || isCustomCtx(ctx) {
-		if setter, ok := ctx.(interface{ setHandlerCtx(CustomCtx) }); ok {
-			setter.setHandlerCtx(ctx)
-		}
+		ctx.setHandlerCtx(ctx)
 	}
 }
 

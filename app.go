@@ -607,6 +607,7 @@ const (
 	methodOptions
 	methodTrace
 	methodPatch
+	methodQuery
 )
 
 // HTTP methods enabled by default
@@ -620,6 +621,7 @@ var DefaultMethods = []string{
 	methodOptions: MethodOptions,
 	methodTrace:   MethodTrace,
 	methodPatch:   MethodPatch,
+	methodQuery:   MethodQuery,
 }
 
 // httpReadResponse - Used for test mocking http.ReadResponse
@@ -632,8 +634,7 @@ func DefaultErrorHandler(c Ctx, err error) error {
 	}
 
 	code := StatusInternalServerError
-	var e *Error
-	matched := errors.As(err, &e)
+	e, matched := asFiberError(err)
 	if matched && e != nil {
 		code = e.Code
 	}
@@ -643,6 +644,22 @@ func DefaultErrorHandler(c Ctx, err error) error {
 	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	return c.Status(code).SendString(message)
+}
+
+// asFiberError reports whether err is or wraps a *Error and returns it. A direct
+// *Error is matched alloc-free by a type assertion; wrapped or joined errors
+// fall back to errors.As.
+func asFiberError(err error) (*Error, bool) {
+	if err == nil {
+		return nil, false
+	}
+	if e, ok := err.(*Error); ok { //nolint:errorlint // intentional fast path; wrapped/joined errors fall through to errors.As below
+		return e, true
+	}
+	// Declared here so errors.As's &target escapes only on this slow path.
+	var target *Error
+	matched := errors.As(err, &target)
+	return target, matched
 }
 
 // New creates a new Fiber named instance.
@@ -1073,6 +1090,12 @@ func (app *App) Trace(path string, handler any, handlers ...any) Router {
 // modifications to a resource.
 func (app *App) Patch(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodPatch}, path, handler, handlers...)
+}
+
+// Query registers a route for QUERY methods that performs a safe, idempotent
+// query with a request body.
+func (app *App) Query(path string, handler any, handlers ...any) Router {
+	return app.Add([]string{MethodQuery}, path, handler, handlers...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.

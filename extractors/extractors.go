@@ -63,6 +63,9 @@ const (
 // ErrNotFound is returned when the requested value is missing or empty.
 var ErrNotFound = errors.New("value not found")
 
+// ErrChainCycle is returned when a chain extractor recursively invokes itself.
+var ErrChainCycle = errors.New("cyclic extractor chain")
+
 // Extractor defines a value extraction method with metadata.
 type Extractor struct {
 	Extract    func(fiber.Ctx) (string, error)
@@ -70,6 +73,43 @@ type Extractor struct {
 	AuthScheme string      // The auth scheme used, e.g., "Bearer"
 	Chain      []Extractor // For chained extractors, stores all extractors in the chain
 	Source     Source      // The type of source being extracted from
+}
+
+// Contains reports whether this extractor, or any extractor in its chain, matches pred.
+//
+// If pred is nil, Contains returns false.
+func (e Extractor) Contains(pred func(Extractor) bool) bool {
+	if pred == nil {
+		return false
+	}
+
+	stack := make([]*Extractor, 0, len(e.Chain)+1)
+	stack = append(stack, &e)
+	visited := make(map[*Extractor]struct{}, len(e.Chain)+1)
+
+	for len(stack) > 0 {
+		last := len(stack) - 1
+		curr := stack[last]
+		stack = stack[:last]
+		if _, ok := visited[curr]; ok {
+			continue
+		}
+		visited[curr] = struct{}{}
+
+		if pred(*curr) {
+			return true
+		}
+
+		for i := range curr.Chain {
+			stack = append(stack, &curr.Chain[i])
+		}
+	}
+
+	return false
+}
+
+type chainGuardKey struct {
+	id *byte
 }
 
 // FromAuthHeader extracts a value from the Authorization header with an optional prefix.
@@ -474,9 +514,17 @@ func Chain(extractors ...Extractor) Extractor {
 	// Use the source and key from the first extractor as the primary
 	primarySource := extractors[0].Source
 	primaryKey := extractors[0].Key
+	guardKey := chainGuardKey{id: new(byte)}
 
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
+			if active, ok := c.Locals(guardKey).(bool); ok && active {
+				return "", ErrChainCycle
+			}
+
+			c.Locals(guardKey, true)
+			defer c.Locals(guardKey, false)
+
 			var lastErr error // last error encountered (including ErrNotFound)
 
 			for _, extractor := range extractors {

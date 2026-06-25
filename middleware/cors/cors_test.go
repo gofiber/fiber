@@ -140,7 +140,7 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	h(ctx)
 
-	require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)))
+	require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH, QUERY", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)))
 	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
 	require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 }
@@ -612,6 +612,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 		fiber.MethodDelete,
 		fiber.MethodPatch,
 		fiber.MethodHead,
+		fiber.MethodQuery,
 	}
 
 	// Get handler pointer
@@ -642,7 +643,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			handler(ctx)
 			require.Equal(t, 204, ctx.Response.StatusCode(), "Status code should be 204")
 			require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should be set")
-			require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should be set (preflight request)")
+			require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH, QUERY", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should be set (preflight request)")
 			require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should be set (preflight request)")
 		}
 	})
@@ -676,7 +677,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			handler(ctx)
 			require.Equal(t, 204, ctx.Response.StatusCode(), "Status code should be 204")
 			require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should be set")
-			require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should be set (preflight request)")
+			require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH, QUERY", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should be set (preflight request)")
 			require.Equal(t, "X-Custom-Header", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should be set (preflight request)")
 		}
 	})
@@ -1220,6 +1221,52 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 
 	// Verify the Access-Control-Allow-Private-Network header is not present
 	require.Empty(t, string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
+}
+
+// Test_CORS_Query_RequiresPreflight documents RFC 10008: QUERY is not a
+// CORS-safelisted method (the safelisted set is GET/HEAD/POST per the Fetch
+// spec), so a CORS-aware user agent must preflight it. Server-side that means:
+//   - a QUERY preflight must be answered with QUERY in Access-Control-Allow-Methods, and
+//   - an actual QUERY request must be handled as a simple/non-preflight response
+//     (Allow-Origin set, no Allow-Methods) — i.e. QUERY is gated by preflight, not
+//     treated as server-side safelisted.
+func Test_CORS_Query_RequiresPreflight(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New()) // default config: QUERY is in AllowMethods
+	app.Use(func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+	handler := app.Handler()
+
+	t.Run("QUERY preflight is answered with QUERY allowed", func(t *testing.T) {
+		t.Parallel()
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Request.Header.SetMethod(fiber.MethodOptions)
+		ctx.Request.SetRequestURI("https://example.com/")
+		ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
+		ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodQuery)
+		handler(ctx)
+
+		require.Equal(t, fiber.StatusNoContent, ctx.Response.StatusCode(), "preflight should return 204")
+		require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+		require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), fiber.MethodQuery,
+			"preflight must advertise QUERY so the user agent allows the request")
+	})
+
+	t.Run("actual QUERY request is a simple response, not safelisted", func(t *testing.T) {
+		t.Parallel()
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Request.Header.SetMethod(fiber.MethodQuery)
+		ctx.Request.SetRequestURI("https://example.com/")
+		ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
+		handler(ctx)
+
+		require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+		require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+		require.Empty(t, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)),
+			"actual (non-preflight) QUERY must not carry Access-Control-Allow-Methods")
+	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_CORS_NewHandler -benchmem -count=4

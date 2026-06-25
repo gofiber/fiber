@@ -935,6 +935,8 @@ func (app *App) methodInt(s string) int {
 			return methodTrace
 		case MethodPatch:
 			return methodPatch
+		case MethodQuery:
+			return methodQuery
 		default:
 			return -1
 		}
@@ -954,7 +956,8 @@ func IsMethodSafe(m string) bool {
 	case MethodGet,
 		MethodHead,
 		MethodOptions,
-		MethodTrace:
+		MethodTrace,
+		MethodQuery:
 		return true
 	default:
 		return false
@@ -994,87 +997,92 @@ var (
 	errParsedEmptyString = errors.New("parsed result is empty string")
 	errParsedEmptyBytes  = errors.New("parsed result is empty bytes")
 	errParsedType        = errors.New("unsupported generic type")
+	// errParseValue flags a failed numeric/bool parse; callers only test err != nil.
+	errParseValue = errors.New("failed to parse value")
 )
 
+// genericParseType parses str into V. Parse failures return the static errParseValue
+// sentinel: the error is never surfaced (callers only test err != nil), so a flat
+// sentinel is enough and avoids a per-call fmt.Errorf alloc on the hot default path.
 func genericParseType[V GenericType](str string) (V, error) {
 	var v V
 	switch any(v).(type) {
 	case int:
 		result, err := utils.ParseInt(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse int: %w", err)
+			return v, errParseValue
 		}
 		return any(int(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int8:
 		result, err := utils.ParseInt8(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse int8: %w", err)
+			return v, errParseValue
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int16:
 		result, err := utils.ParseInt16(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse int16: %w", err)
+			return v, errParseValue
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int32:
 		result, err := utils.ParseInt32(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse int32: %w", err)
+			return v, errParseValue
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int64:
 		result, err := utils.ParseInt(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse int64: %w", err)
+			return v, errParseValue
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint:
 		result, err := utils.ParseUint(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse uint: %w", err)
+			return v, errParseValue
 		}
 		return any(uint(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint8:
 		result, err := utils.ParseUint8(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse uint8: %w", err)
+			return v, errParseValue
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint16:
 		result, err := utils.ParseUint16(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse uint16: %w", err)
+			return v, errParseValue
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint32:
 		result, err := utils.ParseUint32(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse uint32: %w", err)
+			return v, errParseValue
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint64:
 		result, err := utils.ParseUint(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse uint64: %w", err)
+			return v, errParseValue
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float32:
 		result, err := utils.ParseFloat32(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse float32: %w", err)
+			return v, errParseValue
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float64:
 		result, err := utils.ParseFloat64(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse float64: %w", err)
+			return v, errParseValue
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case bool:
 		result, err := strconv.ParseBool(str)
 		if err != nil {
-			return v, fmt.Errorf("failed to parse bool: %w", err)
+			return v, errParseValue
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case string:

@@ -970,7 +970,7 @@ func testGenericTypeInt[V GenericTypeInteger](t *testing.T, name string, cases [
 				require.NoError(t, err)
 				require.Equal(t, V(test.value), v)
 			} else {
-				require.ErrorIs(t, err, strconv.ErrRange)
+				require.ErrorIs(t, err, errParseValue)
 			}
 		}
 		testGenericParseError[V](t)
@@ -1041,7 +1041,7 @@ func testGenericTypeUint[V GenericTypeInteger](t *testing.T, name string, cases 
 				require.NoError(t, err)
 				require.Equal(t, V(test.value), v)
 			} else {
-				require.ErrorIs(t, err, strconv.ErrRange)
+				require.ErrorIs(t, err, errParseValue)
 			}
 		}
 		testGenericParseError[V](t)
@@ -1288,7 +1288,7 @@ func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, t
 			require.NoError(t, err)
 			require.Equal(t, V(test.value), v)
 		} else {
-			require.ErrorIs(t, err, strconv.ErrRange)
+			require.ErrorIs(t, err, errParseValue)
 		}
 	})
 }
@@ -1367,7 +1367,7 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 			require.NoError(t, err)
 			require.Equal(t, V(test.value), v)
 		} else {
-			require.ErrorIs(t, err, strconv.ErrRange)
+			require.ErrorIs(t, err, errParseValue)
 		}
 	})
 }
@@ -1823,4 +1823,32 @@ func TestValueFromContext(t *testing.T) {
 		require.False(t, ok)
 		require.Empty(t, value)
 	})
+}
+
+func Test_IsMethodSafe(t *testing.T) {
+	t.Parallel()
+
+	safeMethods := []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery}
+	unsafeMethods := []string{MethodPost, MethodPut, MethodPatch, MethodDelete, MethodConnect}
+
+	for _, m := range safeMethods {
+		require.True(t, IsMethodSafe(m), "%s should be safe", m)
+	}
+	for _, m := range unsafeMethods {
+		require.False(t, IsMethodSafe(m), "%s should not be safe", m)
+	}
+}
+
+func Test_IsMethodIdempotent(t *testing.T) {
+	t.Parallel()
+
+	idempotent := []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery, MethodPut, MethodDelete}
+	notIdempotent := []string{MethodPost, MethodPatch, MethodConnect}
+
+	for _, m := range idempotent {
+		require.True(t, IsMethodIdempotent(m), "%s should be idempotent", m)
+	}
+	for _, m := range notIdempotent {
+		require.False(t, IsMethodIdempotent(m), "%s should not be idempotent", m)
+	}
 }

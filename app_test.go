@@ -232,6 +232,23 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 }
 
+func Test_App_QueryMethod_AllowHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Query("/", testEmptyHandler)
+
+	// OPTIONS auto-response advertises QUERY in the Allow header.
+	resp, err := app.Test(httptest.NewRequest(MethodOptions, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Contains(t, resp.Header.Get(HeaderAllow), MethodQuery)
+
+	// A non-registered method yields 405 with QUERY listed in Allow.
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	require.Contains(t, resp.Header.Get(HeaderAllow), MethodQuery)
+}
+
 func Test_App_RegisterNetHTTPHandler(t *testing.T) {
 	t.Parallel()
 
@@ -1298,6 +1315,9 @@ func Test_App_Methods(t *testing.T) {
 	app.Trace("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodTrace)
 
+	app.Query("/:john?/:doe?", dummyHandler)
+	testStatus200(t, app, "/john/doe", MethodQuery)
+
 	app.Get("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodGet)
 
@@ -1767,6 +1787,9 @@ func Test_App_Group(t *testing.T) {
 	grp.Trace("/TRACE", dummyHandler)
 	testStatus200(t, app, "/test/TRACE", MethodTrace)
 
+	grp.Query("/QUERY", dummyHandler)
+	testStatus200(t, app, "/test/QUERY", MethodQuery)
+
 	grp.All("/ALL", dummyHandler)
 	testStatus200(t, app, "/test/ALL", MethodPost)
 
@@ -1804,7 +1827,8 @@ func Test_App_RouteChain(t *testing.T) {
 		Connect(dummyHandler).
 		Options(dummyHandler).
 		Trace(dummyHandler).
-		Patch(dummyHandler)
+		Patch(dummyHandler).
+		Query(dummyHandler)
 
 	testStatus200(t, app, "/test", MethodGet)
 	testStatus200(t, app, "/test", MethodHead)
@@ -1815,6 +1839,7 @@ func Test_App_RouteChain(t *testing.T) {
 	testStatus200(t, app, "/test", MethodOptions)
 	testStatus200(t, app, "/test", MethodTrace)
 	testStatus200(t, app, "/test", MethodPatch)
+	testStatus200(t, app, "/test", MethodQuery)
 
 	register.RouteChain("/v1").Get(dummyHandler).Post(dummyHandler)
 
@@ -2603,6 +2628,7 @@ func Test_App_Stack(t *testing.T) {
 	app.Get("/path1", testEmptyHandler)
 	app.Get("/path2", testEmptyHandler)
 	app.Post("/path3", testEmptyHandler)
+	app.Query("/path4", testEmptyHandler)
 
 	app.startupProcess()
 
@@ -2618,6 +2644,7 @@ func Test_App_Stack(t *testing.T) {
 	require.Len(t, stack[app.methodInt(MethodConnect)], 1)
 	require.Len(t, stack[app.methodInt(MethodOptions)], 1)
 	require.Len(t, stack[app.methodInt(MethodTrace)], 1)
+	require.Len(t, stack[app.methodInt(MethodQuery)], 2)
 }
 
 // go test -run Test_App_HandlersCount

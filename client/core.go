@@ -113,13 +113,13 @@ func (c *core) execFunc() (*Response, error) {
 		if cfg != nil {
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
-				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead || string(reqv.Header.Method()) == fiber.MethodQuery) {
 					return c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
 				return c.client.Do(reqv, respv)
 			})
 		} else {
-			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead || string(reqv.Header.Method()) == fiber.MethodQuery) {
 				err = c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
 				err = c.client.Do(reqv, respv)
