@@ -646,3 +646,46 @@ func Test_Cache_BoundKeySegment_ReservedPrefixHashed(t *testing.T) {
 		require.Equal(t, input, string(appendBoundKeySegment(nil, input)))
 	})
 }
+
+// Test_Cache_Security_QueryBody_RawHashDomain verifies that the QUERY body is
+// always hashed over its RAW bytes, never the escaped form. Mixing the two
+// domains would let a small body collide with a large one: "a|" repeated escapes
+// to "a\p" repeated, which must NOT hash-collide with a body that already
+// contains the literal bytes "a\p" repeated.
+func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 1 * time.Hour,
+		Methods:    []string{fiber.MethodQuery},
+	}))
+
+	var count atomic.Int32
+	app.Query("/", func(c fiber.Ctx) error {
+		count.Add(1)
+		return c.SendString("response")
+	})
+
+	// bodyA: 130 raw bytes (<=192, takes the verbatim branch); escapes to
+	// "a\p" x65 = 195 bytes (>192), so it is hashed over the RAW "a|" x65.
+	bodyA := strings.Repeat("a|", 65)
+	// bodyB: 195 raw bytes of literal "a\p" (>192), hashed over the RAW bytes.
+	// If the small branch hashed the escaped form, bodyA and bodyB would collide.
+	bodyB := strings.Repeat("a\\p", 65)
+	require.NotEqual(t, bodyA, bodyB)
+
+	doQuery := func(body string) string {
+		req := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(body))
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		return resp.Header.Get("X-Cache")
+	}
+
+	require.Equal(t, cacheMiss, doQuery(bodyA))
+	require.Equal(t, cacheMiss, doQuery(bodyB), "distinct bodies must not collide")
+	require.Equal(t, int32(2), count.Load())
+	require.Equal(t, cacheHit, doQuery(bodyA), "identical body must hit cache")
+	require.Equal(t, int32(2), count.Load())
+}

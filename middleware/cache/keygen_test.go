@@ -36,10 +36,10 @@ func keygenCorpus() []keygenCase {
 		{name: "header_val_delims", uri: "/p", headers: map[string]string{"Accept": "a|b:c"}, want: "/|q=|h=Accept:a\\pb\\cc|Accept-Encoding:|Accept-Language:"},
 		{name: "empty_query", uri: "/p?", want: "/|q=|h=Accept:|Accept-Encoding:|Accept-Language:"},
 		{name: "many_params", uri: "/p?" + strings.Repeat("k=v&", 200) + "z=1", want: "/|q=sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829|h=Accept:|Accept-Encoding:|Accept-Language:"},
-		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: "/|q=|h=Accept:|Accept-Encoding:|Accept-Language:|b=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
-		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=|h=Accept:|Accept-Encoding:|Accept-Language:|b=sha256:3ba8907e7a252327488df390ed517c45b96dead033600219bdca7107d1d3f88a"},
-		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: "/|q=|h=Accept:|Accept-Encoding:|Accept-Language:|b=sha256:37338c046cc789754a0a035eb085579f77b7950fccfb9bc692f600dfe135a971"},
-		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=x=1|h=Accept:|Accept-Encoding:|Accept-Language:|b=sha256:3ba8907e7a252327488df390ed517c45b96dead033600219bdca7107d1d3f88a"},
+		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: "/|q=|h=Accept:|Accept-Encoding:|Accept-Language:|b="},
+		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=|h=Accept:|Accept-Encoding:|Accept-Language:|b=foo=bar"},
+		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: "/|q=|h=Accept:|Accept-Encoding:|Accept-Language:|b=a\\pb\\cc"},
+		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=x=1|h=Accept:|Accept-Encoding:|Accept-Language:|b=foo=bar"},
 	}
 }
 
