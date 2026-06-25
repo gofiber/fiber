@@ -1067,6 +1067,34 @@ func Test_Request_Patch(t *testing.T) {
 	}
 }
 
+func Test_Request_Query(t *testing.T) {
+	t.Parallel()
+
+	app, ln, start := createHelperServer(t)
+
+	app.Query("/", func(c fiber.Ctx) error {
+		return c.Send(c.Body())
+	})
+
+	go start()
+	time.Sleep(100 * time.Millisecond)
+
+	client := New().SetDial(ln)
+
+	for range 5 {
+		resp, err := AcquireRequest().
+			SetClient(client).
+			SetRawBody([]byte("query body")).
+			Query("http://example.com")
+
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "query body", resp.String())
+
+		resp.Close()
+	}
+}
+
 func Test_Request_Header_With_Server(t *testing.T) {
 	t.Parallel()
 	handler := func(c fiber.Ctx) error {

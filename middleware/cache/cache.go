@@ -1290,6 +1290,15 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 		buf = appendCanonicalCookieSubset(buf, c, cfg.KeyCookies)
 	}
 
+	if c.Method() == fiber.MethodQuery {
+		// RFC 10008 only requires the cache key to incorporate the request content,
+		// not that it be hashed. boundKeySegment keeps small bodies verbatim (no
+		// hashing on the hot path) and hashes only bodies larger than
+		// maxKeyDimensionSegmentLength, which still bounds the key length.
+		buf = append(buf, '|', 'b', '=')
+		buf = append(buf, boundKeySegment(utils.UnsafeString(c.Request().Body()))...)
+	}
+
 	result := string(buf)
 
 	// Reset buffer and return to pool, but discard if it grew too large
