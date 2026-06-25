@@ -1279,11 +1279,11 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 
 	if c.Method() == fiber.MethodQuery {
 		// RFC 10008: incorporate the request body so different QUERY bodies on the
-		// same URL get distinct keys. Escape delimiters like every other dimension
-		// (escapeKeyDelimiters has a no-alloc fast path), then bound the segment so
-		// large bodies are hashed and the key length stays capped.
+		// same URL get distinct keys. Always hash the body before appending it so
+		// attacker-controlled bytes cannot collide with key suffix syntax or with
+		// the bounded-segment hash namespace used by other dimensions.
 		buf = append(buf, '|', 'b', '=')
-		buf = appendBoundKeySegment(buf, escapeKeyDelimiters(utils.UnsafeString(c.Request().Body())))
+		buf = appendHashedKeySegment(buf, c.Request().Body())
 	}
 
 	result := string(buf)
@@ -1465,6 +1465,12 @@ func appendBoundKeySegment(dst []byte, segment string) []byte {
 		return append(dst, segment...)
 	}
 	hash := sha256.Sum256(utils.UnsafeBytes(segment))
+	dst = append(dst, "sha256:"...)
+	return hex.AppendEncode(dst, hash[:])
+}
+
+func appendHashedKeySegment(dst, segment []byte) []byte {
+	hash := sha256.Sum256(segment)
 	dst = append(dst, "sha256:"...)
 	return hex.AppendEncode(dst, hash[:])
 }

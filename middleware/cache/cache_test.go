@@ -1173,6 +1173,37 @@ func Test_Cache_QueryMethod(t *testing.T) {
 		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	})
 
+	t.Run("body hash namespace does not collide with raw body", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{fiber.MethodQuery},
+		}))
+
+		var count atomic.Int32
+		app.Query("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		longBody := []byte(strings.Repeat("x", maxKeyDimensionSegmentLength+1))
+		longBodyHash := sha256.Sum256(longBody)
+		shortBody := []byte("sha256:" + hex.EncodeToString(longBodyHash[:]))
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(longBody)))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(shortBody)))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(2), count.Load())
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(longBody)))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	})
+
 	t.Run("empty body is cacheable", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
