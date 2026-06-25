@@ -1277,17 +1277,17 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 
 	if !cfg.DisableQueryKeys {
 		buf = append(buf, '|', 'q', '=')
-		buf = append(buf, canonicalQueryString(c.Request().URI())...)
+		buf = appendCanonicalQueryString(buf, c.Request().URI())
 	}
 
 	if len(cfg.KeyHeaders) > 0 {
 		buf = append(buf, '|', 'h', '=')
-		buf = append(buf, canonicalHeaderSubset(&c.Request().Header, cfg.KeyHeaders)...)
+		buf = appendCanonicalHeaderSubset(buf, &c.Request().Header, cfg.KeyHeaders)
 	}
 
 	if len(cfg.KeyCookies) > 0 {
 		buf = append(buf, '|', 'c', '=')
-		buf = append(buf, canonicalCookieSubset(c, cfg.KeyCookies)...)
+		buf = appendCanonicalCookieSubset(buf, c, cfg.KeyCookies)
 	}
 
 	result := string(buf)
@@ -1302,23 +1302,28 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 	return result
 }
 
-func canonicalQueryString(uri *fasthttp.URI) string {
+// appendCanonicalQueryString appends the canonicalized query segment to dst.
+// It avoids copying the raw query and the intermediate result string the caller
+// would otherwise have to re-append.
+func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	raw := uri.QueryString()
 	if len(raw) == 0 {
-		return ""
+		return dst
 	}
 
-	query := utils.CopyString(utils.UnsafeString(raw))
+	// Safe: the segment is consumed synchronously (appended/hashed) before the
+	// request buffer can be mutated, so no stable copy is required.
+	query := utils.UnsafeString(raw)
 
 	// Pre-scan query string to detect excessive parameters before expensive parsing.
 	// This prevents DoS via url.ParseQuery allocating large maps/slices.
 	if len(query) > maxQueryBufferSize {
-		return boundKeySegment(escapeKeyDelimiters(query))
+		return appendBoundKeySegment(dst, escapeKeyDelimiters(query))
 	}
 
 	// Fast path: single key=value pair needs no parsing or sorting
 	if strings.IndexByte(query, '&') < 0 {
-		return boundKeySegment(escapeKeyDelimiters(query))
+		return appendBoundKeySegment(dst, escapeKeyDelimiters(query))
 	}
 
 	// Quick count of potential parameters (ampersands + 1)
@@ -1328,14 +1333,14 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 			paramCount++
 			if paramCount > maxQueryParams {
 				// Too many parameters detected, hash without parsing
-				return boundKeySegment(escapeKeyDelimiters(query))
+				return appendBoundKeySegment(dst, escapeKeyDelimiters(query))
 			}
 		}
 	}
 
 	parsed, err := url.ParseQuery(query)
 	if err != nil {
-		return boundKeySegment(escapeKeyDelimiters(query))
+		return appendBoundKeySegment(dst, escapeKeyDelimiters(query))
 	}
 
 	// Double-check actual parameter count after parsing
@@ -1343,7 +1348,7 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 	for _, values := range parsed {
 		actualCount += len(values)
 		if actualCount > maxQueryParams {
-			return boundKeySegment(escapeKeyDelimiters(query))
+			return appendBoundKeySegment(dst, escapeKeyDelimiters(query))
 		}
 	}
 
@@ -1380,7 +1385,7 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 					*bufPtr = buf
 					keyBufferPool.Put(bufPtr)
 				}
-				return boundKeySegment(escapeKeyDelimiters(query))
+				return appendBoundKeySegment(dst, escapeKeyDelimiters(query))
 			}
 
 			buf = append(buf, escapedKey...)
@@ -1389,7 +1394,7 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 		}
 	}
 
-	result := boundKeySegment(string(buf))
+	dst = appendBoundKeySegment(dst, utils.UnsafeString(buf))
 
 	// Return buffer to pool if not oversized
 	if cap(buf) <= defaultKeyBufferCap*4 {
@@ -1397,51 +1402,41 @@ func canonicalQueryString(uri *fasthttp.URI) string {
 		keyBufferPool.Put(bufPtr)
 	}
 
-	return result
+	return dst
 }
 
-func canonicalHeaderSubset(header *fasthttp.RequestHeader, names []string) string {
-	if len(names) == 0 {
-		return ""
-	}
-
-	buf := make([]byte, 0, len(names)*16)
+func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, names []string) []byte {
 	for idx, name := range names {
 		if idx > 0 {
-			buf = append(buf, '|')
+			dst = append(dst, '|')
 		}
 		// Escape name (though names are normalized and trusted)
-		buf = append(buf, escapeKeyDelimiters(name)...)
-		buf = append(buf, ':')
+		dst = append(dst, escapeKeyDelimiters(name)...)
+		dst = append(dst, ':')
 		headerValue := header.Peek(name)
 		// Escape value to prevent delimiter injection
 		escapedValue := escapeKeyDelimiters(utils.UnsafeString(headerValue))
-		buf = append(buf, boundKeySegment(escapedValue)...)
+		dst = appendBoundKeySegment(dst, escapedValue)
 	}
 
-	return string(buf)
+	return dst
 }
 
-func canonicalCookieSubset(c fiber.Ctx, names []string) string {
-	if len(names) == 0 {
-		return ""
-	}
-
-	buf := make([]byte, 0, len(names)*16)
+func appendCanonicalCookieSubset(dst []byte, c fiber.Ctx, names []string) []byte {
 	for idx, name := range names {
 		if idx > 0 {
-			buf = append(buf, '|')
+			dst = append(dst, '|')
 		}
 		// Escape name (though names are normalized and trusted)
-		buf = append(buf, escapeKeyDelimiters(name)...)
-		buf = append(buf, ':')
+		dst = append(dst, escapeKeyDelimiters(name)...)
+		dst = append(dst, ':')
 		cookieValue := c.Cookies(name)
 		// Escape value to prevent delimiter injection
 		escapedValue := escapeKeyDelimiters(cookieValue)
-		buf = append(buf, boundKeySegment(escapedValue)...)
+		dst = appendBoundKeySegment(dst, escapedValue)
 	}
 
-	return string(buf)
+	return dst
 }
 
 // escapeKeyDelimiters escapes pipe, colon, and backslash characters used as delimiters in cache keys
@@ -1465,6 +1460,17 @@ func boundKeySegment(segment string) string {
 	}
 	hash := sha256.Sum256(utils.UnsafeBytes(segment))
 	return "sha256:" + hex.EncodeToString(hash[:])
+}
+
+// appendBoundKeySegment appends segment to dst, hashing it first when it exceeds
+// the per-dimension length bound (same policy as boundKeySegment).
+func appendBoundKeySegment(dst []byte, segment string) []byte {
+	if len(segment) <= maxKeyDimensionSegmentLength {
+		return append(dst, segment...)
+	}
+	hash := sha256.Sum256(utils.UnsafeBytes(segment))
+	dst = append(dst, "sha256:"...)
+	return hex.AppendEncode(dst, hash[:])
 }
 
 func parseVary(vary string) ([]string, bool) {

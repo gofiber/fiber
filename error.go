@@ -34,6 +34,8 @@ var (
 	ErrRangeMalformed     = errors.New("range: malformed range header string")
 	ErrRangeTooLarge      = NewError(StatusRequestedRangeNotSatisfiable, "range: too many ranges")
 	ErrRangeUnsatisfiable = errors.New("range: unsatisfiable range")
+	// errRangeBound: empty/non-numeric range bound; control-flow only, never surfaced.
+	errRangeBound = errors.New("range: bound not parsable")
 )
 
 // Binder errors

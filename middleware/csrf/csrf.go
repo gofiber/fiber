@@ -15,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/redact"
+	"github.com/gofiber/fiber/v3/internal/schemehost"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 )
 
@@ -368,7 +369,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 		return ErrOriginInvalid
 	}
 
-	if schemeAndHostMatch(originURL.Scheme, originURL.Host, c.Scheme(), c.Host()) {
+	if schemehost.Match(originURL.Scheme, originURL.Host, c.Scheme(), c.Host()) {
 		return nil
 	}
 
@@ -399,7 +400,7 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins 
 		return ErrRefererInvalid
 	}
 
-	if schemeAndHostMatch(refererURL.Scheme, refererURL.Host, c.Scheme(), c.Host()) {
+	if schemehost.Match(refererURL.Scheme, refererURL.Host, c.Scheme(), c.Host()) {
 		return nil
 	}
 

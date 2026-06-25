@@ -85,11 +85,16 @@ func (e Extractor) Contains(pred func(Extractor) bool) bool {
 
 	stack := make([]*Extractor, 0, len(e.Chain)+1)
 	stack = append(stack, &e)
+	visited := make(map[*Extractor]struct{}, len(e.Chain)+1)
 
 	for len(stack) > 0 {
 		last := len(stack) - 1
 		curr := stack[last]
 		stack = stack[:last]
+		if _, ok := visited[curr]; ok {
+			continue
+		}
+		visited[curr] = struct{}{}
 
 		if pred(*curr) {
 			return true
