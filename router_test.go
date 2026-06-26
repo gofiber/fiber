@@ -2776,7 +2776,7 @@ func Test_App_SkipUnmatchedRoutes_NestedGroups(t *testing.T) {
 	t.Run("matched deep routefull chain 2, skips sibling endpoints", func(t *testing.T) {
 		t.Parallel()
 		app, trial := newApp()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/hello/", nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/hello/", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode)
 		require.Equal(t, []string{"auth", "perm", "logger", "helloEndpoint"}, *trial)
@@ -2785,7 +2785,7 @@ func Test_App_SkipUnmatchedRoutes_NestedGroups(t *testing.T) {
 	t.Run("matched deep routefull chain 2, full endpoints", func(t *testing.T) {
 		t.Parallel()
 		app, trial := newApp()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello2", nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello2", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode)
 		require.Equal(t, []string{"auth", "perm", "logger", "logger2", "hello2Endpoint"}, *trial)
@@ -2794,7 +2794,7 @@ func Test_App_SkipUnmatchedRoutes_NestedGroups(t *testing.T) {
 		t.Parallel()
 		app, trial := newApp()
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello2/hello3", nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello2/hello3", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode)
 		require.Equal(t, []string{"auth", "perm", "logger", "logger2", "logger3", "hello3Endpoint"}, *trial)
@@ -2803,15 +2803,15 @@ func Test_App_SkipUnmatchedRoutes_NestedGroups(t *testing.T) {
 		t.Parallel()
 		app, trial := newApp()
 
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello2/hello4", nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello2/hello4", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusNotFound, resp.StatusCode)
-		require.Empty(t, *trial,"no middleware chain executed")
+		require.Empty(t, *trial, "no middleware chain executed")
 	})
 	t.Run("matched deep routefull chain 2, wrong endpoints", func(t *testing.T) {
 		t.Parallel()
 		app, trial := newApp()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello3", nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/test2/hello3", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusNotFound, resp.StatusCode)
 		require.Empty(t, *trial, "no middleware chain executed")
@@ -2819,7 +2819,7 @@ func Test_App_SkipUnmatchedRoutes_NestedGroups(t *testing.T) {
 	t.Run("wrong deep routefull chain 2, wrong endpoints", func(t *testing.T) {
 		t.Parallel()
 		app, trial := newApp()
-		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test5/test2/hello2", nil))
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test5/test2/hello2", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusNotFound, resp.StatusCode)
 		require.Empty(t, *trial, "no middleware chain executed")
