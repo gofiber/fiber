@@ -1,3 +1,4 @@
+//nolint:depguard // Because we test logging :D
 package logger
 
 import (

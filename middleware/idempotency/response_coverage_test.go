@@ -124,7 +124,7 @@ func Test_response_Decode_Truncated(t *testing.T) {
 	full, err := v0.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	for i := 0; i < len(full); i++ {
+	for i := range len(full) {
 		prefix := full[:i]
 
 		var out response
@@ -181,7 +181,7 @@ func Test_response_EncodeMsg_WriterErrors(t *testing.T) {
 	require.NoError(t, err)
 
 	sawErr := false
-	for budget := 0; budget < len(full); budget++ {
+	for budget := range len(full) {
 		v := populatedResponse()
 		w := msgp.NewWriterSize(&errBudgetWriter{n: budget}, 8)
 		encErr := v.EncodeMsg(w)

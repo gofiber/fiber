@@ -172,7 +172,7 @@ func Test_item_Decode_Truncated(t *testing.T) {
 	full, err := item{currHits: 3, prevHits: 5, exp: 99}.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	for i := 0; i < len(full); i++ {
+	for i := range len(full) {
 		prefix := full[:i]
 
 		var out item
@@ -215,7 +215,7 @@ func Test_item_EncodeMsg_WriterErrors(t *testing.T) {
 	require.NoError(t, err)
 
 	sawErr := false
-	for budget := 0; budget < len(full); budget++ {
+	for budget := range len(full) {
 		w := msgp.NewWriterSize(&limiterErrWriter{n: budget}, 8)
 		encErr := item{currHits: 3, prevHits: 5, exp: 99}.EncodeMsg(w)
 		if encErr == nil {

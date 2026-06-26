@@ -104,7 +104,7 @@ func Test_item_Decode_Truncated(t *testing.T) {
 	full, err := v.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	for i := 0; i < len(full); i++ {
+	for i := range len(full) {
 		prefix := full[:i]
 
 		var out item
@@ -175,7 +175,7 @@ func Test_cachedHeader_Roundtrip_Populated(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, v, out)
 
-	for i := 0; i < len(bts); i++ {
+	for i := range len(bts) {
 		var trunc cachedHeader
 		_, terr := trunc.UnmarshalMsg(bts[:i])
 		require.Error(t, terr)
