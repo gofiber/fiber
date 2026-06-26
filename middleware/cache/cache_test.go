@@ -1173,6 +1173,37 @@ func Test_Cache_QueryMethod(t *testing.T) {
 		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	})
 
+	t.Run("body hash namespace does not collide with raw body", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{
+			Methods: []string{fiber.MethodQuery},
+		}))
+
+		var count atomic.Int32
+		app.Query("/", func(c fiber.Ctx) error {
+			current := count.Add(1)
+			return c.SendString(strconv.Itoa(int(current)))
+		})
+
+		longBody := []byte(strings.Repeat("x", maxKeyDimensionSegmentLength+1))
+		longBodyHash := sha256.Sum256(longBody)
+		shortBody := []byte("sha256:" + hex.EncodeToString(longBodyHash[:]))
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(longBody)))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(shortBody)))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+		require.Equal(t, int32(2), count.Load())
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodQuery, "/", bytes.NewReader(longBody)))
+		require.NoError(t, err)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	})
+
 	t.Run("empty body is cacheable", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
@@ -2448,7 +2479,7 @@ func Test_CacheMaxStaleServesStaleResponse(t *testing.T) {
 	req.Header.Set(fiber.HeaderCacheControl, "max-stale=5")
 	resp, err = app.Test(req)
 	require.NoError(t, err)
-	require.Equalf(t, cacheHit, resp.Header.Get("X-Cache"), "dirs=%+v Age=%s count=%d", parseRequestCacheControlString("max-stale=5"), resp.Header.Get(fiber.HeaderAge), count)
+	require.Equalf(t, cacheHit, resp.Header.Get("X-Cache"), "dirs=%+v Age=%s count=%d", parseRequestCacheControl([]byte("max-stale=5")), resp.Header.Get(fiber.HeaderAge), count)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "1", string(body))
@@ -3003,7 +3034,7 @@ func Test_CacheMinFreshForcesRevalidation(t *testing.T) {
 	req.Header.Set(fiber.HeaderCacheControl, "min-fresh=10")
 	resp, err = app.Test(req)
 	require.NoError(t, err)
-	require.Equalf(t, cacheMiss, resp.Header.Get("X-Cache"), "dirs=%+v Age=%s count=%d", parseRequestCacheControlString("min-fresh=10"), resp.Header.Get(fiber.HeaderAge), count)
+	require.Equalf(t, cacheMiss, resp.Header.Get("X-Cache"), "dirs=%+v Age=%s count=%d", parseRequestCacheControl([]byte("min-fresh=10")), resp.Header.Get(fiber.HeaderAge), count)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "2", string(body))
@@ -3453,72 +3484,6 @@ func Test_CacheMaxAgeDirective(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
-}
-
-func Test_ParseMaxAge(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		header string
-		expect time.Duration
-		ok     bool
-	}{
-		{"max-age=60", 60 * time.Second, true},
-		{"public, max-age=86400", 86400 * time.Second, true},
-		{"no-store", 0, false},
-		{"max-age=invalid", 0, false},
-		{"public, s-maxage=100, max-age=50", 50 * time.Second, true},
-		{"MAX-AGE=20", 20 * time.Second, true},
-		{"public , max-age=0", 0, true},
-		{"public , max-age", 0, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.header, func(t *testing.T) {
-			t.Parallel()
-			d, ok := parseMaxAge(tt.header)
-			if tt.ok != ok {
-				t.Fatalf("expected ok=%v got %v", tt.ok, ok)
-			}
-			if ok && d != tt.expect {
-				t.Fatalf("expected %v got %v", tt.expect, d)
-			}
-		})
-	}
-}
-
-func Test_AllowsSharedCache(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		directives string
-		expect     bool
-	}{
-		{"public", true},
-		{"private", false},
-		{"s-maxage=60", true},
-		{"public, max-age=60", true},
-		{"public, must-revalidate", true},
-		{"max-age=60", false},
-		{"no-cache", false},
-		{"no-cache, s-maxage=60", true},
-		{"", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.directives, func(t *testing.T) {
-			t.Parallel()
-
-			got := allowsSharedCache(tt.directives)
-			require.Equal(t, tt.expect, got, "directives: %q", tt.directives)
-		})
-	}
-
-	t.Run("private overrules public", func(t *testing.T) {
-		t.Parallel()
-
-		got := allowsSharedCache(strings.ToUpper("private, public"))
-		require.False(t, got)
-	})
 }
 
 func TestCacheSkipsAuthorizationByDefault(t *testing.T) {

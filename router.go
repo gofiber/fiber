@@ -151,9 +151,8 @@ type Route struct {
 }
 
 var (
-	defaultGreedyParameterKeys        = []string{"*", "+"}
-	preferredWildcardGreedyParameters = []string{"*", "+"}
-	preferredPlusGreedyParameters     = []string{"+", "*"}
+	defaultGreedyParameterKeys    = []string{"*", "+"}
+	preferredPlusGreedyParameters = []string{"+", "*"}
 )
 
 // URL generates a URL from the route path and parameters.
