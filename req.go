@@ -289,7 +289,7 @@ func (c *DefaultCtx) Charset() string {
 			continue
 		}
 		name := utils.TrimSpace(before)
-		if !bytes.EqualFold(name, []byte("charset")) {
+		if !utils.EqualFold(name, []byte("charset")) {
 			continue
 		}
 		value := utils.TrimSpace(after)
