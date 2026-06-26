@@ -71,6 +71,7 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 	app.Add([]string{
 		fiber.MethodGet,
 		fiber.MethodPost,
+		fiber.MethodQuery,
 	}, "/", func(c fiber.Ctx) error {
 		valid, ok := c.Locals(localsKeyTestValid).(bool)
 		if !ok {
@@ -119,6 +120,8 @@ func Test_EarlyData(t *testing.T) {
 		{method: fiber.MethodPost, status: fiber.StatusOK},
 		{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusOK},
 		{method: fiber.MethodPost, header: headerValOn, status: fiber.StatusTooEarly},
+		// QUERY is safe (RFC 10008), so it behaves like GET.
+		{method: fiber.MethodQuery, header: headerValOn, status: fiber.StatusTooEarly},
 	}
 
 	trustedExpectations := []requestExpectation{
@@ -128,6 +131,8 @@ func Test_EarlyData(t *testing.T) {
 		{method: fiber.MethodPost, status: fiber.StatusOK},
 		{method: fiber.MethodPost, header: headerValOff, status: fiber.StatusOK},
 		{method: fiber.MethodPost, header: headerValOn, status: fiber.StatusTooEarly},
+		// QUERY is safe, so a trusted early-data QUERY is allowed like GET.
+		{method: fiber.MethodQuery, header: headerValOn, status: fiber.StatusOK},
 	}
 
 	t.Run("empty config", func(t *testing.T) {

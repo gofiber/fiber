@@ -235,19 +235,28 @@ func parserRequestBody(c *Client, req *Request) error {
 // parserRequestBodyFile handles the case where the request contains files to be uploaded.
 func parserRequestBodyFile(req *Request) error {
 	mw := multipart.NewWriter(req.RawRequest.BodyWriter())
-	err := mw.SetBoundary(req.boundary)
-	if err != nil {
+	if err := mw.SetBoundary(req.boundary); err != nil {
 		return fmt.Errorf("set boundary error: %w", err)
 	}
-	defer func() {
-		e := mw.Close()
-		if e != nil {
-			// Close errors are typically ignored.
-			return
-		}
-	}()
 
+	if err := writeMultipartBody(mw, req); err != nil {
+		mw.Close() //nolint:errcheck // the body write already failed; surface that error instead
+		return err
+	}
+
+	// Close writes the trailing boundary; if it fails the multipart body is
+	// incomplete, so surface the error instead of sending a malformed request.
+	if err := mw.Close(); err != nil {
+		return fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+
+	return nil
+}
+
+// writeMultipartBody writes the form fields and files of req to mw.
+func writeMultipartBody(mw *multipart.Writer, req *Request) error {
 	// Add form data.
+	var err error
 	for key, value := range req.formData.All() {
 		err = mw.WriteField(utils.UnsafeString(key), utils.UnsafeString(value))
 		if err != nil {

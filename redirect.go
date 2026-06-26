@@ -7,6 +7,8 @@ package fiber
 import (
 	"bytes"
 	"encoding/hex"
+	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/gofiber/utils/v2"
@@ -15,6 +17,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/fiber/v3/internal/schemehost"
 )
 
 // Pool for redirection
@@ -373,8 +376,19 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 }
 
 // Back redirect to the URL to referer.
+// It validates that the Referer is same-origin to prevent open redirect attacks.
+// If the Referer is missing, invalid, or cross-origin, the fallback URL is used.
 func (r *Redirect) Back(fallback ...string) error {
 	location := r.c.Get(HeaderReferer)
+	if location != "" {
+		if !strings.HasPrefix(location, "/") || strings.HasPrefix(location, "//") {
+			parsed, err := url.Parse(location)
+			if err != nil || (parsed.Scheme != "" && parsed.Host == "") || (parsed.Host != "" && !schemehost.Match(parsed.Scheme, parsed.Host, r.c.Scheme(), r.c.Host())) {
+				location = "" // Reject invalid or cross-origin referrers
+			}
+		}
+	}
+
 	if location == "" {
 		// Check fallback URL
 		if len(fallback) == 0 {

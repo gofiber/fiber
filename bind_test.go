@@ -25,6 +25,14 @@ import (
 
 const helloWorld = "hello world"
 
+type typedNilBindError struct {
+	message string
+}
+
+func (e *typedNilBindError) Error() string {
+	return e.message
+}
+
 // go test -run Test_returnErr -v
 func Test_returnErr(t *testing.T) {
 	app := New()
@@ -32,6 +40,41 @@ func Test_returnErr(t *testing.T) {
 
 	err := c.Bind().WithAutoHandling().returnErr(nil)
 	require.NoError(t, err)
+}
+
+func Test_returnErr_TypedNilFiberError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *Error
+	require.NoError(t, c.Bind().WithAutoHandling().returnErr(err))
+}
+
+func Test_returnErr_TypedNilCustomError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *typedNilBindError
+	require.NotPanics(t, func() {
+		require.NoError(t, c.Bind().WithAutoHandling().returnErr(err))
+	})
+}
+
+func Test_returnBindErr_TypedNilFiberError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *Error
+	require.NoError(t, c.Bind().WithoutAutoHandling().returnBindErr(err, BindSourceBody))
 }
 
 // go test -run Test_AcquireReleaseBind -v

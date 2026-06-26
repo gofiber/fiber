@@ -250,6 +250,16 @@ linters:
         linters:
           - errcheck
           - revive
+      # revive (run with enable-all-rules) emits its findings nondeterministically
+      # across a full-module run, so a //nolint:revive directive whose finding is
+      # not surfaced on a given run gets reported as unused. This made the Linter
+      # workflow fail intermittently on unrelated PRs (and occasionally on main).
+      # nolintlint cannot reliably police revive directives under this behavior,
+      # so suppress its unused-directive reports for revive only; it still guards
+      # directives for every other linter.
+      - linters:
+          - nolintlint
+        text: directive `.*` is unused for linter "revive"
     paths:
       - _msgp\.go
       - _msgp_test\.go

@@ -45,6 +45,11 @@ type Config struct {
 	// Default: nil
 	ExpirationGenerator func(fiber.Ctx, *Config) time.Duration
 
+	// clock overrides the time source used for freshness decisions. It is
+	// unexported so it never becomes part of the public API and exists solely to
+	// make time-dependent tests deterministic. When nil, time.Now is used.
+	clock func() time.Time
+
 	// CacheHeader header on response header, indicate cache status, with the following possible return value
 	//
 	// hit, miss, unreachable
@@ -183,6 +188,16 @@ func configDefault(config ...Config) Config {
 		}
 	}
 	return cfg
+}
+
+// now returns the current time used for freshness decisions. Production uses
+// time.Now; tests can inject a deterministic clock via the unexported clock
+// field.
+func (cfg *Config) now() time.Time {
+	if cfg.clock != nil {
+		return cfg.clock()
+	}
+	return time.Now()
 }
 
 func normalizeHeaderDimensions(values, defaults []string) []string {

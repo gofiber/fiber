@@ -471,7 +471,7 @@ Session data supports basic Go types by default:
 - `uint`, `uint8`, `uint16`, `uint32`, `uint64`
 - `bool`, `float32`, `float64`
 - `[]byte`, `complex64`, `complex128`
-- `interface{}`
+- `any`
 
 For custom types (structs, maps, slices), you must register them for encoding/decoding:
 
@@ -627,6 +627,13 @@ sess.Regenerate() error  // Change ID, keep data
 sess.Reset() error       // Change ID, clear data
 sess.Destroy() error     // Keep ID, clear data
 
+// Context-aware variants propagate cancellation/deadlines to storage I/O.
+// Pass a context.Context to control timeouts; a nil context is treated as
+// context.Background().
+sess.RegenerateWithContext(ctx context.Context) error
+sess.ResetWithContext(ctx context.Context) error
+sess.DestroyWithContext(ctx context.Context) error
+
 // Store access
 sess.Store() *session.Store
 ```
@@ -645,7 +652,7 @@ store.Reset(ctx context.Context) error
 store.Delete(ctx context.Context, sessionID string) error
 
 // Type registration
-store.RegisterType(interface{})
+store.RegisterType(User{})
 ```
 
 ### Session Methods (Store Pattern)
@@ -658,7 +665,33 @@ defer sess.Release() // Required!
 sess.Save() error              // Manual save required
 sess.SetIdleTimeout(duration)  // Per-session timeout
 sess.Release()                 // Manual cleanup required
+
+// Context-aware variants propagate cancellation/deadlines to storage I/O.
+// A nil context is treated as context.Background().
+sess.DestroyWithContext(ctx context.Context) error
+sess.RegenerateWithContext(ctx context.Context) error
+sess.ResetWithContext(ctx context.Context) error
+sess.SaveWithContext(ctx context.Context) error
 ```
+
+### Session with Context (timeouts/cancellation)
+
+The `*WithContext` variants let you propagate a `context.Context` to the underlying storage call so that slow or unresponsive backends can be bounded by a deadline or cancelled. This mirrors the `Storage` and `SharedState` `WithContext` convention.
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+defer cancel()
+
+// Persist the session, bounding the storage write by the deadline.
+if err := sess.SaveWithContext(ctx); err != nil {
+    // deadline exceeded, cancellation, or storage error
+}
+
+// Destroy is also covered:
+// if err := sess.DestroyWithContext(ctx); err != nil { ... }
+```
+
+A `nil` context is treated as `context.Background()`, so `sess.SaveWithContext(nil)` is equivalent to `sess.Save()` when no request context is available.
 
 ### Extractor Functions
 

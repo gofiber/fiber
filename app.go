@@ -30,6 +30,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/fiber/v3/internal/nilerror"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -49,11 +50,16 @@ type Map map[string]any
 //	cfg.ErrorHandler = func(c Ctx, err error) error {
 //	 code := StatusInternalServerError
 //	 var e *fiber.Error
-//	 if errors.As(err, &e) {
+//	 matched := errors.As(err, &e)
+//	 if matched && e != nil {
 //	   code = e.Code
 //	 }
+//	 message := utils.StatusMessage(code)
+//	 if err != nil && !(matched && e == nil) {
+//	   message = err.Error()
+//	 }
 //	 c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-//	 return c.Status(code).SendString(err.Error())
+//	 return c.Status(code).SendString(message)
 //	}
 //	app := fiber.New(cfg)
 type ErrorHandler = func(Ctx, error) error
@@ -593,6 +599,7 @@ const (
 	methodOptions
 	methodTrace
 	methodPatch
+	methodQuery
 )
 
 // HTTP methods enabled by default
@@ -606,6 +613,7 @@ var DefaultMethods = []string{
 	methodOptions: MethodOptions,
 	methodTrace:   MethodTrace,
 	methodPatch:   MethodPatch,
+	methodQuery:   MethodQuery,
 }
 
 // httpReadResponse - Used for test mocking http.ReadResponse
@@ -613,13 +621,37 @@ var httpReadResponse = http.ReadResponse
 
 // DefaultErrorHandler that process return errors from handlers
 func DefaultErrorHandler(c Ctx, err error) error {
+	if nilerror.IsNil(err) {
+		err = nil
+	}
+
 	code := StatusInternalServerError
-	var e *Error
-	if errors.As(err, &e) {
+	e, matched := asFiberError(err)
+	if matched && e != nil {
 		code = e.Code
 	}
+	message := utils.StatusMessage(code)
+	if err != nil && (!matched || e != nil) {
+		message = err.Error()
+	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-	return c.Status(code).SendString(err.Error())
+	return c.Status(code).SendString(message)
+}
+
+// asFiberError reports whether err is or wraps a *Error and returns it. A direct
+// *Error is matched alloc-free by a type assertion; wrapped or joined errors
+// fall back to errors.As.
+func asFiberError(err error) (*Error, bool) {
+	if err == nil {
+		return nil, false
+	}
+	if e, ok := err.(*Error); ok { //nolint:errorlint // intentional fast path; wrapped/joined errors fall through to errors.As below
+		return e, true
+	}
+	// Declared here so errors.As's &target escapes only on this slow path.
+	var target *Error
+	matched := errors.As(err, &target)
+	return target, matched
 }
 
 // New creates a new Fiber named instance.
@@ -1050,6 +1082,12 @@ func (app *App) Trace(path string, handler any, handlers ...any) Router {
 // modifications to a resource.
 func (app *App) Patch(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodPatch}, path, handler, handlers...)
+}
+
+// Query registers a route for QUERY methods that performs a safe, idempotent
+// query with a request body.
+func (app *App) Query(path string, handler any, handlers ...any) Router {
+	return app.Add([]string{MethodQuery}, path, handler, handlers...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
@@ -1554,23 +1592,34 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		netErr   net.Error
 	)
 
+	errMessage := utils.StatusMessage(StatusBadRequest)
+	matchedNetOP := errors.As(err, &errNetOP)
+	if err != nil && (!matchedNetOP || errNetOP != nil) {
+		errMessage = err.Error()
+	}
+	matchedNetErr := errors.As(err, &netErr)
+
 	switch {
+	case err == nil:
+		err = NewError(StatusBadRequest, errMessage)
+	case matchedNetOP && errNetOP == nil:
+		err = ErrBadGateway
 	case errors.As(err, new(*fasthttp.ErrSmallBuffer)):
 		err = ErrRequestHeaderFieldsTooLarge
-	case errors.As(err, &errNetOP) && errNetOP.Timeout():
+	case matchedNetOP && errNetOP.Timeout():
 		err = ErrRequestTimeout
-	case errors.As(err, &netErr):
+	case matchedNetErr:
 		err = ErrBadGateway
 	case errors.Is(err, fasthttp.ErrBodyTooLarge):
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
-	case strings.Contains(err.Error(), "unsupported http request method"):
+	case strings.Contains(errMessage, "unsupported http request method"):
 		err = ErrNotImplemented
-	case strings.Contains(err.Error(), "timeout"):
+	case strings.Contains(errMessage, "timeout"):
 		err = ErrRequestTimeout
 	default:
-		err = NewError(StatusBadRequest, err.Error())
+		err = NewError(StatusBadRequest, errMessage)
 	}
 
 	if c.getMethodInt() != -1 {
