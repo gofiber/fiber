@@ -168,6 +168,43 @@ func BenchmarkIsBlockedIP_PublicV4(b *testing.B) {
 	}
 }
 
+// BenchmarkFollowRedirects_NoRedirect isolates the followRedirects entry
+// cost — initial URL handling, request setup, and one cli.Do call that
+// returns 204 (no Location). The bench measures the work that P6
+// targets: the validateUpstream call that used to run on the initial
+// URL inside followRedirects.
+func BenchmarkFollowRedirects_NoRedirect(b *testing.B) {
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	prev := WithSecurityPolicy(policy)
+	b.Cleanup(func() { WithSecurityPolicy(prev) })
+
+	cli := &fasthttp.Client{
+		Transport: noopRoundTripper{},
+	}
+
+	initialURL, err := url.Parse("http://203.0.113.5:8080/api/v1/widgets")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		req.Reset()
+		req.SetRequestURI(initialURL.String())
+		req.Header.SetMethod(fasthttp.MethodGet)
+		if err := followRedirects(cli, req, resp, 3, initialURL, policy); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 // BenchmarkDomainForward_HostMatchPath measures the per-request work
 // that happens once DomainForward's host check matches: the handler
 // closure executes from its first statement through the call into

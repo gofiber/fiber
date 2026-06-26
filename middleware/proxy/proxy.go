@@ -165,7 +165,7 @@ func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 // Do performs the given http request and fills the given http response.
 // This method can be used within a fiber.Handler
 func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
-	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.Do(req, resp)
 	}, clients...)
 }
@@ -179,15 +179,15 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // to a plaintext HTTP target are rejected with ErrRedirectDowngrade.
 func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
 	policy := currentSecurityPolicy()
-	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
-		return followRedirects(cli, req, resp, maxRedirectsCount, policy)
+	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
+		return followRedirects(cli, req, resp, maxRedirectsCount, u, policy)
 	}, clients...)
 }
 
 // DoDeadline performs the given request and waits for response until the given deadline.
 // This method can be used within a fiber.Handler
 func DoDeadline(c fiber.Ctx, addr string, deadline time.Time, clients ...*fasthttp.Client) error {
-	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.DoDeadline(req, resp, deadline)
 	}, clients...)
 }
@@ -195,15 +195,20 @@ func DoDeadline(c fiber.Ctx, addr string, deadline time.Time, clients ...*fastht
 // DoTimeout performs the given request and waits for response during the given timeout duration.
 // This method can be used within a fiber.Handler
 func DoTimeout(c fiber.Ctx, addr string, timeout time.Duration, clients ...*fasthttp.Client) error {
-	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.DoTimeout(req, resp, timeout)
 	}, clients...)
 }
 
+// doActionFunc is the per-method callback driven by doActionWithPolicy.
+// Receivers are handed the validated *url.URL alongside the request so
+// they can avoid re-parsing or re-validating the upstream addr.
+type doActionFunc func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error
+
 func doAction(
 	c fiber.Ctx,
 	addr string,
-	action func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error,
+	action doActionFunc,
 	clients ...*fasthttp.Client,
 ) error {
 	return doActionWithPolicy(c, addr, currentSecurityPolicy(), action, clients...)
@@ -213,7 +218,7 @@ func doActionWithPolicy(
 	c fiber.Ctx,
 	addr string,
 	policy SecurityPolicy,
-	action func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error,
+	action doActionFunc,
 	clients ...*fasthttp.Client,
 ) error {
 	globalClient := client.Load()
@@ -246,7 +251,7 @@ func doActionWithPolicy(
 	if !policy.KeepHopByHopHeaders {
 		stripHopByHopRequestHeaders(req)
 	}
-	if err := action(cli, req, res); err != nil {
+	if err := action(cli, req, res, u); err != nil {
 		return err
 	}
 	if !policy.KeepHopByHopHeaders {
@@ -260,22 +265,17 @@ func doActionWithPolicy(
 // fasthttp.Client.DoRedirects so we can reject HTTPS→HTTP downgrades and
 // reapply SSRF checks to caller-controlled Location headers.
 //
-// The currentURL flowing into req.SetRequestURI is tracked as a *url.URL
-// produced by validateUpstream (scheme allowlist + SSRF block + host
-// re-validation). That makes the policy check the only path data can
-// reach SetRequestURI through — including taint trackers like
-// CodeQL's go/request-forgery.
-func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, policy SecurityPolicy) error {
+// initialURL is the validated *url.URL produced by doActionWithPolicy's
+// validateUpstream call. Passing it in lets the loop skip a redundant
+// re-validation (one url.Parse + one DNS lookup) on entry while still
+// guaranteeing every SetRequestURI is fed a string from a
+// validateUpstream output — the property CodeQL's go/request-forgery
+// query needs to see.
+func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy) error {
 	if maxRedirects < 0 {
 		maxRedirects = 0
 	}
-	// Re-validate the initial URL even though doActionWithPolicy already
-	// did. Carrying the result as *url.URL guarantees every SetRequestURI
-	// inside the loop is fed a value produced by validateUpstream.
-	currentURL, err := validateUpstream(string(req.URI().FullURI()), policy)
-	if err != nil {
-		return err
-	}
+	currentURL := initialURL
 	currentHost := currentURL.Host
 	for redirects := 0; ; redirects++ {
 		req.SetRequestURI(currentURL.String())
@@ -400,7 +400,7 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 		}
 		c.Request().Header.Set("X-Real-IP", c.IP())
 		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
-			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)
 			}, clients...)
 	}
@@ -452,7 +452,7 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 		base := r.get()
 		c.Request().Header.Set("X-Real-IP", c.IP())
 		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
-			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)
 			}, clients...)
 	}

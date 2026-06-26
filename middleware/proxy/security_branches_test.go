@@ -164,7 +164,7 @@ func Test_Security_FollowRedirects_NegativeMaxBecomesZero(t *testing.T) {
 
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	err := followRedirects(client.client, req, resp, -1, policy)
+	err := followRedirects(client.client, req, resp, -1, mustParseTestURL(t, "http://example.com/start"), policy)
 	require.ErrorIs(t, err, fasthttp.ErrTooManyRedirects)
 	require.Equal(t, 1, *hits)
 }
@@ -188,7 +188,7 @@ func Test_Security_FollowRedirects_MissingLocation(t *testing.T) {
 
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	err := followRedirects(client.client, req, resp, 3, policy)
+	err := followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy)
 	require.ErrorIs(t, err, fasthttp.ErrMissingLocation)
 }
 
@@ -214,7 +214,7 @@ func Test_Security_FollowRedirects_PostBecomesGetOn303(t *testing.T) {
 
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	require.NoError(t, followRedirects(client.client, req, resp, 3, policy))
+	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy))
 	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
 	require.Empty(t, req.Body())
 	require.Empty(t, req.Header.ContentType())
@@ -237,7 +237,7 @@ func Test_Security_FollowRedirects_PropagatesClientError(t *testing.T) {
 	req.SetRequestURI("http://example.com/")
 	req.Header.SetMethod(fasthttp.MethodGet)
 
-	err := followRedirects(cli, req, resp, 1, DefaultSecurityPolicy())
+	err := followRedirects(cli, req, resp, 1, mustParseTestURL(t, "http://example.com/"), DefaultSecurityPolicy())
 	require.ErrorIs(t, err, sentinel)
 }
 
@@ -473,4 +473,13 @@ type roundTripperFunc func(req *fasthttp.Request, resp *fasthttp.Response) error
 
 func (f roundTripperFunc) RoundTrip(_ *fasthttp.HostClient, req *fasthttp.Request, resp *fasthttp.Response) (bool, error) {
 	return false, f(req, resp)
+}
+
+// mustParseTestURL is a shared parse-or-fail helper for tests that pass
+// a *url.URL into followRedirects's initialURL argument.
+func mustParseTestURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	return u
 }

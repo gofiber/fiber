@@ -389,7 +389,7 @@ func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
 		req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
 		req.Header.Set(fiber.HeaderCookie, "session=abc")
 
-		require.NoError(t, followRedirects(client.client, req, resp, 3, policy))
+		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://first.example/"), policy))
 		require.Empty(t, sawAuth, "Authorization must be stripped cross-host")
 		require.Empty(t, sawCookie, "Cookie must be stripped cross-host")
 	})
@@ -414,7 +414,7 @@ func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
 		req.Header.SetMethod(fasthttp.MethodGet)
 		req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
 
-		require.NoError(t, followRedirects(client.client, req, resp, 3, policy))
+		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://same.example/"), policy))
 		require.Equal(t, "Bearer secret", sawAuth, "Authorization must survive same-host redirect")
 	})
 }
