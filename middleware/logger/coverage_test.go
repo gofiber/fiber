@@ -1,11 +1,10 @@
-//nolint:depguard // Because we test logging :D
 package logger
 
 import (
 	"bytes"
-	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -56,16 +55,14 @@ func Test_statusColor_AllRanges(t *testing.T) {
 }
 
 // Test_customLoggerWriter_InvalidLevel verifies the default branch of Write
-// returns (0, nil) for a level outside the supported set.
+// returns (0, nil) for a level outside the supported set. An unsupported level
+// routes to the default case before loggerInstance is ever touched, so a nil
+// instance is safe and we avoid mutating any shared/global logger state.
 func Test_customLoggerWriter_InvalidLevel(t *testing.T) {
 	t.Parallel()
 
-	logger := fiberlog.DefaultLogger[*log.Logger]()
-	logger.SetOutput(bytes.NewBuffer(nil))
-
-	cl := &customLoggerWriter[*log.Logger]{
-		loggerInstance: logger,
-		level:          fiberlog.LevelFatal,
+	cl := &customLoggerWriter[any]{
+		level: fiberlog.LevelFatal,
 	}
 
 	n, err := cl.Write([]byte("ignored"))
@@ -196,5 +193,12 @@ func Test_Logger_New_TimeDoneUpdater(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.NotEmpty(t, buf.String())
+
+	// The format always emits a trailing newline, so a non-empty buffer alone
+	// would pass even if ${time} rendered empty. Trim it and assert the rendered
+	// timestamp is present and well-formed, proving the updater path ran.
+	rendered := strings.TrimRight(buf.String(), "\n")
+	require.NotEmpty(t, rendered)
+	_, parseErr := time.Parse(time.RFC3339Nano, rendered)
+	require.NoError(t, parseErr)
 }

@@ -180,7 +180,9 @@ func Test_response_EncodeMsg_WriterErrors(t *testing.T) {
 	full, err := v0.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	sawErr := false
+	// A writer that accepts fewer than the full encoding's bytes must always
+	// surface an error (either mid-encode or on Flush), so assert per budget
+	// rather than once overall.
 	for budget := range len(full) {
 		v := populatedResponse()
 		w := msgp.NewWriterSize(&errBudgetWriter{n: budget}, 8)
@@ -188,9 +190,6 @@ func Test_response_EncodeMsg_WriterErrors(t *testing.T) {
 		if encErr == nil {
 			encErr = w.Flush()
 		}
-		if encErr != nil {
-			sawErr = true
-		}
+		require.Error(t, encErr, "expected writer failure for budget %d", budget)
 	}
-	require.True(t, sawErr, "expected at least one writer error across budgets")
 }

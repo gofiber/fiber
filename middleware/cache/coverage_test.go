@@ -30,18 +30,17 @@ func (alwaysErrWriter) Write([]byte) (int, error) { return 0, errCacheWriteBudge
 func encodeMsgErrorSweep(t *testing.T, marshaledLen int, encode func(*msgp.Writer) error) {
 	t.Helper()
 
-	sawErr := false
+	// An always-failing writer must surface an error for every buffer size,
+	// either on the first mid-encode flush or on the final Flush, so assert per
+	// iteration rather than once overall.
 	for sz := 18; sz <= marshaledLen+18; sz++ {
 		w := msgp.NewWriterSize(alwaysErrWriter{}, sz)
 		err := encode(w)
 		if err == nil {
 			err = w.Flush()
 		}
-		if err != nil {
-			sawErr = true
-		}
+		require.Error(t, err, "expected writer failure for buffer size %d", sz)
 	}
-	require.True(t, sawErr)
 }
 
 func populatedItem() item {
@@ -232,6 +231,8 @@ func Test_cachedHeader_Decode_UnknownAndLimits(t *testing.T) {
 	var k cachedHeader
 	_, err = k.UnmarshalMsg(bigKey)
 	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
+	var kDec cachedHeader
+	require.ErrorIs(t, kDec.DecodeMsg(msgp.NewReader(bytes.NewReader(bigKey))), msgp.ErrLimitExceeded)
 
 	// value over the 16384-byte limit.
 	var bigVal []byte
@@ -241,6 +242,8 @@ func Test_cachedHeader_Decode_UnknownAndLimits(t *testing.T) {
 	var vv cachedHeader
 	_, err = vv.UnmarshalMsg(bigVal)
 	require.ErrorIs(t, err, msgp.ErrLimitExceeded)
+	var vvDec cachedHeader
+	require.ErrorIs(t, vvDec.DecodeMsg(msgp.NewReader(bytes.NewReader(bigVal))), msgp.ErrLimitExceeded)
 }
 
 // Test_item_Decode_FieldLimits covers the per-field ErrLimitExceeded branches

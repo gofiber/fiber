@@ -214,16 +214,14 @@ func Test_item_EncodeMsg_WriterErrors(t *testing.T) {
 	full, err := item{currHits: 3, prevHits: 5, exp: 99}.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	sawErr := false
+	// A writer that accepts fewer than the full encoding's bytes must always
+	// surface an error (either mid-encode or on Flush), so assert per budget.
 	for budget := range len(full) {
 		w := msgp.NewWriterSize(&limiterErrWriter{n: budget}, 8)
 		encErr := item{currHits: 3, prevHits: 5, exp: 99}.EncodeMsg(w)
 		if encErr == nil {
 			encErr = w.Flush()
 		}
-		if encErr != nil {
-			sawErr = true
-		}
+		require.Error(t, encErr, "expected writer failure for budget %d", budget)
 	}
-	require.True(t, sawErr)
 }
