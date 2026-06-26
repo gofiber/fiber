@@ -506,6 +506,28 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 	if base == nil {
 		return ""
 	}
+	// Fast path: the common production case is a base with no path
+	// prefix and a request path that's already in clean origin form. In
+	// that case the slow path's url.Parse + URL.String() round-trip
+	// produces a string identical to base.Scheme + "://" + base.Host +
+	// requestPath, so build the result directly with one allocation.
+	// canFastJoinPath rejects any input that could collide with the
+	// security-relevant patterns the slow path handles
+	// (//-authority injection, @-authority injection, :-scheme
+	// injection, control bytes). Anything it rejects falls through to
+	// the slow path; the FuzzJoinUpstreamPath suite guards the
+	// boundary.
+	if baseIsPlainOrigin(base) && canFastJoinPath(requestPath) {
+		var sb strings.Builder
+		sb.Grow(len(base.Scheme) + len("://") + len(base.Host) + len(requestPath))
+		// strings.Builder.WriteString always returns nil per the
+		// documented contract; the errors are unused on purpose.
+		sb.WriteString(base.Scheme) //nolint:errcheck // strings.Builder cannot fail
+		sb.WriteString("://")       //nolint:errcheck // strings.Builder cannot fail
+		sb.WriteString(base.Host)   //nolint:errcheck // strings.Builder cannot fail
+		sb.WriteString(requestPath) //nolint:errcheck // strings.Builder cannot fail
+		return sb.String()
+	}
 	out := *base
 	if requestPath == "" {
 		return out.String()
@@ -549,4 +571,83 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 	out.RawQuery = parsed.RawQuery
 	out.Fragment = parsed.Fragment
 	return out.String()
+}
+
+// baseIsPlainOrigin reports whether base carries only a scheme + host
+// — no path prefix, userinfo, query, fragment, or opaque component.
+// Any of those forces the slow path because the splice cannot
+// reproduce them with a simple concatenation.
+func baseIsPlainOrigin(base *url.URL) bool {
+	return base.Path == "" &&
+		base.RawPath == "" &&
+		base.User == nil &&
+		base.RawQuery == "" &&
+		base.Fragment == "" &&
+		base.Opaque == ""
+}
+
+// canFastJoinPath reports whether requestPath can be spliced onto an
+// upstream base without going through url.Parse + URL.String.
+//
+// Allowed bytes match what url.URL.String() would emit unescaped:
+//   - Alphanumeric and unreserved (-._~).
+//   - '/' (never doubled in the path portion).
+//   - '?' '#' as single separators between path / query / fragment.
+//   - '%' only when followed by two valid hex digits.
+//   - In the query and fragment portion: common sub-delims
+//     (&=+,;!$*()'). Authority-injection markers ('@' ':') and any
+//     other byte are rejected so the slow path can apply Go's stdlib
+//     URL escaping rules.
+//
+// The FuzzJoinUpstreamPath suite covers each rejection boundary.
+func canFastJoinPath(requestPath string) bool {
+	if requestPath == "" || requestPath[0] != '/' {
+		return false
+	}
+	inPath := true
+	var prev byte
+	for i := 0; i < len(requestPath); i++ {
+		c := requestPath[i]
+		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+			prev = c
+			continue
+		}
+		switch c {
+		case '-', '.', '_', '~':
+			// Unreserved — always safe.
+		case '/':
+			if inPath && prev == '/' {
+				return false
+			}
+		case '?', '#':
+			if !inPath {
+				// Repeated path/query separator — let slow path handle.
+				return false
+			}
+			inPath = false
+		case '%':
+			if i+2 >= len(requestPath) || !isHexDigit(requestPath[i+1]) || !isHexDigit(requestPath[i+2]) {
+				return false
+			}
+		case '&', '=', '+', ',', ';', '!', '$', '*', '(', ')', '\'':
+			// Sub-delims — only safe inside query/fragment.
+			if inPath {
+				return false
+			}
+		case '@', ':':
+			// Authority / scheme separator — never allowed in the
+			// spliced segment.
+			return false
+		default:
+			// Spaces, control bytes, brackets, quotes, multi-byte UTF-8,
+			// anything else: needs escaping — fall through to slow path.
+			return false
+		}
+		prev = c
+	}
+	return true
+}
+
+func isHexDigit(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
 }
