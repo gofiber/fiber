@@ -8,7 +8,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -93,15 +93,25 @@ func DefaultSecurityPolicy() SecurityPolicy {
 	}
 }
 
-var (
-	policyLock   sync.RWMutex
-	activePolicy = DefaultSecurityPolicy()
-)
+// activePolicy is the global SecurityPolicy consulted by every
+// non-Balancer proxy request. Reads are lock-free via atomic.Pointer.
+// The pointed-to SecurityPolicy is treated as immutable once installed:
+// WithSecurityPolicy is the only writer, and it stores a value whose
+// AllowedSchemes slice has been deep-copied to defend against later
+// mutation by the caller.
+var activePolicy atomic.Pointer[SecurityPolicy]
+
+func init() {
+	def := DefaultSecurityPolicy()
+	activePolicy.Store(&def)
+}
 
 // normalizePolicy returns a copy of policy whose AllowedSchemes slice is
 // always freshly allocated. This guarantees callers cannot mutate the
 // global allowlist out from under a balancer (or another goroutine) by
-// retaining a reference to the slice they passed in.
+// retaining a reference to the slice they passed in. The defensive copy
+// happens at install time only — readers consume the immutable result
+// via activePolicy.Load() without further copying.
 func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
 	if len(policy.AllowedSchemes) == 0 {
 		policy.AllowedSchemes = []string{schemeHTTP, schemeHTTPS}
@@ -118,26 +128,28 @@ func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
 // callers can restore it — useful in tests that need to relax
 // the policy for a single scope.
 func WithSecurityPolicy(policy SecurityPolicy) SecurityPolicy {
-	policy = normalizePolicy(policy)
-	policyLock.Lock()
-	defer policyLock.Unlock()
-	prev := activePolicy
-	activePolicy = policy
-	return normalizePolicy(prev)
+	normalized := normalizePolicy(policy)
+	prev := activePolicy.Swap(&normalized)
+	if prev == nil {
+		return DefaultSecurityPolicy()
+	}
+	return *prev
 }
 
-// currentSecurityPolicy returns a snapshot of the active global policy
-// with a private copy of AllowedSchemes.
+// currentSecurityPolicy returns a snapshot of the active global policy.
+// The snapshot is by-value, but its AllowedSchemes slice header aliases
+// the immutable backing array installed by WithSecurityPolicy — no copy
+// is taken on the read path.
 func currentSecurityPolicy() SecurityPolicy {
-	policyLock.RLock()
-	defer policyLock.RUnlock()
-	return normalizePolicy(activePolicy)
+	return *activePolicy.Load()
 }
 
 // resolvePolicy returns override when non-nil; otherwise the current
 // global policy. Both Balancer and the runtime helpers funnel through
 // this so a single source of truth governs upstream validation and
-// header stripping.
+// header stripping. Override paths still copy AllowedSchemes so a
+// caller passing Config.SecurityPolicy by reference cannot mutate the
+// Balancer's view after construction.
 func resolvePolicy(override *SecurityPolicy) SecurityPolicy {
 	if override != nil {
 		return normalizePolicy(*override)
