@@ -376,35 +376,42 @@ func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*
 }
 
 // DomainForward performs an http request based on the given domain and populates the given http response.
-// This method will return a fiber.Handler
+// This method will return a fiber.Handler.
+//
+// The upstream addr is validated at handler construction (matches the
+// Balancer contract): scheme allowlist, SSRF block, and URL parsing all
+// run once. Misconfigured addresses panic at startup instead of failing
+// per request. doActionWithPolicy still re-checks SSRF against the
+// current policy on every hop so DNS-rebinding protection is preserved.
 func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
+	base, err := validateUpstream(addr, currentSecurityPolicy())
+	if err != nil {
+		panic(err)
+	}
 	return func(c fiber.Ctx) error {
 		host := utils.UnsafeString(c.Request().Host())
-		if host == hostname {
-			c.Request().Header.Set("X-Real-IP", c.IP())
-			policy := currentSecurityPolicy()
-			base, err := validateUpstream(addr, policy)
-			if err != nil {
-				return err
-			}
-			return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), policy,
-				func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
-					return cli.Do(req, resp)
-				}, clients...)
+		if host != hostname {
+			return nil
 		}
-		return nil
+		c.Request().Header.Set("X-Real-IP", c.IP())
+		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
+			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+				return cli.Do(req, resp)
+			}, clients...)
 	}
 }
 
-type roundrobin struct {
-	pool []string
+// urlRoundrobin is the *url.URL-typed equivalent of the legacy
+// string-based round-robin. Storing parsed URLs lets BalancerForward
+// skip per-request url.Parse on its configured upstream list.
+type urlRoundrobin struct {
+	pool []*url.URL
 
 	current int
 	sync.Mutex
 }
 
-// this method will return a string of addr server from list server.
-func (r *roundrobin) get() string {
+func (r *urlRoundrobin) get() *url.URL {
 	r.Lock()
 	defer r.Unlock()
 
@@ -418,24 +425,28 @@ func (r *roundrobin) get() string {
 }
 
 // BalancerForward Forward performs the given http request with round robin algorithm to server and fills the given http response.
-// This method will return a fiber.Handler
+// This method will return a fiber.Handler.
+//
+// As with DomainForward, every server is parsed and policy-checked at
+// handler construction. A misconfigured entry panics at startup.
 func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler {
 	if len(servers) == 0 {
 		panic("Servers cannot be empty")
 	}
-	r := &roundrobin{
-		current: 0,
-		pool:    servers,
-	}
-	return func(c fiber.Ctx) error {
-		server := r.get()
-		c.Request().Header.Set("X-Real-IP", c.IP())
-		policy := currentSecurityPolicy()
-		base, err := validateUpstream(server, policy)
+	policy := currentSecurityPolicy()
+	bases := make([]*url.URL, len(servers))
+	for i, s := range servers {
+		base, err := validateUpstream(s, policy)
 		if err != nil {
-			return err
+			panic(err)
 		}
-		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), policy,
+		bases[i] = base
+	}
+	r := &urlRoundrobin{pool: bases}
+	return func(c fiber.Ctx) error {
+		base := r.get()
+		c.Request().Header.Set("X-Real-IP", c.IP())
+		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
 				return cli.Do(req, resp)
 			}, clients...)

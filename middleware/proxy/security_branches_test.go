@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -256,42 +257,37 @@ func Test_Security_DomainForward_HostMismatchPassesThrough(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
-// Test_Security_DomainForward_InvalidUpstreamReturnsError covers the
-// validateUpstream error path inside the matched-host branch.
-func Test_Security_DomainForward_InvalidUpstreamReturnsError(t *testing.T) {
+// Test_Security_DomainForward_InvalidUpstreamPanicsAtConstruction
+// verifies that DomainForward now fails fast on misconfiguration —
+// matching Balancer's contract — instead of surfacing the validation
+// error per request.
+func Test_Security_DomainForward_InvalidUpstreamPanicsAtConstruction(t *testing.T) {
 	t.Parallel()
-
-	app := fiber.New()
-	app.Use(DomainForward("api.example", "gopher://invalid"))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("unused") })
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	req.Host = "api.example"
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.PanicsWithError(t, ErrUpstreamSchemeNotAllowed.Error()+": \"gopher\"", func() {
+		DomainForward("api.example", "gopher://invalid")
+	})
 }
 
-// Test_Security_BalancerForward_InvalidUpstreamReturnsError covers the
-// validateUpstream error path in BalancerForward.
-func Test_Security_BalancerForward_InvalidUpstreamReturnsError(t *testing.T) {
+// Test_Security_BalancerForward_InvalidUpstreamPanicsAtConstruction
+// verifies that BalancerForward now fails fast on misconfiguration —
+// matching Balancer's contract — instead of surfacing the validation
+// error per request.
+func Test_Security_BalancerForward_InvalidUpstreamPanicsAtConstruction(t *testing.T) {
 	t.Parallel()
-
-	app := fiber.New()
-	app.Use(BalancerForward([]string{"gopher://invalid"}))
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.PanicsWithError(t, ErrUpstreamSchemeNotAllowed.Error()+": \"gopher\"", func() {
+		BalancerForward([]string{"gopher://invalid"})
+	})
 }
 
 // Test_Security_RoundRobin_WrapsAround covers the modulo wrap-around in
-// roundrobin.get when current >= len(pool).
+// urlRoundrobin.get when current >= len(pool).
 func Test_Security_RoundRobin_WrapsAround(t *testing.T) {
 	t.Parallel()
-	r := &roundrobin{pool: []string{"a", "b"}, current: 5}
+	a := &url.URL{Scheme: "http", Host: "a"}
+	b := &url.URL{Scheme: "http", Host: "b"}
+	r := &urlRoundrobin{pool: []*url.URL{a, b}, current: 5}
 	got := r.get()
-	require.Equal(t, "b", got, "5 %% 2 = 1 should select pool[1]")
+	require.Same(t, b, got, "5 %% 2 = 1 should select pool[1]")
 }
 
 // Test_Security_Balancer_PanicsOnInvalidUpstream covers the panic

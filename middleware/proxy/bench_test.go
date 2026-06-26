@@ -2,6 +2,8 @@ package proxy
 
 import (
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 
@@ -164,4 +166,62 @@ func BenchmarkIsBlockedIP_PublicV4(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = isBlockedIP(ip)
 	}
+}
+
+// BenchmarkDomainForward_HostMatchPath measures the per-request work
+// that happens once DomainForward's host check matches: the handler
+// closure executes from its first statement through the call into
+// doActionWithPolicy. The action callback short-circuits so the
+// downstream action work (cli.Do) is not measured — this isolates the
+// constructor-vs-per-request split that P2 targets.
+func BenchmarkDomainForward_HostMatchPath(b *testing.B) {
+	// Construction-time validation requires a passing upstream.
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	prev := WithSecurityPolicy(policy)
+	b.Cleanup(func() { WithSecurityPolicy(prev) })
+
+	// Stash & restore the global proxy client so the benchmark uses a
+	// no-op transport instead of dialing.
+	noopClient := &fasthttp.Client{
+		Transport: noopRoundTripper{},
+	}
+	prevClient := client.Swap(noopClient)
+	b.Cleanup(func() {
+		if prevClient != nil {
+			client.Store(prevClient)
+		}
+	})
+
+	app := fiber.New()
+	app.Use(DomainForward("api.example", "http://203.0.113.5:8080"))
+	req := newReqWithHost("api.example", "/v1/widgets?q=1")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp, err := app.Test(req, fiber.TestConfig{Timeout: 1})
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = resp
+	}
+}
+
+// noopRoundTripper is the minimum surface for fasthttp.RoundTripper used
+// by BenchmarkDomainForward_HostMatchPath. It returns 204 No Content
+// without touching the network.
+type noopRoundTripper struct{}
+
+func (noopRoundTripper) RoundTrip(_ *fasthttp.HostClient, _ *fasthttp.Request, resp *fasthttp.Response) (bool, error) {
+	resp.Reset()
+	resp.Header.SetStatusCode(fasthttp.StatusNoContent)
+	return false, nil
+}
+
+// newReqWithHost builds an http.Request with the given Host header set
+// directly so DomainForward's host-match branch fires.
+func newReqWithHost(host, target string) *http.Request {
+	req := httptest.NewRequest(fiber.MethodGet, target, http.NoBody)
+	req.Host = host
+	return req
 }
