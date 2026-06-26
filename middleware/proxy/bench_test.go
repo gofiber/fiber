@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +12,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// These benchmarks are the baseline cited by PERF_PLAN.md. Each one
+// These benchmarks are the baseline that the PR description's
+// performance table compares against. Each one
 // targets a specific hot path identified during the perf survey so
 // subsequent changes can produce a benchstat-grade before/after.
 //
@@ -90,6 +92,13 @@ func BenchmarkResolveRedirect_HTTPSDowngradeBlocked(b *testing.B) {
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
 	location := []byte("http://example.com/landing")
+	// Anchor: assert once that we're actually measuring the blocked
+	// downgrade path. Without this, a regression that started allowing
+	// the redirect would leave the benchmark green while measuring a
+	// different path.
+	if _, err := resolveRedirect("https://example.com/", location, policy); !errors.Is(err, ErrRedirectDowngrade) {
+		b.Fatalf("expected ErrRedirectDowngrade, got %v", err)
+	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -110,14 +119,37 @@ func BenchmarkResolveRedirect_AllowedAcrossOrigin(b *testing.B) {
 	}
 }
 
+// seedNoConnectionRequest installs the headers exercised by
+// BenchmarkStripHopByHop_NoConnection. Kept as a tiny helper so the
+// re-seed step inside the timed loop is a single call.
+func seedNoConnectionRequest(req *fasthttp.Request) {
+	req.Header.Set("X-Forwarded-For", "203.0.113.1")
+	req.Header.Set("User-Agent", "bench/1.0")
+}
+
+// seedWithConnectionRequest installs the headers exercised by
+// BenchmarkStripHopByHop_WithConnection, including a Connection field
+// that lists a non-standard hop header so the stripping loop has real
+// work to do.
+func seedWithConnectionRequest(req *fasthttp.Request) {
+	req.Header.Set(fiber.HeaderConnection, "X-Custom-Hop, Keep-Alive")
+	req.Header.Set("X-Custom-Hop", "drop")
+	req.Header.Set(fiber.HeaderProxyAuthorization, "Basic Zm9vOmJhcg==")
+}
+
 func BenchmarkStripHopByHop_NoConnection(b *testing.B) {
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
-	req.Header.Set("X-Forwarded-For", "203.0.113.1")
-	req.Header.Set("User-Agent", "bench/1.0")
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		// Re-seed outside the timed section every iteration: without
+		// this, the first call removes the hop-by-hop headers and the
+		// rest of the loop measures a near no-op.
+		b.StopTimer()
+		req.Reset()
+		seedNoConnectionRequest(req)
+		b.StartTimer()
 		stripHopByHopRequestHeaders(req)
 	}
 }
@@ -125,12 +157,13 @@ func BenchmarkStripHopByHop_NoConnection(b *testing.B) {
 func BenchmarkStripHopByHop_WithConnection(b *testing.B) {
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
-	req.Header.Set(fiber.HeaderConnection, "X-Custom-Hop, Keep-Alive")
-	req.Header.Set("X-Custom-Hop", "drop")
-	req.Header.Set(fiber.HeaderProxyAuthorization, "Basic Zm9vOmJhcg==")
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		req.Reset()
+		seedWithConnectionRequest(req)
+		b.StartTimer()
 		stripHopByHopRequestHeaders(req)
 	}
 }
@@ -240,7 +273,15 @@ func BenchmarkDomainForward_HostMatchPath(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		_ = resp
+		// Close the body with the timer stopped: every iteration
+		// allocates an *http.Response, and leaking the body retains
+		// buffers that would skew B/op the benchmark is trying to
+		// track.
+		b.StopTimer()
+		if cerr := resp.Body.Close(); cerr != nil {
+			b.Fatal(cerr)
+		}
+		b.StartTimer()
 	}
 }
 

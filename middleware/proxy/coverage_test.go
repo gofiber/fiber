@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -158,15 +159,18 @@ func Test_Coverage_NewSSRFDialer_PassesGuardThenDials(t *testing.T) {
 // Test_Coverage_ValidateHostForSSRF_PublicHostname drives the
 // DNS-resolution success path of validateHostForSSRF. one.one.one.one is
 // chosen because Cloudflare keeps it pointing at 1.1.1.1/1.0.0.1, both
-// public. The test is skipped if outbound DNS is unavailable rather than
-// failing on an offline test host.
+// public. We let validateHostForSSRF do the single resolution itself
+// and only skip when the failure was a DNS lookup error — using
+// LookupHost as a separate skip-gate would do a redundant lookup and
+// could disagree with the second lookup in restricted CI.
 func Test_Coverage_ValidateHostForSSRF_PublicHostname(t *testing.T) {
 	t.Parallel()
-	_, err := net.LookupHost("one.one.one.one")
-	if err != nil {
+	err := validateHostForSSRF("one.one.one.one")
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
 		t.Skipf("offline DNS, skipping: %v", err)
 	}
-	require.NoError(t, validateHostForSSRF("one.one.one.one"))
+	require.NoError(t, err)
 }
 
 // Test_Coverage_ResolveRedirect_RejectsHostlessTarget covers the
@@ -194,6 +198,26 @@ func Test_Coverage_JoinUpstreamPath_RejectsAuthorityInjection(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "http", parsed.Scheme)
 	require.Equal(t, "upstream.example", parsed.Host, "host must remain pinned")
+}
+
+// Test_Coverage_JoinUpstreamPath_FallbackPreservesBasePathPrefix is a
+// regression guard: when the request path fails to parse cleanly the
+// fallback branch must still honor an upstream base path prefix.
+// Without this, a malformed request like "/%zz" could silently bypass
+// a configured "/api" and reach the upstream root.
+func Test_Coverage_JoinUpstreamPath_FallbackPreservesBasePathPrefix(t *testing.T) {
+	t.Parallel()
+	base, err := url.Parse("http://upstream.example/api")
+	require.NoError(t, err)
+
+	// "/%zz" trips url.Parse (invalid escape) — the slow path's
+	// parse-error fallback fires.
+	out := joinUpstreamPath(base, "/%zz")
+	require.NotEmpty(t, out)
+	parsed, err := url.Parse(out)
+	require.NoError(t, err, "fallback must still emit a parseable URL")
+	require.Equal(t, "upstream.example", parsed.Host, "host must remain pinned")
+	require.True(t, strings.HasPrefix(parsed.Path, "/api/"), "base path prefix must survive fallback: %q", parsed.Path)
 }
 
 // Test_Coverage_JoinUpstreamPath_PreservesRawPath_BaseHasPercentEncoded

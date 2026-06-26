@@ -544,8 +544,15 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 	parsed, err := url.Parse(requestPath)
 	if err != nil || parsed.Host != "" || parsed.Scheme != "" {
 		// Either the path failed to parse cleanly or it introduced a
-		// new authority. Treat the remainder as an opaque path.
-		out.Path = "/" + utils.TrimLeft(requestPath, '/')
+		// new authority. Treat the remainder as an opaque path, but
+		// preserve any path prefix configured on the upstream base so
+		// a malformed request can't silently bypass it (e.g.
+		// "http://upstream/api" + "/%zz" must stay rooted at "/api").
+		fallback := "/" + utils.TrimLeft(requestPath, '/')
+		if base.Path != "" {
+			fallback = strings.TrimSuffix(base.Path, "/") + "/" + strings.TrimPrefix(fallback, "/")
+		}
+		out.Path = fallback
 		out.RawPath = ""
 		out.RawQuery = ""
 		out.Fragment = ""
