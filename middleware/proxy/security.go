@@ -371,48 +371,68 @@ func newSSRFDialer(dialDualStack bool) fasthttp.DialFunc {
 		if err != nil {
 			return nil, fmt.Errorf("proxy: invalid dial address %q: %w", addr, err)
 		}
-
-		var ips []net.IP
-		if ip := net.ParseIP(host); ip != nil {
-			ips = []net.IP{ip}
-		} else {
-			ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
-			defer cancel()
-			resolved, lerr := net.DefaultResolver.LookupIPAddr(ctx, host)
-			if lerr != nil {
-				return nil, fmt.Errorf("%w: %s lookup failed: %w", ErrUpstreamHostBlocked, host, lerr)
-			}
-			for _, r := range resolved {
-				ips = append(ips, r.IP)
-			}
+		ips, err := resolveAndValidateHost(host)
+		if err != nil {
+			return nil, err
 		}
-
-		// Reject if ANY resolved address is blocked, mirroring
-		// validateHostForSSRF so a mixed public/private answer cannot slip
-		// a private target past the guard.
-		for _, ip := range ips {
-			if isBlockedIP(ip) {
-				return nil, fmt.Errorf("%w: %s -> %s", ErrUpstreamHostBlocked, host, ip)
-			}
-		}
-
-		var lastErr error
-		for _, ip := range ips {
-			// Mirror fasthttp's default of IPv4-only unless DialDualStack.
-			if !dialDualStack && ip.To4() == nil {
-				continue
-			}
-			conn, derr := dialer.Dial("tcp", net.JoinHostPort(ip.String(), port))
-			if derr == nil {
-				return conn, nil
-			}
-			lastErr = derr
-		}
-		if lastErr == nil {
-			lastErr = fmt.Errorf("%w: %s has no usable address", ErrUpstreamHostBlocked, host)
-		}
-		return nil, lastErr
+		return dialValidatedIPs(ips, host, port, dialDualStack, dialer.Dial)
 	}
+}
+
+// resolveAndValidateHost looks up host (or treats it as an IP literal),
+// then enforces the SSRF blocklist on every returned address. A single
+// blocked answer fails the whole resolution so a mixed public/private
+// reply cannot slip past the guard.
+func resolveAndValidateHost(host string) ([]net.IP, error) {
+	var ips []net.IP
+	if ip := net.ParseIP(host); ip != nil {
+		ips = []net.IP{ip}
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
+		defer cancel()
+		resolved, lerr := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if lerr != nil {
+			return nil, fmt.Errorf("%w: %s lookup failed: %w", ErrUpstreamHostBlocked, host, lerr)
+		}
+		for _, r := range resolved {
+			ips = append(ips, r.IP)
+		}
+	}
+	for _, ip := range ips {
+		if isBlockedIP(ip) {
+			return nil, fmt.Errorf("%w: %s -> %s", ErrUpstreamHostBlocked, host, ip)
+		}
+	}
+	return ips, nil
+}
+
+// ssrfDialFunc is the (network, address) -> conn signature consumed by
+// dialValidatedIPs. It accepts the standard library *net.Dialer's Dial
+// method directly, and lets tests inject a deterministic stub.
+type ssrfDialFunc func(network, address string) (net.Conn, error)
+
+// dialValidatedIPs walks ips and tries to dial the first non-skipped
+// address. When dialDualStack is false, IPv6 addresses are skipped to
+// match fasthttp's IPv4-only default. If every candidate is skipped, a
+// "no usable address" error is returned; otherwise the last dial error
+// is propagated so the caller can see why each attempt failed.
+func dialValidatedIPs(ips []net.IP, host, port string, dialDualStack bool, dial ssrfDialFunc) (net.Conn, error) {
+	var lastErr error
+	for _, ip := range ips {
+		// Mirror fasthttp's default of IPv4-only unless DialDualStack.
+		if !dialDualStack && ip.To4() == nil {
+			continue
+		}
+		conn, derr := dial("tcp", net.JoinHostPort(ip.String(), port))
+		if derr == nil {
+			return conn, nil
+		}
+		lastErr = derr
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("%w: %s has no usable address", ErrUpstreamHostBlocked, host)
+	}
+	return nil, lastErr
 }
 
 // isBlockedIP reports whether ip falls inside a range that proxy
