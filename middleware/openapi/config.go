@@ -10,6 +10,7 @@ import (
 const (
 	versionOpenAPI30 = "3.0.0"
 	versionOpenAPI31 = "3.1.0"
+	versionOpenAPI32 = "3.2.0"
 )
 
 // Contact holds contact information for the exposed API.
@@ -26,6 +27,9 @@ type Contact struct {
 type License struct {
 	// Name is the license name used for the API.
 	Name string `json:"name"`
+	// Identifier is an SPDX license expression for the API (OpenAPI 3.1+).
+	// It is mutually exclusive with URL.
+	Identifier string `json:"identifier,omitempty"`
 	// URL is a URL to the license used for the API.
 	URL string `json:"url,omitempty"`
 }
@@ -38,6 +42,9 @@ type Server struct {
 	URL string `json:"url"`
 	// Description is an optional description of the server.
 	Description string `json:"description,omitempty"`
+	// Name is an optional unique string to refer to the host designated by the
+	// URL (OpenAPI 3.2+).
+	Name string `json:"name,omitempty"`
 }
 
 // ServerVariable describes a single variable for server URL template substitution.
@@ -125,17 +132,23 @@ type Config struct {
 	// Optional. Default: ""
 	TermsOfService string
 
-	// Summary is a short summary of the API (OpenAPI 3.1 info.summary). Only
-	// emitted when OpenAPIVersion is "3.1.0".
+	// Summary is a short summary of the API (info.summary). Only emitted for
+	// OpenAPI 3.1.0 and above.
 	//
 	// Optional. Default: ""
 	Summary string
 
-	// JSONSchemaDialect sets the default JSON Schema dialect (OpenAPI 3.1). Only
-	// emitted when OpenAPIVersion is "3.1.0".
+	// JSONSchemaDialect sets the default JSON Schema dialect. Only emitted for
+	// OpenAPI 3.1.0 and above.
 	//
 	// Optional. Default: ""
 	JSONSchemaDialect string
+
+	// Self is the self-assigned URI of the document, emitted as the "$self"
+	// field. Only emitted for OpenAPI 3.2.0 and above.
+	//
+	// Optional. Default: ""
+	Self string
 
 	// ServerURL is the server URL used in the generated specification.
 	//
@@ -279,7 +292,10 @@ func configDefault(config ...Config) Config {
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion
 	}
 	// Normalize OpenAPI version to supported values
-	if cfg.OpenAPIVersion != versionOpenAPI30 && cfg.OpenAPIVersion != versionOpenAPI31 {
+	switch cfg.OpenAPIVersion {
+	case versionOpenAPI30, versionOpenAPI31, versionOpenAPI32:
+		// supported
+	default:
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion
 	}
 	return cfg

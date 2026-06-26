@@ -2030,3 +2030,100 @@ func Test_OpenAPI_OperationExtension(t *testing.T) {
 	// Generated responses must win over the extension's "responses".
 	require.NotContains(t, requireMap(t, op["responses"]), "999")
 }
+
+func Test_OpenAPI_QueryMethod_Gated(t *testing.T) {
+	t.Parallel()
+
+	register := func(app *fiber.App) {
+		app.Query("/search", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+			RequestBody("query", true, fiber.MIMEApplicationJSON)
+	}
+
+	// 3.2: QUERY emits a `query` operation that carries a request body.
+	spec32 := fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.2.0"}, register)
+	paths32 := requireMap(t, spec32["paths"])
+	search := requireMap(t, paths32["/search"])
+	require.Contains(t, search, "query")
+	queryOp := requireMap(t, search["query"])
+	require.Contains(t, queryOp, "requestBody")
+
+	// 3.1 / 3.0: no `query` operation key exists, so the route is skipped.
+	for _, version := range []string{"3.1.0", "3.0.0"} {
+		spec := fetchSpecWithConfig(t, Config{OpenAPIVersion: version}, register)
+		paths := requireMap(t, spec["paths"])
+		require.NotContains(t, paths, "/search", "version %s should omit QUERY routes", version)
+	}
+}
+
+func Test_OpenAPI_Version32Accepted(t *testing.T) {
+	t.Parallel()
+
+	register := func(app *fiber.App) {
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	}
+
+	spec := fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.2.0"}, register)
+	require.Equal(t, "3.2.0", spec["openapi"])
+
+	// Unknown versions still fall back to the default.
+	fallback := fetchSpecWithConfig(t, Config{OpenAPIVersion: "9.9.9"}, register)
+	require.Equal(t, "3.1.0", fallback["openapi"])
+}
+
+func Test_OpenAPI_32Fields_Gated(t *testing.T) {
+	t.Parallel()
+
+	register := func(app *fiber.App) {
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	}
+	cfg := Config{
+		Self:    "https://example.com/openapi.json",
+		Servers: []Server{{URL: "https://api.example.com", Name: "prod"}},
+		License: &License{Name: "MIT", Identifier: "MIT"},
+	}
+	cfg32 := cfg
+	cfg32.OpenAPIVersion = "3.2.0"
+	cfg30 := cfg
+	cfg30.OpenAPIVersion = "3.0.0"
+
+	spec32 := fetchSpecWithConfig(t, cfg32, register)
+	require.Equal(t, "https://example.com/openapi.json", spec32["$self"])
+	require.Equal(t, "prod", requireMap(t, requireSlice(t, spec32["servers"])[0])["name"])
+	require.Equal(t, "MIT", requireMap(t, requireMap(t, spec32["info"])["license"])["identifier"])
+
+	spec30 := fetchSpecWithConfig(t, cfg30, register)
+	require.NotContains(t, spec30, "$self")
+	require.NotContains(t, requireMap(t, requireSlice(t, spec30["servers"])[0]), "name")
+	require.NotContains(t, requireMap(t, requireMap(t, spec30["info"])["license"]), "identifier")
+}
+
+func Test_OpenAPI_31Fields_EmitFor32(t *testing.T) {
+	t.Parallel()
+
+	register := func(app *fiber.App) {
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	}
+	spec := fetchSpecWithConfig(t, Config{
+		OpenAPIVersion:    "3.2.0",
+		Summary:           "Summary",
+		JSONSchemaDialect: "https://spec.openapis.org/oas/3.1/dialect/base",
+		Webhooks:          map[string]any{"ping": map[string]any{}},
+	}, register)
+	require.Equal(t, "Summary", requireMap(t, spec["info"])["summary"])
+	require.Contains(t, spec, "jsonSchemaDialect")
+	require.Contains(t, spec, "webhooks")
+}
+
+func Test_OpenAPI_QueryStringParameterLocation(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/search", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		AddParameter(fiber.RouteParameter{Name: "q", In: "querystring", Schema: map[string]any{"type": "string"}})
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/search"]["get"])
+	params, ok := op["parameters"].([]any)
+	require.True(t, ok)
+	require.Equal(t, "querystring", requireMap(t, params[0])["in"])
+}
