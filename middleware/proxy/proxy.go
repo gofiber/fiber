@@ -228,7 +228,18 @@ func doActionWithPolicy(
 		return err
 	}
 
-	u, err := validateUpstream(addr, policy)
+	// Clone addr once at the parse boundary instead of cloning u.Scheme
+	// and u.String() individually after the fact. url.Parse fills u's
+	// field slices (Scheme/Host/Path/...) with substrings of the input,
+	// so if addr is itself a slice of the request buffer (e.g. a caller
+	// derived it from c.OriginalURL()), every field in u aliases the
+	// same backing array — and SetRequestURI below will overwrite it
+	// mid-request. Decoupling u from the request buffer with one clone
+	// here covers SetRequestURI/SetSchemeBytes and also the action
+	// callback in followRedirects, which inspects u.Host after the
+	// SetRequestURI write.
+	addrCopy := strings.Clone(addr)
+	u, err := validateUpstream(addrCopy, policy)
 	if err != nil {
 		return err
 	}
@@ -238,15 +249,8 @@ func doActionWithPolicy(
 	originalURL := utils.CopyString(c.OriginalURL())
 	defer req.SetRequestURI(originalURL)
 
-	// Snapshot scheme/target into freshly allocated buffers BEFORE any
-	// SetRequestURI call. Both u.Scheme and u.String() may alias the
-	// caller-supplied addr, which itself can be a slice of the request
-	// buffer that SetRequestURI is about to overwrite — without these
-	// copies, the scheme/host bytes get clobbered mid-request.
-	scheme := strings.Clone(u.Scheme)
-	targetURL := strings.Clone(u.String())
-	req.SetRequestURI(targetURL)
-	req.URI().SetSchemeBytes([]byte(scheme))
+	req.SetRequestURI(u.String())
+	req.URI().SetSchemeBytes([]byte(u.Scheme))
 
 	if !policy.KeepHopByHopHeaders {
 		stripHopByHopRequestHeaders(req)

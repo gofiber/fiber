@@ -622,6 +622,38 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 }
 
 // go test -race -run Test_Proxy_DoRedirects_RestoreOriginalURL
+// Test_Proxy_DoRedirects_AliasedAddr regression-tests P3+P6: the addr
+// string is derived from c.OriginalURL() and therefore aliases the
+// fasthttp request's internal requestURI buffer. After P6, the *url.URL
+// returned by validateUpstream is passed into followRedirects, which
+// reads u.Host on the cross-host strip check and u.String() to feed
+// SetRequestURI. If u's field slices were ever aliased back to the
+// request buffer, SetRequestURI's overwrite would corrupt them mid-loop
+// and the redirect target would be garbled. P3 fixes this by cloning
+// addr once at the parse boundary inside doActionWithPolicy.
+func Test_Proxy_DoRedirects_AliasedAddr(t *testing.T) {
+	t.Parallel()
+
+	addr := createRedirectServer(t)
+	app := fiber.New()
+	// Routing the upstream through the request path forces addr to alias
+	// req.Header.requestURI, exercising the aliasing case directly.
+	app.Get("/*", func(c fiber.Ctx) error {
+		aliased := strings.TrimPrefix(c.OriginalURL(), "/")
+		return DoRedirects(c, aliased, 1)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/http://"+addr, http.NoBody), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "final", string(body))
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
 
