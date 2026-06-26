@@ -3021,9 +3021,9 @@ func Test_CSRF_Security_SecFetchSite_Normalization(t *testing.T) {
 	app := fiber.New()
 
 	cases := []struct {
+		wantErr error
 		name    string
 		value   string
-		wantErr error
 	}{
 		{name: "empty header is ignored", value: "", wantErr: nil},
 		{name: "same-origin", value: "same-origin", wantErr: nil},
@@ -3158,6 +3158,10 @@ func Test_CSRF_Security_CookieAttributes(t *testing.T) {
 	require.True(t, cookie.Secure, "cookie must be Secure")
 	require.Equal(t, http.SameSiteStrictMode, cookie.SameSite, "cookie must be SameSite=Strict")
 	require.Equal(t, "/", cookie.Path)
+	// A "__Host-" prefixed cookie must stay host-only: setCSRFCookie copies
+	// cfg.CookieDomain onto the response cookie, so an empty Domain guards
+	// against a regression that would start scoping the cookie to a domain.
+	require.Empty(t, cookie.Domain, "__Host- cookie must not set a Domain")
 	require.NotEmpty(t, cookie.Value)
 }
 
