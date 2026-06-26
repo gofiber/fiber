@@ -416,6 +416,8 @@ type ssrfDialFunc func(network, address string) (net.Conn, error)
 // match fasthttp's IPv4-only default. If every candidate is skipped, a
 // "no usable address" error is returned; otherwise the last dial error
 // is propagated so the caller can see why each attempt failed.
+//
+//nolint:revive // dialDualStack mirrors fasthttp.HostClient.DialDualStack
 func dialValidatedIPs(ips []net.IP, host, port string, dialDualStack bool, dial ssrfDialFunc) (net.Conn, error) {
 	var lastErr error
 	for _, ip := range ips {
