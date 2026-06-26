@@ -29,6 +29,21 @@ const (
 	schemeHTTPS = "https"
 )
 
+// Package-level immutable allowlist used by DefaultSecurityPolicy and as
+// the fallback inside schemeAllowed. Allocating this once spares every
+// per-request schemeAllowed/normalizePolicy call from rebuilding the
+// same two-element slice.
+//
+// Callers receive a fresh copy via DefaultSecurityPolicy() →
+// normalizePolicy(), so this backing array is never visible past the
+// public boundary.
+var defaultAllowedSchemes = []string{schemeHTTP, schemeHTTPS}
+
+// httpsSchemeBytes is the byte form of "https" used by redirect
+// downgrade checks. Stored once so the resolveRedirect hot path doesn't
+// allocate []byte("https") on every hop.
+var httpsSchemeBytes = []byte(schemeHTTPS)
+
 // Sentinel errors returned when an upstream target violates the configured
 // proxy security policy.
 var (
@@ -86,7 +101,7 @@ type SecurityPolicy struct {
 // via Config.SecurityPolicy or WithSecurityPolicy.
 func DefaultSecurityPolicy() SecurityPolicy {
 	return SecurityPolicy{
-		AllowedSchemes:      []string{schemeHTTP, schemeHTTPS},
+		AllowedSchemes:      defaultAllowedSchemes,
 		AllowPrivateIPs:     false,
 		AllowHTTPSDowngrade: false,
 		KeepHopByHopHeaders: false,
@@ -114,7 +129,7 @@ func init() {
 // via activePolicy.Load() without further copying.
 func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
 	if len(policy.AllowedSchemes) == 0 {
-		policy.AllowedSchemes = []string{schemeHTTP, schemeHTTPS}
+		policy.AllowedSchemes = defaultAllowedSchemes
 	} else {
 		policy.AllowedSchemes = append([]string(nil), policy.AllowedSchemes...)
 	}
@@ -315,7 +330,7 @@ func schemeAllowed(scheme string, allowed []string) bool {
 		return false
 	}
 	if len(allowed) == 0 {
-		allowed = DefaultSecurityPolicy().AllowedSchemes
+		allowed = defaultAllowedSchemes
 	}
 	for _, s := range allowed {
 		if utils.EqualFold(s, scheme) {

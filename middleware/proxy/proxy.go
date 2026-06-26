@@ -344,7 +344,12 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) 
 	uri := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(uri)
 	uri.Update(currentURL)
-	previousScheme := append([]byte(nil), uri.Scheme()...)
+	// previousScheme is at most "https" (5 bytes). A stack-sized scratch
+	// buffer holds it without escaping to the heap, eliminating the
+	// per-hop allocation that the previous append([]byte(nil), ...)
+	// pattern produced.
+	var schemeBuf [8]byte
+	previousScheme := append(schemeBuf[:0], uri.Scheme()...)
 	uri.UpdateBytes(location)
 	if len(uri.Host()) == 0 {
 		return nil, fasthttp.ErrorInvalidURI
@@ -353,7 +358,7 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) 
 	if err != nil {
 		return nil, err
 	}
-	if !policy.AllowHTTPSDowngrade && bytes.EqualFold(previousScheme, []byte(schemeHTTPS)) && target.Scheme == schemeHTTP {
+	if !policy.AllowHTTPSDowngrade && bytes.EqualFold(previousScheme, httpsSchemeBytes) && target.Scheme == schemeHTTP {
 		return nil, ErrRedirectDowngrade
 	}
 	return target, nil
