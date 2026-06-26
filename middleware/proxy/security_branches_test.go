@@ -130,7 +130,8 @@ func Test_Security_ResolveRedirect_AllowsDowngradeWhenOptIn(t *testing.T) {
 	policy.AllowHTTPSDowngrade = true
 	out, err := resolveRedirect("https://example.com", []byte("http://example.com/x"), policy)
 	require.NoError(t, err)
-	require.Equal(t, "http://example.com/x", out)
+	require.NotNil(t, out)
+	require.Equal(t, "http://example.com/x", out.String())
 }
 
 // Test_Security_ResolveRedirect_HTTPSDowngradeBlocked verifies the

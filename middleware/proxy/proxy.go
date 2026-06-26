@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"errors"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -258,14 +259,26 @@ func doActionWithPolicy(
 // target against policy before issuing the next request. It replaces
 // fasthttp.Client.DoRedirects so we can reject HTTPS→HTTP downgrades and
 // reapply SSRF checks to caller-controlled Location headers.
+//
+// The currentURL flowing into req.SetRequestURI is tracked as a *url.URL
+// produced by validateUpstream (scheme allowlist + SSRF block + host
+// re-validation). That makes the policy check the only path data can
+// reach SetRequestURI through — including taint trackers like
+// CodeQL's go/request-forgery.
 func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, policy SecurityPolicy) error {
 	if maxRedirects < 0 {
 		maxRedirects = 0
 	}
-	currentURL := string(req.URI().FullURI())
-	currentHost := string(req.URI().Host())
+	// Re-validate the initial URL even though doActionWithPolicy already
+	// did. Carrying the result as *url.URL guarantees every SetRequestURI
+	// inside the loop is fed a value produced by validateUpstream.
+	currentURL, err := validateUpstream(string(req.URI().FullURI()), policy)
+	if err != nil {
+		return err
+	}
+	currentHost := currentURL.Host
 	for redirects := 0; ; redirects++ {
-		req.SetRequestURI(currentURL)
+		req.SetRequestURI(currentURL.String())
 		if err := cli.Do(req, resp); err != nil {
 			return err
 		}
@@ -280,7 +293,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		if len(location) == 0 {
 			return fasthttp.ErrMissingLocation
 		}
-		nextURL, err := resolveRedirect(currentURL, location, policy)
+		nextURL, err := resolveRedirect(currentURL.String(), location, policy)
 		if err != nil {
 			return err
 		}
@@ -294,9 +307,9 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		// Strip credentials when the redirect crosses to a different host so
 		// secrets bound to the original origin are not leaked to a third
 		// party (RFC 9110 §15.4 advisory; matches browser behavior).
-		if nextHost := redirectHost(nextURL); !utils.EqualFold(nextHost, currentHost) {
+		if !utils.EqualFold(nextURL.Host, currentHost) {
 			stripCrossHostHeaders(req)
-			currentHost = nextHost
+			currentHost = nextURL.Host
 		}
 		currentURL = nextURL
 	}
@@ -316,22 +329,16 @@ func stripCrossHostHeaders(req *fasthttp.Request) {
 	}
 }
 
-// redirectHost extracts the host (host:port) component of an absolute URL
-// without allocating a full *url.URL.
-func redirectHost(rawURL string) string {
-	uri := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(uri)
-	uri.Update(rawURL)
-	return string(uri.Host())
-}
-
 // resolveRedirect parses a redirect target relative to the current URL
 // and applies the SecurityPolicy. CRLF and other control bytes are
-// rejected to prevent header injection via Location.
-func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) (string, error) {
+// rejected to prevent header injection via Location. The returned value
+// is the validated *url.URL produced by validateUpstream, so callers
+// pass it straight into network sinks without re-parsing user-controlled
+// strings.
+func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) (*url.URL, error) {
 	for _, b := range location {
 		if b < 0x20 || b == 0x7f {
-			return "", fasthttp.ErrorInvalidURI
+			return nil, fasthttp.ErrorInvalidURI
 		}
 	}
 	uri := fasthttp.AcquireURI()
@@ -340,17 +347,16 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) 
 	previousScheme := append([]byte(nil), uri.Scheme()...)
 	uri.UpdateBytes(location)
 	if len(uri.Host()) == 0 {
-		return "", fasthttp.ErrorInvalidURI
+		return nil, fasthttp.ErrorInvalidURI
 	}
-	next := uri.String()
-	target, err := validateUpstream(next, policy)
+	target, err := validateUpstream(uri.String(), policy)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if !policy.AllowHTTPSDowngrade && bytes.EqualFold(previousScheme, []byte(schemeHTTPS)) && target.Scheme == schemeHTTP {
-		return "", ErrRedirectDowngrade
+		return nil, ErrRedirectDowngrade
 	}
-	return target.String(), nil
+	return target, nil
 }
 
 func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*fasthttp.Client, error) {
