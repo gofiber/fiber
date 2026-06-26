@@ -447,3 +447,11 @@ func Test_CSRF_CookieName_CaseInsensitive_Warning(t *testing.T) {
 		configDefault(cfg)
 	}, "Should not panic for case-insensitive cookie name match, but should warn")
 }
+
+func Test_CSRF_validateExtractorSecurity_NilConfig(t *testing.T) {
+	t.Parallel()
+
+	require.NotPanics(t, func() {
+		validateExtractorSecurity(nil)
+	})
+}
