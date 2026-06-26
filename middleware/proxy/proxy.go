@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"bytes"
 	"errors"
 	"net/url"
 	"strings"
@@ -362,7 +361,7 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) 
 	if err != nil {
 		return nil, err
 	}
-	if !policy.AllowHTTPSDowngrade && bytes.EqualFold(previousScheme, httpsSchemeBytes) && target.Scheme == schemeHTTP {
+	if !policy.AllowHTTPSDowngrade && utils.EqualFold(previousScheme, httpsSchemeBytes) && target.Scheme == schemeHTTP {
 		return nil, ErrRedirectDowngrade
 	}
 	return target, nil

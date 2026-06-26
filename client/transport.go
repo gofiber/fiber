@@ -4,10 +4,10 @@
 package client
 
 import (
-	"bytes"
 	"crypto/tls"
 	"time"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -363,12 +363,12 @@ func composeRedirectURL(base string, location []byte, disablePathNormalizing boo
 	defer fasthttp.ReleaseURI(uri)
 
 	uri.Update(base)
-	wasHTTPS := bytes.EqualFold(uri.Scheme(), httpsScheme)
+	wasHTTPS := utils.EqualFold(uri.Scheme(), httpsScheme)
 	uri.UpdateBytes(location)
 	uri.DisablePathNormalizing = disablePathNormalizing
 
 	scheme := uri.Scheme()
-	if len(scheme) > 0 && !bytes.EqualFold(scheme, httpScheme) && !bytes.EqualFold(scheme, httpsScheme) {
+	if len(scheme) > 0 && !utils.EqualFold(scheme, httpScheme) && !utils.EqualFold(scheme, httpsScheme) {
 		return "", fasthttp.ErrorInvalidURI
 	}
 
@@ -376,7 +376,7 @@ func composeRedirectURL(base string, location []byte, disablePathNormalizing boo
 		return "", fasthttp.ErrorInvalidURI
 	}
 
-	if wasHTTPS && bytes.EqualFold(scheme, httpScheme) {
+	if wasHTTPS && utils.EqualFold(scheme, httpScheme) {
 		return "", ErrRedirectDowngrade
 	}
 
