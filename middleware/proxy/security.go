@@ -634,13 +634,11 @@ func canFastJoinPath(requestPath string) bool {
 			if inPath {
 				return false
 			}
-		case '@', ':':
-			// Authority / scheme separator — never allowed in the
-			// spliced segment.
-			return false
 		default:
-			// Spaces, control bytes, brackets, quotes, multi-byte UTF-8,
-			// anything else: needs escaping — fall through to slow path.
+			// Everything else falls back to the slow path: authority /
+			// scheme separators ('@', ':') we always refuse, plus any
+			// byte (spaces, control bytes, brackets, quotes, multi-byte
+			// UTF-8, etc.) that url.URL.String() would percent-encode.
 			return false
 		}
 		prev = c
