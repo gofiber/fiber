@@ -2867,6 +2867,80 @@ func Test_App_SkipUnmatchedRoutes_NestedGroups(t *testing.T) {
 	})
 }
 
+// Test_App_SkipUnmatchedRoutes_CustomCtx exercises the customRequestHandler path
+// which uses setFirstMatchIndex/getFirstMatchIndex instead of direct field access.
+func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
+	t.Parallel()
+
+	newCustomCtx := func(app *App) CustomCtx {
+		return &DefaultCtx{app: app}
+	}
+
+	t.Run("unmatched route returns 404", func(t *testing.T) {
+		t.Parallel()
+		app := NewWithCustomCtx(newCustomCtx, Config{SkipUnmatchedRoutes: true})
+
+		app.Get("/exists", func(c Ctx) error {
+			return c.SendString("ok")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/not-exists", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("matched route returns 200", func(t *testing.T) {
+		t.Parallel()
+		app := NewWithCustomCtx(newCustomCtx, Config{SkipUnmatchedRoutes: true})
+
+		app.Get("/exists", func(c Ctx) error {
+			return c.SendString("ok")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/exists", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("middleware skipped for unmatched route", func(t *testing.T) {
+		t.Parallel()
+		middlewareRan := false
+		app := NewWithCustomCtx(newCustomCtx, Config{SkipUnmatchedRoutes: true})
+
+		app.Use(func(c Ctx) error {
+			middlewareRan = true
+			return c.Next()
+		})
+		app.Get("/exists", func(c Ctx) error {
+			return c.SendString("ok")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/not-exists", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.False(t, middlewareRan, "middleware should not run for unmatched route")
+	})
+
+	t.Run("middleware runs for matched route", func(t *testing.T) {
+		t.Parallel()
+		middlewareRan := false
+		app := NewWithCustomCtx(newCustomCtx, Config{SkipUnmatchedRoutes: true})
+
+		app.Use(func(c Ctx) error {
+			middlewareRan = true
+			return c.Next()
+		})
+		app.Get("/exists", func(c Ctx) error {
+			return c.SendString("ok")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/exists", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.True(t, middlewareRan, "middleware should run for matched route")
+	})
+}
+
 // go test -v ./... -run=^$ -bench=Benchmark_SkipUnmatchedRoutes -benchmem -count=4
 func Benchmark_SkipUnmatchedRoutes_Unmatched(b *testing.B) {
 	b.Run("without_skip", func(b *testing.B) {
