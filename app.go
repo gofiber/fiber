@@ -1084,7 +1084,9 @@ func (app *App) AddParameter(param RouteParameter) Router {
 
 	location := strings.ToLower(strings.TrimSpace(param.In))
 	switch location {
-	case "path", "query", "header", "cookie":
+	// "querystring" is an OpenAPI 3.2 location that treats the whole query
+	// string as a single value (paired with content rather than schema).
+	case "path", "query", "header", "cookie", "querystring":
 	default:
 		panic("invalid parameter location: " + param.In)
 	}

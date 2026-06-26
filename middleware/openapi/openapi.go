@@ -221,6 +221,7 @@ type openAPISpec struct {
 	ExternalDocs      *ExternalDocs                   `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Info              openAPIInfo                     `json:"info"`
 	OpenAPI           string                          `json:"openapi"`
+	Self              string                          `json:"$self,omitempty"`
 	JSONSchemaDialect string                          `json:"jsonSchemaDialect,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Servers           []openAPIServer                 `json:"servers,omitempty"`
 	Security          []map[string][]string           `json:"security,omitempty"`
@@ -241,6 +242,7 @@ type openAPIServer struct {
 	Variables   map[string]ServerVariable `json:"variables,omitempty"`
 	URL         string                    `json:"url"`
 	Description string                    `json:"description,omitempty"`
+	Name        string                    `json:"name,omitempty"`
 }
 
 type openAPITag struct {
@@ -391,6 +393,18 @@ func uniqueOperationID(id string, used map[string]struct{}) string {
 	}
 }
 
+// openAPIVersionRank orders the supported OpenAPI versions for comparison.
+var openAPIVersionRank = map[string]int{
+	versionOpenAPI30: 0,
+	versionOpenAPI31: 1,
+	versionOpenAPI32: 2,
+}
+
+// versionAtLeast reports whether version is greater than or equal to minimum.
+func versionAtLeast(version, minimum string) bool {
+	return openAPIVersionRank[version] >= openAPIVersionRank[minimum]
+}
+
 func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 	paths := make(map[string]map[string]operation)
 	// usedOperationIDs guarantees operationId uniqueness across the document,
@@ -401,6 +415,11 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 	for _, routes := range stack {
 		for _, r := range routes {
 			if r.Method == fiber.MethodConnect {
+				continue
+			}
+			// The OpenAPI `query` operation key exists only in 3.2+; skip QUERY
+			// routes for earlier versions, where it cannot be represented.
+			if r.Method == fiber.MethodQuery && !versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
 				continue
 			}
 			// Skip middleware routes registered via Use()
@@ -522,13 +541,26 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 		}
 	}
 
-	// OpenAPI 3.1-only document fields.
-	if cfg.OpenAPIVersion == versionOpenAPI31 {
+	// license.identifier (SPDX) requires OpenAPI 3.1+. Drop it for 3.0 without
+	// mutating the caller's License.
+	if cfg.License != nil && cfg.License.Identifier != "" && !versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI31) {
+		licenseCopy := *cfg.License
+		licenseCopy.Identifier = ""
+		spec.Info.License = &licenseCopy
+	}
+
+	// OpenAPI 3.1+ document fields.
+	if versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI31) {
 		spec.Info.Summary = cfg.Summary
 		spec.JSONSchemaDialect = cfg.JSONSchemaDialect
 		if len(cfg.Webhooks) > 0 {
 			spec.Webhooks = maps.Clone(cfg.Webhooks)
 		}
+	}
+
+	// OpenAPI 3.2+ document fields.
+	if versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
+		spec.Self = cfg.Self
 	}
 
 	spec.Components = buildComponents(cfg)
@@ -539,13 +571,19 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 // buildServers resolves the server list, preferring Config.Servers and falling
 // back to the single Config.ServerURL for backward compatibility.
 func buildServers(cfg *Config) []openAPIServer {
+	// Server.name is an OpenAPI 3.2+ field.
+	allowName := versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32)
 	if len(cfg.Servers) > 0 {
 		servers := make([]openAPIServer, 0, len(cfg.Servers))
 		for _, server := range cfg.Servers {
 			if server.URL == "" {
 				continue
 			}
-			servers = append(servers, openAPIServer(server))
+			srv := openAPIServer(server)
+			if !allowName {
+				srv.Name = ""
+			}
+			servers = append(servers, srv)
 		}
 		if len(servers) > 0 {
 			return servers

@@ -6,7 +6,7 @@ id: openapi
 
 OpenAPI middleware for [Fiber](https://github.com/gofiber/fiber) that generates an OpenAPI specification based on the routes registered in your application.
 
-This middleware supports both OpenAPI 3.0.0 and 3.1.0 specifications.
+This middleware supports the OpenAPI 3.0.0, 3.1.0 and 3.2.0 specifications.
 
 ## Signatures
 
@@ -242,6 +242,53 @@ internal or admin endpoints:
 app.Get("/internal/metrics", metricsHandler).Hidden()
 ```
 
+### QUERY routes (OpenAPI 3.2)
+
+The HTTP `QUERY` method maps to the OpenAPI `query` operation, which exists only
+in OpenAPI 3.2. Register the route with `app.Query(...)` and select 3.2; it
+documents like any other operation (and, unlike `GET`, may carry a request body):
+
+```go
+app.Use(openapi.New(openapi.Config{OpenAPIVersion: "3.2.0"}))
+
+app.Query("/search", searchHandler).
+    Summary("Search").
+    RequestBody("Search criteria", true, fiber.MIMEApplicationJSON)
+```
+
+When `OpenAPIVersion` is `3.0.0` or `3.1.0`, `QUERY` routes are omitted from the
+spec because those versions cannot represent the operation.
+
+### OpenAPI 3.2 document fields
+
+3.2 adds a few typed fields the middleware emits when `OpenAPIVersion` is
+`"3.2.0"` (and `License.Identifier` for 3.1+):
+
+```go
+app.Use(openapi.New(openapi.Config{
+    OpenAPIVersion: "3.2.0",
+    Self:           "https://example.com/openapi.json", // $self
+    License:        &openapi.License{Name: "Apache 2.0", Identifier: "Apache-2.0"},
+    Servers: []openapi.Server{
+        {URL: "https://api.example.com", Name: "production"}, // Server.name
+    },
+}))
+```
+
+A parameter may also use the 3.2 `querystring` location (which pairs with
+`content` rather than `schema`) via `AddParameter`:
+
+```go
+app.Get("/search", searchHandler).
+    AddParameter(fiber.RouteParameter{Name: "q", In: "querystring", Schema: map[string]any{"type": "string"}})
+```
+
+Other 3.2 additions live inside objects the middleware passes through as raw maps,
+so they need no special API — supply them via `Components` / schemas / security
+schemes: security device-authorization flow and `oauth2MetadataUrl`, XML
+`nodeType`, Media Type `itemSchema` (sequential/streaming media), Path Item
+`additionalOperations`, and `components.mediaTypes`.
+
 ### Behavior and defaults
 
 - If a route declares no responses, a sensible default is added: `200 OK` for most
@@ -275,7 +322,7 @@ app.Get("/internal/metrics", metricsHandler).Hidden()
 | SwaggerBundleURL | `string`              | Script URL used by the generated Swagger UI page.               | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"` |
 | SwaggerStandalonePresetURL | `string`    | Standalone preset script URL; when set the UI uses `StandaloneLayout` (top bar with the Authorize button). | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"` |
 | SwaggerOptions | `map[string]any`        | Additional options merged into the generated `SwaggerUIBundle` call. | `nil` |
-| OpenAPIVersion | `string`                | OpenAPI specification version to generate (`"3.0.0"` or `"3.1.0"`) | `"3.1.0"`     |
+| OpenAPIVersion | `string`                | OpenAPI specification version to generate (`"3.0.0"`, `"3.1.0"` or `"3.2.0"`) | `"3.1.0"`     |
 | Components     | `map[string]any`        | Reusable OpenAPI component definitions (schemas, responses, etc.) emitted under `"components"`. | `nil` |
 | SecuritySchemes | `map[string]any`       | Reusable security scheme definitions, emitted under `"components.securitySchemes"`. | `nil` |
 | Security       | `[]map[string][]string` | Document-level (default) security requirements; each map is a requirement (OR semantics across entries). | `nil` |
@@ -285,12 +332,15 @@ app.Get("/internal/metrics", metricsHandler).Hidden()
 | Servers        | `[]Server`              | Servers hosting the API; takes precedence over `ServerURL`. Each `Server` supports `Variables` for URL templating. | `nil` |
 | Tags           | `[]Tag`                 | Top-level tag definitions (with descriptions and optional `ExternalDocs`). | `nil` |
 | ExternalDocs   | `*ExternalDocs`         | External documentation reference (`externalDocs`).             | `nil` |
-| Summary        | `string`                | Short API summary (`info.summary`, OpenAPI 3.1 only).          | `""` |
-| Webhooks       | `map[string]any`        | Webhook definitions (`webhooks`, OpenAPI 3.1 only).            | `nil` |
-| JSONSchemaDialect | `string`             | Default JSON Schema dialect (`jsonSchemaDialect`, OpenAPI 3.1 only). | `""` |
+| Summary        | `string`                | Short API summary (`info.summary`, OpenAPI 3.1+).             | `""` |
+| Webhooks       | `map[string]any`        | Webhook definitions (`webhooks`, OpenAPI 3.1+).              | `nil` |
+| JSONSchemaDialect | `string`             | Default JSON Schema dialect (`jsonSchemaDialect`, OpenAPI 3.1+). | `""` |
+| Self           | `string`                | Self-assigned document URI (`$self`, OpenAPI 3.2+).          | `""` |
 
-`Summary`, `Webhooks` and `JSONSchemaDialect` are OpenAPI 3.1 fields and are only
-emitted when `OpenAPIVersion` is `"3.1.0"`.
+`Summary`, `Webhooks` and `JSONSchemaDialect` require OpenAPI 3.1+; `Self`,
+`Server.Name` and `License.Identifier` are emitted only for the versions that
+support them (3.2, 3.2 and 3.1+ respectively). Setting an unsupported
+`OpenAPIVersion` falls back to the default.
 
 When the middleware is attached to a group or mounted under a prefixed `Use`, the configured `Path` is resolved relative to that
 prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global

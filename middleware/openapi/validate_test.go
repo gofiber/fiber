@@ -14,14 +14,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// validOperationMethods is the set of OpenAPI Path Item operation keys.
+// validOperationMethods is the set of OpenAPI Path Item operation keys
+// (query is added in OpenAPI 3.2).
 var validOperationMethods = map[string]struct{}{
 	"get": {}, "put": {}, "post": {}, "delete": {},
-	"options": {}, "head": {}, "patch": {}, "trace": {},
+	"options": {}, "head": {}, "patch": {}, "trace": {}, "query": {},
 }
 
+// validParameterLocations is the set of OpenAPI parameter locations
+// (querystring is added in OpenAPI 3.2).
 var validParameterLocations = map[string]struct{}{
-	"path": {}, "query": {}, "header": {}, "cookie": {},
+	"path": {}, "query": {}, "header": {}, "cookie": {}, "querystring": {},
 }
 
 var pathTemplateRe = regexp.MustCompile(`\{([^}]+)\}`)
@@ -38,7 +41,7 @@ func validateOpenAPIDocument(t *testing.T, raw []byte) {
 	// openapi version
 	version, ok := doc["openapi"].(string)
 	require.True(t, ok, "openapi version must be a string")
-	require.Contains(t, []string{"3.0.0", "3.1.0"}, version)
+	require.Contains(t, []string{"3.0.0", "3.1.0", "3.2.0"}, version)
 
 	// info
 	info, ok := doc["info"].(map[string]any)
@@ -256,6 +259,9 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 			})
 		app.Get("/files/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 		app.Get("/items/:id?", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+		// QUERY routes are only representable in OpenAPI 3.2+.
+		app.Query("/search", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+			RequestBody("Query payload", true, fiber.MIMEApplicationJSON)
 		app.Delete("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) }).Deprecated()
 		app.Get("/internal", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).Hidden()
 
@@ -294,7 +300,7 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 		return body
 	}
 
-	for _, version := range []string{"3.0.0", "3.1.0"} {
+	for _, version := range []string{"3.0.0", "3.1.0", "3.2.0"} {
 		t.Run(version, func(t *testing.T) {
 			t.Parallel()
 			validateOpenAPIDocument(t, build(version))
