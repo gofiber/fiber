@@ -630,35 +630,6 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 	}, acceptedTypes)
 }
 
-func Test_Utils_UniqueRouteStack(t *testing.T) {
-	t.Parallel()
-	route1 := &Route{}
-	route2 := &Route{}
-	route3 := &Route{}
-	require.Equal(
-		t,
-		[]*Route{
-			route1,
-			route2,
-			route3,
-		},
-		uniqueRouteStack([]*Route{
-			route1,
-			route1,
-			route1,
-			route2,
-			route2,
-			route2,
-			route3,
-			route3,
-			route3,
-			route1,
-			route2,
-			route3,
-		}),
-	)
-}
-
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
 	res := getGroupPath("/v1", "/")
@@ -1823,4 +1794,32 @@ func TestValueFromContext(t *testing.T) {
 		require.False(t, ok)
 		require.Empty(t, value)
 	})
+}
+
+func Test_IsMethodSafe(t *testing.T) {
+	t.Parallel()
+
+	safeMethods := []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery}
+	unsafeMethods := []string{MethodPost, MethodPut, MethodPatch, MethodDelete, MethodConnect}
+
+	for _, m := range safeMethods {
+		require.True(t, IsMethodSafe(m), "%s should be safe", m)
+	}
+	for _, m := range unsafeMethods {
+		require.False(t, IsMethodSafe(m), "%s should not be safe", m)
+	}
+}
+
+func Test_IsMethodIdempotent(t *testing.T) {
+	t.Parallel()
+
+	idempotent := []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery, MethodPut, MethodDelete}
+	notIdempotent := []string{MethodPost, MethodPatch, MethodConnect}
+
+	for _, m := range idempotent {
+		require.True(t, IsMethodIdempotent(m), "%s should be idempotent", m)
+	}
+	for _, m := range notIdempotent {
+		require.False(t, IsMethodIdempotent(m), "%s should not be idempotent", m)
+	}
 }

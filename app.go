@@ -599,6 +599,7 @@ const (
 	methodOptions
 	methodTrace
 	methodPatch
+	methodQuery
 )
 
 // HTTP methods enabled by default
@@ -612,6 +613,7 @@ var DefaultMethods = []string{
 	methodOptions: MethodOptions,
 	methodTrace:   MethodTrace,
 	methodPatch:   MethodPatch,
+	methodQuery:   MethodQuery,
 }
 
 // httpReadResponse - Used for test mocking http.ReadResponse
@@ -1080,6 +1082,12 @@ func (app *App) Trace(path string, handler any, handlers ...any) Router {
 // modifications to a resource.
 func (app *App) Patch(path string, handler any, handlers ...any) Router {
 	return app.Add([]string{MethodPatch}, path, handler, handlers...)
+}
+
+// Query registers a route for QUERY methods that performs a safe, idempotent
+// query with a request body.
+func (app *App) Query(path string, handler any, handlers ...any) Router {
+	return app.Add([]string{MethodQuery}, path, handler, handlers...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.

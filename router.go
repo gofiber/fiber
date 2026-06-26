@@ -28,6 +28,7 @@ type Router interface {
 	Options(path string, handler any, handlers ...any) Router
 	Trace(path string, handler any, handlers ...any) Router
 	Patch(path string, handler any, handlers ...any) Router
+	Query(path string, handler any, handlers ...any) Router
 
 	Add(methods []string, path string, handler any, handlers ...any) Router
 	All(path string, handler any, handlers ...any) Router
@@ -68,9 +69,8 @@ type Route struct {
 }
 
 var (
-	defaultGreedyParameterKeys        = []string{"*", "+"}
-	preferredWildcardGreedyParameters = []string{"*", "+"}
-	preferredPlusGreedyParameters     = []string{"+", "*"}
+	defaultGreedyParameterKeys    = []string{"*", "+"}
+	preferredPlusGreedyParameters = []string{"+", "*"}
 )
 
 // URL generates a URL from the route path and parameters.

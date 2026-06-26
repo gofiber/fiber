@@ -16,6 +16,7 @@ func (app *App) Connect(path string, handler any, handlers ...any) Router
 func (app *App) Options(path string, handler any, handlers ...any) Router
 func (app *App) Trace(path string, handler any, handlers ...any) Router
 func (app *App) Patch(path string, handler any, handlers ...any) Router
+func (app *App) Query(path string, handler any, handlers ...any) Router
 
 // Add registers the same handlers on multiple methods at once.
 // The handlers run in order, starting with `handler` and then the variadic `handlers`.

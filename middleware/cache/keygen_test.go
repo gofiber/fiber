@@ -13,6 +13,8 @@ type keygenCase struct {
 	headers  map[string]string
 	name     string
 	uri      string
+	method   string
+	body     string
 	cookie   string
 	want     string
 	keyCooks []string
@@ -34,14 +36,28 @@ func keygenCorpus() []keygenCase {
 		{name: "header_val_delims", uri: "/p", headers: map[string]string{"Accept": "a|b:c"}, want: "/|q=|h=Accept:a\\pb\\cc|Accept-Encoding:|Accept-Language:"},
 		{name: "empty_query", uri: "/p?", want: "/|q=|h=Accept:|Accept-Encoding:|Accept-Language:"},
 		{name: "many_params", uri: "/p?" + strings.Repeat("k=v&", 200) + "z=1", want: "/|q=sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829|h=Accept:|Accept-Encoding:|Accept-Language:"},
+		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: "/|q=|h=Accept:|Accept-Encoding:|Accept-Language:|b="},
+		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=|h=Accept:|Accept-Encoding:|Accept-Language:|b=foo=bar"},
+		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: "/|q=|h=Accept:|Accept-Encoding:|Accept-Language:|b=a\\pb\\cc"},
+		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=x=1|h=Accept:|Accept-Encoding:|Accept-Language:|b=foo=bar"},
 	}
 }
 
 func buildKeygenCtx(tc *keygenCase) (fiber.Ctx, *Config) {
 	app := fiber.New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	// Method must be set before AcquireCtx (fiber caches it); URI/body/headers are
+	// read live from the request afterwards.
+	fctx := &fasthttp.RequestCtx{}
+	method := tc.method
+	if method == "" {
+		method = fiber.MethodGet
+	}
+	fctx.Request.Header.SetMethod(method)
+	c := app.AcquireCtx(fctx)
 	c.Request().SetRequestURI(tc.uri)
-	c.Request().Header.SetMethod(fiber.MethodGet)
+	if tc.body != "" {
+		c.Request().SetBody([]byte(tc.body))
+	}
 	for k, v := range tc.headers {
 		c.Request().Header.Set(k, v)
 	}

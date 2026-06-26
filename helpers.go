@@ -219,20 +219,6 @@ func (*App) isASCII(s string) bool {
 	return true
 }
 
-// uniqueRouteStack drop all not unique routes from the slice
-func uniqueRouteStack(stack []*Route) []*Route {
-	m := make(map[*Route]struct{}, len(stack))
-	unique := make([]*Route, 0, len(stack))
-	for _, v := range stack {
-		if _, ok := m[v]; !ok {
-			m[v] = struct{}{}
-			unique = append(unique, v)
-		}
-	}
-
-	return unique
-}
-
 // defaultString returns the value or a default value if it is set
 func defaultString(value string, defaultValue []string) string {
 	if value == "" && len(defaultValue) > 0 {
@@ -935,6 +921,8 @@ func (app *App) methodInt(s string) int {
 			return methodTrace
 		case MethodPatch:
 			return methodPatch
+		case MethodQuery:
+			return methodQuery
 		default:
 			return -1
 		}
@@ -954,7 +942,8 @@ func IsMethodSafe(m string) bool {
 	case MethodGet,
 		MethodHead,
 		MethodOptions,
-		MethodTrace:
+		MethodTrace,
+		MethodQuery:
 		return true
 	default:
 		return false

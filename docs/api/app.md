@@ -157,6 +157,7 @@ type Register interface {
     Options(handler any, handlers ...any) Register
     Trace(handler any, handlers ...any) Register
     Patch(handler any, handlers ...any) Register
+    Query(handler any, handlers ...any) Register
 
     Add(methods []string, handler any, handlers ...any) Register
 
