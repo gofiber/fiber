@@ -405,6 +405,66 @@ func Test_AfterHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
 	require.NoError(t, <-secondDone)
 }
 
+// Test_Client_ConcurrentConfigMutationAndParsing ensures that mutating shared
+// client configuration (headers, query params, cookies, path params, base URL,
+// user agent, referer, ...) from multiple goroutines does not race with the
+// builtin request parsers, which read the same state while preparing in-flight
+// requests under the client lock. Run with -race to exercise the guarantee.
+func Test_Client_ConcurrentConfigMutationAndParsing(t *testing.T) {
+	t.Parallel()
+
+	client := New().SetBaseURL("http://example.com")
+
+	const workers = 8
+	var mutators, parsers sync.WaitGroup
+	stop := make(chan struct{})
+
+	// Continuously mutate shared client configuration.
+	for i := range workers {
+		mutators.Add(1)
+		go func(n int) {
+			defer mutators.Done()
+			key := "X-Test-" + string(rune('A'+n))
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					client.SetHeader(key, "v")
+					client.SetParam(key, "v")
+					client.SetCookie(key, "v")
+					client.SetPathParam(key, "v")
+					client.SetUserAgent("ua")
+					client.SetReferer("ref")
+					client.SetBaseURL("http://example.com")
+					client.SetDisablePathNormalizing(true)
+				}
+			}
+		}(i)
+	}
+
+	// Concurrently run the builtin request parsers, which read the same state.
+	for range workers {
+		parsers.Add(1)
+		go func() {
+			defer parsers.Done()
+			for range 200 {
+				core := newCore()
+				core.client = client
+				core.req = AcquireRequest()
+				core.req.SetURL("http://example.com/path")
+				err := core.preHooks()
+				ReleaseRequest(core.req)
+				assert.NoError(t, err)
+			}
+		}()
+	}
+
+	parsers.Wait()
+	close(stop)
+	mutators.Wait()
+}
+
 type blockingErrTransport struct {
 	err error
 
