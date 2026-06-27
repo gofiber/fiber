@@ -90,10 +90,7 @@ func parserRequestURL(c *Client, req *Request) error {
 	}
 
 	// Set the URI in the raw request.
-	// Read the field directly rather than calling c.DisablePathNormalizing():
-	// this parser runs while preHooks holds c.mu, and the accessor would
-	// re-acquire the same (non-reentrant) lock and deadlock.
-	disablePathNormalizing := c.isPathNormalizingDisabled || req.DisablePathNormalizing()
+	disablePathNormalizing := c.DisablePathNormalizing() || req.DisablePathNormalizing()
 	req.RawRequest.SetRequestURI(uri)
 	req.RawRequest.URI().DisablePathNormalizing = disablePathNormalizing
 	if disablePathNormalizing {

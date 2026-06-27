@@ -172,102 +172,66 @@ func (c *Client) AddResponseHook(h ...ResponseHook) *Client {
 
 // JSONMarshal returns the JSON marshal function used by the client.
 func (c *Client) JSONMarshal() utils.JSONMarshal {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	return c.jsonMarshal
 }
 
 // SetJSONMarshal sets the JSON marshal function to use.
 func (c *Client) SetJSONMarshal(f utils.JSONMarshal) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.jsonMarshal = f
 	return c
 }
 
 // JSONUnmarshal returns the JSON unmarshal function used by the client.
 func (c *Client) JSONUnmarshal() utils.JSONUnmarshal {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	return c.jsonUnmarshal
 }
 
 // SetJSONUnmarshal sets the JSON unmarshal function to use.
 func (c *Client) SetJSONUnmarshal(f utils.JSONUnmarshal) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.jsonUnmarshal = f
 	return c
 }
 
 // XMLMarshal returns the XML marshal function used by the client.
 func (c *Client) XMLMarshal() utils.XMLMarshal {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	return c.xmlMarshal
 }
 
 // SetXMLMarshal sets the XML marshal function to use.
 func (c *Client) SetXMLMarshal(f utils.XMLMarshal) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.xmlMarshal = f
 	return c
 }
 
 // XMLUnmarshal returns the XML unmarshal function used by the client.
 func (c *Client) XMLUnmarshal() utils.XMLUnmarshal {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	return c.xmlUnmarshal
 }
 
 // SetXMLUnmarshal sets the XML unmarshal function to use.
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.xmlUnmarshal = f
 	return c
 }
 
 // CBORMarshal returns the CBOR marshal function used by the client.
 func (c *Client) CBORMarshal() utils.CBORMarshal {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	return c.cborMarshal
 }
 
 // SetCBORMarshal sets the CBOR marshal function to use.
 func (c *Client) SetCBORMarshal(f utils.CBORMarshal) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.cborMarshal = f
 	return c
 }
 
 // CBORUnmarshal returns the CBOR unmarshal function used by the client.
 func (c *Client) CBORUnmarshal() utils.CBORUnmarshal {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	return c.cborUnmarshal
 }
 
 // SetCBORUnmarshal sets the CBOR unmarshal function to use.
 func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.cborUnmarshal = f
 	return c
 }
@@ -381,52 +345,34 @@ func (c *Client) SetRetryConfig(config *RetryConfig) *Client {
 
 // BaseURL returns the client's base URL.
 func (c *Client) BaseURL() string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	return c.baseURL
 }
 
 // SetBaseURL sets the base URL prefix for all requests made by the client.
 func (c *Client) SetBaseURL(url string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.baseURL = url
 	return c
 }
 
 // Header returns all header values associated with the provided key.
 func (c *Client) Header(key string) []string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	return c.header.PeekMultiple(key)
 }
 
 // AddHeader adds a single header field and its value to the client. These headers apply to all requests.
 func (c *Client) AddHeader(key, val string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.header.Add(key, val)
 	return c
 }
 
 // SetHeader sets a single header field and its value in the client.
 func (c *Client) SetHeader(key, val string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.header.Set(key, val)
 	return c
 }
 
 // AddHeaders adds multiple header fields and their values to the client.
 func (c *Client) AddHeaders(h map[string][]string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.header.AddHeaders(h)
 	return c
 }
@@ -435,18 +381,12 @@ func (c *Client) AddHeaders(h map[string][]string) *Client {
 // These headers will be applied to all requests created from this client instance. Also it can be
 // overridden at request level headers options.
 func (c *Client) SetHeaders(h map[string]string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.header.SetHeaders(h)
 	return c
 }
 
 // Param returns all values of the specified query parameter.
 func (c *Client) Param(key string) []string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	tmp := c.params.PeekMulti(key)
 	res := make([]string, 0, len(tmp))
 	for _, v := range tmp {
@@ -459,54 +399,36 @@ func (c *Client) Param(key string) []string {
 // AddParam adds a single query parameter and its value to the client.
 // These params will be applied to all requests created from this client instance.
 func (c *Client) AddParam(key, val string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.params.Add(key, val)
 	return c
 }
 
 // SetParam sets a single query parameter and its value in the client.
 func (c *Client) SetParam(key, val string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.params.Set(key, val)
 	return c
 }
 
 // AddParams adds multiple query parameters and their values to the client.
 func (c *Client) AddParams(m map[string][]string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.params.AddParams(m)
 	return c
 }
 
 // SetParams sets multiple query parameters and their values in the client.
 func (c *Client) SetParams(m map[string]string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.params.SetParams(m)
 	return c
 }
 
 // SetParamsWithStruct sets multiple query parameters and their values using a struct.
 func (c *Client) SetParamsWithStruct(v any) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.params.SetParamsWithStruct(v)
 	return c
 }
 
 // DelParams deletes one or more query parameters and their values from the client.
 func (c *Client) DelParams(key ...string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	for _, v := range key {
 		c.params.Del(v)
 	}
@@ -515,44 +437,29 @@ func (c *Client) DelParams(key ...string) *Client {
 
 // SetUserAgent sets the User-Agent header for the client.
 func (c *Client) SetUserAgent(ua string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.userAgent = ua
 	return c
 }
 
 // SetReferer sets the Referer header for the client.
 func (c *Client) SetReferer(r string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.referer = r
 	return c
 }
 
 // DisablePathNormalizing reports whether path normalizing is disabled for the client.
 func (c *Client) DisablePathNormalizing() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	return c.isPathNormalizingDisabled
 }
 
 // SetDisablePathNormalizing configures the client to disable or enable path normalizing.
 func (c *Client) SetDisablePathNormalizing(disable bool) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.isPathNormalizingDisabled = disable
 	return c
 }
 
 // PathParam returns the value of the specified path parameter. Returns an empty string if it does not exist.
 func (c *Client) PathParam(key string) string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	if val, ok := (*c.path)[key]; ok {
 		return val
 	}
@@ -561,45 +468,30 @@ func (c *Client) PathParam(key string) string {
 
 // SetPathParam sets a single path parameter and its value in the client.
 func (c *Client) SetPathParam(key, val string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.path.SetParam(key, val)
 	return c
 }
 
 // SetPathParams sets multiple path parameters and their values in the client.
 func (c *Client) SetPathParams(m map[string]string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.path.SetParams(m)
 	return c
 }
 
 // SetPathParamsWithStruct sets multiple path parameters and their values using a struct.
 func (c *Client) SetPathParamsWithStruct(v any) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.path.SetParamsWithStruct(v)
 	return c
 }
 
 // DelPathParams deletes one or more path parameters and their values from the client.
 func (c *Client) DelPathParams(key ...string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.path.DelParams(key...)
 	return c
 }
 
 // Cookie returns the value of the specified cookie. Returns an empty string if it does not exist.
 func (c *Client) Cookie(key string) string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	if val, ok := (*c.cookies)[key]; ok {
 		return val
 	}
@@ -608,36 +500,24 @@ func (c *Client) Cookie(key string) string {
 
 // SetCookie sets a single cookie and its value in the client.
 func (c *Client) SetCookie(key, val string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.cookies.SetCookie(key, val)
 	return c
 }
 
 // SetCookies sets multiple cookies and their values in the client.
 func (c *Client) SetCookies(m map[string]string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.cookies.SetCookies(m)
 	return c
 }
 
 // SetCookiesWithStruct sets multiple cookies and their values using a struct.
 func (c *Client) SetCookiesWithStruct(v any) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.cookies.SetCookiesWithStruct(v)
 	return c
 }
 
 // DelCookies deletes one or more cookies and their values from the client.
 func (c *Client) DelCookies(key ...string) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.cookies.DelCookies(key...)
 	return c
 }
@@ -676,9 +556,6 @@ func (c *Client) SetStreamResponseBody(enable bool) *Client {
 
 // SetCookieJar sets the cookie jar for the client.
 func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.cookieJar = cookieJar
 	return c
 }
