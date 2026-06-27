@@ -178,9 +178,10 @@ func Test_CookieJarSetKeyValue(t *testing.T) {
 	cj.SetKeyValue(host, "key", "value")
 	cj.SetKeyValue(host, "k", "vv")
 	cj.SetKeyValue(host, "key", "value2")
+	cj.SetKeyValueBytes(host, []byte("kb"), []byte("vb"))
 
 	cookies := cj.Get(uri)
-	require.Len(t, cookies, 2)
+	require.Len(t, cookies, 3)
 }
 
 func Test_CookieJarHostStorageIsBounded(t *testing.T) {

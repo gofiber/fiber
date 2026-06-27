@@ -461,6 +461,124 @@ func Test_Client_ConcurrentConfigMutationAndParsing(t *testing.T) {
 	mutators.Wait()
 }
 
+// Test_Hooks_CanCallLockedClientAccessors verifies that user request and
+// response hooks may freely call the client accessors/mutators that now take
+// c.mu, without self-deadlocking. User hooks run outside the client lock, so
+// re-acquiring the (non-reentrant) mutex from within a hook is safe.
+func Test_Hooks_CanCallLockedClientAccessors(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+
+	client.AddRequestHook(func(c *Client, _ *Request) error {
+		// Mutators that take the write lock.
+		c.SetHeader("X-A", "1").
+			SetHeaders(map[string]string{"X-B": "2"}).
+			AddHeader("X-C", "3").
+			AddHeaders(map[string][]string{"X-D": {"4"}}).
+			SetParam("p", "1").
+			SetParams(map[string]string{"q": "2"}).
+			AddParam("r", "3").
+			DelParams("r").
+			SetCookie("c", "1").
+			SetCookies(map[string]string{"d": "2"}).
+			DelCookies("d").
+			SetPathParam("id", "1").
+			SetPathParams(map[string]string{"k": "v"}).
+			DelPathParams("k").
+			SetBaseURL("http://example.com").
+			SetUserAgent("ua").
+			SetReferer("ref").
+			SetDisablePathNormalizing(true).
+			SetCookieJar(AcquireCookieJar()).
+			SetJSONMarshal(c.JSONMarshal()).
+			SetXMLMarshal(c.XMLMarshal()).
+			SetCBORMarshal(c.CBORMarshal())
+
+		// Getters that take the read lock.
+		_ = c.Header("X-A")
+		_ = c.Param("p")
+		_ = c.Cookie("c")
+		_ = c.PathParam("id")
+		_ = c.BaseURL()
+		_ = c.DisablePathNormalizing()
+		_ = c.JSONMarshal()
+		_ = c.XMLMarshal()
+		_ = c.CBORMarshal()
+		return nil
+	})
+
+	client.AddResponseHook(func(c *Client, _ *Response, _ *Request) error {
+		c.SetHeader("X-R", "1").SetCookie("rc", "1").SetBaseURL("http://example.com")
+		_ = c.Header("X-R")
+		_ = c.DisablePathNormalizing()
+		return nil
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		core := newCore()
+		core.client = client
+		core.req = AcquireRequest()
+		defer ReleaseRequest(core.req)
+		core.req.SetURL("http://example.com")
+
+		if err := core.preHooks(); err != nil {
+			done <- err
+			return
+		}
+
+		resp := AcquireResponse()
+		defer ReleaseResponse(resp)
+		done <- core.afterHooks(resp)
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("hook calling locked client accessors deadlocked")
+	}
+}
+
+// Test_PreHooks_ReturnsUserHookError verifies a failing user request hook
+// aborts preHooks and its error is propagated (and the client lock is released).
+func Test_PreHooks_ReturnsUserHookError(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	wantErr := errors.New("request hook failed")
+	client.AddRequestHook(func(_ *Client, _ *Request) error { return wantErr })
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+	core.req.SetURL("http://example.com")
+
+	require.ErrorIs(t, core.preHooks(), wantErr)
+}
+
+// Test_AfterHooks_ReturnsUserHookError verifies a failing user response hook
+// aborts afterHooks and its error is propagated.
+func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	wantErr := errors.New("response hook failed")
+	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error { return wantErr })
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+
+	resp := AcquireResponse()
+	defer ReleaseResponse(resp)
+
+	require.ErrorIs(t, core.afterHooks(resp), wantErr)
+}
+
 type blockingErrTransport struct {
 	err error
 
