@@ -182,6 +182,16 @@ func Test_CookieJarSetKeyValue(t *testing.T) {
 
 	cookies := cj.Get(uri)
 	require.Len(t, cookies, 3)
+
+	// Verify the entry written via SetKeyValueBytes has the exact key and value.
+	var foundBytes bool
+	for _, c := range cookies {
+		if string(c.Key()) == "kb" {
+			foundBytes = true
+			require.Equal(t, "vb", string(c.Value()))
+		}
+	}
+	require.True(t, foundBytes, "expected cookie kb=vb written by SetKeyValueBytes")
 }
 
 func Test_CookieJarHostStorageIsBounded(t *testing.T) {
