@@ -151,6 +151,10 @@ func sanitizeComment(value string) string {
 }
 
 func normalizeNewlines(value string) string {
+	// Fast path: nothing to normalize without a carriage return.
+	if !strings.ContainsRune(value, '\r') {
+		return value
+	}
 	value = strings.ReplaceAll(value, "\r\n", "\n")
 	return strings.ReplaceAll(value, "\r", "\n")
 }
