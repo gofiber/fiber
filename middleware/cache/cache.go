@@ -229,7 +229,7 @@ func New(config ...Config) fiber.Handler {
 		manifestKey := baseKey + "|vary"
 		if hasAuthorization {
 			authHash := hashAuthorization(c.Request().Header.Peek(fiber.HeaderAuthorization))
-			baseKey += "_auth_" + authHash
+			baseKey += "|auth=" + authHash
 			manifestKey = baseKey + "|vary"
 		}
 		key := baseKey
