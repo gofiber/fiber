@@ -421,10 +421,8 @@ func Test_Client_ConcurrentConfigMutationAndParsing(t *testing.T) {
 
 	// Continuously mutate shared client configuration.
 	for i := range workers {
-		mutators.Add(1)
-		go func(n int) {
-			defer mutators.Done()
-			key := "X-Test-" + string(rune('A'+n))
+		mutators.Go(func() {
+			key := "X-Test-" + string(rune('A'+i))
 			for {
 				select {
 				case <-stop:
@@ -440,14 +438,12 @@ func Test_Client_ConcurrentConfigMutationAndParsing(t *testing.T) {
 					client.SetDisablePathNormalizing(true)
 				}
 			}
-		}(i)
+		})
 	}
 
 	// Concurrently run the builtin request parsers, which read the same state.
 	for range workers {
-		parsers.Add(1)
-		go func() {
-			defer parsers.Done()
+		parsers.Go(func() {
 			for range 200 {
 				core := newCore()
 				core.client = client
@@ -457,7 +453,7 @@ func Test_Client_ConcurrentConfigMutationAndParsing(t *testing.T) {
 				ReleaseRequest(core.req)
 				assert.NoError(t, err)
 			}
-		}()
+		})
 	}
 
 	parsers.Wait()
