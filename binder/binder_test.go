@@ -143,6 +143,21 @@ func Test_SetParserDecoder_CustomConverter(t *testing.T) {
 	require.Equal(t, myInt(5), d.V)
 }
 
+// Test_SetParserDecoder_AliasTagIgnored: ParserConfig.SetAliasTag must not
+// override the per-source binding tag (one global tag breaks multi-source binding).
+func Test_SetParserDecoder_AliasTagIgnored(t *testing.T) {
+	SetParserDecoder(ParserConfig{SetAliasTag: "ignored", IgnoreUnknownKeys: true, ZeroEmpty: true})
+	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
+
+	type data struct {
+		Greeting string `query:"v"`
+	}
+	d := new(data)
+	err := parse("query", d, map[string][]string{"v": {"hello"}})
+	require.NoError(t, err)
+	require.Equal(t, "hello", d.Greeting)
+}
+
 func Test_formatBindData_typeMismatch(t *testing.T) {
 	t.Parallel()
 	out := struct{}{}

@@ -18,49 +18,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-func Test_AddMissing_Port(t *testing.T) {
-	t.Parallel()
-
-	type args struct {
-		addr  string
-		isTLS bool
-	}
-	tests := []struct {
-		name string
-		want string
-		args args
-	}{
-		{
-			name: "do anything",
-			args: args{
-				addr: "example.com:1234",
-			},
-			want: "example.com:1234",
-		},
-		{
-			name: "add 80 port",
-			args: args{
-				addr: "example.com",
-			},
-			want: "example.com:80",
-		},
-		{
-			name: "add 443 port",
-			args: args{
-				addr:  "example.com",
-				isTLS: true,
-			},
-			want: "example.com:443",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tt.want, addMissingPort(tt.args.addr, tt.args.isTLS))
-		})
-	}
-}
-
 func Test_Exec_Func(t *testing.T) {
 	t.Parallel()
 	ln := fasthttputil.NewInmemoryListener()

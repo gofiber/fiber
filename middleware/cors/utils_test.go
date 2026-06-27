@@ -54,62 +54,61 @@ func Test_NormalizeOrigin(t *testing.T) {
 	}
 }
 
-// go test -run -v Test_MatchScheme
-func Test_MatchScheme(t *testing.T) {
-	testCases := []struct {
-		domain   string
-		pattern  string
-		expected bool
+func Test_isOriginSerializedOrNull(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		origin             string
+		expectedSerialized bool
+		expectedNull       bool
 	}{
-		{domain: "http://example.com", pattern: "http://example.com", expected: true},           // Exact match should work.
-		{domain: "https://example.com", pattern: "http://example.com", expected: false},         // Scheme mismatch should matter.
-		{domain: "http://example.com", pattern: "https://example.com", expected: false},         // Scheme mismatch should matter.
-		{domain: "http://example.com", pattern: "http://example.org", expected: true},           // Different domains should not matter.
-		{domain: "http://example.com", pattern: "http://example.com:8080", expected: true},      // Port should not matter.
-		{domain: "http://example.com:8080", pattern: "http://example.com", expected: true},      // Port should not matter.
-		{domain: "http://example.com:8080", pattern: "http://example.com:8081", expected: true}, // Different ports should not matter.
-		{domain: "http://localhost", pattern: "http://localhost", expected: true},               // Localhost should match.
-		{domain: "http://127.0.0.1", pattern: "http://127.0.0.1", expected: true},               // IPv4 address should match.
-		{domain: "http://[::1]", pattern: "http://[::1]", expected: true},                       // IPv6 address should match.
+		{
+			name:               "literal null origin",
+			origin:             "null",
+			expectedSerialized: false,
+			expectedNull:       true,
+		},
+		{
+			name:               "valid http origin",
+			origin:             "https://example.com",
+			expectedSerialized: true,
+			expectedNull:       false,
+		},
+		{
+			name:               "valid origin with port",
+			origin:             "http://example.com:8080",
+			expectedSerialized: true,
+			expectedNull:       false,
+		},
+		{
+			name:               "invalid origin",
+			origin:             "not-an-origin",
+			expectedSerialized: false,
+			expectedNull:       false,
+		},
+		{
+			name:               "empty string",
+			origin:             "",
+			expectedSerialized: false,
+			expectedNull:       false,
+		},
+		{
+			name:               "origin with path is invalid",
+			origin:             "https://example.com/path",
+			expectedSerialized: false,
+			expectedNull:       false,
+		},
 	}
 
-	for _, tc := range testCases {
-		result := matchScheme(tc.domain, tc.pattern)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		if result != tc.expected {
-			t.Errorf("Expected matchScheme('%s', '%s') to be %v, but got %v", tc.domain, tc.pattern, tc.expected, result)
-		}
-	}
-}
-
-// go test -run -v Test_NormalizeDomain
-func Test_NormalizeDomain(t *testing.T) {
-	testCases := []struct {
-		input          string
-		expectedOutput string
-	}{
-		{input: "http://example.com", expectedOutput: "example.com"},                     // Simple case with http scheme.
-		{input: "https://example.com", expectedOutput: "example.com"},                    // Simple case with https scheme.
-		{input: "http://example.com:3000", expectedOutput: "example.com"},                // Case with port.
-		{input: "https://example.com:3000", expectedOutput: "example.com"},               // Case with port and https scheme.
-		{input: "http://example.com/path", expectedOutput: "example.com/path"},           // Case with path.
-		{input: "http://example.com?query=123", expectedOutput: "example.com?query=123"}, // Case with query.
-		{input: "http://example.com#fragment", expectedOutput: "example.com#fragment"},   // Case with fragment.
-		{input: "example.com", expectedOutput: "example.com"},                            // Case without scheme.
-		{input: "example.com:8080", expectedOutput: "example.com"},                       // Case without scheme but with port.
-		{input: "sub.example.com", expectedOutput: "sub.example.com"},                    // Case with subdomain.
-		{input: "sub.sub.example.com", expectedOutput: "sub.sub.example.com"},            // Case with nested subdomain.
-		{input: "http://localhost", expectedOutput: "localhost"},                         // Case with localhost.
-		{input: "http://127.0.0.1", expectedOutput: "127.0.0.1"},                         // Case with IPv4 address.
-		{input: "http://[::1]", expectedOutput: "[::1]"},                                 // Case with IPv6 address.
-	}
-
-	for _, tc := range testCases {
-		output := normalizeDomain(tc.input)
-
-		if output != tc.expectedOutput {
-			t.Errorf("Expected normalized domain '%s' for input '%s', but got: '%s'", tc.expectedOutput, tc.input, output)
-		}
+			isSerialized, isNull := isOriginSerializedOrNull(tt.origin)
+			assert.Equal(t, tt.expectedSerialized, isSerialized, "isSerialized mismatch for origin %q", tt.origin)
+			assert.Equal(t, tt.expectedNull, isNull, "isNull mismatch for origin %q", tt.origin)
+		})
 	}
 }
 
@@ -130,6 +129,8 @@ func Benchmark_CORS_SubdomainMatch(b *testing.B) {
 }
 
 func Test_CORS_SubdomainMatch(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		sub      subdomain
@@ -203,10 +204,36 @@ func Test_CORS_SubdomainMatch(t *testing.T) {
 			origin:   "https://..example.com",
 			expected: false,
 		},
+		{
+			name:     "no match with malformed origin port before suffix",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://evil.com:any.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with empty label before suffix",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://foo..example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with userinfo in origin",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://user@api.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with non-normalized origin",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://API.example.com",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := tt.sub.match(tt.origin)
 			assert.Equal(t, tt.expected, got, "subdomain.match()")
 		})

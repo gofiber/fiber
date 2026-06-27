@@ -3310,12 +3310,12 @@ func Test_Ctx_IP_ProxyHeader_With_IP_Validation(t *testing.T) {
 		c.Request().Header.Set(proxyHeaderName, "0.0.0.1")
 		require.Equal(t, "0.0.0.1", c.IP())
 
-		// when proxy header & validation is enabled and the value is a list of IPs, we return the first valid IP
+		// when proxy header & validation is enabled and the value is a list of IPs, we return the rightmost non-trusted IP
 		c.Request().Header.Set(proxyHeaderName, "0.0.0.1, 0.0.0.2")
-		require.Equal(t, "0.0.0.1", c.IP())
+		require.Equal(t, "0.0.0.2", c.IP())
 
 		c.Request().Header.Set(proxyHeaderName, "invalid, 0.0.0.2, 0.0.0.3")
-		require.Equal(t, "0.0.0.2", c.IP())
+		require.Equal(t, "0.0.0.3", c.IP())
 
 		// when proxy header & validation is enabled but the value is empty, we will ignore the header
 		c.Request().Header.Set(proxyHeaderName, "")
@@ -3352,6 +3352,286 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
 	require.Equal(t, "0.0.0.1", c.IP())
+}
+
+// go test -run Test_Ctx_IP_StripTrustedProxies
+func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		config   Config
+		remoteIP string
+		header   string
+		expected string
+	}{
+		{
+			name: "strip multiple trusted proxies from right",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1", "10.0.0.2"},
+				},
+			},
+			remoteIP: "10.0.0.2",
+			header:   "203.0.113.50, 10.0.0.1, 10.0.0.2",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "CIDR range stripping",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.0/24"},
+				},
+			},
+			remoteIP: "10.0.0.5",
+			header:   "203.0.113.50, 10.0.0.1, 10.0.0.2",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "exact IP match stripping",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "203.0.113.50, 10.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "loopback stripping",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Loopback: true,
+				},
+			},
+			remoteIP: "127.0.0.1",
+			header:   "203.0.113.50, 127.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "private network stripping",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Private: true,
+				},
+			},
+			remoteIP: "192.168.1.1",
+			header:   "203.0.113.50, 192.168.1.1, 10.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "link-local stripping",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					LinkLocal: true,
+				},
+			},
+			remoteIP: "169.254.0.1",
+			header:   "203.0.113.50, 169.254.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "all IPs trusted returns leftmost",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"},
+				},
+			},
+			remoteIP: "10.0.0.3",
+			header:   "10.0.0.1, 10.0.0.2, 10.0.0.3",
+			expected: "10.0.0.1",
+		},
+		{
+			name: "single trusted proxy stripped",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "203.0.113.50, 10.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "IPv6 chain stripping",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"::1", "fd00::1"},
+				},
+			},
+			remoteIP: "fd00::1",
+			header:   "2001:db8::1, fd00::1, ::1",
+			expected: "2001:db8::1",
+		},
+		{
+			name: "single non-trusted IP returns as-is",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "203.0.113.50",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "single trusted IP returns it as fallback",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "10.0.0.1",
+			expected: "10.0.0.1",
+		},
+		{
+			name: "attacker injects invalid leftmost token",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "evil.attacker, 203.0.113.50, 10.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "attacker injects spoofed leftmost IP",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "1.2.3.4, 203.0.113.50, 10.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "whitespace around chain entries",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "203.0.113.50 , 10.0.0.1",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "trailing empty chain element",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "203.0.113.50, 10.0.0.1,",
+			expected: "203.0.113.50",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New(tc.config)
+			fastCtx := &fasthttp.RequestCtx{}
+			fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP(tc.remoteIP)}))
+			c := app.AcquireCtx(fastCtx)
+			c.Request().Header.Set(HeaderXForwardedFor, tc.header)
+			require.Equal(t, tc.expected, c.IP())
+		})
+	}
+}
+
+// go test -run Test_Ctx_IP_ProxyHeader_NoTrustedProxies
+func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		EnableIPValidation: true,
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	c := app.AcquireCtx(fastCtx)
+
+	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 203.0.113.50, 10.0.0.1")
+	require.Equal(t, "203.0.113.50", c.extractIPFromHeader(HeaderXForwardedFor))
+}
+
+func Test_Ctx_IP_ProxyHeader_InvalidIPs(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"10.0.0.1"},
+		},
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.SetRemoteAddr(testNetAddr{network: "tcp", address: "invalid"})
+	c := app.AcquireCtx(fastCtx)
+
+	c.Request().Header.Set(HeaderXForwardedFor, "invalid")
+	require.Equal(t, "0.0.0.0", c.extractIPFromHeader(HeaderXForwardedFor))
+	require.False(t, c.isTrustedProxyIP("invalid"))
+}
+
+func Test_Ctx_IP_TrustedProxyIPv6Range(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"2001:db8::/32"},
+		},
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	require.True(t, c.isTrustedProxyIP("2001:db8::1"))
+	require.False(t, c.isTrustedProxyIP("2001:db9::1"))
 }
 
 func Test_Ctx_ProxyTrust_UnixRemoteAddr(t *testing.T) {
@@ -3609,6 +3889,27 @@ func Benchmark_Ctx_IP(b *testing.B) {
 		res = c.IP()
 	}
 	require.Equal(b, "0.0.0.0", res)
+}
+
+func Benchmark_Ctx_IP_With_ProxyHeader_Chain(b *testing.B) {
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"10.0.0.1", "10.0.0.2"},
+		},
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("10.0.0.2")}))
+	c := app.AcquireCtx(fastCtx)
+	c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.50, 10.0.0.1, 10.0.0.2")
+	var res string
+	b.ReportAllocs()
+	for b.Loop() {
+		res = c.IP()
+	}
+	require.Equal(b, "203.0.113.50", res)
 }
 
 // go test -run Test_Ctx_Is
@@ -4752,6 +5053,23 @@ func Benchmark_Ctx_Query(b *testing.B) {
 		res = Query[string](c, "search")
 	}
 	require.Equal(b, "john", res)
+}
+
+// Benchmark_Ctx_Query_Generic_Default exercises the typed Query[V] failure path,
+// where genericParseType returns an error for a missing or unparsable value and
+// the default is returned - the path the sentinel-error change makes alloc-free.
+func Benchmark_Ctx_Query_Generic_Default(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("age=notanumber")
+	var n, m int
+	b.ReportAllocs()
+	for b.Loop() {
+		n = Query[int](c, "missing", 7) // absent -> parse "" fails -> default
+		m = Query[int](c, "age", 3)     // unparsable -> fails -> default
+	}
+	require.Equal(b, 7, n)
+	require.Equal(b, 3, m)
 }
 
 // go test -run Test_Ctx_Range

@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -297,6 +298,82 @@ func Test_Storage_Memory_Close(t *testing.T) {
 	t.Parallel()
 	testStore := New()
 	require.NoError(t, testStore.Close())
+}
+
+// Test_Storage_Memory_Close_GCPanic verifies that Close does not deadlock if
+// gc() panics during initialization (e.g. NewTicker with a non-positive
+// interval). The defer for gcExited must run before any code that can panic.
+func Test_Storage_Memory_Close_GCPanic(t *testing.T) {
+	t.Parallel()
+
+	store := &Storage{
+		db:         make(map[string]Entry),
+		gcInterval: 0, // NewTicker panics on non-positive duration
+		done:       make(chan struct{}),
+		gcExited:   make(chan struct{}),
+	}
+
+	// Launch gc directly; recover the expected panic so the test does not crash.
+	gcPanicked := make(chan any, 1)
+	go func() {
+		defer func() {
+			gcPanicked <- recover()
+		}()
+		store.gc()
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- store.Close()
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("Close deadlocked after gc panic")
+	}
+
+	require.NotNil(t, <-gcPanicked, "expected gc() to panic on zero gcInterval")
+}
+
+func Test_Storage_Memory_Close_Idempotent(t *testing.T) {
+	t.Parallel()
+
+	testStore := New()
+	require.NoError(t, testStore.Close())
+
+	// After the first Close returns, the gc goroutine must have exited.
+	select {
+	case <-testStore.gcExited:
+	default:
+		t.Fatal("gc goroutine still running after Close returned")
+	}
+
+	// Subsequent concurrent Close calls must neither block nor panic.
+	var wg sync.WaitGroup
+	errCh := make(chan error, 4)
+	for range 4 {
+		wg.Go(func() {
+			errCh <- testStore.Close()
+		})
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		close(errCh)
+		for err := range errCh {
+			require.NoError(t, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("concurrent Close blocked")
+	}
 }
 
 func Test_Storage_Memory_Conn(t *testing.T) {

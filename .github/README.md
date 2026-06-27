@@ -28,12 +28,32 @@
     <img src="https://img.shields.io/github/sponsors/gofiber?style=flat-square&label=%E2%AD%90%20sponsors&color=ec6cb9">
   </a>
 </h1>
+
 <p align="center">
   <em><b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <a href="https://docs.gofiber.io/#zero-allocation"><b>zero memory allocation</b></a> and <b>performance</b> in mind.</em>
 </p>
 
 ---
+<!-- skip-docs -->
+<p align="center">
+  <a href="https://github.com/sponsors/gofiber">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/OFFICIAL%20SPONSORS.png?variant=outline&color=ffffff&logo=github&logoColor=ffffff">
+      <img alt="Official Sponsors" src="https://shieldcn.dev/badge/OFFICIAL%20SPONSORS.png?variant=outline&color=000000&logo=github&logoColor=000000">
+    </picture>
+  </a>
+</p>
+<p align="center">
+  <a href="https://www.coderabbit.ai/?utm_source=gofiber&utm_medium=sponsor&utm_content=homepage">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.coderabbit.ai/images/logo-dark.svg">
+      <img width="280" height="52" alt="CodeRabbit" src="https://www.coderabbit.ai/images/logo-orange.svg">
+    </picture>
+  </a>
+</p>
 
+---
+<!-- skip-docs -->
 ## ⚙️ Installation
 
 Fiber requires **Go version `1.25` or higher** to run. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/). To start setting up your project, create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
@@ -804,19 +824,19 @@ Run these commands to ensure your code adheres to project standards and best pra
 Fiber is an open-source project that runs on donations to pay the bills, e.g., our domain name, GitBook, Netlify, and serverless hosting. If you want to support Fiber, please sponsor the organization via ⭐ [**GitHub Sponsors**](https://github.com/sponsors/gofiber).
 
 <!-- sponsors -->
+
 ### 📅 Monthly Sponsors
 
 <table>
 <tr><td valign="top"><strong>🔥 Fiber Guardian</strong></td><td><a href="https://www.coderabbit.ai/?utm_source=cr_org&amp;utm_medium=github" title="@coderabbitai"><img src="https://github.com/coderabbitai.png" width="50" alt="@coderabbitai" /></a></td></tr>
 <tr><td valign="top"><strong>☕ Fiber Supporter</strong></td><td><a href="https://ndole.studio" title="@NdoleStudio"><img src="https://github.com/NdoleStudio.png" width="34" alt="@NdoleStudio" /></a>&nbsp;<a href="https://cyberapper.ai" title="@petercool"><img src="https://github.com/petercool.png" width="34" alt="@petercool" /></a></td></tr>
+<tr><td valign="top"><strong>🪴 Fiber Friend</strong></td><td><a href="https://github.com/simonheisstpeter" title="@simonheisstpeter"><img src="https://github.com/simonheisstpeter.png" width="32" alt="@simonheisstpeter" /></a></td></tr>
 </table>
 
 ### 🎁 One-time Sponsors
 
 <table>
-<tr><td valign="top"><strong>💎 Fiber Visionary</strong></td><td><a href="https://github.com/about" title="@github"><img src="https://github.com/github.png" width="45" alt="@github" /></a></td></tr>
-<tr><td valign="top"><strong>🚀 Fiber Hero</strong></td><td><a href="https://www.thanks.dev" title="@thnxdev"><img src="https://github.com/thnxdev.png" width="40" alt="@thnxdev" /></a>&nbsp;<a href="http://modulus.org" title="@andys"><img src="https://github.com/andys.png" width="40" alt="@andys" /></a></td></tr>
-<tr><td valign="top"><strong>☕ Fiber Supporter</strong></td><td><a href="https://hectorgray.com" title="@defstream"><img src="https://github.com/defstream.png" width="28" alt="@defstream" /></a>&nbsp;<a href="https://docs.webp.sh/" title="@webp-sh"><img src="https://github.com/webp-sh.png" width="28" alt="@webp-sh" /></a>&nbsp;<a href="https://zergo0.dev" title="@ZerGo0"><img src="https://github.com/ZerGo0.png" width="28" alt="@ZerGo0" /></a>&nbsp;<a href="https://f.style" title="@hiifong"><img src="https://github.com/hiifong.png" width="28" alt="@hiifong" /></a>&nbsp;<a href="https://github.com/decomoraes" title="@decomoraes"><img src="https://github.com/decomoraes.png" width="28" alt="@decomoraes" /></a>&nbsp;<a href="https://github.com/bsdrop" title="@bsdrop"><img src="https://github.com/bsdrop.png" width="28" alt="@bsdrop" /></a>&nbsp;<a href="https://kos.sh" title="@prplx"><img src="https://github.com/prplx.png" width="28" alt="@prplx" /></a>&nbsp;<a href="https://github.com/sebajax" title="@sebajax"><img src="https://github.com/sebajax.png" width="28" alt="@sebajax" /></a>&nbsp;<a href="https://theaceix.site" title="@Aceix"><img src="https://github.com/Aceix.png" width="28" alt="@Aceix" /></a>&nbsp;<a href="https://rjd.app" title="@rj-davidson"><img src="https://github.com/rj-davidson.png" width="28" alt="@rj-davidson" /></a>&nbsp;<a href="https://mesutgenez.com" title="@mstgnz"><img src="https://github.com/mstgnz.png" width="28" alt="@mstgnz" /></a></td></tr>
+<tr><td valign="top"><strong>🚀 Fiber Hero</strong></td><td><a href="https://www.thanks.dev" title="@thnxdev"><img src="https://github.com/thnxdev.png" width="40" alt="@thnxdev" /></a></td></tr>
 </table>
 <!-- sponsors -->
 <!-- skip-docs -->

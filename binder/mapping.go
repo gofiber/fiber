@@ -56,17 +56,18 @@ func SetParserDecoder(parserConfig ParserConfig) {
 
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() any {
-			return decoderBuilder(parserConfig)
+			return decoderBuilder(tag, parserConfig)
 		}}
 	}
 }
 
-func decoderBuilder(parserConfig ParserConfig) any {
+func decoderBuilder(aliasTag string, parserConfig ParserConfig) any {
 	decoder := schema.NewDecoder()
 	decoder.IgnoreUnknownKeys(parserConfig.IgnoreUnknownKeys)
-	if parserConfig.SetAliasTag != "" {
-		decoder.SetAliasTag(parserConfig.SetAliasTag)
-	}
+	// Bake the per-source tag once (pools are keyed per tag); doing it per
+	// request reset the decoder's type cache. ParserConfig.SetAliasTag is not
+	// honored here: one global tag is incompatible with per-source binding.
+	decoder.SetAliasTag(aliasTag)
 	for _, v := range parserConfig.ParserType {
 		decoder.RegisterConverter(reflect.ValueOf(v.CustomType).Interface(), v.Converter)
 	}
@@ -80,7 +81,7 @@ func init() {
 
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() any {
-			return decoderBuilder(ParserConfig{
+			return decoderBuilder(tag, ParserConfig{
 				IgnoreUnknownKeys: true,
 				ZeroEmpty:         true,
 			})
@@ -113,9 +114,8 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
 	defer pool.Put(schemaDecoder)
 
-	// Set alias tag
-	schemaDecoder.SetAliasTag(aliasTag)
-
+	// Alias tag is baked in at build time (see decoderBuilder); setting it here
+	// would reset the decoder's type cache on every request.
 	if err := schemaDecoder.Decode(out, data, files...); err != nil {
 		return fmt.Errorf("%w", err)
 	}

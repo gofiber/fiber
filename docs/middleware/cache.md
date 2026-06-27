@@ -118,9 +118,9 @@ By default, cache keys include:
 
 This prevents common collisions from path-only keys (for example, `/?id=1` vs `/?id=2`) while keeping fragmentation bounded.
 
-The middleware **does not include request body/form values in the default cache key**.
+The middleware **does not include request body/form values in the default cache key**, except for `QUERY` requests: per [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html), when `QUERY` is enabled via `Methods` the default key generator incorporates the request body so different bodies on the same URL get distinct keys.
 
-Cache lookup/storage is applied only for `GET` and `HEAD` requests by default. Other HTTP methods bypass the cache middleware. You can change this via the `Methods` config field.
+Cache lookup/storage is applied only for `GET` and `HEAD` requests by default. Other HTTP methods bypass the cache middleware. You can change this via the `Methods` config field (for example, adding `fiber.MethodQuery`). If you supply a custom `KeyGenerator` and enable a body-bearing method such as `QUERY`, make sure it incorporates `c.Request().Body()`, otherwise requests with the same URL but different bodies will collide.
 
 If a response sets `Vary`, request lookup/storage is also partitioned by those header values unless `DisableVaryHeaders` is `true`. Responses with `Vary: *` remain uncacheable.
 

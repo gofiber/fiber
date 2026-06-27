@@ -32,6 +32,7 @@ Extractors are utilities that middleware uses to get values from different parts
 - `FromQuery(param string)`: Extract from URL query parameters
 - `FromCustom(key string, fn func(fiber.Ctx) (string, error))`: Define custom extraction logic with metadata
 - `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback logic
+- `Extractor.Contains(pred func(Extractor) bool)`: Check whether this extractor, or any nested chained extractor, matches a predicate
 
 ### Extractor Structure
 
@@ -60,8 +61,24 @@ The `Chain` function creates extractors that try multiple sources in order:
 - Returns the first successful extraction (non-empty value with no error)
 - If all extractors fail, returns the last error encountered or `ErrNotFound`
 - **Robust error handling**: Skips extractors with `nil` Extract functions
+- **Cycle prevention**: Detects recursive chain re-entry and returns `ErrChainCycle`
 - Preserves the source and key from the first extractor for metadata
 - Stores a defensive copy of all chained extractors for introspection via the `Chain` field
+
+### Chain Introspection
+
+Use `Contains` to inspect an extractor tree with a predicate:
+
+```go
+chain := extractors.Chain(
+    extractors.FromHeader("X-CSRF-Token"),
+    extractors.FromCookie("CSRF"),
+)
+
+hasCSRFCookie := chain.Contains(func(e extractors.Extractor) bool {
+    return e.Source == extractors.SourceCookie && e.Key == "CSRF"
+})
+```
 
 ## Why Middleware Uses Extractors
 

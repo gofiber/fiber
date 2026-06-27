@@ -147,7 +147,7 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 	}{
 		{name: "plain host", input: "example.com", expected: "example.com", expectOK: true},
 		{name: "host with valid port", input: "example.com:8080", expected: "example.com", expectOK: true},
-		{name: "multiple trailing dots with port only trims one", input: "api.example.com...:443", expected: "api.example.com..", expectOK: true},
+		{name: "multiple trailing dots are rejected as malformed", input: "api.example.com...:443", expectOK: false},
 		{name: "ipv6 with port", input: "[::1]:443", expected: "::1", expectOK: true},
 		{name: "ipv6 without port", input: "[::1]", expected: "::1", expectOK: true},
 		{name: "empty port", input: "example.com:", expectOK: false},
@@ -158,6 +158,9 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 		{name: "bare ipv6", input: "::1", expectOK: false},
 		{name: "malformed bracket", input: "[::1", expectOK: false},
 		{name: "extra data after bracket", input: "[::1]extra", expectOK: false},
+		{name: "path delimiter in host", input: "attacker.test/.example.com", expectOK: false},
+		{name: "query delimiter in host", input: "attacker.test?.example.com", expectOK: false},
+		{name: "space in host", input: "bad host.example.com", expectOK: false},
 	}
 
 	for _, tt := range tests {
@@ -166,6 +169,41 @@ func Test_ParseNormalizedAuthority(t *testing.T) {
 			host, ok := parseNormalizedAuthority(tt.input)
 			require.Equal(t, tt.expectOK, ok)
 			require.Equal(t, tt.expected, host)
+		})
+	}
+}
+
+func Test_IsValidHostSyntax(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		host  string
+		valid bool
+	}{
+		{name: "empty", host: "", valid: false},
+		{name: "single label", host: "localhost", valid: true},
+		{name: "multi label", host: "sub.api.example.com", valid: true},
+		{name: "ipv4 literal", host: "192.168.0.1", valid: true},
+		{name: "ipv6 literal", host: "::1", valid: true},
+		{name: "ipv6 full", host: "2001:db8::1", valid: true},
+		{name: "malformed ipv6", host: "::g", valid: false},
+		{name: "digit label", host: "1.example.com", valid: true},
+		{name: "leading hyphen label", host: "-bad.example.com", valid: false},
+		{name: "trailing hyphen label", host: "bad-.example.com", valid: false},
+		{name: "final label trailing hyphen", host: "example.com-", valid: false},
+		{name: "empty label", host: "a..b", valid: false},
+		{name: "leading dot", host: ".example.com", valid: false},
+		{name: "trailing dot", host: "example.com.", valid: false},
+		{name: "underscore rejected", host: "a_b.example.com", valid: false},
+		{name: "max length label", host: strings.Repeat("a", 63) + ".com", valid: true},
+		{name: "oversize label", host: strings.Repeat("a", 64) + ".com", valid: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.valid, isValidHostSyntax(tt.host))
 		})
 	}
 }

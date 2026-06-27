@@ -415,7 +415,7 @@ func Test_decoderBuilder(t *testing.T) {
 		IgnoreUnknownKeys: false,
 		ZeroEmpty:         false,
 	}
-	decAny := decoderBuilder(parserConfig)
+	decAny := decoderBuilder(bindingForm, parserConfig)
 	dec, ok := decAny.(*schema.Decoder)
 	require.True(t, ok)
 	var out struct {

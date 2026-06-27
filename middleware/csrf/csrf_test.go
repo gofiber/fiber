@@ -7,9 +7,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -214,7 +216,7 @@ func Test_CSRF(t *testing.T) {
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
 
-	methods := [4]string{fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace}
+	methods := [5]string{fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace, fiber.MethodQuery}
 
 	for _, method := range methods {
 		// Generate CSRF token
@@ -297,7 +299,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 
 	h := app.Handler()
 
-	methods := [4]string{fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace}
+	methods := [5]string{fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace, fiber.MethodQuery}
 
 	for _, method := range methods {
 		// Generate CSRF token
@@ -2565,4 +2567,679 @@ func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 			require.Equal(t, tc.expected, err)
 		})
 	}
+}
+
+// flakySessionStorage is a fiber.Storage whose Get/Set/Delete operations can be
+// configured to fail, so the session-backed manager error paths can be
+// exercised deterministically.
+type flakySessionStorage struct {
+	data    map[string][]byte
+	mu      sync.Mutex
+	failGet bool
+	failSet bool
+	failDel bool
+}
+
+func newFlakySessionStorage() *flakySessionStorage {
+	return &flakySessionStorage{data: make(map[string][]byte)}
+}
+
+func (s *flakySessionStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failGet {
+		return nil, errors.New("get failed")
+	}
+	if val, ok := s.data[key]; ok {
+		return append([]byte(nil), val...), nil
+	}
+	return nil, nil
+}
+
+func (s *flakySessionStorage) Get(key string) ([]byte, error) {
+	return s.GetWithContext(context.Background(), key)
+}
+
+func (s *flakySessionStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failSet {
+		return errors.New("set failed")
+	}
+	s.data[key] = append([]byte(nil), val...)
+	return nil
+}
+
+func (s *flakySessionStorage) Set(key string, val []byte, exp time.Duration) error {
+	return s.SetWithContext(context.Background(), key, val, exp)
+}
+
+func (s *flakySessionStorage) DeleteWithContext(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failDel {
+		return errors.New("delete failed")
+	}
+	delete(s.data, key)
+	return nil
+}
+
+func (s *flakySessionStorage) Delete(key string) error {
+	return s.DeleteWithContext(context.Background(), key)
+}
+
+func (s *flakySessionStorage) ResetWithContext(context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data = make(map[string][]byte)
+	return nil
+}
+
+func (s *flakySessionStorage) Reset() error { return s.ResetWithContext(context.Background()) }
+
+func (*flakySessionStorage) Close() error { return nil }
+
+// Test_CSRF_validateExtractorSecurity_NilConfig ensures the nil guard returns
+// without panicking.
+
+// Test_CSRF_DisableValueRedaction_TrustedOrigin verifies that the raw origin
+// value is surfaced in the panic message when redaction is disabled.
+func Test_CSRF_DisableValueRedaction_TrustedOrigin(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t, "[CSRF] Invalid origin format in configuration:http://", func() {
+		New(Config{
+			TrustedOrigins:        []string{"http://"},
+			DisableValueRedaction: true,
+		})
+	})
+}
+
+// Test_CSRF_DisableValueRedaction_TrustedOrigin_Wildcard exercises the same path
+// for the wildcard subdomain branch.
+func Test_CSRF_DisableValueRedaction_TrustedOrigin_Wildcard(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t, "[CSRF] Invalid origin format in configuration:http://*.", func() {
+		New(Config{
+			TrustedOrigins:        []string{"http://*."},
+			DisableValueRedaction: true,
+		})
+	})
+}
+
+// Test_CSRF_Extractor_NonNotFoundError ensures that an extractor error which is
+// not ErrNotFound is forwarded to the error handler verbatim.
+func Test_CSRF_Extractor_NonNotFoundError(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("extractor boom")
+
+	var captured error
+	app := fiber.New()
+	app.Use(New(Config{
+		Extractor: extractors.Extractor{
+			Extract: func(fiber.Ctx) (string, error) {
+				return "", sentinel
+			},
+			Source: extractors.SourceCustom,
+			Key:    "_csrf",
+		},
+		ErrorHandler: func(_ fiber.Ctx, err error) error {
+			captured = err
+			return fiber.ErrTeapot
+		},
+	}))
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.ErrorIs(t, captured, sentinel)
+}
+
+// Test_CSRF_StorageGetError_OnValidation covers the storage fetch error path
+// that runs after the double-submit cookie comparison succeeds.
+func Test_CSRF_StorageGetError_OnValidation(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCSRFStorage()
+	storage.errs["get|token"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New()
+	app.Use(New(Config{
+		Storage: storage,
+		ErrorHandler: func(_ fiber.Ctx, err error) error {
+			captured = err
+			return fiber.ErrTeapot
+		},
+	}))
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+	req.Header.Set(HeaderName, "token")
+	req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	require.ErrorContains(t, captured, "csrf: failed to fetch token from storage")
+}
+
+// Test_CSRF_DeleteToken_NoCookie covers the early return in DeleteToken when no
+// CSRF cookie is present on the request.
+func Test_CSRF_DeleteToken_NoCookie(t *testing.T) {
+	t.Parallel()
+
+	var captured error
+	app := fiber.New()
+	app.Use(New(Config{
+		ErrorHandler: func(_ fiber.Ctx, err error) error {
+			captured = err
+			return err
+		},
+	}))
+
+	var deleteErr error
+	app.Get("/", func(c fiber.Ctx) error {
+		handler := HandlerFromContext(c)
+		require.NotNil(t, handler)
+		deleteErr = handler.DeleteToken(c)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.ErrorIs(t, deleteErr, ErrTokenNotFound)
+	require.ErrorIs(t, captured, ErrTokenNotFound)
+}
+
+// Test_CSRF_DeleteToken_StorageError covers the storage delete failure path in
+// DeleteToken, where the cookie is present but removing the token from storage
+// returns an error.
+func Test_CSRF_DeleteToken_StorageError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCSRFStorage()
+	storage.data["token"] = []byte("value")
+	storage.errs["del|token"] = errors.New("boom")
+
+	var captured error
+	app := fiber.New()
+	app.Use(New(Config{
+		Storage: storage,
+		ErrorHandler: func(_ fiber.Ctx, err error) error {
+			captured = err
+			return err
+		},
+	}))
+
+	var deleteErr error
+	app.Get("/", func(c fiber.Ctx) error {
+		handler := HandlerFromContext(c)
+		require.NotNil(t, handler)
+		deleteErr = handler.DeleteToken(c)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: ConfigDefault.CookieName, Value: "token"})
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.ErrorContains(t, deleteErr, "csrf: failed to delete token from storage")
+	require.ErrorContains(t, captured, "csrf: failed to delete token from storage")
+}
+
+// Test_CSRF_DeleteToken_WithSessionMiddleware exercises DeleteToken while the
+// session is loaded into the context by the session middleware, covering the
+// in-context branch of the session manager's delRaw.
+func Test_CSRF_DeleteToken_WithSessionMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	smh, sstore := session.NewWithStore()
+	app.Use(smh)
+	app.Use(New(Config{Session: sstore}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+	app.Post("/delete", func(c fiber.Ctx) error {
+		handler := HandlerFromContext(c)
+		require.NotNil(t, handler)
+		if err := handler.DeleteToken(c); err != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	// Generate the CSRF token and the session id.
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	h(ctx)
+
+	csrfCookie := fasthttp.AcquireCookie()
+	csrfCookie.SetKey(ConfigDefault.CookieName)
+	require.True(t, ctx.Response.Header.Cookie(csrfCookie))
+	csrfToken := string(csrfCookie.Value())
+	fasthttp.ReleaseCookie(csrfCookie)
+
+	sessionCookie := fasthttp.AcquireCookie()
+	sessionCookie.SetKey("session_id")
+	require.True(t, ctx.Response.Header.Cookie(sessionCookie))
+	sessionID := string(sessionCookie.Value())
+	fasthttp.ReleaseCookie(sessionCookie)
+
+	// Delete the token with the session loaded in the context.
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.SetRequestURI("/delete")
+	ctx.Request.Header.Set(HeaderName, csrfToken)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, csrfToken)
+	ctx.Request.Header.SetCookie("session_id", sessionID)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+}
+
+// Test_StorageManager_Memory_UnexpectedType covers the defensive type assertion
+// in the memory-backed getRaw.
+func Test_StorageManager_Memory_UnexpectedType(t *testing.T) {
+	t.Parallel()
+
+	m := newStorageManager(nil, false)
+	m.memory.Set("key", "not-bytes", 0)
+
+	raw, err := m.getRaw(context.Background(), "key")
+	require.Nil(t, raw)
+	require.ErrorContains(t, err, "unexpected value type")
+}
+
+// Test_StorageManager_Storage_Success covers the success return paths of the
+// storage-backed setRaw and delRaw.
+func Test_StorageManager_Storage_Success(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCSRFStorage()
+	m := newStorageManager(storage, false)
+
+	require.NoError(t, m.setRaw(context.Background(), "key", []byte("value"), time.Minute))
+
+	raw, err := m.getRaw(context.Background(), "key")
+	require.NoError(t, err)
+	require.Equal(t, []byte("value"), raw)
+
+	require.NoError(t, m.delRaw(context.Background(), "key"))
+
+	raw, err = m.getRaw(context.Background(), "key")
+	require.NoError(t, err)
+	require.Nil(t, raw)
+}
+
+// newSessionCtx builds a fiber.Ctx carrying the given session_id cookie. The
+// session middleware is intentionally not run, so the session manager falls back
+// to loading the session from the store (the else branch).
+func newSessionCtx(app *fiber.App, sessionID string) fiber.Ctx {
+	reqCtx := &fasthttp.RequestCtx{}
+	if sessionID != "" {
+		reqCtx.Request.Header.SetCookie("session_id", sessionID)
+	}
+	return app.AcquireCtx(reqCtx)
+}
+
+// Test_SessionManager_GetRaw_StoreError covers the error branch when loading the
+// session from the store fails.
+func Test_SessionManager_GetRaw_StoreError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFlakySessionStorage()
+	storage.failGet = true
+	store := session.NewStore(session.Config{
+		Storage:   storage,
+		Extractor: extractors.FromCookie("session_id"),
+	})
+	m := newSessionManager(store)
+
+	app := fiber.New()
+	c := newSessionCtx(app, "abc")
+	defer app.ReleaseCtx(c)
+
+	require.Nil(t, m.getRaw(c, "key", dummyValue))
+}
+
+// Test_SessionManager_SetRaw_StoreError covers the error branch when the session
+// store cannot be loaded during setRaw.
+func Test_SessionManager_SetRaw_StoreError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFlakySessionStorage()
+	storage.failGet = true
+	store := session.NewStore(session.Config{
+		Storage:   storage,
+		Extractor: extractors.FromCookie("session_id"),
+	})
+	m := newSessionManager(store)
+
+	app := fiber.New()
+	c := newSessionCtx(app, "abc")
+	defer app.ReleaseCtx(c)
+
+	require.NotPanics(t, func() {
+		m.setRaw(c, "key", dummyValue, time.Minute)
+	})
+}
+
+// Test_SessionManager_SetRaw_SaveError covers the save-failure warning branch of
+// setRaw, where the store loads successfully but persisting it fails.
+func Test_SessionManager_SetRaw_SaveError(t *testing.T) {
+	var buf bytes.Buffer
+	fiberlog.SetOutput(&buf)
+	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+
+	storage := newFlakySessionStorage()
+	storage.failSet = true
+	store := session.NewStore(session.Config{
+		Storage:   storage,
+		Extractor: extractors.FromCookie("session_id"),
+	})
+	m := newSessionManager(store)
+
+	app := fiber.New()
+	c := newSessionCtx(app, "")
+	defer app.ReleaseCtx(c)
+
+	m.setRaw(c, "key", dummyValue, time.Minute)
+	require.Contains(t, buf.String(), "failed to save session")
+}
+
+// Test_SessionManager_DelRaw_StoreError covers the error branch when the session
+// store cannot be loaded during delRaw.
+func Test_SessionManager_DelRaw_StoreError(t *testing.T) {
+	t.Parallel()
+
+	storage := newFlakySessionStorage()
+	storage.failGet = true
+	store := session.NewStore(session.Config{
+		Storage:   storage,
+		Extractor: extractors.FromCookie("session_id"),
+	})
+	m := newSessionManager(store)
+
+	app := fiber.New()
+	c := newSessionCtx(app, "abc")
+	defer app.ReleaseCtx(c)
+
+	require.NotPanics(t, func() {
+		m.delRaw(c)
+	})
+}
+
+// Test_SessionManager_DelRaw_SaveError covers the save-failure warning branch of
+// delRaw.
+func Test_SessionManager_DelRaw_SaveError(t *testing.T) {
+	var buf bytes.Buffer
+	fiberlog.SetOutput(&buf)
+	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+
+	storage := newFlakySessionStorage()
+	storage.failSet = true
+	store := session.NewStore(session.Config{
+		Storage:   storage,
+		Extractor: extractors.FromCookie("session_id"),
+	})
+	m := newSessionManager(store)
+
+	app := fiber.New()
+	c := newSessionCtx(app, "")
+	defer app.ReleaseCtx(c)
+
+	m.delRaw(c)
+	require.Contains(t, buf.String(), "failed to save session")
+}
+
+// Test_CSRF_Security_CompareConstantTime verifies the logical behavior of the
+// constant-time comparison helpers used to validate tokens. The functions must
+// only report equality for byte/string-identical inputs.
+
+// Test_CSRF_Security_SecFetchSite_Normalization ensures the Sec-Fetch-Site
+// validation is case-insensitive and tolerant of surrounding whitespace, while
+// still rejecting genuinely unknown values.
+func Test_CSRF_Security_SecFetchSite_Normalization(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	cases := []struct {
+		wantErr error
+		name    string
+		value   string
+	}{
+		{name: "empty header is ignored", value: "", wantErr: nil},
+		{name: "same-origin", value: "same-origin", wantErr: nil},
+		{name: "mixed case same-origin", value: "Same-Origin", wantErr: nil},
+		{name: "upper case cross-site", value: "CROSS-SITE", wantErr: nil},
+		{name: "leading/trailing spaces", value: "  same-site  ", wantErr: nil},
+		{name: "none", value: "none", wantErr: nil},
+		{name: "unknown value rejected", value: "totally-bogus", wantErr: ErrFetchSiteInvalid},
+		{name: "embedded space rejected", value: "same origin", wantErr: ErrFetchSiteInvalid},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			if tc.value != "" {
+				c.Request().Header.Set(fiber.HeaderSecFetchSite, tc.value)
+			}
+			require.Equal(t, tc.wantErr, validateSecFetchSite(c))
+		})
+	}
+}
+
+// Test_CSRF_Security_DoubleSubmitMismatch ensures that a request presenting a
+// valid token in the configured extractor location but a different (also valid)
+// token in the cookie is rejected with ErrTokenInvalid. This is the core
+// double-submit-cookie protection.
+func Test_CSRF_Security_DoubleSubmitMismatch(t *testing.T) {
+	t.Parallel()
+
+	var captured error
+	app := fiber.New()
+	app.Use(New(Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.SendStatus(fiber.StatusForbidden)
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	h := app.Handler()
+
+	// Generate two distinct, individually valid tokens.
+	genToken := func() string {
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Request.Header.SetMethod(fiber.MethodGet)
+		h(ctx)
+		setCookie := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+		return strings.Split(strings.Split(setCookie, ";")[0], "=")[1]
+	}
+	tokenA := genToken()
+	tokenB := genToken()
+	require.NotEqual(t, tokenA, tokenB)
+
+	// Submit tokenA in the header but tokenB in the cookie.
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(HeaderName, tokenA)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, tokenB)
+	h(ctx)
+
+	require.Equal(t, fiber.StatusForbidden, ctx.Response.StatusCode())
+	require.ErrorIs(t, captured, ErrTokenInvalid)
+}
+
+// Test_CSRF_Security_ForgedTokenNotInStorage ensures that a token which is
+// consistent across the header and cookie (passing the double-submit check) but
+// absent from storage is rejected and the stale cookie is expired.
+func Test_CSRF_Security_ForgedTokenNotInStorage(t *testing.T) {
+	t.Parallel()
+
+	var captured error
+	app := fiber.New()
+	app.Use(New(Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			captured = err
+			return c.SendStatus(fiber.StatusForbidden)
+		},
+	}))
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	h := app.Handler()
+
+	const forged = "this-token-was-never-issued"
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(HeaderName, forged)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, forged)
+	h(ctx)
+
+	require.Equal(t, fiber.StatusForbidden, ctx.Response.StatusCode())
+	require.ErrorIs(t, captured, ErrTokenNotFound)
+
+	// The stale cookie must be expired by the middleware.
+	expired := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(expired)
+	expired.SetKey(ConfigDefault.CookieName)
+	require.True(t, ctx.Response.Header.Cookie(expired), "expected the cookie to be reset")
+	require.Empty(t, string(expired.Value()), "expected the cookie value to be cleared")
+}
+
+// Test_CSRF_Security_CookieAttributes verifies that the security-relevant cookie
+// attributes from the configuration are reflected on the Set-Cookie response
+// header. Missing HttpOnly/Secure/SameSite flags would weaken the protection.
+func Test_CSRF_Security_CookieAttributes(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		CookieName:     "__Host-csrf",
+		CookiePath:     "/",
+		CookieSecure:   true,
+		CookieHTTPOnly: true,
+		CookieSameSite: "Strict",
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+
+	var cookie *http.Cookie
+	for _, ck := range resp.Cookies() {
+		if ck.Name == "__Host-csrf" {
+			cookie = ck
+			break
+		}
+	}
+	require.NotNil(t, cookie, "CSRF cookie should be set")
+	require.True(t, cookie.HttpOnly, "cookie must be HttpOnly")
+	require.True(t, cookie.Secure, "cookie must be Secure")
+	require.Equal(t, http.SameSiteStrictMode, cookie.SameSite, "cookie must be SameSite=Strict")
+	require.Equal(t, "/", cookie.Path)
+	// A "__Host-" prefixed cookie must stay host-only: setCSRFCookie copies
+	// cfg.CookieDomain onto the response cookie, so an empty Domain guards
+	// against a regression that would start scoping the cookie to a domain.
+	require.Empty(t, cookie.Domain, "__Host- cookie must not set a Domain")
+	require.NotEmpty(t, cookie.Value)
+}
+
+// Test_CSRF_Security_SchemeDowngradeRejected ensures that an HTTPS request whose
+// Origin downgrades to HTTP for the same host is rejected: the scheme is part of
+// the origin and must match.
+func Test_CSRF_Security_SchemeDowngradeRejected(t *testing.T) {
+	t.Parallel()
+
+	app := newTrustedApp()
+	app.Use(New(Config{CookieSecure: true}))
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	h := app.Handler()
+
+	// Acquire a valid token over HTTPS.
+	ctx := newTrustedRequestCtx()
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+	h(ctx)
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+
+	// HTTPS host, but the Origin claims plain HTTP for the same host.
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.URI().SetScheme("https")
+	ctx.Request.URI().SetHost("example.com")
+	ctx.Request.Header.SetProtocol("https")
+	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+	ctx.Request.Header.SetHost("example.com")
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, fiber.StatusForbidden, ctx.Response.StatusCode())
+}
+
+// Test_CSRF_Security_TrustedOriginSchemeIsolation ensures that trusting an
+// origin under one scheme does not implicitly trust it under another scheme.
+func Test_CSRF_Security_TrustedOriginSchemeIsolation(t *testing.T) {
+	t.Parallel()
+
+	app := newTrustedApp()
+	app.Use(New(Config{
+		CookieSecure:   true,
+		TrustedOrigins: []string{"https://trusted.example.com"},
+	}))
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	h := app.Handler()
+
+	ctx := newTrustedRequestCtx()
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+	h(ctx)
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+
+	post := func(origin string) int {
+		ctx.Request.Reset()
+		ctx.Response.Reset()
+		ctx.Request.Header.SetMethod(fiber.MethodPost)
+		ctx.Request.URI().SetScheme("https")
+		ctx.Request.URI().SetHost("example.com")
+		ctx.Request.Header.SetProtocol("https")
+		ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+		ctx.Request.Header.SetHost("example.com")
+		ctx.Request.Header.Set(fiber.HeaderOrigin, origin)
+		ctx.Request.Header.Set(HeaderName, token)
+		ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+		h(ctx)
+		return ctx.Response.StatusCode()
+	}
+
+	// The exact trusted origin (https) is accepted.
+	require.Equal(t, fiber.StatusOK, post("https://trusted.example.com"))
+	// The same host over http is NOT trusted.
+	require.Equal(t, fiber.StatusForbidden, post("http://trusted.example.com"))
 }

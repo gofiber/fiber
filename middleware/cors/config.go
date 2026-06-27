@@ -39,7 +39,7 @@ type Config struct {
 	// AllowMethods defines a list methods allowed when accessing the resource.
 	// This is used in response to a preflight request.
 	//
-	// Optional. Default value []string{"GET", "POST", "HEAD", "PUT", "DELETE", "PATCH"}
+	// Optional. Default value []string{"GET", "POST", "HEAD", "PUT", "DELETE", "PATCH", "QUERY"}
 	AllowMethods []string
 
 	// AllowHeaders defines a list of request headers that can be used when
@@ -98,6 +98,7 @@ var ConfigDefault = Config{
 		fiber.MethodPut,
 		fiber.MethodDelete,
 		fiber.MethodPatch,
+		fiber.MethodQuery,
 	},
 	AllowHeaders:        []string{},
 	AllowCredentials:    false,
