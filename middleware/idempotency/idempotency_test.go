@@ -54,8 +54,15 @@ func Test_Idempotency(t *testing.T) {
 		return nil
 	})
 
-	// Needs to be at least a second as the memory storage doesn't support shorter durations.
-	const lifetime = 2 * time.Second
+	// The memory storage expires entries on a coarse 1-second clock
+	// (exp = uint32(ttl.Seconds()) + Timestamp()), so a freshly stored entry has
+	// up to a full second less real headroom than its nominal lifetime. Keep the
+	// lifetime comfortably above that 1-second granularity so the back-to-back
+	// "store then replay" assertions below don't flake when a slow CI runner
+	// pauses between two consecutive requests. It must also stay small enough
+	// that the /slow handler's 3*lifetime sleep finishes within the 15s request
+	// timeout used in doReq.
+	const lifetime = 3 * time.Second
 
 	app.Use(New(Config{
 		Lifetime: lifetime,
