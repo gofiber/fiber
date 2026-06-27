@@ -6,7 +6,7 @@ steps:
         go mod tidy && go mod download && go mod vendor
       fi
   - run: |
-      go install gotest.tools/gotestsum@latest
+      go install gotest.tools/gotestsum@v1.13.0
       go install golang.org/x/vuln/cmd/govulncheck@latest
       go install mvdan.cc/gofumpt@latest
       go install github.com/tinylib/msgp@latest

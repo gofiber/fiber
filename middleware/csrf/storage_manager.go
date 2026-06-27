@@ -3,24 +3,15 @@ package csrf
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/memory"
 )
 
-// msgp -file="storage_manager.go" -o="storage_manager_msgp.go" -tests=true -unexported
-//
-//go:generate msgp -o=storage_manager_msgp.go -tests=true -unexported
-type item struct{}
-
 const redactedKey = "[redacted]"
 
-//msgp:ignore manager
-//msgp:ignore storageManager
 type storageManager struct {
-	pool             sync.Pool
 	memory           *memory.Storage
 	storage          fiber.Storage
 	shouldRedactKeys bool
@@ -29,11 +20,6 @@ type storageManager struct {
 func newStorageManager(storage fiber.Storage, shouldRedactKeys bool) *storageManager {
 	// Create new storage handler
 	storageManager := &storageManager{
-		pool: sync.Pool{
-			New: func() any {
-				return new(item)
-			},
-		},
 		shouldRedactKeys: shouldRedactKeys,
 	}
 	if storage != nil {

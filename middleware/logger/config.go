@@ -11,6 +11,11 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
+	// TimeDone stops the background timestamp updater when it is closed.
+	//
+	// Optional. Default: nil
+	TimeDone <-chan struct{}
+
 	// Stream is a writer where logs are written
 	//
 	// Default: os.Stdout

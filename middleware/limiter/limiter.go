@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/nilerror"
 )
 
 const (
@@ -30,6 +31,10 @@ func New(config ...Config) fiber.Handler {
 
 // getEffectiveStatusCode returns the actual status code, considering both the error and response status
 func getEffectiveStatusCode(c fiber.Ctx, err error) int {
+	if nilerror.IsNil(err) {
+		return c.Response().StatusCode()
+	}
+
 	// If there's an error and it's a *fiber.Error, use its status code
 	var fiberErr *fiber.Error
 	if errors.As(err, &fiberErr) && fiberErr != nil {

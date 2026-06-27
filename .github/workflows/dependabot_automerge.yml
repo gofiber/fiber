@@ -8,6 +8,7 @@ permissions:
 jobs:
   wait_for_checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: ${{ github.actor == 'dependabot[bot]' }}
     steps:
       - name: Wait for check is finished
@@ -22,6 +23,7 @@ jobs:
     needs: [wait_for_checks]
     name: Dependabot auto-merge
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: ${{ github.actor == 'dependabot[bot]' }}
     steps:
       - name: Dependabot metadata

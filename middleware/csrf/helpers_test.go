@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // go test -run -v Test_normalizeOrigin
@@ -27,6 +28,7 @@ func Test_normalizeOrigin(t *testing.T) {
 		{origin: "http://example.com/path", expectedValid: false, expectedOrigin: ""},                                   // Path should not be accepted.
 		{origin: "http://example.com?query=123", expectedValid: false, expectedOrigin: ""},                              // Query should not be accepted.
 		{origin: "http://example.com#fragment", expectedValid: false, expectedOrigin: ""},                               // Fragment should not be accepted.
+		{origin: "http://user:pass@example.com", expectedValid: false, expectedOrigin: ""},                              // Userinfo should not be accepted.
 		{origin: "http://localhost", expectedValid: true, expectedOrigin: "http://localhost"},                           // Localhost should be accepted.
 		{origin: "http://127.0.0.1", expectedValid: true, expectedOrigin: "http://127.0.0.1"},                           // IPv4 address should be accepted.
 		{origin: "http://[::1]", expectedValid: true, expectedOrigin: "http://[::1]"},                                   // IPv6 address should be accepted.
@@ -52,61 +54,6 @@ func Test_normalizeOrigin(t *testing.T) {
 		if normalizedOrigin != tc.expectedOrigin {
 			t.Errorf("Expected normalized origin '%s' for origin '%s', but got: '%s'", tc.expectedOrigin, tc.origin, normalizedOrigin)
 		}
-	}
-}
-
-func Test_normalizeSchemeHost(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name         string
-		scheme       string
-		host         string
-		expectedHost string
-	}{
-		{
-			name:         "http default port added",
-			scheme:       "http",
-			host:         "example.com",
-			expectedHost: "example.com:80",
-		},
-		{
-			name:         "https default port added",
-			scheme:       "https",
-			host:         "example.com",
-			expectedHost: "example.com:443",
-		},
-		{
-			name:         "http custom port preserved",
-			scheme:       "http",
-			host:         "example.com:8080",
-			expectedHost: "example.com:8080",
-		},
-		{
-			name:         "https ipv6 default port added",
-			scheme:       "https",
-			host:         "[::1]",
-			expectedHost: "[::1]:443",
-		},
-		{
-			name:         "unknown scheme preserved",
-			scheme:       "ftp",
-			host:         "example.com",
-			expectedHost: "example.com",
-		},
-		{
-			name:         "https ipv6 custom port preserved",
-			scheme:       "https",
-			host:         "[::1]:8080",
-			expectedHost: "[::1]:8080",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tc.expectedHost, normalizeSchemeHost(tc.scheme, tc.host))
-		})
 	}
 }
 
@@ -187,6 +134,30 @@ func TestSubdomainMatch(t *testing.T) {
 			origin:   "https://..example.com",
 			expected: false,
 		},
+		{
+			name:     "no match with empty label before suffix",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://foo..example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with malformed origin port before suffix",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://evil.com:any.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with userinfo in origin",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://user@api.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with non-normalized origin",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://API.example.com",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -212,4 +183,27 @@ func Benchmark_CSRF_SubdomainMatch(b *testing.B) {
 	for b.Loop() {
 		s.match(o)
 	}
+}
+
+func Test_CSRF_Security_CompareConstantTime(t *testing.T) {
+	t.Parallel()
+
+	t.Run("strings", func(t *testing.T) {
+		t.Parallel()
+		require.True(t, compareStrings("abc123", "abc123"))
+		require.False(t, compareStrings("abc123", "abc124"))
+		require.False(t, compareStrings("abc", "abcd"))      // different length
+		require.False(t, compareStrings("", "x"))            // empty vs non-empty
+		require.True(t, compareStrings("", ""))              // both empty
+		require.False(t, compareStrings("Abc123", "abc123")) // case sensitive
+	})
+
+	t.Run("tokens", func(t *testing.T) {
+		t.Parallel()
+		require.True(t, compareTokens([]byte("raw-token"), []byte("raw-token")))
+		require.False(t, compareTokens([]byte("raw-token"), []byte("raw-tokeX")))
+		require.False(t, compareTokens([]byte("short"), []byte("shorter")))
+		require.False(t, compareTokens([]byte(nil), []byte("x")))
+		require.True(t, compareTokens([]byte(nil), []byte(nil)))
+	})
 }

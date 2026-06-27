@@ -152,6 +152,29 @@ func TestTimeout_HandlerReturnsEarlyOnCancel(t *testing.T) {
 	require.Less(t, elapsed, 100*time.Millisecond)
 }
 
+// TestTimeout_DefaultResponseClearsBufferedBody verifies that the default timeout
+// response does not disclose data buffered by a handler that timed out before
+// completing successfully.
+func TestTimeout_DefaultResponseClearsBufferedBody(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/partial", New(func(c fiber.Ctx) error {
+		require.NoError(t, c.SendString("LEAKED-PARTIAL-SECRET"))
+		<-c.Context().Done()
+		return c.Context().Err()
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/partial", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, readErr)
+	require.Equal(t, fiber.ErrRequestTimeout.Message, string(body))
+}
+
 // TestTimeout_CustomError tests that returning a user-defined error is also treated as a timeout.
 func TestTimeout_CustomError(t *testing.T) {
 	t.Parallel()
@@ -253,6 +276,90 @@ func TestTimeout_CustomHandler(t *testing.T) {
 	body, readErr := io.ReadAll(resp.Body)
 	require.NoError(t, readErr)
 	require.JSONEq(t, `{"error":"timeout"}`, string(body))
+}
+
+// TestTimeout_OnTimeoutWritesResponse exercises the timeout path (tCtx.Done())
+// while a custom OnTimeout handler shapes the response body. The handler blocks
+// past the deadline so the middleware takes the timeout branch rather than the
+// handler-returned branch.
+func TestTimeout_OnTimeoutWritesResponse(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	var called atomic.Int32
+	app.Get("/on-timeout-body", New(func(c fiber.Ctx) error {
+		// Wait until the deadline fires, then linger so the middleware has
+		// already selected the timeout case before we return.
+		<-c.Context().Done()
+		time.Sleep(40 * time.Millisecond)
+		return nil
+	}, Config{
+		Timeout: 20 * time.Millisecond,
+		OnTimeout: func(c fiber.Ctx) error {
+			called.Add(1)
+			return c.Status(fiber.StatusServiceUnavailable).SendString("custom timeout body")
+		},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/on-timeout-body", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+	require.Equal(t, int32(1), called.Load())
+
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, readErr)
+	require.Equal(t, "custom timeout body", string(body))
+}
+
+// TestTimeout_OnTimeoutEmptyResponse exercises the timeout path with an
+// OnTimeout handler that leaves the response untouched (still default 200/empty),
+// so the middleware falls back to writing the default 408 timeout response.
+func TestTimeout_OnTimeoutEmptyResponse(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	var called atomic.Int32
+	app.Get("/on-timeout-empty", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		time.Sleep(40 * time.Millisecond)
+		return nil
+	}, Config{
+		Timeout: 20 * time.Millisecond,
+		OnTimeout: func(_ fiber.Ctx) error {
+			called.Add(1)
+			// Intentionally do not write any response.
+			return nil
+		},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/on-timeout-empty", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	require.Equal(t, int32(1), called.Load())
+
+	body, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, readErr)
+	require.Equal(t, fiber.ErrRequestTimeout.Message, string(body))
+}
+
+// TestTimeout_DeadlineErrorDefaultResponse verifies that when the handler returns
+// a timeout error and no OnTimeout is configured, invokeOnTimeout falls back to
+// fiber.ErrRequestTimeout. The handler returns immediately so the result is
+// processed via the handler-returned branch deterministically.
+func TestTimeout_DeadlineErrorDefaultResponse(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/deadline-default", New(func(_ fiber.Ctx) error {
+		return context.DeadlineExceeded
+	}, Config{Timeout: time.Second}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/deadline-default", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
 }
 
 // TestTimeout_PanicInHandler verifies that panics in the handler return 500.

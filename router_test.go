@@ -1931,6 +1931,27 @@ func newCustomApp() *App {
 	})
 }
 
+func Test_Next_SkipNonUseRoutesSkipsFallback(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
+	app.startupProcess()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodPost)
+	fctx.Request.SetRequestURI("/foo")
+
+	ctx := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck,forcetypeassert // default app returns DefaultCtx
+	ctx.setSkipNonUseRoutes(true)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.next(ctx)
+	require.False(t, matched)
+	require.NoError(t, err)
+	require.Empty(t, ctx.Response().Header.Peek(HeaderAllow))
+}
+
 func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
 	app := newCustomApp()
@@ -1954,6 +1975,27 @@ func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 	require.ErrorIs(t, err, ErrMethodNotAllowed)
 	allow := string(ctx.Response().Header.Peek(HeaderAllow))
 	require.Equal(t, "GET, HEAD", allow)
+}
+
+func Test_NextCustom_SkipNonUseRoutesSkipsFallback(t *testing.T) {
+	t.Parallel()
+
+	app := newCustomApp()
+	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
+	app.startupProcess()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodPost)
+	fctx.Request.SetRequestURI("/foo")
+
+	ctx := app.AcquireCtx(fctx)
+	ctx.setSkipNonUseRoutes(true)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.nextCustom(ctx)
+	require.False(t, matched)
+	require.NoError(t, err)
+	require.Empty(t, ctx.Response().Header.Peek(HeaderAllow))
 }
 
 func Test_NextCustom_NotFound(t *testing.T) {
@@ -2434,7 +2476,7 @@ func Test_Route_URL(t *testing.T) {
 	t.Run("preferred greedy parameters default fallback", func(t *testing.T) {
 		t.Parallel()
 		require.Equal(t, preferredPlusGreedyParameters, preferredGreedyParameters("+1"))
-		require.Equal(t, preferredWildcardGreedyParameters, preferredGreedyParameters("*1"))
+		require.Equal(t, []string{"*", "+"}, preferredGreedyParameters("*1"))
 		require.Equal(t, defaultGreedyParameterKeys, preferredGreedyParameters(""))
 		require.Equal(t, defaultGreedyParameterKeys, preferredGreedyParameters("name"))
 	})

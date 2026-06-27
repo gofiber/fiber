@@ -28,6 +28,7 @@ type Router interface {
 	Options(path string, handler any, handlers ...any) Router
 	Trace(path string, handler any, handlers ...any) Router
 	Patch(path string, handler any, handlers ...any) Router
+	Query(path string, handler any, handlers ...any) Router
 
 	Add(methods []string, path string, handler any, handlers ...any) Router
 	All(path string, handler any, handlers ...any) Router
@@ -68,9 +69,8 @@ type Route struct {
 }
 
 var (
-	defaultGreedyParameterKeys        = []string{"*", "+"}
-	preferredWildcardGreedyParameters = []string{"*", "+"}
-	preferredPlusGreedyParameters     = []string{"+", "*"}
+	defaultGreedyParameterKeys    = []string{"*", "+"}
+	preferredPlusGreedyParameters = []string{"+", "*"}
 )
 
 // URL generates a URL from the route path and parameters.
@@ -276,6 +276,10 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	// If c.Next() does not match, return 404
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
+	if c.shouldSkipNonUseRoutes {
+		return false, nil
+	}
+
 	if c.isMatched {
 		return false, ErrNotFound
 	}
@@ -375,6 +379,10 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	// If c.Next() does not match, return 404
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
+	if c.getSkipNonUseRoutes() {
+		return false, nil
+	}
+
 	if c.getMatched() {
 		return false, ErrNotFound
 	}

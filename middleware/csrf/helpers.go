@@ -22,50 +22,6 @@ func compareStrings(a, b string) bool {
 	return subtle.ConstantTimeCompare(utils.UnsafeBytes(a), utils.UnsafeBytes(b)) == 1
 }
 
-func schemeAndHostMatch(schemeA, hostA, schemeB, hostB string) bool {
-	normalizedSchemeA := utilsstrings.ToLower(schemeA)
-	normalizedSchemeB := utilsstrings.ToLower(schemeB)
-
-	normalizedHostA := normalizeSchemeHost(normalizedSchemeA, hostA)
-	normalizedHostB := normalizeSchemeHost(normalizedSchemeB, hostB)
-
-	return normalizedSchemeA == normalizedSchemeB && normalizedHostA == normalizedHostB
-}
-
-func normalizeSchemeHost(scheme, host string) string {
-	host = utilsstrings.ToLower(host)
-
-	defaultPort := ""
-	switch scheme {
-	case schemeHTTP:
-		defaultPort = "80"
-	case schemeHTTPS:
-		defaultPort = "443"
-	default:
-		return host
-	}
-
-	parsedHost, err := url.Parse(scheme + "://" + host)
-	if err != nil {
-		return host
-	}
-
-	if port := parsedHost.Port(); port != "" {
-		return host
-	}
-
-	hostname := parsedHost.Hostname()
-	if hostname == "" {
-		return host
-	}
-
-	if strings.IndexByte(hostname, ':') >= 0 && !strings.HasPrefix(hostname, "[") {
-		hostname = "[" + hostname + "]"
-	}
-
-	return hostname + ":" + defaultPort
-}
-
 // normalizeOrigin checks if the provided origin is in a correct format
 // and normalizes it by removing any path or trailing slash.
 // It returns a boolean indicating whether the origin is valid
@@ -90,7 +46,7 @@ func normalizeOrigin(origin string) (valid bool, normalized string) { //nolint:n
 
 	// Validate there is a host present. The presence of a path, query, or fragment components
 	// is checked, but a trailing "/" (indicative of the root) is allowed for the path and will be normalized
-	if parsedOrigin.Host == "" || (parsedOrigin.Path != "" && parsedOrigin.Path != "/") || parsedOrigin.RawQuery != "" || parsedOrigin.Fragment != "" {
+	if parsedOrigin.User != nil || parsedOrigin.Host == "" || (parsedOrigin.Path != "" && parsedOrigin.Path != "/") || parsedOrigin.RawQuery != "" || parsedOrigin.Fragment != "" {
 		return false, ""
 	}
 
@@ -105,6 +61,11 @@ type subdomain struct {
 }
 
 func (s subdomain) match(o string) bool {
+	isValid, normalizedOrigin := normalizeOrigin(o)
+	if !isValid || normalizedOrigin != o {
+		return false
+	}
+
 	// Not a subdomain if not long enough for a dot separator.
 	if len(o) < len(s.prefix)+len(s.suffix)+1 {
 		return false
@@ -128,7 +89,7 @@ func (s subdomain) match(o string) bool {
 	// Extract the subdomain part (without the trailing dot) and ensure it
 	// doesn't contain empty labels.
 	sub := o[len(s.prefix) : suffixStartIndex-1]
-	if sub == "" || sub[0] == '.' || strings.Contains(sub, "..") {
+	if sub == "" || strings.HasPrefix(sub, ".") || strings.HasSuffix(sub, ".") || strings.Contains(sub, "..") {
 		return false
 	}
 

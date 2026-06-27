@@ -120,16 +120,6 @@ func jsonMarshalOrDefault(jsonMarshal []utils.JSONMarshal) utils.JSONMarshal {
 	return json.Marshal
 }
 
-func writeData(w *bufio.Writer, data string) error {
-	data = trimSingleTrailingNewline(normalizeNewlines(data))
-	for line := range strings.SplitSeq(data, "\n") {
-		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
-			return fmt.Errorf("sse: write data: %w", err)
-		}
-	}
-	return nil
-}
-
 func appendField(w *bytes.Buffer, field, value string) {
 	w.WriteString(field) //nolint:errcheck // bytes.Buffer writes never fail.
 	w.WriteString(": ")  //nolint:errcheck // bytes.Buffer writes never fail.
@@ -138,14 +128,10 @@ func appendField(w *bytes.Buffer, field, value string) {
 }
 
 func appendData(w *bytes.Buffer, data string) {
-	data = trimSingleTrailingNewline(normalizeNewlines(data))
+	data = normalizeNewlines(data)
 	for line := range strings.SplitSeq(data, "\n") {
 		appendField(w, "data", line)
 	}
-}
-
-func trimSingleTrailingNewline(value string) string {
-	return strings.TrimSuffix(value, "\n")
 }
 
 func sanitizeField(value string) (string, error) {
@@ -165,6 +151,10 @@ func sanitizeComment(value string) string {
 }
 
 func normalizeNewlines(value string) string {
+	// Fast path: nothing to normalize without a carriage return.
+	if !strings.ContainsRune(value, '\r') {
+		return value
+	}
 	value = strings.ReplaceAll(value, "\r\n", "\n")
 	return strings.ReplaceAll(value, "\r", "\n")
 }

@@ -17,6 +17,7 @@ jobs:
   assign-v3:
     if: ${{ github.event.label && github.event.label.name == 'v3' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Add item to v3 project
         uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0

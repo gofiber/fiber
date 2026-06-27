@@ -1,0 +1,21 @@
+name: Sync Sponsors
+
+# Thin wrapper around the org-level reusable workflow.
+# The reusable workflow expects a SPONSORS_TOKEN secret with read:user + read:org.
+# Fiber's main README lives at .github/README.md (the repo has no root README).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    uses: gofiber/.github/.github/workflows/sync-sponsors.yml@main
+    with:
+      file: .github/README.md
+    secrets:
+      sponsors-token: ${{ secrets.SPONSORS_TOKEN }}

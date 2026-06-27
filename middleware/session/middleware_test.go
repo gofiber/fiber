@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -90,9 +91,10 @@ func Test_Session_InitializeDoesNotHoldLockDuringStoreLoad(t *testing.T) {
 	defer releaseMiddleware(m)
 
 	done := make(chan struct{})
+	var initErr error
 	go func() {
 		defer close(done)
-		m.initialize(ctx, &cfg)
+		initErr = m.initialize(ctx, &cfg)
 	}()
 
 	<-storage.entered
@@ -102,6 +104,7 @@ func Test_Session_InitializeDoesNotHoldLockDuringStoreLoad(t *testing.T) {
 
 	close(storage.release)
 	<-done
+	require.NoError(t, initErr)
 }
 
 func Test_Session_Middleware(t *testing.T) {
@@ -740,4 +743,246 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+}
+
+// failingStorage simulates a session store whose backend is unavailable.
+type failingStorage struct {
+	err error
+}
+
+func (s *failingStorage) GetWithContext(context.Context, string) ([]byte, error) { return nil, s.err }
+
+func (s *failingStorage) Get(string) ([]byte, error) { return nil, s.err }
+
+func (s *failingStorage) SetWithContext(context.Context, string, []byte, time.Duration) error {
+	return s.err
+}
+func (s *failingStorage) Set(string, []byte, time.Duration) error         { return s.err }
+func (s *failingStorage) DeleteWithContext(context.Context, string) error { return s.err }
+func (s *failingStorage) Delete(string) error                             { return s.err }
+func (s *failingStorage) ResetWithContext(context.Context) error          { return s.err }
+func (s *failingStorage) Reset() error                                    { return s.err }
+func (*failingStorage) Close() error                                      { return nil }
+
+// contextStorage is a storage that honors context cancellation by returning
+// ctx.Err() from its *WithContext methods. It is used to verify that the
+// session *WithContext variants propagate a canceled/deadline context.
+type contextStorage struct{}
+
+func (*contextStorage) GetWithContext(ctx context.Context, _ string) ([]byte, error) {
+	return nil, ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
+}
+
+func (*contextStorage) Get(string) ([]byte, error) { return nil, nil }
+
+func (*contextStorage) SetWithContext(ctx context.Context, _ string, _ []byte, _ time.Duration) error {
+	return ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
+}
+
+func (*contextStorage) Set(_ string, _ []byte, _ time.Duration) error { return nil }
+func (*contextStorage) DeleteWithContext(ctx context.Context, _ string) error {
+	return ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
+}
+func (*contextStorage) Delete(_ string) error { return nil }
+func (*contextStorage) ResetWithContext(ctx context.Context) error {
+	return ctx.Err() //nolint:wrapcheck // test stub returns ctx.Err() verbatim
+}
+func (*contextStorage) Reset() error { return nil }
+func (*contextStorage) Close() error { return nil }
+
+// Regression: https://github.com/gofiber/fiber/issues/4348
+// A failing session store must result in an error response, not a panic.
+func Test_Session_Middleware_StoreError(t *testing.T) {
+	t.Parallel()
+
+	storage := &failingStorage{err: errors.New("storage unavailable")}
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	// Provide a session ID so the middleware attempts a storage lookup.
+	ctx.Request.Header.SetCookie("session_id", "some-session-id")
+	require.NotPanics(t, func() { h(ctx) })
+	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
+	require.Equal(t, "Internal Server Error", string(ctx.Response.Body()))
+	require.NotContains(t, string(ctx.Response.Body()), storage.err.Error())
+}
+
+func Test_Session_Middleware_StoreError_CustomErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	storageErr := errors.New("redis dial tcp redis.internal.corp:6379: connect: connection refused")
+	storage := &failingStorage{err: storageErr}
+	app := fiber.New()
+	var handledErr error
+	app.Use(New(Config{
+		Storage: storage,
+		ErrorHandler: func(c fiber.Ctx, err error) {
+			handledErr = err
+			require.NoError(t, c.Status(fiber.StatusInternalServerError).SendString("session unavailable"))
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetCookie("session_id", "some-session-id")
+	app.Handler()(ctx)
+
+	require.ErrorIs(t, handledErr, storageErr)
+	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
+	require.Equal(t, "session unavailable", string(ctx.Response.Body()))
+}
+
+func Test_Middleware_DestroyWithContext(t *testing.T) {
+	t.Parallel()
+
+	handler, store := NewWithStore()
+	app := fiber.New()
+	app.Use(handler)
+
+	app.Get("/destroy", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		sess.Set("key", "value")
+		if err := sess.DestroyWithContext(t.Context()); err != nil {
+			return err
+		}
+		// Assert the actual effect, not just that no error occurred: the
+		// destroyed session must no longer hold its data.
+		if sess.Get("key") != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/destroy")
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	_ = store
+}
+
+func Test_Middleware_ResetWithContext(t *testing.T) {
+	t.Parallel()
+
+	handler, store := NewWithStore()
+	app := fiber.New()
+	app.Use(handler)
+
+	app.Get("/reset", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		originalID := sess.ID()
+		sess.Set("key", "value")
+		if err := sess.ResetWithContext(t.Context()); err != nil {
+			return err
+		}
+		// Assert the actual effect: data is cleared and a new ID is issued.
+		if sess.ID() == originalID || sess.Get("key") != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/reset")
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	_ = store
+}
+
+func Test_Middleware_RegenerateWithContext(t *testing.T) {
+	t.Parallel()
+
+	handler, store := NewWithStore()
+	app := fiber.New()
+	app.Use(handler)
+
+	app.Get("/regenerate", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		originalID := sess.ID()
+		err := sess.RegenerateWithContext(t.Context())
+		if err != nil {
+			return err
+		}
+		if sess.ID() == originalID {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/regenerate")
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	_ = store
+}
+
+// go test -run Test_Middleware_WithContext_ErrorPropagation
+func Test_Middleware_WithContext_ErrorPropagation(t *testing.T) {
+	t.Parallel()
+
+	canceledCtx := func() context.Context {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		return ctx
+	}
+
+	t.Run("DestroyWithContext propagates canceled context and marks destroyed", func(t *testing.T) {
+		t.Parallel()
+		m := &Middleware{Session: newSessionWithStorage(t, &contextStorage{})}
+		require.ErrorIs(t, m.DestroyWithContext(canceledCtx()), context.Canceled)
+		require.True(t, m.isDestroyed)
+	})
+
+	t.Run("ResetWithContext propagates storage error", func(t *testing.T) {
+		t.Parallel()
+		storageErr := errors.New("storage unavailable")
+		m := &Middleware{Session: newSessionWithStorage(t, &failingStorage{err: storageErr})}
+		require.ErrorIs(t, m.ResetWithContext(t.Context()), storageErr)
+	})
+
+	t.Run("RegenerateWithContext propagates storage error", func(t *testing.T) {
+		t.Parallel()
+		storageErr := errors.New("storage unavailable")
+		m := &Middleware{Session: newSessionWithStorage(t, &failingStorage{err: storageErr})}
+		require.ErrorIs(t, m.RegenerateWithContext(t.Context()), storageErr)
+	})
+}
+
+func Test_Middleware_ResolveContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("resolve context returns fiber ctx when not nil", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		fctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(fctx)
+
+		m := &Middleware{ctx: fctx}
+		ctx := m.resolveContext()
+		require.Equal(t, fctx, ctx)
+	})
+
+	t.Run("resolve context returns background when ctx is nil", func(t *testing.T) {
+		t.Parallel()
+		m := &Middleware{ctx: nil}
+		ctx := m.resolveContext()
+		require.NotNil(t, ctx)
+	})
 }

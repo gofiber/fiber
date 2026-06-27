@@ -105,23 +105,31 @@ func handleTimeout(
 	handlerDone <-chan struct{},
 	cfg Config,
 ) error {
-	// Prepare the timeout response before marking the RequestCtx as timed out so
-	// custom OnTimeout handlers can shape the response body.
-	timeoutErr := invokeOnTimeout(ctx, cfg)
+	var timeoutErr error
+	if cfg.OnTimeout == nil {
+		// Build the default timeout response separately from the RequestCtx response.
+		// The timed-out handler can keep running and may have already buffered
+		// application data there, so reusing it could disclose partial output.
+		// TimeoutErrorWithCode constructs a fresh fasthttp.Response internally, so
+		// the active RequestCtx response is never read.
+		ctx.RequestCtx().TimeoutErrorWithCode(fiber.ErrRequestTimeout.Message, fiber.StatusRequestTimeout)
+	} else {
+		// Prepare the timeout response before marking the RequestCtx as timed out so
+		// custom OnTimeout handlers can shape the response body.
+		timeoutErr = invokeOnTimeout(ctx, cfg)
 
-	// If no OnTimeout handler is configured or the response is still the default
-	// 200/empty, ensure a sensible timeout response is captured for fasthttp to send.
-	if cfg.OnTimeout == nil || (ctx.Response().StatusCode() == fiber.StatusOK && len(ctx.Response().Body()) == 0) {
-		ctx.Response().SetStatusCode(fiber.StatusRequestTimeout)
-		if len(ctx.Response().Body()) == 0 {
+		// If the response is still the default 200/empty, ensure a sensible timeout
+		// response is captured for fasthttp to send.
+		if ctx.Response().StatusCode() == fiber.StatusOK && len(ctx.Response().Body()) == 0 {
+			ctx.Response().SetStatusCode(fiber.StatusRequestTimeout)
 			ctx.Response().SetBodyString(fiber.ErrRequestTimeout.Message)
 		}
-	}
 
-	// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
-	// for the response and send the captured payload (either default or from
-	// OnTimeout). All ctx mutations after this call are ignored by fasthttp.
-	ctx.RequestCtx().TimeoutErrorWithResponse(&ctx.RequestCtx().Response)
+		// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
+		// for the response and send the captured payload from OnTimeout. All ctx
+		// mutations after this call are ignored by fasthttp.
+		ctx.RequestCtx().TimeoutErrorWithResponse(&ctx.RequestCtx().Response)
+	}
 
 	// Schedule race-free reclamation of the abandoned context. The context is
 	// returned to the pool only after BOTH the handler goroutine finishes AND

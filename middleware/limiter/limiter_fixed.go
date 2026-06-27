@@ -61,7 +61,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		}
 
 		// Get timestamp
-		ts := uint64(utils.Timestamp())
+		ts := cfg.currentSecond()
 
 		// Set expiration if entry does not exist
 		if e.exp == 0 {
@@ -77,6 +77,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 
 		// Calculate when it resets in seconds
 		resetInSec := e.exp - ts
+		windowExpiresAt := e.exp
 
 		// Set how many hits we have left
 		remaining := maxRequests - e.currHits
@@ -118,13 +119,23 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 				return getErr
 			}
 			e = entry
-			e.currHits--
-			remaining++
+			// Only credit the hit back if it still belongs to the same window;
+			// after a rollover the original hit no longer counts toward e.currHits.
+			if e.exp == windowExpiresAt && e.currHits > 0 {
+				e.currHits--
+			}
+			remaining = maxRequests - e.currHits
 			if setErr := manager.set(reqCtx, key, e, expirationDuration); setErr != nil {
 				releaseKey()
 				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 			}
 			releaseKey()
+		}
+
+		// On the skip path currHits can exceed maxRequests (blocked requests
+		// persist their increment), so clamp remaining to keep the header >= 0.
+		if remaining < 0 {
+			remaining = 0
 		}
 
 		// We can continue, update RateLimit headers

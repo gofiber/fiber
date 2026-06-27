@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 	"time"
 
@@ -180,6 +181,70 @@ func Test_CookieJarSetKeyValue(t *testing.T) {
 
 	cookies := cj.Get(uri)
 	require.Len(t, cookies, 2)
+}
+
+func Test_CookieJarHostStorageIsBounded(t *testing.T) {
+	t.Parallel()
+
+	cj := &CookieJar{}
+
+	for i := range maxCookieJarHosts + 32 {
+		host := fmt.Sprintf("host-%d.example.com", i)
+		cookie := &fasthttp.Cookie{}
+		cookie.SetKey("k")
+		cookie.SetValue("v")
+		cj.SetByHost([]byte(host), cookie)
+	}
+
+	require.LessOrEqual(t, len(cj.hostCookies), maxCookieJarHosts)
+}
+
+func Test_CookieJarHostEvictionIsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	cj := &CookieJar{hostCookies: make(map[string][]storedCookie, maxCookieJarHosts)}
+	for i := range maxCookieJarHosts {
+		host := fmt.Sprintf("host-%04d.example.com", i+1)
+		cookie := fasthttp.AcquireCookie()
+		cookie.SetKey("k")
+		cookie.SetValue("v")
+		cj.hostCookies[host] = []storedCookie{{cookie: cookie, isHostOnly: true}}
+	}
+
+	cj.ensureHostCapacityLocked("zzz.example.com", time.Now())
+
+	_, ok := cj.hostCookies["host-0001.example.com"]
+	require.False(t, ok)
+	require.Len(t, cj.hostCookies, maxCookieJarHosts-1)
+}
+
+func Test_CookieJarHostCapacityPrefersExpiredEntries(t *testing.T) {
+	t.Parallel()
+
+	cj := &CookieJar{hostCookies: make(map[string][]storedCookie, maxCookieJarHosts)}
+	now := time.Now()
+
+	expired := fasthttp.AcquireCookie()
+	expired.SetKey("expired")
+	expired.SetValue("v")
+	expired.SetExpire(now.Add(-time.Minute))
+	cj.hostCookies["expired.example.com"] = []storedCookie{{cookie: expired, isHostOnly: true}}
+
+	for i := 1; i < maxCookieJarHosts; i++ {
+		host := fmt.Sprintf("host-%04d.example.com", i)
+		cookie := fasthttp.AcquireCookie()
+		cookie.SetKey("k")
+		cookie.SetValue("v")
+		cj.hostCookies[host] = []storedCookie{{cookie: cookie, isHostOnly: true}}
+	}
+
+	cj.ensureHostCapacityLocked("new.example.com", now)
+
+	_, ok := cj.hostCookies["expired.example.com"]
+	require.False(t, ok)
+	require.Len(t, cj.hostCookies, maxCookieJarHosts-1)
+	_, ok = cj.hostCookies["host-0001.example.com"]
+	require.True(t, ok)
 }
 
 func Test_CookieJarGetFromResponse(t *testing.T) {

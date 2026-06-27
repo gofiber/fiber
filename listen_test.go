@@ -601,8 +601,21 @@ func Test_Listen_BeforeServeFunc(t *testing.T) {
 	require.Zero(t, handlers)
 }
 
+// skipIfNoIPv6 skips the test on hosts without IPv6 support (e.g. some CI containers).
+func skipIfNoIPv6(t *testing.T) {
+	t.Helper()
+
+	probe, err := net.Listen(NetworkTCP6, "[::1]:0")
+	if err != nil {
+		t.Skipf("skipping: IPv6 is not available: %v", err)
+	}
+	require.NoError(t, probe.Close())
+}
+
 // go test -run Test_Listen_ListenerNetwork
 func Test_Listen_ListenerNetwork(t *testing.T) {
+	skipIfNoIPv6(t)
+
 	var network string
 	app := New()
 

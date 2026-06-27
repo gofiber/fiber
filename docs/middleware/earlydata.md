@@ -14,7 +14,7 @@ Enabling early data in a reverse proxy (for example, `ssl_early_data on;` in ngi
 - [datatracker](https://datatracker.ietf.org/doc/html/rfc8446#section-8)
 - [trailofbits](https://blog.trailofbits.com/2019/03/25/what-application-developers-need-to-know-about-tls-early-data-0rtt)
 
-By default, the middleware permits early data only for safe methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`) and rejects other requests before your handler runs. Override this behavior with the `AllowEarlyData` option.
+By default, the middleware permits early data only for safe methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`, `QUERY`) and rejects other requests before your handler runs. Override this behavior with the `AllowEarlyData` option.
 
 ## Signatures
 

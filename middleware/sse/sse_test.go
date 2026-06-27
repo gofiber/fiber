@@ -174,7 +174,7 @@ func Test_SSE_EventWritesByteSliceData(t *testing.T) {
 	require.Equal(t, "data: hello\ndata: world\n\n", buf.String())
 }
 
-func Test_SSE_EventTrimsSingleTrailingDataNewline(t *testing.T) {
+func Test_SSE_EventPreservesTrailingDataNewline(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
@@ -183,7 +183,7 @@ func Test_SSE_EventTrimsSingleTrailingDataNewline(t *testing.T) {
 	require.NoError(t, writeEvent(w, Event{Data: "hello\n"}))
 	require.NoError(t, w.Flush())
 
-	require.Equal(t, "data: hello\n\n", buf.String())
+	require.Equal(t, "data: hello\ndata: \n\n", buf.String())
 }
 
 func Test_SSE_EventPreservesIntentionalBlankDataLine(t *testing.T) {
@@ -195,7 +195,7 @@ func Test_SSE_EventPreservesIntentionalBlankDataLine(t *testing.T) {
 	require.NoError(t, writeEvent(w, Event{Data: "hello\n\n"}))
 	require.NoError(t, w.Flush())
 
-	require.Equal(t, "data: hello\ndata: \n\n", buf.String())
+	require.Equal(t, "data: hello\ndata: \ndata: \n\n", buf.String())
 }
 
 func Test_SSE_EventReturnsWriterError(t *testing.T) {
@@ -228,15 +228,6 @@ func Test_SSE_CommentReturnsWriterError(t *testing.T) {
 	require.ErrorIs(t, writeComment(w, ""), writeErr)
 }
 
-func Test_SSE_WriteDataReturnsWriterError(t *testing.T) {
-	t.Parallel()
-
-	writeErr := errors.New("write failed")
-	w := bufio.NewWriterSize(errWriter{err: writeErr}, 1)
-
-	require.ErrorIs(t, writeData(w, "hello"), writeErr)
-}
-
 func Test_SSE_NewWritesHeadersAndEvents(t *testing.T) {
 	t.Parallel()
 
@@ -257,7 +248,7 @@ func Test_SSE_NewWritesHeadersAndEvents(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "last-1", capturedLastEventID)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, mimeTextEventStream, resp.Header.Get(fiber.HeaderContentType))
+	require.Equal(t, fiber.MIMETextEventStream, resp.Header.Get(fiber.HeaderContentType))
 	require.Equal(t, "no-cache", resp.Header.Get(fiber.HeaderCacheControl))
 	require.Equal(t, "keep-alive", resp.Header.Get(fiber.HeaderConnection))
 	require.Equal(t, "no", resp.Header.Get("X-Accel-Buffering"))

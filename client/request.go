@@ -664,6 +664,11 @@ func (r *Request) Patch(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodPatch).Send()
 }
 
+// Query sends a QUERY request to the given URL.
+func (r *Request) Query(url string) (*Response, error) {
+	return r.SetURL(url).SetMethod(fiber.MethodQuery).Send()
+}
+
 // Custom sends a request with a custom HTTP method to the given URL.
 func (r *Request) Custom(url, method string) (*Response, error) {
 	return r.SetURL(url).SetMethod(method).Send()
