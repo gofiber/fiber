@@ -12,7 +12,9 @@ import (
 // FixedWindow implements a fixed-window rate limiting strategy.
 type FixedWindow struct{}
 
-const limiterKeyLockShards = 128
+// limiterKeyLockMinShards is the floor for the per-key lock shard count; the
+// effective count scales up with GOMAXPROCS (see internal/keylock).
+const limiterKeyLockMinShards = 128
 
 // New creates a new fixed window middleware handler
 func (FixedWindow) New(cfg *Config) fiber.Handler {
@@ -22,7 +24,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 	}
 
 	// Limiter variables
-	locks := keylock.New(limiterKeyLockShards)
+	locks := keylock.New(limiterKeyLockMinShards)
 
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, !cfg.DisableValueRedaction)

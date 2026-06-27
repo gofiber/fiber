@@ -22,7 +22,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 	}
 
 	// Limiter variables
-	locks := keylock.New(limiterKeyLockShards)
+	locks := keylock.New(limiterKeyLockMinShards)
 
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, !cfg.DisableValueRedaction)

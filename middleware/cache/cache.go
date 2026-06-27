@@ -19,7 +19,9 @@ import (
 	"github.com/gofiber/fiber/v3/internal/keylock"
 )
 
-const cacheKeyLockShards = 128
+// cacheKeyLockMinShards is the floor for the per-key lock shard count; the
+// effective count scales up with GOMAXPROCS (see internal/keylock).
+const cacheKeyLockMinShards = 128
 
 // buffer size for hexpool
 // hexLen is the hex-encoded length of a SHA-256 sum, shared by the auth and vary hashers.
@@ -130,7 +132,7 @@ func New(config ...Config) fiber.Handler {
 	var (
 		// Cache settings
 		heapMu   = &sync.Mutex{}
-		keyLocks = keylock.New(cacheKeyLockShards)
+		keyLocks = keylock.New(cacheKeyLockMinShards)
 	)
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, redactKeys)
