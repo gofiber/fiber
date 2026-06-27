@@ -13,7 +13,7 @@ func methodColor(method string, colors *fiber.Colors) string {
 		return ""
 	}
 	switch method {
-	case fiber.MethodGet:
+	case fiber.MethodGet, fiber.MethodQuery:
 		return colors.Cyan
 	case fiber.MethodPost:
 		return colors.Green

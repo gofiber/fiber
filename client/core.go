@@ -10,6 +10,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"slices"
 	"sync"
 
 	"github.com/valyala/fasthttp"
@@ -31,19 +32,6 @@ type ResponseHook func(*Client, *Response, *Request) error
 
 // RetryConfig is an alias for the `retry.Config` type from the `addon/retry` package.
 type RetryConfig = retry.Config
-
-// addMissingPort appends the appropriate port number to the given address if it doesn't have one.
-// If isTLS is true, it uses port 443; otherwise, it uses port 80.
-func addMissingPort(addr string, isTLS bool) string { //revive:disable-line:flag-parameter
-	if strings.IndexByte(addr, ':') != -1 {
-		return addr
-	}
-	port := 80
-	if isTLS {
-		port = 443
-	}
-	return net.JoinHostPort(addr, strconv.Itoa(port))
-}
 
 // core stores middleware and plugin definitions and defines the request execution process.
 type core struct {
@@ -112,13 +100,13 @@ func (c *core) execFunc() (*Response, error) {
 		if cfg != nil {
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
-				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead || string(reqv.Header.Method()) == fiber.MethodQuery) {
 					return c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
 				return c.client.Do(reqv, respv)
 			})
 		} else {
-			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead || string(reqv.Header.Method()) == fiber.MethodQuery) {
 				err = c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
 				err = c.client.Do(reqv, respv)
