@@ -42,20 +42,7 @@ type core struct {
 
 // getRetryConfig returns a copy of the client's retry configuration.
 func (c *core) getRetryConfig() *RetryConfig {
-	c.client.mu.RLock()
-	defer c.client.mu.RUnlock()
-
-	cfg := c.client.retryConfig
-	if cfg == nil {
-		return nil
-	}
-
-	return &RetryConfig{
-		InitialInterval: cfg.InitialInterval,
-		MaxBackoffTime:  cfg.MaxBackoffTime,
-		Multiplier:      cfg.Multiplier,
-		MaxRetryCount:   cfg.MaxRetryCount,
-	}
+	return c.client.RetryConfig()
 }
 
 // execFunc is the core logic to send the request and receive the response.

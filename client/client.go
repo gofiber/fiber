@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -142,12 +143,12 @@ func (c *Client) R() *Request {
 	return AcquireRequest().SetClient(c)
 }
 
-// RequestHook returns the user-defined request hooks.
+// RequestHook returns a copy of the user-defined request hooks.
 func (c *Client) RequestHook() []RequestHook {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return c.userRequestHooks
+	return slices.Clone(c.userRequestHooks)
 }
 
 // AddRequestHook adds user-defined request hooks.
@@ -159,12 +160,12 @@ func (c *Client) AddRequestHook(h ...RequestHook) *Client {
 	return c
 }
 
-// ResponseHook returns the user-defined response hooks.
+// ResponseHook returns a copy of the user-defined response hooks.
 func (c *Client) ResponseHook() []ResponseHook {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return c.userResponseHooks
+	return slices.Clone(c.userResponseHooks)
 }
 
 // AddResponseHook adds user-defined response hooks.
@@ -371,12 +372,17 @@ func (c *Client) SetProxyURL(proxyURL string) error {
 	return nil
 }
 
-// RetryConfig returns the current retry configuration.
+// RetryConfig returns a copy of the current retry configuration.
 func (c *Client) RetryConfig() *RetryConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return c.retryConfig
+	if c.retryConfig == nil {
+		return nil
+	}
+
+	cfg := *c.retryConfig
+	return &cfg
 }
 
 // SetRetryConfig sets the retry configuration for the client.
