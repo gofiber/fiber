@@ -315,7 +315,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 
 	sess.config = s
 	sess.id = id
-	sess.isFresh = false
+	sess.fresh = false
 
 	sess.data.Lock()
 	decodeErr := sess.decodeSessionData(rawData)

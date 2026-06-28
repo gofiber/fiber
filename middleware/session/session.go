@@ -61,7 +61,7 @@ func acquireSession() *Session {
 	if s.data == nil {
 		s.data = acquireData()
 	}
-	s.isFresh = true
+	s.fresh = true
 	return s
 }
 
@@ -114,7 +114,7 @@ func releaseSession(s *Session) {
 func (s *Session) Fresh() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.isFresh
+	return s.fresh
 }
 
 // ID returns the session ID
@@ -323,7 +323,7 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 // refresh generates a new session, and sets session.fresh to be true.
 func (s *Session) refresh() {
 	s.id = s.config.KeyGenerator()
-	s.isFresh = true
+	s.fresh = true
 }
 
 // Save saves the session data and updates the cookie
