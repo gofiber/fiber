@@ -12,6 +12,7 @@ import (
 	"maps"
 	"mime/multipart"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -32,8 +33,10 @@ const (
 )
 
 var (
-	_ io.Writer       = (*DefaultCtx)(nil) // Compile-time check
-	_ context.Context = (*DefaultCtx)(nil) // Compile-time check
+	_                  io.Writer       = (*DefaultCtx)(nil) // Compile-time check
+	_                  context.Context = (*DefaultCtx)(nil) // Compile-time check
+	emptyRouteHandlers [0]Handler
+	emptyRouteParams   [0]string
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -51,29 +54,30 @@ const (
 //
 //go:generate ifacemaker --file ctx.go --file req.go --file res.go --struct DefaultCtx --iface Ctx --pkg fiber --promoted --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
-	handlerCtx       CustomCtx            // Active custom context implementation, if any
-	DefaultReq                            // Default request api
-	DefaultRes                            // Default response api
-	app              *App                 // Reference to *App
-	route            *Route               // Reference to *Route
-	fasthttp         *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	bind             *Bind                // Default bind reference
-	redirect         *Redirect            // Default redirect reference
-	viewBindMap      Map                  // Default view map to bind template engine
-	values           [maxParams]string    // Route parameter values
-	baseURI          string               // HTTP base uri
-	pathOriginal     string               // Original HTTP path
-	flashMessages    redirectionMsgs      // Flash messages
-	path             []byte               // HTTP path with the modifications by the configuration
-	detectionPath    []byte               // Route detection path
-	treePathHash     int                  // Hash of the path for the search in the tree
-	indexRoute       int                  // Index of the current route
-	indexHandler     int                  // Index of the current handler
-	methodInt        int                  // HTTP method INT equivalent
-	abandoned        atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
-	matched          bool                 // Non use route matched
-	skipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
-	userContextSet   bool                 // User context was stored in fasthttp user values
+	handlerCtx             CustomCtx            // Active custom context implementation, if any
+	DefaultReq                                  // Default request api
+	DefaultRes                                  // Default response api
+	app                    *App                 // Reference to *App
+	route                  *Route               // Reference to *Route
+	fasthttp               *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	bind                   *Bind                // Default bind reference
+	redirect               *Redirect            // Default redirect reference
+	reclaim                *reclaimLatch        // Coordinates safe pool reclamation of an abandoned ctx; nil on the hot path
+	viewBindMap            Map                  // Default view map to bind template engine
+	values                 [maxParams]string    // Route parameter values
+	baseURI                string               // HTTP base uri
+	pathOriginal           string               // Original HTTP path
+	flashMessages          redirectionMsgs      // Flash messages
+	path                   []byte               // HTTP path with the modifications by the configuration
+	detectionPath          []byte               // Route detection path
+	treePathHash           int                  // Hash of the path for the search in the tree
+	indexRoute             int                  // Index of the current route
+	indexHandler           int                  // Index of the current handler
+	methodInt              int                  // HTTP method INT equivalent
+	isAbandoned            atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
+	isMatched              bool                 // Non use route matched
+	shouldSkipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
+	isUserContextSet       bool                 // User context was stored in fasthttp user values
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -144,7 +148,7 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 		return
 	}
 	c.fasthttp.SetUserValue(userContextKey, ctx)
-	c.userContextSet = true
+	c.isUserContextSet = true
 }
 
 // Deadline returns the time when work done on behalf of this context
@@ -365,8 +369,8 @@ func (c *DefaultCtx) Route() *Route {
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
 			Method:   c.Method(),
-			Handlers: make([]Handler, 0),
-			Params:   make([]string, 0),
+			Handlers: emptyRouteHandlers[:],
+			Params:   emptyRouteParams[:],
 		}
 	}
 	return c.route
@@ -398,7 +402,6 @@ func (c *DefaultCtx) IsMiddleware() bool {
 func (c *DefaultCtx) HasBody() bool {
 	hdr := &c.fasthttp.Request.Header
 
-	//nolint:revive // switch is exhaustive for all ContentLength() cases
 	switch cl := hdr.ContentLength(); {
 	case cl > 0:
 		return true
@@ -568,7 +571,7 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 
 // Secure returns whether a secure connection was established.
 func (c *DefaultCtx) Secure() bool {
-	return c.Protocol() == schemeHTTPS
+	return c.Scheme() == schemeHTTPS
 }
 
 // Status sets the HTTP status for the response.
@@ -679,8 +682,8 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.indexRoute = -1
 	c.indexHandler = 0
 	// Reset matched flag
-	c.matched = false
-	c.skipNonUseRoutes = false
+	c.isMatched = false
+	c.shouldSkipNonUseRoutes = false
 	// Set paths
 	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
@@ -698,11 +701,11 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 // release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
-	if c.userContextSet {
+	if c.isUserContextSet {
 		if c.fasthttp != nil {
 			c.fasthttp.SetUserValue(userContextKey, nil)
 		}
-		c.userContextSet = false
+		c.isUserContextSet = false
 	}
 	c.route = nil
 	c.fasthttp = nil
@@ -719,29 +722,39 @@ func (c *DefaultCtx) release() {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
 	}
-	c.skipNonUseRoutes = false
-	// performance: no need for using c.abandoned.Store(false) here, as it is always set to false when it was true in ForceRelease
+	c.shouldSkipNonUseRoutes = false
+	// performance: no need for using c.isAbandoned.Store(false) here, as it is always set to false when it was true in ForceRelease
+	c.reclaim = nil
 	c.handlerCtx = nil
+}
+
+// reclaimLatch coordinates the safe, automatic reclamation of an abandoned
+// context back into the pool. It is armed only via ScheduleReclaim (currently by
+// the timeout middleware) and stays nil on the common request path, so requests
+// that are not abandoned pay no additional cost.
+type reclaimLatch struct {
+	releasedCh chan struct{} // closed once the request handler has released the ctx (event b)
+	once       sync.Once     // guards the close-exactly-once of releasedCh
 }
 
 // Abandon marks this context as abandoned. An abandoned context will not be
 // returned to the pool when ReleaseCtx is called.
 //
-// This is used by the timeout middleware to return immediately while the
-// handler goroutine continues using the context safely.
+// This is used by the timeout and SSE middlewares to return immediately while a
+// goroutine continues using the context safely.
 //
 // Only call ForceRelease after Abandon if you can guarantee no other goroutine
 // (including Fiber's requestHandler and ErrorHandler) will touch the context.
-// The timeout middleware intentionally does NOT call ForceRelease to avoid
-// races, which means timed-out requests leak their contexts until a safe
-// reclamation strategy exists.
+// Callers that cannot make that guarantee themselves can instead call
+// ScheduleReclaim, which arranges a race-free ForceRelease once the handler has
+// finished and the request handler has released the context.
 func (c *DefaultCtx) Abandon() {
-	c.abandoned.Store(true)
+	c.isAbandoned.Store(true)
 }
 
 // IsAbandoned returns true if Abandon() was called on this context.
 func (c *DefaultCtx) IsAbandoned() bool {
-	return c.abandoned.Load()
+	return c.isAbandoned.Load()
 }
 
 // ForceRelease releases an abandoned context back to the pool.
@@ -749,8 +762,51 @@ func (c *DefaultCtx) IsAbandoned() bool {
 // ErrorHandler) have completely finished using this context. Calling it while
 // any goroutine is still running causes races.
 func (c *DefaultCtx) ForceRelease() {
-	c.abandoned.Store(false)
+	c.isAbandoned.Store(false)
 	c.app.ReleaseCtx(c)
+}
+
+// ScheduleReclaim arms automatic reclamation of an abandoned context, returning
+// it to the pool once it is safe to do so.
+//
+// handlerDone must be closed once the goroutine that still uses this context
+// (for the timeout middleware, the handler goroutine) has completely finished.
+// cancel, if non-nil, is the CancelFunc of the context installed for that
+// goroutine and is invoked as soon as it finishes.
+//
+// ForceRelease is performed only after BOTH handlerDone is closed AND the request
+// handler has released the context (signaled from ReleaseCtx/releaseDefaultCtx),
+// which makes the reclamation race-free. If handlerDone never closes — a handler
+// that never returns — the context is intentionally never reclaimed, because the
+// handler still owns it.
+//
+// This method calls Abandon internally, so callers do not need to call Abandon
+// separately. Calling Abandon before ScheduleReclaim is still safe (idempotent).
+func (c *DefaultCtx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context.CancelFunc) {
+	c.Abandon()
+
+	latch := &reclaimLatch{releasedCh: make(chan struct{})}
+	c.reclaim = latch
+
+	go func() {
+		<-handlerDone
+		if cancel != nil {
+			cancel()
+		}
+		<-latch.releasedCh
+		c.ForceRelease()
+	}()
+}
+
+// signalReleased records that the request handler is done touching an abandoned,
+// reclaim-armed context (event b). It is a no-op when reclamation was not armed
+// and is safe to call multiple times.
+func (c *DefaultCtx) signalReleased() {
+	if c.reclaim != nil {
+		c.reclaim.once.Do(func() {
+			close(c.reclaim.releasedCh)
+		})
+	}
 }
 
 func (c *DefaultCtx) renderExtensions(bind any) {
@@ -775,9 +831,7 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 		}
 	}
 
-	if len(c.app.mountFields.appListKeys) == 0 {
-		c.app.generateAppListKeys()
-	}
+	c.app.mountFields.appListKeysOnce.Do(c.app.generateAppListKeys)
 }
 
 // Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
@@ -813,11 +867,11 @@ func (c *DefaultCtx) getValues() *[maxParams]string {
 }
 
 func (c *DefaultCtx) getMatched() bool {
-	return c.matched
+	return c.isMatched
 }
 
 func (c *DefaultCtx) getSkipNonUseRoutes() bool {
-	return c.skipNonUseRoutes
+	return c.shouldSkipNonUseRoutes
 }
 
 func (c *DefaultCtx) setIndexHandler(handler int) {
@@ -829,11 +883,11 @@ func (c *DefaultCtx) setIndexRoute(route int) {
 }
 
 func (c *DefaultCtx) setMatched(matched bool) {
-	c.matched = matched
+	c.isMatched = matched
 }
 
 func (c *DefaultCtx) setSkipNonUseRoutes(skip bool) {
-	c.skipNonUseRoutes = skip
+	c.shouldSkipNonUseRoutes = skip
 }
 
 func (c *DefaultCtx) setRoute(route *Route) {

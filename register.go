@@ -16,6 +16,7 @@ type Register interface {
 	Options(handler any, handlers ...any) Register
 	Trace(handler any, handlers ...any) Register
 	Patch(handler any, handlers ...any) Register
+	Query(handler any, handlers ...any) Register
 
 	Add(methods []string, handler any, handlers ...any) Register
 
@@ -104,6 +105,12 @@ func (r *Registering) Trace(handler any, handlers ...any) Register {
 // modifications to a resource.
 func (r *Registering) Patch(handler any, handlers ...any) Register {
 	return r.Add([]string{MethodPatch}, handler, handlers...)
+}
+
+// Query registers a route for QUERY methods that performs a safe, idempotent
+// query with a request body.
+func (r *Registering) Query(handler any, handlers ...any) Register {
+	return r.Add([]string{MethodQuery}, handler, handlers...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.

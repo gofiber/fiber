@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 	"time"
 
@@ -177,9 +178,84 @@ func Test_CookieJarSetKeyValue(t *testing.T) {
 	cj.SetKeyValue(host, "key", "value")
 	cj.SetKeyValue(host, "k", "vv")
 	cj.SetKeyValue(host, "key", "value2")
+	cj.SetKeyValueBytes(host, []byte("kb"), []byte("vb"))
 
 	cookies := cj.Get(uri)
-	require.Len(t, cookies, 2)
+	require.Len(t, cookies, 3)
+
+	// Verify the entry written via SetKeyValueBytes has the exact key and value.
+	var foundBytes bool
+	for _, c := range cookies {
+		if string(c.Key()) == "kb" {
+			foundBytes = true
+			require.Equal(t, "vb", string(c.Value()))
+		}
+	}
+	require.True(t, foundBytes, "expected cookie kb=vb written by SetKeyValueBytes")
+}
+
+func Test_CookieJarHostStorageIsBounded(t *testing.T) {
+	t.Parallel()
+
+	cj := &CookieJar{}
+
+	for i := range maxCookieJarHosts + 32 {
+		host := fmt.Sprintf("host-%d.example.com", i)
+		cookie := &fasthttp.Cookie{}
+		cookie.SetKey("k")
+		cookie.SetValue("v")
+		cj.SetByHost([]byte(host), cookie)
+	}
+
+	require.LessOrEqual(t, len(cj.hostCookies), maxCookieJarHosts)
+}
+
+func Test_CookieJarHostEvictionIsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	cj := &CookieJar{hostCookies: make(map[string][]storedCookie, maxCookieJarHosts)}
+	for i := range maxCookieJarHosts {
+		host := fmt.Sprintf("host-%04d.example.com", i+1)
+		cookie := fasthttp.AcquireCookie()
+		cookie.SetKey("k")
+		cookie.SetValue("v")
+		cj.hostCookies[host] = []storedCookie{{cookie: cookie, isHostOnly: true}}
+	}
+
+	cj.ensureHostCapacityLocked("zzz.example.com", time.Now())
+
+	_, ok := cj.hostCookies["host-0001.example.com"]
+	require.False(t, ok)
+	require.Len(t, cj.hostCookies, maxCookieJarHosts-1)
+}
+
+func Test_CookieJarHostCapacityPrefersExpiredEntries(t *testing.T) {
+	t.Parallel()
+
+	cj := &CookieJar{hostCookies: make(map[string][]storedCookie, maxCookieJarHosts)}
+	now := time.Now()
+
+	expired := fasthttp.AcquireCookie()
+	expired.SetKey("expired")
+	expired.SetValue("v")
+	expired.SetExpire(now.Add(-time.Minute))
+	cj.hostCookies["expired.example.com"] = []storedCookie{{cookie: expired, isHostOnly: true}}
+
+	for i := 1; i < maxCookieJarHosts; i++ {
+		host := fmt.Sprintf("host-%04d.example.com", i)
+		cookie := fasthttp.AcquireCookie()
+		cookie.SetKey("k")
+		cookie.SetValue("v")
+		cj.hostCookies[host] = []storedCookie{{cookie: cookie, isHostOnly: true}}
+	}
+
+	cj.ensureHostCapacityLocked("new.example.com", now)
+
+	_, ok := cj.hostCookies["expired.example.com"]
+	require.False(t, ok)
+	require.Len(t, cj.hostCookies, maxCookieJarHosts-1)
+	_, ok = cj.hostCookies["host-0001.example.com"]
+	require.True(t, ok)
 }
 
 func Test_CookieJarGetFromResponse(t *testing.T) {
@@ -430,7 +506,7 @@ func Test_CookieJar_ExactPublicSuffixDomainDowngradedToHostOnly(t *testing.T) {
 
 	jar.parseCookiesFromResp([]byte("com"), nil, resp)
 	require.Len(t, jar.hostCookies["com"], 1)
-	require.True(t, jar.hostCookies["com"][0].hostOnly)
+	require.True(t, jar.hostCookies["com"][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)
@@ -476,7 +552,7 @@ func Test_CookieJar_ExactIPAddressDomainDowngradedToHostOnly(t *testing.T) {
 
 	jar.parseCookiesFromResp([]byte("127.0.0.1"), nil, resp)
 	require.Len(t, jar.hostCookies["127.0.0.1"], 1)
-	require.True(t, jar.hostCookies["127.0.0.1"][0].hostOnly)
+	require.True(t, jar.hostCookies["127.0.0.1"][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)
@@ -571,7 +647,7 @@ func Test_CookieJar_TrailingDotDomainDowngradedToHostOnly(t *testing.T) {
 
 	jar.parseCookiesFromResp([]byte("sub.example.com."), nil, resp)
 	require.Len(t, jar.hostCookies["sub.example.com."], 1)
-	require.True(t, jar.hostCookies["sub.example.com."][0].hostOnly)
+	require.True(t, jar.hostCookies["sub.example.com."][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)
@@ -599,7 +675,7 @@ func Test_CookieJar_TrailingDotDomainDowngradedToHostOnlyOnPlainHost(t *testing.
 
 	jar.parseCookiesFromResp([]byte("sub.example.com"), nil, resp)
 	require.Len(t, jar.hostCookies["sub.example.com"], 1)
-	require.True(t, jar.hostCookies["sub.example.com"][0].hostOnly)
+	require.True(t, jar.hostCookies["sub.example.com"][0].isHostOnly)
 
 	origin := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(origin)

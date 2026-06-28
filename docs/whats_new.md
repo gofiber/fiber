@@ -512,6 +512,21 @@ app.Get("/health", handler) // HEAD /health now returns 405 unless you add it ma
 
 Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
 
+### QUERY method (RFC 10008)
+
+Fiber now supports the HTTP `QUERY` method ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html)) as a first-class verb. `QUERY` is safe and idempotent like `GET`, but allows a request body for complex queries.
+
+```go title="Register a QUERY route"
+app := fiber.New()
+
+app.Query("/search", func(c fiber.Ctx) error {
+    // QUERY carries a request body, unlike GET.
+    return c.Send(c.Body())
+})
+```
+
+`Query` is available on `App`, `Group`, the route-chaining `Register` interface, and domain routers, plus the HTTP client (`Request.Query`, `Client.Query`, and the package-level `Query`). `fiber.IsMethodSafe` and `fiber.IsMethodIdempotent` both return `true` for `QUERY`, so middleware that keys off method safety (CSRF, idempotency, early data) treats it like the other safe methods. The cache middleware can cache `QUERY` responses when `QUERY` is added to `Config.Methods`; the default key generator folds the request body into the cache key so different bodies on the same URL do not collide.
+
 ### Middleware registration
 
 We have aligned our method for middlewares closer to [`Express`](https://expressjs.com/en/api.html#app.use) and now also support the [`Use`](./api/app#use) of multiple prefixes.
@@ -610,6 +625,29 @@ testConfig := fiber.TestConfig{
 }
 ```
 
+### Constraint System
+
+The internal constraint system has been unified into a single `ConstraintHandler` interface. Built-in and custom constraints are now treated uniformly through this interface, with an optional `ConstraintAnalyzer` phase for precomputation at route registration time.
+
+```go
+type ConstraintHandler interface {
+    Name() string
+    Execute(param string, data []any) bool
+}
+
+type ConstraintAnalyzer interface {
+    Analyze(args []string) ([]any, error)
+}
+```
+
+Key improvements:
+
+- **Zero per-request parsing**: `strconv.Atoi`, `time.Parse` layouts, and regex compilation happen once at registration via `Analyze()`, not on every request.
+- **Single dispatch**: The previous `TypeConstraint` bitmask switch has been replaced by a single `handler.Execute()` call.
+- **Backward compatible**: Existing `CustomConstraint` implementations continue to work unchanged. The `CustomConstraint` interface, `RegisterCustomConstraint()` API, and `CheckConstraint()` method are all preserved.
+
+The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` fields are retained but deprecated.
+
 ## 🧠 Context
 
 ### New Features
@@ -685,13 +723,14 @@ testConfig := fiber.TestConfig{
 ### Changed Methods
 
 - **Bind**: Now used for binding instead of view binding. Use `c.ViewBind()` for view binding.
-- **Format**: Parameter changed from `body interface{}` to `handlers ...ResFmt`.
+- **Format**: Parameter changed from `body any` to `handlers ...ResFmt`.
 - **Redirect**: Use `c.Redirect().To()` instead.
 - **SendFile**: Now supports different configurations using a config parameter.
 - **Attachment and Download**: Non-ASCII filenames now use `filename*` as
   specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
   [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
+- **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
 
 ### SendEarlyHints
 
@@ -1715,6 +1754,8 @@ The session middleware has undergone significant improvements in v3, focusing on
 
 - **Default KeyGenerator**: Changed from `utils.UUIDv4` to `utils.SecureToken`, producing base64-encoded tokens instead of UUID format.
 
+- **Context-Aware Lifecycle Methods**: The `DestroyWithContext`, `RegenerateWithContext`, `ResetWithContext`, and `SaveWithContext` methods (on both `Session` and `Middleware`) accept a `context.Context` to propagate cancellation and deadlines to the underlying storage I/O, mirroring the existing `Storage` and `SharedState` `WithContext` convention. The non-context variants delegate to these. A nil context is treated as `context.Background()`.
+
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
 ### SSE
@@ -2025,15 +2066,15 @@ app.Route("/api", func(apiGrp Router) {
 
 ```go
 // After
-app.RouteChain("/api").RouteChain("/user/:id?")
-    .Get(func(c fiber.Ctx) error {
+app.RouteChain("/api").RouteChain("/user/:id?").
+    Get(func(c fiber.Ctx) error {
         // Get user
         return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
-    })
-    .Post(func(c fiber.Ctx) error {
+    }).
+    Post(func(c fiber.Ctx) error {
         // Create user
         return c.JSON(fiber.Map{"message": "User created"})
-    });
+    })
 ```
 
 ### 🗺 RebuildTree

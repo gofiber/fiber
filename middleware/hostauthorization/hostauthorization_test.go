@@ -115,6 +115,7 @@ func Test_NormalizeHost(t *testing.T) {
 		{"plain host", "example.com", "example.com"},
 		{"uppercase", "EXAMPLE.COM", "example.com"},
 		{"trailing dot", "example.com.", "example.com"},
+		{"multiple trailing dots only trims one", "example.com..", "example.com."},
 		{"host with port", "example.com:8080", "example.com"},
 		{"uppercase host with port", "EXAMPLE.COM:8080", "example.com"},
 		{"ipv4", "192.168.1.1", "192.168.1.1"},
@@ -131,6 +132,78 @@ func Test_NormalizeHost(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.expected, normalizeHost(tt.input))
+		})
+	}
+}
+
+func Test_ParseNormalizedAuthority(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+		expectOK bool
+	}{
+		{name: "plain host", input: "example.com", expected: "example.com", expectOK: true},
+		{name: "host with valid port", input: "example.com:8080", expected: "example.com", expectOK: true},
+		{name: "multiple trailing dots are rejected as malformed", input: "api.example.com...:443", expectOK: false},
+		{name: "ipv6 with port", input: "[::1]:443", expected: "::1", expectOK: true},
+		{name: "ipv6 without port", input: "[::1]", expected: "::1", expectOK: true},
+		{name: "empty port", input: "example.com:", expectOK: false},
+		{name: "signed port", input: "example.com:+80", expectOK: false},
+		{name: "port out of range", input: "example.com:65536", expectOK: false},
+		{name: "userinfo style authority", input: "allowed.com:443@attacker.example", expectOK: false},
+		{name: "invalid port syntax", input: "allowed.com:http", expectOK: false},
+		{name: "bare ipv6", input: "::1", expectOK: false},
+		{name: "malformed bracket", input: "[::1", expectOK: false},
+		{name: "extra data after bracket", input: "[::1]extra", expectOK: false},
+		{name: "path delimiter in host", input: "attacker.test/.example.com", expectOK: false},
+		{name: "query delimiter in host", input: "attacker.test?.example.com", expectOK: false},
+		{name: "space in host", input: "bad host.example.com", expectOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			host, ok := parseNormalizedAuthority(tt.input)
+			require.Equal(t, tt.expectOK, ok)
+			require.Equal(t, tt.expected, host)
+		})
+	}
+}
+
+func Test_IsValidHostSyntax(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		host  string
+		valid bool
+	}{
+		{name: "empty", host: "", valid: false},
+		{name: "single label", host: "localhost", valid: true},
+		{name: "multi label", host: "sub.api.example.com", valid: true},
+		{name: "ipv4 literal", host: "192.168.0.1", valid: true},
+		{name: "ipv6 literal", host: "::1", valid: true},
+		{name: "ipv6 full", host: "2001:db8::1", valid: true},
+		{name: "malformed ipv6", host: "::g", valid: false},
+		{name: "digit label", host: "1.example.com", valid: true},
+		{name: "leading hyphen label", host: "-bad.example.com", valid: false},
+		{name: "trailing hyphen label", host: "bad-.example.com", valid: false},
+		{name: "final label trailing hyphen", host: "example.com-", valid: false},
+		{name: "empty label", host: "a..b", valid: false},
+		{name: "leading dot", host: ".example.com", valid: false},
+		{name: "trailing dot", host: "example.com.", valid: false},
+		{name: "underscore rejected", host: "a_b.example.com", valid: false},
+		{name: "max length label", host: strings.Repeat("a", 63) + ".com", valid: true},
+		{name: "oversize label", host: strings.Repeat("a", 64) + ".com", valid: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.valid, isValidHostSyntax(tt.host))
 		})
 	}
 }
@@ -392,6 +465,31 @@ func Test_HostAuthorization_SubdomainWildcard_BareDomainRejected(t *testing.T) {
 	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
+func Test_HostAuthorization_AllowedHostsFunc_EmptyHostRejectedBeforeCallback(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	called := false
+	app.Use(New(Config{
+		AllowedHostsFunc: func(_ string) bool {
+			called = true
+			return true
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = ":443"
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+	require.False(t, called)
+}
+
 func Test_HostAuthorization_AllowedHostsFunc_Allowed(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -620,6 +718,33 @@ func Test_HostAuthorization_XForwardedHost_TrustProxy_Rejected(t *testing.T) {
 	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
+func Test_HostAuthorization_XForwardedHost_TrustProxy_RejectsMalformedAuthority(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{
+		TrustProxy: true,
+		TrustProxyConfig: fiber.TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+
+	app.Use(New(Config{
+		AllowedHosts: []string{"allowed.com"},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("OK")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "proxy.internal"
+	req.Header.Set("X-Forwarded-Host", "allowed.com:443@attacker.example")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+}
+
 func Test_HostAuthorization_XForwardedHost_NoTrustProxy(t *testing.T) {
 	t.Parallel()
 
@@ -714,7 +839,7 @@ func Benchmark_matchHost_Mixed(b *testing.B) {
 func Benchmark_matchHost_ManyWildcards(b *testing.B) {
 	const n = 100
 	hosts := make([]string, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		hosts[i] = fmt.Sprintf("*.tenant%d.example.com", i)
 	}
 	parsed := parseAllowedHosts(hosts)

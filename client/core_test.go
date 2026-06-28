@@ -18,49 +18,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-func Test_AddMissing_Port(t *testing.T) {
-	t.Parallel()
-
-	type args struct {
-		addr  string
-		isTLS bool
-	}
-	tests := []struct {
-		name string
-		want string
-		args args
-	}{
-		{
-			name: "do anything",
-			args: args{
-				addr: "example.com:1234",
-			},
-			want: "example.com:1234",
-		},
-		{
-			name: "add 80 port",
-			args: args{
-				addr: "example.com",
-			},
-			want: "example.com:80",
-		},
-		{
-			name: "add 443 port",
-			args: args{
-				addr:  "example.com",
-				isTLS: true,
-			},
-			want: "example.com:443",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tt.want, addMissingPort(tt.args.addr, tt.args.isTLS))
-		})
-	}
-}
-
 func Test_Exec_Func(t *testing.T) {
 	t.Parallel()
 	ln := fasthttputil.NewInmemoryListener()
@@ -211,6 +168,22 @@ func Test_Exec_Func(t *testing.T) {
 			t.Fatal("transport Do did not finish")
 		}
 	})
+
+	t.Run("panic in transport returns error", func(t *testing.T) {
+		t.Parallel()
+		core, client, req := newCore(), New(), AcquireRequest()
+		core.ctx = context.Background()
+		core.client = client
+		core.req = req
+
+		req.RawRequest.SetRequestURI("http://example.com/panic")
+		client.transport = &panicTransport{value: "boom"}
+
+		resp, err := core.execFunc()
+
+		require.Nil(t, resp)
+		require.EqualError(t, err, "client panic: boom")
+	})
 }
 
 func Test_Execute(t *testing.T) {
@@ -327,6 +300,149 @@ func Test_Execute(t *testing.T) {
 	})
 }
 
+func Test_PreHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+
+	client.AddRequestHook(func(_ *Client, _ *Request) error {
+		entered <- struct{}{}
+		<-release
+		return nil
+	})
+
+	run := func() <-chan error {
+		done := make(chan error, 1)
+
+		go func() {
+			core := newCore()
+			core.client = client
+			core.req = AcquireRequest()
+			defer ReleaseRequest(core.req)
+			core.req.SetURL("http://example.com")
+
+			done <- core.preHooks()
+		}()
+
+		return done
+	}
+
+	firstDone := run()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("first request hook was not invoked")
+	}
+
+	secondDone := run()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("second request hook execution was serialized by the client lock")
+	}
+
+	close(release)
+
+	require.NoError(t, <-firstDone)
+	require.NoError(t, <-secondDone)
+}
+
+func Test_AfterHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+
+	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
+		entered <- struct{}{}
+		<-release
+		return nil
+	})
+
+	run := func() <-chan error {
+		done := make(chan error, 1)
+
+		go func() {
+			core := newCore()
+			core.client = client
+			core.req = AcquireRequest()
+			defer ReleaseRequest(core.req)
+			core.req.SetURL("http://example.com")
+
+			resp := AcquireResponse()
+			defer ReleaseResponse(resp)
+
+			done <- core.afterHooks(resp)
+		}()
+
+		return done
+	}
+
+	firstDone := run()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("first response hook was not invoked")
+	}
+
+	secondDone := run()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("second response hook execution was serialized by the client lock")
+	}
+
+	close(release)
+
+	require.NoError(t, <-firstDone)
+	require.NoError(t, <-secondDone)
+}
+
+// Test_PreHooks_ReturnsUserHookError verifies a failing user request hook
+// aborts preHooks and its error is propagated (and the client lock is released).
+func Test_PreHooks_ReturnsUserHookError(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	wantErr := errors.New("request hook failed")
+	client.AddRequestHook(func(_ *Client, _ *Request) error { return wantErr })
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+	core.req.SetURL("http://example.com")
+
+	require.ErrorIs(t, core.preHooks(), wantErr)
+}
+
+// Test_AfterHooks_ReturnsUserHookError verifies a failing user response hook
+// aborts afterHooks and its error is propagated.
+func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	wantErr := errors.New("response hook failed")
+	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error { return wantErr })
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+
+	resp := AcquireResponse()
+	defer ReleaseResponse(resp)
+
+	require.ErrorIs(t, core.afterHooks(resp), wantErr)
+}
+
 type blockingErrTransport struct {
 	err error
 
@@ -393,6 +509,50 @@ func (*blockingErrTransport) SetStreamResponseBody(_ bool) {
 
 func (b *blockingErrTransport) release() {
 	b.releaseOnce.Do(func() { close(b.unblock) })
+}
+
+type panicTransport struct {
+	value any
+}
+
+func (p *panicTransport) Do(_ *fasthttp.Request, _ *fasthttp.Response) error {
+	panic(p.value)
+}
+
+func (p *panicTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+	return p.Do(req, resp)
+}
+
+func (p *panicTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, _ time.Time) error {
+	return p.Do(req, resp)
+}
+
+func (p *panicTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+	return p.Do(req, resp)
+}
+
+func (*panicTransport) CloseIdleConnections() {
+}
+
+func (*panicTransport) TLSConfig() *tls.Config {
+	return nil
+}
+
+func (*panicTransport) SetTLSConfig(_ *tls.Config) {
+}
+
+func (*panicTransport) SetDial(_ fasthttp.DialFunc) {
+}
+
+func (*panicTransport) Client() any {
+	return nil
+}
+
+func (*panicTransport) StreamResponseBody() bool {
+	return false
+}
+
+func (*panicTransport) SetStreamResponseBody(_ bool) {
 }
 
 func Test_Core_RequestBodyStream(t *testing.T) {

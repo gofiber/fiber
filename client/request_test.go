@@ -318,6 +318,38 @@ func Test_Request_QueryParam(t *testing.T) {
 	})
 }
 
+func Test_QueryParam_Keys(t *testing.T) {
+	t.Parallel()
+
+	p := &QueryParam{Args: fasthttp.AcquireArgs()}
+	defer fasthttp.ReleaseArgs(p.Args)
+
+	p.Add("foo", "1")
+	p.Add("foo", "2")
+	p.Add("bar", "3")
+
+	keys := p.Keys()
+	require.Len(t, keys, 2)
+	require.Contains(t, keys, "foo")
+	require.Contains(t, keys, "bar")
+}
+
+func Test_FormData_Keys(t *testing.T) {
+	t.Parallel()
+
+	f := &FormData{Args: fasthttp.AcquireArgs()}
+	defer fasthttp.ReleaseArgs(f.Args)
+
+	f.Add("foo", "1")
+	f.Add("foo", "2")
+	f.Add("bar", "3")
+
+	keys := f.Keys()
+	require.Len(t, keys, 2)
+	require.Contains(t, keys, "foo")
+	require.Contains(t, keys, "bar")
+}
+
 func Test_Request_Params(t *testing.T) {
 	t.Parallel()
 
@@ -1067,6 +1099,34 @@ func Test_Request_Patch(t *testing.T) {
 	}
 }
 
+func Test_Request_Query(t *testing.T) {
+	t.Parallel()
+
+	app, ln, start := createHelperServer(t)
+
+	app.Query("/", func(c fiber.Ctx) error {
+		return c.Send(c.Body())
+	})
+
+	go start()
+	time.Sleep(100 * time.Millisecond)
+
+	client := New().SetDial(ln)
+
+	for range 5 {
+		resp, err := AcquireRequest().
+			SetClient(client).
+			SetRawBody([]byte("query body")).
+			Query("http://example.com")
+
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "query body", resp.String())
+
+		resp.Close()
+	}
+}
+
 func Test_Request_Header_With_Server(t *testing.T) {
 	t.Parallel()
 	handler := func(c fiber.Ctx) error {
@@ -1592,6 +1652,37 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 		require.Equal(t, 3, req.MaxRedirects())
 	})
+}
+
+func Test_Request_Query_Redirect(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := fiber.New()
+	// 308 preserves method and body, so QUERY must follow it and keep its body.
+	app.Query("/start", func(c fiber.Ctx) error {
+		return c.Redirect().Status(fiber.StatusPermanentRedirect).To("/end")
+	})
+	app.Query("/end", func(c fiber.Ctx) error {
+		return c.Send(c.Body())
+	})
+
+	go func() { assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
+
+	client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
+
+	resp, err := AcquireRequest().
+		SetClient(client).
+		SetMaxRedirects(1).
+		SetRawBody([]byte("query body")).
+		Query("http://example.com/start")
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "query body", resp.String())
+
+	resp.Close()
 }
 
 func Test_SetValWithStruct(t *testing.T) {

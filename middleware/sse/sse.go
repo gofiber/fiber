@@ -28,7 +28,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	return func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderContentType, mimeTextEventStream)
+		c.Set(fiber.HeaderContentType, fiber.MIMETextEventStream)
 		c.Set(fiber.HeaderCacheControl, "no-cache")
 		c.Set(fiber.HeaderConnection, "keep-alive")
 		c.Set("X-Accel-Buffering", "no")
@@ -80,6 +80,7 @@ func New(config ...Config) fiber.Handler {
 }
 
 // Stream is an active SSE response stream.
+// Stream is safe for concurrent use.
 type Stream struct {
 	ctx         context.Context //nolint:containedctx // Stream exposes a per-stream context canceled with the stream lifecycle.
 	cancel      context.CancelFunc
@@ -88,7 +89,7 @@ type Stream struct {
 	done        chan struct{}
 	jsonMarshal utils.JSONMarshal
 	lastEventID string
-	closed      bool
+	isClosed    bool
 	once        sync.Once
 	mu          sync.Mutex
 }
@@ -165,7 +166,7 @@ func (s *Stream) write(fn func(w *bufio.Writer) error) error {
 	if s.err != nil {
 		return s.err
 	}
-	if s.closed {
+	if s.isClosed {
 		return errStreamClosed
 	}
 	if err := fn(s.w); err != nil {
@@ -179,7 +180,7 @@ func (s *Stream) write(fn func(w *bufio.Writer) error) error {
 
 func (s *Stream) failLocked(err error) error {
 	s.err = err
-	s.closed = true
+	s.isClosed = true
 	s.once.Do(func() {
 		s.cancel()
 		close(s.done)
@@ -189,7 +190,7 @@ func (s *Stream) failLocked(err error) error {
 
 func (s *Stream) closeStream() {
 	s.mu.Lock()
-	s.closed = true
+	s.isClosed = true
 	s.mu.Unlock()
 	s.once.Do(func() {
 		s.cancel()

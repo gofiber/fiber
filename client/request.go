@@ -69,7 +69,7 @@ type Request struct {
 
 	bodyType bodyType
 
-	disablePathNormalizing bool
+	isPathNormalizingDisabled bool
 }
 
 // Method returns the HTTP method set in the Request.
@@ -612,20 +612,20 @@ func (r *Request) SetMaxRedirects(count int) *Request {
 
 // DisablePathNormalizing reports whether path normalizing is disabled for the Request.
 func (r *Request) DisablePathNormalizing() bool {
-	return r.disablePathNormalizing
+	return r.isPathNormalizingDisabled
 }
 
 // SetDisablePathNormalizing configures the Request to disable or enable path normalizing.
 func (r *Request) SetDisablePathNormalizing(disable bool) *Request {
-	r.disablePathNormalizing = disable
+	r.isPathNormalizingDisabled = disable
 	r.RawRequest.URI().DisablePathNormalizing = disable
 	return r
 }
 
-// checkClient ensures that a Client is set. If none is set, it defaults to the global defaultClient.
+// checkClient ensures that a Client is set. If none is set, it defaults to the package default client via C().
 func (r *Request) checkClient() {
 	if r.client == nil {
-		r.SetClient(defaultClient)
+		r.SetClient(C())
 	}
 }
 
@@ -664,6 +664,11 @@ func (r *Request) Patch(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodPatch).Send()
 }
 
+// Query sends a QUERY request to the given URL.
+func (r *Request) Query(url string) (*Response, error) {
+	return r.SetURL(url).SetMethod(fiber.MethodQuery).Send()
+}
+
 // Custom sends a request with a custom HTTP method to the given URL.
 func (r *Request) Custom(url, method string) (*Response, error) {
 	return r.SetURL(url).SetMethod(method).Send()
@@ -688,7 +693,7 @@ func (r *Request) Reset() {
 	r.maxRedirects = 0
 	r.bodyType = noBody
 	r.boundary = boundary
-	r.disablePathNormalizing = false
+	r.isPathNormalizingDisabled = false
 
 	for len(r.files) != 0 {
 		t := r.files[0]

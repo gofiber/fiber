@@ -39,9 +39,15 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		// Channels for handler result and panics
 		done := make(chan error, 1)
 		panicChan := make(chan any, 1)
+		// handlerDone is closed once the handler goroutine has fully exited
+		// (covering both the normal and panic paths). It tells the timeout path
+		// when the goroutine has stopped touching the context, which is what makes
+		// reclaiming the abandoned context race-free.
+		handlerDone := make(chan struct{})
 
 		// Run handler in goroutine so we can race against the timeout
 		go func() {
+			defer close(handlerDone)
 			defer func() {
 				if p := recover(); p != nil {
 					log.Errorw("panic recovered in timeout handler", "panic", p, "stack", string(debug.Stack()))
@@ -75,10 +81,10 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 			return fiber.ErrInternalServerError
 
 		case <-tCtx.Done():
-			// Timeout occurred - abandon context and return immediately
-			// The cleanup goroutine will cancel the timeout context once the handler finishes;
-			// the abandoned fiber.Ctx stays out of the pool.
-			return handleTimeout(parent, ctx, cancel, done, panicChan, cfg)
+			// Timeout occurred - abandon context and return immediately.
+			// Reclamation is scheduled so the abandoned fiber.Ctx is returned to
+			// the pool once the handler goroutine finishes, instead of leaking.
+			return handleTimeout(parent, ctx, cancel, handlerDone, cfg)
 		}
 	}
 }
@@ -96,59 +102,62 @@ func handleTimeout(
 	parent context.Context,
 	ctx fiber.Ctx,
 	cancel context.CancelFunc,
-	done <-chan error,
-	panicChan <-chan any,
+	handlerDone <-chan struct{},
 	cfg Config,
 ) error {
-	// Mark fiber context as abandoned - ReleaseCtx will skip pooling.
-	// The context will NOT be returned to the pool. This is an intentional
-	// trade-off: we accept the small memory cost of not recycling timed-out
-	// contexts in exchange for complete race-freedom.
-	//
-	// This is the same approach fasthttp uses - timed-out RequestCtx objects
-	// are never returned to the pool (see fasthttp's releaseCtx which panics
-	// if timeoutResponse is set).
-	ctx.Abandon()
+	var timeoutErr error
+	if cfg.OnTimeout == nil {
+		// Build the default timeout response separately from the RequestCtx response.
+		// The timed-out handler can keep running and may have already buffered
+		// application data there, so reusing it could disclose partial output.
+		// TimeoutErrorWithCode constructs a fresh fasthttp.Response internally, so
+		// the active RequestCtx response is never read.
+		ctx.RequestCtx().TimeoutErrorWithCode(fiber.ErrRequestTimeout.Message, fiber.StatusRequestTimeout)
+	} else {
+		// Prepare the timeout response before marking the RequestCtx as timed out so
+		// custom OnTimeout handlers can shape the response body.
+		timeoutErr = invokeOnTimeout(ctx, cfg)
 
-	// Prepare the timeout response before marking the RequestCtx as timed out so
-	// custom OnTimeout handlers can shape the response body.
-	timeoutErr := invokeOnTimeout(ctx, cfg)
-
-	// If no OnTimeout handler is configured or the response is still the default
-	// 200/empty, ensure a sensible timeout response is captured for fasthttp to send.
-	if cfg.OnTimeout == nil || (ctx.Response().StatusCode() == fiber.StatusOK && len(ctx.Response().Body()) == 0) {
-		ctx.Response().SetStatusCode(fiber.StatusRequestTimeout)
-		if len(ctx.Response().Body()) == 0 {
+		// If the response is still the default 200/empty, ensure a sensible timeout
+		// response is captured for fasthttp to send.
+		if ctx.Response().StatusCode() == fiber.StatusOK && len(ctx.Response().Body()) == 0 {
+			ctx.Response().SetStatusCode(fiber.StatusRequestTimeout)
 			ctx.Response().SetBodyString(fiber.ErrRequestTimeout.Message)
 		}
+
+		// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
+		// for the response and send the captured payload from OnTimeout. All ctx
+		// mutations after this call are ignored by fasthttp.
+		ctx.RequestCtx().TimeoutErrorWithResponse(&ctx.RequestCtx().Response)
 	}
 
-	// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
-	// for the response and send the captured payload (either default or from
-	// OnTimeout). All ctx mutations after this call are ignored by fasthttp.
-	ctx.RequestCtx().TimeoutErrorWithResponse(&ctx.RequestCtx().Response)
+	// Schedule race-free reclamation of the abandoned context. The context is
+	// returned to the pool only after BOTH the handler goroutine finishes AND
+	// Fiber's requestHandler releases the context (after any ErrorHandler runs),
+	// so we never race with goroutines still using it. This fixes the unbounded
+	// fiber.Ctx leak that previously affected every timed-out request (#4359).
+	//
+	// Use a concrete type assertion to *fiber.DefaultCtx rather than an interface
+	// assertion, because only *fiber.DefaultCtx has the signalReleased wiring in
+	// ReleaseCtx/releaseDefaultCtx. An interface assertion could accidentally match
+	// custom Ctx implementations that provide ScheduleReclaim but lack the release
+	// signal, causing the reclamation goroutine to block forever.
+	if dc, ok := ctx.(*fiber.DefaultCtx); ok {
+		dc.ScheduleReclaim(handlerDone, cancel)
+		return timeoutErr
+	}
 
-	// Spawn cleanup goroutine that waits for handler to finish.
-	// This only does context cleanup (cancel + restore parent), NOT ctx release.
-	// The fiber.Ctx is intentionally NOT released to avoid races with requestHandler
-	// which may still access ctx (e.g., ErrorHandler) after this function returns.
-	// ForceRelease cannot be called safely here for the same reason.
+	// Custom context implementations fall back to the previous behavior: once the
+	// handler finishes, cancel the timeout context and restore the parent. The
+	// context stays out of the pool.
+	//
+	// Mark the context as abandoned so ReleaseCtx will skip pooling, allowing the
+	// handler goroutine to continue safely using the context.
+	ctx.Abandon()
 	go func() {
-		select {
-		case <-done:
-		case <-panicChan:
-		}
-		// Handler finished - cancel timeout context and restore parent
+		<-handlerDone
 		cancel()
 		ctx.SetContext(parent)
-
-		// TODO: Currently the ctx is not returned to the pool (memory leak for timed-out requests).
-		// Future improvement: Implement a concurrent "garbage collector" list where abandoned
-		// contexts are queued after both the handler AND requestHandler are done. A background
-		// goroutine would periodically process this list and call ForceRelease() to recycle
-		// the contexts safely. This would require tracking when requestHandler finishes
-		// (e.g., via a channel signaled in ReleaseCtx) without adding per-request overhead
-		// for non-timeout cases.
 	}()
 
 	return timeoutErr

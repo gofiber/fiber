@@ -1150,7 +1150,11 @@ By default, `c.IP()` returns the remote IP address from the TCP connection. When
 
 **Important:** You must enable `TrustProxy` and configure trusted proxy IPs to prevent header spoofing. Simply setting `ProxyHeader` alone will not work.
 
-**Note:** When using a proxy header such as `X-Forwarded-For`, `c.IP()` returns the raw header value unless [`EnableIPValidation`](fiber.md#enableipvalidation) is enabled. For `X-Forwarded-For`, this raw value may be a comma-separated list of IPs; enable `EnableIPValidation` if you need `c.IP()` to return a single, validated client IP.
+**Note:** When using a proxy header such as `X-Forwarded-For`, `c.IP()` returns the raw header value unless [`EnableIPValidation`](fiber.md#enableipvalidation) is enabled.
+
+**Chain parsing with `EnableIPValidation`:** For `X-Forwarded-For`, the raw value is a comma-separated chain that grows from left to right as the request passes through each proxy. With validation enabled, `c.IP()` walks the chain from right to left, skipping every IP that matches the configured `TrustProxyConfig` (exact IPs, CIDR ranges, loopback, private or link-local) and returns the first non-trusted IP it finds. This matches the behavior recommended by [MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) and the convention used by Nginx (`set_real_ip_from` + `real_ip_recursive`), Apache `mod_remoteip`, and Envoy (`xff_num_trusted_hops`).
+
+If every IP in the chain matches the trusted set, the leftmost IP is returned as a fallback. If the chain is empty, `c.IP()` falls back to the TCP remote address.
 :::
 
 #### Configuration for apps behind a reverse proxy

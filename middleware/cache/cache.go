@@ -5,39 +5,22 @@ package cache
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
-	"net/url"
 	"slices"
-	"sort"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/utils/v2"
-	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
 )
 
-// timestampUpdatePeriod is the period which is used to check the cache expiration.
-// It should not be too long to provide more or less acceptable expiration error, and in the same
-// time it should not be too short to avoid overwhelming of the system
-const timestampUpdatePeriod = 300 * time.Millisecond
-
 // buffer size for hexpool
-const (
-	hexLen                       = sha256.Size * 2
-	maxKeyDimensionSegmentLength = 192
-	defaultKeyBufferCap          = 256
-	maxQueryParams               = 128  // Maximum number of query parameters to parse
-	maxVaryHeaders               = 32   // Maximum number of Vary headers to process
-	maxQueryBufferSize           = 4096 // Maximum buffer size for query string canonicalization
-)
+// hexLen is the hex-encoded length of a SHA-256 sum, shared by the auth and vary hashers.
+const hexLen = sha256.Size * 2
 
 // cache status
 // unreachable: when cache is bypass, or invalid
@@ -113,13 +96,6 @@ var cacheableStatusCodes = map[int]struct{}{
 	fiber.StatusNotImplemented:              {},
 }
 
-var keyBufferPool = sync.Pool{
-	New: func() any {
-		buf := make([]byte, 0, defaultKeyBufferCap)
-		return &buf
-	},
-}
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -148,11 +124,8 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
-	var (
-		// Cache settings
-		mux       = &sync.RWMutex{}
-		timestamp = safeUnixSeconds(time.Now())
-	)
+	// Cache settings
+	mux := &sync.RWMutex{}
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, redactKeys)
 	// Create indexed heap for tracking expirations ( see heap.go )
@@ -168,15 +141,6 @@ func New(config ...Config) fiber.Handler {
 	}
 	hashAuthorization := makeHashAuthFunc(hexBufPool)
 	buildVaryKey := makeBuildVaryKeyFunc(hexBufPool)
-
-	// Update timestamp in the configured interval
-	go func() {
-		ticker := time.NewTicker(timestampUpdatePeriod)
-		defer ticker.Stop()
-		for range ticker.C {
-			atomic.StoreUint64(&timestamp, safeUnixSeconds(time.Now()))
-		}
-	}()
 
 	// Delete key from both manager and storage
 	deleteKey := func(ctx context.Context, dkey string) error {
@@ -226,7 +190,7 @@ func New(config ...Config) fiber.Handler {
 
 		entry.heapidx = candidate.heapIdx
 
-		remainingTTL := max(time.Until(secondsToTime(entry.exp)), 0)
+		remainingTTL := max(secondsToTime(entry.exp).Sub(cfg.now()), 0)
 
 		if err := manager.set(ctx, candidate.key, entry, remainingTTL); err != nil {
 			return fmt.Errorf("cache: failed to restore heap index for key %q: %w", maskKey(candidate.key), err)
@@ -265,7 +229,7 @@ func New(config ...Config) fiber.Handler {
 		manifestKey := baseKey + "|vary"
 		if hasAuthorization {
 			authHash := hashAuthorization(c.Request().Header.Peek(fiber.HeaderAuthorization))
-			baseKey += "_auth_" + authHash
+			baseKey += "|auth=" + authHash
 			manifestKey = baseKey + "|vary"
 		}
 		key := baseKey
@@ -309,8 +273,10 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// Lock entry
+		// Lock entry before reading the current timestamp so freshness decisions
+		// are based on the time the protected cache entry is evaluated.
 		mux.Lock()
+		ts := safeUnixSeconds(cfg.now())
 		locked := true
 		unlock := func() {
 			if locked {
@@ -324,9 +290,6 @@ func New(config ...Config) fiber.Handler {
 				locked = true
 			}
 		}
-		// Get timestamp
-		ts := atomic.LoadUint64(&timestamp)
-
 		// Cache Entry found
 		if e != nil {
 			entryAge = cachedResponseAge(e, ts)
@@ -747,7 +710,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		e.age = ageVal
 		e.shareable = isSharedCacheAllowed
-		now := time.Now().UTC()
+		now := cfg.now().UTC()
 		nowUnix := safeUnixSeconds(now)
 		dateHeader := c.Response().Header.Peek(fiber.HeaderDate)
 		parsedDate, _ := parseHTTPDate(dateHeader)
@@ -792,7 +755,7 @@ func New(config ...Config) fiber.Handler {
 					expiration = time.Nanosecond
 					expiresParseError = true
 				} else {
-					expiration = time.Until(expiresAt)
+					expiration = expiresAt.Sub(cfg.now())
 				}
 				expirationSource = expirationSourceExpires
 			}
@@ -815,7 +778,7 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		ts = atomic.LoadUint64(&timestamp)
+		ts = safeUnixSeconds(cfg.now())
 		responseTS := max(ts, nowUnix)
 
 		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)
@@ -924,701 +887,5 @@ func New(config ...Config) fiber.Handler {
 
 		// Finish response
 		return nil
-	}
-}
-
-// hasDirective checks if a cache directive header value contains a directive (case-insensitive).
-// A directive is considered matched when followed by end-of-string, ',', ' ', '\t', or '='
-// per RFC 9111 §5.2.
-func hasDirective(cc, directive string) bool {
-	ccLen := len(cc)
-	dirLen := len(directive)
-	for i := 0; i <= ccLen-dirLen; i++ {
-		if !utils.EqualFold(cc[i:i+dirLen], directive) {
-			continue
-		}
-		if i > 0 {
-			prev := cc[i-1]
-			if prev != ' ' && prev != ',' && prev != '\t' {
-				continue
-			}
-		}
-		if i+dirLen == ccLen {
-			return true
-		}
-		next := cc[i+dirLen]
-		if next == ',' || next == ' ' || next == '\t' || next == '=' {
-			return true
-		}
-	}
-
-	return false
-}
-
-func cacheBodyFetchError(mask func(string) string, key string, err error) error {
-	if errors.Is(err, errCacheMiss) {
-		return fmt.Errorf("cache: no cached body for key %q: %w", mask(key), err)
-	}
-	return err
-}
-
-func parseUintDirective(val []byte) (uint64, bool) {
-	if len(val) == 0 {
-		return 0, false
-	}
-	parsed, err := fasthttp.ParseUint(val)
-	if err != nil || parsed < 0 {
-		return 0, false
-	}
-	return uint64(parsed), true
-}
-
-func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
-	for i := 0; i < len(cc); {
-		// skip leading separators and OWS (space/tab per RFC 9110 §5.6.3)
-		for i < len(cc) && (cc[i] == ' ' || cc[i] == '\t' || cc[i] == ',') {
-			i++
-		}
-		if i >= len(cc) {
-			break
-		}
-
-		start := i
-		for i < len(cc) && cc[i] != ',' {
-			i++
-		}
-		partEnd := i
-		for partEnd > start && (cc[partEnd-1] == ' ' || cc[partEnd-1] == '\t') {
-			partEnd--
-		}
-
-		keyStart := start
-		for keyStart < partEnd && (cc[keyStart] == ' ' || cc[keyStart] == '\t') {
-			keyStart++
-		}
-		if keyStart >= partEnd {
-			continue
-		}
-
-		keyEnd := keyStart
-		for keyEnd < partEnd && cc[keyEnd] != '=' {
-			keyEnd++
-		}
-		// Trim trailing OWS from key
-		keyEndTrimmed := keyEnd
-		for keyEndTrimmed > keyStart && (cc[keyEndTrimmed-1] == ' ' || cc[keyEndTrimmed-1] == '\t') {
-			keyEndTrimmed--
-		}
-		key := cc[keyStart:keyEndTrimmed]
-
-		var value []byte
-		if keyEnd < partEnd && cc[keyEnd] == '=' {
-			valueStart := keyEnd + 1
-			for valueStart < partEnd && (cc[valueStart] == ' ' || cc[valueStart] == '\t') {
-				valueStart++
-			}
-			valueEnd := partEnd
-			for valueEnd > valueStart && (cc[valueEnd-1] == ' ' || cc[valueEnd-1] == '\t') {
-				valueEnd--
-			}
-			if valueStart <= valueEnd {
-				value = cc[valueStart:valueEnd]
-				// Handle quoted-string values per RFC 9111 Section 5.2
-				if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-					value = unquoteCacheDirective(value)
-				}
-			}
-		}
-
-		fn(key, value)
-		i++ // skip comma
-	}
-}
-
-// unquoteCacheDirective removes quotes and handles escaped characters in quoted-string values.
-// Per RFC 9111 Section 5.2, quoted-string values follow RFC 9110 Section 5.6.4.
-func unquoteCacheDirective(quoted []byte) []byte {
-	if len(quoted) < 2 {
-		return quoted
-	}
-
-	// Remove surrounding quotes
-	inner := quoted[1 : len(quoted)-1]
-
-	// Check if there are any escaped characters (backslash followed by another character)
-	hasEscapes := false
-	for i := 0; i < len(inner)-1; i++ {
-		if inner[i] == '\\' {
-			hasEscapes = true
-			break
-		}
-	}
-
-	// If no escapes, return the inner content directly
-	if !hasEscapes {
-		return inner
-	}
-
-	// Process escaped characters
-	result := make([]byte, 0, len(inner))
-	for i := 0; i < len(inner); i++ {
-		if inner[i] == '\\' && i+1 < len(inner) {
-			// Skip the backslash and take the next character
-			i++
-			result = append(result, inner[i])
-		} else {
-			result = append(result, inner[i])
-		}
-	}
-
-	return result
-}
-
-type responseCacheControl struct {
-	maxAge          uint64
-	sMaxAge         uint64
-	maxAgeSet       bool
-	sMaxAgeSet      bool
-	hasNoCache      bool
-	hasNoStore      bool
-	hasPrivate      bool
-	hasPublic       bool
-	mustRevalidate  bool
-	proxyRevalidate bool
-}
-
-func parseResponseCacheControl(cc []byte) responseCacheControl {
-	parsed := responseCacheControl{}
-	parseCacheControlDirectives(cc, func(key, value []byte) {
-		switch {
-		case utils.EqualFold(utils.UnsafeString(key), noStore):
-			parsed.hasNoStore = true
-		case utils.EqualFold(utils.UnsafeString(key), noCache):
-			parsed.hasNoCache = true
-		case utils.EqualFold(utils.UnsafeString(key), privateDirective):
-			parsed.hasPrivate = true
-		case utils.EqualFold(utils.UnsafeString(key), "public"):
-			parsed.hasPublic = true
-		case utils.EqualFold(utils.UnsafeString(key), "max-age"):
-			if v, ok := parseUintDirective(value); ok {
-				parsed.maxAgeSet = true
-				parsed.maxAge = v
-			}
-		case utils.EqualFold(utils.UnsafeString(key), "s-maxage"):
-			if v, ok := parseUintDirective(value); ok {
-				parsed.sMaxAgeSet = true
-				parsed.sMaxAge = v
-			}
-		case utils.EqualFold(utils.UnsafeString(key), "must-revalidate"):
-			parsed.mustRevalidate = true
-		case utils.EqualFold(utils.UnsafeString(key), "proxy-revalidate"):
-			parsed.proxyRevalidate = true
-		default:
-			// ignore unknown directives
-		}
-	})
-	return parsed
-}
-
-// parseMaxAge extracts the max-age directive from a Cache-Control header.
-func parseMaxAge(cc string) (time.Duration, bool) {
-	parsed := parseResponseCacheControl(utils.UnsafeBytes(cc))
-	if !parsed.maxAgeSet {
-		return 0, false
-	}
-	return secondsToDuration(parsed.maxAge), true
-}
-
-func parseRequestCacheControl(cc []byte) requestCacheDirectives {
-	directives := requestCacheDirectives{}
-	parseCacheControlDirectives(cc, func(key, value []byte) {
-		switch {
-		case utils.EqualFold(utils.UnsafeString(key), noStore):
-			directives.noStore = true
-		case utils.EqualFold(utils.UnsafeString(key), noCache):
-			directives.noCache = true
-		case utils.EqualFold(utils.UnsafeString(key), "only-if-cached"):
-			directives.onlyIfCached = true
-		case utils.EqualFold(utils.UnsafeString(key), "max-age"):
-			if sec, ok := parseUintDirective(value); ok {
-				directives.maxAgeSet = true
-				directives.maxAge = sec
-			}
-		case utils.EqualFold(utils.UnsafeString(key), "max-stale"):
-			directives.maxStaleSet = true
-			directives.maxStaleAny = len(value) == 0
-			if !directives.maxStaleAny {
-				if sec, ok := parseUintDirective(value); ok {
-					directives.maxStale = sec
-				}
-			}
-		case utils.EqualFold(utils.UnsafeString(key), "min-fresh"):
-			if sec, ok := parseUintDirective(value); ok {
-				directives.minFreshSet = true
-				directives.minFresh = sec
-			}
-		default:
-			// ignore unknown directives
-		}
-	})
-	return directives
-}
-
-func parseRequestCacheControlString(cc string) requestCacheDirectives {
-	return parseRequestCacheControl(utils.UnsafeBytes(cc))
-}
-
-func cachedResponseAge(e *item, now uint64) uint64 {
-	clampedDate := clampDateSeconds(e.date, now)
-
-	resident := uint64(0)
-	if e.exp != 0 {
-		if e.exp <= now {
-			resident = e.ttl + (now - e.exp)
-		} else {
-			resident = e.ttl - (e.exp - now)
-		}
-	}
-
-	dateAge := uint64(0)
-	if clampedDate != 0 && now > clampedDate {
-		dateAge = now - clampedDate
-	}
-
-	currentAge := max(dateAge, max(resident, e.age))
-	return currentAge
-}
-
-func appendWarningHeaders(h *fasthttp.ResponseHeader, servedStale, heuristicFreshness bool) { //nolint:revive // flags are intentional to represent Warning variants
-	if servedStale {
-		h.Add(fiber.HeaderWarning, `110 - "Response is stale"`)
-	}
-	if heuristicFreshness {
-		h.Add(fiber.HeaderWarning, `113 - "Heuristic expiration"`)
-	}
-}
-
-func remainingFreshness(e *item, now uint64) uint64 {
-	if e == nil || e.exp == 0 || now >= e.exp {
-		return 0
-	}
-
-	return e.exp - now
-}
-
-func isHeuristicFreshness(e *item, cfg *Config, entryAge uint64) bool {
-	const heuristicAgeThresholdSeconds = uint64(24 * time.Hour / time.Second)
-	if entryAge <= heuristicAgeThresholdSeconds {
-		return false
-	}
-
-	if len(e.expires) > 0 {
-		return false
-	}
-
-	cacheControl := utils.UnsafeString(e.cacheControl)
-	if parsedCC := parseResponseCacheControl(utils.UnsafeBytes(cacheControl)); parsedCC.maxAgeSet || parsedCC.sMaxAgeSet {
-		return false
-	}
-
-	return cfg.Expiration > 0
-}
-
-func lookupCachedHeader(headers []cachedHeader, name string) ([]byte, bool) {
-	for i := range headers {
-		if utils.EqualFold(utils.UnsafeString(headers[i].key), name) {
-			return headers[i].value, true
-		}
-	}
-	return nil, false
-}
-
-func parseHTTPDate(dateBytes []byte) (uint64, bool) {
-	if len(dateBytes) == 0 {
-		return 0, false
-	}
-	parsedDate, err := fasthttp.ParseHTTPDate(dateBytes)
-	if err != nil {
-		return 0, false
-	}
-
-	return safeUnixSeconds(parsedDate), true
-}
-
-func clampDateSeconds(dateSeconds, fallback uint64) uint64 {
-	const maxUnixSeconds = uint64(math.MaxInt64)
-	if dateSeconds == 0 || dateSeconds > maxUnixSeconds || dateSeconds > fallback {
-		return fallback
-	}
-
-	return dateSeconds
-}
-
-func safeUnixSeconds(t time.Time) uint64 {
-	sec := t.Unix()
-	if sec < 0 {
-		return 0
-	}
-
-	return uint64(sec)
-}
-
-func secondsToTime(sec uint64) time.Time {
-	var clamped int64
-	if sec > uint64(math.MaxInt64) {
-		clamped = math.MaxInt64
-	} else {
-		clamped = int64(sec)
-	}
-
-	return time.Unix(clamped, 0).UTC()
-}
-
-func secondsToDuration(sec uint64) time.Duration {
-	const maxSeconds = uint64(math.MaxInt64) / uint64(time.Second)
-	if sec > maxSeconds {
-		return time.Duration(math.MaxInt64)
-	}
-	return time.Duration(sec) * time.Second
-}
-
-func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
-	v := keyBufferPool.Get()
-	bufPtr, ok := v.(*[]byte)
-	if !ok || bufPtr == nil {
-		b := make([]byte, 0, defaultKeyBufferCap)
-		bufPtr = &b
-	}
-
-	buf := (*bufPtr)[:0]
-	// Escape delimiters in path to prevent crafted paths from injecting key structure
-	buf = append(buf, boundKeySegment(escapeKeyDelimiters(c.Path()))...)
-
-	if !cfg.DisableQueryKeys {
-		buf = append(buf, '|', 'q', '=')
-		buf = append(buf, canonicalQueryString(c.Request().URI())...)
-	}
-
-	if len(cfg.KeyHeaders) > 0 {
-		buf = append(buf, '|', 'h', '=')
-		buf = append(buf, canonicalHeaderSubset(&c.Request().Header, cfg.KeyHeaders)...)
-	}
-
-	if len(cfg.KeyCookies) > 0 {
-		buf = append(buf, '|', 'c', '=')
-		buf = append(buf, canonicalCookieSubset(c, cfg.KeyCookies)...)
-	}
-
-	result := string(buf)
-
-	// Reset buffer and return to pool, but discard if it grew too large
-	// to prevent pool from retaining oversized buffers
-	if cap(buf) <= defaultKeyBufferCap*4 {
-		*bufPtr = buf
-		keyBufferPool.Put(bufPtr)
-	}
-
-	return result
-}
-
-func canonicalQueryString(uri *fasthttp.URI) string {
-	raw := uri.QueryString()
-	if len(raw) == 0 {
-		return ""
-	}
-
-	query := utils.CopyString(utils.UnsafeString(raw))
-
-	// Pre-scan query string to detect excessive parameters before expensive parsing.
-	// This prevents DoS via url.ParseQuery allocating large maps/slices.
-	if len(query) > maxQueryBufferSize {
-		return boundKeySegment(escapeKeyDelimiters(query))
-	}
-
-	// Fast path: single key=value pair needs no parsing or sorting
-	if strings.IndexByte(query, '&') < 0 {
-		return boundKeySegment(escapeKeyDelimiters(query))
-	}
-
-	// Quick count of potential parameters (ampersands + 1)
-	paramCount := 1
-	for i := 0; i < len(query); i++ {
-		if query[i] == '&' {
-			paramCount++
-			if paramCount > maxQueryParams {
-				// Too many parameters detected, hash without parsing
-				return boundKeySegment(escapeKeyDelimiters(query))
-			}
-		}
-	}
-
-	parsed, err := url.ParseQuery(query)
-	if err != nil {
-		return boundKeySegment(escapeKeyDelimiters(query))
-	}
-
-	// Double-check actual parameter count after parsing
-	actualCount := 0
-	for _, values := range parsed {
-		actualCount += len(values)
-		if actualCount > maxQueryParams {
-			return boundKeySegment(escapeKeyDelimiters(query))
-		}
-	}
-
-	keys := make([]string, 0, len(parsed))
-	for key := range parsed {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	// Use pooled buffer to prevent excessive memory allocation during URL escaping.
-	// URL escaping can expand strings up to 3x (each byte -> %XX).
-	v := keyBufferPool.Get()
-	bufPtr, ok := v.(*[]byte)
-	if !ok || bufPtr == nil {
-		b := make([]byte, 0, defaultKeyBufferCap)
-		bufPtr = &b
-	}
-	buf := (*bufPtr)[:0]
-
-	for _, key := range keys {
-		values := parsed[key]
-		sort.Strings(values)
-		for _, value := range values {
-			if len(buf) > 0 {
-				buf = append(buf, '&')
-			}
-
-			escapedKey := url.QueryEscape(key)
-			escapedValue := url.QueryEscape(value)
-
-			// Check buffer size before appending to prevent unbounded growth
-			if len(buf)+len(escapedKey)+len(escapedValue)+2 > maxQueryBufferSize {
-				if cap(buf) <= defaultKeyBufferCap*4 {
-					*bufPtr = buf
-					keyBufferPool.Put(bufPtr)
-				}
-				return boundKeySegment(escapeKeyDelimiters(query))
-			}
-
-			buf = append(buf, escapedKey...)
-			buf = append(buf, '=')
-			buf = append(buf, escapedValue...)
-		}
-	}
-
-	result := boundKeySegment(string(buf))
-
-	// Return buffer to pool if not oversized
-	if cap(buf) <= defaultKeyBufferCap*4 {
-		*bufPtr = buf
-		keyBufferPool.Put(bufPtr)
-	}
-
-	return result
-}
-
-func canonicalHeaderSubset(header *fasthttp.RequestHeader, names []string) string {
-	if len(names) == 0 {
-		return ""
-	}
-
-	buf := make([]byte, 0, len(names)*16)
-	for idx, name := range names {
-		if idx > 0 {
-			buf = append(buf, '|')
-		}
-		// Escape name (though names are normalized and trusted)
-		buf = append(buf, escapeKeyDelimiters(name)...)
-		buf = append(buf, ':')
-		headerValue := header.Peek(name)
-		// Escape value to prevent delimiter injection
-		escapedValue := escapeKeyDelimiters(utils.UnsafeString(headerValue))
-		buf = append(buf, boundKeySegment(escapedValue)...)
-	}
-
-	return string(buf)
-}
-
-func canonicalCookieSubset(c fiber.Ctx, names []string) string {
-	if len(names) == 0 {
-		return ""
-	}
-
-	buf := make([]byte, 0, len(names)*16)
-	for idx, name := range names {
-		if idx > 0 {
-			buf = append(buf, '|')
-		}
-		// Escape name (though names are normalized and trusted)
-		buf = append(buf, escapeKeyDelimiters(name)...)
-		buf = append(buf, ':')
-		cookieValue := c.Cookies(name)
-		// Escape value to prevent delimiter injection
-		escapedValue := escapeKeyDelimiters(cookieValue)
-		buf = append(buf, boundKeySegment(escapedValue)...)
-	}
-
-	return string(buf)
-}
-
-// escapeKeyDelimiters escapes pipe, colon, and backslash characters used as delimiters in cache keys
-// to prevent injection attacks where crafted values could collide with different inputs
-func escapeKeyDelimiters(s string) string {
-	// Fast path: no characters to escape
-	if !strings.ContainsAny(s, "|:\\") {
-		return s
-	}
-
-	// Escape | as \p and : as \c, and \ as \\ (backslash must be escaped first)
-	result := strings.ReplaceAll(s, "\\", "\\\\")
-	result = strings.ReplaceAll(result, "|", "\\p")
-	result = strings.ReplaceAll(result, ":", "\\c")
-	return result
-}
-
-func boundKeySegment(segment string) string {
-	if len(segment) <= maxKeyDimensionSegmentLength {
-		return segment
-	}
-	hash := sha256.Sum256(utils.UnsafeBytes(segment))
-	return "sha256:" + hex.EncodeToString(hash[:])
-}
-
-func parseVary(vary string) ([]string, bool) {
-	names := make([]string, 0, 8)
-	count := 0
-	for part := range strings.SplitSeq(vary, ",") {
-		name := utils.TrimSpace(utilsstrings.ToLower(part))
-		if name == "" {
-			continue
-		}
-		if name == "*" {
-			return nil, true
-		}
-
-		// Protect against DoS via excessive Vary headers
-		count++
-		if count > maxVaryHeaders {
-			// Too many Vary headers, treat as uncacheable (same as Vary: *)
-			return nil, true
-		}
-
-		names = append(names, name)
-	}
-
-	if len(names) == 0 {
-		return nil, false
-	}
-
-	sort.Strings(names)
-	return names, false
-}
-
-func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.RequestHeader) string {
-	return func(names []string, hdr *fasthttp.RequestHeader) string {
-		sum := sha256.New()
-		for _, name := range names {
-			_, _ = sum.Write(utils.UnsafeBytes(name)) //nolint:errcheck // hash.Hash.Write for std hashes never errors
-			_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
-			_, _ = sum.Write(hdr.Peek(name))          //nolint:errcheck // hash.Hash.Write for std hashes never errors
-			_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
-		}
-
-		var hashBytes [sha256.Size]byte
-		sum.Sum(hashBytes[:0])
-
-		v := hexBufPool.Get()
-		bufPtr, ok := v.(*[]byte)
-		if !ok || bufPtr == nil {
-			b := make([]byte, hexLen)
-			bufPtr = &b
-		}
-
-		buf := *bufPtr
-		// Defensive in case someone changed Pool.New or Put a different sized buffer.
-		if cap(buf) < hexLen {
-			buf = make([]byte, hexLen)
-		} else {
-			buf = buf[:hexLen]
-		}
-		*bufPtr = buf
-
-		hex.Encode(buf, hashBytes[:])
-		result := "|vary|" + string(buf)
-
-		hexBufPool.Put(bufPtr)
-		return result
-	}
-}
-
-func storeVaryManifest(ctx context.Context, manager *manager, manifestKey string, names []string, exp time.Duration) error {
-	if len(names) == 0 {
-		return nil
-	}
-	data := strings.Join(names, ",")
-	return manager.setRaw(ctx, manifestKey, utils.UnsafeBytes(data), exp)
-}
-
-//nolint:gocritic // returning explicit values keeps the signature concise while avoiding unnecessary named results
-func loadVaryManifest(ctx context.Context, manager *manager, manifestKey string) ([]string, bool, error) {
-	raw, err := manager.getRaw(ctx, manifestKey)
-	if err != nil {
-		if errors.Is(err, errCacheMiss) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
-	manifest := utils.UnsafeString(raw)
-	names, hasStar := parseVary(manifest)
-	if hasStar {
-		return nil, false, nil
-	}
-	return names, len(names) > 0, nil
-}
-
-func allowsSharedCacheDirectives(cc responseCacheControl) bool {
-	if cc.hasPrivate {
-		return false
-	}
-	if cc.hasPublic || cc.sMaxAgeSet || cc.mustRevalidate || cc.proxyRevalidate {
-		return true
-	}
-
-	// RFC 9111 §4.2.2 permits Expires as an absolute expiry for cacheable responses, but for
-	// authenticated requests §3.6 requires an explicit shared-cache directive. Therefore,
-	// an Expires header alone MUST NOT allow sharing when Authorization is present.
-	return false
-}
-
-func allowsSharedCache(cc string) bool {
-	return allowsSharedCacheDirectives(parseResponseCacheControl(utils.UnsafeBytes(cc)))
-}
-
-func makeHashAuthFunc(hexBufPool *sync.Pool) func([]byte) string {
-	return func(authHeader []byte) string {
-		sum := sha256.Sum256(authHeader)
-
-		v := hexBufPool.Get()
-		bufPtr, ok := v.(*[]byte)
-		if !ok || bufPtr == nil {
-			b := make([]byte, hexLen)
-			bufPtr = &b
-		}
-
-		buf := *bufPtr
-		if cap(buf) < hexLen {
-			buf = make([]byte, hexLen)
-		} else {
-			buf = buf[:hexLen]
-		}
-		*bufPtr = buf
-
-		hex.Encode(buf, sum[:])
-		result := string(buf)
-
-		hexBufPool.Put(bufPtr)
-		return result
 	}
 }

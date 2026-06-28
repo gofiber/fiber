@@ -25,6 +25,14 @@ import (
 
 const helloWorld = "hello world"
 
+type typedNilBindError struct {
+	message string
+}
+
+func (e *typedNilBindError) Error() string {
+	return e.message
+}
+
 // go test -run Test_returnErr -v
 func Test_returnErr(t *testing.T) {
 	app := New()
@@ -34,18 +42,53 @@ func Test_returnErr(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func Test_returnErr_TypedNilFiberError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *Error
+	require.NoError(t, c.Bind().WithAutoHandling().returnErr(err))
+}
+
+func Test_returnErr_TypedNilCustomError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *typedNilBindError
+	require.NotPanics(t, func() {
+		require.NoError(t, c.Bind().WithAutoHandling().returnErr(err))
+	})
+}
+
+func Test_returnBindErr_TypedNilFiberError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *Error
+	require.NoError(t, c.Bind().WithoutAutoHandling().returnBindErr(err, BindSourceBody))
+}
+
 // go test -run Test_AcquireReleaseBind -v
 func Test_AcquireReleaseBind(t *testing.T) {
 	b := AcquireBind()
-	b.dontHandleErrs = false
-	b.skipValidation = true
+	b.shouldSkipErrHandling = false
+	b.shouldSkipValidation = true
 	b.ctx = &DefaultCtx{}
 	ReleaseBind(b)
 
 	b2 := AcquireBind()
 	require.Nil(t, b2.ctx)
-	require.True(t, b2.dontHandleErrs)
-	require.False(t, b2.skipValidation)
+	require.True(t, b2.shouldSkipErrHandling)
+	require.False(t, b2.shouldSkipValidation)
 	ReleaseBind(b2)
 }
 

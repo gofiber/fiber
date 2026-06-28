@@ -12,12 +12,14 @@ type HeaderBinding struct {
 
 // Name returns the binding name.
 func (*HeaderBinding) Name() string {
-	return "header"
+	return bindingHeader
 }
 
 // Bind parses the request header and returns the result.
 func (b *HeaderBinding) Bind(req *fasthttp.Request, out any) error {
-	data := make(map[string][]string)
+	data := acquireDataMap()
+	defer releaseDataMap(data)
+
 	for key, val := range req.Header.All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)

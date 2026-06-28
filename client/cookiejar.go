@@ -15,6 +15,8 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
+const maxCookieJarHosts = 1024
+
 var cookieJarPool = sync.Pool{
 	New: func() any {
 		return &CookieJar{}
@@ -38,6 +40,8 @@ func ReleaseCookieJar(c *CookieJar) {
 }
 
 // CookieJar manages cookie storage for the client.
+// CookieJar is safe for concurrent use, except Release. Release must not run
+// concurrently with other methods, and the jar must not be used after Release.
 type CookieJar struct {
 	// hostCookies stores wrapped cookies keyed by storage scope:
 	// host-only cookies use the request host, while domain cookies use the
@@ -49,14 +53,14 @@ type CookieJar struct {
 }
 
 type storedCookie struct {
-	cookie   *fasthttp.Cookie
-	hostOnly bool
+	cookie     *fasthttp.Cookie
+	isHostOnly bool
 }
 
 type cookieDomainAcceptance struct {
-	domain   string
-	hostOnly bool
-	ok       bool
+	domain     string
+	isHostOnly bool
+	isOk       bool
 }
 
 // Get returns all cookies stored for a given URI. If there are no cookies for the
@@ -110,7 +114,11 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 		}
 		kept = append(kept, sc)
 	}
-	cj.hostCookies[host] = kept
+	if len(kept) == 0 {
+		delete(cj.hostCookies, host)
+	} else {
+		cj.hostCookies[host] = kept
+	}
 
 	out := make([]*fasthttp.Cookie, 0, len(kept))
 	for _, sc := range kept {
@@ -120,9 +128,7 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 }
 
 // cookiesForRequest returns cookies that match the given host, path and security settings.
-//
-//nolint:revive // secure is required to filter Secure cookies based on scheme
-func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []*fasthttp.Cookie {
+func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []*fasthttp.Cookie { //nolint:revive // secure is a deliberate scheme filter, not a control-flow flag
 	cj.mu.Lock()
 	defer cj.mu.Unlock()
 
@@ -147,7 +153,7 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 			}
 			kept = append(kept, sc)
 
-			if sc.hostOnly && host != domain {
+			if sc.isHostOnly && host != domain {
 				continue
 			}
 			if !pathMatch(path, c.Path()) {
@@ -160,7 +166,11 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 			nc.CopyTo(c)
 			matched = append(matched, nc)
 		}
-		cj.hostCookies[domain] = kept
+		if len(kept) == 0 {
+			delete(cj.hostCookies, domain)
+		} else {
+			cj.hostCookies[domain] = kept
+		}
 	}
 
 	return matched
@@ -201,29 +211,30 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 		utilsbytes.UnsafeToLower(domain)
 		key := hostKey
 		storedDomain := hostStr
-		hostOnly := len(domain) == 0
-		if !hostOnly {
+		isHostOnly := len(domain) == 0
+		if !isHostOnly {
 			acceptance := acceptCookieDomain(hostStr, utils.UnsafeString(domain))
-			if !acceptance.ok {
+			if !acceptance.isOk {
 				continue
 			}
-			hostOnly = acceptance.hostOnly
-			if !hostOnly {
+			isHostOnly = acceptance.isHostOnly
+			if !isHostOnly {
 				key = utils.CopyString(acceptance.domain)
 				storedDomain = acceptance.domain
 			}
 		}
 
+		cj.ensureHostCapacityLocked(key, time.Now())
 		hostCookies := cj.hostCookies[key]
 
 		existing := searchCookieByKeyAndPath(cookie.Key(), cookie.Path(), hostCookies)
 		if existing == nil {
 			existing = fasthttp.AcquireCookie()
-			hostCookies = append(hostCookies, storedCookie{cookie: existing, hostOnly: hostOnly})
+			hostCookies = append(hostCookies, storedCookie{cookie: existing, isHostOnly: isHostOnly})
 		} else {
 			for i := range hostCookies {
 				if hostCookies[i].cookie == existing {
-					hostCookies[i].hostOnly = hostOnly
+					hostCookies[i].isHostOnly = isHostOnly
 					break
 				}
 			}
@@ -239,6 +250,7 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 // This function helps prevent extra allocations by avoiding duplication of repeated cookies.
 func (cj *CookieJar) SetKeyValue(host, key, value string) {
 	c := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(c)
 	c.SetKey(key)
 	c.SetValue(value)
 
@@ -250,6 +262,7 @@ func (cj *CookieJar) SetKeyValue(host, key, value string) {
 // This function helps prevent extra allocations by avoiding duplication of repeated cookies.
 func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
 	c := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(c)
 	c.SetKeyBytes(key)
 	c.SetValueBytes(value)
 
@@ -291,18 +304,18 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 		domainBytes := utils.TrimLeft(tmp.Domain(), '.')
 		utilsbytes.UnsafeToLower(domainBytes)
 		key := hostKey
-		hostOnly := len(domainBytes) == 0
-		if hostOnly {
+		isHostOnly := len(domainBytes) == 0
+		if isHostOnly {
 			tmp.SetDomain(hostStr)
 		} else {
 			domain := utils.UnsafeString(domainBytes)
 			acceptance := acceptCookieDomain(hostStr, domain)
-			if !acceptance.ok {
+			if !acceptance.isOk {
 				fasthttp.ReleaseCookie(tmp)
 				continue
 			}
-			hostOnly = acceptance.hostOnly
-			if hostOnly {
+			isHostOnly = acceptance.isHostOnly
+			if isHostOnly {
 				tmp.SetDomain(hostStr)
 			} else {
 				key = utils.CopyString(acceptance.domain)
@@ -310,15 +323,16 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 			}
 		}
 
+		cj.ensureHostCapacityLocked(key, now)
 		cookies := cj.hostCookies[key]
 		c := searchCookieByKeyAndPath(tmp.Key(), tmp.Path(), cookies)
 		if c == nil {
 			c = fasthttp.AcquireCookie()
-			cookies = append(cookies, storedCookie{cookie: c, hostOnly: hostOnly})
+			cookies = append(cookies, storedCookie{cookie: c, isHostOnly: isHostOnly})
 		} else {
 			for i := range cookies {
 				if cookies[i].cookie == c {
-					cookies[i].hostOnly = hostOnly
+					cookies[i].isHostOnly = isHostOnly
 					break
 				}
 			}
@@ -341,7 +355,53 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 	}
 }
 
-// Release releases all stored cookies. After this, the CookieJar is empty.
+// ensureHostCapacityLocked bounds the number of stored hosts by evicting
+// expired entries first and then one remaining host if the jar is still full.
+func (cj *CookieJar) ensureHostCapacityLocked(key string, now time.Time) {
+	if _, ok := cj.hostCookies[key]; ok || len(cj.hostCookies) < maxCookieJarHosts {
+		return
+	}
+
+	for host, cookies := range cj.hostCookies {
+		kept := cookies[:0]
+		for _, sc := range cookies {
+			if !sc.cookie.Expire().Equal(fasthttp.CookieExpireUnlimited) && sc.cookie.Expire().Before(now) {
+				fasthttp.ReleaseCookie(sc.cookie)
+				continue
+			}
+			kept = append(kept, sc)
+		}
+		if len(kept) == 0 {
+			delete(cj.hostCookies, host)
+			if len(cj.hostCookies) < maxCookieJarHosts {
+				return
+			}
+			continue
+		}
+		cj.hostCookies[host] = kept
+	}
+
+	var evictHost string
+	for host := range cj.hostCookies {
+		if evictHost == "" || host < evictHost {
+			evictHost = host
+		}
+	}
+	if evictHost != "" {
+		releaseStoredCookies(cj.hostCookies[evictHost])
+		delete(cj.hostCookies, evictHost)
+	}
+}
+
+// releaseStoredCookies releases pooled cookies for an evicted host entry.
+func releaseStoredCookies(cookies []storedCookie) {
+	for _, sc := range cookies {
+		fasthttp.ReleaseCookie(sc.cookie)
+	}
+}
+
+// Release releases all stored cookies. After this, the CookieJar is empty and
+// must not be used again.
 func (cj *CookieJar) Release() {
 	// FOLLOW-UP performance optimization:
 	// Currently, a race condition is found because the reset method modifies a value
@@ -405,21 +465,21 @@ func domainMatch(host, domain string) bool {
 // unrelated hosts.
 func acceptCookieDomain(host, domain string) cookieDomainAcceptance {
 	if strings.HasSuffix(domain, ".") {
-		return cookieDomainAcceptance{domain: host, hostOnly: true, ok: true}
+		return cookieDomainAcceptance{domain: host, isHostOnly: true, isOk: true}
 	}
 
 	if host == domain {
 		if isIPLiteral(domain) || isPublicSuffixDomain(domain) {
-			return cookieDomainAcceptance{domain: host, hostOnly: true, ok: true}
+			return cookieDomainAcceptance{domain: host, isHostOnly: true, isOk: true}
 		}
-		return cookieDomainAcceptance{domain: domain, ok: true}
+		return cookieDomainAcceptance{domain: domain, isOk: true}
 	}
 
 	if isIPLiteral(host) || isIPLiteral(domain) || isPublicSuffixDomain(domain) || !domainMatch(host, domain) {
 		return cookieDomainAcceptance{}
 	}
 
-	return cookieDomainAcceptance{domain: domain, ok: true}
+	return cookieDomainAcceptance{domain: domain, isOk: true}
 }
 
 func isIPLiteral(host string) bool {

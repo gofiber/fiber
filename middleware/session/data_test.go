@@ -235,7 +235,7 @@ func TestData_PoolReuseDoesNotLeakEntries(t *testing.T) {
 	releaseData(first)
 
 	var reused *data
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		candidate := acquireWithCleanup()
 		if lockedMapPointer(candidate) == originalPtr {
 			reused = candidate

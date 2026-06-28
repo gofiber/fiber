@@ -79,9 +79,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 
 func (app *App) setHandlerCtxIfNeeded(ctx CustomCtx) {
 	if app.hasCustomCtx || isCustomCtx(ctx) {
-		if setter, ok := ctx.(interface{ setHandlerCtx(CustomCtx) }); ok {
-			setter.setHandlerCtx(ctx)
-		}
+		ctx.setHandlerCtx(ctx)
 	}
 }
 
@@ -125,6 +123,13 @@ func (*App) prepareDefaultCtx(rawCtx any, fctx *fasthttp.RequestCtx) (*DefaultCt
 // middleware intentionally leaves abandoned contexts unreleased to avoid races.
 func (app *App) ReleaseCtx(c CustomCtx) {
 	if c.IsAbandoned() {
+		// If reclamation was armed (see ScheduleReclaim), signal that the request
+		// handler is done so the reclaimer can return the ctx to the pool. The ctx
+		// is still not pooled here; the reclaimer does that once the handler also
+		// finishes. Otherwise (e.g. SSE) leave it unreleased as before.
+		if dc, ok := c.(*DefaultCtx); ok {
+			dc.signalReleased()
+		}
 		return
 	}
 	c.release()
@@ -133,6 +138,8 @@ func (app *App) ReleaseCtx(c CustomCtx) {
 
 func (app *App) releaseDefaultCtx(c *DefaultCtx) {
 	if c.IsAbandoned() {
+		// See ReleaseCtx: signal armed reclamation, but never pool here.
+		c.signalReleased()
 		return
 	}
 	c.release()

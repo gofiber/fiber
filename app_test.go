@@ -37,6 +37,14 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
+type typedNilHandlerError struct {
+	message string
+}
+
+func (e *typedNilHandlerError) Error() string {
+	return e.message
+}
+
 type fileView struct {
 	path    string
 	content string
@@ -148,10 +156,7 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 
 			// Check final goroutine count
 			finalGoroutines := runtime.NumGoroutine()
-			leakedGoroutines := finalGoroutines - initialGoroutines
-			if leakedGoroutines < 0 {
-				leakedGoroutines = 0
-			}
+			leakedGoroutines := max(finalGoroutines-initialGoroutines, 0)
 			t.Logf("[%s] Final goroutines: %d (leaked: %d)",
 				tc.name, finalGoroutines, leakedGoroutines)
 
@@ -225,6 +230,23 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 405, resp.StatusCode)
 	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
+}
+
+func Test_App_QueryMethod_AllowHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Query("/", testEmptyHandler)
+
+	// OPTIONS auto-response advertises QUERY in the Allow header.
+	resp, err := app.Test(httptest.NewRequest(MethodOptions, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Contains(t, resp.Header.Get(HeaderAllow), MethodQuery)
+
+	// A non-registered method yields 405 with QUERY listed in Allow.
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	require.Contains(t, resp.Header.Get(HeaderAllow), MethodQuery)
 }
 
 func Test_App_RegisterNetHTTPHandler(t *testing.T) {
@@ -633,6 +655,49 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 	require.Equal(t, "1: USE error", string(body))
 }
 
+func Test_DefaultErrorHandler_TypedNilFiberError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *Error
+	require.NotPanics(t, func() {
+		require.NoError(t, DefaultErrorHandler(c, err))
+	})
+	require.Equal(t, StatusInternalServerError, c.fasthttp.Response.StatusCode())
+	require.Equal(t, utils.StatusMessage(StatusInternalServerError), string(c.fasthttp.Response.Body()))
+}
+
+func Test_DefaultErrorHandler_TypedNilCustomError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *typedNilHandlerError
+	require.NotPanics(t, func() {
+		require.NoError(t, DefaultErrorHandler(c, err))
+	})
+	require.Equal(t, StatusInternalServerError, c.fasthttp.Response.StatusCode())
+	require.Equal(t, utils.StatusMessage(StatusInternalServerError), string(c.fasthttp.Response.Body()))
+}
+
+func Test_DefaultErrorHandler_WrappedFiberErrorUsesWrappedMessage(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	err := fmt.Errorf("auth failed: %w", ErrUnauthorized)
+	require.NoError(t, DefaultErrorHandler(c, err))
+	require.Equal(t, StatusUnauthorized, c.fasthttp.Response.StatusCode())
+	require.Equal(t, err.Error(), string(c.fasthttp.Response.Body()))
+}
+
 func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -642,6 +707,21 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	app.serverErrorHandler(c.fasthttp, errors.New(msg))
 	require.Equal(t, string(c.fasthttp.Response.Body()), msg)
 	require.Equal(t, StatusBadRequest, c.fasthttp.Response.StatusCode())
+}
+
+func Test_App_serverErrorHandler_TypedNilOpError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	var err *net.OpError
+	require.NotPanics(t, func() {
+		app.serverErrorHandler(c.fasthttp, err)
+	})
+	require.Equal(t, utils.StatusMessage(StatusBadGateway), string(c.fasthttp.Response.Body()))
+	require.Equal(t, StatusBadGateway, c.fasthttp.Response.StatusCode())
 }
 
 func Test_App_serverErrorHandler_Network_Error(t *testing.T) {
@@ -1167,7 +1247,7 @@ func Test_App_AutoHead_Compliance_SendFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "hello.txt")
 	fileContent := []byte("file-body")
-	require.NoError(t, os.WriteFile(filePath, fileContent, 0o644)) //nolint:gosec // permissions match test fixtures
+	require.NoError(t, os.WriteFile(filePath, fileContent, 0o644))
 
 	app := New()
 	app.Get("/file", func(c Ctx) error {
@@ -1235,6 +1315,9 @@ func Test_App_Methods(t *testing.T) {
 	app.Trace("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodTrace)
 
+	app.Query("/:john?/:doe?", dummyHandler)
+	testStatus200(t, app, "/john/doe", MethodQuery)
+
 	app.Get("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodGet)
 
@@ -1301,19 +1384,19 @@ func Test_App_GetString(t *testing.T) {
 	heap := string([]byte("fiber"))
 	appMutable := New()
 	same := appMutable.GetString(heap)
-	if unsafe.StringData(same) != unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
+	if unsafe.StringData(same) != unsafe.StringData(heap) {
 		t.Error("expected original string when immutable is disabled")
 	}
 
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.GetString(heap)
-	if unsafe.StringData(copied) == unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
+	if unsafe.StringData(copied) == unsafe.StringData(heap) {
 		t.Error("expected a copy for heap-backed string when immutable is enabled")
 	}
 
 	literal := "fiber"
 	sameLit := appImmutable.GetString(literal)
-	if unsafe.StringData(sameLit) != unsafe.StringData(literal) { //nolint:gosec // compare pointer addresses
+	if unsafe.StringData(sameLit) != unsafe.StringData(literal) {
 		t.Error("expected original literal when immutable is enabled")
 	}
 }
@@ -1324,7 +1407,7 @@ func Test_App_GetBytes(t *testing.T) {
 	b := []byte("fiber")
 	appMutable := New()
 	same := appMutable.GetBytes(b)
-	if unsafe.SliceData(same) != unsafe.SliceData(b) { //nolint:gosec // compare pointer addresses
+	if unsafe.SliceData(same) != unsafe.SliceData(b) {
 		t.Error("expected original slice when immutable is disabled")
 	}
 
@@ -1333,14 +1416,14 @@ func Test_App_GetBytes(t *testing.T) {
 	sub := alias[:5]
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.GetBytes(sub)
-	if unsafe.SliceData(copied) == unsafe.SliceData(sub) { //nolint:gosec // compare pointer addresses
+	if unsafe.SliceData(copied) == unsafe.SliceData(sub) {
 		t.Error("expected a copy for aliased slice when immutable is enabled")
 	}
 
 	full := make([]byte, 5)
 	copy(full, b)
 	detached := appImmutable.GetBytes(full)
-	if unsafe.SliceData(detached) == unsafe.SliceData(full) { //nolint:gosec // compare pointer addresses
+	if unsafe.SliceData(detached) == unsafe.SliceData(full) {
 		t.Error("expected a copy even when cap==len")
 	}
 }
@@ -1704,6 +1787,9 @@ func Test_App_Group(t *testing.T) {
 	grp.Trace("/TRACE", dummyHandler)
 	testStatus200(t, app, "/test/TRACE", MethodTrace)
 
+	grp.Query("/QUERY", dummyHandler)
+	testStatus200(t, app, "/test/QUERY", MethodQuery)
+
 	grp.All("/ALL", dummyHandler)
 	testStatus200(t, app, "/test/ALL", MethodPost)
 
@@ -1741,7 +1827,8 @@ func Test_App_RouteChain(t *testing.T) {
 		Connect(dummyHandler).
 		Options(dummyHandler).
 		Trace(dummyHandler).
-		Patch(dummyHandler)
+		Patch(dummyHandler).
+		Query(dummyHandler)
 
 	testStatus200(t, app, "/test", MethodGet)
 	testStatus200(t, app, "/test", MethodHead)
@@ -1752,6 +1839,7 @@ func Test_App_RouteChain(t *testing.T) {
 	testStatus200(t, app, "/test", MethodOptions)
 	testStatus200(t, app, "/test", MethodTrace)
 	testStatus200(t, app, "/test", MethodPatch)
+	testStatus200(t, app, "/test", MethodQuery)
 
 	register.RouteChain("/v1").Get(dummyHandler).Post(dummyHandler)
 
@@ -2035,6 +2123,77 @@ func (v *countingView) Load() error {
 
 func (*countingView) Render(io.Writer, string, any, ...string) error { return nil }
 
+type blockingView struct {
+	loadStarted   chan struct{}
+	loadRelease   chan struct{}
+	renderEntered chan struct{}
+	loads         int
+}
+
+func (v *blockingView) Load() error {
+	v.loads++
+	if v.loads > 1 {
+		close(v.loadStarted)
+		<-v.loadRelease
+	}
+	return nil
+}
+
+func (v *blockingView) Render(io.Writer, string, any, ...string) error {
+	close(v.renderEntered)
+	return nil
+}
+
+type sharedBlockingView struct {
+	loadStarted   chan struct{}
+	loadRelease   chan struct{}
+	renderEntered chan struct{}
+	blockOnLoad   int
+	loads         int
+}
+
+func (v *sharedBlockingView) Load() error {
+	v.loads++
+	if v.loads == v.blockOnLoad {
+		close(v.loadStarted)
+		<-v.loadRelease
+	}
+	return nil
+}
+
+func (v *sharedBlockingView) Render(io.Writer, string, any, ...string) error {
+	close(v.renderEntered)
+	return nil
+}
+
+func runGetHandlerRequest(handler fasthttp.RequestHandler, path string) int {
+	request := &fasthttp.RequestCtx{}
+	request.Request.Header.SetMethod(MethodGet)
+	request.Request.SetRequestURI(path)
+	handler(request)
+	return request.Response.StatusCode()
+}
+
+type panicLoadView struct {
+	loads int
+}
+
+func (v *panicLoadView) Load() error {
+	v.loads++
+	if v.loads > 1 {
+		panic("panic load")
+	}
+	return nil
+}
+
+func (*panicLoadView) Render(io.Writer, string, any, ...string) error { return nil }
+
+type panicRenderView struct{}
+
+func (*panicRenderView) Load() error { return nil }
+
+func (*panicRenderView) Render(io.Writer, string, any, ...string) error { panic("panic render") }
+
 func Test_App_ReloadViews_Success(t *testing.T) {
 	t.Parallel()
 	view := &countingView{}
@@ -2057,6 +2216,193 @@ func Test_App_ReloadViews_Error(t *testing.T) {
 	err := app.ReloadViews()
 	require.Error(t, err)
 	require.ErrorIs(t, err, wantedErr)
+}
+
+func Test_App_ReloadViews_BlocksRenderUntilLoadCompletes(t *testing.T) {
+	t.Parallel()
+	view := &blockingView{
+		loadStarted:   make(chan struct{}),
+		loadRelease:   make(chan struct{}),
+		renderEntered: make(chan struct{}),
+	}
+	app := New(Config{Views: view})
+	app.Get("/", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+	handler := app.Handler()
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- app.ReloadViews()
+	}()
+
+	<-view.loadStarted
+
+	renderDone := make(chan int, 1)
+	go func() {
+		renderDone <- runGetHandlerRequest(handler, "/")
+	}()
+
+	select {
+	case <-view.renderEntered:
+		t.Fatal("render should wait until ReloadViews Load finishes")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(view.loadRelease)
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish")
+	}
+
+	select {
+	case status := <-renderDone:
+		require.Equal(t, StatusOK, status)
+	case <-time.After(time.Second):
+		t.Fatal("render request did not finish")
+	}
+}
+
+func Test_App_ReloadViews_PanicUnlocksRender(t *testing.T) {
+	t.Parallel()
+
+	view := &panicLoadView{}
+	app := New(Config{Views: view})
+	app.Get("/", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+	handler := app.Handler()
+
+	type reloadResult struct {
+		err       error
+		recovered any
+	}
+
+	reloadDone := make(chan reloadResult, 1)
+	go func() {
+		result := reloadResult{}
+		defer func() {
+			result.recovered = recover()
+			reloadDone <- result
+		}()
+
+		result.err = app.ReloadViews()
+	}()
+
+	select {
+	case result := <-reloadDone:
+		require.NoError(t, result.err)
+		require.Equal(t, "panic load", result.recovered)
+	case <-time.After(time.Second):
+		t.Fatal("reload panic was not recovered")
+	}
+
+	renderDone := make(chan int, 1)
+	go func() {
+		renderDone <- runGetHandlerRequest(handler, "/")
+	}()
+
+	select {
+	case status := <-renderDone:
+		require.Equal(t, StatusOK, status)
+	case <-time.After(time.Second):
+		t.Fatal("render request did not finish after reload panic")
+	}
+}
+
+func Test_App_InitPanicUnlocksRouteRegistration(t *testing.T) {
+	t.Parallel()
+
+	view := &panicLoadView{}
+	app := New(Config{Views: view})
+
+	type initResult struct {
+		recovered any
+	}
+
+	initDone := make(chan initResult, 1)
+	go func() {
+		result := initResult{}
+		defer func() {
+			result.recovered = recover()
+			initDone <- result
+		}()
+
+		app.init()
+	}()
+
+	select {
+	case result := <-initDone:
+		require.Equal(t, "panic load", result.recovered)
+	case <-time.After(time.Second):
+		t.Fatal("init panic was not recovered")
+	}
+
+	registerDone := make(chan struct{}, 1)
+	go func() {
+		app.Get("/after-panic", func(Ctx) error { return nil })
+		registerDone <- struct{}{}
+	}()
+
+	select {
+	case <-registerDone:
+	case <-time.After(time.Second):
+		t.Fatal("route registration deadlocked after init panic")
+	}
+}
+
+func Test_App_RenderPanicUnlocksReloadViews(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{Views: &panicRenderView{}})
+	app.Get("/", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+
+	type renderResult struct {
+		err       error
+		recovered any
+	}
+
+	renderDone := make(chan renderResult, 1)
+	go func() {
+		result := renderResult{}
+		defer func() {
+			result.recovered = recover()
+			renderDone <- result
+		}()
+
+		app.startupProcess()
+
+		request := &fasthttp.RequestCtx{}
+		request.Request.Header.SetMethod(MethodGet)
+		request.URI().SetPath("/")
+
+		app.defaultRequestHandler(request)
+	}()
+
+	select {
+	case result := <-renderDone:
+		require.NoError(t, result.err)
+		require.Equal(t, "panic render", result.recovered)
+	case <-time.After(time.Second):
+		t.Fatal("render panic was not recovered")
+	}
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- app.ReloadViews()
+	}()
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish after render panic")
+	}
 }
 
 func Test_App_ReloadViews_NoEngine(t *testing.T) {
@@ -2130,6 +2476,121 @@ func Test_App_ReloadViews_MountedViews_MultipleApps(t *testing.T) {
 	require.Equal(t, initialLoadsB+1, viewB.loads)
 }
 
+func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testing.T) {
+	t.Parallel()
+
+	view := &sharedBlockingView{
+		loadStarted:   make(chan struct{}),
+		loadRelease:   make(chan struct{}),
+		renderEntered: make(chan struct{}),
+		blockOnLoad:   3,
+	}
+	subAppA := New(Config{Views: view})
+	subAppB := New(Config{Views: view})
+	subAppB.Get("/render", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+	app := New()
+	app.Use("/a", subAppA)
+	app.Use("/b", subAppB)
+	handler := app.Handler()
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- subAppA.ReloadViews()
+	}()
+
+	<-view.loadStarted
+
+	renderDone := make(chan int, 1)
+	go func() {
+		renderDone <- runGetHandlerRequest(handler, "/b/render")
+	}()
+
+	select {
+	case <-view.renderEntered:
+		t.Fatal("render should wait until shared view engine reload finishes")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(view.loadRelease)
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish")
+	}
+
+	select {
+	case status := <-renderDone:
+		require.Equal(t, StatusOK, status)
+	case <-time.After(time.Second):
+		t.Fatal("render request did not finish")
+	}
+}
+
+func Test_App_ReloadViews_SharedEngineBlocksRenderAfterReusableMount(t *testing.T) {
+	t.Parallel()
+
+	view := &sharedBlockingView{
+		loadStarted:   make(chan struct{}),
+		loadRelease:   make(chan struct{}),
+		renderEntered: make(chan struct{}),
+		blockOnLoad:   3,
+	}
+
+	reusableSubApp := New(Config{Views: view})
+	reusableSubApp.Get("/render", func(c Ctx) error {
+		return c.Render("home", nil)
+	})
+
+	siblingApp := New(Config{Views: view})
+
+	parentAppA := New()
+	parentAppA.Use("/shared", reusableSubApp)
+	parentAppA.Use("/sibling", siblingApp)
+
+	parentAppB := New()
+	parentAppB.Use("/shared", reusableSubApp)
+
+	handler := parentAppA.Handler()
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- siblingApp.ReloadViews()
+	}()
+
+	<-view.loadStarted
+
+	renderDone := make(chan int, 1)
+	go func() {
+		renderDone <- runGetHandlerRequest(handler, "/shared/render")
+	}()
+
+	select {
+	case <-view.renderEntered:
+		t.Fatal("render should wait until shared view engine reload finishes")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(view.loadRelease)
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish")
+	}
+
+	select {
+	case status := <-renderDone:
+		require.Equal(t, StatusOK, status)
+	case <-time.After(time.Second):
+		t.Fatal("render request did not finish")
+	}
+}
+
 func Test_App_ReloadViews_MountedViews_WithParentViews(t *testing.T) {
 	t.Parallel()
 	parentView := &countingView{}
@@ -2167,6 +2628,7 @@ func Test_App_Stack(t *testing.T) {
 	app.Get("/path1", testEmptyHandler)
 	app.Get("/path2", testEmptyHandler)
 	app.Post("/path3", testEmptyHandler)
+	app.Query("/path4", testEmptyHandler)
 
 	app.startupProcess()
 
@@ -2182,6 +2644,7 @@ func Test_App_Stack(t *testing.T) {
 	require.Len(t, stack[app.methodInt(MethodConnect)], 1)
 	require.Len(t, stack[app.methodInt(MethodOptions)], 1)
 	require.Len(t, stack[app.methodInt(MethodTrace)], 1)
+	require.Len(t, stack[app.methodInt(MethodQuery)], 2)
 }
 
 // go test -run Test_App_HandlersCount

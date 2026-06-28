@@ -39,6 +39,12 @@ Proxy headers can be easily spoofed by malicious clients. **Always** configure `
 In addition, your reverse proxy should be configured to **set or overwrite** the forwarding header you choose (for example, `X-Forwarded-For`) based on the real client connection, or to use its real IP / PROXY protocol features. Do not simply pass through client-supplied forwarding headers, or `c.IP()` may still be controlled by an attacker even when `TrustProxyConfig` is correct.
 :::
 
+:::info Chain parsing with `EnableIPValidation`
+`X-Forwarded-For` is a comma-separated chain that each proxy appends to. With `EnableIPValidation` enabled, `c.IP()` walks the chain from **right to left** and strips every IP that matches the configured `TrustProxyConfig`. The first non-trusted IP is returned as the client. This matches the [MDN guidance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) and the convention used by Nginx (`set_real_ip_from` + `real_ip_recursive`), Apache `mod_remoteip`, Envoy (`xff_num_trusted_hops`), and most CDNs.
+
+Without `EnableIPValidation`, `c.IP()` returns the raw header value (a comma-separated string), which is rarely what middleware like rate limiters or allowlists expect. Enable validation when you rely on `c.IP()` as a single client identifier.
+:::
+
 ### Configuration
 
 To enable reading the client IP from proxy headers, you must configure **three settings**:

@@ -157,6 +157,12 @@ func (ln *configMethodListener) Config() *tls.Config {
 	return ln.cfg
 }
 
+type nonStructListener int
+
+func (nonStructListener) Accept() (net.Conn, error) { return nil, net.ErrClosed }
+func (nonStructListener) Close() error              { return nil }
+func (nonStructListener) Addr() net.Addr            { return &net.TCPAddr{} }
+
 func Test_GetTLSConfig(t *testing.T) {
 	t.Parallel()
 
@@ -222,6 +228,15 @@ func Test_GetTLSConfig(t *testing.T) {
 		})
 
 		require.Nil(t, getTLSConfig(base), "plain listeners should not report TLS config")
+	})
+
+	t.Run("non-struct listener", func(t *testing.T) {
+		t.Parallel()
+
+		ln := nonStructListener(7)
+		require.NotPanics(t, func() {
+			require.Nil(t, getTLSConfig(ln), "non-struct listeners should not panic and should not report TLS config")
+		})
 	})
 }
 
@@ -615,35 +630,6 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 	}, acceptedTypes)
 }
 
-func Test_Utils_UniqueRouteStack(t *testing.T) {
-	t.Parallel()
-	route1 := &Route{}
-	route2 := &Route{}
-	route3 := &Route{}
-	require.Equal(
-		t,
-		[]*Route{
-			route1,
-			route2,
-			route3,
-		},
-		uniqueRouteStack([]*Route{
-			route1,
-			route1,
-			route1,
-			route2,
-			route2,
-			route2,
-			route3,
-			route3,
-			route3,
-			route1,
-			route2,
-			route3,
-		}),
-	)
-}
-
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
 	res := getGroupPath("/v1", "/")
@@ -955,7 +941,7 @@ func testGenericTypeInt[V GenericTypeInteger](t *testing.T, name string, cases [
 				require.NoError(t, err)
 				require.Equal(t, V(test.value), v)
 			} else {
-				require.ErrorIs(t, err, strconv.ErrRange)
+				require.ErrorIs(t, err, errParseValue)
 			}
 		}
 		testGenericParseError[V](t)
@@ -1026,7 +1012,7 @@ func testGenericTypeUint[V GenericTypeInteger](t *testing.T, name string, cases 
 				require.NoError(t, err)
 				require.Equal(t, V(test.value), v)
 			} else {
-				require.ErrorIs(t, err, strconv.ErrRange)
+				require.ErrorIs(t, err, errParseValue)
 			}
 		}
 		testGenericParseError[V](t)
@@ -1273,7 +1259,7 @@ func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, t
 			require.NoError(t, err)
 			require.Equal(t, V(test.value), v)
 		} else {
-			require.ErrorIs(t, err, strconv.ErrRange)
+			require.ErrorIs(t, err, errParseValue)
 		}
 	})
 }
@@ -1352,7 +1338,7 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 			require.NoError(t, err)
 			require.Equal(t, V(test.value), v)
 		} else {
-			require.ErrorIs(t, err, strconv.ErrRange)
+			require.ErrorIs(t, err, errParseValue)
 		}
 	})
 }
@@ -1652,6 +1638,32 @@ func Test_App_quoteRawString(t *testing.T) {
 	}
 }
 
+func Test_App_quoteString_DetachesFromPooledBuffer(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	first := app.quoteString("a b")
+	second := app.quoteString("x y")
+
+	require.Equal(t, "a+b", first)
+	require.Equal(t, "x+y", second)
+	require.Equal(t, "a+b", first)
+}
+
+func Test_App_quoteRawString_DetachesFromPooledBuffer(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	first := app.quoteRawString(`A\B`)
+	second := app.quoteRawString(`C"D`)
+
+	require.Equal(t, `A\\B`, first)
+	require.Equal(t, `C\"D`, second)
+	require.Equal(t, `A\\B`, first)
+}
+
 func TestStoreInContext(t *testing.T) {
 	t.Parallel()
 
@@ -1782,4 +1794,32 @@ func TestValueFromContext(t *testing.T) {
 		require.False(t, ok)
 		require.Empty(t, value)
 	})
+}
+
+func Test_IsMethodSafe(t *testing.T) {
+	t.Parallel()
+
+	safeMethods := []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery}
+	unsafeMethods := []string{MethodPost, MethodPut, MethodPatch, MethodDelete, MethodConnect}
+
+	for _, m := range safeMethods {
+		require.True(t, IsMethodSafe(m), "%s should be safe", m)
+	}
+	for _, m := range unsafeMethods {
+		require.False(t, IsMethodSafe(m), "%s should not be safe", m)
+	}
+}
+
+func Test_IsMethodIdempotent(t *testing.T) {
+	t.Parallel()
+
+	idempotent := []string{MethodGet, MethodHead, MethodOptions, MethodTrace, MethodQuery, MethodPut, MethodDelete}
+	notIdempotent := []string{MethodPost, MethodPatch, MethodConnect}
+
+	for _, m := range idempotent {
+		require.True(t, IsMethodIdempotent(m), "%s should be idempotent", m)
+	}
+	for _, m := range notIdempotent {
+		require.False(t, IsMethodIdempotent(m), "%s should not be idempotent", m)
+	}
 }

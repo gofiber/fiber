@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,7 +32,7 @@ func Test_Cache_Security_DoS_ExcessiveQueryParams(t *testing.T) {
 
 	// Build a URL with more than maxQueryParams (128) parameters
 	queryParams := make([]string, 150)
-	for i := 0; i < 150; i++ {
+	for i := range 150 {
 		queryParams[i] = fmt.Sprintf("param%d=value%d", i, i)
 	}
 	url := "/?" + strings.Join(queryParams, "&")
@@ -69,7 +71,7 @@ func Test_Cache_Security_DoS_ExcessiveQueryBuffer(t *testing.T) {
 	// Using characters that require escaping (e.g., "=" becomes "%3D", 3x larger)
 	specialChars := strings.Repeat("=", 50) // Each "=" becomes "%3D"
 	queryParams := make([]string, 30)
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		queryParams[i] = fmt.Sprintf("key%d=%s", i, specialChars)
 	}
 	url := "/?" + strings.Join(queryParams, "&")
@@ -100,7 +102,7 @@ func Test_Cache_Security_DoS_ExcessiveVaryHeaders(t *testing.T) {
 		count++
 		// Generate more than maxVaryHeaders (32) headers
 		varyHeaders := make([]string, 50)
-		for i := 0; i < 50; i++ {
+		for i := range 50 {
 			varyHeaders[i] = fmt.Sprintf("X-Custom-Header-%d", i)
 		}
 		c.Set(fiber.HeaderVary, strings.Join(varyHeaders, ", "))
@@ -277,7 +279,7 @@ func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 
 	// Build URL with excessive parameters
 	queryParams := make([]string, 200)
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		queryParams[i] = fmt.Sprintf("p%d=v%d", i, i)
 	}
 	url := "/?" + strings.Join(queryParams, "&")
@@ -290,7 +292,7 @@ func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 	// Track errors in goroutines
 	var errCount atomic.Int32
 
-	for i := 0; i < numRequests; i++ {
+	for range numRequests {
 		go func() {
 			defer wg.Done()
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, url, http.NoBody))
@@ -328,7 +330,7 @@ func Test_Cache_Security_QueryParameterRepeated(t *testing.T) {
 
 	// Test with 100 values for the same parameter
 	values := make([]string, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		values[i] = fmt.Sprintf("key=%d", i)
 	}
 	url := "/?" + strings.Join(values, "&")
@@ -594,4 +596,137 @@ func Test_Cache_Security_EscapeKeyDelimiters_Unit(t *testing.T) {
 			require.NotEqual(t, a, b, "escapeKeyDelimiters(%q) must differ from escapeKeyDelimiters(%q)", pair[0], pair[1])
 		})
 	}
+}
+
+// Test_Cache_BoundKeySegment_ReservedPrefixHashed verifies that the bounding
+// helpers re-hash any segment that already starts with the reserved hashPrefix,
+// so a short literal "sha256:..." value cannot collide with a genuinely-hashed
+// long segment. Normal short values (including prefixes of "sha256:") must pass
+// through verbatim so the fast path is preserved.
+func Test_Cache_BoundKeySegment_ReservedPrefixHashed(t *testing.T) {
+	t.Parallel()
+
+	hashed := func(s string) string {
+		sum := sha256.Sum256([]byte(s))
+		return hashPrefix + hex.EncodeToString(sum[:])
+	}
+
+	t.Run("short reserved-prefix value is re-hashed", func(t *testing.T) {
+		t.Parallel()
+
+		// Short enough to skip the length bound, but starts with "sha256:".
+		input := hashPrefix + strings.Repeat("a", 8)
+		require.LessOrEqual(t, len(input), maxKeyDimensionSegmentLength)
+
+		got := boundKeySegment(input)
+		require.NotEqual(t, input, got, "reserved-prefix value must not pass through verbatim")
+		require.True(t, strings.HasPrefix(got, hashPrefix))
+		require.Equal(t, hashed(input), got)
+
+		// appendBoundKeySegment must agree with boundKeySegment.
+		require.Equal(t, got, string(appendBoundKeySegment(nil, input)))
+	})
+
+	t.Run("normal short value passes through verbatim", func(t *testing.T) {
+		t.Parallel()
+
+		const input = "plain"
+		require.Equal(t, input, boundKeySegment(input))
+		require.Equal(t, input, string(appendBoundKeySegment(nil, input)))
+	})
+
+	t.Run("prefix of reserved namespace is not over-hashed", func(t *testing.T) {
+		t.Parallel()
+
+		// "sha256" (no colon) is a prefix of "sha256:" but is NOT in the reserved
+		// namespace, so it must pass through verbatim (regression guard against
+		// reversed HasPrefix arguments).
+		const input = "sha256"
+		require.Equal(t, input, boundKeySegment(input))
+		require.Equal(t, input, string(appendBoundKeySegment(nil, input)))
+	})
+}
+
+// Test_Cache_Security_QueryBody_RawHashDomain verifies that the QUERY body is
+// always hashed over its RAW bytes, never the escaped form. Mixing the two
+// domains would let a small body collide with a large one: "a|" repeated escapes
+// to "a\p" repeated, which must NOT hash-collide with a body that already
+// contains the literal bytes "a\p" repeated.
+func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 1 * time.Hour,
+		Methods:    []string{fiber.MethodQuery},
+	}))
+
+	var count atomic.Int32
+	app.Query("/", func(c fiber.Ctx) error {
+		count.Add(1)
+		return c.SendString("response")
+	})
+
+	// bodyA: 130 raw bytes (<=192, takes the verbatim branch); escapes to
+	// "a\p" x65 = 195 bytes (>192), so it is hashed over the RAW "a|" x65.
+	bodyA := strings.Repeat("a|", 65)
+	// bodyB: 195 raw bytes of literal "a\p" (>192), hashed over the RAW bytes.
+	// If the small branch hashed the escaped form, bodyA and bodyB would collide.
+	bodyB := strings.Repeat("a\\p", 65)
+	require.NotEqual(t, bodyA, bodyB)
+
+	doQuery := func(body string) string {
+		req := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(body))
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		return resp.Header.Get("X-Cache")
+	}
+
+	require.Equal(t, cacheMiss, doQuery(bodyA))
+	require.Equal(t, cacheMiss, doQuery(bodyB), "distinct bodies must not collide")
+	require.Equal(t, int32(2), count.Load())
+	require.Equal(t, cacheHit, doQuery(bodyA), "identical body must hit cache")
+	require.Equal(t, int32(2), count.Load())
+}
+
+func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 1 * time.Hour,
+		Methods:    []string{fiber.MethodQuery},
+	}))
+
+	var count atomic.Int32
+	app.Query("/", func(c fiber.Ctx) error {
+		count.Add(1)
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		return c.SendString("handler auth=" + c.Get(fiber.HeaderAuthorization))
+	})
+
+	const authHeader = "Bearer victim-token"
+	const baseBody = "B"
+	authSum := sha256.Sum256([]byte(authHeader))
+	authHash := hex.EncodeToString(authSum[:])
+	craftedBody := baseBody + "|auth=" + authHash
+
+	authReq := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(baseBody))
+	authReq.Header.Set(fiber.HeaderAuthorization, authHeader)
+	authResp, err := app.Test(authReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, authResp.StatusCode)
+	require.Equal(t, cacheMiss, authResp.Header.Get("X-Cache"))
+
+	unauthReq := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(craftedBody))
+	unauthResp, err := app.Test(unauthReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, unauthResp.StatusCode)
+	require.Equal(t, cacheMiss, unauthResp.Header.Get("X-Cache"))
+
+	body, err := io.ReadAll(unauthResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "handler auth=", string(body))
+	require.Equal(t, int32(2), count.Load())
 }

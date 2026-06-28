@@ -149,6 +149,14 @@ Sends a PATCH request.
 func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
 ```
 
+### Query
+
+Sends a QUERY request.
+
+```go title="Signature"
+func (c *Client) Query(url string, cfg ...Config) (*Response, error)
+```
+
 ### Delete
 
 Sends a DELETE request.
@@ -893,6 +901,14 @@ Patch is a convenience method that sends a PATCH request using the `defaultClien
 func Patch(url string, cfg ...Config) (*Response, error)
 ```
 
+### Query
+
+Query is a convenience method that sends a QUERY request using the `defaultClient`.
+
+```go title="Signature"
+func Query(url string, cfg ...Config) (*Response, error)
+```
+
 ### Delete
 
 Delete is a convenience method that sends a DELETE request using the `defaultClient`.
@@ -922,7 +938,7 @@ func Options(url string, cfg ...Config) (*Response, error)
 **Replace** replaces the default client with a new one. It returns a function that can restore the old client.
 
 :::caution
-Do not modify the default client concurrently.
+Replacing the default client is concurrency-safe, but mutating the same `Client` instance still requires external synchronization.
 :::
 
 ```go title="Signature"

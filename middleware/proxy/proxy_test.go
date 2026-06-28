@@ -53,6 +53,14 @@ func createProxyTestServerIPv4(t *testing.T, handler fiber.Handler) (target *fib
 
 func createProxyTestServerIPv6(t *testing.T, handler fiber.Handler) (target *fiber.App, addr string) { //nolint:nonamedreturns // gocritic unnamedResult prefers naming returned target app and address for readability
 	t.Helper()
+
+	// Skip instead of failing on hosts without IPv6 support (e.g. some CI containers).
+	probe, err := net.Listen(fiber.NetworkTCP6, "[::1]:0")
+	if err != nil {
+		t.Skipf("skipping: IPv6 is not available: %v", err)
+	}
+	require.NoError(t, probe.Close())
+
 	return createProxyTestServer(t, handler, fiber.NetworkTCP6, "[::1]:0")
 }
 
@@ -79,6 +87,39 @@ func createRedirectServer(t *testing.T) string {
 	startServer(app, ln)
 
 	return addr
+}
+
+func restoreGlobalProxyClient(t *testing.T) {
+	t.Helper()
+
+	prev := client.Load()
+	t.Cleanup(func() {
+		WithClient(prev)
+	})
+}
+
+// go test -run Test_Proxy_DefaultClient_MaxConnsPerHost
+func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
+	require.Equal(t, defaultMaxConnsPerHost, client.Load().MaxConnsPerHost)
+}
+
+// go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost
+func Test_Proxy_ConfigDefault_MaxConnsPerHost(t *testing.T) {
+	t.Parallel()
+
+	cfg := configDefault(Config{Servers: []string{"127.0.0.1"}})
+	require.Equal(t, defaultMaxConnsPerHost, cfg.MaxConnsPerHost)
+}
+
+// go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost_Override
+func Test_Proxy_ConfigDefault_MaxConnsPerHost_Override(t *testing.T) {
+	t.Parallel()
+
+	cfg := configDefault(Config{
+		Servers:         []string{"127.0.0.1"},
+		MaxConnsPerHost: 2048,
+	})
+	require.Equal(t, 2048, cfg.MaxConnsPerHost)
 }
 
 // go test -run Test_Proxy_Empty_Host
@@ -173,7 +214,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	})
 
 	addr := ln.Addr().String()
-	clientTLSConf := &tls.Config{InsecureSkipVerify: true} //nolint:gosec // We're in a test func, so this is fine
+	clientTLSConf := &tls.Config{InsecureSkipVerify: true}
 
 	// disable certificate verification in Balancer
 	app.Use(Balancer(Config{
@@ -332,7 +373,7 @@ func Test_Proxy_Forward(t *testing.T) {
 
 // go test -run Test_Proxy_Forward_WithClient_TLSConfig
 func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
-	t.Parallel()
+	restoreGlobalProxyClient(t)
 
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
 	require.NoError(t, err)
@@ -349,7 +390,7 @@ func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 	})
 
 	addr := ln.Addr().String()
-	clientTLSConf := &tls.Config{InsecureSkipVerify: true} //nolint:gosec // We're in a test func, so this is fine
+	clientTLSConf := &tls.Config{InsecureSkipVerify: true}
 
 	// disable certificate verification
 	WithClient(&fasthttp.Client{
@@ -735,13 +776,18 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 
 // go test -race -run Test_Proxy_Forward_Global_Client
 func Test_Proxy_Forward_Global_Client(t *testing.T) {
-	t.Parallel()
+	restoreGlobalProxyClient(t)
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
 	WithClient(&fasthttp.Client{
 		NoDefaultUserAgentHeader: true,
 		DisablePathNormalizing:   true,
+		MaxConnsPerHost:          123,
 	})
+	loadedClient := client.Load()
+	require.NotNil(t, loadedClient)
+	require.Equal(t, 123, loadedClient.MaxConnsPerHost)
+
 	app := fiber.New()
 	app.Get("/test_global_client", func(c fiber.Ctx) error {
 		return c.SendString("test_global_client")
@@ -983,6 +1029,15 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, "forwarded", string(b))
+}
+
+// go test -run Test_Proxy_Balancer_Forward_Empty_Servers
+func Test_Proxy_Balancer_Forward_Empty_Servers(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t, "Servers cannot be empty", func() {
+		BalancerForward([]string{})
+	})
 }
 
 func Test_Proxy_Balancer_Forward_OverwritesXRealIP(t *testing.T) {

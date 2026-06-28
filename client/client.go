@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -36,6 +37,8 @@ var ErrFailedToAppendCert = errors.New("failed to append certificate")
 //
 // Settings configured on the client are shared across every request and may be
 // overridden per request when needed.
+// Client is safe for concurrent request execution after configuration is
+// complete. Concurrent configuration changes require external synchronization.
 type Client struct {
 	logger    log.CommonLogger
 	transport httpClientTransport
@@ -62,10 +65,10 @@ type Client struct {
 	userResponseHooks    []ResponseHook
 	builtinResponseHooks []ResponseHook
 
-	timeout                time.Duration
-	mu                     sync.RWMutex
-	debug                  bool
-	disablePathNormalizing bool
+	timeout                   time.Duration
+	mu                        sync.RWMutex
+	isDebug                   bool
+	isPathNormalizingDisabled bool
 }
 
 // Do executes the request using the underlying fasthttp transport.
@@ -446,12 +449,12 @@ func (c *Client) SetReferer(r string) *Client {
 
 // DisablePathNormalizing reports whether path normalizing is disabled for the client.
 func (c *Client) DisablePathNormalizing() bool {
-	return c.disablePathNormalizing
+	return c.isPathNormalizingDisabled
 }
 
 // SetDisablePathNormalizing configures the client to disable or enable path normalizing.
 func (c *Client) SetDisablePathNormalizing(disable bool) *Client {
-	c.disablePathNormalizing = disable
+	c.isPathNormalizingDisabled = disable
 	return c
 }
 
@@ -527,13 +530,13 @@ func (c *Client) SetTimeout(t time.Duration) *Client {
 
 // Debug enables debug-level logging output.
 func (c *Client) Debug() *Client {
-	c.debug = true
+	c.isDebug = true
 	return c
 }
 
 // DisableDebug disables debug-level logging output.
 func (c *Client) DisableDebug() *Client {
-	c.debug = false
+	c.isDebug = false
 	return c
 }
 
@@ -606,6 +609,13 @@ func (c *Client) Patch(url string, cfg ...Config) (*Response, error) {
 	return req.Patch(url)
 }
 
+// Query sends a QUERY request to the specified URL, similar to axios.
+func (c *Client) Query(url string, cfg ...Config) (*Response, error) {
+	req := AcquireRequest().SetClient(c)
+	setConfigToRequest(req, cfg...)
+	return req.Query(url)
+}
+
 // Custom sends a request with a custom method to the specified URL, similar to axios.
 func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
@@ -646,8 +656,8 @@ func (c *Client) Reset() {
 	c.userAgent = ""
 	c.referer = ""
 	c.retryConfig = nil
-	c.debug = false
-	c.disablePathNormalizing = false
+	c.isDebug = false
+	c.isPathNormalizingDisabled = false
 
 	if c.cookieJar != nil {
 		c.cookieJar.Release()
@@ -750,13 +760,13 @@ func setConfigToRequest(req *Request, config ...Config) {
 }
 
 var (
-	defaultClient    *Client
+	defaultClient    atomic.Pointer[Client]
 	replaceMu        = sync.Mutex{}
 	defaultUserAgent = "fiber"
 )
 
 func init() {
-	defaultClient = New()
+	defaultClient.Store(New())
 }
 
 // New creates and returns a new Client object.
@@ -819,7 +829,7 @@ func newClient(transport httpClientTransport) *Client {
 
 // C returns the default client.
 func C() *Client {
-	return defaultClient
+	return defaultClient.Load()
 }
 
 // Replace replaces the defaultClient with a new one, returning a function to restore the old client.
@@ -827,14 +837,13 @@ func Replace(c *Client) func() {
 	replaceMu.Lock()
 	defer replaceMu.Unlock()
 
-	oldClient := defaultClient
-	defaultClient = c
+	oldClient := defaultClient.Swap(c)
 
 	return func() {
 		replaceMu.Lock()
 		defer replaceMu.Unlock()
 
-		defaultClient = oldClient
+		defaultClient.Store(oldClient)
 	}
 }
 
@@ -871,4 +880,9 @@ func Options(url string, cfg ...Config) (*Response, error) {
 // Patch sends a PATCH request using the default client.
 func Patch(url string, cfg ...Config) (*Response, error) {
 	return C().Patch(url, cfg...)
+}
+
+// Query sends a QUERY request using the default client.
+func Query(url string, cfg ...Config) (*Response, error) {
+	return C().Query(url, cfg...)
 }

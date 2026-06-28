@@ -11,6 +11,10 @@ on:
       - "**/*.md"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: read
@@ -19,3 +23,5 @@ permissions:
 jobs:
   lint:
     uses: gofiber/.github/.github/workflows/go-lint-single.yml@main
+    with:
+      golangci-lint-version: v2.12.2

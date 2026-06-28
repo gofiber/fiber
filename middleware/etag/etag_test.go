@@ -80,19 +80,19 @@ func Test_ETag_NewEtag(t *testing.T) {
 	t.Parallel()
 	t.Run("without HeaderIfNoneMatch", func(t *testing.T) {
 		t.Parallel()
-		testETagNewEtag(t, false, false)
+		testETagNewEtag(t, "", fiber.StatusOK)
 	})
 	t.Run("with HeaderIfNoneMatch and not matched", func(t *testing.T) {
 		t.Parallel()
-		testETagNewEtag(t, true, false)
+		testETagNewEtag(t, `"non-match"`, fiber.StatusOK)
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
 		t.Parallel()
-		testETagNewEtag(t, true, true)
+		testETagNewEtag(t, `"13-1831710635"`, fiber.StatusNotModified)
 	})
 }
 
-func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:revive // We're in a test, so using bools as a flow-control is fine
+func testETagNewEtag(t *testing.T, headerIfNoneMatch string, expectedStatus int) {
 	t.Helper()
 
 	app := fiber.New()
@@ -104,29 +104,23 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:r
 	})
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	if headerIfNoneMatch {
-		etag := `"non-match"`
-		if matched {
-			etag = `"13-1831710635"`
-		}
-		req.Header.Set(fiber.HeaderIfNoneMatch, etag)
+	if headerIfNoneMatch != "" {
+		req.Header.Set(fiber.HeaderIfNoneMatch, headerIfNoneMatch)
 	}
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 
-	if !headerIfNoneMatch || !matched {
+	if expectedStatus == fiber.StatusOK {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 		require.Equal(t, `"13-1831710635"`, resp.Header.Get(fiber.HeaderETag))
 		return
 	}
 
-	if matched {
-		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
-		b, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Empty(t, b)
-	}
+	require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Empty(t, b)
 }
 
 // go test -run Test_ETag_WeakEtag
@@ -134,19 +128,19 @@ func Test_ETag_WeakEtag(t *testing.T) {
 	t.Parallel()
 	t.Run("without HeaderIfNoneMatch", func(t *testing.T) {
 		t.Parallel()
-		testETagWeakEtag(t, false, false)
+		testETagWeakEtag(t, "", fiber.StatusOK)
 	})
 	t.Run("with HeaderIfNoneMatch and not matched", func(t *testing.T) {
 		t.Parallel()
-		testETagWeakEtag(t, true, false)
+		testETagWeakEtag(t, `W/"non-match"`, fiber.StatusOK)
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
 		t.Parallel()
-		testETagWeakEtag(t, true, true)
+		testETagWeakEtag(t, `W/"13-1831710635"`, fiber.StatusNotModified)
 	})
 }
 
-func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:revive // We're in a test, so using bools as a flow-control is fine
+func testETagWeakEtag(t *testing.T, headerIfNoneMatch string, expectedStatus int) {
 	t.Helper()
 
 	app := fiber.New()
@@ -158,29 +152,23 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:
 	})
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	if headerIfNoneMatch {
-		etag := `W/"non-match"`
-		if matched {
-			etag = `W/"13-1831710635"`
-		}
-		req.Header.Set(fiber.HeaderIfNoneMatch, etag)
+	if headerIfNoneMatch != "" {
+		req.Header.Set(fiber.HeaderIfNoneMatch, headerIfNoneMatch)
 	}
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 
-	if !headerIfNoneMatch || !matched {
+	if expectedStatus == fiber.StatusOK {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 		require.Equal(t, `W/"13-1831710635"`, resp.Header.Get(fiber.HeaderETag))
 		return
 	}
 
-	if matched {
-		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
-		b, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Empty(t, b)
-	}
+	require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Empty(t, b)
 }
 
 // go test -run Test_ETag_CustomEtag
@@ -188,19 +176,19 @@ func Test_ETag_CustomEtag(t *testing.T) {
 	t.Parallel()
 	t.Run("without HeaderIfNoneMatch", func(t *testing.T) {
 		t.Parallel()
-		testETagCustomEtag(t, false, false)
+		testETagCustomEtag(t, "", fiber.StatusOK)
 	})
 	t.Run("with HeaderIfNoneMatch and not matched", func(t *testing.T) {
 		t.Parallel()
-		testETagCustomEtag(t, true, false)
+		testETagCustomEtag(t, `"non-match"`, fiber.StatusOK)
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
 		t.Parallel()
-		testETagCustomEtag(t, true, true)
+		testETagCustomEtag(t, `"custom"`, fiber.StatusNotModified)
 	})
 }
 
-func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:revive // We're in a test, so using bools as a flow-control is fine
+func testETagCustomEtag(t *testing.T, headerIfNoneMatch string, expectedStatus int) {
 	t.Helper()
 
 	app := fiber.New()
@@ -216,29 +204,23 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolin
 	})
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	if headerIfNoneMatch {
-		etag := `"non-match"`
-		if matched {
-			etag = `"custom"`
-		}
-		req.Header.Set(fiber.HeaderIfNoneMatch, etag)
+	if headerIfNoneMatch != "" {
+		req.Header.Set(fiber.HeaderIfNoneMatch, headerIfNoneMatch)
 	}
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 
-	if !headerIfNoneMatch || !matched {
+	if expectedStatus == fiber.StatusOK {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 		require.Equal(t, `"custom"`, resp.Header.Get(fiber.HeaderETag))
 		return
 	}
 
-	if matched {
-		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
-		b, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Empty(t, b)
-	}
+	require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Empty(t, b)
 }
 
 // go test -run Test_ETag_CustomEtagPut
@@ -287,4 +269,85 @@ func Benchmark_Etag(b *testing.B) {
 
 	require.Equal(b, 200, fctx.Response.Header.StatusCode())
 	require.Equal(b, `"13-1831710635"`, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
+}
+
+// go test -run Test_ETag_WeakComparison
+func Test_ETag_WeakComparison(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		ifNoneMatch    string
+		weak           bool
+		expectedStatus int
+	}{
+		{name: "weak client tag matches strong server tag", ifNoneMatch: `W/"13-1831710635"`, weak: false, expectedStatus: fiber.StatusNotModified},
+		{name: "strong client tag matches weak server tag", ifNoneMatch: `"13-1831710635"`, weak: true, expectedStatus: fiber.StatusNotModified},
+		{name: "match in list after weak tag", ifNoneMatch: `W/"non-match", "13-1831710635"`, weak: false, expectedStatus: fiber.StatusNotModified},
+		{name: "weak match in list", ifNoneMatch: `"non-match", W/"13-1831710635"`, weak: false, expectedStatus: fiber.StatusNotModified},
+		{name: "wildcard", ifNoneMatch: `*`, weak: false, expectedStatus: fiber.StatusNotModified},
+		{name: "no match in list", ifNoneMatch: `W/"non-match", "other"`, weak: false, expectedStatus: fiber.StatusOK},
+		{name: "unquoted tag never matches", ifNoneMatch: `13-1831710635`, weak: false, expectedStatus: fiber.StatusOK},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Weak: tc.weak}))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("Hello, World!")
+			})
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header.Set(fiber.HeaderIfNoneMatch, tc.ifNoneMatch)
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedStatus, resp.StatusCode)
+
+			expectedTag := `"13-1831710635"`
+			if tc.weak {
+				expectedTag = `W/"13-1831710635"`
+			}
+			require.Equal(t, expectedTag, resp.Header.Get(fiber.HeaderETag))
+
+			if tc.expectedStatus == fiber.StatusNotModified {
+				b, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Empty(t, b)
+			}
+		})
+	}
+}
+
+// go test -run Test_ETag_etagWeakMatch
+func Test_ETag_etagWeakMatch(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		a        string
+		b        string
+		expected bool
+	}{
+		{name: "identical strong tags", a: `"abc"`, b: `"abc"`, expected: true},
+		{name: "weak client vs strong server", a: `W/"abc"`, b: `"abc"`, expected: true},
+		{name: "strong client vs weak server", a: `"abc"`, b: `W/"abc"`, expected: true},
+		{name: "both weak", a: `W/"abc"`, b: `W/"abc"`, expected: true},
+		{name: "different values", a: `"abc"`, b: `"def"`, expected: false},
+		{name: "unquoted client tag", a: `abc`, b: `"abc"`, expected: false},
+		{name: "unquoted server tag", a: `"abc"`, b: `abc`, expected: false},
+		{name: "empty client tag", a: ``, b: `"abc"`, expected: false},
+		{name: "empty server tag", a: `"abc"`, b: ``, expected: false},
+		{name: "weak prefix only", a: `W/`, b: `"abc"`, expected: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.expected, etagWeakMatch([]byte(tc.a), []byte(tc.b)))
+		})
+	}
 }

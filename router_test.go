@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -1500,7 +1501,7 @@ func Benchmark_App_RebuildTree(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		app.routesRefreshed = true
+		app.hasRoutesRefreshed = true
 		app.RebuildTree()
 	}
 }
@@ -1748,7 +1749,7 @@ func Benchmark_Route_Match(b *testing.B) {
 	var match bool
 	var params [maxParams]string
 
-	parsed := parseRoute("/user/keys/:id")
+	parsed := parseRoute("/user/keys/:id", regexp.MustCompile)
 	route := &Route{
 		use:         false,
 		root:        false,
@@ -1776,7 +1777,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	var match bool
 	var params [maxParams]string
 
-	parsed := parseRoute("/*")
+	parsed := parseRoute("/*", regexp.MustCompile)
 	route := &Route{
 		use:         false,
 		root:        false,
@@ -1805,7 +1806,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 	var match bool
 	var params [maxParams]string
 
-	parsed := parseRoute("/")
+	parsed := parseRoute("/", regexp.MustCompile)
 	route := &Route{
 		use:         false,
 		root:        true,
@@ -1930,14 +1931,35 @@ func newCustomApp() *App {
 	})
 }
 
+func Test_Next_SkipNonUseRoutesSkipsFallback(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
+	app.startupProcess()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodPost)
+	fctx.Request.SetRequestURI("/foo")
+
+	ctx := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck,forcetypeassert // default app returns DefaultCtx
+	ctx.setSkipNonUseRoutes(true)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.next(ctx)
+	require.False(t, matched)
+	require.NoError(t, err)
+	require.Empty(t, ctx.Response().Header.Peek(HeaderAllow))
+}
+
 func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
 	app := newCustomApp()
 	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
-	useRoute := &Route{use: true, path: "/foo", Path: "/foo", routeParser: parseRoute("/foo")}
+	useRoute := &Route{use: true, path: "/foo", Path: "/foo", routeParser: parseRoute("/foo", regexp.MustCompile)}
 	m := app.methodInt(MethodGet)
 	app.stack[m] = append([]*Route{useRoute}, app.stack[m]...)
-	app.routesRefreshed = true
+	app.hasRoutesRefreshed = true
 	app.ensureAutoHeadRoutes()
 	app.RebuildTree()
 
@@ -1953,6 +1975,27 @@ func Test_NextCustom_MethodNotAllowed(t *testing.T) {
 	require.ErrorIs(t, err, ErrMethodNotAllowed)
 	allow := string(ctx.Response().Header.Peek(HeaderAllow))
 	require.Equal(t, "GET, HEAD", allow)
+}
+
+func Test_NextCustom_SkipNonUseRoutesSkipsFallback(t *testing.T) {
+	t.Parallel()
+
+	app := newCustomApp()
+	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
+	app.startupProcess()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodPost)
+	fctx.Request.SetRequestURI("/foo")
+
+	ctx := app.AcquireCtx(fctx)
+	ctx.setSkipNonUseRoutes(true)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.nextCustom(ctx)
+	require.False(t, matched)
+	require.NoError(t, err)
+	require.Empty(t, ctx.Response().Header.Peek(HeaderAllow))
 }
 
 func Test_NextCustom_NotFound(t *testing.T) {
@@ -2011,10 +2054,10 @@ func Test_NextCustom_SkipMountAndNoHandlers(t *testing.T) {
 	t.Parallel()
 	app := newCustomApp()
 	m := app.methodInt(MethodGet)
-	mountR := &Route{path: "/skip", Path: "/skip", routeParser: parseRoute("/skip"), mount: true}
-	empty := &Route{path: "/foo", Path: "/foo", routeParser: parseRoute("/foo")}
+	mountR := &Route{path: "/skip", Path: "/skip", routeParser: parseRoute("/skip", regexp.MustCompile), mount: true}
+	empty := &Route{path: "/foo", Path: "/foo", routeParser: parseRoute("/foo", regexp.MustCompile)}
 	app.stack[m] = []*Route{mountR, empty}
-	app.routesRefreshed = true
+	app.hasRoutesRefreshed = true
 	app.RebuildTree()
 
 	fctx := &fasthttp.RequestCtx{}
@@ -2049,7 +2092,7 @@ func Benchmark_App_RebuildTree_Parallel(b *testing.B) {
 		localApp := New()
 		registerDummyRoutes(localApp)
 		for pb.Next() {
-			localApp.routesRefreshed = true
+			localApp.hasRoutesRefreshed = true
 			localApp.RebuildTree()
 		}
 	})
@@ -2227,7 +2270,7 @@ func Benchmark_Router_Next_Default_Immutable_Parallel(b *testing.B) {
 }
 
 func Benchmark_Route_Match_Parallel(b *testing.B) {
-	parsed := parseRoute("/user/keys/:id")
+	parsed := parseRoute("/user/keys/:id", regexp.MustCompile)
 	route := &Route{use: false, root: false, star: false, routeParser: parsed, Params: parsed.params, path: "/user/keys/:id", Path: "/user/keys/:id", Method: "DELETE"}
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
@@ -2250,7 +2293,7 @@ func Benchmark_Route_Match_Parallel(b *testing.B) {
 func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
 	var match bool
 	var params [maxParams]string
-	parsed := parseRoute("/*")
+	parsed := parseRoute("/*", regexp.MustCompile)
 	route := &Route{use: false, root: false, star: true, routeParser: parsed, Params: parsed.params, path: "/user/keys/bla", Path: "/user/keys/bla", Method: "DELETE"}
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
@@ -2267,7 +2310,7 @@ func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
 func Benchmark_Route_Match_Root_Parallel(b *testing.B) {
 	var match bool
 	var params [maxParams]string
-	parsed := parseRoute("/")
+	parsed := parseRoute("/", regexp.MustCompile)
 	route := &Route{use: false, root: true, star: false, path: "/", routeParser: parsed, Params: parsed.params, Path: "/", Method: "DELETE"}
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
@@ -2433,7 +2476,7 @@ func Test_Route_URL(t *testing.T) {
 	t.Run("preferred greedy parameters default fallback", func(t *testing.T) {
 		t.Parallel()
 		require.Equal(t, preferredPlusGreedyParameters, preferredGreedyParameters("+1"))
-		require.Equal(t, preferredWildcardGreedyParameters, preferredGreedyParameters("*1"))
+		require.Equal(t, []string{"*", "+"}, preferredGreedyParameters("*1"))
 		require.Equal(t, defaultGreedyParameterKeys, preferredGreedyParameters(""))
 		require.Equal(t, defaultGreedyParameterKeys, preferredGreedyParameters("name"))
 	})

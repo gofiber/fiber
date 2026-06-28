@@ -6,9 +6,8 @@ package client
 import (
 	"context"
 	"errors"
-	"net"
-	"strconv"
-	"strings"
+	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/valyala/fasthttp"
@@ -20,29 +19,19 @@ import (
 const boundary = "FiberFormBoundary"
 
 // RequestHook is a function invoked before the request is sent.
-// It receives a Client and a Request, allowing you to modify the Request or Client data.
+// It receives a Client and a Request. Mutate the Request, not the shared Client
+// config: the Client is read concurrently by in-flight requests (see the Client
+// type's concurrency contract), so per-request changes belong on the Request.
 type RequestHook func(*Client, *Request) error
 
 // ResponseHook is a function invoked after a response is received.
-// It receives a Client, Response, and Request, allowing you to modify the Response data
-// or perform actions based on the response.
+// It receives a Client, Response, and Request. Mutate the Response or act on it;
+// do not mutate the shared Client config, which is read concurrently by other
+// in-flight requests (see the Client type's concurrency contract).
 type ResponseHook func(*Client, *Response, *Request) error
 
 // RetryConfig is an alias for the `retry.Config` type from the `addon/retry` package.
 type RetryConfig = retry.Config
-
-// addMissingPort appends the appropriate port number to the given address if it doesn't have one.
-// If isTLS is true, it uses port 443; otherwise, it uses port 80.
-func addMissingPort(addr string, isTLS bool) string { //revive:disable-line:flag-parameter
-	if strings.IndexByte(addr, ':') != -1 {
-		return addr
-	}
-	port := 80
-	if isTLS {
-		port = 443
-	}
-	return net.JoinHostPort(addr, strconv.Itoa(port))
-}
 
 // core stores middleware and plugin definitions and defines the request execution process.
 type core struct {
@@ -92,6 +81,16 @@ func (c *core) execFunc() (*Response, error) {
 			}
 		}()
 
+		var resp *Response
+		defer func() {
+			if r := recover(); r != nil {
+				if resp != nil {
+					ReleaseResponse(resp)
+				}
+				errChan <- fmt.Errorf("client panic: %v", r)
+			}
+		}()
+
 		c.req.RawRequest.CopyTo(reqv)
 		if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
 			reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
@@ -101,13 +100,13 @@ func (c *core) execFunc() (*Response, error) {
 		if cfg != nil {
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
-				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead || string(reqv.Header.Method()) == fiber.MethodQuery) {
 					return c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
 				return c.client.Do(reqv, respv)
 			})
 		} else {
-			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead || string(reqv.Header.Method()) == fiber.MethodQuery) {
 				err = c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
 				err = c.client.Do(reqv, respv)
@@ -119,7 +118,7 @@ func (c *core) execFunc() (*Response, error) {
 			return
 		}
 
-		resp := AcquireResponse()
+		resp = AcquireResponse()
 		resp.setClient(c.client)
 		resp.setRequest(c.req)
 
@@ -154,14 +153,18 @@ func (c *core) execFunc() (*Response, error) {
 
 // preHooks runs all request hooks before sending the request.
 func (c *core) preHooks() error {
-	c.client.mu.Lock()
-	defer c.client.mu.Unlock()
+	c.client.mu.RLock()
+	userHooks := slices.Clone(c.client.userRequestHooks)
+	c.client.mu.RUnlock()
 
-	for _, f := range c.client.userRequestHooks {
+	for _, f := range userHooks {
 		if err := f(c.client, c.req); err != nil {
 			return err
 		}
 	}
+
+	c.client.mu.Lock()
+	defer c.client.mu.Unlock()
 
 	for _, f := range c.client.builtinRequestHooks {
 		if err := f(c.client, c.req); err != nil {
@@ -175,15 +178,16 @@ func (c *core) preHooks() error {
 // afterHooks runs all response hooks after receiving the response.
 func (c *core) afterHooks(resp *Response) error {
 	c.client.mu.Lock()
-	defer c.client.mu.Unlock()
-
+	userHooks := slices.Clone(c.client.userResponseHooks)
 	for _, f := range c.client.builtinResponseHooks {
 		if err := f(c.client, resp, c.req); err != nil {
+			c.client.mu.Unlock()
 			return err
 		}
 	}
+	c.client.mu.Unlock()
 
-	for _, f := range c.client.userResponseHooks {
+	for _, f := range userHooks {
 		if err := f(c.client, resp, c.req); err != nil {
 			return err
 		}

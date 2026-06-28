@@ -330,10 +330,8 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 	if err != nil {
 		require.NoError(t, err)
 	}
-	//nolint:gosec // We're in a test so using old ciphers is fine
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
-	//nolint:gosec // We're in a test so listening on all interfaces is fine
 	ln, err := tls.Listen(NetworkTCP4, ":0", config)
 	require.NoError(t, err)
 
@@ -486,6 +484,78 @@ func Test_Listen_AutoCert_Conflicts(t *testing.T) {
 	require.ErrorIs(t, err, ErrAutoCertWithCertFile)
 }
 
+func Test_Listen_AutoCert_WithClientCertFile(t *testing.T) {
+	t.Parallel()
+
+	invalidClientCAPath := filepath.Join(t.TempDir(), "client-ca.pem")
+	require.NoError(t, os.WriteFile(invalidClientCAPath, []byte("not a pem"), 0o600))
+
+	testCases := []struct {
+		name           string
+		clientCAPath   string
+		expectedErrMsg string
+	}{
+		{
+			name:           "missing client CA file",
+			clientCAPath:   "./.github/testdata/does-not-exist-ca.pem",
+			expectedErrMsg: "./.github/testdata/does-not-exist-ca.pem",
+		},
+		{
+			name:           "invalid client CA pem",
+			clientCAPath:   invalidClientCAPath,
+			expectedErrMsg: filepath.Base(invalidClientCAPath),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			done := make(chan struct{})
+			defer close(done)
+
+			go func() {
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+					assert.NoError(t, app.Shutdown())
+				}
+			}()
+
+			err := app.Listen(":0", ListenConfig{
+				CertClientFile: tc.clientCAPath,
+				AutoCertManager: &autocert.Manager{
+					Prompt: autocert.AcceptTOS,
+				},
+			})
+			require.Error(t, err)
+			require.ErrorContains(t, err, tc.expectedErrMsg)
+		})
+	}
+}
+
+func Test_Listen_ClientCertErrorDoesNotSetTLSHandler(t *testing.T) {
+	t.Parallel()
+
+	invalidClientCAPath := filepath.Join(t.TempDir(), "client-ca.pem")
+	require.NoError(t, os.WriteFile(invalidClientCAPath, []byte("not a pem"), 0o600))
+
+	app := New()
+
+	err := app.Listen(":0", ListenConfig{
+		CertFile:       "./.github/testdata/ssl.pem",
+		CertKeyFile:    "./.github/testdata/ssl.key",
+		CertClientFile: invalidClientCAPath,
+	})
+	require.ErrorContains(t, err, filepath.Base(invalidClientCAPath))
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	require.Nil(t, c.ClientHelloInfo())
+}
+
 // go test -run Test_Listen_ListenerAddrFunc
 func Test_Listen_ListenerAddrFunc(t *testing.T) {
 	var network string
@@ -531,8 +601,21 @@ func Test_Listen_BeforeServeFunc(t *testing.T) {
 	require.Zero(t, handlers)
 }
 
+// skipIfNoIPv6 skips the test on hosts without IPv6 support (e.g. some CI containers).
+func skipIfNoIPv6(t *testing.T) {
+	t.Helper()
+
+	probe, err := net.Listen(NetworkTCP6, "[::1]:0")
+	if err != nil {
+		t.Skipf("skipping: IPv6 is not available: %v", err)
+	}
+	require.NoError(t, probe.Close())
+}
+
 // go test -run Test_Listen_ListenerNetwork
 func Test_Listen_ListenerNetwork(t *testing.T) {
+	skipIfNoIPv6(t)
+
 	var network string
 	app := New()
 

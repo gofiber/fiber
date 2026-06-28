@@ -6,6 +6,10 @@ package fiber
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -17,7 +21,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	t.Parallel()
 	var rp routeParser
 
-	rp = parseRoute("/shop/product/::filter/color::color/size::size")
+	rp = parseRoute("/shop/product/::filter/color::color/size::size", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/shop/product/:", Length: 15},
@@ -30,7 +34,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: []string{"filter", "color", "size"},
 	}, rp)
 
-	rp = parseRoute("/api/v1/:param/abc/*")
+	rp = parseRoute("/api/v1/:param/abc/*", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/v1/", Length: 8},
@@ -42,7 +46,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		wildCardCount: 1,
 	}, rp)
 
-	rp = parseRoute("/v1/some/resource/name\\:customVerb")
+	rp = parseRoute("/v1/some/resource/name\\:customVerb", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/name:customVerb", Length: 33, IsLast: true},
@@ -50,7 +54,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: nil,
 	}, rp)
 
-	rp = parseRoute("/v1/some/resource/:name\\:customVerb")
+	rp = parseRoute("/v1/some/resource/:name\\:customVerb", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/", Length: 18},
@@ -61,7 +65,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 
 	// heavy test with escaped characters
-	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*")
+	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/name:customVerb??/", Length: 36},
@@ -73,7 +77,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		wildCardCount: 1,
 	}, rp)
 
-	rp = parseRoute("/api/*/:param/:param2")
+	rp = parseRoute("/api/*/:param/:param2", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/", Length: 5, HasOptionalSlash: true},
@@ -87,7 +91,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		wildCardCount: 1,
 	}, rp)
 
-	rp = parseRoute("/test:optional?:optional2?")
+	rp = parseRoute("/test:optional?:optional2?", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/test", Length: 5},
@@ -97,7 +101,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: []string{"optional", "optional2"},
 	}, rp)
 
-	rp = parseRoute("/config/+.json")
+	rp = parseRoute("/config/+.json", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/config/", Length: 8},
@@ -108,7 +112,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		plusCount: 1,
 	}, rp)
 
-	rp = parseRoute("/api/:day.:month?.:year?")
+	rp = parseRoute("/api/:day.:month?.:year?", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/", Length: 5},
@@ -121,7 +125,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: []string{"day", "month", "year"},
 	}, rp)
 
-	rp = parseRoute("/*v1*/proxy")
+	rp = parseRoute("/*v1*/proxy", regexp.MustCompile)
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/", Length: 1, HasOptionalSlash: true},
@@ -140,7 +144,7 @@ func Test_Path_matchParams(t *testing.T) {
 	t.Parallel()
 	var ctxParams [maxParams]string
 	testCaseFn := func(testCollection routeCaseCollection) {
-		parser := parseRoute(testCollection.pattern)
+		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
 		for _, c := range testCollection.testCases {
 			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
 			require.Equal(t, c.match, match, "route: '%s', url: '%s'", testCollection.pattern, c.url)
@@ -267,47 +271,47 @@ func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 	}{
 		{
 			name:       "minLen invalid metadata",
-			constraint: Constraint{ID: minLenConstraint, Data: []string{"abc"}},
+			constraint: *newConstraint(minLenConstraintType{}, ConstraintMinLen, []string{"abc"}),
 			param:      "abcd",
 		},
 		{
 			name:       "maxLen invalid metadata",
-			constraint: Constraint{ID: maxLenConstraint, Data: []string{"abc"}},
+			constraint: *newConstraint(maxLenConstraintType{}, ConstraintMaxLen, []string{"abc"}),
 			param:      "abcd",
 		},
 		{
 			name:       "len invalid metadata",
-			constraint: Constraint{ID: lenConstraint, Data: []string{"abc"}},
+			constraint: *newConstraint(lenConstraintType{}, ConstraintLen, []string{"abc"}),
 			param:      "abcd",
 		},
 		{
 			name:       "betweenLen invalid first metadata",
-			constraint: Constraint{ID: betweenLenConstraint, Data: []string{"abc", "5"}},
+			constraint: *newConstraint(betweenLenConstraintType{}, ConstraintBetweenLen, []string{"abc", "5"}),
 			param:      "abcd",
 		},
 		{
 			name:       "betweenLen invalid second metadata",
-			constraint: Constraint{ID: betweenLenConstraint, Data: []string{"1", "abc"}},
+			constraint: *newConstraint(betweenLenConstraintType{}, ConstraintBetweenLen, []string{"1", "abc"}),
 			param:      "abcd",
 		},
 		{
 			name:       "min invalid metadata",
-			constraint: Constraint{ID: minConstraint, Data: []string{"abc"}},
+			constraint: *newConstraint(minConstraintType{}, ConstraintMin, []string{"abc"}),
 			param:      "10",
 		},
 		{
 			name:       "max invalid metadata",
-			constraint: Constraint{ID: maxConstraint, Data: []string{"abc"}},
+			constraint: *newConstraint(maxConstraintType{}, ConstraintMax, []string{"abc"}),
 			param:      "10",
 		},
 		{
 			name:       "range invalid first metadata",
-			constraint: Constraint{ID: rangeConstraint, Data: []string{"abc", "10"}},
+			constraint: *newConstraint(rangeConstraintType{}, ConstraintRange, []string{"abc", "10"}),
 			param:      "7",
 		},
 		{
 			name:       "range invalid second metadata",
-			constraint: Constraint{ID: rangeConstraint, Data: []string{"1", "abc"}},
+			constraint: *newConstraint(rangeConstraintType{}, ConstraintRange, []string{"1", "abc"}),
 			param:      "7",
 		},
 	}
@@ -318,6 +322,16 @@ func Test_ConstraintCheckConstraint_InvalidMetadata(t *testing.T) {
 			require.False(t, testCase.constraint.CheckConstraint(testCase.param))
 		})
 	}
+}
+
+func Test_ConstraintCheckConstraint_NilRegexMatcher(t *testing.T) {
+	t.Parallel()
+
+	constraint := *newConstraint(regexConstraintType{}, ConstraintRegex, []string{"("})
+
+	require.NotPanics(t, func() {
+		require.False(t, constraint.CheckConstraint("123"))
+	})
 }
 
 func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
@@ -334,14 +348,14 @@ func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 func Benchmark_Path_matchParams(t *testing.B) {
 	var ctxParams [maxParams]string
 	benchCaseFn := func(testCollection routeCaseCollection) {
-		parser := parseRoute(testCollection.pattern)
+		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
 		for _, c := range testCollection.testCases {
 			var matchRes bool
 			state := "match"
 			if !c.match {
 				state = "not match"
 			}
-			t.Run(testCollection.pattern+" | "+state+" | "+c.url, func(b *testing.B) {
+			t.Run(testCollection.pattern+"_"+state+"_"+c.url, func(b *testing.B) {
 				for b.Loop() {
 					if match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck); match {
 						// Get testCases from the original path
@@ -362,6 +376,42 @@ func Benchmark_Path_matchParams(t *testing.B) {
 }
 
 // go test -race -run Test_RoutePatternMatch
+func Benchmark_ConstraintExecution(b *testing.B) {
+	var ctxParams [maxParams]string
+	var match bool
+
+	constraintPatterns := []struct {
+		name    string
+		pattern string
+		url     string
+	}{
+		{"int", "/api/:id<int>", "/api/12345"},
+		{"bool", "/api/:flag<bool>", "/api/true"},
+		{"float", "/api/:val<float>", "/api/3.14"},
+		{"alpha", "/api/:name<alpha>", "/api/hello"},
+		{"guid", "/api/:id<guid>", "/api/12345678-1234-1234-1234-123456789abc"},
+		{"minLen", "/api/:name<minLen(3)>", "/api/hello"},
+		{"maxLen", "/api/:name<maxLen(10)>", "/api/hello"},
+		{"len", "/api/:name<len(5)>", "/api/hello"},
+		{"betweenLen", "/api/:name<betweenLen(2,10)>", "/api/hello"},
+		{"min", "/api/:id<min(5)>", "/api/10"},
+		{"max", "/api/:id<max(100)>", "/api/10"},
+		{"range", "/api/:id<range(1,20)>", "/api/10"},
+		{"datetime", "/api/:date<datetime(2006-01-02)>", "/api/2024-01-15"},
+		{"regex", "/api/:id<regex(^[0-9]+$)>", "/api/12345"},
+	}
+
+	for _, tc := range constraintPatterns {
+		b.Run(tc.name, func(b *testing.B) {
+			parser := parseRoute(tc.pattern, regexp.MustCompile)
+			for b.Loop() {
+				match = parser.getMatch(tc.url, tc.url, &ctxParams, false)
+			}
+		})
+	}
+	_ = match
+}
+
 func Benchmark_RoutePatternMatch(t *testing.B) {
 	benchCaseFn := func(testCollection routeCaseCollection) {
 		for _, c := range testCollection.testCases {
@@ -374,7 +424,7 @@ func Benchmark_RoutePatternMatch(t *testing.B) {
 			if !c.match {
 				state = "not match"
 			}
-			t.Run(testCollection.pattern+" | "+state+" | "+c.url, func(b *testing.B) {
+			t.Run(testCollection.pattern+"_"+state+"_"+c.url, func(b *testing.B) {
 				for b.Loop() {
 					if match := RoutePatternMatch(c.url, testCollection.pattern); match {
 						// Get testCases from the original path
@@ -399,7 +449,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams)
 		require.NotPanics(t, func() {
-			parseRoute(route)
+			parseRoute(route, regexp.MustCompile)
 		})
 	})
 
@@ -408,7 +458,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams+1)
 		require.PanicsWithValue(t, "Route '"+route+"' has 31 parameters, which exceeds the maximum of 30", func() {
-			parseRoute(route)
+			parseRoute(route, regexp.MustCompile)
 		})
 	})
 
@@ -417,7 +467,7 @@ func Test_Route_TooManyParams_Panic(t *testing.T) {
 		t.Parallel()
 		route := paramsRoute(t, maxParams+5)
 		require.PanicsWithValue(t, "Route '"+route+"' has 35 parameters, which exceeds the maximum of 30", func() {
-			parseRoute(route)
+			parseRoute(route, regexp.MustCompile)
 		})
 	})
 }
@@ -461,4 +511,262 @@ func paramsRoute(t *testing.T, n int) string {
 		params[i] = fmt.Sprintf(":p%d", i+1)
 	}
 	return "/" + strings.Join(params, "/")
+}
+
+// Test_RegexHandler_Default verifies Fiber defaults RegexHandler to regexp.MustCompile.
+func Test_RegexHandler_Default(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	require.NotNil(t, app.config.RegexHandler)
+	require.Equal(t, reflect.ValueOf(regexp.MustCompile).Pointer(), reflect.ValueOf(app.config.RegexHandler).Pointer())
+
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
+		return c.SendString("matched")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+// mockRegexCompiler is a mock implementation of regex matching for testing
+type mockRegexCompiler struct {
+	*regexp.Regexp
+	matchCalled bool
+}
+
+func (m *mockRegexCompiler) MatchString(s string) bool {
+	m.matchCalled = true
+	return m.Regexp.MatchString(s)
+}
+
+type matchOnlyRegexCompiler struct {
+	re *regexp.Regexp
+}
+
+func (m *matchOnlyRegexCompiler) MatchString(s string) bool {
+	return m.re.MatchString(s)
+}
+
+type regexPattern string
+
+// mockRegexHandler is a mock regex handler function for testing
+func mockRegexHandler(lastPattern *string, compileCalled *bool) any {
+	return func(pattern string) regexMatcher {
+		*compileCalled = true
+		*lastPattern = pattern
+		return &mockRegexCompiler{
+			Regexp: regexp.MustCompile(pattern),
+		}
+	}
+}
+
+// Test_RegexHandler_Custom verifies that a custom regex handler can be used
+func Test_RegexHandler_Custom(t *testing.T) {
+	t.Parallel()
+
+	var lastPattern string
+	var compileCalled bool
+
+	// Create app with custom regex handler
+	app := New(Config{
+		RegexHandler: mockRegexHandler(&lastPattern, &compileCalled),
+	})
+
+	// Register a route with regex constraint
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
+		return c.SendString("matched")
+	})
+
+	// Verify the mock handler was used during route registration
+	require.True(t, compileCalled, "RegexHandler should have been called")
+	require.Equal(t, `\d+`, lastPattern, "Pattern should match")
+
+	// Test the route
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	// Test with non-matching pattern
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/api/abc", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_RegexHandler_MatchOnlyCompiler verifies Fiber accepts compilers that only implement MatchString.
+func Test_RegexHandler_MatchOnlyCompiler(t *testing.T) {
+	t.Parallel()
+
+	var compileCalled bool
+
+	app := New(Config{
+		RegexHandler: func(pattern string) *matchOnlyRegexCompiler {
+			compileCalled = true
+			return &matchOnlyRegexCompiler{re: regexp.MustCompile(pattern)}
+		},
+	})
+
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
+		return c.SendString("matched")
+	})
+
+	require.True(t, compileCalled)
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+// Test_RegexHandler_DefaultCompilerPreservesConstraintField verifies stdlib handlers still populate the exported regexp field.
+func Test_RegexHandler_DefaultCompilerPreservesConstraintField(t *testing.T) {
+	t.Parallel()
+
+	parser := parseRoute("/api/:id<regex(\\d+)>", regexp.MustCompile)
+	require.Len(t, parser.segs, 2)
+	require.Len(t, parser.segs[1].Constraints, 1)
+	require.NotNil(t, parser.segs[1].Constraints[0].RegexCompiler)
+	require.True(t, parser.segs[1].Constraints[0].matchConstraint("123"))
+	require.False(t, parser.segs[1].Constraints[0].matchConstraint("abc"))
+}
+
+func Test_RegexHandler_CustomCompilerUsesSegmentMatcher(t *testing.T) {
+	t.Parallel()
+
+	parser := parseRoute("/api/:id<regex(\\d+)>", func(pattern string) *matchOnlyRegexCompiler {
+		return &matchOnlyRegexCompiler{re: regexp.MustCompile(pattern)}
+	})
+	require.Len(t, parser.segs, 2)
+	require.Len(t, parser.segs[1].Constraints, 1)
+	require.True(t, parser.segs[1].Constraints[0].matchConstraint("123"))
+	require.False(t, parser.segs[1].Constraints[0].matchConstraint("abc"))
+}
+
+// Test_RoutePatternMatch_WithRegex verifies RoutePatternMatch works with regex constraints
+func Test_RoutePatternMatch_WithRegex(t *testing.T) {
+	t.Parallel()
+
+	// Test with default handler
+	require.True(t, RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>"))
+	require.False(t, RoutePatternMatch("/api/abc", "/api/:id<regex(\\d+)>"))
+
+	// Test with custom config
+	var lastPattern string
+	var compileCalled bool
+	require.True(t, RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>", Config{
+		RegexHandler: mockRegexHandler(&lastPattern, &compileCalled),
+	}))
+	require.True(t, compileCalled, "RegexHandler should have been called")
+}
+
+// Test_RegexHandler_NilDefaultsToStdlib verifies that nil RegexHandler defaults to stdlib
+func Test_RegexHandler_NilDefaultsToStdlib(t *testing.T) {
+	t.Parallel()
+
+	// Create app without specifying RegexHandler (should default)
+	app := New()
+
+	// Verify it's set to the default
+	require.NotNil(t, app.config.RegexHandler)
+
+	// Register a route with regex constraint
+	app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
+		return c.SendString("matched")
+	})
+
+	// Test the route works
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/123", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+}
+
+// Test_RegexHandler_ComplexPattern tests complex regex patterns
+func Test_RegexHandler_ComplexPattern(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	// Test date pattern
+	app.Get("/date/:date<regex(\\d{4}-\\d{2}-\\d{2})>", func(c Ctx) error {
+		return c.SendString("date: " + c.Params("date"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/date/2024-01-15", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/date/2024-1-5", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, 404, resp.StatusCode)
+}
+
+// Test_RegexHandler_InvalidConfigurationPanics verifies invalid handlers fail fast.
+func Test_RegexHandler_InvalidConfigurationPanics(t *testing.T) {
+	t.Parallel()
+
+	t.Run("typed_nil_function", func(t *testing.T) {
+		t.Parallel()
+
+		var handler func(string) *regexp.Regexp
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
+			New(Config{RegexHandler: handler})
+		})
+	})
+
+	t.Run("non_function", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
+			New(Config{RegexHandler: "invalid"})
+		})
+	})
+
+	t.Run("invalid_signature", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler must have signature func(string) T", func() {
+			New(Config{RegexHandler: func(int) *regexp.Regexp { return nil }})
+		})
+	})
+
+	t.Run("named_string_parameter", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler must have signature func(string) T", func() {
+			New(Config{RegexHandler: func(regexPattern) *regexp.Regexp { return nil }})
+		})
+	})
+
+	t.Run("invalid_return_type", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fiber: Config.RegexHandler return type must support MatchString(string) bool", func() {
+			New(Config{RegexHandler: func(string) string { return "" }})
+		})
+	})
+}
+
+// Test_RegexHandler_NilReturnPanics verifies a nil compiled matcher is rejected.
+func Test_RegexHandler_NilReturnPanics(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		RegexHandler: func(string) *regexp.Regexp { return nil },
+	})
+
+	require.PanicsWithValue(t, "fiber: Config.RegexHandler must not return nil", func() {
+		app.Get("/api/:id<regex(\\d+)>", func(c Ctx) error {
+			return c.SendString("matched")
+		})
+	})
+}
+
+// Test_RoutePatternMatch_InvalidRegexHandlerPanics verifies RoutePatternMatch also validates RegexHandler configuration.
+func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
+	t.Parallel()
+
+	require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
+		RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>", Config{RegexHandler: "invalid"})
+	})
 }

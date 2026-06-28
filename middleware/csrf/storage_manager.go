@@ -3,38 +3,24 @@ package csrf
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/memory"
 )
 
-// msgp -file="storage_manager.go" -o="storage_manager_msgp.go" -tests=true -unexported
-//
-//go:generate msgp -o=storage_manager_msgp.go -tests=true -unexported
-type item struct{}
-
 const redactedKey = "[redacted]"
 
-//msgp:ignore manager
-//msgp:ignore storageManager
 type storageManager struct {
-	pool       sync.Pool       `msg:"-"` //nolint:revive // Ignore unexported type
-	memory     *memory.Storage `msg:"-"` //nolint:revive // Ignore unexported type
-	storage    fiber.Storage   `msg:"-"` //nolint:revive // Ignore unexported type
-	redactKeys bool
+	memory           *memory.Storage
+	storage          fiber.Storage
+	shouldRedactKeys bool
 }
 
-func newStorageManager(storage fiber.Storage, redactKeys bool) *storageManager {
+func newStorageManager(storage fiber.Storage, shouldRedactKeys bool) *storageManager {
 	// Create new storage handler
 	storageManager := &storageManager{
-		pool: sync.Pool{
-			New: func() any {
-				return new(item)
-			},
-		},
-		redactKeys: redactKeys,
+		shouldRedactKeys: shouldRedactKeys,
 	}
 	if storage != nil {
 		// Use provided storage if provided
@@ -94,7 +80,7 @@ func (m *storageManager) delRaw(ctx context.Context, key string) error {
 }
 
 func (m *storageManager) logKey(key string) string {
-	if m.redactKeys {
+	if m.shouldRedactKeys {
 		return redactedKey
 	}
 	return key

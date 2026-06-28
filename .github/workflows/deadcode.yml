@@ -1,0 +1,47 @@
+name: Dead Code (manual)
+
+# Manually-triggered, report-only scan for dead code that the standard `unused`
+# linter cannot catch: unexported symbols referenced only from test files.
+# staticcheck (like golangci-lint's `unused`) counts test references as usage,
+# so this job strips *_test.go and re-runs staticcheck, surfacing test-only
+# symbols as unused (U1000). It never modifies the repo and never posts; the
+# findings are written to the run summary. It does not fail the run, because
+# some flagged symbols may be intentionally test-only (review each by hand).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deadcode:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - name: Detect test-only dead code (report only)
+        run: |
+          work="$(mktemp -d)"
+          rsync -a --exclude='.git' ./ "$work/"
+          find "$work" -name '*_test.go' -delete
+          cd "$work"
+          {
+            echo "## Dead code report (test-only / unused)"
+            echo
+            echo "Unexported symbols unused once test files are removed."
+            echo "Some may be intentional test-only helpers; review each by hand."
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          staticcheck -checks=U1000 ./... 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

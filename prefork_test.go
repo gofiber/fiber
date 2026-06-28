@@ -17,6 +17,8 @@ import (
 )
 
 func Test_App_Prefork_Child_Process(t *testing.T) {
+	skipIfNoIPv6(t)
+
 	enableTestPreforkMaster(t)
 
 	setupIsChild(t)
@@ -40,7 +42,6 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	if err != nil {
 		require.NoError(t, err)
 	}
-	//nolint:gosec // We're in a test so using old ciphers is fine
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
 	go func() {
