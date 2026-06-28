@@ -689,3 +689,44 @@ func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
 	require.Equal(t, cacheHit, doQuery(bodyA), "identical body must hit cache")
 	require.Equal(t, int32(2), count.Load())
 }
+
+func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 1 * time.Hour,
+		Methods:    []string{fiber.MethodQuery},
+	}))
+
+	var count atomic.Int32
+	app.Query("/", func(c fiber.Ctx) error {
+		count.Add(1)
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		return c.SendString("handler auth=" + c.Get(fiber.HeaderAuthorization))
+	})
+
+	const authHeader = "Bearer victim-token"
+	const baseBody = "B"
+	authSum := sha256.Sum256([]byte(authHeader))
+	authHash := hex.EncodeToString(authSum[:])
+	craftedBody := baseBody + "|auth=" + authHash
+
+	authReq := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(baseBody))
+	authReq.Header.Set(fiber.HeaderAuthorization, authHeader)
+	authResp, err := app.Test(authReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, authResp.StatusCode)
+	require.Equal(t, cacheMiss, authResp.Header.Get("X-Cache"))
+
+	unauthReq := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(craftedBody))
+	unauthResp, err := app.Test(unauthReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, unauthResp.StatusCode)
+	require.Equal(t, cacheMiss, unauthResp.Header.Get("X-Cache"))
+
+	body, err := io.ReadAll(unauthResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "handler auth=", string(body))
+	require.Equal(t, int32(2), count.Load())
+}
