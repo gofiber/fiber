@@ -110,6 +110,9 @@ type App struct {
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[int][]*Route
+	// treeBucketMethods maps treeHash -> bitmask of methods with routes in that bucket
+	// Used for fast 405 detection: skip scanning methods that have no routes for this prefix
+	treeBucketMethods map[int]int
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex

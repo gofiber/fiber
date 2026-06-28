@@ -448,9 +448,9 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 
 // routeLookaheadResult holds the result of a route lookahead scan.
 type routeLookaheadResult struct {
-	// allowedMethods contains HTTP methods that match this path (for 405 responses).
-	// Empty if the path doesn't exist for any method.
-	allowedMethods []string
+	// allowedMethodsMask is a bitmask where bit i is set if method i matches this path.
+	// Used for 405 responses. Zero means no methods match (404 case).
+	allowedMethodsMask int
 	// matchIndex is the tree-stack index of the first matching endpoint route
 	// for the requested method, or -1 if none matches.
 	matchIndex int
@@ -481,11 +481,26 @@ func (app *App) routeLookahead(methodInt, treeHash int, detectionPath, path stri
 	}
 
 	// No match for requested method - scan other methods for 405 detection
-	var allowedMethods []string
-	methods := app.config.RequestMethods
+	// Use treeBucketMethods to skip methods that have no routes in this bucket
+	bucketMethods := app.treeBucketMethods[treeHash] | app.treeBucketMethods[0]
+	if bucketMethods == 0 {
+		// No methods have routes in this bucket at all - definite 404
+		return routeLookaheadResult{matchIndex: -1, allowedMethodsMask: 0}
+	}
 
-	for i := range methods {
-		if i == methodInt {
+	// Exclude the method we already checked
+	bucketMethods &^= 1 << methodInt
+	if bucketMethods == 0 {
+		// Only our method had routes in this bucket, and we didn't match - 404
+		return routeLookaheadResult{matchIndex: -1, allowedMethodsMask: 0}
+	}
+
+	var allowedMask int
+	methodCount := len(app.config.RequestMethods)
+
+	for i := range methodCount {
+		// Skip methods that have no routes in this bucket
+		if bucketMethods&(1<<i) == 0 {
 			continue
 		}
 
@@ -499,13 +514,13 @@ func (app *App) routeLookahead(methodInt, treeHash int, detectionPath, path stri
 				continue
 			}
 			if route.match(detectionPath, path, &params) {
-				allowedMethods = append(allowedMethods, methods[i])
+				allowedMask |= 1 << i
 				break // Found a match for this method, check next method
 			}
 		}
 	}
 
-	return routeLookaheadResult{matchIndex: -1, allowedMethods: allowedMethods}
+	return routeLookaheadResult{matchIndex: -1, allowedMethodsMask: allowedMask}
 }
 
 func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
@@ -528,10 +543,13 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path))
 		if result.matchIndex == -1 {
 			var err error
-			if len(result.allowedMethods) > 0 {
+			if result.allowedMethodsMask != 0 {
 				// Path exists for other methods - 405 Method Not Allowed
-				for _, method := range result.allowedMethods {
-					ctx.Append(HeaderAllow, method)
+				methods := app.config.RequestMethods
+				for i := range methods {
+					if result.allowedMethodsMask&(1<<i) != 0 {
+						ctx.Append(HeaderAllow, methods[i])
+					}
 				}
 				err = ErrMethodNotAllowed
 			} else {
@@ -579,10 +597,13 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 		if result.matchIndex == -1 {
 			// No match for requested method - determine 404 vs 405
 			var err error
-			if len(result.allowedMethods) > 0 {
+			if result.allowedMethodsMask != 0 {
 				// Path exists for other methods - 405 Method Not Allowed
-				for _, method := range result.allowedMethods {
-					ctx.Append(HeaderAllow, method)
+				methods := app.config.RequestMethods
+				for i := range methods {
+					if result.allowedMethodsMask&(1<<i) != 0 {
+						ctx.Append(HeaderAllow, methods[i])
+					}
 				}
 				err = ErrMethodNotAllowed
 			} else {
@@ -971,6 +992,11 @@ func (app *App) buildTree() *App {
 		return app
 	}
 
+	// Reset treeBucketMethods for rebuild (only when SkipUnmatchedRoutes is enabled)
+	if app.config.SkipUnmatchedRoutes {
+		app.treeBucketMethods = make(map[int]int)
+	}
+
 	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
 	for method := range app.config.RequestMethods {
 		routes := app.stack[method]
@@ -1015,6 +1041,21 @@ func (app *App) buildTree() *App {
 		}
 
 		app.treeStack[method] = tsMap
+
+		// Update treeBucketMethods: mark which buckets this method has routes in
+		// Only needed when SkipUnmatchedRoutes is enabled
+		if app.config.SkipUnmatchedRoutes {
+			methodBit := 1 << method
+			for bucket, routes := range tsMap {
+				// Only count buckets with actual endpoint routes (not just middleware)
+				for _, route := range routes {
+					if !route.use && !route.mount {
+						app.treeBucketMethods[bucket] |= methodBit
+						break
+					}
+				}
+			}
+		}
 	}
 
 	// reset the flag and return
