@@ -16,13 +16,14 @@ import (
 
 // Session represents a user session.
 type Session struct {
-	ctx         fiber.Ctx     // fiber context
-	config      *Store        // store configuration
-	data        *data         // key value data
-	id          string        // session id
-	idleTimeout time.Duration // idleTimeout of this session
-	mu          sync.RWMutex  // Mutex to protect non-data fields
-	fresh       bool          // if new session
+	ctx         fiber.Ctx            // fiber context
+	config      *Store               // store configuration
+	data        *data                // key value data
+	id          string               // session id
+	extractor   extractors.Extractor // extractor that supplied the session ID
+	idleTimeout time.Duration        // idleTimeout of this session
+	mu          sync.RWMutex         // Mutex to protect non-data fields
+	fresh       bool                 // if new session
 }
 
 type absExpirationKeyType int
@@ -92,6 +93,7 @@ func releaseSession(s *Session) {
 	s.idleTimeout = 0
 	s.ctx = nil
 	s.config = nil
+	s.extractor = extractors.Extractor{}
 	if s.data != nil {
 		s.data.Reset()
 	}
@@ -375,26 +377,26 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 		return []extractors.Extractor{{Source: extractors.SourceCookie, Key: "session_id"}} // Safe default
 	}
 
-	extractor := s.config.Extractor
-	var relevantExtractors []extractors.Extractor
+	if s.extractor.Key != "" && (s.extractor.Source == extractors.SourceCookie || s.extractor.Source == extractors.SourceHeader) {
+		return []extractors.Extractor{s.extractor}
+	}
 
-	// If it's a chained extractor, collect all cookie/header extractors
+	extractor := s.config.Extractor
 	if len(extractor.Chain) > 0 {
+		var relevantExtractors []extractors.Extractor
 		for _, chainExtractor := range extractor.Chain {
 			if chainExtractor.Source == extractors.SourceCookie || chainExtractor.Source == extractors.SourceHeader {
 				relevantExtractors = append(relevantExtractors, chainExtractor)
 			}
 		}
-	} else if extractor.Source == extractors.SourceCookie || extractor.Source == extractors.SourceHeader {
-		// Single extractor - only include if it's cookie or header
-		relevantExtractors = append(relevantExtractors, extractor)
+		return relevantExtractors
 	}
 
-	// If no cookie/header extractors found and the config has a store but no explicit cookie/header extractors,
-	// we should not default to cookie. This allows for read-only configurations (e.g., query/param/form/custom).
-	// Only add default cookie extractor if we have no extractors at all (nil config case is handled above)
+	if extractor.Source == extractors.SourceCookie || extractor.Source == extractors.SourceHeader {
+		return []extractors.Extractor{extractor}
+	}
 
-	return relevantExtractors
+	return nil
 }
 
 func (s *Session) setSession() {
