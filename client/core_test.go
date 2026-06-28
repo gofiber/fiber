@@ -405,6 +405,44 @@ func Test_AfterHooks_DoesNotSerializeConcurrentRequests(t *testing.T) {
 	require.NoError(t, <-secondDone)
 }
 
+// Test_PreHooks_ReturnsUserHookError verifies a failing user request hook
+// aborts preHooks and its error is propagated (and the client lock is released).
+func Test_PreHooks_ReturnsUserHookError(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	wantErr := errors.New("request hook failed")
+	client.AddRequestHook(func(_ *Client, _ *Request) error { return wantErr })
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+	core.req.SetURL("http://example.com")
+
+	require.ErrorIs(t, core.preHooks(), wantErr)
+}
+
+// Test_AfterHooks_ReturnsUserHookError verifies a failing user response hook
+// aborts afterHooks and its error is propagated.
+func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	wantErr := errors.New("response hook failed")
+	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error { return wantErr })
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+
+	resp := AcquireResponse()
+	defer ReleaseResponse(resp)
+
+	require.ErrorIs(t, core.afterHooks(resp), wantErr)
+}
+
 type blockingErrTransport struct {
 	err error
 
