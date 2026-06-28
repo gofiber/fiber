@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -3269,6 +3270,279 @@ func Test_App_SkipUnmatchedRoutes_ParametricRoute405(t *testing.T) {
 		allow := resp.Header.Get(HeaderAllow)
 		require.Contains(t, allow, MethodGet)
 		require.Contains(t, allow, MethodHead)
+	})
+
+	t.Run("multiple params returns 405", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/users/:userId/posts/:postId", func(c Ctx) error { return c.SendStatus(StatusOK) })
+		app.Put("/users/:userId/posts/:postId", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodDelete, "/users/123/posts/456", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodPut)
+	})
+
+	t.Run("param with constraint returns 405", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/users/:id<int>", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		// Wrong method with valid param
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/users/123", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+
+		// Wrong method with invalid param - should be 404 (constraint doesn't match)
+		resp, err = app.Test(httptest.NewRequest(MethodPost, "/users/abc", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("optional param returns 405", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/files/:name?", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		// Without optional param
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/files", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+
+		// With optional param
+		resp, err = app.Test(httptest.NewRequest(MethodPost, "/files/doc.txt", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	})
+
+	t.Run("greedy param plus returns 405", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/api/+", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/api/v1/users/123", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	})
+
+	t.Run("similar param patterns different methods", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/items/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
+		app.Post("/items/:id/activate", func(c Ctx) error { return c.SendStatus(StatusOK) })
+		app.Delete("/items/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		// /items/123 - GET and DELETE exist
+		resp, err := app.Test(httptest.NewRequest(MethodPut, "/items/123", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodDelete)
+		require.NotContains(t, allow, MethodPost) // POST is for /items/:id/activate
+
+		// /items/123/activate - only POST exists
+		resp, err = app.Test(httptest.NewRequest(MethodGet, "/items/123/activate", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow = resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodPost)
+		require.NotContains(t, allow, MethodGet)
+	})
+
+	t.Run("param at different positions", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/:version/api/users", func(c Ctx) error { return c.SendStatus(StatusOK) })
+		app.Post("/:version/api/users", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodDelete, "/v1/api/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodPost)
+	})
+
+	t.Run("nonexistent param path returns 404", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/users/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		// Path that doesn't match any route pattern
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/posts/123", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.Empty(t, resp.Header.Get(HeaderAllow))
+	})
+
+	t.Run("4 params returns 405", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/org/:orgId/team/:teamId/project/:projectId/task/:taskId", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+		app.Put("/org/:orgId/team/:teamId/project/:projectId/task/:taskId", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+		app.Delete("/org/:orgId/team/:teamId/project/:projectId/task/:taskId", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/org/1/team/2/project/3/task/4", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodPut)
+		require.Contains(t, allow, MethodDelete)
+	})
+
+	t.Run("5 params returns 405", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/api/:version/org/:orgId/repo/:repoId/branch/:branchId/commit/:commitId", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+		app.Post("/api/:version/org/:orgId/repo/:repoId/branch/:branchId/commit/:commitId", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodDelete, "/api/v1/org/github/repo/fiber/branch/main/commit/abc123", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodPost)
+		require.Contains(t, allow, MethodHead)
+	})
+
+	t.Run("5 params with constraints returns 405", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/v:version<int>/user/:userId<int>/post/:postId<int>/comment/:commentId<int>/reply/:replyId<int>", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+		app.Patch("/v:version<int>/user/:userId<int>/post/:postId<int>/comment/:commentId<int>/reply/:replyId<int>", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+
+		// Valid constraints - should 405
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/v1/user/100/post/200/comment/300/reply/400", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+
+		// Invalid constraint (non-int) - should 404
+		resp, err = app.Test(httptest.NewRequest(MethodPost, "/v1/user/abc/post/200/comment/300/reply/400", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("deeply nested params matched route", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/a/:p1/b/:p2/c/:p3/d/:p4/e/:p5", func(c Ctx) error {
+			return c.SendString(c.Params("p1") + c.Params("p2") + c.Params("p3") + c.Params("p4") + c.Params("p5"))
+		})
+
+		// Should match and return params
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/a/1/b/2/c/3/d/4/e/5", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		require.Equal(t, "12345", string(body))
+	})
+
+	t.Run("mixed static and params 5 levels", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/api/v1/users/:userId/posts/:postId/comments/:commentId/likes/:likeId/details/:detailId", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+		app.Delete("/api/v1/users/:userId/posts/:postId/comments/:commentId/likes/:likeId/details/:detailId", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodPut, "/api/v1/users/u1/posts/p2/comments/c3/likes/l4/details/d5", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodDelete)
+	})
+
+	t.Run("params with special characters in values", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/files/:folder/:subfolder/:filename", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+
+		// URL-encoded special chars
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/files/my-folder/sub_folder/file-name.txt", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	})
+
+	t.Run("multiple routes with overlapping params", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/shop/:shopId/product/:productId/variant/:variantId/option/:optionId", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+		app.Post("/shop/:shopId/product/:productId/variant/:variantId/option/:optionId", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+		app.Get("/shop/:shopId/product/:productId/review/:reviewId/reply/:replyId", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+
+		// First pattern - 405
+		resp, err := app.Test(httptest.NewRequest(MethodDelete, "/shop/s1/product/p1/variant/v1/option/o1", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+
+		// Second pattern - 405
+		resp, err = app.Test(httptest.NewRequest(MethodPost, "/shop/s1/product/p1/review/r1/reply/rp1", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+
+		// Non-matching pattern - 404
+		resp, err = app.Test(httptest.NewRequest(MethodGet, "/shop/s1/product/p1/category/c1/item/i1", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("stress test many params concurrent", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/l1/:p1/l2/:p2/l3/:p3/l4/:p4/l5/:p5", func(c Ctx) error { return c.SendStatus(StatusOK) })
+		app.Post("/l1/:p1/l2/:p2/l3/:p3/l4/:p4/l5/:p5", func(c Ctx) error { return c.SendStatus(StatusOK) })
+		app.Put("/l1/:p1/l2/:p2/l3/:p3/l4/:p4/l5/:p5", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		// Run multiple requests concurrently
+		var wg sync.WaitGroup
+		for i := 0; i < 100; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				path := fmt.Sprintf("/l1/a%d/l2/b%d/l3/c%d/l4/d%d/l5/e%d", i, i, i, i, i)
+
+				// Test 405
+				resp, err := app.Test(httptest.NewRequest(MethodDelete, path, http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+
+				// Test 200
+				resp, err = app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusOK, resp.StatusCode)
+			}(i)
+		}
+		wg.Wait()
 	})
 }
 
