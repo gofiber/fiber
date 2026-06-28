@@ -423,6 +423,31 @@ func Test_PreHooks_ReturnsUserHookError(t *testing.T) {
 	require.ErrorIs(t, core.preHooks(), wantErr)
 }
 
+func Test_PreHooks_AllowsUserHookClientConfigMutation(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	client.AddRequestHook(func(c *Client, _ *Request) error {
+		c.SetBaseURL("http://example.com")
+		c.SetPathParam("resource", "users")
+		c.SetParam("page", "1")
+		c.SetHeader("x-fiber-test", "ok")
+		c.SetCookie("session", "abc")
+		return nil
+	})
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+	core.req.SetURL("/:resource")
+
+	require.NoError(t, core.preHooks())
+	require.Equal(t, "http://example.com/users?page=1", core.req.RawRequest.URI().String())
+	require.Equal(t, "ok", string(core.req.RawRequest.Header.Peek("x-fiber-test")))
+	require.Contains(t, string(core.req.RawRequest.Header.Cookie("session")), "abc")
+}
+
 // Test_AfterHooks_ReturnsUserHookError verifies a failing user response hook
 // aborts afterHooks and its error is propagated.
 func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {

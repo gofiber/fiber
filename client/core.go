@@ -45,7 +45,7 @@ func (c *core) getRetryConfig() *RetryConfig {
 	c.client.mu.RLock()
 	defer c.client.mu.RUnlock()
 
-	cfg := c.client.RetryConfig()
+	cfg := c.client.retryConfig
 	if cfg == nil {
 		return nil
 	}
@@ -202,8 +202,13 @@ func (c *core) timeout() context.CancelFunc {
 
 	if c.req.timeout > 0 {
 		c.ctx, cancel = context.WithTimeout(c.ctx, c.req.timeout)
-	} else if c.client.timeout > 0 {
-		c.ctx, cancel = context.WithTimeout(c.ctx, c.client.timeout)
+	} else {
+		c.client.mu.RLock()
+		timeout := c.client.timeout
+		c.client.mu.RUnlock()
+		if timeout > 0 {
+			c.ctx, cancel = context.WithTimeout(c.ctx, timeout)
+		}
 	}
 
 	return cancel

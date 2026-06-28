@@ -90,7 +90,7 @@ func parserRequestURL(c *Client, req *Request) error {
 	}
 
 	// Set the URI in the raw request.
-	disablePathNormalizing := c.DisablePathNormalizing() || req.DisablePathNormalizing()
+	disablePathNormalizing := c.isPathNormalizingDisabled || req.DisablePathNormalizing()
 	req.RawRequest.SetRequestURI(uri)
 	req.RawRequest.URI().DisablePathNormalizing = disablePathNormalizing
 	if disablePathNormalizing {
