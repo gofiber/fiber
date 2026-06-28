@@ -131,7 +131,10 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		id = s.getSessionID(c)
 	}
 
-	selectedExtractor, _ := c.Locals(sessionExtractorContextKey).(extractors.Extractor)
+	selectedExtractor, hasExtractor := c.Locals(sessionExtractorContextKey).(extractors.Extractor)
+	if !hasExtractor {
+		selectedExtractor = extractors.Extractor{}
+	}
 
 	fresh := false // Session is not fresh initially; only set to true if we generate a new ID
 

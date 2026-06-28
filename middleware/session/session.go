@@ -438,8 +438,22 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 		return []extractors.Extractor{{Source: extractors.SourceCookie, Key: "session_id"}} // Safe default
 	}
 
-	if s.extractor.Key != "" && (s.extractor.Source == extractors.SourceCookie || s.extractor.Source == extractors.SourceHeader) {
-		return []extractors.Extractor{s.extractor}
+	// Prefer the extractor that actually supplied the incoming session ID.
+	if s.extractor.Key != "" {
+		switch s.extractor.Source {
+		case extractors.SourceCookie, extractors.SourceHeader:
+			// The ID came from a writable sink; write it back to the same place.
+			return []extractors.Extractor{s.extractor}
+		default:
+			// The ID came from a read-only source (query/form/param/custom).
+			// For an existing session this would be an attacker-controlled ID,
+			// so it must not be promoted into cookies/headers (session fixation).
+			// Fresh sessions carry a freshly generated ID, so they may still fall
+			// through to the configured cookie/header sinks below.
+			if !s.fresh {
+				return nil
+			}
+		}
 	}
 
 	extractor := s.config.Extractor
