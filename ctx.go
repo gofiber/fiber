@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
+	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -656,10 +657,9 @@ func (c *DefaultCtx) configDependentPaths() {
 	// another path is specified which is for routing recognition only
 	// use the path that was changed by the previous configuration flags
 	// If CaseSensitive is disabled, we lowercase the original path
+	c.detectionPath = append(c.detectionPath[:0], c.path...)
 	if !c.app.config.CaseSensitive {
-		c.detectionPath = appendLowerBytes(c.detectionPath, c.path)
-	} else {
-		c.detectionPath = append(c.detectionPath[:0], c.path...)
+		utilsbytes.UnsafeToLower(c.detectionPath)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPath) > 1 && c.detectionPath[len(c.detectionPath)-1] == '/' {
