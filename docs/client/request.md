@@ -18,28 +18,32 @@ This structure is designed to be both flexible and efficient, allowing you to ea
 
 ```go
 type Request struct {
-    url       string
-    method    string
-    userAgent string
-    boundary  string
-    referer   string
-    ctx       context.Context
-    header    *Header
-    params    *QueryParam
-    cookies   *Cookie
-    path      *PathParam
+    ctx context.Context
+
+    body    any
+    header  Header
+    params  QueryParam
+    cookies Cookie
+    path    PathParam
+
+    client *Client
+
+    formData FormData
+
+    RawRequest *fasthttp.Request
+    url        string
+    method     string
+    userAgent  string
+    boundary   string
+    referer    string
+    files      []*File
 
     timeout      time.Duration
     maxRedirects int
 
-    client *Client
-
-    body     any
-    formData *FormData
-    files    []*File
     bodyType bodyType
 
-    RawRequest *fasthttp.Request
+    isPathNormalizingDisabled bool
 }
 ```
 
