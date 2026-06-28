@@ -42,20 +42,7 @@ type core struct {
 
 // getRetryConfig returns a copy of the client's retry configuration.
 func (c *core) getRetryConfig() *RetryConfig {
-	c.client.mu.RLock()
-	defer c.client.mu.RUnlock()
-
-	cfg := c.client.RetryConfig()
-	if cfg == nil {
-		return nil
-	}
-
-	return &RetryConfig{
-		InitialInterval: cfg.InitialInterval,
-		MaxBackoffTime:  cfg.MaxBackoffTime,
-		Multiplier:      cfg.Multiplier,
-		MaxRetryCount:   cfg.MaxRetryCount,
-	}
+	return c.client.RetryConfig()
 }
 
 // execFunc is the core logic to send the request and receive the response.
@@ -202,8 +189,13 @@ func (c *core) timeout() context.CancelFunc {
 
 	if c.req.timeout > 0 {
 		c.ctx, cancel = context.WithTimeout(c.ctx, c.req.timeout)
-	} else if c.client.timeout > 0 {
-		c.ctx, cancel = context.WithTimeout(c.ctx, c.client.timeout)
+	} else {
+		c.client.mu.RLock()
+		timeout := c.client.timeout
+		c.client.mu.RUnlock()
+		if timeout > 0 {
+			c.ctx, cancel = context.WithTimeout(c.ctx, timeout)
+		}
 	}
 
 	return cancel
