@@ -317,6 +317,8 @@ func (c *DefaultCtx) Path(override ...string) string {
 		c.fasthttp.Request.URI().SetPath(c.pathOriginal)
 		// Prettify path
 		c.configDependentPaths()
+		// Invalidate SkipUnmatchedRoutes lookahead index since path changed
+		c.firstMatchIndex = -1
 	}
 	return c.app.toString(c.path)
 }

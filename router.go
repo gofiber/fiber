@@ -446,31 +446,66 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	return false, ErrNotFound
 }
 
-// firstEndpointIndex returns the tree-stack index of the first non-middleware
-// route that matches the given method and path, or -1 if none matches.
+// routeLookaheadResult holds the result of a route lookahead scan.
+type routeLookaheadResult struct {
+	// allowedMethods contains HTTP methods that match this path (for 405 responses).
+	// Empty if the path doesn't exist for any method.
+	allowedMethods []string
+	// matchIndex is the tree-stack index of the first matching endpoint route
+	// for the requested method, or -1 if none matches.
+	matchIndex int
+}
+
+// routeLookahead scans the route tree to determine if an endpoint route matches
+// the given method and path. If no match is found for the requested method, it
+// also scans other method trees to detect cross-method matches (405 case).
 //
-// The returned index is relative to the same tree bucket that next/nextCustom
+// The returned matchIndex is relative to the same tree bucket that next/nextCustom
 // iterate, so it can be handed to them to skip re-matching the endpoints this
 // lookahead has already ruled out (see SkipUnmatchedRoutes).
-func (app *App) firstEndpointIndex(methodInt, treeHash int, detectionPath, path string) int {
+func (app *App) routeLookahead(methodInt, treeHash int, detectionPath, path string) routeLookaheadResult {
+	var params [maxParams]string
+
 	tree, ok := app.treeStack[methodInt][treeHash]
 	if !ok {
 		tree = app.treeStack[methodInt][0]
 	}
 
-	var params [maxParams]string
-
 	for i, route := range tree {
-		// Skip middleware and mounts - only check actual endpoint routes
 		if route.use || route.mount {
 			continue
 		}
 		if route.match(detectionPath, path, &params) {
-			return i
+			return routeLookaheadResult{matchIndex: i}
 		}
 	}
 
-	return -1
+	// No match for requested method - scan other methods for 405 detection
+	var allowedMethods []string
+	methods := app.config.RequestMethods
+
+	for i := range methods {
+		if i == methodInt {
+			continue
+		}
+
+		tree, ok := app.treeStack[i][treeHash]
+		if !ok {
+			tree = app.treeStack[i][0]
+		}
+
+		for _, route := range tree {
+			if route.use || route.mount {
+				continue
+			}
+			if route.match(detectionPath, path, &params) {
+				allowedMethods = append(allowedMethods, methods[i])
+				break // Found a match for this method, check next method
+			}
+		}
+	}
+
+	return routeLookaheadResult{matchIndex: -1, allowedMethods: allowedMethods}
 }
 
 func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
@@ -489,15 +524,29 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 
 	// Skip unmatched routes before middleware chain
 	if app.config.SkipUnmatchedRoutes {
-		idx := app.firstEndpointIndex(ctx.methodInt, ctx.treePathHash,
+		result := app.routeLookahead(ctx.methodInt, ctx.treePathHash,
 			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path))
-		if idx == -1 {
-			_ = ctx.SendStatus(StatusNotFound) //nolint:errcheck // Always return nil
+		if result.matchIndex == -1 {
+			var err error
+			if len(result.allowedMethods) > 0 {
+				// Path exists for other methods - 405 Method Not Allowed
+				for _, method := range result.allowedMethods {
+					ctx.Append(HeaderAllow, method)
+				}
+				err = ErrMethodNotAllowed
+			} else {
+				// Path doesn't exist at all - 404 Not Found
+				err = ErrNotFound
+			}
+			// Route through error handler for consistent error rendering
+			if catch := app.ErrorHandler(ctx, err); catch != nil {
+				_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
+			}
 			return
 		}
 		// Hand the match position to next so it skips re-checking the
 		// endpoints already ruled out by the lookahead above.
-		ctx.firstMatchIndex = idx
+		ctx.firstMatchIndex = result.matchIndex
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie).
@@ -525,15 +574,30 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 
 	// Skip unmatched routes before middleware chain
 	if app.config.SkipUnmatchedRoutes {
-		idx := app.firstEndpointIndex(ctx.getMethodInt(), ctx.getTreePathHash(),
+		result := app.routeLookahead(ctx.getMethodInt(), ctx.getTreePathHash(),
 			ctx.getDetectionPath(), ctx.Path())
-		if idx == -1 {
-			_ = ctx.SendStatus(StatusNotFound) //nolint:errcheck // Always return nil
+		if result.matchIndex == -1 {
+			// No match for requested method - determine 404 vs 405
+			var err error
+			if len(result.allowedMethods) > 0 {
+				// Path exists for other methods - 405 Method Not Allowed
+				for _, method := range result.allowedMethods {
+					ctx.Append(HeaderAllow, method)
+				}
+				err = ErrMethodNotAllowed
+			} else {
+				// Path doesn't exist at all - 404 Not Found
+				err = ErrNotFound
+			}
+			// Route through error handler for consistent error rendering
+			if catch := app.ErrorHandler(ctx, err); catch != nil {
+				_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
+			}
 			return
 		}
 		// Hand the match position to nextCustom so it skips re-checking the
 		// endpoints already ruled out by the lookahead above.
-		ctx.setFirstMatchIndex(idx)
+		ctx.setFirstMatchIndex(result.matchIndex)
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie).

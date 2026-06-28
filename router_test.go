@@ -2867,6 +2867,240 @@ func Test_App_SkipUnmatchedRoutes_NestedGroups(t *testing.T) {
 	})
 }
 
+// Test_App_SkipUnmatchedRoutes_NestedGroups exercises the lookahead-index path:
+// a sibling endpoint registered before the matched one must be skipped without
+// re-matching, while every middleware in the nested chain still runs.
+func Test_App_SkipUnmatchedRoutes_WrongMethod(t *testing.T) {
+	t.Parallel()
+
+	newApp := func() (*App, *[]string) {
+		var trail []string
+		record := func(label string) Handler {
+			return func(c Ctx) error {
+				trail = append(trail, label)
+				return c.Next()
+			}
+		}
+		endpoint := func(label string) Handler {
+			return func(c Ctx) error {
+				trail = append(trail, label)
+				return c.SendStatus(StatusOK)
+			}
+		}
+
+		app := New(Config{SkipUnmatchedRoutes: true})
+		api := app.Group("/api/v1", record("auth"))
+		contacts := api.Group("/contacts", record("perm"))
+		contacts.Post("/", endpoint("addContact"))    // sibling endpoint (before the match)
+		contacts.Get("/", endpoint("getAllContacts")) // sibling endpoint (before the match)
+		cd := contacts.Group("/test", record("logger"))
+		cd.Get("/", endpoint("testEndpoint"))
+		cd.Post("/hello", endpoint("helloEndpoint"))
+		cd1 := cd.Group("/test2", record("logger2"))
+		cd1.Get("/hello2", endpoint("hello2Endpoint"))
+		cd1.Get("/hello2/hello3", record("logger3"), endpoint("hello3Endpoint"))
+
+		return app, &trail
+	}
+
+	t.Run("matched deep route runs full chain, wrong method", func(t *testing.T) {
+		t.Parallel()
+		app, trail := newApp()
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/api/v1/contacts/test", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		require.Empty(t, *trail)
+	})
+	t.Run("matched deep route runs full chain, wrong method 1", func(t *testing.T) {
+		t.Parallel()
+		app, trail := newApp()
+
+		resp, err := app.Test(httptest.NewRequest(MethodPut, "/api/v1/contacts/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		require.Empty(t, *trail)
+	})
+
+	t.Run("matched deep routefull chain 2, wrong method 32", func(t *testing.T) {
+		t.Parallel()
+		app, trial := newApp()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/contacts/test/hello/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		require.Empty(t, *trial)
+	})
+
+	t.Run("wrong method sets Allow header", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/users", func(c Ctx) error { return c.SendStatus(StatusOK) })
+		app.Post("/users", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodPut, "/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodPost)
+		require.Contains(t, allow, MethodHead)
+	})
+
+	t.Run("OPTIONS on existing path returns 405 with Allow header", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/resource", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodOptions, "/resource", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodHead)
+	})
+
+	t.Run("custom ErrorHandler fires for 404", func(t *testing.T) {
+		t.Parallel()
+		var handlerCalled bool
+		app := New(Config{
+			SkipUnmatchedRoutes: true,
+			ErrorHandler: func(c Ctx, err error) error {
+				handlerCalled = true
+				require.ErrorIs(t, err, ErrNotFound)
+				return c.Status(StatusNotFound).SendString("custom 404")
+			},
+		})
+		app.Get("/exists", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/not-exists", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.True(t, handlerCalled)
+	})
+
+	t.Run("custom ErrorHandler fires for 405", func(t *testing.T) {
+		t.Parallel()
+		var handlerCalled bool
+		app := New(Config{
+			SkipUnmatchedRoutes: true,
+			ErrorHandler: func(c Ctx, err error) error {
+				handlerCalled = true
+				require.ErrorIs(t, err, ErrMethodNotAllowed)
+				return c.Status(StatusMethodNotAllowed).SendString("custom 405")
+			},
+		})
+		app.Get("/users", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		require.True(t, handlerCalled)
+	})
+
+	t.Run("Path() rewrite resets firstMatchIndex", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+
+		// Rewrite middleware: /second -> /first
+		app.Use(func(c Ctx) error {
+			if c.Path() == "/second" {
+				c.Path("/first")
+			}
+			return c.Next()
+		})
+
+		// /first at index 0, /second at index 1
+		app.Get("/first", func(c Ctx) error { return c.SendString("first") })
+		app.Get("/second", func(c Ctx) error { return c.SendString("second") })
+
+		// Request /second:
+		// 1. Lookahead finds /second at index 1, sets firstMatchIndex = 1
+		// 2. Middleware rewrites path to /first
+		// 3. Without fix: next() skips index 0 (0 < 1), misses /first
+		// 4. With fix: Path() resets firstMatchIndex = -1, next() matches /first
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/second", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		require.Equal(t, "first", string(body))
+	})
+}
+
+// Test_App_SkipUnmatchedRoutes_MethodNotAllowed verifies that SkipUnmatchedRoutes
+// returns 405 Method Not Allowed with proper Allow header when the path exists
+// but with a different method.
+func Test_App_SkipUnmatchedRoutes_MethodNotAllowed(t *testing.T) {
+	t.Parallel()
+
+	t.Run("POST to GET-only route returns 405 with Allow header", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+
+		app.Get("/users", func(c Ctx) error {
+			return c.SendString("users list")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		require.Contains(t, resp.Header.Get(HeaderAllow), MethodGet)
+	})
+
+	t.Run("multiple methods in Allow header", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+
+		app.Get("/resource", func(c Ctx) error {
+			return c.SendString("get")
+		})
+		app.Put("/resource", func(c Ctx) error {
+			return c.SendString("put")
+		})
+		app.Delete("/resource", func(c Ctx) error {
+			return c.SendString("delete")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/resource", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodPut)
+		require.Contains(t, allow, MethodDelete)
+	})
+
+	t.Run("nonexistent path still returns 404", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+
+		app.Get("/users", func(c Ctx) error {
+			return c.SendString("users list")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/not-exists", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.Empty(t, resp.Header.Get(HeaderAllow))
+	})
+
+	t.Run("custom context also returns 405", func(t *testing.T) {
+		t.Parallel()
+		newCustomCtx := func(app *App) CustomCtx {
+			return &DefaultCtx{app: app}
+		}
+		app := NewWithCustomCtx(newCustomCtx, Config{SkipUnmatchedRoutes: true})
+
+		app.Get("/users", func(c Ctx) error {
+			return c.SendString("users list")
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		require.Contains(t, resp.Header.Get(HeaderAllow), MethodGet)
+	})
+}
+
 // Test_App_SkipUnmatchedRoutes_CustomCtx exercises the customRequestHandler path
 // which uses setFirstMatchIndex/getFirstMatchIndex instead of direct field access.
 func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
@@ -2938,6 +3172,87 @@ func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode)
 		require.True(t, middlewareRan, "middleware should run for matched route")
+	})
+
+	t.Run("wrong method returns 405 with Allow header", func(t *testing.T) {
+		t.Parallel()
+		app := NewWithCustomCtx(newCustomCtx, Config{SkipUnmatchedRoutes: true})
+		app.Get("/resource", func(c Ctx) error { return c.SendStatus(StatusOK) })
+		app.Post("/resource", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodPut, "/resource", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodPost)
+	})
+}
+
+// Test parametric route 405 - verifies fallback to linear scan works
+func Test_App_SkipUnmatchedRoutes_ParametricRoute405(t *testing.T) {
+	t.Parallel()
+
+	t.Run("parametric route returns 405 with Allow header", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/users/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
+		app.Delete("/users/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		// POST to parametric route should return 405
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/users/123", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodDelete)
+		require.Contains(t, allow, MethodHead) // auto-generated
+	})
+
+	t.Run("mixed static and parametric routes", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/users", func(c Ctx) error { return c.SendStatus(StatusOK) })     // static
+		app.Post("/users", func(c Ctx) error { return c.SendStatus(StatusOK) })    // static
+		app.Get("/users/:id", func(c Ctx) error { return c.SendStatus(StatusOK) }) // parametric
+
+		// PUT to static route - uses pathIndex
+		resp, err := app.Test(httptest.NewRequest(MethodPut, "/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+
+		// PUT to parametric route - uses linear scan fallback
+		resp, err = app.Test(httptest.NewRequest(MethodPut, "/users/456", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	})
+
+	t.Run("root path with wrong method returns 405", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/", func(c Ctx) error { return c.SendString("root") })
+
+		// POST to root should return 405
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodHead)
+	})
+
+	t.Run("wildcard route with wrong method returns 405", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Get("/*", func(c Ctx) error { return c.SendString("wildcard") })
+
+		// POST to wildcard should return 405
+		resp, err := app.Test(httptest.NewRequest(MethodPost, "/anything/here", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodHead)
 	})
 }
 
