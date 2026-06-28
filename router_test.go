@@ -3452,7 +3452,8 @@ func Test_App_SkipUnmatchedRoutes_ParametricRoute405(t *testing.T) {
 		resp, err := app.Test(httptest.NewRequest(MethodGet, "/a/1/b/2/c/3/d/4/e/5", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode)
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
 		require.Equal(t, "12345", string(body))
 	})
 
@@ -3525,10 +3526,8 @@ func Test_App_SkipUnmatchedRoutes_ParametricRoute405(t *testing.T) {
 
 		// Run multiple requests concurrently
 		var wg sync.WaitGroup
-		for i := 0; i < 100; i++ {
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
+		for i := range 100 {
+			wg.Go(func() {
 				path := fmt.Sprintf("/l1/a%d/l2/b%d/l3/c%d/l4/d%d/l5/e%d", i, i, i, i, i)
 
 				// Test 405
@@ -3540,7 +3539,7 @@ func Test_App_SkipUnmatchedRoutes_ParametricRoute405(t *testing.T) {
 				resp, err = app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
 				require.NoError(t, err)
 				require.Equal(t, StatusOK, resp.StatusCode)
-			}(i)
+			})
 		}
 		wg.Wait()
 	})
