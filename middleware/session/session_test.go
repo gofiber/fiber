@@ -703,6 +703,151 @@ func Test_Session_ChainedExtractors(t *testing.T) {
 	})
 }
 
+// Test_Session_ExtractorPreservation verifies that the extractor which actually
+// supplied the incoming session ID drives the write-back decision, preventing
+// a session ID read from a read-only source (query/form/param) from being
+// promoted into cookies/headers for an existing session (session fixation).
+func Test_Session_ExtractorPreservation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("read-only winner is not promoted for existing session", func(t *testing.T) {
+		t.Parallel()
+		// Chain prefers the cookie, but also accepts a read-only query source.
+		store := NewStore(Config{
+			Extractor: extractors.Chain(extractors.FromCookie("session_id"), extractors.FromQuery("session_id")),
+		})
+		app := fiber.New()
+
+		// First request: create and persist a session (written to the cookie).
+		ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
+		sess, err := store.Get(ctx1)
+		require.NoError(t, err)
+		sess.Set("name", "john")
+		require.NoError(t, sess.Save())
+		id := sess.ID()
+		require.NotNil(t, ctx1.Response().Header.PeekCookie("session_id"))
+		sess.Release()
+		app.ReleaseCtx(ctx1)
+
+		// Second request: the existing ID is provided only via the query string
+		// (an attacker-controllable, read-only source).
+		ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx2)
+		ctx2.Request().SetRequestURI("/path?session_id=" + id)
+
+		sess2, err := store.Get(ctx2)
+		require.NoError(t, err)
+		require.False(t, sess2.Fresh(), "existing session must not be fresh")
+		require.Equal(t, id, sess2.ID())
+		require.NoError(t, sess2.Save())
+
+		// The read-only ID must NOT be promoted into a cookie/header.
+		require.Nil(t, ctx2.Response().Header.PeekCookie("session_id"))
+		require.Empty(t, string(ctx2.Response().Header.Peek("session_id")))
+		sess2.Release()
+	})
+
+	t.Run("fresh session still persists to writable sink", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore(Config{
+			Extractor: extractors.Chain(extractors.FromCookie("session_id"), extractors.FromQuery("session_id")),
+		})
+		app := fiber.New()
+
+		// The query supplies an ID that does not exist in storage, so a fresh
+		// session with a freshly generated ID is created.
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().SetRequestURI("/path?session_id=does-not-exist")
+
+		sess, err := store.Get(ctx)
+		require.NoError(t, err)
+		require.True(t, sess.Fresh(), "missing data must yield a fresh session")
+		require.NotEqual(t, "does-not-exist", sess.ID(), "fresh session must use a generated ID")
+		require.NoError(t, sess.Save())
+
+		// A freshly generated ID is safe to persist to the configured cookie sink.
+		cookie := ctx.Response().Header.PeekCookie("session_id")
+		require.NotNil(t, cookie)
+		require.Contains(t, string(cookie), sess.ID())
+		require.NotContains(t, string(cookie), "does-not-exist")
+		sess.Release()
+	})
+
+	t.Run("cookie winner writes back to the same cookie", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore(Config{
+			Extractor: extractors.Chain(extractors.FromCookie("session_id"), extractors.FromHeader("x-session-id")),
+		})
+		app := fiber.New()
+
+		// Persist a session first.
+		ctx1 := app.AcquireCtx(&fasthttp.RequestCtx{})
+		sess, err := store.Get(ctx1)
+		require.NoError(t, err)
+		require.NoError(t, sess.Save())
+		id := sess.ID()
+		sess.Release()
+		app.ReleaseCtx(ctx1)
+
+		// Provide the existing ID via the cookie source.
+		ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx2)
+		ctx2.Request().Header.SetCookie("session_id", id)
+
+		sess2, err := store.Get(ctx2)
+		require.NoError(t, err)
+		require.False(t, sess2.Fresh())
+		require.NoError(t, sess2.Save())
+
+		cookie := ctx2.Response().Header.PeekCookie("session_id")
+		require.NotNil(t, cookie)
+		require.Contains(t, string(cookie), id)
+		sess2.Release()
+	})
+}
+
+// Test_Session_getExtractorInfo exercises the extractor-resolution branches
+// directly, including the nil-config safe default and single (non-chained)
+// configured extractors.
+func Test_Session_getExtractorInfo(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil config returns safe cookie default", func(t *testing.T) {
+		t.Parallel()
+		sess := &Session{}
+		got := sess.getExtractorInfo()
+		require.Len(t, got, 1)
+		require.Equal(t, extractors.SourceCookie, got[0].Source)
+		require.Equal(t, "session_id", got[0].Key)
+	})
+
+	t.Run("single cookie extractor", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore(Config{Extractor: extractors.FromCookie("session_id")})
+		sess := &Session{config: store}
+		got := sess.getExtractorInfo()
+		require.Len(t, got, 1)
+		require.Equal(t, extractors.SourceCookie, got[0].Source)
+	})
+
+	t.Run("single header extractor", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore(Config{Extractor: extractors.FromHeader("x-session-id")})
+		sess := &Session{config: store}
+		got := sess.getExtractorInfo()
+		require.Len(t, got, 1)
+		require.Equal(t, extractors.SourceHeader, got[0].Source)
+	})
+
+	t.Run("single read-only extractor yields no writable sink", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore(Config{Extractor: extractors.FromQuery("session_id")})
+		sess := &Session{config: store}
+		require.Empty(t, sess.getExtractorInfo())
+	})
+}
+
 func Test_Session_Save_IdleTimeout(t *testing.T) {
 	t.Parallel()
 

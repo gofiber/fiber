@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -25,6 +26,8 @@ type sessionIDKey int
 const (
 	// sessionIDContextKey is the key used to store the session ID in the context locals.
 	sessionIDContextKey sessionIDKey = iota
+	// sessionExtractorContextKey stores the extractor that provided the session ID.
+	sessionExtractorContextKey
 )
 
 // Store manages session data using the configured storage backend.
@@ -128,6 +131,11 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		id = s.getSessionID(c)
 	}
 
+	selectedExtractor, hasExtractor := c.Locals(sessionExtractorContextKey).(extractors.Extractor)
+	if !hasExtractor {
+		selectedExtractor = extractors.Extractor{}
+	}
+
 	fresh := false // Session is not fresh initially; only set to true if we generate a new ID
 
 	// Attempt to fetch session data if an ID is provided
@@ -157,7 +165,8 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	sess.ctx = c
 	sess.config = s
 	sess.id = id
-	sess.isFresh = fresh
+	sess.fresh = fresh
+	sess.extractor = selectedExtractor
 
 	// Decode session data if found
 	if rawData != nil {
@@ -198,10 +207,25 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 //
 //	id := store.getSessionID(c)
 func (s *Store) getSessionID(c fiber.Ctx) string {
-	sessionID, err := s.Extractor.Extract(c)
+	extractor := s.Extractor
+	if len(extractor.Chain) > 0 {
+		for _, chainExtractor := range extractor.Chain {
+			sessionID, err := chainExtractor.Extract(c)
+			if err == nil && sessionID != "" {
+				c.Locals(sessionExtractorContextKey, chainExtractor)
+				return sessionID
+			}
+		}
+		return ""
+	}
+
+	sessionID, err := extractor.Extract(c)
 	if err != nil {
 		// If extraction fails, return empty string to generate a new session
 		return ""
+	}
+	if sessionID != "" {
+		c.Locals(sessionExtractorContextKey, extractor)
 	}
 	return sessionID
 }
@@ -294,7 +318,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 
 	sess.config = s
 	sess.id = id
-	sess.isFresh = false
+	sess.fresh = false
 
 	sess.data.Lock()
 	decodeErr := sess.decodeSessionData(rawData)
