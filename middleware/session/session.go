@@ -18,13 +18,14 @@ import (
 // Session serializes access to its internal state with mutexes, but it is
 // request-scoped and must not be used after the request lifecycle ends.
 type Session struct {
-	ctx         fiber.Ctx     // fiber context
-	config      *Store        // store configuration
-	data        *data         // key value data
-	id          string        // session id
-	idleTimeout time.Duration // idleTimeout of this session
-	mu          sync.RWMutex  // Mutex to protect non-data fields
-	isFresh     bool          // if new session
+	ctx         fiber.Ctx            // fiber context
+	config      *Store               // store configuration
+	data        *data                // key value data
+	id          string               // session id
+	extractor   extractors.Extractor // extractor that supplied the session ID
+	idleTimeout time.Duration        // idleTimeout of this session
+	mu          sync.RWMutex         // Mutex to protect non-data fields
+	isFresh     bool                 // if new session
 }
 
 type absExpirationKeyType int
@@ -94,6 +95,7 @@ func releaseSession(s *Session) {
 	s.idleTimeout = 0
 	s.ctx = nil
 	s.config = nil
+	s.extractor = extractors.Extractor{}
 	if s.data != nil {
 		s.data.Reset()
 	}
@@ -108,7 +110,7 @@ func releaseSession(s *Session) {
 //
 // Usage:
 //
-//	fresh := s.Fresh()
+//	isFresh := s.Fresh()
 func (s *Session) Fresh() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -261,7 +263,7 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 		return err
 	}
 
-	// Generate a new session, and set session.fresh to true
+	// Generate a new session, and set session.isFresh to true
 	s.refresh()
 
 	return nil
@@ -312,13 +314,13 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	// Expire session
 	s.delSession()
 
-	// Generate a new session, and set session.fresh to true
+	// Generate a new session, and set session.isFresh to true
 	s.refresh()
 
 	return nil
 }
 
-// refresh generates a new session, and sets session.fresh to be true.
+// refresh generates a new session, and sets session.isFresh to be true.
 func (s *Session) refresh() {
 	s.id = s.config.KeyGenerator()
 	s.isFresh = true
@@ -436,26 +438,40 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 		return []extractors.Extractor{{Source: extractors.SourceCookie, Key: "session_id"}} // Safe default
 	}
 
-	extractor := s.config.Extractor
-	var relevantExtractors []extractors.Extractor
+	// Prefer the extractor that actually supplied the incoming session ID.
+	if s.extractor.Key != "" {
+		switch s.extractor.Source {
+		case extractors.SourceCookie, extractors.SourceHeader:
+			// The ID came from a writable sink; write it back to the same place.
+			return []extractors.Extractor{s.extractor}
+		default:
+			// The ID came from a read-only source (query/form/param/custom).
+			// For an existing session this would be an attacker-controlled ID,
+			// so it must not be promoted into cookies/headers (session fixation).
+			// Fresh sessions carry a freshly generated ID, so they may still fall
+			// through to the configured cookie/header sinks below.
+			if !s.isFresh {
+				return nil
+			}
+		}
+	}
 
-	// If it's a chained extractor, collect all cookie/header extractors
+	extractor := s.config.Extractor
 	if len(extractor.Chain) > 0 {
+		var relevantExtractors []extractors.Extractor
 		for _, chainExtractor := range extractor.Chain {
 			if chainExtractor.Source == extractors.SourceCookie || chainExtractor.Source == extractors.SourceHeader {
 				relevantExtractors = append(relevantExtractors, chainExtractor)
 			}
 		}
-	} else if extractor.Source == extractors.SourceCookie || extractor.Source == extractors.SourceHeader {
-		// Single extractor - only include if it's cookie or header
-		relevantExtractors = append(relevantExtractors, extractor)
+		return relevantExtractors
 	}
 
-	// If no cookie/header extractors found and the config has a store but no explicit cookie/header extractors,
-	// we should not default to cookie. This allows for read-only configurations (e.g., query/param/form/custom).
-	// Only add default cookie extractor if we have no extractors at all (nil config case is handled above)
+	if extractor.Source == extractors.SourceCookie || extractor.Source == extractors.SourceHeader {
+		return []extractors.Extractor{extractor}
+	}
 
-	return relevantExtractors
+	return nil
 }
 
 func (s *Session) setSession() {
