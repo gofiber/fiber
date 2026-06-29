@@ -45,15 +45,6 @@ type subdomain struct {
 	suffix string
 }
 
-func (s subdomain) match(o string) bool {
-	isValid, normalizedOrigin := normalizeOrigin(o)
-	if !isValid || normalizedOrigin != o {
-		return false
-	}
-
-	return s.matchNormalized(o)
-}
-
 func matchSubdomainOrigin(subdomains []subdomain, origin string) bool {
 	if len(subdomains) == 0 {
 		return false

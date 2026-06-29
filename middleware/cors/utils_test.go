@@ -112,30 +112,45 @@ func Test_isOriginSerializedOrNull(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_CORS_SubdomainMatch -benchmem -count=4
-func Benchmark_CORS_SubdomainMatch(b *testing.B) {
-	s := subdomain{
-		prefix: "www",
-		suffix: "example.com",
+// benchSubdomains builds n identical wildcard patterns for the worst-case
+// (no-match) scan benchmarks below.
+func benchSubdomains(n int) []subdomain {
+	subs := make([]subdomain, n)
+	for i := range subs {
+		subs[i] = subdomain{prefix: "https://", suffix: "example.com"}
 	}
+	return subs
+}
 
-	o := "www.example.com"
+// Benchmark_CORS_SubdomainMatch_PerPatternNormalize reproduces the pre-PR loop,
+// which ran normalizeOrigin (one url.Parse) for every pattern. allocs/op scale
+// with the pattern count.
+//
+// go test -v -run=^$ -bench=Benchmark_CORS_SubdomainMatch_PerPatternNormalize -benchmem -count=4
+func Benchmark_CORS_SubdomainMatch_PerPatternNormalize(b *testing.B) {
+	subdomains := benchSubdomains(16)
+	origin := "https://api.service.example.org" // matches none -> full scan
 
 	b.ReportAllocs()
 
 	for b.Loop() {
-		s.match(o)
+		for _, sub := range subdomains {
+			isValid, normalized := normalizeOrigin(origin)
+			if isValid && normalized == origin && sub.matchNormalized(origin) {
+				break
+			}
+		}
 	}
 }
 
+// Benchmark_CORS_MatchSubdomainOrigin normalizes once regardless of pattern
+// count; allocs/op stay flat as the slice grows. Compare against
+// Benchmark_CORS_SubdomainMatch_PerPatternNormalize on the same input.
+//
 // go test -v -run=^$ -bench=Benchmark_CORS_MatchSubdomainOrigin -benchmem -count=4
 func Benchmark_CORS_MatchSubdomainOrigin(b *testing.B) {
-	subdomains := []subdomain{
-		{prefix: "https://", suffix: "example.net"},
-		{prefix: "https://", suffix: "example.org"},
-		{prefix: "https://", suffix: "example.com"},
-	}
-	origin := "https://api.service.example.com"
+	subdomains := benchSubdomains(16)
+	origin := "https://api.service.example.org" // matches none -> full scan
 
 	b.ReportAllocs()
 
@@ -250,8 +265,8 @@ func Test_CORS_SubdomainMatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := tt.sub.match(tt.origin)
-			assert.Equal(t, tt.expected, got, "subdomain.match()")
+			got := matchSubdomainOrigin([]subdomain{tt.sub}, tt.origin)
+			assert.Equal(t, tt.expected, got, "matchSubdomainOrigin()")
 		})
 	}
 }
@@ -259,36 +274,59 @@ func Test_CORS_SubdomainMatch(t *testing.T) {
 func Test_CORS_MatchSubdomainOrigin(t *testing.T) {
 	t.Parallel()
 
-	subdomains := []subdomain{
+	defaultSubs := []subdomain{
 		{prefix: "https://", suffix: "example.net"},
 		{prefix: "https://", suffix: "example.org"},
 		{prefix: "https://", suffix: "example.com"},
 	}
 
 	tests := []struct {
-		name     string
-		origin   string
-		expected bool
+		name       string
+		subdomains []subdomain
+		origin     string
+		expected   bool
 	}{
 		{
-			name:     "matches later pattern",
-			origin:   "https://api.service.example.com",
-			expected: true,
+			name:       "matches first pattern",
+			subdomains: defaultSubs,
+			origin:     "https://api.service.example.net",
+			expected:   true,
 		},
 		{
-			name:     "rejects invalid origin once",
-			origin:   "https://user@api.example.com",
-			expected: false,
+			name:       "matches later pattern",
+			subdomains: defaultSubs,
+			origin:     "https://api.service.example.com",
+			expected:   true,
 		},
 		{
-			name:     "rejects non-normalized origin",
-			origin:   "https://API.service.example.com",
-			expected: false,
+			name:       "rejects invalid origin once",
+			subdomains: defaultSubs,
+			origin:     "https://user@api.example.com",
+			expected:   false,
 		},
 		{
-			name:     "rejects unmatched origin",
-			origin:   "https://api.service.example.dev",
-			expected: false,
+			name:       "rejects non-normalized origin",
+			subdomains: defaultSubs,
+			origin:     "https://API.service.example.com",
+			expected:   false,
+		},
+		{
+			name:       "rejects unmatched origin",
+			subdomains: defaultSubs,
+			origin:     "https://api.service.example.dev",
+			expected:   false,
+		},
+		{
+			name:       "empty slice never matches",
+			subdomains: []subdomain{},
+			origin:     "https://api.service.example.com",
+			expected:   false,
+		},
+		{
+			name:       "nil slice never matches",
+			subdomains: nil,
+			origin:     "https://api.service.example.com",
+			expected:   false,
 		},
 	}
 
@@ -296,7 +334,7 @@ func Test_CORS_MatchSubdomainOrigin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := matchSubdomainOrigin(subdomains, tt.origin)
+			got := matchSubdomainOrigin(tt.subdomains, tt.origin)
 			assert.Equal(t, tt.expected, got)
 		})
 	}
