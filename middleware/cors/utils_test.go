@@ -128,6 +128,22 @@ func Benchmark_CORS_SubdomainMatch(b *testing.B) {
 	}
 }
 
+// go test -v -run=^$ -bench=Benchmark_CORS_MatchSubdomainOrigin -benchmem -count=4
+func Benchmark_CORS_MatchSubdomainOrigin(b *testing.B) {
+	subdomains := []subdomain{
+		{prefix: "https://", suffix: "example.net"},
+		{prefix: "https://", suffix: "example.org"},
+		{prefix: "https://", suffix: "example.com"},
+	}
+	origin := "https://api.service.example.com"
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		matchSubdomainOrigin(subdomains, origin)
+	}
+}
+
 func Test_CORS_SubdomainMatch(t *testing.T) {
 	t.Parallel()
 
@@ -236,6 +252,52 @@ func Test_CORS_SubdomainMatch(t *testing.T) {
 
 			got := tt.sub.match(tt.origin)
 			assert.Equal(t, tt.expected, got, "subdomain.match()")
+		})
+	}
+}
+
+func Test_CORS_MatchSubdomainOrigin(t *testing.T) {
+	t.Parallel()
+
+	subdomains := []subdomain{
+		{prefix: "https://", suffix: "example.net"},
+		{prefix: "https://", suffix: "example.org"},
+		{prefix: "https://", suffix: "example.com"},
+	}
+
+	tests := []struct {
+		name     string
+		origin   string
+		expected bool
+	}{
+		{
+			name:     "matches later pattern",
+			origin:   "https://api.service.example.com",
+			expected: true,
+		},
+		{
+			name:     "rejects invalid origin once",
+			origin:   "https://user@api.example.com",
+			expected: false,
+		},
+		{
+			name:     "rejects non-normalized origin",
+			origin:   "https://API.service.example.com",
+			expected: false,
+		},
+		{
+			name:     "rejects unmatched origin",
+			origin:   "https://api.service.example.dev",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := matchSubdomainOrigin(subdomains, tt.origin)
+			assert.Equal(t, tt.expected, got)
 		})
 	}
 }

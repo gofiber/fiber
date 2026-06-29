@@ -145,13 +145,8 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Check if the origin is in the list of allowed subdomains
-			if allowOrigin == "" {
-				for _, sOrigin := range allowSubOrigins {
-					if sOrigin.match(originHeader) {
-						allowOrigin = originHeaderRaw
-						break
-					}
-				}
+			if allowOrigin == "" && matchSubdomainOrigin(allowSubOrigins, originHeader) {
+				allowOrigin = originHeaderRaw
 			}
 		}
 
