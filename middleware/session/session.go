@@ -25,7 +25,7 @@ type Session struct {
 	extractor   extractors.Extractor // extractor that supplied the session ID
 	idleTimeout time.Duration        // idleTimeout of this session
 	mu          sync.RWMutex         // Mutex to protect non-data fields
-	fresh       bool                 // if new session
+	isFresh     bool                 // if new session
 }
 
 type absExpirationKeyType int
@@ -61,7 +61,7 @@ func acquireSession() *Session {
 	if s.data == nil {
 		s.data = acquireData()
 	}
-	s.fresh = true
+	s.isFresh = true
 	return s
 }
 
@@ -110,11 +110,11 @@ func releaseSession(s *Session) {
 //
 // Usage:
 //
-//	fresh := s.Fresh()
+//	isFresh := s.Fresh()
 func (s *Session) Fresh() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.fresh
+	return s.isFresh
 }
 
 // ID returns the session ID
@@ -263,7 +263,7 @@ func (s *Session) RegenerateWithContext(ctx context.Context) error {
 		return err
 	}
 
-	// Generate a new session, and set session.fresh to true
+	// Generate a new session, and set session.isFresh to true
 	s.refresh()
 
 	return nil
@@ -314,16 +314,16 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	// Expire session
 	s.delSession()
 
-	// Generate a new session, and set session.fresh to true
+	// Generate a new session, and set session.isFresh to true
 	s.refresh()
 
 	return nil
 }
 
-// refresh generates a new session, and sets session.fresh to be true.
+// refresh generates a new session, and sets session.isFresh to be true.
 func (s *Session) refresh() {
 	s.id = s.config.KeyGenerator()
-	s.fresh = true
+	s.isFresh = true
 }
 
 // Save saves the session data and updates the cookie
@@ -450,7 +450,7 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 			// so it must not be promoted into cookies/headers (session fixation).
 			// Fresh sessions carry a freshly generated ID, so they may still fall
 			// through to the configured cookie/header sinks below.
-			if !s.fresh {
+			if !s.isFresh {
 				return nil
 			}
 		}

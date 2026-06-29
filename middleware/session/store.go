@@ -136,7 +136,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		selectedExtractor = extractors.Extractor{}
 	}
 
-	fresh := false // Session is not fresh initially; only set to true if we generate a new ID
+	isFresh := false // Session is not fresh initially; only set to true if we generate a new ID
 
 	// Attempt to fetch session data if an ID is provided
 	if id != "" {
@@ -152,7 +152,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 
 	// Generate a new ID if needed
 	if id == "" {
-		fresh = true // The session is fresh if a new ID is generated
+		isFresh = true // The session is fresh if a new ID is generated
 		id = s.KeyGenerator()
 		c.Locals(sessionIDContextKey, id)
 	}
@@ -165,7 +165,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	sess.ctx = c
 	sess.config = s
 	sess.id = id
-	sess.fresh = fresh
+	sess.isFresh = isFresh
 	sess.extractor = selectedExtractor
 
 	// Decode session data if found
@@ -182,7 +182,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 
 	sess.mu.Unlock()
 
-	if fresh && s.AbsoluteTimeout > 0 {
+	if isFresh && s.AbsoluteTimeout > 0 {
 		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
 	} else if sess.isAbsExpired() {
 		if err := sess.Reset(); err != nil {
@@ -318,7 +318,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 
 	sess.config = s
 	sess.id = id
-	sess.fresh = false
+	sess.isFresh = false
 
 	sess.data.Lock()
 	decodeErr := sess.decodeSessionData(rawData)
