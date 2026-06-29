@@ -323,8 +323,6 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
 	case http.SameSiteNoneMode:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-	case http.SameSiteDefaultMode:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteDefaultMode)
 	default:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
 	}
