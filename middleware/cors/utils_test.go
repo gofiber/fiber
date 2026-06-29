@@ -282,8 +282,8 @@ func Test_CORS_MatchSubdomainOrigin(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		subdomains []subdomain
 		origin     string
+		subdomains []subdomain
 		expected   bool
 	}{
 		{
