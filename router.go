@@ -477,10 +477,9 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 		return skipResult{decision: skipRunChain, matchIndex: -1}
 	}
 
-	// Tier 1b: when no parametric/root/star route lives in the relevant buckets,
-	// the static index is authoritative for every method.
-	paramMask := app.bucketParamMethods[treeHash] | app.bucketParamMethods[0]
-	if paramMask == 0 {
+	// Tier 1b: when the app has no parametric/root/star routes at all, the static
+	// index is authoritative and no scan is needed.
+	if !app.skipHasDynamicRoutes {
 		if staticMask != 0 {
 			return skipResult{decision: skipMethodNot, allowMask: staticMask, matchIndex: -1}
 		}
@@ -488,13 +487,14 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 	}
 
 	// Tier 2: scan only the parametric/root/star endpoints of the requested method.
-	// The bucket is resolved exactly as next() does (specific bucket, else bucket 0)
-	// so the candidate indices line up with the bucket next() iterates.
-	bucketHash := treeHash
-	if _, ok := app.treeStack[methodInt][treeHash]; !ok {
-		bucketHash = 0
+	// paramRoutes has an entry for every treeStack bucket, so a lookup miss mirrors
+	// a treeStack miss and selects the bucket-0 fallback exactly as next() does; the
+	// candidate indices then line up with the bucket next() iterates.
+	cands, ok := app.paramRoutes[methodInt][treeHash]
+	if !ok {
+		cands = app.paramRoutes[methodInt][0]
 	}
-	for _, cand := range app.paramRoutes[methodInt][bucketHash] {
+	for _, cand := range cands {
 		if cand.route.match(detectionPath, path, values) {
 			return skipResult{decision: skipRunChain, matchIndex: cand.idx}
 		}
@@ -508,11 +508,11 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 		if m == methodInt || allow&(uint64(1)<<m) != 0 {
 			continue
 		}
-		bh := treeHash
-		if _, ok := app.treeStack[m][treeHash]; !ok {
-			bh = 0
+		c2, ok := app.paramRoutes[m][treeHash]
+		if !ok {
+			c2 = app.paramRoutes[m][0]
 		}
-		for _, cand := range app.paramRoutes[m][bh] {
+		for _, cand := range c2 {
 			if cand.route.match(detectionPath, path, values) {
 				allow |= uint64(1) << m
 				break
@@ -1084,9 +1084,9 @@ type indexedRoute struct {
 // always reflect the current route set.
 func (app *App) buildSkipIndexes() {
 	static := make(map[string]uint64)
-	bucketParam := make(map[int]uint64)
 	paramRoutes := make([]map[int][]indexedRoute, len(app.config.RequestMethods))
 	hasUse := false
+	hasDynamic := false
 
 	for method := range app.config.RequestMethods {
 		bit := uint64(1) << method
@@ -1106,26 +1106,31 @@ func (app *App) buildSkipIndexes() {
 			static[route.path] |= bit
 		}
 
-		// Per-bucket candidate list and parametric/root/star mask from the final
-		// buckets (post bucket-0 replication) so they mirror exactly what next()
-		// scans per bucket. The stored idx is the route's position in that same
-		// bucket, which next() iterates. Mounted sub-apps are expanded into normal
-		// routes before buildTree runs, so no mount route reaches this point.
+		// Per-bucket candidate list of parametric/root/star endpoints from the
+		// final buckets (post bucket-0 replication) so they mirror exactly what
+		// next() scans per bucket. The stored idx is the route's position in that
+		// same bucket, which next() iterates. An entry is created for every bucket
+		// (empty when it has no candidates) so a lookup miss in resolveSkip mirrors
+		// a treeStack miss and selects the bucket-0 fallback. Mounted sub-apps are
+		// expanded into normal routes before buildTree runs, so no mount route
+		// reaches this point.
 		for treeHash, bucket := range app.treeStack[method] {
+			var cands []indexedRoute
 			for i, route := range bucket {
 				if route.use || route.mount {
 					continue
 				}
 				if route.root || route.star || len(route.Params) > 0 {
-					bucketParam[treeHash] |= bit
-					paramRoutes[method][treeHash] = append(paramRoutes[method][treeHash], indexedRoute{route: route, idx: i})
+					cands = append(cands, indexedRoute{route: route, idx: i})
+					hasDynamic = true
 				}
 			}
+			paramRoutes[method][treeHash] = cands
 		}
 	}
 
 	app.staticRouteMethods = static
-	app.bucketParamMethods = bucketParam
 	app.paramRoutes = paramRoutes
 	app.skipHasUseRoutes = hasUse
+	app.skipHasDynamicRoutes = hasDynamic
 }
