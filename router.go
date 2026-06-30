@@ -463,9 +463,7 @@ type routeLookaheadResult struct {
 // The returned matchIndex is relative to the same tree bucket that next/nextCustom
 // iterate, so it can be handed to them to skip re-matching the endpoints this
 // lookahead has already ruled out (see SkipUnmatchedRoutes).
-func (app *App) routeLookahead(methodInt, treeHash int, detectionPath, path string) routeLookaheadResult {
-	var params [maxParams]string
-
+func (app *App) routeLookahead(methodInt, treeHash int, detectionPath, path string, params *[maxParams]string) routeLookaheadResult {
 	tree, ok := app.treeStack[methodInt][treeHash]
 	if !ok {
 		tree = app.treeStack[methodInt][0]
@@ -475,7 +473,7 @@ func (app *App) routeLookahead(methodInt, treeHash int, detectionPath, path stri
 		if route.use || route.mount {
 			continue
 		}
-		if route.match(detectionPath, path, &params) {
+		if route.match(detectionPath, path, params) {
 			return routeLookaheadResult{matchIndex: i}
 		}
 	}
@@ -513,7 +511,7 @@ func (app *App) routeLookahead(methodInt, treeHash int, detectionPath, path stri
 			if route.use || route.mount {
 				continue
 			}
-			if route.match(detectionPath, path, &params) {
+			if route.match(detectionPath, path, params) {
 				allowedMask |= 1 << i
 				break // Found a match for this method, check next method
 			}
@@ -540,7 +538,7 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	// Skip unmatched routes before middleware chain
 	if app.config.SkipUnmatchedRoutes {
 		result := app.routeLookahead(ctx.methodInt, ctx.treePathHash,
-			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path))
+			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path), &ctx.values)
 		if result.matchIndex == -1 {
 			var err error
 			if result.allowedMethodsMask != 0 {
@@ -593,7 +591,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	// Skip unmatched routes before middleware chain
 	if app.config.SkipUnmatchedRoutes {
 		result := app.routeLookahead(ctx.getMethodInt(), ctx.getTreePathHash(),
-			ctx.getDetectionPath(), ctx.Path())
+			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
 		if result.matchIndex == -1 {
 			// No match for requested method - determine 404 vs 405
 			var err error
