@@ -116,10 +116,18 @@ type App struct {
 	// static endpoint at that path. Only built when SkipUnmatchedRoutes is enabled.
 	staticRouteMethods map[string]int
 	// bucketParamMethods is a per-tree-bucket bitmask of method ints that have at
-	// least one parametric/root/star endpoint (or a mounted sub-app) in that bucket.
-	// Used to decide whether the static index is authoritative. Only built when
-	// SkipUnmatchedRoutes is enabled.
+	// least one parametric/root/star endpoint in that bucket. Used to decide whether
+	// the static index is authoritative. Only built when SkipUnmatchedRoutes is enabled.
 	bucketParamMethods map[int]int
+	// paramRoutes mirrors treeStack but holds only the parametric/root/star endpoints
+	// of each bucket together with their index in that bucket, so the SkipUnmatchedRoutes
+	// lookahead scans just the candidate routes instead of the whole bucket. Indexed by
+	// method int, then tree-bucket key. Only built when SkipUnmatchedRoutes is enabled.
+	paramRoutes []map[int][]indexedRoute
+	// skipHasUseRoutes is true when at least one middleware (use) route is registered.
+	// When false, SkipUnmatchedRoutes is a no-op (next() already answers 404/405 without
+	// running anything), so the lookahead is skipped entirely.
+	skipHasUseRoutes bool
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -205,6 +213,9 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// are answered with 404 (or 405 when the path exists for other methods)
 	// immediately, before the middleware chain runs. This avoids spending work on
 	// requests to unregistered paths (bots, scanners, bad URLs).
+	//
+	// Note: the internal lookup indexes use a per-method bitmask, so this option
+	// supports up to 63 entries in RequestMethods (far beyond the ~11 defaults).
 	//
 	// Default: false
 	SkipUnmatchedRoutes bool `json:"skip_unmatched_routes"`

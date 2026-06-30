@@ -482,20 +482,15 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 	}
 
 	// Tier 2: scan only the parametric/root/star endpoints of the requested method.
-	tree, ok := app.treeStack[methodInt][treeHash]
-	if !ok {
-		tree = app.treeStack[methodInt][0]
+	// The bucket is resolved exactly as next() does (specific bucket, else bucket 0)
+	// so the candidate indices line up with the bucket next() iterates.
+	bucketHash := treeHash
+	if _, ok := app.treeStack[methodInt][treeHash]; !ok {
+		bucketHash = 0
 	}
-	for i, route := range tree {
-		if route.use || route.mount {
-			continue
-		}
-		// Static endpoints are covered by the index; skip them cheaply.
-		if !route.root && !route.star && len(route.Params) == 0 {
-			continue
-		}
-		if route.match(detectionPath, path, values) {
-			return skipRunChain, 0, i
+	for _, cand := range app.paramRoutes[methodInt][bucketHash] {
+		if cand.route.match(detectionPath, path, values) {
+			return skipRunChain, 0, cand.idx
 		}
 	}
 
@@ -507,18 +502,12 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 		if m == methodInt || allow&(1<<m) != 0 {
 			continue
 		}
-		t, ok := app.treeStack[m][treeHash]
-		if !ok {
-			t = app.treeStack[m][0]
+		bh := treeHash
+		if _, ok := app.treeStack[m][treeHash]; !ok {
+			bh = 0
 		}
-		for _, route := range t {
-			if route.use || route.mount {
-				continue
-			}
-			if !route.root && !route.star && len(route.Params) == 0 {
-				continue
-			}
-			if route.match(detectionPath, path, values) {
+		for _, cand := range app.paramRoutes[m][bh] {
+			if cand.route.match(detectionPath, path, values) {
 				allow |= 1 << m
 				break
 			}
@@ -562,8 +551,10 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Skip unmatched routes before running the middleware chain.
-	if app.config.SkipUnmatchedRoutes {
+	// Skip unmatched routes before running the middleware chain. When no middleware
+	// is registered the lookahead is pure overhead (next() already answers 404/405
+	// without running anything), so it is gated on skipHasUseRoutes.
+	if app.config.SkipUnmatchedRoutes && app.skipHasUseRoutes {
 		decision, allowMask, matchIndex := app.resolveSkip(ctx.methodInt, ctx.treePathHash,
 			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path), &ctx.values)
 		switch decision {
@@ -601,8 +592,10 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Skip unmatched routes before running the middleware chain.
-	if app.config.SkipUnmatchedRoutes {
+	// Skip unmatched routes before running the middleware chain. When no middleware
+	// is registered the lookahead is pure overhead (next() already answers 404/405
+	// without running anything), so it is gated on skipHasUseRoutes.
+	if app.config.SkipUnmatchedRoutes && app.skipHasUseRoutes {
 		decision, allowMask, matchIndex := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(),
 			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
 		switch decision {
@@ -1051,38 +1044,56 @@ func reuseRouteBucket(prev map[int][]*Route, key, capHint int) []*Route {
 	return make([]*Route, 0, capHint)
 }
 
+// indexedRoute pairs a candidate route with its index in the tree bucket it was
+// taken from, so the SkipUnmatchedRoutes lookahead can hand that index to
+// next()/nextCustom() (via firstMatchIndex) to skip endpoints already ruled out.
+type indexedRoute struct {
+	route *Route
+	idx   int
+}
+
 // buildSkipIndexes builds the lookup structures used by the SkipUnmatchedRoutes
-// fast path: a method-global index of static endpoints, and a per-tree-bucket
-// bitmask of methods that own parametric/root/star endpoints (or a mounted
-// sub-app) in that bucket. It is rebuilt together with the tree so the indexes
+// fast path: a method-global index of static endpoints, a per-tree-bucket bitmask
+// of methods that own parametric/root/star endpoints, and a per-bucket candidate
+// list of those endpoints. It is rebuilt together with the tree so the indexes
 // always reflect the current route set.
 func (app *App) buildSkipIndexes() {
 	static := make(map[string]int)
 	bucketParam := make(map[int]int)
+	paramRoutes := make([]map[int][]indexedRoute, len(app.config.RequestMethods))
+	hasUse := false
 
 	for method := range app.config.RequestMethods {
 		bit := 1 << method
+		paramRoutes[method] = make(map[int][]indexedRoute)
 
 		// Static index from the flat stack. A static endpoint is matched by
 		// route.match via a plain exact compare against route.path, so keying by
 		// route.path and looking up by detectionPath is exact.
 		for _, route := range app.stack[method] {
-			if route.use || route.mount || route.star || route.root || len(route.Params) > 0 {
+			if route.use {
+				hasUse = true
+				continue
+			}
+			if route.mount || route.star || route.root || len(route.Params) > 0 {
 				continue
 			}
 			static[route.path] |= bit
 		}
 
-		// Parametric/root/star/mount mask from the final buckets (post bucket-0
-		// replication) so it mirrors exactly what next() scans per bucket.
+		// Per-bucket candidate list and parametric/root/star mask from the final
+		// buckets (post bucket-0 replication) so they mirror exactly what next()
+		// scans per bucket. The stored idx is the route's position in that same
+		// bucket, which next() iterates. Mounted sub-apps are expanded into normal
+		// routes before buildTree runs, so no mount route reaches this point.
 		for treeHash, bucket := range app.treeStack[method] {
-			for _, route := range bucket {
-				if route.use {
+			for i, route := range bucket {
+				if route.use || route.mount {
 					continue
 				}
-				if route.mount || route.root || route.star || len(route.Params) > 0 {
+				if route.root || route.star || len(route.Params) > 0 {
 					bucketParam[treeHash] |= bit
-					break
+					paramRoutes[method][treeHash] = append(paramRoutes[method][treeHash], indexedRoute{route: route, idx: i})
 				}
 			}
 		}
@@ -1090,4 +1101,6 @@ func (app *App) buildSkipIndexes() {
 
 	app.staticRouteMethods = static
 	app.bucketParamMethods = bucketParam
+	app.paramRoutes = paramRoutes
+	app.skipHasUseRoutes = hasUse
 }
