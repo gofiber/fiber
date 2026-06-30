@@ -527,9 +527,28 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 
 // emitSkip renders a SkipUnmatchedRoutes short-circuit response (404 or 405)
 // through the configured error handler, matching the behavior of next()'s own
-// terminal 404/405 path but without running the middleware chain.
-func (app *App) emitSkip(c Ctx, allowMask uint64, err error) {
+// terminal 404/405 path but without running the middleware chain. It takes the
+// concrete *DefaultCtx so the variadic Append calls stay on the stack (calling
+// Append through the Ctx interface forces the value slice to escape and allocate).
+func (app *App) emitSkip(c *DefaultCtx, allowMask uint64, err error) {
 	// allowMask is only non-zero for the 405 case.
+	if allowMask != 0 {
+		methods := app.config.RequestMethods
+		for i := range methods {
+			if allowMask&(uint64(1)<<i) != 0 {
+				c.Append(HeaderAllow, methods[i])
+			}
+		}
+	}
+	if catch := app.ErrorHandler(c, err); catch != nil {
+		_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
+	}
+}
+
+// emitSkipCustom is the CustomCtx counterpart of emitSkip for the custom-context
+// request path. The Append calls allocate here (interface dispatch), but this
+// path is rare compared to the default *DefaultCtx handler.
+func (app *App) emitSkipCustom(c CustomCtx, allowMask uint64, err error) {
 	if allowMask != 0 {
 		methods := app.config.RequestMethods
 		for i := range methods {
@@ -606,10 +625,10 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
 		switch res.decision {
 		case skipNotFound:
-			app.emitSkip(ctx, 0, ErrNotFound)
+			app.emitSkipCustom(ctx, 0, ErrNotFound)
 			return
 		case skipMethodNot:
-			app.emitSkip(ctx, res.allowMask, ErrMethodNotAllowed)
+			app.emitSkipCustom(ctx, res.allowMask, ErrMethodNotAllowed)
 			return
 		default:
 			ctx.setFirstMatchIndex(res.matchIndex)
