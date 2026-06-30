@@ -110,6 +110,16 @@ type App struct {
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[int][]*Route
+	// staticRouteMethods indexes static (non-param, non-root, non-star, non-use,
+	// non-mount) endpoints for the SkipUnmatchedRoutes fast path. The key is the
+	// prettified route path; the value is a bitmask of method ints that have a
+	// static endpoint at that path. Only built when SkipUnmatchedRoutes is enabled.
+	staticRouteMethods map[string]int
+	// bucketParamMethods is a per-tree-bucket bitmask of method ints that have at
+	// least one parametric/root/star endpoint (or a mounted sub-app) in that bucket.
+	// Used to decide whether the static index is authoritative. Only built when
+	// SkipUnmatchedRoutes is enabled.
+	bucketParamMethods map[int]int
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -190,6 +200,14 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: false
 	CaseSensitive bool `json:"case_sensitive"`
+
+	// When set to true, requests whose path and method match no registered route
+	// are answered with 404 (or 405 when the path exists for other methods)
+	// immediately, before the middleware chain runs. This avoids spending work on
+	// requests to unregistered paths (bots, scanners, bad URLs).
+	//
+	// Default: false
+	SkipUnmatchedRoutes bool `json:"skip_unmatched_routes"`
 
 	// When set to true, disables automatic registration of HEAD routes for
 	// every GET route.

@@ -248,6 +248,14 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			continue
 		}
 
+		// SkipUnmatchedRoutes pre-resolved the matching endpoint; endpoints before
+		// it were already ruled out, so skip re-matching them. Middleware
+		// (route.use) must still run. firstMatchIndex is -1 when the feature is off
+		// or a static route matched.
+		if c.firstMatchIndex >= 0 && !route.use && indexRoute < c.firstMatchIndex {
+			continue
+		}
+
 		// Check if it matches the request path
 		if !route.match(detectionPath, path, &c.values) {
 			continue
@@ -353,6 +361,14 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			continue
 		}
 
+		// SkipUnmatchedRoutes pre-resolved the matching endpoint; endpoints before
+		// it were already ruled out, so skip re-matching them. Middleware
+		// (route.use) must still run. firstMatchIndex is -1 when the feature is off
+		// or a static route matched.
+		if c.getFirstMatchIndex() >= 0 && !route.use && indexRoute < c.getFirstMatchIndex() {
+			continue
+		}
+
 		// Check if it matches the request path
 		if !route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
 			continue
@@ -432,6 +448,106 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	return false, ErrNotFound
 }
 
+// SkipUnmatchedRoutes decision codes returned by resolveSkip.
+const (
+	skipRunChain  = iota // proceed to the normal middleware/handler chain
+	skipNotFound         // answer 404 without running the chain
+	skipMethodNot        // answer 405 without running the chain; allowMask holds the methods
+)
+
+// resolveSkip implements the SkipUnmatchedRoutes two-tier fast path. It returns a
+// decision code, the Allow bitmask for a 405 response, and the tree index of a
+// matched parametric endpoint (-1 otherwise) so next/nextCustom can skip
+// re-checking the endpoints already ruled out. values is used as scratch; on a
+// parametric match it holds that route's params, but next() re-matches the route
+// to recompute them (middleware between here and the endpoint may overwrite the
+// slice).
+func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string, values *[maxParams]string) (int, int, int) {
+	methodBit := 1 << methodInt
+	staticMask := app.staticRouteMethods[detectionPath]
+
+	// Tier 1a: a static endpoint matches this method -> run the chain normally.
+	if staticMask&methodBit != 0 {
+		return skipRunChain, 0, -1
+	}
+
+	// Tier 1b: when no parametric/root/star/mount route lives in the relevant
+	// buckets, the static index is authoritative for every method.
+	paramMask := app.bucketParamMethods[treeHash] | app.bucketParamMethods[0]
+	if paramMask == 0 {
+		if staticMask != 0 {
+			return skipMethodNot, staticMask, -1
+		}
+		return skipNotFound, 0, -1
+	}
+
+	// Tier 2: scan only the parametric/root/star endpoints of the requested method.
+	tree, ok := app.treeStack[methodInt][treeHash]
+	if !ok {
+		tree = app.treeStack[methodInt][0]
+	}
+	for i, route := range tree {
+		if route.use || route.mount {
+			continue
+		}
+		// Static endpoints are covered by the index; skip them cheaply.
+		if !route.root && !route.star && len(route.Params) == 0 {
+			continue
+		}
+		if route.match(detectionPath, path, values) {
+			return skipRunChain, 0, i
+		}
+	}
+
+	// No match for the requested method. Combine the static index with a
+	// parametric scan of the other methods to decide between 405 and 404.
+	allow := staticMask
+	methods := app.config.RequestMethods
+	for m := range methods {
+		if m == methodInt || allow&(1<<m) != 0 {
+			continue
+		}
+		t, ok := app.treeStack[m][treeHash]
+		if !ok {
+			t = app.treeStack[m][0]
+		}
+		for _, route := range t {
+			if route.use || route.mount {
+				continue
+			}
+			if !route.root && !route.star && len(route.Params) == 0 {
+				continue
+			}
+			if route.match(detectionPath, path, values) {
+				allow |= 1 << m
+				break
+			}
+		}
+	}
+	if allow != 0 {
+		return skipMethodNot, allow, -1
+	}
+	return skipNotFound, 0, -1
+}
+
+// emitSkip renders a SkipUnmatchedRoutes short-circuit response (404 or 405)
+// through the configured error handler, matching the behavior of next()'s own
+// terminal 404/405 path but without running the middleware chain.
+func (app *App) emitSkip(c Ctx, allowMask int, err error) {
+	// allowMask is only non-zero for the 405 case.
+	if allowMask != 0 {
+		methods := app.config.RequestMethods
+		for i := range methods {
+			if allowMask&(1<<i) != 0 {
+				c.Append(HeaderAllow, methods[i])
+			}
+		}
+	}
+	if catch := app.ErrorHandler(c, err); catch != nil {
+		_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
+	}
+}
+
 func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	ctx, ok := app.acquireDefaultCtx(rctx)
 	if !ok {
@@ -444,6 +560,22 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	if ctx.methodInt == -1 {
 		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
+	}
+
+	// Skip unmatched routes before running the middleware chain.
+	if app.config.SkipUnmatchedRoutes {
+		decision, allowMask, matchIndex := app.resolveSkip(ctx.methodInt, ctx.treePathHash,
+			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path), &ctx.values)
+		switch decision {
+		case skipNotFound:
+			app.emitSkip(ctx, 0, ErrNotFound)
+			return
+		case skipMethodNot:
+			app.emitSkip(ctx, allowMask, ErrMethodNotAllowed)
+			return
+		default:
+			ctx.firstMatchIndex = matchIndex
+		}
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie).
@@ -467,6 +599,22 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	if ctx.getMethodInt() == -1 {
 		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
+	}
+
+	// Skip unmatched routes before running the middleware chain.
+	if app.config.SkipUnmatchedRoutes {
+		decision, allowMask, matchIndex := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(),
+			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
+		switch decision {
+		case skipNotFound:
+			app.emitSkip(ctx, 0, ErrNotFound)
+			return
+		case skipMethodNot:
+			app.emitSkip(ctx, allowMask, ErrMethodNotAllowed)
+			return
+		default:
+			ctx.setFirstMatchIndex(matchIndex)
+		}
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie).
@@ -886,6 +1034,11 @@ func (app *App) buildTree() *App {
 		app.treeStack[method] = tsMap
 	}
 
+	// Build the SkipUnmatchedRoutes lookup indexes from the freshly built tree.
+	if app.config.SkipUnmatchedRoutes {
+		app.buildSkipIndexes()
+	}
+
 	// reset the flag and return
 	app.hasRoutesRefreshed = false
 	return app
@@ -896,4 +1049,45 @@ func reuseRouteBucket(prev map[int][]*Route, key, capHint int) []*Route {
 		return bucket[:0]
 	}
 	return make([]*Route, 0, capHint)
+}
+
+// buildSkipIndexes builds the lookup structures used by the SkipUnmatchedRoutes
+// fast path: a method-global index of static endpoints, and a per-tree-bucket
+// bitmask of methods that own parametric/root/star endpoints (or a mounted
+// sub-app) in that bucket. It is rebuilt together with the tree so the indexes
+// always reflect the current route set.
+func (app *App) buildSkipIndexes() {
+	static := make(map[string]int)
+	bucketParam := make(map[int]int)
+
+	for method := range app.config.RequestMethods {
+		bit := 1 << method
+
+		// Static index from the flat stack. A static endpoint is matched by
+		// route.match via a plain exact compare against route.path, so keying by
+		// route.path and looking up by detectionPath is exact.
+		for _, route := range app.stack[method] {
+			if route.use || route.mount || route.star || route.root || len(route.Params) > 0 {
+				continue
+			}
+			static[route.path] |= bit
+		}
+
+		// Parametric/root/star/mount mask from the final buckets (post bucket-0
+		// replication) so it mirrors exactly what next() scans per bucket.
+		for treeHash, bucket := range app.treeStack[method] {
+			for _, route := range bucket {
+				if route.use {
+					continue
+				}
+				if route.mount || route.root || route.star || len(route.Params) > 0 {
+					bucketParam[treeHash] |= bit
+					break
+				}
+			}
+		}
+	}
+
+	app.staticRouteMethods = static
+	app.bucketParamMethods = bucketParam
 }
