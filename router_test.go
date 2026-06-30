@@ -3658,6 +3658,57 @@ func Test_App_SkipUnmatchedRoutes_EdgeCases(t *testing.T) {
 		require.Equal(t, StatusNotFound, resp.StatusCode)
 		require.Empty(t, resp.Header.Get(HeaderAllow))
 	})
+
+	t.Run("single method bucket 404", func(t *testing.T) {
+		// This test covers the case where only one method has routes in a bucket
+		// and the request doesn't match - should return 404 (line 495 coverage)
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		// Create routes in a unique bucket (prefix "xyz")
+		app.Get("/xyz/users", func(c Ctx) error { return c.SendString("users") })
+
+		// Request a non-matching path in the same bucket with same method
+		// This path shares the same bucket hash but doesn't match any route
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/xyz/other", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.Empty(t, resp.Header.Get(HeaderAllow))
+	})
+
+	t.Run("error handler failure falls back to 500 - default handler", func(t *testing.T) {
+		// This test covers lines 560-561 where ErrorHandler returns an error
+		t.Parallel()
+		app := New(Config{
+			SkipUnmatchedRoutes: true,
+			ErrorHandler: func(_ Ctx, _ error) error {
+				return errors.New("error handler failed")
+			},
+		})
+		app.Get("/exists", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/not-exists", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusInternalServerError, resp.StatusCode)
+	})
+
+	t.Run("error handler failure falls back to 500 - custom ctx handler", func(t *testing.T) {
+		// This test covers lines 614-615 where ErrorHandler returns an error in customRequestHandler
+		t.Parallel()
+		newCustomCtx := func(app *App) CustomCtx {
+			return &DefaultCtx{app: app}
+		}
+		app := NewWithCustomCtx(newCustomCtx, Config{
+			SkipUnmatchedRoutes: true,
+			ErrorHandler: func(_ Ctx, _ error) error {
+				return errors.New("error handler failed")
+			},
+		})
+		app.Get("/exists", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/not-exists", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusInternalServerError, resp.StatusCode)
+	})
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_SkipUnmatchedRoutes -benchmem -count=4
