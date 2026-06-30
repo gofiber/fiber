@@ -3161,61 +3161,23 @@ func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
 }
 
 // go test -v -run=^$ -bench=Benchmark_SkipUnmatchedRoutes -benchmem -count=4
-func Benchmark_SkipUnmatchedRoutes_Matched(b *testing.B) {
-	// Static route hit — should be at parity with the feature disabled.
-	run := func(b *testing.B, skip bool) {
-		b.Helper()
-		app := New(Config{SkipUnmatchedRoutes: skip})
-		app.Use(func(c Ctx) error { return c.Next() })
-		registerDummyRoutes(app)
-		appHandler := app.Handler()
-
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod(MethodGet)
-		c.URI().SetPath("/user/repos") // genuinely static route
-
-		b.ReportAllocs()
-		b.ResetTimer()
-		for b.Loop() {
-			appHandler(c)
-		}
-	}
-	b.Run("without_skip", func(b *testing.B) { run(b, false) })
-	b.Run("with_skip", func(b *testing.B) { run(b, true) })
-}
-
-func Benchmark_SkipUnmatchedRoutes_MatchedParam(b *testing.B) {
-	run := func(b *testing.B, skip bool) {
-		b.Helper()
-		app := New(Config{SkipUnmatchedRoutes: skip})
-		app.Use(func(c Ctx) error { return c.Next() })
-		registerDummyRoutes(app)
-		appHandler := app.Handler()
-
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod(MethodGet)
-		c.URI().SetPath("/user/keys/1337")
-
-		b.ReportAllocs()
-		b.ResetTimer()
-		for b.Loop() {
-			appHandler(c)
-		}
-	}
-	b.Run("without_skip", func(b *testing.B) { run(b, false) })
-	b.Run("with_skip", func(b *testing.B) { run(b, true) })
-}
-
 func Benchmark_SkipUnmatchedRoutes_Unmatched(b *testing.B) {
-	run := func(b *testing.B, skip bool) {
-		b.Helper()
-		app := New(Config{SkipUnmatchedRoutes: skip})
-		app.Use(func(c Ctx) error { return c.Next() })
+	b.Run("without_skip", func(b *testing.B) {
+		app := New()
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
 		registerDummyRoutes(app)
 		appHandler := app.Handler()
 
 		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod(MethodGet)
+		c.Request.Header.SetMethod("GET")
 		c.URI().SetPath("/this/route/does/not/exist")
 
 		b.ReportAllocs()
@@ -3223,9 +3185,208 @@ func Benchmark_SkipUnmatchedRoutes_Unmatched(b *testing.B) {
 		for b.Loop() {
 			appHandler(c)
 		}
+	})
+
+	b.Run("with_skip", func(b *testing.B) {
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		registerDummyRoutes(app)
+		appHandler := app.Handler()
+
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("GET")
+		c.URI().SetPath("/this/route/does/not/exist")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_SkipUnmatchedRoutes_Matched(b *testing.B) {
+	b.Run("without_skip", func(b *testing.B) {
+		app := New()
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		registerDummyRoutes(app)
+		appHandler := app.Handler()
+
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("GET")
+		c.URI().SetPath("/user/keys/1337")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			appHandler(c)
+		}
+	})
+
+	b.Run("with_skip", func(b *testing.B) {
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		registerDummyRoutes(app)
+		appHandler := app.Handler()
+
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("GET")
+		c.URI().SetPath("/user/keys/1337")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_SkipUnmatchedRoutes_405_Middleware(b *testing.B) {
+	middleware := func(c Ctx) error { return c.Next() }
+
+	b.Run("without_skip", func(b *testing.B) {
+		app := New()
+		app.Use(middleware)
+		app.Use(middleware)
+		app.Use(middleware)
+		registerDummyRoutes(app)
+		appHandler := app.Handler()
+
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("POST")
+		c.URI().SetPath("/user/keys/1337")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			appHandler(c)
+		}
+	})
+
+	b.Run("with_skip", func(b *testing.B) {
+		app := New(Config{SkipUnmatchedRoutes: true})
+		app.Use(middleware)
+		app.Use(middleware)
+		app.Use(middleware)
+		registerDummyRoutes(app)
+		appHandler := app.Handler()
+
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("POST")
+		c.URI().SetPath("/user/keys/1337")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_SkipUnmatchedRoutes_405_NMiddleware(b *testing.B) {
+	b.Run("without_skip", func(b *testing.B) {
+		app := New()
+		registerDummyRoutes(app)
+		appHandler := app.Handler()
+
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("POST")
+		c.URI().SetPath("/user/keys/1337")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			appHandler(c)
+		}
+	})
+
+	b.Run("with_skip", func(b *testing.B) {
+		app := New(Config{SkipUnmatchedRoutes: true})
+		registerDummyRoutes(app)
+		appHandler := app.Handler()
+
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod("POST")
+		c.URI().SetPath("/user/keys/1337")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			appHandler(c)
+		}
+	})
+}
+
+func Benchmark_SkipUnmatchedRoutes_Deep(b *testing.B) {
+	deepScenarios := []struct {
+		name   string
+		method string
+		path   string
+		status int
+	}{
+		{"Matched_health_0param", MethodGet, "/health", StatusOK},
+		{"Unmatched_Top_level", MethodGet, "/.env", StatusNotFound},
+		{"Unmatched_Top_level_SBucket", MethodGet, "/heap", StatusNotFound},
+		{"Unmatched_Top_level_SBucket_Diff_Method", MethodDelete, "/heap", StatusNotFound},
+		{"Unmatched_Top_level_SBucket_Diff_Method2", MethodPost, "/heap", StatusNotFound},
+		{"Unmatched_Top_level_SBucket_WwongMethod", MethodPost, "/health", StatusMethodNotAllowed},
+		{"Matched_1param", MethodGet, "/api/v1/matters/m1", StatusOK},
+		{"Matched_3param", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1", StatusOK},
+		{"Matched_4param", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1/versions/v1", StatusOK},
+		{"Matched_5param", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1/versions/v1/notes/n1", StatusOK},
+		{"MethodNotAllowed_deep", MethodPost, "/api/v1/matters/m1/staff/s1/primary", StatusMethodNotAllowed},
 	}
-	b.Run("without_skip", func(b *testing.B) { run(b, false) })
-	b.Run("with_skip", func(b *testing.B) { run(b, true) })
+	for _, s := range deepScenarios {
+		for _, skip := range []bool{false, true} {
+			variant := "without_skip"
+			if skip {
+				variant = "with_skip"
+			}
+			b.Run(s.name+"/"+variant, func(b *testing.B) {
+				app := New(Config{SkipUnmatchedRoutes: skip})
+				h := func(_ Ctx) error { return nil }
+				mw := func(c Ctx) error { return c.Next() }
+
+				app.Get("/health", h)
+
+				api := app.Group("/api/v1", mw)
+				matters := api.Group("/matters", mw)
+
+				matters.Get("/:id", h)
+				matters.Put("/:matterId/staff/:staffId/primary", h)
+				api.Put("/emails/threads/:threadID/pin/:matterID", h)
+				api.Post("/conflicts/:entityType/:entityID/refresh", h)
+
+				matters.Get("/:matterId/staff/:staffId/docs/:docId", h)
+				matters.Get("/:matterId/staff/:staffId/docs/:docId/versions/:versionId", h)
+				matters.Get("/:matterId/staff/:staffId/docs/:docId/versions/:versionId/notes/:noteId", h)
+
+				appHandler := app.Handler()
+
+				c := &fasthttp.RequestCtx{}
+				c.Request.Header.SetMethod(s.method)
+				c.URI().SetPath(s.path)
+
+				b.ReportAllocs()
+				b.ResetTimer()
+				for b.Loop() {
+					appHandler(c)
+				}
+			})
+		}
+	}
 }
 
 // Test_App_SkipUnmatchedRoutes_MethodOverride ensures Method(...) clears the
