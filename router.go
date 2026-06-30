@@ -457,18 +457,19 @@ const (
 
 // skipResult is the outcome of the SkipUnmatchedRoutes lookahead.
 type skipResult struct {
-	decision   int // skipRunChain, skipNotFound, or skipMethodNot
-	allowMask  int // methods to advertise in the Allow header (skipMethodNot only)
-	matchIndex int // pre-resolved endpoint index for next()/nextCustom(), or -1
+	decision   int    // skipRunChain, skipNotFound, or skipMethodNot
+	allowMask  uint64 // methods to advertise in the Allow header (skipMethodNot only)
+	matchIndex int    // pre-resolved endpoint index for next()/nextCustom(), or -1
 }
 
 // resolveSkip implements the SkipUnmatchedRoutes two-tier fast path. matchIndex
 // lets next/nextCustom skip re-checking the endpoints already ruled out. values
 // is used as scratch; on a parametric match it holds that route's params, but
 // next() re-matches the route to recompute them (middleware between here and the
-// endpoint may overwrite the slice).
+// endpoint may overwrite the slice). Method masks are uint64 so they stay 64-bit
+// wide on 32-bit platforms.
 func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string, values *[maxParams]string) skipResult {
-	methodBit := 1 << methodInt
+	methodBit := uint64(1) << methodInt
 	staticMask := app.staticRouteMethods[detectionPath]
 
 	// Tier 1a: a static endpoint matches this method -> run the chain normally.
@@ -504,7 +505,7 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 	allow := staticMask
 	methods := app.config.RequestMethods
 	for m := range methods {
-		if m == methodInt || allow&(1<<m) != 0 {
+		if m == methodInt || allow&(uint64(1)<<m) != 0 {
 			continue
 		}
 		bh := treeHash
@@ -513,7 +514,7 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 		}
 		for _, cand := range app.paramRoutes[m][bh] {
 			if cand.route.match(detectionPath, path, values) {
-				allow |= 1 << m
+				allow |= uint64(1) << m
 				break
 			}
 		}
@@ -527,12 +528,12 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 // emitSkip renders a SkipUnmatchedRoutes short-circuit response (404 or 405)
 // through the configured error handler, matching the behavior of next()'s own
 // terminal 404/405 path but without running the middleware chain.
-func (app *App) emitSkip(c Ctx, allowMask int, err error) {
+func (app *App) emitSkip(c Ctx, allowMask uint64, err error) {
 	// allowMask is only non-zero for the 405 case.
 	if allowMask != 0 {
 		methods := app.config.RequestMethods
 		for i := range methods {
-			if allowMask&(1<<i) != 0 {
+			if allowMask&(uint64(1)<<i) != 0 {
 				c.Append(HeaderAllow, methods[i])
 			}
 		}
@@ -1063,13 +1064,13 @@ type indexedRoute struct {
 // list of those endpoints. It is rebuilt together with the tree so the indexes
 // always reflect the current route set.
 func (app *App) buildSkipIndexes() {
-	static := make(map[string]int)
-	bucketParam := make(map[int]int)
+	static := make(map[string]uint64)
+	bucketParam := make(map[int]uint64)
 	paramRoutes := make([]map[int][]indexedRoute, len(app.config.RequestMethods))
 	hasUse := false
 
 	for method := range app.config.RequestMethods {
-		bit := 1 << method
+		bit := uint64(1) << method
 		paramRoutes[method] = make(map[int][]indexedRoute)
 
 		// Static index from the flat stack. A static endpoint is matched by

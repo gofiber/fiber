@@ -818,6 +818,9 @@ func (r *DefaultReq) Method(override ...string) string {
 		return app.method(r.c.methodInt)
 	}
 	r.c.methodInt = methodInt
+	// The method changed, so any SkipUnmatchedRoutes lookahead index (computed
+	// against the previous method's tree bucket) is no longer valid.
+	r.c.firstMatchIndex = -1
 	return method
 }
 

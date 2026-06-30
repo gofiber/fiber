@@ -113,12 +113,13 @@ type App struct {
 	// staticRouteMethods indexes static (non-param, non-root, non-star, non-use,
 	// non-mount) endpoints for the SkipUnmatchedRoutes fast path. The key is the
 	// prettified route path; the value is a bitmask of method ints that have a
-	// static endpoint at that path. Only built when SkipUnmatchedRoutes is enabled.
-	staticRouteMethods map[string]int
+	// static endpoint at that path. uint64 keeps the mask 64-bit wide on every
+	// platform. Only built when SkipUnmatchedRoutes is enabled.
+	staticRouteMethods map[string]uint64
 	// bucketParamMethods is a per-tree-bucket bitmask of method ints that have at
 	// least one parametric/root/star endpoint in that bucket. Used to decide whether
 	// the static index is authoritative. Only built when SkipUnmatchedRoutes is enabled.
-	bucketParamMethods map[int]int
+	bucketParamMethods map[int]uint64
 	// paramRoutes mirrors treeStack but holds only the parametric/root/star endpoints
 	// of each bucket together with their index in that bucket, so the SkipUnmatchedRoutes
 	// lookahead scans just the candidate routes instead of the whole bucket. Indexed by
@@ -214,8 +215,9 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// immediately, before the middleware chain runs. This avoids spending work on
 	// requests to unregistered paths (bots, scanners, bad URLs).
 	//
-	// Note: the internal lookup indexes use a per-method bitmask, so this option
-	// supports up to 63 entries in RequestMethods (far beyond the ~11 defaults).
+	// Note: the internal lookup indexes use a 64-bit per-method bitmask, so this
+	// option supports up to 64 entries in RequestMethods (far beyond the ~11
+	// defaults) on every platform, including 32-bit builds.
 	//
 	// Default: false
 	SkipUnmatchedRoutes bool `json:"skip_unmatched_routes"`

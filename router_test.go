@@ -3227,3 +3227,30 @@ func Benchmark_SkipUnmatchedRoutes_Unmatched(b *testing.B) {
 	b.Run("without_skip", func(b *testing.B) { run(b, false) })
 	b.Run("with_skip", func(b *testing.B) { run(b, true) })
 }
+
+// Test_App_SkipUnmatchedRoutes_MethodOverride ensures Method(...) clears the
+// lookahead index: a middleware switches GET->POST mid-chain, and the POST
+// endpoint sits at a lower bucket index than the GET match, so a stale
+// firstMatchIndex would wrongly skip it.
+func Test_App_SkipUnmatchedRoutes_MethodOverride(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+	app.Use(func(c Ctx) error {
+		if c.Method() == MethodGet {
+			c.Method(MethodPost)
+		}
+		return c.Next()
+	})
+	app.Get("/zzz/aaa", func(c Ctx) error { return c.SendString("get-static") })
+	app.Get("/zzz/:id", func(c Ctx) error { return c.SendString("get-param") })
+	app.Post("/zzz/:id", func(c Ctx) error { return c.SendString("post-param") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/zzz/123", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "post-param", string(body))
+}
