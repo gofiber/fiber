@@ -124,10 +124,6 @@ type App struct {
 	// lookahead scans just the candidate routes instead of the whole bucket. Indexed by
 	// method int, then tree-bucket key. Only built when SkipUnmatchedRoutes is enabled.
 	paramRoutes []map[int][]indexedRoute
-	// skipHasUseRoutes is true when at least one middleware (use) route is registered.
-	// When false, SkipUnmatchedRoutes is a no-op (next() already answers 404/405 without
-	// running anything), so the lookahead is skipped entirely.
-	skipHasUseRoutes bool
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -137,6 +133,10 @@ type App struct {
 	hasRoutesRefreshed bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
+	// skipHasUseRoutes is true when at least one middleware (use) route is registered.
+	// When false, SkipUnmatchedRoutes is a no-op (next() already answers 404/405 without
+	// running anything), so the lookahead is skipped entirely.
+	skipHasUseRoutes bool
 }
 
 type viewsLockKey struct {

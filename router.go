@@ -455,30 +455,35 @@ const (
 	skipMethodNot        // answer 405 without running the chain; allowMask holds the methods
 )
 
-// resolveSkip implements the SkipUnmatchedRoutes two-tier fast path. It returns a
-// decision code, the Allow bitmask for a 405 response, and the tree index of a
-// matched parametric endpoint (-1 otherwise) so next/nextCustom can skip
-// re-checking the endpoints already ruled out. values is used as scratch; on a
-// parametric match it holds that route's params, but next() re-matches the route
-// to recompute them (middleware between here and the endpoint may overwrite the
-// slice).
-func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string, values *[maxParams]string) (int, int, int) {
+// skipResult is the outcome of the SkipUnmatchedRoutes lookahead.
+type skipResult struct {
+	decision   int // skipRunChain, skipNotFound, or skipMethodNot
+	allowMask  int // methods to advertise in the Allow header (skipMethodNot only)
+	matchIndex int // pre-resolved endpoint index for next()/nextCustom(), or -1
+}
+
+// resolveSkip implements the SkipUnmatchedRoutes two-tier fast path. matchIndex
+// lets next/nextCustom skip re-checking the endpoints already ruled out. values
+// is used as scratch; on a parametric match it holds that route's params, but
+// next() re-matches the route to recompute them (middleware between here and the
+// endpoint may overwrite the slice).
+func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string, values *[maxParams]string) skipResult {
 	methodBit := 1 << methodInt
 	staticMask := app.staticRouteMethods[detectionPath]
 
 	// Tier 1a: a static endpoint matches this method -> run the chain normally.
 	if staticMask&methodBit != 0 {
-		return skipRunChain, 0, -1
+		return skipResult{decision: skipRunChain, matchIndex: -1}
 	}
 
-	// Tier 1b: when no parametric/root/star/mount route lives in the relevant
-	// buckets, the static index is authoritative for every method.
+	// Tier 1b: when no parametric/root/star route lives in the relevant buckets,
+	// the static index is authoritative for every method.
 	paramMask := app.bucketParamMethods[treeHash] | app.bucketParamMethods[0]
 	if paramMask == 0 {
 		if staticMask != 0 {
-			return skipMethodNot, staticMask, -1
+			return skipResult{decision: skipMethodNot, allowMask: staticMask, matchIndex: -1}
 		}
-		return skipNotFound, 0, -1
+		return skipResult{decision: skipNotFound, matchIndex: -1}
 	}
 
 	// Tier 2: scan only the parametric/root/star endpoints of the requested method.
@@ -490,7 +495,7 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 	}
 	for _, cand := range app.paramRoutes[methodInt][bucketHash] {
 		if cand.route.match(detectionPath, path, values) {
-			return skipRunChain, 0, cand.idx
+			return skipResult{decision: skipRunChain, matchIndex: cand.idx}
 		}
 	}
 
@@ -514,9 +519,9 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 		}
 	}
 	if allow != 0 {
-		return skipMethodNot, allow, -1
+		return skipResult{decision: skipMethodNot, allowMask: allow, matchIndex: -1}
 	}
-	return skipNotFound, 0, -1
+	return skipResult{decision: skipNotFound, matchIndex: -1}
 }
 
 // emitSkip renders a SkipUnmatchedRoutes short-circuit response (404 or 405)
@@ -555,17 +560,17 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	// is registered the lookahead is pure overhead (next() already answers 404/405
 	// without running anything), so it is gated on skipHasUseRoutes.
 	if app.config.SkipUnmatchedRoutes && app.skipHasUseRoutes {
-		decision, allowMask, matchIndex := app.resolveSkip(ctx.methodInt, ctx.treePathHash,
+		res := app.resolveSkip(ctx.methodInt, ctx.treePathHash,
 			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path), &ctx.values)
-		switch decision {
+		switch res.decision {
 		case skipNotFound:
 			app.emitSkip(ctx, 0, ErrNotFound)
 			return
 		case skipMethodNot:
-			app.emitSkip(ctx, allowMask, ErrMethodNotAllowed)
+			app.emitSkip(ctx, res.allowMask, ErrMethodNotAllowed)
 			return
 		default:
-			ctx.firstMatchIndex = matchIndex
+			ctx.firstMatchIndex = res.matchIndex
 		}
 	}
 
@@ -596,17 +601,17 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	// is registered the lookahead is pure overhead (next() already answers 404/405
 	// without running anything), so it is gated on skipHasUseRoutes.
 	if app.config.SkipUnmatchedRoutes && app.skipHasUseRoutes {
-		decision, allowMask, matchIndex := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(),
+		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(),
 			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
-		switch decision {
+		switch res.decision {
 		case skipNotFound:
 			app.emitSkip(ctx, 0, ErrNotFound)
 			return
 		case skipMethodNot:
-			app.emitSkip(ctx, allowMask, ErrMethodNotAllowed)
+			app.emitSkip(ctx, res.allowMask, ErrMethodNotAllowed)
 			return
 		default:
-			ctx.setFirstMatchIndex(matchIndex)
+			ctx.setFirstMatchIndex(res.matchIndex)
 		}
 	}
 
