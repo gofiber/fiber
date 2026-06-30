@@ -116,6 +116,11 @@ type App struct {
 	// static endpoint at that path. uint64 keeps the mask 64-bit wide on every
 	// platform. Only built when SkipUnmatchedRoutes is enabled.
 	staticRouteMethods map[string]uint64
+	// bucketParamMethods is a per-tree-bucket bitmask of method ints that have at least
+	// one parametric/root/star endpoint in that bucket. When the mask for the relevant
+	// bucket is zero, the static index is authoritative and no cross-method scan is
+	// needed. Only built when SkipUnmatchedRoutes is enabled.
+	bucketParamMethods map[int]uint64
 	// paramRoutes mirrors treeStack but holds only the parametric/root/star endpoints
 	// of each bucket together with their index in that bucket, so the SkipUnmatchedRoutes
 	// lookahead scans just the candidate routes instead of the whole bucket. It has an
@@ -136,10 +141,6 @@ type App struct {
 	// When false, SkipUnmatchedRoutes is a no-op (next() already answers 404/405 without
 	// running anything), so the lookahead is skipped entirely.
 	skipHasUseRoutes bool
-	// skipHasDynamicRoutes is true when at least one parametric/root/star endpoint is
-	// registered. When false, the SkipUnmatchedRoutes static index is authoritative and
-	// no route scan is ever needed. Only built when SkipUnmatchedRoutes is enabled.
-	skipHasDynamicRoutes bool
 }
 
 type viewsLockKey struct {
