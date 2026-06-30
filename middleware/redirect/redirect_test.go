@@ -130,6 +130,38 @@ func Test_Redirect(t *testing.T) {
 	}
 }
 
+// Test_Redirect_StartAnchor verifies that a rule only matches from the start of
+// the path, so a request is not redirected by a rule whose path it merely ends
+// with (issue #4476).
+func Test_Redirect_StartAnchor(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/old": "/new",
+		},
+		StatusCode: fiber.StatusMovedPermanently,
+	}))
+	app.Get("/very/old", func(c fiber.Ctx) error {
+		return c.SendString("not redirected")
+	})
+
+	// The rule matches the whole path and redirects.
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
+	require.Equal(t, "/new", resp.Header.Get("Location"))
+
+	// A path that only ends with the rule path must not be redirected.
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/very/old", http.NoBody)
+	require.NoError(t, err)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Empty(t, resp.Header.Get("Location"))
+}
+
 func Test_Next(t *testing.T) {
 	// Case 1 : Next function always returns true
 	app := *fiber.New()
