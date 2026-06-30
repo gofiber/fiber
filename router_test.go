@@ -3890,12 +3890,13 @@ func Benchmark_SkipUnmatchedRoutes_Deep(b *testing.B) {
 		{"Matched_health_0param", MethodGet, "/health", StatusOK},
 		{"Unmatched_Top_level", MethodGet, "/.env", StatusNotFound},
 		{"Unmatched_Top_level_SBucket", MethodGet, "/heap", StatusNotFound},
-		{"Unmatched_Top_level_SBucket_WwongMethog", MethodPost, "/heap", StatusNotFound},
+		{"Unmatched_Top_level_SBucket_Diff_Method", MethodDelete, "/heap", StatusNotFound},
+		{"Unmatched_Top_level_SBucket_Diff_Method2", MethodPost, "/heap", StatusNotFound},
+		{"Unmatched_Top_level_SBucket_WwongMethod", MethodPost, "/health", StatusMethodNotAllowed},
 		{"Matched_1param", MethodGet, "/api/v1/matters/m1", StatusOK},
 		{"Matched_3param", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1", StatusOK},
 		{"Matched_4param", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1/versions/v1", StatusOK},
 		{"Matched_5param", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1/versions/v1/notes/n1", StatusOK},
-		{"NotFound_deep", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1/versions/v1/nope", StatusNotFound},
 		{"MethodNotAllowed_deep", MethodPost, "/api/v1/matters/m1/staff/s1/primary", StatusMethodNotAllowed},
 	}
 	for _, s := range deepScenarios {
