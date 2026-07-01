@@ -90,6 +90,41 @@ func Test_Logger(t *testing.T) {
 	require.Equal(t, "some random error", buf.String())
 }
 
+// Test_Logger_SanitizesControlChars ensures user-controlled values are stripped
+// of ASCII control bytes (CR/LF/etc.) before being written to the log, preventing
+// log-injection / log-forging via forged newlines.
+func Test_Logger_SanitizesControlChars(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app.Use(New(Config{
+		Format: "ua=${ua} ref=${referer}",
+		Stream: buf,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	// Attacker-controlled headers carrying CR/LF that would forge a second log line.
+	req.Header.Set(fiber.HeaderUserAgent, "evil\r\n200 GET /forged")
+	req.Header.Set(fiber.HeaderReferer, "a\nb")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	out := buf.String()
+	require.NotContains(t, out, "\r")
+	require.NotContains(t, out, "\n")
+	// Control bytes are replaced by spaces, other characters preserved.
+	require.Equal(t, "ua=evil  200 GET /forged ref=a b", out)
+}
+
 // go test -run Test_Logger_locals
 func Test_Logger_locals(t *testing.T) {
 	t.Parallel()

@@ -3997,9 +3997,19 @@ func Test_Ctx_Deadline(t *testing.T) {
 		return c.Next()
 	})
 	app.Get("/test", func(c Ctx) error {
+		// No user context set: no deadline, matching context.Background().
 		deadline, ok := c.Deadline()
 		require.Equal(t, time.Time{}, deadline)
 		require.False(t, ok)
+
+		// A deadline set via SetContext must be reported through Deadline().
+		want := time.Now().Add(time.Hour)
+		dctx, cancel := context.WithDeadline(context.Background(), want)
+		defer cancel()
+		c.SetContext(dctx)
+		deadline, ok = c.Deadline()
+		require.True(t, ok)
+		require.WithinDuration(t, want, deadline, time.Second)
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
@@ -4015,8 +4025,23 @@ func Test_Ctx_Done(t *testing.T) {
 		return c.Next()
 	})
 	app.Get("/test", func(c Ctx) error {
+		// No user context set: Done() is nil, matching context.Background().
 		var nilChan <-chan struct{}
 		require.Equal(t, nilChan, c.Done())
+
+		// A cancelable context set via SetContext must propagate cancellation
+		// through Done() and Err().
+		cctx, cancel := context.WithCancel(context.Background())
+		c.SetContext(cctx)
+		require.NotNil(t, c.Done())
+		require.NoError(t, c.Err())
+		cancel()
+		select {
+		case <-c.Done():
+		default:
+			t.Fatal("expected Done channel to be closed after cancel")
+		}
+		require.ErrorIs(t, c.Err(), context.Canceled)
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))

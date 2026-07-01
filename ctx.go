@@ -156,10 +156,13 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 // should be canceled. Deadline returns ok==false when no deadline is
 // set. Successive calls to Deadline return the same results.
 //
-// Due to current limitations in how fasthttp works, Deadline operates as a nop.
+// It delegates to the context set via SetContext (for example the one
+// installed by the timeout middleware), so a deadline configured there is
+// reported here. When no cancelable context has been set it reports no
+// deadline, because fasthttp itself does not expose one.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Deadline() (time.Time, bool) {
-	return time.Time{}, false
+func (c *DefaultCtx) Deadline() (time.Time, bool) {
+	return c.Context().Deadline()
 }
 
 // Done returns a channel that's closed when work done on behalf of this
@@ -168,18 +171,23 @@ func (*DefaultCtx) Deadline() (time.Time, bool) {
 // The close of the Done channel may happen asynchronously,
 // after the cancel function returns.
 //
-// Due to current limitations in how fasthttp works, Done operates as a nop.
+// It delegates to the context set via SetContext (for example the one
+// installed by the timeout middleware), so cancellation propagates from
+// there. When no cancelable context has been set it returns nil, because
+// fasthttp itself has no cancellation signal to expose.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Done() <-chan struct{} {
-	return nil
+func (c *DefaultCtx) Done() <-chan struct{} {
+	return c.Context().Done()
 }
 
 // Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
 //
-// Due to current limitations in how fasthttp works, Err operates as a nop.
+// It delegates to the context set via SetContext (for example the one
+// installed by the timeout middleware), so a cancellation reason set there
+// is reported here. When no cancelable context has been set it returns nil.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Err() error {
-	return nil
+func (c *DefaultCtx) Err() error {
+	return c.Context().Err()
 }
 
 // Request return the *fasthttp.Request object
