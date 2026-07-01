@@ -128,6 +128,11 @@ type App struct {
 	// mirrors a treeStack miss and selects the bucket-0 fallback. Indexed by method int,
 	// then tree-bucket key. Only built when SkipUnmatchedRoutes is enabled.
 	paramRoutes []map[int][]indexedRoute
+	// routeMethods is a bitmask of method ints that own at least one non-use route.
+	// The 404/405 cross-method fallback in next()/nextCustom() consults it to skip
+	// methods that can never contribute an Allow entry, avoiding their tree-bucket map
+	// lookups. Only trusted when methodMaskValid is true (RequestMethods <= 64).
+	routeMethods uint64
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -146,6 +151,10 @@ type App struct {
 	// clobber the params the SkipUnmatchedRoutes lookahead already wrote for the matched
 	// endpoint, so next() can reuse them instead of re-matching the route.
 	skipHasParamUse bool
+	// methodMaskValid is true when routeMethods can be trusted to prune the cross-method
+	// fallback scan, i.e. RequestMethods fits in a 64-bit mask. When false (an unusually
+	// large custom RequestMethods list), the fallback scans every method as before.
+	methodMaskValid bool
 }
 
 type viewsLockKey struct {

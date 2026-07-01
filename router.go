@@ -316,9 +316,16 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 
 	exists := false
 	methods := app.config.RequestMethods
+	prune := app.methodMaskValid
+	routeMethods := app.routeMethods
 	for i := range methods {
 		// Skip original method
 		if methodInt == i {
+			continue
+		}
+		// Skip methods with no non-use route: they can never add an Allow entry, so
+		// avoid their tree-bucket map lookups entirely.
+		if prune && routeMethods&(uint64(1)<<i) == 0 {
 			continue
 		}
 		// Reset stack index
@@ -452,9 +459,16 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 
 	exists := false
 	methods := app.config.RequestMethods
+	prune := app.methodMaskValid
+	routeMethods := app.routeMethods
 	for i := range methods {
 		// Skip original method
 		if methodInt == i {
+			continue
+		}
+		// Skip methods with no non-use route: they can never add an Allow entry, so
+		// avoid their tree-bucket map lookups entirely.
+		if prune && routeMethods&(uint64(1)<<i) == 0 {
 			continue
 		}
 		// Reset stack index
@@ -1105,6 +1119,22 @@ func (app *App) buildTree() *App {
 		}
 
 		app.treeStack[method] = tsMap
+	}
+
+	// Precompute the bitmask of methods that own at least one non-use route, so the
+	// 404/405 cross-method fallback in next()/nextCustom() can skip methods that can
+	// never match. Trusted only when the method set fits in a 64-bit mask.
+	app.methodMaskValid = len(app.config.RequestMethods) <= 64
+	app.routeMethods = 0
+	if app.methodMaskValid {
+		for method := range app.config.RequestMethods {
+			for _, route := range app.stack[method] {
+				if !route.use {
+					app.routeMethods |= uint64(1) << method
+					break
+				}
+			}
+		}
 	}
 
 	// Build the SkipUnmatchedRoutes lookup indexes from the freshly built tree.
