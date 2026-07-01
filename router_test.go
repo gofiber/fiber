@@ -3504,3 +3504,22 @@ func Benchmark_Router_HandlerCustom(b *testing.B) {
 		appHandler(c)
 	}
 }
+
+// Benchmark_Router_HandlerCustom_NotFound exercises the custom-context 404/405
+// cross-method fallback scan (nextCustom), where accessor hoisting matters.
+func Benchmark_Router_HandlerCustom_NotFound(b *testing.B) {
+	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
+	app := NewWithCustomCtx(newCtx)
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod(MethodGet)
+	c.URI().SetPath("/this/route/does/not/exist")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		appHandler(c)
+	}
+}

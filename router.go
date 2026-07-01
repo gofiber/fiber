@@ -478,7 +478,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
+			if route.match(detectionPath, path, values) {
 				// We matched
 				exists = true
 				// Add method to Allow header
