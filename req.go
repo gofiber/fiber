@@ -421,8 +421,11 @@ func (r *DefaultReq) Fresh() bool {
 		return false
 	}
 
-	// if-none-match
-	if len(noneMatch) > 0 && (len(noneMatch) != 1 || noneMatch[0] != '*') {
+	// if-none-match takes precedence over if-modified-since (RFC 9110)
+	if len(noneMatch) > 0 {
+		if len(noneMatch) == 1 && noneMatch[0] == '*' {
+			return true
+		}
 		app := r.c.app
 		response := &r.c.fasthttp.Response
 		etag := app.toString(response.Header.Peek(HeaderETag))
@@ -432,9 +435,10 @@ func (r *DefaultReq) Fresh() bool {
 		if app.isEtagStale(etag, noneMatch) {
 			return false
 		}
+		return true
 	}
 
-	// if-modified-since (evaluated independently of if-none-match)
+	// if-modified-since (only reached when if-none-match is absent)
 	if len(modifiedSince) > 0 {
 		response := &r.c.fasthttp.Response
 		lastModified := response.Header.Peek(HeaderLastModified)

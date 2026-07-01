@@ -2615,19 +2615,16 @@ func Test_Ctx_Fresh(t *testing.T) {
 	c.Response().Header.Set(HeaderETag, `"a"`)
 	require.True(t, c.Fresh())
 
-	c.Request().Header.Set(HeaderIfModifiedSince, "xxWed, 21 Oct 2015 07:28:00 GMT")
-	c.Response().Header.Set(HeaderLastModified, "xxWed, 21 Oct 2015 07:28:00 GMT")
-	require.False(t, c.Fresh())
-
-	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
-	require.False(t, c.Fresh())
-
-	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
-	require.True(t, c.Fresh())
-
+	// If-None-Match takes precedence over If-Modified-Since (RFC 9110): once the
+	// ETag matches, the response is fresh regardless of the date headers, even
+	// when Last-Modified is newer than If-Modified-Since (stale under dates alone).
 	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:27:59 GMT")
 	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
-	require.False(t, c.Fresh())
+	require.True(t, c.Fresh())
+
+	// A wildcard If-None-Match is fresh too, ignoring the date headers.
+	c.Request().Header.Set(HeaderIfNoneMatch, "*")
+	require.True(t, c.Fresh())
 }
 
 // Test_Ctx_Fresh_ModifiedSinceOnly verifies that If-Modified-Since is evaluated
