@@ -3484,3 +3484,23 @@ func Test_App_SkipUnmatchedRoutes_ManyMethods(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
+
+// Benchmark_Router_HandlerCustom exercises the custom-context request path
+// (nextCustom) over a deep bucket, where the per-iteration accessor hoisting
+// matters most.
+func Benchmark_Router_HandlerCustom(b *testing.B) {
+	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
+	app := NewWithCustomCtx(newCtx)
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod(MethodGet)
+	c.URI().SetPath("/user/keys/1337")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		appHandler(c)
+	}
+}

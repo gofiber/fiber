@@ -235,6 +235,12 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	lenr := len(tree) - 1
 
 	indexRoute := c.indexRoute
+	// Hoist loop-invariant fields into locals: c is a pointer and route.match takes
+	// &c.values, so the compiler would otherwise reload these from memory on every
+	// iteration. They are only mutated outside this loop (before next() is called).
+	firstMatchIndex := c.firstMatchIndex
+	skipNonUse := c.shouldSkipNonUseRoutes
+	skipHasParamUse := app.skipHasParamUse
 
 	// Loop over the route stack starting from previous index
 	for indexRoute < lenr {
@@ -252,15 +258,15 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		// it were already ruled out, so skip re-matching them. Middleware
 		// (route.use) must still run. firstMatchIndex is -1 when the feature is off
 		// or a static route matched.
-		if c.firstMatchIndex >= 0 && !route.use {
-			if indexRoute < c.firstMatchIndex {
+		if firstMatchIndex >= 0 && !route.use {
+			if indexRoute < firstMatchIndex {
 				continue
 			}
 			// At the pre-resolved endpoint: when no parametric/wildcard middleware
 			// could have overwritten c.values since the lookahead, reuse the params
 			// it already wrote instead of re-matching. The error path
 			// (shouldSkipNonUseRoutes) still skips endpoints via the check below.
-			if indexRoute == c.firstMatchIndex && !app.skipHasParamUse && !c.shouldSkipNonUseRoutes {
+			if indexRoute == firstMatchIndex && !skipHasParamUse && !skipNonUse {
 				c.route = route
 				c.isMatched = true
 				if len(route.Handlers) > 0 {
@@ -277,7 +283,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			continue
 		}
 
-		if c.shouldSkipNonUseRoutes && !route.use {
+		if skipNonUse && !route.use {
 			continue
 		}
 
@@ -364,6 +370,15 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	lenr := len(tree) - 1
 
 	indexRoute := c.getIndexRoute()
+	// Hoist loop-invariant accessors into locals so the per-iteration route matching
+	// doesn't repeat these interface calls; none of them change during this loop
+	// (path/method changes go through RestartRouting, which re-enters nextCustom).
+	detectionPath := c.getDetectionPath()
+	path := c.Path()
+	values := c.getValues()
+	firstMatchIndex := c.getFirstMatchIndex()
+	skipNonUse := c.getSkipNonUseRoutes()
+	skipHasParamUse := app.skipHasParamUse
 
 	// Loop over the route stack starting from previous index
 	for indexRoute < lenr {
@@ -381,15 +396,15 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		// it were already ruled out, so skip re-matching them. Middleware
 		// (route.use) must still run. firstMatchIndex is -1 when the feature is off
 		// or a static route matched.
-		if fmi := c.getFirstMatchIndex(); fmi >= 0 && !route.use {
-			if indexRoute < fmi {
+		if firstMatchIndex >= 0 && !route.use {
+			if indexRoute < firstMatchIndex {
 				continue
 			}
 			// At the pre-resolved endpoint: when no parametric/wildcard middleware
 			// could have overwritten the params since the lookahead, reuse them
-			// instead of re-matching. The error path (getSkipNonUseRoutes) still
-			// skips endpoints via the check below.
-			if indexRoute == fmi && !app.skipHasParamUse && !c.getSkipNonUseRoutes() {
+			// instead of re-matching. The error path (skipNonUse) still skips
+			// endpoints via the check below.
+			if indexRoute == firstMatchIndex && !skipHasParamUse && !skipNonUse {
 				c.setRoute(route)
 				c.setMatched(true)
 				if len(route.Handlers) > 0 {
@@ -402,10 +417,10 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
+		if !route.match(detectionPath, path, values) {
 			continue
 		}
-		if c.getSkipNonUseRoutes() && !route.use {
+		if skipNonUse && !route.use {
 			continue
 		}
 
