@@ -172,6 +172,46 @@ func Test_Rewrite(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
+// Test_Rewrite_StartAnchor verifies that a rule only matches from the start of
+// the path, so a rule does not fire on an unrelated route that merely contains
+// the rule path as a suffix (issue #4476).
+func Test_Rewrite_StartAnchor(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/users/*": "/u/$1",
+		},
+	}))
+	app.Get("/u/:id", func(c fiber.Ctx) error {
+		return c.SendString("rewritten:" + c.Params("id"))
+	})
+	app.Get("/api/users/:id", func(c fiber.Ctx) error {
+		return c.SendString("api:" + c.Params("id"))
+	})
+
+	// The rule matches from the start of the path and is rewritten.
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/users/1", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "rewritten:1", string(body))
+
+	// A path that only contains the rule path as a suffix must not be rewritten.
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/api/users/1", http.NoBody)
+	require.NoError(t, err)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "api:1", string(body))
+}
+
 func Benchmark_Rewrite(b *testing.B) {
 	// Helper function to create a new Fiber app with rewrite middleware
 	createApp := func(config Config) *fiber.App {
