@@ -110,6 +110,8 @@ type App struct {
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[int][]*Route
+	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
+	skip skipRouteIndex
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -190,6 +192,23 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: false
 	CaseSensitive bool `json:"case_sensitive"`
+
+	// When set to true, requests whose path and method match no registered route
+	// are answered with 404 (or 405 when the path exists for other methods)
+	// before the middleware chain runs, so no work is spent on bots, scanners,
+	// and bad URLs.
+	//
+	// Warning: middleware never runs for skipped requests. This breaks Use-based
+	// responders on unregistered paths (catch-all 404 pages, static, proxy,
+	// healthcheck, rewrite and redirect middleware) and CORS preflight for routes
+	// without an explicit OPTIONS handler; loggers and metrics will not see the
+	// skipped requests either. Customize the 404/405 responses via ErrorHandler.
+	//
+	// Note: with more than 64 entries in RequestMethods the fast path is disabled
+	// and requests fall through to the normal router.
+	//
+	// Default: false
+	SkipUnmatchedRoutes bool `json:"skip_unmatched_routes"`
 
 	// When set to true, disables automatic registration of HEAD routes for
 	// every GET route.

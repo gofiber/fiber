@@ -235,6 +235,10 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	lenr := len(tree) - 1
 
 	indexRoute := c.indexRoute
+	// Hoist loop invariants: route.match takes &c.values, so these would reload each iteration.
+	firstMatchIndex := c.firstMatchIndex
+	skipNonUse := c.shouldSkipNonUseRoutes
+	skipHasParamUse := app.skip.hasParamUse
 
 	// Loop over the route stack starting from previous index
 	for indexRoute < lenr {
@@ -248,12 +252,30 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			continue
 		}
 
+		// Lookahead pre-resolved the endpoint: skip endpoints already ruled out; middleware still runs.
+		if firstMatchIndex >= 0 && !route.use {
+			if indexRoute < firstMatchIndex {
+				continue
+			}
+			// Reuse the lookahead's params unless param/wildcard middleware may have clobbered them.
+			if indexRoute == firstMatchIndex && !skipHasParamUse && !skipNonUse {
+				c.route = route
+				c.isMatched = true
+				if len(route.Handlers) > 0 {
+					c.indexHandler = 0
+					c.indexRoute = indexRoute
+					return true, route.Handlers[0](c)
+				}
+				return true, nil
+			}
+		}
+
 		// Check if it matches the request path
 		if !route.match(detectionPath, path, &c.values) {
 			continue
 		}
 
-		if c.shouldSkipNonUseRoutes && !route.use {
+		if skipNonUse && !route.use {
 			continue
 		}
 
@@ -286,9 +308,15 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 
 	exists := false
 	methods := app.config.RequestMethods
+	prune := app.skip.methodMaskValid
+	routeMethods := app.skip.routeMethods
 	for i := range methods {
 		// Skip original method
 		if methodInt == i {
+			continue
+		}
+		// Methods with no non-use route can never add an Allow entry.
+		if prune && routeMethods&(uint64(1)<<i) == 0 {
 			continue
 		}
 		// Reset stack index
@@ -340,6 +368,13 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	lenr := len(tree) - 1
 
 	indexRoute := c.getIndexRoute()
+	// Hoist loop-invariant accessors; nothing changes mid-loop (Next()/RestartRouting re-enter with fresh reads).
+	detectionPath := c.getDetectionPath()
+	path := c.Path()
+	values := c.getValues()
+	firstMatchIndex := c.getFirstMatchIndex()
+	skipNonUse := c.getSkipNonUseRoutes()
+	skipHasParamUse := app.skip.hasParamUse
 
 	// Loop over the route stack starting from previous index
 	for indexRoute < lenr {
@@ -353,11 +388,29 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			continue
 		}
 
+		// Lookahead pre-resolved the endpoint: skip endpoints already ruled out; middleware still runs.
+		if firstMatchIndex >= 0 && !route.use {
+			if indexRoute < firstMatchIndex {
+				continue
+			}
+			// Reuse the lookahead's params unless param/wildcard middleware may have clobbered them.
+			if indexRoute == firstMatchIndex && !skipHasParamUse && !skipNonUse {
+				c.setRoute(route)
+				c.setMatched(true)
+				if len(route.Handlers) > 0 {
+					c.setIndexHandler(0)
+					c.setIndexRoute(indexRoute)
+					return true, route.Handlers[0](c)
+				}
+				return true, nil
+			}
+		}
+
 		// Check if it matches the request path
-		if !route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
+		if !route.match(detectionPath, path, values) {
 			continue
 		}
-		if c.getSkipNonUseRoutes() && !route.use {
+		if skipNonUse && !route.use {
 			continue
 		}
 
@@ -389,9 +442,15 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 
 	exists := false
 	methods := app.config.RequestMethods
+	prune := app.skip.methodMaskValid
+	routeMethods := app.skip.routeMethods
 	for i := range methods {
 		// Skip original method
 		if methodInt == i {
+			continue
+		}
+		// Methods with no non-use route can never add an Allow entry.
+		if prune && routeMethods&(uint64(1)<<i) == 0 {
 			continue
 		}
 		// Reset stack index
@@ -415,7 +474,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
+			if route.match(detectionPath, path, values) {
 				// We matched
 				exists = true
 				// Add method to Allow header
@@ -446,9 +505,27 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Optional: check flash messages (hot path, see hasFlashCookie).
+	// Optional: check flash messages (hot path, see hasFlashCookie); before the
+	// short-circuit so a skipped 404/405 still clears them.
 	if hasFlashCookie(&ctx.fasthttp.Request.Header) {
 		ctx.Redirect().parseAndClearFlashMessages()
+	}
+
+	// Early 404/405 before the middleware chain; enabled implies middleware exists
+	// (without middleware next() already answers 404/405 cheaply).
+	if app.skip.enabled {
+		res := app.resolveSkip(ctx.methodInt, ctx.treePathHash,
+			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path), &ctx.values)
+		switch res.decision {
+		case skipNotFound:
+			app.emitSkip(ctx, 0, ErrNotFound)
+			return
+		case skipNotAllowed:
+			app.emitSkip(ctx, res.allowMask, ErrMethodNotAllowed)
+			return
+		default:
+			ctx.firstMatchIndex = res.matchIndex
+		}
 	}
 
 	_, err := app.next(ctx)
@@ -469,9 +546,27 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Optional: check flash messages (hot path, see hasFlashCookie).
+	// Optional: check flash messages (hot path, see hasFlashCookie); before the
+	// short-circuit so a skipped 404/405 still clears them.
 	if hasFlashCookie(&ctx.Request().Header) {
 		ctx.Redirect().parseAndClearFlashMessages()
+	}
+
+	// Early 404/405 before the middleware chain; enabled implies middleware exists
+	// (without middleware next() already answers 404/405 cheaply).
+	if app.skip.enabled {
+		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(),
+			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
+		switch res.decision {
+		case skipNotFound:
+			app.emitSkipCustom(ctx, 0, ErrNotFound)
+			return
+		case skipNotAllowed:
+			app.emitSkipCustom(ctx, res.allowMask, ErrMethodNotAllowed)
+			return
+		default:
+			ctx.setFirstMatchIndex(res.matchIndex)
+		}
 	}
 
 	_, err := app.nextCustom(ctx)
@@ -885,6 +980,8 @@ func (app *App) buildTree() *App {
 
 		app.treeStack[method] = tsMap
 	}
+
+	app.buildSkipIndexes()
 
 	// reset the flag and return
 	app.hasRoutesRefreshed = false
