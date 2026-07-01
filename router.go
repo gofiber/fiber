@@ -232,15 +232,11 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	if !ok {
 		tree = app.treeStack[methodInt][0]
 	}
-	lenr := len(tree) - 1
+	indexRoute := max(c.indexRoute+1, 0)
 
-	indexRoute := c.indexRoute
-
-	// Loop over the route stack starting from previous index
-	for indexRoute < lenr {
-		// Increment route index
-		indexRoute++
-
+	// Loop over the route stack starting from previous index;
+	// the clamp above plus the len(tree) guard keep tree[indexRoute] bounds-check free
+	for ; indexRoute < len(tree); indexRoute++ {
 		// Get *Route
 		route := tree[indexRoute]
 
@@ -337,15 +333,11 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	if !ok {
 		tree = app.treeStack[methodInt][0]
 	}
-	lenr := len(tree) - 1
+	indexRoute := max(c.getIndexRoute()+1, 0)
 
-	indexRoute := c.getIndexRoute()
-
-	// Loop over the route stack starting from previous index
-	for indexRoute < lenr {
-		// Increment route index
-		indexRoute++
-
+	// Loop over the route stack starting from previous index;
+	// the clamp above plus the len(tree) guard keep tree[indexRoute] bounds-check free
+	for ; indexRoute < len(tree); indexRoute++ {
 		// Get *Route
 		route := tree[indexRoute]
 
