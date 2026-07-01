@@ -3415,3 +3415,46 @@ func Test_App_SkipUnmatchedRoutes_MethodOverride(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, "post-param", string(body))
 }
+
+// Test_App_SkipUnmatchedRoutes_ParamReuse checks that a matched parametric
+// endpoint returns correct multi-param values when next() reuses the lookahead's
+// params (no parametric middleware, so the fast path is taken).
+func Test_App_SkipUnmatchedRoutes_ParamReuse(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+	app.Use(func(c Ctx) error { return c.Next() })         // non-param middleware
+	app.Use("/api", func(c Ctx) error { return c.Next() }) // static-prefix middleware
+	app.Get("/api/users/:uid/books/:bid", func(c Ctx) error {
+		return c.SendString(c.Params("uid") + "," + c.Params("bid"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/users/u7/books/b9", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "u7,b9", string(body))
+}
+
+// Test_App_SkipUnmatchedRoutes_ParamMiddlewareNoClobber guards the param-reuse
+// fast path: a parametric middleware runs before the endpoint and writes into the
+// shared param slot, so the fast path must be disabled and the endpoint re-matched.
+// If reuse fired incorrectly the endpoint would observe the middleware's value.
+func Test_App_SkipUnmatchedRoutes_ParamMiddlewareNoClobber(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+	// Parametric middleware whose match writes param slot 0 as the first segment.
+	app.Use("/:seg", func(c Ctx) error { return c.Next() })
+	app.Get("/foo/:name", func(c Ctx) error { return c.SendString(c.Params("name")) })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "bar", string(body), "endpoint param must not be clobbered by parametric middleware")
+}

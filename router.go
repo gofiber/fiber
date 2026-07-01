@@ -252,8 +252,24 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		// it were already ruled out, so skip re-matching them. Middleware
 		// (route.use) must still run. firstMatchIndex is -1 when the feature is off
 		// or a static route matched.
-		if c.firstMatchIndex >= 0 && !route.use && indexRoute < c.firstMatchIndex {
-			continue
+		if c.firstMatchIndex >= 0 && !route.use {
+			if indexRoute < c.firstMatchIndex {
+				continue
+			}
+			// At the pre-resolved endpoint: when no parametric/wildcard middleware
+			// could have overwritten c.values since the lookahead, reuse the params
+			// it already wrote instead of re-matching. The error path
+			// (shouldSkipNonUseRoutes) still skips endpoints via the check below.
+			if indexRoute == c.firstMatchIndex && !app.skipHasParamUse && !c.shouldSkipNonUseRoutes {
+				c.route = route
+				c.isMatched = true
+				if len(route.Handlers) > 0 {
+					c.indexHandler = 0
+					c.indexRoute = indexRoute
+					return true, route.Handlers[0](c)
+				}
+				return true, nil
+			}
 		}
 
 		// Check if it matches the request path
@@ -365,8 +381,24 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		// it were already ruled out, so skip re-matching them. Middleware
 		// (route.use) must still run. firstMatchIndex is -1 when the feature is off
 		// or a static route matched.
-		if c.getFirstMatchIndex() >= 0 && !route.use && indexRoute < c.getFirstMatchIndex() {
-			continue
+		if fmi := c.getFirstMatchIndex(); fmi >= 0 && !route.use {
+			if indexRoute < fmi {
+				continue
+			}
+			// At the pre-resolved endpoint: when no parametric/wildcard middleware
+			// could have overwritten the params since the lookahead, reuse them
+			// instead of re-matching. The error path (getSkipNonUseRoutes) still
+			// skips endpoints via the check below.
+			if indexRoute == fmi && !app.skipHasParamUse && !c.getSkipNonUseRoutes() {
+				c.setRoute(route)
+				c.setMatched(true)
+				if len(route.Handlers) > 0 {
+					c.setIndexHandler(0)
+					c.setIndexRoute(indexRoute)
+					return true, route.Handlers[0](c)
+				}
+				return true, nil
+			}
 		}
 
 		// Check if it matches the request path
@@ -1091,6 +1123,7 @@ func (app *App) buildSkipIndexes() {
 	bucketParam := make(map[int]uint64)
 	paramRoutes := make([]map[int][]indexedRoute, len(app.config.RequestMethods))
 	hasUse := false
+	hasParamUse := false
 
 	for method := range app.config.RequestMethods {
 		bit := uint64(1) << method
@@ -1102,6 +1135,11 @@ func (app *App) buildSkipIndexes() {
 		for _, route := range app.stack[method] {
 			if route.use {
 				hasUse = true
+				// A parametric or wildcard middleware writes into c.values when it
+				// matches, which would clobber the lookahead's params.
+				if route.star || len(route.Params) > 0 {
+					hasParamUse = true
+				}
 				continue
 			}
 			if route.mount || route.star || route.root || len(route.Params) > 0 {
@@ -1138,4 +1176,5 @@ func (app *App) buildSkipIndexes() {
 	app.bucketParamMethods = bucketParam
 	app.paramRoutes = paramRoutes
 	app.skipHasUseRoutes = hasUse
+	app.skipHasParamUse = hasParamUse
 }

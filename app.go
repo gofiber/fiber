@@ -141,6 +141,11 @@ type App struct {
 	// When false, SkipUnmatchedRoutes is a no-op (next() already answers 404/405 without
 	// running anything), so the lookahead is skipped entirely.
 	skipHasUseRoutes bool
+	// skipHasParamUse is true when at least one middleware (use) route has parameters or
+	// is a wildcard, i.e. its match writes into c.values. When false, no middleware can
+	// clobber the params the SkipUnmatchedRoutes lookahead already wrote for the matched
+	// endpoint, so next() can reuse them instead of re-matching the route.
+	skipHasParamUse bool
 }
 
 type viewsLockKey struct {
