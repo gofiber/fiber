@@ -449,12 +449,17 @@ func (r *DefaultReq) Fresh() bool {
 		if err != nil {
 			return false
 		}
-		modifiedSinceTime, err := fasthttp.ParseHTTPDate(modifiedSince)
-		if err != nil {
-			return false
-		}
-		if lastModifiedTime.Compare(modifiedSinceTime) == 1 {
-			return false
+		// Common conditional request: the client echoes back the exact
+		// Last-Modified it was given. Identical, already-validated dates are
+		// equal, so skip the second parse and comparison.
+		if !bytes.Equal(lastModified, modifiedSince) {
+			modifiedSinceTime, err := fasthttp.ParseHTTPDate(modifiedSince)
+			if err != nil {
+				return false
+			}
+			if lastModifiedTime.Compare(modifiedSinceTime) == 1 {
+				return false
+			}
 		}
 	}
 	return true
