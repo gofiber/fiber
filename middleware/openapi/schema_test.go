@@ -502,3 +502,33 @@ func Test_SchemaOf_OpenAPITagWithComma(t *testing.T) {
 	require.Equal(t, "Status, including a comma", status["description"])
 	require.Equal(t, []any{"active", "inactive"}, status["enum"])
 }
+
+// Test_SchemaOf_EmbeddedFieldDoesNotShadowParent verifies that a field declared
+// on the parent struct wins over a promoted embedded field of the same name,
+// matching encoding/json semantics, and that required entries are not
+// duplicated.
+func Test_SchemaOf_EmbeddedFieldDoesNotShadowParent(t *testing.T) {
+	t.Parallel()
+
+	type Inner struct {
+		ID   string `json:"id"`
+		Note string `json:"note"`
+	}
+	type Outer struct { //nolint:govet // fieldalignment: the embedded struct must follow the parent field to exercise shadowing
+		ID int `json:"id"`
+		Inner
+	}
+
+	schema := SchemaOf(Outer{})
+	props := requireProps(t, schema)
+
+	// The parent's int field shadows the embedded string field regardless of
+	// declaration order.
+	id := requireProp(t, props, "id")
+	require.Equal(t, "integer", id[schemaKeyType])
+	require.Contains(t, props, "note")
+
+	required, ok := schema["required"].([]string)
+	require.True(t, ok)
+	require.ElementsMatch(t, []string{"id", "note"}, required)
+}

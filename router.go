@@ -113,8 +113,8 @@ type Route struct {
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	group *Group // Group instance. used for routes in groups
 
-	Responses   map[string]RouteResponse `json:"responses"`
-	RequestBody *RouteRequestBody        `json:"requestBody"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Responses   map[string]RouteResponse `json:"responses,omitempty"`
+	RequestBody *RouteRequestBody        `json:"requestBody,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 
 	path string // Prettified path
 
@@ -123,14 +123,14 @@ type Route struct {
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
 	Path        string `json:"path"` // Original registered route path
-	Summary     string `json:"summary"`
-	Description string `json:"description"`
-	Consumes    string `json:"consumes"`
-	Produces    string `json:"produces"`
+	Summary     string `json:"summary,omitempty"`
+	Description string `json:"description,omitempty"`
+	Consumes    string `json:"consumes,omitempty"`
+	Produces    string `json:"produces,omitempty"`
 
 	Handlers            []Handler             `json:"-"` // Ctx handlers
-	Parameters          []RouteParameter      `json:"parameters"`
-	Tags                []string              `json:"tags"`
+	Parameters          []RouteParameter      `json:"parameters,omitempty"`
+	Tags                []string              `json:"tags,omitempty"`
 	Params              []string              `json:"params"`                        // Case-sensitive param keys
 	Security            []map[string][]string `json:"security,omitempty"`            // OpenAPI security requirements
 	ExternalDocs        map[string]any        `json:"externalDocs,omitempty"`        //nolint:tagliatelle // OpenAPI operation externalDocs
@@ -138,7 +138,7 @@ type Route struct {
 
 	routeParser routeParser // Parameter parser
 
-	Deprecated bool `json:"deprecated"`
+	Deprecated bool `json:"deprecated,omitempty"`
 
 	// Data for routing
 	use           bool // USE matches path prefixes

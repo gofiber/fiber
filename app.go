@@ -28,6 +28,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
@@ -968,13 +969,19 @@ func (app *App) Description(desc string) Router {
 	return app
 }
 
+// validateMediaType panics unless typ is a parseable "type/subtype" media type.
+// It returns typ unchanged so callers can validate inline.
+func validateMediaType(typ string) string {
+	if _, _, err := mime.ParseMediaType(typ); err != nil || !strings.Contains(typ, "/") {
+		panic("invalid media type: " + typ)
+	}
+	return typ
+}
+
 // Consumes assigns a request media type to the most recently added route.
 func (app *App) Consumes(typ string) Router {
 	if typ != "" {
-		typ = strings.TrimSpace(typ)
-		if _, _, err := mime.ParseMediaType(typ); err != nil || !strings.Contains(typ, "/") {
-			panic("invalid media type: " + typ)
-		}
+		typ = validateMediaType(utils.TrimSpace(typ))
 	}
 	app.mutex.Lock()
 	app.applyToLatestRouteLocked(func(route *Route) {
@@ -987,10 +994,7 @@ func (app *App) Consumes(typ string) Router {
 // Produces assigns a response media type to the most recently added route.
 func (app *App) Produces(typ string) Router {
 	if typ != "" {
-		typ = strings.TrimSpace(typ)
-		if _, _, err := mime.ParseMediaType(typ); err != nil || !strings.Contains(typ, "/") {
-			panic("invalid media type: " + typ)
-		}
+		typ = validateMediaType(utils.TrimSpace(typ))
 	}
 	app.mutex.Lock()
 	app.applyToLatestRouteLocked(func(route *Route) {
@@ -1026,7 +1030,9 @@ func (app *App) RequestBodyWithExample(description string, required bool, schema
 	app.mutex.Lock()
 	app.applyToLatestRouteLocked(func(route *Route) {
 		route.RequestBody = cloneRouteRequestBody(body)
-		if len(sanitized) > 0 {
+		// Only adopt the request body media type as the route's Consumes value
+		// when the user has not set one explicitly via Consumes().
+		if len(sanitized) > 0 && route.Consumes == MIMETextPlain {
 			route.Consumes = sanitized[0]
 		}
 	})
@@ -1060,11 +1066,11 @@ func (app *App) ParameterWithExample(name, in string, required bool, schema map[
 //
 //nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
 func (app *App) AddParameter(param RouteParameter) Router {
-	if strings.TrimSpace(param.Name) == "" {
+	if utils.TrimSpace(param.Name) == "" {
 		panic("parameter name is required")
 	}
 
-	location := strings.ToLower(strings.TrimSpace(param.In))
+	location := utilsstrings.ToLower(utils.TrimSpace(param.In))
 	switch location {
 	// "querystring" is an OpenAPI 3.2 location that treats the whole query
 	// string as a single value (paired with content rather than schema).
@@ -1074,26 +1080,20 @@ func (app *App) AddParameter(param RouteParameter) Router {
 	}
 	param.In = location
 
-	if param.SchemaRef != "" {
+	// Normalize the schema into a fresh map so the caller's map is never
+	// mutated; the per-route copies below keep routes from aliasing each other.
+	switch {
+	case param.SchemaRef != "":
 		param.Schema = map[string]any{openapiRefKey: param.SchemaRef}
-	} else if param.Schema == nil {
-		param.Schema = map[string]any{"type": openapiTypeString}
-	}
-
-	schemaCopy := copyAnyMap(param.Schema)
-	if schemaCopy == nil {
-		schemaCopy = map[string]any{"type": openapiTypeString}
-	}
-	if param.SchemaRef == "" {
-		if _, ok := schemaCopy["type"]; !ok {
-			schemaCopy["type"] = openapiTypeString
+	default:
+		schema := copyAnyMap(param.Schema)
+		if schema == nil {
+			schema = map[string]any{}
 		}
-	}
-	param.Schema = schemaCopy
-	param.Examples = copyAnyMap(param.Examples)
-	if param.Explode != nil {
-		explode := *param.Explode
-		param.Explode = &explode
+		if _, ok := schema["type"]; !ok {
+			schema["type"] = openapiTypeString
+		}
+		param.Schema = schema
 	}
 
 	if location == "path" {
@@ -1135,7 +1135,7 @@ func defaultResponseDescription(status int) string {
 	if status == 0 {
 		return "Default response"
 	}
-	if text := http.StatusText(status); text != "" {
+	if text := utils.StatusMessage(status); text != "" {
 		return text
 	}
 	return "Status " + strconv.Itoa(status)
@@ -1179,8 +1179,18 @@ func (app *App) addResponse(status int, description string, schema map[string]an
 		copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
 		copyResp.Schema = copyAnyMap(resp.Schema)
 		copyResp.Examples = copyAnyMap(resp.Examples)
+		// Headers, links, and per-media-type content documented earlier via
+		// ResponseHeader/ResponseLink/ResponseContent belong to the same
+		// response entry and must survive a later Response call.
+		if existing, ok := route.Responses[key]; ok {
+			copyResp.Headers = existing.Headers
+			copyResp.Links = existing.Links
+			copyResp.Content = existing.Content
+		}
 		route.Responses[key] = copyResp
-		if status == StatusOK && len(copyResp.MediaTypes) > 0 {
+		// Only adopt the response media type as the route's Produces value when
+		// the user has not set one explicitly via Produces().
+		if status == StatusOK && len(copyResp.MediaTypes) > 0 && route.Produces == MIMETextPlain {
 			route.Produces = copyResp.MediaTypes[0]
 		}
 	})
@@ -1197,13 +1207,11 @@ func sanitizeMediaTypes(mediaTypes []string) []string {
 	seen := make(map[string]struct{}, len(mediaTypes))
 	sanitized := make([]string, 0, len(mediaTypes))
 	for _, typ := range mediaTypes {
-		trimmed := strings.TrimSpace(typ)
+		trimmed := utils.TrimSpace(typ)
 		if trimmed == "" {
 			continue
 		}
-		if _, _, err := mime.ParseMediaType(trimmed); err != nil || !strings.Contains(trimmed, "/") {
-			panic("invalid media type: " + trimmed)
-		}
+		validateMediaType(trimmed)
 		if _, ok := seen[trimmed]; ok {
 			continue
 		}
@@ -1278,7 +1286,7 @@ func (app *App) Hidden() Router {
 // most recently added route, creating the response entry if it does not exist
 // yet. A status of 0 documents the "default" response.
 func (app *App) ResponseHeader(status int, name, description string, schema map[string]any) Router {
-	if strings.TrimSpace(name) == "" {
+	if utils.TrimSpace(name) == "" {
 		panic("response header name is required")
 	}
 	if status != 0 && (status < 100 || status > 599) {
@@ -1402,7 +1410,7 @@ func (app *App) ResponseContent(status int, description string, content map[stri
 // ResponseLink documents a response link for the given status code, creating the
 // response entry if needed.
 func (app *App) ResponseLink(status int, name string, link map[string]any) Router {
-	if strings.TrimSpace(name) == "" {
+	if utils.TrimSpace(name) == "" {
 		panic("response link name is required")
 	}
 	if status != 0 && (status < 100 || status > 599) {
@@ -1435,22 +1443,38 @@ func (app *App) ResponseLink(status int, name string, link map[string]any) Route
 	return app
 }
 
+// applyToLatestRouteLocked runs apply on the most recently registered route and
+// on every stack entry created by the same registration: the per-method copies
+// of a Use() registration, entries merged by identical-route compression, and
+// the automatically generated HEAD copy of a GET route. Routes that merely
+// share the same path — explicitly registered HEAD routes, or concrete routes
+// under a middleware prefix — are deliberately not touched, so documenting one
+// registration can never clobber another's metadata.
 func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
-	if app.latestRoute == nil || apply == nil {
+	latest := app.latestRoute
+	if latest == nil || apply == nil {
 		return
 	}
 
-	apply(app.latestRoute)
+	apply(latest)
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			if route == app.latestRoute {
+			if route == latest || route.Path != latest.Path {
 				continue
 			}
 
-			isMethodValid := route.Method == app.latestRoute.Method || app.latestRoute.use ||
-				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
-			if route.Path == app.latestRoute.Path && isMethodValid {
+			switch {
+			case latest.use:
+				// Use() registers one route copy per HTTP method; reach them all.
+				if route.use {
+					apply(route)
+				}
+			case route.use:
+				// A concrete registration never documents middleware entries.
+			case route.Method == latest.Method:
+				apply(route)
+			case latest.Method == MethodGet && route.Method == MethodHead && route.autoHead:
 				apply(route)
 			}
 		}

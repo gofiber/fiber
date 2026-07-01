@@ -2891,3 +2891,86 @@ func Test_Route_URL(t *testing.T) {
 		require.Equal(t, "/api/v1/users/user123/posts/post456/comments", url)
 	})
 }
+
+// Test_App_MetadataUseDoesNotClobberConcreteRoutes verifies documentation
+// helpers chained on a Use() registration only touch the middleware entries,
+// never concrete routes sharing the same path.
+func Test_App_MetadataUseDoesNotClobberConcreteRoutes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/api", testEmptyHandler).Summary("Real endpoint")
+	app.Use("/api", func(c Ctx) error { return c.Next() }).Summary("middleware").Hidden()
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.False(t, route.use)
+	require.Equal(t, "Real endpoint", route.Summary)
+	require.False(t, route.IsHidden())
+}
+
+// Test_App_MetadataDoesNotClobberExplicitHead verifies documentation helpers
+// chained on a GET registration do not overwrite an explicitly registered HEAD
+// route at the same path.
+func Test_App_MetadataDoesNotClobberExplicitHead(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Head("/file", testEmptyHandler).Summary("Probe")
+	app.Get("/file", testEmptyHandler).Summary("Download")
+
+	headRoute := app.stack[app.methodInt(MethodHead)][0]
+	require.Equal(t, "Probe", headRoute.Summary)
+
+	getRoute := app.stack[app.methodInt(MethodGet)][0]
+	require.Equal(t, "Download", getRoute.Summary)
+}
+
+// Test_App_ResponseKeepsHeadersAndLinks verifies a Response call merges with
+// headers and links documented earlier for the same status code.
+func Test_App_ResponseKeepsHeadersAndLinks(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).
+		ResponseHeader(StatusOK, "X-RateLimit", "requests remaining", nil).
+		ResponseLink(StatusOK, "next", map[string]any{"operationId": "getNext"}).
+		Response(StatusOK, "OK", MIMEApplicationJSON)
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	resp, ok := route.Responses["200"]
+	require.True(t, ok)
+	require.Equal(t, "OK", resp.Description)
+	require.Equal(t, []string{MIMEApplicationJSON}, resp.MediaTypes)
+	require.Contains(t, resp.Headers, "X-RateLimit")
+	require.Contains(t, resp.Links, "next")
+}
+
+// Test_App_ResponseKeepsExplicitProduces verifies Response only adopts its
+// media type as Produces when the user has not set one explicitly.
+func Test_App_ResponseKeepsExplicitProduces(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).
+		Produces(MIMEApplicationJSON).
+		Response(StatusOK, "OK", "text/csv")
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
+
+	app2 := New()
+	app2.Get("/", testEmptyHandler).Response(StatusOK, "OK", "text/csv")
+	route2 := app2.stack[app2.methodInt(MethodGet)][0]
+	require.Equal(t, "text/csv", route2.Produces)
+}
+
+// Test_App_RequestBodyKeepsExplicitConsumes verifies RequestBody only adopts
+// its media type as Consumes when the user has not set one explicitly.
+func Test_App_RequestBodyKeepsExplicitConsumes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Post("/", testEmptyHandler).
+		Consumes(MIMEApplicationJSON).
+		RequestBody("payload", true, MIMEApplicationXML)
+
+	route := app.stack[app.methodInt(MethodPost)][0]
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Consumes)
+}

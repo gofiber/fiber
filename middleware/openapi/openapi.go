@@ -17,14 +17,16 @@ import (
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
+	// The Swagger UI page only depends on the resolved spec path, so it is
+	// cached per target path. The handler may serve several prefixes (e.g.
+	// app.Use([]string{"/v1", "/v2"}, New())), each needing its own page.
 	var (
-		specMu      sync.Mutex
-		specData    []byte
-		specCount   = -1
-		swaggerData []byte
-		swaggerOnce sync.Once
-		swaggerErr  error
+		swaggerMu    sync.Mutex
+		swaggerPages = make(map[string][]byte)
 	)
+
+	specPath := normalizedPath(cfg.Path)
+	uiPath := normalizedPath(cfg.UIPath)
 
 	return func(c fiber.Ctx) error {
 		if cfg.Next != nil && cfg.Next(c) {
@@ -35,69 +37,63 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		targetPath := resolvedSpecPath(c, cfg.Path)
-		targetUIPath := resolvedSpecPath(c, cfg.UIPath)
+		pathMatches := pathMatchesFold
+		if c.App().Config().CaseSensitive {
+			pathMatches = pathMatchesExact
+		}
+		prefix := routePrefix(c)
 
 		switch {
-		case pathMatches(c.Path(), targetPath):
-			// The spec is cached but regenerated whenever the number of
-			// registered routes changes, so routes added after the first
-			// request are reflected without a process restart.
-			specMu.Lock()
-			count := routeCount(c.App())
-			if specData == nil || specCount != count {
-				spec := generateSpec(c.App(), &cfg)
-				data, err := json.Marshal(spec)
-				if err != nil {
-					specMu.Unlock()
-					return fmt.Errorf("openapi: marshal spec: %w", err)
-				}
-				specData = data
-				specCount = count
+		case pathMatches(c.Path(), prefix+specPath):
+			// The spec is regenerated on every request so route additions,
+			// removals, and metadata changes are always reflected. Generation
+			// only happens for requests to the spec path itself.
+			spec := generateSpec(c.App(), &cfg)
+			data, err := c.App().Config().JSONEncoder(spec)
+			if err != nil {
+				return fmt.Errorf("openapi: marshal spec: %w", err)
 			}
-			data := specData
-			specMu.Unlock()
 
 			c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSONCharsetUTF8)
 			return c.Status(fiber.StatusOK).Send(data)
-		case pathMatches(c.Path(), targetUIPath):
-			swaggerOnce.Do(func() {
-				swaggerData, swaggerErr = buildSwaggerUIPage(targetPath, &cfg)
-				if swaggerErr != nil {
-					swaggerErr = fmt.Errorf("openapi: build swagger ui page: %w", swaggerErr)
+		case pathMatches(c.Path(), prefix+uiPath):
+			targetPath := prefix + specPath
+			swaggerMu.Lock()
+			data, ok := swaggerPages[targetPath]
+			if !ok {
+				var err error
+				data, err = buildSwaggerUIPage(targetPath, &cfg)
+				if err != nil {
+					swaggerMu.Unlock()
+					return fmt.Errorf("openapi: build swagger ui page: %w", err)
 				}
-			})
-			if swaggerErr != nil {
-				return swaggerErr
+				swaggerPages[targetPath] = data
 			}
+			swaggerMu.Unlock()
+
 			c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-			return c.Status(fiber.StatusOK).Send(swaggerData)
+			return c.Status(fiber.StatusOK).Send(data)
 		default:
 			return c.Next()
 		}
 	}
 }
 
-// routeCount returns the total number of routes registered on the app across
-// all HTTP methods. It is used to invalidate the cached specification when
-// routes are added or removed.
-func routeCount(app *fiber.App) int {
-	count := 0
-	for _, routes := range app.Stack() {
-		count += len(routes)
-	}
-	return count
-}
-
-// pathMatches reports whether the request path matches the configured target
-// path, tolerating a single trailing slash on either side.
-func pathMatches(requestPath, target string) bool {
+// pathMatchesExact reports whether the request path matches the target path,
+// tolerating trailing slashes, comparing case-sensitively.
+func pathMatchesExact(requestPath, target string) bool {
 	return trimTrailingSlash(requestPath) == trimTrailingSlash(target)
 }
 
+// pathMatchesFold is the case-insensitive counterpart of pathMatchesExact,
+// used when the app routes case-insensitively.
+func pathMatchesFold(requestPath, target string) bool {
+	return utils.EqualFold(trimTrailingSlash(requestPath), trimTrailingSlash(target))
+}
+
 func trimTrailingSlash(p string) string {
-	if len(p) > 1 && p[len(p)-1] == '/' {
-		return p[:len(p)-1]
+	for len(p) > 1 && p[len(p)-1] == '/' {
+		p = p[:len(p)-1]
 	}
 	return p
 }
@@ -185,7 +181,9 @@ func buildSwaggerUIPage(openAPIURL string, cfg *Config) ([]byte, error) {
 	return []byte(builder.String()), nil
 }
 
-func resolvedSpecPath(c fiber.Ctx, cfgPath string) string {
+// normalizedPath returns cfgPath with a leading slash, falling back to the
+// default spec path when empty.
+func normalizedPath(cfgPath string) string {
 	path := cfgPath
 	if path == "" {
 		path = ConfigDefault.Path
@@ -193,25 +191,25 @@ func resolvedSpecPath(c fiber.Ctx, cfgPath string) string {
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
+	return path
+}
 
+// routePrefix derives the mount prefix from the matched route. Only routes
+// registered via Use() carry a prefix; when the handler is registered on an
+// exact method route (e.g. app.Get("/openapi.json", openapi.New())) the
+// route's own path is the request path, not a prefix to prepend.
+func routePrefix(c fiber.Ctx) string {
 	route := c.Route()
-	if route == nil {
-		return path
+	if route == nil || !route.IsMiddleware() {
+		return ""
 	}
 
 	prefix := route.Path
 	if idx := strings.Index(prefix, "*"); idx >= 0 {
 		prefix = prefix[:idx]
 	}
-	if prefix == "/" || prefix == "" {
-		return path
-	}
 	prefix = strings.TrimSuffix(prefix, "/")
-	if prefix == "" {
-		return path
-	}
-
-	return prefix + path
+	return prefix
 }
 
 type openAPISpec struct {
@@ -273,9 +271,7 @@ type operation struct {
 // MarshalJSON merges operation extensions into the operation object without
 // clobbering generated keys.
 //
-// are not addressable) are marshaled through this method.
-//
-//nolint:gocritic // hugeParam: a value receiver is required so map values (which
+//nolint:gocritic // hugeParam: a value receiver is required so map values (which are not addressable) are marshaled through this method
 func (o operation) MarshalJSON() ([]byte, error) {
 	type alias operation
 	base, err := json.Marshal(alias(o))
@@ -437,6 +433,16 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 
 			variants := buildOpenAPIPathVariants(r.Path, r.Params)
 			for _, variant := range variants {
+				methodLower := utilsstrings.ToLower(r.Method)
+				// The router dispatches to the first matching route, so when two
+				// routes produce the same path+method (e.g. an optional-parameter
+				// variant colliding with an explicitly registered path), the
+				// earlier registration describes the observable behavior and the
+				// later one must not overwrite its documentation.
+				if _, exists := paths[variant.Path][methodLower]; exists {
+					continue
+				}
+
 				params := make([]parameter, 0, len(variant.ParamNames))
 				paramIndex := make(map[string]int, len(variant.ParamNames))
 				for _, p := range variant.ParamNames {
@@ -485,7 +491,6 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 					reqBody = nil
 				}
 
-				methodLower := utilsstrings.ToLower(r.Method)
 				if paths[variant.Path] == nil {
 					paths[variant.Path] = make(map[string]operation)
 				}
@@ -874,32 +879,34 @@ func defaultResponseForMethod(method, mediaType string) (string, response) {
 	return status, resp
 }
 
-// convertToOpenAPIPath converts a Fiber route path pattern to one OpenAPI path template.
-// When the path contains optional parameters and therefore yields multiple variants,
-// this helper returns the first generated variant for backward compatibility.
-func convertToOpenAPIPath(fiberPath string, params []string) string {
-	variants := buildOpenAPIPathVariants(fiberPath, params)
-	if len(variants) == 0 {
-		return fiberPath
+// pathState carries the in-progress OpenAPI path while walking a Fiber route
+// pattern; optional parameters fork the walk into include/exclude branches.
+type pathState struct {
+	aliases  map[string]string
+	path     string
+	params   []string
+	paramIdx int
+}
+
+func (s pathState) clone() pathState {
+	aliases := make(map[string]string, len(s.aliases))
+	maps.Copy(aliases, s.aliases)
+	return pathState{
+		path:     s.path,
+		params:   append([]string(nil), s.params...),
+		aliases:  aliases,
+		paramIdx: s.paramIdx,
 	}
-	return variants[0].Path
 }
 
 func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
-	type state struct {
-		aliases  map[string]string
-		path     string
-		params   []string
-		paramIdx int
-	}
-
 	var (
 		length   = len(fiberPath)
 		variants []pathVariant
 	)
 
-	var walk func(i int, current state)
-	walk = func(i int, current state) {
+	var walk func(i int, current pathState)
+	walk = func(i int, current pathState) {
 		for i < length {
 			switch fiberPath[i] {
 			case ':':
@@ -935,7 +942,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 				}
 
 				resolved := resolveOpenAPIPathParamName(current.paramIdx, tokenName, params)
-				includeState := clonePathState(current)
+				includeState := current.clone()
 				includeState.path += "{" + resolved.openAPI + "}"
 				includeState.params = append(includeState.params, resolved.openAPI)
 				includeState.aliases[resolved.raw] = resolved.openAPI
@@ -945,7 +952,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 				includeState.paramIdx++
 
 				if isOptional {
-					excludeState := clonePathState(current)
+					excludeState := current.clone()
 					if strings.HasSuffix(excludeState.path, "/") && (i == length || fiberPath[i] == '/') && len(excludeState.path) > 1 {
 						excludeState.path = strings.TrimSuffix(excludeState.path, "/")
 					}
@@ -964,9 +971,26 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 				current.paramIdx++
 				i++
 
+			case '\\':
+				// The route grammar escapes the next character, matching it
+				// literally (see path.go escapeChar).
+				if i+1 < length {
+					current.path += string(fiberPath[i+1])
+				}
+				i += 2
+
 			default:
-				current.path += string(fiberPath[i])
-				i++
+				// Append the whole literal run at once instead of one byte at a
+				// time.
+				runStart := i
+				for i < length {
+					c := fiberPath[i]
+					if c == ':' || c == '*' || c == '+' || c == '\\' {
+						break
+					}
+					i++
+				}
+				current.path += fiberPath[runStart:i]
 			}
 		}
 
@@ -981,7 +1005,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 		})
 	}
 
-	walk(0, state{
+	walk(0, pathState{
 		path:     "",
 		params:   nil,
 		aliases:  map[string]string{},
@@ -1000,32 +1024,6 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 	}
 
 	return unique
-}
-
-func clonePathState(current struct {
-	aliases  map[string]string
-	path     string
-	params   []string
-	paramIdx int
-}) struct {
-	aliases  map[string]string
-	path     string
-	params   []string
-	paramIdx int
-} {
-	aliases := make(map[string]string, len(current.aliases))
-	maps.Copy(aliases, current.aliases)
-	return struct {
-		aliases  map[string]string
-		path     string
-		params   []string
-		paramIdx int
-	}{
-		path:     current.path,
-		params:   append([]string(nil), current.params...),
-		aliases:  aliases,
-		paramIdx: current.paramIdx,
-	}
 }
 
 func resolveOpenAPIPathParamName(paramIdx int, extracted string, params []string) resolvedParamName {
