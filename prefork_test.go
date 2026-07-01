@@ -63,6 +63,8 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 	// Use low threshold for fast test execution.
 	cfg := listenConfigDefault()
 	cfg.PreforkRecoverThreshold = 1
+	cfg.PreforkRecoverInterval = 10 * time.Millisecond
+	cfg.PreforkShutdownGracePeriod = 100 * time.Millisecond
 	err := app.prefork(":0", nil, &cfg)
 	require.ErrorIs(t, err, prefork.ErrOverRecovery)
 
