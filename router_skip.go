@@ -26,10 +26,10 @@ type skipRouteIndex struct {
 // skipBucket holds one tree bucket's param/root/star candidates per method, with the
 // bucket-0 fallback materialized at build time so a lookup never needs a second map access.
 type skipBucket struct {
-	// paramMask has a bit per method with at least one candidate in cands
-	paramMask uint64
 	// cands is indexed by method int
 	cands [][]indexedRoute
+	// paramMask has a bit per method with at least one candidate in cands
+	paramMask uint64
 }
 
 // indexedRoute pairs a candidate route with its position in its tree bucket.
