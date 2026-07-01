@@ -134,6 +134,8 @@ func Test_Redirect(t *testing.T) {
 // the path, so a request is not redirected by a rule whose path it merely ends
 // with (issue #4476).
 func Test_Redirect_StartAnchor(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Use(New(Config{
 		Rules: map[string]string{

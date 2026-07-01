@@ -176,6 +176,8 @@ func Test_Rewrite(t *testing.T) {
 // the path, so a rule does not fire on an unrelated route that merely contains
 // the rule path as a suffix (issue #4476).
 func Test_Rewrite_StartAnchor(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Use(New(Config{
 		Rules: map[string]string{
