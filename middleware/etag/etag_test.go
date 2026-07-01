@@ -27,6 +27,26 @@ func Test_ETag_Next(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
+// go test -run Test_ETag_SSE
+func Test_ETag_SSE(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, fiber.MIMETextEventStream)
+		return c.SendString("data: hello\n\n")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Empty(t, resp.Header.Get(fiber.HeaderETag))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "data: hello\n\n", string(body))
+}
+
 // go test -run Test_ETag_SkipError
 func Test_ETag_SkipError(t *testing.T) {
 	t.Parallel()
