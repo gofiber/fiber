@@ -110,9 +110,7 @@ type App struct {
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[int][]*Route
-	// skip holds the precomputed indexes for fast unmatched-route resolution: the
-	// opt-in SkipUnmatchedRoutes lookahead and the 405-fallback method mask. It is
-	// rebuilt with the route tree. See router_skip.go.
+	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
 	skip skipRouteIndex
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
@@ -197,14 +195,17 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 
 	// When set to true, requests whose path and method match no registered route
 	// are answered with 404 (or 405 when the path exists for other methods)
-	// immediately, before the middleware chain runs. This avoids spending work on
-	// requests to unregistered paths (bots, scanners, bad URLs).
+	// before the middleware chain runs, so no work is spent on bots, scanners,
+	// and bad URLs.
 	//
-	// Note: the internal lookup indexes use a 64-bit per-method bitmask, so this
-	// option supports up to 64 entries in RequestMethods (far beyond the ~11
-	// defaults) on every platform, including 32-bit builds. With more than 64
-	// methods the fast path is disabled and requests fall through to the normal
-	// router, which still returns the correct 404/405.
+	// Warning: middleware never runs for skipped requests. This breaks Use-based
+	// responders on unregistered paths (catch-all 404 pages, static, proxy,
+	// healthcheck, rewrite and redirect middleware) and CORS preflight for routes
+	// without an explicit OPTIONS handler; loggers and metrics will not see the
+	// skipped requests either. Customize the 404/405 responses via ErrorHandler.
+	//
+	// Note: with more than 64 entries in RequestMethods the fast path is disabled
+	// and requests fall through to the normal router.
 	//
 	// Default: false
 	SkipUnmatchedRoutes bool `json:"skip_unmatched_routes"`

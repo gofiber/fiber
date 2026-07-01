@@ -3103,6 +3103,9 @@ func Test_App_SkipUnmatchedRoutes_Parity(t *testing.T) {
 		{MethodGet, "/"},
 		{MethodGet, "/applications/client/tokens"},
 		{MethodGet, "/user/repos"},
+		{MethodHead, "/user/keys/1337"},
+		{MethodOptions, "/user/keys/1337"},
+		{MethodPost, "/"},
 	}
 
 	for _, tc := range cases {
@@ -3112,6 +3115,12 @@ func Test_App_SkipUnmatchedRoutes_Parity(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, respOff.StatusCode, respOn.StatusCode, "%s %s", tc.method, tc.path)
 		require.Equal(t, respOff.Header.Get(HeaderAllow), respOn.Header.Get(HeaderAllow), "%s %s allow", tc.method, tc.path)
+		require.Equal(t, respOff.Header.Get(HeaderContentType), respOn.Header.Get(HeaderContentType), "%s %s content-type", tc.method, tc.path)
+		bodyOff, err := io.ReadAll(respOff.Body)
+		require.NoError(t, err)
+		bodyOn, err := io.ReadAll(respOn.Body)
+		require.NoError(t, err)
+		require.Equal(t, string(bodyOff), string(bodyOn), "%s %s body", tc.method, tc.path)
 		require.NoError(t, respOff.Body.Close())
 		require.NoError(t, respOn.Body.Close())
 	}
@@ -3160,173 +3169,197 @@ func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
 	})
 }
 
+// Test_App_SkipUnmatchedRoutes_FlashCookieCleared pins the flash check running
+// before the short-circuit: a skipped 404 must still clear the flash cookie.
+func Test_App_SkipUnmatchedRoutes_FlashCookieCleared(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Get("/set", func(c Ctx) error { return c.Redirect().With("k", "v").To("/target") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/set", http.NoBody))
+	require.NoError(t, err)
+	flash := resp.Header.Get(HeaderSetCookie)
+	require.Contains(t, flash, FlashCookieName+"=")
+	require.NoError(t, resp.Body.Close())
+
+	req := httptest.NewRequest(MethodGet, "/missing", http.NoBody)
+	req.Header.Set(HeaderCookie, strings.Split(flash, ";")[0])
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	cleared := resp.Header.Get(HeaderSetCookie)
+	require.Contains(t, cleared, FlashCookieName+"=")
+	require.Contains(t, strings.ToLower(cleared), "max-age=0")
+	require.NoError(t, resp.Body.Close())
+}
+
+// Test_App_SkipUnmatchedRoutes_PathOverrideMidChain ensures Path(override)
+// invalidates the lookahead index even without RestartRouting.
+func Test_App_SkipUnmatchedRoutes_PathOverrideMidChain(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Use(func(c Ctx) error {
+		if c.Path() == "/aaa/zzz" {
+			c.Path("/bbb")
+		}
+		return c.Next()
+	})
+	app.Get("/bbb", func(c Ctx) error { return c.SendString("bbb") })
+	app.Get("/aaa/static", func(c Ctx) error { return c.SendString("static") })
+	app.Get("/aaa/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/aaa/zzz", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "bbb", string(body))
+}
+
+// Test_App_SkipUnmatchedRoutes_MountedErrorHandler ensures a skipped 404 under a
+// mount prefix still resolves the sub-app's custom error handler.
+func Test_App_SkipUnmatchedRoutes_MountedErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(StatusNotFound).SendString("sub-404")
+	}})
+	sub.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+
+	app := newSkipApp()
+	app.Use("/sub", sub)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/sub/missing", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "sub-404", string(body))
+}
+
+// Test_App_SkipUnmatchedRoutes_ErrorSentinels pins the errors handed to the
+// error handler on the fast path (users match on them with errors.Is).
+func Test_App_SkipUnmatchedRoutes_ErrorSentinels(t *testing.T) {
+	t.Parallel()
+
+	var got error
+	app := New(Config{
+		SkipUnmatchedRoutes: true,
+		ErrorHandler: func(c Ctx, err error) error {
+			got = err
+			return DefaultErrorHandler(c, err)
+		},
+	})
+	app.Use(func(c Ctx) error { return c.Next() })
+	app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.ErrorIs(t, got, ErrNotFound)
+
+	resp, err = app.Test(httptest.NewRequest(MethodPost, "/ok", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.ErrorIs(t, got, ErrMethodNotAllowed)
+}
+
+// Test_App_SkipUnmatchedRoutes_StarMiddlewareNoClobber covers the route.star half
+// of hasParamUse: wildcard middleware writes c.values, so the endpoint re-matches.
+func Test_App_SkipUnmatchedRoutes_StarMiddlewareNoClobber(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Use("/*", func(c Ctx) error { return c.Next() })
+	app.Get("/user/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/user/42", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "42", string(body))
+}
+
+// Test_App_SkipUnmatchedRoutes_UnescapePath pins the static index lookup by the
+// decoded detection path.
+func Test_App_SkipUnmatchedRoutes_UnescapePath(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp(Config{UnescapePath: true})
+	app.Get("/some/path", func(c Ctx) error { return c.SendString("ok") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/some/p%61th", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// Test_App_SkipUnmatchedRoutes_CustomCtxFailingErrorHandler covers the 500
+// fallback in emitSkipCustom.
+func Test_App_SkipUnmatchedRoutes_CustomCtxFailingErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
+	app := NewWithCustomCtx(newCtx, Config{
+		SkipUnmatchedRoutes: true,
+		ErrorHandler:        func(Ctx, error) error { return errors.New("fail") },
+	})
+	app.Use(func(c Ctx) error { return c.Next() })
+	app.Get("/users", func(c Ctx) error { return c.SendString("users") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusInternalServerError, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 // go test -v -run=^$ -bench=Benchmark_SkipUnmatchedRoutes -benchmem -count=4
-func Benchmark_SkipUnmatchedRoutes_Unmatched(b *testing.B) {
-	b.Run("without_skip", func(b *testing.B) {
-		app := New()
-		app.Use(func(c Ctx) error {
-			return c.Next()
-		})
-		app.Use(func(c Ctx) error {
-			return c.Next()
-		})
-		app.Use(func(c Ctx) error {
-			return c.Next()
-		})
-		registerDummyRoutes(app)
-		appHandler := app.Handler()
+func Benchmark_SkipUnmatchedRoutes(b *testing.B) {
+	scenarios := []struct {
+		name        string
+		method      string
+		path        string
+		middlewares int
+	}{
+		{"Unmatched", MethodGet, "/this/route/does/not/exist", 3},
+		{"Matched", MethodGet, "/user/keys/1337", 1},
+		{"405_Middleware", MethodPost, "/user/keys/1337", 3},
+		{"405_NoMiddleware", MethodPost, "/user/keys/1337", 0},
+	}
+	for _, s := range scenarios {
+		for _, skip := range []bool{false, true} {
+			variant := "without_skip"
+			if skip {
+				variant = "with_skip"
+			}
+			b.Run(s.name+"/"+variant, func(b *testing.B) {
+				app := New(Config{SkipUnmatchedRoutes: skip})
+				for range s.middlewares {
+					app.Use(func(c Ctx) error { return c.Next() })
+				}
+				registerDummyRoutes(app)
+				appHandler := app.Handler()
 
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("GET")
-		c.URI().SetPath("/this/route/does/not/exist")
+				c := &fasthttp.RequestCtx{}
+				c.Request.Header.SetMethod(s.method)
+				c.URI().SetPath(s.path)
 
-		b.ReportAllocs()
-		b.ResetTimer()
-		for b.Loop() {
-			appHandler(c)
+				b.ReportAllocs()
+				b.ResetTimer()
+				for b.Loop() {
+					appHandler(c)
+				}
+			})
 		}
-	})
-
-	b.Run("with_skip", func(b *testing.B) {
-		app := New(Config{SkipUnmatchedRoutes: true})
-		app.Use(func(c Ctx) error {
-			return c.Next()
-		})
-		app.Use(func(c Ctx) error {
-			return c.Next()
-		})
-		app.Use(func(c Ctx) error {
-			return c.Next()
-		})
-		registerDummyRoutes(app)
-		appHandler := app.Handler()
-
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("GET")
-		c.URI().SetPath("/this/route/does/not/exist")
-
-		b.ReportAllocs()
-		b.ResetTimer()
-		for b.Loop() {
-			appHandler(c)
-		}
-	})
-}
-
-func Benchmark_SkipUnmatchedRoutes_Matched(b *testing.B) {
-	b.Run("without_skip", func(b *testing.B) {
-		app := New()
-		app.Use(func(c Ctx) error {
-			return c.Next()
-		})
-		registerDummyRoutes(app)
-		appHandler := app.Handler()
-
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("GET")
-		c.URI().SetPath("/user/keys/1337")
-
-		b.ReportAllocs()
-		b.ResetTimer()
-		for b.Loop() {
-			appHandler(c)
-		}
-	})
-
-	b.Run("with_skip", func(b *testing.B) {
-		app := New(Config{SkipUnmatchedRoutes: true})
-		app.Use(func(c Ctx) error {
-			return c.Next()
-		})
-		registerDummyRoutes(app)
-		appHandler := app.Handler()
-
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("GET")
-		c.URI().SetPath("/user/keys/1337")
-
-		b.ReportAllocs()
-		b.ResetTimer()
-		for b.Loop() {
-			appHandler(c)
-		}
-	})
-}
-
-func Benchmark_SkipUnmatchedRoutes_405_Middleware(b *testing.B) {
-	middleware := func(c Ctx) error { return c.Next() }
-
-	b.Run("without_skip", func(b *testing.B) {
-		app := New()
-		app.Use(middleware)
-		app.Use(middleware)
-		app.Use(middleware)
-		registerDummyRoutes(app)
-		appHandler := app.Handler()
-
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("POST")
-		c.URI().SetPath("/user/keys/1337")
-
-		b.ReportAllocs()
-		b.ResetTimer()
-		for b.Loop() {
-			appHandler(c)
-		}
-	})
-
-	b.Run("with_skip", func(b *testing.B) {
-		app := New(Config{SkipUnmatchedRoutes: true})
-		app.Use(middleware)
-		app.Use(middleware)
-		app.Use(middleware)
-		registerDummyRoutes(app)
-		appHandler := app.Handler()
-
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("POST")
-		c.URI().SetPath("/user/keys/1337")
-
-		b.ReportAllocs()
-		b.ResetTimer()
-		for b.Loop() {
-			appHandler(c)
-		}
-	})
-}
-
-func Benchmark_SkipUnmatchedRoutes_405_NMiddleware(b *testing.B) {
-	b.Run("without_skip", func(b *testing.B) {
-		app := New()
-		registerDummyRoutes(app)
-		appHandler := app.Handler()
-
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("POST")
-		c.URI().SetPath("/user/keys/1337")
-
-		b.ReportAllocs()
-		b.ResetTimer()
-		for b.Loop() {
-			appHandler(c)
-		}
-	})
-
-	b.Run("with_skip", func(b *testing.B) {
-		app := New(Config{SkipUnmatchedRoutes: true})
-		registerDummyRoutes(app)
-		appHandler := app.Handler()
-
-		c := &fasthttp.RequestCtx{}
-		c.Request.Header.SetMethod("POST")
-		c.URI().SetPath("/user/keys/1337")
-
-		b.ReportAllocs()
-		b.ResetTimer()
-		for b.Loop() {
-			appHandler(c)
-		}
-	})
+	}
 }
 
 func Benchmark_SkipUnmatchedRoutes_Deep(b *testing.B) {

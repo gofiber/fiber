@@ -235,9 +235,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	lenr := len(tree) - 1
 
 	indexRoute := c.indexRoute
-	// Hoist loop-invariant fields into locals: c is a pointer and route.match takes
-	// &c.values, so the compiler would otherwise reload these from memory on every
-	// iteration. They are only mutated outside this loop (before next() is called).
+	// Hoist loop invariants: route.match takes &c.values, so these would reload each iteration.
 	firstMatchIndex := c.firstMatchIndex
 	skipNonUse := c.shouldSkipNonUseRoutes
 	skipHasParamUse := app.skip.hasParamUse
@@ -254,18 +252,12 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			continue
 		}
 
-		// SkipUnmatchedRoutes pre-resolved the matching endpoint; endpoints before
-		// it were already ruled out, so skip re-matching them. Middleware
-		// (route.use) must still run. firstMatchIndex is -1 when the feature is off
-		// or a static route matched.
+		// Lookahead pre-resolved the endpoint: skip endpoints already ruled out; middleware still runs.
 		if firstMatchIndex >= 0 && !route.use {
 			if indexRoute < firstMatchIndex {
 				continue
 			}
-			// At the pre-resolved endpoint: when no parametric/wildcard middleware
-			// could have overwritten c.values since the lookahead, reuse the params
-			// it already wrote instead of re-matching. The error path
-			// (shouldSkipNonUseRoutes) still skips endpoints via the check below.
+			// Reuse the lookahead's params unless param/wildcard middleware may have clobbered them.
 			if indexRoute == firstMatchIndex && !skipHasParamUse && !skipNonUse {
 				c.route = route
 				c.isMatched = true
@@ -323,8 +315,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		if methodInt == i {
 			continue
 		}
-		// Skip methods with no non-use route: they can never add an Allow entry, so
-		// avoid their tree-bucket map lookups entirely.
+		// Methods with no non-use route can never add an Allow entry.
 		if prune && routeMethods&(uint64(1)<<i) == 0 {
 			continue
 		}
@@ -377,9 +368,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	lenr := len(tree) - 1
 
 	indexRoute := c.getIndexRoute()
-	// Hoist loop-invariant accessors into locals so the per-iteration route matching
-	// doesn't repeat these interface calls; none of them change during this loop
-	// (path/method changes go through RestartRouting, which re-enters nextCustom).
+	// Hoist loop-invariant accessors; nothing changes mid-loop (Next()/RestartRouting re-enter with fresh reads).
 	detectionPath := c.getDetectionPath()
 	path := c.Path()
 	values := c.getValues()
@@ -399,18 +388,12 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			continue
 		}
 
-		// SkipUnmatchedRoutes pre-resolved the matching endpoint; endpoints before
-		// it were already ruled out, so skip re-matching them. Middleware
-		// (route.use) must still run. firstMatchIndex is -1 when the feature is off
-		// or a static route matched.
+		// Lookahead pre-resolved the endpoint: skip endpoints already ruled out; middleware still runs.
 		if firstMatchIndex >= 0 && !route.use {
 			if indexRoute < firstMatchIndex {
 				continue
 			}
-			// At the pre-resolved endpoint: when no parametric/wildcard middleware
-			// could have overwritten the params since the lookahead, reuse them
-			// instead of re-matching. The error path (skipNonUse) still skips
-			// endpoints via the check below.
+			// Reuse the lookahead's params unless param/wildcard middleware may have clobbered them.
 			if indexRoute == firstMatchIndex && !skipHasParamUse && !skipNonUse {
 				c.setRoute(route)
 				c.setMatched(true)
@@ -466,8 +449,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		if methodInt == i {
 			continue
 		}
-		// Skip methods with no non-use route: they can never add an Allow entry, so
-		// avoid their tree-bucket map lookups entirely.
+		// Methods with no non-use route can never add an Allow entry.
 		if prune && routeMethods&(uint64(1)<<i) == 0 {
 			continue
 		}
@@ -523,24 +505,22 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Optional: check flash messages (hot path, see hasFlashCookie). Done before the
-	// SkipUnmatchedRoutes short-circuit so flash messages are still cleared on a
-	// skipped 404/405, matching the behavior when the option is disabled.
+	// Optional: check flash messages (hot path, see hasFlashCookie); before the
+	// short-circuit so a skipped 404/405 still clears them.
 	if hasFlashCookie(&ctx.fasthttp.Request.Header) {
 		ctx.Redirect().parseAndClearFlashMessages()
 	}
 
-	// Skip unmatched routes before running the middleware chain. When no middleware
-	// is registered the lookahead is pure overhead (next() already answers 404/405
-	// without running anything), so it is gated on skipHasUseRoutes.
-	if app.config.SkipUnmatchedRoutes && app.skip.hasUseRoutes {
+	// Early 404/405 before the middleware chain; enabled implies middleware exists
+	// (without middleware next() already answers 404/405 cheaply).
+	if app.skip.enabled {
 		res := app.resolveSkip(ctx.methodInt, ctx.treePathHash,
 			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path), &ctx.values)
 		switch res.decision {
 		case skipNotFound:
 			app.emitSkip(ctx, 0, ErrNotFound)
 			return
-		case skipMethodNot:
+		case skipNotAllowed:
 			app.emitSkip(ctx, res.allowMask, ErrMethodNotAllowed)
 			return
 		default:
@@ -566,24 +546,22 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Optional: check flash messages (hot path, see hasFlashCookie). Done before the
-	// SkipUnmatchedRoutes short-circuit so flash messages are still cleared on a
-	// skipped 404/405, matching the behavior when the option is disabled.
+	// Optional: check flash messages (hot path, see hasFlashCookie); before the
+	// short-circuit so a skipped 404/405 still clears them.
 	if hasFlashCookie(&ctx.Request().Header) {
 		ctx.Redirect().parseAndClearFlashMessages()
 	}
 
-	// Skip unmatched routes before running the middleware chain. When no middleware
-	// is registered the lookahead is pure overhead (next() already answers 404/405
-	// without running anything), so it is gated on skipHasUseRoutes.
-	if app.config.SkipUnmatchedRoutes && app.skip.hasUseRoutes {
+	// Early 404/405 before the middleware chain; enabled implies middleware exists
+	// (without middleware next() already answers 404/405 cheaply).
+	if app.skip.enabled {
 		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(),
 			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
 		switch res.decision {
 		case skipNotFound:
 			app.emitSkipCustom(ctx, 0, ErrNotFound)
 			return
-		case skipMethodNot:
+		case skipNotAllowed:
 			app.emitSkipCustom(ctx, res.allowMask, ErrMethodNotAllowed)
 			return
 		default:
@@ -1003,8 +981,6 @@ func (app *App) buildTree() *App {
 		app.treeStack[method] = tsMap
 	}
 
-	// Rebuild the route-resolution indexes (405-fallback method mask and, when
-	// enabled, the SkipUnmatchedRoutes lookahead) from the freshly built tree.
 	app.buildSkipIndexes()
 
 	// reset the flag and return

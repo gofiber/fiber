@@ -78,6 +78,7 @@ We have made several changes to the Fiber app, including:
   - `ListenerNetwork` (previously `Network`)
 - **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`. Additionally, `ProxyHeader` must be set to read client IPs from proxy headers (e.g., `X-Forwarded-For`).
 - **XMLDecoder Config Property**: The `XMLDecoder` property has been added to allow usage of 3rd-party XML libraries in XML binder.
+- **SkipUnmatchedRoutes Config Property**: Opt-in flag that answers requests with no matching route with `404`/`405` before the middleware chain runs. Note that middleware (loggers, CORS preflight handling, static or catch-all responders) does not run for these requests; customize the responses via `ErrorHandler`.
 
 ### New Methods
 
