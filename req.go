@@ -437,7 +437,7 @@ func (r *DefaultReq) Fresh() bool {
 	// if-modified-since
 	// Evaluated independently of if-none-match so that a request carrying only
 	// If-Modified-Since is still validated against Last-Modified. A missing or
-	// unparseable Last-Modified, or a Last-Modified newer than the client's
+	// unable to parse Last-Modified, or a Last-Modified newer than the client's
 	// date, means the cached copy is stale. Mirrors the referenced jshttp/fresh
 	// implementation, where this block is a sibling of the if-none-match block.
 	if len(modifiedSince) > 0 {
