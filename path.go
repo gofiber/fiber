@@ -258,6 +258,17 @@ func (parser *routeParser) parseRoute(pattern string, regexHandler any, customCo
 		parser.segs[len(parser.segs)-1].IsLast = true
 	}
 	parser.segs = addParameterMetaInfo(parser.segs)
+
+	// Pack the segment values into one contiguous backing array and repoint the
+	// slice at them, so the hot getMatch loop walks pointers into a single
+	// cache-friendly block instead of chasing separately-allocated segments.
+	if len(parser.segs) > 1 {
+		backing := make([]routeSegment, len(parser.segs))
+		for i, s := range parser.segs {
+			backing[i] = *s
+			parser.segs[i] = &backing[i]
+		}
+	}
 }
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
