@@ -110,29 +110,10 @@ type App struct {
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[int][]*Route
-	// staticRouteMethods indexes static (non-param, non-root, non-star, non-use,
-	// non-mount) endpoints for the SkipUnmatchedRoutes fast path. The key is the
-	// prettified route path; the value is a bitmask of method ints that have a
-	// static endpoint at that path. uint64 keeps the mask 64-bit wide on every
-	// platform. Only built when SkipUnmatchedRoutes is enabled.
-	staticRouteMethods map[string]uint64
-	// bucketParamMethods is a per-tree-bucket bitmask of method ints that have at least
-	// one parametric/root/star endpoint in that bucket. When the mask for the relevant
-	// bucket is zero, the static index is authoritative and no cross-method scan is
-	// needed. Only built when SkipUnmatchedRoutes is enabled.
-	bucketParamMethods map[int]uint64
-	// paramRoutes mirrors treeStack but holds only the parametric/root/star endpoints
-	// of each bucket together with their index in that bucket, so the SkipUnmatchedRoutes
-	// lookahead scans just the candidate routes instead of the whole bucket. It has an
-	// entry for every treeStack bucket (empty when the bucket has none), so a lookup miss
-	// mirrors a treeStack miss and selects the bucket-0 fallback. Indexed by method int,
-	// then tree-bucket key. Only built when SkipUnmatchedRoutes is enabled.
-	paramRoutes []map[int][]indexedRoute
-	// routeMethods is a bitmask of method ints that own at least one non-use route.
-	// The 404/405 cross-method fallback in next()/nextCustom() consults it to skip
-	// methods that can never contribute an Allow entry, avoiding their tree-bucket map
-	// lookups. Only trusted when methodMaskValid is true (RequestMethods <= 64).
-	routeMethods uint64
+	// skip holds the precomputed indexes for fast unmatched-route resolution: the
+	// opt-in SkipUnmatchedRoutes lookahead and the 405-fallback method mask. It is
+	// rebuilt with the route tree. See router_skip.go.
+	skip skipRouteIndex
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -142,19 +123,6 @@ type App struct {
 	hasRoutesRefreshed bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
-	// skipHasUseRoutes is true when at least one middleware (use) route is registered.
-	// When false, SkipUnmatchedRoutes is a no-op (next() already answers 404/405 without
-	// running anything), so the lookahead is skipped entirely.
-	skipHasUseRoutes bool
-	// skipHasParamUse is true when at least one middleware (use) route has parameters or
-	// is a wildcard, i.e. its match writes into c.values. When false, no middleware can
-	// clobber the params the SkipUnmatchedRoutes lookahead already wrote for the matched
-	// endpoint, so next() can reuse them instead of re-matching the route.
-	skipHasParamUse bool
-	// methodMaskValid is true when routeMethods can be trusted to prune the cross-method
-	// fallback scan, i.e. RequestMethods fits in a 64-bit mask. When false (an unusually
-	// large custom RequestMethods list), the fallback scans every method as before.
-	methodMaskValid bool
 }
 
 type viewsLockKey struct {
