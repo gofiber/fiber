@@ -258,17 +258,6 @@ func (parser *routeParser) parseRoute(pattern string, regexHandler any, customCo
 		parser.segs[len(parser.segs)-1].IsLast = true
 	}
 	parser.segs = addParameterMetaInfo(parser.segs)
-
-	// Pack the segment values into one contiguous backing array and repoint the
-	// slice at them, so the hot getMatch loop walks pointers into a single
-	// cache-friendly block instead of chasing separately-allocated segments.
-	if len(parser.segs) > 1 {
-		backing := make([]routeSegment, len(parser.segs))
-		for i, s := range parser.segs {
-			backing[i] = *s
-			parser.segs[i] = &backing[i]
-		}
-	}
 }
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
@@ -694,48 +683,4 @@ func RemoveEscapeCharBytes(word []byte) []byte {
 // Kept for backward compatibility with external callers.
 func (c *Constraint) CheckConstraint(param string) bool {
 	return c.matchConstraint(param)
-}
-
-// asciiLowerTable maps every byte to its ASCII-lowercase equivalent. Non-letter
-// bytes and bytes >= 0x80 map to themselves, so only A-Z are folded. It backs
-// appendLowerASCII, the fused copy+lowercase used on the request hot path.
-var asciiLowerTable = func() [256]byte {
-	var t [256]byte
-	for i := 0; i < 256; i++ {
-		c := byte(i)
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		t[i] = c
-	}
-	return t
-}()
-
-// appendLowerASCII writes the ASCII-lowercased bytes of src into dst[:0] in a
-// single pass, reusing dst's backing array when it is large enough. It fuses the
-// copy and the lowercasing that configDependentPaths would otherwise do as two
-// separate passes (append + UnsafeToLower), saving one traversal of the path on
-// every case-insensitive request.
-func appendLowerASCII(dst, src []byte) []byte {
-	n := len(src)
-	if cap(dst) < n {
-		dst = make([]byte, n)
-	} else {
-		dst = dst[:n]
-	}
-
-	table := &asciiLowerTable
-	i := 0
-	limit := n &^ 3
-	for i < limit {
-		dst[i+0] = table[src[i+0]]
-		dst[i+1] = table[src[i+1]]
-		dst[i+2] = table[src[i+2]]
-		dst[i+3] = table[src[i+3]]
-		i += 4
-	}
-	for ; i < n; i++ {
-		dst[i] = table[src[i]]
-	}
-	return dst
 }
