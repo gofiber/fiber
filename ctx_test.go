@@ -2661,6 +2661,18 @@ func Test_Ctx_Fresh_ModifiedSinceOnly(t *testing.T) {
 	c = app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
 	require.False(t, c.Fresh())
+
+	// Unparseable Last-Modified with a valid If-Modified-Since: stale.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
+	c.Response().Header.Set(HeaderLastModified, "not-a-date")
+	require.False(t, c.Fresh())
+
+	// Unparseable If-Modified-Since with a valid Last-Modified: stale.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfModifiedSince, "not-a-date")
+	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+	require.False(t, c.Fresh())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_WithNoCache -benchmem -count=4

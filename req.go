@@ -434,14 +434,10 @@ func (r *DefaultReq) Fresh() bool {
 		}
 	}
 
-	// if-modified-since
-	// Evaluated independently of if-none-match so that a request carrying only
-	// If-Modified-Since is still validated against Last-Modified. A missing or
-	// unable to parse Last-Modified, or a Last-Modified newer than the client's
-	// date, means the cached copy is stale. Mirrors the referenced jshttp/fresh
-	// implementation, where this block is a sibling of the if-none-match block.
+	// if-modified-since (evaluated independently of if-none-match)
 	if len(modifiedSince) > 0 {
-		lastModified := r.c.fasthttp.Response.Header.Peek(HeaderLastModified)
+		response := &r.c.fasthttp.Response
+		lastModified := response.Header.Peek(HeaderLastModified)
 		if len(lastModified) == 0 {
 			return false
 		}
