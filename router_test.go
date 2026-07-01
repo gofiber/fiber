@@ -3341,7 +3341,7 @@ func Benchmark_SkipUnmatchedRoutes_Deep(b *testing.B) {
 		{"Unmatched_Top_level_SBucket", MethodGet, "/heap", StatusNotFound},
 		{"Unmatched_Top_level_SBucket_Diff_Method", MethodDelete, "/heap", StatusNotFound},
 		{"Unmatched_Top_level_SBucket_Diff_Method2", MethodPost, "/heap", StatusNotFound},
-		{"Unmatched_Top_level_SBucket_WwongMethod", MethodPost, "/health", StatusMethodNotAllowed},
+		{"Unmatched_Top_level_SBucket_WrongMethod", MethodPost, "/health", StatusMethodNotAllowed},
 		{"Matched_1param", MethodGet, "/api/v1/matters/m1", StatusOK},
 		{"Matched_3param", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1", StatusOK},
 		{"Matched_4param", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1/versions/v1", StatusOK},
@@ -3457,4 +3457,30 @@ func Test_App_SkipUnmatchedRoutes_ParamMiddlewareNoClobber(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, "bar", string(body), "endpoint param must not be clobbered by parametric middleware")
+}
+
+// Test_App_SkipUnmatchedRoutes_ManyMethods verifies that with more than 64
+// RequestMethods the fast path is disabled and routing still returns correct
+// results via the normal router.
+func Test_App_SkipUnmatchedRoutes_ManyMethods(t *testing.T) {
+	t.Parallel()
+
+	methods := append([]string{}, DefaultMethods...)
+	for i := 0; len(methods) <= 64; i++ {
+		methods = append(methods, "X"+string(rune('A'+i%26))+string(rune('A'+i/26)))
+	}
+
+	app := New(Config{SkipUnmatchedRoutes: true, RequestMethods: methods})
+	app.Use(func(c Ctx) error { return c.Next() })
+	app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ok", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 }

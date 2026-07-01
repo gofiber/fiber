@@ -612,6 +612,13 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// Optional: check flash messages (hot path, see hasFlashCookie). Done before the
+	// SkipUnmatchedRoutes short-circuit so flash messages are still cleared on a
+	// skipped 404/405, matching the behavior when the option is disabled.
+	if hasFlashCookie(&ctx.fasthttp.Request.Header) {
+		ctx.Redirect().parseAndClearFlashMessages()
+	}
+
 	// Skip unmatched routes before running the middleware chain. When no middleware
 	// is registered the lookahead is pure overhead (next() already answers 404/405
 	// without running anything), so it is gated on skipHasUseRoutes.
@@ -628,11 +635,6 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 		default:
 			ctx.firstMatchIndex = res.matchIndex
 		}
-	}
-
-	// Optional: check flash messages (hot path, see hasFlashCookie).
-	if hasFlashCookie(&ctx.fasthttp.Request.Header) {
-		ctx.Redirect().parseAndClearFlashMessages()
 	}
 
 	_, err := app.next(ctx)
@@ -653,6 +655,13 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// Optional: check flash messages (hot path, see hasFlashCookie). Done before the
+	// SkipUnmatchedRoutes short-circuit so flash messages are still cleared on a
+	// skipped 404/405, matching the behavior when the option is disabled.
+	if hasFlashCookie(&ctx.Request().Header) {
+		ctx.Redirect().parseAndClearFlashMessages()
+	}
+
 	// Skip unmatched routes before running the middleware chain. When no middleware
 	// is registered the lookahead is pure overhead (next() already answers 404/405
 	// without running anything), so it is gated on skipHasUseRoutes.
@@ -669,11 +678,6 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 		default:
 			ctx.setFirstMatchIndex(res.matchIndex)
 		}
-	}
-
-	// Optional: check flash messages (hot path, see hasFlashCookie).
-	if hasFlashCookie(&ctx.Request().Header) {
-		ctx.Redirect().parseAndClearFlashMessages()
 	}
 
 	_, err := app.nextCustom(ctx)
@@ -1119,6 +1123,18 @@ type indexedRoute struct {
 // list of those endpoints. It is rebuilt together with the tree so the indexes
 // always reflect the current route set.
 func (app *App) buildSkipIndexes() {
+	// The per-method masks are 64-bit. If RequestMethods exceeds 64, method indexes
+	// >= 64 would shift out of range and miscompute, so leave the fast path disabled
+	// (skipHasUseRoutes stays false) and let next() answer 404/405 as usual.
+	if len(app.config.RequestMethods) > 64 {
+		app.staticRouteMethods = nil
+		app.bucketParamMethods = nil
+		app.paramRoutes = nil
+		app.skipHasUseRoutes = false
+		app.skipHasParamUse = false
+		return
+	}
+
 	static := make(map[string]uint64)
 	bucketParam := make(map[int]uint64)
 	paramRoutes := make([]map[int][]indexedRoute, len(app.config.RequestMethods))

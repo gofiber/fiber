@@ -225,7 +225,9 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Note: the internal lookup indexes use a 64-bit per-method bitmask, so this
 	// option supports up to 64 entries in RequestMethods (far beyond the ~11
-	// defaults) on every platform, including 32-bit builds.
+	// defaults) on every platform, including 32-bit builds. With more than 64
+	// methods the fast path is disabled and requests fall through to the normal
+	// router, which still returns the correct 404/405.
 	//
 	// Default: false
 	SkipUnmatchedRoutes bool `json:"skip_unmatched_routes"`
