@@ -1,7 +1,6 @@
 package openapi
 
 import (
-	"maps"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -138,6 +137,25 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 
 	properties := make(map[string]any)
 	var required []string
+	requiredSet := make(map[string]struct{})
+
+	addRequired := func(name string) {
+		if _, ok := requiredSet[name]; ok {
+			return
+		}
+		requiredSet[name] = struct{}{}
+		required = append(required, name)
+	}
+
+	// Embedded structs are flattened the way encoding/json promotes their
+	// fields: a field declared on the parent shadows a promoted field of the
+	// same name regardless of declaration order, so embedded fields are merged
+	// in a second pass and never overwrite parent properties.
+	type embeddedField struct {
+		field reflect.StructField
+		omit  bool
+	}
+	var embeds []embeddedField
 
 	for i := range t.NumField() {
 		field := t.Field(i)
@@ -150,23 +168,12 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 			continue
 		}
 
-		// Flatten embedded structs and embedded pointers to structs, the way
-		// encoding/json promotes their fields into the parent object.
 		embeddedType := field.Type
 		for embeddedType.Kind() == reflect.Pointer {
 			embeddedType = embeddedType.Elem()
 		}
 		if field.Anonymous && embeddedType.Kind() == reflect.Struct && embeddedType != timeType && name == "" {
-			embedded := structSchema(embeddedType, visited)
-			if props, ok := embedded["properties"].(map[string]any); ok {
-				maps.Copy(properties, props)
-			}
-			// An embedded pointer can be nil, so its fields are not guaranteed
-			// to be present and must not be marked required on the parent.
-			isPtrEmbed := field.Type.Kind() == reflect.Pointer
-			if reqs, ok := embedded["required"].([]string); ok && !omit && !isPtrEmbed {
-				required = append(required, reqs...)
-			}
+			embeds = append(embeds, embeddedField{field: field, omit: omit})
 			continue
 		}
 
@@ -187,7 +194,37 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 
 		isPointer := field.Type.Kind() == reflect.Pointer
 		if !omit && !isPointer {
-			required = append(required, name)
+			addRequired(name)
+		}
+	}
+
+	for _, embed := range embeds {
+		embeddedType := embed.field.Type
+		for embeddedType.Kind() == reflect.Pointer {
+			embeddedType = embeddedType.Elem()
+		}
+		embedded := structSchema(embeddedType, visited)
+
+		promotedRequired := make(map[string]struct{})
+		// An embedded pointer can be nil, so its fields are not guaranteed
+		// to be present and must not be marked required on the parent.
+		isPtrEmbed := embed.field.Type.Kind() == reflect.Pointer
+		if reqs, ok := embedded["required"].([]string); ok && !embed.omit && !isPtrEmbed {
+			for _, name := range reqs {
+				promotedRequired[name] = struct{}{}
+			}
+		}
+
+		if props, ok := embedded["properties"].(map[string]any); ok {
+			for name, prop := range props {
+				if _, exists := properties[name]; exists {
+					continue
+				}
+				properties[name] = prop
+				if _, ok := promotedRequired[name]; ok {
+					addRequired(name)
+				}
+			}
 		}
 	}
 

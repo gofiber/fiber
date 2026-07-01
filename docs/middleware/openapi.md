@@ -37,10 +37,10 @@ generated specification at `GET /openapi.json` and a Swagger UI page at
 app.Use(openapi.New())
 ```
 
-The middleware inspects the app's routes and generates the spec on the first
-matching request. The spec is cached, but the cache is automatically invalidated
-whenever the number of registered routes changes, so routes added after the first
-request are still reflected without a restart.
+The middleware inspects the app's routes and generates the spec on every request
+to the spec path, so routes added, removed, or re-documented after the first
+request are always reflected without a restart. Requests to other paths pass
+through without generation work.
 
 ### Document metadata
 

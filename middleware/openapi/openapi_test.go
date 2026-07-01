@@ -788,9 +788,8 @@ func Test_OpenAPI_NoRequestBodyForGET(t *testing.T) {
 	require.NotContains(t, op, "requestBody")
 }
 
-// Test_OpenAPI_Cache verifies the spec is cached but regenerated whenever the
-// number of registered routes changes, so routes added after the first request
-// are reflected without a process restart.
+// Test_OpenAPI_Cache verifies the spec is regenerated per request, so routes
+// added after the first request are reflected without a process restart.
 func Test_OpenAPI_Cache(t *testing.T) {
 	app := fiber.New()
 
@@ -1572,13 +1571,13 @@ func Test_OpenAPI_MarshalError(t *testing.T) {
 	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New())
 
-	// First request should generate and cache the spec
+	// First request generates the spec
 	req1 := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp1, err := app.Test(req1)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp1.StatusCode)
 
-	// Second request should return cached spec (coverage for once.Do and error check)
+	// Second request regenerates it successfully as well
 	req2 := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp2, err := app.Test(req2)
 	require.NoError(t, err)
@@ -2126,4 +2125,134 @@ func Test_OpenAPI_QueryStringParameterLocation(t *testing.T) {
 	params, ok := op["parameters"].([]any)
 	require.True(t, ok)
 	require.Equal(t, "querystring", requireMap(t, params[0])["in"])
+}
+
+// Test_OpenAPI_CaseInsensitivePaths verifies the spec and UI paths match with
+// the same case sensitivity as the app's routing.
+func Test_OpenAPI_CaseInsensitivePaths(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New() // CaseSensitive: false by default
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New())
+
+	for _, target := range []string{"/OPENAPI.JSON", "/Swagger"} {
+		req := httptest.NewRequest(fiber.MethodGet, target, http.NoBody)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, target)
+	}
+
+	sensitive := fiber.New(fiber.Config{CaseSensitive: true})
+	sensitive.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	sensitive.Use(New())
+
+	req := httptest.NewRequest(fiber.MethodGet, "/OPENAPI.JSON", http.NoBody)
+	resp, err := sensitive.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+// Test_OpenAPI_ExactRouteRegistration verifies the handler also works when it
+// is registered on exact method routes instead of as prefix middleware.
+func Test_OpenAPI_ExactRouteRegistration(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	handler := New()
+	app.Get("/openapi.json", handler).Hidden()
+	app.Get("/swagger", handler).Hidden()
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Contains(t, spec.Paths, "/users")
+
+	req = httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `url: "\/openapi.json"`)
+}
+
+// Test_OpenAPI_SpecReflectsRouteRemoval verifies the spec is not stale after a
+// route is removed and another added (same total route count).
+func Test_OpenAPI_SpecReflectsRouteRemoval(t *testing.T) {
+	app := fiber.New()
+	app.Get("/old", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New())
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Contains(t, spec.Paths, "/old")
+
+	app.RemoveRoute("/old", fiber.MethodGet)
+	app.Get("/new", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.RebuildTree()
+
+	req = httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	spec = openAPISpec{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Contains(t, spec.Paths, "/new")
+	require.NotContains(t, spec.Paths, "/old")
+}
+
+// Test_OpenAPI_MultiPrefixUIPages verifies one handler instance mounted on
+// several prefixes serves a UI page pointing at each prefix's own spec URL.
+func Test_OpenAPI_MultiPrefixUIPages(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use([]string{"/v1", "/v2"}, New())
+
+	for _, prefix := range []string{"/v1", "/v2"} {
+		req := httptest.NewRequest(fiber.MethodGet, prefix+"/swagger", http.NoBody)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), `url: "\/`+prefix[1:]+`\/openapi.json"`, prefix)
+	}
+}
+
+// Test_OpenAPI_OptionalVariantDoesNotOverwrite verifies an optional-parameter
+// variant never overwrites the documentation of an earlier registered route at
+// the same path and method, matching router dispatch precedence.
+func Test_OpenAPI_OptionalVariantDoesNotOverwrite(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Summary("List users")
+	app.Get("/users/:id?", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Summary("Get user")
+
+	paths := getPaths(t, app)
+	require.Equal(t, "List users", requireMap(t, paths["/users"]["get"])["summary"])
+	require.Equal(t, "Get user", requireMap(t, paths["/users/{id}"]["get"])["summary"])
+}
+
+// Test_OpenAPI_EscapedRoutePath verifies escaped special characters in route
+// paths are treated as literals, matching the router's grammar.
+func Test_OpenAPI_EscapedRoutePath(t *testing.T) {
+	t.Parallel()
+
+	variants := buildOpenAPIPathVariants(`/foo\:bar`, nil)
+	require.Len(t, variants, 1)
+	require.Equal(t, "/foo:bar", variants[0].Path)
+	require.Empty(t, variants[0].ParamNames)
 }
