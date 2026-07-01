@@ -770,3 +770,51 @@ func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
 		RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>", Config{RegexHandler: "invalid"})
 	})
 }
+
+// go test -run Test_appendLowerASCII
+func Test_appendLowerASCII(t *testing.T) {
+	t.Parallel()
+
+	cases := []string{
+		"",
+		"/",
+		"/A",
+		"/AB",
+		"/ABC",
+		"/ABCD",
+		"/User/Keys/1337",
+		"/API/v1/Products/Electronics/12345",
+		"/MiXeD-CaSe_123/PATH",
+		"/héllo/WÖRLD", // non-ASCII bytes must pass through untouched
+		"/with spaces/And-Punct!?",
+	}
+
+	for _, in := range cases {
+		src := []byte(in)
+		// Reference: strings.ToLower folds only ASCII A-Z here (inputs are ASCII
+		// except the multibyte cases, whose bytes are >= 0x80 and left unchanged).
+		want := make([]byte, len(src))
+		for i := 0; i < len(src); i++ {
+			c := src[i]
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			want[i] = c
+		}
+
+		// Fresh (nil) destination triggers the allocation branch.
+		got := appendLowerASCII(nil, src)
+		require.Equal(t, string(want), string(got), "nil dst for %q", in)
+
+		// Reused destination with ample capacity triggers the reuse branch and
+		// must not read stale bytes past len(src).
+		reuse := make([]byte, 0, 64)
+		reuse = append(reuse, "xxxxxxxxxxxxxxxx"...)
+		got = appendLowerASCII(reuse, src)
+		require.Equal(t, string(want), string(got), "reused dst for %q", in)
+		require.Len(t, got, len(src))
+
+		// The source must never be mutated (it aliases c.path).
+		require.Equal(t, in, string(src), "src mutated for %q", in)
+	}
+}
