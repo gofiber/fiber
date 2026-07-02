@@ -651,7 +651,9 @@ func (r *DefaultRes) Links(link ...string) {
 			bb.WriteByte('>')
 		} else {
 			bb.WriteString(`; rel="`)
-			bb.WriteString(link[i])
+			// The rel value sits inside a quoted-string, so quotes and
+			// backslashes must be escaped (RFC 9110 Section 5.6.4).
+			bb.WriteString(r.c.app.quoteRawString(link[i]))
 			bb.WriteString(`",`)
 		}
 	}
@@ -805,6 +807,12 @@ func (r *DefaultRes) SendEarlyHints(hints []string) error {
 	}
 	for _, h := range hints {
 		r.c.fasthttp.Response.Header.Add("Link", h)
+	}
+	// A server MUST NOT send a 1xx response to an HTTP/1.0 client
+	// (RFC 9110 Section 15.2). The Link headers above still go out on the
+	// final response; only the interim 103 is skipped.
+	if string(r.c.fasthttp.Request.Header.Protocol()) == "HTTP/1.0" {
+		return nil
 	}
 	return r.c.fasthttp.EarlyHints()
 }

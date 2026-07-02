@@ -2842,6 +2842,51 @@ func Test_Ctx_Fresh_MethodGuard(t *testing.T) {
 	require.False(t, c.Fresh())
 }
 
+// Test_Ctx_Fresh_MultiFieldLines verifies that repeated If-None-Match and
+// Cache-Control field lines are combined into one list per RFC 9110 §5.2.
+func Test_Ctx_Fresh_MultiFieldLines(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Add(HeaderIfNoneMatch, `"a"`)
+	c.Request().Header.Add(HeaderIfNoneMatch, `"b"`)
+	c.Response().Header.Set(HeaderETag, `"b"`)
+	require.True(t, c.Fresh(), "an ETag on a second If-None-Match field line must match")
+
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfNoneMatch, `"a"`)
+	c.Response().Header.Set(HeaderETag, `"a"`)
+	c.Request().Header.Add(HeaderCacheControl, "public")
+	c.Request().Header.Add(HeaderCacheControl, "no-cache")
+	require.False(t, c.Fresh(), "no-cache on a second Cache-Control field line must be honored")
+}
+
+// Test_Ctx_Body_With_Compression_MultiFieldLines verifies that repeated
+// Content-Encoding field lines are combined into one list per RFC 9110 §5.2.
+func Test_Ctx_Body_With_Compression_MultiFieldLines(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Add(HeaderContentEncoding, "gzip")
+	c.Request().Header.Add(HeaderContentEncoding, "gzip")
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write([]byte("double"))
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+	once := append([]byte(nil), buf.Bytes()...)
+	buf.Reset()
+	gz = gzip.NewWriter(&buf)
+	_, err = gz.Write(once)
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+
+	c.Request().SetBody(buf.Bytes())
+	require.Equal(t, []byte("double"), c.Body())
+}
+
 // Test_Ctx_Fresh_ObsoleteDateFormats verifies that If-Modified-Since values in
 // the obsolete RFC 850 and ANSI C asctime() formats are accepted, as required
 // by RFC 9110 §5.6.7 for any HTTP-date recipient.
@@ -6628,6 +6673,23 @@ func Test_Ctx_SendEarlyHints(t *testing.T) {
 	require.Equal(t, "fail", string(body))
 }
 
+// Test_Ctx_SendEarlyHints_HTTP10 verifies that no interim 103 response is
+// sent to an HTTP/1.0 client (RFC 9110 §15.2 MUST NOT), while the Link
+// headers still go out on the final response.
+func Test_Ctx_SendEarlyHints_HTTP10(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.SetProtocol("HTTP/1.0")
+
+	// Without the protocol guard this would reach fasthttp's EarlyHints,
+	// which writes the interim response directly to the connection (and
+	// panics here, where no connection exists).
+	err := c.SendEarlyHints([]string{"<https://cdn.com/style.css>; rel=preload; as=style"})
+	require.NoError(t, err)
+	require.Equal(t, "<https://cdn.com/style.css>; rel=preload; as=style", c.GetRespHeader(HeaderLink))
+}
+
 // go test -race -run Test_Ctx_SendFile
 func Test_Ctx_SendFile(t *testing.T) {
 	t.Parallel()
@@ -7751,6 +7813,11 @@ func Test_Ctx_Links(t *testing.T) {
 		"http://api.example.com/users?page=5", "last",
 	)
 	require.Equal(t, `<http://api.example.com/users?page=2>; rel="next",<http://api.example.com/users?page=5>; rel="last"`, string(c.Response().Header.Peek(HeaderLink)))
+
+	// A rel value containing quotes/backslashes must be escaped so the
+	// quoted-string stays grammar-valid (RFC 9110 §5.6.4).
+	c.Links("http://example.com", `next" x`)
+	require.Equal(t, `<http://example.com>; rel="next\" x"`, string(c.Response().Header.Peek(HeaderLink)))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Links -benchmem -count=4

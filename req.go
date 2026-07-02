@@ -159,8 +159,9 @@ func (r *DefaultReq) Body() []byte {
 
 	request := &r.c.fasthttp.Request
 
-	// Get Content-Encoding header
-	headerEncoding = utils.UnsafeString(utilsbytes.UnsafeToLower(request.Header.ContentEncoding()))
+	// Get Content-Encoding header. Multiple field lines form one combined
+	// list (RFC 9110 Section 5.2), so join them before splitting.
+	headerEncoding = utils.UnsafeString(utilsbytes.UnsafeToLower(joinHeaderValues(request.Header.PeekAll(HeaderContentEncoding))))
 
 	// If no encoding is provided, return the original body
 	if headerEncoding == "" {
@@ -449,8 +450,10 @@ func (r *DefaultReq) Fresh() bool {
 	header := &r.c.fasthttp.Request.Header
 
 	// fields
+	// List-based fields may be split across multiple field lines, which are
+	// semantically one comma-joined list (RFC 9110 Section 5.2).
 	modifiedSince := header.Peek(HeaderIfModifiedSince)
-	noneMatch := header.Peek(HeaderIfNoneMatch)
+	noneMatch := joinHeaderValues(header.PeekAll(HeaderIfNoneMatch))
 
 	// unconditional request
 	if len(modifiedSince) == 0 && len(noneMatch) == 0 {
@@ -460,7 +463,7 @@ func (r *DefaultReq) Fresh() bool {
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
 	// https://www.rfc-editor.org/rfc/rfc9111#section-5.2.1.4
-	cacheControl := header.Peek(HeaderCacheControl)
+	cacheControl := joinHeaderValues(header.PeekAll(HeaderCacheControl))
 	if len(cacheControl) > 0 && isNoCache(utils.UnsafeString(cacheControl)) {
 		return false
 	}
