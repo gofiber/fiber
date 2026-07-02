@@ -3147,3 +3147,48 @@ func Test_App_OperationExtensionNilElements(t *testing.T) {
 	require.True(t, ok)
 	require.Contains(t, m, "e")
 }
+
+// Test_App_MetadataNoCollisionWithMountedRoutes verifies registration IDs of
+// expanded mount routes can never collide with parent registrations, so
+// documenting a route added after startup cannot touch mounted routes.
+func Test_App_MetadataNoCollisionWithMountedRoutes(t *testing.T) {
+	t.Parallel()
+	sub := New()
+	sub.Get("/a", testEmptyHandler)
+	sub.Get("/b", testEmptyHandler).Summary("sub b")
+
+	app := New()
+	app.Use("/api", sub)
+
+	// Trigger startup so the mount expands into the parent stack.
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/a", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	app.Get("/new", testEmptyHandler).Name("newname").Summary("new summary")
+
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if route.Path == "/api/b" {
+				require.Equal(t, "sub b", route.Summary, route.Method)
+				require.NotEqual(t, "newname", route.Name, route.Method)
+			}
+		}
+	}
+}
+
+// Test_App_MetadataReachesAllMethodsOfAdd verifies helpers chained on a
+// multi-method Add registration document every method's route.
+func Test_App_MetadataReachesAllMethodsOfAdd(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Add([]string{MethodPut, MethodPost}, "/x", testEmptyHandler).
+		Summary("upsert").
+		Response(StatusCreated, "created", MIMEApplicationJSON)
+
+	for _, method := range []string{MethodPut, MethodPost} {
+		route := app.stack[app.methodInt(method)][0]
+		require.Equal(t, "upsert", route.Summary, method)
+		require.Contains(t, route.Responses, "201", method)
+	}
+}

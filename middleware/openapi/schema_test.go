@@ -606,3 +606,132 @@ func Test_SchemaOf_EmbeddedRequiredDeterministic(t *testing.T) {
 		require.Equal(t, first, next)
 	}
 }
+
+// Test_SchemaOf_DepthResolvedEmbeddedField verifies a field promoted at a
+// shallower embedding depth wins over the same name at a deeper depth,
+// matching encoding/json.
+func Test_SchemaOf_DepthResolvedEmbeddedField(t *testing.T) {
+	t.Parallel()
+
+	type A struct {
+		X int `json:"x"`
+	}
+	type B struct {
+		A
+		Y int `json:"y"`
+	}
+	type P struct {
+		A
+		B
+	}
+
+	schema := SchemaOf(P{})
+	props := requireProps(t, schema)
+	// json.Marshal(P{}) emits both x (from the shallower A) and y.
+	require.Contains(t, props, "x")
+	require.Contains(t, props, "y")
+}
+
+// Test_SchemaOf_TaggedFieldWinsConflict verifies that among same-depth
+// candidates a single json-tagged field dominates, matching encoding/json.
+func Test_SchemaOf_TaggedFieldWinsConflict(t *testing.T) {
+	t.Parallel()
+
+	type E1 struct {
+		Val int `json:"v"`
+	}
+	type E2 struct {
+		V string // untagged, json name "V" — no conflict with tagged "v"
+	}
+	type E3 struct {
+		V bool `json:"v"` // no json tag name collision helper
+	}
+	type P1 struct {
+		E1
+		E3 //nolint:govet // structtag: the duplicate json tag is the ambiguity under test
+	}
+
+	// Two tagged candidates at the same depth: dropped.
+	props := requireProps(t, SchemaOf(P1{}))
+	require.NotContains(t, props, "v")
+
+	type P2 struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario
+		E1
+		E2
+	}
+	// Tagged "v" and untagged "V" differ in name, both survive.
+	props = requireProps(t, SchemaOf(P2{}))
+	require.Contains(t, props, "v")
+	require.Contains(t, props, "V")
+}
+
+// unexportedBase is embedded in Test_SchemaOf_UnexportedEmbeddedStruct; its
+// exported fields are promoted by encoding/json.
+type unexportedBase struct {
+	ID int `json:"id"`
+}
+
+// Test_SchemaOf_UnexportedEmbeddedStruct verifies exported fields of an
+// embedded unexported struct type are promoted, matching encoding/json.
+func Test_SchemaOf_UnexportedEmbeddedStruct(t *testing.T) {
+	t.Parallel()
+
+	type User struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario
+		unexportedBase
+		Name string `json:"name"`
+	}
+
+	schema := SchemaOf(User{})
+	props := requireProps(t, schema)
+	require.Contains(t, props, "id")
+	require.Contains(t, props, "name")
+
+	required, ok := schema["required"].([]string)
+	require.True(t, ok)
+	require.ElementsMatch(t, []string{"id", "name"}, required)
+}
+
+// Test_SchemaOf_DiamondEmbeddingDropsAmbiguous verifies a field reached twice
+// at the same depth through different embeds of the same type is dropped,
+// matching encoding/json's ambiguity rule.
+func Test_SchemaOf_DiamondEmbeddingDropsAmbiguous(t *testing.T) {
+	t.Parallel()
+
+	type D struct {
+		X int `json:"x"`
+	}
+	type B struct {
+		D
+	}
+	type C struct {
+		D
+	}
+	type P struct {
+		B
+		C     //nolint:govet // structtag: the duplicate json tag is the ambiguity under test
+		Y int `json:"y"`
+	}
+
+	props := requireProps(t, SchemaOf(P{}))
+	require.NotContains(t, props, "x")
+	require.Contains(t, props, "y")
+}
+
+// Test_SchemaOf_TypedEnumValues verifies enum directive values are converted
+// to the field's type.
+func Test_SchemaOf_TypedEnumValues(t *testing.T) {
+	t.Parallel()
+
+	type Config struct {
+		Mode   string  `json:"mode" openapi:"enum:on|off"`
+		Level  int     `json:"level" openapi:"enum:1|2|3"`
+		Rate   float64 `json:"rate" openapi:"enum:0.5|1.0"`
+		Active bool    `json:"active" openapi:"enum:true|false"`
+	}
+
+	props := requireProps(t, SchemaOf(Config{}))
+	require.Equal(t, []any{int64(1), int64(2), int64(3)}, requireProp(t, props, "level")["enum"])
+	require.Equal(t, []any{0.5, 1.0}, requireProp(t, props, "rate")["enum"])
+	require.Equal(t, []any{true, false}, requireProp(t, props, "active")["enum"])
+	require.Equal(t, []any{"on", "off"}, requireProp(t, props, "mode")["enum"])
+}

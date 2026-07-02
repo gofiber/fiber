@@ -2365,3 +2365,25 @@ func Test_OpenAPI_ResponseSchemaWithoutMediaType(t *testing.T) {
 	entry := requireMap(t, content[fiber.MIMEApplicationJSON])
 	require.Equal(t, "object", requireMap(t, entry["schema"])["type"])
 }
+
+// Test_OpenAPI_ExactRouteUnderParameterizedMount verifies an exact spec route
+// inside a sub-app mounted under a parameterized prefix resolves per request.
+func Test_OpenAPI_ExactRouteUnderParameterizedMount(t *testing.T) {
+	t.Parallel()
+
+	sub := fiber.New()
+	sub.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	sub.Get("/openapi.json", New()).Hidden()
+
+	app := fiber.New()
+	app.Use("/:tenant", sub)
+
+	req := httptest.NewRequest(fiber.MethodGet, "/acme/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Contains(t, spec.Paths, "/{tenant}/users")
+}

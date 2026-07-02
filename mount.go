@@ -203,6 +203,12 @@ func (app *App) processSubAppsRoutes() {
 				// Clone the sub-app's route
 				subAppRouteClone := app.copyRoute(subAppRoute)
 
+				// The clone carries the sub-app's registration ID, which comes
+				// from a different counter and could collide with a parent
+				// registration; clear it so metadata helpers on later parent
+				// registrations can never target expanded mount routes.
+				subAppRouteClone.regID = 0
+
 				// Add the parent route's path as a prefix to the sub-app's route
 				app.addPrefixToRoute(route.path, subAppRouteClone, route.group.app.config.RegexHandler, route.group.app.customConstraints...)
 

@@ -1112,6 +1112,10 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 	}
 
+	// One registration ID for the whole call, so chainable helpers reach the
+	// routes of every method registered together.
+	regID := atomic.AddUint64(&app.registrationID, 1)
+
 	// Precompute path normalization ONCE
 	if pathRaw == "" {
 		pathRaw = "/"
@@ -1149,7 +1153,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			star:          isStar,
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
-			regID:         atomic.AddUint64(&app.registrationID, 1),
+			regID:         regID,
 
 			path:        pathClean,
 			routeParser: parsedPretty,
