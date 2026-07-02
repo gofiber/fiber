@@ -107,7 +107,7 @@ type Config struct {
 	SecuritySchemes map[string]any
 
 	// Webhooks holds OpenAPI 3.1 webhook definitions, keyed by name. Each value is
-	// a Path Item object. Only emitted when OpenAPIVersion is "3.1.0".
+	// a Path Item object. Only emitted for OpenAPI 3.1.0 and above.
 	//
 	// Optional. Default: nil
 	Webhooks map[string]any
@@ -156,7 +156,7 @@ type Config struct {
 	ServerURL string
 
 	// OpenAPIVersion specifies the OpenAPI specification version to generate.
-	// Supported values: "3.0.0", "3.1.0" (default)
+	// Supported values: "3.0.0", "3.1.0" (default), "3.2.0"
 	//
 	// Optional. Default: "3.1.0"
 	OpenAPIVersion string

@@ -2387,3 +2387,15 @@ func Test_OpenAPI_ExactRouteUnderParameterizedMount(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 	require.Contains(t, spec.Paths, "/{tenant}/users")
 }
+
+// Test_OpenAPI_DuplicateSanitizedParamNames verifies distinct Fiber parameters
+// that sanitize to the same identifier get unique names in the path template,
+// as required by the OpenAPI specification.
+func Test_OpenAPI_DuplicateSanitizedParamNames(t *testing.T) {
+	t.Parallel()
+
+	variants := buildOpenAPIPathVariants("/x/:na_ve/:naïve", nil)
+	require.Len(t, variants, 1)
+	require.Equal(t, "/x/{na_ve}/{na_ve_2}", variants[0].Path)
+	require.Equal(t, []string{"na_ve", "na_ve_2"}, variants[0].ParamNames)
+}
