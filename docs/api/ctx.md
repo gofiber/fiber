@@ -1720,10 +1720,12 @@ The generic `Query` function supports returning the following data types based o
 Returns a struct containing the type and a slice of ranges.
 Only the canonical `bytes` unit is recognized and any optional
 whitespace around range specifiers will be ignored, as specified
-in RFC 9110.
-If none of the requested ranges are satisfiable, the method automatically
-sets the HTTP status code to **416 Range Not Satisfiable** and populates the
-`Content-Range` header with the current representation size.
+in RFC 9110. Empty list elements (e.g. `bytes=,0-5`) are ignored.
+A range with a non-numeric bound or a last position smaller than the first
+position invalidates the whole header and an error is returned, per RFC 9110.
+If the requested ranges are valid but none of them are satisfiable, the method
+automatically sets the HTTP status code to **416 Range Not Satisfiable** and
+populates the `Content-Range` header with the current representation size.
 
 ```go title="Signature"
 func (c fiber.Ctx) Range(size int64) (Range, error)
@@ -2020,6 +2022,7 @@ app.Get("/non-ascii", func(c fiber.Ctx) error {
 
 Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept) HTTP header. It uses [Accepts](ctx.md#accepts) to select a proper format.
 The supported content types are `text/html`, `text/plain`, `application/json`, `application/vnd.msgpack`, `application/xml`, and `application/cbor`.
+Because the representation is selected from the Accept header, `Vary: Accept` is added to the response.
 For more flexible content negotiation, use [Format](ctx.md#format).
 
 :::info

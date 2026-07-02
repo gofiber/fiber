@@ -499,6 +499,27 @@ func Test_Ctx_Accepts_Wildcard(t *testing.T) {
 	require.Equal(t, "xml", c.Accepts("xml"))
 }
 
+// Test_Ctx_Accepts_UppercaseQ verifies that the weight parameter name "q" is
+// matched case-insensitively (RFC 9110 §12.4.2).
+func Test_Ctx_Accepts_UppercaseQ(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// "Q" must be recognized as the weight, not treated as a required
+	// media-type parameter.
+	c.Request().Header.Set(HeaderAccept, "text/html;Q=0.2")
+	require.Equal(t, "html", c.Accepts("html"))
+
+	// An uppercase Q=0 means "not acceptable", same as q=0.
+	c.Request().Header.Set(HeaderAccept, "text/html;Q=0")
+	require.Empty(t, c.Accepts("html"))
+
+	// Weight ordering must apply regardless of case.
+	c.Request().Header.Set(HeaderAccept, "text/html;Q=0.2, application/json;q=0.8")
+	require.Equal(t, "json", c.Accepts("html", "json"))
+}
+
 // go test -run Test_Ctx_Accepts_MultiHeader
 func Test_Ctx_Accepts_MultiHeader(t *testing.T) {
 	t.Parallel()
@@ -1019,6 +1040,20 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 		{
 			name:            "gzip twice",
 			contentEncoding: "gzip, gzip",
+			body:            []byte("double"),
+			expectedBody:    []byte("double"),
+		},
+		{
+			// RFC 9110 §5.6.1.2: empty list elements must be parsed and
+			// ignored, so a trailing comma must not yield 415.
+			name:            "gzip trailing comma",
+			contentEncoding: "gzip,",
+			body:            []byte("john=doe"),
+			expectedBody:    []byte("john=doe"),
+		},
+		{
+			name:            "gzip twice with empty element between",
+			contentEncoding: "gzip, , gzip",
 			body:            []byte("double"),
 			expectedBody:    []byte("double"),
 		},
@@ -2080,6 +2115,19 @@ func Benchmark_Ctx_Format(b *testing.B) {
 		}
 		require.NoError(b, err)
 	})
+}
+
+// Test_Ctx_AutoFormat_Vary verifies that AutoFormat marks the response as
+// varying on the Accept header (RFC 9110 §12.5.5), since the representation
+// is selected via proactive negotiation.
+func Test_Ctx_AutoFormat_Vary(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
+	require.NoError(t, c.AutoFormat("Hello, World!"))
+	require.Equal(t, HeaderAccept, c.GetRespHeader(HeaderVary))
 }
 
 // go test -run Test_Ctx_AutoFormat
@@ -5224,14 +5272,22 @@ func Test_Ctx_Range(t *testing.T) {
 	testRange("bytes=")
 	testRange("bytes=500=")
 	testRange("bytes=500-300")
-	testRange("bytes=a-700", RangeSet{Start: 300, End: 999})
-	testRange("bytes=500-b", RangeSet{Start: 500, End: 999})
+	// A bound that is present but not a valid integer invalidates the whole
+	// ranges-specifier (RFC 9110 §14.1.1); it must not be reinterpreted as a
+	// suffix or open-ended range.
+	testRange("bytes=a-700")
+	testRange("bytes=500-b")
+	testRange("bytes=-")
 	testRange("bytes=500-1000", RangeSet{Start: 500, End: 999})
 	testRange("bytes=500-700", RangeSet{Start: 500, End: 700})
 	testRange("bytes=0-0,2-1000", RangeSet{Start: 0, End: 0}, RangeSet{Start: 2, End: 999})
 	testRange("bytes=0-99,450-549,-100", RangeSet{Start: 0, End: 99}, RangeSet{Start: 450, End: 549}, RangeSet{Start: 900, End: 999})
 	testRange("bytes=500-700,601-999", RangeSet{Start: 500, End: 700}, RangeSet{Start: 601, End: 999})
 	testRange("bytes= 0-1", RangeSet{Start: 0, End: 1})
+	// Empty list elements must be parsed and ignored (RFC 9110 §5.6.1.2).
+	testRange("bytes=,0-5", RangeSet{Start: 0, End: 5})
+	testRange("bytes=0-5,,10-20", RangeSet{Start: 0, End: 5}, RangeSet{Start: 10, End: 20})
+	testRange("bytes=,,,")
 	testRange("seconds=0-1")
 }
 

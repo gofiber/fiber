@@ -171,9 +171,16 @@ func (r *DefaultReq) Body() []byte {
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
-	for i := range encodingOrder {
-		encodingOrder[i] = utilsstrings.UnsafeToLower(encodingOrder[i])
+	// RFC 9110 Section 5.6.1.2: recipients must parse and ignore a reasonable
+	// number of empty list elements, e.g. "gzip,," is equivalent to "gzip".
+	nonEmpty := encodingOrder[:0]
+	for _, encoding := range encodingOrder {
+		if encoding == "" {
+			continue
+		}
+		nonEmpty = append(nonEmpty, utilsstrings.UnsafeToLower(encoding))
 	}
+	encodingOrder = nonEmpty
 	if len(encodingOrder) == 0 {
 		return r.getBody()
 	}
@@ -1061,12 +1068,15 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	}
 
 	parseBound := func(value string) (int64, error) {
-		if value == "" { // empty bound (suffix/prefix range); skip the parser's error alloc
+		if value == "" { // absent bound (suffix/open-ended range); skip the parser's error alloc
 			return 0, errRangeBound
 		}
 		parsed, err := utils.ParseUint(value)
 		if err != nil {
-			return 0, errRangeBound // sentinel: never surfaced, avoids per-request alloc
+			// A bound that is present but not a valid integer makes the
+			// range-spec, and therefore the whole ranges-specifier, invalid
+			// (RFC 9110 Section 14.1.1).
+			return 0, ErrRangeMalformed
 		}
 		if parsed > (math.MaxUint64 >> 1) {
 			return 0, ErrRangeMalformed
@@ -1090,12 +1100,6 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		rangeCount  int
 	)
 	for moreRanges != "" {
-		rangeCount++
-		if rangeCount > maxRanges {
-			r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
-			r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
-			return rangeData, ErrRangeTooLarge
-		}
 		singleRange = moreRanges
 		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
 			singleRange = moreRanges[:i]
@@ -1105,6 +1109,20 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		}
 
 		singleRange = utils.TrimSpace(singleRange)
+
+		// RFC 9110 Section 5.6.1.2: recipients must parse and ignore a
+		// reasonable number of empty list elements, e.g. "bytes=,0-5" is
+		// equivalent to "bytes=0-5".
+		if singleRange == "" {
+			continue
+		}
+
+		rangeCount++
+		if rangeCount > maxRanges {
+			r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
+			r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
+			return rangeData, ErrRangeTooLarge
+		}
 
 		var (
 			startStr, endStr string
@@ -1121,16 +1139,30 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		if errors.Is(startErr, ErrRangeMalformed) || errors.Is(endErr, ErrRangeMalformed) {
 			return rangeData, ErrRangeMalformed
 		}
-		if startErr != nil { // -nnn
+		switch {
+		case startErr != nil && endErr != nil:
+			// "-" carries neither a first-byte-pos nor a suffix-length and is
+			// not a valid range-spec (RFC 9110 Section 14.1.1).
+			return rangeData, ErrRangeMalformed
+		case startErr != nil: // -nnn (suffix range)
 			start = max(size-end, 0)
 			end = size - 1
-		} else if endErr != nil { // nnn-
+		case endErr != nil: // nnn- (open-ended range)
 			end = size - 1
-		}
-		if end > size-1 { // limit last-byte-pos to current length
-			end = size - 1
+		default: // nnn-mmm
+			// An int-range with a last-byte-pos less than its first-byte-pos
+			// invalidates the whole ranges-specifier (RFC 9110 Section 14.1.1).
+			if end < start {
+				return rangeData, ErrRangeMalformed
+			}
+			if end > size-1 { // limit last-byte-pos to current length
+				end = size - 1
+			}
 		}
 		if start > end || start < 0 {
+			// Syntactically valid but does not overlap the representation
+			// (e.g. first-byte-pos beyond EOF or a zero-length suffix); skip
+			// it and let the satisfiability check below decide.
 			continue
 		}
 		rangeData.Ranges = append(rangeData.Ranges, RangeSet{
@@ -1139,6 +1171,11 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
+		if rangeCount == 0 {
+			// Only empty list elements: there was no range-spec at all, so
+			// the ranges-specifier is invalid rather than unsatisfiable.
+			return rangeData, ErrRangeMalformed
+		}
 		r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
 		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
 		return rangeData, ErrRequestedRangeNotSatisfiable

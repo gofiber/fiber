@@ -1609,6 +1609,14 @@ func Test_IsEtagStale(t *testing.T) {
 
 	// Weak vs. weak
 	require.False(t, app.isEtagStale(`W/"a"`, []byte(`W/"a"`)))
+
+	// etagc permits "," inside the opaque-tag (RFC 9110 §8.8.3): a quoted
+	// comma is part of the tag, not a list separator.
+	require.False(t, app.isEtagStale(`"v1,v2"`, []byte(`"v1,v2"`)))
+	require.False(t, app.isEtagStale(`"v1,v2"`, []byte(`"a", "v1,v2", "b"`)))
+	require.False(t, app.isEtagStale(`W/"v1,v2"`, []byte(`"v1,v2"`)))
+	require.True(t, app.isEtagStale(`"v1"`, []byte(`"v1,v2"`)))
+	require.True(t, app.isEtagStale(`"v2"`, []byte(`"v1,v2"`)))
 }
 
 func Test_App_quoteRawString(t *testing.T) {

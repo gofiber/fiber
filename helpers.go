@@ -571,7 +571,9 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 					delete(params, k)
 				}
 				fasthttp.VisitHeaderParams(accept[i:], func(key, value []byte) bool {
-					if len(key) == 1 && key[0] == 'q' {
+					// The weight parameter name "q" is case-insensitive
+					// (RFC 9110 §12.4.2).
+					if len(key) == 1 && (key[0] == 'q' || key[0] == 'Q') {
 						if q, err := fasthttp.ParseUfloat(value); err == nil {
 							quality = q
 						}
@@ -717,7 +719,6 @@ func matchEtagStrong(s, etag string) bool {
 // stale when presented with the raw If-None-Match header value. Comparison is
 // weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
-	var start, end int
 	header := utils.TrimSpace(app.toString(noneMatchBytes))
 
 	// Short-circuit the wildcard case: "*" never counts as stale.
@@ -725,27 +726,28 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 		return false
 	}
 
-	// Adapted from:
-	// https://github.com/jshttp/fresh/blob/master/index.js#L110
-	for i := range noneMatchBytes {
-		switch noneMatchBytes[i] {
-		case 0x20:
-			if start == end {
+	// Split the header on commas that sit outside DQUOTE-delimited opaque-tags:
+	// etagc permits "," inside the quoted tag (RFC 9110 §8.8.3), so `"v1,v2"`
+	// is a single entity tag, not two list elements.
+	start := 0
+	inQuotes := false
+	for i := range len(header) {
+		switch header[i] {
+		case '"':
+			inQuotes = !inQuotes
+		case ',':
+			if !inQuotes {
+				if matchEtag(utils.TrimSpace(header[start:i]), etag) {
+					return false
+				}
 				start = i + 1
-				end = i + 1
 			}
-		case 0x2c:
-			if matchEtag(app.toString(noneMatchBytes[start:end]), etag) {
-				return false
-			}
-			start = i + 1
-			end = i + 1
 		default:
-			end = i + 1
+			// any other byte belongs to the current list element
 		}
 	}
 
-	return !matchEtag(app.toString(noneMatchBytes[start:end]), etag)
+	return !matchEtag(utils.TrimSpace(header[start:]), etag)
 }
 
 func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming host and port parts for clarity

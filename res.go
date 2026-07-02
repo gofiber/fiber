@@ -441,6 +441,10 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // For more flexible content negotiation, use Format.
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
+	// The response is selected based on the Accept header, so let caches know
+	// (RFC 9110 Section 12.5.5).
+	r.Vary(HeaderAccept)
+
 	// Get accepted content type
 	accept := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor") //nolint:staticcheck // It is fine to ignore the static check
 
