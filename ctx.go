@@ -156,9 +156,15 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 // should be canceled. Deadline returns ok==false when no deadline is
 // set. Successive calls to Deadline return the same results.
 //
-// Due to current limitations in how fasthttp works, Deadline operates as a nop.
+// If no context was set with SetContext, Deadline operates as a nop due to
+// current limitations in how fasthttp works.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Deadline() (time.Time, bool) {
+func (c *DefaultCtx) Deadline() (time.Time, bool) {
+	if c.fasthttp != nil {
+		if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
+			return ctx.Deadline()
+		}
+	}
 	return time.Time{}, false
 }
 
@@ -168,17 +174,29 @@ func (*DefaultCtx) Deadline() (time.Time, bool) {
 // The close of the Done channel may happen asynchronously,
 // after the cancel function returns.
 //
-// Due to current limitations in how fasthttp works, Done operates as a nop.
+// If no context was set with SetContext, Done operates as a nop due to
+// current limitations in how fasthttp works.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Done() <-chan struct{} {
+func (c *DefaultCtx) Done() <-chan struct{} {
+	if c.fasthttp != nil {
+		if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
+			return ctx.Done()
+		}
+	}
 	return nil
 }
 
 // Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
 //
-// Due to current limitations in how fasthttp works, Err operates as a nop.
+// If no context was set with SetContext, Err operates as a nop due to
+// current limitations in how fasthttp works.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Err() error {
+func (c *DefaultCtx) Err() error {
+	if c.fasthttp != nil {
+		if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
+			return ctx.Err() //nolint:wrapcheck // Err mirrors the stored context.
+		}
+	}
 	return nil
 }
 
