@@ -3,12 +3,15 @@ package fiber
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"math"
 	"mime/multipart"
 	"net"
+	"net/http"
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
@@ -398,10 +401,20 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 // Fresh returns true when the response is still “fresh” in the client's cache,
 // otherwise false is returned to indicate that the client cache is now stale
 // and the full response should be sent.
+// Freshness only applies to GET and HEAD requests; for any other method false is
+// returned, as RFC 9110 defines 304 Not Modified only for those methods and
+// requires If-Modified-Since to be ignored otherwise.
 // When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 // reload request, this module will return false to make handling these requests transparent.
 // https://github.com/jshttp/fresh/blob/master/index.js#L33
 func (r *DefaultReq) Fresh() bool {
+	// Freshness only applies to GET and HEAD requests: a 304 Not Modified
+	// response is defined for those methods only, and RFC 9110 Section 13.1.3
+	// requires If-Modified-Since to be ignored for any other method.
+	if method := r.c.app.method(r.c.methodInt); method != MethodGet && method != MethodHead {
+		return false
+	}
+
 	header := &r.c.fasthttp.Request.Header
 
 	// fields
@@ -445,7 +458,7 @@ func (r *DefaultReq) Fresh() bool {
 		if len(lastModified) == 0 {
 			return false
 		}
-		lastModifiedTime, err := fasthttp.ParseHTTPDate(lastModified)
+		lastModifiedTime, err := parseHTTPDate(lastModified)
 		if err != nil {
 			return false
 		}
@@ -453,7 +466,7 @@ func (r *DefaultReq) Fresh() bool {
 		// Last-Modified it was given. Identical, already-validated dates are
 		// equal, so skip the second parse and comparison.
 		if !bytes.Equal(lastModified, modifiedSince) {
-			modifiedSinceTime, err := fasthttp.ParseHTTPDate(modifiedSince)
+			modifiedSinceTime, err := parseHTTPDate(modifiedSince)
 			if err != nil {
 				return false
 			}
@@ -463,6 +476,22 @@ func (r *DefaultReq) Fresh() bool {
 		}
 	}
 	return true
+}
+
+// parseHTTPDate parses an HTTP-date field value. RFC 9110 Section 5.6.7
+// requires recipients to accept the obsolete RFC 850 and ANSI C asctime()
+// formats in addition to the preferred IMF-fixdate, so after the fast
+// IMF-fixdate path fails, fall back to net/http's ParseTime, which tries all
+// three formats.
+func parseHTTPDate(date []byte) (time.Time, error) {
+	if t, err := fasthttp.ParseHTTPDate(date); err == nil {
+		return t, nil
+	}
+	t, err := http.ParseTime(string(date))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse HTTP date %q: %w", date, err)
+	}
+	return t, nil
 }
 
 // Get returns the HTTP request header specified by field.

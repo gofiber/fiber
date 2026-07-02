@@ -1016,6 +1016,8 @@ When the response is still **fresh** in the client's cache **true** is returned;
 
 When a client sends the Cache-Control: no-cache request header to indicate an end-to-end reload request, `Fresh` will return false to make handling these requests transparent.
 
+`Fresh` only applies to GET and HEAD requests and returns false for any other method, since a 304 Not Modified response is only defined for those methods and RFC 9110 requires If-Modified-Since to be ignored otherwise.
+
 Read more on [https://expressjs.com/en/4x/api.html\#req.fresh](https://expressjs.com/en/4x/api.html#req.fresh)
 
 ```go title="Signature"
@@ -2336,7 +2338,7 @@ app.Get("/", func(c fiber.Ctx) error {
 Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept) HTTP header. It uses [Accepts](ctx.md#accepts) to select a proper format from the supplied offers. A default handler can be provided by setting the `MediaType` to `"default"`. If no offers match and no default is provided, a 406 (Not Acceptable) response is sent. The Content-Type is automatically set when a handler is selected.
 
 :::info
-If the Accept header is **not** specified, the first handler will be used.
+If the Accept header is **not** specified, the first handler with a real media type will be used (entries with the `"default"` media type are skipped, since `"default"` is not a valid Content-Type value). If only a `"default"` handler is supplied, it is called without setting the Content-Type.
 :::
 
 ```go title="Signature"
@@ -2967,7 +2969,7 @@ app.Get("/", func(c fiber.Ctx) error {
 Adds the given header field to the [Vary](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary) response header. This will append the header if not already listed; otherwise, it leaves it listed in the current location.
 
 :::info
-Multiple fields are **allowed**.
+Multiple fields are **allowed**. Per RFC 9110, the wildcard `"*"` is only meaningful as the sole member of the field: adding `"*"` collapses the header to a single `*`, and once `*` is present no further fields are appended.
 :::
 
 ```go title="Signature"
@@ -2984,6 +2986,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
   c.Vary("Accept-Encoding", "Accept")
   // => Vary: Origin, User-Agent, Accept-Encoding, Accept
+
+  c.Vary("*") // => Vary: *
 
   // ...
 })

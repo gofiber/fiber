@@ -389,7 +389,16 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 	r.Vary(HeaderAccept)
 
 	if r.c.DefaultReq.Get(HeaderAccept) == "" {
-		r.c.fasthttp.Response.Header.SetContentType(handlers[0].MediaType)
+		// Without an Accept header the client accepts any media type
+		// (RFC 9110 Section 12.5.1), so pick the first non-default handler and
+		// use its media type. The literal "default" is not a media type and
+		// must not be emitted as a Content-Type value.
+		for _, h := range handlers {
+			if h.MediaType != "default" {
+				r.c.fasthttp.Response.Header.SetContentType(h.MediaType)
+				return h.Handler(r.c)
+			}
+		}
 		return handlers[0].Handler(r.c)
 	}
 
@@ -1070,7 +1079,19 @@ func shouldIncludeCharset(mimeType string) bool {
 
 // Vary adds the given header field to the Vary response header.
 // This will append the header, if not already listed; otherwise, leaves it listed in the current location.
+// Per RFC 9110 Section 12.5.5 the wildcard "*" only has meaning as the sole member of the field:
+// once "*" is added (or already present), the header is collapsed to a single "*".
 func (r *DefaultRes) Vary(fields ...string) {
+	if len(fields) == 0 {
+		return
+	}
+	if headerContainsValue(r.Get(HeaderVary), "*") {
+		return
+	}
+	if slices.Contains(fields, "*") {
+		r.setCanonical(HeaderVary, "*")
+		return
+	}
 	r.Append(HeaderVary, fields...)
 }
 

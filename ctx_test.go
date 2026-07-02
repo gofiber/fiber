@@ -1973,6 +1973,37 @@ func Test_Ctx_Format_NilHandler(t *testing.T) {
 	})
 }
 
+// Test_Ctx_Format_NoAcceptDefaultFirst verifies that a request without an
+// Accept header never emits the literal "default" as a Content-Type value:
+// the first real media type wins regardless of the position of the "default"
+// entry, and a lone "default" handler leaves Content-Type untouched.
+func Test_Ctx_Format_NoAcceptDefaultFirst(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	var accepted string
+	handler := func(mediaType string) ResFmt {
+		return ResFmt{MediaType: mediaType, Handler: func(_ Ctx) error {
+			accepted = mediaType
+			return nil
+		}}
+	}
+
+	// "default" listed first must be skipped in favor of a real media type.
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err := c.Format(handler("default"), handler("application/json"))
+	require.NoError(t, err)
+	require.Equal(t, "application/json", accepted)
+	require.Equal(t, "application/json", c.GetRespHeader(HeaderContentType))
+
+	// Only a "default" handler: it runs, but no Content-Type is fabricated.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.Format(handler("default"))
+	require.NoError(t, err)
+	require.Equal(t, "default", accepted)
+	require.NotEqual(t, "default", c.GetRespHeader(HeaderContentType))
+}
+
 func Benchmark_Ctx_Format(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -2669,6 +2700,65 @@ func Test_Ctx_Fresh_ModifiedSinceOnly(t *testing.T) {
 	c = app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderIfModifiedSince, "not-a-date")
 	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+	require.False(t, c.Fresh())
+}
+
+// Test_Ctx_Fresh_MethodGuard verifies that freshness only applies to GET and
+// HEAD requests. RFC 9110 §13.1.3 requires If-Modified-Since to be ignored for
+// other methods, and a 304 Not Modified response is only defined for GET/HEAD.
+func Test_Ctx_Fresh_MethodGuard(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	for _, method := range []string{MethodGet, MethodHead} {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Method(method)
+		c.Request().Header.Set(HeaderIfNoneMatch, `"a"`)
+		c.Response().Header.Set(HeaderETag, `"a"`)
+		require.True(t, c.Fresh(), "matching ETag must be fresh for %s", method)
+	}
+
+	for _, method := range []string{MethodPost, MethodPut, MethodDelete, MethodPatch, MethodOptions} {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Method(method)
+
+		// Matching If-None-Match must not report fresh: 304 is undefined for
+		// these methods (a 412 would apply instead, which Fresh cannot express).
+		c.Request().Header.Set(HeaderIfNoneMatch, `"a"`)
+		c.Response().Header.Set(HeaderETag, `"a"`)
+		require.False(t, c.Fresh(), "%s must never be fresh", method)
+
+		// If-Modified-Since must be ignored for methods other than GET/HEAD.
+		c.Request().Header.Del(HeaderIfNoneMatch)
+		c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
+		c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+		require.False(t, c.Fresh(), "%s must ignore If-Modified-Since", method)
+	}
+}
+
+// Test_Ctx_Fresh_ObsoleteDateFormats verifies that If-Modified-Since values in
+// the obsolete RFC 850 and ANSI C asctime() formats are accepted, as required
+// by RFC 9110 §5.6.7 for any HTTP-date recipient.
+func Test_Ctx_Fresh_ObsoleteDateFormats(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// Not modified since the client's date: fresh, in all three formats.
+	for _, date := range []string{
+		"Wed, 21 Oct 2015 07:28:00 GMT",     // IMF-fixdate
+		"Wednesday, 21-Oct-15 07:28:00 GMT", // obsolete RFC 850 format
+		"Wed Oct 21 07:28:00 2015",          // ANSI C asctime() format
+	} {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderIfModifiedSince, date)
+		c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+		require.True(t, c.Fresh(), "date %q must parse and compare equal", date)
+	}
+
+	// Modified after the client's obsolete-format date: stale.
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfModifiedSince, "Wednesday, 21-Oct-15 07:28:00 GMT")
+	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:29:00 GMT")
 	require.False(t, c.Fresh())
 }
 
@@ -8611,6 +8701,28 @@ func Test_Ctx_Vary(t *testing.T) {
 	c.Vary("User-Agent")
 	c.Vary("Accept-Encoding", "Accept")
 	require.Equal(t, "Origin, User-Agent, Accept-Encoding, Accept", string(c.Response().Header.Peek("Vary")))
+}
+
+// Test_Ctx_Vary_Wildcard verifies the RFC 9110 §12.5.5 rule that "*" is only
+// meaningful as the sole member of the Vary field value.
+func Test_Ctx_Vary_Wildcard(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// Adding "*" collapses any previously listed fields to a single "*".
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Vary("Origin")
+	c.Vary("*")
+	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
+
+	// Once "*" is present, further fields are not appended alongside it.
+	c.Vary("Accept")
+	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
+
+	// "*" mixed into a multi-field call also collapses the header.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Vary("Accept-Encoding", "*", "Accept")
+	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Vary -benchmem -count=4
