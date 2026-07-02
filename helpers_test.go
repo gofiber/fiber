@@ -501,9 +501,10 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 			expectedList: nil,
 		},
 		{
+			// RFC 9110 §5.6.1.2: empty list elements are parsed and ignored.
 			description:  "has a comma without element",
 			headerValue:  "gzip,",
-			expectedList: []string{"gzip", ""},
+			expectedList: []string{"gzip"},
 		},
 		{
 			description:  "has a space between words",
@@ -513,17 +514,22 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 		{
 			description:  "single comma",
 			headerValue:  ",",
-			expectedList: []string{"", ""},
+			expectedList: []string{},
 		},
 		{
 			description:  "multiple comma",
 			headerValue:  ",,",
-			expectedList: []string{"", "", ""},
+			expectedList: []string{},
 		},
 		{
 			description:  "comma with space",
 			headerValue:  ",  ,",
-			expectedList: []string{"", "", ""},
+			expectedList: []string{},
+		},
+		{
+			description:  "empty element between values",
+			headerValue:  "gzip, , br",
+			expectedList: []string{"gzip", "br"},
 		},
 	}
 

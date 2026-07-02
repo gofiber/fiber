@@ -2782,6 +2782,15 @@ func Test_Ctx_Fresh_MethodGuard(t *testing.T) {
 		c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
 		require.False(t, c.Fresh(), "%s must ignore If-Modified-Since", method)
 	}
+
+	// A method that is not registered at all (methodInt == -1) must be
+	// handled without panicking and reported as not fresh.
+	rctx := &fasthttp.RequestCtx{}
+	rctx.Request.Header.SetMethod("PURGE")
+	c := app.AcquireCtx(rctx)
+	c.Request().Header.Set(HeaderIfNoneMatch, `"a"`)
+	c.Response().Header.Set(HeaderETag, `"a"`)
+	require.False(t, c.Fresh())
 }
 
 // Test_Ctx_Fresh_ObsoleteDateFormats verifies that If-Modified-Since values in
@@ -5288,7 +5297,45 @@ func Test_Ctx_Range(t *testing.T) {
 	testRange("bytes=,0-5", RangeSet{Start: 0, End: 5})
 	testRange("bytes=0-5,,10-20", RangeSet{Start: 0, End: 5}, RangeSet{Start: 10, End: 20})
 	testRange("bytes=,,,")
+	// A malformed later element invalidates the whole header: no partial
+	// ranges may leak out alongside the error.
+	testRange("bytes=0-5,zzz-10")
 	testRange("seconds=0-1")
+}
+
+// Test_Ctx_Range_MalformedStatusCode verifies that a syntactically invalid
+// Range header propagated by the handler maps to 400 Bad Request (RFC 9110
+// permits rejecting an invalid ranges-specifier), not 500.
+func Test_Ctx_Range_MalformedStatusCode(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		_, err := c.Range(10)
+		if err != nil {
+			return err
+		}
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
+	req.Header.Set(HeaderRange, "bytes=a-700")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusBadRequest, resp.StatusCode)
+}
+
+// Test_Ctx_Range_MaxRangesCountsEmptyElements verifies that empty list
+// elements still count toward Config.MaxRanges, so the cap bounds parsing
+// work per header.
+func Test_Ctx_Range_MaxRangesCountsEmptyElements(t *testing.T) {
+	t.Parallel()
+	app := New(Config{MaxRanges: 2})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderRange, "bytes=,,,,0-1")
+	_, err := c.Range(10)
+	require.ErrorIs(t, err, ErrRangeTooLarge)
 }
 
 func Test_Ctx_Range_LargeFile(t *testing.T) {
@@ -8778,6 +8825,13 @@ func Test_Ctx_Vary_Wildcard(t *testing.T) {
 	// "*" mixed into a multi-field call also collapses the header.
 	c = app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Vary("Accept-Encoding", "*", "Accept")
+	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
+
+	// A pre-existing mixed value containing "*" (set outside Vary) collapses
+	// on the next Vary call, matching the documented invariant.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Set(HeaderVary, "User-Agent, *")
+	c.Vary("Origin")
 	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
 }
 

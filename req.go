@@ -3,7 +3,6 @@ package fiber
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"math"
 	"mime/multipart"
 	"net"
@@ -170,17 +169,9 @@ func (r *DefaultReq) Body() []byte {
 
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
+	// The splitter drops empty list elements (RFC 9110 Section 5.6.1.2), and
+	// headerEncoding was already lowercased wholesale above.
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
-	// RFC 9110 Section 5.6.1.2: recipients must parse and ignore a reasonable
-	// number of empty list elements, e.g. "gzip,," is equivalent to "gzip".
-	nonEmpty := encodingOrder[:0]
-	for _, encoding := range encodingOrder {
-		if encoding == "" {
-			continue
-		}
-		nonEmpty = append(nonEmpty, utilsstrings.UnsafeToLower(encoding))
-	}
-	encodingOrder = nonEmpty
 	if len(encodingOrder) == 0 {
 		return r.getBody()
 	}
@@ -418,6 +409,11 @@ func (r *DefaultReq) Fresh() bool {
 	// Freshness only applies to GET and HEAD requests: a 304 Not Modified
 	// response is defined for those methods only, and RFC 9110 Section 13.1.3
 	// requires If-Modified-Since to be ignored for any other method.
+	// A negative methodInt means the method is not registered at all, so it
+	// cannot be GET or HEAD (and must not be used to index RequestMethods).
+	if r.c.methodInt < 0 {
+		return false
+	}
 	if method := r.c.app.method(r.c.methodInt); method != MethodGet && method != MethodHead {
 		return false
 	}
@@ -496,7 +492,9 @@ func parseHTTPDate(date []byte) (time.Time, error) {
 	}
 	t, err := http.ParseTime(string(date))
 	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse HTTP date %q: %w", date, err)
+		// Callers only nil-check the error; skip wrapping to avoid an
+		// allocation for every malformed client-supplied date.
+		return time.Time{}, err //nolint:wrapcheck // see above
 	}
 	return t, nil
 }
@@ -1086,20 +1084,30 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 
 	before, after, found := strings.Cut(rangeStr, "=")
 	if !found || strings.IndexByte(after, '=') >= 0 {
-		return rangeData, ErrRangeMalformed
+		return Range{}, ErrRangeMalformed
 	}
 	rangeData.Type = utilsstrings.ToLower(utils.TrimSpace(before))
 	if rangeData.Type != "bytes" {
-		return rangeData, ErrRangeMalformed
+		return Range{}, ErrRangeMalformed
 	}
 	ranges = utils.TrimSpace(after)
 
 	var (
-		singleRange string
-		moreRanges  = ranges
-		rangeCount  int
+		singleRange  string
+		moreRanges   = ranges
+		elementCount int // every list element, including empty ones (MaxRanges bound)
+		rangeCount   int // syntactically valid range-specs only
 	)
 	for moreRanges != "" {
+		// Empty elements count toward MaxRanges too, so the cap bounds the
+		// total parsing work per header, not just the accepted range-specs.
+		elementCount++
+		if elementCount > maxRanges {
+			r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
+			r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
+			return Range{}, ErrRangeTooLarge
+		}
+
 		singleRange = moreRanges
 		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
 			singleRange = moreRanges[:i]
@@ -1116,20 +1124,14 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		if singleRange == "" {
 			continue
 		}
-
 		rangeCount++
-		if rangeCount > maxRanges {
-			r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
-			r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
-			return rangeData, ErrRangeTooLarge
-		}
 
 		var (
 			startStr, endStr string
 			i                int
 		)
 		if i = strings.IndexByte(singleRange, '-'); i == -1 {
-			return rangeData, ErrRangeMalformed
+			return Range{}, ErrRangeMalformed
 		}
 		startStr = utils.TrimSpace(singleRange[:i])
 		endStr = utils.TrimSpace(singleRange[i+1:])
@@ -1137,13 +1139,13 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		start, startErr := parseBound(startStr)
 		end, endErr := parseBound(endStr)
 		if errors.Is(startErr, ErrRangeMalformed) || errors.Is(endErr, ErrRangeMalformed) {
-			return rangeData, ErrRangeMalformed
+			return Range{}, ErrRangeMalformed
 		}
 		switch {
 		case startErr != nil && endErr != nil:
 			// "-" carries neither a first-byte-pos nor a suffix-length and is
 			// not a valid range-spec (RFC 9110 Section 14.1.1).
-			return rangeData, ErrRangeMalformed
+			return Range{}, ErrRangeMalformed
 		case startErr != nil: // -nnn (suffix range)
 			start = max(size-end, 0)
 			end = size - 1
@@ -1153,13 +1155,13 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 			// An int-range with a last-byte-pos less than its first-byte-pos
 			// invalidates the whole ranges-specifier (RFC 9110 Section 14.1.1).
 			if end < start {
-				return rangeData, ErrRangeMalformed
+				return Range{}, ErrRangeMalformed
 			}
 			if end > size-1 { // limit last-byte-pos to current length
 				end = size - 1
 			}
 		}
-		if start > end || start < 0 {
+		if start > end {
 			// Syntactically valid but does not overlap the representation
 			// (e.g. first-byte-pos beyond EOF or a zero-length suffix); skip
 			// it and let the satisfiability check below decide.
@@ -1174,7 +1176,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		if rangeCount == 0 {
 			// Only empty list elements: there was no range-spec at all, so
 			// the ranges-specifier is invalid rather than unsatisfiable.
-			return rangeData, ErrRangeMalformed
+			return Range{}, ErrRangeMalformed
 		}
 		r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
 		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check

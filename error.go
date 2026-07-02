@@ -31,10 +31,14 @@ var (
 
 // Range errors
 var (
-	ErrRangeMalformed     = errors.New("range: malformed range header string")
+	// ErrRangeMalformed is returned for a syntactically invalid Range header,
+	// which RFC 9110 Section 14.2 allows a server to reject; it carries a
+	// 400 Bad Request status so propagating it does not surface as a 500.
+	ErrRangeMalformed     = NewError(StatusBadRequest, "range: malformed range header string")
 	ErrRangeTooLarge      = NewError(StatusRequestedRangeNotSatisfiable, "range: too many ranges")
 	ErrRangeUnsatisfiable = errors.New("range: unsatisfiable range")
-	// errRangeBound: empty/non-numeric range bound; control-flow only, never surfaced.
+	// errRangeBound: absent range bound (the empty side of a suffix or
+	// open-ended range); control-flow only, never surfaced.
 	errRangeBound = errors.New("range: bound not parsable")
 )
 

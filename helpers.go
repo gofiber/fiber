@@ -421,6 +421,9 @@ func paramsMatch(specParamStr headerParams, offerParams string) bool {
 // elements divided by ',' and stores these elements in the string slice.
 // It returns the populated string slice as an output.
 //
+// Empty list elements are parsed and ignored, as required by
+// RFC 9110 Section 5.6.1.2 for all comma-separated field values.
+//
 // If the given slice hasn't enough space, it will allocate more and return.
 func getSplicedStrList(headerValue string, dst []string) []string {
 	if headerValue == "" {
@@ -431,11 +434,15 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 	segmentStart := 0
 	for i := 0; i < len(headerValue); i++ {
 		if headerValue[i] == ',' {
-			dst = append(dst, utils.TrimSpace(headerValue[segmentStart:i]))
+			if segment := utils.TrimSpace(headerValue[segmentStart:i]); segment != "" {
+				dst = append(dst, segment)
+			}
 			segmentStart = i + 1
 		}
 	}
-	dst = append(dst, utils.TrimSpace(headerValue[segmentStart:]))
+	if segment := utils.TrimSpace(headerValue[segmentStart:]); segment != "" {
+		dst = append(dst, segment)
+	}
 
 	return dst
 }
