@@ -520,9 +520,10 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			i = segment.Length
 			// is optional part or the const part must match with the given string
 			// check if the end of the segment is an optional slash
+			// the unsigned compare proves 0 <= i <= len(detectionPath), keeping detectionPath[:i] bounds-check free
 			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
 				i--
-			} else if i > partLen || detectionPath[:i] != segment.Const {
+			} else if uint(i) > uint(len(detectionPath)) || detectionPath[:i] != segment.Const {
 				return false
 			}
 		} else {

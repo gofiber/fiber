@@ -1548,6 +1548,11 @@ func (app *App) init() *App {
 // error handler. Otherwise, it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
+	// Fast path: no mounted sub-apps, so no prefix lookup is needed
+	if len(app.mountFields.appListKeys) == 0 {
+		return app.config.ErrorHandler(ctx, err)
+	}
+
 	var (
 		mountedErrHandler  ErrorHandler
 		mountedPrefixParts int
