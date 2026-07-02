@@ -2647,6 +2647,12 @@ For requests that are not HTTP/1.1 (e.g. HTTP/1.0), no interim `103` response is
 sent — RFC 9110 forbids sending 1xx responses to HTTP/1.0 clients — but the
 `Link` headers are still included in the final response.
 
+:::caution
+`SendEarlyHints` requires the app to be served by Fiber's own server. When the
+app is mounted into `net/http` via the `adaptor` middleware, there is no
+writable connection for interim responses; do not call `SendEarlyHints` there.
+:::
+
 ```go title="Signature"
 func (c fiber.Ctx) SendEarlyHints(hints []string) error
 ```

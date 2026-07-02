@@ -552,6 +552,17 @@ func Test_FiberHandler_ProtocolPropagation(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	require.Equal(t, "HTTP/1.0", rec.Body.String())
+
+	// net/http reports HTTP/2 as "HTTP/2.0"; Fiber's convention is "HTTP/2",
+	// so the adaptor normalizes it to keep c.Protocol() comparisons working.
+	req = httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	req.Proto = "HTTP/2.0"
+	req.ProtoMajor = 2
+	req.ProtoMinor = 0
+
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, "HTTP/2", rec.Body.String())
 }
 
 func Test_FiberHandler_BodyLimit(t *testing.T) {

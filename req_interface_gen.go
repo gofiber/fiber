@@ -135,10 +135,6 @@ type Req interface {
 	// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
 	// Otherwise, it updates the context's method and returns the overridden method as a string.
 	Method(override ...string) string
-	// currentMethod resolves the context's method, falling back to the raw
-	// request header value when the method is not registered in RequestMethods
-	// (methodInt < 0), so unregistered methods are reported instead of panicking.
-	currentMethod() string
 	// MultipartForm parse form entries from binary.
 	// This returns a map[string][]string, so given a key, the value will be a string slice.
 	MultipartForm() (*multipart.Form, error)

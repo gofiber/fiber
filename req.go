@@ -897,7 +897,7 @@ func (r *DefaultReq) Method(override ...string) string {
 	app := r.c.app
 	if len(override) == 0 {
 		// Nothing to override, just return current method from context
-		return r.currentMethod()
+		return currentMethod(r.c)
 	}
 
 	// Method tokens are case-sensitive (RFC 9110 Section 9.1), so try the
@@ -914,7 +914,7 @@ func (r *DefaultReq) Method(override ...string) string {
 	if methodInt == -1 {
 		// Provided override is not a registered HTTP method; no override,
 		// return current method
-		return r.currentMethod()
+		return currentMethod(r.c)
 	}
 	r.c.methodInt = methodInt
 	return method
@@ -923,15 +923,17 @@ func (r *DefaultReq) Method(override ...string) string {
 // currentMethod resolves the context's method, falling back to the raw
 // request header value when the method is not registered in RequestMethods
 // (methodInt < 0), so unregistered methods are reported instead of panicking.
-func (r *DefaultReq) currentMethod() string {
-	if r.c.methodInt < 0 {
+// It is a package-level function (not a method) to stay off the generated
+// Req/Ctx interfaces.
+func currentMethod(c *DefaultCtx) string {
+	if c.methodInt < 0 {
 		// Copy the raw header bytes: every other return path yields a stable
 		// string from RequestMethods, so callers may retain the result beyond
 		// the handler; an unsafe alias into the request buffer would be
 		// silently corrupted on connection reuse.
-		return string(r.c.fasthttp.Request.Header.Method())
+		return string(c.fasthttp.Request.Header.Method())
 	}
-	return r.c.app.method(r.c.methodInt)
+	return c.app.method(c.methodInt)
 }
 
 // MultipartForm parse form entries from binary.

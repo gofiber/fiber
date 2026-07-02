@@ -277,8 +277,17 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		// Propagate the real protocol version so protocol-dependent behavior
 		// (e.g. skipping interim 1xx responses for non-HTTP/1.1 requests,
 		// RFC 9110 Section 15.2) sees the truth instead of fasthttp's
-		// default HTTP/1.1.
-		req.Header.SetProtocol(r.Proto)
+		// default HTTP/1.1. net/http reports "HTTP/2.0"/"HTTP/3.0", while
+		// Fiber's Protocol() convention is "HTTP/2"/"HTTP/3" — normalize so
+		// handler comparisons keep working through the adaptor.
+		proto := r.Proto
+		switch proto {
+		case "HTTP/2.0":
+			proto = "HTTP/2"
+		case "HTTP/3.0":
+			proto = "HTTP/3"
+		}
+		req.Header.SetProtocol(proto)
 
 		for key, val := range r.Header {
 			for _, v := range val {

@@ -371,7 +371,7 @@ func (c *DefaultCtx) Route() *Route {
 		return &Route{
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
-			Method:   c.currentMethod(),
+			Method:   currentMethod(c),
 			Handlers: emptyRouteHandlers[:],
 			Params:   emptyRouteParams[:],
 		}

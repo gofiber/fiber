@@ -223,8 +223,12 @@ type Ctx interface {
 	// Referer returns the Referer request header.
 	Referer() string
 	// AcceptLanguage returns the Accept-Language request header.
+	// Repeated field lines are combined into one comma-joined list
+	// (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
 	AcceptLanguage() string
 	// AcceptEncoding returns the Accept-Encoding request header.
+	// Repeated field lines are combined into one comma-joined list
+	// (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
 	AcceptEncoding() string
 	// HasHeader reports whether the request includes a header with the given key.
 	HasHeader(key string) bool
@@ -351,10 +355,6 @@ type Ctx interface {
 	// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
 	// Otherwise, it updates the context's method and returns the overridden method as a string.
 	Method(override ...string) string
-	// currentMethod resolves the context's method, falling back to the raw
-	// request header value when the method is not registered in RequestMethods
-	// (methodInt < 0), so unregistered methods are reported instead of panicking.
-	currentMethod() string
 	// MultipartForm parse form entries from binary.
 	// This returns a map[string][]string, so given a key, the value will be a string slice.
 	MultipartForm() (*multipart.Form, error)
