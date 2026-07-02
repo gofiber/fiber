@@ -74,6 +74,7 @@ func SchemaOf(v any) map[string]any {
 
 var (
 	timeType          = reflect.TypeFor[time.Time]()
+	jsonNumberType    = reflect.TypeFor[json.Number]()
 	jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
 	textMarshalerType = reflect.TypeFor[encoding.TextMarshaler]()
 )
@@ -96,15 +97,25 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 		return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "date-time"}
 	}
 
+	// json.Number is a string kind but marshals as a bare JSON number.
+	if t == jsonNumberType {
+		return map[string]any{schemaKeyType: schemaTypeNumber}
+	}
+
 	// Types with custom JSON marshaling (including structs that promote a
 	// MarshalJSON from an embedded type, e.g. time.Time) produce output that
-	// field reflection cannot predict, so accept any value; text marshalers
-	// always produce a string.
+	// field reflection cannot predict, so accept any value.
 	if implementsMarshaler(t, jsonMarshalerType) {
 		return map[string]any{}
 	}
-	if implementsMarshaler(t, textMarshalerType) {
+	// A value-receiver text marshaler always produces a string. When only *T
+	// implements it, encoding/json cannot call the method on non-addressable
+	// values and falls back to plain reflection, so the shape is unknowable.
+	if t.Implements(textMarshalerType) {
 		return map[string]any{schemaKeyType: schemaTypeString}
+	}
+	if reflect.PointerTo(t).Implements(textMarshalerType) {
+		return map[string]any{}
 	}
 
 	switch t.Kind() {

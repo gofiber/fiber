@@ -1,6 +1,7 @@
 package openapi
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -774,4 +775,26 @@ func Test_SchemaOf_CustomMarshalers(t *testing.T) {
 	}
 	props := requireProps(t, SchemaOf(Wrapper{}))
 	require.Empty(t, requireProp(t, props, "stamp"))
+}
+
+type ptrTextID struct {
+	V int `json:"v"`
+}
+
+func (*ptrTextID) MarshalText() ([]byte, error) { return []byte("id"), nil }
+
+// Test_SchemaOf_JSONNumberAndPtrTextMarshaler verifies json.Number is
+// documented as a number and pointer-receiver-only text marshalers as
+// accepting any value (their wire shape depends on addressability).
+func Test_SchemaOf_JSONNumberAndPtrTextMarshaler(t *testing.T) {
+	t.Parallel()
+
+	type Payload struct {
+		N json.Number `json:"n"`
+		P ptrTextID   `json:"p"`
+	}
+
+	props := requireProps(t, SchemaOf(Payload{}))
+	require.Equal(t, map[string]any{schemaKeyType: schemaTypeNumber}, requireProp(t, props, "n"))
+	require.Empty(t, requireProp(t, props, "p"))
 }
