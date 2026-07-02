@@ -63,6 +63,39 @@ type requestCacheDirectives struct {
 	onlyIfCached bool
 }
 
+type cacheLockGuard struct {
+	mux    *sync.Mutex
+	locked bool
+}
+
+func newCacheLockGuard(mux *sync.Mutex) *cacheLockGuard {
+	mux.Lock()
+	return &cacheLockGuard{
+		mux:    mux,
+		locked: true,
+	}
+}
+
+func (g *cacheLockGuard) unlock() {
+	if g.locked {
+		g.mux.Unlock()
+		g.locked = false
+	}
+}
+
+func (g *cacheLockGuard) relock() {
+	if !g.locked {
+		g.mux.Lock()
+		g.locked = true
+	}
+}
+
+func withCacheLock(mux *sync.Mutex, fn func()) {
+	guard := newCacheLockGuard(mux)
+	defer guard.unlock()
+	fn()
+}
+
 var ignoreHeaders = map[string]struct{}{
 	"Age":                 {},
 	"Cache-Control":       {}, // already stored explicitly by the cache manager
@@ -125,7 +158,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Cache settings
-	mux := &sync.RWMutex{}
+	mux := &sync.Mutex{}
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, redactKeys)
 	// Create indexed heap for tracking expirations ( see heap.go )
@@ -273,242 +306,255 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// Lock entry before reading the current timestamp so freshness decisions
-		// are based on the time the protected cache entry is evaluated.
-		mux.Lock()
-		ts := safeUnixSeconds(cfg.now())
-		locked := true
-		unlock := func() {
-			if locked {
-				mux.Unlock()
-				locked = false
+		deleteCurrentEntry := func(guard *cacheLockGuard, wrapErr func(error) error) error {
+			if guard != nil {
+				guard.unlock()
 			}
-		}
-		relock := func() {
-			if !locked {
-				mux.Lock()
-				locked = true
-			}
-		}
-		// Cache Entry found
-		if e != nil {
-			entryAge = cachedResponseAge(e, ts)
-			if reqDirectives.maxAgeSet && (reqDirectives.maxAge == 0 || entryAge > reqDirectives.maxAge) {
-				revalidate = true
-				oldHeapIdx = e.heapidx
+			if delErr := deleteKey(reqCtx, key); delErr != nil {
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
-				e = nil
+				return wrapErr(delErr)
 			}
 
-			handleMinFresh(ts)
-		}
-
-		if e != nil && e.ttl == 0 && e.forceRevalidate {
-			revalidate = true
-			oldHeapIdx = e.heapidx
-			if cfg.Storage != nil {
-				manager.release(e)
-			}
-			e = nil
-		}
-
-		if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
-			unlock()
-			if err := deleteKey(reqCtx, key); err != nil {
-				if cfg.Storage != nil {
-					manager.release(e)
-				}
-				return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
-			}
-			relock()
-			removeHeapEntry(key, e.heapidx)
-			if cfg.Storage != nil {
-				manager.release(e)
-			}
-			e = nil
-			unlock()
-			c.Set(cfg.CacheHeader, cacheUnreachable)
-			goto continueRequest
-		}
-
-		if e != nil {
-			entryHasPrivate := e != nil && e.private
-			if !entryHasPrivate && cfg.StoreResponseHeaders && len(e.headers) > 0 {
-				if cc, ok := lookupCachedHeader(e.headers, fiber.HeaderCacheControl); ok && hasDirective(utils.UnsafeString(cc), privateDirective) {
-					entryHasPrivate = true
-				}
-			}
-			requestNoCache := reqDirectives.noCache
-
-			// Invalidate cache if requested
-			if cfg.CacheInvalidator != nil && cfg.CacheInvalidator(c) {
-				e.exp = ts - 1
-			}
-
-			entryHasExpiration := e != nil && e.exp != 0
-			entryExpired := entryHasExpiration && ts >= e.exp
-			staleness := uint64(0)
-			if entryExpired {
-				staleness = ts - e.exp
-			}
-			allowStale := entryExpired && (reqDirectives.maxStaleAny || (reqDirectives.maxStaleSet && staleness <= reqDirectives.maxStale))
-
-			if entryExpired && e.revalidate {
-				revalidate = true
-				oldHeapIdx = e.heapidx
-				if cfg.Storage != nil {
-					manager.release(e)
-				}
-				e = nil
-			}
-
-			handleMinFresh(ts)
-
-			if revalidate {
-				unlock()
-				c.Set(cfg.CacheHeader, cacheUnreachable)
-				if reqDirectives.onlyIfCached {
-					return c.SendStatus(fiber.StatusGatewayTimeout)
-				}
-				goto continueRequest
-			}
-
-			servedStale := false
-
-			switch {
-			case entryExpired && !allowStale:
-				unlock()
-				if err := deleteKey(reqCtx, key); err != nil {
-					if e != nil {
-						manager.release(e)
-					}
-					return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), err)
-				}
-				relock()
-				idx := e.heapidx
-				manager.release(e)
-				removeHeapEntry(key, idx)
-				e = nil
-			case entryHasPrivate:
-				unlock()
-				if err := deleteKey(reqCtx, key); err != nil {
-					if e != nil {
-						manager.release(e)
-					}
-					return fmt.Errorf("cache: failed to delete private response for key %q: %w", maskKey(key), err)
-				}
-				relock()
+			removeEntry := func() {
 				removeHeapEntry(key, e.heapidx)
-				if cfg.Storage != nil && e != nil {
+				if cfg.Storage != nil {
 					manager.release(e)
 				}
 				e = nil
-				unlock()
-				c.Set(cfg.CacheHeader, cacheUnreachable)
-				if reqDirectives.onlyIfCached {
-					return c.SendStatus(fiber.StatusGatewayTimeout)
-				}
-				return c.Next()
-			case entryHasExpiration && !requestNoCache:
-				servedStale = entryExpired
-				if hasAuthorization && !e.shareable {
+			}
+			if guard != nil {
+				guard.relock()
+				removeEntry()
+				return nil
+			}
+			withCacheLock(mux, removeEntry)
+			return nil
+		}
+
+		handledCacheRequest, err := func() (bool, error) {
+			// Lock entry before reading the current timestamp so freshness decisions
+			// are based on the time the protected cache entry is evaluated.
+			guard := newCacheLockGuard(mux)
+			defer guard.unlock()
+			ts := safeUnixSeconds(cfg.now())
+
+			// Cache Entry found
+			if e != nil {
+				entryAge = cachedResponseAge(e, ts)
+				if reqDirectives.maxAgeSet && (reqDirectives.maxAge == 0 || entryAge > reqDirectives.maxAge) {
+					revalidate = true
+					oldHeapIdx = e.heapidx
 					if cfg.Storage != nil {
 						manager.release(e)
 					}
-					unlock()
-					c.Set(cfg.CacheHeader, cacheUnreachable)
-					return c.Next()
+					e = nil
 				}
 
-				// Separate body value to avoid msgp serialization
-				// We can store raw bytes with Storage 👍
-				if cfg.Storage != nil {
-					unlock()
-					rawBody, err := manager.getRaw(reqCtx, key+"_body")
-					if err != nil {
-						manager.release(e)
-						return cacheBodyFetchError(maskKey, key, err)
-					}
-					e.body = rawBody
-				} else {
-					unlock()
-				}
-				// Set response headers from cache
-				c.Response().SetBodyRaw(e.body)
-				c.Response().SetStatusCode(e.status)
-				c.Response().Header.SetContentTypeBytes(e.ctype)
-				if len(e.cencoding) > 0 {
-					c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
-				}
-				if len(e.cacheControl) > 0 {
-					c.Response().Header.SetBytesV(fiber.HeaderCacheControl, e.cacheControl)
-				}
-				if len(e.expires) > 0 {
-					c.Response().Header.SetBytesV(fiber.HeaderExpires, e.expires)
-				}
-				if len(e.etag) > 0 {
-					c.Response().Header.SetBytesV(fiber.HeaderETag, e.etag)
-				}
-				clampedDate := clampDateSeconds(e.date, ts)
-				dateValue := fasthttp.AppendHTTPDate(nil, secondsToTime(clampedDate))
-				c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
-				for i := range e.headers {
-					h := e.headers[i]
-					c.Response().Header.SetBytesKV(h.key, h.value)
-				}
-				// Set Cache-Control header if not disabled and not already set
-				if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
-					remaining := uint64(0)
-					if e.exp > ts {
-						remaining = e.exp - ts
-					}
-					maxAge := utils.FormatUint(remaining)
-					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
-				}
+				handleMinFresh(ts)
+			}
 
-				const maxDeltaSeconds = uint64(math.MaxInt32)
-				ageSeconds := min(entryAge, maxDeltaSeconds)
-
-				// RFC-compliant Age header (RFC 9111)
-				age := utils.FormatUint(ageSeconds)
-				c.Response().Header.Set(fiber.HeaderAge, age)
-				appendWarningHeaders(&c.Response().Header, servedStale, isHeuristicFreshness(e, &cfg, entryAge))
-
-				c.Set(cfg.CacheHeader, cacheHit)
-
-				// release item allocated from storage
+			if e != nil && e.ttl == 0 && e.forceRevalidate {
+				revalidate = true
+				oldHeapIdx = e.heapidx
 				if cfg.Storage != nil {
 					manager.release(e)
 				}
-
-				// Return response
-				return nil
-			default:
-				// no cached response to serve
+				e = nil
 			}
-		}
 
-		if e == nil && revalidate {
-			unlock()
-			c.Set(cfg.CacheHeader, cacheUnreachable)
-			if reqDirectives.onlyIfCached {
-				return c.SendStatus(fiber.StatusGatewayTimeout)
+			if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
+				if deleteErr := deleteCurrentEntry(guard, func(delErr error) error {
+					return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), delErr)
+				}); deleteErr != nil {
+					return false, deleteErr
+				}
+				c.Set(cfg.CacheHeader, cacheUnreachable)
+				return false, nil
 			}
-			goto continueRequest
+
+			if e != nil {
+				entryHasPrivate := e != nil && e.private
+				if !entryHasPrivate && cfg.StoreResponseHeaders && len(e.headers) > 0 {
+					if cc, ok := lookupCachedHeader(e.headers, fiber.HeaderCacheControl); ok && hasDirective(utils.UnsafeString(cc), privateDirective) {
+						entryHasPrivate = true
+					}
+				}
+				requestNoCache := reqDirectives.noCache
+
+				// Invalidate cache if requested
+				if cfg.CacheInvalidator != nil && cfg.CacheInvalidator(c) {
+					e.exp = ts - 1
+				}
+
+				entryHasExpiration := e != nil && e.exp != 0
+				entryExpired := entryHasExpiration && ts >= e.exp
+				staleness := uint64(0)
+				if entryExpired {
+					staleness = ts - e.exp
+				}
+				allowStale := entryExpired && (reqDirectives.maxStaleAny || (reqDirectives.maxStaleSet && staleness <= reqDirectives.maxStale))
+
+				if entryExpired && e.revalidate {
+					revalidate = true
+					oldHeapIdx = e.heapidx
+					if cfg.Storage != nil {
+						manager.release(e)
+					}
+					e = nil
+				}
+
+				handleMinFresh(ts)
+
+				if revalidate {
+					c.Set(cfg.CacheHeader, cacheUnreachable)
+					if reqDirectives.onlyIfCached {
+						if statusErr := c.SendStatus(fiber.StatusGatewayTimeout); statusErr != nil {
+							return false, statusErr
+						}
+						return true, nil
+					}
+					return false, nil
+				}
+
+				servedStale := false
+
+				switch {
+				case entryExpired && !allowStale:
+					if deleteErr := deleteCurrentEntry(guard, func(delErr error) error {
+						return fmt.Errorf("cache: failed to delete expired key %q: %w", maskKey(key), delErr)
+					}); deleteErr != nil {
+						return false, deleteErr
+					}
+				case entryHasPrivate:
+					if deleteErr := deleteCurrentEntry(guard, func(delErr error) error {
+						return fmt.Errorf("cache: failed to delete private response for key %q: %w", maskKey(key), delErr)
+					}); deleteErr != nil {
+						return false, deleteErr
+					}
+					guard.unlock()
+					c.Set(cfg.CacheHeader, cacheUnreachable)
+					if reqDirectives.onlyIfCached {
+						if statusErr := c.SendStatus(fiber.StatusGatewayTimeout); statusErr != nil {
+							return false, statusErr
+						}
+						return true, nil
+					}
+					if nextErr := c.Next(); nextErr != nil {
+						return false, nextErr
+					}
+					return true, nil
+				case entryHasExpiration && !requestNoCache:
+					servedStale = entryExpired
+					if hasAuthorization && !e.shareable {
+						if cfg.Storage != nil {
+							manager.release(e)
+						}
+						guard.unlock()
+						c.Set(cfg.CacheHeader, cacheUnreachable)
+						if nextErr := c.Next(); nextErr != nil {
+							return false, nextErr
+						}
+						return true, nil
+					}
+
+					// Separate body value to avoid msgp serialization
+					// We can store raw bytes with Storage 👍
+					if cfg.Storage != nil {
+						guard.unlock()
+						rawBody, bodyErr := manager.getRaw(reqCtx, key+"_body")
+						if bodyErr != nil {
+							manager.release(e)
+							return false, cacheBodyFetchError(maskKey, key, bodyErr)
+						}
+						e.body = rawBody
+					} else {
+						guard.unlock()
+					}
+					// Set response headers from cache
+					c.Response().SetBodyRaw(e.body)
+					c.Response().SetStatusCode(e.status)
+					c.Response().Header.SetContentTypeBytes(e.ctype)
+					if len(e.cencoding) > 0 {
+						c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
+					}
+					if len(e.cacheControl) > 0 {
+						c.Response().Header.SetBytesV(fiber.HeaderCacheControl, e.cacheControl)
+					}
+					if len(e.expires) > 0 {
+						c.Response().Header.SetBytesV(fiber.HeaderExpires, e.expires)
+					}
+					if len(e.etag) > 0 {
+						c.Response().Header.SetBytesV(fiber.HeaderETag, e.etag)
+					}
+					clampedDate := clampDateSeconds(e.date, ts)
+					dateValue := fasthttp.AppendHTTPDate(nil, secondsToTime(clampedDate))
+					c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
+					for i := range e.headers {
+						h := e.headers[i]
+						c.Response().Header.SetBytesKV(h.key, h.value)
+					}
+					// Set Cache-Control header if not disabled and not already set
+					if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
+						remaining := uint64(0)
+						if e.exp > ts {
+							remaining = e.exp - ts
+						}
+						maxAge := utils.FormatUint(remaining)
+						c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
+					}
+
+					const maxDeltaSeconds = uint64(math.MaxInt32)
+					ageSeconds := min(entryAge, maxDeltaSeconds)
+
+					// RFC-compliant Age header (RFC 9111)
+					age := utils.FormatUint(ageSeconds)
+					c.Response().Header.Set(fiber.HeaderAge, age)
+					appendWarningHeaders(&c.Response().Header, servedStale, isHeuristicFreshness(e, &cfg, entryAge))
+
+					c.Set(cfg.CacheHeader, cacheHit)
+
+					// release item allocated from storage
+					if cfg.Storage != nil {
+						manager.release(e)
+					}
+
+					// Return response
+					return true, nil
+				default:
+					// no cached response to serve
+				}
+			}
+
+			if e == nil && revalidate {
+				c.Set(cfg.CacheHeader, cacheUnreachable)
+				if reqDirectives.onlyIfCached {
+					if statusErr := c.SendStatus(fiber.StatusGatewayTimeout); statusErr != nil {
+						return false, statusErr
+					}
+					return true, nil
+				}
+				return false, nil
+			}
+
+			if e == nil && reqDirectives.onlyIfCached {
+				c.Set(cfg.CacheHeader, cacheUnreachable)
+				if statusErr := c.SendStatus(fiber.StatusGatewayTimeout); statusErr != nil {
+					return false, statusErr
+				}
+				return true, nil
+			}
+
+			return false, nil
+		}()
+		if err != nil {
+			return err
+		}
+		if handledCacheRequest {
+			return nil
 		}
 
-		if e == nil && reqDirectives.onlyIfCached {
-			unlock()
-			c.Set(cfg.CacheHeader, cacheUnreachable)
-			return c.SendStatus(fiber.StatusGatewayTimeout)
-		}
-
-		// make sure we're not blocking concurrent requests - do unlock
-		unlock()
-
-	continueRequest:
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
 			return err
@@ -530,20 +576,22 @@ func New(config ...Config) fiber.Handler {
 		// RFC 9111 requires responses with Vary: * to remain uncacheable even when
 		// response-driven Vary partitioning is otherwise disabled.
 		if hasPrivate || hasNoCache || varyHasStar {
-			if e != nil {
+			switch {
+			case e != nil:
+				if err := deleteCurrentEntry(nil, func(delErr error) error {
+					return fmt.Errorf("cache: failed to delete cached response for key %q: %w", maskKey(key), delErr)
+				}); err != nil {
+					return err
+				}
+			case revalidate:
 				if err := deleteKey(reqCtx, key); err != nil {
-					if cfg.Storage != nil {
-						manager.release(e)
-					}
 					return fmt.Errorf("cache: failed to delete cached response for key %q: %w", maskKey(key), err)
 				}
-				mux.Lock()
-				removeHeapEntry(key, e.heapidx)
-				if cfg.Storage != nil {
-					manager.release(e)
+				if cfg.MaxBytes > 0 && oldHeapIdx >= 0 {
+					withCacheLock(mux, func() {
+						removeHeapEntry(key, oldHeapIdx)
+					})
 				}
-				e = nil
-				mux.Unlock()
 			}
 
 			if !cfg.DisableVaryHeaders && hasVaryManifest {
@@ -604,44 +652,47 @@ func New(config ...Config) fiber.Handler {
 		defer func() {
 			// If we reserved space but the entry was not successfully added to heap, unreserve it
 			if cfg.MaxBytes > 0 && spaceReserved {
-				mux.Lock()
-				storedBytes -= bodySize
-				mux.Unlock()
+				withCacheLock(mux, func() {
+					storedBytes -= bodySize
+				})
 			}
 		}()
 
 		if cfg.MaxBytes > 0 {
-			mux.Lock()
-			// Reserve space for the new entry first
-			storedBytes += bodySize
-			spaceReserved = true
-
-			// Now evict entries until we're under the limit
 			var keysToRemove []string
 			var sizesToRemove []uint
 			var candidates []evictionCandidate
+			var reserveErr error
+			withCacheLock(mux, func() {
+				// Reserve space for the new entry first
+				storedBytes += bodySize
+				spaceReserved = true
 
-			for storedBytes > cfg.MaxBytes {
-				if heap.Len() == 0 {
-					// Can't evict more, unreserve space and fail
-					storedBytes -= bodySize
-					// Set spaceReserved to false so the deferred cleanup does not unreserve again
-					spaceReserved = false
-					mux.Unlock()
-					return errors.New("cache: insufficient space and no entries to evict")
+				// Now evict entries until we're under the limit
+				for storedBytes > cfg.MaxBytes {
+					if heap.Len() == 0 {
+						// Can't evict more, unreserve space and fail
+						storedBytes -= bodySize
+						// Set spaceReserved to false so the deferred cleanup does not unreserve again
+						spaceReserved = false
+						reserveErr = errors.New("cache: insufficient space and no entries to evict")
+						return
+					}
+					next := heap.entries[0]
+					keyToRemove, size := heap.removeFirst()
+					keysToRemove = append(keysToRemove, keyToRemove)
+					sizesToRemove = append(sizesToRemove, size)
+					candidates = append(candidates, evictionCandidate{
+						key:  keyToRemove,
+						size: size,
+						exp:  next.exp,
+					})
+					storedBytes -= size
 				}
-				next := heap.entries[0]
-				keyToRemove, size := heap.removeFirst()
-				keysToRemove = append(keysToRemove, keyToRemove)
-				sizesToRemove = append(sizesToRemove, size)
-				candidates = append(candidates, evictionCandidate{
-					key:  keyToRemove,
-					size: size,
-					exp:  next.exp,
-				})
-				storedBytes -= size
+			})
+			if reserveErr != nil {
+				return reserveErr
 			}
-			mux.Unlock()
 
 			// Perform deletions outside the lock
 			if len(keysToRemove) > 0 {
@@ -652,23 +703,23 @@ func New(config ...Config) fiber.Handler {
 					}
 
 					// Deletion failed: restore storedBytes for failed deletions
-					mux.Lock()
-					// Restore sizes of entries we failed to delete
-					for j := i; j < len(sizesToRemove); j++ {
-						storedBytes += sizesToRemove[j]
-					}
-					// Unreserve space for the new entry
-					storedBytes -= bodySize
-					spaceReserved = false
-
-					// Re-add entries to the heap to keep expiration tracking consistent
 					var restored []evictionCandidate
-					for j := i; j < len(candidates); j++ {
-						candidate := candidates[j]
-						candidate.heapIdx = heap.put(candidate.key, candidate.exp, candidate.size)
-						restored = append(restored, candidate)
-					}
-					mux.Unlock()
+					withCacheLock(mux, func() {
+						// Restore sizes of entries we failed to delete
+						for j := i; j < len(sizesToRemove); j++ {
+							storedBytes += sizesToRemove[j]
+						}
+						// Unreserve space for the new entry
+						storedBytes -= bodySize
+						spaceReserved = false
+
+						// Re-add entries to the heap to keep expiration tracking consistent
+						for j := i; j < len(candidates); j++ {
+							candidate := candidates[j]
+							candidate.heapIdx = heap.put(candidate.key, candidate.exp, candidate.size)
+							restored = append(restored, candidate)
+						}
+					})
 
 					var restoreErr error
 					for _, candidate := range restored {
@@ -778,8 +829,8 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		ts = safeUnixSeconds(cfg.now())
-		responseTS := max(ts, nowUnix)
+		storeTS := safeUnixSeconds(cfg.now())
+		responseTS := max(storeTS, nowUnix)
 
 		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)
 		var ageDuration time.Duration
@@ -815,28 +866,28 @@ func New(config ...Config) fiber.Handler {
 		e.exp = responseTS + uint64(remainingExpiration.Seconds())
 		e.ttl = uint64(expiration.Seconds())
 		if expiresParseError {
-			e.exp = ts + 1
+			e.exp = storeTS + 1
 		}
 
 		// Store entry in heap (space already reserved in eviction phase)
 		var heapIdx int
 		if cfg.MaxBytes > 0 {
-			mux.Lock()
-			heapIdx = heap.put(key, e.exp, bodySize)
-			e.heapidx = heapIdx
-			// Note: storedBytes was incremented during reservation, and evictions
-			// have already been accounted for, so no additional increment is needed
-			spaceReserved = false // Clear flag to prevent defer from unreserving
-			mux.Unlock()
+			withCacheLock(mux, func() {
+				heapIdx = heap.put(key, e.exp, bodySize)
+				e.heapidx = heapIdx
+				// Note: storedBytes was incremented during reservation, and evictions
+				// have already been accounted for, so no additional increment is needed
+				spaceReserved = false // Clear flag to prevent defer from unreserving
+			})
 		}
 
 		cleanupOnStoreError := func(ctx context.Context, releaseEntry, rawStored bool) error {
 			var cleanupErr error
 			if cfg.MaxBytes > 0 {
-				mux.Lock()
-				_, size := heap.remove(heapIdx)
-				storedBytes -= size
-				mux.Unlock()
+				withCacheLock(mux, func() {
+					_, size := heap.remove(heapIdx)
+					storedBytes -= size
+				})
 			}
 			if releaseEntry {
 				manager.release(e)
@@ -878,9 +929,9 @@ func New(config ...Config) fiber.Handler {
 
 		// If revalidating, remove old heap entry now that replacement is successfully stored
 		if cfg.MaxBytes > 0 && revalidate && oldHeapIdx >= 0 {
-			mux.Lock()
-			removeHeapEntry(key, oldHeapIdx)
-			mux.Unlock()
+			withCacheLock(mux, func() {
+				removeHeapEntry(key, oldHeapIdx)
+			})
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)
