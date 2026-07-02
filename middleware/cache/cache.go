@@ -576,11 +576,21 @@ func New(config ...Config) fiber.Handler {
 		// RFC 9111 requires responses with Vary: * to remain uncacheable even when
 		// response-driven Vary partitioning is otherwise disabled.
 		if hasPrivate || hasNoCache || varyHasStar {
-			if e != nil {
+			switch {
+			case e != nil:
 				if err := deleteCurrentEntry(nil, func(delErr error) error {
 					return fmt.Errorf("cache: failed to delete cached response for key %q: %w", maskKey(key), delErr)
 				}); err != nil {
 					return err
+				}
+			case revalidate:
+				if err := deleteKey(reqCtx, key); err != nil {
+					return fmt.Errorf("cache: failed to delete cached response for key %q: %w", maskKey(key), err)
+				}
+				if cfg.MaxBytes > 0 && oldHeapIdx >= 0 {
+					withCacheLock(mux, func() {
+						removeHeapEntry(key, oldHeapIdx)
+					})
 				}
 			}
 
