@@ -142,7 +142,10 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := r.c.app.toString(r.c.fasthttp.Response.Header.Peek(field))
+	// Consider all existing field lines combined (RFC 9110 Section 5.2) so
+	// the dedup check sees members added on later lines via Header.Add.
+	lines := r.c.fasthttp.Response.Header.PeekAll(field)
+	h := r.c.app.toString(joinHeaderValues(lines))
 	originalH := h
 	for _, value := range values {
 		if value == "" {
@@ -155,6 +158,11 @@ func (r *DefaultRes) Append(field string, values ...string) {
 		}
 	}
 	if originalH != h {
+		if len(lines) > 1 {
+			// Set only rewrites the first field line; drop the extras that
+			// are now folded into the combined value.
+			r.c.fasthttp.Response.Header.Del(field)
+		}
 		r.Set(field, h)
 	}
 }
@@ -415,7 +423,9 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 
 	r.Vary(HeaderAccept)
 
-	if r.c.DefaultReq.Get(HeaderAccept) == "" {
+	// Consider all Accept field lines combined (RFC 9110 Section 5.2), the
+	// same view Accepts negotiates on below.
+	if len(joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAccept))) == 0 {
 		// Without an Accept header the client accepts any media type
 		// (RFC 9110 Section 12.5.1), so pick the first non-default handler and
 		// use its media type. The literal "default" is not a media type and
@@ -808,10 +818,12 @@ func (r *DefaultRes) SendEarlyHints(hints []string) error {
 	for _, h := range hints {
 		r.c.fasthttp.Response.Header.Add("Link", h)
 	}
-	// A server MUST NOT send a 1xx response to an HTTP/1.0 client
-	// (RFC 9110 Section 15.2). The Link headers above still go out on the
+	// A server MUST NOT send a 1xx response to an HTTP/1.0 (or earlier)
+	// client (RFC 9110 Section 15.2), and fasthttp can only write interim
+	// responses on real HTTP/1.1 connections, so send the 103 exclusively
+	// for HTTP/1.1 requests. The Link headers above still go out on the
 	// final response; only the interim 103 is skipped.
-	if string(r.c.fasthttp.Request.Header.Protocol()) == "HTTP/1.0" {
+	if !r.c.fasthttp.Request.Header.IsHTTP11() {
 		return nil
 	}
 	return r.c.fasthttp.EarlyHints()
@@ -1125,8 +1137,12 @@ func (r *DefaultRes) Vary(fields ...string) {
 		return
 	}
 	// Peek without copying: the value is only inspected before any write.
-	existing := utils.UnsafeString(r.c.fasthttp.Response.Header.Peek(HeaderVary))
+	// All field lines are combined (RFC 9110 Section 5.2) so a wildcard on a
+	// later line added via Header.Add is still honored.
+	existing := utils.UnsafeString(joinHeaderValues(r.c.fasthttp.Response.Header.PeekAll(HeaderVary)))
 	if slices.Contains(fields, "*") || headerContainsValue(existing, "*") {
+		// Del first: setCanonical only rewrites the first field line.
+		r.c.fasthttp.Response.Header.Del(HeaderVary)
 		r.setCanonical(HeaderVary, "*")
 		return
 	}

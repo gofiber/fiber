@@ -274,6 +274,11 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		req.SetRequestURI(r.RequestURI)
 		req.SetHost(r.Host)
 		req.Header.SetHost(r.Host)
+		// Propagate the real protocol version so protocol-dependent behavior
+		// (e.g. skipping interim 1xx responses for non-HTTP/1.1 requests,
+		// RFC 9110 Section 15.2) sees the truth instead of fasthttp's
+		// default HTTP/1.1.
+		req.Header.SetProtocol(r.Proto)
 
 		for key, val := range r.Header {
 			for _, v := range val {

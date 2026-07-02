@@ -533,6 +533,27 @@ func Test_FiberHandler(t *testing.T) {
 	})
 }
 
+// Test_FiberHandler_ProtocolPropagation verifies that the request's protocol
+// version reaches the fiber ctx, so protocol-dependent behavior (e.g. the
+// RFC 9110 rule against sending 1xx responses to HTTP/1.0 clients) sees the
+// real version instead of fasthttp's HTTP/1.1 default.
+func Test_FiberHandler_ProtocolPropagation(t *testing.T) {
+	t.Parallel()
+
+	handler := FiberHandlerFunc(func(c fiber.Ctx) error {
+		return c.SendString(c.Protocol())
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	req.Proto = "HTTP/1.0"
+	req.ProtoMajor = 1
+	req.ProtoMinor = 0
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, "HTTP/1.0", rec.Body.String())
+}
+
 func Test_FiberHandler_BodyLimit(t *testing.T) {
 	t.Parallel()
 

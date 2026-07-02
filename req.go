@@ -231,13 +231,17 @@ func (c *DefaultCtx) Referer() string {
 }
 
 // AcceptLanguage returns the Accept-Language request header.
+// Repeated field lines are combined into one comma-joined list
+// (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
 func (c *DefaultCtx) AcceptLanguage() string {
-	return c.app.toString(c.fasthttp.Request.Header.Peek(HeaderAcceptLanguage))
+	return c.app.toString(joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage)))
 }
 
 // AcceptEncoding returns the Accept-Encoding request header.
+// Repeated field lines are combined into one comma-joined list
+// (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
 func (c *DefaultCtx) AcceptEncoding() string {
-	return c.app.toString(c.fasthttp.Request.Header.Peek(HeaderAcceptEncoding))
+	return c.app.toString(joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding)))
 }
 
 // HasHeader reports whether the request includes a header with the given key.
@@ -269,8 +273,9 @@ func (c *DefaultCtx) Charset() string {
 		// Slice off the next parameter at the next ";" that sits outside a
 		// quoted-string: parameter values may be quoted and contain ";"
 		// (RFC 9110 Section 5.6.6). A DQUOTE only opens a quoted-string at
-		// the start of a parameter value (right after "="), so a stray quote
-		// inside an unquoted value cannot swallow the rest of the header.
+		// the start of a value (after an "=" plus optional whitespace), so a
+		// stray quote later in an unquoted value cannot swallow the rest of
+		// the header.
 		param := params
 		end := -1
 		inQuotes := false
@@ -325,6 +330,11 @@ func (c *DefaultCtx) Charset() string {
 				return ""
 			}
 			v = unescaped
+		} else if bytes.IndexByte(v, '"') >= 0 {
+			// A bare token must not contain DQUOTE; skip the invalid
+			// parameter instead of surfacing garbage, so a well-formed
+			// charset parameter later in the header can still be found.
+			continue
 		}
 		return c.app.toString(v)
 	}
@@ -915,7 +925,11 @@ func (r *DefaultReq) Method(override ...string) string {
 // (methodInt < 0), so unregistered methods are reported instead of panicking.
 func (r *DefaultReq) currentMethod() string {
 	if r.c.methodInt < 0 {
-		return r.c.app.toString(r.c.fasthttp.Request.Header.Method())
+		// Copy the raw header bytes: every other return path yields a stable
+		// string from RequestMethods, so callers may retain the result beyond
+		// the handler; an unsafe alias into the request buffer would be
+		// silently corrupted on connection reuse.
+		return string(r.c.fasthttp.Request.Header.Method())
 	}
 	return r.c.app.method(r.c.methodInt)
 }

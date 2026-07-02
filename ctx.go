@@ -365,12 +365,13 @@ func (c *DefaultCtx) ViewBind(vars Map) error {
 // Route returns the matched Route struct.
 func (c *DefaultCtx) Route() *Route {
 	if c.route == nil {
-		// Fallback for fasthttp error handler; equals c.Method() without
-		// the variadic call so Route stays within the inlining budget
+		// Fallback for fasthttp error handler; uses the same method
+		// resolution as c.Method() (including the raw-header fallback for
+		// unregistered methods) so the two accessors always agree.
 		return &Route{
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
-			Method:   c.app.method(c.methodInt),
+			Method:   c.currentMethod(),
 			Handlers: emptyRouteHandlers[:],
 			Params:   emptyRouteParams[:],
 		}
@@ -453,26 +454,33 @@ func (c *DefaultCtx) OverrideParam(name, value string) {
 }
 
 func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
-	teBytes := hdr.Peek(HeaderTransferEncoding)
-	var te string
-
-	if len(teBytes) > 0 {
-		te = utils.UnsafeString(teBytes)
-	} else {
-		for key, value := range hdr.All() {
-			if !utils.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
-				continue
+	// Repeated field lines form one combined list (RFC 9110 Section 5.2),
+	// so every Transfer-Encoding line must be inspected, not just the first.
+	if lines := hdr.PeekAll(HeaderTransferEncoding); len(lines) > 0 {
+		for _, line := range lines {
+			if transferEncodingLineHasBody(utils.UnsafeString(line)) {
+				return true
 			}
-			te = utils.UnsafeString(value)
-			break
 		}
-	}
-
-	if te == "" {
 		return false
 	}
 
-	hasEncoding := false
+	// Fallback scan for non-normalized header keys.
+	for key, value := range hdr.All() {
+		if !utils.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
+			continue
+		}
+		if transferEncodingLineHasBody(utils.UnsafeString(value)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// transferEncodingLineHasBody reports whether a single Transfer-Encoding
+// field line contains a transfer coding other than "identity".
+func transferEncodingLineHasBody(te string) bool {
 	for raw := range strings.SplitSeq(te, ",") {
 		token := utils.TrimSpace(raw)
 		if token == "" {
@@ -487,10 +495,9 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 		if utils.EqualFold(token, "identity") {
 			continue
 		}
-		hasEncoding = true
+		return true
 	}
-
-	return hasEncoding
+	return false
 }
 
 // IsWebSocket returns true if the request includes a WebSocket upgrade handshake.

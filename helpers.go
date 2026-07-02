@@ -169,6 +169,19 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 // https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
 // contain non-ASCII bytes.
 func (*App) quoteRawString(raw string) string {
+	// Fast path: most values need no escaping at all; avoid the pooled
+	// buffer and the string allocation entirely.
+	needsEscaping := false
+	for i := 0; i < len(raw); i++ {
+		if c := raw[i]; c == '\\' || c == '"' || c < 0x20 || c == 0x7f {
+			needsEscaping = true
+			break
+		}
+	}
+	if !needsEscaping {
+		return raw
+	}
+
 	const hex = "0123456789ABCDEF"
 	bb := bytebufferpool.Get()
 	defer bytebufferpool.Put(bb)
@@ -892,10 +905,6 @@ func (*testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
 func toStringImmutable(b []byte) string {
 	return string(b)
-}
-
-func toBytesImmutable(s string) []byte {
-	return []byte(s)
 }
 
 // HTTP methods and their unique INTs

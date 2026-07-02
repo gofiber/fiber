@@ -2497,6 +2497,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ### Links
 
 Joins the links followed by the property to populate the response’s [Link HTTP header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Link) field.
+Quotes and backslashes in the `rel` value are escaped so the emitted quoted-string stays grammar-valid per RFC 9110.
 
 ```go title="Signature"
 func (c fiber.Ctx) Links(link ...string)
@@ -2641,6 +2642,10 @@ This feature requires HTTP/2 or newer. Some legacy HTTP/1.1 clients may not supp
 Early Hints (`103` responses) are supported in HTTP/2 and newer. Older HTTP/1.1 clients may ignore these interim responses or misbehave when receiving them.
 See [Enabling HTTP/2](../guide/reverse-proxy#enabling-http2) for instructions on how to use a reverse proxy (e.g. Nginx or Traefik) to enable HTTP/2 support.
 :::
+
+For requests that are not HTTP/1.1 (e.g. HTTP/1.0), no interim `103` response is
+sent — RFC 9110 forbids sending 1xx responses to HTTP/1.0 clients — but the
+`Link` headers are still included in the final response.
 
 ```go title="Signature"
 func (c fiber.Ctx) SendEarlyHints(hints []string) error

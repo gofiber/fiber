@@ -250,6 +250,13 @@ func Test_Ctx_Charset(t *testing.T) {
 			contentType: `text/plain; charset="utf-8`,
 			expected:    "",
 		},
+		{
+			// A bare-token value containing a DQUOTE is invalid; the
+			// parameter is skipped so the later well-formed charset wins.
+			name:        "bare_value_with_quote_then_valid_charset",
+			contentType: `text/plain; a=b"; charset=bad"; charset=utf-8`,
+			expected:    "utf-8",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -279,13 +286,17 @@ func Test_Ctx_HeaderHelpers(t *testing.T) {
 	c.Request().Header.Set(HeaderReferer, "https://example.com")
 	c.Request().Header.Set(HeaderAcceptLanguage, "en-US,en;q=0.9")
 	c.Request().Header.Set(HeaderAcceptEncoding, "gzip, br")
+	// Repeated field lines are combined per RFC 9110 §5.2, matching the
+	// AcceptsEncodings/AcceptsLanguages view of the same headers.
+	c.Request().Header.Add(HeaderAcceptEncoding, "zstd")
+	c.Request().Header.Add(HeaderAcceptLanguage, "fr;q=0.5")
 	c.Request().Header.Set("X-Trace-Id", "trace")
 	require.True(t, c.HasHeader("X-Trace-Id"))
 	require.True(t, c.HasHeader("x-trace-id"))
 	require.Equal(t, "fiber-agent", c.UserAgent())
 	require.Equal(t, "https://example.com", c.Referer())
-	require.Equal(t, "en-US,en;q=0.9", c.AcceptLanguage())
-	require.Equal(t, "gzip, br", c.AcceptEncoding())
+	require.Equal(t, "en-US,en;q=0.9,fr;q=0.5", c.AcceptLanguage())
+	require.Equal(t, "gzip, br,zstd", c.AcceptEncoding())
 
 	c.Request().Header.Set(HeaderXRequestID, "request-id")
 	c.Response().Header.Set(HeaderXRequestID, "response-id")
@@ -4751,7 +4762,8 @@ func Test_Ctx_Method_Unregistered(t *testing.T) {
 	require.Equal(t, "PURGE", c.Method())
 	// An invalid override keeps reporting the raw method instead of panicking.
 	require.Equal(t, "PURGE", c.Method("StillInvalid"))
-	require.NotPanics(t, func() { _ = c.Route() })
+	// Route()'s fallback resolves the method the same way Method() does.
+	require.Equal(t, "PURGE", c.Route().Method)
 }
 
 // Test_Ctx_Method_CustomCaseSensitive verifies that a mixed-case custom
@@ -8090,6 +8102,20 @@ func Test_Ctx_HasBody(t *testing.T) {
 		require.True(t, ctx.HasBody())
 	})
 
+	t.Run("transfer encoding multiple field lines", func(t *testing.T) {
+		t.Parallel()
+		ctx := acquire(t)
+		// Repeated field lines form one combined list (RFC 9110 §5.2):
+		// "identity" on the first line must not mask "gzip" on the second.
+		hdr := &ctx.Request().Header
+		hdr.DisableSpecialHeader()
+		hdr.Add(HeaderTransferEncoding, "identity")
+		hdr.Add(HeaderTransferEncoding, "gzip")
+		hdr.Set(HeaderContentLength, "0")
+		hdr.EnableSpecialHeader()
+		require.True(t, ctx.HasBody())
+	})
+
 	t.Run("transfer encoding identity", func(t *testing.T) {
 		t.Parallel()
 		ctx := acquire(t)
@@ -9021,6 +9047,26 @@ func Test_Ctx_Vary_Wildcard(t *testing.T) {
 	c.Set(HeaderVary, "User-Agent, *")
 	c.Vary("Origin")
 	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
+
+	// Multiple Vary field lines (via Header.Add) are treated as one combined
+	// list (RFC 9110 §5.2): a wildcard on a later line still collapses the
+	// whole header, leaving a single field line.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Response().Header.Add(HeaderVary, "Accept")
+	c.Response().Header.Add(HeaderVary, "*")
+	c.Vary("Origin")
+	require.Equal(t, [][]byte{[]byte("*")}, c.Response().Header.PeekAll(HeaderVary))
+
+	// Dedup also sees members on later field lines: adding an
+	// already-listed member is a no-op, and a real addition folds all the
+	// lines into a single combined field line.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Response().Header.Add(HeaderVary, "Accept")
+	c.Response().Header.Add(HeaderVary, "Origin")
+	c.Vary("Origin") // already present on the second line: no rewrite
+	require.Equal(t, [][]byte{[]byte("Accept"), []byte("Origin")}, c.Response().Header.PeekAll(HeaderVary))
+	c.Vary("Accept-Encoding") // rewrite folds both lines into one
+	require.Equal(t, [][]byte{[]byte("Accept,Origin, Accept-Encoding")}, c.Response().Header.PeekAll(HeaderVary))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Vary -benchmem -count=4
