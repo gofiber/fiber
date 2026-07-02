@@ -13,6 +13,11 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
+// maxCachedSwaggerPages bounds the per-target Swagger UI page cache so that a
+// parameterized mount prefix (one target per parameter value) cannot grow the
+// cache without limit.
+const maxCachedSwaggerPages = 32
+
 // New creates a new middleware handler that serves the generated OpenAPI specification.
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
@@ -25,8 +30,15 @@ func New(config ...Config) fiber.Handler {
 		swaggerPages = make(map[string][]byte)
 	)
 
-	specPath := normalizedPath(cfg.Path)
-	uiPath := normalizedPath(cfg.UIPath)
+	specPath := utils.TrimRight(normalizedPath(cfg.Path), '/')
+	uiPath := utils.TrimRight(normalizedPath(cfg.UIPath), '/')
+
+	// The app's case sensitivity is immutable once the server runs, so it is
+	// resolved once instead of copying the config on every request.
+	var (
+		initOnce      sync.Once
+		caseSensitive bool
+	)
 
 	return func(c fiber.Ctx) error {
 		if cfg.Next != nil && cfg.Next(c) {
@@ -37,14 +49,28 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		pathMatches := pathMatchesFold
-		if c.App().Config().CaseSensitive {
-			pathMatches = pathMatchesExact
+		initOnce.Do(func() {
+			caseSensitive = c.App().Config().CaseSensitive
+		})
+		equal := utils.EqualFold[string]
+		if caseSensitive {
+			equal = stringsEqual
 		}
-		prefix := routePrefix(c)
+
+		request := utils.TrimRight(c.Path(), '/')
+		route := c.Route()
+		isMiddleware := route != nil && route.IsMiddleware()
+
+		// Fast path for prefix-mounted middleware: most requests cannot match
+		// either target, so skip target resolution without allocating.
+		if isMiddleware && !hasSuffix(request, specPath, equal) && !hasSuffix(request, uiPath, equal) {
+			return c.Next()
+		}
+
+		specTarget, uiTarget := resolveTargets(c, specPath, uiPath, equal)
 
 		switch {
-		case pathMatches(c.Path(), prefix+specPath):
+		case equal(request, specTarget):
 			// The spec is regenerated on every request so route additions,
 			// removals, and metadata changes are always reflected. Generation
 			// only happens for requests to the spec path itself.
@@ -56,8 +82,8 @@ func New(config ...Config) fiber.Handler {
 
 			c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSONCharsetUTF8)
 			return c.Status(fiber.StatusOK).Send(data)
-		case pathMatches(c.Path(), prefix+uiPath):
-			targetPath := prefix + specPath
+		case uiTarget != "" && equal(request, uiTarget):
+			targetPath := specTarget
 			swaggerMu.Lock()
 			data, ok := swaggerPages[targetPath]
 			if !ok {
@@ -67,7 +93,9 @@ func New(config ...Config) fiber.Handler {
 					swaggerMu.Unlock()
 					return fmt.Errorf("openapi: build swagger ui page: %w", err)
 				}
-				swaggerPages[targetPath] = data
+				if len(swaggerPages) < maxCachedSwaggerPages {
+					swaggerPages[targetPath] = data
+				}
 			}
 			swaggerMu.Unlock()
 
@@ -79,23 +107,48 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// pathMatchesExact reports whether the request path matches the target path,
-// tolerating trailing slashes, comparing case-sensitively.
-func pathMatchesExact(requestPath, target string) bool {
-	return trimTrailingSlash(requestPath) == trimTrailingSlash(target)
+func stringsEqual(a, b string) bool { return a == b }
+
+// hasSuffix reports whether s ends with suffix under the given equality
+// function (exact or case-folding).
+func hasSuffix(s, suffix string, equal func(a, b string) bool) bool {
+	return len(s) >= len(suffix) && equal(s[len(s)-len(suffix):], suffix)
 }
 
-// pathMatchesFold is the case-insensitive counterpart of pathMatchesExact,
-// used when the app routes case-insensitively.
-func pathMatchesFold(requestPath, target string) bool {
-	return utils.EqualFold(trimTrailingSlash(requestPath), trimTrailingSlash(target))
-}
-
-func trimTrailingSlash(p string) string {
-	for len(p) > 1 && p[len(p)-1] == '/' {
-		p = p[:len(p)-1]
+// resolveTargets derives the spec and UI target paths (trailing slashes
+// trimmed, returned in that order) for the current request from the route the
+// handler runs on.
+//
+// For prefix middleware the targets live directly under the mount prefix. For
+// an exact method route (e.g. app.Get("/openapi.json", openapi.New()), possibly
+// cloned under a mount prefix) the registered path itself is the target: the
+// configured suffix decides whether it serves the spec or the UI, and a custom
+// path matching neither serves the specification. An empty UI target means the
+// UI is not served.
+//
+//nolint:gocritic // unnamedResult: nonamedreturns forbids naming these
+func resolveTargets(c fiber.Ctx, specPath, uiPath string, equal func(a, b string) bool) (string, string) {
+	route := c.Route()
+	if route == nil {
+		return specPath, uiPath
 	}
-	return p
+
+	if !route.IsMiddleware() {
+		path := utils.TrimRight(route.Path, '/')
+		switch {
+		case hasSuffix(path, specPath, equal):
+			prefix := path[:len(path)-len(specPath)]
+			return path, prefix + uiPath
+		case hasSuffix(path, uiPath, equal):
+			prefix := path[:len(path)-len(uiPath)]
+			return prefix + specPath, path
+		default:
+			return path, ""
+		}
+	}
+
+	prefix := routePrefix(route.Path, c.Path())
+	return prefix + specPath, prefix + uiPath
 }
 
 type swaggerUITemplateData struct {
@@ -194,22 +247,46 @@ func normalizedPath(cfgPath string) string {
 	return path
 }
 
-// routePrefix derives the mount prefix from the matched route. Only routes
-// registered via Use() carry a prefix; when the handler is registered on an
-// exact method route (e.g. app.Get("/openapi.json", openapi.New())) the
-// route's own path is the request path, not a prefix to prepend.
-func routePrefix(c fiber.Ctx) string {
-	route := c.Route()
-	if route == nil || !route.IsMiddleware() {
+// routePrefix derives the concrete mount prefix of a middleware route for the
+// current request. A static prefix is the route path itself. When the prefix
+// pattern contains parameters (e.g. app.Use("/:tenant", openapi.New())), the
+// concrete values are taken from the request path, consuming one request
+// segment per pattern segment; greedy wildcards and optional parameters make
+// the prefix length ambiguous and end it.
+func routePrefix(pattern, requestPath string) string {
+	pattern = utils.TrimRight(pattern, '/')
+	if pattern == "" {
+		return ""
+	}
+	if !strings.ContainsAny(pattern, ":*+") {
+		return pattern
+	}
+
+	segments := 0
+	for seg := range strings.SplitSeq(strings.TrimPrefix(pattern, "/"), "/") {
+		if seg == "" || strings.ContainsAny(seg, "*+") || strings.HasSuffix(seg, "?") {
+			break
+		}
+		segments++
+	}
+	if segments == 0 {
 		return ""
 	}
 
-	prefix := route.Path
-	if idx := strings.Index(prefix, "*"); idx >= 0 {
-		prefix = prefix[:idx]
+	idx := 0
+	for range segments {
+		if idx+1 >= len(requestPath) {
+			return requestPath
+		}
+		next := strings.IndexByte(requestPath[idx+1:], '/')
+		if next < 0 {
+			// The request path ends inside the prefix (e.g. a request for the
+			// bare mount path).
+			return requestPath
+		}
+		idx += 1 + next
 	}
-	prefix = strings.TrimSuffix(prefix, "/")
-	return prefix
+	return requestPath[:idx]
 }
 
 type openAPISpec struct {
@@ -344,6 +421,9 @@ const (
 	schemaKeyFormat   = "format"
 	schemaTypeString  = "string"
 	schemaTypeObject  = "object"
+	schemaTypeBoolean = "boolean"
+	schemaTypeInteger = "integer"
+	schemaTypeNumber  = "number"
 )
 
 // generateOperationID derives a stable, readable operationId from an HTTP method
@@ -457,6 +537,12 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 				}
 
 				extras := remapRouteParameters(r.Parameters, variant.PathParamAliases, variant.ParamNames)
+				// The "querystring" location only exists in OpenAPI 3.2+;
+				// emitting it for earlier versions would make the document
+				// invalid.
+				if !versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
+					extras = dropQuerystringParameters(extras)
+				}
 				params = mergeRouteParameters(params, paramIndex, extras)
 
 				summary := r.Summary
@@ -473,7 +559,7 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 
 				respType := r.Produces
 
-				responses := convertRouteResponses(r.Responses)
+				responses := convertRouteResponses(r.Responses, respType)
 				if len(responses) == 0 {
 					status, defaultResp := defaultResponseForMethod(r.Method, respType)
 					responses = map[string]response{status: defaultResp}
@@ -505,8 +591,8 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 					RequestBody:  reqBody,
 					Responses:    responses,
 					Security:     r.Security,
-					ExternalDocs: copyAnyMap(r.ExternalDocs),
-					extensions:   copyAnyMap(r.OperationExtensions),
+					ExternalDocs: maps.Clone(r.ExternalDocs),
+					extensions:   maps.Clone(r.OperationExtensions),
 				}
 			}
 		}
@@ -624,6 +710,19 @@ func buildComponents(cfg *Config) map[string]any {
 	return components
 }
 
+// dropQuerystringParameters filters out parameters using the OpenAPI 3.2-only
+// "querystring" location.
+func dropQuerystringParameters(extras []fiber.RouteParameter) []fiber.RouteParameter {
+	filtered := make([]fiber.RouteParameter, 0, len(extras))
+	for i := range extras {
+		if utilsstrings.ToLower(utils.TrimSpace(extras[i].In)) == "querystring" {
+			continue
+		}
+		filtered = append(filtered, extras[i])
+	}
+	return filtered
+}
+
 func mergeRouteParameters(params []parameter, index map[string]int, extras []fiber.RouteParameter) []parameter {
 	if len(extras) == 0 {
 		return params
@@ -641,7 +740,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		// Prefer "examples" when both are provided.
 		var paramExample any
 		var paramExamples map[string]any
-		if copiedExamples := copyAnyMap(extra.Examples); len(copiedExamples) > 0 {
+		if copiedExamples := maps.Clone(extra.Examples); len(copiedExamples) > 0 {
 			paramExamples = copiedExamples
 		} else {
 			paramExample = extra.Example
@@ -684,21 +783,12 @@ func appendOrReplaceParameter(params []parameter, index map[string]int, p *param
 	return append(params, *p)
 }
 
-func copyAnyMap(src map[string]any) map[string]any {
-	if len(src) == 0 {
-		return nil
-	}
-	dst := make(map[string]any, len(src))
-	maps.Copy(dst, src)
-	return dst
-}
-
 func schemaFrom(schema map[string]any, schemaRef, defaultType string) map[string]any {
 	if schemaRef != "" {
 		return map[string]any{"$ref": schemaRef}
 	}
 
-	copied := copyAnyMap(schema)
+	copied := maps.Clone(schema)
 	if copied == nil {
 		copied = map[string]any{}
 	}
@@ -715,12 +805,12 @@ func contentEntry(schema map[string]any, schemaRef string, example any, examples
 	entry := map[string]any{}
 	if schemaRef != "" {
 		entry["schema"] = map[string]any{"$ref": schemaRef}
-	} else if copied := copyAnyMap(schema); len(copied) > 0 {
+	} else if copied := maps.Clone(schema); len(copied) > 0 {
 		entry["schema"] = copied
 	}
 	// OpenAPI spec: "example" and "examples" are mutually exclusive.
 	// Prefer "examples" when both are provided.
-	if ex := copyAnyMap(examples); len(ex) > 0 {
+	if ex := maps.Clone(examples); len(ex) > 0 {
 		entry["examples"] = ex
 	} else if example != nil {
 		entry["example"] = example
@@ -740,7 +830,7 @@ func routeMediaTypeContent(content map[string]fiber.RouteMediaType) map[string]m
 			continue
 		}
 		entry := contentEntry(mt.Schema, mt.SchemaRef, mt.Example, mt.Examples)
-		if enc := copyAnyMap(mt.Encoding); len(enc) > 0 {
+		if enc := maps.Clone(mt.Encoding); len(enc) > 0 {
 			entry["encoding"] = enc
 		}
 		if len(entry) == 0 {
@@ -754,20 +844,28 @@ func routeMediaTypeContent(content map[string]fiber.RouteMediaType) map[string]m
 	return out
 }
 
-func convertRouteResponses(routeResponses map[string]fiber.RouteResponse) map[string]response {
+// convertRouteResponses converts route response metadata, falling back to the
+// route's Produces media type when a response documents a schema or example
+// without naming any media type, so that data is not silently dropped.
+func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallbackMediaType string) map[string]response {
 	var merged map[string]response
 	if len(routeResponses) > 0 {
 		merged = make(map[string]response, len(routeResponses))
 		for code, resp := range routeResponses {
 			content := routeMediaTypeContent(resp.Content)
 			if content == nil {
-				content = mediaTypesToContent(resp.MediaTypes, resp.Schema, resp.SchemaRef, resp.Example, resp.Examples)
+				mediaTypes := resp.MediaTypes
+				if len(mediaTypes) == 0 && fallbackMediaType != "" &&
+					(len(resp.Schema) > 0 || resp.SchemaRef != "" || resp.Example != nil || len(resp.Examples) > 0) {
+					mediaTypes = []string{fallbackMediaType}
+				}
+				content = mediaTypesToContent(mediaTypes, resp.Schema, resp.SchemaRef, resp.Example, resp.Examples)
 			}
 			merged[code] = response{
 				Description: resp.Description,
 				Content:     content,
-				Headers:     copyAnyMap(resp.Headers),
-				Links:       copyAnyMap(resp.Links),
+				Headers:     maps.Clone(resp.Headers),
+				Links:       maps.Clone(resp.Links),
 			}
 		}
 	}

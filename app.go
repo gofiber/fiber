@@ -114,6 +114,9 @@ type App struct {
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
+	// Monotonic counter identifying each register() call, used to find every
+	// stack entry created by the most recent registration
+	registrationID uint64
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
@@ -940,19 +943,12 @@ func (app *App) Name(name string) Router {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			isMethodValid := route.Method == app.latestRoute.Method || app.latestRoute.use ||
-				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
-
-			if route.Path == app.latestRoute.Path && isMethodValid {
-				route.Name = name
-				if route.group != nil {
-					route.Name = route.group.name + route.Name
-				}
-			}
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Name = name
+		if route.group != nil {
+			route.Name = route.group.name + route.Name
 		}
-	}
+	})
 
 	if err := app.hooks.executeOnNameHooks(app.latestRoute); err != nil {
 		panic(err)
@@ -1103,6 +1099,10 @@ func (app *App) AddParameter(param RouteParameter) Router {
 	switch {
 	case param.SchemaRef != "":
 		param.Schema = map[string]any{openapiRefKey: param.SchemaRef}
+	case location == "querystring":
+		// OpenAPI 3.2 querystring parameters are described via content rather
+		// than schema, so no default schema is injected.
+		param.Schema = copyAnyMap(param.Schema)
 	default:
 		schema := copyAnyMap(param.Schema)
 		if schema == nil {
@@ -1147,6 +1147,18 @@ func (app *App) ResponseWithExample(status int, description string, schema map[s
 // defaultResponseKey is the OpenAPI key used for the "default" response entry.
 const defaultResponseKey = "default"
 
+// responseKey validates the status code and returns the key of its response
+// entry: the numeric code, or "default" for a status of 0.
+func responseKey(status int) string {
+	if status == 0 {
+		return defaultResponseKey
+	}
+	if status < 100 || status > 599 {
+		panic("invalid status code")
+	}
+	return strconv.Itoa(status)
+}
+
 // defaultResponseDescription returns a human-readable description for a response
 // status code (0 represents the "default" response).
 func defaultResponseDescription(status int) string {
@@ -1160,20 +1172,13 @@ func defaultResponseDescription(status int) string {
 }
 
 func (app *App) addResponse(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
-	if status != 0 && (status < 100 || status > 599) {
-		panic("invalid status code")
-	}
-
 	sanitized := sanitizeMediaTypes(mediaTypes)
 
 	if description == "" {
 		description = defaultResponseDescription(status)
 	}
 
-	key := defaultResponseKey
-	if status > 0 {
-		key = strconv.Itoa(status)
-	}
+	key := responseKey(status)
 
 	resp := RouteResponse{Description: description}
 	if len(sanitized) > 0 {
@@ -1253,13 +1258,8 @@ func sanitizeRequiredMediaTypes(mediaTypes []string) []string {
 // Tags assigns tags to the most recently added route.
 func (app *App) Tags(tags ...string) Router {
 	app.mutex.Lock()
-	var copied []string
-	if len(tags) > 0 {
-		copied = make([]string, len(tags))
-		copy(copied, tags)
-	}
 	app.applyToLatestRouteLocked(func(route *Route) {
-		route.Tags = append([]string(nil), copied...)
+		route.Tags = append([]string(nil), tags...)
 	})
 	app.mutex.Unlock()
 	return app
@@ -1307,14 +1307,8 @@ func (app *App) ResponseHeader(status int, name, description string, schema map[
 	if utils.TrimSpace(name) == "" {
 		panic("response header name is required")
 	}
-	if status != 0 && (status < 100 || status > 599) {
-		panic("invalid status code")
-	}
 
-	key := defaultResponseKey
-	if status > 0 {
-		key = strconv.Itoa(status)
-	}
+	key := responseKey(status)
 
 	header := map[string]any{}
 	if description != "" {
@@ -1400,16 +1394,10 @@ func (app *App) RequestBodyContent(description string, required bool, content ma
 // ResponseContent documents a response with a different schema, example and
 // encoding per media type for the given status code.
 func (app *App) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
-	if status != 0 && (status < 100 || status > 599) {
-		panic("invalid status code")
-	}
 	if description == "" {
 		description = defaultResponseDescription(status)
 	}
-	key := defaultResponseKey
-	if status > 0 {
-		key = strconv.Itoa(status)
-	}
+	key := responseKey(status)
 	cloned := cloneRouteMediaTypeMap(content)
 	app.mutex.Lock()
 	app.applyToLatestRouteLocked(func(route *Route) {
@@ -1431,13 +1419,7 @@ func (app *App) ResponseLink(status int, name string, link map[string]any) Route
 	if utils.TrimSpace(name) == "" {
 		panic("response link name is required")
 	}
-	if status != 0 && (status < 100 || status > 599) {
-		panic("invalid status code")
-	}
-	key := defaultResponseKey
-	if status > 0 {
-		key = strconv.Itoa(status)
-	}
+	key := responseKey(status)
 	app.mutex.Lock()
 	app.applyToLatestRouteLocked(func(route *Route) {
 		if route.Responses == nil {
@@ -1462,12 +1444,14 @@ func (app *App) ResponseLink(status int, name string, link map[string]any) Route
 }
 
 // applyToLatestRouteLocked runs apply on the most recently registered route and
-// on every stack entry created by the same registration: the per-method copies
-// of a Use() registration, entries merged by identical-route compression, and
-// the automatically generated HEAD copy of a GET route. Routes that merely
-// share the same path — explicitly registered HEAD routes, or concrete routes
-// under a middleware prefix — are deliberately not touched, so documenting one
-// registration can never clobber another's metadata.
+// on every stack entry belonging to the same registration, identified by the
+// registration ID stamped in register() (per-method Use() copies, entries the
+// registration was compression-merged into, and copyRoute-generated auto-HEAD
+// routes). Routes that merely share the same path or method — explicitly
+// registered HEAD routes, concrete routes under a middleware prefix, shadowed
+// duplicate registrations, or routes on other domains — are deliberately not
+// touched, so documenting one registration can never clobber another's
+// metadata.
 func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
 	latest := app.latestRoute
 	if latest == nil || apply == nil {
@@ -1478,21 +1462,7 @@ func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			if route == latest || route.Path != latest.Path {
-				continue
-			}
-
-			switch {
-			case latest.use:
-				// Use() registers one route copy per HTTP method; reach them all.
-				if route.use {
-					apply(route)
-				}
-			case route.use:
-				// A concrete registration never documents middleware entries.
-			case route.Method == latest.Method:
-				apply(route)
-			case latest.Method == MethodGet && route.Method == MethodHead && route.autoHead:
+			if route != latest && route.regID != 0 && route.regID == latest.regID {
 				apply(route)
 			}
 		}

@@ -306,6 +306,13 @@ schemes: security device-authorization flow and `oauth2MetadataUrl`, XML
   `RequestBody` is set, because those methods do not carry a request body.
 - `CONNECT` routes are ignored because the OpenAPI specification does not define a
   `connect` operation.
+- The specification always describes the whole application the middleware runs
+  in. When the middleware is registered inside a mounted sub-app, the routes are
+  expanded into the parent application at startup, so the generated document
+  covers the parent's full route set — use `Config.Next` to scope it if needed.
+- Spec generation reads the live route stack. Like `RebuildTree`, mutating
+  routes at runtime (e.g. `RemoveRoute` while serving traffic) is not
+  thread-safe and must be quiesced by the caller.
 
 ## Config
 
