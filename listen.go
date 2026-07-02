@@ -111,6 +111,20 @@ type ListenConfig struct {
 	// Default: 10 * time.Second
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
 
+	// PreforkRecoverInterval delays the respawn of a crashed child process by this
+	// duration. This only applies when EnablePrefork is true.
+	//
+	// Default: 0 (respawn immediately)
+	PreforkRecoverInterval time.Duration `json:"prefork_recover_interval"`
+
+	// PreforkShutdownGracePeriod is how long the prefork master waits for child
+	// processes to exit after SIGTERM before sending SIGKILL during shutdown.
+	// On Windows children are always killed immediately. This only applies when
+	// EnablePrefork is true.
+	//
+	// Default: 5 * time.Second
+	PreforkShutdownGracePeriod time.Duration `json:"prefork_shutdown_grace_period"`
+
 	// FileMode to set for Unix Domain Socket (ListenerNetwork must be "unix")
 	//
 	// Default: 0770
