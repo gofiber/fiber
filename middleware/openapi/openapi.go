@@ -134,7 +134,11 @@ func resolveTargets(c fiber.Ctx, specPath, uiPath string, equal func(a, b string
 	}
 
 	if !route.IsMiddleware() {
-		path := utils.TrimRight(route.Path, '/')
+		// The route matched exactly, so the request path IS the concrete
+		// registered path — including values of any parameters the pattern
+		// carries (e.g. an exact route cloned under a parameterized mount
+		// prefix).
+		path := utils.TrimRight(c.Path(), '/')
 		switch {
 		case hasSuffix(path, specPath, equal):
 			prefix := path[:len(path)-len(specPath)]
@@ -298,9 +302,9 @@ type openAPISpec struct {
 	OpenAPI           string                          `json:"openapi"`
 	Self              string                          `json:"$self,omitempty"`
 	JSONSchemaDialect string                          `json:"jsonSchemaDialect,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Servers           []openAPIServer                 `json:"servers,omitempty"`
+	Servers           []Server                        `json:"servers,omitempty"`
 	Security          []map[string][]string           `json:"security,omitempty"`
-	Tags              []openAPITag                    `json:"tags,omitempty"`
+	Tags              []Tag                           `json:"tags,omitempty"`
 }
 
 type openAPIInfo struct {
@@ -311,19 +315,6 @@ type openAPIInfo struct {
 	Summary        string   `json:"summary,omitempty"`
 	Description    string   `json:"description,omitempty"`
 	TermsOfService string   `json:"termsOfService,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-}
-
-type openAPIServer struct {
-	Variables   map[string]ServerVariable `json:"variables,omitempty"`
-	URL         string                    `json:"url"`
-	Description string                    `json:"description,omitempty"`
-	Name        string                    `json:"name,omitempty"`
-}
-
-type openAPITag struct {
-	ExternalDocs *ExternalDocs `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Name         string        `json:"name"`
-	Description  string        `json:"description,omitempty"`
 }
 
 type operation struct {
@@ -618,11 +609,7 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 	}
 
 	if len(cfg.Tags) > 0 {
-		tags := make([]openAPITag, 0, len(cfg.Tags))
-		for _, tag := range cfg.Tags {
-			tags = append(tags, openAPITag(tag))
-		}
-		spec.Tags = tags
+		spec.Tags = append([]Tag(nil), cfg.Tags...)
 	}
 
 	if cfg.ExternalDocs != nil {
@@ -661,27 +648,26 @@ func generateSpec(app *fiber.App, cfg *Config) openAPISpec {
 
 // buildServers resolves the server list, preferring Config.Servers and falling
 // back to the single Config.ServerURL for backward compatibility.
-func buildServers(cfg *Config) []openAPIServer {
+func buildServers(cfg *Config) []Server {
 	// Server.name is an OpenAPI 3.2+ field.
 	allowName := versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32)
 	if len(cfg.Servers) > 0 {
-		servers := make([]openAPIServer, 0, len(cfg.Servers))
+		servers := make([]Server, 0, len(cfg.Servers))
 		for _, server := range cfg.Servers {
 			if server.URL == "" {
 				continue
 			}
-			srv := openAPIServer(server)
 			if !allowName {
-				srv.Name = ""
+				server.Name = ""
 			}
-			servers = append(servers, srv)
+			servers = append(servers, server)
 		}
 		if len(servers) > 0 {
 			return servers
 		}
 	}
 	if cfg.ServerURL != "" {
-		return []openAPIServer{{URL: cfg.ServerURL}}
+		return []Server{{URL: cfg.ServerURL}}
 	}
 	return nil
 }
@@ -711,16 +697,25 @@ func buildComponents(cfg *Config) map[string]any {
 }
 
 // dropQuerystringParameters filters out parameters using the OpenAPI 3.2-only
-// "querystring" location.
+// "querystring" location, returning the input slice unchanged when none match.
 func dropQuerystringParameters(extras []fiber.RouteParameter) []fiber.RouteParameter {
-	filtered := make([]fiber.RouteParameter, 0, len(extras))
+	isQuerystring := func(in string) bool {
+		return utils.EqualFold(utils.TrimSpace(in), "querystring")
+	}
 	for i := range extras {
-		if utilsstrings.ToLower(utils.TrimSpace(extras[i].In)) == "querystring" {
+		if !isQuerystring(extras[i].In) {
 			continue
 		}
-		filtered = append(filtered, extras[i])
+		filtered := append([]fiber.RouteParameter(nil), extras[:i]...)
+		for j := i + 1; j < len(extras); j++ {
+			if isQuerystring(extras[j].In) {
+				continue
+			}
+			filtered = append(filtered, extras[j])
+		}
+		return filtered
 	}
-	return filtered
+	return extras
 }
 
 func mergeRouteParameters(params []parameter, index map[string]int, extras []fiber.RouteParameter) []parameter {
@@ -736,6 +731,12 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		if location == "" {
 			location = "query"
 		}
+		// OpenAPI 3.2 querystring parameters are described via content rather
+		// than schema, so no default schema type is injected for them.
+		defaultType := schemaTypeString
+		if location == "querystring" {
+			defaultType = ""
+		}
 		// OpenAPI spec: "example" and "examples" are mutually exclusive.
 		// Prefer "examples" when both are provided.
 		var paramExample any
@@ -750,7 +751,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 			In:              location,
 			Description:     extra.Description,
 			Required:        extra.Required,
-			Schema:          schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString),
+			Schema:          schemaFrom(extra.Schema, extra.SchemaRef, defaultType),
 			Example:         paramExample,
 			Examples:        paramExamples,
 			Deprecated:      extra.Deprecated,
@@ -987,12 +988,10 @@ type pathState struct {
 }
 
 func (s pathState) clone() pathState {
-	aliases := make(map[string]string, len(s.aliases))
-	maps.Copy(aliases, s.aliases)
 	return pathState{
 		path:     s.path,
 		params:   append([]string(nil), s.params...),
-		aliases:  aliases,
+		aliases:  maps.Clone(s.aliases),
 		paramIdx: s.paramIdx,
 	}
 }
@@ -1134,7 +1133,7 @@ func resolveOpenAPIPathParamName(paramIdx int, extracted string, params []string
 	}
 	return resolvedParamName{
 		raw:     raw,
-		openAPI: sanitizeOpenAPIPathParamName(raw, paramIdx+1),
+		openAPI: sanitizeOpenAPIParamName(raw, paramIdx+1),
 	}
 }
 
@@ -1147,10 +1146,6 @@ func resolveOpenAPIWildcardParamName(paramIdx int, params []string) resolvedPara
 		raw:     raw,
 		openAPI: sanitizeOpenAPIWildcardParamName(raw, paramIdx+1),
 	}
-}
-
-func sanitizeOpenAPIPathParamName(name string, idx int) string {
-	return sanitizeOpenAPIParamName(name, idx)
 }
 
 func sanitizeOpenAPIWildcardParamName(name string, idx int) string {

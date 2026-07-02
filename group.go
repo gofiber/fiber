@@ -208,7 +208,7 @@ func (grp *Group) Use(args ...any) Router {
 	var subApp *App
 	var prefix string
 	var prefixes []string
-	var handlers []any
+	var handlers []Handler
 
 	for i := range args {
 		switch arg := args[i].(type) {
@@ -236,8 +236,7 @@ func (grp *Group) Use(args ...any) Router {
 			return grp.mount(prefix, subApp)
 		}
 
-		converted := collectHandlers("use", handlers...)
-		grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, converted...)
+		grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, handlers...)
 	}
 
 	if !grp.hasAnyRoute {

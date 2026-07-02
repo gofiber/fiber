@@ -137,125 +137,142 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 
 	properties := make(map[string]any)
 	var required []string
-	requiredSet := make(map[string]struct{})
 
-	addRequired := func(name string) {
-		if _, ok := requiredSet[name]; ok {
-			return
-		}
-		requiredSet[name] = struct{}{}
-		required = append(required, name)
+	// Fields are resolved level by level over the embedding tree, matching
+	// encoding/json: a name is taken at the shallowest depth where it appears;
+	// among candidates at that depth exactly one json-tagged field wins,
+	// otherwise the name is ambiguous and dropped entirely (deeper fields do
+	// not resurrect it).
+	type fieldCandidate struct {
+		schema   map[string]any
+		required bool
+		tagged   bool
+	}
+	type embedRef struct {
+		t reflect.Type
+		// optional marks fields reached through a pointer embed or an
+		// omitempty embed: they are not guaranteed to be present and must not
+		// be marked required on the parent.
+		optional bool
 	}
 
-	// Embedded structs are flattened the way encoding/json promotes their
-	// fields: a field declared on the parent shadows a promoted field of the
-	// same name regardless of declaration order, so embedded fields are merged
-	// in a second pass and never overwrite parent properties.
-	type embeddedSchema struct {
-		props    map[string]any
-		required []string
-		promote  bool
-	}
-	var embeds []embeddedSchema
-	// promotedCount tracks how many embedded structs promote each name that
-	// the parent does not define; encoding/json drops such ambiguous fields
-	// entirely when the count exceeds one.
-	promotedCount := make(map[string]int)
+	level := []embedRef{{t: t}}
+	// expanded tracks struct types flattened at shallower levels: re-expanding
+	// them deeper could recurse forever (embedding cycles) and their fields
+	// would lose to the shallower ones anyway. Same-level duplicates are NOT
+	// deduplicated — their fields must collide and be dropped like
+	// encoding/json does.
+	expanded := map[reflect.Type]bool{t: true}
+	dropped := make(map[string]bool)
 
-	for i := range t.NumField() {
-		field := t.Field(i)
-		if !field.IsExported() {
-			continue
-		}
+	for len(level) > 0 {
+		var nextLevel []embedRef
+		candidates := make(map[string][]fieldCandidate)
+		var order []string
 
-		tagInfo := parseJSONTag(&field)
-		if tagInfo.skip {
-			continue
-		}
-		name := tagInfo.name
+		for _, ref := range level {
+			for i := range ref.t.NumField() {
+				field := ref.t.Field(i)
 
-		embeddedType := field.Type
-		for embeddedType.Kind() == reflect.Pointer {
-			embeddedType = embeddedType.Elem()
-		}
-		if field.Anonymous && embeddedType.Kind() == reflect.Struct && embeddedType != timeType && name == "" {
-			embedded := structSchema(embeddedType, visited)
-			var props map[string]any
-			if v, ok := embedded["properties"].(map[string]any); ok {
-				props = v
-			}
-			var promotedRequired []string
-			if v, ok := embedded["required"].([]string); ok {
-				promotedRequired = v
-			}
-			// An embedded pointer can be nil, so its fields are not guaranteed
-			// to be present and must not be marked required on the parent.
-			promote := !tagInfo.omit && field.Type.Kind() != reflect.Pointer
-			embeds = append(embeds, embeddedSchema{props: props, required: promotedRequired, promote: promote})
-			continue
-		}
+				tagInfo := parseJSONTag(&field)
+				if tagInfo.skip {
+					continue
+				}
+				name := tagInfo.name
 
-		if name == "" {
-			name = field.Name
-		}
+				embeddedType := field.Type
+				for embeddedType.Kind() == reflect.Pointer {
+					embeddedType = embeddedType.Elem()
+				}
+				isEmbeddedStruct := field.Anonymous && embeddedType.Kind() == reflect.Struct && embeddedType != timeType && name == ""
 
-		fieldSchema := typeSchema(field.Type, visited)
-		if fieldSchema == nil {
-			// The field type has no JSON representation; skip it entirely
-			// rather than emitting a meaningless empty schema.
-			continue
-		}
+				// encoding/json ignores unexported fields, but it still
+				// promotes the exported fields of an embedded unexported
+				// struct type.
+				if !field.IsExported() && !isEmbeddedStruct {
+					continue
+				}
 
-		// The ",string" option makes encoding/json wrap the value in a JSON
-		// string, so the documented type must be string as well.
-		if tagInfo.asString {
-			switch fieldSchema[schemaKeyType] {
-			case schemaTypeInteger, schemaTypeNumber, schemaTypeBoolean:
-				fieldSchema[schemaKeyType] = schemaTypeString
-			default:
-			}
-		}
+				if isEmbeddedStruct {
+					if expanded[embeddedType] {
+						continue
+					}
+					nextLevel = append(nextLevel, embedRef{
+						t:        embeddedType,
+						optional: ref.optional || tagInfo.omit || field.Type.Kind() == reflect.Pointer,
+					})
+					continue
+				}
 
-		applyOpenAPITag(&field, fieldSchema)
+				if name == "" {
+					name = field.Name
+				}
 
-		properties[name] = fieldSchema
+				fieldSchema := typeSchema(field.Type, visited)
+				if fieldSchema == nil {
+					// The field type has no JSON representation; skip it
+					// entirely rather than emitting a meaningless empty schema.
+					continue
+				}
 
-		isPointer := field.Type.Kind() == reflect.Pointer
-		if !tagInfo.omit && !isPointer {
-			addRequired(name)
-		}
-	}
+				// The ",string" option makes encoding/json wrap the value in a
+				// JSON string, so the documented type must be string as well.
+				if tagInfo.asString {
+					switch fieldSchema[schemaKeyType] {
+					case schemaTypeInteger, schemaTypeNumber, schemaTypeBoolean:
+						fieldSchema[schemaKeyType] = schemaTypeString
+					default:
+					}
+				}
 
-	for _, embed := range embeds {
-		for name := range embed.props {
-			if _, exists := properties[name]; !exists {
-				promotedCount[name]++
+				applyOpenAPITag(&field, fieldSchema)
+
+				if _, ok := candidates[name]; !ok {
+					order = append(order, name)
+				}
+				candidates[name] = append(candidates[name], fieldCandidate{
+					schema:   fieldSchema,
+					required: !tagInfo.omit && field.Type.Kind() != reflect.Pointer && !ref.optional,
+					tagged:   tagInfo.name != "",
+				})
 			}
 		}
-	}
 
-	for _, embed := range embeds {
-		promoted := make(map[string]struct{}, len(embed.props))
-		for name, prop := range embed.props {
+		for _, name := range order {
+			if dropped[name] {
+				continue
+			}
 			if _, exists := properties[name]; exists {
 				continue
 			}
-			if promotedCount[name] > 1 {
-				continue
+			cands := candidates[name]
+			chosen := 0
+			if len(cands) > 1 {
+				// Exactly one json-tagged candidate dominates; otherwise the
+				// name is ambiguous at this depth and dropped for good.
+				taggedIdx, taggedCount := -1, 0
+				for i := range cands {
+					if cands[i].tagged {
+						taggedIdx = i
+						taggedCount++
+					}
+				}
+				if taggedCount != 1 {
+					dropped[name] = true
+					continue
+				}
+				chosen = taggedIdx
 			}
-			properties[name] = prop
-			promoted[name] = struct{}{}
-		}
-		if !embed.promote {
-			continue
-		}
-		// Iterate the embedded schema's ordered required slice (not the
-		// properties map) so the parent's required list is deterministic.
-		for _, name := range embed.required {
-			if _, ok := promoted[name]; ok {
-				addRequired(name)
+			properties[name] = cands[chosen].schema
+			if cands[chosen].required {
+				required = append(required, name)
 			}
 		}
+
+		for _, ref := range nextLevel {
+			expanded[ref.t] = true
+		}
+		level = nextLevel
 	}
 
 	schema := map[string]any{
@@ -331,7 +348,9 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 			values := strings.Split(val, "|")
 			enumSlice := make([]any, len(values))
 			for j, v := range values {
-				enumSlice[j] = utils.TrimSpace(v)
+				// Convert each value to the field's type so an integer field
+				// does not end up with a string-only enum no value can satisfy.
+				enumSlice[j] = inferExampleValue(utils.TrimSpace(v), schema)
 			}
 			schema["enum"] = enumSlice
 		default:

@@ -1292,12 +1292,14 @@ func (app *App) ResponseHeader(status int, name, description string, schema map[
 
 	key := responseKey(status)
 
+	// The per-route copyAnyMap below deep-copies the header (including the
+	// caller's schema map), so no defensive copy is needed here.
 	header := map[string]any{}
 	if description != "" {
 		header["description"] = description
 	}
 	if len(schema) > 0 {
-		header["schema"] = copyAnyMap(schema)
+		header["schema"] = schema
 	}
 
 	app.mutex.Lock()
@@ -1360,10 +1362,12 @@ func (app *App) OperationExtension(fields map[string]any) Router {
 // RequestBodyContent documents a request body with a different schema, example
 // and encoding per media type.
 func (app *App) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
+	// cloneRouteRequestBody performs the per-route deep copy, so the caller's
+	// content map is referenced but never stored.
 	body := &RouteRequestBody{
 		Description: description,
 		Required:    required,
-		Content:     cloneRouteMediaTypeMap(content),
+		Content:     content,
 	}
 	app.mutex.Lock()
 	app.applyToLatestRouteLocked(func(route *Route) {
@@ -1380,7 +1384,6 @@ func (app *App) ResponseContent(status int, description string, content map[stri
 		description = defaultResponseDescription(status)
 	}
 	key := responseKey(status)
-	cloned := cloneRouteMediaTypeMap(content)
 	app.mutex.Lock()
 	app.applyToLatestRouteLocked(func(route *Route) {
 		if route.Responses == nil {
@@ -1388,7 +1391,7 @@ func (app *App) ResponseContent(status int, description string, content map[stri
 		}
 		resp := route.Responses[key]
 		resp.Description = description
-		resp.Content = cloneRouteMediaTypeMap(cloned)
+		resp.Content = cloneRouteMediaTypeMap(content)
 		route.Responses[key] = resp
 	})
 	app.mutex.Unlock()
@@ -1507,7 +1510,7 @@ func (app *App) Use(args ...any) Router {
 	var prefix string
 	var subApp *App
 	var prefixes []string
-	var handlers []any
+	var handlers []Handler
 
 	for i := range args {
 		switch arg := args[i].(type) {
@@ -1535,8 +1538,7 @@ func (app *App) Use(args ...any) Router {
 			return app.mount(prefix, subApp)
 		}
 
-		converted := collectHandlers("use", handlers...)
-		app.register([]string{methodUse}, prefix, nil, converted...)
+		app.register([]string{methodUse}, prefix, nil, handlers...)
 	}
 
 	return app
