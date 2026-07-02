@@ -532,3 +532,77 @@ func Test_SchemaOf_EmbeddedFieldDoesNotShadowParent(t *testing.T) {
 	require.True(t, ok)
 	require.ElementsMatch(t, []string{"id", "note"}, required)
 }
+
+// Test_SchemaOf_StringOption verifies the json ",string" option is reflected
+// as a string type, matching encoding/json's wire format.
+func Test_SchemaOf_StringOption(t *testing.T) {
+	t.Parallel()
+
+	type User struct {
+		Name   string  `json:"name"`
+		ID     int64   `json:"id,string"`
+		Score  float64 `json:"score,string"`
+		Active bool    `json:"active,string"`
+	}
+
+	schema := SchemaOf(User{})
+	props := requireProps(t, schema)
+	require.Equal(t, "string", requireProp(t, props, "id")[schemaKeyType])
+	require.Equal(t, "string", requireProp(t, props, "score")[schemaKeyType])
+	require.Equal(t, "string", requireProp(t, props, "active")[schemaKeyType])
+	require.Equal(t, "string", requireProp(t, props, "name")[schemaKeyType])
+}
+
+// Test_SchemaOf_ConflictingEmbeddedFieldsDropped verifies a field promoted by
+// two embedded structs at the same depth is dropped entirely, matching
+// encoding/json's ambiguity rule.
+func Test_SchemaOf_ConflictingEmbeddedFieldsDropped(t *testing.T) {
+	t.Parallel()
+
+	type B1 struct {
+		X int `json:"x"`
+	}
+	type B2 struct {
+		X string `json:"x"`
+	}
+	type T struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario
+		Y string `json:"y"`
+		B1
+		B2 //nolint:govet // structtag: the duplicate json tag is the ambiguity under test
+	}
+
+	schema := SchemaOf(T{})
+	props := requireProps(t, schema)
+	require.NotContains(t, props, "x")
+	require.Contains(t, props, "y")
+
+	required, ok := schema["required"].([]string)
+	require.True(t, ok)
+	require.Equal(t, []string{"y"}, required)
+}
+
+// Test_SchemaOf_EmbeddedRequiredDeterministic verifies the required list
+// derived from embedded structs is stable across invocations.
+func Test_SchemaOf_EmbeddedRequiredDeterministic(t *testing.T) {
+	t.Parallel()
+
+	type Base struct {
+		A string `json:"a"`
+		B string `json:"b"`
+		C string `json:"c"`
+		D string `json:"d"`
+		E string `json:"e"`
+	}
+	type T struct {
+		Base
+	}
+
+	first, ok := SchemaOf(T{})["required"].([]string)
+	require.True(t, ok)
+	require.Equal(t, []string{"a", "b", "c", "d", "e"}, first)
+	for range 10 {
+		next, ok := SchemaOf(T{})["required"].([]string)
+		require.True(t, ok)
+		require.Equal(t, first, next)
+	}
+}

@@ -85,12 +85,12 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 	case reflect.String:
 		return map[string]any{schemaKeyType: schemaTypeString}
 	case reflect.Bool:
-		return map[string]any{schemaKeyType: "boolean"}
+		return map[string]any{schemaKeyType: schemaTypeBoolean}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return map[string]any{schemaKeyType: "integer"}
+		return map[string]any{schemaKeyType: schemaTypeInteger}
 	case reflect.Float32, reflect.Float64:
-		return map[string]any{schemaKeyType: "number"}
+		return map[string]any{schemaKeyType: schemaTypeNumber}
 	case reflect.Slice, reflect.Array:
 		// Go marshals []byte (a slice of uint8) as a base64-encoded string.
 		// Fixed-size byte arrays are still marshaled as arrays of numbers.
@@ -151,11 +151,16 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 	// fields: a field declared on the parent shadows a promoted field of the
 	// same name regardless of declaration order, so embedded fields are merged
 	// in a second pass and never overwrite parent properties.
-	type embeddedField struct {
-		field reflect.StructField
-		omit  bool
+	type embeddedSchema struct {
+		props    map[string]any
+		required []string
+		promote  bool
 	}
-	var embeds []embeddedField
+	var embeds []embeddedSchema
+	// promotedCount tracks how many embedded structs promote each name that
+	// the parent does not define; encoding/json drops such ambiguous fields
+	// entirely when the count exceeds one.
+	promotedCount := make(map[string]int)
 
 	for i := range t.NumField() {
 		field := t.Field(i)
@@ -163,17 +168,30 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 			continue
 		}
 
-		name, omit, skip := parseJSONTag(&field)
-		if skip {
+		tagInfo := parseJSONTag(&field)
+		if tagInfo.skip {
 			continue
 		}
+		name := tagInfo.name
 
 		embeddedType := field.Type
 		for embeddedType.Kind() == reflect.Pointer {
 			embeddedType = embeddedType.Elem()
 		}
 		if field.Anonymous && embeddedType.Kind() == reflect.Struct && embeddedType != timeType && name == "" {
-			embeds = append(embeds, embeddedField{field: field, omit: omit})
+			embedded := structSchema(embeddedType, visited)
+			var props map[string]any
+			if v, ok := embedded["properties"].(map[string]any); ok {
+				props = v
+			}
+			var promotedRequired []string
+			if v, ok := embedded["required"].([]string); ok {
+				promotedRequired = v
+			}
+			// An embedded pointer can be nil, so its fields are not guaranteed
+			// to be present and must not be marked required on the parent.
+			promote := !tagInfo.omit && field.Type.Kind() != reflect.Pointer
+			embeds = append(embeds, embeddedSchema{props: props, required: promotedRequired, promote: promote})
 			continue
 		}
 
@@ -188,42 +206,54 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 			continue
 		}
 
+		// The ",string" option makes encoding/json wrap the value in a JSON
+		// string, so the documented type must be string as well.
+		if tagInfo.asString {
+			switch fieldSchema[schemaKeyType] {
+			case schemaTypeInteger, schemaTypeNumber, schemaTypeBoolean:
+				fieldSchema[schemaKeyType] = schemaTypeString
+			default:
+			}
+		}
+
 		applyOpenAPITag(&field, fieldSchema)
 
 		properties[name] = fieldSchema
 
 		isPointer := field.Type.Kind() == reflect.Pointer
-		if !omit && !isPointer {
+		if !tagInfo.omit && !isPointer {
 			addRequired(name)
 		}
 	}
 
 	for _, embed := range embeds {
-		embeddedType := embed.field.Type
-		for embeddedType.Kind() == reflect.Pointer {
-			embeddedType = embeddedType.Elem()
-		}
-		embedded := structSchema(embeddedType, visited)
-
-		promotedRequired := make(map[string]struct{})
-		// An embedded pointer can be nil, so its fields are not guaranteed
-		// to be present and must not be marked required on the parent.
-		isPtrEmbed := embed.field.Type.Kind() == reflect.Pointer
-		if reqs, ok := embedded["required"].([]string); ok && !embed.omit && !isPtrEmbed {
-			for _, name := range reqs {
-				promotedRequired[name] = struct{}{}
+		for name := range embed.props {
+			if _, exists := properties[name]; !exists {
+				promotedCount[name]++
 			}
 		}
+	}
 
-		if props, ok := embedded["properties"].(map[string]any); ok {
-			for name, prop := range props {
-				if _, exists := properties[name]; exists {
-					continue
-				}
-				properties[name] = prop
-				if _, ok := promotedRequired[name]; ok {
-					addRequired(name)
-				}
+	for _, embed := range embeds {
+		promoted := make(map[string]struct{}, len(embed.props))
+		for name, prop := range embed.props {
+			if _, exists := properties[name]; exists {
+				continue
+			}
+			if promotedCount[name] > 1 {
+				continue
+			}
+			properties[name] = prop
+			promoted[name] = struct{}{}
+		}
+		if !embed.promote {
+			continue
+		}
+		// Iterate the embedded schema's ordered required slice (not the
+		// properties map) so the parent's required list is deterministic.
+		for _, name := range embed.required {
+			if _, ok := promoted[name]; ok {
+				addRequired(name)
 			}
 		}
 	}
@@ -238,16 +268,34 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 	return schema
 }
 
-func parseJSONTag(field *reflect.StructField) (string, bool, bool) { //nolint:gocritic // nonamedreturns forbids naming these
+// jsonTagInfo carries the parsed pieces of a field's json tag.
+type jsonTagInfo struct {
+	name     string
+	omit     bool
+	skip     bool
+	asString bool
+}
+
+func parseJSONTag(field *reflect.StructField) jsonTagInfo {
 	tag := field.Tag.Get("json")
 	if tag == "" {
-		return "", false, false
+		return jsonTagInfo{}
 	}
 	if tag == "-" {
-		return "", false, true
+		return jsonTagInfo{skip: true}
 	}
-	parts := strings.SplitN(tag, ",", 2)
-	return parts[0], len(parts) > 1 && strings.Contains(parts[1], "omitempty"), false
+	parts := strings.Split(tag, ",")
+	info := jsonTagInfo{name: parts[0]}
+	for _, opt := range parts[1:] {
+		switch opt {
+		case "omitempty":
+			info.omit = true
+		case "string":
+			info.asString = true
+		default:
+		}
+	}
+	return info
 }
 
 // openapiDirectiveRe locates the start of each recognized openapi tag directive.
@@ -298,15 +346,15 @@ func inferExampleValue(val string, schema map[string]any) any {
 		return val
 	}
 	switch schemaType {
-	case "integer":
+	case schemaTypeInteger:
 		if n, err := utils.ParseInt(val); err == nil {
 			return n
 		}
-	case "number":
+	case schemaTypeNumber:
 		if f, err := utils.ParseFloat64(val); err == nil {
 			return f
 		}
-	case "boolean":
+	case schemaTypeBoolean:
 		if b, err := strconv.ParseBool(val); err == nil {
 			return b
 		}

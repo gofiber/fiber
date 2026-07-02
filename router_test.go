@@ -2974,3 +2974,94 @@ func Test_App_RequestBodyKeepsExplicitConsumes(t *testing.T) {
 	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
 	require.Equal(t, MIMEApplicationJSON, route.Consumes)
 }
+
+// Test_App_MetadataDoesNotClobberShadowedRoute verifies helpers chained on a
+// duplicate registration do not rewrite the earlier registration's metadata.
+func Test_App_MetadataDoesNotClobberShadowedRoute(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/a", testEmptyHandler).Summary("first")
+	app.Get("/b", testEmptyHandler)
+	app.Get("/a", testEmptyHandler).Summary("second")
+
+	getStack := app.stack[app.methodInt(MethodGet)]
+	require.Equal(t, "first", getStack[0].Summary)
+	require.Equal(t, "second", getStack[2].Summary)
+}
+
+// Test_App_MetadataSecondUseDoesNotClobberFirst verifies documenting a second
+// Use() registration leaves the first registration's metadata alone.
+func Test_App_MetadataSecondUseDoesNotClobberFirst(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use("/api", func(c Ctx) error { return c.Next() }).Summary("auth")
+	app.Get("/api/x", testEmptyHandler)
+	app.Use("/api", func(c Ctx) error { return c.Next() }).Summary("rate")
+
+	summaries := make(map[string]int)
+	for _, route := range app.stack[app.methodInt(MethodGet)] {
+		if route.use {
+			summaries[route.Summary]++
+		}
+	}
+	require.Equal(t, 1, summaries["auth"])
+	require.Equal(t, 1, summaries["rate"])
+}
+
+// Test_App_MetadataAfterMountDoesNotTouchPreviousRoute verifies helpers chained
+// onto a sub-app mount do not mutate the route registered before the mount.
+func Test_App_MetadataAfterMountDoesNotTouchPreviousRoute(t *testing.T) {
+	t.Parallel()
+	sub := New()
+	sub.Get("/users", testEmptyHandler)
+
+	app := New()
+	app.Get("/health", testEmptyHandler).Summary("Health")
+	app.Use("/api", sub).Tags("api").Description("sub-app")
+
+	for _, route := range app.stack[app.methodInt(MethodGet)] {
+		if route.Path == "/health" {
+			require.Equal(t, "Health", route.Summary)
+			require.Empty(t, route.Tags)
+			require.Empty(t, route.Description)
+		}
+	}
+}
+
+// Test_App_NameOnUseDoesNotRenameConcreteRoutes verifies naming a Use()
+// registration no longer renames concrete routes sharing the path.
+func Test_App_NameOnUseDoesNotRenameConcreteRoutes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).Name("home")
+	app.Use(func(c Ctx) error { return c.Next() }).Name("mymw")
+
+	for _, route := range app.stack[app.methodInt(MethodGet)] {
+		if !route.use {
+			require.Equal(t, "home", route.Name)
+		} else {
+			require.Equal(t, "mymw", route.Name)
+		}
+	}
+}
+
+// Test_App_OperationExtensionNilElements verifies deep-copying metadata with
+// nil elements in typed slices and maps neither panics nor drops entries.
+func Test_App_OperationExtensionNilElements(t *testing.T) {
+	t.Parallel()
+	app := New()
+	require.NotPanics(t, func() {
+		app.Get("/", testEmptyHandler).OperationExtension(map[string]any{
+			"x-errs": []error{nil},
+			"x-map":  map[string]error{"e": nil},
+		})
+	})
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	errs, ok := route.OperationExtensions["x-errs"].([]error)
+	require.True(t, ok)
+	require.Len(t, errs, 1)
+	m, ok := route.OperationExtensions["x-map"].(map[string]error)
+	require.True(t, ok)
+	require.Contains(t, m, "e")
+}

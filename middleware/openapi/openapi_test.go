@@ -2116,15 +2116,23 @@ func Test_OpenAPI_31Fields_EmitFor32(t *testing.T) {
 func Test_OpenAPI_QueryStringParameterLocation(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Get("/search", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
-		AddParameter(fiber.RouteParameter{Name: "q", In: "querystring", Schema: map[string]any{"type": "string"}})
+	register := func(app *fiber.App) {
+		app.Get("/search", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+			AddParameter(fiber.RouteParameter{Name: "q", In: "querystring", Schema: map[string]any{"type": "string"}})
+	}
 
-	paths := getPaths(t, app)
-	op := requireMap(t, paths["/search"]["get"])
+	// The querystring location only exists in OpenAPI 3.2+.
+	spec := fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.2.0"}, register)
+	op := requireMap(t, requireMap(t, requireMap(t, spec["paths"])["/search"])["get"])
 	params, ok := op["parameters"].([]any)
 	require.True(t, ok)
 	require.Equal(t, "querystring", requireMap(t, params[0])["in"])
+
+	// For earlier versions the parameter would make the document invalid and
+	// must be dropped.
+	spec = fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.1.0"}, register)
+	op = requireMap(t, requireMap(t, requireMap(t, spec["paths"])["/search"])["get"])
+	require.NotContains(t, op, "parameters")
 }
 
 // Test_OpenAPI_CaseInsensitivePaths verifies the spec and UI paths match with
@@ -2255,4 +2263,105 @@ func Test_OpenAPI_EscapedRoutePath(t *testing.T) {
 	require.Len(t, variants, 1)
 	require.Equal(t, "/foo:bar", variants[0].Path)
 	require.Empty(t, variants[0].ParamNames)
+}
+
+// Test_OpenAPI_MountedSubAppExactRoute verifies the handler works when it is
+// registered on an exact route inside a sub-app that is mounted under a prefix.
+func Test_OpenAPI_MountedSubAppExactRoute(t *testing.T) {
+	t.Parallel()
+
+	sub := fiber.New()
+	sub.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	handler := New()
+	sub.Get("/openapi.json", handler).Hidden()
+	sub.Get("/swagger", handler).Hidden()
+
+	app := fiber.New()
+	app.Use("/api", sub)
+
+	req := httptest.NewRequest(fiber.MethodGet, "/api/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Contains(t, spec.Paths, "/api/users")
+
+	req = httptest.NewRequest(fiber.MethodGet, "/api/swagger", http.NoBody)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `url: "\/api\/openapi.json"`)
+}
+
+// Test_OpenAPI_ParameterizedMountPrefix verifies the middleware resolves
+// concrete prefixes when mounted under a path with parameters.
+func Test_OpenAPI_ParameterizedMountPrefix(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use("/:tenant", New())
+
+	req := httptest.NewRequest(fiber.MethodGet, "/acme/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec openAPISpec
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Contains(t, spec.Paths, "/users")
+
+	// Deeper paths must not be treated as the spec endpoint.
+	req = httptest.NewRequest(fiber.MethodGet, "/acme/foo/openapi.json", http.NoBody)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	// The UI page points at the tenant's own spec URL.
+	req = httptest.NewRequest(fiber.MethodGet, "/acme/swagger", http.NoBody)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `url: "\/acme\/openapi.json"`)
+}
+
+// Test_OpenAPI_MountedParamPrefixPathParams verifies path parameters introduced
+// by a parameterized mount prefix are named correctly in the generated paths.
+func Test_OpenAPI_MountedParamPrefixPathParams(t *testing.T) {
+	t.Parallel()
+
+	sub := fiber.New()
+	sub.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	app := fiber.New()
+	app.Use("/tenant/:tid", sub)
+
+	paths := getPaths(t, app)
+	require.Contains(t, paths, "/tenant/{tid}/users/{id}")
+}
+
+// Test_OpenAPI_ResponseSchemaWithoutMediaType verifies a response schema or
+// example documented without media types falls back to the route's Produces
+// type instead of being dropped.
+func Test_OpenAPI_ResponseSchemaWithoutMediaType(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Produces(fiber.MIMEApplicationJSON).
+		ResponseWithExample(fiber.StatusOK, "OK", map[string]any{"type": "object"}, "", nil, nil)
+
+	paths := getPaths(t, app)
+	op := requireMap(t, paths["/users"]["get"])
+	responses := requireMap(t, op["responses"])
+	okResp := requireMap(t, responses["200"])
+	content := requireMap(t, okResp["content"])
+	entry := requireMap(t, content[fiber.MIMEApplicationJSON])
+	require.Equal(t, "object", requireMap(t, entry["schema"])["type"])
 }

@@ -138,6 +138,11 @@ type Route struct {
 
 	routeParser routeParser // Parameter parser
 
+	// regID identifies the register() call that created this route, so
+	// chainable helpers (Name, Summary, ...) can reach every stack entry of
+	// the same registration.
+	regID uint64
+
 	Deprecated bool `json:"deprecated,omitempty"`
 
 	// Data for routing
@@ -651,6 +656,10 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
 	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
+	// The prefix may introduce parameters of its own (e.g. mounting under
+	// "/:tenant"), so the parameter names must be re-derived from the
+	// prefixed path just like register() derives them from the raw path.
+	route.Params = parseRoute(prefixedPath, regexHandler, customConstraints...).params
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
@@ -668,6 +677,7 @@ func (*App) copyRoute(route *Route) *Route {
 		autoHead:      route.autoHead,
 		caseSensitive: route.caseSensitive,
 		hidden:        route.hidden,
+		regID:         route.regID,
 
 		// Path data
 		path:        route.path,
@@ -764,14 +774,13 @@ func cloneRouteParameters(params []RouteParameter) []RouteParameter {
 			Description:     p.Description,
 			Deprecated:      p.Deprecated,
 			Style:           p.Style,
-			Explode:         p.Explode,
 			AllowEmptyValue: p.AllowEmptyValue,
 			AllowReserved:   p.AllowReserved,
+			Schema:          copyAnyMap(p.Schema),
+			SchemaRef:       p.SchemaRef,
+			Examples:        copyAnyMap(p.Examples),
+			Example:         p.Example,
 		}
-		cloned[i].Schema = copyAnyMap(p.Schema)
-		cloned[i].SchemaRef = p.SchemaRef
-		cloned[i].Examples = copyAnyMap(p.Examples)
-		cloned[i].Example = p.Example
 		if p.Explode != nil {
 			explode := *p.Explode
 			cloned[i].Explode = &explode
@@ -850,7 +859,11 @@ func copyCompositeValue(src any) any {
 		}
 		copied := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
 		for i := range value.Len() {
-			copied.Index(i).Set(reflect.ValueOf(copyAnyValue(value.Index(i).Interface())))
+			// A nil element yields an invalid reflect.Value; leave the zero
+			// value in place instead of panicking in Set.
+			if elem := copyAnyValue(value.Index(i).Interface()); elem != nil {
+				copied.Index(i).Set(reflect.ValueOf(elem))
+			}
 		}
 		return copied.Interface()
 	case reflect.Map:
@@ -860,7 +873,12 @@ func copyCompositeValue(src any) any {
 		copied := reflect.MakeMapWithSize(value.Type(), value.Len())
 		iter := value.MapRange()
 		for iter.Next() {
-			val := reflect.ValueOf(copyAnyValue(iter.Value().Interface()))
+			// SetMapIndex with an invalid value deletes the key, so map a nil
+			// element to the element type's zero value to preserve it.
+			val := reflect.Zero(value.Type().Elem())
+			if elem := copyAnyValue(iter.Value().Interface()); elem != nil {
+				val = reflect.ValueOf(elem)
+			}
 			copied.SetMapIndex(iter.Key(), val)
 		}
 		return copied.Interface()
@@ -1032,6 +1050,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			star:          isStar,
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
+			regID:         atomic.AddUint64(&app.registrationID, 1),
 
 			path:        pathClean,
 			routeParser: parsedPretty,
@@ -1081,6 +1100,9 @@ func (app *App) addRoute(method string, route *Route) {
 	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
+		// The merged entry now carries the latest registration, so chained
+		// helpers targeting it reach this entry.
+		preRoute.regID = route.regID
 	} else {
 		route.Method = method
 		// Add route to the stack
@@ -1088,9 +1110,12 @@ func (app *App) addRoute(method string, route *Route) {
 		app.hasRoutesRefreshed = true
 	}
 
-	// Execute onRoute hooks & change latestRoute if not adding mounted route
+	// Track the most recent registration so chained helpers (Name, Summary,
+	// ...) target it. Mount routes are tracked too — otherwise a helper
+	// chained onto app.Use("/api", subApp) would mutate whatever route was
+	// registered before the mount — but onRoute hooks are not fired for them.
+	app.latestRoute = route
 	if !route.mount {
-		app.latestRoute = route
 		if err := app.hooks.executeOnRouteHooks(route); err != nil {
 			panic(err)
 		}
