@@ -370,11 +370,12 @@ func (c *DefaultCtx) ViewBind(vars Map) error {
 // Route returns the matched Route struct.
 func (c *DefaultCtx) Route() *Route {
 	if c.route == nil {
-		// Fallback for fasthttp error handler
+		// Fallback for fasthttp error handler; equals c.Method() without
+		// the variadic call so Route stays within the inlining budget
 		return &Route{
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
-			Method:   c.Method(),
+			Method:   c.app.method(c.methodInt),
 			Handlers: emptyRouteHandlers[:],
 			Params:   emptyRouteParams[:],
 		}

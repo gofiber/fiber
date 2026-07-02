@@ -49,6 +49,11 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.Equal(t, `text/plain;a="1;b=2\",text/plain"`, getOffer([]byte(`text/plain;a="1;b=2\",text/plain";q=0.9`), acceptsOfferType, `text/plain;a=1;b=2`, `text/plain;a="1;b=2\",text/plain"`))
 	require.Equal(t, "text/plain;A=CAPS", getOffer([]byte(`text/plain;a="caPs"`), acceptsOfferType, "text/plain;A=CAPS"))
 
+	// The media type and subtype tokens are case-insensitive (RFC 9110 8.3.1)
+	require.Equal(t, "application/json", getOffer([]byte("Application/JSON"), acceptsOfferType, "application/json"))
+	require.Equal(t, "Application/JSON", getOffer([]byte("application/json"), acceptsOfferType, "Application/JSON"))
+	require.Equal(t, "text/plain;a=1", getOffer([]byte("Text/Plain;a=1"), acceptsOfferType, "text/plain;a=1"))
+
 	// Priority
 	require.Equal(t, "text/plain", getOffer([]byte("text/plain"), acceptsOfferType, "text/plain", "text/plain;a=1"))
 	require.Equal(t, "text/plain;a=1", getOffer([]byte("text/plain"), acceptsOfferType, "text/plain;a=1", "", "text/plain"))

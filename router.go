@@ -232,19 +232,15 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	if !ok {
 		tree = app.treeStack[methodInt][0]
 	}
-	lenr := len(tree) - 1
-
-	indexRoute := c.indexRoute
+	indexRoute := max(c.indexRoute+1, 0)
 	// Hoist loop invariants: route.match takes &c.values, so these would reload each iteration.
 	firstMatchIndex := c.firstMatchIndex
 	skipNonUse := c.shouldSkipNonUseRoutes
 	skipHasParamUse := app.skip.hasParamUse
 
-	// Loop over the route stack starting from previous index
-	for indexRoute < lenr {
-		// Increment route index
-		indexRoute++
-
+	// Loop over the route stack starting from previous index;
+	// the clamp above plus the len(tree) guard keep tree[indexRoute] bounds-check free
+	for ; indexRoute < len(tree); indexRoute++ {
 		// Get *Route
 		route := tree[indexRoute]
 
@@ -365,9 +361,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	if !ok {
 		tree = app.treeStack[methodInt][0]
 	}
-	lenr := len(tree) - 1
-
-	indexRoute := c.getIndexRoute()
+	indexRoute := max(c.getIndexRoute()+1, 0)
 	// Hoist loop-invariant accessors; nothing changes mid-loop (Next()/RestartRouting re-enter with fresh reads).
 	detectionPath := c.getDetectionPath()
 	path := c.Path()
@@ -376,11 +370,9 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	skipNonUse := c.getSkipNonUseRoutes()
 	skipHasParamUse := app.skip.hasParamUse
 
-	// Loop over the route stack starting from previous index
-	for indexRoute < lenr {
-		// Increment route index
-		indexRoute++
-
+	// Loop over the route stack starting from previous index;
+	// the clamp above plus the len(tree) guard keep tree[indexRoute] bounds-check free
+	for ; indexRoute < len(tree); indexRoute++ {
 		// Get *Route
 		route := tree[indexRoute]
 
