@@ -56,6 +56,7 @@ const (
 //go:generate ifacemaker --file ctx.go --file req.go --file res.go --struct DefaultCtx --iface Ctx --pkg fiber --promoted --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
 	handlerCtx             CustomCtx            // Active custom context implementation, if any
+	cancelFunc             context.CancelFunc   // Context cancel function
 	DefaultReq                                  // Default request api
 	DefaultRes                                  // Default response api
 	app                    *App                 // Reference to *App
@@ -135,15 +136,33 @@ func (c *DefaultCtx) Context() context.Context {
 	if c.fasthttp == nil {
 		return context.Background()
 	}
-	if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
-		return ctx
+
+	ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context)
+	if !ok || ctx == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(context.Background())
+		c.cancelFunc = cancel
+		c.SetContext(ctx)
 	}
-	ctx := context.Background()
-	c.SetContext(ctx)
+
+	if c.cancelFunc != nil && c.fasthttp.Conn() != nil {
+		fastHTTPDone := c.fasthttp.Done()
+		reqCtx := ctx
+		cancel := c.cancelFunc
+		c.cancelFunc = nil
+
+		go func() {
+			select {
+			case <-fastHTTPDone:
+				cancel()
+			case <-reqCtx.Done():
+			}
+		}()
+	}
+
 	return ctx
 }
 
-// SetContext sets a context implementation by user.
 func (c *DefaultCtx) SetContext(ctx context.Context) {
 	if c.fasthttp == nil {
 		return
@@ -680,6 +699,10 @@ func (c *DefaultCtx) configDependentPaths() {
 // Reset is a method to reset context fields by given request when to use server handlers.
 func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Reset route and handler index
+	if c.cancelFunc != nil {
+		c.cancelFunc()
+		c.cancelFunc = nil
+	}
 	c.indexRoute = -1
 	c.indexHandler = 0
 	// Reset matched flag
@@ -691,6 +714,13 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.methodInt = c.app.methodInt(utils.UnsafeString(fctx.Request.Header.Method()))
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
+	if fctx != nil {
+		reqCtx, cancel := context.WithCancel(context.Background())
+		c.cancelFunc = cancel
+
+		c.fasthttp.SetUserValue(userContextKey, reqCtx)
+		c.isUserContextSet = true
+	}
 	// reset base uri
 	c.baseURI = ""
 	// Prettify path
@@ -702,6 +732,10 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 // release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
+	if c.cancelFunc != nil {
+		c.cancelFunc()
+		c.cancelFunc = nil
+	}
 	if c.isUserContextSet {
 		if c.fasthttp != nil {
 			c.fasthttp.SetUserValue(userContextKey, nil)
