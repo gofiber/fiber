@@ -1374,6 +1374,8 @@ app.Post("/", func(c fiber.Ctx) error {
 Returns a string corresponding to the HTTP method of the request: `GET`, `POST`, `PUT`, and so on.
 Optionally, you can override the method by passing a string.
 
+Method tokens are case-sensitive (RFC 9110): the override is first matched exactly against the methods registered in [`Config.RequestMethods`](./fiber.md#requestmethods) (so mixed-case custom methods work), and only falls back to the uppercase form as a convenience for the standard methods (e.g. `"get"` → `GET`). An unregistered override is ignored.
+
 ```go title="Signature"
 func (c fiber.Ctx) Method(override ...string) string
 ```
@@ -1725,6 +1727,10 @@ still count toward `Config.MaxRanges`.
 A range with a non-numeric bound or a last position smaller than the first
 position invalidates the whole header and `ErrRangeMalformed` (carrying a
 **400 Bad Request** status) is returned, per RFC 9110.
+A grammatically valid range unit other than `bytes` (e.g. `pages=1-3`) returns
+`ErrRangeUnsupported`; RFC 9110 requires servers to **ignore** such a Range
+header, so treat this error as "serve the full representation", not as a
+failure.
 If the requested ranges are valid but none of them are satisfiable, the method
 automatically sets the HTTP status code to **416 Range Not Satisfiable** and
 populates the `Content-Range` header with the current representation size.
@@ -1970,6 +1976,8 @@ Appends the specified **value** to the HTTP response header field.
 :::caution
 If the header is **not** already set, it creates the header with the specified value.
 :::
+
+Empty values are skipped, since a sender must not generate empty list elements (RFC 9110).
 
 ```go title="Signature"
 func (c fiber.Ctx) Append(field string, values ...string)

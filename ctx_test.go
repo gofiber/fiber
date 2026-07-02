@@ -213,6 +213,25 @@ func Test_Ctx_Charset(t *testing.T) {
 			contentType: "text/plain; chArSet=Shift_JIS",
 			expected:    "Shift_JIS",
 		},
+		{
+			// RFC 9110 §5.6.6: a ";" inside a quoted parameter value is not
+			// a parameter delimiter.
+			name:        "quoted_value_with_semicolon_before_charset",
+			contentType: `text/plain; title="x;charset=bad"; charset=utf-8`,
+			expected:    "utf-8",
+		},
+		{
+			// RFC 9110 §5.6.4: quoted-pairs must be replaced with the
+			// escaped octet.
+			name:        "quoted_pair_in_charset_value",
+			contentType: `text/plain; charset="utf\-8"`,
+			expected:    "utf-8",
+		},
+		{
+			name:        "quoted_value_with_escaped_quote_before_charset",
+			contentType: `text/plain; title="a\";charset=bad"; charset=utf-8`,
+			expected:    "utf-8",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -739,11 +758,16 @@ func Test_Ctx_Append(t *testing.T) {
 	c.Append("X4-Test", "XHello")
 	// without append value
 	c.Append("X-Custom-Header")
+	// empty values are skipped: a sender must not generate empty list
+	// elements (RFC 9110 §5.6.1.2)
+	c.Append("X5-Test", "a", "", "b")
+	c.Append("X5-Test", "")
 
 	require.Equal(t, "Hello, World", string(c.Response().Header.Peek("X-Test")))
 	require.Equal(t, "World, XHello, Hello", string(c.Response().Header.Peek("X2-Test")))
 	require.Equal(t, "XHello, World, Hello", string(c.Response().Header.Peek("X3-Test")))
 	require.Equal(t, "XHello, Hello, HelloZ, YHello", string(c.Response().Header.Peek("X4-Test")))
+	require.Equal(t, "a, b", string(c.Response().Header.Peek("X5-Test")))
 	require.Empty(t, string(c.Response().Header.Peek("x-custom-header")))
 }
 
@@ -774,20 +798,27 @@ func Test_Ctx_Attachment(t *testing.T) {
 	c.Attachment("./static/img/logo.png")
 	require.Equal(t, `attachment; filename="logo.png"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
-	// filename with spaces
+	// filename with spaces stays literal inside the quoted-string
+	// (RFC 9110 §5.6.4 / RFC 6266 — no URL encoding in the filename param)
 	c.Attachment("report 2024.txt")
-	require.Equal(t, `attachment; filename="report+2024.txt"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(t, `attachment; filename="report 2024.txt"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 	// filename with nested path
 	c.Attachment("../docs/archive.tar.gz")
 	require.Equal(t, `attachment; filename="archive.tar.gz"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
-	// check quoting
+	// check quoting: controls are stripped, quotes are backslash-escaped
 	c.Attachment("another document.pdf\"\r\nBla: \"fasel")
-	require.Equal(t, `attachment; filename="another+document.pdf%22Bla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(t, `attachment; filename="another document.pdf\"Bla: \"fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 
 	c.Attachment("файл.txt")
 	header := string(c.Response().Header.Peek(HeaderContentDisposition))
 	require.Contains(t, header, `filename="файл.txt"`)
 	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
+
+	// RFC 8187 §3.2: '=', '@' (and ':') are not attr-chars and must be
+	// pct-encoded in the filename* ext-value.
+	c.Attachment("ü=final@2x.png")
+	header = string(c.Response().Header.Peek(HeaderContentDisposition))
+	require.Contains(t, header, `filename*=UTF-8''%C3%BC%3Dfinal%402x.png`)
 }
 
 // go test -run Test_Ctx_Attachment_SanitizesFilenameControls
@@ -856,7 +887,7 @@ func Benchmark_Ctx_Attachment(b *testing.B) {
 		// example with quote params
 		c.Attachment("another document.pdf\"\r\nBla: \"fasel")
 	}
-	require.Equal(b, `attachment; filename="another+document.pdf%22Bla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(b, `attachment; filename="another document.pdf\"Bla: \"fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 }
 
 // go test -run Test_Ctx_BaseURL
@@ -4636,8 +4667,32 @@ func Test_Ctx_Method(t *testing.T) {
 	c.Method(MethodPost)
 	require.Equal(t, MethodPost, c.Method())
 
+	// Lowercase input still maps to the registered uppercase method.
+	c.Method("get")
+	require.Equal(t, MethodGet, c.Method())
+
 	c.Method("MethodInvalid")
-	require.Equal(t, MethodPost, c.Method())
+	require.Equal(t, MethodGet, c.Method())
+}
+
+// Test_Ctx_Method_CustomCaseSensitive verifies that a mixed-case custom
+// method registered via Config.RequestMethods can be set as an override:
+// method tokens are case-sensitive (RFC 9110 §9.1), so the override must not
+// be unconditionally uppercased.
+func Test_Ctx_Method_CustomCaseSensitive(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		RequestMethods: append(append([]string{}, DefaultMethods...), "Purge"),
+	})
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	c := app.AcquireCtx(fctx)
+
+	require.Equal(t, "Purge", c.Method("Purge"))
+	require.Equal(t, "Purge", c.Method())
+
+	// The uppercase convenience fallback still applies for standard methods.
+	require.Equal(t, MethodPost, c.Method("post"))
 }
 
 // go test -run Test_Ctx_ClientHelloInfo
@@ -5301,6 +5356,13 @@ func Test_Ctx_Range(t *testing.T) {
 	// ranges may leak out alongside the error.
 	testRange("bytes=0-5,zzz-10")
 	testRange("seconds=0-1")
+
+	// A grammatically valid but unknown range unit is not malformed: it must
+	// be signaled distinctly so the caller can ignore the header, as
+	// RFC 9110 §14.2 requires.
+	c.Request().Header.Set(HeaderRange, "pages=1-3")
+	_, err := c.Range(1000)
+	require.ErrorIs(t, err, ErrRangeUnsupported)
 }
 
 // Test_Ctx_Range_MalformedStatusCode verifies that a syntactically invalid
@@ -6445,7 +6507,7 @@ func Test_Ctx_Download(t *testing.T) {
 	expect, err := io.ReadAll(f)
 	require.NoError(t, err)
 	require.Equal(t, expect, c.Response().Body())
-	require.Equal(t, `attachment; filename="Awesome+File%21"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(t, `attachment; filename="Awesome File!"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 
 	require.NoError(t, c.Res().Download("ctx.go"))
 	require.Equal(t, `attachment; filename="ctx.go"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
@@ -7959,6 +8021,25 @@ func Test_Ctx_IsWebSocket(t *testing.T) {
 	non.Request().Header.Set(HeaderConnection, "not-an-upgrade")
 	non.Request().Header.Set(HeaderUpgrade, "websocket")
 	require.False(t, non.IsWebSocket())
+
+	// Upgrade is a comma-separated protocol list (RFC 9110 §7.8): websocket
+	// must be found among other protocols and with a "/version" suffix.
+	list := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.NotNil(t, list)
+	t.Cleanup(func() { app.ReleaseCtx(list) })
+	list.Request().Header.Set(HeaderConnection, "Upgrade")
+	list.Request().Header.Set(HeaderUpgrade, "h2c, websocket/13")
+	require.True(t, list.IsWebSocket())
+
+	// Repeated Connection field lines are equivalent to one combined list
+	// (RFC 9110 §5.2).
+	multi := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.NotNil(t, multi)
+	t.Cleanup(func() { app.ReleaseCtx(multi) })
+	multi.Request().Header.Add(HeaderConnection, "keep-alive")
+	multi.Request().Header.Add(HeaderConnection, "Upgrade")
+	multi.Request().Header.Set(HeaderUpgrade, "websocket")
+	require.True(t, multi.IsWebSocket())
 }
 
 func Test_Ctx_IsPreflight(t *testing.T) {

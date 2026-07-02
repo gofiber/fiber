@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"net/url"
 	"os"
 	pathpkg "path"
 	"path/filepath"
@@ -137,6 +136,8 @@ func (r *DefaultRes) App() *App {
 
 // Append the specified value to the HTTP response header field.
 // If the header is not already set, it creates the header with the specified value.
+// Empty values are skipped: a sender must not generate empty list elements
+// (RFC 9110 Section 5.6.1.2).
 func (r *DefaultRes) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
@@ -144,6 +145,9 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	h := r.c.app.toString(r.c.fasthttp.Response.Header.Peek(field))
 	originalH := h
 	for _, value := range values {
+		if value == "" {
+			continue
+		}
 		if h == "" {
 			h = value
 		} else if !headerContainsValue(h, value) {
@@ -203,6 +207,51 @@ func fallbackFilenameIfInvalid(filename string) string {
 	return filename
 }
 
+// isExtValueAttrChar reports whether c is an attr-char per RFC 8187 §3.2:
+// ALPHA / DIGIT / "!" / "#" / "$" / "&" / "+" / "-" / "." / "^" / "_" /
+// "`" / "|" / "~". Every other byte of an ext-value must be pct-encoded.
+func isExtValueAttrChar(c byte) bool {
+	switch {
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		return true
+	}
+	switch c {
+	case '!', '#', '$', '&', '+', '-', '.', '^', '_', '`', '|', '~':
+		return true
+	default:
+		return false
+	}
+}
+
+// encodeExtValue percent-encodes s as the value-chars of an RFC 8187
+// ext-value. URL path/query escaping is not sufficient here: it leaves
+// bytes such as ':', '=', and '@' bare, which the ext-value grammar forbids.
+func encodeExtValue(s string) string {
+	const hex = "0123456789ABCDEF"
+	b := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if isExtValueAttrChar(c) {
+			b = append(b, c)
+		} else {
+			b = append(b, '%', hex[c>>4], hex[c&0x0F])
+		}
+	}
+	return string(b)
+}
+
+// contentDispositionAttachment builds an RFC 6266 Content-Disposition value
+// for a sanitized filename: the filename parameter is a quoted-string with
+// RFC 9110 §5.6.4 escaping, and non-ASCII names additionally carry an
+// RFC 8187 filename* ext-value for interoperability.
+func contentDispositionAttachment(app *App, fname string) string {
+	disp := `attachment; filename="` + app.quoteRawString(fname) + `"`
+	if !app.isASCII(fname) {
+		disp += `; filename*=UTF-8''` + encodeExtValue(fname)
+	}
+	return disp
+}
+
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
 func (r *DefaultRes) Attachment(filename ...string) {
 	if len(filename) > 0 {
@@ -210,18 +259,7 @@ func (r *DefaultRes) Attachment(filename ...string) {
 		fname = sanitizeFilename(fname)
 		fname = fallbackFilenameIfInvalid(fname)
 		r.Type(filepath.Ext(fname))
-		app := r.c.app
-		var quoted string
-		if app.isASCII(fname) {
-			quoted = app.quoteString(fname)
-		} else {
-			quoted = app.quoteRawString(fname)
-		}
-		disp := `attachment; filename="` + quoted + `"`
-		if !app.isASCII(fname) {
-			disp += `; filename*=UTF-8''` + url.PathEscape(fname)
-		}
-		r.setCanonical(HeaderContentDisposition, disp)
+		r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(r.c.app, fname))
 		return
 	}
 	r.setCanonical(HeaderContentDisposition, "attachment")
@@ -347,18 +385,7 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 	}
 	fname = sanitizeFilename(fname)
 	fname = fallbackFilenameIfInvalid(fname)
-	app := r.c.app
-	var quoted string
-	if app.isASCII(fname) {
-		quoted = app.quoteString(fname)
-	} else {
-		quoted = app.quoteRawString(fname)
-	}
-	disp := `attachment; filename="` + quoted + `"`
-	if !app.isASCII(fname) {
-		disp += `; filename*=UTF-8''` + url.PathEscape(fname)
-	}
-	r.setCanonical(HeaderContentDisposition, disp)
+	r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(r.c.app, fname))
 	return r.SendFile(file)
 }
 

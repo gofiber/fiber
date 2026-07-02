@@ -34,7 +34,13 @@ var (
 	// ErrRangeMalformed is returned for a syntactically invalid Range header,
 	// which RFC 9110 Section 14.2 allows a server to reject; it carries a
 	// 400 Bad Request status so propagating it does not surface as a 500.
-	ErrRangeMalformed     = NewError(StatusBadRequest, "range: malformed range header string")
+	ErrRangeMalformed = NewError(StatusBadRequest, "range: malformed range header string")
+	// ErrRangeUnsupported is returned for a Range header whose range unit is
+	// not "bytes". RFC 9110 Section 14.2 requires an origin server to IGNORE
+	// a Range header field with a range unit it does not understand, so
+	// callers receiving this error should serve the full representation
+	// instead of returning an error response.
+	ErrRangeUnsupported   = errors.New("range: unsupported range unit")
 	ErrRangeTooLarge      = NewError(StatusRequestedRangeNotSatisfiable, "range: too many ranges")
 	ErrRangeUnsatisfiable = errors.New("range: unsatisfiable range")
 	// errRangeBound: absent range bound (the empty side of a suffix or

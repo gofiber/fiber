@@ -260,44 +260,54 @@ func (c *DefaultCtx) MediaType() string {
 // Charset returns the charset parameter from the Content-Type header.
 func (c *DefaultCtx) Charset() string {
 	contentType := c.fasthttp.Request.Header.ContentType()
-	if len(contentType) == 0 {
-		return ""
-	}
-	_, after, ok := bytes.Cut(contentType, []byte{';'})
+	_, params, ok := bytes.Cut(contentType, []byte{';'})
 	if !ok {
 		return ""
 	}
-	params := after
 	for len(params) > 0 {
-		params = utils.TrimSpace(params)
-		if len(params) == 0 {
-			return ""
-		}
+		// Slice off the next parameter at the next ";" that sits outside a
+		// quoted-string: parameter values may be quoted and contain ";"
+		// (RFC 9110 Section 5.6.6).
 		param := params
-		if idx := bytes.IndexByte(params, ';'); idx != -1 {
-			param = params[:idx]
-			params = params[idx+1:]
+		end := -1
+		inQuotes := false
+		escaped := false
+	scan:
+		for i := 0; i < len(params); i++ {
+			switch {
+			case escaped:
+				escaped = false
+			case params[i] == '\\' && inQuotes:
+				escaped = true
+			case params[i] == '"':
+				inQuotes = !inQuotes
+			case params[i] == ';' && !inQuotes:
+				end = i
+				break scan
+			}
+		}
+		if end >= 0 {
+			param = params[:end]
+			params = params[end+1:]
 		} else {
 			params = nil
 		}
 
-		param = utils.TrimSpace(param)
-		if len(param) == 0 {
+		name, value, ok := bytes.Cut(param, []byte{'='})
+		if !ok || !bytes.EqualFold(utils.TrimSpace(name), []byte("charset")) {
 			continue
 		}
-		before, after, ok := bytes.Cut(param, []byte{'='})
-		if !ok {
-			continue
+		v := utils.TrimSpace(value)
+		if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+			// Quoted-pairs inside a quoted-string must be replaced with the
+			// escaped octet (RFC 9110 Section 5.6.4).
+			unescaped, err := unescapeHeaderValue(v[1 : len(v)-1])
+			if err != nil {
+				return ""
+			}
+			v = unescaped
 		}
-		name := utils.TrimSpace(before)
-		if !bytes.EqualFold(name, []byte("charset")) {
-			continue
-		}
-		value := utils.TrimSpace(after)
-		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-			value = value[1 : len(value)-1]
-		}
-		return c.app.toString(value)
+		return c.app.toString(v)
 	}
 	return ""
 }
@@ -859,10 +869,20 @@ func (r *DefaultReq) Method(override ...string) string {
 		return app.method(r.c.methodInt)
 	}
 
-	method := utilsstrings.ToUpper(override[0])
+	// Method tokens are case-sensitive (RFC 9110 Section 9.1), so try the
+	// override exactly as given first — this is what keeps mixed-case custom
+	// methods registered via Config.RequestMethods working.
+	method := override[0]
 	methodInt := app.methodInt(method)
 	if methodInt == -1 {
-		// Provided override does not valid HTTP method, no override, return current method
+		// Fall back to the conventional uppercase form as a convenience for
+		// the standard methods (e.g. "get" -> "GET").
+		method = utilsstrings.ToUpper(method)
+		methodInt = app.methodInt(method)
+	}
+	if methodInt == -1 {
+		// Provided override is not a registered HTTP method; no override,
+		// return current method
 		return app.method(r.c.methodInt)
 	}
 	r.c.methodInt = methodInt
@@ -1088,7 +1108,10 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	}
 	rangeData.Type = utilsstrings.ToLower(utils.TrimSpace(before))
 	if rangeData.Type != "bytes" {
-		return Range{}, ErrRangeMalformed
+		// A range unit the server does not understand is not malformed: it
+		// must be ignored (RFC 9110 Section 14.2), which only the caller can
+		// do, so signal it distinctly.
+		return Range{}, ErrRangeUnsupported
 	}
 	ranges = utils.TrimSpace(after)
 

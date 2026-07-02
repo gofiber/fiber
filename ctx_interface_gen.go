@@ -412,6 +412,8 @@ type Ctx interface {
 	getBody() []byte
 	// Append the specified value to the HTTP response header field.
 	// If the header is not already set, it creates the header with the specified value.
+	// Empty values are skipped: a sender must not generate empty list elements
+	// (RFC 9110 Section 5.6.1.2).
 	Append(field string, values ...string)
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
 	Attachment(filename ...string)

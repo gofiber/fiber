@@ -495,18 +495,35 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 
 // IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
 func (c *DefaultCtx) IsWebSocket() bool {
-	conn := c.fasthttp.Request.Header.Peek(HeaderConnection)
-	var isUpgrade bool
-	for v := range strings.SplitSeq(utils.UnsafeString(conn), ",") {
-		if utils.EqualFold(utils.TrimSpace(v), "upgrade") {
-			isUpgrade = true
-			break
-		}
-	}
-	if !isUpgrade {
+	// Repeated field lines are equivalent to one combined comma-separated
+	// list (RFC 9110 Section 5.2), so inspect every Connection and Upgrade
+	// field line, not just the first.
+	if !headerListContainsToken(c.fasthttp.Request.Header.PeekAll(HeaderConnection), "upgrade") {
 		return false
 	}
-	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), websocketBytes)
+	// Upgrade is a list of protocols, each optionally carrying a "/version"
+	// suffix (RFC 9110 Section 7.8), e.g. "Upgrade: websocket, h2c".
+	return headerListContainsToken(c.fasthttp.Request.Header.PeekAll(HeaderUpgrade), "websocket")
+}
+
+// headerListContainsToken reports whether any comma-separated element across
+// the given field lines equals token case-insensitively. An optional
+// "/version" suffix (Upgrade protocol syntax, RFC 9110 Section 7.8) is
+// ignored when comparing; valid Connection members never contain "/", so
+// this is safe for both headers.
+func headerListContainsToken(lines [][]byte, token string) bool {
+	for _, line := range lines {
+		for v := range strings.SplitSeq(utils.UnsafeString(line), ",") {
+			element := utils.TrimSpace(v)
+			if i := strings.IndexByte(element, '/'); i >= 0 {
+				element = element[:i]
+			}
+			if utils.EqualFold(element, token) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // IsPreflight returns true if the request is a CORS preflight.
@@ -633,12 +650,8 @@ func (c *DefaultCtx) Value(key any) any {
 	return c.fasthttp.UserValue(key)
 }
 
-var (
-	// xmlHTTPRequestBytes is precomputed for XHR detection
-	xmlHTTPRequestBytes = []byte("xmlhttprequest")
-	// websocketBytes is precomputed for WebSocket upgrade detection
-	websocketBytes = []byte("websocket")
-)
+// xmlHTTPRequestBytes is precomputed for XHR detection
+var xmlHTTPRequestBytes = []byte("xmlhttprequest")
 
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
