@@ -735,3 +735,43 @@ func Test_SchemaOf_TypedEnumValues(t *testing.T) {
 	require.Equal(t, []any{true, false}, requireProp(t, props, "active")["enum"])
 	require.Equal(t, []any{"on", "off"}, requireProp(t, props, "mode")["enum"])
 }
+
+type customMarshaler struct {
+	Hidden int `json:"hidden"`
+}
+
+func (customMarshaler) MarshalJSON() ([]byte, error) { return []byte(`"custom"`), nil }
+
+type textID struct {
+	Raw int `json:"raw"`
+}
+
+func (textID) MarshalText() ([]byte, error) { return []byte("id"), nil }
+
+// Test_SchemaOf_CustomMarshalers verifies types with custom JSON or text
+// marshaling are not documented via field reflection, since encoding/json
+// bypasses the fields entirely.
+func Test_SchemaOf_CustomMarshalers(t *testing.T) {
+	t.Parallel()
+
+	// A json.Marshaler's output is unknowable: accept any value.
+	require.Empty(t, SchemaOf(customMarshaler{}))
+
+	// A TextMarshaler always produces a string.
+	require.Equal(t, map[string]any{schemaKeyType: schemaTypeString}, SchemaOf(textID{}))
+
+	// A struct embedding time.Time promotes its MarshalJSON, so the whole
+	// struct marshals as a date-time string, not an object.
+	type Payload struct {
+		time.Time
+		N int `json:"n"`
+	}
+	require.Empty(t, SchemaOf(Payload{}))
+
+	// The same applies when such a struct appears as a field.
+	type Wrapper struct {
+		Stamp customMarshaler `json:"stamp"`
+	}
+	props := requireProps(t, SchemaOf(Wrapper{}))
+	require.Empty(t, requireProp(t, props, "stamp"))
+}
