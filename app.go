@@ -110,6 +110,9 @@ type App struct {
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[int][]*Route
+	// treeBucketMethods maps treeHash -> bitmask of methods with routes in that bucket
+	// Used for fast 405 detection: skip scanning methods that have no routes for this prefix
+	treeBucketMethods map[int]int
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -196,6 +199,14 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: false
 	DisableHeadAutoRegister bool `json:"disable_head_auto_register"`
+
+	// When set to true, requests to paths without a registered endpoint route
+	// return 404 immediately, skipping the middleware chain entirely.
+	// This is useful for reducing unnecessary processing of requests
+	// from bots, scanners, or mistyped URLs.
+	//
+	// Default: false
+	SkipUnmatchedRoutes bool `json:"skip_unmatched_routes"`
 
 	// When set to true, this relinquishes the 0-allocation promise in certain
 	// cases in order to access the handler values (e.g. request bodies) in an

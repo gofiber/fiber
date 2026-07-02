@@ -244,6 +244,13 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			continue
 		}
 
+		// Endpoints before the lookahead's match were already ruled out, so
+		// skip re-matching them here (SkipUnmatchedRoutes). firstMatchIndex is
+		// -1 when the SkipUnmatchedRoutes is false.
+		if !route.use && indexRoute < c.firstMatchIndex {
+			continue
+		}
+
 		// Check if it matches the request path
 		if !route.match(detectionPath, path, &c.values) {
 			continue
@@ -345,6 +352,13 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			continue
 		}
 
+		// Endpoints before the lookahead's match were already ruled out, so
+		// skip re-matching them here (SkipUnmatchedRoutes). firstMatchIndex is
+		// -1 when the SkipUnmatchedRoutes is false.
+		if !route.use && indexRoute < c.getFirstMatchIndex() {
+			continue
+		}
+
 		// Check if it matches the request path
 		if !route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
 			continue
@@ -424,6 +438,81 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	return false, ErrNotFound
 }
 
+// routeLookaheadResult holds the result of a route lookahead scan.
+type routeLookaheadResult struct {
+	// allowedMethodsMask is a bitmask where bit i is set if method i matches this path.
+	// Used for 405 responses. Zero means no methods match (404 case).
+	allowedMethodsMask int
+	// matchIndex is the tree-stack index of the first matching endpoint route
+	// for the requested method, or -1 if none matches.
+	matchIndex int
+}
+
+// routeLookahead scans the route tree to determine if an endpoint route matches
+// the given method and path. If no match is found for the requested method, it
+// also scans other method trees to detect cross-method matches (405 case).
+//
+// The returned matchIndex is relative to the same tree bucket that next/nextCustom
+// iterate, so it can be handed to them to skip re-matching the endpoints this
+// lookahead has already ruled out (see SkipUnmatchedRoutes).
+func (app *App) routeLookahead(methodInt, treeHash int, detectionPath, path string, params *[maxParams]string) routeLookaheadResult {
+	tree, ok := app.treeStack[methodInt][treeHash]
+	if !ok {
+		tree = app.treeStack[methodInt][0]
+	}
+
+	for i, route := range tree {
+		if route.use || route.mount {
+			continue
+		}
+		if route.match(detectionPath, path, params) {
+			return routeLookaheadResult{matchIndex: i}
+		}
+	}
+
+	// No match for requested method - scan other methods for 405 detection
+	// Use treeBucketMethods to skip methods that have no routes in this bucket
+	bucketMethods := app.treeBucketMethods[treeHash] | app.treeBucketMethods[0]
+	if bucketMethods == 0 {
+		// No methods have routes in this bucket at all - definite 404
+		return routeLookaheadResult{matchIndex: -1, allowedMethodsMask: 0}
+	}
+
+	// Exclude the method we already checked
+	bucketMethods &^= 1 << methodInt
+	if bucketMethods == 0 {
+		// Only our method had routes in this bucket, and we didn't match - 404
+		return routeLookaheadResult{matchIndex: -1, allowedMethodsMask: 0}
+	}
+
+	var allowedMask int
+	methodCount := len(app.config.RequestMethods)
+
+	for i := range methodCount {
+		// Skip methods that have no routes in this bucket
+		if bucketMethods&(1<<i) == 0 {
+			continue
+		}
+
+		tree, ok := app.treeStack[i][treeHash]
+		if !ok {
+			tree = app.treeStack[i][0]
+		}
+
+		for _, route := range tree {
+			if route.use || route.mount {
+				continue
+			}
+			if route.match(detectionPath, path, params) {
+				allowedMask |= 1 << i
+				break // Found a match for this method, check next method
+			}
+		}
+	}
+
+	return routeLookaheadResult{matchIndex: -1, allowedMethodsMask: allowedMask}
+}
+
 func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	ctx, ok := app.acquireDefaultCtx(rctx)
 	if !ok {
@@ -436,6 +525,36 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	if ctx.methodInt == -1 {
 		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
+	}
+
+	// Skip unmatched routes before middleware chain
+	if app.config.SkipUnmatchedRoutes {
+		result := app.routeLookahead(ctx.methodInt, ctx.treePathHash,
+			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path), &ctx.values)
+		if result.matchIndex == -1 {
+			var err error
+			if result.allowedMethodsMask != 0 {
+				// Path exists for other methods - 405 Method Not Allowed
+				methods := app.config.RequestMethods
+				for i := range methods {
+					if result.allowedMethodsMask&(1<<i) != 0 {
+						ctx.Append(HeaderAllow, methods[i])
+					}
+				}
+				err = ErrMethodNotAllowed
+			} else {
+				// Path doesn't exist at all - 404 Not Found
+				err = ErrNotFound
+			}
+			// Route through error handler for consistent error rendering
+			if catch := app.ErrorHandler(ctx, err); catch != nil {
+				_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
+			}
+			return
+		}
+		// Hand the match position to next so it skips re-checking the
+		// endpoints already ruled out by the lookahead above.
+		ctx.firstMatchIndex = result.matchIndex
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie).
@@ -459,6 +578,37 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	if ctx.getMethodInt() == -1 {
 		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
+	}
+
+	// Skip unmatched routes before middleware chain
+	if app.config.SkipUnmatchedRoutes {
+		result := app.routeLookahead(ctx.getMethodInt(), ctx.getTreePathHash(),
+			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
+		if result.matchIndex == -1 {
+			// No match for requested method - determine 404 vs 405
+			var err error
+			if result.allowedMethodsMask != 0 {
+				// Path exists for other methods - 405 Method Not Allowed
+				methods := app.config.RequestMethods
+				for i := range methods {
+					if result.allowedMethodsMask&(1<<i) != 0 {
+						ctx.Append(HeaderAllow, methods[i])
+					}
+				}
+				err = ErrMethodNotAllowed
+			} else {
+				// Path doesn't exist at all - 404 Not Found
+				err = ErrNotFound
+			}
+			// Route through error handler for consistent error rendering
+			if catch := app.ErrorHandler(ctx, err); catch != nil {
+				_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
+			}
+			return
+		}
+		// Hand the match position to nextCustom so it skips re-checking the
+		// endpoints already ruled out by the lookahead above.
+		ctx.setFirstMatchIndex(result.matchIndex)
 	}
 
 	// Optional: check flash messages (hot path, see hasFlashCookie).
@@ -832,6 +982,11 @@ func (app *App) buildTree() *App {
 		return app
 	}
 
+	// Reset treeBucketMethods for rebuild (only when SkipUnmatchedRoutes is enabled)
+	if app.config.SkipUnmatchedRoutes {
+		app.treeBucketMethods = make(map[int]int)
+	}
+
 	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
 	for method := range app.config.RequestMethods {
 		routes := app.stack[method]
@@ -876,6 +1031,21 @@ func (app *App) buildTree() *App {
 		}
 
 		app.treeStack[method] = tsMap
+
+		// Update treeBucketMethods: mark which buckets this method has routes in
+		// Only needed when SkipUnmatchedRoutes is enabled
+		if app.config.SkipUnmatchedRoutes {
+			methodBit := 1 << method
+			for bucket, routes := range tsMap {
+				// Only count buckets with actual endpoint routes (not just middleware)
+				for _, route := range routes {
+					if !route.use && !route.mount {
+						app.treeBucketMethods[bucket] |= methodBit
+						break
+					}
+				}
+			}
+		}
 	}
 
 	// reset the flag and return
