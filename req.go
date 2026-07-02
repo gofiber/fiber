@@ -921,19 +921,21 @@ func (r *DefaultReq) Method(override ...string) string {
 }
 
 // currentMethod resolves the context's method, falling back to the raw
-// request header value when the method is not registered in RequestMethods
-// (methodInt < 0), so unregistered methods are reported instead of panicking.
+// request header value when the method is not registered in RequestMethods,
+// so unregistered methods are reported instead of panicking.
 // It is a package-level function (not a method) to stay off the generated
 // Req/Ctx interfaces.
 func currentMethod(c *DefaultCtx) string {
-	if c.methodInt < 0 {
-		// Copy the raw header bytes: every other return path yields a stable
-		// string from RequestMethods, so callers may retain the result beyond
-		// the handler; an unsafe alias into the request buffer would be
-		// silently corrupted on connection reuse.
-		return string(c.fasthttp.Request.Header.Method())
+	// app.method owns the definition of "unregistered" (it bounds-checks
+	// methodInt and returns "" for anything out of range).
+	if m := c.app.method(c.methodInt); m != "" {
+		return m
 	}
-	return c.app.method(c.methodInt)
+	// Copy the raw header bytes: every other return path yields a stable
+	// string from RequestMethods, so callers may retain the result beyond
+	// the handler; an unsafe alias into the request buffer would be
+	// silently corrupted on connection reuse.
+	return string(c.fasthttp.Request.Header.Method())
 }
 
 // MultipartForm parse form entries from binary.

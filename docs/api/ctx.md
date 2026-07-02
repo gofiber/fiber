@@ -2648,9 +2648,10 @@ sent — RFC 9110 forbids sending 1xx responses to HTTP/1.0 clients — but the
 `Link` headers are still included in the final response.
 
 :::caution
-`SendEarlyHints` requires the app to be served by Fiber's own server. When the
-app is mounted into `net/http` via the `adaptor` middleware, there is no
-writable connection for interim responses; do not call `SendEarlyHints` there.
+Interim responses need Fiber's own server. When the app is mounted into
+`net/http` via the `adaptor` middleware, there is no client connection for
+interim responses: the `103` is silently skipped and the `Link` headers are
+still delivered on the final response.
 :::
 
 ```go title="Signature"

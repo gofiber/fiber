@@ -563,6 +563,49 @@ func Test_FiberHandler_ProtocolPropagation(t *testing.T) {
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	require.Equal(t, "HTTP/2", rec.Body.String())
+
+	// Same normalization for HTTP/3.
+	req = httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	req.Proto = "HTTP/3.0"
+	req.ProtoMajor = 3
+	req.ProtoMinor = 0
+
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, "HTTP/3", rec.Body.String())
+
+	// A hand-built request with an empty Proto falls back to HTTP/1.1
+	// instead of leaving fasthttp in an inconsistent protocol state.
+	req = httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	req.Proto = ""
+	req.ProtoMajor = 0
+	req.ProtoMinor = 0
+
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, "HTTP/1.1", rec.Body.String())
+}
+
+// Test_FiberHandler_SendEarlyHints verifies that SendEarlyHints through the
+// adaptor does not panic: there is no client connection for interim
+// responses, so the 103 is silently discarded while the Link headers still
+// reach the final response.
+func Test_FiberHandler_SendEarlyHints(t *testing.T) {
+	t.Parallel()
+
+	handler := FiberHandlerFunc(func(c fiber.Ctx) error {
+		if err := c.SendEarlyHints([]string{"<https://cdn.com/style.css>; rel=preload; as=style"}); err != nil {
+			return err
+		}
+		return c.SendString("done")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	rec := httptest.NewRecorder()
+	require.NotPanics(t, func() { handler.ServeHTTP(rec, req) })
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "done", rec.Body.String())
+	require.Equal(t, "<https://cdn.com/style.css>; rel=preload; as=style", rec.Header().Get("Link"))
 }
 
 func Test_FiberHandler_BodyLimit(t *testing.T) {
