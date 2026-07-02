@@ -4,9 +4,28 @@ import (
 	"io"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/logtemplate"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
+
+// writeColored writes value to output wrapped in the given (framework-controlled)
+// prefix/suffix color codes, sanitizing only value. It is used for tags whose
+// payload can echo user-controlled input but is rendered with ANSI colors.
+func writeColored(output Buffer, prefix, value, suffix string) (int, error) {
+	total, err := output.WriteString(prefix)
+	if err != nil {
+		return total, err
+	}
+	n, err := logtemplate.WriteSanitizedString(output, value)
+	total += n
+	if err != nil {
+		return total, err
+	}
+	n, err = output.WriteString(suffix)
+	total += n
+	return total, err
+}
 
 func methodColor(method string, colors *fiber.Colors) string {
 	if colors == nil {
