@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -27,6 +28,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
@@ -113,6 +115,9 @@ type App struct {
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
+	// Monotonic counter identifying each register() call, used to find every
+	// stack entry created by the most recent registration
+	registrationID uint64
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
@@ -920,25 +925,533 @@ func (app *App) Name(name string) Router {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			isMethodValid := route.Method == app.latestRoute.Method || app.latestRoute.use ||
-				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
-
-			if route.Path == app.latestRoute.Path && isMethodValid {
-				route.Name = name
-				if route.group != nil {
-					route.Name = route.group.name + route.Name
-				}
-			}
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Name = name
+		if route.group != nil {
+			route.Name = route.group.name + route.Name
 		}
-	}
+	})
 
 	if err := app.hooks.executeOnNameHooks(app.latestRoute); err != nil {
 		panic(err)
 	}
 
 	return app
+}
+
+// OpenAPI schema literals reused by the route documentation helpers below.
+const (
+	openapiRefKey     = "$ref"
+	openapiTypeString = "string"
+)
+
+// Summary assigns a short summary to the most recently added route.
+func (app *App) Summary(sum string) Router {
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Summary = sum
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// Description assigns a description to the most recently added route.
+func (app *App) Description(desc string) Router {
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Description = desc
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// validateMediaType panics unless typ is a parseable "type/subtype" media type.
+// It returns typ unchanged so callers can validate inline.
+func validateMediaType(typ string) string {
+	if _, _, err := mime.ParseMediaType(typ); err != nil || !strings.Contains(typ, "/") {
+		panic("invalid media type: " + typ)
+	}
+	return typ
+}
+
+// Consumes assigns a request media type to the most recently added route.
+func (app *App) Consumes(typ string) Router {
+	if typ != "" {
+		typ = validateMediaType(utils.TrimSpace(typ))
+	}
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Consumes = typ
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// Produces assigns a response media type to the most recently added route.
+func (app *App) Produces(typ string) Router {
+	if typ != "" {
+		typ = validateMediaType(utils.TrimSpace(typ))
+	}
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Produces = typ
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// RequestBody documents the request payload for the most recently added route.
+func (app *App) RequestBody(description string, required bool, mediaTypes ...string) Router {
+	return app.RequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...)
+}
+
+// RequestBodyWithExample documents the request payload with schema references and examples.
+func (app *App) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	sanitized := sanitizeRequiredMediaTypes(mediaTypes)
+
+	body := &RouteRequestBody{
+		Description: description,
+		Required:    required,
+		MediaTypes:  append([]string(nil), sanitized...),
+		SchemaRef:   schemaRef,
+		Example:     example,
+		Examples:    copyAnyMap(examples),
+	}
+	if schemaRef != "" {
+		body.Schema = map[string]any{openapiRefKey: schemaRef}
+	} else if len(schema) > 0 {
+		body.Schema = copyAnyMap(schema)
+	}
+
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.RequestBody = cloneRouteRequestBody(body)
+		// Only adopt the request body media type as the route's Consumes value
+		// when the user has not set one explicitly via Consumes().
+		if len(sanitized) > 0 && route.Consumes == MIMETextPlain {
+			route.Consumes = sanitized[0]
+		}
+	})
+	app.mutex.Unlock()
+
+	return app
+}
+
+// Parameter documents an input parameter for the most recently added route.
+func (app *App) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+	return app.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
+}
+
+// ParameterWithExample documents an input parameter, including schema references and examples.
+func (app *App) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
+	return app.AddParameter(RouteParameter{
+		Name:        name,
+		In:          in,
+		Required:    required,
+		Schema:      schema,
+		SchemaRef:   schemaRef,
+		Description: description,
+		Example:     example,
+		Examples:    examples,
+	})
+}
+
+// AddParameter documents an input parameter using the full RouteParameter,
+// exposing advanced fields (deprecated, style, explode, allowEmptyValue,
+// allowReserved) in addition to the basics.
+//
+//nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
+func (app *App) AddParameter(param RouteParameter) Router {
+	if utils.TrimSpace(param.Name) == "" {
+		panic("parameter name is required")
+	}
+
+	location := utilsstrings.ToLower(utils.TrimSpace(param.In))
+	switch location {
+	// "querystring" is an OpenAPI 3.2 location that treats the whole query
+	// string as a single value (paired with content rather than schema).
+	case "path", "query", "header", "cookie", "querystring":
+	default:
+		panic("invalid parameter location: " + param.In)
+	}
+	param.In = location
+
+	// Normalize the schema into a fresh map so the caller's map is never
+	// mutated; the per-route copies below keep routes from aliasing each other.
+	switch {
+	case param.SchemaRef != "":
+		param.Schema = map[string]any{openapiRefKey: param.SchemaRef}
+	case location == "querystring":
+		// OpenAPI 3.2 querystring parameters are described via content rather
+		// than schema, so no default schema is injected.
+		param.Schema = copyAnyMap(param.Schema)
+	default:
+		schema := copyAnyMap(param.Schema)
+		if schema == nil {
+			schema = map[string]any{}
+		}
+		if _, ok := schema["type"]; !ok {
+			schema["type"] = openapiTypeString
+		}
+		param.Schema = schema
+	}
+
+	if location == "path" {
+		param.Required = true
+	}
+
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		paramCopy := param
+		paramCopy.Schema = copyAnyMap(param.Schema)
+		paramCopy.Examples = copyAnyMap(param.Examples)
+		if param.Explode != nil {
+			explode := *param.Explode
+			paramCopy.Explode = &explode
+		}
+		route.Parameters = append(route.Parameters, paramCopy)
+	})
+	app.mutex.Unlock()
+
+	return app
+}
+
+// Response documents an HTTP response for the most recently added route.
+func (app *App) Response(status int, description string, mediaTypes ...string) Router {
+	return app.addResponse(status, description, nil, "", nil, nil, mediaTypes...)
+}
+
+// ResponseWithExample documents an HTTP response with schema references and examples.
+func (app *App) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	return app.addResponse(status, description, schema, schemaRef, example, examples, mediaTypes...)
+}
+
+// defaultResponseKey is the OpenAPI key used for the "default" response entry.
+const defaultResponseKey = "default"
+
+// responseKey validates the status code and returns the key of its response
+// entry: the numeric code, or "default" for a status of 0.
+func responseKey(status int) string {
+	if status == 0 {
+		return defaultResponseKey
+	}
+	if status < 100 || status > 599 {
+		panic("invalid status code")
+	}
+	return strconv.Itoa(status)
+}
+
+// defaultResponseDescription returns a human-readable description for a response
+// status code (0 represents the "default" response).
+func defaultResponseDescription(status int) string {
+	if status == 0 {
+		return "Default response"
+	}
+	if text := utils.StatusMessage(status); text != "" {
+		return text
+	}
+	return "Status " + strconv.Itoa(status)
+}
+
+func (app *App) addResponse(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	sanitized := sanitizeMediaTypes(mediaTypes)
+
+	if description == "" {
+		description = defaultResponseDescription(status)
+	}
+
+	key := responseKey(status)
+
+	resp := RouteResponse{Description: description}
+	if len(sanitized) > 0 {
+		resp.MediaTypes = append([]string(nil), sanitized...)
+	}
+	if schemaRef != "" {
+		resp.SchemaRef = schemaRef
+		resp.Schema = map[string]any{openapiRefKey: schemaRef}
+	} else if len(schema) > 0 {
+		resp.Schema = copyAnyMap(schema)
+	}
+	resp.Example = example
+	resp.Examples = copyAnyMap(examples)
+
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		if route.Responses == nil {
+			route.Responses = make(map[string]RouteResponse)
+		}
+		copyResp := resp
+		copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
+		copyResp.Schema = copyAnyMap(resp.Schema)
+		copyResp.Examples = copyAnyMap(resp.Examples)
+		// Headers, links, and per-media-type content documented earlier via
+		// ResponseHeader/ResponseLink/ResponseContent belong to the same
+		// response entry and must survive a later Response call.
+		if existing, ok := route.Responses[key]; ok {
+			copyResp.Headers = existing.Headers
+			copyResp.Links = existing.Links
+			copyResp.Content = existing.Content
+		}
+		route.Responses[key] = copyResp
+		// Only adopt the response media type as the route's Produces value when
+		// the user has not set one explicitly via Produces().
+		if status == StatusOK && len(copyResp.MediaTypes) > 0 && route.Produces == MIMETextPlain {
+			route.Produces = copyResp.MediaTypes[0]
+		}
+	})
+	app.mutex.Unlock()
+
+	return app
+}
+
+func sanitizeMediaTypes(mediaTypes []string) []string {
+	if len(mediaTypes) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(mediaTypes))
+	sanitized := make([]string, 0, len(mediaTypes))
+	for _, typ := range mediaTypes {
+		trimmed := utils.TrimSpace(typ)
+		if trimmed == "" {
+			continue
+		}
+		validateMediaType(trimmed)
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		sanitized = append(sanitized, trimmed)
+	}
+	if len(sanitized) == 0 {
+		return nil
+	}
+	return sanitized
+}
+
+func sanitizeRequiredMediaTypes(mediaTypes []string) []string {
+	sanitized := sanitizeMediaTypes(mediaTypes)
+	if len(sanitized) == 0 {
+		panic("at least one media type must be provided")
+	}
+	return sanitized
+}
+
+// Tags assigns tags to the most recently added route.
+func (app *App) Tags(tags ...string) Router {
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Tags = append([]string(nil), tags...)
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// Deprecated marks the most recently added route as deprecated.
+func (app *App) Deprecated() Router {
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Deprecated = true
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// Security sets the OpenAPI security requirements for the most recently added
+// route. Each requirement maps a security scheme name to its required scopes;
+// multiple requirements are combined with OR semantics. Passing an empty
+// requirement (an empty map) documents that the operation requires no
+// authentication, overriding any document-level default.
+func (app *App) Security(requirements ...map[string][]string) Router {
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.Security = cloneRouteSecurity(requirements)
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// Hidden excludes the most recently added route from the generated OpenAPI
+// specification.
+func (app *App) Hidden() Router {
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.hidden = true
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// ResponseHeader documents a response header for the given status code on the
+// most recently added route, creating the response entry if it does not exist
+// yet. A status of 0 documents the "default" response.
+func (app *App) ResponseHeader(status int, name, description string, schema map[string]any) Router {
+	if utils.TrimSpace(name) == "" {
+		panic("response header name is required")
+	}
+
+	key := responseKey(status)
+
+	// The per-route copyAnyMap below deep-copies the header (including the
+	// caller's schema map), so no defensive copy is needed here.
+	header := map[string]any{}
+	if description != "" {
+		header["description"] = description
+	}
+	if len(schema) > 0 {
+		header["schema"] = schema
+	}
+
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		if route.Responses == nil {
+			route.Responses = make(map[string]RouteResponse)
+		}
+		resp, ok := route.Responses[key]
+		if !ok {
+			resp = RouteResponse{Description: defaultResponseDescription(status)}
+		}
+		if resp.Headers == nil {
+			resp.Headers = make(map[string]any)
+		}
+		hdr := copyAnyMap(header)
+		if hdr == nil {
+			hdr = map[string]any{}
+		}
+		resp.Headers[name] = hdr
+		route.Responses[key] = resp
+	})
+	app.mutex.Unlock()
+
+	return app
+}
+
+// OperationExternalDocs sets the externalDocs of the most recently added operation.
+func (app *App) OperationExternalDocs(description, url string) Router {
+	docs := map[string]any{"url": url}
+	if description != "" {
+		docs["description"] = description
+	}
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.ExternalDocs = copyAnyMap(docs)
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// OperationExtension shallow-merges arbitrary fields (e.g. servers, callbacks,
+// x-* extensions) into the most recently added operation object.
+func (app *App) OperationExtension(fields map[string]any) Router {
+	if len(fields) == 0 {
+		return app
+	}
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		if route.OperationExtensions == nil {
+			route.OperationExtensions = make(map[string]any, len(fields))
+		}
+		for key, value := range fields {
+			route.OperationExtensions[key] = copyAnyValue(value)
+		}
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// RequestBodyContent documents a request body with a different schema, example
+// and encoding per media type.
+func (app *App) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
+	// cloneRouteRequestBody performs the per-route deep copy, so the caller's
+	// content map is referenced but never stored.
+	body := &RouteRequestBody{
+		Description: description,
+		Required:    required,
+		Content:     content,
+	}
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		route.RequestBody = cloneRouteRequestBody(body)
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// ResponseContent documents a response with a different schema, example and
+// encoding per media type for the given status code.
+func (app *App) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
+	if description == "" {
+		description = defaultResponseDescription(status)
+	}
+	key := responseKey(status)
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		if route.Responses == nil {
+			route.Responses = make(map[string]RouteResponse)
+		}
+		resp := route.Responses[key]
+		resp.Description = description
+		resp.Content = cloneRouteMediaTypeMap(content)
+		route.Responses[key] = resp
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// ResponseLink documents a response link for the given status code, creating the
+// response entry if needed.
+func (app *App) ResponseLink(status int, name string, link map[string]any) Router {
+	if utils.TrimSpace(name) == "" {
+		panic("response link name is required")
+	}
+	key := responseKey(status)
+	app.mutex.Lock()
+	app.applyToLatestRouteLocked(func(route *Route) {
+		if route.Responses == nil {
+			route.Responses = make(map[string]RouteResponse)
+		}
+		resp, ok := route.Responses[key]
+		if !ok {
+			resp = RouteResponse{Description: defaultResponseDescription(status)}
+		}
+		if resp.Links == nil {
+			resp.Links = make(map[string]any)
+		}
+		linkCopy := copyAnyMap(link)
+		if linkCopy == nil {
+			linkCopy = map[string]any{}
+		}
+		resp.Links[name] = linkCopy
+		route.Responses[key] = resp
+	})
+	app.mutex.Unlock()
+	return app
+}
+
+// applyToLatestRouteLocked runs apply on the most recently registered route and
+// on every stack entry belonging to the same registration, identified by the
+// registration ID stamped in register() (per-method Use() copies, entries the
+// registration was compression-merged into, and copyRoute-generated auto-HEAD
+// routes). Routes that merely share the same path or method — explicitly
+// registered HEAD routes, concrete routes under a middleware prefix, shadowed
+// duplicate registrations, or routes on other domains — are deliberately not
+// touched, so documenting one registration can never clobber another's
+// metadata.
+func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
+	latest := app.latestRoute
+	if latest == nil || apply == nil {
+		return
+	}
+
+	apply(latest)
+
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if route != latest && route.regID != 0 && route.regID == latest.regID {
+				apply(route)
+			}
+		}
+	}
 }
 
 // GetRoute Get route by name

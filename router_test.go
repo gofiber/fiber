@@ -2084,6 +2084,289 @@ func Test_AddRoute_MergeHandlers(t *testing.T) {
 	require.Len(t, app.stack[app.methodInt(MethodGet)][0].Handlers, 2)
 }
 
+func Test_AddRoute_MergeHandlers_OpenAPIHelpersUpdateStoredRoute(t *testing.T) {
+	t.Parallel()
+	app := New()
+	handler := func(_ Ctx) error { return nil }
+
+	app.Get("/merge", handler)
+	app.Get("/merge", handler).
+		Summary("merged summary").
+		Description("merged description").
+		Consumes(MIMEApplicationJSON).
+		Produces(MIMEApplicationXML).
+		Parameter("trace-id", "query", false, nil, "trace id").
+		Response(StatusOK, "OK", MIMEApplicationXML).
+		Tags("merged").
+		Deprecated()
+
+	routes := app.stack[app.methodInt(MethodGet)]
+	require.Len(t, routes, 1)
+	route := routes[0]
+	require.Len(t, route.Handlers, 2)
+	require.Equal(t, "merged summary", route.Summary)
+	require.Equal(t, "merged description", route.Description)
+	require.Condition(t, func() bool { return route.Consumes == MIMEApplicationJSON })
+	require.Equal(t, MIMEApplicationXML, route.Produces)
+	require.Len(t, route.Parameters, 1)
+	require.Equal(t, "trace-id", route.Parameters[0].Name)
+	require.True(t, route.Deprecated)
+	require.Equal(t, []string{"merged"}, route.Tags)
+	require.Contains(t, route.Responses, "200")
+}
+
+func Test_CopyAnyMap_DeepCopy(t *testing.T) {
+	t.Parallel()
+
+	src := map[string]any{
+		"properties": map[string]any{
+			"id": map[string]any{
+				"type": "string",
+			},
+		},
+		"required": []any{"id"},
+	}
+
+	cloned := copyAnyMap(src)
+	require.NotNil(t, cloned)
+
+	props, ok := cloned["properties"].(map[string]any)
+	require.True(t, ok)
+	id, ok := props["id"].(map[string]any)
+	require.True(t, ok)
+	id["type"] = "integer"
+
+	required, ok := cloned["required"].([]any)
+	require.True(t, ok)
+	required[0] = "changed"
+
+	origProps, ok := src["properties"].(map[string]any)
+	require.True(t, ok)
+	origID, ok := origProps["id"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "string", origID["type"])
+
+	origRequired, ok := src["required"].([]any)
+	require.True(t, ok)
+	require.Equal(t, "id", origRequired[0])
+}
+
+func Test_CopyAnyMap_DeepCopyTypedSlices(t *testing.T) {
+	t.Parallel()
+
+	src := map[string]any{
+		"required": []string{"id"},
+		"oneOf": []map[string]any{
+			{"type": "string"},
+		},
+	}
+
+	cloned := copyAnyMap(src)
+	require.NotNil(t, cloned)
+
+	required, ok := cloned["required"].([]string)
+	require.True(t, ok)
+	required[0] = "changed"
+
+	oneOf, ok := cloned["oneOf"].([]map[string]any)
+	require.True(t, ok)
+	oneOf[0]["type"] = "integer"
+
+	origRequired, ok := src["required"].([]string)
+	require.True(t, ok)
+	require.Equal(t, "id", origRequired[0])
+
+	origOneOf, ok := src["oneOf"].([]map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "string", origOneOf[0]["type"])
+}
+
+func Test_Route_InvalidMediaType(t *testing.T) {
+	t.Run("produces", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Produces("invalid")
+		})
+	})
+	t.Run("consumes", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Consumes("invalid")
+		})
+	})
+	t.Run("request body", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Post("/", testEmptyHandler).RequestBody("payload", true, "invalid")
+		})
+	})
+	t.Run("request body missing type", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Post("/", testEmptyHandler).RequestBody("payload", true)
+		})
+	})
+	t.Run("response", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Response(StatusOK, "", "invalid")
+		})
+	})
+	t.Run("parameter", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Parameter("foo", "body", true, nil, "")
+		})
+	})
+}
+
+func Test_App_Produces(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).Produces(MIMEApplicationJSON)
+	route := app.stack[app.methodInt(MethodGet)][0]
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
+}
+
+func Test_App_RequestBody(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Post("/users", testEmptyHandler).
+		RequestBody("User payload", true, MIMEApplicationJSON, MIMEApplicationXML)
+
+	route := app.stack[app.methodInt(MethodPost)][0]
+	require.NotNil(t, route.RequestBody)
+	require.Equal(t, "User payload", route.RequestBody.Description)
+	require.True(t, route.RequestBody.Required)
+	require.Equal(t, []string{MIMEApplicationJSON, MIMEApplicationXML}, route.RequestBody.MediaTypes)
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Consumes)
+}
+
+func Test_App_RequestBodyWithExample(t *testing.T) {
+	t.Parallel()
+	examples := map[string]any{
+		"sample": map[string]any{"name": "john"},
+	}
+	app := New()
+	app.Post("/users", testEmptyHandler).
+		RequestBodyWithExample("payload", true, map[string]any{"type": "object"}, "#/components/schemas/User", map[string]any{"name": "doe"}, examples, MIMEApplicationJSON)
+
+	route := app.stack[app.methodInt(MethodPost)][0]
+	require.NotNil(t, route.RequestBody)
+	require.Equal(t, "#/components/schemas/User", route.RequestBody.SchemaRef)
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/User"}, route.RequestBody.Schema)
+	require.Equal(t, map[string]any{"name": "doe"}, route.RequestBody.Example)
+	require.Equal(t, examples, route.RequestBody.Examples)
+}
+
+func Test_App_Parameter(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/:id", testEmptyHandler).
+		Parameter("id", "path", false, map[string]any{"type": "integer"}, "identifier").
+		Parameter("filter", "query", true, nil, "Filter results")
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.Len(t, route.Parameters, 2)
+
+	pathParam := route.Parameters[0]
+	require.Equal(t, "id", pathParam.Name)
+	require.Equal(t, "path", pathParam.In)
+	require.True(t, pathParam.Required)
+	require.Equal(t, "integer", pathParam.Schema["type"])
+	require.Equal(t, "identifier", pathParam.Description)
+
+	queryParam := route.Parameters[1]
+	require.Equal(t, "filter", queryParam.Name)
+	require.Equal(t, "query", queryParam.In)
+	require.True(t, queryParam.Required)
+	require.Equal(t, "string", queryParam.Schema["type"])
+	require.Equal(t, "Filter results", queryParam.Description)
+}
+
+func Test_App_ParameterWithExample(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/:id", testEmptyHandler).
+		ParameterWithExample("id", "path", false, nil, "#/components/schemas/ID", "identifier", "123", map[string]any{"sample": 123})
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.Len(t, route.Parameters, 1)
+
+	param := route.Parameters[0]
+	require.Equal(t, "id", param.Name)
+	require.Equal(t, "path", param.In)
+	require.True(t, param.Required)
+	require.Equal(t, "#/components/schemas/ID", param.SchemaRef)
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/ID"}, param.Schema)
+	require.Equal(t, "identifier", param.Description)
+	require.Equal(t, "123", param.Example)
+	require.Equal(t, map[string]any{"sample": 123}, param.Examples)
+}
+
+func Test_App_Response(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).
+		Response(StatusOK, "OK", MIMEApplicationJSON).
+		Response(StatusCreated, "Created", MIMEApplicationJSON).
+		Response(0, "Default fallback")
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
+	require.Len(t, route.Responses, 3)
+
+	okResp, ok := route.Responses["200"]
+	require.True(t, ok)
+	require.Equal(t, "OK", okResp.Description)
+	require.Equal(t, []string{MIMEApplicationJSON}, okResp.MediaTypes)
+
+	created, ok := route.Responses["201"]
+	require.True(t, ok)
+	require.Equal(t, "Created", created.Description)
+
+	defResp, ok := route.Responses["default"]
+	require.True(t, ok)
+	require.Equal(t, "Default fallback", defResp.Description)
+}
+
+func Test_App_ResponseWithExample(t *testing.T) {
+	t.Parallel()
+	examples := map[string]any{"sample": map[string]any{"id": 2}}
+	app := New()
+	app.Get("/", testEmptyHandler).
+		ResponseWithExample(StatusOK, "user response", nil, "#/components/schemas/User", map[string]any{"id": 1}, examples, MIMEApplicationJSON)
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	resp, ok := route.Responses["200"]
+	require.True(t, ok)
+	require.Equal(t, "#/components/schemas/User", resp.SchemaRef)
+	require.Equal(t, map[string]any{"$ref": "#/components/schemas/User"}, resp.Schema)
+	require.Equal(t, map[string]any{"id": 1}, resp.Example)
+	require.Equal(t, examples, resp.Examples)
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
+}
+
+func Test_App_Response_InvalidStatus(t *testing.T) {
+	t.Parallel()
+	app := New()
+	require.Panics(t, func() {
+		app.Get("/", testEmptyHandler).Response(42, "invalid")
+	})
+}
+
+func Test_App_Deprecated(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).Deprecated()
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.True(t, route.Deprecated)
+}
+
 func Benchmark_App_RebuildTree_Parallel(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2607,4 +2890,223 @@ func Test_Route_URL(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "/api/v1/users/user123/posts/post456/comments", url)
 	})
+}
+
+// Test_App_MetadataUseDoesNotClobberConcreteRoutes verifies documentation
+// helpers chained on a Use() registration only touch the middleware entries,
+// never concrete routes sharing the same path.
+func Test_App_MetadataUseDoesNotClobberConcreteRoutes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/api", testEmptyHandler).Summary("Real endpoint")
+	app.Use("/api", func(c Ctx) error { return c.Next() }).Summary("middleware").Hidden()
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.False(t, route.use)
+	require.Equal(t, "Real endpoint", route.Summary)
+	require.False(t, route.IsHidden())
+}
+
+// Test_App_MetadataDoesNotClobberExplicitHead verifies documentation helpers
+// chained on a GET registration do not overwrite an explicitly registered HEAD
+// route at the same path.
+func Test_App_MetadataDoesNotClobberExplicitHead(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Head("/file", testEmptyHandler).Summary("Probe")
+	app.Get("/file", testEmptyHandler).Summary("Download")
+
+	headRoute := app.stack[app.methodInt(MethodHead)][0]
+	require.Equal(t, "Probe", headRoute.Summary)
+
+	getRoute := app.stack[app.methodInt(MethodGet)][0]
+	require.Equal(t, "Download", getRoute.Summary)
+}
+
+// Test_App_ResponseKeepsHeadersAndLinks verifies a Response call merges with
+// headers and links documented earlier for the same status code.
+func Test_App_ResponseKeepsHeadersAndLinks(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).
+		ResponseHeader(StatusOK, "X-RateLimit", "requests remaining", nil).
+		ResponseLink(StatusOK, "next", map[string]any{"operationId": "getNext"}).
+		Response(StatusOK, "OK", MIMEApplicationJSON)
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	resp, ok := route.Responses["200"]
+	require.True(t, ok)
+	require.Equal(t, "OK", resp.Description)
+	require.Equal(t, []string{MIMEApplicationJSON}, resp.MediaTypes)
+	require.Contains(t, resp.Headers, "X-RateLimit")
+	require.Contains(t, resp.Links, "next")
+}
+
+// Test_App_ResponseKeepsExplicitProduces verifies Response only adopts its
+// media type as Produces when the user has not set one explicitly.
+func Test_App_ResponseKeepsExplicitProduces(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).
+		Produces(MIMEApplicationJSON).
+		Response(StatusOK, "OK", "text/csv")
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Produces)
+
+	app2 := New()
+	app2.Get("/", testEmptyHandler).Response(StatusOK, "OK", "text/csv")
+	route2 := app2.stack[app2.methodInt(MethodGet)][0]
+	require.Equal(t, "text/csv", route2.Produces)
+}
+
+// Test_App_RequestBodyKeepsExplicitConsumes verifies RequestBody only adopts
+// its media type as Consumes when the user has not set one explicitly.
+func Test_App_RequestBodyKeepsExplicitConsumes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Post("/", testEmptyHandler).
+		Consumes(MIMEApplicationJSON).
+		RequestBody("payload", true, MIMEApplicationXML)
+
+	route := app.stack[app.methodInt(MethodPost)][0]
+	//nolint:testifylint // MIMEApplicationJSON is a plain string, JSONEq not required
+	require.Equal(t, MIMEApplicationJSON, route.Consumes)
+}
+
+// Test_App_MetadataDoesNotClobberShadowedRoute verifies helpers chained on a
+// duplicate registration do not rewrite the earlier registration's metadata.
+func Test_App_MetadataDoesNotClobberShadowedRoute(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/a", testEmptyHandler).Summary("first")
+	app.Get("/b", testEmptyHandler)
+	app.Get("/a", testEmptyHandler).Summary("second")
+
+	getStack := app.stack[app.methodInt(MethodGet)]
+	require.Equal(t, "first", getStack[0].Summary)
+	require.Equal(t, "second", getStack[2].Summary)
+}
+
+// Test_App_MetadataSecondUseDoesNotClobberFirst verifies documenting a second
+// Use() registration leaves the first registration's metadata alone.
+func Test_App_MetadataSecondUseDoesNotClobberFirst(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use("/api", func(c Ctx) error { return c.Next() }).Summary("auth")
+	app.Get("/api/x", testEmptyHandler)
+	app.Use("/api", func(c Ctx) error { return c.Next() }).Summary("rate")
+
+	summaries := make(map[string]int)
+	for _, route := range app.stack[app.methodInt(MethodGet)] {
+		if route.use {
+			summaries[route.Summary]++
+		}
+	}
+	require.Equal(t, 1, summaries["auth"])
+	require.Equal(t, 1, summaries["rate"])
+}
+
+// Test_App_MetadataAfterMountDoesNotTouchPreviousRoute verifies helpers chained
+// onto a sub-app mount do not mutate the route registered before the mount.
+func Test_App_MetadataAfterMountDoesNotTouchPreviousRoute(t *testing.T) {
+	t.Parallel()
+	sub := New()
+	sub.Get("/users", testEmptyHandler)
+
+	app := New()
+	app.Get("/health", testEmptyHandler).Summary("Health")
+	app.Use("/api", sub).Tags("api").Description("sub-app")
+
+	for _, route := range app.stack[app.methodInt(MethodGet)] {
+		if route.Path == "/health" {
+			require.Equal(t, "Health", route.Summary)
+			require.Empty(t, route.Tags)
+			require.Empty(t, route.Description)
+		}
+	}
+}
+
+// Test_App_NameOnUseDoesNotRenameConcreteRoutes verifies naming a Use()
+// registration no longer renames concrete routes sharing the path.
+func Test_App_NameOnUseDoesNotRenameConcreteRoutes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).Name("home")
+	app.Use(func(c Ctx) error { return c.Next() }).Name("mymw")
+
+	for _, route := range app.stack[app.methodInt(MethodGet)] {
+		if !route.use {
+			require.Equal(t, "home", route.Name)
+		} else {
+			require.Equal(t, "mymw", route.Name)
+		}
+	}
+}
+
+// Test_App_OperationExtensionNilElements verifies deep-copying metadata with
+// nil elements in typed slices and maps neither panics nor drops entries.
+func Test_App_OperationExtensionNilElements(t *testing.T) {
+	t.Parallel()
+	app := New()
+	require.NotPanics(t, func() {
+		app.Get("/", testEmptyHandler).OperationExtension(map[string]any{
+			"x-errs": []error{nil},
+			"x-map":  map[string]error{"e": nil},
+		})
+	})
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	errs, ok := route.OperationExtensions["x-errs"].([]error)
+	require.True(t, ok)
+	require.Len(t, errs, 1)
+	m, ok := route.OperationExtensions["x-map"].(map[string]error)
+	require.True(t, ok)
+	require.Contains(t, m, "e")
+}
+
+// Test_App_MetadataNoCollisionWithMountedRoutes verifies registration IDs of
+// expanded mount routes can never collide with parent registrations, so
+// documenting a route added after startup cannot touch mounted routes.
+func Test_App_MetadataNoCollisionWithMountedRoutes(t *testing.T) {
+	t.Parallel()
+	sub := New()
+	sub.Get("/a", testEmptyHandler)
+	sub.Get("/b", testEmptyHandler).Summary("sub b")
+
+	app := New()
+	app.Use("/api", sub)
+
+	// Trigger startup so the mount expands into the parent stack.
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/a", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	app.Get("/new", testEmptyHandler).Name("newname").Summary("new summary")
+
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if route.Path == "/api/b" {
+				require.Equal(t, "sub b", route.Summary, route.Method)
+				require.NotEqual(t, "newname", route.Name, route.Method)
+			}
+		}
+	}
+}
+
+// Test_App_MetadataReachesAllMethodsOfAdd verifies helpers chained on a
+// multi-method Add registration document every method's route.
+func Test_App_MetadataReachesAllMethodsOfAdd(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Add([]string{MethodPut, MethodPost}, "/x", testEmptyHandler).
+		Summary("upsert").
+		Response(StatusCreated, "created", MIMEApplicationJSON)
+
+	for _, method := range []string{MethodPut, MethodPost} {
+		route := app.stack[app.methodInt(method)][0]
+		require.Equal(t, "upsert", route.Summary, method)
+		require.Contains(t, route.Responses, "201", method)
+	}
 }

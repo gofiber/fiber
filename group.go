@@ -46,6 +46,143 @@ func (grp *Group) Name(name string) Router {
 	return grp
 }
 
+// Summary assigns a short summary to the most recently added route in the group.
+func (grp *Group) Summary(sum string) Router {
+	grp.app.Summary(sum)
+	return grp
+}
+
+// Description assigns a description to the most recently added route in the group.
+func (grp *Group) Description(desc string) Router {
+	grp.app.Description(desc)
+	return grp
+}
+
+// Consumes assigns a request media type to the most recently added route in the group.
+func (grp *Group) Consumes(typ string) Router {
+	grp.app.Consumes(typ)
+	return grp
+}
+
+// Produces assigns a response media type to the most recently added route in the group.
+func (grp *Group) Produces(typ string) Router {
+	grp.app.Produces(typ)
+	return grp
+}
+
+// RequestBody documents the request payload for the most recently added route in the group.
+func (grp *Group) RequestBody(description string, required bool, mediaTypes ...string) Router {
+	grp.app.RequestBody(description, required, mediaTypes...)
+	return grp
+}
+
+// RequestBodyWithExample documents the request payload for the most recently added route in the group with schema references and examples.
+func (grp *Group) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	grp.app.RequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...)
+	return grp
+}
+
+// Parameter documents an input parameter for the most recently added route in the group.
+func (grp *Group) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+	grp.app.Parameter(name, in, required, schema, description)
+	return grp
+}
+
+// ParameterWithExample documents an input parameter for the most recently added route in the group with schema references and examples.
+func (grp *Group) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
+	grp.app.ParameterWithExample(name, in, required, schema, schemaRef, description, example, examples)
+	return grp
+}
+
+// Response documents an HTTP response for the most recently added route in the group.
+func (grp *Group) Response(status int, description string, mediaTypes ...string) Router {
+	grp.app.Response(status, description, mediaTypes...)
+	return grp
+}
+
+// ResponseWithExample documents an HTTP response for the most recently added route in the group with schema references and examples.
+func (grp *Group) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	grp.app.ResponseWithExample(status, description, schema, schemaRef, example, examples, mediaTypes...)
+	return grp
+}
+
+// Tags assigns tags to the most recently added route in the group.
+func (grp *Group) Tags(tags ...string) Router {
+	grp.app.Tags(tags...)
+	return grp
+}
+
+// Deprecated marks the most recently added route in the group as deprecated.
+func (grp *Group) Deprecated() Router {
+	grp.app.Deprecated()
+	return grp
+}
+
+// Security sets the OpenAPI security requirements for the most recently added
+// route in the group.
+func (grp *Group) Security(requirements ...map[string][]string) Router {
+	grp.app.Security(requirements...)
+	return grp
+}
+
+// Hidden excludes the most recently added route in the group from the generated
+// OpenAPI specification.
+func (grp *Group) Hidden() Router {
+	grp.app.Hidden()
+	return grp
+}
+
+// ResponseHeader documents a response header for the most recently added route
+// in the group.
+func (grp *Group) ResponseHeader(status int, name, description string, schema map[string]any) Router {
+	grp.app.ResponseHeader(status, name, description, schema)
+	return grp
+}
+
+// AddParameter documents an input parameter on the most recently added route in
+// the group using the full RouteParameter.
+//
+//nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
+func (grp *Group) AddParameter(param RouteParameter) Router {
+	grp.app.AddParameter(param)
+	return grp
+}
+
+// OperationExternalDocs sets the externalDocs of the most recently added route in
+// the group.
+func (grp *Group) OperationExternalDocs(description, url string) Router {
+	grp.app.OperationExternalDocs(description, url)
+	return grp
+}
+
+// RequestBodyContent documents a per-media-type request body on the most recently
+// added route in the group.
+func (grp *Group) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
+	grp.app.RequestBodyContent(description, required, content)
+	return grp
+}
+
+// ResponseContent documents a per-media-type response on the most recently added
+// route in the group.
+func (grp *Group) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
+	grp.app.ResponseContent(status, description, content)
+	return grp
+}
+
+// ResponseLink documents a response link on the most recently added route in the
+// group.
+func (grp *Group) ResponseLink(status int, name string, link map[string]any) Router {
+	grp.app.ResponseLink(status, name, link)
+	return grp
+}
+
+// OperationExtension merges arbitrary operation-object fields on the most recently
+// added route in the group.
+func (grp *Group) OperationExtension(fields map[string]any) Router {
+	grp.app.OperationExtension(fields)
+	return grp
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 // Also, you can pass another app instance as a sub-router along a routing path.
