@@ -5,6 +5,7 @@ import (
 	"fmt"
 	htemplate "html/template"
 	"maps"
+	"slices"
 	"strings"
 	"sync"
 
@@ -1036,11 +1037,12 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 
 				resolved := resolveOpenAPIPathParamName(current.paramIdx, tokenName, params)
 				includeState := current.clone()
-				includeState.path += "{" + resolved.openAPI + "}"
-				includeState.params = append(includeState.params, resolved.openAPI)
-				includeState.aliases[resolved.raw] = resolved.openAPI
+				name := uniquePathParamName(resolved.openAPI, includeState.params)
+				includeState.path += "{" + name + "}"
+				includeState.params = append(includeState.params, name)
+				includeState.aliases[resolved.raw] = name
 				if tokenName != "" {
-					includeState.aliases[tokenName] = resolved.openAPI
+					includeState.aliases[tokenName] = name
 				}
 				includeState.paramIdx++
 
@@ -1058,9 +1060,10 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 
 			case '*', '+':
 				resolved := resolveOpenAPIWildcardParamName(current.paramIdx, params)
-				current.path += "{" + resolved.openAPI + "}"
-				current.params = append(current.params, resolved.openAPI)
-				current.aliases[resolved.raw] = resolved.openAPI
+				name := uniquePathParamName(resolved.openAPI, current.params)
+				current.path += "{" + name + "}"
+				current.params = append(current.params, name)
+				current.aliases[resolved.raw] = name
 				current.paramIdx++
 				i++
 
@@ -1117,6 +1120,17 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 	}
 
 	return unique
+}
+
+// uniquePathParamName appends a numeric suffix when name is already used in
+// this path variant: OpenAPI path templates must not repeat parameter names,
+// but distinct Fiber parameters can sanitize to the same identifier.
+func uniquePathParamName(name string, used []string) string {
+	candidate := name
+	for i := 2; slices.Contains(used, candidate); i++ {
+		candidate = fmt.Sprintf("%s_%d", name, i)
+	}
+	return candidate
 }
 
 func resolveOpenAPIPathParamName(paramIdx int, extracted string, params []string) resolvedParamName {
