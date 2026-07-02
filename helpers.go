@@ -361,7 +361,7 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 		mimetype = utils.GetMIME(offerMime) // extension
 	}
 
-	if spec == mimetype {
+	if utils.EqualFold(spec, mimetype) {
 		// Accept: <MIME_type>/<MIME_subtype>
 		return paramsMatch(specParams, offerParams)
 	}
