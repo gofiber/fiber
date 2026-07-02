@@ -165,15 +165,6 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return n, nil
 }
 
-// quoteString escapes special characters using percent-encoding.
-// Non-ASCII bytes are encoded as well so the result is always ASCII.
-func (app *App) quoteString(raw string) string {
-	bb := bytebufferpool.Get()
-	quoted := string(fasthttp.AppendQuotedArg(bb.B, app.toBytes(raw)))
-	bytebufferpool.Put(bb)
-	return quoted
-}
-
 // quoteRawString escapes only characters that need quoting according to
 // https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
 // contain non-ASCII bytes.
@@ -941,6 +932,12 @@ func (app *App) methodInt(s string) int {
 }
 
 func (app *App) method(methodInt int) string {
+	// methodInt is -1 for methods not registered in RequestMethods (the
+	// router responds 501 before dispatch, but contexts acquired directly
+	// via AcquireCtx can still carry one); never index with it.
+	if methodInt < 0 || methodInt >= len(app.config.RequestMethods) {
+		return ""
+	}
 	return app.config.RequestMethods[methodInt]
 }
 

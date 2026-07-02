@@ -39,13 +39,12 @@ var (
 	// not "bytes". RFC 9110 Section 14.2 requires an origin server to IGNORE
 	// a Range header field with a range unit it does not understand, so
 	// callers receiving this error should serve the full representation
-	// instead of returning an error response.
-	ErrRangeUnsupported   = errors.New("range: unsupported range unit")
+	// instead of returning an error response. It still carries a
+	// 400 Bad Request status as a safety net, so blind propagation does not
+	// surface as a 500.
+	ErrRangeUnsupported   = NewError(StatusBadRequest, "range: unsupported range unit")
 	ErrRangeTooLarge      = NewError(StatusRequestedRangeNotSatisfiable, "range: too many ranges")
 	ErrRangeUnsatisfiable = errors.New("range: unsatisfiable range")
-	// errRangeBound: absent range bound (the empty side of a suffix or
-	// open-ended range); control-flow only, never surfaced.
-	errRangeBound = errors.New("range: bound not parsable")
 )
 
 // Binder errors

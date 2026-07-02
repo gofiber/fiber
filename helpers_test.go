@@ -1652,19 +1652,6 @@ func Test_App_quoteRawString(t *testing.T) {
 	}
 }
 
-func Test_App_quoteString_DetachesFromPooledBuffer(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-
-	first := app.quoteString("a b")
-	second := app.quoteString("x y")
-
-	require.Equal(t, "a+b", first)
-	require.Equal(t, "x+y", second)
-	require.Equal(t, "a+b", first)
-}
-
 func Test_App_quoteRawString_DetachesFromPooledBuffer(t *testing.T) {
 	t.Parallel()
 

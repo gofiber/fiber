@@ -232,6 +232,24 @@ func Test_Ctx_Charset(t *testing.T) {
 			contentType: `text/plain; title="a\";charset=bad"; charset=utf-8`,
 			expected:    "utf-8",
 		},
+		{
+			// A stray quote inside an unquoted value must not swallow the
+			// rest of the header: quoted-strings only start at value position.
+			name:        "stray_quote_in_earlier_value",
+			contentType: `multipart/form-data; boundary=ab"cd; charset=utf-8`,
+			expected:    "utf-8",
+		},
+		{
+			// A quoted value with trailing junk is not a valid quoted-string.
+			name:        "quoted_value_with_trailing_junk",
+			contentType: `text/plain; charset="utf-8"x`,
+			expected:    "",
+		},
+		{
+			name:        "unterminated_quoted_value",
+			contentType: `text/plain; charset="utf-8`,
+			expected:    "",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -4675,6 +4693,22 @@ func Test_Ctx_Method(t *testing.T) {
 	require.Equal(t, MethodGet, c.Method())
 }
 
+// Test_Ctx_Method_Unregistered verifies that a ctx carrying a method that is
+// not registered in RequestMethods (methodInt == -1) does not panic: Method()
+// reports the raw request-header method and Route()'s fallback stays safe.
+func Test_Ctx_Method_Unregistered(t *testing.T) {
+	t.Parallel()
+	app := New()
+	rctx := &fasthttp.RequestCtx{}
+	rctx.Request.Header.SetMethod("PURGE")
+	c := app.AcquireCtx(rctx)
+
+	require.Equal(t, "PURGE", c.Method())
+	// An invalid override keeps reporting the raw method instead of panicking.
+	require.Equal(t, "PURGE", c.Method("StillInvalid"))
+	require.NotPanics(t, func() { _ = c.Route() })
+}
+
 // Test_Ctx_Method_CustomCaseSensitive verifies that a mixed-case custom
 // method registered via Config.RequestMethods can be set as an override:
 // method tokens are case-sensitive (RFC 9110 §9.1), so the override must not
@@ -5362,6 +5396,12 @@ func Test_Ctx_Range(t *testing.T) {
 	// RFC 9110 §14.2 requires.
 	c.Request().Header.Set(HeaderRange, "pages=1-3")
 	_, err := c.Range(1000)
+	require.ErrorIs(t, err, ErrRangeUnsupported)
+
+	// The other-range grammar permits "=", so an unknown unit whose spec
+	// contains "=" is still unsupported, not malformed.
+	c.Request().Header.Set(HeaderRange, "pages=1-3=note")
+	_, err = c.Range(1000)
 	require.ErrorIs(t, err, ErrRangeUnsupported)
 }
 

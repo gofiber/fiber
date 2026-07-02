@@ -1374,7 +1374,11 @@ app.Post("/", func(c fiber.Ctx) error {
 Returns a string corresponding to the HTTP method of the request: `GET`, `POST`, `PUT`, and so on.
 Optionally, you can override the method by passing a string.
 
-Method tokens are case-sensitive (RFC 9110): the override is first matched exactly against the methods registered in [`Config.RequestMethods`](./fiber.md#requestmethods) (so mixed-case custom methods work), and only falls back to the uppercase form as a convenience for the standard methods (e.g. `"get"` → `GET`). An unregistered override is ignored.
+Method tokens are case-sensitive (RFC 9110): the override is first matched exactly against the methods registered in [`Config.RequestMethods`](./fiber.md#requestmethods), and only falls back to the uppercase form as a convenience for the standard methods (e.g. `"get"` → `GET`). An unregistered override is ignored.
+
+:::caution
+Route registration (`app.Get`, `app.Add`, …) uppercases method names before validating them, so custom methods you want to **route** must be registered in `Config.RequestMethods` in uppercase. A mixed-case entry can be set via `c.Method(...)` but cannot have routes registered for it.
+:::
 
 ```go title="Signature"
 func (c fiber.Ctx) Method(override ...string) string
@@ -1730,7 +1734,8 @@ position invalidates the whole header and `ErrRangeMalformed` (carrying a
 A grammatically valid range unit other than `bytes` (e.g. `pages=1-3`) returns
 `ErrRangeUnsupported`; RFC 9110 requires servers to **ignore** such a Range
 header, so treat this error as "serve the full representation", not as a
-failure.
+failure. As a safety net the error carries a **400 Bad Request** status so
+that blindly propagating it does not surface as a 500.
 If the requested ranges are valid but none of them are satisfiable, the method
 automatically sets the HTTP status code to **416 Range Not Satisfiable** and
 populates the `Content-Range` header with the current representation size.
@@ -2016,7 +2021,10 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-Non-ASCII filenames are encoded using the `filename*` parameter as defined in
+The `filename` parameter is emitted as an RFC 9110 quoted-string: spaces and
+punctuation stay literal, and quotes/backslashes are escaped with a backslash
+(no URL encoding). Non-ASCII filenames additionally carry the `filename*`
+parameter as defined in
 [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
 [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187):
 
@@ -2281,8 +2289,10 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-For filenames containing non-ASCII characters, a `filename*` parameter is added
-according to [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+The `filename` parameter is emitted as an RFC 9110 quoted-string (no URL
+encoding). For filenames containing non-ASCII characters, a `filename*`
+parameter is added according to
+[RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
 [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187):
 
 ```go title="Example"

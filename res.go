@@ -1118,9 +1118,6 @@ func (r *DefaultRes) Vary(fields ...string) {
 	}
 	// Peek without copying: the value is only inspected before any write.
 	existing := utils.UnsafeString(r.c.fasthttp.Response.Header.Peek(HeaderVary))
-	if existing == "*" {
-		return
-	}
 	if slices.Contains(fields, "*") || headerContainsValue(existing, "*") {
 		r.setCanonical(HeaderVary, "*")
 		return

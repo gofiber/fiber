@@ -728,7 +728,12 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **SendFile**: Now supports different configurations using a config parameter.
 - **Attachment and Download**: Non-ASCII filenames now use `filename*` as
   specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
-  [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
+  [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187). The `filename` parameter
+  is now emitted as a plain RFC 9110 quoted-string instead of being
+  URL-encoded: `c.Download("report 2024.txt")` produces
+  `filename="report 2024.txt"` (previously `filename="report+2024.txt"`), with
+  quotes and backslashes escaped as quoted-pairs, so browsers save files under
+  their real names.
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 - **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
 

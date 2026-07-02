@@ -267,23 +267,37 @@ func (c *DefaultCtx) Charset() string {
 	for len(params) > 0 {
 		// Slice off the next parameter at the next ";" that sits outside a
 		// quoted-string: parameter values may be quoted and contain ";"
-		// (RFC 9110 Section 5.6.6).
+		// (RFC 9110 Section 5.6.6). A DQUOTE only opens a quoted-string at
+		// the start of a parameter value (right after "="), so a stray quote
+		// inside an unquoted value cannot swallow the rest of the header.
 		param := params
 		end := -1
 		inQuotes := false
 		escaped := false
+		expectValue := false
 	scan:
 		for i := 0; i < len(params); i++ {
+			ch := params[i]
 			switch {
 			case escaped:
 				escaped = false
-			case params[i] == '\\' && inQuotes:
-				escaped = true
-			case params[i] == '"':
-				inQuotes = !inQuotes
-			case params[i] == ';' && !inQuotes:
+			case inQuotes:
+				switch ch {
+				case '\\':
+					escaped = true
+				case '"':
+					inQuotes = false
+				}
+			case ch == '=':
+				expectValue = true
+			case ch == '"' && expectValue:
+				inQuotes = true
+				expectValue = false
+			case ch == ';':
 				end = i
 				break scan
+			case ch != ' ' && ch != '\t':
+				expectValue = false
 			}
 		}
 		if end >= 0 {
@@ -298,9 +312,13 @@ func (c *DefaultCtx) Charset() string {
 			continue
 		}
 		v := utils.TrimSpace(value)
-		if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
-			// Quoted-pairs inside a quoted-string must be replaced with the
-			// escaped octet (RFC 9110 Section 5.6.4).
+		if len(v) > 0 && v[0] == '"' {
+			// A quoted value must be a complete quoted-string, and its
+			// quoted-pairs must be replaced with the escaped octet
+			// (RFC 9110 Section 5.6.4).
+			if len(v) < 2 || v[len(v)-1] != '"' {
+				return ""
+			}
 			unescaped, err := unescapeHeaderValue(v[1 : len(v)-1])
 			if err != nil {
 				return ""
@@ -866,7 +884,7 @@ func (r *DefaultReq) Method(override ...string) string {
 	app := r.c.app
 	if len(override) == 0 {
 		// Nothing to override, just return current method from context
-		return app.method(r.c.methodInt)
+		return r.currentMethod()
 	}
 
 	// Method tokens are case-sensitive (RFC 9110 Section 9.1), so try the
@@ -883,10 +901,20 @@ func (r *DefaultReq) Method(override ...string) string {
 	if methodInt == -1 {
 		// Provided override is not a registered HTTP method; no override,
 		// return current method
-		return app.method(r.c.methodInt)
+		return r.currentMethod()
 	}
 	r.c.methodInt = methodInt
 	return method
+}
+
+// currentMethod resolves the context's method, falling back to the raw
+// request header value when the method is not registered in RequestMethods
+// (methodInt < 0), so unregistered methods are reported instead of panicking.
+func (r *DefaultReq) currentMethod() string {
+	if r.c.methodInt < 0 {
+		return r.c.app.toString(r.c.fasthttp.Request.Header.Method())
+	}
+	return r.c.app.method(r.c.methodInt)
 }
 
 // MultipartForm parse form entries from binary.
@@ -1085,15 +1113,12 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		rangeData.Ranges = make([]RangeSet, 0, prealloc)
 	}
 
+	// parseBound parses a present (non-empty) range bound. A bound that is
+	// not a valid integer makes the range-spec, and therefore the whole
+	// ranges-specifier, invalid (RFC 9110 Section 14.1.1).
 	parseBound := func(value string) (int64, error) {
-		if value == "" { // absent bound (suffix/open-ended range); skip the parser's error alloc
-			return 0, errRangeBound
-		}
 		parsed, err := utils.ParseUint(value)
 		if err != nil {
-			// A bound that is present but not a valid integer makes the
-			// range-spec, and therefore the whole ranges-specifier, invalid
-			// (RFC 9110 Section 14.1.1).
 			return 0, ErrRangeMalformed
 		}
 		if parsed > (math.MaxUint64 >> 1) {
@@ -1103,23 +1128,28 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	}
 
 	before, after, found := strings.Cut(rangeStr, "=")
-	if !found || strings.IndexByte(after, '=') >= 0 {
+	if !found {
 		return Range{}, ErrRangeMalformed
 	}
 	rangeData.Type = utilsstrings.ToLower(utils.TrimSpace(before))
 	if rangeData.Type != "bytes" {
 		// A range unit the server does not understand is not malformed: it
 		// must be ignored (RFC 9110 Section 14.2), which only the caller can
-		// do, so signal it distinctly.
+		// do, so signal it distinctly. This check runs before any syntax
+		// checks on the range-set, since the other-range grammar permits
+		// characters (such as "=") that byte ranges do not.
 		return Range{}, ErrRangeUnsupported
+	}
+	if strings.IndexByte(after, '=') >= 0 {
+		return Range{}, ErrRangeMalformed
 	}
 	ranges = utils.TrimSpace(after)
 
 	var (
 		singleRange  string
 		moreRanges   = ranges
-		elementCount int // every list element, including empty ones (MaxRanges bound)
-		rangeCount   int // syntactically valid range-specs only
+		elementCount int  // every list element, including empty ones (MaxRanges bound)
+		sawRangeSpec bool // at least one non-empty range-spec was present
 	)
 	for moreRanges != "" {
 		// Empty elements count toward MaxRanges too, so the cap bounds the
@@ -1147,7 +1177,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		if singleRange == "" {
 			continue
 		}
-		rangeCount++
+		sawRangeSpec = true
 
 		var (
 			startStr, endStr string
@@ -1159,20 +1189,29 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		startStr = utils.TrimSpace(singleRange[:i])
 		endStr = utils.TrimSpace(singleRange[i+1:])
 
-		start, startErr := parseBound(startStr)
-		end, endErr := parseBound(endStr)
-		if errors.Is(startErr, ErrRangeMalformed) || errors.Is(endErr, ErrRangeMalformed) {
-			return Range{}, ErrRangeMalformed
+		var (
+			start, end int64
+			err        error
+		)
+		if startStr != "" {
+			if start, err = parseBound(startStr); err != nil {
+				return Range{}, err
+			}
+		}
+		if endStr != "" {
+			if end, err = parseBound(endStr); err != nil {
+				return Range{}, err
+			}
 		}
 		switch {
-		case startErr != nil && endErr != nil:
+		case startStr == "" && endStr == "":
 			// "-" carries neither a first-byte-pos nor a suffix-length and is
 			// not a valid range-spec (RFC 9110 Section 14.1.1).
 			return Range{}, ErrRangeMalformed
-		case startErr != nil: // -nnn (suffix range)
+		case startStr == "": // -nnn (suffix range)
 			start = max(size-end, 0)
 			end = size - 1
-		case endErr != nil: // nnn- (open-ended range)
+		case endStr == "": // nnn- (open-ended range)
 			end = size - 1
 		default: // nnn-mmm
 			// An int-range with a last-byte-pos less than its first-byte-pos
@@ -1196,7 +1235,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
-		if rangeCount == 0 {
+		if !sawRangeSpec {
 			// Only empty list elements: there was no range-spec at all, so
 			// the ranges-specifier is invalid rather than unsatisfiable.
 			return Range{}, ErrRangeMalformed
