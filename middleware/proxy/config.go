@@ -9,6 +9,8 @@ import (
 )
 
 // Config defines the config for middleware.
+//
+//nolint:govet // struct layout favors readability/grouping over field alignment
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
@@ -62,6 +64,12 @@ type Config struct {
 
 	// KeepConnectionHeader keeps the "Connection" header when set to true.
 	//
+	// Note: even when KeepConnectionHeader is true, other RFC 7230 §6.1
+	// hop-by-hop headers (Keep-Alive, Proxy-Authenticate,
+	// Proxy-Authorization, TE, Trailer, Transfer-Encoding, Upgrade) are
+	// still stripped. To preserve every hop-by-hop header, set
+	// SecurityPolicy.KeepHopByHopHeaders.
+	//
 	// Optional. Default: false
 	KeepConnectionHeader bool
 
@@ -72,6 +80,21 @@ type Config struct {
 	//
 	// Optional. Default: false
 	DialDualStack bool
+
+	// SecurityPolicy overrides the default SSRF, redirect, and
+	// hop-by-hop header rules for this balancer. When nil, the
+	// package-level policy set via WithSecurityPolicy is used.
+	//
+	// Optional. Default: nil
+	SecurityPolicy *SecurityPolicy
+
+	// MaxResponseBodySize bounds the size (in bytes) of upstream
+	// responses accepted by the proxy. Responses larger than this are
+	// rejected to protect the proxy from memory exhaustion. Zero
+	// preserves fasthttp's default unlimited behavior.
+	//
+	// Optional. Default: 0
+	MaxResponseBodySize int
 }
 
 const defaultMaxConnsPerHost = 1024
