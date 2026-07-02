@@ -1,6 +1,8 @@
 package openapi
 
 import (
+	"encoding"
+	"encoding/json"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -24,6 +26,8 @@ import (
 //   - Structs → {"type": "object", "properties": {...}, "required": [...]}
 //   - Pointers → schema of the pointed-to type (nullable fields are not required)
 //   - interface{}/any → {} (accepts any value)
+//   - Types implementing json.Marshaler → {} (custom output cannot be predicted)
+//   - Types implementing encoding.TextMarshaler → {"type": "string"}
 //
 // Embedded structs and embedded pointers to structs are flattened into the
 // parent object (matching encoding/json). Self-referential or mutually
@@ -68,7 +72,18 @@ func SchemaOf(v any) map[string]any {
 	return typeSchema(t, nil)
 }
 
-var timeType = reflect.TypeFor[time.Time]()
+var (
+	timeType          = reflect.TypeFor[time.Time]()
+	jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
+	textMarshalerType = reflect.TypeFor[encoding.TextMarshaler]()
+)
+
+// implementsMarshaler reports whether t (or *t) implements the given
+// marshaler interface, in which case encoding/json bypasses ordinary field
+// reflection for values of that type.
+func implementsMarshaler(t, iface reflect.Type) bool {
+	return t.Implements(iface) || reflect.PointerTo(t).Implements(iface)
+}
 
 // typeSchema builds the schema for a single type. visited tracks the struct
 // types currently on the recursion stack so that cyclic types terminate.
@@ -79,6 +94,17 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 
 	if t == timeType {
 		return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "date-time"}
+	}
+
+	// Types with custom JSON marshaling (including structs that promote a
+	// MarshalJSON from an embedded type, e.g. time.Time) produce output that
+	// field reflection cannot predict, so accept any value; text marshalers
+	// always produce a string.
+	if implementsMarshaler(t, jsonMarshalerType) {
+		return map[string]any{}
+	}
+	if implementsMarshaler(t, textMarshalerType) {
+		return map[string]any{schemaKeyType: schemaTypeString}
 	}
 
 	switch t.Kind() {

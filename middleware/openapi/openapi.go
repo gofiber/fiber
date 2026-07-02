@@ -238,17 +238,13 @@ func buildSwaggerUIPage(openAPIURL string, cfg *Config) ([]byte, error) {
 	return []byte(builder.String()), nil
 }
 
-// normalizedPath returns cfgPath with a leading slash, falling back to the
-// default spec path when empty.
+// normalizedPath returns cfgPath with a leading slash. Defaults for empty
+// paths are applied earlier by configDefault.
 func normalizedPath(cfgPath string) string {
-	path := cfgPath
-	if path == "" {
-		path = ConfigDefault.Path
+	if !strings.HasPrefix(cfgPath, "/") {
+		return "/" + cfgPath
 	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	return path
+	return cfgPath
 }
 
 // routePrefix derives the concrete mount prefix of a middleware route for the
