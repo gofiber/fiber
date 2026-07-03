@@ -832,6 +832,8 @@ func (r *DefaultReq) Method(override ...string) string {
 		return app.method(r.c.methodInt)
 	}
 	r.c.methodInt = methodInt
+	// Method changed; invalidate the lookahead index
+	r.c.firstMatchIndex = -1
 	return method
 }
 
