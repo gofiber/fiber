@@ -680,7 +680,7 @@ func Test_Ctx_BodyParser_InvalidRequestData(t *testing.T) {
 }
 
 func Test_Ctx_BodyParser_IndexTooLarge(t *testing.T) {
-	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true})
+	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
 	SetParserDecoder(ParserConfig{IgnoreUnknownKeys: false})
 	type RequestBody struct {
 		NestedContent []*struct {
@@ -741,6 +741,9 @@ func Test_Ctx_BodyParser_WithSetParserDecoder(t *testing.T) {
 		Converter:  timeConverter,
 	}
 
+	// restore the package-default decoder afterwards so this global change does
+	// not leak into other (parallel) parser tests
+	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
 	SetParserDecoder(ParserConfig{
 		IgnoreUnknownKeys: true,
 		ParserType:        []ParserType{customTime},
@@ -4906,6 +4909,9 @@ func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
 		Converter:  nonRFCConverter,
 	}
 
+	// restore the package-default decoder afterwards so this global change does
+	// not leak into other (parallel) parser tests
+	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
 	SetParserDecoder(ParserConfig{
 		IgnoreUnknownKeys: true,
 		ParserType:        []ParserType{nonRFCTime},
@@ -5261,6 +5267,9 @@ func Test_Ctx_ReqHeaderParser_WithSetParserDecoder(t *testing.T) {
 		Converter:  nonRFCConverter,
 	}
 
+	// restore the package-default decoder afterwards so this global change does
+	// not leak into other (parallel) parser tests
+	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
 	SetParserDecoder(ParserConfig{
 		IgnoreUnknownKeys: true,
 		ParserType:        []ParserType{nonRFCTime},
