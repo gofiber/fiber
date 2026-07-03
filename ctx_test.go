@@ -2615,17 +2615,59 @@ func Test_Ctx_Fresh(t *testing.T) {
 	c.Response().Header.Set(HeaderETag, `"a"`)
 	require.True(t, c.Fresh())
 
-	c.Request().Header.Set(HeaderIfModifiedSince, "xxWed, 21 Oct 2015 07:28:00 GMT")
-	c.Response().Header.Set(HeaderLastModified, "xxWed, 21 Oct 2015 07:28:00 GMT")
-	require.False(t, c.Fresh())
-
+	// If-None-Match takes precedence over If-Modified-Since (RFC 9110): once the
+	// ETag matches, the response is fresh regardless of the date headers, even
+	// when Last-Modified is newer than If-Modified-Since (stale under dates alone).
+	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:27:59 GMT")
 	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
-	require.False(t, c.Fresh())
-
-	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
 	require.True(t, c.Fresh())
 
-	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:27:59 GMT")
+	// A wildcard If-None-Match is fresh too, ignoring the date headers.
+	c.Request().Header.Set(HeaderIfNoneMatch, "*")
+	require.True(t, c.Fresh())
+}
+
+// Test_Ctx_Fresh_ModifiedSinceOnly verifies that If-Modified-Since is evaluated
+// even when If-None-Match is absent from the request. Previously the date check
+// was nested inside the if-none-match branch, so an If-Modified-Since-only
+// request always reported the response as fresh regardless of Last-Modified.
+func Test_Ctx_Fresh_ModifiedSinceOnly(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// Last-Modified newer than the client's date: the resource changed, so it
+	// is NOT fresh and the full response should be sent.
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
+	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:29:00 GMT")
+	require.False(t, c.Fresh())
+
+	// Last-Modified equal to the client's date: still fresh.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
+	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+	require.True(t, c.Fresh())
+
+	// Last-Modified older than the client's date: fresh.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:29:00 GMT")
+	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+	require.True(t, c.Fresh())
+
+	// If-Modified-Since present but no Last-Modified response header: stale.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
+	require.False(t, c.Fresh())
+
+	// Malformed Last-Modified with a valid If-Modified-Since: stale.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
+	c.Response().Header.Set(HeaderLastModified, "not-a-date")
+	require.False(t, c.Fresh())
+
+	// Malformed If-Modified-Since with a valid Last-Modified: stale.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfModifiedSince, "not-a-date")
 	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
 	require.False(t, c.Fresh())
 }

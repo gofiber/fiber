@@ -49,33 +49,13 @@ See [examples](examples.md) for more detailed usage.
 
 ```go
 type Client struct {
-    mu sync.RWMutex
+    logger    log.CommonLogger
+    transport httpClientTransport
 
-    fasthttp *fasthttp.Client
-
-    baseURL   string
-    userAgent string
-    referer   string
-    header    *Header
-    params    *QueryParam
-    cookies   *Cookie
-    path      *PathParam
-
-    debug bool
-
-    timeout time.Duration
-
-    // user-defined request hooks
-    userRequestHooks []RequestHook
-
-    // client package-defined request hooks
-    builtinRequestHooks []RequestHook
-
-    // user-defined response hooks
-    userResponseHooks []ResponseHook
-
-    // client package-defined response hooks
-    builtinResponseHooks []ResponseHook
+    header  *Header
+    params  *QueryParam
+    cookies *Cookie
+    path    *PathParam
 
     jsonMarshal   utils.JSONMarshal
     jsonUnmarshal utils.JSONUnmarshal
@@ -84,16 +64,20 @@ type Client struct {
     cborMarshal   utils.CBORMarshal
     cborUnmarshal utils.CBORUnmarshal
 
-    cookieJar *CookieJar
+    cookieJar            *CookieJar
+    retryConfig          *RetryConfig
+    baseURL              string
+    userAgent            string
+    referer              string
+    userRequestHooks     []RequestHook
+    builtinRequestHooks  []RequestHook
+    userResponseHooks    []ResponseHook
+    builtinResponseHooks []ResponseHook
 
-    // proxy
-    proxyURL string
-
-    // retry
-    retryConfig *RetryConfig
-
-    // logger
-    logger log.CommonLogger
+    timeout                   time.Duration
+    mu                        sync.RWMutex
+    isDebug                   bool
+    isPathNormalizingDisabled bool
 }
 ```
 

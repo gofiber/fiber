@@ -164,22 +164,6 @@ var (
 	}
 )
 
-func appendLowerBytes(dst, src []byte) []byte {
-	dst = dst[:0]
-	if cap(dst) < len(src) {
-		dst = make([]byte, len(src))
-	} else {
-		dst = dst[:len(src)]
-	}
-	for i, c := range src {
-		if 'A' <= c && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		dst[i] = c
-	}
-	return dst
-}
-
 // RoutePatternMatch reports whether path matches the provided Fiber route pattern.
 //
 // Patterns use the same syntax as routes registered on an App, including
@@ -528,7 +512,9 @@ func hasPartialMatchBoundary(path string, matchedLength int) bool {
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
 func (parser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // Accepting a bool param is fine here
 	originalDetectionPath := detectionPath
-	var i, paramsIterator, partLen int
+	// offset indexes into the never-resliced path; it only advances by bytes consumed
+	// from detectionPath (never longer than path), so offset+i stays in bounds.
+	var i, paramsIterator, partLen, offset int
 	for _, segment := range parser.segs {
 		partLen = len(detectionPath)
 		// check const segment
@@ -536,9 +522,10 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			i = segment.Length
 			// is optional part or the const part must match with the given string
 			// check if the end of the segment is an optional slash
+			// the unsigned compare proves 0 <= i <= len(detectionPath), keeping detectionPath[:i] bounds-check free
 			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
 				i--
-			} else if i > partLen || detectionPath[:i] != segment.Const {
+			} else if uint(i) > uint(len(detectionPath)) || detectionPath[:i] != segment.Const {
 				return false
 			}
 		} else {
@@ -548,7 +535,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 				return false
 			}
 			// take over the params positions
-			params[paramsIterator] = path[:i]
+			params[paramsIterator] = path[offset : offset+i]
 
 			if !segment.IsOptional || i != 0 {
 				// check constraint
@@ -564,7 +551,8 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 
 		// reduce founded part from the string
 		if partLen > 0 {
-			detectionPath, path = detectionPath[i:], path[i:]
+			detectionPath = detectionPath[i:]
+			offset += i
 		}
 	}
 	if detectionPath != "" {

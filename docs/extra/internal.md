@@ -401,7 +401,8 @@ Fiber provides a comprehensive hook system that allows you to run custom functio
 - OnName: Invoked when a route is assigned a name.
 - OnGroup: Triggered when a group is created.
 - OnListen: Runs when the server starts listening.
-- OnShutdown: Called during graceful shutdown.
+- OnPreShutdown: Runs before the application shuts down.
+- OnPostShutdown: Runs after shutdown and receives the shutdown result.
 - OnFork: Invoked when a child process is forked.
 - OnMount: Used when a sub‑application is mounted.
 
@@ -412,7 +413,8 @@ flowchart TD
     ON[OnName]
     OG[OnGroup]
     OL[OnListen]
-    OS[OnShutdown]
+    OPRS[OnPreShutdown]
+    OPOS[OnPostShutdown]
     OF[OnFork]
     OM[OnMount]
 
@@ -420,7 +422,8 @@ flowchart TD
     H --> ON
     H --> OG
     H --> OL
-    H --> OS
+    H --> OPRS
+    H --> OPOS
     H --> OF
     H --> OM
 ```

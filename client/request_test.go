@@ -318,6 +318,38 @@ func Test_Request_QueryParam(t *testing.T) {
 	})
 }
 
+func Test_QueryParam_Keys(t *testing.T) {
+	t.Parallel()
+
+	p := &QueryParam{Args: fasthttp.AcquireArgs()}
+	defer fasthttp.ReleaseArgs(p.Args)
+
+	p.Add("foo", "1")
+	p.Add("foo", "2")
+	p.Add("bar", "3")
+
+	keys := p.Keys()
+	require.Len(t, keys, 2)
+	require.Contains(t, keys, "foo")
+	require.Contains(t, keys, "bar")
+}
+
+func Test_FormData_Keys(t *testing.T) {
+	t.Parallel()
+
+	f := &FormData{Args: fasthttp.AcquireArgs()}
+	defer fasthttp.ReleaseArgs(f.Args)
+
+	f.Add("foo", "1")
+	f.Add("foo", "2")
+	f.Add("bar", "3")
+
+	keys := f.Keys()
+	require.Len(t, keys, 2)
+	require.Contains(t, keys, "foo")
+	require.Contains(t, keys, "bar")
+}
+
 func Test_Request_Params(t *testing.T) {
 	t.Parallel()
 

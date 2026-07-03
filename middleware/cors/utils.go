@@ -45,12 +45,26 @@ type subdomain struct {
 	suffix string
 }
 
-func (s subdomain) match(o string) bool {
-	isValid, normalizedOrigin := normalizeOrigin(o)
-	if !isValid || normalizedOrigin != o {
+func matchSubdomainOrigin(subdomains []subdomain, origin string) bool {
+	if len(subdomains) == 0 {
 		return false
 	}
 
+	isValid, normalizedOrigin := normalizeOrigin(origin)
+	if !isValid || normalizedOrigin != origin {
+		return false
+	}
+
+	for _, sub := range subdomains {
+		if sub.matchNormalized(origin) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s subdomain) matchNormalized(o string) bool {
 	// Not a subdomain if not long enough for a dot separator.
 	if len(o) < len(s.prefix)+len(s.suffix)+1 {
 		return false
