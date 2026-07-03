@@ -397,8 +397,13 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 		panic(err)
 	}
 	return func(c fiber.Ctx) error {
+		// Host names are case-insensitive (RFC 9110 §4.2.3) and fasthttp
+		// does not case-fold the raw Host header, so compare with
+		// EqualFold — otherwise "API.Example.com" would slip past a
+		// DomainForward("api.example.com", ...) gate and be passed
+		// through unproxied.
 		host := utils.UnsafeString(c.Request().Host())
-		if host != hostname {
+		if !utils.EqualFold(host, hostname) {
 			return nil
 		}
 		c.Request().Header.Set("X-Real-IP", c.IP())

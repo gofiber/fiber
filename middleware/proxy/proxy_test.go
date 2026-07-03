@@ -1222,3 +1222,31 @@ func Test_Proxy_DomainForward_OverwritesXRealIP(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
+
+// Test_Proxy_DomainForward_HostMatchIsCaseInsensitive verifies that the
+// host gate folds case per RFC 9110 §4.2.3 — an inbound Host header with
+// different casing than the configured hostname must still be proxied,
+// not silently passed through.
+func Test_Proxy_DomainForward_HostMatchIsCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	// Handler configured with a lowercase hostname...
+	app.Use(DomainForward("api.example.com", "http://"+addr))
+
+	// ...but the request arrives with mixed-case Host.
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "API.Example.com"
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "proxied", string(body), "mixed-case Host must still be proxied")
+}
