@@ -512,7 +512,9 @@ func hasPartialMatchBoundary(path string, matchedLength int) bool {
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
 func (parser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // Accepting a bool param is fine here
 	originalDetectionPath := detectionPath
-	var i, paramsIterator, partLen int
+	// offset indexes into the never-resliced path; it only advances by bytes consumed
+	// from detectionPath (never longer than path), so offset+i stays in bounds.
+	var i, paramsIterator, partLen, offset int
 	for _, segment := range parser.segs {
 		partLen = len(detectionPath)
 		// check const segment
@@ -533,7 +535,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 				return false
 			}
 			// take over the params positions
-			params[paramsIterator] = path[:i]
+			params[paramsIterator] = path[offset : offset+i]
 
 			if !segment.IsOptional || i != 0 {
 				// check constraint
@@ -549,7 +551,8 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 
 		// reduce founded part from the string
 		if partLen > 0 {
-			detectionPath, path = detectionPath[i:], path[i:]
+			detectionPath = detectionPath[i:]
+			offset += i
 		}
 	}
 	if detectionPath != "" {
