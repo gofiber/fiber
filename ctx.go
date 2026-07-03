@@ -710,7 +710,9 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Set paths
 	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
-	c.methodInt = c.app.methodInt(utils.UnsafeString(fctx.Request.Header.Method()))
+	if fctx != nil {
+		c.methodInt = c.app.methodInt(utils.UnsafeString(fctx.Request.Header.Method()))
+	}
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
 	if fctx != nil {
