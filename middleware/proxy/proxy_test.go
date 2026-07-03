@@ -249,8 +249,9 @@ func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 	addr := ln.Addr().String()
 	clientTLSConf := &tls.Config{InsecureSkipVerify: true} //nolint:gosec // We're in a test func, so this is fine
 
-	// disable certificate verification
-	WithTlsConfig(clientTLSConf)
+	// disable certificate verification by swapping the whole global client
+	// (WithTlsConfig mutates the shared client's field and races with parallel proxy tests)
+	WithClient(&fasthttp.Client{TLSConfig: clientTLSConf})
 	app.Use(Forward("https://" + addr + "/tlsfwd"))
 
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
@@ -565,7 +566,9 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
-		return DoDeadline(c, "http://"+addr, time.Now().Add(time.Second))
+		// Deadline is longer than app.Test's 1000ms timeout so the test timeout
+		// deterministically fires first (avoids two coincident 1s timers racing).
+		return DoDeadline(c, "http://"+addr, time.Now().Add(2*time.Second))
 	})
 
 	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
