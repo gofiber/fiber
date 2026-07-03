@@ -13,6 +13,11 @@ on:
       - "!**.md"
 
 name: Test
+
+# Least-privilege GITHUB_TOKEN: both jobs only check out and run tests.
+permissions:
+  contents: read
+
 jobs:
   Build:
     strategy:
