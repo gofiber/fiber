@@ -737,3 +737,30 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 
 	utils.AssertEqual(t, string(b), "forwarded")
 }
+
+// go test -run Test_Proxy_Balancer_Forward_OverwritesXRealIP
+func Test_Proxy_Balancer_Forward_OverwritesXRealIP(t *testing.T) {
+	t.Parallel()
+
+	const (
+		spoofedIP       = "10.0.0.1"
+		appTestClientIP = "0.0.0.0"
+	)
+
+	_, addr := createProxyTestServerIPv4(t, func(c *fiber.Ctx) error {
+		value := c.Get("X-Real-IP")
+		utils.AssertEqual(t, appTestClientIP, value)
+		utils.AssertEqual(t, false, value == spoofedIP)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app := fiber.New()
+	app.Use(BalancerForward([]string{addr}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Set("X-Real-IP", spoofedIP)
+
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+}
