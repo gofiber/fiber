@@ -504,8 +504,9 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// Early 404/405 before the middleware chain; enabled implies middleware exists
-	// (without middleware next() already answers 404/405 cheaply).
-	if app.skip.enabled {
+	// (without middleware next() already answers 404/405 cheaply). CORS preflight is
+	// exempt so cors middleware can answer paths that lack an explicit OPTIONS route.
+	if app.skip.enabled && !ctx.IsPreflight() {
 		res := app.resolveSkip(ctx.methodInt, ctx.treePathHash,
 			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path), &ctx.values)
 		switch res.decision {
@@ -545,8 +546,9 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// Early 404/405 before the middleware chain; enabled implies middleware exists
-	// (without middleware next() already answers 404/405 cheaply).
-	if app.skip.enabled {
+	// (without middleware next() already answers 404/405 cheaply). CORS preflight is
+	// exempt so cors middleware can answer paths that lack an explicit OPTIONS route.
+	if app.skip.enabled && !ctx.IsPreflight() {
 		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(),
 			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
 		switch res.decision {

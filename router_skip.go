@@ -6,7 +6,7 @@ package fiber
 
 // skipRouteIndex holds precomputed unmatched-route indexes, rebuilt by buildSkipIndexes with the route tree.
 type skipRouteIndex struct {
-	// staticMethods is a method bitmask of static endpoints per route path; SkipUnmatchedRoutes only
+	// staticMethods maps a static endpoint's path to a method bitmask; nil unless SkipUnmatchedRoutes is on
 	staticMethods map[string]uint64
 	// buckets holds the per-tree-bucket lookahead state, one entry per treeStack bucket key (union across methods)
 	buckets map[int]*skipBucket

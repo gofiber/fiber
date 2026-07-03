@@ -2661,6 +2661,42 @@ func Test_App_SkipUnmatchedRoutes_Static(t *testing.T) {
 	})
 }
 
+func Test_App_SkipUnmatchedRoutes_CORSPreflight(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+	// Minimal CORS-style middleware: answer preflight, pass everything else through.
+	app.Use(func(c Ctx) error {
+		if c.IsPreflight() {
+			c.Set(HeaderAccessControlAllowOrigin, "*")
+			return c.SendStatus(StatusNoContent)
+		}
+		return c.Next()
+	})
+	app.Get("/users", func(c Ctx) error { return c.SendString("users") })
+
+	t.Run("preflight_runs_middleware", func(t *testing.T) {
+		t.Parallel()
+		req := httptest.NewRequest(MethodOptions, "/users", http.NoBody)
+		req.Header.Set(HeaderOrigin, "https://example.com")
+		req.Header.Set(HeaderAccessControlRequestMethod, MethodGet)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusNoContent, resp.StatusCode)
+		require.Equal(t, "*", resp.Header.Get(HeaderAccessControlAllowOrigin))
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("non_preflight_options_still_405", func(t *testing.T) {
+		t.Parallel()
+		// Bare OPTIONS (no CORS headers) is not a preflight, so the fast path still answers 405.
+		resp, err := app.Test(httptest.NewRequest(MethodOptions, "/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+}
+
 func Test_App_SkipUnmatchedRoutes_Parametric(t *testing.T) {
 	t.Parallel()
 
@@ -3132,7 +3168,12 @@ func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
 
 	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
 	app := NewWithCustomCtx(newCtx, Config{SkipUnmatchedRoutes: true})
-	app.Use(func(c Ctx) error { return c.Next() })
+	app.Use(func(c Ctx) error {
+		if c.IsPreflight() {
+			return c.SendStatus(StatusNoContent)
+		}
+		return c.Next()
+	})
 	app.Get("/users", func(c Ctx) error { return c.SendString("users") })
 	app.Get("/user/keys/:id", func(c Ctx) error { return c.SendString("key") })
 
@@ -3165,6 +3206,18 @@ func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
 		resp, err := app.Test(httptest.NewRequest(MethodDelete, "/users", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("cors_preflight", func(t *testing.T) {
+		t.Parallel()
+		// Preflight is exempt from the skip, so the middleware answers it instead of a 405.
+		req := httptest.NewRequest(MethodOptions, "/users", http.NoBody)
+		req.Header.Set(HeaderOrigin, "https://example.com")
+		req.Header.Set(HeaderAccessControlRequestMethod, MethodGet)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusNoContent, resp.StatusCode)
 		require.NoError(t, resp.Body.Close())
 	})
 }

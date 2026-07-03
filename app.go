@@ -200,9 +200,9 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Warning: middleware never runs for skipped requests. This breaks Use-based
 	// responders on unregistered paths (catch-all 404 pages, static, proxy,
-	// healthcheck, rewrite and redirect middleware) and CORS preflight for routes
-	// without an explicit OPTIONS handler; loggers and metrics will not see the
-	// skipped requests either. Customize the 404/405 responses via ErrorHandler.
+	// healthcheck, rewrite and redirect middleware); loggers and metrics will not
+	// see the skipped requests either. CORS preflight requests are exempt, so cors
+	// middleware keeps working. Customize the 404/405 responses via ErrorHandler.
 	//
 	// Note: with more than 64 entries in RequestMethods the fast path is disabled
 	// and requests fall through to the normal router.
