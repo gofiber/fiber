@@ -210,10 +210,12 @@ type Ctx interface {
 	getValues() *[maxParams]string
 	getMatched() bool
 	getSkipNonUseRoutes() bool
+	getFirstMatchIndex() int
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
 	setSkipNonUseRoutes(skip bool)
+	setFirstMatchIndex(index int)
 	setRoute(route *Route)
 	getPathOriginal() string
 	// FullURL returns the full request URL (protocol + host + original URL).
