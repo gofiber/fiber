@@ -249,7 +249,12 @@ func doActionWithPolicy(
 	defer req.SetRequestURI(originalURL)
 
 	req.SetRequestURI(u.String())
-	req.URI().SetSchemeBytes([]byte(u.Scheme))
+	// SetScheme takes the string directly (fasthttp appends its bytes),
+	// avoiding the per-request []byte(u.Scheme) allocation. Re-applying
+	// the scheme is required because SetRequestURI keeps the previous
+	// scheme when req.isTLS is set — see
+	// https://github.com/gofiber/fiber/issues/1762.
+	req.URI().SetScheme(u.Scheme)
 
 	if !policy.KeepHopByHopHeaders {
 		stripHopByHopRequestHeaders(req)
@@ -282,6 +287,12 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 	currentHost := currentURL.Host
 	for redirects := 0; ; redirects++ {
 		req.SetRequestURI(currentURL.String())
+		// Re-apply the scheme each hop: SetRequestURI keeps the previous
+		// scheme when req.isTLS is set, so a redirect that changes scheme
+		// (HTTP→HTTPS upgrade, or HTTPS→HTTP when AllowHTTPSDowngrade is
+		// enabled) would otherwise be dispatched with the wrong scheme.
+		// See https://github.com/gofiber/fiber/issues/1762.
+		req.URI().SetScheme(currentURL.Scheme)
 		if err := cli.Do(req, resp); err != nil {
 			return err
 		}

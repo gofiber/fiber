@@ -252,13 +252,16 @@ var ConfigDefault = Config{
 
 ## Default SecurityPolicy
 
-When `Config.SecurityPolicy` is `nil` (and `proxy.WithSecurityPolicy` has not been called), the package falls back to:
+When `Config.SecurityPolicy` is `nil` (and `proxy.WithSecurityPolicy` has not been called), the package falls back to the value returned by `proxy.DefaultSecurityPolicy()`:
 
 ```go
-var DefaultSecurityPolicy = proxy.SecurityPolicy{
-    AllowedSchemes:      []string{"http", "https"},
-    AllowPrivateIPs:     false,
-    AllowHTTPSDowngrade: false,
-    KeepHopByHopHeaders: false,
+// DefaultSecurityPolicy returns the secure-by-default policy.
+func DefaultSecurityPolicy() proxy.SecurityPolicy {
+    return proxy.SecurityPolicy{
+        AllowedSchemes:      []string{"http", "https"},
+        AllowPrivateIPs:     false,
+        AllowHTTPSDowngrade: false,
+        KeepHopByHopHeaders: false,
+    }
 }
 ```

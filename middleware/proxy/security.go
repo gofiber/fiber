@@ -29,14 +29,12 @@ const (
 	schemeHTTPS = "https"
 )
 
-// Package-level immutable allowlist used by DefaultSecurityPolicy and as
-// the fallback inside schemeAllowed. Allocating this once spares every
-// per-request schemeAllowed/normalizePolicy call from rebuilding the
-// same two-element slice.
-//
-// Callers receive a fresh copy via DefaultSecurityPolicy() →
-// normalizePolicy(), so this backing array is never visible past the
-// public boundary.
+// defaultAllowedSchemes is the internal, read-only allowlist used as the
+// fallback inside schemeAllowed when a policy carries no AllowedSchemes.
+// It is never handed out by reference: DefaultSecurityPolicy() and
+// normalizePolicy() copy it before it can reach the exported
+// SecurityPolicy.AllowedSchemes field, so nothing outside this file can
+// mutate the backing array.
 var defaultAllowedSchemes = []string{schemeHTTP, schemeHTTPS}
 
 // httpsSchemeBytes is the byte form of "https" used by redirect
@@ -99,9 +97,15 @@ type SecurityPolicy struct {
 // DefaultSecurityPolicy returns the secure-by-default proxy security
 // policy. Callers can clone it, mutate selected fields, and pass it back
 // via Config.SecurityPolicy or WithSecurityPolicy.
+//
+// AllowedSchemes is a freshly allocated slice on every call: the field
+// is exported, so returning the shared defaultAllowedSchemes backing
+// array would let a caller doing e.g. policy.AllowedSchemes[0] = "file"
+// silently weaken the package defaults and every policy that references
+// them.
 func DefaultSecurityPolicy() SecurityPolicy {
 	return SecurityPolicy{
-		AllowedSchemes:      defaultAllowedSchemes,
+		AllowedSchemes:      append([]string(nil), defaultAllowedSchemes...),
 		AllowPrivateIPs:     false,
 		AllowHTTPSDowngrade: false,
 		KeepHopByHopHeaders: false,
@@ -124,12 +128,14 @@ func init() {
 // normalizePolicy returns a copy of policy whose AllowedSchemes slice is
 // always freshly allocated. This guarantees callers cannot mutate the
 // global allowlist out from under a balancer (or another goroutine) by
-// retaining a reference to the slice they passed in. The defensive copy
-// happens at install time only — readers consume the immutable result
-// via activePolicy.Load() without further copying.
+// retaining a reference to the slice they passed in — including the
+// package-level defaultAllowedSchemes, which must never be handed out by
+// reference. The defensive copy happens at install time only — readers
+// consume the immutable result via activePolicy.Load() without further
+// copying.
 func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
 	if len(policy.AllowedSchemes) == 0 {
-		policy.AllowedSchemes = defaultAllowedSchemes
+		policy.AllowedSchemes = append([]string(nil), defaultAllowedSchemes...)
 	} else {
 		policy.AllowedSchemes = append([]string(nil), policy.AllowedSchemes...)
 	}

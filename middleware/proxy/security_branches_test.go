@@ -92,6 +92,46 @@ func Test_Security_WithSecurityPolicy_EmptyAllowedSchemesGetsDefault(t *testing.
 	require.Equal(t, []string{"http", "https"}, got.AllowedSchemes)
 }
 
+// Test_Security_DefaultSecurityPolicy_AllowedSchemesIsCopy verifies that
+// mutating the AllowedSchemes slice returned by DefaultSecurityPolicy
+// cannot corrupt the package defaults — the slice must not alias the
+// internal defaultAllowedSchemes backing array.
+func Test_Security_DefaultSecurityPolicy_AllowedSchemesIsCopy(t *testing.T) {
+	t.Parallel()
+	p1 := DefaultSecurityPolicy()
+	require.Equal(t, []string{"http", "https"}, p1.AllowedSchemes)
+
+	// Adversarial mutation: try to weaken the allowlist through the
+	// exported field.
+	p1.AllowedSchemes[0] = "file"
+
+	// A fresh DefaultSecurityPolicy must be unaffected.
+	p2 := DefaultSecurityPolicy()
+	require.Equal(t, []string{"http", "https"}, p2.AllowedSchemes,
+		"DefaultSecurityPolicy must return an isolated AllowedSchemes slice")
+
+	// The internal fallback used by schemeAllowed must be unaffected too.
+	require.True(t, schemeAllowed("https", nil))
+	require.False(t, schemeAllowed("file", nil))
+}
+
+// Test_Security_NormalizePolicy_EmptyAllowedSchemesIsFreshCopy verifies
+// normalizePolicy honors its "always freshly allocated" contract even
+// for the empty-allowlist branch: the returned slice must not alias
+// defaultAllowedSchemes.
+func Test_Security_NormalizePolicy_EmptyAllowedSchemesIsFreshCopy(t *testing.T) {
+	t.Parallel()
+	got := normalizePolicy(SecurityPolicy{})
+	require.Equal(t, []string{"http", "https"}, got.AllowedSchemes)
+
+	got.AllowedSchemes[0] = "file"
+
+	// A second normalize must still see the clean defaults.
+	again := normalizePolicy(SecurityPolicy{})
+	require.Equal(t, []string{"http", "https"}, again.AllowedSchemes,
+		"normalizePolicy empty branch must not alias defaultAllowedSchemes")
+}
+
 // Test_Security_ResolvePolicy_OverrideEmptySchemes covers the override
 // path where the caller supplies a Config-level policy with no
 // scheme allowlist set — resolvePolicy must fall back to defaults.

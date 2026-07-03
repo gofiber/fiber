@@ -419,6 +419,38 @@ func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
 	})
 }
 
+// Test_Security_FollowRedirects_ReappliesSchemePerHop verifies that a
+// redirect which changes the scheme is dispatched with the new scheme.
+// followRedirects re-applies currentURL.Scheme after each SetRequestURI
+// because fasthttp keeps the previous scheme when req.isTLS is set — see
+// https://github.com/gofiber/fiber/issues/1762.
+func Test_Security_FollowRedirects_ReappliesSchemePerHop(t *testing.T) {
+	t.Parallel()
+
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+
+	var secondHopScheme string
+	client, _ := newCountingRedirectClient(map[string]redirectStep{
+		"http://origin.example/": {status: fasthttp.StatusFound, location: "https://origin.example/secure"},
+	})
+	client.onRequest = func(req *fasthttp.Request) {
+		if string(req.URI().Path()) == "/secure" {
+			secondHopScheme = string(req.URI().Scheme())
+		}
+	}
+
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+	req.SetRequestURI("http://origin.example/")
+	req.Header.SetMethod(fasthttp.MethodGet)
+
+	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://origin.example/"), policy))
+	require.Equal(t, "https", secondHopScheme, "scheme upgrade must carry through to the next hop")
+}
+
 func Test_Security_JoinUpstreamPath_PreservesQuery(t *testing.T) {
 	t.Parallel()
 	base, err := parseUpstream("http://upstream.example")
