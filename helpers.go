@@ -462,6 +462,56 @@ func joinHeaderValues(headers [][]byte) []byte {
 	}
 }
 
+// joinedHeaderValue accumulates the combined value of a header's field lines
+// (RFC 9110 Section 5.2). It allocates only in the rare multi-line case; the
+// single-line result aliases the header storage.
+type joinedHeaderValue struct {
+	key      string
+	combined []byte
+	multi    bool
+}
+
+func (j *joinedHeaderValue) visit(k, v []byte) {
+	if len(k) != len(j.key) || !utils.EqualFold(utils.UnsafeString(k), j.key) {
+		return
+	}
+	switch {
+	case j.combined == nil:
+		j.combined = v
+	case !j.multi:
+		joined := make([]byte, 0, len(j.combined)+1+len(v))
+		joined = append(joined, j.combined...)
+		joined = append(joined, ',')
+		joined = append(joined, v...)
+		j.combined = joined
+		j.multi = true
+	default:
+		j.combined = append(j.combined, ',')
+		j.combined = append(j.combined, v...)
+	}
+}
+
+// peekJoinedRequestHeader returns the combined value of every field line for
+// key in a single pass over the request headers, plus whether the field
+// occurred on more than one line. Unlike PeekAll it performs no per-call key
+// normalization. Concrete (non-generic) so the visitor stays on the stack.
+func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, bool) {
+	j := joinedHeaderValue{key: key}
+	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
+	// an iterator closure that escapes to the heap on every call.
+	h.VisitAll(j.visit) //nolint:staticcheck // see above
+	return j.combined, j.multi
+}
+
+// peekJoinedResponseHeader is peekJoinedRequestHeader for response headers.
+func peekJoinedResponseHeader(h *fasthttp.ResponseHeader, key string) ([]byte, bool) {
+	j := joinedHeaderValue{key: key}
+	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
+	// an iterator closure that escapes to the heap on every call.
+	h.VisitAll(j.visit) //nolint:staticcheck // see above
+	return j.combined, j.multi
+}
+
 func unescapeHeaderValue(v []byte) ([]byte, error) {
 	if bytes.IndexByte(v, '\\') == -1 {
 		return v, nil

@@ -159,14 +159,16 @@ func (r *DefaultReq) Body() []byte {
 
 	request := &r.c.fasthttp.Request
 
-	// Get Content-Encoding header. Multiple field lines form one combined
-	// list (RFC 9110 Section 5.2), so join them before splitting.
-	headerEncoding = utils.UnsafeString(utilsbytes.UnsafeToLower(joinHeaderValues(request.Header.PeekAll(HeaderContentEncoding))))
-
-	// If no encoding is provided, return the original body
-	if headerEncoding == "" {
+	// Fast path: no Content-Encoding header at all. ContentEncoding uses the
+	// pre-normalized key constant, so absence costs a single cheap lookup.
+	if len(request.Header.ContentEncoding()) == 0 {
 		return r.getBody()
 	}
+
+	// Get Content-Encoding header. Multiple field lines form one combined
+	// list (RFC 9110 Section 5.2), so join them before splitting.
+	encodedBytes, _ := peekJoinedRequestHeader(&request.Header, HeaderContentEncoding)
+	headerEncoding = utils.UnsafeString(utilsbytes.UnsafeToLower(encodedBytes))
 
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5

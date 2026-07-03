@@ -144,8 +144,23 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	}
 	// Consider all existing field lines combined (RFC 9110 Section 5.2) so
 	// the dedup check sees members added on later lines via Header.Add.
-	lines := r.c.fasthttp.Response.Header.PeekAll(field)
-	h := r.c.app.toString(joinHeaderValues(lines))
+	existing, multiLine := peekJoinedResponseHeader(&r.c.fasthttp.Response.Header, field)
+	updated := appendUniqueValues(utils.UnsafeString(existing), values)
+	if updated == "" {
+		return
+	}
+	if multiLine {
+		// Set only rewrites the first field line; drop the extras that are
+		// now folded into the combined value.
+		r.c.fasthttp.Response.Header.Del(field)
+	}
+	r.Set(field, updated)
+}
+
+// appendUniqueValues returns h extended with the non-empty values that are
+// not already listed in it, or "" when nothing was added (h only ever grows,
+// so a changed result is never empty).
+func appendUniqueValues(h string, values []string) string {
 	originalH := h
 	for _, value := range values {
 		if value == "" {
@@ -157,14 +172,10 @@ func (r *DefaultRes) Append(field string, values ...string) {
 			h += ", " + value
 		}
 	}
-	if originalH != h {
-		if len(lines) > 1 {
-			// Set only rewrites the first field line; drop the extras that
-			// are now folded into the combined value.
-			r.c.fasthttp.Response.Header.Del(field)
-		}
-		r.Set(field, h)
+	if originalH == h {
+		return ""
 	}
+	return h
 }
 
 // headerContainsValue checks if a header value already contains the given value
@@ -1139,14 +1150,25 @@ func (r *DefaultRes) Vary(fields ...string) {
 	// Peek without copying: the value is only inspected before any write.
 	// All field lines are combined (RFC 9110 Section 5.2) so a wildcard on a
 	// later line added via Header.Add is still honored.
-	existing := utils.UnsafeString(joinHeaderValues(r.c.fasthttp.Response.Header.PeekAll(HeaderVary)))
-	if slices.Contains(fields, "*") || headerContainsValue(existing, "*") {
-		// Del first: setCanonical only rewrites the first field line.
-		r.c.fasthttp.Response.Header.Del(HeaderVary)
+	existing, multiLine := peekJoinedResponseHeader(&r.c.fasthttp.Response.Header, HeaderVary)
+	existingStr := utils.UnsafeString(existing)
+	if slices.Contains(fields, "*") || headerContainsValue(existingStr, "*") {
+		if multiLine {
+			// setCanonical only rewrites the first field line.
+			r.c.fasthttp.Response.Header.Del(HeaderVary)
+		}
 		r.setCanonical(HeaderVary, "*")
 		return
 	}
-	r.Append(HeaderVary, fields...)
+	updated := appendUniqueValues(existingStr, fields)
+	if updated == "" {
+		return
+	}
+	if multiLine {
+		// Set only rewrites the first field line; fold the extras into one.
+		r.c.fasthttp.Response.Header.Del(HeaderVary)
+	}
+	r.Set(HeaderVary, updated)
 }
 
 // Write appends p into response body.
