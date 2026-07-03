@@ -2,6 +2,7 @@ package etag
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,63 @@ func Test_ETag_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+// go test -run Test_ETag_SSE
+func Test_ETag_SSE(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, fiber.MIMETextEventStream)
+		return c.SendString("data: hello\n\n")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Empty(t, resp.Header.Get(fiber.HeaderETag))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "data: hello\n\n", string(body))
+}
+
+// failOnReadStream is a body stream whose Read fails, proving the middleware
+// never materializes it.
+type failOnReadStream struct{ readCalls int }
+
+func (s *failOnReadStream) Read(_ []byte) (int, error) {
+	s.readCalls++
+	return 0, errors.New("stream should not be read")
+}
+
+// go test -run Test_ETag_SSE_Stream
+// A real SSE stream must pass through untouched: hashing the body would
+// materialize the stream and break real-time delivery. The middleware must add
+// no ETag and leave the response a stream. The content type carries a charset
+// param to exercise the media-type strip in isEventStream.
+func Test_ETag_SSE_Stream(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+
+	stream := &failOnReadStream{}
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, fiber.MIMETextEventStream+"; charset=utf-8")
+		c.Status(fiber.StatusOK)
+		c.Response().SetBodyStream(stream, -1)
+		return nil
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/")
+	app.Handler()(fctx)
+
+	require.True(t, fctx.Response.IsBodyStream())
+	require.Zero(t, stream.readCalls)
+	require.Empty(t, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
 }
 
 // go test -run Test_ETag_SkipError

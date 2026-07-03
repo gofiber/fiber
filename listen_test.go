@@ -99,6 +99,20 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 		return false
 	}, time.Second, 100*time.Millisecond, "Server failed to become ready")
 
+	if shutdownTimeout == time.Nanosecond {
+		// keep a request in flight so shutdown cannot drain to zero open
+		// connections before the 1ns deadline is checked (would yield a nil error)
+		conn, err := ln.Dial()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			if closeErr := conn.Close(); closeErr != nil {
+				t.Logf("error closing connection: %v", closeErr)
+			}
+		})
+		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n"))
+		require.NoError(t, err)
+	}
+
 	client := fasthttp.HostClient{
 		Dial: func(_ string) (net.Conn, error) { return ln.Dial() },
 	}

@@ -421,8 +421,11 @@ func (r *DefaultReq) Fresh() bool {
 		return false
 	}
 
-	// if-none-match
-	if len(noneMatch) > 0 && (len(noneMatch) != 1 || noneMatch[0] != '*') {
+	// if-none-match takes precedence over if-modified-since (RFC 9110)
+	if len(noneMatch) > 0 {
+		if len(noneMatch) == 1 && noneMatch[0] == '*' {
+			return true
+		}
 		app := r.c.app
 		response := &r.c.fasthttp.Response
 		etag := app.toString(response.Header.Peek(HeaderETag))
@@ -432,19 +435,30 @@ func (r *DefaultReq) Fresh() bool {
 		if app.isEtagStale(etag, noneMatch) {
 			return false
 		}
+		return true
+	}
 
-		if len(modifiedSince) > 0 {
-			lastModified := response.Header.Peek(HeaderLastModified)
-			if len(lastModified) > 0 {
-				lastModifiedTime, err := fasthttp.ParseHTTPDate(lastModified)
-				if err != nil {
-					return false
-				}
-				modifiedSinceTime, err := fasthttp.ParseHTTPDate(modifiedSince)
-				if err != nil {
-					return false
-				}
-				return lastModifiedTime.Compare(modifiedSinceTime) != 1
+	// if-modified-since (only reached when if-none-match is absent)
+	if len(modifiedSince) > 0 {
+		response := &r.c.fasthttp.Response
+		lastModified := response.Header.Peek(HeaderLastModified)
+		if len(lastModified) == 0 {
+			return false
+		}
+		lastModifiedTime, err := fasthttp.ParseHTTPDate(lastModified)
+		if err != nil {
+			return false
+		}
+		// Common conditional request: the client echoes back the exact
+		// Last-Modified it was given. Identical, already-validated dates are
+		// equal, so skip the second parse and comparison.
+		if !bytes.Equal(lastModified, modifiedSince) {
+			modifiedSinceTime, err := fasthttp.ParseHTTPDate(modifiedSince)
+			if err != nil {
+				return false
+			}
+			if lastModifiedTime.Compare(modifiedSinceTime) == 1 {
+				return false
 			}
 		}
 	}
@@ -818,6 +832,8 @@ func (r *DefaultReq) Method(override ...string) string {
 		return app.method(r.c.methodInt)
 	}
 	r.c.methodInt = methodInt
+	// Method changed; invalidate the lookahead index
+	r.c.firstMatchIndex = -1
 	return method
 }
 

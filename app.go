@@ -35,7 +35,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "3.3.0"
+const Version = "3.4.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
@@ -110,6 +110,8 @@ type App struct {
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[int][]*Route
+	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
+	skip skipRouteIndex
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -190,6 +192,23 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: false
 	CaseSensitive bool `json:"case_sensitive"`
+
+	// When set to true, requests whose path and method match no registered route
+	// are answered with 404 (or 405 when the path exists for other methods)
+	// before the middleware chain runs, so no work is spent on bots, scanners,
+	// and bad URLs.
+	//
+	// Warning: middleware never runs for skipped requests. This breaks Use-based
+	// responders on unregistered paths (catch-all 404 pages, static, proxy,
+	// healthcheck, rewrite and redirect middleware); loggers and metrics will not
+	// see the skipped requests either. CORS preflight requests are exempt, so cors
+	// middleware keeps working. Customize the 404/405 responses via ErrorHandler.
+	//
+	// Note: with more than 64 entries in RequestMethods the fast path is disabled
+	// and requests fall through to the normal router.
+	//
+	// Default: false
+	SkipUnmatchedRoutes bool `json:"skip_unmatched_routes"`
 
 	// When set to true, disables automatic registration of HEAD routes for
 	// every GET route.
@@ -1548,6 +1567,11 @@ func (app *App) init() *App {
 // error handler. Otherwise, it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
+	// Fast path: no mounted sub-apps, so no prefix lookup is needed
+	if len(app.mountFields.appListKeys) == 0 {
+		return app.config.ErrorHandler(ctx, err)
+	}
+
 	var (
 		mountedErrHandler  ErrorHandler
 		mountedPrefixParts int

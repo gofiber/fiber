@@ -74,6 +74,7 @@ type DefaultCtx struct {
 	treePathHash           int                  // Hash of the path for the search in the tree
 	indexRoute             int                  // Index of the current route
 	indexHandler           int                  // Index of the current handler
+	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
 	methodInt              int                  // HTTP method INT equivalent
 	isAbandoned            atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
 	isMatched              bool                 // Non use route matched
@@ -275,6 +276,8 @@ func (c *DefaultCtx) Next() error {
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
 	c.indexRoute = -1
+	// Path may have changed; invalidate the lookahead index
+	c.firstMatchIndex = -1
 	if c.handlerCtx != nil {
 		_, err := c.app.nextCustom(c.handlerCtx)
 		return err
@@ -314,6 +317,8 @@ func (c *DefaultCtx) Path(override ...string) string {
 		c.fasthttp.Request.URI().SetPath(c.pathOriginal)
 		// Prettify path
 		c.configDependentPaths()
+		// The detection path/tree hash changed; invalidate the lookahead index.
+		c.firstMatchIndex = -1
 	}
 	return c.app.toString(c.path)
 }
@@ -365,11 +370,12 @@ func (c *DefaultCtx) ViewBind(vars Map) error {
 // Route returns the matched Route struct.
 func (c *DefaultCtx) Route() *Route {
 	if c.route == nil {
-		// Fallback for fasthttp error handler
+		// Fallback for fasthttp error handler; equals c.Method() without
+		// the variadic call so Route stays within the inlining budget
 		return &Route{
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
-			Method:   c.Method(),
+			Method:   c.app.method(c.methodInt),
 			Handlers: emptyRouteHandlers[:],
 			Params:   emptyRouteParams[:],
 		}
@@ -684,6 +690,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Reset matched flag
 	c.isMatched = false
 	c.shouldSkipNonUseRoutes = false
+	c.firstMatchIndex = -1
 	// Set paths
 	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
@@ -874,6 +881,10 @@ func (c *DefaultCtx) getSkipNonUseRoutes() bool {
 	return c.shouldSkipNonUseRoutes
 }
 
+func (c *DefaultCtx) getFirstMatchIndex() int {
+	return c.firstMatchIndex
+}
+
 func (c *DefaultCtx) setIndexHandler(handler int) {
 	c.indexHandler = handler
 }
@@ -888,6 +899,10 @@ func (c *DefaultCtx) setMatched(matched bool) {
 
 func (c *DefaultCtx) setSkipNonUseRoutes(skip bool) {
 	c.shouldSkipNonUseRoutes = skip
+}
+
+func (c *DefaultCtx) setFirstMatchIndex(index int) {
+	c.firstMatchIndex = index
 }
 
 func (c *DefaultCtx) setRoute(route *Route) {

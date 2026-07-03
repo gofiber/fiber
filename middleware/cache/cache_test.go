@@ -2365,8 +2365,12 @@ func Test_CacheSMaxAgeOverridesMaxAgeWhenShorter(t *testing.T) {
 func Test_CacheSMaxAgeOverridesMaxAgeWhenLonger(t *testing.T) {
 	t.Parallel()
 
+	// Drive freshness from a manually advanced clock so the checks never straddle
+	// a whole-second boundary (the previous time.Sleep based version flaked under
+	// -race -count -shuffle).
+	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
-	app.Use(New())
+	app.Use(New(Config{clock: clock.Now}))
 
 	var count int
 	app.Get("/", func(c fiber.Ctx) error {
@@ -2375,15 +2379,13 @@ func Test_CacheSMaxAgeOverridesMaxAgeWhenLonger(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	})
 
-	for time.Now().Nanosecond() >= int(100*time.Millisecond) {
-		time.Sleep(10 * time.Millisecond)
-	}
-
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	time.Sleep(1200 * time.Millisecond)
+	// Past max-age=1 but within the longer s-maxage=2 window: the longer
+	// s-maxage must win, so the entry is still fresh.
+	clock.Add(1200 * time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
@@ -2392,7 +2394,8 @@ func Test_CacheSMaxAgeOverridesMaxAgeWhenLonger(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1", string(body))
 
-	time.Sleep(1700 * time.Millisecond)
+	// Advance past the 2s s-maxage window; the entry must now be stale.
+	clock.Add(1700 * time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
