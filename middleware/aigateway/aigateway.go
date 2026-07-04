@@ -89,15 +89,16 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		start := time.Now()
-		// Method/Path/ClientKey are backed by the pooled request/ctx buffers.
-		// The buffered path fires OnUsage synchronously in-handler while they
-		// are still valid; the streaming path copies them before its goroutines
-		// capture ev (see relayStream), so no copy is needed here.
+		// Method/Path/ClientKey are backed by the pooled request/ctx buffers,
+		// which are recycled once the handler returns. The streaming usage hook
+		// runs after that, so copy every ctx-derived string into owned memory
+		// here — one place, so a newly added field can't be missed on the async
+		// path. (Model is already an owned string from the JSON decode.)
 		ev := &UsageEvent{
 			Model:        model,
-			Method:       c.Method(),
-			Path:         strippedPath,
-			ClientKey:    key,
+			Method:       utils.CopyString(c.Method()),
+			Path:         utils.CopyString(strippedPath),
+			ClientKey:    utils.CopyString(key),
 			RequestBytes: int64(len(c.BodyRaw())),
 		}
 
@@ -207,7 +208,19 @@ func decodePath(path string) string {
 }
 
 func containsDotDot(path string) bool {
-	for part := range strings.SplitSeq(path, "/") {
+	// Treat a backslash as a separator too: some upstreams normalize "\" to
+	// "/", so "..\..\x" must be caught as traversal even though URL path
+	// segments split on "/".
+	for i := 0; i < len(path); {
+		j := strings.IndexAny(path[i:], `/\`)
+		var part string
+		if j < 0 {
+			part = path[i:]
+			i = len(path)
+		} else {
+			part = path[i : i+j]
+			i += j + 1
+		}
 		if part == ".." {
 			return true
 		}
@@ -238,13 +251,22 @@ func matchAny(patterns []string, val string) bool {
 	return false
 }
 
+// utf8BOM is the UTF-8 byte-order mark some clients prepend to JSON bodies.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
 // sniffModel best-effort decodes the "model" field from a JSON request body.
 // It keys off the body shape (a leading '{') rather than the Content-Type, so a
 // JSON body sent with a non-JSON Content-Type cannot hide its model from the
 // AllowedModels check. Genuinely non-JSON bodies (multipart audio, binary) do
 // not start with '{' and are left unrestricted.
+//
+// It reads the raw (undecoded) body: a JSON body starts with '{' before any
+// transfer decoding, and reading it raw avoids decompressing an untrusted
+// request body (a compression-bomb surface) merely to peek one byte. Real LLM
+// providers do not accept content-encoded request bodies.
 func sniffModel(c fiber.Ctx) string {
-	body := bytes.TrimLeft(c.Body(), " \t\r\n")
+	body := bytes.TrimPrefix(c.BodyRaw(), utf8BOM)
+	body = bytes.TrimLeft(body, " \t\r\n")
 	if len(body) == 0 || body[0] != '{' {
 		return ""
 	}

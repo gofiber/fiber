@@ -3,6 +3,7 @@ package aigateway
 import (
 	"bytes"
 	"compress/gzip"
+	"compress/zlib"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -300,6 +301,109 @@ func Test_AIGateway_DecompressionBombBounded(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.NotNil(t, got)
 	require.Nil(t, got.Usage, "bounded decode should not parse a bomb")
+}
+
+func Test_AIGateway_ModelSpoofViaBOM(t *testing.T) {
+	t.Parallel()
+
+	upstream := echoUpstream(t)
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams:     []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+		AllowedModels: []string{"gpt-4o*"},
+	}))
+
+	// A UTF-8 BOM before the JSON must not hide the model from the allow-list.
+	body := append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"model":"gpt-3.5-turbo"}`)...)
+	req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+}
+
+func Test_AIGateway_BackslashTraversalBlocked(t *testing.T) {
+	t.Parallel()
+
+	upstream := echoUpstream(t)
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams:    []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+		AllowedPaths: []string{"/v1/chat/*"},
+	}))
+
+	send := func(path string) int {
+		req := httptest.NewRequest(fiber.MethodGet, path, http.NoBody)
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+		resp, err := app.Test(req, testConfig)
+		require.NoError(t, err)
+		return resp.StatusCode
+	}
+
+	// Backslash-based traversal must be rejected (some upstreams treat \ as /).
+	require.Equal(t, fiber.StatusBadRequest, send(`/v1/chat/..\..\admin`))
+	require.Equal(t, fiber.StatusBadRequest, send(`/v1/chat/%2e%2e\admin`))
+}
+
+func Test_AIGateway_FormExtractorUnifiedPanics(t *testing.T) {
+	t.Parallel()
+
+	// A form/param/custom extractor in unified-key mode cannot be stripped and
+	// would leak the client credential upstream, so construction must panic.
+	require.Panics(t, func() {
+		New(Config{
+			KeyExtractor: extractors.FromForm("api_key"),
+			Upstreams:    []Upstream{{Name: "test", URL: "https://api.example.com", Key: "sk"}},
+		})
+	})
+	// In pass-through mode the client credential is meant to go upstream, so
+	// the same extractor is allowed.
+	require.NotPanics(t, func() {
+		New(Config{
+			ForwardClientKey: true,
+			KeyExtractor:     extractors.FromForm("api_key"),
+			Upstreams:        []Upstream{{Name: "test", URL: "https://api.example.com"}},
+		})
+	})
+}
+
+func Test_AIGateway_UsageParsedFromDeflate(t *testing.T) {
+	t.Parallel()
+
+	// zlib-wrapped deflate (the conventional Content-Encoding: deflate) must
+	// still decode for usage parsing.
+	var payload bytes.Buffer
+	zw := zlib.NewWriter(&payload)
+	_, _ = zw.Write([]byte(`{"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}`)) //nolint:errcheck // test setup
+	require.NoError(t, zw.Close())
+	deflated := payload.Bytes()
+
+	upstreamApp := fiber.New()
+	upstreamApp.Post("/v1/chat/completions", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentEncoding, "deflate")
+		c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+		return c.Send(deflated)
+	})
+	upstream := "http://" + startServer(t, upstreamApp)
+
+	var got *UsageEvent
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams: []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+		OnUsage:   func(e *UsageEvent) { got = e },
+	}))
+
+	req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o"}`))
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.NotNil(t, got)
+	require.NotNil(t, got.Usage, "zlib-wrapped deflate usage should parse")
+	require.Equal(t, 3, got.Usage.InputTokens)
+	require.Equal(t, 4, got.Usage.OutputTokens)
 }
 
 func Test_AIGateway_LoggerTagsRegistered(t *testing.T) {

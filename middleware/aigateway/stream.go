@@ -5,13 +5,12 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"compress/zlib"
 	"errors"
 	"io"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/client"
@@ -63,23 +62,10 @@ func isStreamingResponse(resp *client.Response) bool {
 	return false
 }
 
-// upstreamBodyCloser returns the response body stream as a closer that, when
-// closed with a non-nil error, drops the upstream connection instead of
-// returning it to the pool with unread bytes.
-func upstreamBodyCloser(resp *client.Response) (fasthttp.ReadCloserWithError, bool) {
-	cr, ok := resp.RawResponse.BodyStream().(fasthttp.ReadCloserWithError)
-	return cr, ok
-}
-
-// abortUpstreamResponse releases a response whose body was not fully read.
-// The body stream must be closed with a non-nil error first: a plain
-// resp.Close() closes it with nil, which would hand a connection with
-// unread body bytes back to the pool for reuse.
+// abortUpstreamResponse releases a response whose body was not fully read,
+// dropping the connection instead of pooling one with unread body bytes.
 func abortUpstreamResponse(resp *client.Response) {
-	if cr, ok := upstreamBodyCloser(resp); ok {
-		_ = cr.CloseWithError(errStreamAbandoned) //nolint:errcheck // teardown is best-effort
-	}
-	resp.Close()
+	resp.CloseWithError(errStreamAbandoned)
 }
 
 // relayBuffered reads the full upstream response and sends it to the client.
@@ -151,9 +137,16 @@ func decodeForUsage(resp *client.Response, body []byte, limit int64) []byte {
 		defer gz.Close() //nolint:errcheck // decode-only reader
 		r = gz
 	case strings.Contains(enc, "deflate"):
-		fr := flate.NewReader(bytes.NewReader(body))
-		defer fr.Close() //nolint:errcheck // decode-only reader
-		r = fr
+		// "deflate" is conventionally zlib-wrapped (RFC 1950); fall back to
+		// raw DEFLATE (RFC 1951) for the servers that send it bare.
+		if zr, err := zlib.NewReader(bytes.NewReader(body)); err == nil {
+			defer zr.Close() //nolint:errcheck // decode-only reader
+			r = zr
+		} else {
+			fr := flate.NewReader(bytes.NewReader(body))
+			defer fr.Close() //nolint:errcheck // decode-only reader
+			r = fr
+		}
 	default:
 		// Other encodings (e.g. br, zstd) are left to best-effort: the body is
 		// returned as-is and usage parses to nil rather than pulling in extra
@@ -200,15 +193,8 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 	c.Set(headerXAccelBuffering, "no")
 	ev.StatusCode = resp.StatusCode()
 
-	// The usage hook runs on the writer goroutine after the handler returns and
-	// the ctx is recycled, so copy the ctx-buffer-backed strings into owned
-	// ones now. (The buffered path fires in-handler and skips these copies.)
-	ev.Method = utils.CopyString(ev.Method)
-	ev.Path = utils.CopyString(ev.Path)
-	ev.ClientKey = utils.CopyString(ev.ClientKey)
-
-	// Everything the goroutines below touch must be captured here: they run
-	// after the handler returns, when the fiber.Ctx may already be recycled.
+	// ev's ctx-derived strings were already copied into owned memory in New(),
+	// so the goroutines below may read them after the handler returns.
 	stream := resp.BodyStream()
 	idle := cfg.StreamIdleTimeout
 	maxSize := cfg.MaxResponseSize

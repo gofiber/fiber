@@ -130,16 +130,11 @@ func (c *core) execFunc() (*Response, error) {
 		go func() { // drain the channels and release the response
 			select {
 			case resp := <-respChan:
-				// The caller abandoned this response after the deadline. When
-				// the body is streamed (StreamResponseBody), the connection
-				// still has the unread body buffered; closing the stream with
-				// an error makes fasthttp drop the connection instead of
-				// returning it to the pool with stale bytes, which the next
-				// request would otherwise read as its own response.
-				if bs, ok := resp.RawResponse.BodyStream().(fasthttp.ReadCloserWithError); ok {
-					_ = bs.CloseWithError(ErrTimeoutOrCancel) //nolint:errcheck // teardown is best-effort
-				}
-				ReleaseResponse(resp)
+				// The caller abandoned this response after the deadline. For a
+				// streamed body the connection still has the unread body
+				// buffered, so drop it instead of returning a stale connection
+				// to the pool (see Response.CloseWithError).
+				resp.CloseWithError(ErrTimeoutOrCancel)
 			case <-errChan:
 			}
 		}()
@@ -236,13 +231,9 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 
 	// Execute after response hooks (built-in and then user-defined).
 	if err := c.afterHooks(resp); err != nil {
-		// The body has not been read yet; for a streamed response, closing it
-		// with an error drops the connection instead of returning one with an
-		// unread body to the pool (which the next request would misread).
-		if bs, ok := resp.RawResponse.BodyStream().(fasthttp.ReadCloserWithError); ok {
-			_ = bs.CloseWithError(err) //nolint:errcheck // teardown is best-effort
-		}
-		resp.Close()
+		// The body has not been read yet; drop the connection rather than
+		// pooling one with an unread streamed body (see Response.CloseWithError).
+		resp.CloseWithError(err)
 		return nil, err
 	}
 

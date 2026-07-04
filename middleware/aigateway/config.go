@@ -246,9 +246,14 @@ func (cfg *Config) collectExtractorCredentials() {
 			cfg.stripCookies = append(cfg.stripCookies, e.Key)
 		case extractors.SourceForm, extractors.SourceParam, extractors.SourceCustom:
 			// Form (request body), route param (path), and custom extractors
-			// cannot be stripped without rewriting the body/path; a credential
-			// read from those sources in unified-key mode is relayed upstream.
-			// Prefer a header, query, or cookie extractor for unified-key mode.
+			// cannot be stripped without rewriting the body/path (and a custom
+			// extractor's location is opaque). In unified-key mode that would
+			// silently relay the client credential upstream, so fail fast and
+			// require a header/query/cookie extractor instead. In pass-through
+			// mode the client credential is meant to go upstream, so it is fine.
+			if !cfg.ForwardClientKey {
+				panic("fiber: aigateway unified-key mode requires a header, query, or cookie KeyExtractor; a form, param, or custom extractor cannot be stripped and would leak the client credential upstream")
+			}
 		}
 		return false // visit every extractor; never short-circuit
 	})
