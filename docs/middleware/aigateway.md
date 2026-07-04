@@ -130,13 +130,19 @@ app.Use("/openai", aigateway.New(aigateway.Config{
 endpoints that carry no model — `GET /v1/models`, multipart audio uploads — are
 not blocked. Pair it with `AllowedPaths` to bound which endpoints are reachable.
 The model is sniffed from the body shape (a leading `{`, after any UTF-8 BOM and
-whitespace) rather than the `Content-Type`, so a spoofed content type cannot
-hide the model. A content-encoded body is decompressed within a bound (the app's
-`BodyLimit`) first; when `AllowedModels` is set and the gateway cannot decode the
-body to check its model — an unknown encoding (`br`, `zstd`), stacked encodings,
-or one that decompresses past the bound (a compression bomb) — the request is
-**rejected** rather than forwarded, so a compressed body cannot smuggle a
-disallowed model past the check.
+whitespace) rather than the `Content-Type`, so a spoofed content type cannot hide
+the model. A `gzip`/`deflate`-encoded body is decompressed within a fixed
+bomb-safe bound first (a stale `Content-Encoding` header on a plain JSON body is
+handled by falling back to the raw body). When `AllowedModels` is set, any
+request whose model the gateway cannot verify is **rejected** rather than
+forwarded, so nothing can smuggle a disallowed model past the check: a body that
+declares itself JSON (`{`) but cannot be decoded (trailing data, excessive
+nesting, a still-encoded layer), or a content-encoded body the gateway cannot
+turn into JSON (an unknown encoding such as `br`/`zstd`, stacked encodings, or
+one that decompresses past the bound). Uncompressed non-JSON bodies (multipart
+audio, binary) carry no model and are left unrestricted; a compressed non-JSON
+body under a model policy is rejected, so scope such endpoints with
+`AllowedPaths` or a separate mount.
 
 ### Usage accounting
 

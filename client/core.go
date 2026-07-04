@@ -235,14 +235,12 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 
 	// Execute after response hooks (built-in and then user-defined).
 	if err := c.afterHooks(resp); err != nil {
-		// The body has not been read yet; drop the connection rather than
-		// pooling one with an unread streamed body. Release only the Response,
-		// not its paired Request: on every error return from execute the caller
-		// still owns the Request (it received only the error), so releasing it
-		// here would double-release it if the caller releases or reuses it.
-		// This keeps Request ownership uniform across all error paths.
-		resp.closeStream(err)
-		ReleaseResponse(resp)
+		// A Response was created and paired with the Request here, so release
+		// both (as the pre-streaming code did via resp.Close), but tear the
+		// streamed body down first so the connection is dropped rather than
+		// pooled with an unread body. Convenience methods (Client.Get/Post/...)
+		// acquire the Request internally and rely on this release.
+		resp.CloseWithError(err)
 		return nil, err
 	}
 

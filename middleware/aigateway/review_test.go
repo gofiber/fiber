@@ -541,6 +541,61 @@ func Test_AIGateway_EmptyKeyCustomExtractorPanics(t *testing.T) {
 	})
 }
 
+func Test_AIGateway_UndecodableJSONRejectedWhenPoliced(t *testing.T) {
+	t.Parallel()
+
+	upstream := echoUpstream(t)
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams:     []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+		AllowedModels: []string{"gpt-4o*"},
+	}))
+
+	send := func(body string) int {
+		req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+		resp, err := app.Test(req, testConfig)
+		require.NoError(t, err)
+		return resp.StatusCode
+	}
+
+	// A body that declares itself JSON ('{') but the gateway can't decode
+	// (trailing garbage a lenient upstream parser might still read a model from)
+	// is unverifiable and rejected, even uncompressed and even for an allowed
+	// model name.
+	require.Equal(t, fiber.StatusForbidden, send(`{"model":"gpt-4o"} trailing-garbage`))
+	// A clean, decodable allowed model still passes.
+	require.Equal(t, fiber.StatusOK, send(`{"model":"gpt-4o"}`))
+}
+
+func Test_AIGateway_StaleContentEncodingHeaderSniffed(t *testing.T) {
+	t.Parallel()
+
+	upstream := echoUpstream(t)
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams:     []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+		AllowedModels: []string{"gpt-4o*"},
+	}))
+
+	// A plain JSON body carrying a stale "Content-Encoding: gzip" (an
+	// intermediary decompressed it but left the header) must still be sniffed
+	// from the raw body rather than falsely rejected.
+	send := func(model string) int {
+		req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"`+model+`"}`))
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+		req.Header.Set(fiber.HeaderContentEncoding, "gzip") // stale/bogus
+		resp, err := app.Test(req, testConfig)
+		require.NoError(t, err)
+		return resp.StatusCode
+	}
+
+	require.Equal(t, fiber.StatusOK, send("gpt-4o"))
+	require.Equal(t, fiber.StatusForbidden, send("gpt-3.5-turbo"))
+}
+
 func Test_AIGateway_LoggerTagsRegistered(t *testing.T) {
 	t.Parallel()
 

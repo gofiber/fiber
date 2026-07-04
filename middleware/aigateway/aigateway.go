@@ -268,19 +268,20 @@ var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 // verifiable with an empty model: a genuine non-model request that is left
 // unrestricted.
 func sniffModel(c fiber.Ctx) (string, bool) {
-	body := c.BodyRaw()
-	compressed := false
+	raw := c.BodyRaw()
+	body := raw
+	encoded := false
 	if enc := c.Get(fiber.HeaderContentEncoding); enc != "" && !strings.EqualFold(strings.TrimSpace(enc), "identity") {
-		compressed = true
-		// Decode up to the body size the server itself accepts (BodyLimit), so
-		// a legitimately large compressed body can still be inspected while a
-		// bomb is bounded by the operator's own limit.
-		limit := max(int64(c.App().Config().BodyLimit), sniffDecodeLimit)
-		decoded, ok := boundedDecompress(enc, body, limit)
-		if !ok {
-			return "", false
+		encoded = true
+		// Decode within a fixed bomb-safe bound (independent of BodyLimit, which
+		// sizes the *compressed* body, not decompression memory). On failure,
+		// fall back to inspecting the raw body: a stale Content-Encoding header
+		// on a plain JSON body (a common intermediary footgun) then still sniffs
+		// cleanly, while a genuinely encoded body's raw bytes are not JSON and
+		// stay unverifiable below.
+		if decoded, ok := boundedDecompress(enc, raw, sniffDecodeLimit); ok {
+			body = decoded
 		}
-		body = decoded
 	}
 
 	// Strip any mix of leading whitespace and UTF-8 BOMs, in any order.
@@ -291,16 +292,24 @@ func sniffModel(c fiber.Ctx) (string, bool) {
 		}
 		body = trimmed
 	}
-	if len(body) == 0 || body[0] != '{' {
-		// A body we decoded from a content-encoding but that is not a JSON
-		// object (e.g. still-encoded stacked layers) cannot be checked.
-		return "", !compressed
+
+	if len(body) > 0 && body[0] == '{' {
+		// The body declares itself a JSON object. To allow it under a model
+		// policy we must be able to read its model; a body we cannot decode
+		// (trailing data, excessive depth, a still-encoded layer) is
+		// unverifiable regardless of Content-Encoding, since a more lenient
+		// upstream parser could still extract a disallowed model from it.
+		var m struct {
+			Model string `json:"model"`
+		}
+		if err := c.App().Config().JSONDecoder(body, &m); err != nil {
+			return "", false
+		}
+		return m.Model, true
 	}
-	var m struct {
-		Model string `json:"model"`
-	}
-	if err := c.App().Config().JSONDecoder(body, &m); err != nil {
-		return "", !compressed
-	}
-	return m.Model, true
+
+	// Not a JSON object. A content-encoded body we could not turn into JSON
+	// cannot be checked; an uncompressed non-JSON body (multipart audio, binary)
+	// is a genuine non-model request and is left unrestricted.
+	return "", !encoded
 }
