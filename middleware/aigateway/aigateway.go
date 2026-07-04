@@ -7,6 +7,7 @@
 package aigateway
 
 import (
+	"bytes"
 	"errors"
 	"net/url"
 	"strings"
@@ -88,14 +89,15 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		start := time.Now()
-		// key, path, and method are backed by the pooled request/ctx buffers,
-		// which are recycled once the handler returns. The streaming usage hook
-		// runs after that, so copy anything it may read into owned strings.
+		// Method/Path/ClientKey are backed by the pooled request/ctx buffers.
+		// The buffered path fires OnUsage synchronously in-handler while they
+		// are still valid; the streaming path copies them before its goroutines
+		// capture ev (see relayStream), so no copy is needed here.
 		ev := &UsageEvent{
 			Model:        model,
-			Method:       utils.CopyString(c.Method()),
-			Path:         utils.CopyString(strippedPath),
-			ClientKey:    utils.CopyString(key),
+			Method:       c.Method(),
+			Path:         strippedPath,
+			ClientKey:    key,
 			RequestBytes: int64(len(c.BodyRaw())),
 		}
 
@@ -183,14 +185,23 @@ func stripPrefix(path, prefix string) string {
 	return stripped
 }
 
-// decodePath percent-decodes a request path for policy checks. On a malformed
-// escape it returns the input unchanged so the raw form is still inspected.
+// decodePath fully percent-decodes a request path for policy checks. It
+// decodes repeatedly so multiply-encoded traversal (e.g. %252e%252e, which a
+// single decode leaves as %2e%2e) is resolved before the dot-dot and
+// allow-list checks. On a malformed escape it returns the last good form so
+// the still-encoded remainder is inspected.
 func decodePath(path string) string {
-	if !strings.ContainsRune(path, '%') {
-		return path
-	}
-	if decoded, err := url.PathUnescape(path); err == nil {
-		return decoded
+	// A handful of passes is far more than any legitimate path needs; the cap
+	// bounds work on adversarial deeply-nested encodings.
+	for range 5 {
+		if !strings.ContainsRune(path, '%') {
+			break
+		}
+		decoded, err := url.PathUnescape(path)
+		if err != nil || decoded == path {
+			break
+		}
+		path = decoded
 	}
 	return path
 }
@@ -228,12 +239,13 @@ func matchAny(patterns []string, val string) bool {
 }
 
 // sniffModel best-effort decodes the "model" field from a JSON request body.
+// It keys off the body shape (a leading '{') rather than the Content-Type, so a
+// JSON body sent with a non-JSON Content-Type cannot hide its model from the
+// AllowedModels check. Genuinely non-JSON bodies (multipart audio, binary) do
+// not start with '{' and are left unrestricted.
 func sniffModel(c fiber.Ctx) string {
-	if !c.Is("json") {
-		return ""
-	}
-	body := c.Body()
-	if len(body) == 0 {
+	body := bytes.TrimLeft(c.Body(), " \t\r\n")
+	if len(body) == 0 || body[0] != '{' {
 		return ""
 	}
 	var m struct {

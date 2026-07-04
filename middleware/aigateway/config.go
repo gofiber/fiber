@@ -128,6 +128,13 @@ type Config struct {
 	// upstream or let a client smuggle a second credential through.
 	stripHeaders map[string]struct{}
 
+	// stripQuery and stripCookies name the query params / cookies the
+	// KeyExtractor reads the client credential from; they are removed from the
+	// relayed request so a query- or cookie-based credential is not forwarded
+	// upstream. Derived in configDefault.
+	stripQuery   []string
+	stripCookies []string
+
 	// PathPrefix is stripped from the request path before it is joined with
 	// Upstream.URL, e.g. "/openai" when mounted as app.Use("/openai", ...).
 	//
@@ -220,16 +227,31 @@ func defaultKeyExtractor() extractors.Extractor {
 	)
 }
 
-// collectExtractorHeaders adds the header names an extractor (and its chain)
-// reads to dst, so a client credential in any of them is stripped before the
-// upstream key is injected.
-func collectExtractorHeaders(e extractors.Extractor, dst map[string]struct{}) {
-	if (e.Source == extractors.SourceHeader || e.Source == extractors.SourceAuthHeader) && e.Key != "" {
-		dst[strings.ToLower(e.Key)] = struct{}{}
-	}
-	for i := range e.Chain {
-		collectExtractorHeaders(e.Chain[i], dst)
-	}
+// collectExtractorCredentials records, for every extractor in the chain, where
+// the client credential is carried so it can be stripped before relaying:
+// header names into cfg.stripHeaders, query params into cfg.stripQuery, cookie
+// names into cfg.stripCookies. It uses Extractor.Contains, whose traversal is
+// cycle-safe (a self-referential chain would otherwise recurse forever).
+func (cfg *Config) collectExtractorCredentials() {
+	cfg.KeyExtractor.Contains(func(e extractors.Extractor) bool {
+		if e.Key == "" {
+			return false
+		}
+		switch e.Source {
+		case extractors.SourceHeader, extractors.SourceAuthHeader:
+			cfg.stripHeaders[strings.ToLower(e.Key)] = struct{}{}
+		case extractors.SourceQuery:
+			cfg.stripQuery = append(cfg.stripQuery, e.Key)
+		case extractors.SourceCookie:
+			cfg.stripCookies = append(cfg.stripCookies, e.Key)
+		case extractors.SourceForm, extractors.SourceParam, extractors.SourceCustom:
+			// Form (request body), route param (path), and custom extractors
+			// cannot be stripped without rewriting the body/path; a credential
+			// read from those sources in unified-key mode is relayed upstream.
+			// Prefer a header, query, or cookie extractor for unified-key mode.
+		}
+		return false // visit every extractor; never short-circuit
+	})
 }
 
 // configDefault is a helper function to set default values
@@ -287,7 +309,7 @@ func configDefault(config ...Config) Config {
 			cfg.stripHeaders[strings.ToLower(h)] = struct{}{}
 		}
 	}
-	collectExtractorHeaders(cfg.KeyExtractor, cfg.stripHeaders)
+	cfg.collectExtractorCredentials()
 	if cfg.Retry.Attempts <= 0 {
 		cfg.Retry.Attempts = ConfigDefault.Retry.Attempts
 	}

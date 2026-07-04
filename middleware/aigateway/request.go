@@ -3,6 +3,8 @@ package aigateway
 import (
 	"strings"
 
+	"github.com/valyala/fasthttp"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/client"
 	"github.com/gofiber/utils/v2"
@@ -32,11 +34,7 @@ func buildRequest(c fiber.Ctx, cfg *Config, up *Upstream, strippedPath, key stri
 	req.SetMethod(c.Method())
 	req.SetTimeout(cfg.HeaderTimeout)
 
-	if qs := c.RequestCtx().URI().QueryString(); len(qs) > 0 {
-		req.SetURL(up.URL + strippedPath + "?" + utils.UnsafeString(qs))
-	} else {
-		req.SetURL(up.URL + strippedPath)
-	}
+	req.SetURL(up.URL + strippedPath + relayQuery(c, cfg))
 
 	// Copy the incoming headers directly onto the raw request; the client's
 	// built-in hooks add builder-level headers on top without clearing.
@@ -46,6 +44,12 @@ func buildRequest(c fiber.Ctx, cfg *Config, up *Upstream, strippedPath, key stri
 			continue
 		}
 		req.RawRequest.Header.AddBytesKV(k, v)
+	}
+
+	// Remove any cookie the extractor reads the client credential from so it is
+	// not forwarded upstream (the header copy above brought the Cookie header).
+	for _, name := range cfg.stripCookies {
+		req.RawRequest.Header.DelCookie(name)
 	}
 
 	// Inject the upstream credential after every configured credential header
@@ -70,6 +74,29 @@ func buildRequest(c fiber.Ctx, cfg *Config, up *Upstream, strippedPath, key stri
 	}
 
 	return req
+}
+
+// relayQuery returns the "?query" suffix to relay upstream, with any query
+// param the extractor reads the client credential from removed. It returns ""
+// when there is no query. The common no-strip path avoids parsing.
+func relayQuery(c fiber.Ctx, cfg *Config) string {
+	qs := c.RequestCtx().URI().QueryString()
+	if len(qs) == 0 {
+		return ""
+	}
+	if len(cfg.stripQuery) == 0 {
+		return "?" + utils.UnsafeString(qs)
+	}
+	args := fasthttp.AcquireArgs()
+	defer fasthttp.ReleaseArgs(args)
+	args.ParseBytes(qs)
+	for _, name := range cfg.stripQuery {
+		args.Del(name)
+	}
+	if args.Len() == 0 {
+		return ""
+	}
+	return "?" + string(args.QueryString())
 }
 
 // connectionHeaderTokens returns the header names listed in the incoming

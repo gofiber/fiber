@@ -172,13 +172,13 @@ In unified-key mode (`ForwardClientKey: false`), leaving `KeyValidator` nil make
 
 - The client's credential — and every other known auth header (`Authorization`, `x-api-key`, `api-key`) — is stripped before the upstream credential is injected, so a second credential cannot be smuggled through.
 - Keys are never logged. The `ai-key` logger tag is redacted; `UsageEvent.ClientKey` is raw and must be treated as sensitive by the hook.
-- The set of stripped credential headers is derived from the well-known auth headers, every `Upstream.Auth.Header`, and the header(s) your `KeyExtractor` reads, so a custom extractor header or auth style cannot leak a client credential upstream or let a client smuggle a second one.
+- The credential the client presents is stripped from the relayed request wherever the `KeyExtractor` reads it — the well-known auth headers, every `Upstream.Auth.Header`, and the specific header, query param, or cookie the extractor names — so a client credential is never forwarded upstream and a client cannot smuggle a second one. In unified-key mode prefer a header, query, or cookie extractor: a credential read from a form field or route param cannot be stripped without rewriting the body/path and would be relayed upstream.
 - Hop-by-hop headers are stripped in both directions.
 - Request bodies are bounded by the app's `BodyLimit`; raise it for vision or long-context payloads. Upstream responses can be capped with `MaxResponseSize`.
 
 ## Usage and timeouts
 
-`OnUsage` parses token counts from the response body, transparently decompressing `gzip`, `deflate`, or `br` responses for parsing only — the client still receives the original bytes. Streaming usage is read best-effort from the final SSE/`message_delta` chunks.
+`OnUsage` parses token counts from the response body, transparently decompressing `gzip` or `deflate` responses (bounded to guard against decompression bombs) for parsing only — the client still receives the original bytes. Other encodings and content-encoded streaming responses fall back to nil usage. Streaming usage is read best-effort from the final SSE/`message_delta` chunks.
 
 `HeaderTimeout` bounds each attempt up to the response headers (including sending the request body). It does not cap a streaming body — that is guarded by `StreamIdleTimeout`. A non-streaming (buffered) body read runs to the upstream's EOF; fasthttp's streamed body cannot be interrupted from another goroutine without racing the read, so a mid-body stall on a buffered response is bounded by the upstream and OS TCP timeouts (as with the `proxy` middleware) rather than a gateway timer.
 

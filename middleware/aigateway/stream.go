@@ -2,6 +2,9 @@ package aigateway
 
 import (
 	"bufio"
+	"bytes"
+	"compress/flate"
+	"compress/gzip"
 	"errors"
 	"io"
 	"strings"
@@ -109,7 +112,11 @@ func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEve
 	ev.StatusCode = resp.StatusCode()
 	ev.ResponseBytes = int64(len(body))
 	if cfg.OnUsage != nil {
-		ev.Usage = parseUsage(decodeForUsage(resp, body), c.App().Config().JSONDecoder)
+		limit := cfg.MaxResponseSize
+		if limit <= 0 {
+			limit = usageDecodeLimit
+		}
+		ev.Usage = parseUsage(decodeForUsage(resp, body, limit), c.App().Config().JSONDecoder)
 	}
 	// The body was consumed to EOF, so closing releases the connection for
 	// reuse. Headers were copied off the pooled response above.
@@ -123,30 +130,47 @@ func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEve
 // decodeForUsage returns a decompressed copy of body when the response is
 // content-encoded, so token usage can be parsed. The client still receives the
 // original (encoded) bytes. Unknown/failed encodings return body unchanged.
-func decodeForUsage(resp *client.Response, body []byte) []byte {
+//
+// Decompression is bounded by limit (bytes) so a compression bomb — a tiny
+// encoded body that expands to gigabytes — cannot exhaust memory while the
+// gateway is only trying to read the small usage object. On overflow or error
+// it returns the original bytes (usage then parses to nil, best-effort).
+func decodeForUsage(resp *client.Response, body []byte, limit int64) []byte {
 	enc := strings.ToLower(string(resp.RawResponse.Header.Peek(fiber.HeaderContentEncoding)))
 	if enc == "" || enc == "identity" {
 		return body
 	}
-	var (
-		out []byte
-		err error
-	)
+
+	var r io.Reader
 	switch {
 	case strings.Contains(enc, "gzip"):
-		out, err = fasthttp.AppendGunzipBytes(nil, body)
+		gz, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return body
+		}
+		defer gz.Close() //nolint:errcheck // decode-only reader
+		r = gz
 	case strings.Contains(enc, "deflate"):
-		out, err = fasthttp.AppendInflateBytes(nil, body)
-	case strings.Contains(enc, "br"):
-		out, err = fasthttp.AppendUnbrotliBytes(nil, body)
+		fr := flate.NewReader(bytes.NewReader(body))
+		defer fr.Close() //nolint:errcheck // decode-only reader
+		r = fr
 	default:
+		// Other encodings (e.g. br, zstd) are left to best-effort: the body is
+		// returned as-is and usage parses to nil rather than pulling in extra
+		// decompressors just to read a token count.
 		return body
 	}
-	if err != nil {
+
+	out, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil || int64(len(out)) > limit {
 		return body
 	}
 	return out
 }
+
+// usageDecodeLimit bounds decompression for usage parsing when no
+// MaxResponseSize is configured.
+const usageDecodeLimit = 8 << 20 // 8 MiB
 
 // streamChunk carries one upstream read result from the reader goroutine to
 // the response writer.
@@ -175,6 +199,13 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 	// Ask reverse proxies (nginx et al.) not to buffer this response.
 	c.Set(headerXAccelBuffering, "no")
 	ev.StatusCode = resp.StatusCode()
+
+	// The usage hook runs on the writer goroutine after the handler returns and
+	// the ctx is recycled, so copy the ctx-buffer-backed strings into owned
+	// ones now. (The buffered path fires in-handler and skips these copies.)
+	ev.Method = utils.CopyString(ev.Method)
+	ev.Path = utils.CopyString(ev.Path)
+	ev.ClientKey = utils.CopyString(ev.ClientKey)
 
 	// Everything the goroutines below touch must be captured here: they run
 	// after the handler returns, when the fiber.Ctx may already be recycled.

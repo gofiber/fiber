@@ -236,6 +236,12 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 
 	// Execute after response hooks (built-in and then user-defined).
 	if err := c.afterHooks(resp); err != nil {
+		// The body has not been read yet; for a streamed response, closing it
+		// with an error drops the connection instead of returning one with an
+		// unread body to the pool (which the next request would misread).
+		if bs, ok := resp.RawResponse.BodyStream().(fasthttp.ReadCloserWithError); ok {
+			_ = bs.CloseWithError(err) //nolint:errcheck // teardown is best-effort
+		}
 		resp.Close()
 		return nil, err
 	}
