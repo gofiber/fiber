@@ -232,7 +232,10 @@ func Test_AIGateway_StreamMaxResponseSize(t *testing.T) {
 	defer resp.Body.Close() //nolint:errcheck // test cleanup
 
 	body, _ := io.ReadAll(resp.Body) //nolint:errcheck // stream ends abruptly at the cap
-	require.LessOrEqual(t, len(body), 300+4096, "stream should stop near the cap")
+	// The cap is enforced before the crossing chunk is written, so the client
+	// never receives bytes past MaxResponseSize (the chunk that would exceed it
+	// is dropped whole), matching the buffered path's strict enforcement.
+	require.LessOrEqual(t, len(body), 300, "stream must not deliver bytes past the cap")
 
 	select {
 	case ev := <-usageCh:

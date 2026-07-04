@@ -74,12 +74,22 @@ func abortUpstreamResponse(resp *client.Response) {
 // without racing the read, so a mid-body stall is bounded by the upstream and
 // OS TCP timeouts rather than a gateway timer (as with middleware/proxy).
 func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent, start time.Time) error {
+	// The upstream already produced a response (its headers arrived), so record
+	// its status now: even the read-error and too-large paths below must report
+	// the real upstream status rather than leaving StatusCode at 0, which the
+	// UsageEvent contract reserves for "no upstream response at all" and which
+	// the streaming path already sets before relaying.
+	ev.StatusCode = resp.StatusCode()
+
 	reader := resp.BodyStream()
 	if cfg.MaxResponseSize > 0 {
 		reader = io.LimitReader(reader, cfg.MaxResponseSize+1)
 	}
 
 	body, err := io.ReadAll(reader)
+	// io.ReadAll returns the bytes read so far alongside an error, so this counts
+	// the partial body on the error path too.
+	ev.ResponseBytes = int64(len(body))
 	if err != nil {
 		abortUpstreamResponse(resp)
 		ev.Err = err
@@ -95,8 +105,6 @@ func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEve
 
 	copyResponseHeaders(c, resp)
 	c.Status(resp.StatusCode())
-	ev.StatusCode = resp.StatusCode()
-	ev.ResponseBytes = int64(len(body))
 	if cfg.OnUsage != nil {
 		limit := cfg.MaxResponseSize
 		if limit <= 0 {
@@ -251,6 +259,15 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 					break loop
 				}
 				ev.ResponseBytes += int64(len(chunk.data))
+				// Enforce the cap before writing so the client never receives
+				// bytes past MaxResponseSize: the crossing chunk is dropped whole
+				// (a partial write would only split an SSE event mid-line). This
+				// keeps the streamed cap as strict as the buffered path's, which
+				// rejects anything over the limit.
+				if maxSize > 0 && ev.ResponseBytes > maxSize {
+					ev.Err = errResponseTooLarge
+					break loop
+				}
 				tail.observe(chunk.data)
 				if _, werr := w.Write(chunk.data); werr != nil {
 					ev.Err = werr
@@ -258,10 +275,6 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 				}
 				if werr := w.Flush(); werr != nil {
 					ev.Err = werr
-					break loop
-				}
-				if maxSize > 0 && ev.ResponseBytes > maxSize {
-					ev.Err = errResponseTooLarge
 					break loop
 				}
 			case <-idleC:

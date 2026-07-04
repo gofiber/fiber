@@ -371,6 +371,39 @@ func Test_AIGateway_MaxResponseSizeBuffered(t *testing.T) {
 	require.Equal(t, fiber.StatusBadGateway, resp.StatusCode)
 }
 
+// The upstream produced a real response (200) whose body then exceeded
+// MaxResponseSize. The gateway returns 502 to the client, but the usage event
+// must still report the upstream's status (200) and the bytes it read, not the
+// zero-value that UsageEvent reserves for "no upstream response at all".
+func Test_AIGateway_MaxResponseSizeBufferedUsageReportsUpstreamStatus(t *testing.T) {
+	t.Parallel()
+
+	upstreamApp := fiber.New()
+	upstreamApp.Get("/v1/big", func(c fiber.Ctx) error {
+		return c.SendString(strings.Repeat("x", 2048))
+	})
+	upstream := "http://" + startServer(t, upstreamApp)
+
+	var got *UsageEvent
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams:       []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+		MaxResponseSize: 1024,
+		OnUsage:         func(e *UsageEvent) { got = e },
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/v1/big", http.NoBody)
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusBadGateway, resp.StatusCode)
+
+	require.NotNil(t, got)
+	require.ErrorIs(t, got.Err, errResponseTooLarge)
+	require.Equal(t, fiber.StatusOK, got.StatusCode, "usage must report the upstream's real status, not 0")
+	require.Positive(t, got.ResponseBytes, "usage must report the bytes read from the upstream")
+}
+
 func Test_AIGateway_UsageHookBuffered(t *testing.T) {
 	t.Parallel()
 
