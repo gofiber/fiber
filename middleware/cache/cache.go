@@ -311,17 +311,13 @@ func New(config ...Config) fiber.Handler {
 				guard.unlock()
 			}
 			if delErr := deleteKey(reqCtx, key); delErr != nil {
-				if cfg.Storage != nil {
-					manager.release(e)
-				}
+				manager.release(e)
 				return wrapErr(delErr)
 			}
 
 			removeEntry := func() {
 				removeHeapEntry(key, e.heapidx)
-				if cfg.Storage != nil {
-					manager.release(e)
-				}
+				manager.release(e)
 				e = nil
 			}
 			if guard != nil {
