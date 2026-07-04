@@ -8,6 +8,7 @@ package aigateway
 
 import (
 	"errors"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +16,9 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/redact"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
+	"github.com/gofiber/utils/v2"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys
@@ -60,19 +63,24 @@ func New(config ...Config) fiber.Handler {
 			fiber.StoreInContext(c, clientKeyKey, key)
 		}
 
-		// Resolve and police the upstream path.
+		// Resolve and police the upstream path. Policy checks run on the
+		// percent-decoded path so encoded traversal (e.g. %2e%2e) cannot slip
+		// past the allow-list; the original path is what gets relayed.
 		strippedPath := stripPrefix(c.Path(), cfg.PathPrefix)
-		if containsDotDot(strippedPath) {
+		decodedPath := decodePath(strippedPath)
+		if containsDotDot(decodedPath) {
 			return sendError(c, fiber.StatusBadRequest, "invalid request path", "invalid_request_error")
 		}
-		if len(cfg.AllowedPaths) > 0 && !matchAny(cfg.AllowedPaths, strippedPath) {
+		if len(cfg.AllowedPaths) > 0 && !matchAny(cfg.AllowedPaths, decodedPath) {
 			return sendError(c, fiber.StatusForbidden, "this endpoint is not allowed by the gateway", "invalid_request_error")
 		}
 
-		// Sniff the model from the JSON request body: policed when
-		// AllowedModels is set, recorded in the usage event either way.
+		// Sniff the model from the JSON request body. The allow-list only
+		// restricts requests that actually declare a model, so non-model
+		// endpoints (GET /v1/models, multipart audio uploads) are not blocked;
+		// pair AllowedModels with AllowedPaths to bound endpoints.
 		model := sniffModel(c)
-		if len(cfg.AllowedModels) > 0 && !matchAny(cfg.AllowedModels, model) {
+		if model != "" && len(cfg.AllowedModels) > 0 && !matchAny(cfg.AllowedModels, model) {
 			return sendError(c, fiber.StatusForbidden, "this model is not allowed by the gateway", "invalid_request_error")
 		}
 		if model != "" {
@@ -80,11 +88,14 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		start := time.Now()
+		// key, path, and method are backed by the pooled request/ctx buffers,
+		// which are recycled once the handler returns. The streaming usage hook
+		// runs after that, so copy anything it may read into owned strings.
 		ev := &UsageEvent{
 			Model:        model,
-			Method:       c.Method(),
-			Path:         strippedPath,
-			ClientKey:    key,
+			Method:       utils.CopyString(c.Method()),
+			Path:         utils.CopyString(strippedPath),
+			ClientKey:    utils.CopyString(key),
 			RequestBytes: int64(len(c.BodyRaw())),
 		}
 
@@ -96,7 +107,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		fiber.StoreInContext(c, providerKey, ev.Provider)
 
-		if isEventStream(resp) {
+		if isStreamingResponse(resp) {
 			ev.Streamed = true
 			return relayStream(c, &cfg, resp, ev, start)
 		}
@@ -133,11 +144,11 @@ func ModelFromContext(ctx any) string {
 }
 
 func registerLogContextTags() {
-	logger.RegisterContextTag("ai-key", func(ctx any) string {
+	logger.RegisterContextTag(fiberlog.TagAIKey, func(ctx any) string {
 		return redact.Prefix(KeyFromContext(ctx))
 	})
-	logger.RegisterContextTag("ai-provider", ProviderFromContext)
-	logger.RegisterContextTag("ai-model", ModelFromContext)
+	logger.RegisterContextTag(fiberlog.TagAIProvider, ProviderFromContext)
+	logger.RegisterContextTag(fiberlog.TagAIModel, ModelFromContext)
 }
 
 // sendError responds with an OpenAI-style JSON error object so native SDK
@@ -153,9 +164,11 @@ func sendError(c fiber.Ctx, status int, message, errorType string) error {
 }
 
 // stripPrefix removes the mount prefix from the request path, keeping the
-// result rooted at "/".
+// result rooted at "/". The comparison is case-insensitive because Fiber's
+// default routing (CaseSensitive: false) matches the mount case-insensitively,
+// so /OpenAI must strip a "/openai" prefix just as /openai does.
 func stripPrefix(path, prefix string) string {
-	if prefix == "" || !strings.HasPrefix(path, prefix) {
+	if prefix == "" || len(path) < len(prefix) || !utils.EqualFold(path[:len(prefix)], prefix) {
 		return path
 	}
 	stripped := path[len(prefix):]
@@ -168,6 +181,18 @@ func stripPrefix(path, prefix string) string {
 		return path
 	}
 	return stripped
+}
+
+// decodePath percent-decodes a request path for policy checks. On a malformed
+// escape it returns the input unchanged so the raw form is still inspected.
+func decodePath(path string) string {
+	if !strings.ContainsRune(path, '%') {
+		return path
+	}
+	if decoded, err := url.PathUnescape(path); err == nil {
+		return decoded
+	}
+	return path
 }
 
 func containsDotDot(path string) bool {

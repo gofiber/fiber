@@ -23,6 +23,9 @@ var fiberMiddlewareTags = []string{
 	fiberlog.TagRequestID,
 	fiberlog.TagSessionID,
 	fiberlog.TagUsername,
+	fiberlog.TagAIKey,
+	fiberlog.TagAIProvider,
+	fiberlog.TagAIModel,
 }
 
 func init() {

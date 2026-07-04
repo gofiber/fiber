@@ -105,8 +105,10 @@ func Test_ProviderPresets(t *testing.T) {
 
 	azure := AzureOpenAI("https://my-res.openai.azure.com/", "sk-4")
 	require.Equal(t, "azure-openai", azure.Name)
-	require.Equal(t, "https://my-res.openai.azure.com", azure.URL)
 	require.Equal(t, AuthHeader("api-key"), azure.Auth)
+	// The preset keeps the endpoint as given; configDefault trims the slash.
+	cfg := configDefault(Config{Upstreams: []Upstream{azure}})
+	require.Equal(t, "https://my-res.openai.azure.com", cfg.Upstreams[0].URL)
 }
 
 func Test_StripPrefix(t *testing.T) {

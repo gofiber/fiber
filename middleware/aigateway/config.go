@@ -86,6 +86,9 @@ type RetryConfig struct {
 }
 
 // Config defines the config for middleware.
+//
+// Fields are ordered for struct alignment (pointers before scalars); the
+// documented, logical grouping is reflected in the docs table.
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
@@ -110,12 +113,20 @@ type Config struct {
 	OnUsage func(e *UsageEvent)
 
 	// Client is the Fiber client used for upstream requests. Streaming of
-	// response bodies is enabled on it during initialization. Timeouts are
-	// enforced per request via HeaderTimeout and StreamIdleTimeout, so the
-	// client should not set its own total timeout.
+	// response bodies is enabled on it during initialization. HeaderTimeout
+	// bounds each attempt up to the response headers, so the client should
+	// not set its own total timeout.
 	//
 	// Optional. Default: an internal client
 	Client *client.Client
+
+	// stripHeaders is the set (lower-cased header names) of credential headers
+	// removed from every upstream request before the upstream key is injected.
+	// It is derived in configDefault from the well-known auth headers, every
+	// Upstream.Auth.Header, and the header(s) the KeyExtractor reads, so a
+	// custom extractor header or auth style cannot leak a client credential
+	// upstream or let a client smuggle a second credential through.
+	stripHeaders map[string]struct{}
 
 	// PathPrefix is stripped from the request path before it is joined with
 	// Upstream.URL, e.g. "/openai" when mounted as app.Use("/openai", ...).
@@ -129,9 +140,10 @@ type Config struct {
 	Upstreams []Upstream
 
 	// AllowedModels restricts the "model" field of JSON request bodies.
-	// Entries match exactly or by trailing-* wildcard, e.g. "gpt-4o*".
-	// Requests without a parseable model are rejected when the list is set.
-	// Empty means all models are allowed.
+	// Entries match exactly or by trailing-* wildcard, e.g. "gpt-4o*". The
+	// list only restricts requests that declare a model, so endpoints without
+	// one (GET /v1/models, multipart audio) are not blocked; pair with
+	// AllowedPaths to bound endpoints. Empty means all models are allowed.
 	//
 	// Optional. Default: nil
 	AllowedModels []string
@@ -154,9 +166,9 @@ type Config struct {
 	// Optional. Default: see RetryConfig
 	Retry RetryConfig
 
-	// HeaderTimeout bounds dialing plus receiving upstream response headers
-	// for a single attempt. It does not cap the duration of a streaming
-	// response body.
+	// HeaderTimeout bounds one attempt from dialing through receiving the
+	// upstream response headers (it also covers sending the request body). It
+	// does not cap the duration of a streaming response body.
 	//
 	// Optional. Default: 30 * time.Second
 	HeaderTimeout time.Duration
@@ -208,16 +220,25 @@ func defaultKeyExtractor() extractors.Extractor {
 	)
 }
 
+// collectExtractorHeaders adds the header names an extractor (and its chain)
+// reads to dst, so a client credential in any of them is stripped before the
+// upstream key is injected.
+func collectExtractorHeaders(e extractors.Extractor, dst map[string]struct{}) {
+	if (e.Source == extractors.SourceHeader || e.Source == extractors.SourceAuthHeader) && e.Key != "" {
+		dst[strings.ToLower(e.Key)] = struct{}{}
+	}
+	for i := range e.Chain {
+		collectExtractorHeaders(e.Chain[i], dst)
+	}
+}
+
 // configDefault is a helper function to set default values
 func configDefault(config ...Config) Config {
-	if len(config) < 1 {
+	if len(config) < 1 || len(config[0].Upstreams) == 0 {
 		panic("fiber: aigateway middleware requires at least one upstream")
 	}
 	cfg := config[0]
 
-	if len(cfg.Upstreams) == 0 {
-		panic("fiber: aigateway middleware requires at least one upstream")
-	}
 	for i := range cfg.Upstreams {
 		up := &cfg.Upstreams[i]
 		if up.Name == "" {
@@ -253,6 +274,20 @@ func configDefault(config ...Config) Config {
 	if cfg.KeyExtractor.Extract == nil {
 		cfg.KeyExtractor = defaultKeyExtractor()
 	}
+
+	// Build the credential-header strip set: the well-known auth headers, plus
+	// every upstream's auth header, plus whatever header(s) the extractor reads.
+	cfg.stripHeaders = map[string]struct{}{
+		strings.ToLower(fiber.HeaderAuthorization): {},
+		"x-api-key": {},
+		"api-key":   {},
+	}
+	for i := range cfg.Upstreams {
+		if h := cfg.Upstreams[i].Auth.Header; h != "" {
+			cfg.stripHeaders[strings.ToLower(h)] = struct{}{}
+		}
+	}
+	collectExtractorHeaders(cfg.KeyExtractor, cfg.stripHeaders)
 	if cfg.Retry.Attempts <= 0 {
 		cfg.Retry.Attempts = ConfigDefault.Retry.Attempts
 	}

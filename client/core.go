@@ -130,6 +130,15 @@ func (c *core) execFunc() (*Response, error) {
 		go func() { // drain the channels and release the response
 			select {
 			case resp := <-respChan:
+				// The caller abandoned this response after the deadline. When
+				// the body is streamed (StreamResponseBody), the connection
+				// still has the unread body buffered; closing the stream with
+				// an error makes fasthttp drop the connection instead of
+				// returning it to the pool with stale bytes, which the next
+				// request would otherwise read as its own response.
+				if bs, ok := resp.RawResponse.BodyStream().(fasthttp.ReadCloserWithError); ok {
+					_ = bs.CloseWithError(ErrTimeoutOrCancel) //nolint:errcheck // teardown is best-effort
+				}
 				ReleaseResponse(resp)
 			case <-errChan:
 			}

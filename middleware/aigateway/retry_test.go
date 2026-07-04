@@ -230,7 +230,8 @@ func Test_RetryAfterParsing(t *testing.T) {
 		return c.SendStatus(fiber.StatusTooManyRequests)
 	})
 	upstreamApp.Get("/date", func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderRetryAfter, time.Now().Add(9*time.Second).UTC().Format(time.RFC1123))
+		// HTTP-date is RFC1123 with a GMT zone (net/http.TimeFormat).
+		c.Set(fiber.HeaderRetryAfter, time.Now().Add(9*time.Second).UTC().Format(http.TimeFormat))
 		return c.SendStatus(fiber.StatusTooManyRequests)
 	})
 	upstreamApp.Get("/garbage", func(c fiber.Ctx) error {

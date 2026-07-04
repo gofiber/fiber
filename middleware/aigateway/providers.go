@@ -1,9 +1,5 @@
 package aigateway
 
-import (
-	"strings"
-)
-
 // OpenAI returns an Upstream preset for the OpenAI API. Mount example:
 //
 //	app.Use("/openai", aigateway.New(aigateway.Config{
@@ -47,10 +43,11 @@ func OpenRouter(key string) Upstream {
 // AzureOpenAI returns an Upstream preset for an Azure OpenAI resource. The
 // endpoint is the resource base URL, e.g. "https://my-resource.openai.azure.com".
 // The api-version query parameter stays under client control (pass-through).
+// configDefault trims any trailing slash from the URL.
 func AzureOpenAI(endpoint, key string) Upstream {
 	return Upstream{
 		Name: "azure-openai",
-		URL:  strings.TrimRight(endpoint, "/"),
+		URL:  endpoint,
 		Auth: AuthHeader("api-key"),
 		Key:  key,
 	}

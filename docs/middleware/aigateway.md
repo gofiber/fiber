@@ -126,6 +126,10 @@ app.Use("/openai", aigateway.New(aigateway.Config{
 }))
 ```
 
+`AllowedModels` only restricts requests whose JSON body declares a `model`, so
+endpoints that carry no model — `GET /v1/models`, multipart audio uploads — are
+not blocked. Pair it with `AllowedPaths` to bound which endpoints are reachable.
+
 ### Usage accounting
 
 `OnUsage` fires once per relayed request. Token usage is parsed from the response body (`usage` object) for buffered responses, and best-effort from the final SSE chunks for streams (OpenAI populates stream usage when the client sets `stream_options.include_usage`):
@@ -168,8 +172,15 @@ In unified-key mode (`ForwardClientKey: false`), leaving `KeyValidator` nil make
 
 - The client's credential — and every other known auth header (`Authorization`, `x-api-key`, `api-key`) — is stripped before the upstream credential is injected, so a second credential cannot be smuggled through.
 - Keys are never logged. The `ai-key` logger tag is redacted; `UsageEvent.ClientKey` is raw and must be treated as sensitive by the hook.
+- The set of stripped credential headers is derived from the well-known auth headers, every `Upstream.Auth.Header`, and the header(s) your `KeyExtractor` reads, so a custom extractor header or auth style cannot leak a client credential upstream or let a client smuggle a second one.
 - Hop-by-hop headers are stripped in both directions.
 - Request bodies are bounded by the app's `BodyLimit`; raise it for vision or long-context payloads. Upstream responses can be capped with `MaxResponseSize`.
+
+## Usage and timeouts
+
+`OnUsage` parses token counts from the response body, transparently decompressing `gzip`, `deflate`, or `br` responses for parsing only — the client still receives the original bytes. Streaming usage is read best-effort from the final SSE/`message_delta` chunks.
+
+`HeaderTimeout` bounds each attempt up to the response headers (including sending the request body). It does not cap a streaming body — that is guarded by `StreamIdleTimeout`. A non-streaming (buffered) body read runs to the upstream's EOF; fasthttp's streamed body cannot be interrupted from another goroutine without racing the read, so a mid-body stall on a buffered response is bounded by the upstream and OS TCP timeouts (as with the `proxy` middleware) rather than a gateway timer.
 
 ## Logger tags
 
@@ -185,11 +196,11 @@ The middleware registers three custom [logger](./logger.md) tags: `ai-key` (reda
 | Client                | `*client.Client`                        | Fiber client used for upstream requests. Response body streaming is enabled on it during initialization.                                 | internal client                                                            |
 | PathPrefix            | `string`                                | Prefix stripped from the request path before joining it with `Upstream.URL`.                                                            | `""`                                                                       |
 | Upstreams             | `[]Upstream`                            | Ordered relay chain: primary first, fallbacks after. **Required.**                                                                       | `nil`                                                                      |
-| AllowedModels         | `[]string`                              | Allow-list for the `model` field of JSON request bodies. Exact or trailing-`*` wildcard match.                                          | `nil` (all allowed)                                                        |
+| AllowedModels         | `[]string`                              | Allow-list for the `model` field of JSON request bodies. Exact or trailing-`*` wildcard match. Only restricts requests that declare a model. | `nil` (all allowed)                                                    |
 | AllowedPaths          | `[]string`                              | Allow-list for relayed paths (after prefix strip). Exact or trailing-`*` wildcard match.                                                | `nil` (all allowed)                                                        |
 | KeyExtractor          | `extractors.Extractor`                  | How the client credential is located on the incoming request.                                                                            | `Chain(FromAuthHeader("Bearer"), FromHeader("x-api-key"), FromHeader("api-key"))` |
 | Retry                 | `RetryConfig`                           | Same-upstream retry attempts, backoff, and the cap applied to backoff and `Retry-After`.                                                | `{Attempts: 1, Backoff: 250ms, MaxBackoff: 2s}`                            |
-| HeaderTimeout         | `time.Duration`                         | Per-attempt bound on dialing plus receiving upstream response headers. Does not cap streaming bodies.                                    | `30 * time.Second`                                                         |
+| HeaderTimeout         | `time.Duration`                         | Per-attempt bound from dialing through receiving the response headers (also covers sending the request body). Does not cap streaming bodies. | `30 * time.Second`                                                     |
 | StreamIdleTimeout     | `time.Duration`                         | Aborts a streaming response when no bytes arrive for this long. Idle timeout, not a total cap.                                          | `90 * time.Second`                                                         |
 | MaxResponseSize       | `int64`                                 | Cap on bytes read from an upstream response. `0` disables the cap.                                                                      | `0`                                                                        |
 | ForwardClientKey      | `bool`                                  | Relay the client's own credential upstream instead of injecting `Upstream.Key`.                                                         | `false`                                                                    |

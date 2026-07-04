@@ -30,6 +30,9 @@ const (
 	TagAPIKey          = "api-key"
 	TagCSRFToken       = "csrf-token"
 	TagSessionID       = "session-id"
+	TagAIKey           = "ai-key"
+	TagAIProvider      = "ai-provider"
+	TagAIModel         = "ai-model"
 )
 
 const (
@@ -182,6 +185,9 @@ func defaultContextTagMap() map[string]ContextTagFunc {
 		TagRequestID:       emptyContextTag,
 		TagSessionID:       emptyContextTag,
 		TagUsername:        emptyContextTag,
+		TagAIKey:           emptyContextTag,
+		TagAIProvider:      emptyContextTag,
+		TagAIModel:         emptyContextTag,
 		TagContextValue:    defaultContextValueTag,
 	}
 }

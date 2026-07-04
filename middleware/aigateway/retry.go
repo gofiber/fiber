@@ -3,6 +3,7 @@ package aigateway
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -28,7 +29,7 @@ func isRetryableStatus(status int) bool {
 }
 
 // retryAfter parses a Retry-After header value, either delta-seconds or an
-// HTTP-date (RFC 9110 section 10.2.3).
+// HTTP-date in any of the three RFC 9110 formats (RFC1123, RFC850, asctime).
 func retryAfter(resp *client.Response) (time.Duration, bool) {
 	val := string(resp.RawResponse.Header.Peek(fiber.HeaderRetryAfter))
 	if val == "" {
@@ -40,7 +41,7 @@ func retryAfter(resp *client.Response) (time.Duration, bool) {
 		}
 		return time.Duration(secs) * time.Second, true
 	}
-	if t, err := time.Parse(time.RFC1123, val); err == nil {
+	if t, err := http.ParseTime(val); err == nil {
 		if d := time.Until(t); d > 0 {
 			return d, true
 		}
@@ -55,16 +56,23 @@ func retryAfter(resp *client.Response) (time.Duration, bool) {
 // or — when every attempt failed — the last upstream response verbatim.
 // resp is nil only when no upstream produced a response at all.
 func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *UsageEvent) (*client.Response, error) {
+	// lastResp is the most recent retryable response across all upstreams,
+	// kept so the client sees a real provider error when every attempt fails.
 	var lastResp *client.Response
 	var lastErr error
 
 	for i := range cfg.Upstreams {
 		up := &cfg.Upstreams[i]
+		// curResp is this upstream's most recent retryable response; it is the
+		// only basis for this upstream's backoff, so a Retry-After from a
+		// previous upstream can never govern the current one.
+		var curResp *client.Response
+
 		for attempt := 1; attempt <= cfg.Retry.Attempts; attempt++ {
 			if attempt > 1 {
 				// Same-upstream retry: back off first. Failover to the next
 				// upstream is always immediate.
-				if !waitBeforeRetry(c, cfg, attempt, lastResp) {
+				if !waitBeforeRetry(c, cfg, attempt, curResp) {
 					// Client gave up while we were waiting.
 					if lastResp != nil {
 						abortUpstreamResponse(lastResp)
@@ -80,11 +88,12 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *Usage
 			if cfg.ForwardClientKey {
 				injectKey = key
 			}
-			req := buildRequest(c, cfg, up, strippedPath, injectKey)
-			resp, err := req.Send()
+			resp, err := buildRequest(c, cfg, up, strippedPath, injectKey).Send()
 			if err != nil {
-				client.ReleaseRequest(req)
+				// A network error carries no Retry-After, so it must not seed
+				// this upstream's backoff basis.
 				lastErr = err
+				curResp = nil
 				continue
 			}
 			if !isRetryableStatus(resp.StatusCode()) {
@@ -93,11 +102,14 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *Usage
 				}
 				return resp, nil
 			}
-			if lastResp != nil {
+			// Retryable response: it becomes both the backoff basis and the
+			// candidate for verbatim relay on exhaustion. Free any older held
+			// response first.
+			if lastResp != nil && lastResp != resp {
 				abortUpstreamResponse(lastResp)
 			}
 			lastResp = resp
-			lastErr = nil
+			curResp = resp
 		}
 	}
 
@@ -113,15 +125,15 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *Usage
 // waitBeforeRetry sleeps for the backoff computed from the previous failure.
 // A Retry-After above cfg.Retry.MaxBackoff skips the wait entirely. It
 // returns false when the client disconnected while waiting.
-func waitBeforeRetry(c fiber.Ctx, cfg *Config, attempt int, lastResp *client.Response) bool {
+func waitBeforeRetry(c fiber.Ctx, cfg *Config, attempt int, curResp *client.Response) bool {
 	// attempt is the upcoming try (2..N): the first retry waits Backoff,
 	// doubling on each further one.
 	delay := cfg.Retry.Backoff << (attempt - 2)
 	if delay > cfg.Retry.MaxBackoff || delay <= 0 {
 		delay = cfg.Retry.MaxBackoff
 	}
-	if lastResp != nil {
-		if ra, ok := retryAfter(lastResp); ok {
+	if curResp != nil {
+		if ra, ok := retryAfter(curResp); ok {
 			if ra > cfg.Retry.MaxBackoff {
 				return true
 			}

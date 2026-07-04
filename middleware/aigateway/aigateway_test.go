@@ -271,9 +271,10 @@ func Test_AIGateway_ModelAllowList(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, send(`{"model":"gpt-4o-mini"}`))
 	require.Equal(t, fiber.StatusOK, send(`{"model":"gpt-4.1-mini"}`))
 	require.Equal(t, fiber.StatusForbidden, send(`{"model":"gpt-3.5-turbo"}`))
-	// Missing or unparseable model is rejected when the allow-list is set.
-	require.Equal(t, fiber.StatusForbidden, send(`{}`))
-	require.Equal(t, fiber.StatusForbidden, send(`not json`))
+	// The allow-list only restricts requests that actually declare a model, so
+	// bodies without a detectable model pass through (e.g. GET /v1/models).
+	require.Equal(t, fiber.StatusOK, send(`{}`))
+	require.Equal(t, fiber.StatusOK, send(`not json`))
 }
 
 func Test_AIGateway_ModelSniffWithoutAllowList(t *testing.T) {
