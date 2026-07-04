@@ -130,10 +130,13 @@ app.Use("/openai", aigateway.New(aigateway.Config{
 endpoints that carry no model — `GET /v1/models`, multipart audio uploads — are
 not blocked. Pair it with `AllowedPaths` to bound which endpoints are reachable.
 The model is sniffed from the body shape (a leading `{`, after any UTF-8 BOM and
-whitespace) rather than the `Content-Type`, and a `gzip`/`deflate`-encoded body
-is decompressed within a bound first, so neither a spoofed content type nor a
-compressed body can hide the model (and a compression bomb is capped, not
-expanded).
+whitespace) rather than the `Content-Type`, so a spoofed content type cannot
+hide the model. A content-encoded body is decompressed within a bound (the app's
+`BodyLimit`) first; when `AllowedModels` is set and the gateway cannot decode the
+body to check its model — an unknown encoding (`br`, `zstd`), stacked encodings,
+or one that decompresses past the bound (a compression bomb) — the request is
+**rejected** rather than forwarded, so a compressed body cannot smuggle a
+disallowed model past the check.
 
 ### Usage accounting
 

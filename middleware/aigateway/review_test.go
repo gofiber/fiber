@@ -474,12 +474,12 @@ func Test_AIGateway_GzipBombRequestBounded(t *testing.T) {
 		AllowedModels: []string{"gpt-4o*"},
 	}))
 
-	// A tiny gzip body that expands past the 1 MiB sniff cap must not be fully
-	// decompressed; the model can't be determined so the request is not
-	// model-restricted (and, crucially, the gateway does not OOM decoding it).
+	// A tiny gzip body that expands past the decode bound must not be fully
+	// decompressed (no OOM); with a model policy set, a request whose model the
+	// gateway cannot verify is rejected rather than forwarded.
 	var b bytes.Buffer
 	gz := gzip.NewWriter(&b)
-	_, _ = gz.Write(make([]byte, 4<<20)) //nolint:errcheck // test setup
+	_, _ = gz.Write(make([]byte, 8<<20)) //nolint:errcheck // test setup
 	require.NoError(t, gz.Close())
 
 	req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions", bytes.NewReader(b.Bytes()))
@@ -487,6 +487,41 @@ func Test_AIGateway_GzipBombRequestBounded(t *testing.T) {
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 	req.Header.Set(fiber.HeaderContentEncoding, "gzip")
 	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+}
+
+func Test_AIGateway_UnverifiableEncodingRejectedWhenPoliced(t *testing.T) {
+	t.Parallel()
+
+	upstream := echoUpstream(t)
+
+	// With AllowedModels set, a body in an encoding the gateway can't decode
+	// (br here) is rejected rather than forwarded with an unverified model.
+	policed := fiber.New()
+	policed.Use(New(Config{
+		Upstreams:     []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+		AllowedModels: []string{"gpt-4o*"},
+	}))
+	req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions", strings.NewReader("not-really-brotli"))
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	req.Header.Set(fiber.HeaderContentEncoding, "br")
+	resp, err := policed.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+
+	// Without a model policy, the same request is relayed untouched (the
+	// encoding is only the client's and the upstream's concern).
+	open := fiber.New()
+	open.Use(New(Config{
+		Upstreams: []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+	}))
+	req = httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions", strings.NewReader("not-really-brotli"))
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	req.Header.Set(fiber.HeaderContentEncoding, "br")
+	resp, err = open.Test(req, testConfig)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }

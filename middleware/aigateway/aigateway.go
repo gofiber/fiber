@@ -79,10 +79,18 @@ func New(config ...Config) fiber.Handler {
 		// Sniff the model from the JSON request body. The allow-list only
 		// restricts requests that actually declare a model, so non-model
 		// endpoints (GET /v1/models, multipart audio uploads) are not blocked;
-		// pair AllowedModels with AllowedPaths to bound endpoints.
-		model := sniffModel(c)
-		if model != "" && len(cfg.AllowedModels) > 0 && !matchAny(cfg.AllowedModels, model) {
-			return sendError(c, fiber.StatusForbidden, "this model is not allowed by the gateway", "invalid_request_error")
+		// pair AllowedModels with AllowedPaths to bound endpoints. A request
+		// whose model the gateway cannot verify (a content-encoded body it can't
+		// decode) is rejected when a model policy is set, so an encoded body
+		// cannot smuggle a disallowed model past the check.
+		model, verifiable := sniffModel(c)
+		if len(cfg.AllowedModels) > 0 {
+			if !verifiable {
+				return sendError(c, fiber.StatusForbidden, "the gateway could not verify the model of an encoded request body", "invalid_request_error")
+			}
+			if model != "" && !matchAny(cfg.AllowedModels, model) {
+				return sendError(c, fiber.StatusForbidden, "this model is not allowed by the gateway", "invalid_request_error")
+			}
 		}
 		if model != "" {
 			fiber.StoreInContext(c, modelKey, model)
@@ -246,22 +254,31 @@ func matchAny(patterns []string, val string) bool {
 // utf8BOM is the UTF-8 byte-order mark some clients prepend to JSON bodies.
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
-// sniffModel best-effort decodes the "model" field from a JSON request body.
-// It keys off the body shape (a leading '{') rather than the Content-Type, so a
-// JSON body sent with a non-JSON Content-Type cannot hide its model from the
-// AllowedModels check. Genuinely non-JSON bodies (multipart audio, binary) do
-// not start with '{' and are left unrestricted.
+// sniffModel best-effort decodes the "model" field from a JSON request body and
+// reports whether the body could actually be inspected for one. It keys off the
+// body shape (a leading '{') rather than the Content-Type, so a JSON body sent
+// with a non-JSON Content-Type cannot hide its model from the AllowedModels
+// check.
 //
-// A content-encoded body is decompressed with a bound first, so a gzipped JSON
-// body cannot hide its model while an oversized/hostile encoding (a compression
-// bomb) is capped rather than expanded into memory.
-func sniffModel(c fiber.Ctx) string {
+// The second result is false only when the body arrived content-encoded and the
+// gateway could not decode it to a JSON object — an unknown, stacked, or
+// oversized (bomb) encoding. A caller enforcing AllowedModels must reject such a
+// request rather than forward a model it could not check (the upstream would
+// decode and run it). An uncompressed non-JSON body (multipart audio, binary) is
+// verifiable with an empty model: a genuine non-model request that is left
+// unrestricted.
+func sniffModel(c fiber.Ctx) (string, bool) {
 	body := c.BodyRaw()
-	if enc := c.Get(fiber.HeaderContentEncoding); enc != "" {
-		decoded, ok := boundedDecompress(enc, body, sniffDecodeLimit)
+	compressed := false
+	if enc := c.Get(fiber.HeaderContentEncoding); enc != "" && !strings.EqualFold(strings.TrimSpace(enc), "identity") {
+		compressed = true
+		// Decode up to the body size the server itself accepts (BodyLimit), so
+		// a legitimately large compressed body can still be inspected while a
+		// bomb is bounded by the operator's own limit.
+		limit := max(int64(c.App().Config().BodyLimit), sniffDecodeLimit)
+		decoded, ok := boundedDecompress(enc, body, limit)
 		if !ok {
-			// Unknown encoding or over the bound: cannot determine the model.
-			return ""
+			return "", false
 		}
 		body = decoded
 	}
@@ -270,19 +287,20 @@ func sniffModel(c fiber.Ctx) string {
 	for {
 		trimmed := bytes.TrimPrefix(bytes.TrimLeft(body, " \t\r\n"), utf8BOM)
 		if len(trimmed) == len(body) {
-			body = trimmed
 			break
 		}
 		body = trimmed
 	}
 	if len(body) == 0 || body[0] != '{' {
-		return ""
+		// A body we decoded from a content-encoding but that is not a JSON
+		// object (e.g. still-encoded stacked layers) cannot be checked.
+		return "", !compressed
 	}
 	var m struct {
 		Model string `json:"model"`
 	}
 	if err := c.App().Config().JSONDecoder(body, &m); err != nil {
-		return ""
+		return "", !compressed
 	}
-	return m.Model
+	return m.Model, true
 }
