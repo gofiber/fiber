@@ -50,19 +50,38 @@ func retryAfter(resp *client.Response) (time.Duration, bool) {
 	return 0, false
 }
 
-// sendWithRetry walks the upstream chain, retrying each upstream up to
-// cfg.Retry.Attempts times on retryable failures before failing over to the
-// next one. It returns the response to relay: the first non-retryable one,
-// or — when every attempt failed — the last upstream response verbatim.
-// resp is nil only when no upstream produced a response at all.
-func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *UsageEvent) (*client.Response, error) {
+// sendWithRetry walks the upstream chain (skipping upstreams whose circuit
+// breaker is open), retrying each upstream up to cfg.Retry.Attempts times on
+// retryable failures before failing over to the next one. It returns the
+// response to relay: the first non-retryable one, or — when every attempt
+// failed — the last upstream response verbatim. resp is nil only when no
+// upstream produced a response at all. jsonBody is the decoded JSON request
+// body from sniffModel (nil for non-JSON bodies), used for per-upstream
+// ModelMap rewriting.
+func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *UsageEvent, jsonBody []byte) (*client.Response, error) {
 	// lastResp is the most recent retryable response across all upstreams,
 	// kept so the client sees a real provider error when every attempt fails.
 	var lastResp *client.Response
 	var lastErr error
 
-	for i := range cfg.Upstreams {
+	for _, i := range candidateUpstreams(cfg, ev) {
 		up := &cfg.Upstreams[i]
+		var brk *upstreamBreaker
+		if cfg.breakers != nil {
+			brk = cfg.breakers[i]
+		}
+
+		// The ModelMap rewrite is per-upstream and attempt-invariant, so it is
+		// computed once here. A nil body relays the original bytes. An error
+		// means a mapping applies but could not be encoded; relaying the
+		// unmapped body would request a model this upstream does not serve, so
+		// move on to the next upstream instead.
+		body, rerr := rewriteForUpstream(c, up, ev.Model, jsonBody)
+		if rerr != nil {
+			lastErr = rerr
+			continue
+		}
+
 		// curResp is this upstream's most recent retryable response; it is the
 		// only basis for this upstream's backoff, so a Retry-After from a
 		// previous upstream can never govern the current one.
@@ -92,19 +111,30 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *Usage
 			if cfg.ForwardClientKey {
 				injectKey = key
 			}
-			resp, err := buildRequest(c, cfg, up, strippedPath, injectKey).Send()
+			resp, err := buildRequest(c, cfg, up, strippedPath, injectKey, body).Send()
 			if err != nil {
 				// A network error carries no Retry-After, so it must not seed
 				// this upstream's backoff basis.
 				lastErr = err
 				curResp = nil
+				if brk != nil {
+					brk.recordFailure(cfg.BreakerThreshold, cfg.BreakerCooldown)
+				}
 				continue
 			}
 			if !isRetryableStatus(resp.StatusCode()) {
+				// Any received non-retryable response — success or a client
+				// error relayed verbatim — proves the upstream healthy.
+				if brk != nil {
+					brk.recordSuccess()
+				}
 				if lastResp != nil {
 					abortUpstreamResponse(lastResp)
 				}
 				return resp, nil
+			}
+			if brk != nil {
+				brk.recordFailure(cfg.BreakerThreshold, cfg.BreakerCooldown)
 			}
 			// Retryable response: it becomes both the backoff basis and the
 			// candidate for verbatim relay on exhaustion. Free any older held

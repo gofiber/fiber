@@ -1,6 +1,8 @@
 package aigateway
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/valyala/fasthttp"
@@ -26,10 +28,46 @@ var alwaysSkipHeaders = []string{
 	fiber.HeaderUpgrade,
 }
 
+// rewriteForUpstream returns the body to relay to up when its ModelMap maps
+// the requested model to a different name, or nil to relay the original bytes
+// untouched. jsonBody is the decoded JSON object from sniffModel; the rewrite
+// preserves every other top-level value byte-for-byte (only top-level key
+// order and whitespace may change). An error means a mapping applies but the
+// body could not be re-encoded — the caller must not relay the unmapped body,
+// since this upstream does not serve the requested model name.
+func rewriteForUpstream(c fiber.Ctx, up *Upstream, model string, jsonBody []byte) ([]byte, error) {
+	if model == "" || len(up.ModelMap) == 0 || jsonBody == nil {
+		return nil, nil
+	}
+	mapped, ok := up.ModelMap[model]
+	if !ok || mapped == model {
+		return nil, nil
+	}
+
+	// Decode only the top level, keeping every value as raw bytes, so the
+	// rewrite cannot disturb nested payloads or number formatting.
+	var obj map[string]json.RawMessage
+	if err := c.App().Config().JSONDecoder(jsonBody, &obj); err != nil {
+		return nil, fmt.Errorf("aigateway: model rewrite for upstream %q: %w", up.Name, err)
+	}
+	quoted, err := c.App().Config().JSONEncoder(mapped)
+	if err != nil {
+		return nil, fmt.Errorf("aigateway: model rewrite for upstream %q: %w", up.Name, err)
+	}
+	obj["model"] = quoted
+	out, err := c.App().Config().JSONEncoder(obj)
+	if err != nil {
+		return nil, fmt.Errorf("aigateway: model rewrite for upstream %q: %w", up.Name, err)
+	}
+	return out, nil
+}
+
 // buildRequest constructs a fresh upstream request for one attempt. key is
 // the credential to inject: the client's own key in pass-through mode or
-// Upstream.Key in unified-key mode.
-func buildRequest(c fiber.Ctx, cfg *Config, up *Upstream, strippedPath, key string) *client.Request {
+// Upstream.Key in unified-key mode. A non-nil body replaces the client's raw
+// body (a ModelMap rewrite); it is identity-encoded, so the original
+// Content-Encoding header is dropped with it.
+func buildRequest(c fiber.Ctx, cfg *Config, up *Upstream, strippedPath, key string, body []byte) *client.Request {
 	req := cfg.Client.R()
 	req.SetMethod(c.Method())
 	req.SetTimeout(cfg.HeaderTimeout)
@@ -40,7 +78,13 @@ func buildRequest(c fiber.Ctx, cfg *Config, up *Upstream, strippedPath, key stri
 	// built-in hooks add builder-level headers on top without clearing.
 	connectionTokens := connectionHeaderTokens(c)
 	for k, v := range c.Request().Header.All() {
-		if skipRequestHeader(cfg, utils.UnsafeString(k), connectionTokens) {
+		name := utils.UnsafeString(k)
+		if skipRequestHeader(cfg, name, connectionTokens) {
+			continue
+		}
+		if body != nil && utils.EqualFold(name, fiber.HeaderContentEncoding) {
+			// The rewritten body is relayed decoded; the original
+			// Content-Encoding no longer describes it.
 			continue
 		}
 		req.RawRequest.Header.AddBytesKV(k, v)
@@ -69,7 +113,10 @@ func buildRequest(c fiber.Ctx, cfg *Config, up *Upstream, strippedPath, key stri
 		req.SetUserAgent(ua)
 	}
 
-	if body := c.BodyRaw(); len(body) > 0 {
+	if body == nil {
+		body = c.BodyRaw()
+	}
+	if len(body) > 0 {
 		req.SetRawBody(body)
 	}
 

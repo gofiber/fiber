@@ -219,12 +219,14 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 	ev.StatusCode = resp.StatusCode()
 
 	// ev's ctx-derived strings were already copied into owned memory in New(),
-	// so the goroutines below may read them after the handler returns.
+	// so the goroutines below may read them after the handler returns. cfg
+	// points at the per-mount config captured by the handler closure, which
+	// outlives every request; only c (the pooled ctx) is off-limits, so the
+	// decoder is copied out here.
 	stream := resp.BodyStream()
 	idle := cfg.StreamIdleTimeout
 	maxSize := cfg.MaxResponseSize
 	decoder := c.App().Config().JSONDecoder
-	onUsage := cfg.OnUsage
 
 	chunks := make(chan streamChunk)
 	done := make(chan struct{})
@@ -284,10 +286,7 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 		}
 
 		ev.Usage = tail.usage(decoder)
-		ev.Latency = time.Since(start)
-		if onUsage != nil {
-			onUsage(ev)
-		}
+		fireUsage(cfg, ev, start)
 	})
 }
 
@@ -341,6 +340,7 @@ func readStream(stream io.Reader, resp *client.Response, chunks chan<- streamChu
 
 func fireUsage(cfg *Config, ev *UsageEvent, start time.Time) {
 	ev.Latency = time.Since(start)
+	applyCost(cfg, ev)
 	if cfg.OnUsage != nil {
 		cfg.OnUsage(ev)
 	}

@@ -9,9 +9,10 @@ The AI Gateway middleware turns a Fiber app into a gateway for LLM provider APIs
 It is a pass-through relay: no request or response translation happens, so clients speak each provider's native wire API. On top of the relay, the middleware handles:
 
 - **Key management** — forward the client's own credential upstream, or strip it and inject a server-side unified key, optionally validating client (virtual) keys first.
-- **Policy** — restrict which models and endpoint paths may be used.
-- **Resilience** — retry retryable failures (429/5xx, network errors) with backoff and fail over across an ordered chain of upstreams.
-- **Usage accounting** — a per-request hook with latency, status, attempts, and token usage parsed from JSON responses and SSE streams (best-effort).
+- **Policy** — restrict which models and endpoint paths may be used, globally and per client key (`PolicyResolver`).
+- **Model aliasing** — rewrite the requested model name per upstream (`Upstream.ModelMap`), so an Azure deployment or another provider's equivalent model can serve as a fallback.
+- **Resilience** — retry retryable failures (429/5xx, network errors) with backoff, fail over across an ordered chain of upstreams, and skip upstreams whose circuit breaker is open.
+- **Usage accounting** — a per-request hook with latency, status, attempts, token usage parsed from JSON responses and SSE streams (best-effort), and a USD cost computed from an operator-supplied price table.
 
 ## Signatures
 
@@ -115,6 +116,89 @@ app.Use("/openai", aigateway.New(aigateway.Config{
 }))
 ```
 
+### Model aliasing across upstreams
+
+Fallback upstreams often name the same model differently — Azure OpenAI routes by *deployment name*, another provider serves an equivalent model under its own id. `Upstream.ModelMap` rewrites the JSON body's `model` field for that upstream only; models without an entry relay unchanged:
+
+```go
+app.Use("/openai", aigateway.New(aigateway.Config{
+    PathPrefix: "/openai",
+    Upstreams: []aigateway.Upstream{
+        aigateway.OpenAI(openaiKey),
+        func() aigateway.Upstream {
+            up := aigateway.AzureOpenAI("https://my-res.openai.azure.com", azureKey)
+            up.ModelMap = map[string]string{"gpt-4o": "my-gpt4o-deployment"}
+            return up
+        }(),
+    },
+}))
+```
+
+The rewrite decodes only the top level of the body, so every other value — nested objects, large integers, number formatting — is preserved byte-for-byte; only top-level key order and whitespace may change. A content-encoded (gzip/deflate) body whose model is rewritten is relayed decoded, with the `Content-Encoding` header dropped. `UsageEvent.Model` and the `ai-model` logger tag always report the model the client requested.
+
+### Per-key policies (multi-tenant virtual keys)
+
+`PolicyResolver` turns key validation into policy lookup: it returns the per-key policy, or rejects the key with an error or a `nil` policy. Per-key allow-lists tighten the gateway-wide ones — a request must pass both:
+
+```go
+app.Use("/openai", aigateway.New(aigateway.Config{
+    PathPrefix: "/openai",
+    Upstreams:  []aigateway.Upstream{aigateway.OpenAI(key)},
+    PolicyResolver: func(c fiber.Ctx, key string) (*aigateway.KeyPolicy, error) {
+        rec, err := keyStore.Lookup(c, key)
+        if err != nil || rec == nil {
+            return nil, err // unknown key -> 401
+        }
+        return &aigateway.KeyPolicy{
+            Tenant:        rec.Tenant,               // lands in UsageEvent.Tenant
+            AllowedModels: rec.Models,               // e.g. []string{"gpt-4o-mini"}
+            AllowedPaths:  []string{"/v1/chat/*"},
+        }, nil
+    },
+}))
+```
+
+Return `&aigateway.KeyPolicy{}` to accept a key without extra restrictions. When both `KeyValidator` and `PolicyResolver` are set, the validator runs first. Keyless requests admitted by `AllowClientKeyMissing` skip the resolver — only the global allow-lists apply to them.
+
+### Cost accounting
+
+Give the gateway a price table and each `UsageEvent` carries the request's USD cost, computed from the parsed token usage. Keys are exact model names or trailing-`*` wildcards (the longest match wins); the lookup uses the model the client requested, even when `ModelMap` relayed a different name:
+
+```go
+app.Use("/openai", aigateway.New(aigateway.Config{
+    PathPrefix: "/openai",
+    Upstreams:  []aigateway.Upstream{aigateway.OpenAI(key)},
+    Prices: map[string]aigateway.ModelPrice{
+        "gpt-4o":      {InputPerMTok: 2.50, OutputPerMTok: 10.00},
+        "gpt-4o-mini": {InputPerMTok: 0.15, OutputPerMTok: 0.60},
+        "gpt-*":       {InputPerMTok: 5.00, OutputPerMTok: 15.00}, // fallback rate
+    },
+    OnUsage: func(e *aigateway.UsageEvent) {
+        billTenant(e.Tenant, e.Cost)
+    },
+}))
+```
+
+`Cost` is `0` when usage could not be parsed or the model has no price entry. Prices go stale — keep the table in your own configuration rather than hardcoding it.
+
+### Circuit breaker
+
+With `BreakerThreshold` set, an upstream that fails that many consecutive attempts (network errors or retryable statuses) is skipped for `BreakerCooldown` instead of being retried on every request — traffic goes straight to the healthy fallbacks. After the cooldown the upstream is probed again: one success closes the breaker, another failure reopens it. If *every* upstream's breaker is open, the chain is tried anyway rather than failing outright:
+
+```go
+app.Use("/openai", aigateway.New(aigateway.Config{
+    PathPrefix: "/openai",
+    Upstreams: []aigateway.Upstream{
+        aigateway.OpenAI(openaiKey),
+        aigateway.AzureOpenAI("https://my-res.openai.azure.com", azureKey),
+    },
+    BreakerThreshold: 5,
+    BreakerCooldown:  30 * time.Second,
+}))
+```
+
+Skipped upstreams are reported per request in `UsageEvent.SkippedUpstreams`.
+
 ### Model and path policy
 
 ```go
@@ -144,7 +228,9 @@ turn into JSON (an unknown encoding such as `br`/`zstd`, stacked encodings, or
 one that decompresses past the bound). Uncompressed non-JSON bodies (multipart
 audio, binary) carry no model and are left unrestricted; a compressed non-JSON
 body under a model policy is rejected, so scope such endpoints with
-`AllowedPaths` or a separate mount.
+`AllowedPaths` or a separate mount. All of the above applies equally when the
+model policy comes from a per-key `KeyPolicy.AllowedModels` instead of the
+global list.
 
 ### Usage accounting
 
@@ -208,6 +294,8 @@ The middleware registers three custom [logger](./logger.md) tags: `ai-key` (reda
 |:----------------------|:----------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------|
 | Next                  | `func(fiber.Ctx) bool`                  | Function to skip this middleware when returned true.                                                                                    | `nil`                                                                      |
 | KeyValidator          | `func(fiber.Ctx, string) (bool, error)` | Validates the client (virtual) key before relaying. Return false or an error to reject with 401.                                        | `nil`                                                                      |
+| PolicyResolver        | `func(fiber.Ctx, string) (*KeyPolicy, error)` | Resolves the per-key policy (tenant, per-key model/path allow-lists). An error or nil policy rejects with 401. Runs after `KeyValidator`; skipped for keyless requests. | `nil`                                            |
+| Prices                | `map[string]ModelPrice`                 | Price table (USD per million tokens) enabling `UsageEvent.Cost`. Keys are exact models or trailing-`*` wildcards; longest wildcard wins. | `nil` (Cost stays 0)                                                       |
 | OnUsage               | `func(*UsageEvent)`                     | Called once per relayed request with metadata and parsed token usage. Runs on the writer goroutine for streams.                          | `nil`                                                                      |
 | Client                | `*client.Client`                        | Fiber client used for upstream requests. Response body streaming is enabled on it during initialization.                                 | internal client                                                            |
 | PathPrefix            | `string`                                | Prefix stripped from the request path before joining it with `Upstream.URL`.                                                            | `""`                                                                       |
@@ -219,6 +307,8 @@ The middleware registers three custom [logger](./logger.md) tags: `ai-key` (reda
 | HeaderTimeout         | `time.Duration`                         | Per-attempt bound from dialing through receiving the response headers (also covers sending the request body). Does not cap streaming bodies. | `30 * time.Second`                                                     |
 | StreamIdleTimeout     | `time.Duration`                         | Aborts a streaming response when no bytes arrive for this long. Idle timeout, not a total cap.                                          | `90 * time.Second`                                                         |
 | MaxResponseSize       | `int64`                                 | Cap on bytes read from an upstream response. `0` disables the cap.                                                                      | `0`                                                                        |
+| BreakerThreshold      | `int`                                   | Consecutive failed attempts that open an upstream's circuit breaker (it is then skipped for `BreakerCooldown`). `0` disables the breaker. | `0`                                                                        |
+| BreakerCooldown       | `time.Duration`                         | How long an opened breaker skips its upstream before probing it again.                                                                  | `30 * time.Second`                                                         |
 | ForwardClientKey      | `bool`                                  | Relay the client's own credential upstream instead of injecting `Upstream.Key`.                                                         | `false`                                                                    |
 | AllowClientKeyMissing | `bool`                                  | Permit requests without a client credential (unified-key mode only).                                                                    | `false`                                                                    |
 
@@ -231,6 +321,7 @@ The middleware registers three custom [logger](./logger.md) tags: `ai-key` (reda
 | Key      | `string`            | Server-side key injected in unified-key mode. **Required** unless `ForwardClientKey` is true. | `""`           |
 | Auth     | `AuthScheme`        | How the key is injected upstream.                                                             | `AuthBearer()` |
 | Headers  | `map[string]string` | Extra headers set on every request to this upstream.                                          | `nil`          |
+| ModelMap | `map[string]string` | Rewrites the JSON body's `model` field for this upstream (exact model names as keys). Unmapped models relay unchanged. | `nil` |
 
 ## Default Config
 

@@ -54,12 +54,20 @@ func New(config ...Config) fiber.Handler {
 			}
 			key = ""
 		}
+		var policy *KeyPolicy
 		if key != "" {
 			if cfg.KeyValidator != nil {
 				valid, verr := cfg.KeyValidator(c, key)
 				if verr != nil || !valid {
 					return sendError(c, fiber.StatusUnauthorized, "invalid API key", "authentication_error")
 				}
+			}
+			if cfg.PolicyResolver != nil {
+				p, perr := cfg.PolicyResolver(c, key)
+				if perr != nil || p == nil {
+					return sendError(c, fiber.StatusUnauthorized, "invalid API key", "authentication_error")
+				}
+				policy = p
 			}
 			fiber.StoreInContext(c, clientKeyKey, key)
 		}
@@ -75,21 +83,30 @@ func New(config ...Config) fiber.Handler {
 		if len(cfg.AllowedPaths) > 0 && !matchAny(cfg.AllowedPaths, decodedPath) {
 			return sendError(c, fiber.StatusForbidden, "this endpoint is not allowed by the gateway", "invalid_request_error")
 		}
+		if policy != nil && len(policy.AllowedPaths) > 0 && !matchAny(policy.AllowedPaths, decodedPath) {
+			return sendError(c, fiber.StatusForbidden, "this endpoint is not allowed for this API key", "invalid_request_error")
+		}
 
-		// Sniff the model from the JSON request body. The allow-list only
-		// restricts requests that actually declare a model, so non-model
+		// Sniff the model from the JSON request body. The allow-lists only
+		// restrict requests that actually declare a model, so non-model
 		// endpoints (GET /v1/models, multipart audio uploads) are not blocked;
 		// pair AllowedModels with AllowedPaths to bound endpoints. A request
 		// whose model the gateway cannot verify (a content-encoded body it can't
-		// decode) is rejected when a model policy is set, so an encoded body
-		// cannot smuggle a disallowed model past the check.
-		model, verifiable := sniffModel(c)
-		if len(cfg.AllowedModels) > 0 {
+		// decode) is rejected when any model policy — global or per-key — is
+		// set, so an encoded body cannot smuggle a disallowed model past the
+		// check.
+		model, verifiable, jsonBody := sniffModel(c)
+		if len(cfg.AllowedModels) > 0 || (policy != nil && len(policy.AllowedModels) > 0) {
 			if !verifiable {
 				return sendError(c, fiber.StatusForbidden, "the gateway could not verify the model of an encoded request body", "invalid_request_error")
 			}
-			if model != "" && !matchAny(cfg.AllowedModels, model) {
-				return sendError(c, fiber.StatusForbidden, "this model is not allowed by the gateway", "invalid_request_error")
+			if model != "" {
+				if len(cfg.AllowedModels) > 0 && !matchAny(cfg.AllowedModels, model) {
+					return sendError(c, fiber.StatusForbidden, "this model is not allowed by the gateway", "invalid_request_error")
+				}
+				if policy != nil && len(policy.AllowedModels) > 0 && !matchAny(policy.AllowedModels, model) {
+					return sendError(c, fiber.StatusForbidden, "this model is not allowed for this API key", "invalid_request_error")
+				}
 			}
 		}
 		if model != "" {
@@ -109,8 +126,13 @@ func New(config ...Config) fiber.Handler {
 			ClientKey:    utils.CopyString(key),
 			RequestBytes: int64(len(c.BodyRaw())),
 		}
+		if policy != nil {
+			// Tenant comes from the resolver, not the pooled ctx buffers, so
+			// it needs no copy for the async streaming path.
+			ev.Tenant = policy.Tenant
+		}
 
-		resp, sendErr := sendWithRetry(c, &cfg, strippedPath, key, ev)
+		resp, sendErr := sendWithRetry(c, &cfg, strippedPath, key, ev, jsonBody)
 		if resp == nil {
 			ev.Err = sendErr
 			fireUsage(&cfg, ev, start)
@@ -267,7 +289,14 @@ var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 // decode and run it). An uncompressed non-JSON body (multipart audio, binary) is
 // verifiable with an empty model: a genuine non-model request that is left
 // unrestricted.
-func sniffModel(c fiber.Ctx) (string, bool) {
+//
+// The third result is the (content-decoded, BOM/whitespace-trimmed) JSON object
+// bytes when the body decoded successfully, for Upstream.ModelMap rewriting; it
+// is nil otherwise. It may alias the pooled request buffer, so it must only be
+// used before the handler returns.
+//
+//nolint:gocritic // the results are documented above; naming them would violate nonamedreturns
+func sniffModel(c fiber.Ctx) (string, bool, []byte) {
 	raw := c.BodyRaw()
 	body := raw
 	encoded := false
@@ -308,13 +337,13 @@ func sniffModel(c fiber.Ctx) (string, bool) {
 			Model string `json:"model"`
 		}
 		if err := c.App().Config().JSONDecoder(body, &m); err != nil {
-			return "", false
+			return "", false, nil
 		}
-		return m.Model, true
+		return m.Model, true, body
 	}
 
 	// Not a JSON object. A content-encoded body we could not turn into JSON
 	// cannot be checked; an uncompressed non-JSON body (multipart audio, binary)
 	// is a genuine non-model request and is left unrestricted.
-	return "", !encoded
+	return "", !encoded, nil
 }

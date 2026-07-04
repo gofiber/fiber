@@ -2,6 +2,7 @@ package aigateway
 
 import (
 	"bytes"
+	"strings"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -26,9 +27,17 @@ type UsageEvent struct {
 	// Nil when not parseable.
 	Usage *Usage
 
+	// ClientKey is the raw credential the client presented. Treat it as
+	// sensitive: redact before logging.
+	ClientKey string
+
 	// Provider is the Upstream.Name that served the request, or the last
 	// upstream tried when all failed.
 	Provider string
+
+	// Tenant is KeyPolicy.Tenant from the resolved per-key policy.
+	// Empty when no PolicyResolver is set or the policy carries no tenant.
+	Tenant string
 
 	// Model is the "model" field sniffed from the JSON request body.
 	// Empty when the body had none.
@@ -40,9 +49,14 @@ type UsageEvent struct {
 	// Path is the upstream request path (after PathPrefix stripping).
 	Path string
 
-	// ClientKey is the raw credential the client presented. Treat it as
-	// sensitive: redact before logging.
-	ClientKey string
+	// SkippedUpstreams names upstreams that were skipped for this request
+	// because their circuit breaker was open. Nil when none were skipped.
+	SkippedUpstreams []string
+
+	// Cost is the request's price in USD, computed from Usage and
+	// Config.Prices (looked up by the model the client requested). Zero when
+	// usage was unparseable, no price is configured, or the model is unknown.
+	Cost float64
 
 	// Latency is the total relay duration including retries; for streamed
 	// responses it runs until the stream ends.
@@ -99,6 +113,44 @@ func parseUsage(body []byte, decoder utils.JSONUnmarshal) *Usage {
 		return nil
 	}
 	return payload.Usage.toUsage()
+}
+
+// applyCost fills ev.Cost from cfg.Prices and the parsed usage. It uses the
+// model the client requested (ev.Model): billing follows what was asked for,
+// and a ModelMap rewrite is an upstream naming detail.
+func applyCost(cfg *Config, ev *UsageEvent) {
+	if ev.Usage == nil || ev.Model == "" || len(cfg.Prices) == 0 {
+		return
+	}
+	price, ok := lookupPrice(cfg.Prices, ev.Model)
+	if !ok {
+		return
+	}
+	const mTok = 1e6
+	ev.Cost = float64(ev.Usage.InputTokens)*price.InputPerMTok/mTok +
+		float64(ev.Usage.OutputTokens)*price.OutputPerMTok/mTok
+}
+
+// lookupPrice resolves a model's price: an exact entry wins, otherwise the
+// longest matching trailing-* wildcard entry (longest = most specific, and
+// deterministic regardless of map iteration order).
+func lookupPrice(prices map[string]ModelPrice, model string) (ModelPrice, bool) {
+	if p, ok := prices[model]; ok {
+		return p, true
+	}
+	var best ModelPrice
+	bestLen := -1
+	for pattern, p := range prices {
+		if !strings.HasSuffix(pattern, "*") {
+			continue
+		}
+		prefix := pattern[:len(pattern)-1]
+		if strings.HasPrefix(model, prefix) && len(prefix) > bestLen {
+			best = p
+			bestLen = len(prefix)
+		}
+	}
+	return best, bestLen >= 0
 }
 
 const (

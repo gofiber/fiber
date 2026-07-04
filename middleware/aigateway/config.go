@@ -42,6 +42,18 @@ type Upstream struct {
 	// Optional. Default: nil
 	Headers map[string]string
 
+	// ModelMap rewrites the "model" field of JSON request bodies for this
+	// upstream: a request for a key model is relayed with the mapped value,
+	// e.g. {"gpt-4o": "my-azure-deployment"} — so fallback upstreams that
+	// name the same model differently (Azure deployments, another provider's
+	// equivalent model) can share a chain. Keys are exact model names.
+	// Models without an entry are relayed unchanged. A mapped body is
+	// re-encoded (top-level key order may change; other values are preserved
+	// byte-for-byte), and a content-encoded body is relayed decoded.
+	//
+	// Optional. Default: nil
+	ModelMap map[string]string
+
 	// Name identifies this upstream in UsageEvent and logger tags.
 	//
 	// Required.
@@ -62,6 +74,40 @@ type Upstream struct {
 	//
 	// Optional. Default: AuthBearer()
 	Auth AuthScheme
+}
+
+// KeyPolicy is a per-key policy returned by Config.PolicyResolver. Its lists
+// tighten (never widen) the gateway-wide AllowedModels/AllowedPaths: a request
+// must pass both the global lists and the key's lists.
+type KeyPolicy struct {
+	// Tenant labels the key's owner; it is carried into UsageEvent.Tenant
+	// for per-tenant usage accounting.
+	//
+	// Optional. Default: ""
+	Tenant string
+
+	// AllowedModels restricts this key to the listed models (exact or
+	// trailing-* wildcard). Empty adds no per-key model restriction.
+	//
+	// Optional. Default: nil
+	AllowedModels []string
+
+	// AllowedPaths restricts this key to the listed endpoint paths (after
+	// PathPrefix strip; exact or trailing-* wildcard). Empty adds no per-key
+	// path restriction.
+	//
+	// Optional. Default: nil
+	AllowedPaths []string
+}
+
+// ModelPrice is the price of one model in USD per million tokens, used to
+// compute UsageEvent.Cost.
+type ModelPrice struct {
+	// InputPerMTok is the USD price per million input (prompt) tokens.
+	InputPerMTok float64
+
+	// OutputPerMTok is the USD price per million output (completion) tokens.
+	OutputPerMTok float64
 }
 
 // RetryConfig controls same-upstream retries and backoff.
@@ -104,6 +150,16 @@ type Config struct {
 	// Optional. Default: nil
 	KeyValidator func(c fiber.Ctx, key string) (bool, error)
 
+	// PolicyResolver resolves the per-key policy for the client (virtual)
+	// key. Returning an error or a nil policy rejects the request with 401,
+	// so it can replace KeyValidator; return &KeyPolicy{} to accept a key
+	// without extra restrictions. When both are set, KeyValidator runs
+	// first. It is not called for keyless requests admitted by
+	// AllowClientKeyMissing — only the global allow-lists apply to those.
+	//
+	// Optional. Default: nil
+	PolicyResolver func(c fiber.Ctx, key string) (*KeyPolicy, error)
+
 	// OnUsage is called once per relayed request with request metadata and,
 	// when parseable, token usage. For streaming responses it runs on the
 	// response writer goroutine after the stream ends and must not touch
@@ -128,12 +184,25 @@ type Config struct {
 	// upstream or let a client smuggle a second credential through.
 	stripHeaders map[string]struct{}
 
+	// Prices maps model names (exact or trailing-* wildcard; the longest
+	// wildcard wins) to their price, enabling UsageEvent.Cost. Lookup uses
+	// the model the client requested, even when ModelMap relays a different
+	// name upstream. Models without an entry yield Cost 0.
+	//
+	// Optional. Default: nil
+	Prices map[string]ModelPrice
+
 	// stripQuery and stripCookies name the query params / cookies the
 	// KeyExtractor reads the client credential from; they are removed from the
 	// relayed request so a query- or cookie-based credential is not forwarded
 	// upstream. Derived in configDefault.
 	stripQuery   []string
 	stripCookies []string
+
+	// breakers holds the per-upstream circuit-breaker state, index-aligned
+	// with Upstreams. Nil when BreakerThreshold is 0 (breaker disabled).
+	// Created in configDefault.
+	breakers []*upstreamBreaker
 
 	// PathPrefix is stripped from the request path before it is joined with
 	// Upstream.URL, e.g. "/openai" when mounted as app.Use("/openai", ...).
@@ -186,6 +255,22 @@ type Config struct {
 	//
 	// Optional. Default: 90 * time.Second
 	StreamIdleTimeout time.Duration
+
+	// BreakerCooldown is how long an upstream stays skipped after its
+	// breaker opens. When it elapses the upstream is probed again: a
+	// success closes the breaker, another failure reopens it.
+	//
+	// Optional. Default: 30 * time.Second (when BreakerThreshold > 0)
+	BreakerCooldown time.Duration
+
+	// BreakerThreshold opens an upstream's circuit breaker after this many
+	// consecutive failed attempts (network errors or retryable statuses):
+	// the upstream is skipped for BreakerCooldown instead of being retried
+	// on every request. When every upstream's breaker is open, all are
+	// tried anyway rather than failing outright. 0 disables the breaker.
+	//
+	// Optional. Default: 0
+	BreakerThreshold int
 
 	// MaxResponseSize caps the bytes read from an upstream response,
 	// buffered or streamed. Responses exceeding the cap fail with 502
@@ -337,6 +422,23 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.MaxResponseSize < 0 {
 		cfg.MaxResponseSize = 0
+	}
+	if cfg.BreakerThreshold < 0 {
+		cfg.BreakerThreshold = 0
+	}
+	if cfg.BreakerThreshold > 0 {
+		if cfg.BreakerCooldown <= 0 {
+			cfg.BreakerCooldown = defaultBreakerCooldown
+		}
+		cfg.breakers = make([]*upstreamBreaker, len(cfg.Upstreams))
+		for i := range cfg.breakers {
+			cfg.breakers[i] = &upstreamBreaker{}
+		}
+	}
+	for model, price := range cfg.Prices {
+		if price.InputPerMTok < 0 || price.OutputPerMTok < 0 {
+			panic(fmt.Sprintf("fiber: aigateway price for model %q must not be negative", model))
+		}
 	}
 
 	if cfg.Client == nil {
