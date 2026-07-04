@@ -4104,6 +4104,80 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 	})
 }
 
+func Test_Cache_RevalidationUncacheableResponseDeletesStaleEntry(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	clock := newTestClock(time.Unix(1_700_000_000, 0).UTC())
+	const cacheKey = "GET|/test|revalidate-no-cache"
+
+	storageHasKey := func(key string) bool {
+		storage.mu.RLock()
+		defer storage.mu.RUnlock()
+		_, ok := storage.data[key]
+		return ok
+	}
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 30 * time.Second,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path() + "|revalidate-no-cache"
+		},
+		MaxBytes: 100,
+		Storage:  storage,
+		clock:    clock.Now,
+	}))
+
+	var count int
+	app.Get("/test", func(c fiber.Ctx) error {
+		count++
+		switch count {
+		case 1:
+			c.Set(fiber.HeaderCacheControl, "public, max-age=1, must-revalidate")
+			return c.SendString("cached-1")
+		case 2:
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("uncacheable-2")
+		default:
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString(fmt.Sprintf("fresh-%d", count))
+		}
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "cached-1", string(body))
+	require.True(t, storageHasKey(cacheKey))
+	require.True(t, storageHasKey(cacheKey+"_body"))
+
+	clock.Add(2 * time.Second)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "uncacheable-2", string(body))
+	require.False(t, storageHasKey(cacheKey))
+	require.False(t, storageHasKey(cacheKey+"_body"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "fresh-3", string(body))
+	require.True(t, storageHasKey(cacheKey))
+	require.True(t, storageHasKey(cacheKey+"_body"))
+}
+
 // Test_parseCacheControlDirectives_QuotedStrings tests RFC 9111 Section 5.2 compliance
 // for quoted-string values in Cache-Control directives
 func Test_parseCacheControlDirectives_QuotedStrings(t *testing.T) {
