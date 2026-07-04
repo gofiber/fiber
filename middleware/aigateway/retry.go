@@ -73,8 +73,12 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *Usage
 				// Same-upstream retry: back off first. Failover to the next
 				// upstream is always immediate.
 				if !waitBeforeRetry(c, cfg, attempt, curResp) {
-					// Client gave up while we were waiting.
+					// Client gave up while we were waiting. An upstream did produce
+					// a (retryable) response, so record its status before dropping
+					// it: ev.StatusCode == 0 is reserved for "no upstream response
+					// at all", matching the buffered/streaming relay paths.
 					if lastResp != nil {
+						ev.StatusCode = lastResp.StatusCode()
 						abortUpstreamResponse(lastResp)
 					}
 					return nil, fmt.Errorf("aigateway: canceled while waiting to retry: %w", c.Context().Err())
