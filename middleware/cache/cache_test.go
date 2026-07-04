@@ -2455,6 +2455,55 @@ func Test_CacheOnlyIfCachedStaleNotServed(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
+func Test_CacheOnlyIfCachedAuthNonShareableEntryDoesNotCallNext(t *testing.T) {
+	t.Parallel()
+
+	clock := newTestClock(time.Now().Truncate(time.Second))
+	storage := newFailingCacheStorage()
+	authHeader := "Bearer token"
+	authHash := sha256.Sum256([]byte(authHeader))
+	cacheKey := "GET|/|auth=" + hex.EncodeToString(authHash[:])
+	entry := &item{
+		body:         []byte("cached"),
+		ctype:        []byte(fiber.MIMETextPlainCharsetUTF8),
+		cacheControl: []byte("max-age=3600"),
+		date:         safeUnixSeconds(clock.Now()),
+		status:       fiber.StatusOK,
+		exp:          safeUnixSeconds(clock.Now().Add(time.Hour)),
+		ttl:          uint64(time.Hour.Seconds()),
+		heapidx:      -1,
+	}
+	rawEntry, err := entry.MarshalMsg(nil)
+	require.NoError(t, err)
+	storage.data[cacheKey] = rawEntry
+	storage.data[cacheKey+"_body"] = []byte("cached")
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: time.Hour,
+		Storage:    storage,
+		clock:      clock.Now,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path()
+		},
+	}))
+
+	var count int
+	app.Get("/", func(c fiber.Ctx) error {
+		count++
+		return c.SendString("next")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAuthorization, authHeader)
+	req.Header.Set(fiber.HeaderCacheControl, "only-if-cached")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Equal(t, 0, count)
+}
+
 func Test_CacheMaxStaleServesStaleResponse(t *testing.T) {
 	t.Parallel()
 

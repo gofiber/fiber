@@ -444,15 +444,20 @@ func New(config ...Config) fiber.Handler {
 				case entryHasExpiration && !requestNoCache:
 					servedStale = entryExpired
 					if hasAuthorization && !e.shareable {
+						c.Set(cfg.CacheHeader, cacheUnreachable)
+						oldHeapIdx = e.heapidx
 						if cfg.Storage != nil {
 							manager.release(e)
 						}
-						guard.unlock()
-						c.Set(cfg.CacheHeader, cacheUnreachable)
-						if nextErr := c.Next(); nextErr != nil {
-							return false, nextErr
+						e = nil
+						if reqDirectives.onlyIfCached {
+							if statusErr := c.SendStatus(fiber.StatusGatewayTimeout); statusErr != nil {
+								return false, statusErr
+							}
+							return true, nil
 						}
-						return true, nil
+						revalidate = true
+						return false, nil
 					}
 
 					// Separate body value to avoid msgp serialization
