@@ -137,6 +137,9 @@ func (c *core) execFunc() (*Response, error) {
 				// Request: on the timeout path the caller still owns that
 				// Request (it received only the error), and releasing it here
 				// would double-release it if the caller releases or reuses it.
+				// (The afterHooks-error path below intentionally differs: there a
+				// Response was handed back through the normal flow, so it releases
+				// both, matching the pre-streaming resp.Close() contract.)
 				resp.closeStream(ErrTimeoutOrCancel)
 				ReleaseResponse(resp)
 			case <-errChan:

@@ -273,13 +273,18 @@ func sniffModel(c fiber.Ctx) (string, bool) {
 	encoded := false
 	if enc := c.Get(fiber.HeaderContentEncoding); enc != "" && !strings.EqualFold(strings.TrimSpace(enc), "identity") {
 		encoded = true
-		// Decode within a fixed bomb-safe bound (independent of BodyLimit, which
-		// sizes the *compressed* body, not decompression memory). On failure,
-		// fall back to inspecting the raw body: a stale Content-Encoding header
-		// on a plain JSON body (a common intermediary footgun) then still sniffs
-		// cleanly, while a genuinely encoded body's raw bytes are not JSON and
-		// stay unverifiable below.
-		if decoded, ok := boundedDecompress(enc, raw, sniffDecodeLimit); ok {
+		// Decode within min(BodyLimit, sniffDecodeMax): never more than the body
+		// the server already accepts uncompressed, and never more than the fixed
+		// ceiling (so a large BodyLimit can't turn a tiny bomb into a huge
+		// decompression). On failure, fall back to inspecting the raw body: a
+		// stale Content-Encoding header on a plain JSON body (a common
+		// intermediary footgun) then still sniffs cleanly, while a genuinely
+		// encoded body's raw bytes are not JSON and stay unverifiable below.
+		limit := int64(c.App().Config().BodyLimit)
+		if limit <= 0 || limit > sniffDecodeMax {
+			limit = sniffDecodeMax
+		}
+		if decoded, ok := boundedDecompress(enc, raw, limit); ok {
 			body = decoded
 		}
 	}

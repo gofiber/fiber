@@ -541,6 +541,39 @@ func Test_AIGateway_EmptyKeyCustomExtractorPanics(t *testing.T) {
 	})
 }
 
+func Test_AIGateway_LargeGzipRequestWithinBodyLimitInspected(t *testing.T) {
+	t.Parallel()
+
+	upstream := echoUpstream(t)
+	app := fiber.New() // default 4 MiB BodyLimit
+	app.Use(New(Config{
+		Upstreams:     []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+		AllowedModels: []string{"gpt-4o*"},
+	}))
+
+	// A legitimate large request (JSON decompresses to ~2 MiB, above the old
+	// 1 MiB cap but within BodyLimit) must be inspected, not rejected: its
+	// allowed model is checked and the request is forwarded.
+	send := func(model string) int {
+		pad := strings.Repeat("abcdefghij ", 200_000) // ~2 MiB of text
+		var b bytes.Buffer
+		gz := gzip.NewWriter(&b)
+		_, _ = gz.Write([]byte(`{"model":"` + model + `","pad":"` + pad + `"}`)) //nolint:errcheck // test setup
+		require.NoError(t, gz.Close())
+
+		req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions", bytes.NewReader(b.Bytes()))
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+		req.Header.Set(fiber.HeaderContentEncoding, "gzip")
+		resp, err := app.Test(req, testConfig)
+		require.NoError(t, err)
+		return resp.StatusCode
+	}
+
+	require.Equal(t, fiber.StatusOK, send("gpt-4o"))
+	require.Equal(t, fiber.StatusForbidden, send("gpt-3.5-turbo"))
+}
+
 func Test_AIGateway_UndecodableJSONRejectedWhenPoliced(t *testing.T) {
 	t.Parallel()
 

@@ -131,9 +131,11 @@ endpoints that carry no model — `GET /v1/models`, multipart audio uploads — 
 not blocked. Pair it with `AllowedPaths` to bound which endpoints are reachable.
 The model is sniffed from the body shape (a leading `{`, after any UTF-8 BOM and
 whitespace) rather than the `Content-Type`, so a spoofed content type cannot hide
-the model. A `gzip`/`deflate`-encoded body is decompressed within a fixed
-bomb-safe bound first (a stale `Content-Encoding` header on a plain JSON body is
-handled by falling back to the raw body). When `AllowedModels` is set, any
+the model. A `gzip`/`deflate`-encoded body is decompressed within a bound —
+`min(BodyLimit, 4 MiB)`, so decompression never exceeds the body size the server
+already accepts uncompressed nor lets a large `BodyLimit` amplify a compression
+bomb — before its model is read (a stale `Content-Encoding` header on a plain
+JSON body is handled by falling back to the raw body). When `AllowedModels` is set, any
 request whose model the gateway cannot verify is **rejected** rather than
 forwarded, so nothing can smuggle a disallowed model past the check: a body that
 declares itself JSON (`{`) but cannot be decoded (trailing data, excessive

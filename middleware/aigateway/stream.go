@@ -174,9 +174,13 @@ func decodeForUsage(resp *client.Response, body []byte, limit int64) []byte {
 // MaxResponseSize is configured.
 const usageDecodeLimit = 8 << 20 // 8 MiB
 
-// sniffDecodeLimit bounds decompression of a content-encoded request body when
-// sniffing the model. A real request body is tiny; the cap stops a bomb.
-const sniffDecodeLimit = 1 << 20 // 1 MiB
+// sniffDecodeMax is the ceiling on decompressing a content-encoded request body
+// while sniffing the model. The effective bound is min(BodyLimit, sniffDecodeMax):
+// it never exceeds the body size the server already accepts uncompressed, and
+// this fixed ceiling caps bomb amplification even when BodyLimit is large. It is
+// generous enough to inspect a max-context gzipped request while bounding the
+// per-request decompression a bomb can force.
+const sniffDecodeMax = 4 << 20 // 4 MiB
 
 // streamChunk carries one upstream read result from the reader goroutine to
 // the response writer.
