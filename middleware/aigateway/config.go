@@ -234,16 +234,7 @@ func defaultKeyExtractor() extractors.Extractor {
 // cycle-safe (a self-referential chain would otherwise recurse forever).
 func (cfg *Config) collectExtractorCredentials() {
 	cfg.KeyExtractor.Contains(func(e extractors.Extractor) bool {
-		if e.Key == "" {
-			return false
-		}
 		switch e.Source {
-		case extractors.SourceHeader, extractors.SourceAuthHeader:
-			cfg.stripHeaders[strings.ToLower(e.Key)] = struct{}{}
-		case extractors.SourceQuery:
-			cfg.stripQuery = append(cfg.stripQuery, e.Key)
-		case extractors.SourceCookie:
-			cfg.stripCookies = append(cfg.stripCookies, e.Key)
 		case extractors.SourceForm, extractors.SourceParam, extractors.SourceCustom:
 			// Form (request body), route param (path), and custom extractors
 			// cannot be stripped without rewriting the body/path (and a custom
@@ -251,8 +242,22 @@ func (cfg *Config) collectExtractorCredentials() {
 			// silently relay the client credential upstream, so fail fast and
 			// require a header/query/cookie extractor instead. In pass-through
 			// mode the client credential is meant to go upstream, so it is fine.
+			// This runs before the Key check so an empty-key custom extractor
+			// cannot slip through unstripped.
 			if !cfg.ForwardClientKey {
 				panic("fiber: aigateway unified-key mode requires a header, query, or cookie KeyExtractor; a form, param, or custom extractor cannot be stripped and would leak the client credential upstream")
+			}
+		case extractors.SourceHeader, extractors.SourceAuthHeader:
+			if e.Key != "" {
+				cfg.stripHeaders[strings.ToLower(e.Key)] = struct{}{}
+			}
+		case extractors.SourceQuery:
+			if e.Key != "" {
+				cfg.stripQuery = append(cfg.stripQuery, e.Key)
+			}
+		case extractors.SourceCookie:
+			if e.Key != "" {
+				cfg.stripCookies = append(cfg.stripCookies, e.Key)
 			}
 		}
 		return false // visit every extractor; never short-circuit

@@ -129,6 +129,11 @@ app.Use("/openai", aigateway.New(aigateway.Config{
 `AllowedModels` only restricts requests whose JSON body declares a `model`, so
 endpoints that carry no model — `GET /v1/models`, multipart audio uploads — are
 not blocked. Pair it with `AllowedPaths` to bound which endpoints are reachable.
+The model is sniffed from the body shape (a leading `{`, after any UTF-8 BOM and
+whitespace) rather than the `Content-Type`, and a `gzip`/`deflate`-encoded body
+is decompressed within a bound first, so neither a spoofed content type nor a
+compressed body can hide the model (and a compression bomb is capped, not
+expanded).
 
 ### Usage accounting
 

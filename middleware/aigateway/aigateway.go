@@ -210,17 +210,9 @@ func decodePath(path string) string {
 func containsDotDot(path string) bool {
 	// Treat a backslash as a separator too: some upstreams normalize "\" to
 	// "/", so "..\..\x" must be caught as traversal even though URL path
-	// segments split on "/".
-	for i := 0; i < len(path); {
-		j := strings.IndexAny(path[i:], `/\`)
-		var part string
-		if j < 0 {
-			part = path[i:]
-			i = len(path)
-		} else {
-			part = path[i : i+j]
-			i += j + 1
-		}
+	// segments split on "/". ReplaceAll returns path unchanged (no alloc) when
+	// it has no backslash, the common case.
+	for part := range strings.SplitSeq(strings.ReplaceAll(path, `\`, "/"), "/") {
 		if part == ".." {
 			return true
 		}
@@ -260,13 +252,29 @@ var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 // AllowedModels check. Genuinely non-JSON bodies (multipart audio, binary) do
 // not start with '{' and are left unrestricted.
 //
-// It reads the raw (undecoded) body: a JSON body starts with '{' before any
-// transfer decoding, and reading it raw avoids decompressing an untrusted
-// request body (a compression-bomb surface) merely to peek one byte. Real LLM
-// providers do not accept content-encoded request bodies.
+// A content-encoded body is decompressed with a bound first, so a gzipped JSON
+// body cannot hide its model while an oversized/hostile encoding (a compression
+// bomb) is capped rather than expanded into memory.
 func sniffModel(c fiber.Ctx) string {
-	body := bytes.TrimPrefix(c.BodyRaw(), utf8BOM)
-	body = bytes.TrimLeft(body, " \t\r\n")
+	body := c.BodyRaw()
+	if enc := c.Get(fiber.HeaderContentEncoding); enc != "" {
+		decoded, ok := boundedDecompress(enc, body, sniffDecodeLimit)
+		if !ok {
+			// Unknown encoding or over the bound: cannot determine the model.
+			return ""
+		}
+		body = decoded
+	}
+
+	// Strip any mix of leading whitespace and UTF-8 BOMs, in any order.
+	for {
+		trimmed := bytes.TrimPrefix(bytes.TrimLeft(body, " \t\r\n"), utf8BOM)
+		if len(trimmed) == len(body) {
+			body = trimmed
+			break
+		}
+		body = trimmed
+	}
 	if len(body) == 0 || body[0] != '{' {
 		return ""
 	}

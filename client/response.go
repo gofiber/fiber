@@ -214,16 +214,22 @@ func (r *Response) Close() {
 	ReleaseResponse(r)
 }
 
-// CloseWithError closes the response like Close, but first tears down a
-// streamed body (StreamResponseBody) with err. This drops the underlying
-// connection instead of returning it to the pool with an unread body, which a
-// later request on that connection would otherwise misread as its own
-// response. Callers that abandon a response before reading its body to EOF
-// (timeouts, hook errors, relay failures) must use this rather than Close.
-func (r *Response) CloseWithError(err error) {
+// closeStream tears down a streamed body (StreamResponseBody) with err so the
+// underlying connection is dropped instead of being returned to the pool with
+// an unread body — which a later request on that connection would otherwise
+// misread as its own response. It is a no-op for a non-streamed body.
+func (r *Response) closeStream(err error) {
 	if bs, ok := r.RawResponse.BodyStream().(fasthttp.ReadCloserWithError); ok {
 		_ = bs.CloseWithError(err) //nolint:errcheck // teardown is best-effort
 	}
+}
+
+// CloseWithError closes the response like Close (releasing the paired Request
+// and Response), but first tears down a streamed body with err. Callers that
+// abandon a response before reading its body to EOF (hook errors, relay
+// failures) must use this rather than Close.
+func (r *Response) CloseWithError(err error) {
+	r.closeStream(err)
 	r.Close()
 }
 

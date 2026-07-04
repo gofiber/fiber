@@ -406,6 +406,106 @@ func Test_AIGateway_UsageParsedFromDeflate(t *testing.T) {
 	require.Equal(t, 4, got.Usage.OutputTokens)
 }
 
+func Test_AIGateway_ModelSpoofViaWhitespaceBOM(t *testing.T) {
+	t.Parallel()
+
+	upstream := echoUpstream(t)
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams:     []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+		AllowedModels: []string{"gpt-4o*"},
+	}))
+
+	send := func(body []byte) int {
+		req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+		resp, err := app.Test(req, testConfig)
+		require.NoError(t, err)
+		return resp.StatusCode
+	}
+
+	bom := []byte{0xEF, 0xBB, 0xBF}
+	json := []byte(`{"model":"gpt-3.5-turbo"}`)
+	// Whitespace-before-BOM and double-BOM must not hide the model.
+	require.Equal(t, fiber.StatusForbidden, send(append([]byte("  "), append(bom, json...)...)))
+	require.Equal(t, fiber.StatusForbidden, send(append(append([]byte{}, bom...), append(bom, json...)...)))
+}
+
+func Test_AIGateway_ModelCheckedThroughGzipRequest(t *testing.T) {
+	t.Parallel()
+
+	upstream := echoUpstream(t)
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams:     []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+		AllowedModels: []string{"gpt-4o*"},
+	}))
+
+	gzipBody := func(s string) []byte {
+		var b bytes.Buffer
+		gz := gzip.NewWriter(&b)
+		_, _ = gz.Write([]byte(s)) //nolint:errcheck // test setup
+		require.NoError(t, gz.Close())
+		return b.Bytes()
+	}
+	send := func(model string) int {
+		req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions", bytes.NewReader(gzipBody(`{"model":"`+model+`"}`)))
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+		req.Header.Set(fiber.HeaderContentEncoding, "gzip")
+		resp, err := app.Test(req, testConfig)
+		require.NoError(t, err)
+		return resp.StatusCode
+	}
+
+	// A gzipped request body must still be checked against the allow-list.
+	require.Equal(t, fiber.StatusForbidden, send("gpt-3.5-turbo"))
+	require.Equal(t, fiber.StatusOK, send("gpt-4o"))
+}
+
+func Test_AIGateway_GzipBombRequestBounded(t *testing.T) {
+	t.Parallel()
+
+	upstream := echoUpstream(t)
+	app := fiber.New(fiber.Config{BodyLimit: 64 << 10})
+	app.Use(New(Config{
+		Upstreams:     []Upstream{{Name: "test", URL: upstream, Key: "sk"}},
+		AllowedModels: []string{"gpt-4o*"},
+	}))
+
+	// A tiny gzip body that expands past the 1 MiB sniff cap must not be fully
+	// decompressed; the model can't be determined so the request is not
+	// model-restricted (and, crucially, the gateway does not OOM decoding it).
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+	_, _ = gz.Write(make([]byte, 4<<20)) //nolint:errcheck // test setup
+	require.NoError(t, gz.Close())
+
+	req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions", bytes.NewReader(b.Bytes()))
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	req.Header.Set(fiber.HeaderContentEncoding, "gzip")
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func Test_AIGateway_EmptyKeyCustomExtractorPanics(t *testing.T) {
+	t.Parallel()
+
+	// A custom extractor (even with an empty key) is unstrippable, so unified
+	// mode must reject it at construction rather than leak the credential.
+	require.Panics(t, func() {
+		New(Config{
+			KeyExtractor: extractors.FromCustom("", func(c fiber.Ctx) (string, error) {
+				return c.Get("X-Secret"), nil
+			}),
+			Upstreams: []Upstream{{Name: "test", URL: "https://api.example.com", Key: "sk"}},
+		})
+	})
+}
+
 func Test_AIGateway_LoggerTagsRegistered(t *testing.T) {
 	t.Parallel()
 

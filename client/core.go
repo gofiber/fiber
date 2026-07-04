@@ -133,8 +133,12 @@ func (c *core) execFunc() (*Response, error) {
 				// The caller abandoned this response after the deadline. For a
 				// streamed body the connection still has the unread body
 				// buffered, so drop it instead of returning a stale connection
-				// to the pool (see Response.CloseWithError).
-				resp.CloseWithError(ErrTimeoutOrCancel)
+				// to the pool. Release only the Response, not its paired
+				// Request: on the timeout path the caller still owns that
+				// Request (it received only the error), and releasing it here
+				// would double-release it if the caller releases or reuses it.
+				resp.closeStream(ErrTimeoutOrCancel)
+				ReleaseResponse(resp)
 			case <-errChan:
 			}
 		}()

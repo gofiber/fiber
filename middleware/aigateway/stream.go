@@ -113,18 +113,18 @@ func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEve
 	return c.Send(body)
 }
 
-// decodeForUsage returns a decompressed copy of body when the response is
-// content-encoded, so token usage can be parsed. The client still receives the
-// original (encoded) bytes. Unknown/failed encodings return body unchanged.
+// boundedDecompress returns the decoded form of body for the given
+// Content-Encoding, reading at most limit bytes so a compression bomb — a tiny
+// encoded body that expands to gigabytes — cannot exhaust memory. It reports
+// ok=false on an unknown/unsupported encoding, a decode error, or an overflow
+// past limit. An empty or identity encoding returns body unchanged with ok.
 //
-// Decompression is bounded by limit (bytes) so a compression bomb — a tiny
-// encoded body that expands to gigabytes — cannot exhaust memory while the
-// gateway is only trying to read the small usage object. On overflow or error
-// it returns the original bytes (usage then parses to nil, best-effort).
-func decodeForUsage(resp *client.Response, body []byte, limit int64) []byte {
-	enc := strings.ToLower(string(resp.RawResponse.Header.Peek(fiber.HeaderContentEncoding)))
+// Only gzip and deflate are handled; other encodings (br, zstd) report
+// ok=false rather than pulling in extra decompressors just to peek at a field.
+func boundedDecompress(enc string, body []byte, limit int64) ([]byte, bool) {
+	enc = strings.ToLower(strings.TrimSpace(enc))
 	if enc == "" || enc == "identity" {
-		return body
+		return body, true
 	}
 
 	var r io.Reader
@@ -132,7 +132,7 @@ func decodeForUsage(resp *client.Response, body []byte, limit int64) []byte {
 	case strings.Contains(enc, "gzip"):
 		gz, err := gzip.NewReader(bytes.NewReader(body))
 		if err != nil {
-			return body
+			return nil, false
 		}
 		defer gz.Close() //nolint:errcheck // decode-only reader
 		r = gz
@@ -148,22 +148,35 @@ func decodeForUsage(resp *client.Response, body []byte, limit int64) []byte {
 			r = fr
 		}
 	default:
-		// Other encodings (e.g. br, zstd) are left to best-effort: the body is
-		// returned as-is and usage parses to nil rather than pulling in extra
-		// decompressors just to read a token count.
-		return body
+		return nil, false
 	}
 
 	out, err := io.ReadAll(io.LimitReader(r, limit+1))
 	if err != nil || int64(len(out)) > limit {
-		return body
+		return nil, false
 	}
-	return out
+	return out, true
+}
+
+// decodeForUsage returns a decompressed copy of body when the response is
+// content-encoded, so token usage can be parsed. The client still receives the
+// original (encoded) bytes. Unknown/failed/overflowing encodings return body
+// unchanged (usage then parses to nil, best-effort).
+func decodeForUsage(resp *client.Response, body []byte, limit int64) []byte {
+	enc := string(resp.RawResponse.Header.Peek(fiber.HeaderContentEncoding))
+	if out, ok := boundedDecompress(enc, body, limit); ok {
+		return out
+	}
+	return body
 }
 
 // usageDecodeLimit bounds decompression for usage parsing when no
 // MaxResponseSize is configured.
 const usageDecodeLimit = 8 << 20 // 8 MiB
+
+// sniffDecodeLimit bounds decompression of a content-encoded request body when
+// sniffing the model. A real request body is tiny; the cap stops a bomb.
+const sniffDecodeLimit = 1 << 20 // 1 MiB
 
 // streamChunk carries one upstream read result from the reader goroutine to
 // the response writer.
