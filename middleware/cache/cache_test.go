@@ -4376,6 +4376,99 @@ func Test_Cache_ConcurrentUncacheableRevalidationPreservesReplacement(t *testing
 	require.Equal(t, uint64(1), defaultCalls.Load())
 }
 
+func Test_Cache_ConcurrentUncacheableRevalidationComparesExternalBody(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	clock := newTestClock(time.Unix(1_700_000_000, 0).UTC())
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: time.Minute,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path() + "|concurrent-revalidate-body"
+		},
+		Storage: storage,
+		clock:   clock.Now,
+	}))
+
+	slowStarted := make(chan struct{})
+	releaseSlow := make(chan struct{})
+	var slowStartedOnce sync.Once
+	var defaultCalls atomic.Uint64
+
+	app.Get("/test", func(c fiber.Ctx) error {
+		switch c.Get("X-Revalidate") {
+		case "slow":
+			slowStartedOnce.Do(func() {
+				close(slowStarted)
+			})
+			<-releaseSlow
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("slow-uncacheable")
+		case "fast":
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString("fresh-replacement")
+		default:
+			call := defaultCalls.Add(1)
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString(fmt.Sprintf("cached-%d", call))
+		}
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "cached-1", string(body))
+
+	slowErr := make(chan error, 1)
+	go func() {
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+		req.Header.Set("X-Revalidate", "slow")
+		slowResp, slowTestErr := app.Test(req)
+		if slowTestErr != nil {
+			slowErr <- slowTestErr
+			return
+		}
+		_, readErr := io.ReadAll(slowResp.Body)
+		closeErr := slowResp.Body.Close()
+		slowErr <- errors.Join(readErr, closeErr)
+	}()
+
+	select {
+	case <-slowStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("slow revalidation request did not reach handler")
+	}
+
+	fastReq := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+	fastReq.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+	fastReq.Header.Set("X-Revalidate", "fast")
+	resp, err = app.Test(fastReq)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "fresh-replacement", string(body))
+
+	close(releaseSlow)
+	require.NoError(t, <-slowErr)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "fresh-replacement", string(body))
+	require.Equal(t, uint64(1), defaultCalls.Load())
+}
+
 // Test_parseCacheControlDirectives_QuotedStrings tests RFC 9111 Section 5.2 compliance
 // for quoted-string values in Cache-Control directives
 func Test_parseCacheControlDirectives_QuotedStrings(t *testing.T) {

@@ -326,7 +326,9 @@ func New(config ...Config) fiber.Handler {
 		entryAge := uint64(0)
 		revalidate := false
 		oldHeapIdx := -1 // Track old heap index for replacement during revalidation
+		revalidationBodyMatches := cfg.Storage == nil
 		var revalidationEntry *item
+		var revalidationBody []byte
 
 		markRevalidate := func() {
 			revalidate = true
@@ -374,6 +376,22 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		loadRevalidationBody := func() error {
+			if cfg.Storage == nil || revalidationEntry == nil || revalidationBodyMatches {
+				return nil
+			}
+			body, bodyErr := manager.getRaw(reqCtx, key+"_body")
+			if bodyErr != nil {
+				if errors.Is(bodyErr, errCacheMiss) {
+					return nil
+				}
+				return cacheBodyFetchError(maskKey, key, bodyErr)
+			}
+			revalidationBody = utils.CopyBytes(body)
+			revalidationBodyMatches = true
+			return nil
+		}
+
 		deleteRevalidatedEntry := func() error {
 			if revalidationEntry == nil {
 				return nil
@@ -393,6 +411,21 @@ func New(config ...Config) fiber.Handler {
 			}
 			if !matchesStaleEntry {
 				return nil
+			}
+			if !revalidationBodyMatches {
+				return nil
+			}
+			if cfg.Storage != nil {
+				currentBody, bodyErr := manager.getRaw(reqCtx, key+"_body")
+				if bodyErr != nil {
+					if errors.Is(bodyErr, errCacheMiss) {
+						return nil
+					}
+					return cacheBodyFetchError(maskKey, key, bodyErr)
+				}
+				if !slices.Equal(currentBody, revalidationBody) {
+					return nil
+				}
 			}
 
 			if delErr := deleteKey(reqCtx, key); delErr != nil {
@@ -607,6 +640,10 @@ func New(config ...Config) fiber.Handler {
 		}
 		if handledCacheRequest {
 			return nil
+		}
+
+		if err := loadRevalidationBody(); err != nil {
+			return err
 		}
 
 		// Continue stack, return err to Fiber if exist
