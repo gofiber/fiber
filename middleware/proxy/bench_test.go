@@ -13,27 +13,29 @@ import (
 )
 
 // These benchmarks are the baseline that the PR description's
-// performance table compares against. Each one
-// targets a specific hot path identified during the perf survey so
-// subsequent changes can produce a benchstat-grade before/after.
+// performance table compares against. Each one targets a specific hot
+// path identified during the perf survey so subsequent changes can
+// produce a benchstat-grade before/after.
 //
 // All benchmarks call b.ReportAllocs() so allocation regressions are
-// caught even when ns/op is noise.
+// caught even when ns/op is noise. They use the testing.B.Loop form
+// (https://go.dev/blog/testing-b-loop): the first b.Loop() call resets
+// the timer, so per-benchmark setup before the loop is excluded from
+// timing without an explicit b.ResetTimer, and the loop body is kept
+// safe from dead-code elimination.
 
 func BenchmarkCurrentSecurityPolicy(b *testing.B) {
 	prev := WithSecurityPolicy(DefaultSecurityPolicy())
 	b.Cleanup(func() { WithSecurityPolicy(prev) })
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = currentSecurityPolicy()
 	}
 }
 
 func BenchmarkResolvePolicy_Nil(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = resolvePolicy(nil)
 	}
 }
@@ -41,8 +43,7 @@ func BenchmarkResolvePolicy_Nil(b *testing.B) {
 func BenchmarkResolvePolicy_Override(b *testing.B) {
 	override := DefaultSecurityPolicy()
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = resolvePolicy(&override)
 	}
 }
@@ -50,16 +51,14 @@ func BenchmarkResolvePolicy_Override(b *testing.B) {
 func BenchmarkSchemeAllowed_HTTPS(b *testing.B) {
 	allowed := []string{schemeHTTP, schemeHTTPS}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = schemeAllowed(schemeHTTPS, allowed)
 	}
 }
 
 func BenchmarkSchemeAllowed_EmptyAllowlist(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = schemeAllowed(schemeHTTPS, nil)
 	}
 }
@@ -68,8 +67,7 @@ func BenchmarkValidateUpstream_IPLiteral(b *testing.B) {
 	policy := DefaultSecurityPolicy()
 	const addr = "http://203.0.113.5:8080/api/v1/widgets"
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if _, err := validateUpstream(addr, policy); err != nil {
 			b.Fatal(err)
 		}
@@ -80,8 +78,7 @@ func BenchmarkValidateUpstreamForBalancer_IPLiteral(b *testing.B) {
 	policy := DefaultSecurityPolicy()
 	const addr = "http://203.0.113.5:8080"
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if _, err := validateUpstreamForBalancer(addr, policy); err != nil {
 			b.Fatal(err)
 		}
@@ -100,8 +97,7 @@ func BenchmarkResolveRedirect_HTTPSDowngradeBlocked(b *testing.B) {
 		b.Fatalf("expected ErrRedirectDowngrade, got %v", err)
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = resolveRedirect("https://example.com/", location, policy) //nolint:errcheck // bench
 	}
 }
@@ -111,8 +107,7 @@ func BenchmarkResolveRedirect_AllowedAcrossOrigin(b *testing.B) {
 	policy.AllowPrivateIPs = true
 	location := []byte("https://other.example/landing")
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if _, err := resolveRedirect("https://example.com/", location, policy); err != nil {
 			b.Fatal(err)
 		}
@@ -141,8 +136,7 @@ func BenchmarkStripHopByHop_NoConnection(b *testing.B) {
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		// Re-seed outside the timed section every iteration: without
 		// this, the first call removes the hop-by-hop headers and the
 		// rest of the loop measures a near no-op.
@@ -158,8 +152,7 @@ func BenchmarkStripHopByHop_WithConnection(b *testing.B) {
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		b.StopTimer()
 		req.Reset()
 		seedWithConnectionRequest(req)
@@ -174,8 +167,7 @@ func BenchmarkJoinUpstreamPath_RootBase(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = joinUpstreamPath(base, "/api/v1/widgets?ids=1,2,3")
 	}
 }
@@ -186,8 +178,7 @@ func BenchmarkJoinUpstreamPath_PrefixBase(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = joinUpstreamPath(base, "/api/v1/widgets")
 	}
 }
@@ -195,8 +186,7 @@ func BenchmarkJoinUpstreamPath_PrefixBase(b *testing.B) {
 func BenchmarkIsBlockedIP_PublicV4(b *testing.B) {
 	ip := net.ParseIP("203.0.113.5")
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = isBlockedIP(ip)
 	}
 }
@@ -227,8 +217,7 @@ func BenchmarkFollowRedirects_NoRedirect(b *testing.B) {
 	defer fasthttp.ReleaseResponse(resp)
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		req.Reset()
 		req.SetRequestURI(initialURL.String())
 		req.Header.SetMethod(fasthttp.MethodGet)
@@ -267,8 +256,7 @@ func BenchmarkDomainForward_HostMatchPath(b *testing.B) {
 	app.Use(DomainForward("api.example", "http://203.0.113.5:8080"))
 	req := newReqWithHost("api.example", "/v1/widgets?q=1")
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		resp, err := app.Test(req, fiber.TestConfig{Timeout: 1})
 		if err != nil {
 			b.Fatal(err)
