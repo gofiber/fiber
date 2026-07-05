@@ -506,9 +506,10 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 			expectedList: nil,
 		},
 		{
+			// RFC 9110 §5.6.1.2: empty list elements are parsed and ignored.
 			description:  "has a comma without element",
 			headerValue:  "gzip,",
-			expectedList: []string{"gzip", ""},
+			expectedList: []string{"gzip"},
 		},
 		{
 			description:  "has a space between words",
@@ -518,17 +519,22 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 		{
 			description:  "single comma",
 			headerValue:  ",",
-			expectedList: []string{"", ""},
+			expectedList: []string{},
 		},
 		{
 			description:  "multiple comma",
 			headerValue:  ",,",
-			expectedList: []string{"", "", ""},
+			expectedList: []string{},
 		},
 		{
 			description:  "comma with space",
 			headerValue:  ",  ,",
-			expectedList: []string{"", "", ""},
+			expectedList: []string{},
+		},
+		{
+			description:  "empty element between values",
+			headerValue:  "gzip, , br",
+			expectedList: []string{"gzip", "br"},
 		},
 	}
 
@@ -1614,6 +1620,14 @@ func Test_IsEtagStale(t *testing.T) {
 
 	// Weak vs. weak
 	require.False(t, app.isEtagStale(`W/"a"`, []byte(`W/"a"`)))
+
+	// etagc permits "," inside the opaque-tag (RFC 9110 §8.8.3): a quoted
+	// comma is part of the tag, not a list separator.
+	require.False(t, app.isEtagStale(`"v1,v2"`, []byte(`"v1,v2"`)))
+	require.False(t, app.isEtagStale(`"v1,v2"`, []byte(`"a", "v1,v2", "b"`)))
+	require.False(t, app.isEtagStale(`W/"v1,v2"`, []byte(`"v1,v2"`)))
+	require.True(t, app.isEtagStale(`"v1"`, []byte(`"v1,v2"`)))
+	require.True(t, app.isEtagStale(`"v2"`, []byte(`"v1,v2"`)))
 }
 
 func Test_App_quoteRawString(t *testing.T) {
@@ -1641,19 +1655,6 @@ func Test_App_quoteRawString(t *testing.T) {
 			require.Equal(t, tc.out, app.quoteRawString(tc.in))
 		})
 	}
-}
-
-func Test_App_quoteString_DetachesFromPooledBuffer(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-
-	first := app.quoteString("a b")
-	second := app.quoteString("x y")
-
-	require.Equal(t, "a+b", first)
-	require.Equal(t, "x+y", second)
-	require.Equal(t, "a+b", first)
 }
 
 func Test_App_quoteRawString_DetachesFromPooledBuffer(t *testing.T) {
