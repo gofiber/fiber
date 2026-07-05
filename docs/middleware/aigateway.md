@@ -9,10 +9,11 @@ The AI Gateway middleware turns a Fiber app into a gateway for LLM provider APIs
 It is a pass-through relay: no request or response translation happens, so clients speak each provider's native wire API. On top of the relay, the middleware handles:
 
 - **Key management** — forward the client's own credential upstream, or strip it and inject a server-side unified key, optionally validating client (virtual) keys first.
-- **Policy** — restrict which models and endpoint paths may be used, globally and per client key (`PolicyResolver`).
+- **Policy** — restrict which models and endpoint paths may be used, globally and per client key (`PolicyResolver`); clamp or inject request parameters (`MaxTokensCap`, `ParamDefaults`); veto or transform requests and responses with hooks (`OnRequest`, `OnResponse`).
 - **Model aliasing** — rewrite the requested model name per upstream (`Upstream.ModelMap`), so an Azure deployment or another provider's equivalent model can serve as a fallback.
-- **Resilience** — retry retryable failures (429/5xx, network errors) with backoff, fail over across an ordered chain of upstreams, and skip upstreams whose circuit breaker is open.
-- **Usage accounting** — a per-request hook with latency, status, attempts, token usage parsed from JSON responses and SSE streams (best-effort), and a USD cost computed from an operator-supplied price table.
+- **Resilience** — retry retryable failures (429/5xx, network errors) with backoff, fail over across a chain of upstreams (ordered, round-robin, or weighted), and skip upstreams whose circuit breaker is open.
+- **Usage accounting** — a per-request hook with latency, status, attempts, token usage parsed from JSON responses and SSE streams (best-effort), a USD cost computed from an operator-supplied price table, and post-paid token/budget quotas per key or tenant.
+- **Caching** — compose with the [cache middleware](./cache.md) via `CacheKeyGenerator` and `CacheSkipStreaming` to serve repeated identical requests (embeddings especially) without an upstream call.
 
 ## Signatures
 
@@ -21,6 +22,10 @@ func New(config ...Config) fiber.Handler
 func KeyFromContext(ctx any) string
 func ProviderFromContext(ctx any) string
 func ModelFromContext(ctx any) string
+
+// Cache middleware composition
+func CacheKeyGenerator(extractor ...extractors.Extractor) func(fiber.Ctx) string
+func CacheSkipStreaming() func(fiber.Ctx) bool
 
 // Upstream presets
 func OpenAI(key string) Upstream
@@ -199,6 +204,103 @@ app.Use("/openai", aigateway.New(aigateway.Config{
 
 Skipped upstreams are reported per request in `UsageEvent.SkippedUpstreams`.
 
+### Quotas and budgets
+
+Post-paid, fixed-window quotas per identity — the `KeyPolicy.Tenant` when the policy names one, else the client key. A request is rejected with `429` (and a `Retry-After` for the window remainder) when its identity's window totals already reached the limit; the actual token count and cost are committed after the response, so a burst of in-flight requests can overshoot by the requests already admitted:
+
+```go
+app.Use("/openai", aigateway.New(aigateway.Config{
+    PathPrefix:      "/openai",
+    Upstreams:       []aigateway.Upstream{aigateway.OpenAI(key)},
+    Prices:          prices,           // required for BudgetPerWindow to have effect
+    TokensPerWindow: 1_000_000,        // per identity per window
+    BudgetPerWindow: 25.00,            // USD per identity per window
+    QuotaWindow:     time.Hour,
+    PolicyResolver: func(c fiber.Ctx, key string) (*aigateway.KeyPolicy, error) {
+        // Per-key overrides: >0 own limit, 0 inherit, <0 exempt.
+        return &aigateway.KeyPolicy{Tenant: "acme", TokensPerWindow: -1}, nil
+    },
+}))
+```
+
+The default store is in-process. For a multi-instance gateway implement the two-method `QuotaStore` interface over shared storage — it is increment-shaped (`Add` applies the delta and returns the new totals) precisely so a Redis implementation can be atomic (one `INCRBY`-style Lua script or pipeline). A store error fails closed (502). Keyless requests admitted by `AllowClientKeyMissing` are never quota'd.
+
+### Request parameter enforcement
+
+`MaxTokensCap` clamps the `max_tokens`, `max_completion_tokens`, and `max_output_tokens` fields of JSON bodies when present and above the cap; like `AllowedModels`, an encoded body that cannot be inspected is rejected while a cap is set, and a non-integer value in a capped field is rejected with 400 (a lenient upstream parser could otherwise honor it). `ParamDefaults` injects top-level fields the client did not set — advisory defaults, not bounds:
+
+```go
+app.Use("/openai", aigateway.New(aigateway.Config{
+    PathPrefix:    "/openai",
+    Upstreams:     []aigateway.Upstream{aigateway.OpenAI(key)},
+    MaxTokensCap:  4096,
+    ParamDefaults: map[string]any{"temperature": 0.2, "user": "gateway"},
+}))
+```
+
+Both use the same top-level rewrite as `ModelMap`: everything else in the body is preserved byte-for-byte, and a compliant body relays untouched. A `"model"` key in `ParamDefaults` panics at construction (it would bypass the model policy — use `Upstream.ModelMap`).
+
+### Load balancing
+
+`Strategy` picks which upstream a request tries first; failover then walks the remaining candidates, so every strategy degrades to the same exhaustive chain under failures. `StrategyOrdered` (default) always starts at the primary; `StrategyRoundRobin` rotates the starting upstream; `StrategyWeighted` picks the first in proportion to `Upstream.Weight` (the rest follow by descending weight):
+
+```go
+app.Use("/openai", aigateway.New(aigateway.Config{
+    PathPrefix: "/openai",
+    Strategy:   aigateway.StrategyWeighted,
+    Upstreams: []aigateway.Upstream{
+        {Name: "east", URL: eastURL, Key: eastKey, Weight: 3},
+        {Name: "west", URL: westURL, Key: westKey, Weight: 1},
+    },
+}))
+```
+
+Strategies compose with the circuit breaker: the breaker filters out open upstreams first, the strategy orders the survivors.
+
+### Request and response hooks
+
+`OnRequest` runs after authentication and **before every policy check**, so whatever path and body it produces is what the allow-lists inspect and what is relayed — a hook cannot bypass policy. Use it for moderation, PII scrubbing, audit logging, or request rewriting. Returning an error rejects the request (a `*fiber.Error` picks its own status; any other error maps to 403):
+
+```go
+app.Use("/openai", aigateway.New(aigateway.Config{
+    PathPrefix: "/openai",
+    Upstreams:  []aigateway.Upstream{aigateway.OpenAI(key)},
+    OnRequest: func(c fiber.Ctx, r *aigateway.RelayRequest) error {
+        if containsPII(c.Body()) {
+            r.Body = scrubPII(c.Body()) // replaces the relayed body
+        }
+        return nil // or fiber.NewError(fiber.StatusUnprocessableEntity, "blocked")
+    },
+    OnResponse: func(c fiber.Ctx, r *aigateway.RelayResponse) error {
+        r.Body = redactResponse(r.Body) // buffered responses only
+        return nil
+    },
+}))
+```
+
+`OnResponse` runs for buffered responses only, after token usage is parsed (so `UsageEvent.Usage` always reflects the upstream's truth) and before the body is sent; returning an error yields a 502. Streaming responses are relayed pass-through and never invoke it. Note `RelayResponse.Body` is the raw upstream body — still compressed when the upstream compressed it; pin `Accept-Encoding: identity` via `Upstream.Headers` if the hook rewrites JSON.
+
+### Response caching
+
+Repeated identical requests — embeddings especially — can be served from the [cache middleware](./cache.md) mounted **in front of** the gateway. Two helpers make LLM POST traffic cacheable safely:
+
+```go
+app.Use(cache.New(cache.Config{
+    Methods:      []string{fiber.MethodPost},
+    KeyGenerator: aigateway.CacheKeyGenerator(), // sha256(path | query | body | client credential)
+    Next:         aigateway.CacheSkipStreaming(), // never store SSE/NDJSON or "stream":true
+    Expiration:   10 * time.Minute,
+}))
+app.Use("/openai", aigateway.New(aigateway.Config{ /* ... */ }))
+```
+
+Sharp edges, all inherent to fronting the gateway with a shared cache:
+
+- A cache **hit is served before the gateway runs**: key validation, quotas, hooks, and usage accounting are all skipped for hits. The generated key folds in the client credential, so a hit can only replay a response to the same credential that stored it — but a revoked key can keep replaying its own entries until they expire, and hits consume no quota.
+- Never omit the `Next` predicate: without it the cache's store path buffers an entire SSE stream into memory.
+- The cache only stores responses to requests carrying an `Authorization` header when the response has explicit shared-cache directives (`Cache-Control: public` / `s-maxage`). Clients authenticating with `x-api-key`/`api-key` cache normally; for `Authorization: Bearer` clients, set such a directive on cacheable responses (e.g. in an `OnResponse` hook) or accept that nothing is stored.
+- The cache's default status allow-list includes some 4xx (404, 405, 410, 414, 501); use an `ExpirationGenerator` returning a tiny TTL for non-200s if that matters.
+
 ### Model and path policy
 
 ```go
@@ -294,8 +396,17 @@ The middleware registers three custom [logger](./logger.md) tags: `ai-key` (reda
 |:----------------------|:----------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------|
 | Next                  | `func(fiber.Ctx) bool`                  | Function to skip this middleware when returned true.                                                                                    | `nil`                                                                      |
 | KeyValidator          | `func(fiber.Ctx, string) (bool, error)` | Validates the client (virtual) key before relaying. Return false or an error to reject with 401.                                        | `nil`                                                                      |
-| PolicyResolver        | `func(fiber.Ctx, string) (*KeyPolicy, error)` | Resolves the per-key policy (tenant, per-key model/path allow-lists). An error or nil policy rejects with 401. Runs after `KeyValidator`; skipped for keyless requests. | `nil`                                            |
+| PolicyResolver        | `func(fiber.Ctx, string) (*KeyPolicy, error)` | Resolves the per-key policy (tenant, per-key model/path allow-lists, quota overrides). An error or nil policy rejects with 401. Runs after `KeyValidator`; skipped for keyless requests. | `nil`                                            |
 | Prices                | `map[string]ModelPrice`                 | Price table (USD per million tokens) enabling `UsageEvent.Cost`. Keys are exact models or trailing-`*` wildcards; longest wildcard wins. | `nil` (Cost stays 0)                                                       |
+| OnRequest             | `func(fiber.Ctx, *RelayRequest) error`  | Guardrail/transform hook run before every policy check; may mutate the relayed path and body. Errors reject (a `*fiber.Error` picks the status, else 403). | `nil`                                                      |
+| OnResponse            | `func(fiber.Ctx, *RelayResponse) error` | Transform hook for buffered responses; may mutate body and status. Errors yield 502. Never runs for streaming responses.                | `nil`                                                                      |
+| QuotaStore            | `QuotaStore`                            | Per-identity token/cost accounting backend. Setting it (or a global limit) activates quotas.                                            | in-process store when quotas active                                        |
+| ParamDefaults         | `map[string]any`                        | Top-level JSON fields injected into request bodies when absent. A `"model"` key panics at construction.                                 | `nil`                                                                      |
+| TokensPerWindow       | `int64`                                 | Default per-identity token limit per `QuotaWindow` (post-paid). `0` = unlimited. Per-key override via `KeyPolicy`.                      | `0`                                                                        |
+| BudgetPerWindow       | `float64`                               | Default per-identity USD budget per `QuotaWindow` (requires `Prices`). `0` = unlimited.                                                 | `0`                                                                        |
+| QuotaWindow           | `time.Duration`                         | Fixed quota window; totals reset at wall-aligned boundaries.                                                                            | `time.Hour`                                                                |
+| MaxTokensCap          | `int`                                   | Clamps `max_tokens`/`max_completion_tokens`/`max_output_tokens` when present and above the cap. `0` disables.                           | `0`                                                                        |
+| Strategy              | `Strategy`                              | Upstream selection: `StrategyOrdered`, `StrategyRoundRobin`, or `StrategyWeighted`.                                                     | `StrategyOrdered`                                                          |
 | OnUsage               | `func(*UsageEvent)`                     | Called once per relayed request with metadata and parsed token usage. Runs on the writer goroutine for streams.                          | `nil`                                                                      |
 | Client                | `*client.Client`                        | Fiber client used for upstream requests. Response body streaming is enabled on it during initialization.                                 | internal client                                                            |
 | PathPrefix            | `string`                                | Prefix stripped from the request path before joining it with `Upstream.URL`.                                                            | `""`                                                                       |
@@ -322,6 +433,7 @@ The middleware registers three custom [logger](./logger.md) tags: `ai-key` (reda
 | Auth     | `AuthScheme`        | How the key is injected upstream.                                                             | `AuthBearer()` |
 | Headers  | `map[string]string` | Extra headers set on every request to this upstream.                                          | `nil`          |
 | ModelMap | `map[string]string` | Rewrites the JSON body's `model` field for this upstream (exact model names as keys). Unmapped models relay unchanged. | `nil` |
+| Weight   | `int`               | Share of traffic under `StrategyWeighted`; ignored by other strategies.                       | `1`            |
 
 ## Default Config
 

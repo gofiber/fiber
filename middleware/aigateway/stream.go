@@ -14,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/client"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -103,15 +104,34 @@ func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEve
 		return fiber.ErrBadGateway
 	}
 
-	copyResponseHeaders(c, resp)
-	c.Status(resp.StatusCode())
-	if cfg.OnUsage != nil {
+	// The token usage feeds both the OnUsage hook and the quota commit, so
+	// parse it when either consumer is active. Parsed before OnResponse can
+	// mutate the body, so usage always reflects what the upstream reported.
+	if cfg.OnUsage != nil || (cfg.QuotaStore != nil && ev.quotaID != "") {
 		limit := cfg.MaxResponseSize
 		if limit <= 0 {
 			limit = usageDecodeLimit
 		}
 		ev.Usage = parseUsage(decodeForUsage(resp, body, limit), c.App().Config().JSONDecoder)
 	}
+
+	status := resp.StatusCode()
+	if cfg.OnResponse != nil {
+		r := &RelayResponse{Body: body, Status: status}
+		if herr := cfg.OnResponse(c, r); herr != nil {
+			// The body was fully read, so the connection is clean to reuse.
+			resp.Close()
+			ev.Err = herr
+			fireUsage(cfg, ev, start)
+			return fiber.ErrBadGateway
+		}
+		body = r.Body
+		status = r.Status
+		ev.ResponseBytes = int64(len(body))
+	}
+
+	copyResponseHeaders(c, resp)
+	c.Status(status)
 	// The body was consumed to EOF, so closing releases the connection for
 	// reuse. Headers were copied off the pooled response above.
 	resp.Close()
@@ -341,6 +361,21 @@ func readStream(stream io.Reader, resp *client.Response, chunks chan<- streamChu
 func fireUsage(cfg *Config, ev *UsageEvent, start time.Time) {
 	ev.Latency = time.Since(start)
 	applyCost(cfg, ev)
+	// Post-paid quota commit: record what this request actually consumed.
+	// Runs on the stream writer goroutine for streamed responses, so it may
+	// only touch cfg (per-mount, immortal) and owned ev fields. A failed
+	// commit is logged, not surfaced: the response is already under way.
+	if cfg.QuotaStore != nil && ev.quotaID != "" {
+		var tokens int64
+		if ev.Usage != nil {
+			tokens = int64(ev.Usage.TotalTokens)
+		}
+		if tokens > 0 || ev.Cost > 0 {
+			if _, _, err := cfg.QuotaStore.Add(ev.quotaID, cfg.QuotaWindow, tokens, ev.Cost); err != nil {
+				log.Warnf("aigateway: quota commit failed: %v", err)
+			}
+		}
+	}
 	if cfg.OnUsage != nil {
 		cfg.OnUsage(ev)
 	}

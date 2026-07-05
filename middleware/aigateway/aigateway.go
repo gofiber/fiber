@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -72,10 +73,30 @@ func New(config ...Config) fiber.Handler {
 			fiber.StoreInContext(c, clientKeyKey, key)
 		}
 
+		strippedPath := stripPrefix(c.Path(), cfg.PathPrefix)
+
+		// The OnRequest hook runs after authentication (so KeyFromContext
+		// works inside it) and before every policy check, so the path and
+		// body it produces are exactly what gets policed and relayed — a
+		// hook cannot bypass the allow-lists.
+		if cfg.OnRequest != nil {
+			r := &RelayRequest{Path: strippedPath}
+			if herr := cfg.OnRequest(c, r); herr != nil {
+				return sendError(c, hookStatus(herr), herr.Error(), "invalid_request_error")
+			}
+			strippedPath = r.Path
+			if r.Body != nil {
+				// The replacement body is identity-encoded: drop any stale
+				// Content-Encoding so the model sniff and the relay treat it
+				// as plain bytes.
+				c.Request().SetBodyRaw(r.Body)
+				c.Request().Header.Del(fiber.HeaderContentEncoding)
+			}
+		}
+
 		// Resolve and police the upstream path. Policy checks run on the
 		// percent-decoded path so encoded traversal (e.g. %2e%2e) cannot slip
 		// past the allow-list; the original path is what gets relayed.
-		strippedPath := stripPrefix(c.Path(), cfg.PathPrefix)
 		decodedPath := decodePath(strippedPath)
 		if containsDotDot(decodedPath) {
 			return sendError(c, fiber.StatusBadRequest, "invalid request path", "invalid_request_error")
@@ -113,6 +134,57 @@ func New(config ...Config) fiber.Handler {
 			fiber.StoreInContext(c, modelKey, model)
 		}
 
+		// Enforce the request parameter policy (defaults injected when
+		// absent, max-token fields clamped to the cap) on JSON bodies. Like
+		// the model check, the cap is not bypassable: an encoded body that
+		// cannot be inspected is rejected while a cap is set.
+		if cfg.MaxTokensCap > 0 || len(cfg.rawParamDefaults) > 0 {
+			if cfg.MaxTokensCap > 0 && !verifiable {
+				return sendError(c, fiber.StatusForbidden, "the gateway could not verify the parameters of an encoded request body", "invalid_request_error")
+			}
+			if jsonBody != nil {
+				newBody, perr := applyParamPolicy(c, &cfg, jsonBody)
+				if perr != nil {
+					return sendError(c, fiber.StatusBadRequest, "invalid request parameters", "invalid_request_error")
+				}
+				if newBody != nil {
+					// Same write-back contract as the OnRequest hook: the
+					// re-encoded body is identity-encoded and becomes what
+					// ModelMap and the relay see.
+					c.Request().SetBodyRaw(newBody)
+					c.Request().Header.Del(fiber.HeaderContentEncoding)
+					jsonBody = newBody
+				}
+			}
+		}
+
+		// Quota admission (post-paid): reject when the identity's totals for
+		// the current window already reached its limits; the actual usage of
+		// this request is committed after the response in fireUsage. The
+		// identity is the tenant when the policy names one, else the key.
+		var quotaID string
+		if cfg.QuotaStore != nil && key != "" {
+			quotaID = key
+			if policy != nil && policy.Tenant != "" {
+				quotaID = policy.Tenant
+			}
+			limitTokens, limitBudget := effectiveQuota(&cfg, policy)
+			if limitTokens > 0 || limitBudget > 0 {
+				usedTokens, usedCost, qerr := cfg.QuotaStore.Peek(quotaID, cfg.QuotaWindow)
+				if qerr != nil {
+					// Fail closed: an unreachable store must not turn limits off.
+					return sendError(c, fiber.StatusBadGateway, "quota store unavailable", "api_error")
+				}
+				if (limitTokens > 0 && usedTokens >= limitTokens) || (limitBudget > 0 && usedCost >= limitBudget) {
+					c.Set(fiber.HeaderRetryAfter, strconv.Itoa(quotaRetryAfter(cfg.QuotaWindow)))
+					return sendError(c, fiber.StatusTooManyRequests, "quota exceeded for this API key", "rate_limit_error")
+				}
+			} else {
+				// Exempt identity: skip the commit as well.
+				quotaID = ""
+			}
+		}
+
 		start := time.Now()
 		// Method/Path/ClientKey are backed by the pooled request/ctx buffers,
 		// which are recycled once the handler returns. The streaming usage hook
@@ -130,6 +202,16 @@ func New(config ...Config) fiber.Handler {
 			// Tenant comes from the resolver, not the pooled ctx buffers, so
 			// it needs no copy for the async streaming path.
 			ev.Tenant = policy.Tenant
+		}
+		// The quota commit runs on the async streaming path, so the identity
+		// must be owned memory: the tenant is resolver-owned, but the raw key
+		// aliases pooled ctx buffers — use the owned ClientKey copy for it.
+		if quotaID != "" {
+			if quotaID == key {
+				ev.quotaID = ev.ClientKey
+			} else {
+				ev.quotaID = quotaID
+			}
 		}
 
 		resp, sendErr := sendWithRetry(c, &cfg, strippedPath, key, ev, jsonBody)

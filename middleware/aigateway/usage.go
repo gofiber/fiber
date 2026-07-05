@@ -27,6 +27,11 @@ type UsageEvent struct {
 	// Nil when not parseable.
 	Usage *Usage
 
+	// quotaID is the identity the request's usage is committed against
+	// (tenant or client key), or "" when quotas do not apply to it. Owned
+	// memory: the commit runs on the stream writer goroutine.
+	quotaID string
+
 	// ClientKey is the raw credential the client presented. Treat it as
 	// sensitive: redact before logging.
 	ClientKey string
@@ -53,11 +58,6 @@ type UsageEvent struct {
 	// because their circuit breaker was open. Nil when none were skipped.
 	SkippedUpstreams []string
 
-	// Cost is the request's price in USD, computed from Usage and
-	// Config.Prices (looked up by the model the client requested). Zero when
-	// usage was unparseable, no price is configured, or the model is unknown.
-	Cost float64
-
 	// Latency is the total relay duration including retries; for streamed
 	// responses it runs until the stream ends.
 	Latency time.Duration
@@ -74,6 +74,11 @@ type UsageEvent struct {
 
 	// Attempts is the number of upstream attempts performed.
 	Attempts int
+
+	// Cost is the request's price in USD, computed from Usage and
+	// Config.Prices (looked up by the model the client requested). Zero when
+	// usage was unparseable, no price is configured, or the model is unknown.
+	Cost float64
 
 	// Streamed reports whether the response was relayed as a stream.
 	Streamed bool

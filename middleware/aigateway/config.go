@@ -1,9 +1,11 @@
 package aigateway
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -74,6 +76,12 @@ type Upstream struct {
 	//
 	// Optional. Default: AuthBearer()
 	Auth AuthScheme
+
+	// Weight is this upstream's share of traffic under StrategyWeighted.
+	// Ignored by other strategies.
+	//
+	// Optional. Default: 1 (values <= 0 are normalized to 1)
+	Weight int
 }
 
 // KeyPolicy is a per-key policy returned by Config.PolicyResolver. Its lists
@@ -98,6 +106,19 @@ type KeyPolicy struct {
 	//
 	// Optional. Default: nil
 	AllowedPaths []string
+
+	// TokensPerWindow overrides Config.TokensPerWindow for this key:
+	// > 0 sets the key's own token limit, 0 inherits the global limit,
+	// < 0 exempts the key from token limits entirely.
+	//
+	// Optional. Default: 0 (inherit)
+	TokensPerWindow int64
+
+	// BudgetPerWindow overrides Config.BudgetPerWindow (USD) for this key:
+	// > 0 sets the key's own budget, 0 inherits, < 0 exempts the key.
+	//
+	// Optional. Default: 0 (inherit)
+	BudgetPerWindow float64
 }
 
 // ModelPrice is the price of one model in USD per million tokens, used to
@@ -168,6 +189,32 @@ type Config struct {
 	// Optional. Default: nil
 	OnUsage func(e *UsageEvent)
 
+	// OnRequest is a guardrail/transform hook that runs after authentication
+	// and before any policy check, so the path and body it produces are what
+	// the allow-lists inspect and what is relayed. It may mutate
+	// RelayRequest.Path and RelayRequest.Body (nil Body = leave the body
+	// untouched). Returning an error rejects the request: a *fiber.Error's
+	// code is used, any other error maps to 403.
+	//
+	// Optional. Default: nil
+	OnRequest func(c fiber.Ctx, r *RelayRequest) error
+
+	// OnResponse runs for buffered (non-streaming) upstream responses after
+	// token usage is parsed and before the response is sent; it may mutate
+	// RelayResponse.Body and RelayResponse.Status. Returning an error turns
+	// the response into a 502. Streaming responses are relayed pass-through
+	// and never invoke it.
+	//
+	// Optional. Default: nil
+	OnResponse func(c fiber.Ctx, r *RelayResponse) error
+
+	// QuotaStore tracks per-identity token/cost totals for quota admission.
+	// The identity is KeyPolicy.Tenant when set, else the client key.
+	// Setting it (or a global limit below) activates quota enforcement.
+	//
+	// Optional. Default: an in-process store when quotas are active
+	QuotaStore QuotaStore
+
 	// Client is the Fiber client used for upstream requests. Streaming of
 	// response bodies is enabled on it during initialization. HeaderTimeout
 	// bounds each attempt up to the response headers, so the client should
@@ -191,6 +238,24 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Prices map[string]ModelPrice
+
+	// ParamDefaults injects top-level fields into JSON request bodies when
+	// the client did not set them, e.g. {"temperature": 0.2, "user": "gw"}.
+	// Values must be JSON-encodable; a "model" key panics at construction
+	// (it would bypass the model policy — use Upstream.ModelMap). Defaults
+	// are advisory: a client can always send its own value (bounded only by
+	// MaxTokensCap for the max-token fields).
+	//
+	// Optional. Default: nil
+	ParamDefaults map[string]any
+
+	// rawParamDefaults is ParamDefaults pre-encoded to raw JSON fragments at
+	// construction, so the per-request injection does no re-encoding.
+	rawParamDefaults map[string]json.RawMessage
+
+	// rr is the round-robin rotation counter shared by all requests of this
+	// mount. A pointer so copying Config does not copy the atomic.
+	rr *atomic.Uint64
 
 	// stripQuery and stripCookies name the query params / cookies the
 	// KeyExtractor reads the client credential from; they are removed from the
@@ -255,6 +320,44 @@ type Config struct {
 	//
 	// Optional. Default: 90 * time.Second
 	StreamIdleTimeout time.Duration
+
+	// TokensPerWindow is the default per-identity token limit per
+	// QuotaWindow. A request is rejected with 429 when its identity's
+	// window total already reached the limit (post-paid: actual usage is
+	// committed after the response, so one in-flight request may overshoot).
+	// 0 means no token limit. Override per key via KeyPolicy.
+	//
+	// Optional. Default: 0
+	TokensPerWindow int64
+
+	// BudgetPerWindow is the default per-identity USD budget per
+	// QuotaWindow, enforced like TokensPerWindow using UsageEvent.Cost
+	// (so it requires Prices to have an effect). 0 means no budget.
+	//
+	// Optional. Default: 0
+	BudgetPerWindow float64
+
+	// QuotaWindow is the fixed quota window. Totals reset at wall-aligned
+	// window boundaries.
+	//
+	// Optional. Default: time.Hour
+	QuotaWindow time.Duration
+
+	// MaxTokensCap clamps the max_tokens, max_completion_tokens, and
+	// max_output_tokens fields of JSON request bodies when present and
+	// above the cap. Like AllowedModels, an encoded body that cannot be
+	// inspected is rejected while a cap is set. 0 disables the cap.
+	//
+	// Optional. Default: 0
+	MaxTokensCap int
+
+	// Strategy selects how the upstream to try first is chosen:
+	// StrategyOrdered (the chain order), StrategyRoundRobin, or
+	// StrategyWeighted (by Upstream.Weight). Failover after the first
+	// choice always proceeds through the remaining candidates.
+	//
+	// Optional. Default: StrategyOrdered
+	Strategy Strategy
 
 	// BreakerCooldown is how long an upstream stays skipped after its
 	// breaker opens. When it elapses the upstream is probed again: a
@@ -438,6 +541,50 @@ func configDefault(config ...Config) Config {
 	for model, price := range cfg.Prices {
 		if price.InputPerMTok < 0 || price.OutputPerMTok < 0 {
 			panic(fmt.Sprintf("fiber: aigateway price for model %q must not be negative", model))
+		}
+	}
+
+	switch cfg.Strategy {
+	case StrategyOrdered, StrategyRoundRobin, StrategyWeighted:
+	default:
+		panic(fmt.Sprintf("fiber: aigateway unknown Strategy %d", cfg.Strategy))
+	}
+	if cfg.Strategy == StrategyRoundRobin {
+		cfg.rr = &atomic.Uint64{}
+	}
+	for i := range cfg.Upstreams {
+		if cfg.Upstreams[i].Weight <= 0 {
+			cfg.Upstreams[i].Weight = 1
+		}
+	}
+
+	if cfg.TokensPerWindow < 0 || cfg.BudgetPerWindow < 0 {
+		panic("fiber: aigateway global TokensPerWindow/BudgetPerWindow must not be negative (per-key exemptions go in KeyPolicy)")
+	}
+	if cfg.QuotaWindow <= 0 {
+		cfg.QuotaWindow = defaultQuotaWindow
+	}
+	// Quotas are active when a store is supplied or a global limit is set.
+	// Per-key-only limits need one of those to activate the machinery.
+	if cfg.QuotaStore == nil && (cfg.TokensPerWindow > 0 || cfg.BudgetPerWindow > 0) {
+		cfg.QuotaStore = newMemoryQuotaStore()
+	}
+
+	if cfg.MaxTokensCap < 0 {
+		cfg.MaxTokensCap = 0
+	}
+
+	if len(cfg.ParamDefaults) > 0 {
+		cfg.rawParamDefaults = make(map[string]json.RawMessage, len(cfg.ParamDefaults))
+		for k, v := range cfg.ParamDefaults {
+			if k == "model" {
+				panic("fiber: aigateway ParamDefaults must not set \"model\" (it would bypass the model policy; use Upstream.ModelMap)")
+			}
+			raw, err := json.Marshal(v)
+			if err != nil {
+				panic(fmt.Sprintf("fiber: aigateway ParamDefaults[%q] is not JSON-encodable: %v", k, err))
+			}
+			cfg.rawParamDefaults[k] = raw
 		}
 	}
 

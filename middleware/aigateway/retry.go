@@ -64,7 +64,10 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *Usage
 	var lastResp *client.Response
 	var lastErr error
 
-	for _, i := range candidateUpstreams(cfg, ev) {
+	candidates := candidateUpstreams(cfg, ev)
+	orderCandidates(cfg, candidates)
+
+	for _, i := range candidates {
 		up := &cfg.Upstreams[i]
 		var brk *upstreamBreaker
 		if cfg.breakers != nil {
