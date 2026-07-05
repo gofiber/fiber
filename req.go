@@ -1380,8 +1380,12 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 		return true
 	}
 
-	if _, trusted := config.TrustProxyConfig.ips[ip.String()]; trusted {
-		return true
+	// Only stringify the IP when there is an exact-match map to look it up in;
+	// ip.String() heap-allocates and is wasted work for CIDR-only configs.
+	if len(config.TrustProxyConfig.ips) > 0 {
+		if _, trusted := config.TrustProxyConfig.ips[ip.String()]; trusted {
+			return true
+		}
 	}
 
 	for _, ipNet := range config.TrustProxyConfig.ranges {
