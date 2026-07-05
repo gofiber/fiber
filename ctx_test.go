@@ -10041,6 +10041,25 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		})
 	})
 
+	// Scenario with CIDR-only trust config (empty exact-IP map). The remote IP
+	// reaches the range check, exercising the guard that skips ip.String().
+	b.Run("WithProxyCheckCIDR", func(b *testing.B) {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0/8"},
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		for b.Loop() {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
 	// Scenario with trusted proxy check allow private
 	b.Run("WithProxyCheckAllowPrivate", func(b *testing.B) {
 		app := New(Config{
