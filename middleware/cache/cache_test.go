@@ -4445,6 +4445,10 @@ func Test_Cache_ConcurrentUncacheableRevalidationComparesExternalBody(t *testing
 			return c.SendString(fmt.Sprintf("cached-%d", call))
 		}
 	})
+	app.Get("/other", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		return c.SendString("other")
+	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
 	require.NoError(t, err)
@@ -4473,6 +4477,32 @@ func Test_Cache_ConcurrentUncacheableRevalidationComparesExternalBody(t *testing
 	case <-storage.started:
 	case <-time.After(2 * time.Second):
 		t.Fatal("slow revalidation request did not start body snapshot")
+	}
+
+	otherErr := make(chan error, 1)
+	go func() {
+		otherResp, otherTestErr := app.Test(httptest.NewRequest(fiber.MethodGet, "/other", http.NoBody))
+		if otherTestErr != nil {
+			otherErr <- otherTestErr
+			return
+		}
+		otherBody, readErr := io.ReadAll(otherResp.Body)
+		closeErr := otherResp.Body.Close()
+		if readErr != nil || closeErr != nil {
+			otherErr <- errors.Join(readErr, closeErr)
+			return
+		}
+		if string(otherBody) != "other" {
+			otherErr <- fmt.Errorf("other body = %q, want other", string(otherBody))
+			return
+		}
+		otherErr <- nil
+	}()
+	select {
+	case otherTestErr := <-otherErr:
+		require.NoError(t, otherTestErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("unrelated cache request blocked behind revalidation body snapshot")
 	}
 
 	fastErr := make(chan error, 1)

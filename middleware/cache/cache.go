@@ -195,6 +195,33 @@ func New(config ...Config) fiber.Handler {
 
 	// Cache settings
 	mux := &sync.Mutex{}
+	type keyedCacheLock struct {
+		mu   sync.Mutex
+		refs int
+	}
+	keyLocks := make(map[string]*keyedCacheLock)
+	withKeyLock := func(entryKey string, fn func() error) error {
+		var entryLock *keyedCacheLock
+		withCacheLock(mux, func() {
+			entryLock = keyLocks[entryKey]
+			if entryLock == nil {
+				entryLock = &keyedCacheLock{}
+				keyLocks[entryKey] = entryLock
+			}
+			entryLock.refs++
+		})
+		entryLock.mu.Lock()
+		defer func() {
+			entryLock.mu.Unlock()
+			withCacheLock(mux, func() {
+				entryLock.refs--
+				if entryLock.refs == 0 {
+					delete(keyLocks, entryKey)
+				}
+			})
+		}()
+		return fn()
+	}
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, redactKeys)
 	// Create indexed heap for tracking expirations ( see heap.go )
@@ -223,6 +250,11 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 		return nil
+	}
+	deleteLockedKey := func(ctx context.Context, dkey string) error {
+		return withKeyLock(dkey, func() error {
+			return deleteKey(ctx, dkey)
+		})
 	}
 
 	removeHeapEntry := func(entryKey string, heapIdx int) {
@@ -330,48 +362,34 @@ func New(config ...Config) fiber.Handler {
 		var revalidationEntry *item
 		var revalidationBody []byte
 
-		markRevalidate := func() error {
+		markRevalidate := func() {
 			revalidate = true
 			oldHeapIdx = e.heapidx
 			if revalidationEntry == nil {
 				snapshot := *e
 				revalidationEntry = &snapshot
 			}
-			if cfg.Storage != nil && !revalidationBodyMatches {
-				body, bodyErr := manager.getRaw(reqCtx, key+"_body")
-				if bodyErr != nil {
-					if errors.Is(bodyErr, errCacheMiss) {
-						return nil
-					}
-					manager.release(e)
-					return cacheBodyFetchError(maskKey, key, bodyErr)
-				}
-				revalidationBody = utils.CopyBytes(body)
-				revalidationBodyMatches = true
-			}
 			if cfg.Storage != nil {
 				manager.release(e)
 			}
 			e = nil
-			return nil
 		}
 
-		handleMinFresh := func(now uint64) error {
+		handleMinFresh := func(now uint64) {
 			if e == nil || !reqDirectives.minFreshSet {
-				return nil
+				return
 			}
 			remainingFreshness := remainingFreshness(e, now)
 			if remainingFreshness < reqDirectives.minFresh {
-				return markRevalidate()
+				markRevalidate()
 			}
-			return nil
 		}
 
 		deleteCurrentEntry := func(guard *cacheLockGuard, wrapErr func(error) error) error {
 			if guard != nil {
 				guard.unlock()
 			}
-			if delErr := deleteKey(reqCtx, key); delErr != nil {
+			if delErr := deleteLockedKey(reqCtx, key); delErr != nil {
 				manager.release(e)
 				return wrapErr(delErr)
 			}
@@ -390,51 +408,71 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		deleteRevalidatedEntry := func() error {
-			if revalidationEntry == nil {
+		loadRevalidationBody := func() error {
+			if cfg.Storage == nil || revalidationEntry == nil || revalidationBodyMatches {
 				return nil
 			}
-
-			current, getErr := manager.get(reqCtx, key)
-			if getErr != nil {
-				if errors.Is(getErr, errCacheMiss) {
-					return nil
-				}
-				return fmt.Errorf("cache: failed to reload cached response for key %q before deletion: %w", maskKey(key), getErr)
-			}
-
-			matchesStaleEntry := sameCachedEntry(current, revalidationEntry)
-			if cfg.Storage != nil {
-				manager.release(current)
-			}
-			if !matchesStaleEntry {
-				return nil
-			}
-			if !revalidationBodyMatches {
-				return nil
-			}
-			if cfg.Storage != nil {
-				currentBody, bodyErr := manager.getRaw(reqCtx, key+"_body")
+			return withKeyLock(key, func() error {
+				body, bodyErr := manager.getRaw(reqCtx, key+"_body")
 				if bodyErr != nil {
 					if errors.Is(bodyErr, errCacheMiss) {
 						return nil
 					}
 					return cacheBodyFetchError(maskKey, key, bodyErr)
 				}
-				if !slices.Equal(currentBody, revalidationBody) {
-					return nil
-				}
+				revalidationBody = utils.CopyBytes(body)
+				revalidationBodyMatches = true
+				return nil
+			})
+		}
+
+		deleteRevalidatedEntry := func() error {
+			if revalidationEntry == nil {
+				return nil
 			}
 
-			if delErr := deleteKey(reqCtx, key); delErr != nil {
-				return fmt.Errorf("cache: failed to delete cached response for key %q: %w", maskKey(key), delErr)
-			}
-			if cfg.MaxBytes > 0 && oldHeapIdx >= 0 {
-				withCacheLock(mux, func() {
-					removeHeapEntry(key, oldHeapIdx)
-				})
-			}
-			return nil
+			return withKeyLock(key, func() error {
+				current, getErr := manager.get(reqCtx, key)
+				if getErr != nil {
+					if errors.Is(getErr, errCacheMiss) {
+						return nil
+					}
+					return fmt.Errorf("cache: failed to reload cached response for key %q before deletion: %w", maskKey(key), getErr)
+				}
+
+				matchesStaleEntry := sameCachedEntry(current, revalidationEntry)
+				if cfg.Storage != nil {
+					manager.release(current)
+				}
+				if !matchesStaleEntry {
+					return nil
+				}
+				if !revalidationBodyMatches {
+					return nil
+				}
+				if cfg.Storage != nil {
+					currentBody, bodyErr := manager.getRaw(reqCtx, key+"_body")
+					if bodyErr != nil {
+						if errors.Is(bodyErr, errCacheMiss) {
+							return nil
+						}
+						return cacheBodyFetchError(maskKey, key, bodyErr)
+					}
+					if !slices.Equal(currentBody, revalidationBody) {
+						return nil
+					}
+				}
+
+				if delErr := deleteKey(reqCtx, key); delErr != nil {
+					return fmt.Errorf("cache: failed to delete cached response for key %q: %w", maskKey(key), delErr)
+				}
+				if cfg.MaxBytes > 0 && oldHeapIdx >= 0 {
+					withCacheLock(mux, func() {
+						removeHeapEntry(key, oldHeapIdx)
+					})
+				}
+				return nil
+			})
 		}
 
 		handledCacheRequest, err := func() (bool, error) {
@@ -448,20 +486,14 @@ func New(config ...Config) fiber.Handler {
 			if e != nil {
 				entryAge = cachedResponseAge(e, ts)
 				if reqDirectives.maxAgeSet && (reqDirectives.maxAge == 0 || entryAge > reqDirectives.maxAge) {
-					if revalidateErr := markRevalidate(); revalidateErr != nil {
-						return false, revalidateErr
-					}
+					markRevalidate()
 				}
 
-				if minFreshErr := handleMinFresh(ts); minFreshErr != nil {
-					return false, minFreshErr
-				}
+				handleMinFresh(ts)
 			}
 
 			if e != nil && e.ttl == 0 && e.forceRevalidate {
-				if revalidateErr := markRevalidate(); revalidateErr != nil {
-					return false, revalidateErr
-				}
+				markRevalidate()
 			}
 
 			if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
@@ -497,14 +529,10 @@ func New(config ...Config) fiber.Handler {
 				allowStale := entryExpired && (reqDirectives.maxStaleAny || (reqDirectives.maxStaleSet && staleness <= reqDirectives.maxStale))
 
 				if entryExpired && e.revalidate {
-					if revalidateErr := markRevalidate(); revalidateErr != nil {
-						return false, revalidateErr
-					}
+					markRevalidate()
 				}
 
-				if minFreshErr := handleMinFresh(ts); minFreshErr != nil {
-					return false, minFreshErr
-				}
+				handleMinFresh(ts)
 
 				if revalidate {
 					c.Set(cfg.CacheHeader, cacheUnreachable)
@@ -550,9 +578,7 @@ func New(config ...Config) fiber.Handler {
 							}
 							return true, nil
 						}
-						if revalidateErr := markRevalidate(); revalidateErr != nil {
-							return false, revalidateErr
-						}
+						markRevalidate()
 						return false, nil
 					}
 
@@ -650,6 +676,9 @@ func New(config ...Config) fiber.Handler {
 		}
 		if handledCacheRequest {
 			return nil
+		}
+		if err := loadRevalidationBody(); err != nil {
+			return err
 		}
 
 		// Continue stack, return err to Fiber if exist
@@ -789,7 +818,7 @@ func New(config ...Config) fiber.Handler {
 			// Perform deletions outside the lock
 			if len(keysToRemove) > 0 {
 				for i, keyToRemove := range keysToRemove {
-					delErr := deleteKey(reqCtx, keyToRemove)
+					delErr := deleteLockedKey(reqCtx, keyToRemove)
 					if delErr == nil {
 						continue
 					}
@@ -995,26 +1024,36 @@ func New(config ...Config) fiber.Handler {
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			if err := manager.setRaw(reqCtx, key+"_body", e.body, storageExpiration); err != nil {
-				if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
-					err = errors.Join(err, cleanupErr)
+			if err := withKeyLock(key, func() error {
+				if err := manager.setRaw(reqCtx, key+"_body", e.body, storageExpiration); err != nil {
+					if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
+						err = errors.Join(err, cleanupErr)
+					}
+					return err
 				}
-				return err
-			}
-			// avoid body msgp encoding
-			e.body = nil
-			if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {
-				if cleanupErr := cleanupOnStoreError(reqCtx, false, true); cleanupErr != nil {
-					err = errors.Join(err, cleanupErr)
+				// avoid body msgp encoding
+				e.body = nil
+				if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {
+					if cleanupErr := cleanupOnStoreError(reqCtx, false, true); cleanupErr != nil {
+						err = errors.Join(err, cleanupErr)
+					}
+					return err
 				}
+				return nil
+			}); err != nil {
 				return err
 			}
 		} else {
 			// Store entry in memory
-			if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {
-				if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
-					err = errors.Join(err, cleanupErr)
+			if err := withKeyLock(key, func() error {
+				if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {
+					if cleanupErr := cleanupOnStoreError(reqCtx, true, false); cleanupErr != nil {
+						err = errors.Join(err, cleanupErr)
+					}
+					return err
 				}
+				return nil
+			}); err != nil {
 				return err
 			}
 		}
