@@ -330,27 +330,41 @@ func New(config ...Config) fiber.Handler {
 		var revalidationEntry *item
 		var revalidationBody []byte
 
-		markRevalidate := func() {
+		markRevalidate := func() error {
 			revalidate = true
 			oldHeapIdx = e.heapidx
 			if revalidationEntry == nil {
 				snapshot := *e
 				revalidationEntry = &snapshot
 			}
+			if cfg.Storage != nil && !revalidationBodyMatches {
+				body, bodyErr := manager.getRaw(reqCtx, key+"_body")
+				if bodyErr != nil {
+					if errors.Is(bodyErr, errCacheMiss) {
+						return nil
+					}
+					manager.release(e)
+					return cacheBodyFetchError(maskKey, key, bodyErr)
+				}
+				revalidationBody = utils.CopyBytes(body)
+				revalidationBodyMatches = true
+			}
 			if cfg.Storage != nil {
 				manager.release(e)
 			}
 			e = nil
+			return nil
 		}
 
-		handleMinFresh := func(now uint64) {
+		handleMinFresh := func(now uint64) error {
 			if e == nil || !reqDirectives.minFreshSet {
-				return
+				return nil
 			}
 			remainingFreshness := remainingFreshness(e, now)
 			if remainingFreshness < reqDirectives.minFresh {
-				markRevalidate()
+				return markRevalidate()
 			}
+			return nil
 		}
 
 		deleteCurrentEntry := func(guard *cacheLockGuard, wrapErr func(error) error) error {
@@ -373,22 +387,6 @@ func New(config ...Config) fiber.Handler {
 				return nil
 			}
 			withCacheLock(mux, removeEntry)
-			return nil
-		}
-
-		loadRevalidationBody := func() error {
-			if cfg.Storage == nil || revalidationEntry == nil || revalidationBodyMatches {
-				return nil
-			}
-			body, bodyErr := manager.getRaw(reqCtx, key+"_body")
-			if bodyErr != nil {
-				if errors.Is(bodyErr, errCacheMiss) {
-					return nil
-				}
-				return cacheBodyFetchError(maskKey, key, bodyErr)
-			}
-			revalidationBody = utils.CopyBytes(body)
-			revalidationBodyMatches = true
 			return nil
 		}
 
@@ -450,14 +448,20 @@ func New(config ...Config) fiber.Handler {
 			if e != nil {
 				entryAge = cachedResponseAge(e, ts)
 				if reqDirectives.maxAgeSet && (reqDirectives.maxAge == 0 || entryAge > reqDirectives.maxAge) {
-					markRevalidate()
+					if revalidateErr := markRevalidate(); revalidateErr != nil {
+						return false, revalidateErr
+					}
 				}
 
-				handleMinFresh(ts)
+				if minFreshErr := handleMinFresh(ts); minFreshErr != nil {
+					return false, minFreshErr
+				}
 			}
 
 			if e != nil && e.ttl == 0 && e.forceRevalidate {
-				markRevalidate()
+				if revalidateErr := markRevalidate(); revalidateErr != nil {
+					return false, revalidateErr
+				}
 			}
 
 			if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
@@ -493,10 +497,14 @@ func New(config ...Config) fiber.Handler {
 				allowStale := entryExpired && (reqDirectives.maxStaleAny || (reqDirectives.maxStaleSet && staleness <= reqDirectives.maxStale))
 
 				if entryExpired && e.revalidate {
-					markRevalidate()
+					if revalidateErr := markRevalidate(); revalidateErr != nil {
+						return false, revalidateErr
+					}
 				}
 
-				handleMinFresh(ts)
+				if minFreshErr := handleMinFresh(ts); minFreshErr != nil {
+					return false, minFreshErr
+				}
 
 				if revalidate {
 					c.Set(cfg.CacheHeader, cacheUnreachable)
@@ -542,7 +550,9 @@ func New(config ...Config) fiber.Handler {
 							}
 							return true, nil
 						}
-						markRevalidate()
+						if revalidateErr := markRevalidate(); revalidateErr != nil {
+							return false, revalidateErr
+						}
 						return false, nil
 					}
 
@@ -640,10 +650,6 @@ func New(config ...Config) fiber.Handler {
 		}
 		if handledCacheRequest {
 			return nil
-		}
-
-		if err := loadRevalidationBody(); err != nil {
-			return err
 		}
 
 		// Continue stack, return err to Fiber if exist

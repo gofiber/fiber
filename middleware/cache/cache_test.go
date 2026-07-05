@@ -60,6 +60,14 @@ type failingCacheStorage struct {
 	mu   sync.RWMutex
 }
 
+type bodySnapshotBlockingStorage struct {
+	*failingCacheStorage
+	started chan struct{}
+	release chan struct{}
+	key     string
+	blocked atomic.Bool
+}
+
 type mutatingStorage struct {
 	data   map[string][]byte
 	mutate func(key string, value []byte) []byte
@@ -69,6 +77,15 @@ func newFailingCacheStorage() *failingCacheStorage {
 	return &failingCacheStorage{
 		data: make(map[string][]byte),
 		errs: make(map[string]error),
+	}
+}
+
+func newBodySnapshotBlockingStorage(key string) *bodySnapshotBlockingStorage {
+	return &bodySnapshotBlockingStorage{
+		failingCacheStorage: newFailingCacheStorage(),
+		key:                 key,
+		started:             make(chan struct{}),
+		release:             make(chan struct{}),
 	}
 }
 
@@ -144,6 +161,18 @@ func (s *failingCacheStorage) GetWithContext(_ context.Context, key string) ([]b
 }
 
 func (s *failingCacheStorage) Get(key string) ([]byte, error) {
+	return s.GetWithContext(context.Background(), key)
+}
+
+func (s *bodySnapshotBlockingStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	if key == s.key && s.blocked.CompareAndSwap(false, true) {
+		close(s.started)
+		<-s.release
+	}
+	return s.failingCacheStorage.GetWithContext(ctx, key)
+}
+
+func (s *bodySnapshotBlockingStorage) Get(key string) ([]byte, error) {
 	return s.GetWithContext(context.Background(), key)
 }
 
@@ -4379,7 +4408,8 @@ func Test_Cache_ConcurrentUncacheableRevalidationPreservesReplacement(t *testing
 func Test_Cache_ConcurrentUncacheableRevalidationComparesExternalBody(t *testing.T) {
 	t.Parallel()
 
-	storage := newFailingCacheStorage()
+	const cacheKey = "GET|/test|concurrent-revalidate-body"
+	storage := newBodySnapshotBlockingStorage(cacheKey + "_body")
 	clock := newTestClock(time.Unix(1_700_000_000, 0).UTC())
 
 	app := fiber.New()
@@ -4440,22 +4470,45 @@ func Test_Cache_ConcurrentUncacheableRevalidationComparesExternalBody(t *testing
 	}()
 
 	select {
+	case <-storage.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("slow revalidation request did not start body snapshot")
+	}
+
+	fastErr := make(chan error, 1)
+	fastReq := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+	fastReq.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+	fastReq.Header.Set("X-Revalidate", "fast")
+	go func() {
+		fastResp, fastTestErr := app.Test(fastReq)
+		if fastTestErr != nil {
+			fastErr <- fastTestErr
+			return
+		}
+		fastBody, readErr := io.ReadAll(fastResp.Body)
+		closeErr := fastResp.Body.Close()
+		if readErr != nil || closeErr != nil {
+			fastErr <- errors.Join(readErr, closeErr)
+			return
+		}
+		if fastResp.Header.Get("X-Cache") != cacheMiss {
+			fastErr <- fmt.Errorf("fast X-Cache = %q, want %q", fastResp.Header.Get("X-Cache"), cacheMiss)
+			return
+		}
+		if string(fastBody) != "fresh-replacement" {
+			fastErr <- fmt.Errorf("fast body = %q, want fresh-replacement", string(fastBody))
+			return
+		}
+		fastErr <- nil
+	}()
+
+	close(storage.release)
+	select {
 	case <-slowStarted:
 	case <-time.After(2 * time.Second):
 		t.Fatal("slow revalidation request did not reach handler")
 	}
-
-	fastReq := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
-	fastReq.Header.Set(fiber.HeaderCacheControl, "max-age=0")
-	fastReq.Header.Set("X-Revalidate", "fast")
-	resp, err = app.Test(fastReq)
-	require.NoError(t, err)
-	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "fresh-replacement", string(body))
-
+	require.NoError(t, <-fastErr)
 	close(releaseSlow)
 	require.NoError(t, <-slowErr)
 
