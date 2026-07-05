@@ -176,14 +176,14 @@ func New(config ...Config) fiber.Handler {
 		// Response to OPTIONS request should not be cached but,
 		// some caching can be configured to cache such responses.
 		// To Avoid poisoning the cache, we include the Vary header
-		// of preflight responses:
-		c.Vary(fiber.HeaderAccessControlRequestMethod)
-		c.Vary(fiber.HeaderAccessControlRequestHeaders)
+		// of preflight responses. A single variadic Vary call per branch:
+		// every Vary call scans all response headers.
 		if cfg.AllowPrivateNetwork && c.Get(fiber.HeaderAccessControlRequestPrivateNetwork) == "true" {
-			c.Vary(fiber.HeaderAccessControlRequestPrivateNetwork)
+			c.Vary(fiber.HeaderAccessControlRequestMethod, fiber.HeaderAccessControlRequestHeaders, fiber.HeaderAccessControlRequestPrivateNetwork, fiber.HeaderOrigin)
 			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
+		} else {
+			c.Vary(fiber.HeaderAccessControlRequestMethod, fiber.HeaderAccessControlRequestHeaders, fiber.HeaderOrigin)
 		}
-		c.Vary(fiber.HeaderOrigin)
 
 		setPreflightHeaders(c, allowOrigin, maxAge, &cfg)
 
