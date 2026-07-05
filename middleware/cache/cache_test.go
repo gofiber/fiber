@@ -3502,6 +3502,61 @@ func Test_CachePrivateDirectiveInvalidatesExistingEntry(t *testing.T) {
 	require.Equal(t, "public", string(body))
 }
 
+func Test_CachePrivateEntryReplacementStoresPublicResponse(t *testing.T) {
+	t.Parallel()
+
+	clock := newTestClock(time.Now().Truncate(time.Second))
+	storage := newFailingCacheStorage()
+	cacheKey := "GET|/"
+	privateEntry := &item{
+		body:         []byte("private"),
+		ctype:        []byte(fiber.MIMETextPlainCharsetUTF8),
+		cacheControl: []byte("private, max-age=3600"),
+		date:         safeUnixSeconds(clock.Now()),
+		status:       fiber.StatusOK,
+		exp:          safeUnixSeconds(clock.Now().Add(time.Hour)),
+		ttl:          uint64(time.Hour.Seconds()),
+		private:      true,
+		heapidx:      -1,
+	}
+	rawEntry, err := privateEntry.MarshalMsg(nil)
+	require.NoError(t, err)
+	storage.data[cacheKey] = rawEntry
+	storage.data[cacheKey+"_body"] = []byte("private")
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: time.Hour,
+		Storage:    storage,
+		clock:      clock.Now,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path()
+		},
+	}))
+
+	var count int
+	app.Get("/", func(c fiber.Ctx) error {
+		count++
+		c.Set(fiber.HeaderCacheControl, "public, max-age=3600")
+		return c.SendString("public-" + strconv.Itoa(count))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "public-1", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "public-1", string(body))
+	require.Equal(t, 1, count)
+}
+
 func Test_CacheControlNotOverwritten(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -4225,6 +4280,100 @@ func Test_Cache_RevalidationUncacheableResponseDeletesStaleEntry(t *testing.T) {
 	require.Equal(t, "fresh-3", string(body))
 	require.True(t, storageHasKey(cacheKey))
 	require.True(t, storageHasKey(cacheKey+"_body"))
+}
+
+func Test_Cache_ConcurrentUncacheableRevalidationPreservesReplacement(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	clock := newTestClock(time.Unix(1_700_000_000, 0).UTC())
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: time.Minute,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path() + "|concurrent-revalidate"
+		},
+		MaxBytes: 100,
+		Storage:  storage,
+		clock:    clock.Now,
+	}))
+
+	slowStarted := make(chan struct{})
+	releaseSlow := make(chan struct{})
+	var slowStartedOnce sync.Once
+	var defaultCalls atomic.Uint64
+
+	app.Get("/test", func(c fiber.Ctx) error {
+		switch c.Get("X-Revalidate") {
+		case "slow":
+			slowStartedOnce.Do(func() {
+				close(slowStarted)
+			})
+			<-releaseSlow
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("slow-uncacheable")
+		case "fast":
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString("fresh-replacement")
+		default:
+			call := defaultCalls.Add(1)
+			c.Set(fiber.HeaderCacheControl, "public, max-age=1, must-revalidate")
+			return c.SendString(fmt.Sprintf("cached-%d", call))
+		}
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "cached-1", string(body))
+
+	clock.Add(2 * time.Second)
+
+	slowErr := make(chan error, 1)
+	go func() {
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("X-Revalidate", "slow")
+		slowResp, slowTestErr := app.Test(req)
+		if slowTestErr != nil {
+			slowErr <- slowTestErr
+			return
+		}
+		_, readErr := io.ReadAll(slowResp.Body)
+		closeErr := slowResp.Body.Close()
+		slowErr <- errors.Join(readErr, closeErr)
+	}()
+
+	select {
+	case <-slowStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("slow revalidation request did not reach handler")
+	}
+
+	fastReq := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+	fastReq.Header.Set("X-Revalidate", "fast")
+	resp, err = app.Test(fastReq)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "fresh-replacement", string(body))
+
+	close(releaseSlow)
+	require.NoError(t, <-slowErr)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "fresh-replacement", string(body))
+	require.Equal(t, uint64(1), defaultCalls.Load())
 }
 
 // Test_parseCacheControlDirectives_QuotedStrings tests RFC 9111 Section 5.2 compliance

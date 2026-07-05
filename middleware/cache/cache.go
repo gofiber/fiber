@@ -49,6 +49,42 @@ const (
 	privateDirective = "private"
 )
 
+func sameCachedEntry(a, b *item) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.date != b.date ||
+		a.status != b.status ||
+		a.age != b.age ||
+		a.exp != b.exp ||
+		a.ttl != b.ttl ||
+		a.forceRevalidate != b.forceRevalidate ||
+		a.revalidate != b.revalidate ||
+		a.shareable != b.shareable ||
+		a.private != b.private ||
+		a.heapidx != b.heapidx {
+		return false
+	}
+	if !slices.Equal(a.body, b.body) ||
+		!slices.Equal(a.ctype, b.ctype) ||
+		!slices.Equal(a.cencoding, b.cencoding) ||
+		!slices.Equal(a.cacheControl, b.cacheControl) ||
+		!slices.Equal(a.expires, b.expires) ||
+		!slices.Equal(a.etag, b.etag) {
+		return false
+	}
+	if len(a.headers) != len(b.headers) {
+		return false
+	}
+	for i := range a.headers {
+		if !slices.Equal(a.headers[i].key, b.headers[i].key) ||
+			!slices.Equal(a.headers[i].value, b.headers[i].value) {
+			return false
+		}
+	}
+	return true
+}
+
 type requestCacheDirectives struct {
 	maxAge   uint64
 	maxStale uint64
@@ -290,6 +326,20 @@ func New(config ...Config) fiber.Handler {
 		entryAge := uint64(0)
 		revalidate := false
 		oldHeapIdx := -1 // Track old heap index for replacement during revalidation
+		var revalidationEntry *item
+
+		markRevalidate := func() {
+			revalidate = true
+			oldHeapIdx = e.heapidx
+			if revalidationEntry == nil {
+				snapshot := *e
+				revalidationEntry = &snapshot
+			}
+			if cfg.Storage != nil {
+				manager.release(e)
+			}
+			e = nil
+		}
 
 		handleMinFresh := func(now uint64) {
 			if e == nil || !reqDirectives.minFreshSet {
@@ -297,12 +347,7 @@ func New(config ...Config) fiber.Handler {
 			}
 			remainingFreshness := remainingFreshness(e, now)
 			if remainingFreshness < reqDirectives.minFresh {
-				revalidate = true
-				oldHeapIdx = e.heapidx
-				if cfg.Storage != nil {
-					manager.release(e)
-				}
-				e = nil
+				markRevalidate()
 			}
 		}
 
@@ -329,6 +374,38 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		deleteRevalidatedEntry := func() error {
+			if revalidationEntry == nil {
+				return nil
+			}
+
+			current, getErr := manager.get(reqCtx, key)
+			if getErr != nil {
+				if errors.Is(getErr, errCacheMiss) {
+					return nil
+				}
+				return fmt.Errorf("cache: failed to reload cached response for key %q before deletion: %w", maskKey(key), getErr)
+			}
+
+			matchesStaleEntry := sameCachedEntry(current, revalidationEntry)
+			if cfg.Storage != nil {
+				manager.release(current)
+			}
+			if !matchesStaleEntry {
+				return nil
+			}
+
+			if delErr := deleteKey(reqCtx, key); delErr != nil {
+				return fmt.Errorf("cache: failed to delete cached response for key %q: %w", maskKey(key), delErr)
+			}
+			if cfg.MaxBytes > 0 && oldHeapIdx >= 0 {
+				withCacheLock(mux, func() {
+					removeHeapEntry(key, oldHeapIdx)
+				})
+			}
+			return nil
+		}
+
 		handledCacheRequest, err := func() (bool, error) {
 			// Lock entry before reading the current timestamp so freshness decisions
 			// are based on the time the protected cache entry is evaluated.
@@ -340,24 +417,14 @@ func New(config ...Config) fiber.Handler {
 			if e != nil {
 				entryAge = cachedResponseAge(e, ts)
 				if reqDirectives.maxAgeSet && (reqDirectives.maxAge == 0 || entryAge > reqDirectives.maxAge) {
-					revalidate = true
-					oldHeapIdx = e.heapidx
-					if cfg.Storage != nil {
-						manager.release(e)
-					}
-					e = nil
+					markRevalidate()
 				}
 
 				handleMinFresh(ts)
 			}
 
 			if e != nil && e.ttl == 0 && e.forceRevalidate {
-				revalidate = true
-				oldHeapIdx = e.heapidx
-				if cfg.Storage != nil {
-					manager.release(e)
-				}
-				e = nil
+				markRevalidate()
 			}
 
 			if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
@@ -393,12 +460,7 @@ func New(config ...Config) fiber.Handler {
 				allowStale := entryExpired && (reqDirectives.maxStaleAny || (reqDirectives.maxStaleSet && staleness <= reqDirectives.maxStale))
 
 				if entryExpired && e.revalidate {
-					revalidate = true
-					oldHeapIdx = e.heapidx
-					if cfg.Storage != nil {
-						manager.release(e)
-					}
-					e = nil
+					markRevalidate()
 				}
 
 				handleMinFresh(ts)
@@ -429,7 +491,6 @@ func New(config ...Config) fiber.Handler {
 					}); deleteErr != nil {
 						return false, deleteErr
 					}
-					guard.unlock()
 					c.Set(cfg.CacheHeader, cacheUnreachable)
 					if reqDirectives.onlyIfCached {
 						if statusErr := c.SendStatus(fiber.StatusGatewayTimeout); statusErr != nil {
@@ -437,26 +498,18 @@ func New(config ...Config) fiber.Handler {
 						}
 						return true, nil
 					}
-					if nextErr := c.Next(); nextErr != nil {
-						return false, nextErr
-					}
-					return true, nil
+					return false, nil
 				case entryHasExpiration && !requestNoCache:
 					servedStale = entryExpired
 					if hasAuthorization && !e.shareable {
 						c.Set(cfg.CacheHeader, cacheUnreachable)
-						oldHeapIdx = e.heapidx
-						if cfg.Storage != nil {
-							manager.release(e)
-						}
-						e = nil
 						if reqDirectives.onlyIfCached {
 							if statusErr := c.SendStatus(fiber.StatusGatewayTimeout); statusErr != nil {
 								return false, statusErr
 							}
 							return true, nil
 						}
-						revalidate = true
+						markRevalidate()
 						return false, nil
 					}
 
@@ -585,13 +638,8 @@ func New(config ...Config) fiber.Handler {
 					return err
 				}
 			case revalidate:
-				if err := deleteKey(reqCtx, key); err != nil {
-					return fmt.Errorf("cache: failed to delete cached response for key %q: %w", maskKey(key), err)
-				}
-				if cfg.MaxBytes > 0 && oldHeapIdx >= 0 {
-					withCacheLock(mux, func() {
-						removeHeapEntry(key, oldHeapIdx)
-					})
+				if err := deleteRevalidatedEntry(); err != nil {
+					return err
 				}
 			}
 
