@@ -89,6 +89,11 @@ func Balancer(config ...Config) fiber.Handler {
 			req.SetRequestURI(utils.UnsafeString(req.RequestURI()))
 		}
 
+		// The upstream connection speaks HTTP/1.1: reset a protocol token
+		// inherited from the inbound request (e.g. "HTTP/2" propagated by
+		// the net/http adaptor) so the serialized request line stays valid.
+		req.Header.SetProtocol("HTTP/1.1")
+
 		// Forward request
 		if err := lbc.Do(req, res); err != nil {
 			return err
@@ -206,6 +211,10 @@ func doAction(
 	}
 
 	req.Header.Del(fiber.HeaderConnection)
+	// The upstream connection speaks HTTP/1.1: reset a protocol token
+	// inherited from the inbound request (e.g. "HTTP/2" propagated by the
+	// net/http adaptor) so the serialized request line stays valid.
+	req.Header.SetProtocol("HTTP/1.1")
 	if err := action(cli, req, res); err != nil {
 		return err
 	}

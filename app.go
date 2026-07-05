@@ -82,8 +82,6 @@ type App struct {
 	pool sync.Pool
 	// Fasthttp server
 	server *fasthttp.Server
-	// Converts string to a byte slice
-	toBytes func(s string) (b []byte)
 	// Converts byte slice to a string
 	toString func(b []byte) string
 	// Hooks
@@ -687,7 +685,6 @@ func New(config ...Config) *App {
 	app := &App{
 		// Create config
 		config:        Config{},
-		toBytes:       utils.UnsafeBytes,
 		toString:      utils.UnsafeString,
 		latestRoute:   &Route{},
 		customBinders: []CustomBinder{},
@@ -749,7 +746,7 @@ func New(config ...Config) *App {
 	}
 
 	if app.config.Immutable {
-		app.toBytes, app.toString = toBytesImmutable, toStringImmutable
+		app.toString = toStringImmutable
 	}
 
 	if app.config.ErrorHandler == nil {

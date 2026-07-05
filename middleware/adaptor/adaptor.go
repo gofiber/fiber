@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/gofiber/fiber/v3"
@@ -24,6 +25,32 @@ type disableLogger struct{}
 // Printf implements the fasthttp Logger interface and discards log output.
 func (*disableLogger) Printf(string, ...any) {
 }
+
+// noopConn is the net.Conn handed to fasthttp's RequestCtx for adaptor-served
+// requests. Unlike fasthttp's internal fakeAddrer (installed by
+// RequestCtx.Init), whose Write panics, it silently discards writes so that
+// interim responses written directly to the connection (e.g. a 103 from
+// SendEarlyHints) degrade gracefully: the final response is still delivered
+// through the http.ResponseWriter copy-back.
+type noopConn struct {
+	remoteAddr net.Addr
+}
+
+func (*noopConn) Read([]byte) (int, error)    { return 0, io.EOF }
+func (*noopConn) Write(p []byte) (int, error) { return len(p), nil }
+func (*noopConn) Close() error                { return nil }
+func (*noopConn) LocalAddr() net.Addr         { return &net.TCPAddr{} }
+
+func (c *noopConn) RemoteAddr() net.Addr {
+	if c.remoteAddr == nil {
+		return &net.TCPAddr{}
+	}
+	return c.remoteAddr
+}
+
+func (*noopConn) SetDeadline(time.Time) error      { return nil }
+func (*noopConn) SetReadDeadline(time.Time) error  { return nil }
+func (*noopConn) SetWriteDeadline(time.Time) error { return nil }
 
 var ctxPool = sync.Pool{
 	New: func() any {
@@ -274,6 +301,23 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		req.SetRequestURI(r.RequestURI)
 		req.SetHost(r.Host)
 		req.Header.SetHost(r.Host)
+		// Propagate the real protocol version so protocol-dependent behavior
+		// (e.g. skipping interim 1xx responses for non-HTTP/1.1 requests,
+		// RFC 9110 Section 15.2) sees the truth instead of fasthttp's
+		// default HTTP/1.1. net/http reports "HTTP/2.0"/"HTTP/3.0", while
+		// Fiber's Protocol() convention is "HTTP/2"/"HTTP/3" — key on
+		// ProtoMajor so variant protocol strings normalize too, and fall
+		// back to HTTP/1.1 for hand-built requests with an empty Proto.
+		proto := r.Proto
+		switch {
+		case r.ProtoMajor == 2:
+			proto = "HTTP/2"
+		case r.ProtoMajor == 3:
+			proto = "HTTP/3"
+		case proto == "":
+			proto = "HTTP/1.1"
+		}
+		req.Header.SetProtocol(proto)
 
 		for key, val := range r.Header {
 			for _, v := range val {
@@ -291,7 +335,13 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx.Response.Reset()
 		fctx.Request.Reset()
 		defer ctxPool.Put(fctx)
-		fctx.Init(req, remoteAddr, &disableLogger{})
+		// Init2 + CopyTo mirror fasthttp's RequestCtx.Init, but with a no-op
+		// connection instead of fasthttp's fakeAddrer, whose Write panics.
+		// Interim responses (e.g. SendEarlyHints' 103) are then silently
+		// discarded instead of panicking; the final response still reaches
+		// the client through the ResponseWriter copy-back below.
+		fctx.Init2(&noopConn{remoteAddr: remoteAddr}, &disableLogger{}, true)
+		req.CopyTo(&fctx.Request)
 
 		if len(h) > 0 {
 			// New fiber Ctx

@@ -15,6 +15,8 @@ type Res interface {
 	App() *App
 	// Append the specified value to the HTTP response header field.
 	// If the header is not already set, it creates the header with the specified value.
+	// Empty values are skipped: a sender must not generate empty list elements
+	// (RFC 9110 Section 5.6.1.2).
 	Append(field string, values ...string)
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
 	Attachment(filename ...string)
@@ -147,6 +149,8 @@ type Res interface {
 	Type(extension string, charset ...string) Ctx
 	// Vary adds the given header field to the Vary response header.
 	// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
+	// Per RFC 9110 Section 12.5.5 the wildcard "*" only has meaning as the sole member of the field:
+	// once "*" is added (or already present), the header is collapsed to a single "*".
 	Vary(fields ...string)
 	// Write appends p into response body.
 	Write(p []byte) (int, error)
