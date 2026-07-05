@@ -1838,6 +1838,59 @@ func Test_CacheInvalidation(t *testing.T) {
 	require.NotEqual(t, body, bodyInvalidate)
 }
 
+func Test_CacheInvalidation_StorageRevalidationDeletesPersistedEntry(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	var handlerCalls atomic.Uint64
+	app := fiber.New()
+	app.Use(New(Config{
+		CacheInvalidator: func(c fiber.Ctx) bool {
+			return fiber.Query[bool](c, "invalidate")
+		},
+		Expiration: time.Hour,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path()
+		},
+		Storage: storage,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		call := handlerCalls.Add(1)
+		if fiber.Query[bool](c, "invalidate") {
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("uncacheable")
+		}
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60, must-revalidate")
+		return c.SendString(fmt.Sprintf("cached-%d", call))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "cached-1", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/?invalidate=true", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "uncacheable", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "cached-3", string(body))
+	require.Equal(t, uint64(3), handlerCalls.Load())
+}
+
 func Test_CacheInvalidation_noCacheEntry(t *testing.T) {
 	t.Parallel()
 	t.Run("Cache Invalidator should not be called if no cache entry exist ", func(t *testing.T) {

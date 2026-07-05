@@ -362,13 +362,17 @@ func New(config ...Config) fiber.Handler {
 		var revalidationEntry *item
 		var revalidationBody []byte
 
-		markRevalidate := func() {
-			revalidate = true
-			oldHeapIdx = e.heapidx
+		snapshotRevalidationEntry := func() {
 			if revalidationEntry == nil {
 				snapshot := *e
 				revalidationEntry = &snapshot
 			}
+		}
+
+		markRevalidate := func() {
+			revalidate = true
+			oldHeapIdx = e.heapidx
+			snapshotRevalidationEntry()
 			if cfg.Storage != nil {
 				manager.release(e)
 			}
@@ -517,6 +521,9 @@ func New(config ...Config) fiber.Handler {
 
 				// Invalidate cache if requested
 				if cfg.CacheInvalidator != nil && cfg.CacheInvalidator(c) {
+					if cfg.Storage != nil && e.revalidate {
+						snapshotRevalidationEntry()
+					}
 					e.exp = ts - 1
 				}
 
