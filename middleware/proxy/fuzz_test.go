@@ -76,6 +76,14 @@ func FuzzJoinUpstreamPath(f *testing.F) {
 		"#fragment",
 		"%2F%2Fevil.com/path",
 		"/\x00null",
+		// Regression seeds: a percent that isn't followed by two hex
+		// digits made joinUpstreamPath's fast path emit an unparsable
+		// URL. Kept here (rather than in a testdata/fuzz corpus file) so
+		// the guard lives with the test.
+		"/0%",
+		"/%",
+		"/%z",
+		"/a%2",
 	}
 	for _, s := range seeds {
 		f.Add(s)
