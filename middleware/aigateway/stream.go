@@ -19,9 +19,10 @@ import (
 )
 
 var (
-	errResponseTooLarge  = errors.New("aigateway: upstream response exceeds MaxResponseSize")
-	errStreamIdleTimeout = errors.New("aigateway: upstream stream idle timeout")
-	errStreamAbandoned   = errors.New("aigateway: stream abandoned")
+	errResponseTooLarge       = errors.New("aigateway: upstream response exceeds MaxResponseSize")
+	errStreamIdleTimeout      = errors.New("aigateway: upstream stream idle timeout")
+	errStreamAbandoned        = errors.New("aigateway: stream abandoned")
+	errUntranslatableResponse = errors.New("aigateway: upstream response cannot be translated")
 )
 
 // headerXAccelBuffering disables response buffering in reverse proxies (nginx)
@@ -74,7 +75,10 @@ func abortUpstreamResponse(resp *client.Response) {
 // fasthttp's streamed body cannot be interrupted from another goroutine
 // without racing the read, so a mid-body stall is bounded by the upstream and
 // OS TCP timeouts rather than a gateway timer (as with middleware/proxy).
-func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent, start time.Time) error {
+//
+// xlateFrom names the serving upstream's dialect when the response must be
+// translated into the client's dialect; DialectUnspecified relays verbatim.
+func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent, start time.Time, xlateFrom Dialect) error {
 	// The upstream already produced a response (its headers arrived), so record
 	// its status now: even the read-error and too-large paths below must report
 	// the real upstream status rather than leaving StatusCode at 0, which the
@@ -104,18 +108,63 @@ func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEve
 		return fiber.ErrBadGateway
 	}
 
-	// The token usage feeds both the OnUsage hook and the quota commit, so
-	// parse it when either consumer is active. Parsed before OnResponse can
-	// mutate the body, so usage always reflects what the upstream reported.
-	if cfg.OnUsage != nil || (cfg.QuotaStore != nil && ev.quotaID != "") {
-		limit := cfg.MaxResponseSize
-		if limit <= 0 {
-			limit = usageDecodeLimit
+	translating := xlateFrom != DialectUnspecified
+	if translating {
+		// The body must be readable to translate it back. Accept-Encoding was
+		// pinned to identity on the upstream request; decode defensively if a
+		// misbehaving upstream compressed anyway.
+		if enc := string(resp.RawResponse.Header.Peek(fiber.HeaderContentEncoding)); enc != "" && !strings.EqualFold(strings.TrimSpace(enc), "identity") {
+			limit := cfg.MaxResponseSize
+			if limit <= 0 {
+				limit = usageDecodeLimit
+			}
+			decoded, ok := boundedDecompress(enc, body, limit)
+			if !ok {
+				// Fully read, so the connection is clean to reuse.
+				resp.Close()
+				ev.Err = errUntranslatableResponse
+				fireUsage(cfg, ev, start)
+				return sendError(c, fiber.StatusBadGateway, "the gateway could not decode the upstream response for translation", "api_error")
+			}
+			body = decoded
 		}
-		ev.Usage = parseUsage(decodeForUsage(resp, body, limit), c.App().Config().JSONDecoder)
+	}
+
+	// The token usage feeds both the OnUsage hook and the quota commit, so
+	// parse it when either consumer is active. Parsed before translation and
+	// OnResponse can replace the body, so usage always reflects what the
+	// upstream reported (parseUsage understands both dialects' field names).
+	if cfg.OnUsage != nil || (cfg.QuotaStore != nil && ev.quotaID != "") {
+		if translating {
+			ev.Usage = parseUsage(body, c.App().Config().JSONDecoder)
+		} else {
+			limit := cfg.MaxResponseSize
+			if limit <= 0 {
+				limit = usageDecodeLimit
+			}
+			ev.Usage = parseUsage(decodeForUsage(resp, body, limit), c.App().Config().JSONDecoder)
+		}
 	}
 
 	status := resp.StatusCode()
+	if translating {
+		dec, enc := c.App().Config().JSONDecoder, c.App().Config().JSONEncoder
+		if status >= fiber.StatusOK && status < fiber.StatusMultipleChoices {
+			translated, terr := translateResponseBody(xlateFrom, body, ev.Model, time.Now().Unix(), dec, enc)
+			if terr != nil {
+				resp.Close()
+				ev.Err = terr
+				fireUsage(cfg, ev, start)
+				return sendError(c, fiber.StatusBadGateway, "the gateway could not translate the upstream response", "api_error")
+			}
+			body = translated
+		} else {
+			// Error bodies relay with the upstream's status but the client's
+			// error envelope.
+			body = translateErrorBody(xlateFrom, body, dec, enc)
+		}
+		ev.ResponseBytes = int64(len(body))
+	}
 	if cfg.OnResponse != nil {
 		r := &RelayResponse{Body: body, Status: status}
 		if herr := cfg.OnResponse(c, r); herr != nil {
@@ -131,6 +180,12 @@ func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEve
 	}
 
 	copyResponseHeaders(c, resp)
+	if translating {
+		// The translated body is identity-encoded JSON regardless of what
+		// the upstream sent.
+		c.Response().Header.Del(fiber.HeaderContentEncoding)
+		c.Response().Header.SetContentType(fiber.MIMEApplicationJSON)
+	}
 	c.Status(status)
 	// The body was consumed to EOF, so closing releases the connection for
 	// reuse. Headers were copied off the pooled response above.
@@ -219,7 +274,10 @@ type streamChunk struct {
 
 // relayStream pipes the upstream body to the client chunk by chunk, flushing
 // after every read so tokens arrive as they are generated. The usage hook
-// fires on the stream writer goroutine after the stream ends.
+// fires on the stream writer goroutine after the stream ends. A non-nil tc
+// transcodes the stream into the client's dialect (its usage report then
+// replaces the usageTail scan); ev.ResponseBytes and MaxResponseSize keep
+// counting upstream bytes either way.
 //
 // Concurrency: fasthttp's streamed response body is not safe to read and close
 // from different goroutines — closing runs teardown on the same pooled struct
@@ -231,7 +289,7 @@ type streamChunk struct {
 // the pool). A reader blocked in Read on a fully stalled upstream lingers
 // until the upstream sends a byte or closes — that is the price of never
 // racing the read.
-func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent, start time.Time) error {
+func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent, start time.Time, tc streamTranscoder) error {
 	copyResponseHeaders(c, resp)
 	c.Status(resp.StatusCode())
 	// Ask reverse proxies (nginx et al.) not to buffer this response.
@@ -277,6 +335,10 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 				if chunk.err != nil {
 					if !errors.Is(chunk.err, io.EOF) {
 						ev.Err = chunk.err
+					} else if tc != nil && tc.finish(w) == nil {
+						// Clean upstream EOF: the transcoder synthesized the
+						// terminal events its client dialect requires.
+						_ = w.Flush() //nolint:errcheck // stream is ending either way
 					}
 					break loop
 				}
@@ -290,10 +352,17 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 					ev.Err = errResponseTooLarge
 					break loop
 				}
-				tail.observe(chunk.data)
-				if _, werr := w.Write(chunk.data); werr != nil {
-					ev.Err = werr
-					break loop
+				if tc != nil {
+					if werr := tc.feed(w, chunk.data); werr != nil {
+						ev.Err = werr
+						break loop
+					}
+				} else {
+					tail.observe(chunk.data)
+					if _, werr := w.Write(chunk.data); werr != nil {
+						ev.Err = werr
+						break loop
+					}
 				}
 				if werr := w.Flush(); werr != nil {
 					ev.Err = werr
@@ -305,7 +374,11 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 			}
 		}
 
-		ev.Usage = tail.usage(decoder)
+		if tc != nil {
+			ev.Usage = tc.usage()
+		} else {
+			ev.Usage = tail.usage(decoder)
+		}
 		fireUsage(cfg, ev, start)
 	})
 }

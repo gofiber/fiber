@@ -1,5 +1,9 @@
 package aigateway
 
+// Presets declare their wire Dialect, so protocol translation engages
+// automatically when a chat request arrives in the other dialect (see the
+// Upstream.Dialect docs). Hand-built Upstreams default to pass-through.
+
 // OpenAI returns an Upstream preset for the OpenAI API. Mount example:
 //
 //	app.Use("/openai", aigateway.New(aigateway.Config{
@@ -10,10 +14,11 @@ package aigateway
 // Clients then use base URL "https://gateway.example.com/openai/v1".
 func OpenAI(key string) Upstream {
 	return Upstream{
-		Name: "openai",
-		URL:  "https://api.openai.com",
-		Auth: AuthBearer(),
-		Key:  key,
+		Name:    "openai",
+		URL:     "https://api.openai.com",
+		Auth:    AuthBearer(),
+		Key:     key,
+		Dialect: DialectOpenAI,
 	}
 }
 
@@ -23,20 +28,22 @@ func OpenAI(key string) Upstream {
 // Upstream.Headers to pin one at the gateway.
 func Anthropic(key string) Upstream {
 	return Upstream{
-		Name: "anthropic",
-		URL:  "https://api.anthropic.com",
-		Auth: AuthHeader("x-api-key"),
-		Key:  key,
+		Name:    "anthropic",
+		URL:     "https://api.anthropic.com",
+		Auth:    AuthHeader("x-api-key"),
+		Key:     key,
+		Dialect: DialectAnthropic,
 	}
 }
 
 // OpenRouter returns an Upstream preset for the OpenRouter API.
 func OpenRouter(key string) Upstream {
 	return Upstream{
-		Name: "openrouter",
-		URL:  "https://openrouter.ai/api",
-		Auth: AuthBearer(),
-		Key:  key,
+		Name:    "openrouter",
+		URL:     "https://openrouter.ai/api",
+		Auth:    AuthBearer(),
+		Key:     key,
+		Dialect: DialectOpenAI,
 	}
 }
 
@@ -46,9 +53,10 @@ func OpenRouter(key string) Upstream {
 // configDefault trims any trailing slash from the URL.
 func AzureOpenAI(endpoint, key string) Upstream {
 	return Upstream{
-		Name: "azure-openai",
-		URL:  endpoint,
-		Auth: AuthHeader("api-key"),
-		Key:  key,
+		Name:    "azure-openai",
+		URL:     endpoint,
+		Auth:    AuthHeader("api-key"),
+		Key:     key,
+		Dialect: DialectOpenAI,
 	}
 }

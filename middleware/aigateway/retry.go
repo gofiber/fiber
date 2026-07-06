@@ -53,15 +53,19 @@ func retryAfter(resp *client.Response) (time.Duration, bool) {
 // sendWithRetry walks the upstream chain (skipping upstreams whose circuit
 // breaker is open), retrying each upstream up to cfg.Retry.Attempts times on
 // retryable failures before failing over to the next one. It returns the
-// response to relay: the first non-retryable one, or — when every attempt
-// failed — the last upstream response verbatim. resp is nil only when no
-// upstream produced a response at all. jsonBody is the decoded JSON request
-// body from sniffModel (nil for non-JSON bodies), used for per-upstream
-// ModelMap rewriting.
-func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *UsageEvent, jsonBody []byte) (*client.Response, error) {
+// response to relay — the first non-retryable one, or, when every attempt
+// failed, the last upstream response verbatim — together with the upstream
+// that produced it, which the caller needs to translate the response into the
+// client's dialect. resp is nil only when no upstream produced a response at
+// all. jsonBody is the decoded JSON request body from sniffModel (nil for
+// non-JSON bodies), used for translation and per-upstream ModelMap rewriting.
+func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, clientD Dialect, ev *UsageEvent, jsonBody []byte) (*client.Response, *Upstream, error) {
 	// lastResp is the most recent retryable response across all upstreams,
-	// kept so the client sees a real provider error when every attempt fails.
+	// kept so the client sees a real provider error when every attempt fails;
+	// lastUp is the upstream that produced it (its dialect governs how that
+	// error body is translated).
 	var lastResp *client.Response
+	var lastUp *Upstream
 	var lastErr error
 
 	candidates := candidateUpstreams(cfg, ev)
@@ -74,15 +78,40 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *Usage
 			brk = cfg.breakers[i]
 		}
 
-		// The ModelMap rewrite is per-upstream and attempt-invariant, so it is
-		// computed once here. A nil body relays the original bytes. An error
-		// means a mapping applies but could not be encoded; relaying the
-		// unmapped body would request a model this upstream does not serve, so
-		// move on to the next upstream instead.
-		body, rerr := rewriteForUpstream(c, up, ev.Model, jsonBody)
-		if rerr != nil {
+		// Translation and the ModelMap rewrite are per-upstream and
+		// attempt-invariant, so both are computed once here. An untranslatable
+		// request does not abort the chain: a same-dialect fallback can still
+		// serve it verbatim.
+		upPath := strippedPath
+		var body []byte // nil relays the original raw bytes
+		translating := false
+		if needsTranslation(clientD, up.Dialect) {
+			tb, _, terr := translateRequest(clientD, up.Dialect, jsonBody,
+				c.App().Config().JSONDecoder, c.App().Config().JSONEncoder, cfg.MaxTokensCap)
+			if terr != nil {
+				lastErr = terr
+				continue
+			}
+			body = tb
+			upPath = chatPathForDialect(up.Dialect)
+			translating = true
+		}
+
+		// ModelMap runs on the (possibly translated) body — the "model" field
+		// is top-level in both dialects, and translation preserves the
+		// client-requested model that keys the map. An error means a mapping
+		// applies but could not be encoded; relaying the unmapped body would
+		// request a model this upstream does not serve, so move on to the
+		// next upstream instead.
+		mapSrc := jsonBody
+		if translating {
+			mapSrc = body
+		}
+		if mapped, rerr := rewriteForUpstream(c, up, ev.Model, mapSrc); rerr != nil {
 			lastErr = rerr
 			continue
+		} else if mapped != nil {
+			body = mapped
 		}
 
 		// curResp is this upstream's most recent retryable response; it is the
@@ -103,7 +132,7 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *Usage
 						ev.StatusCode = lastResp.StatusCode()
 						abortUpstreamResponse(lastResp)
 					}
-					return nil, fmt.Errorf("aigateway: canceled while waiting to retry: %w", c.Context().Err())
+					return nil, nil, fmt.Errorf("aigateway: canceled while waiting to retry: %w", c.Context().Err())
 				}
 			}
 
@@ -114,7 +143,11 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *Usage
 			if cfg.ForwardClientKey {
 				injectKey = key
 			}
-			resp, err := buildRequest(c, cfg, up, strippedPath, injectKey, body).Send()
+			translateTo := DialectUnspecified
+			if translating {
+				translateTo = up.Dialect
+			}
+			resp, err := buildRequest(c, cfg, up, upPath, injectKey, body, translateTo).Send()
 			if err != nil {
 				// A network error carries no Retry-After, so it must not seed
 				// this upstream's backoff basis.
@@ -134,7 +167,7 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *Usage
 				if lastResp != nil {
 					abortUpstreamResponse(lastResp)
 				}
-				return resp, nil
+				return resp, up, nil
 			}
 			if brk != nil {
 				brk.recordFailure(cfg.BreakerThreshold, cfg.BreakerCooldown)
@@ -146,17 +179,18 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, ev *Usage
 				abortUpstreamResponse(lastResp)
 			}
 			lastResp = resp
+			lastUp = up
 			curResp = resp
 		}
 	}
 
 	if lastResp != nil {
-		return lastResp, nil
+		return lastResp, lastUp, nil
 	}
 	if lastErr == nil {
 		lastErr = errAllUpstreamsFailed
 	}
-	return nil, lastErr
+	return nil, nil, lastErr
 }
 
 // waitBeforeRetry sleeps for the backoff computed from the previous failure.

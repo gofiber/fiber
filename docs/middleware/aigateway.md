@@ -6,7 +6,7 @@ id: aigateway
 
 The AI Gateway middleware turns a Fiber app into a gateway for LLM provider APIs (OpenAI, Anthropic, OpenRouter, Azure OpenAI, and any compatible endpoint). Clients point their native SDKs at the gateway's base URL; the middleware relays each request to the real provider and streams the response back — including Server-Sent Event token streams, which are forwarded chunk by chunk without buffering.
 
-It is a pass-through relay: no request or response translation happens, so clients speak each provider's native wire API. On top of the relay, the middleware handles:
+By default it is a pass-through relay: clients speak each provider's native wire API. When an upstream declares its `Dialect`, the gateway can also **translate** between the OpenAI Chat Completions and Anthropic Messages APIs — including SSE streams — so either SDK can be served by either provider. On top of the relay, the middleware handles:
 
 - **Key management** — forward the client's own credential upstream, or strip it and inject a server-side unified key, optionally validating client (virtual) keys first.
 - **Policy** — restrict which models and endpoint paths may be used, globally and per client key (`PolicyResolver`); clamp or inject request parameters (`MaxTokensCap`, `ParamDefaults`); veto or transform requests and responses with hooks (`OnRequest`, `OnResponse`).
@@ -14,6 +14,7 @@ It is a pass-through relay: no request or response translation happens, so clien
 - **Resilience** — retry retryable failures (429/5xx, network errors) with backoff, fail over across a chain of upstreams (ordered, round-robin, or weighted), and skip upstreams whose circuit breaker is open.
 - **Usage accounting** — a per-request hook with latency, status, attempts, token usage parsed from JSON responses and SSE streams (best-effort), a USD cost computed from an operator-supplied price table, and post-paid token/budget quotas per key or tenant.
 - **Caching** — compose with the [cache middleware](./cache.md) via `CacheKeyGenerator` and `CacheSkipStreaming` to serve repeated identical requests (embeddings especially) without an upstream call.
+- **Protocol translation** — OpenAI ↔ Anthropic chat translation (requests, responses, tool calls, vision, and live SSE token streams) driven by `Upstream.Dialect`.
 
 ## Signatures
 
@@ -203,6 +204,43 @@ app.Use("/openai", aigateway.New(aigateway.Config{
 ```
 
 Skipped upstreams are reported per request in `UsageEvent.SkippedUpstreams`.
+
+### Protocol translation
+
+Point any OpenAI-SDK tool at Claude — or any Anthropic-SDK tool at an OpenAI-compatible endpoint. Translation engages per request when the client's dialect (detected from the chat endpoint: `/v1/chat/completions` = OpenAI, `/v1/messages` = Anthropic) differs from the serving upstream's declared `Dialect`:
+
+```go
+// OpenAI SDK clients, served by Claude:
+app.Use("/openai", aigateway.New(aigateway.Config{
+    PathPrefix: "/openai",
+    Upstreams:  []aigateway.Upstream{aigateway.Anthropic(anthropicKey)}, // Dialect: DialectAnthropic
+}))
+// baseURL = https://gateway.example.com/openai/v1 — chat requests, tool calls,
+// vision, and token streams all arrive in OpenAI shape.
+```
+
+Presets declare their dialects, so the example above works out of the box; hand-built `Upstream{}` values default to `DialectUnspecified`, which never translates (fully backward-compatible). Fallback chains may mix dialects — each upstream gets the request in its own dialect, and the response (success or error, buffered or streamed) is translated back from whichever upstream served:
+
+```go
+Upstreams: []aigateway.Upstream{
+    aigateway.OpenAI(openaiKey), // same dialect: relayed byte-for-byte
+    func() aigateway.Upstream {  // cross dialect: translated on failover
+        up := aigateway.Anthropic(anthropicKey)
+        up.ModelMap = map[string]string{"gpt-4o": "claude-sonnet-5"}
+        return up
+    }(),
+},
+```
+
+What is translated: messages and system prompts, multi-part content (text and images — `data:` URLs ↔ base64 sources, https URLs ↔ URL sources), tools and `tool_choice` (`auto`/`none`/`required`/named ↔ `auto`/`none`/`any`/`tool`; OpenAI's JSON-*string* `arguments` ↔ Anthropic's JSON-*object* `input`), tool results, `stop` ↔ `stop_sequences`, finish/stop reasons (`stop`↔`end_turn`, `length`↔`max_tokens`, `tool_calls`↔`tool_use`), token usage, error envelopes (gateway-generated errors are also shaped per the caller's dialect), and SSE streams — Anthropic's event protocol is transcoded to `chat.completion.chunk` + `[DONE]` and vice versa, incrementally, including streaming tool-call deltas.
+
+Details and limitations:
+
+- Anthropic requires `max_tokens`: when an OpenAI client omits it, `4096` is injected (clamped by `MaxTokensCap`). The mandatory `anthropic-version` header is filled with `2023-06-01` unless the client or `Upstream.Headers` set one. `temperature` is clamped to Anthropic's 0–1 range.
+- Parameters without an equivalent are dropped: `frequency_penalty`, `presence_penalty`, `logit_bias`, `logprobs`, `seed`, `response_format`, `service_tier` (OpenAI→Anthropic); `top_k`, `thinking` blocks (Anthropic→OpenAI). Requests whose *semantics* cannot be expressed — `n > 1`, audio modalities, server tools — are rejected with 400 unless a same-dialect fallback can serve them verbatim.
+- Streaming: `stream_options.include_usage` is honored for OpenAI clients and requested automatically on their behalf when the upstream is OpenAI. Anthropic-dialect `message_start` events report `input_tokens: 0` when the upstream is OpenAI (true usage arrives in the final `message_delta`).
+- Translated exchanges pin `Accept-Encoding: identity`; translated responses are identity-encoded JSON. `UsageEvent.Model`/`Path`, pricing, quotas, and `ModelMap` all stay keyed on what the *client* sent.
+- Only the two chat endpoints translate; every other path (models, embeddings, files) relays untouched.
 
 ### Quotas and budgets
 
@@ -434,6 +472,7 @@ The middleware registers three custom [logger](./logger.md) tags: `ai-key` (reda
 | Headers  | `map[string]string` | Extra headers set on every request to this upstream.                                          | `nil`          |
 | ModelMap | `map[string]string` | Rewrites the JSON body's `model` field for this upstream (exact model names as keys). Unmapped models relay unchanged. | `nil` |
 | Weight   | `int`               | Share of traffic under `StrategyWeighted`; ignored by other strategies.                       | `1`            |
+| Dialect  | `Dialect`           | Wire API this upstream speaks (`DialectOpenAI`, `DialectAnthropic`); enables protocol translation for cross-dialect chat requests. Presets set it. | `DialectUnspecified` (pass-through) |
 
 ## Default Config
 

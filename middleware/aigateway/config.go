@@ -82,6 +82,16 @@ type Upstream struct {
 	//
 	// Optional. Default: 1 (values <= 0 are normalized to 1)
 	Weight int
+
+	// Dialect declares the wire API this upstream speaks. When a chat
+	// request arrives in the other dialect (an OpenAI-SDK client posting
+	// /v1/chat/completions in front of a DialectAnthropic upstream, or the
+	// reverse), the gateway translates the request, the endpoint path, and
+	// the response — including SSE streams. DialectUnspecified relays
+	// everything byte-for-byte. Presets declare their dialect.
+	//
+	// Optional. Default: DialectUnspecified (pass-through)
+	Dialect Dialect
 }
 
 // KeyPolicy is a per-key policy returned by Config.PolicyResolver. Its lists
@@ -477,6 +487,11 @@ func configDefault(config ...Config) Config {
 		}
 		if up.Key == "" && !cfg.ForwardClientKey {
 			panic(fmt.Sprintf("fiber: aigateway upstream %q requires a key (or set ForwardClientKey)", up.Name))
+		}
+		switch up.Dialect {
+		case DialectUnspecified, DialectOpenAI, DialectAnthropic:
+		default:
+			panic(fmt.Sprintf("fiber: aigateway upstream %q has unknown Dialect %d", up.Name, up.Dialect))
 		}
 	}
 

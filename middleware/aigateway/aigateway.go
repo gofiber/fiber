@@ -32,6 +32,7 @@ const (
 	clientKeyKey contextKey = iota
 	providerKey
 	modelKey
+	dialectKey
 )
 
 var registerLogContextTagsOnce sync.Once
@@ -46,6 +47,13 @@ func New(config ...Config) fiber.Handler {
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
+
+		// Detect the client's wire dialect from the chat endpoint path before
+		// anything can fail, so every gateway-generated error — including the
+		// auth errors below — is shaped for the caller's SDK.
+		strippedPath := stripPrefix(c.Path(), cfg.PathPrefix)
+		clientDialect := chatDialectForPath(decodePath(strippedPath))
+		fiber.StoreInContext(c, dialectKey, clientDialect)
 
 		// Extract and validate the client credential.
 		key, err := cfg.KeyExtractor.Extract(c)
@@ -73,8 +81,6 @@ func New(config ...Config) fiber.Handler {
 			fiber.StoreInContext(c, clientKeyKey, key)
 		}
 
-		strippedPath := stripPrefix(c.Path(), cfg.PathPrefix)
-
 		// The OnRequest hook runs after authentication (so KeyFromContext
 		// works inside it) and before every policy check, so the path and
 		// body it produces are exactly what gets policed and relayed — a
@@ -84,7 +90,12 @@ func New(config ...Config) fiber.Handler {
 			if herr := cfg.OnRequest(c, r); herr != nil {
 				return sendError(c, hookStatus(herr), herr.Error(), "invalid_request_error")
 			}
-			strippedPath = r.Path
+			if r.Path != strippedPath {
+				// The hook rewrote the path: the client dialect follows it.
+				strippedPath = r.Path
+				clientDialect = chatDialectForPath(decodePath(strippedPath))
+				fiber.StoreInContext(c, dialectKey, clientDialect)
+			}
 			if r.Body != nil {
 				// The replacement body is identity-encoded: drop any stale
 				// Content-Encoding so the model sniff and the relay treat it
@@ -214,19 +225,44 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		resp, sendErr := sendWithRetry(c, &cfg, strippedPath, key, ev, jsonBody)
+		resp, served, sendErr := sendWithRetry(c, &cfg, strippedPath, key, clientDialect, ev, jsonBody)
 		if resp == nil {
 			ev.Err = sendErr
 			fireUsage(&cfg, ev, start)
+			if errors.Is(sendErr, errUntranslatable) {
+				// Nothing upstream-side failed: the request itself cannot be
+				// expressed in any reachable upstream's dialect.
+				return sendError(c, fiber.StatusBadRequest, sendErr.Error(), "invalid_request_error")
+			}
 			return fiber.ErrBadGateway
 		}
 		fiber.StoreInContext(c, providerKey, ev.Provider)
 
+		// The serving upstream's dialect decides response translation; on
+		// exhaustion this is whichever upstream produced the relayed error.
+		xlateFrom := DialectUnspecified
+		if served != nil && needsTranslation(clientDialect, served.Dialect) {
+			xlateFrom = served.Dialect
+		}
+
 		if isStreamingResponse(resp) {
 			ev.Streamed = true
-			return relayStream(c, &cfg, resp, ev, start)
+			var tc streamTranscoder
+			if xlateFrom != DialectUnspecified {
+				tc = newTranscoder(c, resp, xlateFrom, ev.Model, jsonBody)
+				if tc == nil {
+					// Encoded or non-SSE streaming responses cannot be
+					// transcoded; drop the connection rather than relay a
+					// stream the client's SDK cannot parse.
+					abortUpstreamResponse(resp)
+					ev.Err = errUntranslatableResponse
+					fireUsage(&cfg, ev, start)
+					return sendError(c, fiber.StatusBadGateway, "the upstream stream cannot be translated", "api_error")
+				}
+			}
+			return relayStream(c, &cfg, resp, ev, start, tc)
 		}
-		return relayBuffered(c, &cfg, resp, ev, start)
+		return relayBuffered(c, &cfg, resp, ev, start, xlateFrom)
 	}
 }
 
@@ -266,15 +302,22 @@ func registerLogContextTags() {
 	logger.RegisterContextTag(fiberlog.TagAIModel, ModelFromContext)
 }
 
-// sendError responds with an OpenAI-style JSON error object so native SDK
-// clients can parse gateway-generated failures.
+// sendError responds with a JSON error object in the client's dialect so
+// native SDK clients can parse gateway-generated failures: the Anthropic
+// error envelope for /v1/messages callers, the OpenAI shape otherwise. The
+// error type strings the gateway uses (authentication_error,
+// invalid_request_error, rate_limit_error, api_error) are valid in both
+// dialects verbatim.
 func sendError(c fiber.Ctx, status int, message, errorType string) error {
 	c.Status(status)
-	return c.JSON(fiber.Map{
-		"error": fiber.Map{
-			"message": message,
-			"type":    errorType,
-		},
+	if d, ok := fiber.ValueFromContext[Dialect](c, dialectKey); ok && d == DialectAnthropic {
+		return c.JSON(antErrorEnvelope{
+			Type:  evtError,
+			Error: &antErrorBody{Type: errorType, Message: message},
+		})
+	}
+	return c.JSON(oaiErrorEnvelope{
+		Error: &oaiErrorBody{Message: message, Type: errorType},
 	})
 }
 

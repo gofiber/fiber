@@ -65,9 +65,13 @@ func rewriteForUpstream(c fiber.Ctx, up *Upstream, model string, jsonBody []byte
 // buildRequest constructs a fresh upstream request for one attempt. key is
 // the credential to inject: the client's own key in pass-through mode or
 // Upstream.Key in unified-key mode. A non-nil body replaces the client's raw
-// body (a ModelMap rewrite); it is identity-encoded, so the original
-// Content-Encoding header is dropped with it.
-func buildRequest(c fiber.Ctx, cfg *Config, up *Upstream, strippedPath, key string, body []byte) *client.Request {
+// body (a translation or ModelMap rewrite); it is identity-encoded, so the
+// original Content-Encoding header is dropped with it. translateTo names the
+// upstream's dialect when the request was translated (DialectUnspecified
+// otherwise): translated exchanges pin Accept-Encoding: identity — the
+// response must be inspected to be translated back — and fill dialect-
+// mandatory headers the client's SDK could not have sent.
+func buildRequest(c fiber.Ctx, cfg *Config, up *Upstream, strippedPath, key string, body []byte, translateTo Dialect) *client.Request {
 	req := cfg.Client.R()
 	req.SetMethod(c.Method())
 	req.SetTimeout(cfg.HeaderTimeout)
@@ -106,6 +110,16 @@ func buildRequest(c fiber.Ctx, cfg *Config, up *Upstream, strippedPath, key stri
 
 	for k, v := range up.Headers {
 		req.RawRequest.Header.Set(k, v)
+	}
+
+	if translateTo != DialectUnspecified {
+		// The upstream response must be readable to translate it back.
+		req.RawRequest.Header.Set(fiber.HeaderAcceptEncoding, "identity")
+		// An OpenAI-SDK client cannot send Anthropic's mandatory version
+		// header; fill a default unless the client or Upstream.Headers did.
+		if translateTo == DialectAnthropic && len(req.RawRequest.Header.Peek(headerAnthropicVersion)) == 0 {
+			req.RawRequest.Header.Set(headerAnthropicVersion, defaultAnthropicVersion)
+		}
 	}
 
 	// The client force-sets User-Agent; forward the caller's one when present.
