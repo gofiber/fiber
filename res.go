@@ -434,9 +434,11 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 
 	r.Vary(HeaderAccept)
 
-	// Consider all Accept field lines combined (RFC 9110 Section 5.2), the
-	// same view Accepts negotiates on below.
-	if len(joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAccept))) == 0 {
+	// Absent means the combined Accept view (RFC 9110 Section 5.2) is empty:
+	// no field line, or a single empty one. Checked on the raw lines to skip
+	// the join allocation that multi-line headers would pay.
+	accepts := r.c.fasthttp.Request.Header.PeekAll(HeaderAccept)
+	if len(accepts) == 0 || (len(accepts) == 1 && len(accepts[0]) == 0) {
 		// Without an Accept header the client accepts any media type
 		// (RFC 9110 Section 12.5.1), so pick the first non-default handler and
 		// use its media type. The literal "default" is not a media type and

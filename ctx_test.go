@@ -2099,6 +2099,34 @@ func Test_Ctx_Format_NoAcceptDefaultFirst(t *testing.T) {
 	require.NotEqual(t, "default", c.GetRespHeader(HeaderContentType))
 }
 
+func Test_Ctx_Format_AcceptEmptyAndMultiLine(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	var accepted string
+	handler := func(mediaType string) ResFmt {
+		return ResFmt{MediaType: mediaType, Handler: func(_ Ctx) error {
+			accepted = mediaType
+			return nil
+		}}
+	}
+
+	// A single empty Accept line is an empty combined view: treated as absent.
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderAccept, "")
+	err := c.Format(handler("application/json"), handler("text/html"))
+	require.NoError(t, err)
+	require.Equal(t, "application/json", accepted)
+
+	// Multiple Accept lines negotiate on the combined view (RFC 9110 Section 5.2).
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Add(HeaderAccept, "text/plain;q=0.5")
+	c.Request().Header.Add(HeaderAccept, "text/html")
+	err = c.Format(handler("application/json"), handler("text/html"))
+	require.NoError(t, err)
+	require.Equal(t, "text/html", accepted)
+}
+
 func Benchmark_Ctx_Format(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
