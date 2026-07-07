@@ -39,7 +39,7 @@ func finishToAnthropicStop(finish string) string {
 
 type antResponse struct {
 	Usage        *usageFields `json:"usage,omitempty"`
-	StopSequence *string      `json:"stop_sequence,omitempty"`
+	StopSequence *string      `json:"stop_sequence"`
 	ID           string       `json:"id"`
 	Type         string       `json:"type"`
 	Role         string       `json:"role"`
@@ -180,9 +180,13 @@ func translateResponseO2A(body []byte, model string, dec utils.JSONUnmarshal, en
 		Content:    blocks,
 		StopReason: finishToAnthropicStop(choice.FinishReason),
 	}
+	// Anthropic's Message schema requires usage; emit zeros when a lenient
+	// OpenAI-compatible upstream omitted it, so client SDK validation passes.
+	u := &usageFields{}
 	if in.Usage != nil {
-		out.Usage = normalizeUsageFields(in.Usage)
+		u = in.Usage
 	}
+	out.Usage = normalizeUsageFields(u)
 	res, err := enc(out)
 	if err != nil {
 		return nil, fmt.Errorf("aigateway: encode translated response: %w", err)
@@ -223,7 +227,6 @@ type oaiErrorEnvelope struct {
 }
 
 type oaiErrorBody struct {
-	Code    any    `json:"code,omitempty"`
 	Message string `json:"message"`
 	Type    string `json:"type"`
 }
@@ -238,6 +241,32 @@ type antErrorBody struct {
 	Message string `json:"message"`
 }
 
+// oaiErrorJSON and antErrorJSON build a client-dialect error envelope,
+// defaulting an empty type to api_error, so every error producer — the
+// buffered translator and both stream transcoders — shapes errors the same
+// way.
+func oaiErrorJSON(errType, msg string, enc utils.JSONMarshal) ([]byte, error) {
+	if errType == "" {
+		errType = errTypeAPI
+	}
+	out, err := enc(oaiErrorEnvelope{Error: &oaiErrorBody{Message: msg, Type: errType}})
+	if err != nil {
+		return nil, fmt.Errorf("aigateway: encode error envelope: %w", err)
+	}
+	return out, nil
+}
+
+func antErrorJSON(errType, msg string, enc utils.JSONMarshal) ([]byte, error) {
+	if errType == "" {
+		errType = errTypeAPI
+	}
+	out, err := enc(antErrorEnvelope{Type: evtError, Error: &antErrorBody{Type: errType, Message: msg}})
+	if err != nil {
+		return nil, fmt.Errorf("aigateway: encode error envelope: %w", err)
+	}
+	return out, nil
+}
+
 // translateErrorBody converts an upstream error body from the upstream's
 // dialect to the client's. An unparseable body is synthesized into a valid
 // error envelope carrying the raw text, so the client's SDK can always parse
@@ -250,8 +279,7 @@ func translateErrorBody(upstreamD Dialect, body []byte, dec utils.JSONUnmarshal,
 		if err := dec(body, &in); err == nil && in.Error != nil {
 			errType, msg = in.Error.Type, in.Error.Message
 		}
-		out, err := enc(oaiErrorEnvelope{Error: &oaiErrorBody{Message: msg, Type: errType}})
-		if err == nil {
+		if out, err := oaiErrorJSON(errType, msg, enc); err == nil {
 			return out
 		}
 	case DialectOpenAI:
@@ -259,11 +287,7 @@ func translateErrorBody(upstreamD Dialect, body []byte, dec utils.JSONUnmarshal,
 		if err := dec(body, &in); err == nil && in.Error != nil {
 			errType, msg = in.Error.Type, in.Error.Message
 		}
-		if errType == "" {
-			errType = errTypeAPI
-		}
-		out, err := enc(antErrorEnvelope{Type: evtError, Error: &antErrorBody{Type: errType, Message: msg}})
-		if err == nil {
+		if out, err := antErrorJSON(errType, msg, enc); err == nil {
 			return out
 		}
 	case DialectUnspecified:

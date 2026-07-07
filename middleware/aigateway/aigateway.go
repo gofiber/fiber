@@ -225,13 +225,16 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		resp, served, sendErr := sendWithRetry(c, &cfg, strippedPath, key, clientDialect, ev, jsonBody)
+		target, sendErr := sendWithRetry(c, &cfg, strippedPath, key, clientDialect, ev, jsonBody)
+		resp, served := target.resp, target.up
 		if resp == nil {
 			ev.Err = sendErr
 			fireUsage(&cfg, ev, start)
-			if errors.Is(sendErr, errUntranslatable) {
-				// Nothing upstream-side failed: the request itself cannot be
-				// expressed in any reachable upstream's dialect.
+			// 400 only when no upstream was even attempted and the request
+			// itself cannot be expressed in any reachable upstream's dialect;
+			// any real attempt means an upstream-side failure, which is a 502
+			// regardless of what error happened to be recorded last.
+			if ev.Attempts == 0 && errors.Is(sendErr, errUntranslatable) {
 				return sendError(c, fiber.StatusBadRequest, sendErr.Error(), "invalid_request_error")
 			}
 			return fiber.ErrBadGateway
@@ -246,20 +249,24 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if isStreamingResponse(resp) {
-			ev.Streamed = true
 			var tc streamTranscoder
 			if xlateFrom != DialectUnspecified {
-				tc = newTranscoder(c, resp, xlateFrom, ev.Model, jsonBody)
+				tc = newTranscoder(c, resp, xlateFrom, ev.Model, target.opts.includeUsage)
 				if tc == nil {
 					// Encoded or non-SSE streaming responses cannot be
 					// transcoded; drop the connection rather than relay a
-					// stream the client's SDK cannot parse.
+					// stream the client's SDK cannot parse. The upstream did
+					// respond, so record its status (0 is reserved for "no
+					// upstream response"); the client receives a buffered
+					// 502, so Streamed stays false.
+					ev.StatusCode = resp.StatusCode()
 					abortUpstreamResponse(resp)
 					ev.Err = errUntranslatableResponse
 					fireUsage(&cfg, ev, start)
 					return sendError(c, fiber.StatusBadGateway, "the upstream stream cannot be translated", "api_error")
 				}
 			}
+			ev.Streamed = true
 			return relayStream(c, &cfg, resp, ev, start, tc)
 		}
 		return relayBuffered(c, &cfg, resp, ev, start, xlateFrom)

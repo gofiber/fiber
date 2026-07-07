@@ -19,7 +19,25 @@ import (
 // an oversized event aborts the stream instead.
 const sseMaxEventBytes = 1 << 20 // 1 MiB
 
-var errSSEEventTooLarge = errors.New("aigateway: upstream SSE event exceeds the transcoding limit")
+var (
+	errSSEEventTooLarge = errors.New("aigateway: upstream SSE event exceeds the transcoding limit")
+
+	// errStreamTruncated marks an upstream stream that ended without its
+	// dialect's terminator; the transcoder informs the client with an error
+	// event and the relay records it on the usage event.
+	errStreamTruncated = errors.New("aigateway: upstream stream ended before its terminator")
+)
+
+// writeSSEKeepalive writes an SSE comment line — bytes every SSE parser
+// ignores — so upstream events that translate to nothing (pings, thinking
+// deltas) still produce client-side traffic and intermediary idle timeouts
+// don't fire during long upstream silences.
+func writeSSEKeepalive(w *bufio.Writer) error {
+	if _, err := w.WriteString(": keepalive\n\n"); err != nil {
+		return fmt.Errorf("aigateway: write keepalive: %w", err)
+	}
+	return nil
+}
 
 // streamTranscoder converts an upstream SSE token stream to the client's
 // dialect incrementally. feed consumes one upstream chunk (arbitrarily
@@ -35,9 +53,9 @@ type streamTranscoder interface {
 // response, or nil when the stream cannot be transcoded: a content-encoded
 // stream (identity was pinned on the request, so this is a misbehaving
 // upstream) or a non-SSE streaming Content-Type (NDJSON has no event framing
-// to transcode). jsonBody is the client's original request body, consulted to
-// honor an OpenAI client's stream_options.include_usage choice.
-func newTranscoder(c fiber.Ctx, resp *client.Response, xlateFrom Dialect, model string, jsonBody []byte) streamTranscoder {
+// to transcode). includeUsage is the client's stream_options.include_usage
+// choice, recorded when the request was translated.
+func newTranscoder(c fiber.Ctx, resp *client.Response, xlateFrom Dialect, model string, includeUsage bool) streamTranscoder {
 	if enc := string(resp.RawResponse.Header.Peek(fiber.HeaderContentEncoding)); enc != "" && !strings.EqualFold(strings.TrimSpace(enc), "identity") {
 		return nil
 	}
@@ -50,15 +68,6 @@ func newTranscoder(c fiber.Ctx, resp *client.Response, xlateFrom Dialect, model 
 	dec, enc := c.App().Config().JSONDecoder, c.App().Config().JSONEncoder
 	switch xlateFrom {
 	case DialectAnthropic:
-		includeUsage := false
-		if jsonBody != nil {
-			var so struct {
-				StreamOptions *oaiStreamOptions `json:"stream_options"`
-			}
-			if dec(jsonBody, &so) == nil && so.StreamOptions != nil {
-				includeUsage = so.StreamOptions.IncludeUsage
-			}
-		}
 		return newA2OTranscoder(model, time.Now().Unix(), includeUsage, dec, enc)
 	case DialectOpenAI:
 		return newO2ATranscoder(model, dec, enc)
@@ -192,11 +201,10 @@ type antStartBlock struct {
 }
 
 type antEventDelta struct {
-	Text         *string `json:"text,omitempty"`
-	PartialJSON  *string `json:"partial_json,omitempty"`
-	StopReason   string  `json:"stop_reason,omitempty"`
-	StopSequence *string `json:"stop_sequence,omitempty"`
-	Type         string  `json:"type,omitempty"`
+	Text        *string `json:"text,omitempty"`
+	PartialJSON *string `json:"partial_json,omitempty"`
+	StopReason  string  `json:"stop_reason,omitempty"`
+	Type        string  `json:"type,omitempty"`
 }
 
 type antEventUsage struct {
@@ -304,14 +312,24 @@ func (t *a2oTranscoder) usage() *Usage {
 	return (&usageFields{InputTokens: t.inputTokens, OutputTokens: t.outputTokens}).toUsage()
 }
 
-// finish handles a clean upstream EOF without message_stop: the truncation is
-// mirrored by ending the OpenAI stream with [DONE] so client SDKs terminate.
+// finish handles a clean upstream EOF without message_stop: the client is
+// told about the truncation with an explicit error object before [DONE], and
+// the relay records errStreamTruncated on the usage event.
 func (t *a2oTranscoder) finish(w *bufio.Writer) error {
 	if t.done {
 		return nil
 	}
 	t.done = true
-	return writeSSE(w, "", []byte("[DONE]"))
+	data, err := oaiErrorJSON("", errStreamTruncated.Error(), t.enc)
+	if err == nil {
+		if werr := writeSSE(w, "", data); werr != nil {
+			return werr
+		}
+	}
+	if werr := writeSSE(w, "", []byte("[DONE]")); werr != nil {
+		return werr
+	}
+	return errStreamTruncated
 }
 
 func (t *a2oTranscoder) emit(w *bufio.Writer, delta *oaiChunkDelta, finish *string) error {
@@ -358,7 +376,9 @@ func (t *a2oTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 
 	case evtContentBlockStart:
 		if e.ContentBlock == nil || e.ContentBlock.Type != blockToolUse {
-			return nil // text blocks open implicitly; thinking is dropped
+			// Text blocks open implicitly; thinking is dropped. Keep bytes
+			// flowing so intermediary idle timeouts don't fire.
+			return writeSSEKeepalive(w)
 		}
 		idx := t.nextToolIdx
 		t.nextToolIdx++
@@ -388,7 +408,9 @@ func (t *a2oTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 				Function: &oaiChunkFuncDelta{Arguments: e.Delta.PartialJSON},
 			}}}, nil)
 		default:
-			return nil // thinking/signature deltas: dropped
+			// Thinking/signature deltas: dropped, but kept alive — extended
+			// thinking can hold the stream silent for minutes.
+			return writeSSEKeepalive(w)
 		}
 
 	case evtMessageDelta:
@@ -433,7 +455,7 @@ func (t *a2oTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 		if e.Error != nil {
 			msg, errType = e.Error.Message, e.Error.Type
 		}
-		data, err := t.enc(oaiErrorEnvelope{Error: &oaiErrorBody{Message: msg, Type: errType}})
+		data, err := oaiErrorJSON(errType, msg, t.enc)
 		if err != nil {
 			return err
 		}
@@ -443,7 +465,10 @@ func (t *a2oTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 		return writeSSE(w, "", []byte("[DONE]"))
 
 	default:
-		return nil // ping and future event types: dropped
+		// ping, content_block_stop, and future event types translate to
+		// nothing; emit a comment so the client connection is never silent
+		// while the upstream is keeping its side alive.
+		return writeSSEKeepalive(w)
 	}
 }
 
@@ -463,6 +488,7 @@ type o2aTranscoder struct {
 	model        string
 	msgID        string
 	finishReason string
+	curToolID    string
 	scan         sseScanner
 	inputTokens  int
 	outputTokens int
@@ -492,14 +518,27 @@ func (t *o2aTranscoder) usage() *Usage {
 	return (&usageFields{InputTokens: t.inputTokens, OutputTokens: t.outputTokens}).toUsage()
 }
 
-// finish handles a clean upstream EOF without [DONE]: the terminal Anthropic
-// events are synthesized so client SDKs do not hang waiting for message_stop.
+// finish handles a clean upstream EOF without [DONE]: rather than fabricating
+// a completed message (which would present a truncated answer as final), the
+// client gets an Anthropic error event, and the relay records
+// errStreamTruncated on the usage event.
 func (t *o2aTranscoder) finish(w *bufio.Writer) error {
-	if t.done || !t.started {
-		t.done = true
+	if t.done {
 		return nil
 	}
-	return t.terminate(w)
+	t.done = true
+	if t.started {
+		if err := t.closeBlock(w); err != nil {
+			return err
+		}
+	}
+	data, err := antErrorJSON("", errStreamTruncated.Error(), t.enc)
+	if err == nil {
+		if werr := writeSSE(w, evtError, data); werr != nil {
+			return werr
+		}
+	}
+	return errStreamTruncated
 }
 
 func (t *o2aTranscoder) emitEvent(w *bufio.Writer, name string, payload any) error {
@@ -538,6 +577,7 @@ func (t *o2aTranscoder) closeBlock(w *bufio.Writer) error {
 	err := t.emitEvent(w, evtContentBlockStop, &antEventPayload{Type: evtContentBlockStop, Index: &idx})
 	t.openBlock = openBlockNone
 	t.curToolIdx = -1
+	t.curToolID = ""
 	t.blockIdx++
 	return err
 }
@@ -599,14 +639,11 @@ func (t *o2aTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 		if err := t.closeBlock(w); err != nil {
 			return err
 		}
-		errType := chunk.Error.Type
-		if errType == "" {
-			errType = errTypeAPI
+		data, jerr := antErrorJSON(chunk.Error.Type, chunk.Error.Message, t.enc)
+		if jerr != nil {
+			return jerr
 		}
-		return t.emitEvent(w, evtError, antErrorEnvelope{
-			Type:  evtError,
-			Error: &antErrorBody{Type: errType, Message: chunk.Error.Message},
-		})
+		return writeSSE(w, evtError, data)
 	}
 
 	if !t.started {
@@ -621,7 +658,8 @@ func (t *o2aTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 		t.sawUsage = true
 	}
 	if len(chunk.Choices) == 0 {
-		return nil
+		// Usage-only chunk: nothing translates, keep the connection warm.
+		return writeSSEKeepalive(w)
 	}
 	choice := &chunk.Choices[0]
 	if choice.FinishReason != nil && *choice.FinishReason != "" {
@@ -658,7 +696,9 @@ func (t *o2aTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 
 	for i := range choice.Delta.ToolCalls {
 		td := &choice.Delta.ToolCalls[i]
-		if t.openBlock != openBlockTool || td.Index != t.curToolIdx {
+		// A new tool call is signaled by a changed index — or, for upstreams
+		// that omit indexes, by a fresh tool-call id at the same index.
+		if t.openBlock != openBlockTool || td.Index != t.curToolIdx || (td.ID != "" && td.ID != t.curToolID) {
 			if err := t.closeBlock(w); err != nil {
 				return err
 			}
@@ -679,6 +719,7 @@ func (t *o2aTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 			}
 			t.openBlock = openBlockTool
 			t.curToolIdx = td.Index
+			t.curToolID = td.ID
 		}
 		if td.Function != nil && td.Function.Arguments != "" {
 			idx := t.blockIdx

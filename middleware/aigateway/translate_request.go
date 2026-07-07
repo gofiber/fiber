@@ -71,8 +71,7 @@ type oaiContentPart struct {
 }
 
 type oaiImageURL struct {
-	URL    string `json:"url"`
-	Detail string `json:"detail,omitempty"`
+	URL string `json:"url"`
 }
 
 type oaiToolCall struct {
@@ -133,7 +132,6 @@ type antBlock struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"` // tool_result
 	Input     json.RawMessage `json:"input,omitempty"`       // tool_use
 	Content   json.RawMessage `json:"content,omitempty"`     // tool_result: string or []antBlock
-	IsError   bool            `json:"is_error,omitempty"`
 }
 
 type antImageSource struct {
@@ -635,7 +633,8 @@ func antMessageToOpenAI(m *antMessage, dec utils.JSONUnmarshal, enc utils.JSONMa
 				Function: oaiFunctionCall{Name: b.Name, Arguments: args},
 			})
 		case blockToolResult:
-			// Its own role:tool message; nested images are dropped (documented).
+			// Its own role:tool message; nested images and the is_error flag
+			// are dropped (documented) — OpenAI tool messages have neither.
 			text, err := toolResultText(b, dec)
 			if err != nil {
 				return nil, err

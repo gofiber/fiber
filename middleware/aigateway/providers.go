@@ -51,12 +51,18 @@ func OpenRouter(key string) Upstream {
 // endpoint is the resource base URL, e.g. "https://my-resource.openai.azure.com".
 // The api-version query parameter stays under client control (pass-through).
 // configDefault trims any trailing slash from the URL.
+//
+// The preset does NOT declare a Dialect: Azure routes chat through
+// deployment-scoped paths (/openai/deployments/{name}/chat/completions with a
+// mandatory api-version), which the gateway's translation cannot synthesize —
+// a translated request to /v1/chat/completions would 404. Set Dialect
+// manually only when fronting an Azure endpoint that serves the plain
+// /v1/chat/completions surface.
 func AzureOpenAI(endpoint, key string) Upstream {
 	return Upstream{
-		Name:    "azure-openai",
-		URL:     endpoint,
-		Auth:    AuthHeader("api-key"),
-		Key:     key,
-		Dialect: DialectOpenAI,
+		Name: "azure-openai",
+		URL:  endpoint,
+		Auth: AuthHeader("api-key"),
+		Key:  key,
 	}
 }

@@ -108,17 +108,19 @@ func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEve
 		return fiber.ErrBadGateway
 	}
 
+	// decodeLimit bounds every decompression in this function.
+	decodeLimit := cfg.MaxResponseSize
+	if decodeLimit <= 0 {
+		decodeLimit = usageDecodeLimit
+	}
+
 	translating := xlateFrom != DialectUnspecified
 	if translating {
 		// The body must be readable to translate it back. Accept-Encoding was
 		// pinned to identity on the upstream request; decode defensively if a
 		// misbehaving upstream compressed anyway.
 		if enc := string(resp.RawResponse.Header.Peek(fiber.HeaderContentEncoding)); enc != "" && !strings.EqualFold(strings.TrimSpace(enc), "identity") {
-			limit := cfg.MaxResponseSize
-			if limit <= 0 {
-				limit = usageDecodeLimit
-			}
-			decoded, ok := boundedDecompress(enc, body, limit)
+			decoded, ok := boundedDecompress(enc, body, decodeLimit)
 			if !ok {
 				// Fully read, so the connection is clean to reuse.
 				resp.Close()
@@ -138,11 +140,7 @@ func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEve
 		if translating {
 			ev.Usage = parseUsage(body, c.App().Config().JSONDecoder)
 		} else {
-			limit := cfg.MaxResponseSize
-			if limit <= 0 {
-				limit = usageDecodeLimit
-			}
-			ev.Usage = parseUsage(decodeForUsage(resp, body, limit), c.App().Config().JSONDecoder)
+			ev.Usage = parseUsage(decodeForUsage(resp, body, decodeLimit), c.App().Config().JSONDecoder)
 		}
 	}
 

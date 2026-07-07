@@ -42,7 +42,7 @@ func Test_AIGateway_DialectValidationAndPresets(t *testing.T) {
 	require.Equal(t, DialectOpenAI, OpenAI("k").Dialect)
 	require.Equal(t, DialectAnthropic, Anthropic("k").Dialect)
 	require.Equal(t, DialectOpenAI, OpenRouter("k").Dialect)
-	require.Equal(t, DialectOpenAI, AzureOpenAI("https://r.openai.azure.com", "k").Dialect)
+	require.Equal(t, DialectUnspecified, AzureOpenAI("https://r.openai.azure.com", "k").Dialect, "Azure chat paths cannot be synthesized; translation must be opted into")
 }
 
 // ---- request codecs ----
@@ -312,7 +312,9 @@ func runTranscoder(t *testing.T, tc streamTranscoder, input string, n int) strin
 		require.NoError(t, tc.feed(w, data[:end]))
 		data = data[end:]
 	}
-	require.NoError(t, tc.finish(w))
+	if ferr := tc.finish(w); ferr != nil {
+		require.ErrorIs(t, ferr, errStreamTruncated, "finish may only fail with the truncation sentinel here")
+	}
 	require.NoError(t, w.Flush())
 	return buf.String()
 }
@@ -404,12 +406,41 @@ func Test_O2ATranscoder(t *testing.T) {
 func Test_O2ATranscoder_EOFWithoutDone(t *testing.T) {
 	t.Parallel()
 
-	// A stream that ends without [DONE] must still terminate with
-	// message_delta + message_stop so Anthropic SDKs don't hang.
+	// A stream that ends without [DONE] is a truncation: the client must be
+	// told via an error event — never a fabricated completed message — and
+	// finish must surface the sentinel so the relay records it.
 	partial := `data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"content":"hey"},"finish_reason":null}]}` + "\n\n"
-	out := runTranscoder(t, newO2ATranscoder("m", json.Unmarshal, json.Marshal), partial, 16)
-	require.Contains(t, out, "event: message_delta\n")
-	require.Contains(t, out, "event: message_stop\n")
+	tc := newO2ATranscoder("m", json.Unmarshal, json.Marshal)
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+	require.NoError(t, tc.feed(w, []byte(partial)))
+	require.ErrorIs(t, tc.finish(w), errStreamTruncated)
+	require.NoError(t, w.Flush())
+
+	out := buf.String()
+	require.Contains(t, out, "event: error\n")
+	require.Contains(t, out, "api_error")
+	require.NotContains(t, out, "event: message_stop\n", "a truncated stream must not look complete")
+	require.NotContains(t, out, `"stop_reason":"end_turn"`)
+}
+
+func Test_A2OTranscoder_EOFWithoutMessageStop(t *testing.T) {
+	t.Parallel()
+
+	// Same in the other direction: the OpenAI client gets an explicit error
+	// object before [DONE] rather than a silently truncated stream.
+	partial := "event: message_start\n" +
+		`data: {"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":3}}}` + "\n\n"
+	tc := newA2OTranscoder("m", 0, false, json.Unmarshal, json.Marshal)
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+	require.NoError(t, tc.feed(w, []byte(partial)))
+	require.ErrorIs(t, tc.finish(w), errStreamTruncated)
+	require.NoError(t, w.Flush())
+
+	out := buf.String()
+	require.Contains(t, out, `"type":"api_error"`)
+	require.True(t, strings.HasSuffix(out, "data: [DONE]\n\n"))
 }
 
 func Test_SSEScannerOversizedEvent(t *testing.T) {
@@ -777,4 +808,142 @@ func Test_AIGateway_ChatPassThroughSameDialect(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, body, decodeEcho(t, resp).Body, "same-dialect chat relays byte-for-byte")
+}
+
+// ---- review-fix regressions ----
+
+func Test_AIGateway_TransientOutagePlusUntranslatableIs502(t *testing.T) {
+	t.Parallel()
+
+	// Primary (same dialect) is unreachable; the cross-dialect fallback cannot
+	// take an n:2 request. A real upstream was attempted, so this is a 502 —
+	// not a 400 that would tell the client its request is permanently invalid.
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams: []Upstream{
+			{Name: "oai", URL: "http://127.0.0.1:1", Key: "sk", Dialect: DialectOpenAI},
+			{Name: "claude", URL: "http://127.0.0.1:1", Key: "sk", Dialect: DialectAnthropic},
+		},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","n":2,"messages":[{"role":"user","content":"x"}]}`))
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusBadGateway, resp.StatusCode)
+}
+
+func Test_A2OTranscoder_PingEmitsKeepalive(t *testing.T) {
+	t.Parallel()
+
+	in := "event: message_start\n" +
+		`data: {"type":"message_start","message":{"id":"msg_1"}}` + "\n\n" +
+		"event: ping\n" +
+		`data: {"type":"ping"}` + "\n\n"
+	tc := newA2OTranscoder("m", 0, false, json.Unmarshal, json.Marshal)
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+	require.NoError(t, tc.feed(w, []byte(in)))
+	require.NoError(t, w.Flush())
+	require.Contains(t, buf.String(), ": keepalive\n\n",
+		"dropped upstream events must still produce client-side bytes")
+}
+
+func Test_TranslateResponse_UsageAlwaysPresent(t *testing.T) {
+	t.Parallel()
+
+	// A lenient OpenAI-compatible upstream may omit usage; Anthropic's schema
+	// requires it, so zeros must be emitted rather than dropping the key.
+	oaiBody := []byte(`{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"m",
+		"choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}`)
+	out, err := translateResponseBody(DialectOpenAI, oaiBody, "m", 0, json.Unmarshal, json.Marshal)
+	require.NoError(t, err)
+	require.Contains(t, string(out), `"usage"`)
+	require.Contains(t, string(out), `"input_tokens":0`)
+	require.Contains(t, string(out), `"stop_sequence":null`)
+}
+
+func Test_TranslateErrorBody_EmptyTypeDefaulted(t *testing.T) {
+	t.Parallel()
+
+	out := translateErrorBody(DialectAnthropic,
+		[]byte(`{"type":"error","error":{"message":"busy"}}`),
+		json.Unmarshal, json.Marshal)
+	require.JSONEq(t, `{"error":{"message":"busy","type":"api_error"}}`, string(out),
+		"an empty upstream error type must default, matching the mirror direction")
+}
+
+func Test_AIGateway_UntranscodableStreamUsageContract(t *testing.T) {
+	t.Parallel()
+
+	// Upstream answers a chat request with an NDJSON stream: not transcodable.
+	upstreamApp := fiber.New()
+	upstreamApp.Post(anthropicChatPath, func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, "application/x-ndjson")
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			_, _ = w.WriteString(`{"x":1}` + "\n") //nolint:errcheck // test upstream
+			_ = w.Flush()                          //nolint:errcheck // test upstream
+		})
+	})
+	upstream := "http://" + startServer(t, upstreamApp)
+
+	var got *UsageEvent
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams: []Upstream{{Name: "claude", URL: upstream, Key: "sk", Dialect: DialectAnthropic}},
+		OnUsage:   func(e *UsageEvent) { got = e },
+	}))
+
+	req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","stream":true,"messages":[{"role":"user","content":"x"}]}`))
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusBadGateway, resp.StatusCode)
+
+	require.NotNil(t, got)
+	require.Equal(t, fiber.StatusOK, got.StatusCode, "the upstream did respond; 0 is reserved for no response")
+	require.False(t, got.Streamed, "the client received a buffered 502, not a stream")
+	require.ErrorIs(t, got.Err, errUntranslatableResponse)
+}
+
+func Test_AIGateway_TranslatedRequestPinsSingleAcceptEncoding(t *testing.T) {
+	t.Parallel()
+
+	got := map[string]string{}
+	upstream := fakeAnthropicUpstream(t, got)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams: []Upstream{{Name: "claude", URL: upstream, Key: "sk", Auth: AuthHeader("x-api-key"), Dialect: DialectAnthropic}},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"x"}]}`))
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	// Two Accept-Encoding header lines: both must be replaced by the pin.
+	req.Header.Add(fiber.HeaderAcceptEncoding, "gzip")
+	req.Header.Add(fiber.HeaderAcceptEncoding, "br")
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "identity", got["accept-encoding"], "no client Accept-Encoding line may survive the pin")
+}
+
+func Test_O2ATranscoder_NewToolIDAtSameIndexOpensNewBlock(t *testing.T) {
+	t.Parallel()
+
+	// An index-less upstream (index decodes 0 for both calls) must still get
+	// two tool_use blocks when the tool-call id changes.
+	in := `data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"f1","arguments":"{}"}}]},"finish_reason":null}]}` + "\n\n" +
+		`data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_b","type":"function","function":{"name":"f2","arguments":"{}"}}]},"finish_reason":null}]}` + "\n\n" +
+		"data: [DONE]\n\n"
+	out := runTranscoder(t, newO2ATranscoder("m", json.Unmarshal, json.Marshal), in, len(in))
+	require.Equal(t, 2, strings.Count(out, `"type":"tool_use"`), "two distinct tool calls must open two blocks")
+	require.Contains(t, out, `"name":"f1"`)
+	require.Contains(t, out, `"name":"f2"`)
 }

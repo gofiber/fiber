@@ -65,7 +65,11 @@ type UsageEvent struct {
 	// RequestBytes is the size of the relayed request body.
 	RequestBytes int64
 
-	// ResponseBytes is the number of body bytes relayed to the client.
+	// ResponseBytes counts response body bytes. For buffered responses it is
+	// the bytes sent to the client (after any translation or OnResponse
+	// rewrite); for streamed responses it counts upstream bytes — under a
+	// stream transcoder the client-side byte count differs, and
+	// MaxResponseSize likewise bounds upstream bytes there.
 	ResponseBytes int64
 
 	// StatusCode is the upstream response status, or 0 when no upstream

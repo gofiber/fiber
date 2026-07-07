@@ -91,6 +91,12 @@ func buildRequest(c fiber.Ctx, cfg *Config, up *Upstream, strippedPath, key stri
 			// Content-Encoding no longer describes it.
 			continue
 		}
+		if translateTo != DialectUnspecified && utils.EqualFold(name, fiber.HeaderAcceptEncoding) {
+			// Dropped wholesale (a client may send several Accept-Encoding
+			// lines, and Set below replaces only the first): the identity pin
+			// after the loop must be the only value on a translated exchange.
+			continue
+		}
 		req.RawRequest.Header.AddBytesKV(k, v)
 	}
 
