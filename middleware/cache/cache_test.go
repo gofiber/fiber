@@ -3743,7 +3743,7 @@ func Benchmark_Cache(b *testing.B) {
 	app.Use(New())
 
 	app.Get("/demo", func(c fiber.Ctx) error {
-		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
@@ -3769,7 +3769,7 @@ func Benchmark_Cache_Miss(b *testing.B) {
 	app.Use(New())
 
 	app.Get("/*", func(c fiber.Ctx) error {
-		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
 		return c.Status(fiber.StatusOK).Send(data)
 	})
 
@@ -3801,7 +3801,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	}))
 
 	app.Get("/demo", func(c fiber.Ctx) error {
-		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
