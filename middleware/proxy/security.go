@@ -79,6 +79,16 @@ type SecurityPolicy struct {
 	// (RFC 6598) addresses. SECURITY: enabling this exposes the proxy
 	// to SSRF attacks against internal services such as cloud
 	// metadata endpoints. Default: false.
+	//
+	// DNS-rebinding scope: when false, Balancer re-validates the resolved
+	// IP at dial time (it installs a guarded Dial on each HostClient it
+	// constructs), which closes the check/use window a malicious resolver
+	// could exploit. The runtime helpers — Do, DoRedirects, DoTimeout,
+	// DoDeadline, Forward, DomainForward, BalancerForward — validate the
+	// host up front but then dispatch through the shared/user-supplied
+	// *fasthttp.Client, which re-resolves the name without the guard.
+	// Against a rebinding-capable resolver they are therefore not fully
+	// mitigated; see the note on those functions.
 	AllowPrivateIPs bool
 
 	// AllowHTTPSDowngrade permits proxy.DoRedirects to follow redirects

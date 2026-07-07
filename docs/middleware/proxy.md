@@ -37,6 +37,10 @@ Upstream addresses that resolve to loopback, RFC 1918 private, link-local (inclu
 
 For `Balancer`, the resolved IP is re-validated at **dial time** (via a guarded `Dial` on each upstream `fasthttp.HostClient`), which both defeats DNS-rebinding and avoids resolving hostnames at startup — a transient DNS failure won't panic your application. DNS lookups are bounded by a 5-second timeout.
 
+:::caution DNS-rebinding scope
+The dial-time re-validation only applies to `Balancer`, because those `HostClient`s are constructed by the middleware. The runtime helpers — `Do`, `DoRedirects`, `DoTimeout`, `DoDeadline`, `Forward`, `DomainForward`, and `BalancerForward` — validate the upstream host up front, then dispatch through the shared or user-supplied `*fasthttp.Client`, which re-resolves the name without the guard. Against a **rebinding-capable resolver** these paths have a check/use window and are not fully mitigated. If that is part of your threat model, use `Balancer` (with `AllowPrivateIPs = false`), or supply a client whose `Dial` performs its own resolved-IP validation.
+:::
+
 Set `SecurityPolicy.AllowPrivateIPs = true` to opt out — required when proxying to internal services on the same network.
 
 ### Scheme allowlist
