@@ -376,6 +376,13 @@ type Config struct {
 	// Optional. Default: 30 * time.Second (when BreakerThreshold > 0)
 	BreakerCooldown time.Duration
 
+	// keepaliveInterval is how often a transcoded stream writes an SSE
+	// comment to the client while the upstream is silent (or emitting events
+	// that translate to nothing), so intermediary idle timeouts don't kill
+	// healthy streams. Unexported: defaulted in configDefault, overridden
+	// only by tests.
+	keepaliveInterval time.Duration
+
 	// BreakerThreshold opens an upstream's circuit breaker after this many
 	// consecutive failed attempts (network errors or retryable statuses):
 	// the upstream is skipped for BreakerCooldown instead of being retried
@@ -587,6 +594,10 @@ func configDefault(config ...Config) Config {
 
 	if cfg.MaxTokensCap < 0 {
 		cfg.MaxTokensCap = 0
+	}
+
+	if cfg.keepaliveInterval <= 0 {
+		cfg.keepaliveInterval = defaultKeepaliveInterval
 	}
 
 	if len(cfg.ParamDefaults) > 0 {

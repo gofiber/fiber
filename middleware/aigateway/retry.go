@@ -79,17 +79,18 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, clientD D
 	var lastResp *client.Response
 	var lastUp *Upstream
 	var lastOpts streamOpts
-	var lastErr error
 
-	// A translation error must never mask a real upstream failure: the
-	// 400-vs-502 classification in New() keys on errUntranslatable, so a
-	// network error from one candidate keeps precedence over a later
-	// candidate's translation failure.
-	recordErr := func(err error, translation bool) {
-		if translation && lastErr != nil && !errors.Is(lastErr, errUntranslatable) {
-			return
+	// Failures are tracked in two buckets so classification in New() is
+	// order-independent: any Send failure outranks translation failures (a
+	// translation error must never mask a real upstream outage), and among
+	// translation failures an errUntranslatable — which drives the 400
+	// classification — is only ever replaced by another errUntranslatable.
+	var upstreamErr error
+	var translationErr error
+	recordTranslationErr := func(err error) {
+		if errors.Is(err, errUntranslatable) || translationErr == nil || !errors.Is(translationErr, errUntranslatable) {
+			translationErr = err
 		}
-		lastErr = err
 	}
 
 	candidates := candidateUpstreams(cfg, ev)
@@ -105,22 +106,23 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, clientD D
 		// Translation and the ModelMap rewrite are per-upstream and
 		// attempt-invariant, so both are computed once here. An untranslatable
 		// request does not abort the chain: a same-dialect fallback can still
-		// serve it verbatim.
+		// serve it verbatim. translateTo != DialectUnspecified is the single
+		// signal that this upstream's exchange is translated.
 		upPath := strippedPath
 		var body []byte // nil relays the original raw bytes
 		var opts streamOpts
-		translating := false
+		translateTo := DialectUnspecified
 		if needsTranslation(clientD, up.Dialect) {
 			tb, topts, terr := translateRequest(clientD, up.Dialect, jsonBody,
 				c.App().Config().JSONDecoder, c.App().Config().JSONEncoder, cfg.MaxTokensCap)
 			if terr != nil {
-				recordErr(terr, true)
+				recordTranslationErr(terr)
 				continue
 			}
 			body = tb
 			opts = topts
 			upPath = chatPathForDialect(up.Dialect)
-			translating = true
+			translateTo = up.Dialect
 		}
 
 		// ModelMap runs on the (possibly translated) body — the "model" field
@@ -129,12 +131,12 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, clientD D
 		// applies but could not be encoded; relaying the unmapped body would
 		// request a model this upstream does not serve, so move on to the
 		// next upstream instead.
-		mapSrc := jsonBody
-		if translating {
-			mapSrc = body
+		mapSrc := body
+		if mapSrc == nil {
+			mapSrc = jsonBody
 		}
 		if mapped, rerr := rewriteForUpstream(c, up, ev.Model, mapSrc); rerr != nil {
-			recordErr(rerr, true)
+			recordTranslationErr(rerr)
 			continue
 		} else if mapped != nil {
 			body = mapped
@@ -169,15 +171,11 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, clientD D
 			if cfg.ForwardClientKey {
 				injectKey = key
 			}
-			translateTo := DialectUnspecified
-			if translating {
-				translateTo = up.Dialect
-			}
 			resp, err := buildRequest(c, cfg, up, upPath, injectKey, body, translateTo).Send()
 			if err != nil {
 				// A network error carries no Retry-After, so it must not seed
 				// this upstream's backoff basis.
-				recordErr(err, false)
+				upstreamErr = err
 				curResp = nil
 				if brk != nil {
 					brk.recordFailure(cfg.BreakerThreshold, cfg.BreakerCooldown)
@@ -213,6 +211,10 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, clientD D
 
 	if lastResp != nil {
 		return relayTarget{resp: lastResp, up: lastUp, opts: lastOpts}, nil
+	}
+	lastErr := upstreamErr
+	if lastErr == nil {
+		lastErr = translationErr
 	}
 	if lastErr == nil {
 		lastErr = errAllUpstreamsFailed

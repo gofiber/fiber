@@ -322,21 +322,38 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 			defer idleTimer.Stop()
 		}
 
+		// Transcoded streams get a heartbeat: upstream events that translate
+		// to nothing (pings, thinking deltas) and pre-first-token silences
+		// would otherwise leave the client connection byte-less until an
+		// intermediary idle timeout kills it. Pass-through streams stay
+		// byte-exact, so no comments are injected there.
+		var keepaliveC <-chan time.Time
+		if tc != nil {
+			keepalive := time.NewTicker(cfg.keepaliveInterval)
+			keepaliveC = keepalive.C
+			defer keepalive.Stop()
+		}
+
 		tail := &usageTail{}
 	loop:
 		for {
-			if idleTimer != nil {
-				idleTimer.Reset(idle)
-			}
 			select {
 			case chunk := <-chunks:
+				// Only real upstream traffic re-arms the idle guard: a
+				// keepalive tick is gateway-generated and must not mask a
+				// silent upstream.
+				if idleTimer != nil {
+					idleTimer.Reset(idle)
+				}
 				if chunk.err != nil {
 					if !errors.Is(chunk.err, io.EOF) {
 						ev.Err = chunk.err
-					} else if tc != nil && tc.finish(w) == nil {
-						// Clean upstream EOF: the transcoder synthesized the
-						// terminal events its client dialect requires.
-						_ = w.Flush() //nolint:errcheck // stream is ending either way
+					} else if ferr := finishTranscode(w, tc); ferr != nil {
+						// Clean upstream EOF without its terminator: the
+						// transcoder informed the client and returned
+						// errStreamTruncated, which must reach the usage
+						// event so truncations are observable.
+						ev.Err = ferr
 					}
 					break loop
 				}
@@ -364,6 +381,15 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 				}
 				if werr := w.Flush(); werr != nil {
 					ev.Err = werr
+					break loop
+				}
+			case <-keepaliveC:
+				if kerr := writeSSEKeepalive(w); kerr != nil {
+					ev.Err = kerr
+					break loop
+				}
+				if kerr := w.Flush(); kerr != nil {
+					ev.Err = kerr
 					break loop
 				}
 			case <-idleC:
@@ -427,6 +453,19 @@ func readStream(stream io.Reader, resp *client.Response, chunks chan<- streamChu
 		return
 	}
 	resp.Close()
+}
+
+// finishTranscode lets a transcoder emit the terminal events its client
+// dialect requires on a clean upstream EOF, flushing them out. It returns the
+// transcoder's error — errStreamTruncated when the upstream never sent its
+// terminator — or nil for verbatim relays and cleanly-terminated streams.
+func finishTranscode(w *bufio.Writer, tc streamTranscoder) error {
+	if tc == nil {
+		return nil
+	}
+	err := tc.finish(w)
+	_ = w.Flush() //nolint:errcheck // stream is ending either way
+	return err
 }
 
 func fireUsage(cfg *Config, ev *UsageEvent, start time.Time) {

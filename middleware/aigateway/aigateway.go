@@ -230,11 +230,14 @@ func New(config ...Config) fiber.Handler {
 		if resp == nil {
 			ev.Err = sendErr
 			fireUsage(&cfg, ev, start)
-			// 400 only when no upstream was even attempted and the request
-			// itself cannot be expressed in any reachable upstream's dialect;
-			// any real attempt means an upstream-side failure, which is a 502
-			// regardless of what error happened to be recorded last.
-			if ev.Attempts == 0 && errors.Is(sendErr, errUntranslatable) {
+			// 400 only when no upstream was even attempted, none was skipped
+			// by an open circuit breaker, and the request cannot be expressed
+			// in any reachable upstream's dialect. A real attempt means an
+			// upstream-side failure, and a breaker-skipped upstream means the
+			// chain is temporarily degraded (the skipped upstream might have
+			// served the request verbatim) — both are 502s, never a permanent
+			// "your request is invalid".
+			if ev.Attempts == 0 && len(ev.SkippedUpstreams) == 0 && errors.Is(sendErr, errUntranslatable) {
 				return sendError(c, fiber.StatusBadRequest, sendErr.Error(), "invalid_request_error")
 			}
 			return fiber.ErrBadGateway

@@ -301,8 +301,10 @@ const antStreamFixture = "event: message_start\n" +
 	"event: message_stop\n" +
 	"data: {\"type\":\"message_stop\"}\n\n"
 
-// runTranscoder feeds input to tc in chunks of n bytes and returns the output.
-func runTranscoder(t *testing.T, tc streamTranscoder, input string, n int) string {
+// runTranscoder feeds input to tc in chunks of n bytes and returns the output
+// along with finish()'s result — nil for a fixture that carried its own
+// terminator, errStreamTruncated otherwise.
+func runTranscoder(t *testing.T, tc streamTranscoder, input string, n int) (string, error) {
 	t.Helper()
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
@@ -312,27 +314,29 @@ func runTranscoder(t *testing.T, tc streamTranscoder, input string, n int) strin
 		require.NoError(t, tc.feed(w, data[:end]))
 		data = data[end:]
 	}
-	if ferr := tc.finish(w); ferr != nil {
-		require.ErrorIs(t, ferr, errStreamTruncated, "finish may only fail with the truncation sentinel here")
-	}
+	ferr := tc.finish(w)
 	require.NoError(t, w.Flush())
-	return buf.String()
+	return buf.String(), ferr
 }
 
 func Test_A2OTranscoder(t *testing.T) {
 	t.Parallel()
 
 	dec, enc := json.Unmarshal, json.Marshal
-	whole := runTranscoder(t, newA2OTranscoder("gpt-4o", 1700000000, true, dec, enc), antStreamFixture, len(antStreamFixture))
+	whole, ferr := runTranscoder(t, newA2OTranscoder("gpt-4o", 1700000000, true, dec, enc), antStreamFixture, len(antStreamFixture))
+	require.NoError(t, ferr, "a fixture with message_stop must leave finish a no-op")
 
 	// Identical output at every split granularity.
 	for _, n := range []int{4096, 7, 1} {
-		got := runTranscoder(t, newA2OTranscoder("gpt-4o", 1700000000, true, dec, enc), antStreamFixture, n)
+		got, gerr := runTranscoder(t, newA2OTranscoder("gpt-4o", 1700000000, true, dec, enc), antStreamFixture, n)
+		require.NoError(t, gerr)
 		require.Equal(t, whole, got, "split size %d must not change the output", n)
 	}
 	// CRLF variant too.
 	crlf := strings.ReplaceAll(antStreamFixture, "\n", "\r\n")
-	require.Equal(t, whole, runTranscoder(t, newA2OTranscoder("gpt-4o", 1700000000, true, dec, enc), crlf, 5))
+	crlfOut, cerr := runTranscoder(t, newA2OTranscoder("gpt-4o", 1700000000, true, dec, enc), crlf, 5)
+	require.NoError(t, cerr)
+	require.Equal(t, whole, crlfOut)
 
 	require.Contains(t, whole, `"chat.completion.chunk"`)
 	require.Contains(t, whole, `"id":"chatcmpl-abc"`)
@@ -348,7 +352,8 @@ func Test_A2OTranscoder(t *testing.T) {
 
 	// Usage reported for the quota/cost pipeline.
 	tc := newA2OTranscoder("gpt-4o", 1700000000, false, dec, enc)
-	out := runTranscoder(t, tc, antStreamFixture, 64)
+	out, oerr := runTranscoder(t, tc, antStreamFixture, 64)
+	require.NoError(t, oerr)
 	require.NotContains(t, out, `"usage"`, "no trailing usage chunk without include_usage")
 	u := tc.usage()
 	require.NotNil(t, u)
@@ -368,9 +373,11 @@ func Test_O2ATranscoder(t *testing.T) {
 	t.Parallel()
 
 	dec, enc := json.Unmarshal, json.Marshal
-	whole := runTranscoder(t, newO2ATranscoder("claude-sonnet-5", dec, enc), oaiStreamFixture, len(oaiStreamFixture))
+	whole, ferr := runTranscoder(t, newO2ATranscoder("claude-sonnet-5", dec, enc), oaiStreamFixture, len(oaiStreamFixture))
+	require.NoError(t, ferr, "a fixture with [DONE] must leave finish a no-op")
 	for _, n := range []int{4096, 7, 1} {
-		got := runTranscoder(t, newO2ATranscoder("claude-sonnet-5", dec, enc), oaiStreamFixture, n)
+		got, gerr := runTranscoder(t, newO2ATranscoder("claude-sonnet-5", dec, enc), oaiStreamFixture, n)
+		require.NoError(t, gerr)
 		require.Equal(t, whole, got, "split size %d must not change the output", n)
 	}
 
@@ -393,11 +400,14 @@ func Test_O2ATranscoder(t *testing.T) {
 	require.Contains(t, whole, `"text_delta"`)
 	require.Contains(t, whole, `"partial_json":"{\"city\":\"Paris\"}"`)
 	require.Contains(t, whole, `"stop_reason":"tool_use"`)
+	require.Equal(t, 2, strings.Count(whole, `"stop_sequence":null`),
+		"message_start AND the terminal message_delta must both carry the required-nullable stop_sequence")
 	require.Contains(t, whole, `"input_tokens":30`)
 	require.Contains(t, whole, `"output_tokens":15`)
 
 	tc := newO2ATranscoder("claude-sonnet-5", dec, enc)
-	_ = runTranscoder(t, tc, oaiStreamFixture, 32)
+	_, uerr := runTranscoder(t, tc, oaiStreamFixture, 32)
+	require.NoError(t, uerr)
 	u := tc.usage()
 	require.NotNil(t, u)
 	require.Equal(t, 45, u.TotalTokens)
@@ -835,20 +845,46 @@ func Test_AIGateway_TransientOutagePlusUntranslatableIs502(t *testing.T) {
 	require.Equal(t, fiber.StatusBadGateway, resp.StatusCode)
 }
 
-func Test_A2OTranscoder_PingEmitsKeepalive(t *testing.T) {
+func Test_AIGateway_TranscodedStreamHeartbeat(t *testing.T) {
 	t.Parallel()
 
-	in := "event: message_start\n" +
-		`data: {"type":"message_start","message":{"id":"msg_1"}}` + "\n\n" +
-		"event: ping\n" +
-		`data: {"type":"ping"}` + "\n\n"
-	tc := newA2OTranscoder("m", 0, false, json.Unmarshal, json.Marshal)
-	var buf bytes.Buffer
-	w := bufio.NewWriter(&buf)
-	require.NoError(t, tc.feed(w, []byte(in)))
-	require.NoError(t, w.Flush())
-	require.Contains(t, buf.String(), ": keepalive\n\n",
-		"dropped upstream events must still produce client-side bytes")
+	// Upstream goes silent for several keepalive intervals mid-stream: the
+	// client must still receive comment bytes so intermediary idle timeouts
+	// don't fire, and the upstream-idle guard must NOT be reset by them.
+	upstreamApp := fiber.New()
+	upstreamApp.Post(anthropicChatPath, func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, "text/event-stream")
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			_, _ = w.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\"}}\n\n") //nolint:errcheck // test upstream
+			_ = w.Flush()                                                                                                       //nolint:errcheck // test upstream
+			time.Sleep(120 * time.Millisecond)
+			_, _ = w.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n") //nolint:errcheck // test upstream
+			_ = w.Flush()                                                                      //nolint:errcheck // test upstream
+		})
+	})
+	upstream := "http://" + startServer(t, upstreamApp)
+
+	gw := fiber.New()
+	gw.Use(New(Config{
+		Upstreams:         []Upstream{{Name: "claude", URL: upstream, Key: "sk", Dialect: DialectAnthropic}},
+		keepaliveInterval: 25 * time.Millisecond,
+	}))
+	gwAddr := startServer(t, gw)
+
+	req, err := http.NewRequest(http.MethodPost, "http://"+gwAddr+"/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","stream":true,"messages":[{"role":"user","content":"x"}]}`))
+	require.NoError(t, err)
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	resp, err := testHTTPClient.Do(req)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	require.Contains(t, string(body), ": keepalive\n\n",
+		"gateway heartbeats must bridge upstream silences on transcoded streams")
+	require.True(t, strings.HasSuffix(string(body), "data: [DONE]\n\n"), "stream still terminates normally")
 }
 
 func Test_TranslateResponse_UsageAlwaysPresent(t *testing.T) {
@@ -942,8 +978,123 @@ func Test_O2ATranscoder_NewToolIDAtSameIndexOpensNewBlock(t *testing.T) {
 	in := `data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"f1","arguments":"{}"}}]},"finish_reason":null}]}` + "\n\n" +
 		`data: {"id":"chatcmpl-1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_b","type":"function","function":{"name":"f2","arguments":"{}"}}]},"finish_reason":null}]}` + "\n\n" +
 		"data: [DONE]\n\n"
-	out := runTranscoder(t, newO2ATranscoder("m", json.Unmarshal, json.Marshal), in, len(in))
+	out, ferr := runTranscoder(t, newO2ATranscoder("m", json.Unmarshal, json.Marshal), in, len(in))
+	require.NoError(t, ferr)
 	require.Equal(t, 2, strings.Count(out, `"type":"tool_use"`), "two distinct tool calls must open two blocks")
 	require.Contains(t, out, `"name":"f1"`)
 	require.Contains(t, out, `"name":"f2"`)
+}
+
+func Test_AIGateway_TruncatedStreamRecordsErr(t *testing.T) {
+	t.Parallel()
+
+	// Upstream 200 SSE that dies without message_stop: the client gets an
+	// explicit error object, and the usage event must record the truncation.
+	upstreamApp := fiber.New()
+	upstreamApp.Post(anthropicChatPath, func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, "text/event-stream")
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			_, _ = w.WriteString("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\"}}\n\n") //nolint:errcheck // test upstream
+			_ = w.Flush()                                                                                                       //nolint:errcheck // test upstream
+		})
+	})
+	upstream := "http://" + startServer(t, upstreamApp)
+
+	usageCh := make(chan *UsageEvent, 1)
+	gw := fiber.New()
+	gw.Use(New(Config{
+		Upstreams: []Upstream{{Name: "claude", URL: upstream, Key: "sk", Dialect: DialectAnthropic}},
+		OnUsage:   func(e *UsageEvent) { usageCh <- e },
+	}))
+	gwAddr := startServer(t, gw)
+
+	req, err := http.NewRequest(http.MethodPost, "http://"+gwAddr+"/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","stream":true,"messages":[{"role":"user","content":"x"}]}`))
+	require.NoError(t, err)
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	resp, err := testHTTPClient.Do(req)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	require.Contains(t, string(body), `"type":"api_error"`, "client is told about the truncation")
+	require.True(t, strings.HasSuffix(string(body), "data: [DONE]\n\n"))
+
+	select {
+	case ev := <-usageCh:
+		require.ErrorIs(t, ev.Err, errStreamTruncated, "truncations must be observable in the usage event")
+	case <-time.After(10 * time.Second):
+		t.Fatal("usage hook did not fire")
+	}
+}
+
+func Test_AIGateway_BreakerSkippedUpstreamMakesUntranslatable502(t *testing.T) {
+	t.Parallel()
+
+	// A same-dialect primary whose breaker is open is a degraded chain, not
+	// an invalid request: the untranslatable fallback must yield 502, not a
+	// permanent 400.
+	var primaryHits int
+	failing := fiber.New()
+	failing.All("/*", func(c fiber.Ctx) error {
+		primaryHits++
+		return c.SendStatus(fiber.StatusServiceUnavailable)
+	})
+	primary := "http://" + startServer(t, failing)
+	got := map[string]string{}
+	anthropic := fakeAnthropicUpstream(t, got)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Upstreams: []Upstream{
+			{Name: "oai", URL: primary, Key: "sk", Dialect: DialectOpenAI},
+			{Name: "claude", URL: anthropic, Key: "sk", Dialect: DialectAnthropic},
+		},
+		BreakerThreshold: 1,
+		BreakerCooldown:  time.Minute,
+	}))
+
+	// Open the primary's breaker with a normal request (503 -> fallback serves).
+	req := httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"x"}]}`))
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, 1, primaryHits)
+
+	// Now an n:2 request: only the cross-dialect candidate remains, but the
+	// primary was breaker-skipped, so this is 502 — not "your request is
+	// permanently invalid".
+	req = httptest.NewRequest(fiber.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"gpt-4o","n":2,"messages":[{"role":"user","content":"x"}]}`))
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer k")
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	resp, err = app.Test(req, testConfig)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusBadGateway, resp.StatusCode)
+	require.Equal(t, 1, primaryHits, "the open breaker keeps the primary untouched")
+}
+
+func Test_O2ATranscoder_LateToolIDAdoptedNotSplit(t *testing.T) {
+	t.Parallel()
+
+	// Non-conformant upstream: first delta has index+name but no id, the id
+	// arrives on a continuation delta. One block, id adopted — and a later
+	// genuinely different id at the same index still splits.
+	in := `data: {"id":"c","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"f1","arguments":"{\"a\":"}}]},"finish_reason":null}]}` + "\n\n" +
+		`data: {"id":"c","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a","function":{"arguments":"1}"}}]},"finish_reason":null}]}` + "\n\n" +
+		`data: {"id":"c","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_b","function":{"name":"f2","arguments":"{}"}}]},"finish_reason":null}]}` + "\n\n" +
+		"data: [DONE]\n\n"
+	out, ferr := runTranscoder(t, newO2ATranscoder("m", json.Unmarshal, json.Marshal), in, len(in))
+	require.NoError(t, ferr)
+	require.Equal(t, 2, strings.Count(out, `"type":"tool_use"`),
+		"a late-arriving id continues the open block; only a different id splits")
+	require.Contains(t, out, `"name":"f1"`)
+	require.Contains(t, out, `"name":"f2"`)
+	require.Contains(t, out, `{\"a\":`)
+	require.Contains(t, out, `1}`)
 }

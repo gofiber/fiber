@@ -13,6 +13,12 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
+// defaultKeepaliveInterval is how often relayStream writes an SSE comment to
+// the client of a transcoded stream. It must comfortably undercut common
+// intermediary idle timeouts (30-60s at ALBs/nginx) while adding negligible
+// traffic.
+const defaultKeepaliveInterval = 15 * time.Second
+
 // sseMaxEventBytes caps one buffered SSE event during transcoding. Unlike
 // usageTail's skip-on-overflow (which only loses best-effort usage), a
 // transcoder cannot drop an event — the translated stream would corrupt — so
@@ -29,9 +35,9 @@ var (
 )
 
 // writeSSEKeepalive writes an SSE comment line — bytes every SSE parser
-// ignores — so upstream events that translate to nothing (pings, thinking
-// deltas) still produce client-side traffic and intermediary idle timeouts
-// don't fire during long upstream silences.
+// ignores. relayStream's keepalive ticker uses it on transcoded streams so
+// upstream silences (pings, thinking deltas, a slow first token) still
+// produce client-side traffic and intermediary idle timeouts don't fire.
 func writeSSEKeepalive(w *bufio.Writer) error {
 	if _, err := w.WriteString(": keepalive\n\n"); err != nil {
 		return fmt.Errorf("aigateway: write keepalive: %w", err)
@@ -175,12 +181,24 @@ func writeSSE(w *bufio.Writer, eventName string, data []byte) error {
 type antEventPayload struct {
 	Message      *antStartMessage `json:"message,omitempty"`
 	ContentBlock *antStartBlock   `json:"content_block,omitempty"`
-	Delta        *antEventDelta   `json:"delta,omitempty"`
+	Delta        any              `json:"delta,omitempty"` // *antEventDelta or *antMsgDelta
 	Usage        *antEventUsage   `json:"usage,omitempty"`
 	Index        *int             `json:"index,omitempty"`
 	Type         string           `json:"type"`
 }
 
+// antMsgDelta is the terminal message_delta payload. Like antStartMessage,
+// stop_sequence is required-nullable in Anthropic's schema, so the key is
+// always emitted (as null) for strict client SDK validation.
+type antMsgDelta struct {
+	StopSequence *string `json:"stop_sequence"`
+	StopReason   string  `json:"stop_reason"`
+}
+
+// antStartMessage is the message_start payload. StopReason/StopSequence stay
+// nil on purpose and deliberately lack omitempty: Anthropic's schema requires
+// the keys present (as null) and strict client SDKs validate that — do not
+// "clean up" the always-nil pointers.
 type antStartMessage struct {
 	StopReason   *string        `json:"stop_reason"`
 	StopSequence *string        `json:"stop_sequence"`
@@ -203,7 +221,6 @@ type antStartBlock struct {
 type antEventDelta struct {
 	Text        *string `json:"text,omitempty"`
 	PartialJSON *string `json:"partial_json,omitempty"`
-	StopReason  string  `json:"stop_reason,omitempty"`
 	Type        string  `json:"type,omitempty"`
 }
 
@@ -312,6 +329,18 @@ func (t *a2oTranscoder) usage() *Usage {
 	return (&usageFields{InputTokens: t.inputTokens, OutputTokens: t.outputTokens}).toUsage()
 }
 
+// emitErrorAndDone terminates the OpenAI stream with an explicit error
+// object followed by [DONE] — the shared epilogue of upstream error events
+// and truncation.
+func (t *a2oTranscoder) emitErrorAndDone(w *bufio.Writer, errType, msg string) error {
+	if data, err := oaiErrorJSON(errType, msg, t.enc); err == nil {
+		if werr := writeSSE(w, "", data); werr != nil {
+			return werr
+		}
+	}
+	return writeSSE(w, "", []byte("[DONE]"))
+}
+
 // finish handles a clean upstream EOF without message_stop: the client is
 // told about the truncation with an explicit error object before [DONE], and
 // the relay records errStreamTruncated on the usage event.
@@ -320,14 +349,8 @@ func (t *a2oTranscoder) finish(w *bufio.Writer) error {
 		return nil
 	}
 	t.done = true
-	data, err := oaiErrorJSON("", errStreamTruncated.Error(), t.enc)
-	if err == nil {
-		if werr := writeSSE(w, "", data); werr != nil {
-			return werr
-		}
-	}
-	if werr := writeSSE(w, "", []byte("[DONE]")); werr != nil {
-		return werr
+	if err := t.emitErrorAndDone(w, "", errStreamTruncated.Error()); err != nil {
+		return err
 	}
 	return errStreamTruncated
 }
@@ -376,9 +399,7 @@ func (t *a2oTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 
 	case evtContentBlockStart:
 		if e.ContentBlock == nil || e.ContentBlock.Type != blockToolUse {
-			// Text blocks open implicitly; thinking is dropped. Keep bytes
-			// flowing so intermediary idle timeouts don't fire.
-			return writeSSEKeepalive(w)
+			return nil // text blocks open implicitly; thinking is dropped
 		}
 		idx := t.nextToolIdx
 		t.nextToolIdx++
@@ -408,9 +429,7 @@ func (t *a2oTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 				Function: &oaiChunkFuncDelta{Arguments: e.Delta.PartialJSON},
 			}}}, nil)
 		default:
-			// Thinking/signature deltas: dropped, but kept alive — extended
-			// thinking can hold the stream silent for minutes.
-			return writeSSEKeepalive(w)
+			return nil // thinking/signature deltas: dropped
 		}
 
 	case evtMessageDelta:
@@ -455,20 +474,13 @@ func (t *a2oTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 		if e.Error != nil {
 			msg, errType = e.Error.Message, e.Error.Type
 		}
-		data, err := oaiErrorJSON(errType, msg, t.enc)
-		if err != nil {
-			return err
-		}
-		if werr := writeSSE(w, "", data); werr != nil {
-			return werr
-		}
-		return writeSSE(w, "", []byte("[DONE]"))
+		return t.emitErrorAndDone(w, errType, msg)
 
 	default:
 		// ping, content_block_stop, and future event types translate to
-		// nothing; emit a comment so the client connection is never silent
-		// while the upstream is keeping its side alive.
-		return writeSSEKeepalive(w)
+		// nothing. relayStream's keepalive ticker keeps the client
+		// connection warm through the resulting silences.
+		return nil
 	}
 }
 
@@ -518,6 +530,21 @@ func (t *o2aTranscoder) usage() *Usage {
 	return (&usageFields{InputTokens: t.inputTokens, OutputTokens: t.outputTokens}).toUsage()
 }
 
+// emitError closes any open block and emits an Anthropic error event — the
+// shared epilogue of upstream error chunks and truncation. An error event is
+// valid at any point in the stream (the real API emits e.g. overloaded_error
+// even before message_start) and client SDKs raise on it.
+func (t *o2aTranscoder) emitError(w *bufio.Writer, errType, msg string) error {
+	if err := t.closeBlock(w); err != nil {
+		return err
+	}
+	data, err := antErrorJSON(errType, msg, t.enc)
+	if err != nil {
+		return err
+	}
+	return writeSSE(w, evtError, data)
+}
+
 // finish handles a clean upstream EOF without [DONE]: rather than fabricating
 // a completed message (which would present a truncated answer as final), the
 // client gets an Anthropic error event, and the relay records
@@ -527,16 +554,8 @@ func (t *o2aTranscoder) finish(w *bufio.Writer) error {
 		return nil
 	}
 	t.done = true
-	if t.started {
-		if err := t.closeBlock(w); err != nil {
-			return err
-		}
-	}
-	data, err := antErrorJSON("", errStreamTruncated.Error(), t.enc)
-	if err == nil {
-		if werr := writeSSE(w, evtError, data); werr != nil {
-			return werr
-		}
+	if err := t.emitError(w, "", errStreamTruncated.Error()); err != nil {
+		return err
 	}
 	return errStreamTruncated
 }
@@ -595,7 +614,7 @@ func (t *o2aTranscoder) terminate(w *bufio.Writer) error {
 	}
 	if err := t.emitEvent(w, evtMessageDelta, &antEventPayload{
 		Type:  evtMessageDelta,
-		Delta: &antEventDelta{StopReason: stop},
+		Delta: &antMsgDelta{StopReason: stop},
 		Usage: &antEventUsage{InputTokens: t.inputTokens, OutputTokens: t.outputTokens},
 	}); err != nil {
 		return err
@@ -636,14 +655,7 @@ func (t *o2aTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 			}
 		}
 		t.done = true
-		if err := t.closeBlock(w); err != nil {
-			return err
-		}
-		data, jerr := antErrorJSON(chunk.Error.Type, chunk.Error.Message, t.enc)
-		if jerr != nil {
-			return jerr
-		}
-		return writeSSE(w, evtError, data)
+		return t.emitError(w, chunk.Error.Type, chunk.Error.Message)
 	}
 
 	if !t.started {
@@ -658,8 +670,7 @@ func (t *o2aTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 		t.sawUsage = true
 	}
 	if len(chunk.Choices) == 0 {
-		// Usage-only chunk: nothing translates, keep the connection warm.
-		return writeSSEKeepalive(w)
+		return nil // usage-only chunk: nothing translates
 	}
 	choice := &chunk.Choices[0]
 	if choice.FinishReason != nil && *choice.FinishReason != "" {
@@ -697,8 +708,11 @@ func (t *o2aTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 	for i := range choice.Delta.ToolCalls {
 		td := &choice.Delta.ToolCalls[i]
 		// A new tool call is signaled by a changed index — or, for upstreams
-		// that omit indexes, by a fresh tool-call id at the same index.
-		if t.openBlock != openBlockTool || td.Index != t.curToolIdx || (td.ID != "" && td.ID != t.curToolID) {
+		// that omit indexes, by a DIFFERENT tool-call id at the same index.
+		// An id arriving on a later delta of the same call (open block still
+		// has no id) is adopted below, not treated as a new call.
+		if t.openBlock != openBlockTool || td.Index != t.curToolIdx ||
+			(td.ID != "" && t.curToolID != "" && td.ID != t.curToolID) {
 			if err := t.closeBlock(w); err != nil {
 				return err
 			}
@@ -719,6 +733,8 @@ func (t *o2aTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 			}
 			t.openBlock = openBlockTool
 			t.curToolIdx = td.Index
+			t.curToolID = td.ID
+		} else if t.curToolID == "" && td.ID != "" {
 			t.curToolID = td.ID
 		}
 		if td.Function != nil && td.Function.Arguments != "" {
