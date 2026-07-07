@@ -159,9 +159,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 	var rootIsFile bool
 
 	// adjustments for io/fs compatibility: io/fs paths are always relative and
-	// slash-rooted, so a leading slash (e.g. "/" or "/dist") is never a valid
+	// slash-separated, so a leading slash (e.g. "/" or "/dist") is never a valid
 	// fs path and makes isFile's fs.FS.Open fail, which sends every request to
-	// PathNotFound. Strip it and treat an empty result as the fs root ".".
+	// the PathNotFound handler. Strip it and treat an empty result as the fs root ".".
 	if config.FS != nil {
 		root = strings.TrimLeft(root, "/")
 		if root == "" {
