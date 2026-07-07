@@ -254,6 +254,31 @@ func newLocalListener(t *testing.T) net.Listener {
 	return ln
 }
 
+// Per RFC 9110 §12.5.1 the most specific matching media range decides an
+// offer's acceptability, so a broader range with a higher quality must not
+// override a more specific q=0 rejection. Before the fix, getOffer dropped
+// q=0 ranges up front and returned an offer the client had explicitly refused.
+func Test_Utils_GetOffer_QualityZeroRejection(t *testing.T) {
+	t.Parallel()
+
+	// A more specific q=0 range rejects the offer even though a broader
+	// range (text/*, */*) with quality > 0 also matches it.
+	require.Empty(t, getOffer([]byte("text/*, text/html;q=0"), acceptsOfferType, "text/html"))
+	require.Empty(t, getOffer([]byte("*/*, application/json;q=0"), acceptsOfferType, "application/json"))
+
+	// The broader range still selects offers that the q=0 range does not reject.
+	require.Equal(t, "text/plain", getOffer([]byte("text/*, text/html;q=0"), acceptsOfferType, "text/plain"))
+
+	// Accept-Encoding: the client accepts anything except gzip, so a server
+	// offering gzip or deflate must pick deflate, not the refused gzip.
+	require.Equal(t, "deflate", getOffer([]byte("*, gzip;q=0"), acceptsOffer, "gzip", "deflate"))
+	require.Empty(t, getOffer([]byte("*, gzip;q=0"), acceptsOffer, "gzip"))
+
+	// Accept-Language: "*" accepts any tag, but "en;q=0" rejects English.
+	require.Empty(t, getOffer([]byte("*, en;q=0"), acceptsLanguageOfferBasic, "en"))
+	require.Equal(t, "fr", getOffer([]byte("*, en;q=0"), acceptsLanguageOfferBasic, "en", "fr"))
+}
+
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
 func Benchmark_Utils_GetOffer(b *testing.B) {
 	testCases := []struct {

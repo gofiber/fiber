@@ -649,12 +649,6 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 					return true
 				})
 			}
-
-			// Skip this accept type if quality is 0.0
-			// See: https://www.rfc-editor.org/rfc/rfc9110#quality.values
-			if quality == 0.0 {
-				return
-			}
 		}
 
 		spec = utils.TrimSpace(spec)
@@ -691,25 +685,57 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 		sortAcceptedTypes(acceptedTypes)
 	}
 
-	// Find the first offer that matches the accepted types
+	// Find the best offer that matches the accepted types.
+	//
+	// Per RFC 9110 §12.5.1 the most specific matching media range determines an
+	// offer's acceptability, and a quality of 0 means the client explicitly
+	// rejects that range. An offer is therefore only acceptable if its most
+	// specific matching range has a quality greater than 0 — a broader range
+	// with a higher quality (e.g. "*" or "text/*") must not override a more
+	// specific q=0 rejection.
+	// See: https://www.rfc-editor.org/rfc/rfc9110#section-12.5.1
+	result := ""
 	for _, acceptedType := range acceptedTypes {
+		if acceptedType.quality == 0 {
+			// A q=0 range never selects an offer; it can only reject one,
+			// which is handled by the more-specific check below.
+			continue
+		}
 		for _, offer := range offers {
 			if offer == "" {
 				continue
 			}
-			if isAccepted(acceptedType.spec, offer, acceptedType.params) {
-				if acceptedType.params != nil {
-					headerParamPool.Put(acceptedType.params)
-				}
-				return offer
+			if isAccepted(acceptedType.spec, offer, acceptedType.params) &&
+				!rejectedByMoreSpecificRange(acceptedTypes, isAccepted, offer, acceptedType.specificity) {
+				result = offer
+				break
 			}
 		}
-		if acceptedType.params != nil {
-			headerParamPool.Put(acceptedType.params)
+		if result != "" {
+			break
 		}
 	}
 
-	return ""
+	for i := range acceptedTypes {
+		if acceptedTypes[i].params != nil {
+			headerParamPool.Put(acceptedTypes[i].params)
+		}
+	}
+
+	return result
+}
+
+// rejectedByMoreSpecificRange reports whether a media range more specific than
+// the one at baseSpecificity matches the offer with a quality of 0, i.e. the
+// client explicitly rejected the offer per RFC 9110 §12.5.1.
+func rejectedByMoreSpecificRange(types []acceptedType, isAccepted func(spec, offer string, specParams headerParams) bool, offer string, baseSpecificity int) bool {
+	for i := range types {
+		if types[i].quality == 0 && types[i].specificity > baseSpecificity &&
+			isAccepted(types[i].spec, offer, types[i].params) {
+			return true
+		}
+	}
+	return false
 }
 
 // sortAcceptedTypes sorts accepted types by quality and specificity, preserving order of equal elements
