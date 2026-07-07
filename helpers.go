@@ -499,7 +499,7 @@ func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, boo
 	j := joinedHeaderValue{key: key}
 	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
 	// an iterator closure that escapes to the heap on every call.
-	h.VisitAll(j.visit) //nolint:staticcheck // see above
+	h.VisitAll(j.visit) //nolint:staticcheck // SA1019: VisitAll is deprecated but kept for the zero-alloc reason noted above
 	return j.combined, j.multi
 }
 
@@ -508,7 +508,7 @@ func peekJoinedResponseHeader(h *fasthttp.ResponseHeader, key string) ([]byte, b
 	j := joinedHeaderValue{key: key}
 	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
 	// an iterator closure that escapes to the heap on every call.
-	h.VisitAll(j.visit) //nolint:staticcheck // see above
+	h.VisitAll(j.visit) //nolint:staticcheck // SA1019: VisitAll is deprecated but kept for the zero-alloc reason noted above
 	return j.combined, j.multi
 }
 
