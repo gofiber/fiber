@@ -370,18 +370,26 @@ func (c *DefaultCtx) ViewBind(vars Map) error {
 // Route returns the matched Route struct.
 func (c *DefaultCtx) Route() *Route {
 	if c.route == nil {
-		// Fallback for fasthttp error handler; uses the same method
-		// resolution as c.Method() (including the raw-header fallback for
-		// unregistered methods) so the two accessors always agree.
-		return &Route{
-			path:     c.pathOriginal,
-			Path:     c.pathOriginal,
-			Method:   currentMethod(c),
-			Handlers: emptyRouteHandlers[:],
-			Params:   emptyRouteParams[:],
-		}
+		// Cold path kept out of line so Route stays within the inlining budget.
+		return c.routeFallback()
 	}
 	return c.route
+}
+
+// routeFallback builds the synthetic route for the fasthttp error handler.
+// Its Method field is resolved like c.Method() (including the raw-header
+// fallback for unregistered methods) so Route and Method always agree.
+// Never inlined: inlining it would push Route over the inlining budget.
+//
+//go:noinline
+func (c *DefaultCtx) routeFallback() *Route {
+	return &Route{
+		path:     c.pathOriginal,
+		Path:     c.pathOriginal,
+		Method:   currentMethod(c),
+		Handlers: emptyRouteHandlers[:],
+		Params:   emptyRouteParams[:],
+	}
 }
 
 // FullPath returns the matched route path, including any group prefixes.
