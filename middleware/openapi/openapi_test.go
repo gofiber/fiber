@@ -1074,8 +1074,11 @@ func Test_OpenAPI_DefaultRequestBodyForPOST(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// No route body metadata should fall back to the default request body for POST.
+	// Without body metadata a POST gets NO implicit request body; declaring
+	// Consumes explicitly opts in to one.
 	app.Post("/webhook", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Post("/typed", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Consumes(fiber.MIMEApplicationJSON)
 	app.Use(New())
 
 	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
@@ -1084,9 +1087,11 @@ func Test_OpenAPI_DefaultRequestBodyForPOST(t *testing.T) {
 
 	var spec openAPISpec
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
-	op := spec.Paths["/webhook"]["post"]
-	require.NotNil(t, op.RequestBody)
-	require.Contains(t, op.RequestBody.Content, fiber.MIMETextPlain)
+	require.Nil(t, spec.Paths["/webhook"]["post"].RequestBody)
+
+	typed := spec.Paths["/typed"]["post"]
+	require.NotNil(t, typed.RequestBody)
+	require.Contains(t, typed.RequestBody.Content, fiber.MIMEApplicationJSON)
 }
 
 func Test_OpenAPI_AutoHeadExcluded(t *testing.T) {
@@ -1172,8 +1177,9 @@ func Test_ConvertToOpenAPIPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := convertToOpenAPIPath(tt.fiberPath, tt.params)
-			require.Equal(t, tt.expectPath, result)
+			variants := buildOpenAPIPathVariants(tt.fiberPath, tt.params)
+			require.NotEmpty(t, variants)
+			require.Equal(t, tt.expectPath, variants[0].Path)
 		})
 	}
 }
@@ -1409,33 +1415,39 @@ func Test_OpenAPI_ShouldIncludeRequestBody(t *testing.T) {
 		expectBody bool
 	}{
 		{
-			name:       "GET with text/plain no body",
+			name:       "GET without consumes has no body",
 			method:     fiber.MethodGet,
-			consumes:   fiber.MIMETextPlain, // default
+			consumes:   "",
 			expectBody: false,
 		},
 		{
-			name:       "GET never has a body even with custom consumes",
+			name:       "GET never has a body even with explicit consumes",
 			method:     fiber.MethodGet,
 			consumes:   fiber.MIMEApplicationJSON,
 			expectBody: false, // GET/HEAD never carry a request body
 		},
 		{
-			name:       "HEAD with text/plain no body",
+			name:       "HEAD never has a body",
 			method:     fiber.MethodHead,
 			consumes:   fiber.MIMETextPlain,
 			expectBody: false,
 		},
 		{
-			name:       "OPTIONS with text/plain no body",
+			name:       "OPTIONS with explicit consumes opts into a body",
 			method:     fiber.MethodOptions,
+			consumes:   fiber.MIMETextPlain,
+			expectBody: true,
+		},
+		{
+			name:       "TRACE never has a body (RFC 9110)",
+			method:     fiber.MethodTrace,
 			consumes:   fiber.MIMETextPlain,
 			expectBody: false,
 		},
 		{
-			name:       "TRACE with text/plain no body",
-			method:     fiber.MethodTrace,
-			consumes:   fiber.MIMETextPlain,
+			name:       "POST without consumes has no implicit body",
+			method:     fiber.MethodPost,
+			consumes:   "",
 			expectBody: false,
 		},
 		{
@@ -2398,4 +2410,110 @@ func Test_OpenAPI_DuplicateSanitizedParamNames(t *testing.T) {
 	require.Len(t, variants, 1)
 	require.Equal(t, "/x/{na_ve}/{na_ve_2}", variants[0].Path)
 	require.Equal(t, []string{"na_ve", "na_ve_2"}, variants[0].ParamNames)
+}
+
+// Test_OpenAPI_ConcurrentDocsAndSpecRequests guards the locking contract: spec
+// generation snapshots routes under the router lock, so serving /openapi.json
+// while other goroutines mutate route metadata must be race-free (run with -race).
+func Test_OpenAPI_ConcurrentDocsAndSpecRequests(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 50 {
+			app.Summary("iteration summary").
+				Response(fiber.StatusOK, "OK", fiber.MIMEApplicationJSON).
+				ResponseHeader(fiber.StatusOK, "X-Iter", "iteration", map[string]any{"type": "integer"}).
+				Tags("concurrent")
+		}
+	}()
+
+	for range 50 {
+		req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	}
+	<-done
+}
+
+func Test_OpenAPI_ExactRouteMount(t *testing.T) {
+	t.Parallel()
+
+	// Registering the middleware as an exact GET route must serve the spec.
+	app := fiber.New()
+	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Get("/openapi.json", New())
+
+	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.Contains(t, requireMap(t, spec["paths"]), "/users")
+
+	// Same for a Use mount whose prefix already ends in the configured path.
+	app2 := fiber.New()
+	app2.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app2.Use("/v1/openapi.json", New())
+
+	req = httptest.NewRequest(fiber.MethodGet, "/v1/openapi.json", http.NoBody)
+	resp, err = app2.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func Test_OpenAPI_SanitizedParamCollision(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	// Both params sanitize to "a_"; the generated names must stay unique.
+	app.Get("/x/:a#/:a$", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+	require.Len(t, paths, 1)
+	for pathKey, item := range paths {
+		op := requireMap(t, item["get"])
+		params, ok := op["parameters"].([]any)
+		require.True(t, ok)
+		require.Len(t, params, 2)
+
+		seen := map[string]struct{}{}
+		for _, rawParam := range params {
+			name, ok := requireMap(t, rawParam)["name"].(string)
+			require.True(t, ok)
+			_, dup := seen[name]
+			require.False(t, dup, "duplicate parameter name %q in %s", name, pathKey)
+			seen[name] = struct{}{}
+			require.Contains(t, pathKey, "{"+name+"}", "path template must reference %q", name)
+		}
+	}
+}
+
+func Test_OpenAPI_MetadataChangesAfterFirstServe(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+	// Registered last, so the chainable doc helper below targets this route.
+	app.Get("/late", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	// Prime the cache.
+	paths := requireMap(t, fetchJSON(t, app)["paths"])
+	op := requireMap(t, requireMap(t, paths["/late"])["get"])
+	require.NotContains(t, requireMap(t, op["responses"]), "201")
+
+	// Documenting an existing route bumps the revision and refreshes the spec.
+	app.Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON)
+
+	paths = requireMap(t, fetchJSON(t, app)["paths"])
+	op = requireMap(t, requireMap(t, paths["/late"])["get"])
+	require.Contains(t, requireMap(t, op["responses"]), "201")
 }

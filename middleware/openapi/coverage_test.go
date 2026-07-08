@@ -107,8 +107,9 @@ func Test_shouldIncludeRequestBody(t *testing.T) {
 	require.False(t, shouldIncludeRequestBody("", nil))
 	require.False(t, shouldIncludeRequestBody("", &fiber.Route{Method: fiber.MethodPost}))
 	require.False(t, shouldIncludeRequestBody(fiber.MIMEApplicationJSON, nil))
+	// Any explicitly declared media type opts in, regardless of method; the
+	// GET/HEAD strip in generateSpec owns the method rule.
 	require.True(t, shouldIncludeRequestBody(fiber.MIMEApplicationJSON, &fiber.Route{Method: fiber.MethodPost}))
-	require.False(t, shouldIncludeRequestBody(fiber.MIMETextPlain, &fiber.Route{Method: fiber.MethodGet, Consumes: fiber.MIMETextPlain}))
 	require.True(t, shouldIncludeRequestBody(fiber.MIMETextPlain, &fiber.Route{Method: fiber.MethodPost, Consumes: fiber.MIMETextPlain}))
 }
 
@@ -241,8 +242,8 @@ func Test_buildOpenAPIPathVariants_Edge(t *testing.T) {
 	variants = buildOpenAPIPathVariants("/:id<range(1<2)>", nil)
 	require.Equal(t, "/{id}", variants[0].Path)
 
-	// convertToOpenAPIPath delegates to the first variant.
-	require.Equal(t, "/{id}", convertToOpenAPIPath("/:id", nil))
+	// A simple parameterized path yields exactly its template as the first variant.
+	require.Equal(t, "/{id}", buildOpenAPIPathVariants("/:id", nil)[0].Path)
 
 	// Generated variants must always be unique.
 	dup := buildOpenAPIPathVariants("/:a?/:a?", nil)

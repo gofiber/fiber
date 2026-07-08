@@ -37,10 +37,11 @@ generated specification at `GET /openapi.json` and a Swagger UI page at
 app.Use(openapi.New())
 ```
 
-The middleware inspects the app's routes and generates the spec on every request
-to the spec path, so routes added, removed, or re-documented after the first
-request are always reflected without a restart. Requests to other paths pass
-through without generation work.
+The middleware inspects the app's routes and generates the spec on the first
+matching request. The spec is cached, but the cache is automatically invalidated
+whenever the route table changes — routes added or removed, or route
+documentation metadata mutated — so changes after the first request are still
+reflected without a restart.
 
 ### Document metadata
 
@@ -295,24 +296,24 @@ schemes: security device-authorization flow and `oauth2MetadataUrl`, XML
   methods and `204 No Content` for `DELETE` and `HEAD`. Declaring any response via
   the helpers disables the automatic default.
 - Operations without metadata default to a summary of `"METHOD /path"`, an empty
-  description, no tags, not deprecated, and a `text/plain` request/response media
-  type. `Consumes`, `Produces` and `RequestBody` panic on an invalid or empty
-  media type.
+  description, no tags and not deprecated. No request body or response content
+  type is invented: a request body appears only when `Consumes`/`RequestBody*` is
+  set explicitly, and default responses carry a description only until
+  `Produces`/`Response*` declares a media type. `Consumes`, `Produces` and
+  `RequestBody` panic on an invalid or empty media type.
 - Each operation gets a unique `operationId`: routes documented with `Name` use
   that name; routes without one get an id generated from the method and path (for
   example `GET /users/{id}` → `getUsersId`). Collisions get a numeric suffix
   (`_2`, `_3`, …) so the document stays valid.
+- Path parameters whose sanitized names collide are also suffixed (`_2`, `_3`, …)
+  so parameter names stay unique per path.
 - `GET` and `HEAD` operations never emit a `requestBody`, even if `Consumes` or
-  `RequestBody` is set, because those methods do not carry a request body.
+  `RequestBody` is set, because those methods do not carry a request body. The
+  same applies to `TRACE`, which must not include content per RFC 9110.
 - `CONNECT` routes are ignored because the OpenAPI specification does not define a
   `connect` operation.
-- The specification always describes the whole application the middleware runs
-  in. When the middleware is registered inside a mounted sub-app, the routes are
-  expanded into the parent application at startup, so the generated document
-  covers the parent's full route set — use `Config.Next` to scope it if needed.
-- Spec generation reads the live route stack. Like `RebuildTree`, mutating
-  routes at runtime (e.g. `RemoveRoute` while serving traffic) is not
-  thread-safe and must be quiesced by the caller.
+- The documentation helpers are also available on `RouteChain` chains:
+  `app.RouteChain("/users").Get(handler).Summary("List users")`.
 
 ## Config
 
@@ -354,6 +355,10 @@ prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specificat
 `app.Use(openapi.New())` only intercepts `/openapi.json` and will not affect other endpoints ending in `openapi.json`.
 The same prefix resolution applies to `UIPath`, so `app.Group("/v1").Use(openapi.New())` also serves the Swagger UI page at
 `/v1/swagger` by default.
+
+The middleware can also be pinned to an exact route — `app.Get("/openapi.json", openapi.New())` or
+`app.Use("/v1/openapi.json", openapi.New())` serves the specification at that registered path. Note that an exact-route
+mount serves only that one endpoint, so the Swagger UI needs its own registration (or a prefix `Use`) to be reachable.
 
 ## Default Config
 
