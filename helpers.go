@@ -243,19 +243,47 @@ func getGroupPath(prefix, path string) string {
 	return utils.TrimRight(prefix, '/') + path
 }
 
+// Match specificity levels returned by the acceptsX helpers. A higher value
+// means the range matched the offer more specifically. They only need to be
+// ordered consistently within a single helper (each getOffer call uses one
+// helper), so an explicit q=0 rejection can override a positive match of the
+// same or lower specificity per RFC 9110 §12.5.1.
+const (
+	matchWildcard = 1 // "*" / trailing-"*" prefix / language "*"
+	matchPrefix   = 2 // language subtag prefix, e.g. "en" matching "en-US"
+	matchExact    = 3 // exact, case-insensitive match
+
+	// Media ranges rank by their coarse class first and by the number of
+	// matched media-type parameters second, so "text/html;level=1" outranks
+	// "text/html", which outranks "text/*", which outranks "*/*".
+	matchMediaAny         = 1 // "*/*"
+	matchMediaTypeAny     = 2 // "type/*"
+	matchMediaTypeSubtype = 3 // "type/subtype"
+	mediaSpecificityScale = 100
+)
+
 // acceptsOffer determines if an offer matches a given specification.
 // It supports a trailing '*' wildcard and performs case-insensitive exact matching.
-// Returns true if the offer matches the specification, false otherwise.
-func acceptsOffer(spec, offer string, _ headerParams) bool {
+// It returns the match specificity (0 = no match, higher = more specific): a
+// wildcard/prefix match is less specific than an exact match. The specificity is
+// used to let an explicit q=0 rejection override a less specific positive match
+// of the same coarse class (RFC 9110 §12.5.1).
+func acceptsOffer(spec, offer string, _ headerParams) int {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		prefix := spec[:len(spec)-1]
 		if len(offer) < len(prefix) {
-			return false
+			return 0
 		}
-		return utils.EqualFold(prefix, offer[:len(prefix)])
+		if utils.EqualFold(prefix, offer[:len(prefix)]) {
+			return matchWildcard
+		}
+		return 0
 	}
 
-	return utils.EqualFold(spec, offer)
+	if utils.EqualFold(spec, offer) {
+		return matchExact
+	}
+	return 0
 }
 
 // acceptsLanguageOfferBasic determines if a language tag offer matches a range
@@ -264,19 +292,25 @@ func acceptsOffer(spec, offer string, _ headerParams) bool {
 // followed by a hyphen. The comparison is case-insensitive. Only a single "*"
 // as the entire range is allowed. Any "*" appearing after a hyphen renders the
 // range invalid and will not match.
-func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
+// It returns the match specificity (0 = no match): "*" is least specific, a
+// prefix match ("en" for "en-US") is more specific, and an exact match is most
+// specific — so an explicit "en-US;q=0" can override a positive "en".
+func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) int {
 	if spec == "*" {
-		return true
+		return matchWildcard
 	}
 	if strings.IndexByte(spec, '*') >= 0 {
-		return false
+		return 0
 	}
 	if utils.EqualFold(spec, offer) {
-		return true
+		return matchExact
 	}
-	return len(offer) > len(spec) &&
+	if len(offer) > len(spec) &&
 		utils.EqualFold(offer[:len(spec)], spec) &&
-		offer[len(spec)] == '-'
+		offer[len(spec)] == '-' {
+		return matchPrefix
+	}
+	return 0
 }
 
 // acceptsLanguageOfferExtended determines if a language tag offer matches a
@@ -285,12 +319,16 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
 // - '*' matches zero or more subtags (can "slide")
 // - Unspecified subtags are treated like '*' (so trailing/extraneous tag subtags are fine)
 // - Matching fails if sliding encounters a singleton (incl. 'x')
-func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
+// It returns the match specificity (0 = no match): a bare "*" is least specific,
+// and otherwise the specificity grows with the number of concrete range subtags
+// that had to match, so a deeper range (e.g. "en-US") outranks a shorter one
+// ("en") and an explicit "en-US;q=0" can override a positive "en".
+func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) int {
 	if spec == "*" {
-		return true
+		return matchWildcard
 	}
 	if spec == "" || offer == "" {
-		return false
+		return 0
 	}
 
 	// Use stack-allocated arrays to avoid heap allocations for typical language tags
@@ -309,7 +347,7 @@ func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
 
 	// Step 2: first subtag must match (or be '*')
 	if rs[0] != "*" && !utils.EqualFold(rs[0], ts[0]) {
-		return false
+		return 0
 	}
 
 	i, j := 1, 1 // i = range index, j = tag index
@@ -319,7 +357,7 @@ func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
 			continue
 		}
 		if j >= len(ts) { // 3.B: ran out of tag subtags
-			return false
+			return 0
 		}
 		if utils.EqualFold(rs[i], ts[j]) { // 3.C: exact subtag match
 			i++
@@ -328,13 +366,21 @@ func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
 		}
 		// 3.D: singleton barrier (one letter or digit, incl. 'x')
 		if len(ts[j]) == 1 {
-			return false
+			return 0
 		}
 		// 3.E: slide forward in the tag and try again
 		j++
 	}
-	// 4: matched all range subtags
-	return true
+
+	// 4: matched all range subtags. Rank by the number of concrete (non-"*")
+	// range subtags so a more specific range wins the specificity comparison.
+	specificity := matchWildcard
+	for _, sub := range rs {
+		if sub != "*" {
+			specificity++
+		}
+	}
+	return specificity
 }
 
 // acceptsOfferType This function determines if an offer type matches a given specification.
@@ -342,8 +388,11 @@ func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
 // It gets the MIME type of the offer (either from the offer itself or by its file extension).
 // It checks if the offer MIME type matches the specification MIME type or if the specification is of the form <MIME_type>/* and the offer MIME type has the same MIME type.
 // It checks if the offer contains every parameter present in the specification.
-// Returns true if the offer type matches the specification, false otherwise.
-func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
+// It returns the match specificity (0 = no match): "*/*" is least specific,
+// then "type/*", then "type/subtype", and matched media-type parameters break
+// ties so "text/html;level=1" outranks "text/html" (letting "text/html;level=1;q=0"
+// override a positive "text/html").
+func acceptsOfferType(spec, offerType string, specParams headerParams) int {
 	var offerMime, offerParams string
 
 	if i := strings.IndexByte(offerType, ';'); i == -1 {
@@ -355,7 +404,7 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 
 	// Accept: */*
 	if spec == "*/*" {
-		return paramsMatch(specParams, offerParams)
+		return mediaMatchSpecificity(matchMediaAny, specParams, offerParams)
 	}
 
 	var mimetype string
@@ -367,7 +416,7 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 
 	if utils.EqualFold(spec, mimetype) {
 		// Accept: <MIME_type>/<MIME_subtype>
-		return paramsMatch(specParams, offerParams)
+		return mediaMatchSpecificity(matchMediaTypeSubtype, specParams, offerParams)
 	}
 
 	s := strings.IndexByte(mimetype, '/')
@@ -375,11 +424,21 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 	// Accept: <MIME_type>/*
 	if s != -1 && specSlash != -1 {
 		if utils.EqualFold(spec[:specSlash], mimetype[:s]) && (spec[specSlash:] == "/*" || mimetype[s:] == "/*") {
-			return paramsMatch(specParams, offerParams)
+			return mediaMatchSpecificity(matchMediaTypeAny, specParams, offerParams)
 		}
 	}
 
-	return false
+	return 0
+}
+
+// mediaMatchSpecificity returns the specificity of a media range that matched an
+// offer's type/subtype, or 0 when the media-type parameters don't match. The
+// coarse class dominates; the count of matched parameters breaks ties.
+func mediaMatchSpecificity(base int, specParams headerParams, offerParams string) int {
+	if !paramsMatch(specParams, offerParams) {
+		return 0
+	}
+	return base*mediaSpecificityScale + len(specParams)
 }
 
 // paramsMatch returns whether offerParams contains all parameters present in specParams.
@@ -599,7 +658,7 @@ var headerParamPool = sync.Pool{
 }
 
 // getOffer return valid offer for header negotiation.
-func getOffer(header []byte, isAccepted func(spec, offer string, specParams headerParams) bool, offers ...string) string {
+func getOffer(header []byte, isAccepted func(spec, offer string, specParams headerParams) int, offers ...string) string {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -609,6 +668,9 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 
 	acceptedTypes := make([]acceptedType, 0, 8)
 	order := 0
+	// Whether any range carries an explicit q=0 rejection. When none do, the
+	// more-specific-rejection scan can be skipped entirely on the hot path.
+	hasRejections := false
 
 	// Parse header and get accepted types with their quality and specificity
 	// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
@@ -670,6 +732,10 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 			specificity = 4
 		}
 
+		if quality == 0 {
+			hasRejections = true
+		}
+
 		// Add to accepted types
 		acceptedTypes = append(acceptedTypes, acceptedType{
 			spec:        utils.UnsafeString(spec),
@@ -695,24 +761,41 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 	// specific q=0 rejection.
 	// See: https://www.rfc-editor.org/rfc/rfc9110#section-12.5.1
 	result := ""
-	for _, acceptedType := range acceptedTypes {
-		if acceptedType.quality == 0 {
-			// A q=0 range never selects an offer; it can only reject one,
-			// which is handled by the more-specific check below.
-			continue
+	if !hasRejections {
+		// Fast path: without any q=0 rejection this is the plain "first matching
+		// range in preference order wins" selection, identical to the algorithm
+		// before q=0 handling, so there is no need to compute or compare match
+		// specificity.
+	selectFast:
+		for _, acceptedType := range acceptedTypes {
+			for _, offer := range offers {
+				if offer != "" && isAccepted(acceptedType.spec, offer, acceptedType.params) > 0 {
+					result = offer
+					break selectFast
+				}
+			}
 		}
-		for _, offer := range offers {
-			if offer == "" {
+	} else {
+		// Rejection-aware path: an offer is only acceptable if its matching range
+		// is not overridden by a q=0 range that matches it at least as
+		// specifically (RFC 9110 §12.5.1).
+	selectWithRejections:
+		for _, acceptedType := range acceptedTypes {
+			if acceptedType.quality == 0 {
+				// A q=0 range never selects an offer; it can only reject one.
 				continue
 			}
-			if isAccepted(acceptedType.spec, offer, acceptedType.params) &&
-				!rejectedByMoreSpecificRange(acceptedTypes, isAccepted, offer, acceptedType.specificity) {
-				result = offer
-				break
+			for _, offer := range offers {
+				if offer == "" {
+					continue
+				}
+				matchSpecificity := isAccepted(acceptedType.spec, offer, acceptedType.params)
+				if matchSpecificity > 0 &&
+					!rejectedByMoreSpecificRange(acceptedTypes, isAccepted, offer, matchSpecificity) {
+					result = offer
+					break selectWithRejections
+				}
 			}
-		}
-		if result != "" {
-			break
 		}
 	}
 
@@ -725,13 +808,17 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 	return result
 }
 
-// rejectedByMoreSpecificRange reports whether a media range more specific than
-// the one at baseSpecificity matches the offer with a quality of 0, i.e. the
-// client explicitly rejected the offer per RFC 9110 §12.5.1.
-func rejectedByMoreSpecificRange(types []acceptedType, isAccepted func(spec, offer string, specParams headerParams) bool, offer string, baseSpecificity int) bool {
+// rejectedByMoreSpecificRange reports whether a q=0 range matches the offer at
+// least as specifically as the positive match at baseSpecificity, i.e. the
+// client explicitly rejected the offer per RFC 9110 §12.5.1. Comparing the
+// effective match specificity (rather than the coarse parsed bucket) lets a
+// same-class rejection win — e.g. "en-US;q=0" over "en", "utf-8;q=0" over an
+// earlier "utf-8", or "text/html;level=1;q=0" over "text/html" — while a less
+// specific rejection such as "text/*;q=0" still does not override "text/html".
+func rejectedByMoreSpecificRange(types []acceptedType, isAccepted func(spec, offer string, specParams headerParams) int, offer string, baseSpecificity int) bool {
 	for i := range types {
-		if types[i].quality == 0 && types[i].specificity > baseSpecificity &&
-			isAccepted(types[i].spec, offer, types[i].params) {
+		if types[i].quality == 0 &&
+			isAccepted(types[i].spec, offer, types[i].params) >= baseSpecificity {
 			return true
 		}
 	}

@@ -85,38 +85,38 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.Empty(t, getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
 
 	// Accept-Language Basic Filtering
-	require.True(t, acceptsLanguageOfferBasic("en", "en-US", nil))
-	require.False(t, acceptsLanguageOfferBasic("en-US", "en", nil))
-	require.True(t, acceptsLanguageOfferBasic("EN", "en-us", nil))
-	require.False(t, acceptsLanguageOfferBasic("en", "en_US", nil))
+	require.Positive(t, acceptsLanguageOfferBasic("en", "en-US", nil))
+	require.Zero(t, acceptsLanguageOfferBasic("en-US", "en", nil))
+	require.Positive(t, acceptsLanguageOfferBasic("EN", "en-us", nil))
+	require.Zero(t, acceptsLanguageOfferBasic("en", "en_US", nil))
 	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOfferBasic, "en-US", "fr-CA"))
 	require.Empty(t, getOffer([]byte("xx"), acceptsLanguageOfferBasic, "en"))
-	require.False(t, acceptsLanguageOfferBasic("en-*", "en-US", nil))
-	require.True(t, acceptsLanguageOfferBasic("*", "en-US", nil))
+	require.Zero(t, acceptsLanguageOfferBasic("en-*", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferBasic("*", "en-US", nil))
 
 	// Accept-Language Extended Filtering
-	require.True(t, acceptsLanguageOfferExtended("en", "en-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("en", "en-Latn-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("en-*", "en-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("*-US", "en-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("en-US-*", "en-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("en-*", "en-US-CA", nil))
-	require.False(t, acceptsLanguageOfferExtended("en-US", "en-GB", nil))
-	require.False(t, acceptsLanguageOfferExtended("fr", "en-US", nil))
-	require.False(t, acceptsLanguageOfferExtended("", "en-US", nil))
-	require.False(t, acceptsLanguageOfferExtended("en", "", nil))
-	require.True(t, acceptsLanguageOfferExtended("*", "en-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("en-*", "en", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en", "en-Latn-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en-*", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("*-US", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en-US-*", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en-*", "en-US-CA", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("en-US", "en-GB", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("fr", "en-US", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("", "en-US", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("en", "", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("*", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en-*", "en", nil))
 	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-*"), acceptsLanguageOfferExtended, "en-US", "fr-CA"))
 
 	// Sliding and singleton barriers
-	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE", nil))
-	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE-x-goethe", nil))
-	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-Latn-DE-1996", nil))
-	require.False(t, acceptsLanguageOfferExtended("de-*-DE", "de", nil))
-	require.False(t, acceptsLanguageOfferExtended("de-*-DE", "de-x-DE", nil))
-	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-CH", nil))
-	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-Latn-CH", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE-x-goethe", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("de-*-DE", "de-Latn-DE-1996", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("de-*-DE", "de", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("de-*-DE", "de-x-DE", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("*-CH", "de-CH", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("*-CH", "de-Latn-CH", nil))
 }
 
 func Test_ReadContentReturnsBytes(t *testing.T) {
@@ -277,6 +277,33 @@ func Test_Utils_GetOffer_QualityZeroRejection(t *testing.T) {
 	// Accept-Language: "*" accepts any tag, but "en;q=0" rejects English.
 	require.Empty(t, getOffer([]byte("*, en;q=0"), acceptsLanguageOfferBasic, "en"))
 	require.Equal(t, "fr", getOffer([]byte("*, en;q=0"), acceptsLanguageOfferBasic, "en", "fr"))
+
+	// Same coarse specificity class: a positive match and a q=0 refusal can share
+	// the parsed specificity bucket, so the effective match specificity decides.
+
+	// Media-type parameters (RFC 9110 §12.5.1): "text/html;level=1;q=0" is more
+	// specific than "text/html", so an offer carrying that parameter is rejected.
+	require.Empty(t, getOffer([]byte("text/html, text/html;level=1;q=0"), acceptsOfferType, "text/html;level=1"))
+	// A less specific "text/html;q=0" must not override the more specific positive
+	// "text/html;level=1" match.
+	require.Equal(t, "text/html;level=1", getOffer([]byte("text/html;level=1, text/html;q=0"), acceptsOfferType, "text/html;level=1"))
+	// An offer without the refused parameter is still accepted.
+	require.Equal(t, "text/html", getOffer([]byte("text/html, text/html;level=1;q=0"), acceptsOfferType, "text/html"))
+
+	// Accept-Language basic filtering buckets "en" and "en-US" the same, but an
+	// exact "en-US;q=0" must override the prefix "en" match.
+	require.Empty(t, getOffer([]byte("en, en-US;q=0"), acceptsLanguageOfferBasic, "en-US"))
+	require.Equal(t, "en-GB", getOffer([]byte("en, en-US;q=0"), acceptsLanguageOfferBasic, "en-US", "en-GB"))
+	// A broader "en;q=0" does not override the exact positive "en-US".
+	require.Equal(t, "en-US", getOffer([]byte("en-US, en;q=0"), acceptsLanguageOfferBasic, "en-US"))
+	// Extended filtering: a deeper refused range wins over a shorter positive one.
+	require.Empty(t, getOffer([]byte("en, en-US;q=0"), acceptsLanguageOfferExtended, "en-US"))
+
+	// Accept-Charset: an exact "utf-8;q=0" refusal overrides an earlier exact
+	// "utf-8" of the same specificity, and a wildcard positive too.
+	require.Empty(t, getOffer([]byte("utf-8, utf-8;q=0"), acceptsOffer, "utf-8"))
+	require.Empty(t, getOffer([]byte("*, utf-8;q=0"), acceptsOffer, "utf-8"))
+	require.Equal(t, "iso-8859-1", getOffer([]byte("*, utf-8;q=0"), acceptsOffer, "utf-8", "iso-8859-1"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
@@ -493,7 +520,7 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		accepts := acceptsOfferType(tc.spec, tc.offerType, tc.specParams)
+		accepts := acceptsOfferType(tc.spec, tc.offerType, tc.specParams) > 0
 		require.Equal(t, tc.accepts, accepts, tc.description)
 	}
 }
