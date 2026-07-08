@@ -605,6 +605,7 @@ func baseIsPlainOrigin(base *url.URL) bool {
 		base.RawPath == "" &&
 		base.User == nil &&
 		base.RawQuery == "" &&
+		!base.ForceQuery &&
 		base.Fragment == "" &&
 		base.Opaque == ""
 }
@@ -645,6 +646,11 @@ func canFastJoinPath(requestPath string) bool {
 		case '?', '#':
 			if !inPath {
 				// Repeated path/query separator — let slow path handle.
+				return false
+			}
+			if i == len(requestPath)-1 {
+				// Empty query/fragment markers are not represented in the
+				// slow path's output, so fall back to preserve behavior.
 				return false
 			}
 			inPath = false

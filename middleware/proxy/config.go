@@ -9,8 +9,6 @@ import (
 )
 
 // Config defines the config for middleware.
-//
-//nolint:govet // struct layout favors readability/grouping over field alignment
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
@@ -34,6 +32,13 @@ type Config struct {
 	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize, TLSConfig
 	// and DialDualStack will not be used if the client are set.
 	Client *fasthttp.LBClient
+
+	// SecurityPolicy overrides the default SSRF, redirect, and
+	// hop-by-hop header rules for this balancer. When nil, the
+	// package-level policy set via WithSecurityPolicy is used.
+	//
+	// Optional. Default: nil
+	SecurityPolicy *SecurityPolicy
 
 	// Servers defines a list of <scheme>://<host> HTTP servers,
 	//
@@ -62,6 +67,14 @@ type Config struct {
 	// Per-connection buffer size for responses' writing.
 	WriteBufferSize int
 
+	// MaxResponseBodySize bounds the size (in bytes) of upstream
+	// responses accepted by the proxy. Responses larger than this are
+	// rejected to protect the proxy from memory exhaustion. Zero
+	// preserves fasthttp's default unlimited behavior.
+	//
+	// Optional. Default: 0
+	MaxResponseBodySize int
+
 	// KeepConnectionHeader keeps the "Connection" header when set to true.
 	//
 	// Note: even when KeepConnectionHeader is true, other RFC 7230 §6.1
@@ -80,21 +93,6 @@ type Config struct {
 	//
 	// Optional. Default: false
 	DialDualStack bool
-
-	// SecurityPolicy overrides the default SSRF, redirect, and
-	// hop-by-hop header rules for this balancer. When nil, the
-	// package-level policy set via WithSecurityPolicy is used.
-	//
-	// Optional. Default: nil
-	SecurityPolicy *SecurityPolicy
-
-	// MaxResponseBodySize bounds the size (in bytes) of upstream
-	// responses accepted by the proxy. Responses larger than this are
-	// rejected to protect the proxy from memory exhaustion. Zero
-	// preserves fasthttp's default unlimited behavior.
-	//
-	// Optional. Default: 0
-	MaxResponseBodySize int
 }
 
 const defaultMaxConnsPerHost = 1024
