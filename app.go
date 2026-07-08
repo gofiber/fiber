@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -89,6 +90,9 @@ type App struct {
 	hooks *Hooks
 	// Latest route & group
 	latestRoute *Route
+	// Routes created by the most recent register() call, so chainable
+	// documentation helpers can reach every method variant of a registration.
+	latestRoutes []*Route
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// TLS handler
@@ -114,9 +118,9 @@ type App struct {
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
-	// Monotonic counter identifying each register() call, used to find every
-	// stack entry created by the most recent registration
-	registrationID uint64
+	// routesRevision increments on every route or route-metadata mutation and
+	// lets consumers (e.g. the OpenAPI middleware) cheaply detect staleness.
+	routesRevision atomic.Uint64
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
@@ -1171,7 +1175,40 @@ func defaultResponseDescription(status int) string {
 	return "Status " + strconv.Itoa(status)
 }
 
+// validateResponseStatus panics when status is neither 0 (the "default"
+// response) nor a valid HTTP status code.
+func validateResponseStatus(status int) {
+	if status != 0 && (status < 100 || status > 599) {
+		panic("invalid status code")
+	}
+}
+
+// responseKey returns the OpenAPI responses-map key for a status code
+// (0 maps to "default").
+func responseKey(status int) string {
+	if status > 0 {
+		return strconv.Itoa(status)
+	}
+	return defaultResponseKey
+}
+
+// getOrCreateResponse returns the route's response entry for key, creating it
+// with a default description when absent. The caller must hold app.mutex (it
+// runs inside applyToLatestRouteLocked callbacks).
+func getOrCreateResponse(route *Route, key string, status int) RouteResponse {
+	if route.Responses == nil {
+		route.Responses = make(map[string]RouteResponse)
+	}
+	resp, ok := route.Responses[key]
+	if !ok {
+		resp = RouteResponse{Description: defaultResponseDescription(status)}
+	}
+	return resp
+}
+
 func (app *App) addResponse(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	validateResponseStatus(status)
+
 	sanitized := sanitizeMediaTypes(mediaTypes)
 
 	if description == "" {
@@ -1307,6 +1344,7 @@ func (app *App) ResponseHeader(status int, name, description string, schema map[
 	if utils.TrimSpace(name) == "" {
 		panic("response header name is required")
 	}
+	validateResponseStatus(status)
 
 	key := responseKey(status)
 
@@ -1322,13 +1360,7 @@ func (app *App) ResponseHeader(status int, name, description string, schema map[
 
 	app.mutex.Lock()
 	app.applyToLatestRouteLocked(func(route *Route) {
-		if route.Responses == nil {
-			route.Responses = make(map[string]RouteResponse)
-		}
-		resp, ok := route.Responses[key]
-		if !ok {
-			resp = RouteResponse{Description: defaultResponseDescription(status)}
-		}
+		resp := getOrCreateResponse(route, key, status)
 		if resp.Headers == nil {
 			resp.Headers = make(map[string]any)
 		}
@@ -1398,16 +1430,15 @@ func (app *App) RequestBodyContent(description string, required bool, content ma
 // ResponseContent documents a response with a different schema, example and
 // encoding per media type for the given status code.
 func (app *App) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
+	validateResponseStatus(status)
 	if description == "" {
 		description = defaultResponseDescription(status)
 	}
 	key := responseKey(status)
+	cloned := cloneRouteMediaTypeMap(content)
 	app.mutex.Lock()
 	app.applyToLatestRouteLocked(func(route *Route) {
-		if route.Responses == nil {
-			route.Responses = make(map[string]RouteResponse)
-		}
-		resp := route.Responses[key]
+		resp := getOrCreateResponse(route, key, status)
 		resp.Description = description
 		resp.Content = cloneRouteMediaTypeMap(content)
 		route.Responses[key] = resp
@@ -1422,16 +1453,11 @@ func (app *App) ResponseLink(status int, name string, link map[string]any) Route
 	if utils.TrimSpace(name) == "" {
 		panic("response link name is required")
 	}
+	validateResponseStatus(status)
 	key := responseKey(status)
 	app.mutex.Lock()
 	app.applyToLatestRouteLocked(func(route *Route) {
-		if route.Responses == nil {
-			route.Responses = make(map[string]RouteResponse)
-		}
-		resp, ok := route.Responses[key]
-		if !ok {
-			resp = RouteResponse{Description: defaultResponseDescription(status)}
-		}
+		resp := getOrCreateResponse(route, key, status)
 		if resp.Links == nil {
 			resp.Links = make(map[string]any)
 		}
@@ -1461,15 +1487,42 @@ func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
 		return
 	}
 
-	apply(latest)
+	// Apply to every route created by the most recent registration call, so a
+	// multi-method registration (Add/All) documents all its method variants,
+	// not only the last one.
+	targets := app.latestRoutes
+	if len(targets) == 0 {
+		targets = []*Route{app.latestRoute}
+	}
 
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			if route != latest && route.regID != 0 && route.regID == latest.regID {
-				apply(route)
+	applied := make(map[*Route]struct{}, len(targets))
+	for _, target := range targets {
+		if _, done := applied[target]; done {
+			continue
+		}
+		applied[target] = struct{}{}
+		apply(target)
+
+		for _, routes := range app.stack {
+			for _, route := range routes {
+				if _, done := applied[route]; done {
+					continue
+				}
+
+				// A use (middleware) route's metadata only propagates to its
+				// own per-method copies, never to unrelated endpoints that
+				// happen to share the path.
+				isMethodValid := route.Method == target.Method || (target.use && route.use) ||
+					(target.Method == MethodGet && route.Method == MethodHead)
+				if route.Path == target.Path && isMethodValid {
+					applied[route] = struct{}{}
+					apply(route)
+				}
 			}
 		}
 	}
+
+	app.bumpRoutesRevision()
 }
 
 // GetRoute Get route by name
@@ -1486,21 +1539,39 @@ func (app *App) GetRoute(name string) Route {
 }
 
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
+// The returned routes are deep copies taken under the router lock, so they can
+// be read safely while other goroutines register or document routes.
 func (app *App) GetRoutes(filterUseOption ...bool) []Route {
-	var rs []Route
 	var filterUse bool
 	if len(filterUseOption) != 0 {
 		filterUse = filterUseOption[0]
 	}
+
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	var rs []Route
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if filterUse && route.use {
 				continue
 			}
-			rs = append(rs, *route)
+			rs = append(rs, *app.copyRoute(route))
 		}
 	}
 	return rs
+}
+
+// RoutesRevision returns a counter that increments whenever a route is added,
+// removed, or has its documentation metadata mutated. Consumers can compare
+// revisions to cheaply detect route-table staleness without locking.
+func (app *App) RoutesRevision() uint64 {
+	return app.routesRevision.Load()
+}
+
+// bumpRoutesRevision marks the route table (or its metadata) as changed.
+func (app *App) bumpRoutesRevision() {
+	app.routesRevision.Add(1)
 }
 
 // Use registers a middleware route that will match requests

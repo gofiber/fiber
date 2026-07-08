@@ -835,3 +835,137 @@ func (r *domainRegistering) RouteChain(path string) Register {
 		path:   getGroupPath(r.path, path),
 	}
 }
+
+// Name assigns a name to the most recently registered route.
+func (r *domainRegistering) Name(name string) Register {
+	r.domain.Name(name)
+	return r
+}
+
+// Summary assigns a short summary to the most recently registered route.
+func (r *domainRegistering) Summary(sum string) Register {
+	r.domain.Summary(sum)
+	return r
+}
+
+// Description assigns a description to the most recently registered route.
+func (r *domainRegistering) Description(desc string) Register {
+	r.domain.Description(desc)
+	return r
+}
+
+// Consumes assigns a request media type to the most recently registered route.
+func (r *domainRegistering) Consumes(typ string) Register {
+	r.domain.Consumes(typ)
+	return r
+}
+
+// Produces assigns a response media type to the most recently registered route.
+func (r *domainRegistering) Produces(typ string) Register {
+	r.domain.Produces(typ)
+	return r
+}
+
+// RequestBody documents the request payload for the most recently registered route.
+func (r *domainRegistering) RequestBody(description string, required bool, mediaTypes ...string) Register {
+	r.domain.RequestBody(description, required, mediaTypes...)
+	return r
+}
+
+// RequestBodyWithExample documents the request payload with schema references and examples.
+func (r *domainRegistering) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register {
+	r.domain.RequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...)
+	return r
+}
+
+// Parameter documents an input parameter for the most recently registered route.
+func (r *domainRegistering) Parameter(name, in string, required bool, schema map[string]any, description string) Register {
+	r.domain.Parameter(name, in, required, schema, description)
+	return r
+}
+
+// ParameterWithExample documents an input parameter, including schema references and examples.
+func (r *domainRegistering) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Register {
+	r.domain.ParameterWithExample(name, in, required, schema, schemaRef, description, example, examples)
+	return r
+}
+
+// AddParameter documents an input parameter using the full RouteParameter.
+//
+//nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
+func (r *domainRegistering) AddParameter(param RouteParameter) Register {
+	r.domain.AddParameter(param)
+	return r
+}
+
+// Response documents an HTTP response for the most recently registered route.
+func (r *domainRegistering) Response(status int, description string, mediaTypes ...string) Register {
+	r.domain.Response(status, description, mediaTypes...)
+	return r
+}
+
+// ResponseWithExample documents an HTTP response with schema references and examples.
+func (r *domainRegistering) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register {
+	r.domain.ResponseWithExample(status, description, schema, schemaRef, example, examples, mediaTypes...)
+	return r
+}
+
+// ResponseHeader documents a response header for the most recently registered route.
+func (r *domainRegistering) ResponseHeader(status int, name, description string, schema map[string]any) Register {
+	r.domain.ResponseHeader(status, name, description, schema)
+	return r
+}
+
+// ResponseContent documents a per-media-type response for the most recently registered route.
+func (r *domainRegistering) ResponseContent(status int, description string, content map[string]RouteMediaType) Register {
+	r.domain.ResponseContent(status, description, content)
+	return r
+}
+
+// ResponseLink documents a response link for the most recently registered route.
+func (r *domainRegistering) ResponseLink(status int, name string, link map[string]any) Register {
+	r.domain.ResponseLink(status, name, link)
+	return r
+}
+
+// RequestBodyContent documents a per-media-type request body for the most recently registered route.
+func (r *domainRegistering) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Register {
+	r.domain.RequestBodyContent(description, required, content)
+	return r
+}
+
+// Tags assigns tags to the most recently registered route.
+func (r *domainRegistering) Tags(tags ...string) Register {
+	r.domain.Tags(tags...)
+	return r
+}
+
+// Deprecated marks the most recently registered route as deprecated.
+func (r *domainRegistering) Deprecated() Register {
+	r.domain.Deprecated()
+	return r
+}
+
+// Security sets the OpenAPI security requirements for the most recently registered route.
+func (r *domainRegistering) Security(requirements ...map[string][]string) Register {
+	r.domain.Security(requirements...)
+	return r
+}
+
+// Hidden excludes the most recently registered route from the generated OpenAPI specification.
+func (r *domainRegistering) Hidden() Register {
+	r.domain.Hidden()
+	return r
+}
+
+// OperationExternalDocs sets the externalDocs of the most recently registered operation.
+func (r *domainRegistering) OperationExternalDocs(description, url string) Register {
+	r.domain.OperationExternalDocs(description, url)
+	return r
+}
+
+// OperationExtension merges arbitrary operation-object fields into the most recently registered operation.
+func (r *domainRegistering) OperationExtension(fields map[string]any) Register {
+	r.domain.OperationExtension(fields)
+	return r
+}

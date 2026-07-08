@@ -766,7 +766,25 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	return route
 }
 
-func (*App) copyRoute(route *Route) *Route {
+func (app *App) copyRoute(route *Route) *Route {
+	copied := app.copyRouteBase(route)
+
+	copied.RequestBody = cloneRouteRequestBody(route.RequestBody)
+	copied.Parameters = cloneRouteParameters(route.Parameters)
+	copied.Responses = cloneRouteResponses(route.Responses)
+	copied.Tags = append([]string(nil), route.Tags...)
+	copied.Security = cloneRouteSecurity(route.Security)
+	copied.ExternalDocs = copyAnyMap(route.ExternalDocs)
+	copied.OperationExtensions = copyAnyMap(route.OperationExtensions)
+
+	return copied
+}
+
+// copyRouteBase copies routing data and scalar metadata but skips the deep
+// clone of documentation maps/slices. Auto-generated HEAD twins use it because
+// their doc metadata is never read: the OpenAPI middleware excludes autoHead
+// routes and HEAD serves by re-running the copied GET handler stack.
+func (*App) copyRouteBase(route *Route) *Route {
 	return &Route{
 		// Router booleans
 		use:           route.use,
@@ -792,15 +810,7 @@ func (*App) copyRoute(route *Route) *Route {
 		Description: route.Description,
 		Consumes:    route.Consumes,
 		Produces:    route.Produces,
-		RequestBody: cloneRouteRequestBody(route.RequestBody),
-		Parameters:  cloneRouteParameters(route.Parameters),
-		Responses:   cloneRouteResponses(route.Responses),
-		Tags:        append([]string(nil), route.Tags...),
 		Deprecated:  route.Deprecated,
-		Security:    cloneRouteSecurity(route.Security),
-
-		ExternalDocs:        copyAnyMap(route.ExternalDocs),
-		OperationExtensions: copyAnyMap(route.OperationExtensions),
 	}
 }
 
@@ -958,11 +968,7 @@ func copyCompositeValue(src any) any {
 		}
 		copied := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
 		for i := range value.Len() {
-			// A nil element yields an invalid reflect.Value; leave the zero
-			// value in place instead of panicking in Set.
-			if elem := copyAnyValue(value.Index(i).Interface()); elem != nil {
-				copied.Index(i).Set(reflect.ValueOf(elem))
-			}
+			copied.Index(i).Set(reflectValueOrZero(copyAnyValue(value.Index(i).Interface()), value.Type().Elem()))
 		}
 		return copied.Interface()
 	case reflect.Map:
@@ -972,18 +978,22 @@ func copyCompositeValue(src any) any {
 		copied := reflect.MakeMapWithSize(value.Type(), value.Len())
 		iter := value.MapRange()
 		for iter.Next() {
-			// SetMapIndex with an invalid value deletes the key, so map a nil
-			// element to the element type's zero value to preserve it.
-			val := reflect.Zero(value.Type().Elem())
-			if elem := copyAnyValue(iter.Value().Interface()); elem != nil {
-				val = reflect.ValueOf(elem)
-			}
-			copied.SetMapIndex(iter.Key(), val)
+			copied.SetMapIndex(iter.Key(), reflectValueOrZero(copyAnyValue(iter.Value().Interface()), value.Type().Elem()))
 		}
 		return copied.Interface()
 	default:
 		return src
 	}
+}
+
+// reflectValueOrZero converts v to a reflect.Value assignable to typ. A nil v
+// (e.g. a nil interface element inside a typed slice or map) yields the zero
+// value of typ instead of the zero reflect.Value, which would panic on Set.
+func reflectValueOrZero(v any, typ reflect.Type) reflect.Value {
+	if v == nil {
+		return reflect.Zero(typ)
+	}
+	return reflect.ValueOf(v)
 }
 
 func (app *App) normalizePath(path string) string {
@@ -1059,6 +1069,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 
 			app.stack[m] = append(app.stack[m][:i], app.stack[m][i+1:]...)
 			app.hasRoutesRefreshed = true
+			app.bumpRoutesRevision()
 
 			// Decrement global handler count. In middleware routes, only decrement once
 			if _, ok := removedUseRoutes[route.path]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
@@ -1095,6 +1106,7 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 
 		app.stack[headIndex] = append(headStack[:i], headStack[i+1:]...)
 		app.hasRoutesRefreshed = true
+		app.bumpRoutesRevision()
 		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
 		return
 	}
@@ -1135,6 +1147,12 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)
 
+	// Start a fresh registration batch so chainable documentation helpers apply
+	// to every route this call creates (one per method), not just the last one.
+	app.mutex.Lock()
+	app.latestRoutes = nil
+	app.mutex.Unlock()
+
 	isMount := group != nil && group.app != app
 
 	for _, method := range methods {
@@ -1160,9 +1178,15 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			Params:      parsedRaw.params,
 			group:       group,
 
-			Path:     pathRaw,
-			Method:   method,
-			Handlers: handlers,
+			Path:        pathRaw,
+			Method:      method,
+			Handlers:    handlers,
+			Summary:     "",
+			Description: "",
+			// Consumes/Produces stay empty until set explicitly; the OpenAPI
+			// middleware treats empty as "unspecified" and emits no media type.
+			Consumes: "",
+			Produces: "",
 		}
 
 		// Increment global handler count
@@ -1209,12 +1233,12 @@ func (app *App) addRoute(method string, route *Route) {
 		app.hasRoutesRefreshed = true
 	}
 
-	// Track the most recent registration so chained helpers (Name, Summary,
-	// ...) target it. Mount routes are tracked too — otherwise a helper
-	// chained onto app.Use("/api", subApp) would mutate whatever route was
-	// registered before the mount — but onRoute hooks are not fired for them.
-	app.latestRoute = route
+	app.bumpRoutesRevision()
+
+	// Execute onRoute hooks & change latestRoute if not adding mounted route
 	if !route.mount {
+		app.latestRoute = route
+		app.latestRoutes = append(app.latestRoutes, route)
 		if err := app.hooks.executeOnRouteHooks(route); err != nil {
 			panic(err)
 		}
@@ -1262,7 +1286,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 			continue
 		}
 
-		headRoute := app.copyRoute(route)
+		headRoute := app.copyRouteBase(route)
 		headRoute.group = route.group
 		headRoute.Method = MethodHead
 		headRoute.autoHead = true
@@ -1285,6 +1309,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 
 	if added {
 		app.stack[headIndex] = headStack
+		app.bumpRoutesRevision()
 	}
 }
 
