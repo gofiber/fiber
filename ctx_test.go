@@ -2926,6 +2926,25 @@ func Test_Ctx_Body_With_Compression_MultiFieldLines(t *testing.T) {
 	require.Equal(t, []byte("double"), c.Body())
 }
 
+// Test_Ctx_Body_With_Compression_EmptyFirstMultiFieldLine verifies that an
+// empty first Content-Encoding field line does not hide later encodings.
+func Test_Ctx_Body_With_Compression_EmptyFirstMultiFieldLine(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Add(HeaderContentEncoding, "")
+	c.Request().Header.Add(HeaderContentEncoding, "gzip")
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write([]byte("john=doe"))
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+
+	c.Request().SetBody(buf.Bytes())
+	require.Equal(t, []byte("john=doe"), c.Body())
+}
+
 // Test_Ctx_Fresh_ObsoleteDateFormats verifies that If-Modified-Since values in
 // the obsolete RFC 850 and ANSI C asctime() formats are accepted, as required
 // by RFC 9110 §5.6.7 for any HTTP-date recipient.
