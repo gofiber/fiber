@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -239,7 +238,10 @@ func Test_Static_Download_NonASCII(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/file", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	expect := "attachment; filename=\"" + fname + "\"; filename*=UTF-8''" + url.PathEscape(fname)
+	// The filename* ext-value uses RFC 8187 attr-char percent-encoding;
+	// assert the literal encoding rather than deriving it from url.PathEscape,
+	// which differs for bytes like '=', '@', ':'.
+	expect := `attachment; filename="файл.txt"; filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`
 	require.Equal(t, expect, resp.Header.Get(fiber.HeaderContentDisposition))
 }
 

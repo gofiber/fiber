@@ -165,19 +165,23 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return n, nil
 }
 
-// quoteString escapes special characters using percent-encoding.
-// Non-ASCII bytes are encoded as well so the result is always ASCII.
-func (app *App) quoteString(raw string) string {
-	bb := bytebufferpool.Get()
-	quoted := string(fasthttp.AppendQuotedArg(bb.B, app.toBytes(raw)))
-	bytebufferpool.Put(bb)
-	return quoted
-}
-
 // quoteRawString escapes only characters that need quoting according to
 // https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
 // contain non-ASCII bytes.
 func (*App) quoteRawString(raw string) string {
+	// Fast path: most values need no escaping at all; avoid the pooled
+	// buffer and the string allocation entirely.
+	needsEscaping := false
+	for i := 0; i < len(raw); i++ {
+		if c := raw[i]; c == '\\' || c == '"' || c < 0x20 || c == 0x7f {
+			needsEscaping = true
+			break
+		}
+	}
+	if !needsEscaping {
+		return raw
+	}
+
 	const hex = "0123456789ABCDEF"
 	bb := bytebufferpool.Get()
 	defer bytebufferpool.Put(bb)
@@ -421,6 +425,9 @@ func paramsMatch(specParamStr headerParams, offerParams string) bool {
 // elements divided by ',' and stores these elements in the string slice.
 // It returns the populated string slice as an output.
 //
+// Empty list elements are parsed and ignored, as required by
+// RFC 9110 Section 5.6.1.2 for all comma-separated field values.
+//
 // If the given slice hasn't enough space, it will allocate more and return.
 func getSplicedStrList(headerValue string, dst []string) []string {
 	if headerValue == "" {
@@ -431,11 +438,15 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 	segmentStart := 0
 	for i := 0; i < len(headerValue); i++ {
 		if headerValue[i] == ',' {
-			dst = append(dst, utils.TrimSpace(headerValue[segmentStart:i]))
+			if segment := utils.TrimSpace(headerValue[segmentStart:i]); segment != "" {
+				dst = append(dst, segment)
+			}
 			segmentStart = i + 1
 		}
 	}
-	dst = append(dst, utils.TrimSpace(headerValue[segmentStart:]))
+	if segment := utils.TrimSpace(headerValue[segmentStart:]); segment != "" {
+		dst = append(dst, segment)
+	}
 
 	return dst
 }
@@ -449,6 +460,58 @@ func joinHeaderValues(headers [][]byte) []byte {
 	default:
 		return bytes.Join(headers, []byte{','})
 	}
+}
+
+// joinedHeaderValue accumulates the combined value of a header's field lines
+// (RFC 9110 Section 5.2). It allocates only in the rare multi-line case; the
+// single-line result aliases the header storage.
+type joinedHeaderValue struct {
+	key      string
+	combined []byte
+	multi    bool
+}
+
+func (j *joinedHeaderValue) visit(k, v []byte) {
+	if len(k) != len(j.key) || !utils.EqualFold(utils.UnsafeString(k), j.key) {
+		return
+	}
+	switch {
+	case j.combined == nil:
+		j.combined = v
+	case !j.multi:
+		joined := make([]byte, 0, len(j.combined)+1+len(v))
+		joined = append(joined, j.combined...)
+		joined = append(joined, ',')
+		joined = append(joined, v...)
+		j.combined = joined
+		j.multi = true
+	default:
+		j.combined = append(j.combined, ',')
+		j.combined = append(j.combined, v...)
+	}
+}
+
+// peekJoinedRequestHeader returns the combined value of every field line for
+// key in a single pass over the request headers, plus whether the field
+// occurred on more than one line. Unlike PeekAll it performs no per-call key
+// normalization. Concrete (non-generic) so the visitor stays on the stack.
+func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, bool) {
+	j := joinedHeaderValue{key: key}
+	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
+	// an iterator closure that escapes to the heap on every call. The SA1019
+	// deprecation is suppressed for helpers.go in .golangci.yml.
+	h.VisitAll(j.visit)
+	return j.combined, j.multi
+}
+
+// peekJoinedResponseHeader is peekJoinedRequestHeader for response headers.
+func peekJoinedResponseHeader(h *fasthttp.ResponseHeader, key string) ([]byte, bool) {
+	j := joinedHeaderValue{key: key}
+	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
+	// an iterator closure that escapes to the heap on every call. The SA1019
+	// deprecation is suppressed for helpers.go in .golangci.yml.
+	h.VisitAll(j.visit)
+	return j.combined, j.multi
 }
 
 func unescapeHeaderValue(v []byte) ([]byte, error) {
@@ -571,7 +634,9 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 					delete(params, k)
 				}
 				fasthttp.VisitHeaderParams(accept[i:], func(key, value []byte) bool {
-					if len(key) == 1 && key[0] == 'q' {
+					// The weight parameter name "q" is case-insensitive
+					// (RFC 9110 §12.4.2).
+					if len(key) == 1 && (key[0] == 'q' || key[0] == 'Q') {
 						if q, err := fasthttp.ParseUfloat(value); err == nil {
 							quality = q
 						}
@@ -717,7 +782,6 @@ func matchEtagStrong(s, etag string) bool {
 // stale when presented with the raw If-None-Match header value. Comparison is
 // weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
-	var start, end int
 	header := utils.TrimSpace(app.toString(noneMatchBytes))
 
 	// Short-circuit the wildcard case: "*" never counts as stale.
@@ -725,27 +789,28 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 		return false
 	}
 
-	// Adapted from:
-	// https://github.com/jshttp/fresh/blob/master/index.js#L110
-	for i := range noneMatchBytes {
-		switch noneMatchBytes[i] {
-		case 0x20:
-			if start == end {
+	// Split the header on commas that sit outside DQUOTE-delimited opaque-tags:
+	// etagc permits "," inside the quoted tag (RFC 9110 §8.8.3), so `"v1,v2"`
+	// is a single entity tag, not two list elements.
+	start := 0
+	inQuotes := false
+	for i := range len(header) {
+		switch header[i] {
+		case '"':
+			inQuotes = !inQuotes
+		case ',':
+			if !inQuotes {
+				if matchEtag(utils.TrimSpace(header[start:i]), etag) {
+					return false
+				}
 				start = i + 1
-				end = i + 1
 			}
-		case 0x2c:
-			if matchEtag(app.toString(noneMatchBytes[start:end]), etag) {
-				return false
-			}
-			start = i + 1
-			end = i + 1
 		default:
-			end = i + 1
+			// any other byte belongs to the current list element
 		}
 	}
 
-	return !matchEtag(app.toString(noneMatchBytes[start:end]), etag)
+	return !matchEtag(utils.TrimSpace(header[start:]), etag)
 }
 
 func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming host and port parts for clarity
@@ -894,10 +959,6 @@ func toStringImmutable(b []byte) string {
 	return string(b)
 }
 
-func toBytesImmutable(s string) []byte {
-	return []byte(s)
-}
-
 // HTTP methods and their unique INTs
 func (app *App) methodInt(s string) int {
 	// For better performance
@@ -932,6 +993,12 @@ func (app *App) methodInt(s string) int {
 }
 
 func (app *App) method(methodInt int) string {
+	// methodInt is -1 for methods not registered in RequestMethods (the
+	// router responds 501 before dispatch, but contexts acquired directly
+	// via AcquireCtx can still carry one); never index with it.
+	if methodInt < 0 || methodInt >= len(app.config.RequestMethods) {
+		return ""
+	}
 	return app.config.RequestMethods[methodInt]
 }
 

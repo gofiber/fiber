@@ -213,6 +213,50 @@ func Test_Ctx_Charset(t *testing.T) {
 			contentType: "text/plain; chArSet=Shift_JIS",
 			expected:    "Shift_JIS",
 		},
+		{
+			// RFC 9110 §5.6.6: a ";" inside a quoted parameter value is not
+			// a parameter delimiter.
+			name:        "quoted_value_with_semicolon_before_charset",
+			contentType: `text/plain; title="x;charset=bad"; charset=utf-8`,
+			expected:    "utf-8",
+		},
+		{
+			// RFC 9110 §5.6.4: quoted-pairs must be replaced with the
+			// escaped octet.
+			name:        "quoted_pair_in_charset_value",
+			contentType: `text/plain; charset="utf\-8"`,
+			expected:    "utf-8",
+		},
+		{
+			name:        "quoted_value_with_escaped_quote_before_charset",
+			contentType: `text/plain; title="a\";charset=bad"; charset=utf-8`,
+			expected:    "utf-8",
+		},
+		{
+			// A stray quote inside an unquoted value must not swallow the
+			// rest of the header: quoted-strings only start at value position.
+			name:        "stray_quote_in_earlier_value",
+			contentType: `multipart/form-data; boundary=ab"cd; charset=utf-8`,
+			expected:    "utf-8",
+		},
+		{
+			// A quoted value with trailing junk is not a valid quoted-string.
+			name:        "quoted_value_with_trailing_junk",
+			contentType: `text/plain; charset="utf-8"x`,
+			expected:    "",
+		},
+		{
+			name:        "unterminated_quoted_value",
+			contentType: `text/plain; charset="utf-8`,
+			expected:    "",
+		},
+		{
+			// A bare-token value containing a DQUOTE is invalid; the
+			// parameter is skipped so the later well-formed charset wins.
+			name:        "bare_value_with_quote_then_valid_charset",
+			contentType: `text/plain; a=b"; charset=bad"; charset=utf-8`,
+			expected:    "utf-8",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -242,13 +286,17 @@ func Test_Ctx_HeaderHelpers(t *testing.T) {
 	c.Request().Header.Set(HeaderReferer, "https://example.com")
 	c.Request().Header.Set(HeaderAcceptLanguage, "en-US,en;q=0.9")
 	c.Request().Header.Set(HeaderAcceptEncoding, "gzip, br")
+	// Repeated field lines are combined per RFC 9110 §5.2, matching the
+	// AcceptsEncodings/AcceptsLanguages view of the same headers.
+	c.Request().Header.Add(HeaderAcceptEncoding, "zstd")
+	c.Request().Header.Add(HeaderAcceptLanguage, "fr;q=0.5")
 	c.Request().Header.Set("X-Trace-Id", "trace")
 	require.True(t, c.HasHeader("X-Trace-Id"))
 	require.True(t, c.HasHeader("x-trace-id"))
 	require.Equal(t, "fiber-agent", c.UserAgent())
 	require.Equal(t, "https://example.com", c.Referer())
-	require.Equal(t, "en-US,en;q=0.9", c.AcceptLanguage())
-	require.Equal(t, "gzip, br", c.AcceptEncoding())
+	require.Equal(t, "en-US,en;q=0.9,fr;q=0.5", c.AcceptLanguage())
+	require.Equal(t, "gzip, br,zstd", c.AcceptEncoding())
 
 	c.Request().Header.Set(HeaderXRequestID, "request-id")
 	c.Response().Header.Set(HeaderXRequestID, "response-id")
@@ -499,6 +547,27 @@ func Test_Ctx_Accepts_Wildcard(t *testing.T) {
 	require.Equal(t, "xml", c.Accepts("xml"))
 }
 
+// Test_Ctx_Accepts_UppercaseQ verifies that the weight parameter name "q" is
+// matched case-insensitively (RFC 9110 §12.4.2).
+func Test_Ctx_Accepts_UppercaseQ(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// "Q" must be recognized as the weight, not treated as a required
+	// media-type parameter.
+	c.Request().Header.Set(HeaderAccept, "text/html;Q=0.2")
+	require.Equal(t, "html", c.Accepts("html"))
+
+	// An uppercase Q=0 means "not acceptable", same as q=0.
+	c.Request().Header.Set(HeaderAccept, "text/html;Q=0")
+	require.Empty(t, c.Accepts("html"))
+
+	// Weight ordering must apply regardless of case.
+	c.Request().Header.Set(HeaderAccept, "text/html;Q=0.2, application/json;q=0.8")
+	require.Equal(t, "json", c.Accepts("html", "json"))
+}
+
 // go test -run Test_Ctx_Accepts_MultiHeader
 func Test_Ctx_Accepts_MultiHeader(t *testing.T) {
 	t.Parallel()
@@ -718,11 +787,16 @@ func Test_Ctx_Append(t *testing.T) {
 	c.Append("X4-Test", "XHello")
 	// without append value
 	c.Append("X-Custom-Header")
+	// empty values are skipped: a sender must not generate empty list
+	// elements (RFC 9110 §5.6.1.2)
+	c.Append("X5-Test", "a", "", "b")
+	c.Append("X5-Test", "")
 
 	require.Equal(t, "Hello, World", string(c.Response().Header.Peek("X-Test")))
 	require.Equal(t, "World, XHello, Hello", string(c.Response().Header.Peek("X2-Test")))
 	require.Equal(t, "XHello, World, Hello", string(c.Response().Header.Peek("X3-Test")))
 	require.Equal(t, "XHello, Hello, HelloZ, YHello", string(c.Response().Header.Peek("X4-Test")))
+	require.Equal(t, "a, b", string(c.Response().Header.Peek("X5-Test")))
 	require.Empty(t, string(c.Response().Header.Peek("x-custom-header")))
 }
 
@@ -753,20 +827,27 @@ func Test_Ctx_Attachment(t *testing.T) {
 	c.Attachment("./static/img/logo.png")
 	require.Equal(t, `attachment; filename="logo.png"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
-	// filename with spaces
+	// filename with spaces stays literal inside the quoted-string
+	// (RFC 9110 §5.6.4 / RFC 6266 — no URL encoding in the filename param)
 	c.Attachment("report 2024.txt")
-	require.Equal(t, `attachment; filename="report+2024.txt"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(t, `attachment; filename="report 2024.txt"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 	// filename with nested path
 	c.Attachment("../docs/archive.tar.gz")
 	require.Equal(t, `attachment; filename="archive.tar.gz"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
-	// check quoting
+	// check quoting: controls are stripped, quotes are backslash-escaped
 	c.Attachment("another document.pdf\"\r\nBla: \"fasel")
-	require.Equal(t, `attachment; filename="another+document.pdf%22Bla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(t, `attachment; filename="another document.pdf\"Bla: \"fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 
 	c.Attachment("файл.txt")
 	header := string(c.Response().Header.Peek(HeaderContentDisposition))
 	require.Contains(t, header, `filename="файл.txt"`)
 	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
+
+	// RFC 8187 §3.2: '=', '@' (and ':') are not attr-chars and must be
+	// pct-encoded in the filename* ext-value.
+	c.Attachment("ü=final@2x.png")
+	header = string(c.Response().Header.Peek(HeaderContentDisposition))
+	require.Contains(t, header, `filename*=UTF-8''%C3%BC%3Dfinal%402x.png`)
 }
 
 // go test -run Test_Ctx_Attachment_SanitizesFilenameControls
@@ -835,7 +916,7 @@ func Benchmark_Ctx_Attachment(b *testing.B) {
 		// example with quote params
 		c.Attachment("another document.pdf\"\r\nBla: \"fasel")
 	}
-	require.Equal(b, `attachment; filename="another+document.pdf%22Bla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(b, `attachment; filename="another document.pdf\"Bla: \"fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 }
 
 // go test -run Test_Ctx_BaseURL
@@ -1019,6 +1100,20 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 		{
 			name:            "gzip twice",
 			contentEncoding: "gzip, gzip",
+			body:            []byte("double"),
+			expectedBody:    []byte("double"),
+		},
+		{
+			// RFC 9110 §5.6.1.2: empty list elements must be parsed and
+			// ignored, so a trailing comma must not yield 415.
+			name:            "gzip trailing comma",
+			contentEncoding: "gzip,",
+			body:            []byte("john=doe"),
+			expectedBody:    []byte("john=doe"),
+		},
+		{
+			name:            "gzip twice with empty element between",
+			contentEncoding: "gzip, , gzip",
 			body:            []byte("double"),
 			expectedBody:    []byte("double"),
 		},
@@ -1973,6 +2068,65 @@ func Test_Ctx_Format_NilHandler(t *testing.T) {
 	})
 }
 
+// Test_Ctx_Format_NoAcceptDefaultFirst verifies that a request without an
+// Accept header never emits the literal "default" as a Content-Type value:
+// the first real media type wins regardless of the position of the "default"
+// entry, and a lone "default" handler leaves Content-Type untouched.
+func Test_Ctx_Format_NoAcceptDefaultFirst(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	var accepted string
+	handler := func(mediaType string) ResFmt {
+		return ResFmt{MediaType: mediaType, Handler: func(_ Ctx) error {
+			accepted = mediaType
+			return nil
+		}}
+	}
+
+	// "default" listed first must be skipped in favor of a real media type.
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err := c.Format(handler("default"), handler("application/json"))
+	require.NoError(t, err)
+	require.Equal(t, "application/json", accepted)
+	require.Equal(t, "application/json", c.GetRespHeader(HeaderContentType))
+
+	// Only a "default" handler: it runs, but no Content-Type is fabricated.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.Format(handler("default"))
+	require.NoError(t, err)
+	require.Equal(t, "default", accepted)
+	require.NotEqual(t, "default", c.GetRespHeader(HeaderContentType))
+}
+
+func Test_Ctx_Format_AcceptEmptyAndMultiLine(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	var accepted string
+	handler := func(mediaType string) ResFmt {
+		return ResFmt{MediaType: mediaType, Handler: func(_ Ctx) error {
+			accepted = mediaType
+			return nil
+		}}
+	}
+
+	// A single empty Accept line is an empty combined view: treated as absent.
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderAccept, "")
+	err := c.Format(handler("application/json"), handler("text/html"))
+	require.NoError(t, err)
+	require.Equal(t, "application/json", accepted)
+
+	// Multiple Accept lines negotiate on the combined view (RFC 9110 Section 5.2).
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Add(HeaderAccept, "text/plain;q=0.5")
+	c.Request().Header.Add(HeaderAccept, "text/html")
+	err = c.Format(handler("application/json"), handler("text/html"))
+	require.NoError(t, err)
+	require.Equal(t, "text/html", accepted)
+}
+
 func Benchmark_Ctx_Format(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -2049,6 +2203,19 @@ func Benchmark_Ctx_Format(b *testing.B) {
 		}
 		require.NoError(b, err)
 	})
+}
+
+// Test_Ctx_AutoFormat_Vary verifies that AutoFormat marks the response as
+// varying on the Accept header (RFC 9110 §12.5.5), since the representation
+// is selected via proactive negotiation.
+func Test_Ctx_AutoFormat_Vary(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
+	require.NoError(t, c.AutoFormat("Hello, World!"))
+	require.Equal(t, HeaderAccept, c.GetRespHeader(HeaderVary))
 }
 
 // go test -run Test_Ctx_AutoFormat
@@ -2669,6 +2836,119 @@ func Test_Ctx_Fresh_ModifiedSinceOnly(t *testing.T) {
 	c = app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderIfModifiedSince, "not-a-date")
 	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+	require.False(t, c.Fresh())
+}
+
+// Test_Ctx_Fresh_MethodGuard verifies that freshness only applies to GET and
+// HEAD requests. RFC 9110 §13.1.3 requires If-Modified-Since to be ignored for
+// other methods, and a 304 Not Modified response is only defined for GET/HEAD.
+func Test_Ctx_Fresh_MethodGuard(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	for _, method := range []string{MethodGet, MethodHead} {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Method(method)
+		c.Request().Header.Set(HeaderIfNoneMatch, `"a"`)
+		c.Response().Header.Set(HeaderETag, `"a"`)
+		require.True(t, c.Fresh(), "matching ETag must be fresh for %s", method)
+	}
+
+	for _, method := range []string{MethodPost, MethodPut, MethodDelete, MethodPatch, MethodOptions} {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Method(method)
+
+		// Matching If-None-Match must not report fresh: 304 is undefined for
+		// these methods (a 412 would apply instead, which Fresh cannot express).
+		c.Request().Header.Set(HeaderIfNoneMatch, `"a"`)
+		c.Response().Header.Set(HeaderETag, `"a"`)
+		require.False(t, c.Fresh(), "%s must never be fresh", method)
+
+		// If-Modified-Since must be ignored for methods other than GET/HEAD.
+		c.Request().Header.Del(HeaderIfNoneMatch)
+		c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
+		c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+		require.False(t, c.Fresh(), "%s must ignore If-Modified-Since", method)
+	}
+
+	// A method that is not registered at all (methodInt == -1) must be
+	// handled without panicking and reported as not fresh.
+	rctx := &fasthttp.RequestCtx{}
+	rctx.Request.Header.SetMethod("PURGE")
+	c := app.AcquireCtx(rctx)
+	c.Request().Header.Set(HeaderIfNoneMatch, `"a"`)
+	c.Response().Header.Set(HeaderETag, `"a"`)
+	require.False(t, c.Fresh())
+}
+
+// Test_Ctx_Fresh_MultiFieldLines verifies that repeated If-None-Match and
+// Cache-Control field lines are combined into one list per RFC 9110 §5.2.
+func Test_Ctx_Fresh_MultiFieldLines(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Add(HeaderIfNoneMatch, `"a"`)
+	c.Request().Header.Add(HeaderIfNoneMatch, `"b"`)
+	c.Response().Header.Set(HeaderETag, `"b"`)
+	require.True(t, c.Fresh(), "an ETag on a second If-None-Match field line must match")
+
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfNoneMatch, `"a"`)
+	c.Response().Header.Set(HeaderETag, `"a"`)
+	c.Request().Header.Add(HeaderCacheControl, "public")
+	c.Request().Header.Add(HeaderCacheControl, "no-cache")
+	require.False(t, c.Fresh(), "no-cache on a second Cache-Control field line must be honored")
+}
+
+// Test_Ctx_Body_With_Compression_MultiFieldLines verifies that repeated
+// Content-Encoding field lines are combined into one list per RFC 9110 §5.2.
+func Test_Ctx_Body_With_Compression_MultiFieldLines(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Add(HeaderContentEncoding, "gzip")
+	c.Request().Header.Add(HeaderContentEncoding, "gzip")
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write([]byte("double"))
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+	once := append([]byte(nil), buf.Bytes()...)
+	buf.Reset()
+	gz = gzip.NewWriter(&buf)
+	_, err = gz.Write(once)
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+
+	c.Request().SetBody(buf.Bytes())
+	require.Equal(t, []byte("double"), c.Body())
+}
+
+// Test_Ctx_Fresh_ObsoleteDateFormats verifies that If-Modified-Since values in
+// the obsolete RFC 850 and ANSI C asctime() formats are accepted, as required
+// by RFC 9110 §5.6.7 for any HTTP-date recipient.
+func Test_Ctx_Fresh_ObsoleteDateFormats(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// Not modified since the client's date: fresh, in all three formats.
+	for _, date := range []string{
+		"Wed, 21 Oct 2015 07:28:00 GMT",     // IMF-fixdate
+		"Wednesday, 21-Oct-15 07:28:00 GMT", // obsolete RFC 850 format
+		"Wed Oct 21 07:28:00 2015",          // ANSI C asctime() format
+	} {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderIfModifiedSince, date)
+		c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+		require.True(t, c.Fresh(), "date %q must parse and compare equal", date)
+	}
+
+	// Modified after the client's obsolete-format date: stale.
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfModifiedSince, "Wednesday, 21-Oct-15 07:28:00 GMT")
+	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:29:00 GMT")
 	require.False(t, c.Fresh())
 }
 
@@ -4489,8 +4769,49 @@ func Test_Ctx_Method(t *testing.T) {
 	c.Method(MethodPost)
 	require.Equal(t, MethodPost, c.Method())
 
+	// Lowercase input still maps to the registered uppercase method.
+	c.Method("get")
+	require.Equal(t, MethodGet, c.Method())
+
 	c.Method("MethodInvalid")
-	require.Equal(t, MethodPost, c.Method())
+	require.Equal(t, MethodGet, c.Method())
+}
+
+// Test_Ctx_Method_Unregistered verifies that a ctx carrying a method that is
+// not registered in RequestMethods (methodInt == -1) does not panic: Method()
+// reports the raw request-header method and Route()'s fallback stays safe.
+func Test_Ctx_Method_Unregistered(t *testing.T) {
+	t.Parallel()
+	app := New()
+	rctx := &fasthttp.RequestCtx{}
+	rctx.Request.Header.SetMethod("PURGE")
+	c := app.AcquireCtx(rctx)
+
+	require.Equal(t, "PURGE", c.Method())
+	// An invalid override keeps reporting the raw method instead of panicking.
+	require.Equal(t, "PURGE", c.Method("StillInvalid"))
+	// Route()'s fallback resolves the method the same way Method() does.
+	require.Equal(t, "PURGE", c.Route().Method)
+}
+
+// Test_Ctx_Method_CustomCaseSensitive verifies that a mixed-case custom
+// method registered via Config.RequestMethods can be set as an override:
+// method tokens are case-sensitive (RFC 9110 §9.1), so the override must not
+// be unconditionally uppercased.
+func Test_Ctx_Method_CustomCaseSensitive(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		RequestMethods: append(append([]string{}, DefaultMethods...), "Purge"),
+	})
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	c := app.AcquireCtx(fctx)
+
+	require.Equal(t, "Purge", c.Method("Purge"))
+	require.Equal(t, "Purge", c.Method())
+
+	// The uppercase convenience fallback still applies for standard methods.
+	require.Equal(t, MethodPost, c.Method("post"))
 }
 
 // go test -run Test_Ctx_ClientHelloInfo
@@ -5134,15 +5455,74 @@ func Test_Ctx_Range(t *testing.T) {
 	testRange("bytes=")
 	testRange("bytes=500=")
 	testRange("bytes=500-300")
-	testRange("bytes=a-700", RangeSet{Start: 300, End: 999})
-	testRange("bytes=500-b", RangeSet{Start: 500, End: 999})
+	// A bound that is present but not a valid integer invalidates the whole
+	// ranges-specifier (RFC 9110 §14.1.1); it must not be reinterpreted as a
+	// suffix or open-ended range.
+	testRange("bytes=a-700")
+	testRange("bytes=500-b")
+	testRange("bytes=-")
 	testRange("bytes=500-1000", RangeSet{Start: 500, End: 999})
 	testRange("bytes=500-700", RangeSet{Start: 500, End: 700})
 	testRange("bytes=0-0,2-1000", RangeSet{Start: 0, End: 0}, RangeSet{Start: 2, End: 999})
 	testRange("bytes=0-99,450-549,-100", RangeSet{Start: 0, End: 99}, RangeSet{Start: 450, End: 549}, RangeSet{Start: 900, End: 999})
 	testRange("bytes=500-700,601-999", RangeSet{Start: 500, End: 700}, RangeSet{Start: 601, End: 999})
 	testRange("bytes= 0-1", RangeSet{Start: 0, End: 1})
+	// Empty list elements must be parsed and ignored (RFC 9110 §5.6.1.2).
+	testRange("bytes=,0-5", RangeSet{Start: 0, End: 5})
+	testRange("bytes=0-5,,10-20", RangeSet{Start: 0, End: 5}, RangeSet{Start: 10, End: 20})
+	testRange("bytes=,,,")
+	// A malformed later element invalidates the whole header: no partial
+	// ranges may leak out alongside the error.
+	testRange("bytes=0-5,zzz-10")
 	testRange("seconds=0-1")
+
+	// A grammatically valid but unknown range unit is not malformed: it must
+	// be signaled distinctly so the caller can ignore the header, as
+	// RFC 9110 §14.2 requires.
+	c.Request().Header.Set(HeaderRange, "pages=1-3")
+	_, err := c.Range(1000)
+	require.ErrorIs(t, err, ErrRangeUnsupported)
+
+	// The other-range grammar permits "=", so an unknown unit whose spec
+	// contains "=" is still unsupported, not malformed.
+	c.Request().Header.Set(HeaderRange, "pages=1-3=note")
+	_, err = c.Range(1000)
+	require.ErrorIs(t, err, ErrRangeUnsupported)
+}
+
+// Test_Ctx_Range_MalformedStatusCode verifies that a syntactically invalid
+// Range header propagated by the handler maps to 400 Bad Request (RFC 9110
+// permits rejecting an invalid ranges-specifier), not 500.
+func Test_Ctx_Range_MalformedStatusCode(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		_, err := c.Range(10)
+		if err != nil {
+			return err
+		}
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody)
+	req.Header.Set(HeaderRange, "bytes=a-700")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusBadRequest, resp.StatusCode)
+}
+
+// Test_Ctx_Range_MaxRangesCountsEmptyElements verifies that empty list
+// elements still count toward Config.MaxRanges, so the cap bounds parsing
+// work per header.
+func Test_Ctx_Range_MaxRangesCountsEmptyElements(t *testing.T) {
+	t.Parallel()
+	app := New(Config{MaxRanges: 2})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderRange, "bytes=,,,,0-1")
+	_, err := c.Range(10)
+	require.ErrorIs(t, err, ErrRangeTooLarge)
 }
 
 func Test_Ctx_Range_LargeFile(t *testing.T) {
@@ -6252,7 +6632,7 @@ func Test_Ctx_Download(t *testing.T) {
 	expect, err := io.ReadAll(f)
 	require.NoError(t, err)
 	require.Equal(t, expect, c.Response().Body())
-	require.Equal(t, `attachment; filename="Awesome+File%21"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(t, `attachment; filename="Awesome File!"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 
 	require.NoError(t, c.Res().Download("ctx.go"))
 	require.Equal(t, `attachment; filename="ctx.go"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
@@ -6331,6 +6711,23 @@ func Test_Ctx_SendEarlyHints(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "fail", string(body))
+}
+
+// Test_Ctx_SendEarlyHints_HTTP10 verifies that no interim 103 response is
+// sent to an HTTP/1.0 client (RFC 9110 §15.2 MUST NOT), while the Link
+// headers still go out on the final response.
+func Test_Ctx_SendEarlyHints_HTTP10(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.SetProtocol("HTTP/1.0")
+
+	// Without the protocol guard this would reach fasthttp's EarlyHints,
+	// which writes the interim response directly to the connection (and
+	// panics here, where no connection exists).
+	err := c.SendEarlyHints([]string{"<https://cdn.com/style.css>; rel=preload; as=style"})
+	require.NoError(t, err)
+	require.Equal(t, "<https://cdn.com/style.css>; rel=preload; as=style", c.GetRespHeader(HeaderLink))
 }
 
 // go test -race -run Test_Ctx_SendFile
@@ -7456,6 +7853,11 @@ func Test_Ctx_Links(t *testing.T) {
 		"http://api.example.com/users?page=5", "last",
 	)
 	require.Equal(t, `<http://api.example.com/users?page=2>; rel="next",<http://api.example.com/users?page=5>; rel="last"`, string(c.Response().Header.Peek(HeaderLink)))
+
+	// A rel value containing quotes/backslashes must be escaped so the
+	// quoted-string stays grammar-valid (RFC 9110 §5.6.4).
+	c.Links("http://example.com", `next" x`)
+	require.Equal(t, `<http://example.com>; rel="next\" x"`, string(c.Response().Header.Peek(HeaderLink)))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Links -benchmem -count=4
@@ -7728,6 +8130,20 @@ func Test_Ctx_HasBody(t *testing.T) {
 		require.True(t, ctx.HasBody())
 	})
 
+	t.Run("transfer encoding multiple field lines", func(t *testing.T) {
+		t.Parallel()
+		ctx := acquire(t)
+		// Repeated field lines form one combined list (RFC 9110 §5.2):
+		// "identity" on the first line must not mask "gzip" on the second.
+		hdr := &ctx.Request().Header
+		hdr.DisableSpecialHeader()
+		hdr.Add(HeaderTransferEncoding, "identity")
+		hdr.Add(HeaderTransferEncoding, "gzip")
+		hdr.Set(HeaderContentLength, "0")
+		hdr.EnableSpecialHeader()
+		require.True(t, ctx.HasBody())
+	})
+
 	t.Run("transfer encoding identity", func(t *testing.T) {
 		t.Parallel()
 		ctx := acquire(t)
@@ -7766,6 +8182,25 @@ func Test_Ctx_IsWebSocket(t *testing.T) {
 	non.Request().Header.Set(HeaderConnection, "not-an-upgrade")
 	non.Request().Header.Set(HeaderUpgrade, "websocket")
 	require.False(t, non.IsWebSocket())
+
+	// Upgrade is a comma-separated protocol list (RFC 9110 §7.8): websocket
+	// must be found among other protocols and with a "/version" suffix.
+	list := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.NotNil(t, list)
+	t.Cleanup(func() { app.ReleaseCtx(list) })
+	list.Request().Header.Set(HeaderConnection, "Upgrade")
+	list.Request().Header.Set(HeaderUpgrade, "h2c, websocket/13")
+	require.True(t, list.IsWebSocket())
+
+	// Repeated Connection field lines are equivalent to one combined list
+	// (RFC 9110 §5.2).
+	multi := app.AcquireCtx(&fasthttp.RequestCtx{})
+	require.NotNil(t, multi)
+	t.Cleanup(func() { app.ReleaseCtx(multi) })
+	multi.Request().Header.Add(HeaderConnection, "keep-alive")
+	multi.Request().Header.Add(HeaderConnection, "Upgrade")
+	multi.Request().Header.Set(HeaderUpgrade, "websocket")
+	require.True(t, multi.IsWebSocket())
 }
 
 func Test_Ctx_IsPreflight(t *testing.T) {
@@ -8611,6 +9046,55 @@ func Test_Ctx_Vary(t *testing.T) {
 	c.Vary("User-Agent")
 	c.Vary("Accept-Encoding", "Accept")
 	require.Equal(t, "Origin, User-Agent, Accept-Encoding, Accept", string(c.Response().Header.Peek("Vary")))
+}
+
+// Test_Ctx_Vary_Wildcard verifies the RFC 9110 §12.5.5 rule that "*" is only
+// meaningful as the sole member of the Vary field value.
+func Test_Ctx_Vary_Wildcard(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// Adding "*" collapses any previously listed fields to a single "*".
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Vary("Origin")
+	c.Vary("*")
+	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
+
+	// Once "*" is present, further fields are not appended alongside it.
+	c.Vary("Accept")
+	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
+
+	// "*" mixed into a multi-field call also collapses the header.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Vary("Accept-Encoding", "*", "Accept")
+	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
+
+	// A pre-existing mixed value containing "*" (set outside Vary) collapses
+	// on the next Vary call, matching the documented invariant.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Set(HeaderVary, "User-Agent, *")
+	c.Vary("Origin")
+	require.Equal(t, "*", string(c.Response().Header.Peek("Vary")))
+
+	// Multiple Vary field lines (via Header.Add) are treated as one combined
+	// list (RFC 9110 §5.2): a wildcard on a later line still collapses the
+	// whole header, leaving a single field line.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Response().Header.Add(HeaderVary, "Accept")
+	c.Response().Header.Add(HeaderVary, "*")
+	c.Vary("Origin")
+	require.Equal(t, [][]byte{[]byte("*")}, c.Response().Header.PeekAll(HeaderVary))
+
+	// Dedup also sees members on later field lines: adding an
+	// already-listed member is a no-op, and a real addition folds all the
+	// lines into a single combined field line.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Response().Header.Add(HeaderVary, "Accept")
+	c.Response().Header.Add(HeaderVary, "Origin")
+	c.Vary("Origin") // already present on the second line: no rewrite
+	require.Equal(t, [][]byte{[]byte("Accept"), []byte("Origin")}, c.Response().Header.PeekAll(HeaderVary))
+	c.Vary("Accept-Encoding") // rewrite folds both lines into one
+	require.Equal(t, [][]byte{[]byte("Accept,Origin, Accept-Encoding")}, c.Response().Header.PeekAll(HeaderVary))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Vary -benchmem -count=4
@@ -9583,6 +10067,25 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 			}
 			app.ReleaseCtx(c)
 		})
+	})
+
+	// Scenario with CIDR-only trust config (empty exact-IP map). The remote IP
+	// reaches the range check, exercising the guard that skips ip.String().
+	b.Run("WithProxyCheckCIDR", func(b *testing.B) {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0/8"},
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		for b.Loop() {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
 	})
 
 	// Scenario with trusted proxy check allow private

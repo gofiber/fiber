@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"net/url"
 	"os"
 	pathpkg "path"
 	"path/filepath"
@@ -137,22 +136,46 @@ func (r *DefaultRes) App() *App {
 
 // Append the specified value to the HTTP response header field.
 // If the header is not already set, it creates the header with the specified value.
+// Empty values are skipped: a sender must not generate empty list elements
+// (RFC 9110 Section 5.6.1.2).
 func (r *DefaultRes) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := r.c.app.toString(r.c.fasthttp.Response.Header.Peek(field))
+	// Consider all existing field lines combined (RFC 9110 Section 5.2) so
+	// the dedup check sees members added on later lines via Header.Add.
+	existing, multiLine := peekJoinedResponseHeader(&r.c.fasthttp.Response.Header, field)
+	updated := appendUniqueValues(utils.UnsafeString(existing), values)
+	if updated == "" {
+		return
+	}
+	if multiLine {
+		// Set only rewrites the first field line; drop the extras that are
+		// now folded into the combined value.
+		r.c.fasthttp.Response.Header.Del(field)
+	}
+	r.Set(field, updated)
+}
+
+// appendUniqueValues returns h extended with the non-empty values that are
+// not already listed in it, or "" when nothing was added (h only ever grows,
+// so a changed result is never empty).
+func appendUniqueValues(h string, values []string) string {
 	originalH := h
 	for _, value := range values {
+		if value == "" {
+			continue
+		}
 		if h == "" {
 			h = value
 		} else if !headerContainsValue(h, value) {
 			h += ", " + value
 		}
 	}
-	if originalH != h {
-		r.Set(field, h)
+	if originalH == h {
+		return ""
 	}
+	return h
 }
 
 // headerContainsValue checks if a header value already contains the given value
@@ -203,6 +226,51 @@ func fallbackFilenameIfInvalid(filename string) string {
 	return filename
 }
 
+// isExtValueAttrChar reports whether c is an attr-char per RFC 8187 §3.2:
+// ALPHA / DIGIT / "!" / "#" / "$" / "&" / "+" / "-" / "." / "^" / "_" /
+// "`" / "|" / "~". Every other byte of an ext-value must be pct-encoded.
+func isExtValueAttrChar(c byte) bool {
+	switch {
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		return true
+	}
+	switch c {
+	case '!', '#', '$', '&', '+', '-', '.', '^', '_', '`', '|', '~':
+		return true
+	default:
+		return false
+	}
+}
+
+// encodeExtValue percent-encodes s as the value-chars of an RFC 8187
+// ext-value. URL path/query escaping is not sufficient here: it leaves
+// bytes such as ':', '=', and '@' bare, which the ext-value grammar forbids.
+func encodeExtValue(s string) string {
+	const hex = "0123456789ABCDEF"
+	b := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if isExtValueAttrChar(c) {
+			b = append(b, c)
+		} else {
+			b = append(b, '%', hex[c>>4], hex[c&0x0F])
+		}
+	}
+	return string(b)
+}
+
+// contentDispositionAttachment builds an RFC 6266 Content-Disposition value
+// for a sanitized filename: the filename parameter is a quoted-string with
+// RFC 9110 §5.6.4 escaping, and non-ASCII names additionally carry an
+// RFC 8187 filename* ext-value for interoperability.
+func contentDispositionAttachment(app *App, fname string) string {
+	disp := `attachment; filename="` + app.quoteRawString(fname) + `"`
+	if !app.isASCII(fname) {
+		disp += `; filename*=UTF-8''` + encodeExtValue(fname)
+	}
+	return disp
+}
+
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
 func (r *DefaultRes) Attachment(filename ...string) {
 	if len(filename) > 0 {
@@ -210,18 +278,7 @@ func (r *DefaultRes) Attachment(filename ...string) {
 		fname = sanitizeFilename(fname)
 		fname = fallbackFilenameIfInvalid(fname)
 		r.Type(filepath.Ext(fname))
-		app := r.c.app
-		var quoted string
-		if app.isASCII(fname) {
-			quoted = app.quoteString(fname)
-		} else {
-			quoted = app.quoteRawString(fname)
-		}
-		disp := `attachment; filename="` + quoted + `"`
-		if !app.isASCII(fname) {
-			disp += `; filename*=UTF-8''` + url.PathEscape(fname)
-		}
-		r.setCanonical(HeaderContentDisposition, disp)
+		r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(r.c.app, fname))
 		return
 	}
 	r.setCanonical(HeaderContentDisposition, "attachment")
@@ -347,18 +404,7 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 	}
 	fname = sanitizeFilename(fname)
 	fname = fallbackFilenameIfInvalid(fname)
-	app := r.c.app
-	var quoted string
-	if app.isASCII(fname) {
-		quoted = app.quoteString(fname)
-	} else {
-		quoted = app.quoteRawString(fname)
-	}
-	disp := `attachment; filename="` + quoted + `"`
-	if !app.isASCII(fname) {
-		disp += `; filename*=UTF-8''` + url.PathEscape(fname)
-	}
-	r.setCanonical(HeaderContentDisposition, disp)
+	r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(r.c.app, fname))
 	return r.SendFile(file)
 }
 
@@ -388,8 +434,21 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 
 	r.Vary(HeaderAccept)
 
-	if r.c.DefaultReq.Get(HeaderAccept) == "" {
-		r.c.fasthttp.Response.Header.SetContentType(handlers[0].MediaType)
+	// Absent means the combined Accept view (RFC 9110 Section 5.2) is empty:
+	// no field line, or a single empty one. Checked on the raw lines to skip
+	// the join allocation that multi-line headers would pay.
+	accepts := r.c.fasthttp.Request.Header.PeekAll(HeaderAccept)
+	if len(accepts) == 0 || (len(accepts) == 1 && len(accepts[0]) == 0) {
+		// Without an Accept header the client accepts any media type
+		// (RFC 9110 Section 12.5.1), so pick the first non-default handler and
+		// use its media type. The literal "default" is not a media type and
+		// must not be emitted as a Content-Type value.
+		for _, h := range handlers {
+			if h.MediaType != "default" {
+				r.c.fasthttp.Response.Header.SetContentType(h.MediaType)
+				return h.Handler(r.c)
+			}
+		}
 		return handlers[0].Handler(r.c)
 	}
 
@@ -432,6 +491,10 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // For more flexible content negotiation, use Format.
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
+	// The response is selected based on the Accept header, so let caches know
+	// (RFC 9110 Section 12.5.5).
+	r.Vary(HeaderAccept)
+
 	// Get accepted content type
 	accept := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor") //nolint:staticcheck // It is fine to ignore the static check
 
@@ -611,7 +674,9 @@ func (r *DefaultRes) Links(link ...string) {
 			bb.WriteByte('>')
 		} else {
 			bb.WriteString(`; rel="`)
-			bb.WriteString(link[i])
+			// The rel value sits inside a quoted-string, so quotes and
+			// backslashes must be escaped (RFC 9110 Section 5.6.4).
+			bb.WriteString(r.c.app.quoteRawString(link[i]))
 			bb.WriteString(`",`)
 		}
 	}
@@ -765,6 +830,14 @@ func (r *DefaultRes) SendEarlyHints(hints []string) error {
 	}
 	for _, h := range hints {
 		r.c.fasthttp.Response.Header.Add("Link", h)
+	}
+	// A server MUST NOT send a 1xx response to an HTTP/1.0 (or earlier)
+	// client (RFC 9110 Section 15.2), and fasthttp can only write interim
+	// responses on real HTTP/1.1 connections, so send the 103 exclusively
+	// for HTTP/1.1 requests. The Link headers above still go out on the
+	// final response; only the interim 103 is skipped.
+	if !r.c.fasthttp.Request.Header.IsHTTP11() {
+		return nil
 	}
 	return r.c.fasthttp.EarlyHints()
 }
@@ -1070,8 +1143,34 @@ func shouldIncludeCharset(mimeType string) bool {
 
 // Vary adds the given header field to the Vary response header.
 // This will append the header, if not already listed; otherwise, leaves it listed in the current location.
+// Per RFC 9110 Section 12.5.5 the wildcard "*" only has meaning as the sole member of the field:
+// once "*" is added (or already present), the header is collapsed to a single "*".
 func (r *DefaultRes) Vary(fields ...string) {
-	r.Append(HeaderVary, fields...)
+	if len(fields) == 0 {
+		return
+	}
+	// Peek without copying: the value is only inspected before any write.
+	// All field lines are combined (RFC 9110 Section 5.2) so a wildcard on a
+	// later line added via Header.Add is still honored.
+	existing, multiLine := peekJoinedResponseHeader(&r.c.fasthttp.Response.Header, HeaderVary)
+	existingStr := utils.UnsafeString(existing)
+	if slices.Contains(fields, "*") || headerContainsValue(existingStr, "*") {
+		if multiLine {
+			// setCanonical only rewrites the first field line.
+			r.c.fasthttp.Response.Header.Del(HeaderVary)
+		}
+		r.setCanonical(HeaderVary, "*")
+		return
+	}
+	updated := appendUniqueValues(existingStr, fields)
+	if updated == "" {
+		return
+	}
+	if multiLine {
+		// Set only rewrites the first field line; fold the extras into one.
+		r.c.fasthttp.Response.Header.Del(HeaderVary)
+	}
+	r.Set(HeaderVary, updated)
 }
 
 // Write appends p into response body.
