@@ -498,8 +498,9 @@ func (j *joinedHeaderValue) visit(k, v []byte) {
 func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, bool) {
 	j := joinedHeaderValue{key: key}
 	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
-	// an iterator closure that escapes to the heap on every call.
-	h.VisitAll(j.visit) //nolint:staticcheck // see above
+	// an iterator closure that escapes to the heap on every call. The SA1019
+	// deprecation is suppressed for helpers.go in .golangci.yml.
+	h.VisitAll(j.visit)
 	return j.combined, j.multi
 }
 
@@ -507,8 +508,9 @@ func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, boo
 func peekJoinedResponseHeader(h *fasthttp.ResponseHeader, key string) ([]byte, bool) {
 	j := joinedHeaderValue{key: key}
 	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
-	// an iterator closure that escapes to the heap on every call.
-	h.VisitAll(j.visit) //nolint:staticcheck // see above
+	// an iterator closure that escapes to the heap on every call. The SA1019
+	// deprecation is suppressed for helpers.go in .golangci.yml.
+	h.VisitAll(j.visit)
 	return j.combined, j.multi
 }
 

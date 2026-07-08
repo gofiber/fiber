@@ -316,7 +316,7 @@ func (c *DefaultCtx) Charset() string {
 		}
 
 		name, value, ok := bytes.Cut(param, []byte{'='})
-		if !ok || !bytes.EqualFold(utils.TrimSpace(name), []byte("charset")) {
+		if !ok || !utils.EqualFold(utils.TrimSpace(name), []byte("charset")) {
 			continue
 		}
 		v := utils.TrimSpace(value)
