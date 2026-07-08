@@ -474,6 +474,7 @@ func Test_Security_JoinUpstreamPath_EmptyQueryMarkersUseSlowPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "http://upstream.example/foo", joinUpstreamPath(base, "/foo?"))
 	require.Equal(t, "http://upstream.example/foo", joinUpstreamPath(base, "/foo#"))
+}
 
 func Test_Security_SecureTLSConfig_DefaultMinVersion(t *testing.T) {
 	t.Parallel()
