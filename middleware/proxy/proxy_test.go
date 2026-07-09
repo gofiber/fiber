@@ -19,6 +19,16 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// TestMain relaxes the proxy security policy for the whole suite so the
+// existing loopback-based tests continue to work. Tests that exercise
+// the secure defaults install their own policy in their own scope.
+func TestMain(m *testing.M) {
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	WithSecurityPolicy(policy)
+	m.Run()
+}
+
 func startServer(app *fiber.App, ln net.Listener) {
 	go func() {
 		err := app.Listener(ln, fiber.ListenConfig{
@@ -612,6 +622,38 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 }
 
 // go test -race -run Test_Proxy_DoRedirects_RestoreOriginalURL
+// Test_Proxy_DoRedirects_AliasedAddr regression-tests P3+P6: the addr
+// string is derived from c.OriginalURL() and therefore aliases the
+// fasthttp request's internal requestURI buffer. After P6, the *url.URL
+// returned by validateUpstream is passed into followRedirects, which
+// reads u.Host on the cross-host strip check and u.String() to feed
+// SetRequestURI. If u's field slices were ever aliased back to the
+// request buffer, SetRequestURI's overwrite would corrupt them mid-loop
+// and the redirect target would be garbled. P3 fixes this by cloning
+// addr once at the parse boundary inside doActionWithPolicy.
+func Test_Proxy_DoRedirects_AliasedAddr(t *testing.T) {
+	t.Parallel()
+
+	addr := createRedirectServer(t)
+	app := fiber.New()
+	// Routing the upstream through the request path forces addr to alias
+	// req.Header.requestURI, exercising the aliasing case directly.
+	app.Get("/*", func(c fiber.Ctx) error {
+		aliased := strings.TrimPrefix(c.OriginalURL(), "/")
+		return DoRedirects(c, aliased, 1)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/http://"+addr, http.NoBody), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "final", string(body))
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
 
@@ -1179,4 +1221,32 @@ func Test_Proxy_DomainForward_OverwritesXRealIP(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// Test_Proxy_DomainForward_HostMatchIsCaseInsensitive verifies that the
+// host gate folds case per RFC 9110 §4.2.3 — an inbound Host header with
+// different casing than the configured hostname must still be proxied,
+// not silently passed through.
+func Test_Proxy_DomainForward_HostMatchIsCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	// Handler configured with a lowercase hostname...
+	app.Use(DomainForward("api.example.com", "http://"+addr))
+
+	// ...but the request arrives with mixed-case Host.
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "API.Example.com"
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "proxied", string(body), "mixed-case Host must still be proxied")
 }
