@@ -31,7 +31,9 @@ func Test_Path_parseRoute(t *testing.T) {
 			{Const: "/size:", Length: 6},
 			{IsParam: true, ParamName: "size", IsLast: true},
 		},
-		params: []string{"filter", "color", "size"},
+		params:     []string{"filter", "color", "size"},
+		minSlashes: 5,
+		maxSlashes: 5,
 	}, rp)
 
 	rp = parseRoute("/api/v1/:param/abc/*", regexp.MustCompile)
@@ -44,6 +46,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		},
 		params:        []string{"param", "*1"},
 		wildCardCount: 1,
+		minSlashes:    4,
 	}, rp)
 
 	rp = parseRoute("/v1/some/resource/name\\:customVerb", regexp.MustCompile)
@@ -51,7 +54,9 @@ func Test_Path_parseRoute(t *testing.T) {
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/name:customVerb", Length: 33, IsLast: true},
 		},
-		params: nil,
+		params:     nil,
+		minSlashes: 4,
+		maxSlashes: 4,
 	}, rp)
 
 	rp = parseRoute("/v1/some/resource/:name\\:customVerb", regexp.MustCompile)
@@ -61,7 +66,9 @@ func Test_Path_parseRoute(t *testing.T) {
 			{IsParam: true, ParamName: "name", ComparePart: ":customVerb", PartCount: 1},
 			{Const: ":customVerb", Length: 11, IsLast: true},
 		},
-		params: []string{"name"},
+		params:     []string{"name"},
+		minSlashes: 4,
+		maxSlashes: 4,
 	}, rp)
 
 	// heavy test with escaped characters
@@ -75,6 +82,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		},
 		params:        []string{"param", "*1"},
 		wildCardCount: 1,
+		minSlashes:    5,
 	}, rp)
 
 	rp = parseRoute("/api/*/:param/:param2", regexp.MustCompile)
@@ -89,6 +97,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		},
 		params:        []string{"*1", "param", "param2"},
 		wildCardCount: 1,
+		minSlashes:    3,
 	}, rp)
 
 	rp = parseRoute("/test:optional?:optional2?", regexp.MustCompile)
@@ -98,7 +107,8 @@ func Test_Path_parseRoute(t *testing.T) {
 			{IsParam: true, ParamName: "optional", IsOptional: true, Length: 1},
 			{IsParam: true, ParamName: "optional2", IsOptional: true, IsLast: true},
 		},
-		params: []string{"optional", "optional2"},
+		params:     []string{"optional", "optional2"},
+		minSlashes: 1,
 	}, rp)
 
 	rp = parseRoute("/config/+.json", regexp.MustCompile)
@@ -108,8 +118,9 @@ func Test_Path_parseRoute(t *testing.T) {
 			{IsParam: true, ParamName: "+1", IsGreedy: true, IsOptional: false, ComparePart: ".json", PartCount: 1},
 			{Const: ".json", Length: 5, IsLast: true},
 		},
-		params:    []string{"+1"},
-		plusCount: 1,
+		params:     []string{"+1"},
+		plusCount:  1,
+		minSlashes: 2,
 	}, rp)
 
 	rp = parseRoute("/api/:day.:month?.:year?", regexp.MustCompile)
@@ -122,7 +133,8 @@ func Test_Path_parseRoute(t *testing.T) {
 			{Const: ".", Length: 1},
 			{IsParam: true, ParamName: "year", IsOptional: true, IsLast: true},
 		},
-		params: []string{"day", "month", "year"},
+		params:     []string{"day", "month", "year"},
+		minSlashes: 2,
 	}, rp)
 
 	rp = parseRoute("/*v1*/proxy", regexp.MustCompile)
@@ -136,6 +148,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		},
 		params:        []string{"*1", "*2"},
 		wildCardCount: 2,
+		minSlashes:    1,
 	}, rp)
 }
 
@@ -155,6 +168,70 @@ func Test_Path_matchParams(t *testing.T) {
 	}
 	for _, testCaseCollection := range routeTestCases {
 		testCaseFn(testCaseCollection)
+	}
+}
+
+// go test -race -run Test_RouteParser_SlashBounds
+func Test_RouteParser_SlashBounds(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		pattern    string
+		minSlashes int
+		maxSlashes int
+	}{
+		{pattern: "/", minSlashes: 0, maxSlashes: 1},
+		{pattern: "/api/v1/const", minSlashes: 3, maxSlashes: 3},
+		{pattern: "/api/v1/:param", minSlashes: 3, maxSlashes: 3},
+		{pattern: "/api/v1/:param?", minSlashes: 2, maxSlashes: 3},
+		{pattern: "/api/v1/:param/fixedEnd", minSlashes: 4, maxSlashes: 4},
+		// greedy parameters match across '/', so no upper bound
+		{pattern: "/api/*", minSlashes: 1, maxSlashes: 0},
+		{pattern: "/api/+", minSlashes: 2, maxSlashes: 0},
+		// optional segments drop their leading slashes from the lower bound
+		{pattern: "/api/:day/:month?/:year?", minSlashes: 2, maxSlashes: 4},
+		// single-byte compare parts have no slash guard in findParamLen,
+		// so such parameters can swallow '/' and the max is unbounded
+		{pattern: "/api/v1/:a-:b", minSlashes: 3, maxSlashes: 0},
+		{pattern: "/api/:day.:month?.:year?", minSlashes: 2, maxSlashes: 0},
+		// successive parameters consume one byte each, possibly a '/'
+		{pattern: "/test:sign:param", minSlashes: 1, maxSlashes: 0},
+		// multi-byte compare parts reject slashes, so bounds stay exact
+		{pattern: "/shop/product/::filter/color::color/size::size", minSlashes: 5, maxSlashes: 5},
+		{pattern: "/v1/some/resource/name\\:customVerb", minSlashes: 4, maxSlashes: 4},
+	}
+	for _, tc := range testCases {
+		parser := parseRoute(tc.pattern, regexp.MustCompile)
+		require.Equal(t, tc.minSlashes, parser.minSlashes, "route: '%s' minSlashes", tc.pattern)
+		require.Equal(t, tc.maxSlashes, parser.maxSlashes, "route: '%s' maxSlashes", tc.pattern)
+	}
+}
+
+// Test_Route_Match_SlashBoundsConsistency proves the slash-count quick-reject in
+// Route.match never flips the outcome of the exhaustive matching fixture. Only
+// parametric patterns are checked, since only they take the filtered path.
+// go test -race -run Test_Route_Match_SlashBoundsConsistency
+func Test_Route_Match_SlashBoundsConsistency(t *testing.T) {
+	t.Parallel()
+	for _, testCollection := range routeTestCases {
+		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
+		if len(parser.params) == 0 {
+			continue
+		}
+		route := &Route{
+			routeParser: parser,
+			Params:      parser.params,
+			path:        testCollection.pattern,
+			Path:        testCollection.pattern,
+		}
+		for _, c := range testCollection.testCases {
+			route.use = c.partialCheck
+			var ctxParams [maxParams]string
+			match := route.match(c.url, c.url, &ctxParams, strings.Count(c.url, "/"))
+			require.Equal(t, c.match, match, "route: '%s', url: '%s'", testCollection.pattern, c.url)
+			if match && len(c.params) > 0 {
+				require.Equal(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], "route: '%s', url: '%s'", testCollection.pattern, c.url)
+			}
+		}
 	}
 }
 

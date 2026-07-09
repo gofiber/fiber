@@ -211,6 +211,7 @@ type Ctx interface {
 	getMethodInt() int
 	getIndexRoute() int
 	getTreePathHash() int
+	getPathSlashes() int
 	getDetectionPath() string
 	getValues() *[maxParams]string
 	getMatched() bool

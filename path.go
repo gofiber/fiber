@@ -25,6 +25,8 @@ type routeParser struct {
 	params        []string        // that parameter names the parsed route
 	wildCardCount int             // number of wildcard parameters, used internally to give the wildcard parameter its number
 	plusCount     int             // number of plus parameters, used internally to give the plus parameter its number
+	minSlashes    int             // minimum number of '/' a matching detection path can contain
+	maxSlashes    int             // maximum number of '/' a matching detection path can contain; 0 means unbounded
 }
 
 var routerParserPool = &sync.Pool{
@@ -145,6 +147,8 @@ var constraintNameToID = map[string]TypeConstraint{
 var (
 	// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
 	routeDelimiter = []byte{slashDelimiter, '-', '.'}
+	// slashDelimiterBytes is the byte-slice form of slashDelimiter for bytes.Count
+	slashDelimiterBytes = []byte{slashDelimiter}
 	// list of chars for the parameter recognizing
 	parameterStartChars = [256]bool{
 		wildcardParam:    true,
@@ -234,6 +238,8 @@ func (parser *routeParser) reset() {
 	parser.params = parser.params[:0]
 	parser.wildCardCount = 0
 	parser.plusCount = 0
+	parser.minSlashes = 0
+	parser.maxSlashes = 0
 }
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
@@ -258,6 +264,49 @@ func (parser *routeParser) parseRoute(pattern string, regexHandler any, customCo
 		parser.segs[len(parser.segs)-1].IsLast = true
 	}
 	parser.segs = addParameterMetaInfo(parser.segs)
+	parser.computeSlashBounds()
+}
+
+// computeSlashBounds precomputes the minimum and maximum number of '/' bytes a
+// detection path can contain and still match this pattern, so the router can
+// reject candidates with an integer compare before walking their segments.
+// maxSlashes 0 means unbounded: greedy parameters and the findParamLen branches
+// that let a parameter swallow '/' make an upper bound unknowable.
+func (parser *routeParser) computeSlashBounds() {
+	minSlashes := 0
+	maxSlashes := 0
+	bounded := true
+	for _, seg := range parser.segs {
+		if seg.IsParam {
+			switch {
+			case seg.IsGreedy:
+				// '*' and '+' match across '/'
+				bounded = false
+			case !seg.IsLast && seg.Length == 1:
+				// adjacent parameters consume one byte each, possibly a '/'
+				bounded = false
+			case !seg.IsLast && len(seg.ComparePart) == 1 && seg.ComparePart[0] != slashDelimiter:
+				// findParamLen's single-byte IndexByte search has no slash guard
+				bounded = false
+			}
+			// otherwise a non-greedy parameter never contains '/': the last
+			// segment stops at the next '/', and the multi-byte ComparePart
+			// branch rejects parameters that would span one
+			continue
+		}
+		n := strings.Count(seg.Const, string(slashDelimiter))
+		minSlashes += n
+		maxSlashes += n
+		if seg.HasOptionalSlash {
+			// getMatch may drop the trailing '/' of this const part
+			minSlashes--
+		}
+	}
+	parser.minSlashes = minSlashes
+	if !bounded {
+		maxSlashes = 0
+	}
+	parser.maxSlashes = maxSlashes
 }
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,

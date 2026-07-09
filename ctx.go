@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -72,6 +73,7 @@ type DefaultCtx struct {
 	path                   []byte               // HTTP path with the modifications by the configuration
 	detectionPath          []byte               // Route detection path
 	treePathHash           int                  // Hash of the path for the search in the tree
+	pathSlashes            int                  // Number of '/' in the detection path, used to quick-reject routes
 	indexRoute             int                  // Index of the current route
 	indexHandler           int                  // Index of the current handler
 	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
@@ -708,6 +710,10 @@ func (c *DefaultCtx) configDependentPaths() {
 			int(c.detectionPath[1])<<8 |
 			int(c.detectionPath[2])
 	}
+
+	// Count the slashes of the final detection path once per request; route
+	// matching uses it to reject candidates without walking their segments.
+	c.pathSlashes = bytes.Count(c.detectionPath, slashDelimiterBytes)
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.
@@ -891,6 +897,10 @@ func (c *DefaultCtx) getIndexRoute() int {
 
 func (c *DefaultCtx) getTreePathHash() int {
 	return c.treePathHash
+}
+
+func (c *DefaultCtx) getPathSlashes() int {
+	return c.pathSlashes
 }
 
 func (c *DefaultCtx) getDetectionPath() string {

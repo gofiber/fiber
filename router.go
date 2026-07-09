@@ -177,7 +177,7 @@ func preferredGreedyParameters(paramName string) []string {
 	return defaultGreedyParameterKeys
 }
 
-func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
+func (r *Route) match(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
 	// root detectionPath check
 	if r.root && len(detectionPath) == 1 && detectionPath[0] == '/' {
 		return true
@@ -195,8 +195,15 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 
 	// Does this route have parameters?
 	if len(r.Params) > 0 {
+		// Quick-reject on the precomputed slash-count bounds before walking segments.
+		// maxSlashes 0 means unbounded; prefix (use) routes may extend past the pattern,
+		// so only the lower bound applies to them.
+		p := &r.routeParser
+		if pathSlashes < p.minSlashes || (!r.use && p.maxSlashes != 0 && pathSlashes > p.maxSlashes) {
+			return false
+		}
 		// Match params using precomputed routeParser
-		return r.routeParser.getMatch(detectionPath, path, params, r.use)
+		return p.getMatch(detectionPath, path, params, r.use)
 	}
 
 	// Middleware route?
@@ -234,6 +241,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	}
 	indexRoute := max(c.indexRoute+1, 0)
 	// Hoist loop invariants: route.match takes &c.values, so these would reload each iteration.
+	pathSlashes := c.pathSlashes
 	firstMatchIndex := c.firstMatchIndex
 	skipNonUse := c.shouldSkipNonUseRoutes
 	skipHasParamUse := app.skip.hasParamUse
@@ -267,7 +275,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(detectionPath, path, &c.values) {
+		if !route.match(detectionPath, path, &c.values, pathSlashes) {
 			continue
 		}
 
@@ -336,7 +344,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(detectionPath, path, &c.values) {
+			if route.match(detectionPath, path, &c.values, pathSlashes) {
 				// We matched
 				exists = true
 				// Add method to Allow header
@@ -366,6 +374,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	detectionPath := c.getDetectionPath()
 	path := c.Path()
 	values := c.getValues()
+	pathSlashes := c.getPathSlashes()
 	firstMatchIndex := c.getFirstMatchIndex()
 	skipNonUse := c.getSkipNonUseRoutes()
 	skipHasParamUse := app.skip.hasParamUse
@@ -399,7 +408,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(detectionPath, path, values) {
+		if !route.match(detectionPath, path, values, pathSlashes) {
 			continue
 		}
 		if skipNonUse && !route.use {
@@ -466,7 +475,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(detectionPath, path, values) {
+			if route.match(detectionPath, path, values, pathSlashes) {
 				// We matched
 				exists = true
 				// Add method to Allow header
@@ -507,7 +516,7 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	// (without middleware next() already answers 404/405 cheaply). CORS preflight is
 	// exempt so cors middleware can answer paths that lack an explicit OPTIONS route.
 	if app.skip.enabled && !ctx.IsPreflight() {
-		res := app.resolveSkip(ctx.methodInt, ctx.treePathHash,
+		res := app.resolveSkip(ctx.methodInt, ctx.treePathHash, ctx.pathSlashes,
 			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path), &ctx.values)
 		switch res.decision {
 		case skipNotFound:
@@ -549,7 +558,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	// (without middleware next() already answers 404/405 cheaply). CORS preflight is
 	// exempt so cors middleware can answer paths that lack an explicit OPTIONS route.
 	if app.skip.enabled && !ctx.IsPreflight() {
-		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(),
+		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(), ctx.getPathSlashes(),
 			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
 		switch res.decision {
 		case skipNotFound:
