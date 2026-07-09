@@ -828,7 +828,7 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 		t.Parallel()
 
 		require.PanicsWithValue(t, "missing handler/middleware in route: /doe\n", func() {
-			app.register([]string{"USE"}, "/doe", nil)
+			app.register([]string{"USE"}, "/doe", nil, "")
 		})
 	})
 
@@ -836,7 +836,7 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 		t.Parallel()
 
 		require.PanicsWithValue(t, "nil handler in route: /doe\n", func() {
-			app.register([]string{"USE"}, "/doe", nil, nil)
+			app.register([]string{"USE"}, "/doe", nil, "", nil)
 		})
 	})
 }
@@ -3170,7 +3170,10 @@ func Test_App_MetadataNoCollisionWithMountedRoutes(t *testing.T) {
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Path == "/api/b" {
-				require.Equal(t, "sub b", route.Summary, route.Method)
+				// Auto-HEAD twins deliberately carry no documentation.
+				if !route.IsAutoHead() {
+					require.Equal(t, "sub b", route.Summary, route.Method)
+				}
 				require.NotEqual(t, "newname", route.Name, route.Method)
 			}
 		}

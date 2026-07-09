@@ -59,7 +59,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 
 	// register mounted group
 	mountGroup := &Group{Prefix: prefix, app: subApp}
-	app.register([]string{methodUse}, prefix, mountGroup)
+	app.register([]string{methodUse}, prefix, mountGroup, "")
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(app); err != nil {
@@ -91,7 +91,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 
 	// register mounted group
 	mountGroup := &Group{Prefix: groupPath, app: subApp}
-	grp.app.register([]string{methodUse}, groupPath, mountGroup)
+	grp.app.register([]string{methodUse}, groupPath, mountGroup, "")
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(grp.app); err != nil {
@@ -195,11 +195,18 @@ func (app *App) processSubAppsRoutes() {
 				continue
 			}
 
+			// Clone the sub-app's routes under the sub-app's lock: its stack
+			// and route metadata can be mutated concurrently by registration
+			// or documentation helpers, which lock only the sub-app's mutex.
+			// Lock order is strictly parent→child, so no cycle is possible.
+			subApp := route.group.app
+			subApp.mutex.Lock()
+
 			// Create a slice to hold the sub-app's routes
-			subRoutes := make([]*Route, len(route.group.app.stack[m]))
+			subRoutes := make([]*Route, len(subApp.stack[m]))
 
 			// Iterate over the sub-app's routes
-			for j, subAppRoute := range route.group.app.stack[m] {
+			for j, subAppRoute := range subApp.stack[m] {
 				// Clone the sub-app's route
 				subAppRouteClone := app.copyRoute(subAppRoute)
 
@@ -210,11 +217,12 @@ func (app *App) processSubAppsRoutes() {
 				subAppRouteClone.regID = 0
 
 				// Add the parent route's path as a prefix to the sub-app's route
-				app.addPrefixToRoute(route.path, subAppRouteClone, route.group.app.config.RegexHandler, route.group.app.customConstraints...)
+				app.addPrefixToRoute(route.path, subAppRouteClone, subApp.config.RegexHandler, subApp.customConstraints...)
 
 				// Add the cloned sub-app's route to the slice of sub-app routes
 				subRoutes[j] = subAppRouteClone
 			}
+			subApp.mutex.Unlock()
 
 			// Insert the sub-app's routes into the parent app's stack
 			newStack := make([]*Route, len(app.stack[m])+len(subRoutes)-1)

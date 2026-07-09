@@ -118,6 +118,12 @@ type Route struct {
 
 	path string // Prettified path
 
+	// domain is the host pattern the route was registered under via
+	// app.Domain(); empty for regular routes. Same-path registrations on
+	// different domains must never be compression-merged, so each keeps its
+	// own handlers and documentation metadata.
+	domain string
+
 	// Public fields
 	Method string `json:"method"` // HTTP method
 	Name   string `json:"name"`   // Route's name
@@ -795,6 +801,7 @@ func (*App) copyRouteBase(route *Route) *Route {
 		caseSensitive: route.caseSensitive,
 		hidden:        route.hidden,
 		regID:         route.regID,
+		domain:        route.domain,
 
 		// Path data
 		path:        route.path,
@@ -822,7 +829,11 @@ func cloneRouteSecurity(requirements []map[string][]string) []map[string][]strin
 	for i, requirement := range requirements {
 		entry := make(map[string][]string, len(requirement))
 		for scheme, scopes := range requirement {
-			entry[scheme] = append([]string(nil), scopes...)
+			// make+copy keeps an empty scope list non-nil so it marshals as
+			// the spec-required [] rather than null.
+			cloned := make([]string, len(scopes))
+			copy(cloned, scopes)
+			entry[scheme] = cloned
 		}
 		cloned[i] = entry
 	}
@@ -844,7 +855,7 @@ func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {
 	if len(body.Examples) > 0 {
 		clone.Examples = copyAnyMap(body.Examples)
 	}
-	clone.Example = body.Example
+	clone.Example = copyAnyValue(body.Example)
 	if len(body.MediaTypes) > 0 {
 		clone.MediaTypes = append([]string(nil), body.MediaTypes...)
 	}
@@ -861,7 +872,7 @@ func cloneRouteMediaTypeMap(content map[string]RouteMediaType) map[string]RouteM
 		cloned[mediaType] = RouteMediaType{
 			Schema:    copyAnyMap(mt.Schema),
 			SchemaRef: mt.SchemaRef,
-			Example:   mt.Example,
+			Example:   copyAnyValue(mt.Example),
 			Examples:  copyAnyMap(mt.Examples),
 			Encoding:  copyAnyMap(mt.Encoding),
 		}
@@ -888,7 +899,7 @@ func cloneRouteParameters(params []RouteParameter) []RouteParameter {
 			Schema:          copyAnyMap(p.Schema),
 			SchemaRef:       p.SchemaRef,
 			Examples:        copyAnyMap(p.Examples),
-			Example:         p.Example,
+			Example:         copyAnyValue(p.Example),
 		}
 		if p.Explode != nil {
 			explode := *p.Explode
@@ -909,7 +920,7 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 			Schema:      copyAnyMap(resp.Schema),
 			SchemaRef:   resp.SchemaRef,
 			Examples:    copyAnyMap(resp.Examples),
-			Example:     resp.Example,
+			Example:     copyAnyValue(resp.Example),
 			Headers:     copyAnyMap(resp.Headers),
 			Links:       copyAnyMap(resp.Links),
 			Content:     cloneRouteMediaTypeMap(resp.Content),
@@ -1071,6 +1082,16 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			app.hasRoutesRefreshed = true
 			app.bumpRoutesRevision()
 
+			// Invalidate the registration cursor and batch so later chained
+			// helpers become no-ops instead of mutating a removed route.
+			if route == app.latestRoute {
+				app.latestRoute = nil
+			}
+			if slices.Contains(app.latestBatch, route) {
+				app.latestBatch = app.latestBatch[:0]
+				app.latestBatchID = 0
+			}
+
 			// Decrement global handler count. In middleware routes, only decrement once
 			if _, ok := removedUseRoutes[route.path]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
 				if route.use {
@@ -1112,7 +1133,11 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 	}
 }
 
-func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
+// register creates one stack entry per method for the given path and returns
+// the registration ID stamped on every entry, so scoped helpers (Group,
+// Registering, domainRouter) can target exactly this registration later.
+// domain is the host pattern for app.Domain() registrations, "" otherwise.
+func (app *App) register(methods []string, pathRaw string, group *Group, domain string, handlers ...Handler) uint64 {
 	// A regular route requires at least one ctx handler
 	if len(handlers) == 0 && group == nil {
 		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
@@ -1172,6 +1197,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
 			regID:         regID,
+			domain:        domain,
 
 			path:        pathClean,
 			routeParser: parsedPretty,
@@ -1205,11 +1231,12 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			app.addRoute(method, &route)
 		}
 	}
+
+	return regID
 }
 
 func (app *App) addRoute(method string, route *Route) {
 	app.mutex.Lock()
-	defer app.mutex.Unlock()
 
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
@@ -1218,49 +1245,102 @@ func (app *App) addRoute(method string, route *Route) {
 		app.pruneAutoHeadRouteLocked(route.path)
 	}
 
+	// The stack entry the registration ends up in: the route itself, or the
+	// pre-existing entry it was compression-merged into.
+	liveRoute := route
+
+	// A new registration always starts a fresh helper-target batch, even when
+	// every one of its entries ends up compression-merged away.
+	app.resetBatchIfNewRegistrationLocked(route.regID)
+
 	// prevent identically route registration
 	l := len(app.stack[m])
-	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount {
+	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use &&
+		!route.mount && !app.stack[m][l-1].mount && app.stack[m][l-1].domain == route.domain {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
-		// The merged entry now carries the latest registration, so chained
-		// helpers targeting it reach this entry.
-		preRoute.regID = route.regID
+		// The merged entry keeps its own registration ID but joins the new
+		// registration's helper batch: consecutive same-path registrations
+		// share one stack entry, and its documentation deliberately belongs to
+		// the latest registration (chained .Name()/.Summary() on the newest
+		// Use()/route wins, matching Fiber's established naming behavior).
+		liveRoute = preRoute
+		app.latestBatch = append(app.latestBatch, preRoute)
 	} else {
 		route.Method = method
 		// Add route to the stack
 		app.stack[m] = append(app.stack[m], route)
 		app.hasRoutesRefreshed = true
+		app.latestBatch = append(app.latestBatch, route)
 	}
 
 	app.bumpRoutesRevision()
 
-	// Execute onRoute hooks & change latestRoute if not adding mounted route
+	// Track the most recent registration so chained helpers (Name, Summary,
+	// ...) target it. Mount routes are tracked too — otherwise a helper
+	// chained onto app.Use("/api", subApp) would mutate whatever route was
+	// registered before the mount — but onRoute hooks are not fired for them.
+	app.latestRoute = liveRoute
+
+	// Snapshot the route under the lock, then fire hooks after releasing it so
+	// they may safely call locking app methods (GetRoutes, documentation
+	// helpers, RemoveRoute, ...). The private snapshot keeps hook reads from
+	// racing concurrent documentation of the live route.
+	var hookRoute *Route
 	if !route.mount {
-		app.latestRoute = route
-		app.latestRoutes = append(app.latestRoutes, route)
-		if err := app.hooks.executeOnRouteHooks(route); err != nil {
+		hookRoute = app.copyRoute(liveRoute)
+	}
+	app.mutex.Unlock()
+	if hookRoute != nil {
+		if err := app.hooks.executeOnRouteHooks(hookRoute); err != nil {
 			panic(err)
 		}
 	}
 }
 
-func (app *App) ensureAutoHeadRoutes() {
-	app.mutex.Lock()
-	defer app.mutex.Unlock()
-
-	app.ensureAutoHeadRoutesLocked()
+// resetBatchIfNewRegistrationLocked starts a fresh helper-target batch when
+// regID belongs to a new registration. Documentation helpers use the batch to
+// reach every stack entry of the most recent registration in O(batch) instead
+// of scanning the stack. The caller must hold app.mutex.
+func (app *App) resetBatchIfNewRegistrationLocked(regID uint64) {
+	if regID != app.latestBatchID {
+		app.latestBatchID = regID
+		app.latestBatch = app.latestBatch[:0]
+	}
 }
 
-func (app *App) ensureAutoHeadRoutesLocked() {
+// appendToCurrentBatchLocked adds route to the current registration batch only
+// when it belongs to the same registration; auto-HEAD twins created at startup
+// use it so twins of older registrations never clobber the batch. The caller
+// must hold app.mutex.
+func (app *App) appendToCurrentBatchLocked(regID uint64, route *Route) {
+	if regID != 0 && regID == app.latestBatchID {
+		app.latestBatch = append(app.latestBatch, route)
+	}
+}
+
+func (app *App) ensureAutoHeadRoutes() {
+	app.mutex.Lock()
+	twins := app.ensureAutoHeadRoutesLocked()
+	app.mutex.Unlock()
+
+	// Fire hooks after releasing the lock so they may safely call locking app
+	// methods (GetRoutes, documentation helpers, RemoveRoute, ...).
+	app.fireOnRouteHooks(twins)
+}
+
+// ensureAutoHeadRoutesLocked creates the missing auto-HEAD twins and returns
+// private snapshots of them; the caller must hold app.mutex and fire the
+// onRoute hooks for the returned snapshots after releasing it.
+func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	if app.config.DisableHeadAutoRegister {
-		return
+		return nil
 	}
 
 	headIndex := app.methodInt(MethodHead)
 	getIndex := app.methodInt(MethodGet)
 	if headIndex == -1 || getIndex == -1 {
-		return
+		return nil
 	}
 
 	headStack := app.stack[headIndex]
@@ -1273,10 +1353,10 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 	}
 
 	if len(app.stack[getIndex]) == 0 {
-		return
+		return nil
 	}
 
-	var added bool
+	var twins []*Route
 
 	for _, route := range app.stack[getIndex] {
 		if route.mount || route.use {
@@ -1290,6 +1370,15 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		headRoute.group = route.group
 		headRoute.Method = MethodHead
 		headRoute.autoHead = true
+		// Twins carry no documentation at all: copyRouteBase skips the doc
+		// maps/slices, and the scalar doc fields are blanked here so Stack and
+		// GetRoutes never expose a half-documented HEAD route. Spec consumers
+		// filter twins via IsAutoHead.
+		headRoute.Summary = ""
+		headRoute.Description = ""
+		headRoute.Consumes = ""
+		headRoute.Produces = ""
+		headRoute.Deprecated = false
 		// Fasthttp automatically omits response bodies when transmitting
 		// HEAD responses, so the copied GET handler stack can execute
 		// unchanged while still producing an empty body on the wire.
@@ -1297,19 +1386,32 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		headStack = append(headStack, headRoute)
 		existing[route.path] = struct{}{}
 		app.hasRoutesRefreshed = true
-		added = true
+		// Snapshot for the onRoute hooks, which run after the lock is
+		// released and must not read the live route.
+		twins = append(twins, app.copyRoute(headRoute))
 
 		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
 
-		app.latestRoute = headRoute
-		if err := app.hooks.executeOnRouteHooks(headRoute); err != nil {
-			panic(err)
-		}
+		// The twin joins its GET origin's registration batch (shared regID)
+		// but deliberately does not become latestRoute: a stray helper called
+		// after startup must not re-document an arbitrary route.
+		app.appendToCurrentBatchLocked(headRoute.regID, headRoute)
 	}
 
-	if added {
+	if len(twins) > 0 {
 		app.stack[headIndex] = headStack
 		app.bumpRoutesRevision()
+	}
+	return twins
+}
+
+// fireOnRouteHooks runs the onRoute hooks for each route, panicking on error
+// exactly like route registration does. Callers must not hold app.mutex.
+func (app *App) fireOnRouteHooks(routes []*Route) {
+	for _, route := range routes {
+		if err := app.hooks.executeOnRouteHooks(route); err != nil {
+			panic(err)
+		}
 	}
 }
 
