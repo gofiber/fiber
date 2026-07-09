@@ -462,6 +462,20 @@ func Test_Security_JoinUpstreamPath_PreservesQuery(t *testing.T) {
 	require.Equal(t, "http://upstream.example/x?y=1&z=2", out)
 }
 
+func Test_Security_JoinUpstreamPath_EmptyQueryMarkersUseSlowPath(t *testing.T) {
+	t.Parallel()
+
+	baseWithEmptyQuery, err := parseUpstream("http://upstream.example?")
+	require.NoError(t, err)
+	require.True(t, baseWithEmptyQuery.ForceQuery)
+	require.Equal(t, "http://upstream.example/foo?", joinUpstreamPath(baseWithEmptyQuery, "/foo"))
+
+	base, err := parseUpstream("http://upstream.example")
+	require.NoError(t, err)
+	require.Equal(t, "http://upstream.example/foo", joinUpstreamPath(base, "/foo?"))
+	require.Equal(t, "http://upstream.example/foo", joinUpstreamPath(base, "/foo#"))
+}
+
 func Test_Security_SecureTLSConfig_DefaultMinVersion(t *testing.T) {
 	t.Parallel()
 	out := secureTLSConfig(nil)

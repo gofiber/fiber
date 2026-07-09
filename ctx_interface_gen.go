@@ -115,6 +115,11 @@ type Ctx interface {
 	ViewBind(vars Map) error
 	// Route returns the matched Route struct.
 	Route() *Route
+	// routeFallback builds the synthetic route for the fasthttp error handler.
+	// Its Method field is resolved like c.Method() (including the raw-header
+	// fallback for unregistered methods) so Route and Method always agree.
+	// Never inlined: inlining it would push Route over the inlining budget.
+	routeFallback() *Route
 	// FullPath returns the matched route path, including any group prefixes.
 	FullPath() string
 	// Matched returns true if the current request path was matched by the router.
