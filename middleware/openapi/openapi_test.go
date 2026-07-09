@@ -2517,3 +2517,148 @@ func Test_OpenAPI_MetadataChangesAfterFirstServe(t *testing.T) {
 	op = requireMap(t, requireMap(t, paths["/late"])["get"])
 	require.Contains(t, requireMap(t, op["responses"]), "201")
 }
+
+// Test_OpenAPI_SecurityEmptyScopesEmitArray verifies referencing a non-OAuth2
+// scheme with an empty scope list emits the spec-required [] and never null.
+func Test_OpenAPI_SecurityEmptyScopesEmitArray(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/secure", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Security(map[string][]string{"bearerAuth": {}})
+	app.Use(New(Config{
+		SecuritySchemes: map[string]any{
+			"bearerAuth": map[string]any{"type": "http", "scheme": "bearer"},
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	require.Contains(t, string(body), `"security":[{"bearerAuth":[]}]`)
+	require.NotContains(t, string(body), `"bearerAuth":null`)
+}
+
+// Test_OpenAPI_MultiOptionalParamsSingleHierarchy verifies routes with several
+// optional parameters emit only one templated path per hierarchy level: the
+// OpenAPI spec forbids templated paths identical up to parameter names, and
+// the router would always bind the first parameter anyway.
+func Test_OpenAPI_MultiOptionalParamsSingleHierarchy(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/files/:dir?/:name?", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New())
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var spec struct {
+		Paths map[string]any `json:"paths"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+	require.NoError(t, resp.Body.Close())
+
+	require.Contains(t, spec.Paths, "/files")
+	require.Contains(t, spec.Paths, "/files/{dir}")
+	require.Contains(t, spec.Paths, "/files/{dir}/{name}")
+	require.NotContains(t, spec.Paths, "/files/{name}")
+}
+
+// Test_OpenAPI_MountPrefixWithConstraintsAndEscapes verifies mount prefixes
+// whose '*'/'+' characters live inside a <constraint> or behind an escape are
+// not misclassified as wildcards (which previously made the spec target
+// unreachable).
+func Test_OpenAPI_MountPrefixWithConstraintsAndEscapes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("RegexConstraint", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use("/:id<regex([0-9]+)>/admin", New())
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/123/admin/openapi.json", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("EscapedPlus", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(`/c\+\+`, New())
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/c++/openapi.json", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("IntConstraintControl", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use("/:id<int>/admin", New())
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/7/admin/openapi.json", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	})
+}
+
+// Test_OpenAPI_SharedHandlerAcrossApps verifies one handler value registered
+// on two apps serves each app's own spec, even when their route revisions
+// coincide.
+func Test_OpenAPI_SharedHandlerAcrossApps(t *testing.T) {
+	t.Parallel()
+	handler := New()
+
+	app1 := fiber.New()
+	app1.Get("/only-in-app1", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app1.Use(handler)
+
+	app2 := fiber.New()
+	app2.Get("/only-in-app2", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app2.Use(handler)
+
+	specOf := func(app *fiber.App) map[string]any {
+		t.Helper()
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		var spec struct {
+			Paths map[string]any `json:"paths"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
+		require.NoError(t, resp.Body.Close())
+		return spec.Paths
+	}
+
+	paths1 := specOf(app1)
+	require.Contains(t, paths1, "/only-in-app1")
+	require.NotContains(t, paths1, "/only-in-app2")
+
+	paths2 := specOf(app2)
+	require.Contains(t, paths2, "/only-in-app2")
+	require.NotContains(t, paths2, "/only-in-app1")
+}
+
+// Test_OpenAPI_SwaggerPageUsesAppJSONEncoder verifies the Swagger UI options
+// are marshaled with the app's configured JSON encoder, like the spec itself.
+func Test_OpenAPI_SwaggerPageUsesAppJSONEncoder(t *testing.T) {
+	t.Parallel()
+	encoderUsed := false
+	app := fiber.New(fiber.Config{
+		JSONEncoder: func(v any) ([]byte, error) {
+			encoderUsed = true
+			return json.Marshal(v)
+		},
+	})
+	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{SwaggerOptions: map[string]any{"deepLinking": true}}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.True(t, encoderUsed)
+}
