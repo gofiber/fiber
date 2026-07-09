@@ -3,6 +3,7 @@ package proxy
 import (
 	"errors"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -143,31 +144,60 @@ var (
 	errNilGlobalProxyClient   = errors.New("proxy: global client is nil, set a non-nil client with proxy.WithClient")
 )
 
-// guardMu serializes installation of the dial-time SSRF guard onto a
-// client. guardedClients records the *fasthttp.Client values whose Dial
-// has already been wrapped, so ensureClientGuarded wraps each exactly
-// once — a second wrap would compose the guard with itself and re-resolve
-// on every dial for no benefit.
-var (
-	guardMu        sync.Mutex
-	guardedClients = map[*fasthttp.Client]struct{}{}
-)
+// guardConfigureClient is the fasthttp ConfigureClient hook that installs
+// the dial-time SSRF guard on every HostClient a *fasthttp.Client creates.
+// Running at HostClient creation (rather than mutating Client.Dial) means
+// the guard is present before the first dial to each host and covers both
+// the Dial and DialTimeout code paths. It is a stable package-level
+// function value — not a closure — so ensureClientGuarded can recognize an
+// already-guarded client by identity, keeping installation idempotent
+// without retaining a reference to the client (which would pin it, and its
+// connection pool, for the process lifetime).
+func guardConfigureClient(hc *fasthttp.HostClient) error {
+	installHostClientGuard(hc)
+	return nil
+}
 
-// ensureClientGuarded installs the policy-aware dial-time SSRF guard on cli
-// exactly once. Every dispatch path funnels through here before it calls
-// cli.Do, so the wrap — performed under guardMu — establishes a
-// happens-before edge to every later read of cli.Dial by fasthttp; the
-// field is therefore never mutated concurrently with a dial. The guard
-// composes with any dialer the caller already set (see
-// newGuardedClientDialer).
+// guardHookPtr is the code pointer of guardConfigureClient, computed once,
+// used to detect whether a client's ConfigureClient is already our guard.
+var guardHookPtr = reflect.ValueOf(guardConfigureClient).Pointer()
+
+// composedGuards records clients whose own ConfigureClient we have already
+// wrapped, so a client passed repeatedly is composed with only once (a
+// second wrap would nest the guard on every request). Only clients that
+// carry a pre-existing ConfigureClient are stored here; the common case
+// (nil ConfigureClient) is handled by identity and never retains a client.
+var composedGuards sync.Map // map[*fasthttp.Client]struct{}
+
+// ensureClientGuarded installs the SSRF guard on cli via its
+// ConfigureClient hook. Installation is idempotent and, for the common
+// case, lock-free and non-retaining; only a client that already carries its
+// own ConfigureClient takes the sync.Map path so the guard composes with it
+// exactly once.
+//
+// Guarantee scope: the default client (guarded in init) and WithClient
+// clients (guarded before use) are fully protected. A client supplied as a
+// per-call variadic argument is guarded on first use — but a host it had
+// already dialed keeps its cached, pre-hook HostClient, and mutating a
+// client shared with concurrent non-proxy use is inherently racy. For a
+// full guarantee with a custom client, register it via WithClient before
+// first use, or hand the proxy a dedicated client.
 func ensureClientGuarded(cli *fasthttp.Client) {
-	guardMu.Lock()
-	defer guardMu.Unlock()
-	if _, ok := guardedClients[cli]; ok {
+	existing := cli.ConfigureClient
+	if existing == nil {
+		cli.ConfigureClient = guardConfigureClient
 		return
 	}
-	cli.Dial = newGuardedClientDialer(cli.Dial, cli.DialDualStack)
-	guardedClients[cli] = struct{}{}
+	if reflect.ValueOf(existing).Pointer() == guardHookPtr {
+		return // already guarded
+	}
+	if _, done := composedGuards.LoadOrStore(cli, struct{}{}); done {
+		return
+	}
+	cli.ConfigureClient = func(hc *fasthttp.HostClient) error {
+		installHostClientGuard(hc)
+		return existing(hc)
+	}
 }
 
 func init() {
@@ -176,12 +206,11 @@ func init() {
 }
 
 // WithClient sets the global proxy client.
-// This function should be called before Do and Forward.
-//
-// The supplied client is fitted with the dial-time SSRF guard (composing
-// with any Dial it already carries) so requests dispatched through it
-// re-validate the resolved IP at connect time, matching the default
-// client's behavior.
+// This function should be called before Do and Forward — doing so installs
+// the dial-time SSRF guard (via the client's ConfigureClient hook,
+// composing with any hook it already carries) before the client dials any
+// host, so requests dispatched through it re-validate the resolved IP at
+// connect time, matching the default client's behavior.
 func WithClient(cli *fasthttp.Client) {
 	if cli == nil {
 		panic("proxy: WithClient requires a non-nil *fasthttp.Client")

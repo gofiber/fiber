@@ -147,6 +147,17 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 		"custom client": func(c fiber.Ctx, target string) error {
 			return Do(c, target, &fasthttp.Client{})
 		},
+		// A client that configures DialTimeout instead of Dial must still be
+		// guarded: fasthttp's callDialFunc prefers DialTimeout, so a guard
+		// that wrapped only Dial would leave this path unvalidated.
+		"custom client with DialTimeout": func(c fiber.Ctx, target string) error {
+			cli := &fasthttp.Client{
+				DialTimeout: func(addr string, timeout time.Duration) (net.Conn, error) {
+					return fasthttp.DialTimeout(addr, timeout)
+				},
+			}
+			return Do(c, target, cli)
+		},
 	}
 
 	for name, do := range dispatch {
@@ -219,6 +230,58 @@ func Test_Security_NewGuardedClientDialer_ComposesWithOrig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 	require.Equal(t, "203.0.113.5:80", got)
+}
+
+// Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent verifies that
+// installing the guard on a client that already carries its own
+// ConfigureClient hook composes with it (the original still runs) and that
+// repeated installation does not nest the wrapper — each HostClient gets the
+// guard and the original hook exactly once.
+func Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent(t *testing.T) {
+	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
+
+	called := 0
+	cli := &fasthttp.Client{
+		ConfigureClient: func(_ *fasthttp.HostClient) error {
+			called++
+			return nil
+		},
+	}
+
+	ensureClientGuarded(cli)
+	ensureClientGuarded(cli) // must not wrap a second time
+
+	hc := &fasthttp.HostClient{}
+	require.NoError(t, cli.ConfigureClient(hc))
+	require.Equal(t, 1, called, "original ConfigureClient must run exactly once per HostClient")
+	require.NotNil(t, hc.Dial, "guard must install a dial-time Dial")
+
+	// The installed Dial must block a loopback target under the strict policy.
+	_, err := hc.Dial("127.0.0.1:80")
+	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+}
+
+// Test_Security_InstallHostClientGuard_GuardsDialTimeout verifies both dial
+// entry points are guarded: a HostClient that carries DialTimeout has it
+// wrapped (fasthttp prefers DialTimeout over Dial), and the wrapped func
+// blocks a loopback target under the strict policy.
+func Test_Security_InstallHostClientGuard_GuardsDialTimeout(t *testing.T) {
+	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
+
+	hc := &fasthttp.HostClient{
+		DialTimeout: func(addr string, timeout time.Duration) (net.Conn, error) {
+			return fasthttp.DialTimeout(addr, timeout)
+		},
+	}
+	installHostClientGuard(hc)
+
+	require.NotNil(t, hc.DialTimeout)
+	_, err := hc.DialTimeout("127.0.0.1:80", time.Second)
+	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+
+	require.NotNil(t, hc.Dial)
+	_, err = hc.Dial("127.0.0.1:80")
+	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
 // Test_Security_NewGuardedClientDialer_DelegatesWhenPrivateAllowed verifies

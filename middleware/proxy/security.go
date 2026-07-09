@@ -481,53 +481,98 @@ func dialValidatedIPs(ips []net.IP, host, port string, dialDualStack bool, dial 
 	return nil, lastErr
 }
 
-// newGuardedClientDialer wraps orig with a policy-aware SSRF guard for use
-// on a shared *fasthttp.Client.Dial. Unlike newSSRFDialer — whose blocking
-// is unconditional because Balancer only installs it when the policy
-// forbids private IPs — this dialer is consulted by clients that outlive a
-// single policy snapshot, so it re-reads the active global policy on every
-// dial:
+// installHostClientGuard fits hc with the policy-aware, dial-time SSRF
+// guard. It is installed through fasthttp.Client.ConfigureClient, which
+// runs once per HostClient at creation — so the guard is present before the
+// first dial to that host and, crucially, covers BOTH dial code paths:
+// fasthttp's callDialFunc prefers DialTimeout over Dial, so guarding only
+// Dial would let a client that sets DialTimeout dial unvalidated. We wrap
+// DialTimeout when present (preserving its per-request timeout) and always
+// wrap Dial so the nil-DialTimeout and default-dialer paths are guarded too.
+func installHostClientGuard(hc *fasthttp.HostClient) {
+	if hc.DialTimeout != nil {
+		hc.DialTimeout = newGuardedClientDialerWithTimeout(hc.DialTimeout, hc.DialDualStack)
+	}
+	hc.Dial = newGuardedClientDialer(hc.Dial, hc.DialDualStack)
+}
+
+// guardedDial is the shared core of both dialer guards. When the active
+// policy allows private IPs the caller has opted into internal targets, so
+// it delegates unchanged. Otherwise it resolves and validates the host,
+// then dials the exact validated IP via dialValidated — closing the
+// DNS-rebinding check/use window the up-front validateUpstream lookup
+// leaves open. The policy is read fresh on every dial because a shared
+// client outlives any single policy snapshot.
 //
-//   - When AllowPrivateIPs is true the caller has opted into internal
-//     targets, so the guard delegates: it calls orig when set, otherwise
-//     fasthttp's default dialer, preserving the pre-guard behavior.
-//   - Otherwise it resolves and validates the host, then dials the exact
-//     validated IP (through orig when set), closing the DNS-rebinding
-//     check/use window that the up-front validateUpstream lookup leaves
-//     open.
+//nolint:revive // dialDualStack mirrors fasthttp.Client.DialDualStack
+func guardedDial(
+	addr string,
+	dialDualStack bool,
+	delegate func(addr string) (net.Conn, error),
+	dialValidated ssrfDialFunc,
+) (net.Conn, error) {
+	if currentSecurityPolicy().AllowPrivateIPs {
+		return delegate(addr)
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("proxy: invalid dial address %q: %w", addr, err)
+	}
+	ips, err := resolveAndValidateHost(host)
+	if err != nil {
+		return nil, err
+	}
+	return dialValidatedIPs(ips, host, port, dialDualStack, dialValidated)
+}
+
+// newGuardedClientDialer wraps orig with the SSRF guard. Unlike
+// newSSRFDialer — whose blocking is unconditional because Balancer only
+// installs it when the policy forbids private IPs — this dialer is
+// consulted by clients that outlive a single policy snapshot, so it
+// re-reads the active global policy on every dial. When the caller supplied
+// their own dialer it is run after validation so custom transport is
+// preserved while the connection still targets the validated address; when
+// orig is nil the fasthttp default dialer is used.
 //
 //nolint:revive // dialDualStack mirrors fasthttp.Client.DialDualStack
 func newGuardedClientDialer(orig fasthttp.DialFunc, dialDualStack bool) fasthttp.DialFunc {
 	dialer := &net.Dialer{Timeout: dnsLookupTimeout}
-	return func(addr string) (net.Conn, error) {
-		if currentSecurityPolicy().AllowPrivateIPs {
-			if orig != nil {
-				return orig(addr)
-			}
-			if dialDualStack {
-				return fasthttp.DialDualStack(addr)
-			}
-			return fasthttp.Dial(addr)
-		}
-		host, port, err := net.SplitHostPort(addr)
-		if err != nil {
-			return nil, fmt.Errorf("proxy: invalid dial address %q: %w", addr, err)
-		}
-		ips, err := resolveAndValidateHost(host)
-		if err != nil {
-			return nil, err
-		}
-		// Dial the validated IP directly. When the caller supplied their
-		// own dialer, run it after validation so custom transport (proxies,
-		// timeouts) is preserved while the connection still targets the
-		// address that passed the blocklist.
-		dial := dialer.Dial
+	delegate := func(addr string) (net.Conn, error) {
 		if orig != nil {
-			dial = func(_, address string) (net.Conn, error) {
-				return orig(address)
-			}
+			return orig(addr)
 		}
-		return dialValidatedIPs(ips, host, port, dialDualStack, dial)
+		if dialDualStack {
+			return fasthttp.DialDualStack(addr)
+		}
+		return fasthttp.Dial(addr)
+	}
+	dialValidated := func(_, address string) (net.Conn, error) {
+		if orig != nil {
+			return orig(address)
+		}
+		return dialer.Dial("tcp", address)
+	}
+	return func(addr string) (net.Conn, error) {
+		return guardedDial(addr, dialDualStack, delegate, dialValidated)
+	}
+}
+
+// newGuardedClientDialerWithTimeout is the DialFuncWithTimeout counterpart
+// of newGuardedClientDialer. orig is always non-nil here (installed only
+// when the HostClient already carries a DialTimeout), and the per-request
+// timeout is threaded through both the delegate and the validated dial so
+// the caller's timeout semantics survive the guard.
+//
+//nolint:revive // dialDualStack mirrors fasthttp.Client.DialDualStack
+func newGuardedClientDialerWithTimeout(orig fasthttp.DialFuncWithTimeout, dialDualStack bool) fasthttp.DialFuncWithTimeout {
+	return func(addr string, timeout time.Duration) (net.Conn, error) {
+		delegate := func(a string) (net.Conn, error) {
+			return orig(a, timeout)
+		}
+		dialValidated := func(_, address string) (net.Conn, error) {
+			return orig(address, timeout)
+		}
+		return guardedDial(addr, dialDualStack, delegate, dialValidated)
 	}
 }
 
