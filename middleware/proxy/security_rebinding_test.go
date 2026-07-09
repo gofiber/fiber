@@ -33,7 +33,7 @@ func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) string {
 
 	var (
 		mu       sync.Mutex
-		answered bool
+		answered = map[string]bool{}
 	)
 
 	go func() {
@@ -56,12 +56,16 @@ func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) string {
 
 			var answer net.IP
 			if q.Type == dnsmessage.TypeA {
+				// Track "first answer" per queried name so a stray lookup for
+				// some other name cannot consume the target name's public
+				// (validation-time) answer and mask a broken dial-time guard.
+				name := q.Name.String()
 				mu.Lock()
-				if answered {
+				if answered[name] {
 					answer = rebindIP
 				} else {
 					answer = firstIP
-					answered = true
+					answered[name] = true
 				}
 				mu.Unlock()
 			}
@@ -158,6 +162,12 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 			}
 			return Do(c, target, cli)
 		},
+		// DoRedirects dispatches through the same guarded client; the first
+		// hop's dial must be blocked. Pins that the redirect path (and its
+		// per-hop cli.Do) is guarded too.
+		"DoRedirects": func(c fiber.Ctx, target string) error {
+			return DoRedirects(c, target, 3)
+		},
 	}
 
 	for name, do := range dispatch {
@@ -232,18 +242,56 @@ func Test_Security_NewGuardedClientDialer_ComposesWithOrig(t *testing.T) {
 	require.Equal(t, "203.0.113.5:80", got)
 }
 
+// Test_Security_NewGuardedClientDialer_AllowsValidatedHostname is the
+// positive-path counterpart to the rebinding test: under the strict policy, a
+// hostname that resolves to a public (non-blocked) address must resolve,
+// validate, and dial through to that exact IP — proving the guard does not
+// over-block legitimate upstreams. Every end-to-end suite test runs with
+// AllowPrivateIPs=true (the delegate branch), so this is the only coverage of
+// the resolve→validate→dial success path.
+func Test_Security_NewGuardedClientDialer_AllowsValidatedHostname(t *testing.T) {
+	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
+
+	// Resolver maps the name to a public IP on every answer (no rebinding).
+	dnsAddr := startRebindingDNS(t, net.IPv4(198, 51, 100, 7), net.IPv4(198, 51, 100, 7))
+	withRebindingResolver(t, dnsAddr)
+
+	var got string
+	orig := func(addr string) (net.Conn, error) {
+		got = addr
+		return stubConn{addr: addr}, nil
+	}
+
+	dial := newGuardedClientDialer(orig, false)
+	conn, err := dial("public.test:80")
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	require.Equal(t, "198.51.100.7:80", got, "must dial the validated resolved IP")
+}
+
 // Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent verifies that
 // installing the guard on a client that already carries its own
-// ConfigureClient hook composes with it (the original still runs) and that
-// repeated installation does not nest the wrapper — each HostClient gets the
-// guard and the original hook exactly once.
+// ConfigureClient hook composes with it (the original still runs, exactly
+// once, not nested on repeated installs) AND that the guard is the outermost
+// dialer even when the user's hook installs its own hc.Dial — i.e. the
+// composition order is existing-then-guard. A guard-then-existing order would
+// let the user's dialer overwrite the guard and reopen the SSRF hole, so this
+// test is the regression guard for that ordering.
 func Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent(t *testing.T) {
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	called := 0
+	userDialed := false
 	cli := &fasthttp.Client{
-		ConfigureClient: func(_ *fasthttp.HostClient) error {
+		ConfigureClient: func(hc *fasthttp.HostClient) error {
 			called++
+			// A user hook that installs its own (unguarded) dialer — the
+			// canonical reason to use ConfigureClient. The guard must run
+			// after this and wrap it.
+			hc.Dial = func(addr string) (net.Conn, error) {
+				userDialed = true
+				return stubConn{addr: addr}, nil
+			}
 			return nil
 		},
 	}
@@ -256,9 +304,51 @@ func Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent(t *testing.T) {
 	require.Equal(t, 1, called, "original ConfigureClient must run exactly once per HostClient")
 	require.NotNil(t, hc.Dial, "guard must install a dial-time Dial")
 
-	// The installed Dial must block a loopback target under the strict policy.
+	// A loopback target must be blocked BEFORE the user's dialer runs: proves
+	// the guard wraps the user's final Dial (order is existing-then-guard).
 	_, err := hc.Dial("127.0.0.1:80")
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+	require.False(t, userDialed, "guard must reject a blocked IP before delegating to the user's dialer")
+
+	// A validated (public) target must delegate through to the user's dialer.
+	_, err = hc.Dial("203.0.113.9:80") // TEST-NET-3, not blocked
+	require.NoError(t, err)
+	require.True(t, userDialed, "guard must delegate an allowed IP to the user's dialer")
+}
+
+// Test_Security_EnsureClientGuarded_ConcurrentIsSafe pins that guarding the
+// same client from many goroutines is race-free (run under -race) and
+// idempotent, for both the nil-ConfigureClient and pre-existing-hook paths.
+// Regression guard for the serializing mutex in ensureClientGuarded.
+func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
+	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
+
+	cases := map[string]func(*fasthttp.HostClient) error{
+		"nil ConfigureClient":          nil,
+		"pre-existing ConfigureClient": func(_ *fasthttp.HostClient) error { return nil },
+	}
+
+	for name, hook := range cases {
+		t.Run(name, func(t *testing.T) {
+			cli := &fasthttp.Client{ConfigureClient: hook}
+
+			var wg sync.WaitGroup
+			for range 32 {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					ensureClientGuarded(cli)
+				}()
+			}
+			wg.Wait()
+
+			hc := &fasthttp.HostClient{}
+			require.NoError(t, cli.ConfigureClient(hc))
+			require.NotNil(t, hc.Dial)
+			_, err := hc.Dial("127.0.0.1:80")
+			require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+		})
+	}
 }
 
 // Test_Security_InstallHostClientGuard_GuardsDialTimeout verifies both dial

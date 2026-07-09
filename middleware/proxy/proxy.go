@@ -162,41 +162,58 @@ func guardConfigureClient(hc *fasthttp.HostClient) error {
 // used to detect whether a client's ConfigureClient is already our guard.
 var guardHookPtr = reflect.ValueOf(guardConfigureClient).Pointer()
 
-// composedGuards records clients whose own ConfigureClient we have already
-// wrapped, so a client passed repeatedly is composed with only once (a
-// second wrap would nest the guard on every request). Only clients that
-// carry a pre-existing ConfigureClient are stored here; the common case
-// (nil ConfigureClient) is handled by identity and never retains a client.
-var composedGuards sync.Map // map[*fasthttp.Client]struct{}
+// guardMu serializes the read-modify-write of a client's ConfigureClient in
+// ensureClientGuarded. Serializing the whole operation (rather than a
+// LoadOrStore flag) guarantees the guard is actually installed on the field
+// before any concurrent guarder observes the client as "handled", closing
+// the check/install window a second caller could otherwise dispatch
+// through. composedGuards records clients whose own ConfigureClient we have
+// already wrapped, so a client passed repeatedly is composed with only once
+// (a second wrap would nest the guard on every request); it is consulted
+// only under guardMu.
+var (
+	guardMu        sync.Mutex
+	composedGuards = map[*fasthttp.Client]struct{}{}
+)
 
-// ensureClientGuarded installs the SSRF guard on cli via its
-// ConfigureClient hook. Installation is idempotent and, for the common
-// case, lock-free and non-retaining; only a client that already carries its
-// own ConfigureClient takes the sync.Map path so the guard composes with it
-// exactly once.
+// ensureClientGuarded installs the SSRF guard on cli via its ConfigureClient
+// hook. It is invoked at registration for the default client (init) and
+// WithClient clients — before either is used — and on the dispatch path only
+// for a per-call variadic client (the global client is already guarded), so
+// the common no-variadic request path pays nothing here.
 //
-// Guarantee scope: the default client (guarded in init) and WithClient
-// clients (guarded before use) are fully protected. A client supplied as a
-// per-call variadic argument is guarded on first use — but a host it had
-// already dialed keeps its cached, pre-hook HostClient, and mutating a
-// client shared with concurrent non-proxy use is inherently racy. For a
-// full guarantee with a custom client, register it via WithClient before
-// first use, or hand the proxy a dedicated client.
+// Guarantee scope: the default client and WithClient clients are fully
+// protected. A client supplied as a per-call variadic argument is guarded on
+// first use — but a host it had already dialed keeps its cached, pre-hook
+// HostClient, and mutating a client shared with concurrent non-proxy use is
+// inherently racy. For a full guarantee with a custom client, register it
+// via WithClient before first use, or hand the proxy a dedicated client.
 func ensureClientGuarded(cli *fasthttp.Client) {
+	guardMu.Lock()
+	defer guardMu.Unlock()
+
 	existing := cli.ConfigureClient
 	if existing == nil {
 		cli.ConfigureClient = guardConfigureClient
 		return
 	}
 	if reflect.ValueOf(existing).Pointer() == guardHookPtr {
-		return // already guarded
+		return // already our guard
 	}
-	if _, done := composedGuards.LoadOrStore(cli, struct{}{}); done {
-		return
+	if _, done := composedGuards[cli]; done {
+		return // already composed with the user's hook
 	}
+	// Run the user's hook first, then install the guard, so the guard wraps
+	// whatever Dial/DialTimeout the user's hook finally sets — otherwise a
+	// hook that assigns hc.Dial would overwrite the guard and reopen the
+	// SSRF hole.
+	composedGuards[cli] = struct{}{}
 	cli.ConfigureClient = func(hc *fasthttp.HostClient) error {
+		if err := existing(hc); err != nil {
+			return err
+		}
 		installHostClientGuard(hc)
-		return existing(hc)
+		return nil
 	}
 }
 
@@ -319,12 +336,14 @@ func doActionWithPolicy(
 		return err
 	}
 
-	// Install the dial-time SSRF guard on whichever client dispatches this
-	// request (default, WithClient override, or per-call variadic). The
-	// validateUpstream call below only checks the host up front; the guard
-	// re-validates the resolved IP at connect time, closing the
-	// DNS-rebinding window. Idempotent — each client is wrapped once.
-	ensureClientGuarded(cli)
+	// The global client (default or WithClient) is guarded at registration,
+	// so only a per-call variadic override needs guarding here. Skipping the
+	// global client keeps the common request path free of the guard lock.
+	// The guard re-validates the resolved IP at dial time; the
+	// validateUpstream call below is only the up-front host check.
+	if len(clients) != 0 {
+		ensureClientGuarded(cli)
+	}
 
 	// Clone addr once at the parse boundary instead of cloning u.Scheme
 	// and u.String() individually after the fact. url.Parse fills u's
