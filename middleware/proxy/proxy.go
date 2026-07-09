@@ -167,10 +167,16 @@ var guardHookPtr = reflect.ValueOf(guardConfigureClient).Pointer()
 // LoadOrStore flag) guarantees the guard is actually installed on the field
 // before any concurrent guarder observes the client as "handled", closing
 // the check/install window a second caller could otherwise dispatch
-// through. composedGuards records clients whose own ConfigureClient we have
-// already wrapped, so a client passed repeatedly is composed with only once
-// (a second wrap would nest the guard on every request); it is consulted
-// only under guardMu.
+// through.
+//
+// composedGuards records clients whose own ConfigureClient we wrapped, so a
+// client passed repeatedly is composed with only once (a second wrap would
+// nest the guard on every request). It is consulted only under guardMu.
+// Clients with a nil ConfigureClient — the overwhelming majority — take the
+// identity path below and are NOT stored, so no reference to them is
+// retained. Only a client that carries its own ConfigureClient is retained,
+// one entry per distinct client; reuse such clients (fasthttp's own
+// guidance) or register them via WithClient so this stays bounded.
 var (
 	guardMu        sync.Mutex
 	composedGuards = map[*fasthttp.Client]struct{}{}
@@ -180,7 +186,10 @@ var (
 // hook. It is invoked at registration for the default client (init) and
 // WithClient clients — before either is used — and on the dispatch path only
 // for a per-call variadic client (the global client is already guarded), so
-// the common no-variadic request path pays nothing here.
+// the common no-variadic request path never reaches this lock. A handler
+// built with a fixed variadic client (e.g. Forward(addr, cli)) does take
+// guardMu once per request; that is a deliberate correctness-over-throughput
+// choice (an unlocked fast path would race a first-time writer).
 //
 // Guarantee scope: the default client and WithClient clients are fully
 // protected. A client supplied as a per-call variadic argument is guarded on

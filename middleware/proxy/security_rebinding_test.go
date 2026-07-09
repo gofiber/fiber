@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,19 +18,23 @@ import (
 )
 
 // startRebindingDNS starts a loopback UDP DNS server that answers A queries
-// for any name. The very first A answer is firstIP (a public-looking
-// address that passes the SSRF blocklist); every A answer after that is
-// rebindIP (the "internal" target). AAAA queries are answered with an empty
-// NODATA response so the Go resolver falls back to the A record. This
-// reproduces a classic DNS-rebinding resolver: safe on the validation
-// lookup, hostile on the dial-time lookup. It returns the server's
-// "host:port" address.
-func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) string {
+// for any name. The very first A answer for a given name is firstIP (a
+// public-looking address that passes the SSRF blocklist); every A answer
+// after that is rebindIP (the "internal" target). AAAA queries are answered
+// with an empty NODATA response so the Go resolver falls back to the A
+// record. This reproduces a classic DNS-rebinding resolver: safe on the
+// validation lookup, hostile on the dial-time lookup. It returns the
+// server's "host:port" address and a counter of A queries served, which a
+// test can assert is >= 2 to prove the block happened at dial time (a second
+// lookup) rather than up front (the first, public, lookup).
+func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) (string, *atomic.Int64) {
 	t.Helper()
 
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pc.Close() })
+
+	aQueries := &atomic.Int64{}
 
 	var (
 		mu       sync.Mutex
@@ -56,6 +61,7 @@ func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) string {
 
 			var answer net.IP
 			if q.Type == dnsmessage.TypeA {
+				aQueries.Add(1)
 				// Track "first answer" per queried name so a stray lookup for
 				// some other name cannot consume the target name's public
 				// (validation-time) answer and mask a broken dial-time guard.
@@ -78,7 +84,7 @@ func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) string {
 		}
 	}()
 
-	return pc.LocalAddr().String()
+	return pc.LocalAddr().String(), aQueries
 }
 
 // buildDNSResponse serializes a DNS reply echoing the question. When ip is
@@ -181,7 +187,7 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 
 			// 1st A answer is public TEST-NET-2 (passes the blocklist); every
 			// A answer after that is loopback (the internal port).
-			dnsAddr := startRebindingDNS(t, net.IPv4(198, 51, 100, 1), net.IPv4(127, 0, 0, 1))
+			dnsAddr, aQueries := startRebindingDNS(t, net.IPv4(198, 51, 100, 1), net.IPv4(127, 0, 0, 1))
 			withRebindingResolver(t, dnsAddr)
 
 			target := "http://rebind.test:" + internalPort + "/"
@@ -204,6 +210,12 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 			require.NotContains(t, string(body), "SECRET_INTERNAL_DATA")
 			require.Contains(t, string(body), "blocked")
+			// >= 2 A lookups proves the up-front validation lookup (public,
+			// allowed) happened AND a second dial-time lookup (rebound,
+			// blocked) happened — i.e. the block is genuinely at dial time,
+			// not an up-front block masking a broken guard.
+			require.GreaterOrEqual(t, aQueries.Load(), int64(2),
+				"expected an up-front and a dial-time DNS lookup")
 		})
 	}
 }
@@ -253,7 +265,7 @@ func Test_Security_NewGuardedClientDialer_AllowsValidatedHostname(t *testing.T) 
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	// Resolver maps the name to a public IP on every answer (no rebinding).
-	dnsAddr := startRebindingDNS(t, net.IPv4(198, 51, 100, 7), net.IPv4(198, 51, 100, 7))
+	dnsAddr, _ := startRebindingDNS(t, net.IPv4(198, 51, 100, 7), net.IPv4(198, 51, 100, 7))
 	withRebindingResolver(t, dnsAddr)
 
 	var got string
