@@ -34,6 +34,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params:     []string{"filter", "color", "size"},
 		minSlashes: 5,
 		maxSlashes: 5,
+		maxBounded: true,
 	}, rp)
 
 	rp = parseRoute("/api/v1/:param/abc/*", regexp.MustCompile)
@@ -57,6 +58,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params:     nil,
 		minSlashes: 4,
 		maxSlashes: 4,
+		maxBounded: true,
 	}, rp)
 
 	rp = parseRoute("/v1/some/resource/:name\\:customVerb", regexp.MustCompile)
@@ -69,6 +71,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params:     []string{"name"},
 		minSlashes: 4,
 		maxSlashes: 4,
+		maxBounded: true,
 	}, rp)
 
 	// heavy test with escaped characters
@@ -178,31 +181,102 @@ func Test_RouteParser_SlashBounds(t *testing.T) {
 		pattern    string
 		minSlashes int
 		maxSlashes int
+		maxBounded bool
 	}{
-		{pattern: "/", minSlashes: 0, maxSlashes: 1},
-		{pattern: "/api/v1/const", minSlashes: 3, maxSlashes: 3},
-		{pattern: "/api/v1/:param", minSlashes: 3, maxSlashes: 3},
-		{pattern: "/api/v1/:param?", minSlashes: 2, maxSlashes: 3},
-		{pattern: "/api/v1/:param/fixedEnd", minSlashes: 4, maxSlashes: 4},
+		{pattern: "/", minSlashes: 0, maxSlashes: 1, maxBounded: true},
+		{pattern: "/api/v1/const", minSlashes: 3, maxSlashes: 3, maxBounded: true},
+		{pattern: "/api/v1/:param", minSlashes: 3, maxSlashes: 3, maxBounded: true},
+		{pattern: "/api/v1/:param?", minSlashes: 2, maxSlashes: 3, maxBounded: true},
+		{pattern: "/api/v1/:param/fixedEnd", minSlashes: 4, maxSlashes: 4, maxBounded: true},
 		// greedy parameters match across '/', so no upper bound
-		{pattern: "/api/*", minSlashes: 1, maxSlashes: 0},
-		{pattern: "/api/+", minSlashes: 2, maxSlashes: 0},
+		{pattern: "/api/*", minSlashes: 1},
+		{pattern: "/api/+", minSlashes: 2},
 		// optional segments drop their leading slashes from the lower bound
-		{pattern: "/api/:day/:month?/:year?", minSlashes: 2, maxSlashes: 4},
+		{pattern: "/api/:day/:month?/:year?", minSlashes: 2, maxSlashes: 4, maxBounded: true},
 		// single-byte compare parts have no slash guard in findParamLen,
 		// so such parameters can swallow '/' and the max is unbounded
-		{pattern: "/api/v1/:a-:b", minSlashes: 3, maxSlashes: 0},
-		{pattern: "/api/:day.:month?.:year?", minSlashes: 2, maxSlashes: 0},
+		{pattern: "/api/v1/:a-:b", minSlashes: 3},
+		{pattern: "/api/:day.:month?.:year?", minSlashes: 2},
 		// successive parameters consume one byte each, possibly a '/'
-		{pattern: "/test:sign:param", minSlashes: 1, maxSlashes: 0},
+		{pattern: "/test:sign:param", minSlashes: 1},
 		// multi-byte compare parts reject slashes, so bounds stay exact
-		{pattern: "/shop/product/::filter/color::color/size::size", minSlashes: 5, maxSlashes: 5},
-		{pattern: "/v1/some/resource/name\\:customVerb", minSlashes: 4, maxSlashes: 4},
+		{pattern: "/shop/product/::filter/color::color/size::size", minSlashes: 5, maxSlashes: 5, maxBounded: true},
+		{pattern: "/v1/some/resource/name\\:customVerb", minSlashes: 4, maxSlashes: 4, maxBounded: true},
 	}
 	for _, tc := range testCases {
 		parser := parseRoute(tc.pattern, regexp.MustCompile)
 		require.Equal(t, tc.minSlashes, parser.minSlashes, "route: '%s' minSlashes", tc.pattern)
 		require.Equal(t, tc.maxSlashes, parser.maxSlashes, "route: '%s' maxSlashes", tc.pattern)
+		require.Equal(t, tc.maxBounded, parser.maxBounded, "route: '%s' maxBounded", tc.pattern)
+	}
+}
+
+// Test_Route_Match_SlashBoundsDifferential generatively proves the slash-count
+// quick-reject in Route.match is transparent: for every generated pattern and
+// path, the filtered Route.match must agree with a raw getMatch on the same
+// input. Unlike the fixture-driven tests this needs no hand-authored
+// expectations, so it also binds pattern shapes nobody thought to add to the
+// fixture — if findParamLen ever lets a new shape swallow '/', this fails.
+// go test -race -run Test_Route_Match_SlashBoundsDifferential
+func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
+	t.Parallel()
+
+	segments := []string{
+		"/api", "/foo/", "/:a", "/:b?", "/*", "/+", "/:a-:b", "/:f.:e?",
+		":tail", "/::c", "/:x:y", "/name\\:verb", "/:p/fixed",
+	}
+	// patterns: every single segment and every ordered pair
+	patterns := make([]string, 0, len(segments)*(len(segments)+1))
+	for _, s1 := range segments {
+		patterns = append(patterns, s1)
+		for _, s2 := range segments {
+			patterns = append(patterns, s1+s2)
+		}
+	}
+
+	pieces := []string{
+		"", "/a", "/a/b", "/a-b", "/a.b", "/x/y-z", "/enti/ty-x", "/a/",
+		"/:c", "/api", "/api/foo/bar", "/name:verb", "/fixed",
+	}
+	// paths: every ordered pair of pieces (skipping the empty result)
+	paths := make([]string, 0, len(pieces)*len(pieces))
+	for _, p1 := range pieces {
+		for _, p2 := range pieces {
+			if p1+p2 == "" {
+				continue
+			}
+			paths = append(paths, p1+p2)
+		}
+	}
+
+	for _, pattern := range patterns {
+		parser := parseRoute(pattern, regexp.MustCompile)
+		if len(parser.params) == 0 {
+			// non-parametric routes never take the filtered getMatch path
+			continue
+		}
+		route := &Route{
+			routeParser: parser,
+			Params:      parser.params,
+			path:        pattern,
+			Path:        pattern,
+		}
+		for _, use := range []bool{false, true} {
+			route.use = use
+			for _, path := range paths {
+				var filteredParams, rawParams [maxParams]string
+				filtered := route.match(path, path, &filteredParams, strings.Count(path, "/"))
+				raw := parser.getMatch(path, path, &rawParams, use)
+				if filtered != raw {
+					t.Fatalf("filter changed outcome: pattern %q, path %q, use %v: filtered=%v raw=%v",
+						pattern, path, use, filtered, raw)
+				}
+				if raw {
+					require.Equal(t, rawParams[:len(parser.params)], filteredParams[:len(parser.params)],
+						"params diverged: pattern %q, path %q, use %v", pattern, path, use)
+				}
+			}
+		}
 	}
 }
 

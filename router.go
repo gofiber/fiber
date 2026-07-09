@@ -196,10 +196,10 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 	// Does this route have parameters?
 	if len(r.Params) > 0 {
 		// Quick-reject on the precomputed slash-count bounds before walking segments.
-		// maxSlashes 0 means unbounded; prefix (use) routes may extend past the pattern,
-		// so only the lower bound applies to them.
+		// Prefix (use) routes may extend past the pattern, so only the lower bound
+		// applies to them.
 		p := &r.routeParser
-		if pathSlashes < p.minSlashes || (!r.use && p.maxSlashes != 0 && pathSlashes > p.maxSlashes) {
+		if pathSlashes < p.minSlashes || (!r.use && p.maxBounded && pathSlashes > p.maxSlashes) {
 			return false
 		}
 		// Match params using precomputed routeParser
