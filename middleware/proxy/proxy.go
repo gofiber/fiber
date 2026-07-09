@@ -143,29 +143,62 @@ var (
 	errNilGlobalProxyClient   = errors.New("proxy: global client is nil, set a non-nil client with proxy.WithClient")
 )
 
+// guardMu serializes installation of the dial-time SSRF guard onto a
+// client. guardedClients records the *fasthttp.Client values whose Dial
+// has already been wrapped, so ensureClientGuarded wraps each exactly
+// once — a second wrap would compose the guard with itself and re-resolve
+// on every dial for no benefit.
+var (
+	guardMu        sync.Mutex
+	guardedClients = map[*fasthttp.Client]struct{}{}
+)
+
+// ensureClientGuarded installs the policy-aware dial-time SSRF guard on cli
+// exactly once. Every dispatch path funnels through here before it calls
+// cli.Do, so the wrap — performed under guardMu — establishes a
+// happens-before edge to every later read of cli.Dial by fasthttp; the
+// field is therefore never mutated concurrently with a dial. The guard
+// composes with any dialer the caller already set (see
+// newGuardedClientDialer).
+func ensureClientGuarded(cli *fasthttp.Client) {
+	guardMu.Lock()
+	defer guardMu.Unlock()
+	if _, ok := guardedClients[cli]; ok {
+		return
+	}
+	cli.Dial = newGuardedClientDialer(cli.Dial, cli.DialDualStack)
+	guardedClients[cli] = struct{}{}
+}
+
 func init() {
+	ensureClientGuarded(defaultClient)
 	client.Store(defaultClient)
 }
 
 // WithClient sets the global proxy client.
 // This function should be called before Do and Forward.
+//
+// The supplied client is fitted with the dial-time SSRF guard (composing
+// with any Dial it already carries) so requests dispatched through it
+// re-validate the resolved IP at connect time, matching the default
+// client's behavior.
 func WithClient(cli *fasthttp.Client) {
 	if cli == nil {
 		panic("proxy: WithClient requires a non-nil *fasthttp.Client")
 	}
 
+	ensureClientGuarded(cli)
 	client.Store(cli)
 }
 
 // Forward performs the given http request and fills the given http response.
 // This method will return a fiber.Handler
 //
-// SSRF note: like the other runtime helpers, Forward validates the
-// upstream host against the active SecurityPolicy up front but dispatches
-// through the shared/user-supplied client, which re-resolves the name.
-// It does not re-validate the resolved IP at dial time, so a
-// rebinding-capable resolver is not fully mitigated here — use Balancer
-// (with AllowPrivateIPs=false) for dial-time DNS-rebinding protection.
+// SSRF note: Forward validates the upstream host against the active
+// SecurityPolicy up front and, when AllowPrivateIPs is false, re-validates
+// the resolved IP at dial time via the guard installed on the dispatching
+// client, so a rebinding-capable resolver cannot swap a public answer for
+// a private one between validation and connection.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		c.Request().Header.Set("X-Real-IP", c.IP())
@@ -177,11 +210,11 @@ func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 // This method can be used within a fiber.Handler
 //
 // SSRF note: the upstream host is validated against the active
-// SecurityPolicy before the request is sent, but the request is then
-// dispatched through the shared/user-supplied *fasthttp.Client, which
-// re-resolves the host without re-validating the resolved IP at dial
-// time. Against a rebinding-capable resolver this leaves a check/use
-// window; only Balancer (with AllowPrivateIPs=false) guards the dial.
+// SecurityPolicy before the request is sent, and when AllowPrivateIPs is
+// false the resolved IP is re-validated at dial time by the guard
+// installed on the dispatching *fasthttp.Client. The connection therefore
+// targets exactly the address that passed the blocklist, so a
+// rebinding-capable resolver cannot slip a private IP past the check.
 func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.Do(req, resp)
@@ -196,11 +229,10 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // Unless AllowHTTPSDowngrade is enabled, redirects from an HTTPS origin
 // to a plaintext HTTP target are rejected with ErrRedirectDowngrade.
 //
-// SSRF note: every hop's host is validated against the policy, but the
-// requests are dispatched through the shared/user-supplied client, which
-// re-resolves each host without re-validating the resolved IP at dial
-// time. Against a rebinding-capable resolver this leaves a check/use
-// window; only Balancer (with AllowPrivateIPs=false) guards the dial.
+// SSRF note: every hop's host is validated against the policy, and when
+// AllowPrivateIPs is false each dial is re-validated by the guard on the
+// dispatching client — so per-hop redirects (including cross-host ones)
+// cannot be rebound to a private IP between validation and connection.
 func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
 	policy := currentSecurityPolicy()
 	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
@@ -211,8 +243,8 @@ func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fa
 // DoDeadline performs the given request and waits for response until the given deadline.
 // This method can be used within a fiber.Handler
 //
-// SSRF note: carries the same dial-time DNS-rebinding limitation as Do
-// (up-front host validation only, no validated-IP dial guard).
+// SSRF note: same protection as Do — up-front host validation plus the
+// dial-time validated-IP guard when AllowPrivateIPs is false.
 func DoDeadline(c fiber.Ctx, addr string, deadline time.Time, clients ...*fasthttp.Client) error {
 	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.DoDeadline(req, resp, deadline)
@@ -222,8 +254,8 @@ func DoDeadline(c fiber.Ctx, addr string, deadline time.Time, clients ...*fastht
 // DoTimeout performs the given request and waits for response during the given timeout duration.
 // This method can be used within a fiber.Handler
 //
-// SSRF note: carries the same dial-time DNS-rebinding limitation as Do
-// (up-front host validation only, no validated-IP dial guard).
+// SSRF note: same protection as Do — up-front host validation plus the
+// dial-time validated-IP guard when AllowPrivateIPs is false.
 func DoTimeout(c fiber.Ctx, addr string, timeout time.Duration, clients ...*fasthttp.Client) error {
 	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.DoTimeout(req, resp, timeout)
@@ -257,6 +289,13 @@ func doActionWithPolicy(
 	if err != nil {
 		return err
 	}
+
+	// Install the dial-time SSRF guard on whichever client dispatches this
+	// request (default, WithClient override, or per-call variadic). The
+	// validateUpstream call below only checks the host up front; the guard
+	// re-validates the resolved IP at connect time, closing the
+	// DNS-rebinding window. Idempotent — each client is wrapped once.
+	ensureClientGuarded(cli)
 
 	// Clone addr once at the parse boundary instead of cloning u.Scheme
 	// and u.String() individually after the fact. url.Parse fills u's
@@ -438,11 +477,10 @@ func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*
 // per request. Each request also re-validates the host against the
 // current policy before dispatch.
 //
-// SSRF note: that per-request validation is an up-front host check only.
-// The request is dispatched through the shared/user-supplied client,
-// which re-resolves the host without re-validating the resolved IP at
-// dial time, so a rebinding-capable resolver is not fully mitigated
-// here. Only Balancer (with AllowPrivateIPs=false) guards the dial.
+// SSRF note: the per-request validation is an up-front host check, and
+// when AllowPrivateIPs is false the dispatching client's dial-time guard
+// re-validates the resolved IP at connect time — so a rebinding-capable
+// resolver cannot reach a private address through this handler.
 func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
 	base, err := validateUpstream(addr, currentSecurityPolicy())
 	if err != nil {
@@ -496,10 +534,10 @@ func (r *urlRoundrobin) get() *url.URL {
 // handler construction. A misconfigured entry panics at startup.
 //
 // SSRF note: despite the name, this helper dispatches through the
-// shared/user-supplied client (not a Balancer HostClient), so it carries
-// the same dial-time DNS-rebinding limitation as Do — up-front host
-// validation only, no validated-IP dial guard. Use Balancer for
-// dial-time protection.
+// shared/user-supplied client rather than a Balancer HostClient, but it
+// gets the same protection as Do — up-front host validation plus the
+// dial-time validated-IP guard on the dispatching client when
+// AllowPrivateIPs is false.
 func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler {
 	if len(servers) == 0 {
 		panic("Servers cannot be empty")

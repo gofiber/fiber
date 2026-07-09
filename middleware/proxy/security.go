@@ -80,15 +80,16 @@ type SecurityPolicy struct {
 	// to SSRF attacks against internal services such as cloud
 	// metadata endpoints. Default: false.
 	//
-	// DNS-rebinding scope: when false, Balancer re-validates the resolved
-	// IP at dial time (it installs a guarded Dial on each HostClient it
-	// constructs), which closes the check/use window a malicious resolver
-	// could exploit. The runtime helpers — Do, DoRedirects, DoTimeout,
-	// DoDeadline, Forward, DomainForward, BalancerForward — validate the
-	// host up front but then dispatch through the shared/user-supplied
-	// *fasthttp.Client, which re-resolves the name without the guard.
-	// Against a rebinding-capable resolver they are therefore not fully
-	// mitigated; see the note on those functions.
+	// DNS-rebinding scope: when false, the resolved IP is re-validated at
+	// dial time, not only up front, so a malicious resolver cannot swap a
+	// public answer (seen during validation) for a private one at connect
+	// time. Balancer installs a guarded Dial on each HostClient it builds;
+	// the runtime helpers — Do, DoRedirects, DoTimeout, DoDeadline,
+	// Forward, DomainForward, BalancerForward — install the same guard on
+	// the shared/user-supplied *fasthttp.Client they dispatch through. The
+	// only unguarded path is a custom Balancer Config.Client
+	// (*fasthttp.LBClient): its underlying dialers are the caller's
+	// responsibility.
 	AllowPrivateIPs bool
 
 	// AllowHTTPSDowngrade permits proxy.DoRedirects to follow redirects
@@ -478,6 +479,56 @@ func dialValidatedIPs(ips []net.IP, host, port string, dialDualStack bool, dial 
 		lastErr = fmt.Errorf("%w: %s has no usable address", ErrUpstreamHostBlocked, host)
 	}
 	return nil, lastErr
+}
+
+// newGuardedClientDialer wraps orig with a policy-aware SSRF guard for use
+// on a shared *fasthttp.Client.Dial. Unlike newSSRFDialer — whose blocking
+// is unconditional because Balancer only installs it when the policy
+// forbids private IPs — this dialer is consulted by clients that outlive a
+// single policy snapshot, so it re-reads the active global policy on every
+// dial:
+//
+//   - When AllowPrivateIPs is true the caller has opted into internal
+//     targets, so the guard delegates: it calls orig when set, otherwise
+//     fasthttp's default dialer, preserving the pre-guard behavior.
+//   - Otherwise it resolves and validates the host, then dials the exact
+//     validated IP (through orig when set), closing the DNS-rebinding
+//     check/use window that the up-front validateUpstream lookup leaves
+//     open.
+//
+//nolint:revive // dialDualStack mirrors fasthttp.Client.DialDualStack
+func newGuardedClientDialer(orig fasthttp.DialFunc, dialDualStack bool) fasthttp.DialFunc {
+	dialer := &net.Dialer{Timeout: dnsLookupTimeout}
+	return func(addr string) (net.Conn, error) {
+		if currentSecurityPolicy().AllowPrivateIPs {
+			if orig != nil {
+				return orig(addr)
+			}
+			if dialDualStack {
+				return fasthttp.DialDualStack(addr)
+			}
+			return fasthttp.Dial(addr)
+		}
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("proxy: invalid dial address %q: %w", addr, err)
+		}
+		ips, err := resolveAndValidateHost(host)
+		if err != nil {
+			return nil, err
+		}
+		// Dial the validated IP directly. When the caller supplied their
+		// own dialer, run it after validation so custom transport (proxies,
+		// timeouts) is preserved while the connection still targets the
+		// address that passed the blocklist.
+		dial := dialer.Dial
+		if orig != nil {
+			dial = func(_, address string) (net.Conn, error) {
+				return orig(address)
+			}
+		}
+		return dialValidatedIPs(ips, host, port, dialDualStack, dial)
+	}
 }
 
 // isBlockedIP reports whether ip falls inside a range that proxy
