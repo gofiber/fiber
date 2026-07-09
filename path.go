@@ -264,7 +264,6 @@ func (parser *routeParser) parseRoute(pattern string, regexHandler any, customCo
 		parser.segs[len(parser.segs)-1].IsLast = true
 	}
 	parser.segs = addParameterMetaInfo(parser.segs)
-	parser.computeSlashBounds()
 }
 
 // computeSlashBounds precomputes the minimum and maximum number of '/' bytes a
@@ -314,6 +313,9 @@ func (parser *routeParser) computeSlashBounds() {
 func parseRoute(pattern string, regexHandler any, customConstraints ...CustomConstraint) routeParser {
 	parser := routeParser{}
 	parser.parseRoute(pattern, regexHandler, customConstraints...)
+	// The slash bounds only speed up the router's candidate scan; computing them
+	// here keeps them off RoutePatternMatch's per-call path, which never reads them.
+	parser.computeSlashBounds()
 
 	// Check if the route has too many parameters
 	if len(parser.params) > maxParams {
