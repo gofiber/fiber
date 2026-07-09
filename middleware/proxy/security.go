@@ -579,7 +579,9 @@ func newGuardedClientDialerWithTimeout(orig fasthttp.DialFuncWithTimeout, dialDu
 // isBlockedIP reports whether ip falls inside a range that proxy
 // upstreams must not reach by default. Loopback, unspecified, RFC 1918
 // private, link-local (including the 169.254.169.254 cloud-metadata
-// address), multicast, and RFC 6598 CGNAT ranges are blocked.
+// address), multicast, and RFC 6598 CGNAT ranges are blocked. IPv4-compatible
+// and NAT64 IPv6 wrappers are unwrapped so a blocked IPv4 cannot be smuggled
+// past as an IPv6 literal.
 func isBlockedIP(ip net.IP) bool {
 	if ip == nil {
 		return true
@@ -592,7 +594,48 @@ func isBlockedIP(ip net.IP) bool {
 	if v4 := ip.To4(); v4 != nil && v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
 		return true
 	}
+	// Look through IPv4-compatible (::a.b.c.d) and NAT64 (64:ff9b::a.b.c.d)
+	// IPv6 wrappers to the embedded IPv4 and apply the same blocklist. Some
+	// stacks route these to the embedded address, so a private target could
+	// otherwise be reached via such a literal (the IPv4-mapped ::ffff:a.b.c.d
+	// form is already handled above because net.IP.To4 exposes it).
+	if embedded := embeddedIPv4(ip); embedded != nil && isBlockedIP(embedded) {
+		return true
+	}
 	return false
+}
+
+// embeddedIPv4 returns the IPv4 address embedded in an IPv4-compatible IPv6
+// address (::a.b.c.d, RFC 4291) or a well-known-prefix NAT64 address
+// (64:ff9b::a.b.c.d, RFC 6052), or nil for anything else. The IPv4-mapped
+// form (::ffff:a.b.c.d) is deliberately excluded here: net.IP.To4 already
+// surfaces its IPv4, so isBlockedIP checks it directly.
+func embeddedIPv4(ip net.IP) net.IP {
+	ip16 := ip.To16()
+	if ip16 == nil || ip.To4() != nil {
+		return nil
+	}
+	// NAT64 well-known prefix 64:ff9b::/96.
+	if ip16[0] == 0x00 && ip16[1] == 0x64 && ip16[2] == 0xff && ip16[3] == 0x9b &&
+		allZero(ip16[4:12]) {
+		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
+	}
+	// IPv4-compatible ::a.b.c.d (first 12 bytes zero). :: and ::1 have already
+	// been classified above, so treat any remaining all-zero-prefix address as
+	// a wrapper around its trailing IPv4.
+	if allZero(ip16[:12]) {
+		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
+	}
+	return nil
+}
+
+func allZero(b []byte) bool {
+	for _, x := range b {
+		if x != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // secureTLSConfig returns a clone of cfg with a TLS 1.2 floor. The

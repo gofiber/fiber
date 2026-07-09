@@ -528,11 +528,12 @@ func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*
 // DomainForward performs an http request based on the given domain and populates the given http response.
 // This method will return a fiber.Handler.
 //
-// The upstream addr is validated at handler construction (matches the
-// Balancer contract): scheme allowlist, SSRF block, and URL parsing all
-// run once. Misconfigured addresses panic at startup instead of failing
-// per request. Each request also re-validates the host against the
-// current policy before dispatch.
+// The upstream addr is validated at handler construction: scheme allowlist,
+// SSRF block, and URL parsing all run once. Unlike Balancer (which defers
+// DNS to dial time to survive transient resolver failures at startup), this
+// construction check resolves the host, so a misconfigured or unresolvable
+// addr panics at startup instead of failing per request. Each request also
+// re-validates the host against the current policy before dispatch.
 //
 // SSRF note: the per-request validation is an up-front host check, and
 // when AllowPrivateIPs is false the dispatching client's dial-time guard
