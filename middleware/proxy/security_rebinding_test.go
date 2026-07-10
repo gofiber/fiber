@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -32,7 +33,7 @@ func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) (string, *atomic.
 
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = pc.Close() })
+	t.Cleanup(func() { pc.Close() }) //nolint:errcheck // best-effort close in cleanup
 
 	aQueries := &atomic.Int64{}
 
@@ -76,11 +77,11 @@ func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) (string, *atomic.
 				mu.Unlock()
 			}
 
-			resp, berr := buildDNSResponse(hdr.ID, q, answer)
+			resp, berr := buildDNSResponse(hdr.ID, &q, answer)
 			if berr != nil {
 				continue
 			}
-			_, _ = pc.WriteTo(resp, addr)
+			pc.WriteTo(resp, addr) //nolint:errcheck // best-effort UDP reply
 		}
 	}()
 
@@ -90,7 +91,7 @@ func startRebindingDNS(t *testing.T, firstIP, rebindIP net.IP) (string, *atomic.
 // buildDNSResponse serializes a DNS reply echoing the question. When ip is
 // a non-nil IPv4 address an A record is included; otherwise the reply is a
 // NODATA answer (used for AAAA queries).
-func buildDNSResponse(id uint16, q dnsmessage.Question, ip net.IP) ([]byte, error) {
+func buildDNSResponse(id uint16, q *dnsmessage.Question, ip net.IP) ([]byte, error) {
 	b := dnsmessage.NewBuilder(nil, dnsmessage.Header{
 		ID:            id,
 		Response:      true,
@@ -98,13 +99,13 @@ func buildDNSResponse(id uint16, q dnsmessage.Question, ip net.IP) ([]byte, erro
 	})
 	b.EnableCompression()
 	if err := b.StartQuestions(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("dns build questions: %w", err)
 	}
-	if err := b.Question(q); err != nil {
-		return nil, err
+	if err := b.Question(*q); err != nil {
+		return nil, fmt.Errorf("dns build question: %w", err)
 	}
 	if err := b.StartAnswers(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("dns build answers: %w", err)
 	}
 	if v4 := ip.To4(); v4 != nil {
 		var a [4]byte
@@ -114,10 +115,14 @@ func buildDNSResponse(id uint16, q dnsmessage.Question, ip net.IP) ([]byte, erro
 			Type:  dnsmessage.TypeA,
 			Class: dnsmessage.ClassINET,
 		}, dnsmessage.AResource{A: a}); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("dns build A record: %w", err)
 		}
 	}
-	return b.Finish()
+	out, err := b.Finish()
+	if err != nil {
+		return nil, fmt.Errorf("dns build finish: %w", err)
+	}
+	return out, nil
 }
 
 // withRebindingResolver points net.DefaultResolver at the fake DNS server
@@ -161,11 +166,7 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 		// guarded: fasthttp's callDialFunc prefers DialTimeout, so a guard
 		// that wrapped only Dial would leave this path unvalidated.
 		"custom client with DialTimeout": func(c fiber.Ctx, target string) error {
-			cli := &fasthttp.Client{
-				DialTimeout: func(addr string, timeout time.Duration) (net.Conn, error) {
-					return fasthttp.DialTimeout(addr, timeout)
-				},
-			}
+			cli := &fasthttp.Client{DialTimeout: fasthttp.DialTimeout}
 			return Do(c, target, cli)
 		},
 		// DoRedirects dispatches through the same guarded client; the first
@@ -346,11 +347,9 @@ func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 
 			var wg sync.WaitGroup
 			for range 32 {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					ensureClientGuarded(cli)
-				}()
+				})
 			}
 			wg.Wait()
 
@@ -370,11 +369,7 @@ func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 func Test_Security_InstallHostClientGuard_GuardsDialTimeout(t *testing.T) {
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
-	hc := &fasthttp.HostClient{
-		DialTimeout: func(addr string, timeout time.Duration) (net.Conn, error) {
-			return fasthttp.DialTimeout(addr, timeout)
-		},
-	}
+	hc := &fasthttp.HostClient{DialTimeout: fasthttp.DialTimeout}
 	installHostClientGuard(hc)
 
 	require.NotNil(t, hc.DialTimeout)
@@ -396,7 +391,7 @@ func Test_Security_NewGuardedClientDialer_DelegatesWhenPrivateAllowed(t *testing
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer func() { _ = ln.Close() }()
+	defer ln.Close() //nolint:errcheck // best-effort close
 
 	dial := newGuardedClientDialer(nil, false)
 	conn, err := dial(ln.Addr().String())
