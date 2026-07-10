@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -399,4 +400,86 @@ func Test_Security_NewGuardedClientDialer_DelegatesWhenPrivateAllowed(t *testing
 	conn, err := dial(ln.Addr().String())
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
+}
+
+// Test_Security_NewGuardedClientDialer_DelegatesDualStack covers the
+// AllowPrivateIPs delegate branch with DialDualStack enabled (fasthttp's
+// DialDualStack fallback).
+func Test_Security_NewGuardedClientDialer_DelegatesDualStack(t *testing.T) {
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	withSecurityPolicyForTest(t, policy)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close() //nolint:errcheck // best-effort close
+
+	conn, err := newGuardedClientDialer(nil, true)(ln.Addr().String())
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
+}
+
+// Test_Security_NewGuardedClientDialer_RejectsMalformedAddr covers the
+// SplitHostPort error branch of guardedDial.
+func Test_Security_NewGuardedClientDialer_RejectsMalformedAddr(t *testing.T) {
+	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
+
+	_, err := newGuardedClientDialer(nil, false)("no-port-here")
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
+}
+
+// Test_Security_NewGuardedClientDialerWithTimeout_Delegates covers the
+// DialFuncWithTimeout guard's delegate branch: when private IPs are allowed
+// it forwards the raw addr and timeout to the caller's dialer.
+func Test_Security_NewGuardedClientDialerWithTimeout_Delegates(t *testing.T) {
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	withSecurityPolicyForTest(t, policy)
+
+	var got string
+	orig := func(addr string, _ time.Duration) (net.Conn, error) {
+		got = addr
+		return stubConn{addr: addr}, nil
+	}
+	conn, err := newGuardedClientDialerWithTimeout(orig, false)("10.0.0.1:80", time.Second)
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	require.Equal(t, "10.0.0.1:80", got)
+}
+
+// Test_Security_NewGuardedClientDialerWithTimeout_ValidatedDialsThrough covers
+// the strict-policy path of the DialFuncWithTimeout guard: a hostname that
+// resolves to a public IP is validated and dialed through the caller's
+// timeout dialer at the exact resolved IP.
+func Test_Security_NewGuardedClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
+	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
+
+	dnsAddr, _ := startRebindingDNS(t, net.IPv4(198, 51, 100, 7), net.IPv4(198, 51, 100, 7))
+	withRebindingResolver(t, dnsAddr)
+
+	var got string
+	orig := func(addr string, _ time.Duration) (net.Conn, error) {
+		got = addr
+		return stubConn{addr: addr}, nil
+	}
+	conn, err := newGuardedClientDialerWithTimeout(orig, false)("public.test:80", time.Second)
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	require.Equal(t, "198.51.100.7:80", got, "must dial the validated resolved IP")
+}
+
+// Test_Security_EnsureClientGuarded_ComposePropagatesError verifies the
+// composed hook surfaces an error from the user's existing ConfigureClient.
+func Test_Security_EnsureClientGuarded_ComposePropagatesError(t *testing.T) {
+	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
+
+	wantErr := errors.New("configure boom")
+	cli := &fasthttp.Client{
+		ConfigureClient: func(_ *fasthttp.HostClient) error { return wantErr },
+	}
+	ensureClientGuarded(cli)
+
+	err := cli.ConfigureClient(&fasthttp.HostClient{})
+	require.ErrorIs(t, err, wantErr)
 }

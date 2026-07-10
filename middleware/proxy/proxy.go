@@ -270,6 +270,14 @@ func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 // installed on the dispatching *fasthttp.Client. The connection therefore
 // targets exactly the address that passed the blocklist, so a
 // rebinding-capable resolver cannot slip a private IP past the check.
+//
+// The guard is installed via the client's ConfigureClient hook, which only
+// affects HostClients created after installation. The default client and
+// WithClient clients are guarded before first use; a client supplied as a
+// per-call variadic override is guarded on first use, so a host it had
+// already dialed keeps a cached, pre-guard HostClient. For a full guarantee
+// with a custom client, register it via WithClient (or pass a dedicated,
+// unused client) before first use.
 func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.Do(req, resp)

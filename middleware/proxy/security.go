@@ -86,10 +86,16 @@ type SecurityPolicy struct {
 	// time. Balancer installs a guarded Dial on each HostClient it builds;
 	// the runtime helpers — Do, DoRedirects, DoTimeout, DoDeadline,
 	// Forward, DomainForward, BalancerForward — install the same guard on
-	// the shared/user-supplied *fasthttp.Client they dispatch through. The
-	// only unguarded path is a custom Balancer Config.Client
-	// (*fasthttp.LBClient): its underlying dialers are the caller's
-	// responsibility.
+	// the shared/user-supplied *fasthttp.Client they dispatch through.
+	//
+	// The default client and clients registered via WithClient are guarded
+	// before first use and are fully protected. A client passed as a
+	// per-call variadic argument is guarded on first use, so any host it had
+	// already dialed keeps a cached, pre-guard HostClient; register such a
+	// client via WithClient (or hand the proxy a dedicated, unused client)
+	// for the full guarantee. The only path with no guard at all is a custom
+	// Balancer Config.Client (*fasthttp.LBClient): its underlying dialers
+	// are the caller's responsibility.
 	AllowPrivateIPs bool
 
 	// AllowHTTPSDowngrade permits proxy.DoRedirects to follow redirects
