@@ -211,6 +211,14 @@ type Ctx interface {
 	getMethodInt() int
 	getIndexRoute() int
 	getTreePathHash() int
+	// pathSlashCount lazily counts the '/' bytes of the detection path and caches
+	// the result for the request; matching uses it to reject route candidates
+	// without walking their segments. app is the serving App, which can differ
+	// from c.app when an App value was copied. When it registers no route that
+	// consults the count, counting is skipped and 0 is returned — a real detection
+	// path always contains a '/', so 0 doubles as the "unknown" state that makes
+	// Route.match skip the quick-reject entirely.
+	pathSlashCount(app *App) int
 	getDetectionPath() string
 	getValues() *[maxParams]string
 	getMatched() bool

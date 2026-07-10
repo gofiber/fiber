@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -72,6 +73,7 @@ type DefaultCtx struct {
 	path                   []byte               // HTTP path with the modifications by the configuration
 	detectionPath          []byte               // Route detection path
 	treePathHash           int                  // Hash of the path for the search in the tree
+	pathSlashes            int                  // Number of '/' in the detection path, used to quick-reject routes
 	indexRoute             int                  // Index of the current route
 	indexHandler           int                  // Index of the current handler
 	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
@@ -708,6 +710,10 @@ func (c *DefaultCtx) configDependentPaths() {
 			int(c.detectionPath[1])<<8 |
 			int(c.detectionPath[2])
 	}
+
+	// Invalidate the cached slash count of the detection path; pathSlashCount
+	// recomputes it lazily when route matching first needs it.
+	c.pathSlashes = 0
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.
@@ -891,6 +897,20 @@ func (c *DefaultCtx) getIndexRoute() int {
 
 func (c *DefaultCtx) getTreePathHash() int {
 	return c.treePathHash
+}
+
+// pathSlashCount lazily counts the '/' bytes of the detection path and caches
+// the result for the request; matching uses it to reject route candidates
+// without walking their segments. app is the serving App, which can differ
+// from c.app when an App value was copied. When it registers no route that
+// consults the count, counting is skipped and 0 is returned — a real detection
+// path always contains a '/', so 0 doubles as the "unknown" state that makes
+// Route.match skip the quick-reject entirely.
+func (c *DefaultCtx) pathSlashCount(app *App) int {
+	if c.pathSlashes == 0 && app.hasParamRoutes {
+		c.pathSlashes = bytes.Count(c.detectionPath, slashDelimiterBytes)
+	}
+	return c.pathSlashes
 }
 
 func (c *DefaultCtx) getDetectionPath() string {
