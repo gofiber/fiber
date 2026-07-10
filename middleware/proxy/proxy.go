@@ -144,52 +144,57 @@ var (
 	errNilGlobalProxyClient   = errors.New("proxy: global client is nil, set a non-nil client with proxy.WithClient")
 )
 
-// guardConfigureClient is the fasthttp ConfigureClient hook that installs
-// the dial-time SSRF guard on every HostClient a *fasthttp.Client creates.
-// Running at HostClient creation (rather than mutating Client.Dial) means
-// the guard is present before the first dial to each host and covers both
-// the Dial and DialTimeout code paths. It is a stable package-level
-// function value — not a closure — so ensureClientGuarded can recognize an
-// already-guarded client by identity, keeping installation idempotent
-// without retaining a reference to the client (which would pin it, and its
-// connection pool, for the process lifetime).
-func guardConfigureClient(hc *fasthttp.HostClient) error {
+// guardedConfigureClient composes a client's optional pre-existing
+// ConfigureClient hook with the dial-time SSRF guard. It is installed on a
+// *fasthttp.Client as the bound method value (&guardedConfigureClient{…}).run,
+// which fasthttp calls once per HostClient it creates — so the guard is
+// present before the first dial to each host and covers both the Dial and
+// DialTimeout code paths.
+//
+// The bound method's code pointer is stable across receivers (unlike a
+// closure's), so ensureClientGuarded recognizes an already-guarded client by
+// identity — no package-level map keyed by the client, which would pin the
+// client and its connection pool for the process lifetime. The struct is
+// referenced only from the client's own ConfigureClient field, so it is
+// collected together with the client.
+type guardedConfigureClient struct {
+	// orig is the caller's ConfigureClient hook, or nil. It runs before the
+	// guard so the guard wraps whatever Dial/DialTimeout it finally sets —
+	// running it after would let a hook that assigns hc.Dial overwrite the
+	// guard and reopen the SSRF hole.
+	orig func(hc *fasthttp.HostClient) error
+}
+
+func (g *guardedConfigureClient) run(hc *fasthttp.HostClient) error {
+	if g.orig != nil {
+		if err := g.orig(hc); err != nil {
+			return err
+		}
+	}
 	installHostClientGuard(hc)
 	return nil
 }
 
-// guardHookPtr is the code pointer of guardConfigureClient, computed once,
-// used to detect whether a client's ConfigureClient is already our guard.
-var guardHookPtr = reflect.ValueOf(guardConfigureClient).Pointer()
+// guardHookPtr is the code pointer shared by every guardedConfigureClient.run
+// method value, used to detect whether a client is already guarded.
+var guardHookPtr = reflect.ValueOf((&guardedConfigureClient{}).run).Pointer()
 
 // guardMu serializes the read-modify-write of a client's ConfigureClient in
-// ensureClientGuarded. Serializing the whole operation (rather than a
-// LoadOrStore flag) guarantees the guard is actually installed on the field
-// before any concurrent guarder observes the client as "handled", closing
-// the check/install window a second caller could otherwise dispatch
-// through.
-//
-// composedGuards records clients whose own ConfigureClient we wrapped, so a
-// client passed repeatedly is composed with only once (a second wrap would
-// nest the guard on every request). It is consulted only under guardMu.
-// Clients with a nil ConfigureClient — the overwhelming majority — take the
-// identity path below and are NOT stored, so no reference to them is
-// retained. Only a client that carries its own ConfigureClient is retained,
-// one entry per distinct client; reuse such clients (fasthttp's own
-// guidance) or register them via WithClient so this stays bounded.
-var (
-	guardMu        sync.Mutex
-	composedGuards = map[*fasthttp.Client]struct{}{}
-)
+// ensureClientGuarded, so a concurrent guarder cannot write the field mid
+// update or observe it half-installed.
+var guardMu sync.Mutex
 
 // ensureClientGuarded installs the SSRF guard on cli via its ConfigureClient
-// hook. It is invoked at registration for the default client (init) and
-// WithClient clients — before either is used — and on the dispatch path only
-// for a per-call variadic client (the global client is already guarded), so
-// the common no-variadic request path never reaches this lock. A handler
-// built with a fixed variadic client (e.g. Forward(addr, cli)) does take
-// guardMu once per request; that is a deliberate correctness-over-throughput
-// choice (an unlocked fast path would race a first-time writer).
+// hook, exactly once (idempotent: a client already carrying the guard method
+// is left untouched). It composes with any hook the client already has,
+// without retaining a reference to the client. It is invoked at registration
+// for the default client (init) and WithClient clients — before either is
+// used — and on the dispatch path only for a per-call variadic client (the
+// global client is already guarded), so the common no-variadic request path
+// never reaches this lock. A handler built with a fixed variadic client (e.g.
+// Forward(addr, cli)) does take guardMu once per request; that is a deliberate
+// correctness-over-throughput choice (an unlocked fast path would race a
+// first-time writer).
 //
 // Guarantee scope: the default client and WithClient clients are fully
 // protected. A client supplied as a per-call variadic argument is guarded on
@@ -202,28 +207,10 @@ func ensureClientGuarded(cli *fasthttp.Client) {
 	defer guardMu.Unlock()
 
 	existing := cli.ConfigureClient
-	if existing == nil {
-		cli.ConfigureClient = guardConfigureClient
-		return
+	if existing != nil && reflect.ValueOf(existing).Pointer() == guardHookPtr {
+		return // already guarded (directly or composed with a user hook)
 	}
-	if reflect.ValueOf(existing).Pointer() == guardHookPtr {
-		return // already our guard
-	}
-	if _, done := composedGuards[cli]; done {
-		return // already composed with the user's hook
-	}
-	// Run the user's hook first, then install the guard, so the guard wraps
-	// whatever Dial/DialTimeout the user's hook finally sets — otherwise a
-	// hook that assigns hc.Dial would overwrite the guard and reopen the
-	// SSRF hole.
-	composedGuards[cli] = struct{}{}
-	cli.ConfigureClient = func(hc *fasthttp.HostClient) error {
-		if err := existing(hc); err != nil {
-			return err
-		}
-		installHostClientGuard(hc)
-		return nil
-	}
+	cli.ConfigureClient = (&guardedConfigureClient{orig: existing}).run
 }
 
 func init() {

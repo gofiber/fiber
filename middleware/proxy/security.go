@@ -545,9 +545,16 @@ func guardedDial(
 // installs it when the policy forbids private IPs — this dialer is
 // consulted by clients that outlive a single policy snapshot, so it
 // re-reads the active global policy on every dial. When the caller supplied
-// their own dialer it is run after validation so custom transport is
-// preserved while the connection still targets the validated address; when
-// orig is nil the fasthttp default dialer is used.
+// their own dialer it is run in both paths so custom transport is preserved
+// while a blocked-policy connection still targets the validated address.
+//
+// When orig is nil the two paths differ, matching newSSRFDialer: the
+// delegate (private-IPs-allowed) path hands the raw address to fasthttp's
+// default dialer (Dial/DialDualStack), while the validated (blocked-policy)
+// path connects to the already-checked IP with a net.Dialer bounded by
+// dnsLookupTimeout — fasthttp.Dial is not reused there because the target is
+// a literal IP that needs no re-resolution and the explicit timeout bounds
+// the connect.
 //
 //nolint:revive // dialDualStack mirrors fasthttp.Client.DialDualStack
 func newGuardedClientDialer(orig fasthttp.DialFunc, dialDualStack bool) fasthttp.DialFunc {
