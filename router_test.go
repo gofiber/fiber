@@ -293,6 +293,43 @@ func Test_Route_Match_SlashInParams(t *testing.T) {
 	}
 }
 
+// Test_App_HasParamRoutes verifies the slash-count gate: apps whose routes
+// never consult the per-request slash count (static and star only) skip the
+// counting, and rebuilding the tree after adding a parametric route re-enables
+// it so param routes still match.
+func Test_App_HasParamRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/static/route", testEmptyHandler)
+	app.Get("/*", func(c Ctx) error {
+		return c.SendString(c.Params("*"))
+	})
+	app.startupProcess()
+	require.False(t, app.hasParamRoutes)
+
+	// static and star routing work without the per-request count
+	verifyRequest(t, app, "/static/route", StatusOK)
+	resp := verifyRequest(t, app, "/anything/else", StatusOK)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "anything/else", app.toString(body))
+
+	// the GET star route would shadow a GET param route, so use POST
+	app.Post("/users/:id", func(c Ctx) error {
+		return c.SendString(c.Params("id"))
+	})
+	app.RebuildTree()
+	require.True(t, app.hasParamRoutes)
+
+	resp, err = app.Test(httptest.NewRequest(MethodPost, "/users/42", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "42", app.toString(body))
+}
+
 func Test_Route_Match_Star(t *testing.T) {
 	t.Parallel()
 

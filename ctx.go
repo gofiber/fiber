@@ -711,9 +711,9 @@ func (c *DefaultCtx) configDependentPaths() {
 			int(c.detectionPath[2])
 	}
 
-	// Count the slashes of the final detection path once per request; route
-	// matching uses it to reject candidates without walking their segments.
-	c.pathSlashes = bytes.Count(c.detectionPath, slashDelimiterBytes)
+	// Invalidate the cached slash count of the detection path; pathSlashCount
+	// recomputes it lazily when route matching first needs it.
+	c.pathSlashes = 0
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.
@@ -899,7 +899,17 @@ func (c *DefaultCtx) getTreePathHash() int {
 	return c.treePathHash
 }
 
-func (c *DefaultCtx) getPathSlashes() int {
+// pathSlashCount lazily counts the '/' bytes of the detection path and caches
+// the result for the request; matching uses it to reject route candidates
+// without walking their segments. app is the serving App, which can differ
+// from c.app when an App value was copied. When it registers no route that
+// consults the count, counting is skipped and 0 is returned — a real detection
+// path always contains a '/', so 0 doubles as the "unknown" state that makes
+// Route.match skip the quick-reject entirely.
+func (c *DefaultCtx) pathSlashCount(app *App) int {
+	if c.pathSlashes == 0 && app.hasParamRoutes {
+		c.pathSlashes = bytes.Count(c.detectionPath, slashDelimiterBytes)
+	}
 	return c.pathSlashes
 }
 

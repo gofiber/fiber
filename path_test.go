@@ -264,16 +264,19 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 		for _, use := range []bool{false, true} {
 			route.use = use
 			for _, path := range paths {
-				var filteredParams, rawParams [maxParams]string
-				filtered := route.match(path, path, &filteredParams, strings.Count(path, "/"))
-				raw := parser.getMatch(path, path, &rawParams, use)
-				if filtered != raw {
-					t.Fatalf("filter changed outcome: pattern %q, path %q, use %v: filtered=%v raw=%v",
-						pattern, path, use, filtered, raw)
-				}
-				if raw {
-					require.Equal(t, rawParams[:len(parser.params)], filteredParams[:len(parser.params)],
-						"params diverged: pattern %q, path %q, use %v", pattern, path, use)
+				// 0 is the "count unknown" state and must bypass the filter
+				for _, pathSlashes := range []int{strings.Count(path, "/"), 0} {
+					var filteredParams, rawParams [maxParams]string
+					filtered := route.match(path, path, &filteredParams, pathSlashes)
+					raw := parser.getMatch(path, path, &rawParams, use)
+					if filtered != raw {
+						t.Fatalf("filter changed outcome: pattern %q, path %q, use %v, pathSlashes %d: filtered=%v raw=%v",
+							pattern, path, use, pathSlashes, filtered, raw)
+					}
+					if raw {
+						require.Equal(t, rawParams[:len(parser.params)], filteredParams[:len(parser.params)],
+							"params diverged: pattern %q, path %q, use %v", pattern, path, use)
+					}
 				}
 			}
 		}

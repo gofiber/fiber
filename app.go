@@ -119,6 +119,9 @@ type App struct {
 	hasRoutesRefreshed bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
+	// hasParamRoutes tracks whether any route consults the per-request slash
+	// count (rebuilt with the tree); when false the count is skipped entirely
+	hasParamRoutes bool
 }
 
 type viewsLockKey struct {
