@@ -131,9 +131,18 @@ func DefaultSecurityPolicy() SecurityPolicy {
 // mutation by the caller.
 var activePolicy atomic.Pointer[SecurityPolicy]
 
+// dnsResolver is the resolver used for SSRF validation lookups. It defaults
+// to net.DefaultResolver and is only ever swapped by tests, atomically, so a
+// concurrent validation lookup never races the swap. Tests use this seam
+// rather than mutating the process-global net.DefaultResolver — which
+// fasthttp and the net package read from background dial goroutines, making a
+// direct swap a data race under -race.
+var dnsResolver atomic.Pointer[net.Resolver]
+
 func init() {
 	def := DefaultSecurityPolicy()
 	activePolicy.Store(&def)
+	dnsResolver.Store(net.DefaultResolver)
 }
 
 // normalizePolicy returns a copy of policy whose AllowedSchemes slice is
@@ -384,7 +393,7 @@ func validateHostForSSRF(host string) error {
 	// Bound the lookup so a slow resolver cannot stall the caller.
 	ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
 	defer cancel()
-	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	addrs, err := dnsResolver.Load().LookupIPAddr(ctx, host)
 	if err != nil {
 		return fmt.Errorf("%w: %s lookup failed: %w", ErrUpstreamHostBlocked, host, err)
 	}
@@ -434,7 +443,7 @@ func resolveAndValidateHost(host string) ([]net.IP, error) {
 	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
 		defer cancel()
-		resolved, lerr := net.DefaultResolver.LookupIPAddr(ctx, host)
+		resolved, lerr := dnsResolver.Load().LookupIPAddr(ctx, host)
 		if lerr != nil {
 			return nil, fmt.Errorf("%w: %s lookup failed: %w", ErrUpstreamHostBlocked, host, lerr)
 		}

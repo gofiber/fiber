@@ -125,20 +125,22 @@ func buildDNSResponse(id uint16, q *dnsmessage.Question, ip net.IP) ([]byte, err
 	return out, nil
 }
 
-// withRebindingResolver points net.DefaultResolver at the fake DNS server
-// at dnsAddr for the duration of t, restoring the previous resolver via
-// t.Cleanup. Tests using it must not call t.Parallel: net.DefaultResolver
-// is process-global.
+// withRebindingResolver points the proxy's SSRF-validation resolver at the
+// fake DNS server at dnsAddr for the duration of t, restoring the previous
+// resolver via t.Cleanup. It swaps the package's atomic dnsResolver seam
+// rather than the process-global net.DefaultResolver, so it does not race the
+// DNS lookups other tests' background dial goroutines perform. Tests using it
+// must not call t.Parallel: the seam is process-global.
 func withRebindingResolver(t *testing.T, dnsAddr string) {
 	t.Helper()
-	prev := net.DefaultResolver
-	net.DefaultResolver = &net.Resolver{
+	prev := dnsResolver.Load()
+	dnsResolver.Store(&net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "udp", dnsAddr)
 		},
-	}
-	t.Cleanup(func() { net.DefaultResolver = prev })
+	})
+	t.Cleanup(func() { dnsResolver.Store(prev) })
 }
 
 // Test_Security_Do_BlocksDNSRebinding is the regression test for the
