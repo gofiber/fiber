@@ -358,7 +358,7 @@
       <option value="change">Sort: change</option>
     </select>
     <button class="tool-btn" id="toggle-all">Expand all</button>
-    <button class="tool-btn" id="download">Download JSON</button>
+    <button class="tool-btn" id="download" title="Download data as JSON" aria-label="Download data as JSON">&#10515; JSON</button>
   </div>
 
   <div id="status" role="status">
@@ -373,6 +373,7 @@
     <div class="lb-head">
       <h2 id="lb-title"></h2>
       <span class="sub" id="lb-sub"></span>
+      <span class="seg" id="lb-metric" role="group" aria-label="Metric"></span>
       <span class="seg" id="lb-count" role="group" aria-label="Charts per view">
         <button aria-pressed="true">1</button>
         <button aria-pressed="false">2</button>
@@ -603,16 +604,21 @@
     }
 
     // Cross-package view: one card per operation/scenario, one series per
-    // package, so sub packages can be compared against each other.
+    // package, so sub packages can be compared against each other. Keys merge
+    // case- and underscore-insensitively (SetAndDelete == Set_And_Delete).
     function buildCompareModel(model) {
       const cards = new Map();
+      const byNorm = new Map();
       for (const section of model.sections.values()) {
         if (section.label === 'other') continue;
         for (const card of section.cards.values()) {
           for (const variant of card.variants.values()) {
             const op = compareKey(card.base, section.label);
-            const key = op && variant.name ? op + '/' + variant.name
+            const rawKey = op && variant.name ? op + '/' + variant.name
               : (op || variant.name || displayName(card.base));
+            const norm = normToken(rawKey);
+            const key = byNorm.get(norm) || rawKey;
+            if (!byNorm.has(norm)) byNorm.set(norm, rawKey);
             let compare = cards.get(key);
             if (!compare) {
               compare = { base: key, pkg: null, section: 'comparison', compare: true, first: 0, last: 0, variants: new Map() };
@@ -665,7 +671,10 @@
     /* ---------- UI ---------- */
     'use strict';
     if (typeof window !== 'undefined' && typeof Chart !== 'undefined') (function () {
-      const MAX_SERIES_PER_CHART = 8; // fixed categorical slots; more series -> further charts (small multiples)
+      // One chart per benchmark regardless of series count (user preference over
+      // 8-slot small multiples): hues repeat past the 8 palette slots and these
+      // dash patterns keep repeated hues distinguishable.
+      const SERIES_DASHES = [[], [6, 3], [2, 2], [8, 2, 2, 2]];
       const MOVER_THRESHOLD = 3; // percent change below which a delta is considered noise
       const state = { q: '', pkg: 'all', metric: 'ns/op', sort: 'name', range: 'all', view: 'cards' };
       let model = null;
@@ -714,7 +723,7 @@
         if (state.pkg !== 'all' && !model.sections.has(state.pkg)) state.pkg = 'all';
         if (!model.metrics.includes(state.metric)) state.metric = model.metrics[0] || 'ns/op';
         if (state.sort !== 'name' && state.sort !== 'change') state.sort = 'name';
-        if (state.range !== '30' && state.range !== '90' && state.range !== 'all') state.range = 'all';
+        if (state.range !== '10' && state.range !== '30' && state.range !== '90' && state.range !== 'all') state.range = 'all';
         if (state.view !== 'compare') state.view = 'cards';
         if (state.view === 'compare' && model.sections.size < 2) state.view = 'cards';
       }
@@ -812,17 +821,17 @@
 
       /* ----- chart rendering ----- */
       function chunkVariants(card, metric) {
-        // Chunk over the FULL variant list so a variant keeps its chart and its
-        // slot color across metric switches; then drop variants without data.
-        const all = Array.from(card.variants.values());
-        const chunks = [];
-        for (let i = 0; i < all.length; i += MAX_SERIES_PER_CHART) {
-          const chunk = all.slice(i, i + MAX_SERIES_PER_CHART).filter(function (variant) {
-            return variant.series.has(metric);
-          });
-          if (chunk.length) chunks.push(chunk);
-        }
-        return chunks;
+        const variants = Array.from(card.variants.values()).filter(function (variant) {
+          return variant.series.has(metric);
+        });
+        return variants.length ? [variants] : [];
+      }
+
+      function seriesStyle(vars, slot) {
+        return {
+          color: vars.series[slot % vars.series.length],
+          dash: SERIES_DASHES[Math.floor(slot / vars.series.length) % SERIES_DASHES.length],
+        };
       }
 
       const crosshair = {
@@ -881,12 +890,13 @@
           return idx >= offset ? tail.runs[idx - offset] : null;
         };
         const datasets = tails.map(function (tail) {
-          const color = vars.series[tail.variant.slot % vars.series.length];
+          const style = seriesStyle(vars, tail.variant.slot);
           return {
             label: tail.variant.name,
             data: new Array(maxLen - tail.values.length).fill(null).concat(tail.values),
-            borderColor: color,
-            backgroundColor: color,
+            borderColor: style.color,
+            backgroundColor: style.color,
+            borderDash: style.dash,
             borderWidth: 2,
             borderJoinStyle: 'round',
             borderCapStyle: 'round',
@@ -981,12 +991,13 @@
         }
         const runs = card.runs.slice(first, last + 1);
         const datasets = variants.map(function (variant) {
-          const color = vars.series[variant.slot % vars.series.length];
+          const style = seriesStyle(vars, variant.slot);
           return {
             label: variant.name || 'default',
             data: variant.series.get(metric).slice(first, last + 1),
-            borderColor: color,
-            backgroundColor: color,
+            borderColor: style.color,
+            backgroundColor: style.color,
+            borderDash: style.dash,
             borderWidth: 2,
             borderJoinStyle: 'round',
             borderCapStyle: 'round',
@@ -1095,13 +1106,21 @@
         observer.disconnect();
       }
 
-      /* ----- lightbox (enlarged charts with prev/next and 1/2/4 layout) ----- */
-      const lightbox = { boxes: [], index: -1, charts: [], count: 1, opener: null };
+      /* ----- lightbox (enlarged charts with prev/next, 1/2/4 layout, metric switch) ----- */
+      const lightbox = { boxes: [], index: -1, charts: [], count: 1, opener: null, dirty: false };
 
       function destroyLightboxCharts() {
         for (const chart of lightbox.charts) chart.destroy();
         lightbox.charts = [];
         $('lb-chart').replaceChildren();
+      }
+
+      // The page boxes were chunked for the metric active at render time; the
+      // lightbox re-derives its chunk so its own metric switch stays correct.
+      function lightboxVariants(box, metric) {
+        return Array.from(box.$card.variants.values()).filter(function (variant) {
+          return variant.series.has(metric);
+        });
       }
 
       function showLightboxCharts() {
@@ -1112,26 +1131,31 @@
         destroyLightboxCharts();
         const holder = $('lb-chart');
         holder.className = 'lb-chart' + (count > 1 ? ' cols-' + (count === 2 ? '2' : '4') : '');
-        const shown = [];
+        let firstVariantCount = 0;
         for (let i = 0; i < count; i++) {
           const box = lightbox.boxes[(start + i) % total];
           const card = box.$card;
-          shown.push(box);
+          const variants = lightboxVariants(box, state.metric);
+          if (i === 0) firstVariantCount = variants.length;
           const cap = el('p', { class: 'cap' }, [el('span', { text: displayName(card.base) })]);
           if (card.pkg) cap.appendChild(el('span', { class: 'pkg', text: card.pkg }));
           const chartHolder = el('div', { class: 'holder' }, []);
           holder.appendChild(el('div', { class: 'lb-cell' }, count > 1 ? [cap, chartHolder] : [chartHolder]));
+          if (!variants.length) {
+            chartHolder.appendChild(el('p', { class: 'sub', text: 'No ' + state.metric + ' data for this chart.' }));
+            continue;
+          }
           const canvas = document.createElement('canvas');
           canvas.setAttribute('role', 'img');
           canvas.setAttribute('aria-label', box.$label);
           chartHolder.appendChild(canvas);
-          lightbox.charts.push(createChart(canvas, card, box.$variants));
+          lightbox.charts.push(createChart(canvas, card, variants));
         }
-        const first = shown[0];
+        const first = lightbox.boxes[start % total];
         if (count === 1) {
           $('lb-title').textContent = displayName(first.$card.base);
           $('lb-sub').textContent = (first.$card.pkg ? first.$card.pkg + ' · ' : '') +
-            first.$variants.length + ' series · ' + state.metric + ' · ' +
+            firstVariantCount + ' series · ' + state.metric + ' · ' +
             (start + 1) + ' / ' + total;
         } else {
           $('lb-title').textContent = 'Benchmarks';
@@ -1140,10 +1164,34 @@
         }
       }
 
+      function syncMetricSegs() {
+        for (const b of $('metric-seg').children) {
+          b.setAttribute('aria-pressed', String(b.textContent === state.metric));
+        }
+        for (const b of $('lb-metric').children) {
+          b.setAttribute('aria-pressed', String(b.textContent === state.metric));
+        }
+      }
+
       function openLightbox(box, opener) {
         lightbox.boxes = Array.from(document.querySelectorAll('.chart-box'));
         lightbox.index = Math.max(0, lightbox.boxes.indexOf(box));
         lightbox.opener = opener || null;
+        lightbox.dirty = false;
+        const seg = $('lb-metric');
+        seg.replaceChildren();
+        for (const metric of model.metrics) {
+          const btn = el('button', { text: metric, 'aria-pressed': String(metric === state.metric) });
+          btn.addEventListener('click', function () {
+            if (state.metric === metric) return;
+            state.metric = metric;
+            lightbox.dirty = true;
+            syncMetricSegs();
+            writeHash();
+            showLightboxCharts();
+          });
+          seg.appendChild(btn);
+        }
         $('lightbox').hidden = false;
         document.body.style.overflow = 'hidden';
         showLightboxCharts();
@@ -1156,6 +1204,11 @@
         $('lightbox').hidden = true;
         document.body.style.overflow = '';
         if (lightbox.opener && lightbox.opener.isConnected) lightbox.opener.focus();
+        if (lightbox.dirty) {
+          // the metric changed inside the lightbox; bring the page up to date
+          lightbox.dirty = false;
+          renderSections();
+        }
       }
 
       function stepLightbox(direction) {
@@ -1287,12 +1340,13 @@
             tableWrap.replaceChildren();
           }
         });
-        chunks.forEach(function (chunk, index) {
-          const box = el('div', { class: 'chart-box' + (chunk.length > 1 ? ' tall' : '') }, []);
+        chunks.forEach(function (chunk) {
+          const box = el('div', { class: 'chart-box' }, []);
           box.$card = card;
           box.$variants = chunk;
-          box.$label = displayName(card.base) + ' benchmark trend' +
-            (chunks.length > 1 ? ', chart ' + (index + 1) + ' of ' + chunks.length : '');
+          // room for the legend, which wraps with many series
+          box.style.height = Math.min(430, 200 + (chunk.length > 1 ? Math.ceil(chunk.length / 3) * 16 : 0)) + 'px';
+          box.$label = displayName(card.base) + ' benchmark trend';
           node.appendChild(box);
           observer.observe(box);
         });
@@ -1469,7 +1523,7 @@
 
         const rangeSeg = $('range-seg');
         rangeSeg.replaceChildren();
-        [['30', '30d'], ['90', '90d'], ['all', 'all']].forEach(function (pair) {
+        [['10', '10d'], ['30', '30d'], ['90', '90d'], ['all', 'all']].forEach(function (pair) {
           const btn = el('button', { text: pair[1], 'aria-pressed': String(state.range === pair[0]) });
           btn.addEventListener('click', function () {
             if (state.range === pair[0]) return;
