@@ -122,6 +122,11 @@
       cursor: pointer;
     }
     .tool-btn:hover, .seg button:hover { color: var(--ink); }
+    .tool-btn[aria-pressed="true"] {
+      background: var(--seg-active-bg);
+      color: var(--seg-active-fg);
+      border-color: var(--seg-active-bg);
+    }
     #status { padding: 48px 20px; text-align: center; color: var(--ink-2); }
     #status .bar {
       width: min(320px, 80%);
@@ -345,6 +350,7 @@
   <div id="toolbar" hidden>
     <input id="search" type="search" placeholder="Filter benchmarks&hellip;" aria-label="Filter benchmarks" />
     <select id="pkg-select" aria-label="Package"></select>
+    <button class="tool-btn" id="view-toggle" aria-pressed="false">Compare packages</button>
     <span class="seg" id="metric-seg" role="group" aria-label="Metric"></span>
     <span class="seg" id="range-seg" role="group" aria-label="Time range"></span>
     <select id="sort-select" aria-label="Sort">
@@ -570,7 +576,10 @@
       for (const variant of card.variants.values()) {
         const arr = variant.series.get(metric);
         if (!arr) continue;
-        const delta = seriesDelta(arr, card.first, card.last);
+        // comparison variants carry their own run window (one per package)
+        const first = variant.first !== undefined ? variant.first : card.first;
+        const last = variant.last !== undefined ? variant.last : card.last;
+        const delta = seriesDelta(arr, first, last);
         if (delta && (!worst || Math.abs(delta.pct) > Math.abs(worst.pct))) {
           worst = delta;
           worst.variant = variant.name;
@@ -578,6 +587,54 @@
       }
       if (worst) worst.regression = higherIsBetter(metric) ? worst.pct < 0 : worst.pct > 0;
       return worst;
+    }
+
+    function normToken(value) {
+      return String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    // "Benchmark_Redis_Set" in section "redis" -> "Set";
+    // "Benchmark_Ace" in section "ace/v3" -> "" (the variant becomes the key).
+    function compareKey(base, sectionLabel) {
+      const parts = displayName(base).split('_');
+      const sec = normToken(String(sectionLabel).split('/')[0]);
+      if (sec && parts.length && normToken(parts[0]) === sec) parts.shift();
+      return parts.join('_');
+    }
+
+    // Cross-package view: one card per operation/scenario, one series per
+    // package, so sub packages can be compared against each other.
+    function buildCompareModel(model) {
+      const cards = new Map();
+      for (const section of model.sections.values()) {
+        if (section.label === 'other') continue;
+        for (const card of section.cards.values()) {
+          for (const variant of card.variants.values()) {
+            const op = compareKey(card.base, section.label);
+            const key = op && variant.name ? op + '/' + variant.name
+              : (op || variant.name || displayName(card.base));
+            let compare = cards.get(key);
+            if (!compare) {
+              compare = { base: key, pkg: null, section: 'comparison', compare: true, first: 0, last: 0, variants: new Map() };
+              cards.set(key, compare);
+            }
+            if (!compare.variants.has(section.label)) {
+              compare.variants.set(section.label, {
+                name: section.label,
+                slot: compare.variants.size,
+                series: variant.series,
+                runs: card.runs,
+                first: card.first,
+                last: card.last,
+              });
+            }
+          }
+        }
+      }
+      for (const [key, card] of cards) {
+        if (card.variants.size < 2) cards.delete(key);
+      }
+      return cards;
     }
 
     function cardMatches(card, query, metric) {
@@ -597,7 +654,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-      module.exports = { parseName: parseName, shortPkg: shortPkg, buildModel: buildModel, parseDataJs: parseDataJs, cardMatches: cardMatches, sortMetrics: sortMetrics, seriesDelta: seriesDelta, cardDelta: cardDelta, displayName: displayName };
+      module.exports = { parseName: parseName, shortPkg: shortPkg, buildModel: buildModel, parseDataJs: parseDataJs, cardMatches: cardMatches, sortMetrics: sortMetrics, seriesDelta: seriesDelta, cardDelta: cardDelta, displayName: displayName, compareKey: compareKey, buildCompareModel: buildCompareModel };
     }
   </script>
 
@@ -610,7 +667,7 @@
     if (typeof window !== 'undefined' && typeof Chart !== 'undefined') (function () {
       const MAX_SERIES_PER_CHART = 8; // fixed categorical slots; more series -> further charts (small multiples)
       const MOVER_THRESHOLD = 3; // percent change below which a delta is considered noise
-      const state = { q: '', pkg: 'all', metric: 'ns/op', sort: 'name', range: 'all' };
+      const state = { q: '', pkg: 'all', metric: 'ns/op', sort: 'name', range: 'all', view: 'cards' };
       let model = null;
       const liveCharts = new Map(); // canvas -> Chart
 
@@ -649,6 +706,7 @@
         state.metric = params.get('metric') || 'ns/op';
         state.sort = params.get('sort') || 'name';
         state.range = params.get('range') || 'all';
+        state.view = params.get('view') || 'cards';
       }
 
       function clampState() {
@@ -657,6 +715,8 @@
         if (!model.metrics.includes(state.metric)) state.metric = model.metrics[0] || 'ns/op';
         if (state.sort !== 'name' && state.sort !== 'change') state.sort = 'name';
         if (state.range !== '30' && state.range !== '90' && state.range !== 'all') state.range = 'all';
+        if (state.view !== 'compare') state.view = 'cards';
+        if (state.view === 'compare' && model.sections.size < 2) state.view = 'cards';
       }
       function writeHash() {
         const params = new URLSearchParams();
@@ -665,6 +725,7 @@
         if (state.metric !== 'ns/op') params.set('metric', state.metric);
         if (state.sort !== 'name') params.set('sort', state.sort);
         if (state.range !== 'all') params.set('range', state.range);
+        if (state.view === 'compare') params.set('view', 'compare');
         const hash = params.toString();
         history.replaceState(null, '', hash ? '#' + hash : location.pathname + location.search);
       }
@@ -781,9 +842,118 @@
         },
       };
 
+      // Comparison cards overlay one series per package. The packages publish on
+      // their own commit timelines, so the series are aligned at their latest
+      // run; each tooltip row carries the commit date of its own package.
+      function createCompareChart(canvas, card, variants, vars, metric) {
+        const tails = [];
+        for (const variant of variants) {
+          const arr = variant.series.get(metric);
+          let first = variant.first;
+          let last = variant.last;
+          while (first <= last && arr[first] == null) first++;
+          while (last >= first && arr[last] == null) last--;
+          if (first > last) { first = variant.first; last = variant.last; }
+          if (state.range !== 'all') {
+            const lastTs = Date.parse(variant.runs[last].ts || variant.runs[last].date);
+            if (!Number.isNaN(lastTs)) {
+              const cutoff = lastTs - Number(state.range) * 86400000;
+              while (first < last) {
+                const ts = Date.parse(variant.runs[first].ts || variant.runs[first].date);
+                if (!Number.isNaN(ts) && ts >= cutoff) break;
+                first++;
+              }
+            }
+          }
+          tails.push({ variant: variant, values: arr.slice(first, last + 1), runs: variant.runs.slice(first, last + 1) });
+        }
+        const maxLen = Math.max(1, ...tails.map(function (t) { return t.values.length; }));
+        const sameTimeline = tails.every(function (t) {
+          return t.values.length === maxLen && t.runs[0] && tails[0].runs[0] && t.runs[0].sha === tails[0].runs[0].sha;
+        });
+        const longest = tails.find(function (t) { return t.values.length === maxLen; });
+        const labels = sameTimeline
+          ? longest.runs.map(function (r) { return r.date; })
+          : longest.runs.map(function (r, i) { return String(i - maxLen + 1); });
+        const runFor = function (datasetIndex, idx) {
+          const tail = tails[datasetIndex];
+          const offset = maxLen - tail.values.length;
+          return idx >= offset ? tail.runs[idx - offset] : null;
+        };
+        const datasets = tails.map(function (tail) {
+          const color = vars.series[tail.variant.slot % vars.series.length];
+          return {
+            label: tail.variant.name,
+            data: new Array(maxLen - tail.values.length).fill(null).concat(tail.values),
+            borderColor: color,
+            backgroundColor: color,
+            borderWidth: 2,
+            borderJoinStyle: 'round',
+            borderCapStyle: 'round',
+            pointRadius: 0,
+            pointHitRadius: 12,
+            pointHoverRadius: 5,
+            pointHoverBorderColor: vars.surface,
+            pointHoverBorderWidth: 2,
+            spanGaps: true,
+          };
+        });
+        const chart = new Chart(canvas, {
+          type: 'line',
+          data: { labels: labels, datasets: datasets },
+          options: {
+            animation: false,
+            normalized: true,
+            resizeDelay: 120,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              x: {
+                grid: { display: false },
+                border: { color: vars.baseline },
+                ticks: { color: vars.muted, maxRotation: 0, autoSkip: true, maxTicksLimit: 5, font: { size: 10 } },
+              },
+              y: {
+                grid: { color: vars.grid },
+                border: { display: false },
+                ticks: { color: vars.muted, maxTicksLimit: 5, font: { size: 10 }, callback: function (value) { return fmtAxis.format(value); } },
+              },
+            },
+            plugins: {
+              legend: { display: true, position: 'bottom', labels: { color: vars.ink2, boxWidth: 14, boxHeight: 2, font: { size: 11 } } },
+              tooltip: {
+                displayColors: true,
+                boxWidth: 10,
+                boxHeight: 2,
+                callbacks: {
+                  title: function (items) {
+                    if (!items.length) return '';
+                    return sameTimeline ? labels[items[0].dataIndex] : 'aligned run ' + labels[items[0].dataIndex];
+                  },
+                  label: function (item) {
+                    const run = runFor(item.datasetIndex, item.dataIndex);
+                    return ' ' + fmtFull.format(item.parsed.y) + ' ' + metric + '  ' + item.dataset.label +
+                      (run ? ' · ' + run.date + ' ' + run.sha : '');
+                  },
+                },
+              },
+            },
+            onClick: function (event, elements) {
+              if (!elements.length) return;
+              const run = runFor(elements[0].datasetIndex, elements[0].index);
+              if (run && run.url) window.open(run.url, '_blank', 'noopener');
+            },
+          },
+          plugins: [crosshair],
+        });
+        chart.$vars = vars;
+        return chart;
+      }
+
       function createChart(canvas, card, variants) {
         const vars = cssVars();
         const metric = state.metric;
+        if (card.compare) return createCompareChart(canvas, card, variants, vars, metric);
         // Trim the axis to the run window that has data for THIS chunk, so a
         // chart of recently added variants does not render a mostly empty axis.
         let first = Infinity;
@@ -1004,6 +1174,10 @@
           if (variant.series.has(metric)) variants.push(variant);
         }
         const vars = cssVars();
+        if (card.compare) {
+          renderCompareTable(card, container, variants, vars, metric);
+          return;
+        }
         const table = el('table', null, []);
         const headRow = el('tr', null, [el('th', { text: 'commit' })]);
         variants.forEach(function (variant) {
@@ -1053,6 +1227,42 @@
         });
       }
 
+      // Comparison table: the packages have separate commit timelines, so rows
+      // are aligned at the latest run of each package ("0" = latest).
+      function renderCompareTable(card, container, variants, vars, metric) {
+        const table = el('table', null, []);
+        const headRow = el('tr', null, [el('th', { text: 'run' })]);
+        const tails = variants.map(function (variant) {
+          const arr = variant.series.get(metric);
+          let last = variant.last;
+          while (last >= variant.first && arr[last] == null) last--;
+          if (last < variant.first) last = variant.last;
+          const th = el('th', null, []);
+          const key = el('span', { class: 'key' }, []);
+          key.style.background = vars.series[variant.slot % vars.series.length];
+          th.appendChild(key);
+          th.appendChild(document.createTextNode(variant.name));
+          headRow.appendChild(th);
+          return { arr: arr, last: last, first: variant.first };
+        });
+        table.appendChild(el('thead', null, [headRow]));
+        const body = el('tbody', null, []);
+        for (let back = 0; back < 15; back++) {
+          const row = el('tr', null, [el('td', { text: back === 0 ? 'latest' : '-' + back })]);
+          let any = false;
+          for (const tail of tails) {
+            const idx = tail.last - back;
+            const value = idx >= tail.first ? tail.arr[idx] : null;
+            if (value != null) any = true;
+            row.appendChild(el('td', { text: value == null ? '' : fmtFull.format(value) }));
+          }
+          if (!any) break;
+          body.appendChild(row);
+        }
+        table.appendChild(body);
+        container.replaceChildren(table);
+      }
+
       function renderCard(card, delta) {
         const chunks = chunkVariants(card, state.metric);
         const title = el('h3', null, []);
@@ -1065,7 +1275,7 @@
         const node = el('div', { class: 'card' }, [title]);
         const variantCount = chunks.reduce(function (n, c) { return n + c.length; }, 0);
         const sub = card.pkg ? card.pkg + ' · ' : '';
-        node.appendChild(el('p', { class: 'sub', text: sub + variantCount + ' series' }));
+        node.appendChild(el('p', { class: 'sub', text: card.compare ? variantCount + ' packages' : sub + variantCount + ' series' }));
         const tableWrap = el('div', { class: 'tbl-wrap', hidden: '' }, []);
         node.appendChild(tableWrap);
         tblBtn.addEventListener('click', function () {
@@ -1122,7 +1332,7 @@
             const btn = el('button', { class: 'mover', type: 'button', title: 'Show ' + displayName(item.card.base) }, [
               deltaBadge(item.delta, state.metric),
               el('span', { class: 'name', text: displayName(item.card.base) }),
-              el('span', { class: 'pkg', text: item.card.section === 'other' ? '' : item.card.section }),
+              el('span', { class: 'pkg', text: item.card.section === 'other' || item.card.compare ? '' : item.card.section }),
             ]);
             btn.addEventListener('click', function () {
               state.q = displayName(item.card.base);
@@ -1145,10 +1355,16 @@
         const main = $('main');
         main.replaceChildren();
         const searching = state.q !== '';
+        const compareMode = state.view === 'compare';
+        $('pkg-select').disabled = compareMode;
+        if (compareMode && !model.$compare) {
+          model.$compare = { label: 'package comparison', cards: buildCompareModel(model) };
+        }
+        const sectionList = compareMode ? [model.$compare] : sortedSections();
         const deltas = new Map();
         const visible = [];
-        for (const section of sortedSections()) {
-          if (state.pkg !== 'all' && section.label !== state.pkg) continue;
+        for (const section of sectionList) {
+          if (!compareMode && state.pkg !== 'all' && section.label !== state.pkg) continue;
           const cards = [];
           for (const card of section.cards.values()) {
             if (cardMatches(card, state.q, state.metric)) cards.push(card);
@@ -1273,6 +1489,16 @@
           renderSections();
         });
 
+        const viewToggle = $('view-toggle');
+        if (model.sections.size < 2) viewToggle.hidden = true;
+        viewToggle.setAttribute('aria-pressed', String(state.view === 'compare'));
+        viewToggle.addEventListener('click', function () {
+          state.view = state.view === 'compare' ? 'cards' : 'compare';
+          viewToggle.setAttribute('aria-pressed', String(state.view === 'compare'));
+          writeHash();
+          renderSections();
+        });
+
         $('toggle-all').addEventListener('click', function () {
           const all = document.querySelectorAll('details.pkg');
           let open = 0;
@@ -1357,6 +1583,7 @@
           for (const b of $('range-seg').children) {
             b.setAttribute('aria-pressed', String(b.textContent === rangeLabel));
           }
+          $('view-toggle').setAttribute('aria-pressed', String(state.view === 'compare'));
           renderSections();
         });
         if (window.matchMedia) {
