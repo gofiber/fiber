@@ -1,305 +1,960 @@
 <!DOCTYPE html>
-<html>
-
+<!-- Shared gofiber benchmark page. Canonical copy: gofiber/.github/.github/actions/benchmark-pages/index.html
+     Deployed to every repo's gh-pages by the benchmark-pages action; local edits are overwritten. -->
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1, user-scalable=yes" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Benchmarks</title>
   <style>
-    html {
-      font-family: BlinkMacSystemFont, -apple-system, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      background-color: #fff;
-      font-size: 16px;
+    :root {
+      --page: #f9f9f7;
+      --surface: #fcfcfb;
+      --ink: #0b0b0b;
+      --ink-2: #52514e;
+      --muted: #898781;
+      --grid: #e1e0d9;
+      --baseline: #c3c2b7;
+      --border: rgba(11, 11, 11, 0.1);
+      --accent: #2a78d6;
+      --seg-active-bg: #1c5cab;
+      --seg-active-fg: #ffffff;
+      --series-1: #2a78d6;
+      --series-2: #1baf7a;
+      --series-3: #eda100;
+      --series-4: #008300;
+      --series-5: #4a3aa7;
+      --series-6: #e34948;
+      --series-7: #e87ba4;
+      --series-8: #eb6834;
     }
-
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page: #0d0d0d;
+        --surface: #1a1a19;
+        --ink: #ffffff;
+        --ink-2: #c3c2b7;
+        --muted: #898781;
+        --grid: #2c2c2a;
+        --baseline: #383835;
+        --border: rgba(255, 255, 255, 0.1);
+        --accent: #3987e5;
+        --seg-active-bg: #3987e5;
+        --seg-active-fg: #0b0b0b;
+        --series-1: #3987e5;
+        --series-2: #199e70;
+        --series-3: #c98500;
+        --series-4: #008300;
+        --series-5: #9085e9;
+        --series-6: #e66767;
+        --series-7: #d55181;
+        --series-8: #d95926;
+      }
+    }
+    * { box-sizing: border-box; }
     body {
-      color: #4a4a4a;
-      margin: 8px;
-      font-size: 1em;
-      font-weight: 400;
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
     }
-
-    header {
-      margin-bottom: 8px;
+    a { color: var(--accent); }
+    header.page {
+      padding: 16px 20px 4px;
       display: flex;
-      flex-direction: column;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 6px 16px;
     }
-
-    main {
-      width: 100%;
+    header.page h1 { font-size: 20px; margin: 0; }
+    header.page .meta { color: var(--ink-2); font-size: 13px; }
+    #toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
       display: flex;
-      flex-direction: column;
-    }
-
-    a {
-      color: #3273dc;
-      cursor: pointer;
-      text-decoration: none;
-    }
-
-    a:hover {
-      color: #000;
-    }
-
-    button {
-      color: #fff;
-      background-color: #3298dc;
-      border-color: transparent;
-      cursor: pointer;
-      text-align: center;
-    }
-
-    button:hover {
-      background-color: #2793da;
-      flex: none;
-    }
-
-    .spacer {
-      flex: auto;
-    }
-
-    .small {
-      font-size: 0.75rem;
-    }
-
-    footer {
-      margin-top: 16px;
-      display: flex;
+      flex-wrap: wrap;
       align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: var(--page);
+      background: color-mix(in srgb, var(--page) 88%, transparent);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid var(--grid);
     }
-
-    .header-label {
-      margin-right: 4px;
+    #toolbar[hidden] { display: none; }
+    #toolbar input[type="search"], #toolbar select {
+      font: inherit;
+      color: var(--ink);
+      background: var(--surface);
+      border: 1px solid var(--baseline);
+      border-radius: 6px;
+      padding: 6px 10px;
     }
-
-    .benchmark-set {
-      margin: 8px 0;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
+    #toolbar input[type="search"] { flex: 1 1 180px; min-width: 140px; }
+    #toolbar select { max-width: 220px; }
+    .seg { display: inline-flex; border: 1px solid var(--baseline); border-radius: 6px; overflow: hidden; }
+    .seg button {
+      font: inherit;
+      font-size: 13px;
+      border: 0;
+      background: var(--surface);
+      color: var(--ink-2);
+      padding: 6px 10px;
+      cursor: pointer;
     }
-
-    .benchmark-title {
-      font-size: 3rem;
+    .seg button + button { border-left: 1px solid var(--baseline); }
+    .seg button[aria-pressed="true"] { background: var(--seg-active-bg); color: var(--seg-active-fg); }
+    .tool-btn {
+      font: inherit;
+      font-size: 13px;
+      background: var(--surface);
+      color: var(--ink-2);
+      border: 1px solid var(--baseline);
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .tool-btn:hover, .seg button:hover { color: var(--ink); }
+    #status { padding: 48px 20px; text-align: center; color: var(--ink-2); }
+    #status .bar {
+      width: min(320px, 80%);
+      height: 4px;
+      margin: 14px auto 0;
+      border-radius: 2px;
+      background: var(--grid);
+      overflow: hidden;
+      position: relative;
+    }
+    #status .bar::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      width: 40%;
+      border-radius: 2px;
+      background: var(--accent);
+      animation: slide 1.2s ease-in-out infinite alternate;
+    }
+    @keyframes slide { from { transform: translateX(-30%); } to { transform: translateX(220%); } }
+    @media (prefers-reduced-motion: reduce) { #status .bar::after { animation: none; } }
+    main { padding: 8px 20px 40px; }
+    details.pkg { margin: 14px 0; }
+    details.pkg > summary {
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 8px 10px;
+      border-radius: 6px;
+      list-style-position: inside;
+    }
+    details.pkg > summary:hover { background: var(--surface); }
+    details.pkg > summary .count { color: var(--muted); font-weight: 400; font-size: 13px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+      gap: 12px;
+      padding-top: 10px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px 6px;
+      min-width: 0;
+    }
+    .card h3 {
+      margin: 0 0 2px;
+      font-size: 13px;
       font-weight: 600;
       word-break: break-word;
-      text-align: center;
-    }
-
-    .benchmark-graphs {
       display: flex;
-      flex-direction: row;
-      justify-content: space-around;
-      align-items: center;
-      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: baseline;
+    }
+    .card h3 .tbl-btn {
+      font: inherit;
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--muted);
+      background: none;
+      border: 1px solid var(--grid);
+      border-radius: 4px;
+      padding: 1px 6px;
+      cursor: pointer;
+      flex: none;
+    }
+    .card h3 .tbl-btn:hover { color: var(--ink); }
+    .card .sub { color: var(--muted); font-size: 11px; margin: 0 0 6px; }
+    .chart-box { position: relative; height: 200px; }
+    .chart-box.tall { height: 230px; }
+    .tbl-wrap { overflow-x: auto; }
+    .card table {
       width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin: 6px 0;
+      font-variant-numeric: tabular-nums;
     }
-
-    .benchmark-chart {
-      max-width: 33%;
+    .card table th, .card table td {
+      text-align: right;
+      padding: 3px 6px;
+      border-bottom: 1px solid var(--grid);
+      color: var(--ink-2);
+      white-space: nowrap;
     }
-
-    @media only screen and (max-width: 900px) {
-      .benchmark-chart {
-        max-width: 50%;
-      }
+    .card table th:first-child, .card table td:first-child { text-align: left; color: var(--ink); }
+    .card table thead th { color: var(--ink); position: relative; }
+    .key {
+      display: inline-block;
+      width: 12px;
+      height: 3px;
+      border-radius: 2px;
+      vertical-align: middle;
+      margin-right: 4px;
     }
-
-    @media only screen and (max-width: 700px) {
-      .benchmark-chart {
-        max-width: 100%;
-      }
+    footer {
+      padding: 16px 20px 32px;
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px solid var(--grid);
+    }
+    @media (max-width: 560px) {
+      header.page, #toolbar, main, footer { padding-left: 12px; padding-right: 12px; }
+      .grid { grid-template-columns: 1fr; }
     }
   </style>
-  <title>Benchmarks</title>
 </head>
-
 <body>
-  <header id="header">
-    <div class="header-item">
-      <strong class="header-label">Last Update:</strong>
-      <span id="last-update"></span>
-    </div>
-    <div class="header-item">
-      <strong class="header-label">Repository:</strong>
-      <a id="repository-link" rel="noopener"></a>
-    </div>
+  <header class="page">
+    <h1>Benchmarks</h1>
+    <span class="meta"><a id="repo-link" rel="noopener" href="#">repository</a></span>
+    <span class="meta" id="summary-line"></span>
   </header>
-  <main id="main"></main>
+
+  <div id="toolbar" hidden>
+    <input id="search" type="search" placeholder="Filter benchmarks&hellip;" aria-label="Filter benchmarks" />
+    <select id="pkg-select" aria-label="Package"></select>
+    <span class="seg" id="metric-seg" role="group" aria-label="Metric"></span>
+    <button class="tool-btn" id="toggle-all">Expand all</button>
+    <button class="tool-btn" id="download">Download JSON</button>
+  </div>
+
+  <div id="status" role="status">
+    Loading benchmark data&hellip;
+    <div id="status-detail" class="meta"></div>
+    <div class="bar"></div>
+  </div>
+
+  <main id="main" hidden></main>
+
   <footer>
-    <button id="dl-button">Download data as JSON</button>
-    <div class="spacer"></div>
-    <div class="small">Powered by <a rel="noopener"
-        href="https://github.com/marketplace/actions/continuous-benchmark">github-action-benchmark</a></div>
+    Data collected by
+    <a rel="noopener" href="https://github.com/marketplace/actions/continuous-benchmark">github-action-benchmark</a>
+    &middot; page maintained in
+    <a rel="noopener" href="https://github.com/gofiber/.github">gofiber/.github</a>
   </footer>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.2/dist/Chart.min.js"></script>
-  <script src="data.js"></script>
-  <script id="main-script">
+  <script>
+    /* ---------- pure data logic (kept DOM-free so it can be tested in node) ---------- */
     'use strict';
-    (function () {
-      // Colors from https://github.com/github/linguist/blob/master/lib/linguist/languages.yml
-      const toolColors = {
-        cargo: '#dea584',
-        go: '#00add8',
-        benchmarkjs: '#f1e05a',
-        pytest: '#3572a5',
-        googlecpp: '#f34b7d',
-        catch2: '#f34b7d',
-        _: '#333333'
+
+    // "Benchmark_Foo/case-1 (github.com/gofiber/fiber/v3) - ns/op"
+    //   -> { base: "Benchmark_Foo", variant: "case-1", pkg: "github.com/...", metric: "ns/op" }
+    function parseName(name) {
+      let rest = String(name);
+      let metric = null;
+      const m = rest.match(/ - ([^ ]*\/[^ ]*)$/);
+      if (m) {
+        metric = m[1];
+        rest = rest.slice(0, m.index);
+      }
+      let pkg = null;
+      const p = rest.match(/ \(([^()]+)\)$/);
+      if (p) {
+        pkg = p[1];
+        rest = rest.slice(0, p.index);
+      }
+      const slash = rest.indexOf('/');
+      return {
+        base: slash === -1 ? rest : rest.slice(0, slash),
+        variant: slash === -1 ? '' : rest.slice(slash + 1),
+        pkg: pkg,
+        metric: metric,
+      };
+    }
+
+    function shortPkg(pkg, repoName) {
+      if (!pkg) return '';
+      let s = pkg.replace(/^github\.com\/gofiber\//, '');
+      if (repoName && s.startsWith(repoName + '/')) s = s.slice(repoName.length + 1);
+      if (repoName && s === repoName) s = '';
+      return s;
+    }
+
+    const METRIC_ORDER = ['ns/op', 'B/op', 'allocs/op', 'MB/s'];
+
+    function sortMetrics(set) {
+      return Array.from(set).sort(function (a, b) {
+        const ia = METRIC_ORDER.indexOf(a);
+        const ib = METRIC_ORDER.indexOf(b);
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+      });
+    }
+
+    // sources: [{ label: folderName|null, data: BENCHMARK_DATA }]
+    // Returns { sections, metrics, repoUrl, lastUpdate, totalRuns, totalBenches }.
+    // A card is one Go benchmark; its variants are the sub-benchmarks, and each
+    // variant holds one value series per metric, aligned with source.runs.
+    function buildModel(sources) {
+      const sections = new Map();
+      const metrics = new Set();
+      let repoUrl = '';
+      let lastUpdate = 0;
+      let totalRuns = 0;
+      const model = { sections: sections, metrics: [], repoUrl: '', lastUpdate: 0, totalRuns: 0, totalBenches: 0 };
+
+      for (const src of sources) {
+        const data = src.data || {};
+        if (!repoUrl && data.repoUrl) repoUrl = data.repoUrl;
+        if (data.lastUpdate) lastUpdate = Math.max(lastUpdate, data.lastUpdate);
+        const suites = data.entries ? Object.values(data.entries) : [];
+        const entries = suites.length ? suites[0] : [];
+        if (!entries.length) continue;
+        totalRuns = Math.max(totalRuns, entries.length);
+        const repoName = repoUrl ? repoUrl.replace(/\/+$/, '').split('/').pop() : '';
+
+        const runs = entries.map(function (e) {
+          const c = e.commit || {};
+          return {
+            date: c.timestamp ? String(c.timestamp).slice(0, 10) : '',
+            ts: c.timestamp || '',
+            sha: c.id ? String(c.id).slice(0, 7) : '',
+            url: c.url || '',
+            msg: c.message ? String(c.message).split('\n')[0] : '',
+          };
+        });
+
+        const allNames = new Set();
+        for (const e of entries) {
+          for (const b of e.benches || []) allNames.add(b.name);
+        }
+
+        for (let i = 0; i < entries.length; i++) {
+          for (const b of entries[i].benches || []) {
+            const parsed = parseName(b.name);
+            let metric = parsed.metric;
+            if (!metric) {
+              // The go extractor emits the plain entry twice: once bare and once
+              // with an explicit " - ns/op" suffix. Skip the bare duplicate.
+              if (allNames.has(b.name + ' - ns/op')) continue;
+              metric = String(b.unit || 'ns/op').split(/\s/)[0];
+            }
+            const sectionLabel = src.label || shortPkg(parsed.pkg, repoName) || 'other';
+            let section = sections.get(sectionLabel);
+            if (!section) {
+              section = { label: sectionLabel, cards: new Map() };
+              sections.set(sectionLabel, section);
+            }
+            const cardKey = (parsed.pkg || '') + '|' + parsed.base;
+            let card = section.cards.get(cardKey);
+            if (!card) {
+              // first/last mark the run window that actually has data, so charts of
+              // renamed or removed benchmarks do not render mostly-empty axes.
+              card = { base: parsed.base, pkg: parsed.pkg, section: sectionLabel, runs: runs, variants: new Map(), first: i, last: i };
+              section.cards.set(cardKey, card);
+            }
+            if (i < card.first) card.first = i;
+            if (i > card.last) card.last = i;
+            let variant = card.variants.get(parsed.variant);
+            if (!variant) {
+              // slot fixes the variant's color for good: it must not shift when a
+              // metric filter hides sibling variants (color follows the entity)
+              variant = { name: parsed.variant, series: new Map(), slot: card.variants.size };
+              card.variants.set(parsed.variant, variant);
+            }
+            let arr = variant.series.get(metric);
+            if (!arr) {
+              arr = new Array(entries.length).fill(null);
+              variant.series.set(metric, arr);
+            }
+            arr[i] = b.value;
+            metrics.add(metric);
+          }
+        }
+      }
+
+      let totalBenches = 0;
+      for (const section of sections.values()) {
+        for (const card of section.cards.values()) totalBenches += card.variants.size;
+      }
+      model.metrics = sortMetrics(metrics);
+      model.repoUrl = repoUrl;
+      model.lastUpdate = lastUpdate;
+      model.totalRuns = totalRuns;
+      model.totalBenches = totalBenches;
+      return model;
+    }
+
+    function parseDataJs(text) {
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start < 0 || end <= start) throw new Error('unexpected data.js format');
+      return JSON.parse(text.slice(start, end + 1));
+    }
+
+    function cardMatches(card, query, metric) {
+      let hasMetric = false;
+      for (const variant of card.variants.values()) {
+        if (variant.series.has(metric)) { hasMetric = true; break; }
+      }
+      if (!hasMetric) return false;
+      if (!query) return true;
+      const q = query.toLowerCase();
+      if (card.base.toLowerCase().includes(q)) return true;
+      if (card.pkg && card.pkg.toLowerCase().includes(q)) return true;
+      for (const variant of card.variants.keys()) {
+        if (variant.toLowerCase().includes(q)) return true;
+      }
+      return false;
+    }
+
+    if (typeof module !== 'undefined' && module.exports) {
+      module.exports = { parseName: parseName, shortPkg: shortPkg, buildModel: buildModel, parseDataJs: parseDataJs, cardMatches: cardMatches, sortMetrics: sortMetrics };
+    }
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"
+          integrity="sha384-b0GXujLkk9eYYSmcSfoyZbfyElGAQnDyY0skCHSG6w3JgTMFnz11ggrTAr7seu9f" crossorigin="anonymous"></script>
+
+  <script>
+    /* ---------- UI ---------- */
+    'use strict';
+    if (typeof window !== 'undefined' && typeof Chart !== 'undefined') (function () {
+      const MAX_SERIES_PER_CHART = 8; // fixed categorical slots; more series -> further charts (small multiples)
+      const state = { q: '', pkg: 'all', metric: 'ns/op' };
+      let model = null;
+      const liveCharts = new Map(); // canvas -> Chart
+
+      const $ = function (id) { return document.getElementById(id); };
+      function el(tag, attrs, children) {
+        const node = document.createElement(tag);
+        if (attrs) {
+          for (const k of Object.keys(attrs)) {
+            if (k === 'text') node.textContent = attrs[k];
+            else if (k === 'dataset') Object.assign(node.dataset, attrs[k]);
+            else node.setAttribute(k, attrs[k]);
+          }
+        }
+        for (const child of children || []) node.appendChild(child);
+        return node;
+      }
+
+      function cssVars() {
+        const cs = getComputedStyle(document.documentElement);
+        const v = function (name) { return cs.getPropertyValue(name).trim(); };
+        return {
+          series: [1, 2, 3, 4, 5, 6, 7, 8].map(function (i) { return v('--series-' + i); }),
+          ink: v('--ink'), ink2: v('--ink-2'), muted: v('--muted'),
+          grid: v('--grid'), baseline: v('--baseline'), surface: v('--surface'),
+        };
+      }
+
+      const fmtFull = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+      const fmtAxis = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
+
+      /* ----- state <-> URL hash ----- */
+      function readHash() {
+        const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+        state.q = params.get('q') || '';
+        state.pkg = params.get('package') || 'all';
+        state.metric = params.get('metric') || 'ns/op';
+      }
+
+      function clampState() {
+        if (!model) return;
+        if (state.pkg !== 'all' && !model.sections.has(state.pkg)) state.pkg = 'all';
+        if (!model.metrics.includes(state.metric)) state.metric = model.metrics[0] || 'ns/op';
+      }
+      function writeHash() {
+        const params = new URLSearchParams();
+        if (state.q) params.set('q', state.q);
+        if (state.pkg !== 'all') params.set('package', state.pkg);
+        if (state.metric !== 'ns/op') params.set('metric', state.metric);
+        const hash = params.toString();
+        history.replaceState(null, '', hash ? '#' + hash : location.pathname + location.search);
+      }
+
+      /* ----- data loading ----- */
+      async function fetchText(url, onBytes) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(url + ' -> HTTP ' + res.status);
+        if (!res.body || !res.body.getReader) return res.text();
+        const reader = res.body.getReader();
+        const chunks = [];
+        let received = 0;
+        for (;;) {
+          const step = await reader.read();
+          if (step.done) break;
+          chunks.push(step.value);
+          received += step.value.length;
+          if (onBytes) onBytes(received);
+        }
+        return new Blob(chunks).text();
+      }
+
+      function loadViaScriptTag() {
+        // Fallback when fetch() is unavailable for the data (e.g. file:// preview).
+        return new Promise(function (resolve, reject) {
+          const script = document.createElement('script');
+          script.src = 'data.js';
+          script.onload = function () {
+            if (window.BENCHMARK_DATA) resolve(window.BENCHMARK_DATA);
+            else reject(new Error('data.js did not define BENCHMARK_DATA'));
+          };
+          script.onerror = function () { reject(new Error('failed to load data.js')); };
+          document.head.appendChild(script);
+        });
+      }
+
+      async function loadSources() {
+        const detail = $('status-detail');
+        let folders = null;
+        try {
+          const res = await fetch('folders.json');
+          if (res.ok) {
+            const list = await res.json();
+            // an existing but empty folders.json means "no packages yet",
+            // not "single data.js layout"
+            if (Array.isArray(list)) folders = list;
+          }
+        } catch (err) { /* single data.js layout */ }
+
+        if (!folders) {
+          try {
+            const text = await fetchText('data.js', function (bytes) {
+              detail.textContent = (bytes / 1048576).toFixed(1) + ' MB received';
+            });
+            return [{ label: null, data: parseDataJs(text) }];
+          } catch (err) {
+            return [{ label: null, data: await loadViaScriptTag() }];
+          }
+        }
+        if (!folders.length) return [];
+
+        const sources = [];
+        let done = 0;
+        const queue = folders.slice();
+        const workers = new Array(Math.min(6, queue.length)).fill(null).map(async function () {
+          for (;;) {
+            const folder = queue.shift();
+            if (!folder) return;
+            try {
+              const text = await fetchText(folder + '/data.js');
+              sources.push({ label: folder, data: parseDataJs(text) });
+            } catch (err) { /* folder without data yet */ }
+            done++;
+            detail.textContent = done + ' / ' + folders.length + ' packages loaded';
+          }
+        });
+        await Promise.all(workers);
+        sources.sort(function (a, b) { return String(a.label).localeCompare(String(b.label)); });
+        return sources;
+      }
+
+      /* ----- chart rendering ----- */
+      function chunkVariants(card, metric) {
+        // Chunk over the FULL variant list so a variant keeps its chart and its
+        // slot color across metric switches; then drop variants without data.
+        const all = Array.from(card.variants.values());
+        const chunks = [];
+        for (let i = 0; i < all.length; i += MAX_SERIES_PER_CHART) {
+          const chunk = all.slice(i, i + MAX_SERIES_PER_CHART).filter(function (variant) {
+            return variant.series.has(metric);
+          });
+          if (chunk.length) chunks.push(chunk);
+        }
+        return chunks;
+      }
+
+      const crosshair = {
+        id: 'crosshair',
+        afterDraw: function (chart) {
+          const tooltip = chart.tooltip;
+          if (!tooltip || !tooltip.opacity || tooltip.caretX == null) return;
+          const ctx = chart.ctx;
+          ctx.save();
+          ctx.strokeStyle = chart.$vars.baseline;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(tooltip.caretX, chart.chartArea.top);
+          ctx.lineTo(tooltip.caretX, chart.chartArea.bottom);
+          ctx.stroke();
+          ctx.restore();
+        },
       };
 
-      function init() {
-        function collectBenchesPerTestCase(entries) {
-          const map = new Map();
-          for (const entry of entries) {
-            const { commit, date, tool, benches } = entry;
-            for (const bench of benches) {
-              const result = { commit, date, tool, bench };
-              const arr = map.get(bench.name);
-              if (arr === undefined) {
-                map.set(bench.name, [result]);
-              } else {
-                arr.push(result);
-              }
-            }
+      function createChart(canvas, card, variants) {
+        const vars = cssVars();
+        const metric = state.metric;
+        // Trim the axis to the run window that has data for THIS chunk, so a
+        // chart of recently added variants does not render a mostly empty axis.
+        let first = Infinity;
+        let last = -Infinity;
+        for (const variant of variants) {
+          const arr = variant.series.get(metric);
+          for (let i = card.first; i <= card.last; i++) {
+            if (arr[i] != null) { if (i < first) first = i; break; }
           }
-          return map;
+          for (let i = card.last; i >= card.first; i--) {
+            if (arr[i] != null) { if (i > last) last = i; break; }
+          }
         }
-
-        const data = window.BENCHMARK_DATA;
-
-        // Render header
-        document.getElementById('last-update').textContent = new Date(data.lastUpdate).toString();
-        const repoLink = document.getElementById('repository-link');
-        repoLink.href = data.repoUrl;
-        repoLink.textContent = data.repoUrl;
-
-        // Render footer
-        document.getElementById('dl-button').onclick = () => {
-          const dataUrl = 'data:,' + JSON.stringify(data, null, 2);
-          const a = document.createElement('a');
-          a.href = dataUrl;
-          a.download = 'benchmark_data.json';
-          a.click();
-        };
-
-        // Prepare data points for charts
-        return Object.keys(data.entries).map(name => ({
-          name,
-          dataSet: collectBenchesPerTestCase(data.entries[name]),
-        }));
-      }
-
-      function renderAllChars(dataSets) {
-
-        function renderGraph(parent, name, dataset) {
-          const canvas = document.createElement('canvas');
-          canvas.className = 'benchmark-chart';
-          parent.appendChild(canvas);
-
-          const color = toolColors[dataset.length > 0 ? dataset[0].tool : '_'];
-          const data = {
-            labels: dataset.map(d => d.commit.id.slice(0, 7)),
-            datasets: [
-              {
-                label: name,
-                data: dataset.map(d => d.bench.value),
-                borderColor: color,
-                backgroundColor: color + '60', // Add alpha for #rrggbbaa
-              }
-            ],
+        if (!(first <= last)) { first = card.first; last = card.last; }
+        const runs = card.runs.slice(first, last + 1);
+        const datasets = variants.map(function (variant) {
+          const color = vars.series[variant.slot % vars.series.length];
+          return {
+            label: variant.name || 'default',
+            data: variant.series.get(metric).slice(first, last + 1),
+            borderColor: color,
+            backgroundColor: color,
+            borderWidth: 2,
+            borderJoinStyle: 'round',
+            borderCapStyle: 'round',
+            pointRadius: 0,
+            pointHitRadius: 12,
+            pointHoverRadius: 5,
+            pointHoverBorderColor: vars.surface,
+            pointHoverBorderWidth: 2,
+            spanGaps: true,
           };
-          const options = {
+        });
+        const chart = new Chart(canvas, {
+          type: 'line',
+          data: { labels: runs.map(function (r) { return r.date; }), datasets: datasets },
+          options: {
+            animation: false,
+            normalized: true,
+            resizeDelay: 120,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
             scales: {
-              xAxes: [
-                {
-                  scaleLabel: {
-                    display: true,
-                    labelString: 'commit',
-                  },
-                }
-              ],
-              yAxes: [
-                {
-                  scaleLabel: {
-                    display: true,
-                    labelString: dataset.length > 0 ? dataset[0].bench.unit : '',
-                  },
-                  ticks: {
-                    beginAtZero: true,
-                  }
-                }
-              ],
-            },
-            tooltips: {
-              callbacks: {
-                afterTitle: items => {
-                  const { index } = items[0];
-                  const data = dataset[index];
-                  return '\n' + data.commit.message + '\n\n' + data.commit.timestamp + ' committed by @' + data.commit.committer.username + '\n';
+              x: {
+                grid: { display: false },
+                border: { color: vars.baseline },
+                ticks: { color: vars.muted, maxRotation: 0, autoSkip: true, maxTicksLimit: 5, font: { size: 10 } },
+              },
+              y: {
+                grid: { color: vars.grid },
+                border: { display: false },
+                ticks: {
+                  color: vars.muted,
+                  maxTicksLimit: 5,
+                  font: { size: 10 },
+                  callback: function (value) { return fmtAxis.format(value); },
                 },
-                label: item => {
-                  let label = item.value;
-                  const { range, unit } = dataset[item.index].bench;
-                  label += ' ' + unit;
-                  if (range) {
-                    label += ' (' + range + ')';
-                  }
-                  return label;
+              },
+            },
+            plugins: {
+              legend: {
+                display: datasets.length > 1,
+                position: 'bottom',
+                labels: {
+                  color: vars.ink2,
+                  boxWidth: 14,
+                  boxHeight: 2,
+                  font: { size: 11 },
                 },
-                afterLabel: item => {
-                  const { extra } = dataset[item.index].bench;
-                  return extra ? '\n' + extra : '';
-                }
-              }
+              },
+              tooltip: {
+                displayColors: true,
+                boxWidth: 10,
+                boxHeight: 2,
+                usePointStyle: false,
+                callbacks: {
+                  title: function (items) {
+                    if (!items.length) return '';
+                    const run = runs[items[0].dataIndex] || {};
+                    const lines = [run.date + '  ' + run.sha];
+                    if (run.msg) lines.push(run.msg.slice(0, 60));
+                    return lines;
+                  },
+                  label: function (item) {
+                    return ' ' + fmtFull.format(item.parsed.y) + ' ' + metric +
+                      (datasets.length > 1 ? '  ' + item.dataset.label : '');
+                  },
+                },
+              },
             },
-            onClick: (_mouseEvent, activeElems) => {
-              if (activeElems.length === 0) {
-                return;
-              }
-              // XXX: Undocumented. How can we know the index?
-              const index = activeElems[0]._index;
-              const url = dataset[index].commit.url;
-              window.open(url, '_blank');
+            onClick: function (event, elements) {
+              if (!elements.length) return;
+              const run = runs[elements[0].index];
+              if (run && run.url) window.open(run.url, '_blank', 'noopener');
             },
-          };
+          },
+          plugins: [crosshair],
+        });
+        chart.$vars = vars;
+        return chart;
+      }
 
-          new Chart(canvas, {
-            type: 'line',
-            data,
-            options,
-          });
-        }
-
-        function renderBenchSet(name, benchSet, main) {
-          const setElem = document.createElement('div');
-          setElem.className = 'benchmark-set';
-          main.appendChild(setElem);
-
-          const nameElem = document.createElement('h1');
-          nameElem.className = 'benchmark-title';
-          nameElem.textContent = name;
-          setElem.appendChild(nameElem);
-
-          const graphsElem = document.createElement('div');
-          graphsElem.className = 'benchmark-graphs';
-          setElem.appendChild(graphsElem);
-
-          for (const [benchName, benches] of benchSet.entries()) {
-            renderGraph(graphsElem, benchName, benches)
+      const observer = new IntersectionObserver(function (entries) {
+        for (const entry of entries) {
+          const box = entry.target;
+          if (entry.isIntersecting) {
+            if (!liveCharts.has(box)) {
+              const canvas = document.createElement('canvas');
+              canvas.setAttribute('role', 'img');
+              canvas.setAttribute('aria-label', box.$label);
+              box.appendChild(canvas);
+              liveCharts.set(box, createChart(canvas, box.$card, box.$variants));
+            }
+          } else if (liveCharts.has(box)) {
+            liveCharts.get(box).destroy();
+            liveCharts.delete(box);
+            box.replaceChildren();
           }
         }
+      }, { rootMargin: '400px 0px' });
 
-        const main = document.getElementById('main');
-        for (const { name, dataSet } of dataSets) {
-          renderBenchSet(name, dataSet, main);
+      function destroyAllCharts() {
+        for (const pair of liveCharts) {
+          pair[1].destroy();
+          pair[0].replaceChildren();
+        }
+        liveCharts.clear();
+        observer.disconnect();
+      }
+
+      /* ----- card / section rendering ----- */
+      function renderTable(card, container) {
+        const metric = state.metric;
+        const variants = [];
+        for (const variant of card.variants.values()) {
+          if (variant.series.has(metric)) variants.push(variant);
+        }
+        const vars = cssVars();
+        const table = el('table', null, []);
+        const headRow = el('tr', null, [el('th', { text: 'commit' })]);
+        variants.forEach(function (variant) {
+          const th = el('th', null, []);
+          if (variants.length > 1) {
+            const key = el('span', { class: 'key' }, []);
+            key.style.background = vars.series[variant.slot % vars.series.length];
+            th.appendChild(key);
+          }
+          th.appendChild(document.createTextNode(variant.name || 'default'));
+          headRow.appendChild(th);
+        });
+        table.appendChild(el('thead', null, [headRow]));
+        const body = el('tbody', null, []);
+        const first = Math.max(card.first, card.last - 14);
+        for (let i = card.last; i >= first; i--) {
+          const run = card.runs[i];
+          const commitCell = el('td', { text: run.date + ' ' }, []);
+          if (run.url) {
+            commitCell.appendChild(el('a', { href: run.url, rel: 'noopener', target: '_blank', text: run.sha }));
+          } else {
+            commitCell.appendChild(document.createTextNode(run.sha));
+          }
+          const row = el('tr', null, [commitCell]);
+          for (const variant of variants) {
+            const value = variant.series.get(metric)[i];
+            row.appendChild(el('td', { text: value == null ? '' : fmtFull.format(value) }));
+          }
+          body.appendChild(row);
+        }
+        table.appendChild(body);
+        container.replaceChildren(table);
+      }
+
+      function renderCard(card) {
+        const chunks = chunkVariants(card, state.metric);
+        const title = el('h3', null, []);
+        title.appendChild(el('span', { text: card.base }, []));
+        const tblBtn = el('button', { class: 'tbl-btn', text: 'table', 'aria-label': 'Toggle data table for ' + card.base });
+        title.appendChild(tblBtn);
+        const node = el('div', { class: 'card' }, [title]);
+        const variantCount = chunks.reduce(function (n, c) { return n + c.length; }, 0);
+        const sub = card.pkg ? card.pkg + ' · ' : '';
+        node.appendChild(el('p', { class: 'sub', text: sub + variantCount + ' series' }));
+        const tableWrap = el('div', { class: 'tbl-wrap', hidden: '' }, []);
+        node.appendChild(tableWrap);
+        tblBtn.addEventListener('click', function () {
+          if (tableWrap.hidden) {
+            renderTable(card, tableWrap);
+            tableWrap.hidden = false;
+          } else {
+            tableWrap.hidden = true;
+            tableWrap.replaceChildren();
+          }
+        });
+        chunks.forEach(function (chunk, index) {
+          const box = el('div', { class: 'chart-box' + (chunk.length > 1 ? ' tall' : '') }, []);
+          box.$card = card;
+          box.$variants = chunk;
+          box.$label = card.base + ' benchmark trend' +
+            (chunks.length > 1 ? ', chart ' + (index + 1) + ' of ' + chunks.length : '');
+          node.appendChild(box);
+          observer.observe(box);
+        });
+        return node;
+      }
+
+      function sortedSections() {
+        return Array.from(model.sections.values()).sort(function (a, b) {
+          return a.label.localeCompare(b.label);
+        });
+      }
+
+      function renderSections() {
+        destroyAllCharts();
+        const main = $('main');
+        main.replaceChildren();
+        const searching = state.q !== '';
+        let shown = 0;
+        for (const section of sortedSections()) {
+          if (state.pkg !== 'all' && section.label !== state.pkg) continue;
+          const cards = [];
+          for (const card of section.cards.values()) {
+            if (cardMatches(card, state.q, state.metric)) cards.push(card);
+          }
+          if (!cards.length) continue;
+          shown += cards.length;
+          const grid = el('div', { class: 'grid' }, cards.map(renderCard));
+          const summary = el('summary', null, [
+            el('span', { text: section.label + ' ' }),
+            el('span', { class: 'count', text: '(' + cards.length + ')' }),
+          ]);
+          const details = el('details', { class: 'pkg' }, [summary, grid]);
+          const single = model.sections.size === 1 || state.pkg !== 'all';
+          if (single || searching || main.childElementCount === 0) details.setAttribute('open', '');
+          main.appendChild(details);
+        }
+        if (!shown) {
+          main.appendChild(el('p', { class: 'sub', text: 'No benchmarks match the current filter.' }));
+        }
+        updateToggleAll();
+      }
+
+      /* ----- toolbar ----- */
+      function updateToggleAll() {
+        const all = document.querySelectorAll('details.pkg');
+        let open = 0;
+        for (const d of all) if (d.open) open++;
+        $('toggle-all').textContent = open > all.length / 2 ? 'Collapse all' : 'Expand all';
+      }
+
+      function buildToolbar() {
+        clampState();
+        const search = $('search');
+        search.value = state.q;
+        let timer = null;
+        search.addEventListener('input', function () {
+          clearTimeout(timer);
+          timer = setTimeout(function () {
+            state.q = search.value.trim();
+            writeHash();
+            renderSections();
+          }, 150);
+        });
+
+        const select = $('pkg-select');
+        select.replaceChildren(el('option', { value: 'all', text: 'All packages (' + model.sections.size + ')' }));
+        for (const section of sortedSections()) {
+          select.appendChild(el('option', { value: section.label, text: section.label }));
+        }
+        if (model.sections.size < 2) select.hidden = true;
+        select.value = state.pkg;
+        select.addEventListener('change', function () {
+          state.pkg = select.value;
+          writeHash();
+          renderSections();
+        });
+
+        const seg = $('metric-seg');
+        seg.replaceChildren();
+        for (const metric of model.metrics) {
+          const btn = el('button', { text: metric, 'aria-pressed': String(metric === state.metric) });
+          btn.addEventListener('click', function () {
+            if (state.metric === metric) return;
+            state.metric = metric;
+            for (const b of seg.children) b.setAttribute('aria-pressed', String(b.textContent === metric));
+            writeHash();
+            renderSections();
+          });
+          seg.appendChild(btn);
+        }
+
+        $('toggle-all').addEventListener('click', function () {
+          const all = document.querySelectorAll('details.pkg');
+          let open = 0;
+          for (const d of all) if (d.open) open++;
+          const target = !(open > all.length / 2);
+          for (const d of all) d.open = target;
+          updateToggleAll();
+        });
+        $('main').addEventListener('toggle', updateToggleAll, true);
+
+        $('download').addEventListener('click', function () {
+          const payload = model.$sources.length === 1 && model.$sources[0].label === null
+            ? model.$sources[0].data
+            : model.$sources.map(function (s) { return { package: s.label, data: s.data }; });
+          const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = 'benchmark-data.json';
+          link.click();
+          URL.revokeObjectURL(link.href);
+        });
+      }
+
+      /* ----- boot ----- */
+      async function boot() {
+        readHash();
+        try {
+          const sources = await loadSources();
+          model = buildModel(sources);
+          model.$sources = sources;
+        } catch (err) {
+          $('status').textContent = 'Failed to load benchmark data: ' + err.message;
+          return;
+        }
+        if (!model.totalBenches) {
+          $('status').textContent = 'No benchmark data found yet.';
+          return;
+        }
+        document.title = (model.repoUrl ? model.repoUrl.split('/').slice(-2).join('/') + ' ' : '') + 'benchmarks';
+        const repoLink = $('repo-link');
+        repoLink.href = model.repoUrl || '#';
+        repoLink.textContent = model.repoUrl ? model.repoUrl.replace(/^https?:\/\//, '') : 'repository';
+        $('summary-line').textContent = model.totalBenches + ' series · ' + model.totalRuns + ' runs · updated ' +
+          (model.lastUpdate ? new Date(model.lastUpdate).toISOString().slice(0, 10) : 'n/a');
+
+        $('status').hidden = true;
+        $('toolbar').hidden = false;
+        $('main').hidden = false;
+        buildToolbar();
+        renderSections();
+
+        window.addEventListener('hashchange', function () {
+          readHash();
+          clampState();
+          $('pkg-select').value = state.pkg;
+          $('search').value = state.q;
+          for (const b of $('metric-seg').children) {
+            b.setAttribute('aria-pressed', String(b.textContent === state.metric));
+          }
+          renderSections();
+        });
+        if (window.matchMedia) {
+          window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderSections);
         }
       }
 
-      renderAllChars(init()); // Start
+      boot();
     })();
   </script>
 </body>
-
 </html>
