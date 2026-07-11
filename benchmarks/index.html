@@ -5,6 +5,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- inline icon: keeps browsers from requesting a nonexistent /favicon.ico -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>" />
   <title>Benchmarks</title>
   <style>
     :root {
@@ -19,6 +21,8 @@
       --accent: #2a78d6;
       --seg-active-bg: #1c5cab;
       --seg-active-fg: #ffffff;
+      --delta-good: #006300;
+      --delta-bad: #d03b3b;
       --series-1: #2a78d6;
       --series-2: #1baf7a;
       --series-3: #eda100;
@@ -41,6 +45,8 @@
         --accent: #3987e5;
         --seg-active-bg: #3987e5;
         --seg-active-fg: #0b0b0b;
+        --delta-good: #0ca30c;
+        --delta-bad: #d03b3b;
         --series-1: #3987e5;
         --series-2: #199e70;
         --series-3: #c98500;
@@ -149,6 +155,50 @@
     }
     details.pkg > summary:hover { background: var(--surface); }
     details.pkg > summary .count { color: var(--muted); font-weight: 400; font-size: 13px; }
+    .delta { font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+    .delta.bad { color: var(--delta-bad); }
+    .delta.good { color: var(--delta-good); }
+    #movers {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+      margin: 14px 0;
+    }
+    .mover-col {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      min-width: 0;
+    }
+    .mover-col h4 {
+      margin: 0 0 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-2);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    button.mover {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      width: 100%;
+      background: none;
+      border: 0;
+      border-radius: 4px;
+      padding: 4px 4px;
+      font: inherit;
+      font-size: 12px;
+      color: var(--ink);
+      cursor: pointer;
+      text-align: left;
+      min-width: 0;
+    }
+    button.mover:hover { background: var(--page); }
+    button.mover .delta { flex: none; min-width: 52px; }
+    button.mover .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    button.mover .pkg { color: var(--muted); font-size: 11px; margin-left: auto; flex: none; }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
@@ -168,10 +218,11 @@
       font-weight: 600;
       word-break: break-word;
       display: flex;
-      justify-content: space-between;
       gap: 8px;
       align-items: baseline;
     }
+    .card h3 .name { flex: 1 1 auto; min-width: 0; }
+    .card h3 .delta { flex: none; }
     .card h3 .tbl-btn {
       font: inherit;
       font-size: 11px;
@@ -219,13 +270,72 @@
       font-size: 12px;
       border-top: 1px solid var(--grid);
     }
+    #lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: var(--page);
+      display: flex;
+      flex-direction: column;
+      padding: 12px 20px 20px;
+    }
+    #lightbox[hidden] { display: none; }
+    .lb-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px 12px;
+      flex-wrap: wrap;
+    }
+    .lb-head h2 {
+      font-size: 16px;
+      margin: 0;
+      word-break: break-word;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .lb-head .sub { color: var(--muted); font-size: 12px; }
+    .lb-head .tool-btn { min-width: 40px; }
+    .lb-chart {
+      flex: 1 1 auto;
+      min-height: 0;
+      margin-top: 10px;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr;
+    }
+    .lb-chart.cols-2 { grid-template-columns: 1fr 1fr; }
+    .lb-chart.cols-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    .lb-cell {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+    }
+    .lb-cell .cap {
+      font-size: 12px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+    }
+    .lb-cell .cap .pkg { color: var(--muted); font-weight: 400; font-size: 11px; }
+    .lb-cell .holder { flex: 1 1 auto; position: relative; min-height: 0; }
+    @media (max-width: 560px) {
+      #lightbox { padding: 10px 12px 14px; }
+      .lb-chart { overflow-y: auto; }
+      .lb-chart.cols-2, .lb-chart.cols-4 { grid-template-columns: 1fr; grid-template-rows: none; }
+      .lb-chart.cols-2 .lb-cell, .lb-chart.cols-4 .lb-cell { min-height: 45vh; }
+    }
     @media (max-width: 560px) {
       header.page, #toolbar, main, footer { padding-left: 12px; padding-right: 12px; }
       .grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
-<body>
+<!-- data-layout is patched to "single" or "multi" by the benchmark-pages sync
+     step; "auto" (local previews) probes folders.json and falls back to data.js -->
+<body data-layout="single">
   <header class="page">
     <h1>Benchmarks</h1>
     <span class="meta"><a id="repo-link" rel="noopener" href="#">repository</a></span>
@@ -236,6 +346,11 @@
     <input id="search" type="search" placeholder="Filter benchmarks&hellip;" aria-label="Filter benchmarks" />
     <select id="pkg-select" aria-label="Package"></select>
     <span class="seg" id="metric-seg" role="group" aria-label="Metric"></span>
+    <span class="seg" id="range-seg" role="group" aria-label="Time range"></span>
+    <select id="sort-select" aria-label="Sort">
+      <option value="name">Sort: name</option>
+      <option value="change">Sort: change</option>
+    </select>
     <button class="tool-btn" id="toggle-all">Expand all</button>
     <button class="tool-btn" id="download">Download JSON</button>
   </div>
@@ -247,6 +362,22 @@
   </div>
 
   <main id="main" hidden></main>
+
+  <div id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Enlarged benchmark chart">
+    <div class="lb-head">
+      <h2 id="lb-title"></h2>
+      <span class="sub" id="lb-sub"></span>
+      <span class="seg" id="lb-count" role="group" aria-label="Charts per view">
+        <button aria-pressed="true">1</button>
+        <button aria-pressed="false">2</button>
+        <button aria-pressed="false">4</button>
+      </span>
+      <button class="tool-btn" id="lb-prev" aria-label="Previous charts">&lsaquo;</button>
+      <button class="tool-btn" id="lb-next" aria-label="Next charts">&rsaquo;</button>
+      <button class="tool-btn" id="lb-close" aria-label="Close enlarged chart">&times;</button>
+    </div>
+    <div class="lb-chart" id="lb-chart"></div>
+  </div>
 
   <footer>
     Data collected by
@@ -403,6 +534,52 @@
       return JSON.parse(text.slice(start, end + 1));
     }
 
+    // Every Go benchmark function starts with "Benchmark"; drop the noise for display.
+    function displayName(base) {
+      return String(base).replace(/^Benchmark_?/, '') || base;
+    }
+
+    // For every metric except throughput, a higher value is a regression.
+    function higherIsBetter(metric) {
+      return metric === 'MB/s';
+    }
+
+    // Latest value vs the median of up to 10 previous runs. The median damps
+    // single-run benchmark noise that a plain last-vs-previous compare amplifies.
+    function seriesDelta(arr, first, last) {
+      let latestIdx = -1;
+      for (let i = last; i >= first; i--) {
+        if (arr[i] != null) { latestIdx = i; break; }
+      }
+      if (latestIdx < 0) return null;
+      const prior = [];
+      for (let i = latestIdx - 1; i >= first && prior.length < 10; i--) {
+        if (arr[i] != null) prior.push(arr[i]);
+      }
+      if (!prior.length) return null;
+      prior.sort(function (a, b) { return a - b; });
+      const mid = prior.length >> 1;
+      const median = prior.length % 2 ? prior[mid] : (prior[mid - 1] + prior[mid]) / 2;
+      if (!median) return null;
+      return { pct: ((arr[latestIdx] - median) / median) * 100, latest: arr[latestIdx], baseline: median };
+    }
+
+    // The card's most significant recent change across its variants.
+    function cardDelta(card, metric) {
+      let worst = null;
+      for (const variant of card.variants.values()) {
+        const arr = variant.series.get(metric);
+        if (!arr) continue;
+        const delta = seriesDelta(arr, card.first, card.last);
+        if (delta && (!worst || Math.abs(delta.pct) > Math.abs(worst.pct))) {
+          worst = delta;
+          worst.variant = variant.name;
+        }
+      }
+      if (worst) worst.regression = higherIsBetter(metric) ? worst.pct < 0 : worst.pct > 0;
+      return worst;
+    }
+
     function cardMatches(card, query, metric) {
       let hasMetric = false;
       for (const variant of card.variants.values()) {
@@ -420,7 +597,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-      module.exports = { parseName: parseName, shortPkg: shortPkg, buildModel: buildModel, parseDataJs: parseDataJs, cardMatches: cardMatches, sortMetrics: sortMetrics };
+      module.exports = { parseName: parseName, shortPkg: shortPkg, buildModel: buildModel, parseDataJs: parseDataJs, cardMatches: cardMatches, sortMetrics: sortMetrics, seriesDelta: seriesDelta, cardDelta: cardDelta, displayName: displayName };
     }
   </script>
 
@@ -432,7 +609,8 @@
     'use strict';
     if (typeof window !== 'undefined' && typeof Chart !== 'undefined') (function () {
       const MAX_SERIES_PER_CHART = 8; // fixed categorical slots; more series -> further charts (small multiples)
-      const state = { q: '', pkg: 'all', metric: 'ns/op' };
+      const MOVER_THRESHOLD = 3; // percent change below which a delta is considered noise
+      const state = { q: '', pkg: 'all', metric: 'ns/op', sort: 'name', range: 'all' };
       let model = null;
       const liveCharts = new Map(); // canvas -> Chart
 
@@ -469,18 +647,24 @@
         state.q = params.get('q') || '';
         state.pkg = params.get('package') || 'all';
         state.metric = params.get('metric') || 'ns/op';
+        state.sort = params.get('sort') || 'name';
+        state.range = params.get('range') || 'all';
       }
 
       function clampState() {
         if (!model) return;
         if (state.pkg !== 'all' && !model.sections.has(state.pkg)) state.pkg = 'all';
         if (!model.metrics.includes(state.metric)) state.metric = model.metrics[0] || 'ns/op';
+        if (state.sort !== 'name' && state.sort !== 'change') state.sort = 'name';
+        if (state.range !== '30' && state.range !== '90' && state.range !== 'all') state.range = 'all';
       }
       function writeHash() {
         const params = new URLSearchParams();
         if (state.q) params.set('q', state.q);
         if (state.pkg !== 'all') params.set('package', state.pkg);
         if (state.metric !== 'ns/op') params.set('metric', state.metric);
+        if (state.sort !== 'name') params.set('sort', state.sort);
+        if (state.range !== 'all') params.set('range', state.range);
         const hash = params.toString();
         history.replaceState(null, '', hash ? '#' + hash : location.pathname + location.search);
       }
@@ -519,16 +703,19 @@
 
       async function loadSources() {
         const detail = $('status-detail');
+        const layout = (document.body.dataset && document.body.dataset.layout) || 'auto';
         let folders = null;
-        try {
-          const res = await fetch('folders.json');
-          if (res.ok) {
-            const list = await res.json();
-            // an existing but empty folders.json means "no packages yet",
-            // not "single data.js layout"
-            if (Array.isArray(list)) folders = list;
-          }
-        } catch (err) { /* single data.js layout */ }
+        if (layout !== 'single') {
+          try {
+            const res = await fetch('folders.json');
+            if (res.ok) {
+              const list = await res.json();
+              // an existing but empty folders.json means "no packages yet",
+              // not "single data.js layout"
+              if (Array.isArray(list)) folders = list;
+            }
+          } catch (err) { /* single data.js layout */ }
+        }
 
         if (!folders) {
           try {
@@ -611,6 +798,17 @@
           }
         }
         if (!(first <= last)) { first = card.first; last = card.last; }
+        if (state.range !== 'all') {
+          const lastTs = Date.parse(card.runs[last].ts || card.runs[last].date);
+          if (!Number.isNaN(lastTs)) {
+            const cutoff = lastTs - Number(state.range) * 86400000;
+            while (first < last) {
+              const ts = Date.parse(card.runs[first].ts || card.runs[first].date);
+              if (!Number.isNaN(ts) && ts >= cutoff) break;
+              first++;
+            }
+          }
+        }
         const runs = card.runs.slice(first, last + 1);
         const datasets = variants.map(function (variant) {
           const color = vars.series[variant.slot % vars.series.length];
@@ -727,6 +925,77 @@
         observer.disconnect();
       }
 
+      /* ----- lightbox (enlarged charts with prev/next and 1/2/4 layout) ----- */
+      const lightbox = { boxes: [], index: -1, charts: [], count: 1, opener: null };
+
+      function destroyLightboxCharts() {
+        for (const chart of lightbox.charts) chart.destroy();
+        lightbox.charts = [];
+        $('lb-chart').replaceChildren();
+      }
+
+      function showLightboxCharts() {
+        const total = lightbox.boxes.length;
+        if (!total) return;
+        const count = Math.min(lightbox.count, total);
+        const start = lightbox.index;
+        destroyLightboxCharts();
+        const holder = $('lb-chart');
+        holder.className = 'lb-chart' + (count > 1 ? ' cols-' + (count === 2 ? '2' : '4') : '');
+        const shown = [];
+        for (let i = 0; i < count; i++) {
+          const box = lightbox.boxes[(start + i) % total];
+          const card = box.$card;
+          shown.push(box);
+          const cap = el('p', { class: 'cap' }, [el('span', { text: displayName(card.base) })]);
+          if (card.pkg) cap.appendChild(el('span', { class: 'pkg', text: card.pkg }));
+          const chartHolder = el('div', { class: 'holder' }, []);
+          holder.appendChild(el('div', { class: 'lb-cell' }, count > 1 ? [cap, chartHolder] : [chartHolder]));
+          const canvas = document.createElement('canvas');
+          canvas.setAttribute('role', 'img');
+          canvas.setAttribute('aria-label', box.$label);
+          chartHolder.appendChild(canvas);
+          lightbox.charts.push(createChart(canvas, card, box.$variants));
+        }
+        const first = shown[0];
+        if (count === 1) {
+          $('lb-title').textContent = displayName(first.$card.base);
+          $('lb-sub').textContent = (first.$card.pkg ? first.$card.pkg + ' · ' : '') +
+            first.$variants.length + ' series · ' + state.metric + ' · ' +
+            (start + 1) + ' / ' + total;
+        } else {
+          $('lb-title').textContent = 'Benchmarks';
+          $('lb-sub').textContent = state.metric + ' · ' +
+            (start + 1) + '-' + (((start + count - 1) % total) + 1) + ' / ' + total;
+        }
+      }
+
+      function openLightbox(box, opener) {
+        lightbox.boxes = Array.from(document.querySelectorAll('.chart-box'));
+        lightbox.index = Math.max(0, lightbox.boxes.indexOf(box));
+        lightbox.opener = opener || null;
+        $('lightbox').hidden = false;
+        document.body.style.overflow = 'hidden';
+        showLightboxCharts();
+        $('lb-close').focus();
+      }
+
+      function closeLightbox() {
+        if ($('lightbox').hidden) return;
+        destroyLightboxCharts();
+        $('lightbox').hidden = true;
+        document.body.style.overflow = '';
+        if (lightbox.opener && lightbox.opener.isConnected) lightbox.opener.focus();
+      }
+
+      function stepLightbox(direction) {
+        const total = lightbox.boxes.length;
+        if (!total) return;
+        const step = Math.min(lightbox.count, total);
+        lightbox.index = ((lightbox.index + direction * step) % total + total) % total;
+        showLightboxCharts();
+      }
+
       /* ----- card / section rendering ----- */
       function renderTable(card, container) {
         const metric = state.metric;
@@ -769,11 +1038,29 @@
         container.replaceChildren(table);
       }
 
-      function renderCard(card) {
+      function fmtPct(pct) {
+        return (pct > 0 ? '+' : '') + pct.toFixed(1) + '%';
+      }
+
+      function deltaBadge(delta, metric) {
+        const cls = Math.abs(delta.pct) < MOVER_THRESHOLD ? '' : (delta.regression ? ' bad' : ' good');
+        return el('span', {
+          class: 'delta' + cls,
+          text: fmtPct(delta.pct),
+          title: 'latest ' + fmtFull.format(delta.latest) + ' ' + metric + ' vs median ' +
+            fmtFull.format(delta.baseline) + ' of the previous runs' +
+            (delta.variant ? ' (' + delta.variant + ')' : ''),
+        });
+      }
+
+      function renderCard(card, delta) {
         const chunks = chunkVariants(card, state.metric);
         const title = el('h3', null, []);
-        title.appendChild(el('span', { text: card.base }, []));
-        const tblBtn = el('button', { class: 'tbl-btn', text: 'table', 'aria-label': 'Toggle data table for ' + card.base });
+        title.appendChild(el('span', { class: 'name', text: displayName(card.base) }, []));
+        if (delta) title.appendChild(deltaBadge(delta, state.metric));
+        const zoomBtn = el('button', { class: 'tbl-btn zoom', text: '⤢', 'aria-label': 'Enlarge chart for ' + displayName(card.base) });
+        title.appendChild(zoomBtn);
+        const tblBtn = el('button', { class: 'tbl-btn', text: 'table', 'aria-label': 'Toggle data table for ' + displayName(card.base) });
         title.appendChild(tblBtn);
         const node = el('div', { class: 'card' }, [title]);
         const variantCount = chunks.reduce(function (n, c) { return n + c.length; }, 0);
@@ -794,26 +1081,72 @@
           const box = el('div', { class: 'chart-box' + (chunk.length > 1 ? ' tall' : '') }, []);
           box.$card = card;
           box.$variants = chunk;
-          box.$label = card.base + ' benchmark trend' +
+          box.$label = displayName(card.base) + ' benchmark trend' +
             (chunks.length > 1 ? ', chart ' + (index + 1) + ' of ' + chunks.length : '');
           node.appendChild(box);
           observer.observe(box);
+        });
+        zoomBtn.addEventListener('click', function () {
+          openLightbox(node.querySelector('.chart-box'), zoomBtn);
         });
         return node;
       }
 
       function sortedSections() {
         return Array.from(model.sections.values()).sort(function (a, b) {
+          // 'other' collects legacy series without a package suffix; keep it last
+          if (a.label === 'other' && b.label !== 'other') return 1;
+          if (b.label === 'other' && a.label !== 'other') return -1;
           return a.label.localeCompare(b.label);
         });
       }
 
+      function renderMovers(visible, deltas) {
+        const movers = [];
+        for (const entry of visible) {
+          for (const card of entry.cards) {
+            const delta = deltas.get(card);
+            if (delta && Math.abs(delta.pct) >= MOVER_THRESHOLD) movers.push({ card: card, delta: delta });
+          }
+        }
+        const container = el('section', { id: 'movers' }, []);
+        movers.sort(function (a, b) { return Math.abs(b.delta.pct) - Math.abs(a.delta.pct); });
+        const groups = [
+          { title: 'Regressions (' + state.metric + ')', items: movers.filter(function (m) { return m.delta.regression; }).slice(0, 5) },
+          { title: 'Improvements (' + state.metric + ')', items: movers.filter(function (m) { return !m.delta.regression; }).slice(0, 5) },
+        ];
+        for (const group of groups) {
+          if (!group.items.length) continue;
+          const col = el('div', { class: 'mover-col' }, [el('h4', { text: group.title }, [])]);
+          for (const item of group.items) {
+            const btn = el('button', { class: 'mover', type: 'button', title: 'Show ' + displayName(item.card.base) }, [
+              deltaBadge(item.delta, state.metric),
+              el('span', { class: 'name', text: displayName(item.card.base) }),
+              el('span', { class: 'pkg', text: item.card.section === 'other' ? '' : item.card.section }),
+            ]);
+            btn.addEventListener('click', function () {
+              state.q = displayName(item.card.base);
+              $('search').value = state.q;
+              writeHash();
+              renderSections();
+              window.scrollTo({ top: 0 });
+            });
+            col.appendChild(btn);
+          }
+          container.appendChild(col);
+        }
+        if (!container.childElementCount) container.hidden = true;
+        return container;
+      }
+
       function renderSections() {
+        closeLightbox();
         destroyAllCharts();
         const main = $('main');
         main.replaceChildren();
         const searching = state.q !== '';
-        let shown = 0;
+        const deltas = new Map();
+        const visible = [];
         for (const section of sortedSections()) {
           if (state.pkg !== 'all' && section.label !== state.pkg) continue;
           const cards = [];
@@ -821,16 +1154,47 @@
             if (cardMatches(card, state.q, state.metric)) cards.push(card);
           }
           if (!cards.length) continue;
-          shown += cards.length;
-          const grid = el('div', { class: 'grid' }, cards.map(renderCard));
+          for (const card of cards) deltas.set(card, cardDelta(card, state.metric));
+          if (state.sort === 'change') {
+            cards.sort(function (a, b) {
+              return Math.abs((deltas.get(b) || { pct: 0 }).pct) - Math.abs((deltas.get(a) || { pct: 0 }).pct);
+            });
+          } else {
+            cards.sort(function (a, b) { return displayName(a.base).localeCompare(displayName(b.base)); });
+          }
+          visible.push({ section: section, cards: cards });
+        }
+
+        if (!searching) main.appendChild(renderMovers(visible, deltas));
+
+        let shown = 0;
+        let sections = 0;
+        for (const entry of visible) {
+          shown += entry.cards.length;
+          const grid = el('div', { class: 'grid' }, entry.cards.map(function (card) {
+            return renderCard(card, deltas.get(card));
+          }));
           const summary = el('summary', null, [
-            el('span', { text: section.label + ' ' }),
-            el('span', { class: 'count', text: '(' + cards.length + ')' }),
+            el('span', { text: entry.section.label + ' ' }),
+            el('span', { class: 'count', text: '(' + entry.cards.length + ')' }),
           ]);
+          let worst = null;
+          for (const card of entry.cards) {
+            const delta = deltas.get(card);
+            if (delta && delta.regression && Math.abs(delta.pct) >= MOVER_THRESHOLD &&
+                (!worst || Math.abs(delta.pct) > Math.abs(worst.pct))) {
+              worst = delta;
+            }
+          }
+          if (worst) {
+            summary.appendChild(document.createTextNode(' '));
+            summary.appendChild(el('span', { class: 'delta bad', text: fmtPct(worst.pct) }));
+          }
           const details = el('details', { class: 'pkg' }, [summary, grid]);
           const single = model.sections.size === 1 || state.pkg !== 'all';
-          if (single || searching || main.childElementCount === 0) details.setAttribute('open', '');
+          if (single || searching || sections === 0) details.setAttribute('open', '');
           main.appendChild(details);
+          sections++;
         }
         if (!shown) {
           main.appendChild(el('p', { class: 'sub', text: 'No benchmarks match the current filter.' }));
@@ -887,6 +1251,28 @@
           seg.appendChild(btn);
         }
 
+        const rangeSeg = $('range-seg');
+        rangeSeg.replaceChildren();
+        [['30', '30d'], ['90', '90d'], ['all', 'all']].forEach(function (pair) {
+          const btn = el('button', { text: pair[1], 'aria-pressed': String(state.range === pair[0]) });
+          btn.addEventListener('click', function () {
+            if (state.range === pair[0]) return;
+            state.range = pair[0];
+            for (const b of rangeSeg.children) b.setAttribute('aria-pressed', String(b === btn));
+            writeHash();
+            renderSections();
+          });
+          rangeSeg.appendChild(btn);
+        });
+
+        const sortSelect = $('sort-select');
+        sortSelect.value = state.sort;
+        sortSelect.addEventListener('change', function () {
+          state.sort = sortSelect.value;
+          writeHash();
+          renderSections();
+        });
+
         $('toggle-all').addEventListener('click', function () {
           const all = document.querySelectorAll('details.pkg');
           let open = 0;
@@ -936,6 +1322,26 @@
         $('toolbar').hidden = false;
         $('main').hidden = false;
         buildToolbar();
+
+        $('lb-close').addEventListener('click', closeLightbox);
+        $('lb-prev').addEventListener('click', function () { stepLightbox(-1); });
+        $('lb-next').addEventListener('click', function () { stepLightbox(1); });
+        for (const btn of $('lb-count').children) {
+          btn.addEventListener('click', function () {
+            const count = Number(btn.textContent);
+            if (lightbox.count === count) return;
+            lightbox.count = count;
+            for (const b of $('lb-count').children) b.setAttribute('aria-pressed', String(b === btn));
+            if (!$('lightbox').hidden) showLightboxCharts();
+          });
+        }
+        document.addEventListener('keydown', function (event) {
+          if ($('lightbox').hidden) return;
+          if (event.key === 'Escape') closeLightbox();
+          else if (event.key === 'ArrowLeft') stepLightbox(-1);
+          else if (event.key === 'ArrowRight') stepLightbox(1);
+        });
+
         renderSections();
 
         window.addEventListener('hashchange', function () {
@@ -943,8 +1349,13 @@
           clampState();
           $('pkg-select').value = state.pkg;
           $('search').value = state.q;
+          $('sort-select').value = state.sort;
           for (const b of $('metric-seg').children) {
             b.setAttribute('aria-pressed', String(b.textContent === state.metric));
+          }
+          const rangeLabel = state.range === 'all' ? 'all' : state.range + 'd';
+          for (const b of $('range-seg').children) {
+            b.setAttribute('aria-pressed', String(b.textContent === rangeLabel));
           }
           renderSections();
         });
