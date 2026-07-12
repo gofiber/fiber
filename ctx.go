@@ -301,15 +301,29 @@ func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
 }
 
 // OriginalURL contains the original request URL.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the value outside the Handler.
+// The returned string is always a detached, immutable copy that is safe to
+// keep and use after the handler returns, regardless of the deprecated
+// Config.Immutable setting.
+// For zero-allocation access to the raw bytes, use OriginalURLBytes instead.
 func (c *DefaultCtx) OriginalURL() string {
-	return c.app.toString(c.fasthttp.Request.Header.RequestURI())
+	return toStringImmutable(c.fasthttp.Request.Header.RequestURI())
+}
+
+// OriginalURLBytes contains the original request URL as a byte slice.
+// The returned slice aliases the underlying request buffer for
+// zero-allocation access and is only valid within the handler. Do not store
+// any references to it; make a copy (e.g. via utils.CopyBytes) if you need
+// to retain the value after the handler returns.
+func (c *DefaultCtx) OriginalURLBytes() []byte {
+	return c.fasthttp.Request.Header.RequestURI()
 }
 
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
-// Make copies or use the Immutable setting to use the value outside the Handler.
+// The returned string is always a detached, immutable copy that is safe to
+// keep and use after the handler returns, regardless of the deprecated
+// Config.Immutable setting.
+// For zero-allocation access to the raw bytes, use PathBytes instead.
 func (c *DefaultCtx) Path(override ...string) string {
 	if len(override) != 0 && string(c.path) != override[0] {
 		// Set new path to context
@@ -322,7 +336,28 @@ func (c *DefaultCtx) Path(override ...string) string {
 		// The detection path/tree hash changed; invalidate the lookahead index.
 		c.firstMatchIndex = -1
 	}
-	return c.app.toString(c.path)
+	return toStringImmutable(c.path)
+}
+
+// PathBytes returns the path part of the request URL as a byte slice.
+// Optionally, you could override the path.
+// The returned slice aliases the underlying request buffer for
+// zero-allocation access and is only valid within the handler. Do not store
+// any references to it; make a copy if you need to retain the value after
+// the handler returns.
+func (c *DefaultCtx) PathBytes(override ...string) []byte {
+	if len(override) != 0 && string(c.path) != override[0] {
+		// Set new path to context
+		c.pathOriginal = override[0]
+
+		// Set new path to request context
+		c.fasthttp.Request.URI().SetPath(c.pathOriginal)
+		// Prettify path
+		c.configDependentPaths()
+		// The detection path/tree hash changed; invalidate the lookahead index.
+		c.firstMatchIndex = -1
+	}
+	return c.path
 }
 
 // RequestID returns the request identifier from the response header or request header.
