@@ -690,10 +690,21 @@ func (r *DefaultRes) Location(path string) {
 }
 
 // OriginalURL contains the original request URL.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the value outside the Handler.
+// The returned string is always a detached, immutable copy that is safe to
+// keep and use after the handler returns, regardless of the deprecated
+// Config.Immutable setting.
+// For zero-allocation access to the raw bytes, use OriginalURLBytes instead.
 func (r *DefaultRes) OriginalURL() string {
 	return r.c.OriginalURL()
+}
+
+// OriginalURLBytes contains the original request URL as a byte slice.
+// The returned slice aliases the underlying request buffer for
+// zero-allocation access and is only valid within the handler. Do not store
+// any references to it; make a copy (e.g. via utils.CopyBytes) if you need
+// to retain the value after the handler returns.
+func (r *DefaultRes) OriginalURLBytes() []byte {
+	return r.c.OriginalURLBytes()
 }
 
 // Redirect returns the Redirect reference.
