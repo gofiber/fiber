@@ -14,6 +14,7 @@ import RoutingHandler from './../partials/routing/handler.md';
 import RoutingUse from './../partials/routing/use.md';
 import RoutingHandlerTypes from './../partials/routing/handler-types.md';
 import RouteAnatomy from '@site/src/components/route-anatomy';
+import MiddlewareVisualizer from '@site/src/components/middleware-visualizer';
 
 ## Anatomy of a route
 
@@ -22,6 +23,8 @@ A route ties together an HTTP method, a path, and one or more handlers. Hover or
 <RouteAnatomy />
 
 `Get` is the [routing method](#route-handlers), `"/users/:id"` is the [route path](#paths) (the resource, in REST terms) with `:id` a [route parameter](#parameters), and `func(c fiber.Ctx) error` is the [handler](#handler-types) (or [middleware](#middleware)) run when the route matches.
+
+Want to see matching happen? Fire requests at your own route table in the interactive [Route Matcher](../extra/route-matcher.md).
 
 ## Route Handlers
 
@@ -489,6 +492,10 @@ type ConstraintAnalyzer interface {
 Existing `CustomConstraint` implementations continue to work unchanged. They are automatically wrapped to satisfy `ConstraintHandler`. Custom constraints that also implement `ConstraintAnalyzer` will have their `Analyze` method called at registration time.
 :::
 
+:::tip Try it live
+Test route patterns, registration order, and constraints against real requests in the interactive [Route Matcher](../extra/route-matcher.md) tool.
+:::
+
 ## Middleware
 
 Functions that are designed to make changes to the request or response are called **middleware functions**. [`c.Next()`](../api/ctx.md#next) passes control to the next handler in the matched chain (middleware or route handler); if a handler returns without calling it, the remaining handlers are skipped.
@@ -506,6 +513,10 @@ app.Get("/", func(c fiber.Ctx) error {
     return c.SendString("Hello, World!")
 })
 ```
+
+Once a route matches, its handlers run as one chain in registration order; each handler decides with `c.Next()` whether the rest of the chain runs. Step through the chain yourself, including what happens when a middleware short-circuits instead of calling `c.Next()`:
+
+<MiddlewareVisualizer />
 
 See [Get vs Use vs All](#get-vs-use-vs-all) for how `Use` prefix matching differs from exact route matching, and how multiple handlers run in order.
 
