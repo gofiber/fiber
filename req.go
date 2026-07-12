@@ -92,8 +92,10 @@ func (r *DefaultReq) BaseURL() string {
 }
 
 // BodyRaw contains the raw body submitted in a POST request.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
+// The returned slice aliases the underlying request buffer for
+// zero-allocation access and is only valid within the handler. Do not store
+// any references to it; make a copy (e.g. via utils.CopyBytes) if you need
+// to retain the value after the handler returns.
 func (r *DefaultReq) BodyRaw() []byte {
 	return r.getBody()
 }
@@ -383,10 +385,22 @@ func (c *DefaultCtx) AcceptsEventStream() bool {
 // Cookies are used for getting a cookie value by key.
 // Defaults to the empty string "" if the cookie doesn't exist.
 // If a default value is given, it will return that value if the cookie doesn't exist.
-// The returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the value outside the Handler.
+// The returned string is always a detached, immutable copy that is safe to
+// keep and use after the handler returns, regardless of the deprecated
+// Config.Immutable setting.
+// For zero-allocation access to the raw bytes, use CookiesBytes instead.
 func (r *DefaultReq) Cookies(key string, defaultValue ...string) string {
-	return defaultString(r.c.app.toString(r.c.fasthttp.Request.Header.Cookie(key)), defaultValue)
+	return defaultString(toStringImmutable(r.c.fasthttp.Request.Header.Cookie(key)), defaultValue)
+}
+
+// CookiesBytes is used for getting a cookie value by key as a byte slice.
+// Defaults to nil if the cookie doesn't exist.
+// The returned slice aliases the underlying request buffer for
+// zero-allocation access and is only valid within the handler. Do not store
+// any references to it; make a copy if you need to retain the value after
+// the handler returns.
+func (r *DefaultReq) CookiesBytes(key string) []byte {
+	return r.c.fasthttp.Request.Header.Cookie(key)
 }
 
 // Request return the *fasthttp.Request object
@@ -410,11 +424,28 @@ func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
 // Search is performed in QueryArgs, PostArgs, MultipartForm and FormFile in this particular order.
 // Defaults to the empty string "" if the form value doesn't exist.
 // If a default value is given, it will return that value if the form value does not exist.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
+// The returned string is always a detached, immutable copy that is safe to
+// keep and use after the handler returns, regardless of the deprecated
+// Config.Immutable setting.
+// For zero-allocation access to the raw bytes, use FormValueBytes instead.
 // When the request is a multipart form, it is parsed using the application's
 // BodyLimit so the configured limit is consistently enforced.
 func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
+	return defaultString(toStringImmutable(r.FormValueBytes(key)), defaultValue)
+}
+
+// FormValueBytes returns the first value by key from a MultipartForm as a
+// byte slice. Search is performed in QueryArgs, PostArgs, MultipartForm and
+// FormFile in this particular order. Defaults to nil if the form value
+// doesn't exist.
+// The returned slice aliases the underlying request buffer for
+// zero-allocation access and is only valid within the handler (this does
+// not apply to values sourced from MultipartForm, which are already
+// detached copies). Do not store any references to it; make a copy if you
+// need to retain the value after the handler returns.
+// When the request is a multipart form, it is parsed using the application's
+// BodyLimit so the configured limit is consistently enforced.
+func (r *DefaultReq) FormValueBytes(key string) []byte {
 	if r.c.IsMultipart() {
 		// For multipart requests, parse the form using the application's BodyLimit.
 		// fasthttp's FormValue would otherwise re-parse with its default 8 MiB limit,
@@ -422,21 +453,21 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 		//
 		// Preserve the original search order: QueryArgs → PostArgs → MultipartForm.
 		if v := r.c.fasthttp.QueryArgs().Peek(key); len(v) > 0 {
-			return r.c.app.toString(v)
+			return v
 		}
 		if v := r.c.fasthttp.PostArgs().Peek(key); len(v) > 0 {
-			return r.c.app.toString(v)
+			return v
 		}
 		mf, err := r.MultipartForm()
 		if err != nil {
-			return defaultString("", defaultValue)
+			return nil
 		}
 		if vals := mf.Value[key]; len(vals) > 0 {
-			return vals[0]
+			return utils.UnsafeBytes(vals[0])
 		}
-		return defaultString("", defaultValue)
+		return nil
 	}
-	return defaultString(r.c.app.toString(r.c.fasthttp.FormValue(key)), defaultValue)
+	return r.c.fasthttp.FormValue(key)
 }
 
 // Fresh returns true when the response is still “fresh” in the client's cache,
@@ -951,10 +982,21 @@ func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 }
 
 // OriginalURL contains the original request URL.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the value outside the Handler.
+// The returned string is always a detached, immutable copy that is safe to
+// keep and use after the handler returns, regardless of the deprecated
+// Config.Immutable setting.
+// For zero-allocation access to the raw bytes, use OriginalURLBytes instead.
 func (r *DefaultReq) OriginalURL() string {
-	return r.c.app.toString(r.c.fasthttp.Request.Header.RequestURI())
+	return r.c.OriginalURL()
+}
+
+// OriginalURLBytes contains the original request URL as a byte slice.
+// The returned slice aliases the underlying request buffer for
+// zero-allocation access and is only valid within the handler. Do not store
+// any references to it; make a copy (e.g. via utils.CopyBytes) if you need
+// to retain the value after the handler returns.
+func (r *DefaultReq) OriginalURLBytes() []byte {
+	return r.c.OriginalURLBytes()
 }
 
 // Params is used to get the route parameters.

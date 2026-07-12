@@ -27,8 +27,10 @@ type Req interface {
 	// BaseURL returns (protocol + host + base path).
 	BaseURL() string
 	// BodyRaw contains the raw body submitted in a POST request.
-	// Returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting instead.
+	// The returned slice aliases the underlying request buffer for
+	// zero-allocation access and is only valid within the handler. Do not store
+	// any references to it; make a copy (e.g. via utils.CopyBytes) if you need
+	// to retain the value after the handler returns.
 	BodyRaw() []byte
 	//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
 	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) (body []byte, decodesRealized uint8, err error)
@@ -44,9 +46,18 @@ type Req interface {
 	// Cookies are used for getting a cookie value by key.
 	// Defaults to the empty string "" if the cookie doesn't exist.
 	// If a default value is given, it will return that value if the cookie doesn't exist.
-	// The returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting to use the value outside the Handler.
+	// The returned string is always a detached, immutable copy that is safe to
+	// keep and use after the handler returns, regardless of the deprecated
+	// Config.Immutable setting.
+	// For zero-allocation access to the raw bytes, use CookiesBytes instead.
 	Cookies(key string, defaultValue ...string) string
+	// CookiesBytes is used for getting a cookie value by key as a byte slice.
+	// Defaults to nil if the cookie doesn't exist.
+	// The returned slice aliases the underlying request buffer for
+	// zero-allocation access and is only valid within the handler. Do not store
+	// any references to it; make a copy if you need to retain the value after
+	// the handler returns.
+	CookiesBytes(key string) []byte
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods
 	// https://godoc.org/github.com/valyala/fasthttp#Request
@@ -59,11 +70,25 @@ type Req interface {
 	// Search is performed in QueryArgs, PostArgs, MultipartForm and FormFile in this particular order.
 	// Defaults to the empty string "" if the form value doesn't exist.
 	// If a default value is given, it will return that value if the form value does not exist.
-	// Returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting instead.
+	// The returned string is always a detached, immutable copy that is safe to
+	// keep and use after the handler returns, regardless of the deprecated
+	// Config.Immutable setting.
+	// For zero-allocation access to the raw bytes, use FormValueBytes instead.
 	// When the request is a multipart form, it is parsed using the application's
 	// BodyLimit so the configured limit is consistently enforced.
 	FormValue(key string, defaultValue ...string) string
+	// FormValueBytes returns the first value by key from a MultipartForm as a
+	// byte slice. Search is performed in QueryArgs, PostArgs, MultipartForm and
+	// FormFile in this particular order. Defaults to nil if the form value
+	// doesn't exist.
+	// The returned slice aliases the underlying request buffer for
+	// zero-allocation access and is only valid within the handler (this does
+	// not apply to values sourced from MultipartForm, which are already
+	// detached copies). Do not store any references to it; make a copy if you
+	// need to retain the value after the handler returns.
+	// When the request is a multipart form, it is parsed using the application's
+	// BodyLimit so the configured limit is consistently enforced.
+	FormValueBytes(key string) []byte
 	// Fresh returns true when the response is still “fresh” in the client's cache,
 	// otherwise false is returned to indicate that the client cache is now stale
 	// and the full response should be sent.
@@ -139,9 +164,17 @@ type Req interface {
 	// This returns a map[string][]string, so given a key, the value will be a string slice.
 	MultipartForm() (*multipart.Form, error)
 	// OriginalURL contains the original request URL.
-	// Returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting to use the value outside the Handler.
+	// The returned string is always a detached, immutable copy that is safe to
+	// keep and use after the handler returns, regardless of the deprecated
+	// Config.Immutable setting.
+	// For zero-allocation access to the raw bytes, use OriginalURLBytes instead.
 	OriginalURL() string
+	// OriginalURLBytes contains the original request URL as a byte slice.
+	// The returned slice aliases the underlying request buffer for
+	// zero-allocation access and is only valid within the handler. Do not store
+	// any references to it; make a copy (e.g. via utils.CopyBytes) if you need
+	// to retain the value after the handler returns.
+	OriginalURLBytes() []byte
 	// Params is used to get the route parameters.
 	// Defaults to empty string "" if the param doesn't exist.
 	// If a default value is given, it will return that value if the param doesn't exist.
