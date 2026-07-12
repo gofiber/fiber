@@ -1949,6 +1949,37 @@ func Test_Ctx_Cookies(t *testing.T) {
 	require.Equal(t, "default", c.Req().Cookies("unknown", "default"))
 }
 
+func Test_Ctx_CookiesBytes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set("Cookie", "john=doe")
+	require.Equal(t, []byte("doe"), c.Req().CookiesBytes("john"))
+	require.Nil(t, c.Req().CookiesBytes("unknown"))
+}
+
+// Cookies must always return a detached, immutable copy so that it remains
+// valid after the underlying fasthttp request buffers are reused, even when
+// Config.Immutable is left at its default (false).
+func Test_Ctx_Cookies_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set("Cookie", "john=doe")
+	got := c.Req().Cookies("john")
+	require.Equal(t, "doe", got)
+
+	// Mutate the byte slice backing the header value; the previously
+	// returned string must not change.
+	raw := c.Req().CookiesBytes("john")
+	for i := range raw {
+		raw[i] = 'x'
+	}
+	require.Equal(t, "doe", got)
+}
+
 // go test -run Test_Ctx_Format
 func Test_Ctx_Format(t *testing.T) {
 	t.Parallel()
@@ -2730,6 +2761,41 @@ func Test_Ctx_FormValue_NonMultipart(t *testing.T) {
 	require.Equal(t, "carol", c.FormValue("name"))
 	// Key not present + default → default value.
 	require.Equal(t, "fallback", c.FormValue("missing", "fallback"))
+}
+
+func Test_Ctx_FormValueBytes_NonMultipart(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	c.Request().Header.Set(HeaderContentType, MIMEApplicationForm)
+	c.Request().SetBodyString("name=carol")
+
+	require.Equal(t, []byte("carol"), c.FormValueBytes("name"))
+	require.Nil(t, c.FormValueBytes("missing"))
+}
+
+// FormValue must always return a detached, immutable copy so that it
+// remains valid after the underlying fasthttp request buffers are reused,
+// even when Config.Immutable is left at its default (false).
+func Test_Ctx_FormValue_Immutable(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	c.Request().Header.Set(HeaderContentType, MIMEApplicationForm)
+	c.Request().SetBodyString("name=carol")
+
+	got := c.FormValue("name")
+	require.Equal(t, "carol", got)
+
+	raw := c.FormValueBytes("name")
+	for i := range raw {
+		raw[i] = 'x'
+	}
+	require.Equal(t, "carol", got)
 }
 
 func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
@@ -5012,6 +5078,34 @@ func Test_Ctx_OriginalURL(t *testing.T) {
 	require.Equal(t, "http://google.com/test?search=demo", c.OriginalURL())
 }
 
+func Test_Ctx_OriginalURLBytes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.SetRequestURI("http://google.com/test?search=demo")
+	require.Equal(t, []byte("http://google.com/test?search=demo"), c.OriginalURLBytes())
+}
+
+// OriginalURL must always return a detached, immutable copy so that it
+// remains valid after the underlying fasthttp request buffers are reused,
+// even when Config.Immutable is left at its default (false).
+func Test_Ctx_OriginalURL_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.SetRequestURI("http://google.com/test?search=demo")
+	got := c.OriginalURL()
+	require.Equal(t, "http://google.com/test?search=demo", got)
+
+	raw := c.OriginalURLBytes()
+	for i := range raw {
+		raw[i] = 'x'
+	}
+	require.Equal(t, "http://google.com/test?search=demo", got)
+}
+
 // go test -race -run Test_Ctx_Params
 func Test_Ctx_Params(t *testing.T) {
 	t.Parallel()
@@ -5175,7 +5269,41 @@ func Test_Ctx_Path(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
-// go test -run Test_Ctx_Protocol
+func Test_Ctx_PathBytes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/test/:user", func(c Ctx) error {
+		require.Equal(t, []byte("/test/john"), c.PathBytes())
+		require.Equal(t, []byte("/abc/"), c.PathBytes("/abc/"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// Path must always return a detached, immutable copy so that it remains
+// valid after the underlying fasthttp request buffers are reused, even when
+// Config.Immutable is left at its default (false).
+func Test_Ctx_Path_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/test/:user", func(c Ctx) error {
+		got := c.Path()
+		require.Equal(t, "/test/john", got)
+
+		raw := c.PathBytes()
+		for i := range raw {
+			raw[i] = 'x'
+		}
+		require.Equal(t, "/test/john", got)
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 func Test_Ctx_Protocol(t *testing.T) {
 	t.Parallel()
 	app := New()
