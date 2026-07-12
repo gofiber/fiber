@@ -7,7 +7,13 @@ sidebar_position: 1
 toc_max_heading_level: 5
 ---
 
+import MethodIndex from '@site/src/components/method-index';
+
 The Fiber Client is a high-performance HTTP client built on FastHTTP. It handles both internal service calls and external requests with minimal overhead.
+
+Use the index to jump straight to any client method; filter by name or by category:
+
+<MethodIndex itemNoun="methods" placeholder="Filter methods, e.g. timeout" />
 
 ## Features
 
