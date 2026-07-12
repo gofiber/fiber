@@ -222,6 +222,14 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// immutable fashion so that these values are available even if you return
 	// from handler.
 	//
+	// Deprecated: Immutable is being phased out. Methods such as
+	// Ctx.OriginalURL, Ctx.Path, Req.Cookies, and Req.FormValue now always
+	// return a detached, immutable string regardless of this setting; use
+	// their *Bytes counterparts (e.g. PathBytes, CookiesBytes) for
+	// zero-allocation, handler-scoped access instead. This flag is kept for
+	// backward compatibility with code paths not yet migrated and will be
+	// removed in a future major version.
+	//
 	// Default: false
 	Immutable bool `json:"immutable"`
 
