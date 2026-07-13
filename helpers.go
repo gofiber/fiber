@@ -967,28 +967,53 @@ func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocr
 // - "no-cache=field-name" (applies to specific header field)
 // Both forms indicate the response should not be served from cache without revalidation.
 func isNoCache(cacheControl string) bool {
-	pos := 0
-	for {
-		i := utils.IndexFold(cacheControl[pos:], noCacheValue)
-		if i == -1 {
-			return false
+	n := len(cacheControl)
+	if n < len(noCacheValue) {
+		return false
+	}
+
+	const noCacheLen = len(noCacheValue)
+	const asciiCaseFold = byte(0x20)
+	for i := 0; i <= n-noCacheLen; i++ {
+		if (cacheControl[i] | asciiCaseFold) != 'n' {
+			continue
 		}
-		i += pos
-		pos = i + 1
+		if !matchNoCacheToken(cacheControl, i) {
+			continue
+		}
 		if i > 0 && !isNoCacheDelimiter(cacheControl[i-1]) {
 			continue
 		}
 
 		// Handle: "no-cache", "no-cache, ...", "no-cache=...", "no-cache ,"
-		end := i + len(noCacheValue)
-		if end == len(cacheControl) || isNoCacheDelimiter(cacheControl[end]) || cacheControl[end] == '=' {
+		if i+noCacheLen == n {
+			return true
+		}
+		if isNoCacheDelimiter(cacheControl[i+noCacheLen]) || cacheControl[i+noCacheLen] == '=' {
 			return true
 		}
 	}
+
+	return false
 }
 
 func isNoCacheDelimiter(c byte) bool {
 	return c == ' ' || c == '\t' || c == ','
+}
+
+func matchNoCacheToken(s string, i int) bool {
+	// ASCII-only case-insensitive compare for "no-cache".
+	const asciiCaseFold = byte(0x20)
+	b := s[i:]
+
+	return (b[0]|asciiCaseFold) == 'n' &&
+		(b[1]|asciiCaseFold) == 'o' &&
+		b[2] == '-' &&
+		(b[3]|asciiCaseFold) == 'c' &&
+		(b[4]|asciiCaseFold) == 'a' &&
+		(b[5]|asciiCaseFold) == 'c' &&
+		(b[6]|asciiCaseFold) == 'h' &&
+		(b[7]|asciiCaseFold) == 'e'
 }
 
 var errTestConnClosed = errors.New("testConn is closed")
