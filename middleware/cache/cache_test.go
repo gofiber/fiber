@@ -5667,3 +5667,21 @@ func Test_CacheInvalidator_RaceWithExactTimestamp(t *testing.T) {
 	// Long Expiration guarantees natural expiry cannot account for the bump.
 	require.Greater(t, handlerCalls.Load(), primed, "invalidator never bypassed the cache")
 }
+
+// go test -v -run=^$ -bench=Benchmark_hasDirective -benchmem -count=4
+func Benchmark_hasDirective(b *testing.B) {
+	inputs := []string{
+		"no-cache",
+		"public, max-age=3600",
+		"private, no-store, must-revalidate",
+		"max-age=30, s-maxage=90, no-cache",
+	}
+	var got bool
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			got = hasDirective(in, "no-cache")
+		}
+	}
+	_ = got
+}

@@ -721,3 +721,40 @@ func Test_BasicAuth_HashVariants_Invalid(t *testing.T) {
 		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 	}
 }
+
+func Test_containsInvalidHeaderChars_WordBoundaries(t *testing.T) {
+	t.Parallel()
+
+	// Valid: HTAB and visible ASCII, across scalar, whole-word, and
+	// overlapping-tail positions.
+	require.False(t, containsInvalidHeaderChars(""))
+	require.False(t, containsInvalidHeaderChars("Basic\tQWxhZGRpbjpvcGVuIHNlc2FtZQ=="))
+	require.False(t, containsInvalidHeaderChars("Basic Q"))
+	require.False(t, containsInvalidHeaderChars(" ~\t"))
+
+	// Invalid bytes at every code path: short input, inside a full word,
+	// and inside the final overlapping word.
+	require.True(t, containsInvalidHeaderChars("\n"))
+	require.True(t, containsInvalidHeaderChars("Basic \x00credentials"))
+	require.True(t, containsInvalidHeaderChars("Basic credential\x7f"))
+	require.True(t, containsInvalidHeaderChars("Basic credentials\x80"))
+	require.True(t, containsInvalidHeaderChars("Basic  credentials"))
+	require.True(t, containsInvalidHeaderChars("abcdefg\r"))
+}
+
+// go test -v -run=^$ -bench=Benchmark_containsInvalidHeaderChars -benchmem -count=4
+func Benchmark_containsInvalidHeaderChars(b *testing.B) {
+	inputs := []string{
+		"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==", // typical valid header
+		"Basic dXNlcjpwYXNz",
+		"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==\x80", // invalid at the tail
+	}
+	var got bool
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			got = containsInvalidHeaderChars(in)
+		}
+	}
+	_ = got
+}

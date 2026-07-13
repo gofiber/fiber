@@ -9,28 +9,29 @@ import (
 // A directive is considered matched when followed by end-of-string, ',', ' ', '\t', or '='
 // per RFC 9111 §5.2.
 func hasDirective(cc, directive string) bool {
-	ccLen := len(cc)
-	dirLen := len(directive)
-	for i := 0; i <= ccLen-dirLen; i++ {
-		if !utils.EqualFold(cc[i:i+dirLen], directive) {
-			continue
+	pos := 0
+	for {
+		i := utils.IndexFold(cc[pos:], directive)
+		if i == -1 {
+			return false
 		}
+		i += pos
+		pos = i + 1
 		if i > 0 {
 			prev := cc[i-1]
 			if prev != ' ' && prev != ',' && prev != '\t' {
 				continue
 			}
 		}
-		if i+dirLen == ccLen {
+		end := i + len(directive)
+		if end == len(cc) {
 			return true
 		}
-		next := cc[i+dirLen]
+		next := cc[end]
 		if next == ',' || next == ' ' || next == '\t' || next == '=' {
 			return true
 		}
 	}
-
-	return false
 }
 
 func parseUintDirective(val []byte) (uint64, bool) {

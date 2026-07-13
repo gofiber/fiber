@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2/swar"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -135,10 +136,35 @@ func containsCTL(s string) bool {
 	return strings.IndexFunc(s, unicode.IsControl) != -1
 }
 
+// containsInvalidHeaderChars reports whether s holds any byte outside the
+// valid header set: HTAB or visible ASCII [0x20, 0x7E]. Bytes >= 0x80 are
+// invalid, so checking bytes and checking runes give the same answer, which
+// lets the scan run eight bytes at a time.
 func containsInvalidHeaderChars(s string) bool {
-	return strings.IndexFunc(s, func(r rune) bool {
-		return (r < 0x20 && r != '\t') || r == 0x7F || r >= 0x80
-	}) != -1
+	n := len(s)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		w := swar.Load8(s, i)
+		valid := swar.MatchRangeMask(w, 0x20, 0x7e) | swar.MatchByteMask(w, '\t')
+		if valid != swar.HighBits {
+			return true
+		}
+	}
+	if i == n {
+		return false
+	}
+	if n >= swar.WordLen {
+		// Finish with one overlapping word; re-checking bytes that already
+		// passed cannot change the outcome.
+		w := swar.Load8(s, n-swar.WordLen)
+		return swar.MatchRangeMask(w, 0x20, 0x7e)|swar.MatchByteMask(w, '\t') != swar.HighBits
+	}
+	for ; i < n; i++ {
+		if c := s[i]; (c < 0x20 && c != '\t') || c >= 0x7f {
+			return true
+		}
+	}
+	return false
 }
 
 // UsernameFromContext returns the username found in the context.
