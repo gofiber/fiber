@@ -5,6 +5,9 @@ title: 👋 Welcome
 sidebar_position: 1
 ---
 
+import GetStartedWalkthrough from '@site/src/components/get-started-walkthrough';
+import WhatCanYouBuild from '@site/src/components/what-can-you-build';
+
 Welcome to Fiber's online API documentation, complete with examples to help you start building web applications right away!
 
 **Fiber** is an [Express](https://github.com/expressjs/express)-inspired **web framework** built on top of [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for [Go](https://go.dev/doc/). It is designed to facilitate rapid development with **zero memory allocations** and a strong focus on **performance**. Fiber also ships batteries included: built-in middleware, officially maintained integrations, storage drivers, and template engines cover most production needs (see [Explore the Ecosystem](#explore-the-ecosystem) below).
@@ -57,6 +60,26 @@ go run server.go
 
 Browse to `http://localhost:3000` and you should see `Hello, World!` displayed on the page.
 
+Three calls carry the whole program:
+
+- `fiber.New()` creates the app, the central object that holds routes, middleware, and configuration
+- `app.Get("/", ...)` registers a handler: a function that receives the request context `c fiber.Ctx` and returns an `error`
+- `app.Listen(":3000")` starts the server
+
+## Build Your First App, Step by Step
+
+The walkthrough below grows the Hello, World program into a small app with route parameters, static files, middleware, a JSON endpoint, and error handling. Step through it and fire the example requests to see exactly how the app responds at every stage:
+
+<GetStartedWalkthrough />
+
+## What Can You Build?
+
+Fiber covers the everyday shapes of web backends out of the box. Pick a use case and read the code; every tab is just complete enough to recognize your project in it:
+
+<WhatCanYouBuild />
+
+Want complete, runnable projects instead? The [Recipes collection](https://docs.gofiber.io/recipes/) has working examples for Docker, GORM, JWT auth, clean architecture, and much more.
+
 ## Basic Routing
 
 Routing determines how an application responds to a client request at a particular endpoint, a combination of path and HTTP request method (`GET`, `PUT`, `POST`, etc.).
@@ -93,7 +116,7 @@ app.Get("/:value", func(c fiber.Ctx) error {
 })
 ```
 
-See the [routing guide](./guide/routing.md) for optional parameters, wildcards, constraints, route groups, and the full list of supported handler types.
+See the [routing guide](./guide/routing.md) for optional parameters, wildcards, constraints, route groups, and the full list of supported handler types. Or skip ahead and fire requests at your own route table in the interactive [Route Matcher](./extra/route-matcher.md).
 
 ## Static Files
 
@@ -163,18 +186,22 @@ Fiber is more than the core module. When your application grows, these officiall
 - **[HTTP client](./client/rest.md)**: a built-in client, also built on Fasthttp, for calling other services with the same performance philosophy.
 - **[Recipes](https://docs.gofiber.io/recipes/)**: runnable example projects (Docker, GORM, JWT auth, clean architecture, and more) to copy a working starting point from.
 
+For a visual map of how these repositories plug into each other, see the [Ecosystem overview](./ecosystem.md).
+
 ## Next Steps
 
-Ready to go deeper? These guides and references cover the everyday tasks:
+Work through these in order and you will have touched everything a typical production service needs:
 
-- [Routing](./guide/routing.md): parameters, wildcards, constraints, and route groups
-- [Context](./api/ctx.md): reading requests and sending responses
-- [Error handling](./guide/error-handling.md): custom error handlers and status codes
-- [Request binding](./api/bind.md) and [validation](./guide/validation.md): map request data onto structs safely
-- [Templates](./guide/templates.md): render views with your favorite template engine
-- [Configuration](./api/fiber.md): every option accepted by `fiber.New`
-- [Testing](./api/app.md#test): test handlers without a running server using `app.Test`
-- [Learning resources](./extra/learning-resources.md): tutorials and hands-on challenges
+1. [Routing](./guide/routing.md): parameters, wildcards, and constraints; try them live in the [Route Matcher](./extra/route-matcher.md)
+2. [Grouping](./guide/grouping.md) and the [middleware catalog](https://docs.gofiber.io/category/-middleware): structure the app and its cross-cutting concerns
+3. [Error handling](./guide/error-handling.md): central error handlers and status codes
+4. [Request binding](./api/bind.md) and [validation](./guide/validation.md): map request data onto structs safely
+5. [Templates](./guide/templates.md): render views with your favorite template engine
+6. [HTTP client](./client/rest.md): call other services with the same performance philosophy
+7. [Performance](./guide/faster-fiber.md): custom JSON encoders and the tricks behind the benchmarks
+8. [Testing](./api/app.md#test): test handlers without a running server using `app.Test`
+
+The [configuration reference](./api/fiber.md) lists every option accepted by `fiber.New`, and the [learning resources](./extra/learning-resources.md) page collects tutorials and hands-on challenges.
 
 ## Community and Help
 

@@ -248,6 +248,88 @@ func Test_Route_Match_SameLength(t *testing.T) {
 	require.Equal(t, "test", app.toString(body))
 }
 
+// Test_Route_Match_SlashInParams locks in the matching quirks where a
+// parameter value legitimately contains '/', so the slash-count quick-reject
+// must not filter these routes out end-to-end.
+func Test_Route_Match_SlashInParams(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/api/v1/:param-:param2", func(c Ctx) error {
+		return c.SendString(c.Params("param") + "|" + c.Params("param2"))
+	})
+	app.Get("/test:sign:param", func(c Ctx) error {
+		return c.SendString(c.Params("sign") + "|" + c.Params("param"))
+	})
+	app.Get("/date/:day/:month?/:year?", func(c Ctx) error {
+		return c.SendString(c.Params("day") + "|" + c.Params("month") + "|" + c.Params("year"))
+	})
+	app.Use("/mw/:version", func(c Ctx) error {
+		return c.SendString(c.Params("version"))
+	})
+
+	testCases := []struct {
+		url  string
+		body string
+	}{
+		// param swallows '/' via the unguarded single-byte compare part
+		{url: "/api/v1/enti/ty-x", body: "enti/ty|x"},
+		// adjacent params consume one byte each, possibly '/'
+		{url: "/test/x", body: "/|x"},
+		// optional segments drop their leading slashes
+		{url: "/date/1", body: "1||"},
+		{url: "/date/1/2/3", body: "1|2|3"},
+		// param middleware matches deeper paths
+		{url: "/mw/v1/users/list", body: "v1"},
+	}
+	for _, tc := range testCases {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.url, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		require.Equal(t, 200, resp.StatusCode, "Status code for %s", tc.url)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "io.ReadAll(resp.Body)")
+		require.Equal(t, tc.body, app.toString(body), "Body for %s", tc.url)
+	}
+}
+
+// Test_App_HasParamRoutes verifies the slash-count gate: apps whose routes
+// never consult the per-request slash count (static and star only) skip the
+// counting, and rebuilding the tree after adding a parametric route re-enables
+// it so param routes still match.
+func Test_App_HasParamRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/static/route", testEmptyHandler)
+	app.Get("/*", func(c Ctx) error {
+		return c.SendString(c.Params("*"))
+	})
+	app.startupProcess()
+	require.False(t, app.hasParamRoutes)
+
+	// static and star routing work without the per-request count
+	verifyRequest(t, app, "/static/route", StatusOK)
+	resp := verifyRequest(t, app, "/anything/else", StatusOK)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "anything/else", app.toString(body))
+
+	// the GET star route would shadow a GET param route, so use POST
+	app.Post("/users/:id", func(c Ctx) error {
+		return c.SendString(c.Params("id"))
+	})
+	app.RebuildTree()
+	require.True(t, app.hasParamRoutes)
+
+	resp, err = app.Test(httptest.NewRequest(MethodPost, "/users/42", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "42", app.toString(body))
+}
+
 func Test_Route_Match_Star(t *testing.T) {
 	t.Parallel()
 
@@ -281,17 +363,17 @@ func Test_Route_Match_Star(t *testing.T) {
 		routeParser: routeParser{},
 	}
 	params := [maxParams]string{}
-	match := route.match("", "", &params)
+	match := route.match("", "", &params, 0)
 	require.True(t, match)
 	require.Equal(t, [maxParams]string{}, params)
 
 	// with parameter
-	match = route.match("/favicon.ico", "/favicon.ico", &params)
+	match = route.match("/favicon.ico", "/favicon.ico", &params, 1)
 	require.True(t, match)
 	require.Equal(t, [maxParams]string{"favicon.ico"}, params)
 
 	// without parameter again
-	match = route.match("", "", &params)
+	match = route.match("", "", &params, 0)
 	require.True(t, match)
 	require.Equal(t, [maxParams]string{}, params)
 }
@@ -1765,7 +1847,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		return nil
 	})
 	for b.Loop() {
-		match = route.match("/user/keys/1337", "/user/keys/1337", &params)
+		match = route.match("/user/keys/1337", "/user/keys/1337", &params, 3)
 	}
 
 	require.True(b, match)
@@ -1794,7 +1876,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	})
 
 	for b.Loop() {
-		match = route.match("/user/keys/bla", "/user/keys/bla", &params)
+		match = route.match("/user/keys/bla", "/user/keys/bla", &params, 3)
 	}
 
 	require.True(b, match)
@@ -1823,7 +1905,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 	})
 
 	for b.Loop() {
-		match = route.match("/", "/", &params)
+		match = route.match("/", "/", &params, 1)
 	}
 
 	require.True(b, match)
@@ -2279,13 +2361,13 @@ func Benchmark_Route_Match_Parallel(b *testing.B) {
 		// Each worker gets its own local variables to avoid data races
 		var params [maxParams]string
 		for pb.Next() {
-			_ = route.match("/user/keys/1337", "/user/keys/1337", &params)
+			_ = route.match("/user/keys/1337", "/user/keys/1337", &params, 3)
 		}
 	})
 
 	// Single-threaded verification to preserve correctness checks
 	var verifyParams [maxParams]string
-	match := route.match("/user/keys/1337", "/user/keys/1337", &verifyParams)
+	match := route.match("/user/keys/1337", "/user/keys/1337", &verifyParams, 3)
 	require.True(b, match)
 	require.Equal(b, []string{"1337"}, verifyParams[0:len(parsed.params)])
 }
@@ -2300,7 +2382,7 @@ func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
 	})
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			match = route.match("/user/keys/bla", "/user/keys/bla", &params)
+			match = route.match("/user/keys/bla", "/user/keys/bla", &params, 3)
 		}
 	})
 	require.True(b, match)
@@ -2317,7 +2399,7 @@ func Benchmark_Route_Match_Root_Parallel(b *testing.B) {
 	})
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			match = route.match("/", "/", &params)
+			match = route.match("/", "/", &params, 1)
 		}
 	})
 	require.True(b, match)

@@ -36,6 +36,7 @@ type CustomCtx interface {
 	getMethodInt() int
 	getIndexRoute() int
 	getTreePathHash() int
+	pathSlashCount(app *App) int
 	getDetectionPath() string
 	getPathOriginal() string
 	getValues() *[maxParams]string

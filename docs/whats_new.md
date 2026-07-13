@@ -1,7 +1,7 @@
 ---
 id: whats_new
 title: 🆕 What's New in v3
-sidebar_position: 2
+sidebar_position: 1.5
 toc_max_heading_level: 4
 ---
 

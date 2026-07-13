@@ -80,15 +80,22 @@ type SecurityPolicy struct {
 	// to SSRF attacks against internal services such as cloud
 	// metadata endpoints. Default: false.
 	//
-	// DNS-rebinding scope: when false, Balancer re-validates the resolved
-	// IP at dial time (it installs a guarded Dial on each HostClient it
-	// constructs), which closes the check/use window a malicious resolver
-	// could exploit. The runtime helpers — Do, DoRedirects, DoTimeout,
-	// DoDeadline, Forward, DomainForward, BalancerForward — validate the
-	// host up front but then dispatch through the shared/user-supplied
-	// *fasthttp.Client, which re-resolves the name without the guard.
-	// Against a rebinding-capable resolver they are therefore not fully
-	// mitigated; see the note on those functions.
+	// DNS-rebinding scope: when false, the resolved IP is re-validated at
+	// dial time, not only up front, so a malicious resolver cannot swap a
+	// public answer (seen during validation) for a private one at connect
+	// time. Balancer installs a guarded Dial on each HostClient it builds;
+	// the runtime helpers — Do, DoRedirects, DoTimeout, DoDeadline,
+	// Forward, DomainForward, BalancerForward — install the same guard on
+	// the shared/user-supplied *fasthttp.Client they dispatch through.
+	//
+	// The default client and clients registered via WithClient are guarded
+	// before first use and are fully protected. A client passed as a
+	// per-call variadic argument is guarded on first use, so any host it had
+	// already dialed keeps a cached, pre-guard HostClient; register such a
+	// client via WithClient (or hand the proxy a dedicated, unused client)
+	// for the full guarantee. The only path with no guard at all is a custom
+	// Balancer Config.Client (*fasthttp.LBClient): its underlying dialers
+	// are the caller's responsibility.
 	AllowPrivateIPs bool
 
 	// AllowHTTPSDowngrade permits proxy.DoRedirects to follow redirects
@@ -130,9 +137,18 @@ func DefaultSecurityPolicy() SecurityPolicy {
 // mutation by the caller.
 var activePolicy atomic.Pointer[SecurityPolicy]
 
+// dnsResolver is the resolver used for SSRF validation lookups. It defaults
+// to net.DefaultResolver and is only ever swapped by tests, atomically, so a
+// concurrent validation lookup never races the swap. Tests use this seam
+// rather than mutating the process-global net.DefaultResolver — which
+// fasthttp and the net package read from background dial goroutines, making a
+// direct swap a data race under -race.
+var dnsResolver atomic.Pointer[net.Resolver]
+
 func init() {
 	def := DefaultSecurityPolicy()
 	activePolicy.Store(&def)
+	dnsResolver.Store(net.DefaultResolver)
 }
 
 // normalizePolicy returns a copy of policy whose AllowedSchemes slice is
@@ -383,7 +399,7 @@ func validateHostForSSRF(host string) error {
 	// Bound the lookup so a slow resolver cannot stall the caller.
 	ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
 	defer cancel()
-	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	addrs, err := dnsResolver.Load().LookupIPAddr(ctx, host)
 	if err != nil {
 		return fmt.Errorf("%w: %s lookup failed: %w", ErrUpstreamHostBlocked, host, err)
 	}
@@ -433,7 +449,7 @@ func resolveAndValidateHost(host string) ([]net.IP, error) {
 	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
 		defer cancel()
-		resolved, lerr := net.DefaultResolver.LookupIPAddr(ctx, host)
+		resolved, lerr := dnsResolver.Load().LookupIPAddr(ctx, host)
 		if lerr != nil {
 			return nil, fmt.Errorf("%w: %s lookup failed: %w", ErrUpstreamHostBlocked, host, lerr)
 		}
@@ -480,10 +496,114 @@ func dialValidatedIPs(ips []net.IP, host, port string, dialDualStack bool, dial 
 	return nil, lastErr
 }
 
+// installHostClientGuard fits hc with the policy-aware, dial-time SSRF
+// guard. It is installed through fasthttp.Client.ConfigureClient, which
+// runs once per HostClient at creation — so the guard is present before the
+// first dial to that host and, crucially, covers BOTH dial code paths:
+// fasthttp's callDialFunc prefers DialTimeout over Dial, so guarding only
+// Dial would let a client that sets DialTimeout dial unvalidated. We wrap
+// DialTimeout when present (preserving its per-request timeout) and always
+// wrap Dial so the nil-DialTimeout and default-dialer paths are guarded too.
+func installHostClientGuard(hc *fasthttp.HostClient) {
+	if hc.DialTimeout != nil {
+		hc.DialTimeout = newGuardedClientDialerWithTimeout(hc.DialTimeout, hc.DialDualStack)
+	}
+	hc.Dial = newGuardedClientDialer(hc.Dial, hc.DialDualStack)
+}
+
+// guardedDial is the shared core of both dialer guards. When the active
+// policy allows private IPs the caller has opted into internal targets, so
+// it delegates unchanged. Otherwise it resolves and validates the host,
+// then dials the exact validated IP via dialValidated — closing the
+// DNS-rebinding check/use window the up-front validateUpstream lookup
+// leaves open. The policy is read fresh on every dial because a shared
+// client outlives any single policy snapshot.
+//
+//nolint:revive // dialDualStack mirrors fasthttp.Client.DialDualStack
+func guardedDial(
+	addr string,
+	dialDualStack bool,
+	delegate func(addr string) (net.Conn, error),
+	dialValidated ssrfDialFunc,
+) (net.Conn, error) {
+	if currentSecurityPolicy().AllowPrivateIPs {
+		return delegate(addr)
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("proxy: invalid dial address %q: %w", addr, err)
+	}
+	ips, err := resolveAndValidateHost(host)
+	if err != nil {
+		return nil, err
+	}
+	return dialValidatedIPs(ips, host, port, dialDualStack, dialValidated)
+}
+
+// newGuardedClientDialer wraps orig with the SSRF guard. Unlike
+// newSSRFDialer — whose blocking is unconditional because Balancer only
+// installs it when the policy forbids private IPs — this dialer is
+// consulted by clients that outlive a single policy snapshot, so it
+// re-reads the active global policy on every dial. When the caller supplied
+// their own dialer it is run in both paths so custom transport is preserved
+// while a blocked-policy connection still targets the validated address.
+//
+// When orig is nil the two paths differ, matching newSSRFDialer: the
+// delegate (private-IPs-allowed) path hands the raw address to fasthttp's
+// default dialer (Dial/DialDualStack), while the validated (blocked-policy)
+// path connects to the already-checked IP with a net.Dialer bounded by
+// dnsLookupTimeout — fasthttp.Dial is not reused there because the target is
+// a literal IP that needs no re-resolution and the explicit timeout bounds
+// the connect.
+//
+//nolint:revive // dialDualStack mirrors fasthttp.Client.DialDualStack
+func newGuardedClientDialer(orig fasthttp.DialFunc, dialDualStack bool) fasthttp.DialFunc {
+	dialer := &net.Dialer{Timeout: dnsLookupTimeout}
+	delegate := func(addr string) (net.Conn, error) {
+		if orig != nil {
+			return orig(addr)
+		}
+		if dialDualStack {
+			return fasthttp.DialDualStack(addr)
+		}
+		return fasthttp.Dial(addr)
+	}
+	dialValidated := func(_, address string) (net.Conn, error) {
+		if orig != nil {
+			return orig(address)
+		}
+		return dialer.Dial("tcp", address)
+	}
+	return func(addr string) (net.Conn, error) {
+		return guardedDial(addr, dialDualStack, delegate, dialValidated)
+	}
+}
+
+// newGuardedClientDialerWithTimeout is the DialFuncWithTimeout counterpart
+// of newGuardedClientDialer. orig is always non-nil here (installed only
+// when the HostClient already carries a DialTimeout), and the per-request
+// timeout is threaded through both the delegate and the validated dial so
+// the caller's timeout semantics survive the guard.
+//
+//nolint:revive // dialDualStack mirrors fasthttp.Client.DialDualStack
+func newGuardedClientDialerWithTimeout(orig fasthttp.DialFuncWithTimeout, dialDualStack bool) fasthttp.DialFuncWithTimeout {
+	return func(addr string, timeout time.Duration) (net.Conn, error) {
+		delegate := func(a string) (net.Conn, error) {
+			return orig(a, timeout)
+		}
+		dialValidated := func(_, address string) (net.Conn, error) {
+			return orig(address, timeout)
+		}
+		return guardedDial(addr, dialDualStack, delegate, dialValidated)
+	}
+}
+
 // isBlockedIP reports whether ip falls inside a range that proxy
 // upstreams must not reach by default. Loopback, unspecified, RFC 1918
 // private, link-local (including the 169.254.169.254 cloud-metadata
-// address), multicast, and RFC 6598 CGNAT ranges are blocked.
+// address), multicast, and RFC 6598 CGNAT ranges are blocked. IPv4-compatible
+// and NAT64 IPv6 wrappers are unwrapped so a blocked IPv4 cannot be smuggled
+// past as an IPv6 literal.
 func isBlockedIP(ip net.IP) bool {
 	if ip == nil {
 		return true
@@ -496,7 +616,48 @@ func isBlockedIP(ip net.IP) bool {
 	if v4 := ip.To4(); v4 != nil && v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
 		return true
 	}
+	// Look through IPv4-compatible (::a.b.c.d) and NAT64 (64:ff9b::a.b.c.d)
+	// IPv6 wrappers to the embedded IPv4 and apply the same blocklist. Some
+	// stacks route these to the embedded address, so a private target could
+	// otherwise be reached via such a literal (the IPv4-mapped ::ffff:a.b.c.d
+	// form is already handled above because net.IP.To4 exposes it).
+	if embedded := embeddedIPv4(ip); embedded != nil && isBlockedIP(embedded) {
+		return true
+	}
 	return false
+}
+
+// embeddedIPv4 returns the IPv4 address embedded in an IPv4-compatible IPv6
+// address (::a.b.c.d, RFC 4291) or a well-known-prefix NAT64 address
+// (64:ff9b::a.b.c.d, RFC 6052), or nil for anything else. The IPv4-mapped
+// form (::ffff:a.b.c.d) is deliberately excluded here: net.IP.To4 already
+// surfaces its IPv4, so isBlockedIP checks it directly.
+func embeddedIPv4(ip net.IP) net.IP {
+	ip16 := ip.To16()
+	if ip16 == nil || ip.To4() != nil {
+		return nil
+	}
+	// NAT64 well-known prefix 64:ff9b::/96.
+	if ip16[0] == 0x00 && ip16[1] == 0x64 && ip16[2] == 0xff && ip16[3] == 0x9b &&
+		allZero(ip16[4:12]) {
+		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
+	}
+	// IPv4-compatible ::a.b.c.d (first 12 bytes zero). :: and ::1 have already
+	// been classified above, so treat any remaining all-zero-prefix address as
+	// a wrapper around its trailing IPv4.
+	if allZero(ip16[:12]) {
+		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
+	}
+	return nil
+}
+
+func allZero(b []byte) bool {
+	for _, x := range b {
+		if x != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // secureTLSConfig returns a clone of cfg with a TLS 1.2 floor. The
@@ -605,6 +766,7 @@ func baseIsPlainOrigin(base *url.URL) bool {
 		base.RawPath == "" &&
 		base.User == nil &&
 		base.RawQuery == "" &&
+		!base.ForceQuery &&
 		base.Fragment == "" &&
 		base.Opaque == ""
 }
@@ -645,6 +807,11 @@ func canFastJoinPath(requestPath string) bool {
 		case '?', '#':
 			if !inPath {
 				// Repeated path/query separator — let slow path handle.
+				return false
+			}
+			if i == len(requestPath)-1 {
+				// Empty query/fragment markers are not represented in the
+				// slow path's output, so fall back to preserve behavior.
 				return false
 			}
 			inPath = false

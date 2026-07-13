@@ -161,7 +161,9 @@ func (r *DefaultReq) Body() []byte {
 
 	// Fast path: no Content-Encoding header at all. ContentEncoding uses the
 	// pre-normalized key constant, so absence costs a single cheap lookup.
-	if len(request.Header.ContentEncoding()) == 0 {
+	// An empty value is still a present field line and must be joined with
+	// duplicates below before RFC 9110 empty-list elements are ignored.
+	if request.Header.ContentEncoding() == nil {
 		return r.getBody()
 	}
 

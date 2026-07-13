@@ -165,7 +165,7 @@ func (idx *skipRouteIndex) buildLookahead(app *App) {
 
 // resolveSkip decides 404/405/run-chain. values is scratch: param/wildcard
 // middleware may overwrite it before the endpoint runs, so next() re-matches then.
-func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string, values *[maxParams]string) skipResult {
+func (app *App) resolveSkip(methodInt, treeHash, pathSlashes int, detectionPath, path string, values *[maxParams]string) skipResult {
 	skip := &app.skip
 	methodBit := uint64(1) << methodInt
 	staticMask := skip.staticMethods[detectionPath]
@@ -183,7 +183,7 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 
 	// Tier 2: scan this method's parametric candidates.
 	for _, cand := range b.cands[methodInt] {
-		if cand.route.match(detectionPath, path, values) {
+		if cand.route.match(detectionPath, path, values, pathSlashes) {
 			return skipResult{decision: skipRunChain, matchIndex: cand.idx}
 		}
 	}
@@ -204,7 +204,7 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 			continue
 		}
 		for _, cand := range b.cands[m] {
-			if cand.route.match(detectionPath, path, values) {
+			if cand.route.match(detectionPath, path, values, pathSlashes) {
 				allow |= bit
 				break
 			}

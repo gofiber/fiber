@@ -1,7 +1,7 @@
 ---
 id: utils
 title: 🧰 Utils
-sidebar_position: 8
+sidebar_position: 9
 toc_max_heading_level: 4
 ---
 

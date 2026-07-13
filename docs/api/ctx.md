@@ -8,6 +8,12 @@ description: >-
 sidebar_position: 3
 ---
 
+import MethodIndex from '@site/src/components/method-index';
+
+Use the index to jump straight to any `Ctx` method; filter by name or by category:
+
+<MethodIndex defaultCategory="Context" itemNoun="methods" placeholder="Filter methods, e.g. cookie" />
+
 ### Abandon
 
 Marks the context as abandoned. An abandoned context will not be returned to the pool when `ReleaseCtx` is called. This is used internally by the [timeout middleware](../middleware/timeout.md) to return immediately while the handler goroutine continues safely.

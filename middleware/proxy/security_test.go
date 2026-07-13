@@ -31,18 +31,27 @@ func Test_Security_IsBlockedIP(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]bool{
-		"127.0.0.1":       true,
-		"::1":             true,
-		"0.0.0.0":         true,
-		"10.0.0.1":        true,
-		"172.16.0.1":      true,
-		"192.168.1.1":     true,
-		"169.254.169.254": true, // AWS metadata
-		"100.64.0.1":      true, // CGNAT
-		"224.0.0.1":       true, // multicast
-		"8.8.8.8":         false,
-		"1.1.1.1":         false,
-		"93.184.216.34":   false, // example.com
+		"127.0.0.1":            true,
+		"::1":                  true,
+		"0.0.0.0":              true,
+		"10.0.0.1":             true,
+		"172.16.0.1":           true,
+		"192.168.1.1":          true,
+		"169.254.169.254":      true, // AWS metadata
+		"100.64.0.1":           true, // CGNAT
+		"224.0.0.1":            true, // multicast
+		"::ffff:127.0.0.1":     true, // IPv4-mapped loopback
+		"::ffff:10.0.0.1":      true, // IPv4-mapped private
+		"::127.0.0.1":          true, // IPv4-compatible loopback
+		"::10.0.0.1":           true, // IPv4-compatible private
+		"64:ff9b::7f00:1":      true, // NAT64 127.0.0.1
+		"64:ff9b::a00:1":       true, // NAT64 10.0.0.1
+		"64:ff9b::a9fe:a9fe":   true, // NAT64 169.254.169.254 (metadata)
+		"8.8.8.8":              false,
+		"1.1.1.1":              false,
+		"93.184.216.34":        false, // example.com
+		"64:ff9b::808:808":     false, // NAT64 8.8.8.8 (public → allowed)
+		"2606:4700:4700::1111": false, // public IPv6 (Cloudflare)
 	}
 	for raw, blocked := range cases {
 		t.Run(raw, func(t *testing.T) {
@@ -460,6 +469,20 @@ func Test_Security_JoinUpstreamPath_PreservesQuery(t *testing.T) {
 	require.NoError(t, err)
 	out := joinUpstreamPath(base, "/x?y=1&z=2")
 	require.Equal(t, "http://upstream.example/x?y=1&z=2", out)
+}
+
+func Test_Security_JoinUpstreamPath_EmptyQueryMarkersUseSlowPath(t *testing.T) {
+	t.Parallel()
+
+	baseWithEmptyQuery, err := parseUpstream("http://upstream.example?")
+	require.NoError(t, err)
+	require.True(t, baseWithEmptyQuery.ForceQuery)
+	require.Equal(t, "http://upstream.example/foo?", joinUpstreamPath(baseWithEmptyQuery, "/foo"))
+
+	base, err := parseUpstream("http://upstream.example")
+	require.NoError(t, err)
+	require.Equal(t, "http://upstream.example/foo", joinUpstreamPath(base, "/foo?"))
+	require.Equal(t, "http://upstream.example/foo", joinUpstreamPath(base, "/foo#"))
 }
 
 func Test_Security_SecureTLSConfig_DefaultMinVersion(t *testing.T) {

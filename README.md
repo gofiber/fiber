@@ -18,6 +18,9 @@
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
     <img src="https://img.shields.io/github/actions/workflow/status/gofiber/fiber/test.yml?branch=main&label=%F0%9F%A7%AA%20tests&style=flat-square&color=75C46B">
   </a>
+  <a href="https://gofiber.github.io/fiber/benchmarks/">
+    <img src="https://img.shields.io/badge/%F0%9F%93%8A%20benchmarks-charts-00ACD7.svg?style=flat-square">
+  </a>
     <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat-square">
   </a>
