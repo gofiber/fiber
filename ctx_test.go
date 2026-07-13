@@ -10506,7 +10506,7 @@ func Test_appendLowerASCII(t *testing.T) {
 			reused := make([]byte, 0, 128)
 			got := appendLowerASCII(reused, []byte(tc.in))
 			require.Equal(t, tc.out, string(got))
-			if len(tc.in) > 0 {
+			if tc.in != "" {
 				require.Equal(t, 128, cap(got), "reused buffer must not be reallocated")
 			}
 		})
