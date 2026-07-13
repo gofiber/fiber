@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2/swar"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -75,9 +76,26 @@ func isValidRequestID(rid string) bool {
 		return false
 	}
 
-	for i := 0; i < len(rid); i++ {
-		c := rid[i]
-		if c < 0x20 || c > 0x7e {
+	// Check eight bytes per iteration; MatchRangeMask marks exactly the
+	// lanes inside [0x20, 0x7E] (bytes >= 0x80 are never marked), so a
+	// mask with all lanes set means the whole word is visible ASCII.
+	n := len(rid)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		if swar.MatchRangeMask(swar.Load8(rid, i), 0x20, 0x7e) != swar.HighBits {
+			return false
+		}
+	}
+	if i == n {
+		return true
+	}
+	if n >= swar.WordLen {
+		// Finish with one overlapping word; re-checking bytes that already
+		// passed cannot change the outcome.
+		return swar.MatchRangeMask(swar.Load8(rid, n-swar.WordLen), 0x20, 0x7e) == swar.HighBits
+	}
+	for ; i < n; i++ {
+		if c := rid[i]; c < 0x20 || c > 0x7e {
 			return false
 		}
 	}
