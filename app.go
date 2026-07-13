@@ -1240,8 +1240,9 @@ func NewErrorf(code int, message ...any) *Error {
 		if format, ok := message[0].(string); ok {
 			msg = fmt.Sprintf(format, message[1:]...)
 		} else {
-			// If the first arg isn’t a string, fall back.
-			msg = fmt.Sprint(message[0])
+			// If the first arg isn’t a format string, stringify all of them
+			// instead of dropping everything after the first.
+			msg = fmt.Sprint(message...)
 		}
 	}
 
