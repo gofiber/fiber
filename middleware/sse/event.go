@@ -135,7 +135,7 @@ func appendData(w *bytes.Buffer, data string) {
 }
 
 func sanitizeField(value string) (string, error) {
-	if strings.ContainsAny(value, "\r\n") {
+	if utils.IndexAny2(value, '\r', '\n') != -1 {
 		return "", errInvalidField
 	}
 	return utils.Trim(value, ' '), nil
