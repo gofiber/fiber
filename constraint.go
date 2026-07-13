@@ -244,7 +244,7 @@ type floatConstraintType struct{}
 
 func (floatConstraintType) Name() string { return ConstraintFloat }
 func (floatConstraintType) Execute(param string, _ []any) bool {
-	_, err := strconv.ParseFloat(param, 32)
+	_, err := strconv.ParseFloat(param, 64)
 	return err == nil
 }
 

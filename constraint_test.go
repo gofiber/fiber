@@ -119,6 +119,10 @@ func Test_ConstraintExecute_FloatConstraint(t *testing.T) {
 
 	handler := floatConstraintType{}
 	require.True(t, handler.Execute("3.14", nil))
+	// Values within the float64 range but outside float32 must be accepted.
+	require.True(t, handler.Execute("1e308", nil))
+	require.True(t, handler.Execute("3.5e38", nil))
+	require.True(t, handler.Execute("-1.7976931348623157e308", nil))
 	require.False(t, handler.Execute("abc", nil))
 }
 
