@@ -133,6 +133,22 @@ func Test_ConstraintExecute_AlphaConstraint(t *testing.T) {
 	require.True(t, handler.Execute("hello", nil))
 	require.True(t, handler.Execute("", nil))
 	require.False(t, handler.Execute("hello123", nil))
+
+	// Word-at-a-time fast-path coverage: inputs of exactly one word, more
+	// than one word, and rejections at word and tail positions.
+	require.True(t, handler.Execute("abcdefgh", nil))
+	require.True(t, handler.Execute("AbCdEfGhIjKlMnOpQ", nil))
+	require.False(t, handler.Execute("abcdefg1", nil))
+	require.False(t, handler.Execute("abcdefghijklmnop9", nil))
+	require.False(t, handler.Execute("abcdefgh-jkl", nil))
+
+	// Unicode letters must still be accepted via the rune fallback,
+	// regardless of where the first non-ASCII byte sits.
+	require.True(t, handler.Execute("héllo", nil))
+	require.True(t, handler.Execute("abcdefghé", nil))
+	require.False(t, handler.Execute("héllo1", nil))
+	require.False(t, handler.Execute("abcdefghé1", nil))
+	require.False(t, handler.Execute(string([]byte{0xC3, 0x28}), nil)) // invalid UTF-8
 }
 
 func Test_ConstraintExecute_GuidConstraint(t *testing.T) {

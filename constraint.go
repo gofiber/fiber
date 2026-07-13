@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	utilsstrings "github.com/gofiber/utils/v2/strings"
+	"github.com/gofiber/utils/v2/swar"
 	"github.com/google/uuid"
 )
 
@@ -252,8 +253,37 @@ type alphaConstraintType struct{}
 
 func (alphaConstraintType) Name() string { return ConstraintAlpha }
 func (alphaConstraintType) Execute(param string, _ []any) bool {
-	for _, c := range param {
-		if !unicode.IsLetter(c) {
+	// SWAR fast path for the ASCII-common case; the first word containing a
+	// non-ASCII byte defers the rest to the Unicode rune loop. The handoff
+	// happens only where every preceding byte is ASCII, i.e. on a rune
+	// boundary.
+	n := len(param)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		w := swar.Load8(param, i)
+		if w&swar.HighBits != 0 {
+			return isUnicodeAlpha(param[i:])
+		}
+		if swar.MatchRangeMask(swar.ToLowerWord(w), 'a', 'z') != swar.HighBits {
+			return false
+		}
+	}
+	for ; i < n; i++ {
+		c := param[i]
+		if c >= 0x80 {
+			return isUnicodeAlpha(param[i:])
+		}
+		if lc := c | 0x20; lc < 'a' || lc > 'z' {
+			return false
+		}
+	}
+	return true
+}
+
+// isUnicodeAlpha reports whether s consists only of Unicode letters.
+func isUnicodeAlpha(s string) bool {
+	for _, r := range s {
+		if !unicode.IsLetter(r) {
 			return false
 		}
 	}

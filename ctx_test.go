@@ -10478,3 +10478,37 @@ func Benchmark_Ctx_OverrideParam(b *testing.B) {
 		c.OverrideParam("name", "changed")
 	}
 }
+
+func Test_appendLowerASCII(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		out  string
+	}{
+		{"empty", "", ""},
+		{"short lower", "/abc", "/abc"},
+		{"short mixed", "/AbC", "/abc"},
+		{"exactly one word", "/ABCDEFG", "/abcdefg"},
+		{"multi word", "/API/V1/UsersAndGroups", "/api/v1/usersandgroups"},
+		{"word plus tail", "/ABCDEFGH/XYZ", "/abcdefgh/xyz"},
+		{"non-letters unchanged", "/a1-B2_c3{~}", "/a1-b2_c3{~}"},
+		{"non-ascii passthrough", "/CAFé\xC3\xA9/É", "/caf\xC3\xA9\xC3\xA9/\xC3\x89"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Fresh destination (forces growth) and reused oversized
+			// destination (exercises the cap(dst) >= n path).
+			require.Equal(t, tc.out, string(appendLowerASCII(nil, []byte(tc.in))))
+			reused := make([]byte, 0, 128)
+			got := appendLowerASCII(reused, []byte(tc.in))
+			require.Equal(t, tc.out, string(got))
+			if len(tc.in) > 0 {
+				require.Equal(t, 128, cap(got), "reused buffer must not be reallocated")
+			}
+		})
+	}
+}
