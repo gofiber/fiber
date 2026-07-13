@@ -2036,10 +2036,16 @@ func Test_NewErrorf_Format(t *testing.T) {
 			want: "odd 1%!(EXTRA int=2, int=3)",
 		},
 		{
-			name: "≥2 args but first not string",
+			name: "≥2 args but first not string keeps all args",
 			code: StatusBadRequest,
 			in:   args{errors.New("boom"), 42},
-			want: "boom",
+			want: "boom 42",
+		},
+		{
+			name: "≥2 args, first non-string followed by string",
+			code: StatusInternalServerError,
+			in:   args{42, "extra details"},
+			want: "42extra details",
 		},
 	}
 
