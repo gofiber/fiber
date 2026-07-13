@@ -59,6 +59,7 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 	var mu sync.Mutex
 	var shutdown bool
 	var receivedErr error
+	var postShutdownCalls int
 
 	app := New()
 	app.Get("/", func(c Ctx) error {
@@ -74,6 +75,7 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 		defer mu.Unlock()
 		shutdown = true
 		receivedErr = err
+		postShutdownCalls++
 		return nil
 	})
 
@@ -170,7 +172,12 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 
 	mu.Lock()
 	require.True(t, shutdown)
+	// OnPostShutdown must fire exactly once. It previously fired twice: once from
+	// ShutdownWithContext's defer and again from gracefulShutdown.
+	require.Equal(t, 1, postShutdownCalls, "OnPostShutdown should fire exactly once")
 	if shutdownTimeout == 1*time.Nanosecond {
+		// The single fire must carry the real shutdown error. The defer used to
+		// capture err by value at registration time, so hooks always saw nil.
 		require.Error(t, receivedErr)
 		require.ErrorIs(t, receivedErr, context.DeadlineExceeded)
 	}
