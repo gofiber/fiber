@@ -170,15 +170,14 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 // contain non-ASCII bytes.
 func (*App) quoteRawString(raw string) string {
 	// Fast path: most values need no escaping at all; avoid the pooled
-	// buffer and the string allocation entirely.
-	needsEscaping := false
-	for i := 0; i < len(raw); i++ {
-		if c := raw[i]; c == '\\' || c == '"' || c < 0x20 || c == 0x7f {
-			needsEscaping = true
-			break
-		}
+	// buffer and the string allocation entirely. IndexNonQuotable treats
+	// HTAB as quotable qdtext (per RFC 9110), but this function escapes it,
+	// so a separate tab scan keeps the escape set unchanged.
+	idx := utils.IndexNonQuotable(raw)
+	if tab := strings.IndexByte(raw, '\t'); tab != -1 && (idx == -1 || tab < idx) {
+		idx = tab
 	}
-	if !needsEscaping {
+	if idx == -1 {
 		return raw
 	}
 
@@ -186,7 +185,10 @@ func (*App) quoteRawString(raw string) string {
 	bb := bytebufferpool.Get()
 	defer bytebufferpool.Put(bb)
 
-	for i := 0; i < len(raw); i++ {
+	// Every byte before idx is quotable and tab-free, so it hits the
+	// verbatim case of the switch below; copy it in one append.
+	bb.B = append(bb.B, raw[:idx]...)
+	for i := idx; i < len(raw); i++ {
 		c := raw[i]
 		switch {
 		case c == '\\' || c == '"':
@@ -210,17 +212,6 @@ func (*App) quoteRawString(raw string) string {
 	}
 
 	return string(bb.B)
-}
-
-// isASCII reports whether the provided string contains only ASCII characters.
-// See: https://www.rfc-editor.org/rfc/rfc0020
-func (*App) isASCII(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] > 127 {
-			return false
-		}
-	}
-	return true
 }
 
 // defaultString returns the value or a default value if it is set
@@ -615,8 +606,16 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 
 		if hasDQuote {
 			// Complex case. We need to keep track of quotes and quoted-pairs (i.e.,  characters escaped with \ )
+			// Only ',', '"' and '\\' can change state, so jump between them
+			// instead of visiting every byte.
 		loop:
 			for n < len(header) {
+				i := utils.IndexAny3(header[n:], ',', '"', '\\')
+				if i == -1 {
+					n = len(header)
+					break
+				}
+				n += i
 				switch header[n] {
 				case ',':
 					if quotes%2 == 0 {
@@ -626,12 +625,10 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 					if !escaping {
 						quotes++
 					}
-				case '\\':
+				default: // '\\'
 					if quotes%2 == 1 {
 						escaping = !escaping
 					}
-				default:
-					// all other characters are ignored
 				}
 				n++
 			}
@@ -904,22 +901,25 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 
 	// Split the header on commas that sit outside DQUOTE-delimited opaque-tags:
 	// etagc permits "," inside the quoted tag (RFC 9110 §8.8.3), so `"v1,v2"`
-	// is a single entity tag, not two list elements.
+	// is a single entity tag, not two list elements. Only '"' and ','
+	// affect the split, so jump between them instead of visiting every byte.
 	start := 0
+	pos := 0
 	inQuotes := false
-	for i := range len(header) {
-		switch header[i] {
-		case '"':
+	for {
+		i := utils.IndexAny2(header[pos:], '"', ',')
+		if i == -1 {
+			break
+		}
+		i += pos
+		pos = i + 1
+		if header[i] == '"' {
 			inQuotes = !inQuotes
-		case ',':
-			if !inQuotes {
-				if matchEtag(utils.TrimSpace(header[start:i]), etag) {
-					return false
-				}
-				start = i + 1
+		} else if !inQuotes {
+			if matchEtag(utils.TrimSpace(header[start:i]), etag) {
+				return false
 			}
-		default:
-			// any other byte belongs to the current list element
+			start = i + 1
 		}
 	}
 
@@ -967,53 +967,28 @@ func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocr
 // - "no-cache=field-name" (applies to specific header field)
 // Both forms indicate the response should not be served from cache without revalidation.
 func isNoCache(cacheControl string) bool {
-	n := len(cacheControl)
-	if n < len(noCacheValue) {
-		return false
-	}
-
-	const noCacheLen = len(noCacheValue)
-	const asciiCaseFold = byte(0x20)
-	for i := 0; i <= n-noCacheLen; i++ {
-		if (cacheControl[i] | asciiCaseFold) != 'n' {
-			continue
+	pos := 0
+	for {
+		i := utils.IndexFold(cacheControl[pos:], noCacheValue)
+		if i == -1 {
+			return false
 		}
-		if !matchNoCacheToken(cacheControl, i) {
-			continue
-		}
+		i += pos
+		pos = i + 1
 		if i > 0 && !isNoCacheDelimiter(cacheControl[i-1]) {
 			continue
 		}
 
 		// Handle: "no-cache", "no-cache, ...", "no-cache=...", "no-cache ,"
-		if i+noCacheLen == n {
-			return true
-		}
-		if isNoCacheDelimiter(cacheControl[i+noCacheLen]) || cacheControl[i+noCacheLen] == '=' {
+		end := i + len(noCacheValue)
+		if end == len(cacheControl) || isNoCacheDelimiter(cacheControl[end]) || cacheControl[end] == '=' {
 			return true
 		}
 	}
-
-	return false
 }
 
 func isNoCacheDelimiter(c byte) bool {
 	return c == ' ' || c == '\t' || c == ','
-}
-
-func matchNoCacheToken(s string, i int) bool {
-	// ASCII-only case-insensitive compare for "no-cache".
-	const asciiCaseFold = byte(0x20)
-	b := s[i:]
-
-	return (b[0]|asciiCaseFold) == 'n' &&
-		(b[1]|asciiCaseFold) == 'o' &&
-		b[2] == '-' &&
-		(b[3]|asciiCaseFold) == 'c' &&
-		(b[4]|asciiCaseFold) == 'a' &&
-		(b[5]|asciiCaseFold) == 'c' &&
-		(b[6]|asciiCaseFold) == 'h' &&
-		(b[7]|asciiCaseFold) == 'e'
 }
 
 var errTestConnClosed = errors.New("testConn is closed")

@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 	"unicode"
 
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/google/uuid"
 )
 
@@ -526,7 +526,7 @@ func (regexConstraintType) Execute(param string, data []any) bool {
 
 // resolveConstraintName handles case-insensitive and alias matching for constraint names.
 func resolveConstraintName(name string) string {
-	switch strings.ToLower(name) {
+	switch utilsstrings.ToLower(name) {
 	case "minlen":
 		return ConstraintMinLen
 	case "maxlen":

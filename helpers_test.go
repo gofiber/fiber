@@ -1697,6 +1697,7 @@ func Test_App_quoteRawString(t *testing.T) {
 		{"newline", "Hello\n", "Hello\\n"},
 		{"carriage", "Hello\r", "Hello\\r"},
 		{"controls", string([]byte{0, 31, 127}), "%00%1F%7F"},
+		{"tab", "a\tb", "a%09b"},
 		{"mixed", "test \"A\n\r" + string([]byte{1}) + "\\", `test \"A\n\r%01\\`},
 	}
 

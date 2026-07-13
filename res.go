@@ -265,7 +265,7 @@ func encodeExtValue(s string) string {
 // RFC 8187 filename* ext-value for interoperability.
 func contentDispositionAttachment(app *App, fname string) string {
 	disp := `attachment; filename="` + app.quoteRawString(fname) + `"`
-	if !app.isASCII(fname) {
+	if !utils.IsASCII(fname) {
 		disp += `; filename*=UTF-8''` + encodeExtValue(fname)
 	}
 	return disp
