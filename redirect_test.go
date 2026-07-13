@@ -115,6 +115,30 @@ func Test_Redirect_Route_WithParams_WithQueries(t *testing.T) {
 	require.Equal(t, url.Values{"data[0][name]": []string{"john"}, "data[0][age]": []string{"10"}, "test": []string{"doe"}}, location.Query())
 }
 
+// go test -run Test_Redirect_Route_WithQueries_SpecialChars
+func Test_Redirect_Route_WithQueries_SpecialChars(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/user/:name", func(c Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	err := c.Redirect().Route("user", RedirectConfig{
+		Params:  Map{"name": "fiber"},
+		Queries: map[string]string{"q": "a&b=c"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+
+	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
+	require.NoError(t, err, "url.Parse(location)")
+	require.Equal(t, "/user/fiber", location.Path)
+	// The value must survive as a single query parameter, not be split into
+	// `q=a` and `b=c`.
+	require.Equal(t, url.Values{"q": []string{"a&b=c"}}, location.Query())
+}
+
 // go test -run Test_Redirect_Route_WithOptionalParams
 func Test_Redirect_Route_WithOptionalParams(t *testing.T) {
 	t.Parallel()
