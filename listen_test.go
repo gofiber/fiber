@@ -117,7 +117,7 @@ func Test_GracefulShutdown_PostShutdownFiresOnce(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
 	gctx, gcancel := context.WithCancel(context.Background())
 	go func() {
-		_ = app.Listener(ln, ListenConfig{DisableStartupMessage: true, GracefulContext: gctx}) //nolint:errcheck // not needed
+		_ = app.Listener(ln, ListenConfig{DisableStartupMessage: true, GracefulContext: gctx}) //nolint:errcheck,contextcheck // not needed
 	}()
 
 	require.Eventually(t, func() bool {
