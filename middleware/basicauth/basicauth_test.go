@@ -758,3 +758,45 @@ func Benchmark_containsInvalidHeaderChars(b *testing.B) {
 	}
 	_ = got
 }
+
+func Test_containsCTL(t *testing.T) {
+	t.Parallel()
+
+	// Clean ASCII across scalar, word, and overlapping-tail paths.
+	require.False(t, containsCTL(""))
+	require.False(t, containsCTL("user"))
+	require.False(t, containsCTL("averylongusername"))
+	require.False(t, containsCTL("pass word with spaces and ~"))
+
+	// C0 and DEL at every code path position.
+	require.True(t, containsCTL("\x00"))
+	require.True(t, containsCTL("user\npass"))
+	require.True(t, containsCTL("averylongusername\x7f"))
+	require.True(t, containsCTL("abcdefgh\x1fjklmnopq"))
+
+	// Unicode: C1 controls (multi-byte runes) must still be caught, and
+	// ordinary non-ASCII letters must still pass, wherever the first
+	// non-ASCII byte sits.
+	require.True(t, containsCTL("\u0085"))
+	require.True(t, containsCTL("abcdefgh\u009d"))
+	require.True(t, containsCTL("pässword\u0085tail"))
+	require.False(t, containsCTL("pässwörd"))
+	require.False(t, containsCTL("abcdefghijklmnoöp"))
+}
+
+// go test -v -run=^$ -bench=Benchmark_containsCTL -benchmem -count=4
+func Benchmark_containsCTL(b *testing.B) {
+	inputs := []string{
+		"john",
+		"a-much-longer-username",
+		"s3cr3t-p4ssw0rd-with-length",
+	}
+	var got bool
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			got = containsCTL(in)
+		}
+	}
+	_ = got
+}

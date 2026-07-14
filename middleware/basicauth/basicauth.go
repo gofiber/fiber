@@ -67,7 +67,9 @@ func New(config ...Config) fiber.Handler {
 			return cfg.BadRequest(c)
 		}
 		rest = rest[1:]
-		if strings.IndexFunc(rest, unicode.IsSpace) != -1 {
+		// containsInvalidHeaderChars left only HTAB and visible ASCII, so
+		// the only remaining bytes unicode.IsSpace can match are ' ' and '\t'.
+		if utils.IndexAny2(rest, ' ', '\t') != -1 {
 			return cfg.BadRequest(c)
 		}
 
@@ -132,7 +134,49 @@ func registerLogContextTags() {
 	logger.RegisterContextTag("username", UsernameFromContext)
 }
 
+// containsCTL reports whether s contains a Unicode control character
+// (C0, DEL, or C1). ASCII spans are scanned eight bytes at a time; the
+// first word holding a byte >= 0x80 defers the rest to the rune loop,
+// which handles the multi-byte C1 range. The handoff happens only where
+// every preceding byte is ASCII, i.e. on a rune boundary.
 func containsCTL(s string) bool {
+	n := len(s)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		w := swar.Load8(s, i)
+		if w&swar.HighBits != 0 {
+			return containsCTLUnicode(s[i:])
+		}
+		if swar.MatchRangeMask(w, 0x00, 0x1f)|swar.MatchByteMask(w, 0x7f) != 0 {
+			return true
+		}
+	}
+	if i == n {
+		return false
+	}
+	if n >= swar.WordLen {
+		// One overlapping word: the re-checked bytes are known ASCII and
+		// clean, so any hit lands in the new bytes — still a rune boundary.
+		w := swar.Load8(s, n-swar.WordLen)
+		if w&swar.HighBits != 0 {
+			return containsCTLUnicode(s[n-swar.WordLen:])
+		}
+		return swar.MatchRangeMask(w, 0x00, 0x1f)|swar.MatchByteMask(w, 0x7f) != 0
+	}
+	for ; i < n; i++ {
+		c := s[i]
+		if c >= 0x80 {
+			return containsCTLUnicode(s[i:])
+		}
+		if c < 0x20 || c == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// containsCTLUnicode is the rune-decoding slow path of containsCTL.
+func containsCTLUnicode(s string) bool {
 	return strings.IndexFunc(s, unicode.IsControl) != -1
 }
 
