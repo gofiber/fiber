@@ -618,18 +618,13 @@ func (app *App) printRoutesMessage() {
 func (app *App) gracefulShutdown(ctx context.Context, cfg *ListenConfig) {
 	<-ctx.Done()
 
-	var err error
-
+	// The OnPostShutdown hooks are fired by ShutdownWithContext (via
+	// Shutdown/ShutdownWithTimeout) with the real error, so we must not fire
+	// them again here or they would run twice. That error is already delivered
+	// to those hooks, so it is intentionally ignored here.
 	if cfg != nil && cfg.ShutdownTimeout != 0 {
-		err = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:contextcheck // TODO: Implement it
+		_ = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:errcheck,contextcheck // error is delivered to OnPostShutdown hooks
 	} else {
-		err = app.Shutdown() //nolint:contextcheck // TODO: Implement it
+		_ = app.Shutdown() //nolint:errcheck,contextcheck // error is delivered to OnPostShutdown hooks
 	}
-
-	if err != nil {
-		app.hooks.executeOnPostShutdownHooks(err)
-		return
-	}
-
-	app.hooks.executeOnPostShutdownHooks(nil)
 }
