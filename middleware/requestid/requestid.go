@@ -69,8 +69,6 @@ func sanitizeRequestID(rid string, generator func() string) string {
 	return utils.SecureToken()
 }
 
-// isValidRequestID reports whether the request ID contains only visible ASCII
-// characters (0x20–0x7E) and is non-empty.
 // visibleASCIIMask marks the lanes of w inside [0x20, 0x7E]; bytes >= 0x80
 // are never marked. A word is all visible ASCII iff the mask equals
 // swar.HighBits.
@@ -78,6 +76,8 @@ func visibleASCIIMask(w uint64) uint64 {
 	return swar.MatchRangeMask(w, 0x20, 0x7e)
 }
 
+// isValidRequestID reports whether the request ID contains only visible ASCII
+// characters (0x20–0x7E) and is non-empty.
 func isValidRequestID(rid string) bool {
 	if rid == "" {
 		return false

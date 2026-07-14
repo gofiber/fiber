@@ -343,3 +343,16 @@ func Test_CustomConstraintWrapper_ExecuteKeepsLegacyArgsWithAnalyzer(t *testing.
 	require.True(t, c.matchConstraint("admin"))
 	require.False(t, c.matchConstraint("guest"))
 }
+
+func Test_resolveConstraintName_UnicodeFolding(t *testing.T) {
+	t.Parallel()
+
+	// Aliases fold with full Unicode simple case mapping, so locale-style
+	// uppercase such as the Turkish dotted capital I still canonicalizes;
+	// switching to an ASCII-only fold silently drops these constraints.
+	require.Equal(t, ConstraintMinLen, resolveConstraintName("minLen"))
+	require.Equal(t, ConstraintMinLen, resolveConstraintName("MINLEN"))
+	require.Equal(t, ConstraintMinLen, resolveConstraintName("MİNLEN"))
+	require.Equal(t, ConstraintMaxLen, resolveConstraintName("MAXLEN"))
+	require.Equal(t, "unknown", resolveConstraintName("unknown"))
+}

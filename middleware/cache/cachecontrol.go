@@ -7,29 +7,33 @@ import (
 
 // hasDirective checks if a cache directive header value contains a directive (case-insensitive).
 // A directive is considered matched when followed by end-of-string, ',', ' ', '\t', or '='
-// per RFC 9111 §5.2. An empty directive never matches: IndexFold would find an
-// empty needle at every position, so without this guard the resume index below
-// would walk past len(cc) and panic.
+// per RFC 9111 §5.2. An empty directive never matches.
 func hasDirective(cc, directive string) bool {
-	if directive == "" {
+	dirLen := len(directive)
+	if dirLen == 0 {
 		return false
 	}
-	pos := 0
-	for {
-		i := utils.IndexFold(cc[pos:], directive)
-		if i == -1 {
-			return false
+	// Cheap first-byte fold filter before the full compare, the shape that
+	// beat an IndexFold skip-scan for isNoCache on typical short values;
+	// a rare false candidate (the fold is exact only for letters) just
+	// costs one EqualFold.
+	first := directive[0] | 0x20
+	n := len(cc)
+	for i := 0; i <= n-dirLen; i++ {
+		if cc[i]|0x20 != first {
+			continue
 		}
-		i += pos
-		pos = i + 1
+		if !utils.EqualFold(cc[i:i+dirLen], directive) {
+			continue
+		}
 		if i > 0 {
 			prev := cc[i-1]
 			if prev != ' ' && prev != ',' && prev != '\t' {
 				continue
 			}
 		}
-		end := i + len(directive)
-		if end == len(cc) {
+		end := i + dirLen
+		if end == n {
 			return true
 		}
 		next := cc[end]
@@ -37,6 +41,7 @@ func hasDirective(cc, directive string) bool {
 			return true
 		}
 	}
+	return false
 }
 
 func parseUintDirective(val []byte) (uint64, bool) {

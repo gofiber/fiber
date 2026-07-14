@@ -207,9 +207,9 @@ func defaultContextValueTag(output Buffer, ctx any, _ *ContextData, extraParam s
 }
 
 // writeSanitized writes p to output with ASCII control bytes replaced by
-// spaces. Tabs are preserved. The replacement is done in-place on a single
-// pass so the hot path stays alloc-free for inputs that are already clean
-// (the common case): clean inputs forward directly to output.Write.
+// spaces. Tabs are preserved. Clean inputs (the common case) forward
+// directly to output.Write with no allocation; dirty inputs are scrubbed
+// into a copy starting at the first control byte.
 func writeSanitized(output Buffer, p []byte) (int, error) {
 	idx := indexControlByte(p)
 	if idx == -1 {
@@ -218,6 +218,8 @@ func writeSanitized(output Buffer, p []byte) (int, error) {
 	return output.Write(scrubControls(p, idx))
 }
 
+// writeSanitizedString is writeSanitized for strings, keeping the clean
+// fast path on output.WriteString.
 func writeSanitizedString(output Buffer, s string) (int, error) {
 	idx := indexControlByte(s)
 	if idx == -1 {

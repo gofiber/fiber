@@ -178,13 +178,12 @@ func (*App) quoteRawString(raw string) string {
 	// first non-quotable byte can move the escape start.
 	end := utils.IndexNonQuotable(raw)
 	if end == -1 {
-		if tab := strings.IndexByte(raw, '\t'); tab != -1 {
-			end = tab
-		}
-	} else if tab := strings.IndexByte(raw[:end], '\t'); tab != -1 {
+		end = len(raw)
+	}
+	if tab := strings.IndexByte(raw[:end], '\t'); tab != -1 {
 		end = tab
 	}
-	if end == -1 {
+	if end == len(raw) {
 		return raw
 	}
 
