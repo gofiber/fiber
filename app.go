@@ -1325,7 +1325,9 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 
 	// Execute the Shutdown hook
 	app.hooks.executeOnPreShutdownHooks()
-	defer app.hooks.executeOnPostShutdownHooks(err)
+	// Use a closure so the hooks receive the final error; a plain
+	// `defer ...(err)` would capture the nil value at registration time.
+	defer func() { app.hooks.executeOnPostShutdownHooks(err) }()
 
 	err = app.server.ShutdownWithContext(ctx)
 	return err
