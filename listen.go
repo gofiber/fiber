@@ -267,6 +267,16 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 
+	// Close the listener on any path that doesn't reach Serve (which otherwise
+	// takes ownership of it) — an early error return or a panicking hook — so
+	// the bound socket isn't leaked.
+	served := false
+	defer func() {
+		if !served {
+			_ = ln.Close() //nolint:errcheck // best-effort cleanup on the error path
+		}
+	}()
+
 	// prepare the server for the start
 	app.startupProcess()
 
@@ -285,6 +295,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		}
 	}
 
+	served = true
 	return app.server.Serve(ln)
 }
 
@@ -377,6 +388,7 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg *ListenConfig
 
 	if cfg.ListenerNetwork == NetworkUnix {
 		if err = os.Chmod(addr, cfg.UnixSocketFileMode); err != nil {
+			_ = listener.Close() //nolint:errcheck // best-effort cleanup on the error path
 			return nil, fmt.Errorf("cannot chmod %#o for %q: %w", cfg.UnixSocketFileMode, addr, err)
 		}
 	}

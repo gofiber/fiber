@@ -38,6 +38,30 @@ func Test_Listen(t *testing.T) {
 	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true}))
 }
 
+// go test -run Test_Listen_ClosesListenerOnBeforeServeError
+func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
+	// Grab a free port, then release it so we can bind it via Listen.
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := probe.Addr().String()
+	require.NoError(t, probe.Close())
+
+	app := New()
+	err = app.Listen(addr, ListenConfig{
+		DisableStartupMessage: true,
+		BeforeServeFunc: func(_ *App) error {
+			return errors.New("stop before serving")
+		},
+	})
+	require.Error(t, err)
+
+	// The listener must have been closed on the error path, so the port is
+	// immediately bindable again (a leaked listener would keep it bound).
+	ln, err := net.Listen("tcp", addr)
+	require.NoError(t, err, "listener leaked: port still bound after BeforeServeFunc error")
+	require.NoError(t, ln.Close())
+}
+
 // go test -run Test_Listen_Graceful_Shutdown
 func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	t.Run("Basic Graceful Shutdown", func(t *testing.T) {
