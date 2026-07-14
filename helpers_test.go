@@ -47,6 +47,9 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.Equal(t, "text/plain;b=2;a=1", getOffer([]byte("text/plain ;a=1;b=2"), acceptsOfferType, "text/plain;b=2;a=1"))
 	require.Equal(t, "text/plain;a=1", getOffer([]byte("text/plain;   a=1   "), acceptsOfferType, "text/plain;a=1"))
 	require.Equal(t, `text/plain;a="1;b=2\",text/plain"`, getOffer([]byte(`text/plain;a="1;b=2\",text/plain";q=0.9`), acceptsOfferType, `text/plain;a=1;b=2`, `text/plain;a="1;b=2\",text/plain"`))
+	// A quoted-pair escapes exactly one byte, so the string ends at the genuine
+	// closing quote and the later comma splits the ranges (RFC 9110 Section 5.6.4).
+	require.Equal(t, "text/plain", getOffer([]byte(`text/html;p="a\"b", text/plain`), acceptsOfferType, "text/plain"))
 	require.Equal(t, "text/plain;A=CAPS", getOffer([]byte(`text/plain;a="caPs"`), acceptsOfferType, "text/plain;A=CAPS"))
 
 	// The media type and subtype tokens are case-insensitive (RFC 9110 8.3.1)
@@ -1880,5 +1883,39 @@ func Test_IsMethodIdempotent(t *testing.T) {
 	}
 	for _, m := range notIdempotent {
 		require.False(t, IsMethodIdempotent(m), "%s should not be idempotent", m)
+	}
+}
+
+func Test_appendLowerASCII(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		out  string
+	}{
+		{"empty", "", ""},
+		{"short lower", "/abc", "/abc"},
+		{"short mixed", "/AbC", "/abc"},
+		{"exactly one word", "/ABCDEFG", "/abcdefg"},
+		{"multi word", "/API/V1/UsersAndGroups", "/api/v1/usersandgroups"},
+		{"word plus tail", "/ABCDEFGH/XYZ", "/abcdefgh/xyz"},
+		{"non-letters unchanged", "/a1-B2_c3{~}", "/a1-b2_c3{~}"},
+		{"non-ascii passthrough", "/CAFé\xC3\xA9/É", "/caf\xC3\xA9\xC3\xA9/\xC3\x89"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Fresh destination (forces growth) and reused oversized
+			// destination (exercises the cap(dst) >= n path).
+			require.Equal(t, tc.out, string(appendLowerASCII(nil, []byte(tc.in))))
+			reused := make([]byte, 0, 128)
+			got := appendLowerASCII(reused, []byte(tc.in))
+			require.Equal(t, tc.out, string(got))
+			if tc.in != "" {
+				require.Equal(t, 128, cap(got), "reused buffer must not be reallocated")
+			}
+		})
 	}
 }

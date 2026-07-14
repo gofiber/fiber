@@ -458,37 +458,6 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 
 // crossHostSensitiveHeaders lists headers that carry credentials bound to
 // a specific origin and must not survive a redirect to a different host.
-// indexControlByte returns the index of the first control byte (< 0x20 or
-// DEL) in b, or -1 if none is present. Bytes >= 0x80 are allowed; they are
-// handled by URI parsing, not header-injection checks. Scans eight bytes at
-// a time, finishing inputs of 8+ bytes with one overlapping word.
-func indexControlByte(b []byte) int {
-	n := len(b)
-	i := 0
-	for ; i+swar.WordLen <= n; i += swar.WordLen {
-		w := swar.Load8(b, i)
-		if m := swar.MatchRangeMask(w, 0x00, 0x1f) | swar.MatchByteMask(w, 0x7f); m != 0 {
-			return i + swar.FirstLane(m)
-		}
-	}
-	if i == n {
-		return -1
-	}
-	if n >= swar.WordLen {
-		w := swar.Load8(b, n-swar.WordLen)
-		if m := swar.MatchRangeMask(w, 0x00, 0x1f) | swar.MatchByteMask(w, 0x7f); m != 0 {
-			return n - swar.WordLen + swar.FirstLane(m)
-		}
-		return -1
-	}
-	for ; i < n; i++ {
-		if b[i] < 0x20 || b[i] == 0x7f {
-			return i
-		}
-	}
-	return -1
-}
-
 var crossHostSensitiveHeaders = []string{
 	fiber.HeaderAuthorization,
 	fiber.HeaderProxyAuthorization,
@@ -501,6 +470,39 @@ func stripCrossHostHeaders(req *fasthttp.Request) {
 	}
 }
 
+// ctlOrDELMask marks the lanes of w holding control bytes that must not
+// appear in a redirect Location value: anything < 0x20 (including HTAB) or
+// DEL. Bytes >= 0x80 are never marked; they are handled by URI parsing, not
+// header-injection checks.
+func ctlOrDELMask(w uint64) uint64 {
+	return swar.MatchRangeMask(w, 0x00, 0x1f) | swar.MatchByteMask(w, 0x7f)
+}
+
+// containsCTLOrDEL reports whether b holds any byte ctlOrDELMask matches.
+// It scans eight bytes at a time, finishing inputs of 8+ bytes with one
+// overlapping word; shorter inputs are checked byte-wise.
+func containsCTLOrDEL(b []byte) bool {
+	n := len(b)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		if ctlOrDELMask(swar.Load8(b, i)) != 0 {
+			return true
+		}
+	}
+	if i == n {
+		return false
+	}
+	if n >= swar.WordLen {
+		return ctlOrDELMask(swar.Load8(b, n-swar.WordLen)) != 0
+	}
+	for ; i < n; i++ {
+		if b[i] < 0x20 || b[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveRedirect parses a redirect target relative to the current URL
 // and applies the SecurityPolicy. CRLF and other control bytes are
 // rejected to prevent header injection via Location. The returned value
@@ -508,7 +510,7 @@ func stripCrossHostHeaders(req *fasthttp.Request) {
 // pass it straight into network sinks without re-parsing user-controlled
 // strings.
 func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) (*url.URL, error) {
-	if indexControlByte(location) != -1 {
+	if containsCTLOrDEL(location) {
 		return nil, fasthttp.ErrorInvalidURI
 	}
 	uri := fasthttp.AcquireURI()

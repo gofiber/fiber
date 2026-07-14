@@ -5590,6 +5590,8 @@ func Test_hasDirective(t *testing.T) {
 
 		// Empty / edge cases
 		{"empty header", "", "no-cache", false},
+		{"empty directive never matches", "no-cache", "", false},
+		{"empty directive empty header", "", "", false},
 	}
 
 	for _, tc := range tests {

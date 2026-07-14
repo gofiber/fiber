@@ -215,14 +215,7 @@ func writeSanitized(output Buffer, p []byte) (int, error) {
 	if idx == -1 {
 		return output.Write(p)
 	}
-	scrubbed := make([]byte, len(p))
-	copy(scrubbed, p)
-	for i := idx; i < len(scrubbed); i++ {
-		if isControlByte(scrubbed[i]) {
-			scrubbed[i] = ' '
-		}
-	}
-	return output.Write(scrubbed)
+	return output.Write(scrubControls(p, idx))
 }
 
 func writeSanitizedString(output Buffer, s string) (int, error) {
@@ -230,6 +223,13 @@ func writeSanitizedString(output Buffer, s string) (int, error) {
 	if idx == -1 {
 		return output.WriteString(s)
 	}
+	return output.Write(scrubControls(s, idx))
+}
+
+// scrubControls returns a copy of s with every byte isControlByte matches
+// replaced by a space. idx is the index of the first such byte, so the
+// scan starts there and the clean prefix is copied untouched.
+func scrubControls[S ~string | ~[]byte](s S, idx int) []byte {
 	scrubbed := make([]byte, len(s))
 	copy(scrubbed, s)
 	for i := idx; i < len(scrubbed); i++ {
@@ -237,7 +237,7 @@ func writeSanitizedString(output Buffer, s string) (int, error) {
 			scrubbed[i] = ' '
 		}
 	}
-	return output.Write(scrubbed)
+	return scrubbed
 }
 
 // indexControlByte returns the index of the first byte isControlByte matches,

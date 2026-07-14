@@ -71,18 +71,24 @@ func sanitizeRequestID(rid string, generator func() string) string {
 
 // isValidRequestID reports whether the request ID contains only visible ASCII
 // characters (0x20–0x7E) and is non-empty.
+// visibleASCIIMask marks the lanes of w inside [0x20, 0x7E]; bytes >= 0x80
+// are never marked. A word is all visible ASCII iff the mask equals
+// swar.HighBits.
+func visibleASCIIMask(w uint64) uint64 {
+	return swar.MatchRangeMask(w, 0x20, 0x7e)
+}
+
 func isValidRequestID(rid string) bool {
 	if rid == "" {
 		return false
 	}
 
-	// Check eight bytes per iteration; MatchRangeMask marks exactly the
-	// lanes inside [0x20, 0x7E] (bytes >= 0x80 are never marked), so a
-	// mask with all lanes set means the whole word is visible ASCII.
+	// Check eight bytes per iteration, finishing inputs of 8+ bytes with
+	// one overlapping word; shorter ones are checked byte-wise.
 	n := len(rid)
 	i := 0
 	for ; i+swar.WordLen <= n; i += swar.WordLen {
-		if swar.MatchRangeMask(swar.Load8(rid, i), 0x20, 0x7e) != swar.HighBits {
+		if visibleASCIIMask(swar.Load8(rid, i)) != swar.HighBits {
 			return false
 		}
 	}
@@ -90,9 +96,7 @@ func isValidRequestID(rid string) bool {
 		return true
 	}
 	if n >= swar.WordLen {
-		// Finish with one overlapping word; re-checking bytes that already
-		// passed cannot change the outcome.
-		return swar.MatchRangeMask(swar.Load8(rid, n-swar.WordLen), 0x20, 0x7e) == swar.HighBits
+		return visibleASCIIMask(swar.Load8(rid, n-swar.WordLen)) == swar.HighBits
 	}
 	for ; i < n; i++ {
 		if c := rid[i]; c < 0x20 || c > 0x7e {

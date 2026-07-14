@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
-	"github.com/gofiber/utils/v2/swar"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -716,39 +715,6 @@ func (c *DefaultCtx) configDependentPaths() {
 	// Invalidate the cached slash count of the detection path; pathSlashCount
 	// recomputes it lazily when route matching first needs it.
 	c.pathSlashes = 0
-}
-
-// appendLowerASCII writes the ASCII-lowercased bytes of src into dst[:0],
-// growing dst as needed, in a single pass over src (instead of a copy
-// followed by an in-place case fold). Bytes outside 'A'..'Z', including
-// non-ASCII, are copied unchanged. src and dst must not overlap.
-func appendLowerASCII(dst, src []byte) []byte {
-	n := len(src)
-	if cap(dst) >= n {
-		dst = dst[:n]
-	} else {
-		dst = make([]byte, n)
-	}
-	i := 0
-	for ; i+swar.WordLen <= n; i += swar.WordLen {
-		swar.Store8(dst, i, swar.ToLowerWord(swar.Load8(src, i)))
-	}
-	if i < n {
-		if n >= swar.WordLen {
-			// Finish with one overlapping word; the overlapped bytes are
-			// rewritten with the same values.
-			swar.Store8(dst, n-swar.WordLen, swar.ToLowerWord(swar.Load8(src, n-swar.WordLen)))
-		} else {
-			for ; i < n; i++ {
-				c := src[i]
-				if c-'A' <= 'Z'-'A' {
-					c |= 0x20
-				}
-				dst[i] = c
-			}
-		}
-	}
-	return dst
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.

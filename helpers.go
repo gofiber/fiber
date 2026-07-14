@@ -24,6 +24,7 @@ import (
 
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
+	"github.com/gofiber/utils/v2/swar"
 
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/gofiber/fiber/v3/log"
@@ -165,19 +166,25 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return n, nil
 }
 
-// quoteRawString escapes only characters that need quoting according to
-// https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
-// contain non-ASCII bytes.
+// quoteRawString escapes the characters that need quoting inside an RFC 9110
+// quoted-string (https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4), plus
+// HTAB, which the RFC permits as qdtext but this function has always
+// percent-encoded. The result may contain non-ASCII bytes.
 func (*App) quoteRawString(raw string) string {
 	// Fast path: most values need no escaping at all; avoid the pooled
-	// buffer and the string allocation entirely. IndexNonQuotable treats
-	// HTAB as quotable qdtext (per RFC 9110), but this function escapes it,
-	// so a separate tab scan keeps the escape set unchanged.
-	idx := utils.IndexNonQuotable(raw)
-	if tab := strings.IndexByte(raw, '\t'); tab != -1 && (idx == -1 || tab < idx) {
-		idx = tab
+	// buffer and the string allocation entirely. utils.IndexNonQuotable
+	// treats HTAB as quotable, so a tab scan keeps the escape set
+	// unchanged — bounded to the clean prefix, since only a tab before the
+	// first non-quotable byte can move the escape start.
+	end := utils.IndexNonQuotable(raw)
+	if end == -1 {
+		if tab := strings.IndexByte(raw, '\t'); tab != -1 {
+			end = tab
+		}
+	} else if tab := strings.IndexByte(raw[:end], '\t'); tab != -1 {
+		end = tab
 	}
-	if idx == -1 {
+	if end == -1 {
 		return raw
 	}
 
@@ -185,10 +192,10 @@ func (*App) quoteRawString(raw string) string {
 	bb := bytebufferpool.Get()
 	defer bytebufferpool.Put(bb)
 
-	// Every byte before idx is quotable and tab-free, so it hits the
+	// Every byte before end is quotable and tab-free, so it hits the
 	// verbatim case of the switch below; copy it in one append.
-	bb.B = append(bb.B, raw[:idx]...)
-	for i := idx; i < len(raw); i++ {
+	bb.B = append(bb.B, raw[:end]...)
+	for i := end; i < len(raw); i++ {
 		c := raw[i]
 		switch {
 		case c == '\\' || c == '"':
@@ -212,6 +219,38 @@ func (*App) quoteRawString(raw string) string {
 	}
 
 	return string(bb.B)
+}
+
+// appendLowerASCII writes the ASCII-lowercased bytes of src into dst[:0],
+// growing dst as needed, in a single pass over src (instead of a copy
+// followed by an in-place case fold). Bytes outside 'A'..'Z', including
+// non-ASCII, are copied unchanged. src and dst must not overlap.
+func appendLowerASCII(dst, src []byte) []byte {
+	n := len(src)
+	// Amortized growth like append: every byte of dst[:n] is overwritten
+	// below, so the grown slice's contents don't matter.
+	dst = slices.Grow(dst[:0], n)[:n]
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		swar.Store8(dst, i, swar.ToLowerWord(swar.Load8(src, i)))
+	}
+	if i == n {
+		return dst
+	}
+	if n >= swar.WordLen {
+		// Finish with one overlapping word; the overlapped bytes are
+		// rewritten with the same values.
+		swar.Store8(dst, n-swar.WordLen, swar.ToLowerWord(swar.Load8(src, n-swar.WordLen)))
+		return dst
+	}
+	for ; i < n; i++ {
+		c := src[i]
+		if c-'A' <= 'Z'-'A' {
+			c |= 0x20
+		}
+		dst[i] = c
+	}
+	return dst
 }
 
 // defaultString returns the value or a default value if it is set
@@ -602,7 +641,6 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 		n := 0
 		header = utils.TrimLeft(header, ' ')
 		quotes := 0
-		escaping := false
 
 		if hasDQuote {
 			// Complex case. We need to keep track of quotes and quoted-pairs (i.e.,  characters escaped with \ )
@@ -622,12 +660,13 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 						break loop
 					}
 				case '"':
-					if !escaping {
-						quotes++
-					}
+					quotes++
 				default: // '\\'
-					if quotes%2 == 1 {
-						escaping = !escaping
+					if quotes%2 == 1 && n+1 < len(header) {
+						// A quoted-pair escapes exactly the next byte
+						// (RFC 9110 §5.6.4); consume it so an escaped
+						// quote is not mistaken for a closing quote.
+						n++
 					}
 				}
 				n++

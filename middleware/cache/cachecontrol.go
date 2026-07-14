@@ -7,8 +7,13 @@ import (
 
 // hasDirective checks if a cache directive header value contains a directive (case-insensitive).
 // A directive is considered matched when followed by end-of-string, ',', ' ', '\t', or '='
-// per RFC 9111 §5.2.
+// per RFC 9111 §5.2. An empty directive never matches: IndexFold would find an
+// empty needle at every position, so without this guard the resume index below
+// would walk past len(cc) and panic.
 func hasDirective(cc, directive string) bool {
+	if directive == "" {
+		return false
+	}
 	pos := 0
 	for {
 		i := utils.IndexFold(cc[pos:], directive)
