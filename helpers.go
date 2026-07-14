@@ -166,24 +166,54 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return n, nil
 }
 
+// quoteEscapeMask marks the lanes of w holding bytes quoteRawString must
+// escape: '\\', '"', any C0 control (including HTAB), or DEL. Lanes >= 0x80
+// are never marked; non-ASCII bytes pass through verbatim. This is
+// utils.IndexNonQuotable's RFC 9110 set widened by HTAB, which the RFC
+// permits as qdtext but this function has always percent-encoded.
+func quoteEscapeMask(w uint64) uint64 {
+	return swar.MatchByteMask(w, '\\') | swar.MatchByteMask(w, '"') |
+		swar.MatchRangeMask(w, 0x00, 0x1f) | swar.MatchByteMask(w, 0x7f)
+}
+
+// indexQuoteEscape returns the index of the first byte quoteEscapeMask
+// matches, or -1 if raw needs no escaping. It scans eight bytes at a time,
+// finishing inputs of 8+ bytes with one overlapping word; shorter inputs
+// are checked byte-wise.
+func indexQuoteEscape(raw string) int {
+	n := len(raw)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		if m := quoteEscapeMask(swar.Load8(raw, i)); m != 0 {
+			return i + swar.FirstLane(m)
+		}
+	}
+	if i == n {
+		return -1
+	}
+	if n >= swar.WordLen {
+		if m := quoteEscapeMask(swar.Load8(raw, n-swar.WordLen)); m != 0 {
+			return n - swar.WordLen + swar.FirstLane(m)
+		}
+		return -1
+	}
+	for ; i < n; i++ {
+		if c := raw[i]; c == '\\' || c == '"' || c < 0x20 || c == 0x7f {
+			return i
+		}
+	}
+	return -1
+}
+
 // quoteRawString escapes the characters that need quoting inside an RFC 9110
 // quoted-string (https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4), plus
 // HTAB, which the RFC permits as qdtext but this function has always
 // percent-encoded. The result may contain non-ASCII bytes.
 func (*App) quoteRawString(raw string) string {
 	// Fast path: most values need no escaping at all; avoid the pooled
-	// buffer and the string allocation entirely. utils.IndexNonQuotable
-	// treats HTAB as quotable, so a tab scan keeps the escape set
-	// unchanged — bounded to the clean prefix, since only a tab before the
-	// first non-quotable byte can move the escape start.
-	end := utils.IndexNonQuotable(raw)
+	// buffer and the string allocation entirely.
+	end := indexQuoteEscape(raw)
 	if end == -1 {
-		end = len(raw)
-	}
-	if tab := strings.IndexByte(raw[:end], '\t'); tab != -1 {
-		end = tab
-	}
-	if end == len(raw) {
 		return raw
 	}
 
