@@ -7,7 +7,7 @@ require (
 	github.com/gofiber/utils/v2 v2.2.0
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-colorable v0.1.15
-	github.com/mattn/go-isatty v0.0.22
+	github.com/mattn/go-isatty v0.0.23
 	github.com/shamaton/msgpack/v3 v3.2.0
 	github.com/stretchr/testify v1.11.1
 	github.com/tinylib/msgp v1.6.4
