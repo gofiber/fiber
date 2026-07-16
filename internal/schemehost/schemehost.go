@@ -17,8 +17,7 @@ const (
 )
 
 // schemePorts is the single source of truth for the schemes whose default
-// port is normalized away during origin comparison. Both Match and the legacy
-// normalize path resolve ports from this table.
+// port is normalized away during origin comparison.
 var schemePorts = [...]struct {
 	scheme string
 	port   string
@@ -37,16 +36,6 @@ func foldSchemePort(scheme string) (canonical, port string, known bool) { //noli
 		}
 	}
 	return "", "", false
-}
-
-// exactSchemePort resolves an already-lowercased scheme against schemePorts.
-func exactSchemePort(scheme string) (string, bool) {
-	for _, e := range schemePorts {
-		if scheme == e.scheme {
-			return e.port, true
-		}
-	}
-	return "", false
 }
 
 // Match reports whether (schemeA, hostA) and (schemeB, hostB) denote the same
@@ -89,17 +78,6 @@ func Match(schemeA, hostA, schemeB, hostB string) bool {
 	// Anything unusual (userinfo, percent-encoding, bracketed IPv6, control
 	// chars, invalid port, ...) takes the legacy normalize-and-compare path.
 	return normalizeHostPort(scheme, hostA, defaultPort) == normalizeHostPort(scheme, hostB, defaultPort)
-}
-
-// normalizeSchemeHost normalizes a single (scheme, host) pair the legacy way.
-// The scheme is expected pre-lowered here; unknown schemes get no port
-// normalization.
-func normalizeSchemeHost(scheme, host string) string {
-	defaultPort, known := exactSchemePort(scheme)
-	if !known {
-		return utilsstrings.ToLower(host)
-	}
-	return normalizeHostPort(scheme, host, defaultPort)
 }
 
 // normalizeHostPort lowercases host and appends defaultPort when no explicit

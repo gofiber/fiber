@@ -9,6 +9,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// normalizeSchemeHost is the legacy single-value normalize entry point, kept
+// test-side as the bridge between the production normalizeHostPort fallback
+// and the url.Parse reference below. The scheme is expected pre-lowered here
+// (exact match, so "HTTP" is unknown), matching the original implementation.
+func normalizeSchemeHost(scheme, host string) string {
+	for _, e := range schemePorts {
+		if scheme == e.scheme {
+			return normalizeHostPort(scheme, host, e.port)
+		}
+	}
+	return utilsstrings.ToLower(host)
+}
+
 // refNormalizeSchemeHost is the original url.Parse-based implementation, kept as
 // a behavioral reference. The fast-path normalizeSchemeHost must produce
 // identical output for every input.
