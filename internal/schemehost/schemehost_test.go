@@ -180,12 +180,25 @@ func Benchmark_normalizeSchemeHost(b *testing.B) {
 }
 
 func Benchmark_Match(b *testing.B) {
-	b.ReportAllocs()
-	var ok bool
-	for b.Loop() {
-		ok = Match("https", "example.com", "https", "example.com")
+	cases := []struct{ name, schemeA, hostA, schemeB, hostB string }{
+		// Byte-identical hosts exit at the equality fast path.
+		{"identical", "https", "example.com", "https", "example.com"},
+		// Default-port normalization exercises splitCleanHostPort + foldSchemePort.
+		{"defaultport", "https", "example.com", "https", "example.com:443"},
+		{"mismatch", "https", "example.com", "https", "evil.example"},
+		// Unclean host takes the legacy normalize fallback.
+		{"fallback", "https", "[::1]", "https", "[::1]:443"},
 	}
-	_ = ok
+	for _, tc := range cases {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			var ok bool
+			for b.Loop() {
+				ok = Match(tc.schemeA, tc.hostA, tc.schemeB, tc.hostB)
+			}
+			_ = ok
+		})
+	}
 }
 
 // FuzzNormalizeSchemeHost asserts the fast path stays byte-for-byte equivalent

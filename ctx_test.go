@@ -5482,6 +5482,10 @@ func Test_Ctx_Range(t *testing.T) {
 	testRange("bytes=-")
 	testRange("bytes=500-1000", RangeSet{Start: 500, End: 999})
 	testRange("bytes=500-700", RangeSet{Start: 500, End: 700})
+	// Range units are case-insensitive (RFC 9110 §14.1); the reported Type is
+	// still the canonical lowercase form.
+	testRange("Bytes=500-700", RangeSet{Start: 500, End: 700})
+	testRange("BYTES=500-700", RangeSet{Start: 500, End: 700})
 	testRange("bytes=0-0,2-1000", RangeSet{Start: 0, End: 0}, RangeSet{Start: 2, End: 999})
 	testRange("bytes=0-99,450-549,-100", RangeSet{Start: 0, End: 99}, RangeSet{Start: 450, End: 549}, RangeSet{Start: 900, End: 999})
 	testRange("bytes=500-700,601-999", RangeSet{Start: 500, End: 700}, RangeSet{Start: 601, End: 999})

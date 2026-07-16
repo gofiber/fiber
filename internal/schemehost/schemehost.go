@@ -85,10 +85,11 @@ func Match(schemeA, hostA, schemeB, hostB string) bool {
 func normalizeHostPort(scheme, host, defaultPort string) string {
 	host = utilsstrings.ToLower(host)
 
-	// Fast path for a clean "host" or "host:port" value (the common case),
-	// avoiding the url.Parse allocation. Anything unusual (userinfo, path,
-	// percent-encoding, bracketed IPv6, control chars, empty/invalid port, ...)
-	// falls back to the url.Parse path, which preserves the exact legacy behavior.
+	// Clean "host" or "host:port" values (e.g. the clean side of a mixed
+	// clean/unclean pair; Match handles the clean/clean case itself) avoid the
+	// url.Parse allocation. Anything unusual (userinfo, path, percent-encoding,
+	// bracketed IPv6, control chars, empty/invalid port, ...) falls back to the
+	// url.Parse path, which preserves the exact legacy behavior.
 	if _, port, clean := splitCleanHostPort(host); clean {
 		if port != "" {
 			return host

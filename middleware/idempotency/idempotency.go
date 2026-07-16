@@ -155,15 +155,15 @@ func New(config ...Config) fiber.Handler {
 				return fmt.Errorf("failed to bind to response headers: %w", err)
 			}
 
-			if cfg.KeepResponseHeaders == nil {
+			if keepResponseHeaders == nil {
 				// Keep all
 				res.Headers = headers
 			} else {
 				// Filter
 				res.Headers = make(map[string][]string)
-				for h := range headers {
+				for h, vals := range headers {
 					if shouldKeepHeader(h) {
-						res.Headers[h] = headers[h]
+						res.Headers[h] = vals
 					}
 				}
 			}
