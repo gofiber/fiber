@@ -78,14 +78,9 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			buf.WriteString(data.Timestamp)
 			buf.WriteString(" | ")
 
-			// Status Code with 3 fixed width, right aligned; formatted into a
-			// stack scratch to avoid the per-request Itoa string.
-			var statusScratch [20]byte
-			status := utils.AppendInt(statusScratch[:0], int64(c.Response().StatusCode()))
-			for i := len(status); i < 3; i++ {
-				buf.WriteByte(' ')
-			}
-			buf.Write(status)
+			// Status Code with 3 fixed width, right aligned; appended digit-wise
+			// to avoid the per-request Itoa string.
+			appendIntPadded(buf, c.Response().StatusCode(), 3)
 			buf.WriteString(" | ")
 
 			// Duration with 13 fixed width, right aligned
@@ -158,12 +153,23 @@ func beforeHandlerFunc(cfg *Config) {
 }
 
 // appendInt writes the decimal form of v into output without going through
-// fmt boxing. The 20-byte stack scratch fits any int64; strconv.AppendInt
+// fmt boxing. The 20-byte stack scratch fits any int64; utils.AppendInt
 // only grows the slice when the formatted value exceeds that capacity, which
 // cannot happen for a fixed-width int.
 func appendInt(output Buffer, v int) (int, error) {
 	var scratch [20]byte
-	return output.Write(strconv.AppendInt(scratch[:0], int64(v), 10))
+	return output.Write(utils.AppendInt(scratch[:0], int64(v)))
+}
+
+// appendIntPadded appends the decimal form of v to buf, right-aligned to
+// width with spaces, without allocating an intermediate string.
+func appendIntPadded(buf *bytebufferpool.ByteBuffer, v, width int) {
+	var scratch [20]byte
+	s := utils.AppendInt(scratch[:0], int64(v))
+	for i := len(s); i < width; i++ {
+		buf.WriteByte(' ')
+	}
+	buf.Write(s)
 }
 
 // writeLog writes a msg to w, printing a warning to stderr if the log fails.

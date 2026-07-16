@@ -151,16 +151,13 @@ func (s *Stream) Retry(retry time.Duration) error {
 		return nil
 	}
 	return s.write(func(w *bufio.Writer) error {
-		// Write the field without fmt boxing; AppendInt formats into a stack
-		// scratch buffer.
-		var scratch [20]byte
-		if _, err := w.WriteString("retry: "); err != nil {
-			return fmt.Errorf("sse: write retry: %w", err)
-		}
-		if _, err := w.Write(utils.AppendInt(scratch[:0], retry.Milliseconds())); err != nil {
-			return fmt.Errorf("sse: write retry: %w", err)
-		}
-		if _, err := w.WriteString("\n\n"); err != nil {
+		// Assemble the whole field in a stack scratch and issue one write:
+		// no fmt boxing, and a single error branch.
+		var scratch [32]byte
+		frame := append(scratch[:0], "retry: "...)
+		frame = utils.AppendInt(frame, retry.Milliseconds())
+		frame = append(frame, '\n', '\n')
+		if _, err := w.Write(frame); err != nil {
 			return fmt.Errorf("sse: write retry: %w", err)
 		}
 		return nil

@@ -486,6 +486,30 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 	require.EqualValues(t, 2, *o)
 }
 
+// Test_Logger_DefaultFormat_WithoutColor pins the byte layout of the
+// non-color default line, in particular the width-3 right-aligned status
+// field that is appended digit-wise without an intermediate string.
+func Test_Logger_DefaultFormat_WithoutColor(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Stream:        buf,
+		DisableColors: true,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusNotFound)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	require.Contains(t, buf.String(), " | 404 | ", "status field must be width-3 with separators")
+	require.Contains(t, buf.String(), " | GET     | ", "method field must be width-7, left aligned")
+}
+
 // go test -run Test_Logger_ErrorOutput
 func Test_Logger_ErrorOutput(t *testing.T) {
 	t.Parallel()
