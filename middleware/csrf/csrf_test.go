@@ -1013,12 +1013,14 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 			https:          true,
 		},
 		{
-			// "null" detection is case-insensitive too.
-			name:           "no header with uppercase null origin",
+			// "null" detection is case-insensitive too. Over plain HTTP an
+			// absent/null origin clears the error (200); a case-sensitive
+			// regression would instead parse "NULL" as a URL and reject with
+			// ErrOriginNoMatch (403), so the outcomes are distinguishable.
+			name:           "no header with uppercase null origin over http",
 			method:         fiber.MethodPost,
 			origin:         "NULL",
-			expectedStatus: http.StatusForbidden,
-			https:          true,
+			expectedStatus: http.StatusOK,
 		},
 		{
 			name:           "GET allowed",
