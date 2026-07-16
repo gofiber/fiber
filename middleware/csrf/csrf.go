@@ -347,8 +347,13 @@ func validateSecFetchSite(c fiber.Ctx) error {
 		return nil
 	}
 
-	switch utilsstrings.ToLower(secFetchSite) {
-	case "same-origin", "none", "cross-site", "same-site":
+	// Compare case-insensitively without lowering: the four valid tokens all
+	// have distinct lengths, so at most one EqualFold does a real comparison.
+	switch {
+	case utils.EqualFold(secFetchSite, "same-origin"),
+		utils.EqualFold(secFetchSite, "none"),
+		utils.EqualFold(secFetchSite, "cross-site"),
+		utils.EqualFold(secFetchSite, "same-site"):
 		return nil
 	default:
 		return ErrFetchSiteInvalid

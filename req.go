@@ -1158,8 +1158,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	if !found {
 		return Range{}, ErrRangeMalformed
 	}
-	rangeData.Type = utilsstrings.ToLower(utils.TrimSpace(before))
-	if rangeData.Type != "bytes" {
+	if !utils.EqualFold(utils.TrimSpace(before), "bytes") {
 		// A range unit the server does not understand is not malformed: it
 		// must be ignored (RFC 9110 Section 14.2), which only the caller can
 		// do, so signal it distinctly. This check runs before any syntax
@@ -1167,6 +1166,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		// characters (such as "=") that byte ranges do not.
 		return Range{}, ErrRangeUnsupported
 	}
+	rangeData.Type = "bytes"
 	if strings.IndexByte(after, '=') >= 0 {
 		return Range{}, ErrRangeMalformed
 	}

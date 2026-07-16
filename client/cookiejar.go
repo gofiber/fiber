@@ -449,13 +449,15 @@ func pathMatch(reqPath, cookiePath []byte) bool {
 }
 
 // domainMatch reports whether host domain-matches the given cookie domain.
+// The comparison is ASCII case-insensitive, so neither value needs to be
+// lowercased (or allocated) beforehand.
 func domainMatch(host, domain string) bool {
-	host = utilsstrings.UnsafeToLower(host)
-
-	if host == domain {
+	if utils.EqualFold(host, domain) {
 		return true
 	}
-	return strings.HasSuffix(host, "."+domain)
+	return len(host) > len(domain) &&
+		host[len(host)-len(domain)-1] == '.' &&
+		utils.HasSuffixFold(host, domain)
 }
 
 // acceptCookieDomain enforces RFC 6265 response-domain acceptance. Trailing-dot,

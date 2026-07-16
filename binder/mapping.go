@@ -314,7 +314,6 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 
 func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	typ := reflect.TypeOf(out).Elem()
-	key = utilsstrings.ToLower(key)
 
 	if isStringKeyMap(typ) {
 		return true
@@ -323,6 +322,10 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	if typ.Kind() != reflect.Struct {
 		return false
 	}
+
+	// Lower the key only once a struct lookup is actually needed; the early
+	// returns above never use it.
+	key = utilsstrings.ToLower(key)
 
 	cache := getFieldCache(aliasTag)
 	val, ok := cache.Load(typ)

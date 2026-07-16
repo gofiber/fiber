@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/gofiber/utils/v2"
-	utilsstrings "github.com/gofiber/utils/v2/strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
@@ -55,11 +54,18 @@ func New(config ...Config) fiber.Handler {
 		return key
 	}
 
-	keepResponseHeadersMap := make(map[string]struct{}, len(cfg.KeepResponseHeaders))
-	for _, h := range cfg.KeepResponseHeaders {
-		// CopyString is needed because utils.ToLower uses UnsafeString
-		// and map keys must be immutable
-		keepResponseHeadersMap[utilsstrings.ToLower(h)] = struct{}{}
+	// Matching is done with utils.EqualFold, so the configured names can be
+	// used as-is: no lowercased copies, and no per-request allocation when
+	// comparing against the canonical-case names fasthttp reports.
+	keepResponseHeaders := cfg.KeepResponseHeaders
+
+	shouldKeepHeader := func(header string) bool {
+		for _, keep := range keepResponseHeaders {
+			if utils.EqualFold(header, keep) {
+				return true
+			}
+		}
+		return false
 	}
 
 	maybeWriteCachedResponse := func(c fiber.Ctx, key string) (bool, error) {
@@ -157,7 +163,7 @@ func New(config ...Config) fiber.Handler {
 				// Filter
 				res.Headers = make(map[string][]string)
 				for h := range headers {
-					if _, ok := keepResponseHeadersMap[utilsstrings.ToLower(h)]; ok {
+					if shouldKeepHeader(h) {
 						res.Headers[h] = headers[h]
 					}
 				}

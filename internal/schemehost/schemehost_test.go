@@ -96,6 +96,35 @@ func Test_normalizeSchemeHost(t *testing.T) {
 	}
 }
 
+// refMatch is the original implementation of Match, kept as a behavioral
+// reference: lowercase both schemes, then compare the normalized scheme-host
+// strings. Match must return the same result for every input.
+func refMatch(schemeA, hostA, schemeB, hostB string) bool {
+	normalizedSchemeA := utilsstrings.ToLower(schemeA)
+	normalizedSchemeB := utilsstrings.ToLower(schemeB)
+	return normalizedSchemeA == normalizedSchemeB &&
+		refNormalizeSchemeHost(normalizedSchemeA, hostA) == refNormalizeSchemeHost(normalizedSchemeB, hostB)
+}
+
+// Test_Match_matchesReference verifies the allocation-free fast path in Match
+// produces the same verdict as the reference implementation across the full
+// adversarial corpus.
+func Test_Match_matchesReference(t *testing.T) {
+	t.Parallel()
+	schemes := []string{"http", "https", "HTTP", "HTTPS", "ftp", ""}
+	for _, schemeA := range schemes {
+		for _, schemeB := range schemes {
+			for _, hostA := range corpus {
+				for _, hostB := range corpus {
+					got := Match(schemeA, hostA, schemeB, hostB)
+					want := refMatch(schemeA, hostA, schemeB, hostB)
+					assert.Equal(t, want, got, "Match(%q,%q,%q,%q)", schemeA, hostA, schemeB, hostB)
+				}
+			}
+		}
+	}
+}
+
 func Test_Match(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
