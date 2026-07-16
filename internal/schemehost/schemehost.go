@@ -97,7 +97,7 @@ func normalizeHostPort(scheme, host, defaultPort string) string {
 		return host + ":" + defaultPort
 	}
 
-	return normalizeSchemeHostViaParse(scheme, host, defaultPort)
+	return normalizeHostPortViaParse(scheme, host, defaultPort)
 }
 
 // splitCleanHostPort splits a plain "<reg-name-or-IPv4>" or
@@ -145,9 +145,9 @@ func allDigits(s string) bool {
 	return true
 }
 
-// normalizeSchemeHostViaParse is the url.Parse-based fallback. host is already
+// normalizeHostPortViaParse is the url.Parse-based fallback. host is already
 // lowercased and scheme is known to be http or https.
-func normalizeSchemeHostViaParse(scheme, host, defaultPort string) string {
+func normalizeHostPortViaParse(scheme, host, defaultPort string) string {
 	parsedHost, err := url.Parse(scheme + "://" + host)
 	if err != nil {
 		return host
