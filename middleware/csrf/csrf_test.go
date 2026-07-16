@@ -998,9 +998,25 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 			expectedStatus: http.StatusForbidden,
 		},
 		{
+			// Origin comparison is case-insensitive end-to-end: the raw
+			// mixed-case header must be accepted on the same-origin fast path.
+			name:           "no header with mixed-case matching origin",
+			method:         fiber.MethodPost,
+			origin:         "HTTP://EXAMPLE.COM",
+			expectedStatus: http.StatusOK,
+		},
+		{
 			name:           "no header with null origin",
 			method:         fiber.MethodPost,
 			origin:         "null",
+			expectedStatus: http.StatusForbidden,
+			https:          true,
+		},
+		{
+			// "null" detection is case-insensitive too.
+			name:           "no header with uppercase null origin",
+			method:         fiber.MethodPost,
+			origin:         "NULL",
 			expectedStatus: http.StatusForbidden,
 			https:          true,
 		},
@@ -1369,6 +1385,22 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	ctx.Request.Header.SetProtocol("https")
 	ctx.Request.Header.SetHost("example.com")
 	ctx.Request.Header.Set(fiber.HeaderReferer, "https://safe.example.com")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 200, ctx.Response.StatusCode())
+
+	// Test same-origin Referer with mixed-case header: accepted on the
+	// fold-based Match fast path, no trusted-origin fallback involved.
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+	ctx.Request.URI().SetScheme("https")
+	ctx.Request.URI().SetHost("example.com")
+	ctx.Request.Header.SetProtocol("https")
+	ctx.Request.Header.SetHost("example.com")
+	ctx.Request.Header.Set(fiber.HeaderReferer, "HTTPS://EXAMPLE.COM/Some/Path")
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
