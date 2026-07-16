@@ -153,7 +153,7 @@ func beforeHandlerFunc(cfg *Config) {
 }
 
 // appendInt writes the decimal form of v into output without going through
-// fmt boxing. The 20-byte stack scratch fits any int64; utils.AppendInt
+// fmt boxing. The fixed 20-byte scratch fits any int64; utils.AppendInt
 // only grows the slice when the formatted value exceeds that capacity, which
 // cannot happen for a fixed-width int.
 func appendInt(output Buffer, v int) (int, error) {
