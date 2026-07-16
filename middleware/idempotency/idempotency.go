@@ -2,6 +2,7 @@ package idempotency
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/gofiber/utils/v2"
 
@@ -54,18 +55,16 @@ func New(config ...Config) fiber.Handler {
 		return key
 	}
 
-	// Matching is done with utils.EqualFold, so the configured names can be
-	// used as-is: no lowercased copies, and no per-request allocation when
-	// comparing against the canonical-case names fasthttp reports.
-	keepResponseHeaders := cfg.KeepResponseHeaders
+	// Snapshot the configured names so later mutation of the caller's slice
+	// cannot change an already-constructed handler. Matching uses
+	// utils.EqualFold, so no lowercased copies are needed and comparing
+	// against the canonical-case names fasthttp reports stays allocation-free.
+	keepResponseHeaders := slices.Clone(cfg.KeepResponseHeaders)
 
 	shouldKeepHeader := func(header string) bool {
-		for _, keep := range keepResponseHeaders {
-			if utils.EqualFold(header, keep) {
-				return true
-			}
-		}
-		return false
+		return slices.ContainsFunc(keepResponseHeaders, func(keep string) bool {
+			return utils.EqualFold(header, keep)
+		})
 	}
 
 	maybeWriteCachedResponse := func(c fiber.Ctx, key string) (bool, error) {

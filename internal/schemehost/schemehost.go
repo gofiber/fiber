@@ -16,6 +16,39 @@ const (
 	schemeHTTPS = "https"
 )
 
+// schemePorts is the single source of truth for the schemes whose default
+// port is normalized away during origin comparison. Both Match and the legacy
+// normalize path resolve ports from this table.
+var schemePorts = [...]struct {
+	scheme string
+	port   string
+}{
+	{schemeHTTP, "80"},
+	{schemeHTTPS, "443"},
+}
+
+// foldSchemePort resolves scheme against schemePorts, ASCII
+// case-insensitively, returning the canonical lowercase scheme and its
+// default port.
+func foldSchemePort(scheme string) (canonical, port string, known bool) { //nolint:nonamedreturns // names document the three results
+	for _, e := range schemePorts {
+		if utils.EqualFold(scheme, e.scheme) {
+			return e.scheme, e.port, true
+		}
+	}
+	return "", "", false
+}
+
+// exactSchemePort resolves an already-lowercased scheme against schemePorts.
+func exactSchemePort(scheme string) (string, bool) {
+	for _, e := range schemePorts {
+		if scheme == e.scheme {
+			return e.port, true
+		}
+	}
+	return "", false
+}
+
 // Match reports whether (schemeA, hostA) and (schemeB, hostB) denote the same
 // origin. Scheme comparison is case-insensitive and default ports (http:80,
 // https:443) are normalized so "example.com" and "example.com:443" match.
@@ -24,13 +57,15 @@ func Match(schemeA, hostA, schemeB, hostB string) bool {
 		return false
 	}
 
-	var scheme, defaultPort string
-	switch {
-	case utils.EqualFold(schemeA, schemeHTTP):
-		scheme, defaultPort = schemeHTTP, "80"
-	case utils.EqualFold(schemeA, schemeHTTPS):
-		scheme, defaultPort = schemeHTTPS, "443"
-	default:
+	// Identical host strings always normalize identically, so they denote the
+	// same origin once the schemes match. This is the dominant same-origin
+	// input (e.g. Origin-vs-Host on non-CORS requests).
+	if hostA == hostB {
+		return true
+	}
+
+	scheme, defaultPort, known := foldSchemePort(schemeA)
+	if !known {
 		// Unknown schemes get no port normalization: the hosts must simply be
 		// equal, ASCII case-insensitively.
 		return utils.EqualFold(hostA, hostB)
@@ -39,35 +74,38 @@ func Match(schemeA, hostA, schemeB, hostB string) bool {
 	// Fast path for two clean "host" or "host:port" values (the common case):
 	// compare the host parts case-insensitively and the effective ports
 	// exactly, without allocating lowered or port-normalized copies.
-	hostOnlyA, portA, cleanA := splitCleanHostPort(hostA)
-	hostOnlyB, portB, cleanB := splitCleanHostPort(hostB)
-	if cleanA && cleanB {
-		if portA == "" {
-			portA = defaultPort
+	if hostOnlyA, portA, cleanA := splitCleanHostPort(hostA); cleanA {
+		if hostOnlyB, portB, cleanB := splitCleanHostPort(hostB); cleanB {
+			if portA == "" {
+				portA = defaultPort
+			}
+			if portB == "" {
+				portB = defaultPort
+			}
+			return portA == portB && utils.EqualFold(hostOnlyA, hostOnlyB)
 		}
-		if portB == "" {
-			portB = defaultPort
-		}
-		return portA == portB && utils.EqualFold(hostOnlyA, hostOnlyB)
 	}
 
 	// Anything unusual (userinfo, percent-encoding, bracketed IPv6, control
 	// chars, invalid port, ...) takes the legacy normalize-and-compare path.
-	return normalizeSchemeHost(scheme, hostA) == normalizeSchemeHost(scheme, hostB)
+	return normalizeHostPort(scheme, hostA, defaultPort) == normalizeHostPort(scheme, hostB, defaultPort)
 }
 
+// normalizeSchemeHost normalizes a single (scheme, host) pair the legacy way.
+// The scheme is expected pre-lowered here; unknown schemes get no port
+// normalization.
 func normalizeSchemeHost(scheme, host string) string {
-	host = utilsstrings.ToLower(host)
-
-	var defaultPort string
-	switch scheme {
-	case schemeHTTP:
-		defaultPort = "80"
-	case schemeHTTPS:
-		defaultPort = "443"
-	default:
-		return host
+	defaultPort, known := exactSchemePort(scheme)
+	if !known {
+		return utilsstrings.ToLower(host)
 	}
+	return normalizeHostPort(scheme, host, defaultPort)
+}
+
+// normalizeHostPort lowercases host and appends defaultPort when no explicit
+// port is present. scheme is only used by the url.Parse fallback.
+func normalizeHostPort(scheme, host, defaultPort string) string {
+	host = utilsstrings.ToLower(host)
 
 	// Fast path for a clean "host" or "host:port" value (the common case),
 	// avoiding the url.Parse allocation. Anything unusual (userinfo, path,
