@@ -228,6 +228,10 @@ func (c *Constraint) matchConstraint(param string) bool {
 type intConstraintType struct{}
 
 func (intConstraintType) Name() string { return ConstraintInt }
+
+// The int-family constraints (int, min, max, range) deliberately stay on
+// strconv.Atoi: utils.ParseNativeInt benchmarked slower for the short
+// (1-14 digit) params routes actually see, winning only near 19 digits.
 func (intConstraintType) Execute(param string, _ []any) bool {
 	_, err := strconv.Atoi(param)
 	return err == nil
