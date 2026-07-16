@@ -2365,8 +2365,12 @@ func Test_CacheSMaxAgeOverridesMaxAgeWhenShorter(t *testing.T) {
 func Test_CacheSMaxAgeOverridesMaxAgeWhenLonger(t *testing.T) {
 	t.Parallel()
 
+	// Drive freshness from a manually advanced clock so the checks never straddle
+	// a whole-second boundary (the previous time.Sleep based version flaked under
+	// -race -count -shuffle).
+	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
-	app.Use(New())
+	app.Use(New(Config{clock: clock.Now}))
 
 	var count int
 	app.Get("/", func(c fiber.Ctx) error {
@@ -2375,15 +2379,13 @@ func Test_CacheSMaxAgeOverridesMaxAgeWhenLonger(t *testing.T) {
 		return c.SendString(strconv.Itoa(count))
 	})
 
-	for time.Now().Nanosecond() >= int(100*time.Millisecond) {
-		time.Sleep(10 * time.Millisecond)
-	}
-
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	time.Sleep(1200 * time.Millisecond)
+	// Past max-age=1 but within the longer s-maxage=2 window: the longer
+	// s-maxage must win, so the entry is still fresh.
+	clock.Add(1200 * time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
@@ -2392,7 +2394,8 @@ func Test_CacheSMaxAgeOverridesMaxAgeWhenLonger(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1", string(body))
 
-	time.Sleep(1700 * time.Millisecond)
+	// Advance past the 2s s-maxage window; the entry must now be stale.
+	clock.Add(1700 * time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
@@ -3740,7 +3743,7 @@ func Benchmark_Cache(b *testing.B) {
 	app.Use(New())
 
 	app.Get("/demo", func(c fiber.Ctx) error {
-		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
@@ -3766,7 +3769,7 @@ func Benchmark_Cache_Miss(b *testing.B) {
 	app.Use(New())
 
 	app.Get("/*", func(c fiber.Ctx) error {
-		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
 		return c.Status(fiber.StatusOK).Send(data)
 	})
 
@@ -3798,7 +3801,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	}))
 
 	app.Get("/demo", func(c fiber.Ctx) error {
-		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
@@ -5587,6 +5590,8 @@ func Test_hasDirective(t *testing.T) {
 
 		// Empty / edge cases
 		{"empty header", "", "no-cache", false},
+		{"empty directive never matches", "no-cache", "", false},
+		{"empty directive empty header", "", "", false},
 	}
 
 	for _, tc := range tests {
@@ -5663,4 +5668,22 @@ func Test_CacheInvalidator_RaceWithExactTimestamp(t *testing.T) {
 	// Each invalidation must drive at least one fresh handler execution.
 	// Long Expiration guarantees natural expiry cannot account for the bump.
 	require.Greater(t, handlerCalls.Load(), primed, "invalidator never bypassed the cache")
+}
+
+// go test -v -run=^$ -bench=Benchmark_hasDirective -benchmem -count=4
+func Benchmark_hasDirective(b *testing.B) {
+	inputs := []string{
+		"no-cache",
+		"public, max-age=3600",
+		"private, no-store, must-revalidate",
+		"max-age=30, s-maxage=90, no-cache",
+	}
+	var got bool
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			got = hasDirective(in, "no-cache")
+		}
+	}
+	_ = got
 }

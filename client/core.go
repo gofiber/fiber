@@ -19,12 +19,15 @@ import (
 const boundary = "FiberFormBoundary"
 
 // RequestHook is a function invoked before the request is sent.
-// It receives a Client and a Request, allowing you to modify the Request or Client data.
+// It receives a Client and a Request. Mutate the Request, not the shared Client
+// config: the Client is read concurrently by in-flight requests (see the Client
+// type's concurrency contract), so per-request changes belong on the Request.
 type RequestHook func(*Client, *Request) error
 
 // ResponseHook is a function invoked after a response is received.
-// It receives a Client, Response, and Request, allowing you to modify the Response data
-// or perform actions based on the response.
+// It receives a Client, Response, and Request. Mutate the Response or act on it;
+// do not mutate the shared Client config, which is read concurrently by other
+// in-flight requests (see the Client type's concurrency contract).
 type ResponseHook func(*Client, *Response, *Request) error
 
 // RetryConfig is an alias for the `retry.Config` type from the `addon/retry` package.
@@ -39,20 +42,7 @@ type core struct {
 
 // getRetryConfig returns a copy of the client's retry configuration.
 func (c *core) getRetryConfig() *RetryConfig {
-	c.client.mu.RLock()
-	defer c.client.mu.RUnlock()
-
-	cfg := c.client.RetryConfig()
-	if cfg == nil {
-		return nil
-	}
-
-	return &RetryConfig{
-		InitialInterval: cfg.InitialInterval,
-		MaxBackoffTime:  cfg.MaxBackoffTime,
-		Multiplier:      cfg.Multiplier,
-		MaxRetryCount:   cfg.MaxRetryCount,
-	}
+	return c.client.RetryConfig()
 }
 
 // execFunc is the core logic to send the request and receive the response.
@@ -199,8 +189,13 @@ func (c *core) timeout() context.CancelFunc {
 
 	if c.req.timeout > 0 {
 		c.ctx, cancel = context.WithTimeout(c.ctx, c.req.timeout)
-	} else if c.client.timeout > 0 {
-		c.ctx, cancel = context.WithTimeout(c.ctx, c.client.timeout)
+	} else {
+		c.client.mu.RLock()
+		timeout := c.client.timeout
+		c.client.mu.RUnlock()
+		if timeout > 0 {
+			c.ctx, cancel = context.WithTimeout(c.ctx, timeout)
+		}
 	}
 
 	return cancel

@@ -213,7 +213,7 @@ var keyDelimiterEscaper = strings.NewReplacer(`\`, `\\`, `|`, `\p`, `:`, `\c`)
 // to prevent injection attacks where crafted values could collide with different inputs
 func escapeKeyDelimiters(s string) string {
 	// Fast path: no characters to escape
-	if !strings.ContainsAny(s, "|:\\") {
+	if utils.IndexAny3(s, '|', ':', '\\') == -1 {
 		return s
 	}
 	return keyDelimiterEscaper.Replace(s)

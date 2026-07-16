@@ -118,6 +118,11 @@ type Ctx interface {
 	ViewBind(vars Map) error
 	// Route returns the matched Route struct.
 	Route() *Route
+	// routeFallback builds the synthetic route for the fasthttp error handler.
+	// Its Method field is resolved like c.Method() (including the raw-header
+	// fallback for unregistered methods) so Route and Method always agree.
+	// Never inlined: inlining it would push Route over the inlining budget.
+	routeFallback() *Route
 	// FullPath returns the matched route path, including any group prefixes.
 	FullPath() string
 	// Matched returns true if the current request path was matched by the router.
@@ -209,14 +214,24 @@ type Ctx interface {
 	getMethodInt() int
 	getIndexRoute() int
 	getTreePathHash() int
+	// pathSlashCount lazily counts the '/' bytes of the detection path and caches
+	// the result for the request; matching uses it to reject route candidates
+	// without walking their segments. app is the serving App, which can differ
+	// from c.app when an App value was copied. When it registers no route that
+	// consults the count, counting is skipped and 0 is returned — a real detection
+	// path always contains a '/', so 0 doubles as the "unknown" state that makes
+	// Route.match skip the quick-reject entirely.
+	pathSlashCount(app *App) int
 	getDetectionPath() string
 	getValues() *[maxParams]string
 	getMatched() bool
 	getSkipNonUseRoutes() bool
+	getFirstMatchIndex() int
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
 	setSkipNonUseRoutes(skip bool)
+	setFirstMatchIndex(index int)
 	setRoute(route *Route)
 	getPathOriginal() string
 	// FullURL returns the full request URL (protocol + host + original URL).
@@ -226,8 +241,12 @@ type Ctx interface {
 	// Referer returns the Referer request header.
 	Referer() string
 	// AcceptLanguage returns the Accept-Language request header.
+	// Repeated field lines are combined into one comma-joined list
+	// (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
 	AcceptLanguage() string
 	// AcceptEncoding returns the Accept-Encoding request header.
+	// Repeated field lines are combined into one comma-joined list
+	// (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
 	AcceptEncoding() string
 	// HasHeader reports whether the request includes a header with the given key.
 	HasHeader(key string) bool
@@ -295,6 +314,9 @@ type Ctx interface {
 	// Fresh returns true when the response is still “fresh” in the client's cache,
 	// otherwise false is returned to indicate that the client cache is now stale
 	// and the full response should be sent.
+	// Freshness only applies to GET and HEAD requests; for any other method false is
+	// returned, as RFC 9110 defines 304 Not Modified only for those methods and
+	// requires If-Modified-Since to be ignored otherwise.
 	// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 	// reload request, this module will return false to make handling these requests transparent.
 	// https://github.com/jshttp/fresh/blob/master/index.js#L33
@@ -412,6 +434,8 @@ type Ctx interface {
 	getBody() []byte
 	// Append the specified value to the HTTP response header field.
 	// If the header is not already set, it creates the header with the specified value.
+	// Empty values are skipped: a sender must not generate empty list elements
+	// (RFC 9110 Section 5.6.1.2).
 	Append(field string, values ...string)
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
 	Attachment(filename ...string)
@@ -512,6 +536,8 @@ type Ctx interface {
 	Type(extension string, charset ...string) Ctx
 	// Vary adds the given header field to the Vary response header.
 	// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
+	// Per RFC 9110 Section 12.5.5 the wildcard "*" only has meaning as the sole member of the field:
+	// once "*" is added (or already present), the header is collapsed to a single "*".
 	Vary(fields ...string)
 	// Write appends p into response body.
 	Write(p []byte) (int, error)

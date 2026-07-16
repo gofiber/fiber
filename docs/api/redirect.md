@@ -164,7 +164,7 @@ Similar to [Laravel](https://laravel.com/docs/11.x/redirects#redirecting-with-fl
 Retrieve all flash messages. See [With](#with) for details.
 
 ```go title="Signature"
-func (r *Redirect) Messages() map[string]string
+func (r *Redirect) Messages() []FlashMessage
 ```
 
 ```go title="Example"
@@ -179,13 +179,13 @@ app.Get("/", func(c fiber.Ctx) error {
 Get a flash message by key; see [With](#with).
 
 ```go title="Signature"
-func (r *Redirect) Message(key string) *Redirect
+func (r *Redirect) Message(key string) FlashMessage
 ```
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   message := c.Redirect().Message("status")
-  return c.SendString(message)
+  return c.SendString(message.Value)
 })
 ```
 
@@ -194,7 +194,7 @@ app.Get("/", func(c fiber.Ctx) error {
 Retrieve stored input data. See [WithInput](#withinput).
 
 ```go title="Signature"
-func (r *Redirect) OldInputs() map[string]string
+func (r *Redirect) OldInputs() []OldInputData
 ```
 
 ```go title="Example"
@@ -209,13 +209,13 @@ app.Get("/", func(c fiber.Ctx) error {
 Get stored input data by key; see [WithInput](#withinput).
 
 ```go title="Signature"
-func (r *Redirect) OldInput(key string) string
+func (r *Redirect) OldInput(key string) OldInputData
 ```
 
 ```go title="Example"
 app.Get("/name", func(c fiber.Ctx) error {
   oldInput := c.Redirect().OldInput("name")
-  return c.SendString(oldInput)
+  return c.SendString(oldInput.Value)
 })
 ```
 

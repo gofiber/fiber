@@ -145,13 +145,8 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Check if the origin is in the list of allowed subdomains
-			if allowOrigin == "" {
-				for _, sOrigin := range allowSubOrigins {
-					if sOrigin.match(originHeader) {
-						allowOrigin = originHeaderRaw
-						break
-					}
-				}
+			if allowOrigin == "" && matchSubdomainOrigin(allowSubOrigins, originHeader) {
+				allowOrigin = originHeaderRaw
 			}
 		}
 
@@ -180,15 +175,15 @@ func New(config ...Config) fiber.Handler {
 
 		// Response to OPTIONS request should not be cached but,
 		// some caching can be configured to cache such responses.
-		// To Avoid poisoning the cache, we include the Vary header
-		// of preflight responses:
-		c.Vary(fiber.HeaderAccessControlRequestMethod)
-		c.Vary(fiber.HeaderAccessControlRequestHeaders)
+		// To avoid poisoning the cache, we include the Vary header
+		// of preflight responses, set in a single variadic Vary call
+		// per branch since every Vary call scans all response headers.
 		if cfg.AllowPrivateNetwork && c.Get(fiber.HeaderAccessControlRequestPrivateNetwork) == "true" {
-			c.Vary(fiber.HeaderAccessControlRequestPrivateNetwork)
+			c.Vary(fiber.HeaderAccessControlRequestMethod, fiber.HeaderAccessControlRequestHeaders, fiber.HeaderAccessControlRequestPrivateNetwork, fiber.HeaderOrigin)
 			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
+		} else {
+			c.Vary(fiber.HeaderAccessControlRequestMethod, fiber.HeaderAccessControlRequestHeaders, fiber.HeaderOrigin)
 		}
-		c.Vary(fiber.HeaderOrigin)
 
 		setPreflightHeaders(c, allowOrigin, maxAge, &cfg)
 

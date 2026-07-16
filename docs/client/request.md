@@ -6,6 +6,8 @@ description: >-
 sidebar_position: 2
 ---
 
+import MethodIndex from '@site/src/components/method-index';
+
 The `Request` struct in Fiber's HTTP client represents an HTTP request. It encapsulates the data required to send a request, including:
 
 - **URL**: The endpoint to which the request is sent.
@@ -18,30 +20,38 @@ This structure is designed to be both flexible and efficient, allowing you to ea
 
 ```go
 type Request struct {
-    url       string
-    method    string
-    userAgent string
-    boundary  string
-    referer   string
-    ctx       context.Context
-    header    *Header
-    params    *QueryParam
-    cookies   *Cookie
-    path      *PathParam
+    ctx context.Context
+
+    body    any
+    header  Header
+    params  QueryParam
+    cookies Cookie
+    path    PathParam
+
+    client *Client
+
+    formData FormData
+
+    RawRequest *fasthttp.Request
+    url        string
+    method     string
+    userAgent  string
+    boundary   string
+    referer    string
+    files      []*File
 
     timeout      time.Duration
     maxRedirects int
 
-    client *Client
-
-    body     any
-    formData *FormData
-    files    []*File
     bodyType bodyType
 
-    RawRequest *fasthttp.Request
+    isPathNormalizingDisabled bool
 }
 ```
+
+Use the index to jump straight to any request method; filter by name:
+
+<MethodIndex itemNoun="methods" placeholder="Filter methods, e.g. header" flat />
 
 ## REST Methods
 

@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -719,7 +718,7 @@ func (h *Header) PeekMultiple(key string) []string {
 	var res []string
 	byteKey := []byte(key)
 	for k, value := range h.All() {
-		if bytes.EqualFold(k, byteKey) {
+		if utils.EqualFold(k, byteKey) {
 			res = append(res, utils.UnsafeString(value))
 		}
 	}

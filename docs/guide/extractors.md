@@ -2,7 +2,7 @@
 id: extractors
 title: 🔬 Extractors
 description: Learn how to use extractors in Fiber middleware
-sidebar_position: 8.5
+sidebar_position: 7
 toc_max_heading_level: 4
 ---
 

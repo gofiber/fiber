@@ -394,28 +394,32 @@ func Test_Cache_Security_MultiDimensionInjection(t *testing.T) {
 			c.Cookies("cookie1"), c.Cookies("cookie2")))
 	})
 
-	// Test combinations that should create distinct cache entries
+	// Test combinations that should create distinct cache entries.
+	// expected is the echoed body; cookie values with octets outside the RFC 6265
+	// cookie-octet set (e.g. backslash) are rejected by fasthttp and arrive empty,
+	// while header values keep them.
 	testCases := []struct {
-		header1 string
-		header2 string
-		cookie1 string
-		cookie2 string
+		header1  string
+		header2  string
+		cookie1  string
+		cookie2  string
+		expected string
 	}{
 		// Normal values
-		{"value1", "value2", "cookie1", "cookie2"},
+		{"value1", "value2", "cookie1", "cookie2", "h1=value1,h2=value2,c1=cookie1,c2=cookie2"},
 		// Injection attempts with delimiters
-		{"value|injected", "normal", "normal", "normal"},
-		{"normal", "value:injected", "normal", "normal"},
-		{"normal", "normal", "value|injected", "normal"},
-		{"normal", "normal", "normal", "value:injected"},
+		{"value|injected", "normal", "normal", "normal", "h1=value|injected,h2=normal,c1=normal,c2=normal"},
+		{"normal", "value:injected", "normal", "normal", "h1=normal,h2=value:injected,c1=normal,c2=normal"},
+		{"normal", "normal", "value|injected", "normal", "h1=normal,h2=normal,c1=value|injected,c2=normal"},
+		{"normal", "normal", "normal", "value:injected", "h1=normal,h2=normal,c1=normal,c2=value:injected"},
 		// Multiple delimiters
-		{"value|with|pipes", "value:with:colons", "normal", "normal"},
-		// Backslashes
-		{"value\\with\\backslash", "normal", "normal", "normal"},
-		{"normal", "normal", "cookie\\value", "normal"},
+		{"value|with|pipes", "value:with:colons", "normal", "normal", "h1=value|with|pipes,h2=value:with:colons,c1=normal,c2=normal"},
+		// Backslashes: kept in headers, rejected in cookies
+		{"value\\with\\backslash", "normal", "normal", "normal", "h1=value\\with\\backslash,h2=normal,c1=normal,c2=normal"},
+		{"normal", "normal", "cookie\\value", "normal", "h1=normal,h2=normal,c1=,c2=normal"},
 		// Combined escapes
-		{"value\\|mixed", "normal", "normal", "normal"},
-		{"normal", "value\\:mixed", "normal", "normal"},
+		{"value\\|mixed", "normal", "normal", "normal", "h1=value\\|mixed,h2=normal,c1=normal,c2=normal"},
+		{"normal", "value\\:mixed", "normal", "normal", "h1=normal,h2=value\\:mixed,c1=normal,c2=normal"},
 	}
 
 	for i, tc := range testCases {
@@ -430,8 +434,7 @@ func Test_Cache_Security_MultiDimensionInjection(t *testing.T) {
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err, "Test case %d failed", i)
-		expected := fmt.Sprintf("h1=%s,h2=%s,c1=%s,c2=%s", tc.header1, tc.header2, tc.cookie1, tc.cookie2)
-		require.Equal(t, expected, string(body), "Test case %d failed", i)
+		require.Equal(t, tc.expected, string(body), "Test case %d failed", i)
 	}
 
 	// Each test case should create a distinct cache entry (no collisions)
@@ -687,5 +690,46 @@ func Test_Cache_Security_QueryBody_RawHashDomain(t *testing.T) {
 	require.Equal(t, cacheMiss, doQuery(bodyB), "distinct bodies must not collide")
 	require.Equal(t, int32(2), count.Load())
 	require.Equal(t, cacheHit, doQuery(bodyA), "identical body must hit cache")
+	require.Equal(t, int32(2), count.Load())
+}
+
+func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 1 * time.Hour,
+		Methods:    []string{fiber.MethodQuery},
+	}))
+
+	var count atomic.Int32
+	app.Query("/", func(c fiber.Ctx) error {
+		count.Add(1)
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		return c.SendString("handler auth=" + c.Get(fiber.HeaderAuthorization))
+	})
+
+	const authHeader = "Bearer victim-token"
+	const baseBody = "B"
+	authSum := sha256.Sum256([]byte(authHeader))
+	authHash := hex.EncodeToString(authSum[:])
+	craftedBody := baseBody + "|auth=" + authHash
+
+	authReq := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(baseBody))
+	authReq.Header.Set(fiber.HeaderAuthorization, authHeader)
+	authResp, err := app.Test(authReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, authResp.StatusCode)
+	require.Equal(t, cacheMiss, authResp.Header.Get("X-Cache"))
+
+	unauthReq := httptest.NewRequest(fiber.MethodQuery, "/", strings.NewReader(craftedBody))
+	unauthResp, err := app.Test(unauthReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, unauthResp.StatusCode)
+	require.Equal(t, cacheMiss, unauthResp.Header.Get("X-Cache"))
+
+	body, err := io.ReadAll(unauthResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "handler auth=", string(body))
 	require.Equal(t, int32(2), count.Load())
 }

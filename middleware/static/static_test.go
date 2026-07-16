@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -239,7 +238,10 @@ func Test_Static_Download_NonASCII(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/file", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	expect := "attachment; filename=\"" + fname + "\"; filename*=UTF-8''" + url.PathEscape(fname)
+	// The filename* ext-value uses RFC 8187 attr-char percent-encoding;
+	// assert the literal encoding rather than deriving it from url.PathEscape,
+	// which differs for bytes like '=', '@', ':'.
+	expect := `attachment; filename="файл.txt"; filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`
 	require.Equal(t, expect, resp.Header.Get(fiber.HeaderContentDisposition))
 }
 
@@ -793,6 +795,51 @@ func Test_Static_FS_MissingRootDoesNotFallback(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/static/index.html", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "Status code")
+}
+
+func Test_Static_FS_RootLeadingSlash(t *testing.T) {
+	t.Parallel()
+
+	expectedIndexBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/fs/index.html"))
+	require.NoError(t, err)
+
+	expectedCSSBody, err := os.ReadFile(filepath.Clean("../../.github/testdata/fs/css/style.css"))
+	require.NoError(t, err)
+
+	// A leading slash is not a valid io/fs path, so "/" and "/css" must be
+	// treated as the fs root and the "css" subdirectory respectively instead
+	// of sending every request to PathNotFound.
+	cases := []struct {
+		name     string
+		root     string
+		target   string
+		wantBody string
+		wantType string
+	}{
+		{name: "slash root serves index", root: "/", target: "/index.html", wantBody: string(expectedIndexBody), wantType: fiber.MIMETextHTMLCharsetUTF8},
+		{name: "slash root serves nested", root: "/", target: "/css/style.css", wantBody: string(expectedCSSBody), wantType: fiber.MIMETextCSSCharsetUTF8},
+		{name: "slash subdir serves file", root: "/css", target: "/style.css", wantBody: string(expectedCSSBody), wantType: fiber.MIMETextCSSCharsetUTF8},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use("/", New(tc.root, Config{
+				FS: os.DirFS("../../.github/testdata/fs"),
+			}))
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.target, http.NoBody))
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
+			require.Equal(t, tc.wantType, resp.Header.Get(fiber.HeaderContentType))
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantBody, string(body))
+		})
+	}
 }
 
 func Test_isFile(t *testing.T) {
