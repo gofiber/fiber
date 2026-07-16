@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
+	"github.com/gofiber/utils/v2"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/bytebufferpool"
@@ -77,8 +78,14 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			buf.WriteString(data.Timestamp)
 			buf.WriteString(" | ")
 
-			// Status Code with 3 fixed width, right aligned
-			fixedWidth(strconv.Itoa(c.Response().StatusCode()), 3, true)
+			// Status Code with 3 fixed width, right aligned; formatted into a
+			// stack scratch to avoid the per-request Itoa string.
+			var statusScratch [20]byte
+			status := utils.AppendInt(statusScratch[:0], int64(c.Response().StatusCode()))
+			for i := len(status); i < 3; i++ {
+				buf.WriteByte(' ')
+			}
+			buf.Write(status)
 			buf.WriteString(" | ")
 
 			// Duration with 13 fixed width, right aligned
