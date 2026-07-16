@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"strconv"
 	"strings"
 	"time"
 
@@ -617,7 +616,7 @@ func (r *DefaultReq) Port() string {
 	}
 	switch typedAddr := addr.(type) {
 	case *net.TCPAddr:
-		return strconv.Itoa(typedAddr.Port)
+		return utils.FormatInt(int64(typedAddr.Port))
 	case *net.UnixAddr:
 		return ""
 	}
