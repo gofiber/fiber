@@ -721,3 +721,82 @@ func Test_BasicAuth_HashVariants_Invalid(t *testing.T) {
 		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 	}
 }
+
+func Test_containsInvalidHeaderChars_WordBoundaries(t *testing.T) {
+	t.Parallel()
+
+	// Valid: HTAB and visible ASCII, across scalar, whole-word, and
+	// overlapping-tail positions.
+	require.False(t, containsInvalidHeaderChars(""))
+	require.False(t, containsInvalidHeaderChars("Basic\tQWxhZGRpbjpvcGVuIHNlc2FtZQ=="))
+	require.False(t, containsInvalidHeaderChars("Basic Q"))
+	require.False(t, containsInvalidHeaderChars(" ~\t"))
+
+	// Invalid bytes at every code path: short input, inside a full word,
+	// and inside the final overlapping word.
+	require.True(t, containsInvalidHeaderChars("\n"))
+	require.True(t, containsInvalidHeaderChars("Basic \x00credentials"))
+	require.True(t, containsInvalidHeaderChars("Basic credential\x7f"))
+	require.True(t, containsInvalidHeaderChars("Basic credentials\x80"))
+	require.True(t, containsInvalidHeaderChars("Basic  credentials"))
+	require.True(t, containsInvalidHeaderChars("abcdefg\r"))
+}
+
+// go test -v -run=^$ -bench=Benchmark_containsInvalidHeaderChars -benchmem -count=4
+func Benchmark_containsInvalidHeaderChars(b *testing.B) {
+	inputs := []string{
+		"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==", // typical valid header
+		"Basic dXNlcjpwYXNz",
+		"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==\x80", // invalid at the tail
+	}
+	var got bool
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			got = containsInvalidHeaderChars(in)
+		}
+	}
+	_ = got
+}
+
+func Test_containsCTL(t *testing.T) {
+	t.Parallel()
+
+	// Clean ASCII across scalar, word, and overlapping-tail paths.
+	require.False(t, containsCTL(""))
+	require.False(t, containsCTL("user"))
+	require.False(t, containsCTL("averylongusername"))
+	require.False(t, containsCTL("pass word with spaces and ~"))
+
+	// C0 and DEL at every code path position.
+	require.True(t, containsCTL("\x00"))
+	require.True(t, containsCTL("user\npass"))
+	require.True(t, containsCTL("averylongusername\x7f"))
+	require.True(t, containsCTL("abcdefgh\x1fjklmnopq"))
+
+	// Unicode: C1 controls (multi-byte runes) must still be caught, and
+	// ordinary non-ASCII letters must still pass, wherever the first
+	// non-ASCII byte sits.
+	require.True(t, containsCTL("\u0085"))
+	require.True(t, containsCTL("abcdefgh\u009d"))
+	require.True(t, containsCTL("pässword\u0085tail"))
+	require.False(t, containsCTL("pässwörd"))
+	require.False(t, containsCTL("abcdefghijklmnoöp"))
+}
+
+// go test -v -run=^$ -bench=Benchmark_containsCTL -benchmem -count=4
+func Benchmark_containsCTL(b *testing.B) {
+	inputs := []string{
+		"john",
+		"a-much-longer-username",
+		"s3cr3t-p4ssw0rd-with-length",
+	}
+	var got bool
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			got = containsCTL(in)
+		}
+	}
+	_ = got
+}

@@ -35,7 +35,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "3.3.0"
+const Version = "3.4.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
@@ -82,8 +82,6 @@ type App struct {
 	pool sync.Pool
 	// Fasthttp server
 	server *fasthttp.Server
-	// Converts string to a byte slice
-	toBytes func(s string) (b []byte)
 	// Converts byte slice to a string
 	toString func(b []byte) string
 	// Hooks
@@ -110,6 +108,8 @@ type App struct {
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[int][]*Route
+	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
+	skip skipRouteIndex
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -119,6 +119,9 @@ type App struct {
 	hasRoutesRefreshed bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
+	// hasParamRoutes tracks whether any route consults the per-request slash
+	// count (rebuilt with the tree); when false the count is skipped entirely
+	hasParamRoutes bool
 }
 
 type viewsLockKey struct {
@@ -190,6 +193,23 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: false
 	CaseSensitive bool `json:"case_sensitive"`
+
+	// When set to true, requests whose path and method match no registered route
+	// are answered with 404 (or 405 when the path exists for other methods)
+	// before the middleware chain runs, so no work is spent on bots, scanners,
+	// and bad URLs.
+	//
+	// Warning: middleware never runs for skipped requests. This breaks Use-based
+	// responders on unregistered paths (catch-all 404 pages, static, proxy,
+	// healthcheck, rewrite and redirect middleware); loggers and metrics will not
+	// see the skipped requests either. CORS preflight requests are exempt, so cors
+	// middleware keeps working. Customize the 404/405 responses via ErrorHandler.
+	//
+	// Note: with more than 64 entries in RequestMethods the fast path is disabled
+	// and requests fall through to the normal router.
+	//
+	// Default: false
+	SkipUnmatchedRoutes bool `json:"skip_unmatched_routes"`
 
 	// When set to true, disables automatic registration of HEAD routes for
 	// every GET route.
@@ -668,7 +688,6 @@ func New(config ...Config) *App {
 	app := &App{
 		// Create config
 		config:        Config{},
-		toBytes:       utils.UnsafeBytes,
 		toString:      utils.UnsafeString,
 		latestRoute:   &Route{},
 		customBinders: []CustomBinder{},
@@ -730,7 +749,7 @@ func New(config ...Config) *App {
 	}
 
 	if app.config.Immutable {
-		app.toBytes, app.toString = toBytesImmutable, toStringImmutable
+		app.toString = toStringImmutable
 	}
 
 	if app.config.ErrorHandler == nil {
@@ -1221,8 +1240,9 @@ func NewErrorf(code int, message ...any) *Error {
 		if format, ok := message[0].(string); ok {
 			msg = fmt.Sprintf(format, message[1:]...)
 		} else {
-			// If the first arg isn’t a string, fall back.
-			msg = fmt.Sprint(message[0])
+			// If the first arg isn’t a format string, stringify all of them
+			// instead of dropping everything after the first.
+			msg = fmt.Sprint(message...)
 		}
 	}
 
@@ -1305,7 +1325,9 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 
 	// Execute the Shutdown hook
 	app.hooks.executeOnPreShutdownHooks()
-	defer app.hooks.executeOnPostShutdownHooks(err)
+	// Use a closure so the hooks receive the final error; a plain
+	// `defer ...(err)` would capture the nil value at registration time.
+	defer func() { app.hooks.executeOnPostShutdownHooks(err) }()
 
 	err = app.server.ShutdownWithContext(ctx)
 	return err
@@ -1548,6 +1570,11 @@ func (app *App) init() *App {
 // error handler. Otherwise, it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
+	// Fast path: no mounted sub-apps, so no prefix lookup is needed
+	if len(app.mountFields.appListKeys) == 0 {
+		return app.config.ErrorHandler(ctx, err)
+	}
+
 	var (
 		mountedErrHandler  ErrorHandler
 		mountedPrefixParts int

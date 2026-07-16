@@ -6,9 +6,11 @@ import (
 	"math"
 	"mime/multipart"
 	"net"
+	"net/http"
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
@@ -157,20 +159,24 @@ func (r *DefaultReq) Body() []byte {
 
 	request := &r.c.fasthttp.Request
 
-	// Get Content-Encoding header
-	headerEncoding = utils.UnsafeString(utilsbytes.UnsafeToLower(request.Header.ContentEncoding()))
-
-	// If no encoding is provided, return the original body
-	if headerEncoding == "" {
+	// Fast path: no Content-Encoding header at all. ContentEncoding uses the
+	// pre-normalized key constant, so absence costs a single cheap lookup.
+	// An empty value is still a present field line and must be joined with
+	// duplicates below before RFC 9110 empty-list elements are ignored.
+	if request.Header.ContentEncoding() == nil {
 		return r.getBody()
 	}
 
+	// Get Content-Encoding header. Multiple field lines form one combined
+	// list (RFC 9110 Section 5.2), so join them before splitting.
+	encodedBytes, _ := peekJoinedRequestHeader(&request.Header, HeaderContentEncoding)
+	headerEncoding = utils.UnsafeString(utilsbytes.UnsafeToLower(encodedBytes))
+
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
+	// The splitter drops empty list elements (RFC 9110 Section 5.6.1.2), and
+	// headerEncoding was already lowercased wholesale above.
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
-	for i := range encodingOrder {
-		encodingOrder[i] = utilsstrings.UnsafeToLower(encodingOrder[i])
-	}
 	if len(encodingOrder) == 0 {
 		return r.getBody()
 	}
@@ -229,13 +235,17 @@ func (c *DefaultCtx) Referer() string {
 }
 
 // AcceptLanguage returns the Accept-Language request header.
+// Repeated field lines are combined into one comma-joined list
+// (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
 func (c *DefaultCtx) AcceptLanguage() string {
-	return c.app.toString(c.fasthttp.Request.Header.Peek(HeaderAcceptLanguage))
+	return c.app.toString(joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage)))
 }
 
 // AcceptEncoding returns the Accept-Encoding request header.
+// Repeated field lines are combined into one comma-joined list
+// (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
 func (c *DefaultCtx) AcceptEncoding() string {
-	return c.app.toString(c.fasthttp.Request.Header.Peek(HeaderAcceptEncoding))
+	return c.app.toString(joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding)))
 }
 
 // HasHeader reports whether the request includes a header with the given key.
@@ -259,44 +269,78 @@ func (c *DefaultCtx) MediaType() string {
 // Charset returns the charset parameter from the Content-Type header.
 func (c *DefaultCtx) Charset() string {
 	contentType := c.fasthttp.Request.Header.ContentType()
-	if len(contentType) == 0 {
-		return ""
-	}
-	_, after, ok := bytes.Cut(contentType, []byte{';'})
+	_, params, ok := bytes.Cut(contentType, []byte{';'})
 	if !ok {
 		return ""
 	}
-	params := after
 	for len(params) > 0 {
-		params = utils.TrimSpace(params)
-		if len(params) == 0 {
-			return ""
-		}
+		// Slice off the next parameter at the next ";" that sits outside a
+		// quoted-string: parameter values may be quoted and contain ";"
+		// (RFC 9110 Section 5.6.6). A DQUOTE only opens a quoted-string at
+		// the start of a value (after an "=" plus optional whitespace), so a
+		// stray quote later in an unquoted value cannot swallow the rest of
+		// the header.
 		param := params
-		if idx := bytes.IndexByte(params, ';'); idx != -1 {
-			param = params[:idx]
-			params = params[idx+1:]
+		end := -1
+		inQuotes := false
+		escaped := false
+		expectValue := false
+	scan:
+		for i := 0; i < len(params); i++ {
+			ch := params[i]
+			switch {
+			case escaped:
+				escaped = false
+			case inQuotes:
+				switch ch {
+				case '\\':
+					escaped = true
+				case '"':
+					inQuotes = false
+				}
+			case ch == '=':
+				expectValue = true
+			case ch == '"' && expectValue:
+				inQuotes = true
+				expectValue = false
+			case ch == ';':
+				end = i
+				break scan
+			case ch != ' ' && ch != '\t':
+				expectValue = false
+			}
+		}
+		if end >= 0 {
+			param = params[:end]
+			params = params[end+1:]
 		} else {
 			params = nil
 		}
 
-		param = utils.TrimSpace(param)
-		if len(param) == 0 {
+		name, value, ok := bytes.Cut(param, []byte{'='})
+		if !ok || !utils.EqualFold(utils.TrimSpace(name), []byte("charset")) {
 			continue
 		}
-		before, after, ok := bytes.Cut(param, []byte{'='})
-		if !ok {
+		v := utils.TrimSpace(value)
+		if len(v) > 0 && v[0] == '"' {
+			// A quoted value must be a complete quoted-string, and its
+			// quoted-pairs must be replaced with the escaped octet
+			// (RFC 9110 Section 5.6.4).
+			if len(v) < 2 || v[len(v)-1] != '"' {
+				return ""
+			}
+			unescaped, err := unescapeHeaderValue(v[1 : len(v)-1])
+			if err != nil {
+				return ""
+			}
+			v = unescaped
+		} else if bytes.IndexByte(v, '"') >= 0 {
+			// A bare token must not contain DQUOTE; skip the invalid
+			// parameter instead of surfacing garbage, so a well-formed
+			// charset parameter later in the header can still be found.
 			continue
 		}
-		name := utils.TrimSpace(before)
-		if !bytes.EqualFold(name, []byte("charset")) {
-			continue
-		}
-		value := utils.TrimSpace(after)
-		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-			value = value[1 : len(value)-1]
-		}
-		return c.app.toString(value)
+		return c.app.toString(v)
 	}
 	return ""
 }
@@ -398,15 +442,32 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 // Fresh returns true when the response is still “fresh” in the client's cache,
 // otherwise false is returned to indicate that the client cache is now stale
 // and the full response should be sent.
+// Freshness only applies to GET and HEAD requests; for any other method false is
+// returned, as RFC 9110 defines 304 Not Modified only for those methods and
+// requires If-Modified-Since to be ignored otherwise.
 // When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 // reload request, this module will return false to make handling these requests transparent.
 // https://github.com/jshttp/fresh/blob/master/index.js#L33
 func (r *DefaultReq) Fresh() bool {
+	// Freshness only applies to GET and HEAD requests: a 304 Not Modified
+	// response is defined for those methods only, and RFC 9110 Section 13.1.3
+	// requires If-Modified-Since to be ignored for any other method.
+	// A negative methodInt means the method is not registered at all, so it
+	// cannot be GET or HEAD (and must not be used to index RequestMethods).
+	if r.c.methodInt < 0 {
+		return false
+	}
+	if method := r.c.app.method(r.c.methodInt); method != MethodGet && method != MethodHead {
+		return false
+	}
+
 	header := &r.c.fasthttp.Request.Header
 
 	// fields
+	// List-based fields may be split across multiple field lines, which are
+	// semantically one comma-joined list (RFC 9110 Section 5.2).
 	modifiedSince := header.Peek(HeaderIfModifiedSince)
-	noneMatch := header.Peek(HeaderIfNoneMatch)
+	noneMatch := joinHeaderValues(header.PeekAll(HeaderIfNoneMatch))
 
 	// unconditional request
 	if len(modifiedSince) == 0 && len(noneMatch) == 0 {
@@ -416,13 +477,16 @@ func (r *DefaultReq) Fresh() bool {
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
 	// https://www.rfc-editor.org/rfc/rfc9111#section-5.2.1.4
-	cacheControl := header.Peek(HeaderCacheControl)
+	cacheControl := joinHeaderValues(header.PeekAll(HeaderCacheControl))
 	if len(cacheControl) > 0 && isNoCache(utils.UnsafeString(cacheControl)) {
 		return false
 	}
 
-	// if-none-match
-	if len(noneMatch) > 0 && (len(noneMatch) != 1 || noneMatch[0] != '*') {
+	// if-none-match takes precedence over if-modified-since (RFC 9110)
+	if len(noneMatch) > 0 {
+		if len(noneMatch) == 1 && noneMatch[0] == '*' {
+			return true
+		}
 		app := r.c.app
 		response := &r.c.fasthttp.Response
 		etag := app.toString(response.Header.Peek(HeaderETag))
@@ -432,23 +496,52 @@ func (r *DefaultReq) Fresh() bool {
 		if app.isEtagStale(etag, noneMatch) {
 			return false
 		}
+		return true
+	}
 
-		if len(modifiedSince) > 0 {
-			lastModified := response.Header.Peek(HeaderLastModified)
-			if len(lastModified) > 0 {
-				lastModifiedTime, err := fasthttp.ParseHTTPDate(lastModified)
-				if err != nil {
-					return false
-				}
-				modifiedSinceTime, err := fasthttp.ParseHTTPDate(modifiedSince)
-				if err != nil {
-					return false
-				}
-				return lastModifiedTime.Compare(modifiedSinceTime) != 1
+	// if-modified-since (only reached when if-none-match is absent)
+	if len(modifiedSince) > 0 {
+		response := &r.c.fasthttp.Response
+		lastModified := response.Header.Peek(HeaderLastModified)
+		if len(lastModified) == 0 {
+			return false
+		}
+		lastModifiedTime, err := parseHTTPDate(lastModified)
+		if err != nil {
+			return false
+		}
+		// Common conditional request: the client echoes back the exact
+		// Last-Modified it was given. Identical, already-validated dates are
+		// equal, so skip the second parse and comparison.
+		if !bytes.Equal(lastModified, modifiedSince) {
+			modifiedSinceTime, err := parseHTTPDate(modifiedSince)
+			if err != nil {
+				return false
+			}
+			if lastModifiedTime.Compare(modifiedSinceTime) == 1 {
+				return false
 			}
 		}
 	}
 	return true
+}
+
+// parseHTTPDate parses an HTTP-date field value. RFC 9110 Section 5.6.7
+// requires recipients to accept the obsolete RFC 850 and ANSI C asctime()
+// formats in addition to the preferred IMF-fixdate, so after the fast
+// IMF-fixdate path fails, fall back to net/http's ParseTime, which tries all
+// three formats.
+func parseHTTPDate(date []byte) (time.Time, error) {
+	if t, err := fasthttp.ParseHTTPDate(date); err == nil {
+		return t, nil
+	}
+	t, err := http.ParseTime(string(date))
+	if err != nil {
+		// Callers only nil-check the error; skip wrapping to avoid an
+		// allocation for every malformed client-supplied date.
+		return time.Time{}, err //nolint:wrapcheck // see above
+	}
+	return t, nil
 }
 
 // Get returns the HTTP request header specified by field.
@@ -808,17 +901,47 @@ func (r *DefaultReq) Method(override ...string) string {
 	app := r.c.app
 	if len(override) == 0 {
 		// Nothing to override, just return current method from context
-		return app.method(r.c.methodInt)
+		return currentMethod(r.c)
 	}
 
-	method := utilsstrings.ToUpper(override[0])
+	// Method tokens are case-sensitive (RFC 9110 Section 9.1), so try the
+	// override exactly as given first — this is what keeps mixed-case custom
+	// methods registered via Config.RequestMethods working.
+	method := override[0]
 	methodInt := app.methodInt(method)
 	if methodInt == -1 {
-		// Provided override does not valid HTTP method, no override, return current method
-		return app.method(r.c.methodInt)
+		// Fall back to the conventional uppercase form as a convenience for
+		// the standard methods (e.g. "get" -> "GET").
+		method = utilsstrings.ToUpper(method)
+		methodInt = app.methodInt(method)
+	}
+	if methodInt == -1 {
+		// Provided override is not a registered HTTP method; no override,
+		// return current method
+		return currentMethod(r.c)
 	}
 	r.c.methodInt = methodInt
+	// Method changed; invalidate the lookahead index
+	r.c.firstMatchIndex = -1
 	return method
+}
+
+// currentMethod resolves the context's method, falling back to the raw
+// request header value when the method is not registered in RequestMethods,
+// so unregistered methods are reported instead of panicking.
+// It is a package-level function (not a method) to stay off the generated
+// Req/Ctx interfaces.
+func currentMethod(c *DefaultCtx) string {
+	// app.method owns the definition of "unregistered" (it bounds-checks
+	// methodInt and returns "" for anything out of range).
+	if m := c.app.method(c.methodInt); m != "" {
+		return m
+	}
+	// Copy the raw header bytes: every other return path yields a stable
+	// string from RequestMethods, so callers may retain the result beyond
+	// the handler; an unsafe alias into the request buffer would be
+	// silently corrupted on connection reuse.
+	return string(c.fasthttp.Request.Header.Method())
 }
 
 // MultipartForm parse form entries from binary.
@@ -1017,13 +1140,13 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		rangeData.Ranges = make([]RangeSet, 0, prealloc)
 	}
 
+	// parseBound parses a present (non-empty) range bound. A bound that is
+	// not a valid integer makes the range-spec, and therefore the whole
+	// ranges-specifier, invalid (RFC 9110 Section 14.1.1).
 	parseBound := func(value string) (int64, error) {
-		if value == "" { // empty bound (suffix/prefix range); skip the parser's error alloc
-			return 0, errRangeBound
-		}
 		parsed, err := utils.ParseUint(value)
 		if err != nil {
-			return 0, errRangeBound // sentinel: never surfaced, avoids per-request alloc
+			return 0, ErrRangeMalformed
 		}
 		if parsed > (math.MaxUint64 >> 1) {
 			return 0, ErrRangeMalformed
@@ -1032,27 +1155,39 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	}
 
 	before, after, found := strings.Cut(rangeStr, "=")
-	if !found || strings.IndexByte(after, '=') >= 0 {
-		return rangeData, ErrRangeMalformed
+	if !found {
+		return Range{}, ErrRangeMalformed
 	}
 	rangeData.Type = utilsstrings.ToLower(utils.TrimSpace(before))
 	if rangeData.Type != "bytes" {
-		return rangeData, ErrRangeMalformed
+		// A range unit the server does not understand is not malformed: it
+		// must be ignored (RFC 9110 Section 14.2), which only the caller can
+		// do, so signal it distinctly. This check runs before any syntax
+		// checks on the range-set, since the other-range grammar permits
+		// characters (such as "=") that byte ranges do not.
+		return Range{}, ErrRangeUnsupported
+	}
+	if strings.IndexByte(after, '=') >= 0 {
+		return Range{}, ErrRangeMalformed
 	}
 	ranges = utils.TrimSpace(after)
 
 	var (
-		singleRange string
-		moreRanges  = ranges
-		rangeCount  int
+		singleRange  string
+		moreRanges   = ranges
+		elementCount int  // every list element, including empty ones (MaxRanges bound)
+		sawRangeSpec bool // at least one non-empty range-spec was present
 	)
 	for moreRanges != "" {
-		rangeCount++
-		if rangeCount > maxRanges {
+		// Empty elements count toward MaxRanges too, so the cap bounds the
+		// total parsing work per header, not just the accepted range-specs.
+		elementCount++
+		if elementCount > maxRanges {
 			r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
 			r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
-			return rangeData, ErrRangeTooLarge
+			return Range{}, ErrRangeTooLarge
 		}
+
 		singleRange = moreRanges
 		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
 			singleRange = moreRanges[:i]
@@ -1063,31 +1198,62 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 
 		singleRange = utils.TrimSpace(singleRange)
 
+		// RFC 9110 Section 5.6.1.2: recipients must parse and ignore a
+		// reasonable number of empty list elements, e.g. "bytes=,0-5" is
+		// equivalent to "bytes=0-5".
+		if singleRange == "" {
+			continue
+		}
+		sawRangeSpec = true
+
 		var (
 			startStr, endStr string
 			i                int
 		)
 		if i = strings.IndexByte(singleRange, '-'); i == -1 {
-			return rangeData, ErrRangeMalformed
+			return Range{}, ErrRangeMalformed
 		}
 		startStr = utils.TrimSpace(singleRange[:i])
 		endStr = utils.TrimSpace(singleRange[i+1:])
 
-		start, startErr := parseBound(startStr)
-		end, endErr := parseBound(endStr)
-		if errors.Is(startErr, ErrRangeMalformed) || errors.Is(endErr, ErrRangeMalformed) {
-			return rangeData, ErrRangeMalformed
+		var (
+			start, end int64
+			err        error
+		)
+		if startStr != "" {
+			if start, err = parseBound(startStr); err != nil {
+				return Range{}, err
+			}
 		}
-		if startErr != nil { // -nnn
+		if endStr != "" {
+			if end, err = parseBound(endStr); err != nil {
+				return Range{}, err
+			}
+		}
+		switch {
+		case startStr == "" && endStr == "":
+			// "-" carries neither a first-byte-pos nor a suffix-length and is
+			// not a valid range-spec (RFC 9110 Section 14.1.1).
+			return Range{}, ErrRangeMalformed
+		case startStr == "": // -nnn (suffix range)
 			start = max(size-end, 0)
 			end = size - 1
-		} else if endErr != nil { // nnn-
+		case endStr == "": // nnn- (open-ended range)
 			end = size - 1
+		default: // nnn-mmm
+			// An int-range with a last-byte-pos less than its first-byte-pos
+			// invalidates the whole ranges-specifier (RFC 9110 Section 14.1.1).
+			if end < start {
+				return Range{}, ErrRangeMalformed
+			}
+			if end > size-1 { // limit last-byte-pos to current length
+				end = size - 1
+			}
 		}
-		if end > size-1 { // limit last-byte-pos to current length
-			end = size - 1
-		}
-		if start > end || start < 0 {
+		if start > end {
+			// Syntactically valid but does not overlap the representation
+			// (e.g. first-byte-pos beyond EOF or a zero-length suffix); skip
+			// it and let the satisfiability check below decide.
 			continue
 		}
 		rangeData.Ranges = append(rangeData.Ranges, RangeSet{
@@ -1096,6 +1262,11 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
+		if !sawRangeSpec {
+			// Only empty list elements: there was no range-spec at all, so
+			// the ranges-specifier is invalid rather than unsatisfiable.
+			return Range{}, ErrRangeMalformed
+		}
 		r.c.DefaultRes.Status(StatusRequestedRangeNotSatisfiable)
 		r.c.DefaultRes.Set(HeaderContentRange, "bytes */"+utils.FormatInt(size)) //nolint:staticcheck // It is fine to ignore the static check
 		return rangeData, ErrRequestedRangeNotSatisfiable
@@ -1211,8 +1382,12 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 		return true
 	}
 
-	if _, trusted := config.TrustProxyConfig.ips[ip.String()]; trusted {
-		return true
+	// Only stringify the IP when there is an exact-match map to look it up in;
+	// ip.String() heap-allocates and is wasted work for CIDR-only configs.
+	if len(config.TrustProxyConfig.ips) > 0 {
+		if _, trusted := config.TrustProxyConfig.ips[ip.String()]; trusted {
+			return true
+		}
 	}
 
 	for _, ipNet := range config.TrustProxyConfig.ranges {

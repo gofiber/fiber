@@ -3,8 +3,16 @@ id: learning-resources
 title: 📚 Learning Resources
 description: >-
   Interactive learning platforms and community resources to help you learn Fiber concepts through hands-on practice.
-sidebar_position: 3
+sidebar_position: 4
 ---
+
+## Interactive Tools in These Docs
+
+The documentation itself ships hands-on tools, no setup required:
+
+- [Route Matcher](./route-matcher.md): fire requests at your own route table and see which route wins, why the others lose, and which parameters are extracted
+- [Build Your First App, Step by Step](../intro.md#build-your-first-app-step-by-step): grow one `main.go` from Hello World to a small JSON API with simulated requests
+- [Anatomy of a route](../guide/routing.md#anatomy-of-a-route) and the [middleware chain visualizer](../guide/routing.md#middleware): interactive breakdowns inside the routing guide
 
 ## Interactive Learning Platforms
 

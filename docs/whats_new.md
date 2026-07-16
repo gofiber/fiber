@@ -1,7 +1,7 @@
 ---
 id: whats_new
 title: 🆕 What's New in v3
-sidebar_position: 2
+sidebar_position: 1.5
 toc_max_heading_level: 4
 ---
 
@@ -78,6 +78,7 @@ We have made several changes to the Fiber app, including:
   - `ListenerNetwork` (previously `Network`)
 - **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`. Additionally, `ProxyHeader` must be set to read client IPs from proxy headers (e.g., `X-Forwarded-For`).
 - **XMLDecoder Config Property**: The `XMLDecoder` property has been added to allow usage of 3rd-party XML libraries in XML binder.
+- **SkipUnmatchedRoutes Config Property**: Opt-in flag that answers requests with no matching route with `404`/`405` before the middleware chain runs. Note that middleware (loggers, static or catch-all responders) does not run for these requests; CORS preflight requests are exempt so cors middleware keeps working. Customize the responses via `ErrorHandler`.
 
 ### New Methods
 
@@ -728,7 +729,12 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **SendFile**: Now supports different configurations using a config parameter.
 - **Attachment and Download**: Non-ASCII filenames now use `filename*` as
   specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
-  [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
+  [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187). The `filename` parameter
+  is now emitted as a plain RFC 9110 quoted-string instead of being
+  URL-encoded: `c.Download("report 2024.txt")` produces
+  `filename="report 2024.txt"` (previously `filename="report+2024.txt"`), with
+  quotes and backslashes escaped as quoted-pairs, so browsers save files under
+  their real names.
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 - **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
 
@@ -1366,6 +1372,8 @@ When used with the Logger middleware, the recommended approach is to use the `Cu
 The adaptor middleware has been significantly optimized for performance and efficiency. Key improvements include reduced response times, lower memory usage, and fewer memory allocations. These changes make the middleware more reliable and capable of handling higher loads effectively. Enhancements include the introduction of a `sync.Pool` for managing `fasthttp.RequestCtx` instances and better HTTP request and response handling between net/http and fasthttp contexts.
 
 Incoming body sizes now respect the Fiber app's configured `BodyLimit` (falling back to the default when unset) when running Fiber from `net/http` through the adaptor, returning `413 Request Entity Too Large` for oversized payloads.
+
+The adaptor also propagates the request's protocol version, normalized to Fiber's convention (`HTTP/2.0` → `HTTP/2`, `HTTP/3.0` → `HTTP/3`), so `c.Protocol()` reports the real version instead of always `HTTP/1.1`. Interim responses such as `SendEarlyHints`' `103` are silently skipped through the adaptor — there is no client connection to write them to — while the `Link` headers still reach the final response.
 
 | Payload Size | Metric         | V2           | V3          | Percent Change |
 | ------------ | -------------- | ------------ | ----------- | -------------- |

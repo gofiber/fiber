@@ -38,6 +38,30 @@ func Test_Listen(t *testing.T) {
 	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true}))
 }
 
+// go test -run Test_Listen_ClosesListenerOnBeforeServeError
+func Test_Listen_ClosesListenerOnBeforeServeError(t *testing.T) {
+	// Grab a free port, then release it so we can bind it via Listen.
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := probe.Addr().String()
+	require.NoError(t, probe.Close())
+
+	app := New()
+	err = app.Listen(addr, ListenConfig{
+		DisableStartupMessage: true,
+		BeforeServeFunc: func(_ *App) error {
+			return errors.New("stop before serving")
+		},
+	})
+	require.Error(t, err)
+
+	// The listener must have been closed on the error path, so the port is
+	// immediately bindable again (a leaked listener would keep it bound).
+	ln, err := net.Listen("tcp", addr)
+	require.NoError(t, err, "listener leaked: port still bound after BeforeServeFunc error")
+	require.NoError(t, ln.Close())
+}
+
 // go test -run Test_Listen_Graceful_Shutdown
 func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	t.Run("Basic Graceful Shutdown", func(t *testing.T) {
@@ -51,6 +75,97 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	t.Run("Shutdown With Timeout Error", func(t *testing.T) {
 		testGracefulShutdown(t, 1*time.Nanosecond)
 	})
+}
+
+// go test -run Test_ShutdownWithContext_PostShutdownHookReceivesError
+func Test_ShutdownWithContext_PostShutdownHookReceivesError(t *testing.T) {
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		time.Sleep(10 * time.Millisecond)
+		return c.SendString("ok")
+	})
+
+	hookErr := make(chan error, 1)
+	app.Hooks().OnPostShutdown(func(err error) error {
+		hookErr <- err
+		return nil
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	go func() {
+		_ = app.Listener(ln, ListenConfig{DisableStartupMessage: true}) //nolint:errcheck // not needed
+	}()
+
+	require.Eventually(t, func() bool {
+		conn, err := ln.Dial()
+		if err == nil {
+			_ = conn.Close() //nolint:errcheck // not needed
+			return true
+		}
+		return false
+	}, time.Second, 20*time.Millisecond, "server failed to become ready")
+
+	// Keep a request in flight so shutdown cannot drain before the 1ns deadline.
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // not needed
+	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n"))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	shutdownErr := app.ShutdownWithContext(ctx)
+	require.Error(t, shutdownErr)
+
+	select {
+	case got := <-hookErr:
+		// The hook must receive the actual shutdown error, not the nil value
+		// captured when the defer was registered.
+		require.Equal(t, shutdownErr, got)
+	case <-time.After(time.Second):
+		t.Fatal("OnPostShutdown hook was not called")
+	}
+}
+
+// go test -run Test_GracefulShutdown_PostShutdownFiresOnce
+func Test_GracefulShutdown_PostShutdownFiresOnce(t *testing.T) {
+	app := New()
+	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+
+	fires := make(chan error, 8)
+	app.Hooks().OnPostShutdown(func(err error) error {
+		fires <- err
+		return nil
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	gctx, gcancel := context.WithCancel(context.Background())
+	go func() {
+		_ = app.Listener(ln, ListenConfig{DisableStartupMessage: true, GracefulContext: gctx}) //nolint:errcheck,contextcheck // not needed
+	}()
+
+	require.Eventually(t, func() bool {
+		conn, err := ln.Dial()
+		if err == nil {
+			_ = conn.Close() //nolint:errcheck // not needed
+			return true
+		}
+		return false
+	}, time.Second, 20*time.Millisecond, "server failed to become ready")
+
+	gcancel() // trigger graceful shutdown
+
+	// The hook must fire exactly once.
+	select {
+	case <-fires:
+	case <-time.After(2 * time.Second):
+		t.Fatal("OnPostShutdown was not called")
+	}
+	select {
+	case <-fires:
+		t.Fatal("OnPostShutdown fired more than once")
+	case <-time.After(300 * time.Millisecond):
+	}
 }
 
 func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
@@ -98,6 +213,20 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 		}
 		return false
 	}, time.Second, 100*time.Millisecond, "Server failed to become ready")
+
+	if shutdownTimeout == time.Nanosecond {
+		// keep a request in flight so shutdown cannot drain to zero open
+		// connections before the 1ns deadline is checked (would yield a nil error)
+		conn, err := ln.Dial()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			if closeErr := conn.Close(); closeErr != nil {
+				t.Logf("error closing connection: %v", closeErr)
+			}
+		})
+		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n"))
+		require.NoError(t, err)
+	}
 
 	client := fasthttp.HostClient{
 		Dial: func(_ string) (net.Conn, error) { return ln.Dial() },

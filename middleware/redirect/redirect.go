@@ -17,7 +17,11 @@ func New(config ...Config) fiber.Handler {
 	cfg.rulesRegex = map[*regexp.Regexp]string{}
 	for k, v := range cfg.Rules {
 		k = strings.ReplaceAll(k, "*", "(.*)")
-		k += "$"
+		// Anchor both ends so a rule matches the whole path. Without the leading
+		// "^" the pattern matches any suffix, so a request can be redirected by a
+		// rule whose path it only happens to end with (e.g. "/old" would also
+		// redirect "/very/old"). See issue #4476.
+		k = "^" + k + "$"
 		cfg.rulesRegex[regexp.MustCompile(k)] = v
 	}
 

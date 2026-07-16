@@ -198,3 +198,24 @@ For details on how to:
 * Convert `fiber.Ctx` to `http.Request`
 
 See the dedicated documentation: [Adaptor Documentation](../middleware/adaptor.md).
+
+## Troubleshooting common errors
+
+Crashes that surface in unrelated packages, with stack traces that never mention Fiber, usually trace back to a context value kept past the handler. The cases below name the symptom so a search for the panic text lands here.
+
+### Panic `id (N) <= evictCount (M)` (hpack / HTTP/2 / gRPC) {#panic-id-evictcount-hpack-grpc}
+
+This is not a bug in Fiber, gRPC, or `golang.org/x/net/http2`. It means a Fiber zero-copy context value (a header from `c.Get`, or `c.Query`, `c.Params`, `c.Cookies`, `c.Body`) was kept past the handler. Fiber reuses the request buffer on the next request, so the retained bytes change underneath whatever stored them. See [Zero Allocation](../intro.md#zero-allocation) for the underlying behavior.
+
+A common trigger is forwarding a header into a long-lived gRPC / HTTP/2 client's `metadata`. The value is held in the connection's HPACK dynamic table and later mutates, crashing the process inside the HPACK encoder, in a stack trace that never mentions Fiber:
+
+```text
+panic: id (N) <= evictCount (M)
+    golang.org/x/net/http2/hpack.(*headerFieldTable).idToIndex
+    ...
+    google.golang.org/grpc/internal/transport.(*loopyWriter).writeHeader
+```
+
+The crash is decoupled from your handler in both time and call stack, so ordinary tests and even the `-race` detector usually miss it.
+
+The fix is to detach the value before you keep it: copy it with `utils.CopyString` (or `strings.Clone`), or enable [`Immutable`](../api/fiber.md#immutable). A full reproduction is in [gofiber/fiber#4464](https://github.com/gofiber/fiber/issues/4464).

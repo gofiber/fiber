@@ -47,7 +47,15 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.Equal(t, "text/plain;b=2;a=1", getOffer([]byte("text/plain ;a=1;b=2"), acceptsOfferType, "text/plain;b=2;a=1"))
 	require.Equal(t, "text/plain;a=1", getOffer([]byte("text/plain;   a=1   "), acceptsOfferType, "text/plain;a=1"))
 	require.Equal(t, `text/plain;a="1;b=2\",text/plain"`, getOffer([]byte(`text/plain;a="1;b=2\",text/plain";q=0.9`), acceptsOfferType, `text/plain;a=1;b=2`, `text/plain;a="1;b=2\",text/plain"`))
+	// A quoted-pair escapes exactly one byte, so the string ends at the genuine
+	// closing quote and the later comma splits the ranges (RFC 9110 Section 5.6.4).
+	require.Equal(t, "text/plain", getOffer([]byte(`text/html;p="a\"b", text/plain`), acceptsOfferType, "text/plain"))
 	require.Equal(t, "text/plain;A=CAPS", getOffer([]byte(`text/plain;a="caPs"`), acceptsOfferType, "text/plain;A=CAPS"))
+
+	// The media type and subtype tokens are case-insensitive (RFC 9110 8.3.1)
+	require.Equal(t, "application/json", getOffer([]byte("Application/JSON"), acceptsOfferType, "application/json"))
+	require.Equal(t, "Application/JSON", getOffer([]byte("application/json"), acceptsOfferType, "Application/JSON"))
+	require.Equal(t, "text/plain;a=1", getOffer([]byte("Text/Plain;a=1"), acceptsOfferType, "text/plain;a=1"))
 
 	// Priority
 	require.Equal(t, "text/plain", getOffer([]byte("text/plain"), acceptsOfferType, "text/plain", "text/plain;a=1"))
@@ -80,38 +88,38 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.Empty(t, getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
 
 	// Accept-Language Basic Filtering
-	require.True(t, acceptsLanguageOfferBasic("en", "en-US", nil))
-	require.False(t, acceptsLanguageOfferBasic("en-US", "en", nil))
-	require.True(t, acceptsLanguageOfferBasic("EN", "en-us", nil))
-	require.False(t, acceptsLanguageOfferBasic("en", "en_US", nil))
+	require.Positive(t, acceptsLanguageOfferBasic("en", "en-US", nil))
+	require.Zero(t, acceptsLanguageOfferBasic("en-US", "en", nil))
+	require.Positive(t, acceptsLanguageOfferBasic("EN", "en-us", nil))
+	require.Zero(t, acceptsLanguageOfferBasic("en", "en_US", nil))
 	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOfferBasic, "en-US", "fr-CA"))
 	require.Empty(t, getOffer([]byte("xx"), acceptsLanguageOfferBasic, "en"))
-	require.False(t, acceptsLanguageOfferBasic("en-*", "en-US", nil))
-	require.True(t, acceptsLanguageOfferBasic("*", "en-US", nil))
+	require.Zero(t, acceptsLanguageOfferBasic("en-*", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferBasic("*", "en-US", nil))
 
 	// Accept-Language Extended Filtering
-	require.True(t, acceptsLanguageOfferExtended("en", "en-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("en", "en-Latn-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("en-*", "en-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("*-US", "en-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("en-US-*", "en-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("en-*", "en-US-CA", nil))
-	require.False(t, acceptsLanguageOfferExtended("en-US", "en-GB", nil))
-	require.False(t, acceptsLanguageOfferExtended("fr", "en-US", nil))
-	require.False(t, acceptsLanguageOfferExtended("", "en-US", nil))
-	require.False(t, acceptsLanguageOfferExtended("en", "", nil))
-	require.True(t, acceptsLanguageOfferExtended("*", "en-US", nil))
-	require.True(t, acceptsLanguageOfferExtended("en-*", "en", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en", "en-Latn-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en-*", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("*-US", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en-US-*", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en-*", "en-US-CA", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("en-US", "en-GB", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("fr", "en-US", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("", "en-US", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("en", "", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("*", "en-US", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("en-*", "en", nil))
 	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-*"), acceptsLanguageOfferExtended, "en-US", "fr-CA"))
 
 	// Sliding and singleton barriers
-	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE", nil))
-	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE-x-goethe", nil))
-	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-Latn-DE-1996", nil))
-	require.False(t, acceptsLanguageOfferExtended("de-*-DE", "de", nil))
-	require.False(t, acceptsLanguageOfferExtended("de-*-DE", "de-x-DE", nil))
-	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-CH", nil))
-	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-Latn-CH", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE-x-goethe", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("de-*-DE", "de-Latn-DE-1996", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("de-*-DE", "de", nil))
+	require.Zero(t, acceptsLanguageOfferExtended("de-*-DE", "de-x-DE", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("*-CH", "de-CH", nil))
+	require.Positive(t, acceptsLanguageOfferExtended("*-CH", "de-Latn-CH", nil))
 }
 
 func Test_ReadContentReturnsBytes(t *testing.T) {
@@ -247,6 +255,58 @@ func newLocalListener(t *testing.T) net.Listener {
 	require.NoError(t, err)
 
 	return ln
+}
+
+// Per RFC 9110 §12.5.1 the most specific matching media range decides an
+// offer's acceptability, so a broader range with a higher quality must not
+// override a more specific q=0 rejection. Before the fix, getOffer dropped
+// q=0 ranges up front and returned an offer the client had explicitly refused.
+func Test_Utils_GetOffer_QualityZeroRejection(t *testing.T) {
+	t.Parallel()
+
+	// A more specific q=0 range rejects the offer even though a broader
+	// range (text/*, */*) with quality > 0 also matches it.
+	require.Empty(t, getOffer([]byte("text/*, text/html;q=0"), acceptsOfferType, "text/html"))
+	require.Empty(t, getOffer([]byte("*/*, application/json;q=0"), acceptsOfferType, "application/json"))
+
+	// The broader range still selects offers that the q=0 range does not reject.
+	require.Equal(t, "text/plain", getOffer([]byte("text/*, text/html;q=0"), acceptsOfferType, "text/plain"))
+
+	// Accept-Encoding: the client accepts anything except gzip, so a server
+	// offering gzip or deflate must pick deflate, not the refused gzip.
+	require.Equal(t, "deflate", getOffer([]byte("*, gzip;q=0"), acceptsOffer, "gzip", "deflate"))
+	require.Empty(t, getOffer([]byte("*, gzip;q=0"), acceptsOffer, "gzip"))
+
+	// Accept-Language: "*" accepts any tag, but "en;q=0" rejects English.
+	require.Empty(t, getOffer([]byte("*, en;q=0"), acceptsLanguageOfferBasic, "en"))
+	require.Equal(t, "fr", getOffer([]byte("*, en;q=0"), acceptsLanguageOfferBasic, "en", "fr"))
+
+	// Same coarse specificity class: a positive match and a q=0 refusal can share
+	// the parsed specificity bucket, so the effective match specificity decides.
+
+	// Media-type parameters (RFC 9110 §12.5.1): "text/html;level=1;q=0" is more
+	// specific than "text/html", so an offer carrying that parameter is rejected.
+	require.Empty(t, getOffer([]byte("text/html, text/html;level=1;q=0"), acceptsOfferType, "text/html;level=1"))
+	// A less specific "text/html;q=0" must not override the more specific positive
+	// "text/html;level=1" match.
+	require.Equal(t, "text/html;level=1", getOffer([]byte("text/html;level=1, text/html;q=0"), acceptsOfferType, "text/html;level=1"))
+	// An offer without the refused parameter is still accepted.
+	require.Equal(t, "text/html", getOffer([]byte("text/html, text/html;level=1;q=0"), acceptsOfferType, "text/html"))
+
+	// Accept-Language basic filtering buckets "en" and "en-US" the same, but an
+	// exact "en-US;q=0" must override the prefix "en" match.
+	require.Empty(t, getOffer([]byte("en, en-US;q=0"), acceptsLanguageOfferBasic, "en-US"))
+	require.Equal(t, "en-GB", getOffer([]byte("en, en-US;q=0"), acceptsLanguageOfferBasic, "en-US", "en-GB"))
+	// A broader "en;q=0" does not override the exact positive "en-US".
+	require.Equal(t, "en-US", getOffer([]byte("en-US, en;q=0"), acceptsLanguageOfferBasic, "en-US"))
+	// Extended filtering: a deeper refused range wins over a shorter positive one.
+	require.Empty(t, getOffer([]byte("en, en-US;q=0"), acceptsLanguageOfferExtended, "en-US"))
+
+	// Accept-Charset: an exact "utf-8;q=0" refusal overrides an earlier exact
+	// "utf-8" of the same specificity, and a wildcard positive too.
+	require.Empty(t, getOffer([]byte("utf-8, utf-8;q=0"), acceptsOffer, "utf-8"))
+	require.Empty(t, getOffer([]byte("*, utf-8;q=0"), acceptsOffer, "utf-8"))
+	require.Equal(t, "iso-8859-1", getOffer([]byte("*, utf-8;q=0"), acceptsOffer, "utf-8", "iso-8859-1"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
@@ -463,7 +523,7 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		accepts := acceptsOfferType(tc.spec, tc.offerType, tc.specParams)
+		accepts := acceptsOfferType(tc.spec, tc.offerType, tc.specParams) > 0
 		require.Equal(t, tc.accepts, accepts, tc.description)
 	}
 }
@@ -501,9 +561,10 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 			expectedList: nil,
 		},
 		{
+			// RFC 9110 §5.6.1.2: empty list elements are parsed and ignored.
 			description:  "has a comma without element",
 			headerValue:  "gzip,",
-			expectedList: []string{"gzip", ""},
+			expectedList: []string{"gzip"},
 		},
 		{
 			description:  "has a space between words",
@@ -513,17 +574,22 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 		{
 			description:  "single comma",
 			headerValue:  ",",
-			expectedList: []string{"", ""},
+			expectedList: []string{},
 		},
 		{
 			description:  "multiple comma",
 			headerValue:  ",,",
-			expectedList: []string{"", "", ""},
+			expectedList: []string{},
 		},
 		{
 			description:  "comma with space",
 			headerValue:  ",  ,",
-			expectedList: []string{"", "", ""},
+			expectedList: []string{},
+		},
+		{
+			description:  "empty element between values",
+			headerValue:  "gzip, , br",
+			expectedList: []string{"gzip", "br"},
 		},
 	}
 
@@ -1609,6 +1675,14 @@ func Test_IsEtagStale(t *testing.T) {
 
 	// Weak vs. weak
 	require.False(t, app.isEtagStale(`W/"a"`, []byte(`W/"a"`)))
+
+	// etagc permits "," inside the opaque-tag (RFC 9110 §8.8.3): a quoted
+	// comma is part of the tag, not a list separator.
+	require.False(t, app.isEtagStale(`"v1,v2"`, []byte(`"v1,v2"`)))
+	require.False(t, app.isEtagStale(`"v1,v2"`, []byte(`"a", "v1,v2", "b"`)))
+	require.False(t, app.isEtagStale(`W/"v1,v2"`, []byte(`"v1,v2"`)))
+	require.True(t, app.isEtagStale(`"v1"`, []byte(`"v1,v2"`)))
+	require.True(t, app.isEtagStale(`"v2"`, []byte(`"v1,v2"`)))
 }
 
 func Test_App_quoteRawString(t *testing.T) {
@@ -1626,6 +1700,7 @@ func Test_App_quoteRawString(t *testing.T) {
 		{"newline", "Hello\n", "Hello\\n"},
 		{"carriage", "Hello\r", "Hello\\r"},
 		{"controls", string([]byte{0, 31, 127}), "%00%1F%7F"},
+		{"tab", "a\tb", "a%09b"},
 		{"mixed", "test \"A\n\r" + string([]byte{1}) + "\\", `test \"A\n\r%01\\`},
 	}
 
@@ -1636,19 +1711,6 @@ func Test_App_quoteRawString(t *testing.T) {
 			require.Equal(t, tc.out, app.quoteRawString(tc.in))
 		})
 	}
-}
-
-func Test_App_quoteString_DetachesFromPooledBuffer(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-
-	first := app.quoteString("a b")
-	second := app.quoteString("x y")
-
-	require.Equal(t, "a+b", first)
-	require.Equal(t, "x+y", second)
-	require.Equal(t, "a+b", first)
 }
 
 func Test_App_quoteRawString_DetachesFromPooledBuffer(t *testing.T) {
@@ -1821,5 +1883,39 @@ func Test_IsMethodIdempotent(t *testing.T) {
 	}
 	for _, m := range notIdempotent {
 		require.False(t, IsMethodIdempotent(m), "%s should not be idempotent", m)
+	}
+}
+
+func Test_appendLowerASCII(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		out  string
+	}{
+		{"empty", "", ""},
+		{"short lower", "/abc", "/abc"},
+		{"short mixed", "/AbC", "/abc"},
+		{"exactly one word", "/ABCDEFG", "/abcdefg"},
+		{"multi word", "/API/V1/UsersAndGroups", "/api/v1/usersandgroups"},
+		{"word plus tail", "/ABCDEFGH/XYZ", "/abcdefgh/xyz"},
+		{"non-letters unchanged", "/a1-B2_c3{~}", "/a1-b2_c3{~}"},
+		{"non-ascii passthrough", "/CAFé\xC3\xA9/É", "/caf\xC3\xA9\xC3\xA9/\xC3\x89"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Fresh destination (forces growth) and reused oversized
+			// destination (exercises the cap(dst) >= n path).
+			require.Equal(t, tc.out, string(appendLowerASCII(nil, []byte(tc.in))))
+			reused := make([]byte, 0, 128)
+			got := appendLowerASCII(reused, []byte(tc.in))
+			require.Equal(t, tc.out, string(got))
+			if tc.in != "" {
+				require.Equal(t, 128, cap(got), "reused buffer must not be reallocated")
+			}
+		})
 	}
 }

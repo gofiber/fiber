@@ -5,6 +5,7 @@ import (
 	"hash/crc32"
 	"math"
 	"slices"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -58,6 +59,12 @@ func New(config ...Config) fiber.Handler {
 		// Return err if next handler returns one
 		if err := c.Next(); err != nil {
 			return err
+		}
+
+		// Never generate ETags for Server-Sent Events: hashing the body would
+		// materialize the stream and break real-time delivery.
+		if isEventStream(c) {
+			return nil
 		}
 
 		// Don't generate ETags for invalid responses
@@ -141,6 +148,17 @@ func etagWeakMatch(a, b []byte) bool {
 	}
 
 	return bytes.Equal(a, b)
+}
+
+// isEventStream reports whether the response is a Server-Sent Events stream.
+// Such responses must be passed through untouched: buffering the body to hash
+// it would break real-time delivery.
+func isEventStream(c fiber.Ctx) bool {
+	ct := c.GetRespHeader(fiber.HeaderContentType)
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	return utils.EqualFold(utils.TrimSpace(ct), fiber.MIMETextEventStream)
 }
 
 // appendUint appends n to dst and returns the extended dst.

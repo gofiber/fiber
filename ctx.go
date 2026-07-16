@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -71,8 +72,10 @@ type DefaultCtx struct {
 	path                   []byte               // HTTP path with the modifications by the configuration
 	detectionPath          []byte               // Route detection path
 	treePathHash           int                  // Hash of the path for the search in the tree
+	pathSlashes            int                  // Number of '/' in the detection path, used to quick-reject routes
 	indexRoute             int                  // Index of the current route
 	indexHandler           int                  // Index of the current handler
+	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
 	methodInt              int                  // HTTP method INT equivalent
 	isAbandoned            atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
 	isMatched              bool                 // Non use route matched
@@ -277,6 +280,8 @@ func (c *DefaultCtx) Next() error {
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
 	c.indexRoute = -1
+	// Path may have changed; invalidate the lookahead index
+	c.firstMatchIndex = -1
 	if c.handlerCtx != nil {
 		_, err := c.app.nextCustom(c.handlerCtx)
 		return err
@@ -316,6 +321,8 @@ func (c *DefaultCtx) Path(override ...string) string {
 		c.fasthttp.Request.URI().SetPath(c.pathOriginal)
 		// Prettify path
 		c.configDependentPaths()
+		// The detection path/tree hash changed; invalidate the lookahead index.
+		c.firstMatchIndex = -1
 	}
 	return c.app.toString(c.path)
 }
@@ -367,16 +374,26 @@ func (c *DefaultCtx) ViewBind(vars Map) error {
 // Route returns the matched Route struct.
 func (c *DefaultCtx) Route() *Route {
 	if c.route == nil {
-		// Fallback for fasthttp error handler
-		return &Route{
-			path:     c.pathOriginal,
-			Path:     c.pathOriginal,
-			Method:   c.Method(),
-			Handlers: emptyRouteHandlers[:],
-			Params:   emptyRouteParams[:],
-		}
+		// Cold path kept out of line so Route stays within the inlining budget.
+		return c.routeFallback()
 	}
 	return c.route
+}
+
+// routeFallback builds the synthetic route for the fasthttp error handler.
+// Its Method field is resolved like c.Method() (including the raw-header
+// fallback for unregistered methods) so Route and Method always agree.
+// Never inlined: inlining it would push Route over the inlining budget.
+//
+//go:noinline
+func (c *DefaultCtx) routeFallback() *Route {
+	return &Route{
+		path:     c.pathOriginal,
+		Path:     c.pathOriginal,
+		Method:   currentMethod(c),
+		Handlers: emptyRouteHandlers[:],
+		Params:   emptyRouteParams[:],
+	}
 }
 
 // FullPath returns the matched route path, including any group prefixes.
@@ -454,26 +471,33 @@ func (c *DefaultCtx) OverrideParam(name, value string) {
 }
 
 func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
-	teBytes := hdr.Peek(HeaderTransferEncoding)
-	var te string
-
-	if len(teBytes) > 0 {
-		te = utils.UnsafeString(teBytes)
-	} else {
-		for key, value := range hdr.All() {
-			if !utils.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
-				continue
+	// Repeated field lines form one combined list (RFC 9110 Section 5.2),
+	// so every Transfer-Encoding line must be inspected, not just the first.
+	if lines := hdr.PeekAll(HeaderTransferEncoding); len(lines) > 0 {
+		for _, line := range lines {
+			if transferEncodingLineHasBody(utils.UnsafeString(line)) {
+				return true
 			}
-			te = utils.UnsafeString(value)
-			break
 		}
-	}
-
-	if te == "" {
 		return false
 	}
 
-	hasEncoding := false
+	// Fallback scan for non-normalized header keys.
+	for key, value := range hdr.All() {
+		if !utils.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
+			continue
+		}
+		if transferEncodingLineHasBody(utils.UnsafeString(value)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// transferEncodingLineHasBody reports whether a single Transfer-Encoding
+// field line contains a transfer coding other than "identity".
+func transferEncodingLineHasBody(te string) bool {
 	for raw := range strings.SplitSeq(te, ",") {
 		token := utils.TrimSpace(raw)
 		if token == "" {
@@ -488,26 +512,42 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 		if utils.EqualFold(token, "identity") {
 			continue
 		}
-		hasEncoding = true
+		return true
 	}
-
-	return hasEncoding
+	return false
 }
 
 // IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
 func (c *DefaultCtx) IsWebSocket() bool {
-	conn := c.fasthttp.Request.Header.Peek(HeaderConnection)
-	var isUpgrade bool
-	for v := range strings.SplitSeq(utils.UnsafeString(conn), ",") {
-		if utils.EqualFold(utils.TrimSpace(v), "upgrade") {
-			isUpgrade = true
-			break
-		}
-	}
-	if !isUpgrade {
+	// Repeated field lines are equivalent to one combined comma-separated
+	// list (RFC 9110 Section 5.2), so inspect every Connection and Upgrade
+	// field line, not just the first.
+	if !headerListContainsToken(c.fasthttp.Request.Header.PeekAll(HeaderConnection), "upgrade") {
 		return false
 	}
-	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderUpgrade), websocketBytes)
+	// Upgrade is a list of protocols, each optionally carrying a "/version"
+	// suffix (RFC 9110 Section 7.8), e.g. "Upgrade: websocket, h2c".
+	return headerListContainsToken(c.fasthttp.Request.Header.PeekAll(HeaderUpgrade), "websocket")
+}
+
+// headerListContainsToken reports whether any comma-separated element across
+// the given field lines equals token case-insensitively. An optional
+// "/version" suffix (Upgrade protocol syntax, RFC 9110 Section 7.8) is
+// ignored when comparing; valid Connection members never contain "/", so
+// this is safe for both headers.
+func headerListContainsToken(lines [][]byte, token string) bool {
+	for _, line := range lines {
+		for v := range strings.SplitSeq(utils.UnsafeString(line), ",") {
+			element := utils.TrimSpace(v)
+			if i := strings.IndexByte(element, '/'); i >= 0 {
+				element = element[:i]
+			}
+			if utils.EqualFold(element, token) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // IsPreflight returns true if the request is a CORS preflight.
@@ -634,12 +674,8 @@ func (c *DefaultCtx) Value(key any) any {
 	return c.fasthttp.UserValue(key)
 }
 
-var (
-	// xmlHTTPRequestBytes is precomputed for XHR detection
-	xmlHTTPRequestBytes = []byte("xmlhttprequest")
-	// websocketBytes is precomputed for WebSocket upgrade detection
-	websocketBytes = []byte("websocket")
-)
+// xmlHTTPRequestBytes is precomputed for XHR detection
+var xmlHTTPRequestBytes = []byte("xmlhttprequest")
 
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
@@ -658,9 +694,10 @@ func (c *DefaultCtx) configDependentPaths() {
 
 	// another path is specified which is for routing recognition only
 	// use the path that was changed by the previous configuration flags
-	// If CaseSensitive is disabled, we lowercase the original path
+	// If CaseSensitive is disabled, we lowercase the original path while
+	// copying it, fusing the copy and the case fold into a single pass.
 	if !c.app.config.CaseSensitive {
-		c.detectionPath = appendLowerBytes(c.detectionPath, c.path)
+		c.detectionPath = appendLowerASCII(c.detectionPath[:0], c.path)
 	} else {
 		c.detectionPath = append(c.detectionPath[:0], c.path...)
 	}
@@ -677,6 +714,10 @@ func (c *DefaultCtx) configDependentPaths() {
 			int(c.detectionPath[1])<<8 |
 			int(c.detectionPath[2])
 	}
+
+	// Invalidate the cached slash count of the detection path; pathSlashCount
+	// recomputes it lazily when route matching first needs it.
+	c.pathSlashes = 0
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.
@@ -687,6 +728,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Reset matched flag
 	c.isMatched = false
 	c.shouldSkipNonUseRoutes = false
+	c.firstMatchIndex = -1
 	// Set paths
 	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
@@ -861,6 +903,20 @@ func (c *DefaultCtx) getTreePathHash() int {
 	return c.treePathHash
 }
 
+// pathSlashCount lazily counts the '/' bytes of the detection path and caches
+// the result for the request; matching uses it to reject route candidates
+// without walking their segments. app is the serving App, which can differ
+// from c.app when an App value was copied. When it registers no route that
+// consults the count, counting is skipped and 0 is returned — a real detection
+// path always contains a '/', so 0 doubles as the "unknown" state that makes
+// Route.match skip the quick-reject entirely.
+func (c *DefaultCtx) pathSlashCount(app *App) int {
+	if c.pathSlashes == 0 && app.hasParamRoutes {
+		c.pathSlashes = bytes.Count(c.detectionPath, slashDelimiterBytes)
+	}
+	return c.pathSlashes
+}
+
 func (c *DefaultCtx) getDetectionPath() string {
 	return c.app.toString(c.detectionPath)
 }
@@ -877,6 +933,10 @@ func (c *DefaultCtx) getSkipNonUseRoutes() bool {
 	return c.shouldSkipNonUseRoutes
 }
 
+func (c *DefaultCtx) getFirstMatchIndex() int {
+	return c.firstMatchIndex
+}
+
 func (c *DefaultCtx) setIndexHandler(handler int) {
 	c.indexHandler = handler
 }
@@ -891,6 +951,10 @@ func (c *DefaultCtx) setMatched(matched bool) {
 
 func (c *DefaultCtx) setSkipNonUseRoutes(skip bool) {
 	c.shouldSkipNonUseRoutes = skip
+}
+
+func (c *DefaultCtx) setFirstMatchIndex(index int) {
+	c.firstMatchIndex = index
 }
 
 func (c *DefaultCtx) setRoute(route *Route) {

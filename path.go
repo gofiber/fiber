@@ -25,6 +25,9 @@ type routeParser struct {
 	params        []string        // that parameter names the parsed route
 	wildCardCount int             // number of wildcard parameters, used internally to give the wildcard parameter its number
 	plusCount     int             // number of plus parameters, used internally to give the plus parameter its number
+	minSlashes    int             // minimum number of '/' a matching detection path can contain
+	maxSlashes    int             // maximum number of '/' a matching detection path can contain; only valid when maxBounded is true
+	maxBounded    bool            // false when a parameter can swallow '/', making the maximum unknowable; false also disables the max check
 }
 
 var routerParserPool = &sync.Pool{
@@ -145,6 +148,8 @@ var constraintNameToID = map[string]TypeConstraint{
 var (
 	// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
 	routeDelimiter = []byte{slashDelimiter, '-', '.'}
+	// slashDelimiterBytes is the byte-slice form of slashDelimiter for bytes.Count
+	slashDelimiterBytes = []byte{slashDelimiter}
 	// list of chars for the parameter recognizing
 	parameterStartChars = [256]bool{
 		wildcardParam:    true,
@@ -163,22 +168,6 @@ var (
 		'.':              true,
 	}
 )
-
-func appendLowerBytes(dst, src []byte) []byte {
-	dst = dst[:0]
-	if cap(dst) < len(src) {
-		dst = make([]byte, len(src))
-	} else {
-		dst = dst[:len(src)]
-	}
-	for i, c := range src {
-		if 'A' <= c && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		dst[i] = c
-	}
-	return dst
-}
 
 // RoutePatternMatch reports whether path matches the provided Fiber route pattern.
 //
@@ -250,6 +239,9 @@ func (parser *routeParser) reset() {
 	parser.params = parser.params[:0]
 	parser.wildCardCount = 0
 	parser.plusCount = 0
+	parser.minSlashes = 0
+	parser.maxSlashes = 0
+	parser.maxBounded = false
 }
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
@@ -276,11 +268,56 @@ func (parser *routeParser) parseRoute(pattern string, regexHandler any, customCo
 	parser.segs = addParameterMetaInfo(parser.segs)
 }
 
+// computeSlashBounds precomputes the minimum and maximum number of '/' bytes a
+// detection path can contain and still match this pattern, so the router can
+// reject candidates with an integer compare before walking their segments.
+// The unbounded cases mirror the findParamLen branches that let a parameter
+// swallow '/'; Test_Route_Match_SlashBoundsDifferential guards the pairing.
+func (parser *routeParser) computeSlashBounds() {
+	minSlashes := 0
+	maxSlashes := 0
+	bounded := true
+	for _, seg := range parser.segs {
+		if seg.IsParam {
+			switch {
+			case seg.IsGreedy:
+				// '*' and '+' match across '/'
+				bounded = false
+			case !seg.IsLast && seg.Length == 1:
+				// adjacent parameters consume one byte each, possibly a '/'
+				bounded = false
+			case !seg.IsLast && len(seg.ComparePart) == 1 && seg.ComparePart[0] != slashDelimiter:
+				// findParamLen's single-byte IndexByte search has no slash guard
+				bounded = false
+			}
+			// otherwise a non-greedy parameter never contains '/': the last
+			// segment stops at the next '/', and the multi-byte ComparePart
+			// branch rejects parameters that would span one
+			continue
+		}
+		n := strings.Count(seg.Const, string(slashDelimiter))
+		minSlashes += n
+		maxSlashes += n
+		if seg.HasOptionalSlash {
+			// getMatch may drop the trailing '/' of this const part
+			minSlashes--
+		}
+	}
+	parser.minSlashes = minSlashes
+	if bounded {
+		parser.maxSlashes = maxSlashes
+		parser.maxBounded = true
+	}
+}
+
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
 func parseRoute(pattern string, regexHandler any, customConstraints ...CustomConstraint) routeParser {
 	parser := routeParser{}
 	parser.parseRoute(pattern, regexHandler, customConstraints...)
+	// The slash bounds only speed up the router's candidate scan; computing them
+	// here keeps them off RoutePatternMatch's per-call path, which never reads them.
+	parser.computeSlashBounds()
 
 	// Check if the route has too many parameters
 	if len(parser.params) > maxParams {
@@ -528,7 +565,9 @@ func hasPartialMatchBoundary(path string, matchedLength int) bool {
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
 func (parser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // Accepting a bool param is fine here
 	originalDetectionPath := detectionPath
-	var i, paramsIterator, partLen int
+	// offset indexes into the never-resliced path; it only advances by bytes consumed
+	// from detectionPath (never longer than path), so offset+i stays in bounds.
+	var i, paramsIterator, partLen, offset int
 	for _, segment := range parser.segs {
 		partLen = len(detectionPath)
 		// check const segment
@@ -536,9 +575,11 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			i = segment.Length
 			// is optional part or the const part must match with the given string
 			// check if the end of the segment is an optional slash
+			// the unsigned compare proves 0 <= i <= len(detectionPath), keeping detectionPath[:i] bounds-check free
+			// NOTE: computeSlashBounds' minSlashes accounts for this optional-slash drop
 			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
 				i--
-			} else if i > partLen || detectionPath[:i] != segment.Const {
+			} else if uint(i) > uint(len(detectionPath)) || detectionPath[:i] != segment.Const {
 				return false
 			}
 		} else {
@@ -548,7 +589,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 				return false
 			}
 			// take over the params positions
-			params[paramsIterator] = path[:i]
+			params[paramsIterator] = path[offset : offset+i]
 
 			if !segment.IsOptional || i != 0 {
 				// check constraint
@@ -564,7 +605,8 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 
 		// reduce founded part from the string
 		if partLen > 0 {
-			detectionPath, path = detectionPath[i:], path[i:]
+			detectionPath = detectionPath[i:]
+			offset += i
 		}
 	}
 	if detectionPath != "" {
@@ -582,6 +624,11 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 
 // findParamLen for the expressjs wildcard behavior (right to left greedy)
 // look at the other segments and take what is left for the wildcard from right to left
+//
+// NOTE: computeSlashBounds mirrors which branches here let a parameter consume
+// '/' (greedy, adjacent Length==1, single-byte ComparePart). When changing how
+// parameters consume '/', update computeSlashBounds or the router's slash-count
+// quick-reject will wrongly filter routes.
 func findParamLen(s string, segment *routeSegment) int {
 	if segment.IsLast {
 		return findParamLenForLastSegment(s, segment)

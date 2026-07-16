@@ -36,15 +36,18 @@ type CustomCtx interface {
 	getMethodInt() int
 	getIndexRoute() int
 	getTreePathHash() int
+	pathSlashCount(app *App) int
 	getDetectionPath() string
 	getPathOriginal() string
 	getValues() *[maxParams]string
 	getMatched() bool
 	getSkipNonUseRoutes() bool
+	getFirstMatchIndex() int
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
 	setSkipNonUseRoutes(skip bool)
+	setFirstMatchIndex(index int)
 	setRoute(route *Route)
 }
 

@@ -112,7 +112,7 @@ func trimOneTrailingDot(host string) string {
 }
 
 func toPunycode(host string) string {
-	if host == "" || strings.IndexByte(host, ':') >= 0 || isASCII(host) {
+	if host == "" || strings.IndexByte(host, ':') >= 0 || utils.IsASCII(host) {
 		return host
 	}
 	if ascii, err := idna.Lookup.ToASCII(host); err == nil {
@@ -251,15 +251,6 @@ func isValidPort(raw string) bool {
 	}
 
 	return port <= 65535
-}
-
-func isASCII(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] >= 0x80 {
-			return false
-		}
-	}
-	return true
 }
 
 // matchHost evaluates exact → wildcard → AllowedHostsFunc.
