@@ -387,10 +387,8 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 		return nil
 	}
 
-	for _, trustedSubOrigin := range trustedSubOrigins {
-		if trustedSubOrigin.match(origin) {
-			return nil
-		}
+	if matchSubdomainOrigin(trustedSubOrigins, origin) {
+		return nil
 	}
 
 	return ErrOriginNoMatch
@@ -425,10 +423,8 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins 
 		return nil
 	}
 
-	for _, trustedSubOrigin := range trustedSubOrigins {
-		if trustedSubOrigin.match(refererOrigin) {
-			return nil
-		}
+	if matchSubdomainOrigin(trustedSubOrigins, refererOrigin) {
+		return nil
 	}
 
 	return ErrRefererNoMatch
