@@ -329,11 +329,7 @@ const (
 // of the same coarse class (RFC 9110 §12.5.1).
 func acceptsOffer(spec, offer string, _ headerParams) int {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
-		prefix := spec[:len(spec)-1]
-		if len(offer) < len(prefix) {
-			return 0
-		}
-		if utils.EqualFold(prefix, offer[:len(prefix)]) {
+		if utils.HasPrefixFold(offer, spec[:len(spec)-1]) {
 			return matchWildcard
 		}
 		return 0
@@ -365,7 +361,7 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) int {
 		return matchExact
 	}
 	if len(offer) > len(spec) &&
-		utils.EqualFold(offer[:len(spec)], spec) &&
+		utils.HasPrefixFold(offer, spec) &&
 		offer[len(spec)] == '-' {
 		return matchPrefix
 	}

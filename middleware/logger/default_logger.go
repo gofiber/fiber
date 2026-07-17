@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
+	"github.com/gofiber/utils/v2"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/bytebufferpool"
@@ -77,8 +78,9 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			buf.WriteString(data.Timestamp)
 			buf.WriteString(" | ")
 
-			// Status Code with 3 fixed width, right aligned
-			fixedWidth(strconv.Itoa(c.Response().StatusCode()), 3, true)
+			// Status Code with 3 fixed width, right aligned; appended digit-wise
+			// to avoid the per-request Itoa string.
+			appendIntPadded(buf, c.Response().StatusCode(), 3)
 			buf.WriteString(" | ")
 
 			// Duration with 13 fixed width, right aligned
@@ -151,12 +153,23 @@ func beforeHandlerFunc(cfg *Config) {
 }
 
 // appendInt writes the decimal form of v into output without going through
-// fmt boxing. The 20-byte stack scratch fits any int64; strconv.AppendInt
+// fmt boxing. The fixed 20-byte scratch fits any int64; utils.AppendInt
 // only grows the slice when the formatted value exceeds that capacity, which
 // cannot happen for a fixed-width int.
 func appendInt(output Buffer, v int) (int, error) {
 	var scratch [20]byte
-	return output.Write(strconv.AppendInt(scratch[:0], int64(v), 10))
+	return output.Write(utils.AppendInt(scratch[:0], int64(v)))
+}
+
+// appendIntPadded appends the decimal form of v to buf, right-aligned to
+// width with spaces, without allocating an intermediate string.
+func appendIntPadded(buf *bytebufferpool.ByteBuffer, v, width int) {
+	var scratch [20]byte
+	s := utils.AppendInt(scratch[:0], int64(v))
+	for i := len(s); i < width; i++ {
+		buf.WriteByte(' ')
+	}
+	buf.Write(s)
 }
 
 // writeLog writes a msg to w, printing a warning to stderr if the log fails.

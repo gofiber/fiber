@@ -1,15 +1,32 @@
 package helmet
 
 import (
-	"fmt"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Init config
 	cfg := configDefault(config...)
+
+	// The Strict-Transport-Security value only depends on config, so build it
+	// once instead of formatting it on every secure request.
+	hstsHeaderValue := ""
+	if cfg.HSTSMaxAge > 0 {
+		var b strings.Builder
+		b.WriteString("max-age=")                             //nolint:errcheck // strings.Builder cannot fail
+		b.WriteString(utils.FormatInt(int64(cfg.HSTSMaxAge))) //nolint:errcheck // strings.Builder cannot fail
+		if !cfg.HSTSExcludeSubdomains {
+			b.WriteString("; includeSubDomains") //nolint:errcheck // strings.Builder cannot fail
+		}
+		if cfg.HSTSPreloadEnabled {
+			b.WriteString("; preload") //nolint:errcheck // strings.Builder cannot fail
+		}
+		hstsHeaderValue = b.String()
+	}
 
 	// Return middleware handler
 	return func(c fiber.Ctx) error {
@@ -64,15 +81,8 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Handle HSTS headers
-		if c.Secure() && cfg.HSTSMaxAge > 0 {
-			subdomains := ""
-			if !cfg.HSTSExcludeSubdomains {
-				subdomains = "; includeSubDomains"
-			}
-			if cfg.HSTSPreloadEnabled {
-				subdomains += "; preload"
-			}
-			c.Set(fiber.HeaderStrictTransportSecurity, fmt.Sprintf("max-age=%d%s", cfg.HSTSMaxAge, subdomains))
+		if c.Secure() && hstsHeaderValue != "" {
+			c.Set(fiber.HeaderStrictTransportSecurity, hstsHeaderValue)
 		}
 
 		// Handle Content-Security-Policy headers

@@ -486,6 +486,56 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 	require.EqualValues(t, 2, *o)
 }
 
+// Test_AppendIntPadded pins the right-align pad loop directly: statuses are
+// almost always exactly width 3, so the end-to-end test below cannot
+// exercise the padding (and net/http rejects 2-digit status lines).
+func Test_AppendIntPadded(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	testCases := []struct {
+		expected string
+		v        int
+		width    int
+	}{
+		{"  5", 5, 3},
+		{" 99", 99, 3},
+		{"404", 404, 3},
+		{"1000", 1000, 3},
+		{" -1", -1, 3},
+	}
+	for _, tc := range testCases {
+		buf.Reset()
+		appendIntPadded(buf, tc.v, tc.width)
+		require.Equal(t, tc.expected, buf.String(), "appendIntPadded(%d, %d)", tc.v, tc.width)
+	}
+}
+
+// Test_Logger_DefaultFormat_WithoutColor pins the byte layout of the
+// non-color default line, in particular the width-3 right-aligned status
+// field that is appended digit-wise without an intermediate string.
+func Test_Logger_DefaultFormat_WithoutColor(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Stream:        buf,
+		DisableColors: true,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusNotFound)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	require.Contains(t, buf.String(), " | 404 | ", "status field must be width-3 with separators")
+	require.Contains(t, buf.String(), " | GET     | ", "method field must be width-7, left aligned")
+}
+
 // go test -run Test_Logger_ErrorOutput
 func Test_Logger_ErrorOutput(t *testing.T) {
 	t.Parallel()
