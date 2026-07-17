@@ -1,6 +1,8 @@
 package helmet
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 )
@@ -14,13 +16,16 @@ func New(config ...Config) fiber.Handler {
 	// once instead of formatting it on every secure request.
 	hstsHeaderValue := ""
 	if cfg.HSTSMaxAge > 0 {
-		hstsHeaderValue = "max-age=" + utils.FormatInt(int64(cfg.HSTSMaxAge))
+		var b strings.Builder
+		b.WriteString("max-age=")                             //nolint:errcheck // strings.Builder cannot fail
+		b.WriteString(utils.FormatInt(int64(cfg.HSTSMaxAge))) //nolint:errcheck // strings.Builder cannot fail
 		if !cfg.HSTSExcludeSubdomains {
-			hstsHeaderValue += "; includeSubDomains"
+			b.WriteString("; includeSubDomains") //nolint:errcheck // strings.Builder cannot fail
 		}
 		if cfg.HSTSPreloadEnabled {
-			hstsHeaderValue += "; preload"
+			b.WriteString("; preload") //nolint:errcheck // strings.Builder cannot fail
 		}
+		hstsHeaderValue = b.String()
 	}
 
 	// Return middleware handler
