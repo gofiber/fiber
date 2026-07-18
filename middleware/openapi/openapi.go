@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -72,17 +71,18 @@ func New(config ...Config) fiber.Handler {
 		if c.App().Config().CaseSensitive {
 			equal = stringsEqual
 		}
-		targets := targetsCache.Load()
-		if targets == nil || targets.routePath != routePath {
-			targets = &resolvedTargets{
-				routePath: routePath,
-				specPath:  resolvedSpecPath(c, cfg.Path),
-				uiPath:    resolvedSpecPath(c, cfg.UIPath),
-			}
-			targetsCache.Store(targets)
+
+		request := utils.TrimRight(c.Path(), '/')
+		route := c.Route()
+		isMiddleware := route != nil && route.IsMiddleware()
+
+		// Fast path for prefix-mounted middleware: most requests cannot match
+		// either target, so skip target resolution without allocating.
+		if isMiddleware && !hasSuffix(request, specPath, equal) && !hasSuffix(request, uiPath, equal) {
+			return c.Next()
 		}
-		targetPath := targets.specPath
-		targetUIPath := targets.uiPath
+
+		specTarget, uiTarget := resolveTargets(c, specPath, uiPath, equal)
 
 		switch {
 		case equal(request, specTarget):
@@ -138,12 +138,12 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// resolvedTargets caches the spec and UI paths resolved for a given mount
-// (identified by the matched route's path).
-type resolvedTargets struct {
-	routePath string
-	specPath  string
-	uiPath    string
+func stringsEqual(a, b string) bool { return a == b }
+
+// hasSuffix reports whether s ends with suffix under the given equality
+// function (exact or case-folding).
+func hasSuffix(s, suffix string, equal func(a, b string) bool) bool {
+	return len(s) >= len(suffix) && equal(s[len(s)-len(suffix):], suffix)
 }
 
 // resolveTargets derives the spec and UI target paths (trailing slashes
@@ -183,6 +183,15 @@ func resolveTargets(c fiber.Ctx, specPath, uiPath string, equal func(a, b string
 	}
 
 	prefix := routePrefix(route.Path, c.Path())
+	// A Use mount whose prefix already ends in a configured path IS the target
+	// (e.g. app.Use("/v1/openapi.json", openapi.New())); strip the suffix so it
+	// is not doubled.
+	switch {
+	case hasSuffix(prefix, specPath, equal):
+		prefix = prefix[:len(prefix)-len(specPath)]
+	case uiPath != "" && hasSuffix(prefix, uiPath, equal):
+		prefix = prefix[:len(prefix)-len(uiPath)]
+	}
 	return prefix + specPath, prefix + uiPath
 }
 
@@ -386,23 +395,7 @@ func routePrefix(pattern, requestPath string) string {
 		}
 		idx += 1 + next
 	}
-	if prefix == "/" || prefix == "" {
-		return path
-	}
-	prefix = strings.TrimSuffix(prefix, "/")
-	if prefix == "" {
-		return path
-	}
-	// When the middleware is registered on a route whose path already ends in
-	// the configured path — e.g. app.Get("/openapi.json", openapi.New()) or
-	// app.Use("/v1/openapi.json", openapi.New()) — the registered path IS the
-	// target; strip the suffix so it is not doubled.
-	prefix = strings.TrimSuffix(prefix, path)
-	if prefix == "" || prefix == "/" {
-		return path
-	}
-
-	return prefix + path
+	return requestPath[:idx]
 }
 
 type openAPISpec struct {
@@ -584,16 +577,6 @@ func versionAtLeast(version, minimum string) bool {
 	return openAPIVersionRank[version] >= openAPIVersionRank[minimum]
 }
 
-// uniqueParamName returns name, suffixed with _2, _3, ... if needed, so that it
-// does not collide with any name already in existing.
-func uniqueParamName(name string, existing []string) string {
-	candidate := name
-	for i := 2; slices.Contains(existing, candidate); i++ {
-		candidate = fmt.Sprintf("%s_%d", name, i)
-	}
-	return candidate
-}
-
 // generateSpec builds the OpenAPI document from a snapshot of routes (deep
 // copies from App.GetRoutes, safe to read without further locking).
 func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
@@ -664,6 +647,12 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 			}
 
 			extras := remapRouteParameters(r.Parameters, variant.PathParamAliases, variant.ParamNames)
+			// The "querystring" location only exists in OpenAPI 3.2+;
+			// emitting it for earlier versions would make the document
+			// invalid.
+			if !versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
+				extras = dropQuerystringParameters(extras)
+			}
 			params = mergeRouteParameters(params, paramIndex, extras)
 
 			summary := r.Summary
@@ -680,7 +669,7 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 
 			respType := r.Produces
 
-			responses := convertRouteResponses(r.Responses)
+			responses := convertRouteResponses(r.Responses, respType)
 			if len(responses) == 0 {
 				status, defaultResp := defaultResponseForMethod(r.Method, respType)
 				responses = map[string]response{status: defaultResp}
@@ -699,7 +688,6 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 				reqBody = nil
 			}
 
-			methodLower := utilsstrings.ToLower(r.Method)
 			if paths[variant.Path] == nil {
 				paths[variant.Path] = make(map[string]operation)
 			}
@@ -714,8 +702,8 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 				RequestBody:  reqBody,
 				Responses:    responses,
 				Security:     r.Security,
-				ExternalDocs: shallowCopyMap(r.ExternalDocs),
-				extensions:   shallowCopyMap(r.OperationExtensions),
+				ExternalDocs: maps.Clone(r.ExternalDocs),
+				extensions:   maps.Clone(r.OperationExtensions),
 			}
 		}
 	}
@@ -872,7 +860,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		// Prefer "examples" when both are provided.
 		var paramExample any
 		var paramExamples map[string]any
-		if copiedExamples := shallowCopyMap(extra.Examples); len(copiedExamples) > 0 {
+		if copiedExamples := maps.Clone(extra.Examples); len(copiedExamples) > 0 {
 			paramExamples = copiedExamples
 		} else {
 			paramExample = extra.Example
@@ -915,24 +903,12 @@ func appendOrReplaceParameter(params []parameter, index map[string]int, p *param
 	return append(params, *p)
 }
 
-// shallowCopyMap copies only the top level of src. Unlike the fiber package's
-// deep copyAnyMap, nested maps/slices stay shared — safe here because the
-// generated spec is marshaled immediately and never mutates nested values.
-func shallowCopyMap(src map[string]any) map[string]any {
-	if len(src) == 0 {
-		return nil
-	}
-	dst := make(map[string]any, len(src))
-	maps.Copy(dst, src)
-	return dst
-}
-
 func schemaFrom(schema map[string]any, schemaRef, defaultType string) map[string]any {
 	if schemaRef != "" {
 		return map[string]any{"$ref": schemaRef}
 	}
 
-	copied := shallowCopyMap(schema)
+	copied := maps.Clone(schema)
 	if copied == nil {
 		copied = map[string]any{}
 	}
@@ -949,12 +925,12 @@ func contentEntry(schema map[string]any, schemaRef string, example any, examples
 	entry := map[string]any{}
 	if schemaRef != "" {
 		entry["schema"] = map[string]any{"$ref": schemaRef}
-	} else if copied := shallowCopyMap(schema); len(copied) > 0 {
+	} else if copied := maps.Clone(schema); len(copied) > 0 {
 		entry["schema"] = copied
 	}
 	// OpenAPI spec: "example" and "examples" are mutually exclusive.
 	// Prefer "examples" when both are provided.
-	if ex := shallowCopyMap(examples); len(ex) > 0 {
+	if ex := maps.Clone(examples); len(ex) > 0 {
 		entry["examples"] = ex
 	} else if example != nil {
 		entry["example"] = example
@@ -974,7 +950,7 @@ func routeMediaTypeContent(content map[string]fiber.RouteMediaType) map[string]m
 			continue
 		}
 		entry := contentEntry(mt.Schema, mt.SchemaRef, mt.Example, mt.Examples)
-		if enc := shallowCopyMap(mt.Encoding); len(enc) > 0 {
+		if enc := maps.Clone(mt.Encoding); len(enc) > 0 {
 			entry["encoding"] = enc
 		}
 		if len(entry) == 0 {
@@ -1008,8 +984,8 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallba
 			merged[code] = response{
 				Description: resp.Description,
 				Content:     content,
-				Headers:     shallowCopyMap(resp.Headers),
-				Links:       shallowCopyMap(resp.Links),
+				Headers:     maps.Clone(resp.Headers),
+				Links:       maps.Clone(resp.Links),
 			}
 		}
 	}
@@ -1084,8 +1060,9 @@ func buildRequestBody(routeBody *fiber.RouteRequestBody) *requestBody {
 
 // shouldIncludeRequestBody reports whether an implicit request body should be
 // added for a route without explicit request body metadata: only when the route
-// explicitly declared a request media type via Consumes. The GET/HEAD strip in
-// generateSpec is the single authority on which methods may carry a body.
+// explicitly declared a request media type via Consumes. The GET/HEAD/TRACE
+// strip in generateSpec is the single authority on which methods may carry a
+// body.
 func shouldIncludeRequestBody(reqType string, route *fiber.Route) bool {
 	return reqType != "" && route != nil
 }
@@ -1109,6 +1086,24 @@ func defaultResponseForMethod(method, mediaType string) (string, response) {
 		}
 	}
 	return status, resp
+}
+
+// pathState carries the in-progress OpenAPI path while walking a Fiber route
+// pattern; optional parameters fork the walk into include/exclude branches.
+type pathState struct {
+	aliases  map[string]string
+	path     string
+	params   []string
+	paramIdx int
+}
+
+func (s pathState) clone() pathState {
+	return pathState{
+		path:     s.path,
+		params:   append([]string(nil), s.params...),
+		aliases:  maps.Clone(s.aliases),
+		paramIdx: s.paramIdx,
+	}
 }
 
 func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
@@ -1154,15 +1149,13 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 				}
 
 				resolved := resolveOpenAPIPathParamName(current.paramIdx, tokenName, params)
-				includeState := clonePathState(current)
-				// Distinct raw params may sanitize to the same name; keep the
-				// OpenAPI names unique per path or the document is invalid.
-				uniqueName := uniqueParamName(resolved.openAPI, includeState.params)
-				includeState.path += "{" + uniqueName + "}"
-				includeState.params = append(includeState.params, uniqueName)
-				includeState.aliases[resolved.raw] = uniqueName
+				includeState := current.clone()
+				name := uniquePathParamName(resolved.openAPI, includeState.params)
+				includeState.path += "{" + name + "}"
+				includeState.params = append(includeState.params, name)
+				includeState.aliases[resolved.raw] = name
 				if tokenName != "" {
-					includeState.aliases[tokenName] = uniqueName
+					includeState.aliases[tokenName] = name
 				}
 				includeState.paramIdx++
 
@@ -1180,10 +1173,10 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 
 			case '*', '+':
 				resolved := resolveOpenAPIWildcardParamName(current.paramIdx, params)
-				uniqueName := uniqueParamName(resolved.openAPI, current.params)
-				current.path += "{" + uniqueName + "}"
-				current.params = append(current.params, uniqueName)
-				current.aliases[resolved.raw] = uniqueName
+				name := uniquePathParamName(resolved.openAPI, current.params)
+				current.path += "{" + name + "}"
+				current.params = append(current.params, name)
+				current.aliases[resolved.raw] = name
 				current.paramIdx++
 				i++
 

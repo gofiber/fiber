@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -126,6 +127,9 @@ type App struct {
 	// routesRevision increments on every route or route-metadata mutation and
 	// lets consumers (e.g. the OpenAPI middleware) cheaply detect staleness.
 	routesRevision atomic.Uint64
+	// Monotonic counter identifying each register() call, used to find every
+	// stack entry created by the most recent registration
+	registrationID uint64
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
@@ -1069,7 +1073,7 @@ func docRequestBodyWithExample(description string, required bool, schema map[str
 		route.RequestBody = cloneRouteRequestBody(body)
 		// Only adopt the request body media type as the route's Consumes value
 		// when the user has not set one explicitly via Consumes().
-		if len(sanitized) > 0 && route.Consumes == MIMETextPlain {
+		if len(sanitized) > 0 && route.Consumes == "" {
 			route.Consumes = sanitized[0]
 		}
 	}
@@ -1199,23 +1203,6 @@ func defaultResponseDescription(status int) string {
 	return "Status " + strconv.Itoa(status)
 }
 
-// validateResponseStatus panics when status is neither 0 (the "default"
-// response) nor a valid HTTP status code.
-func validateResponseStatus(status int) {
-	if status != 0 && (status < 100 || status > 599) {
-		panic("invalid status code")
-	}
-}
-
-// responseKey returns the OpenAPI responses-map key for a status code
-// (0 maps to "default").
-func responseKey(status int) string {
-	if status > 0 {
-		return strconv.Itoa(status)
-	}
-	return defaultResponseKey
-}
-
 // getOrCreateResponse returns the route's response entry for key, creating it
 // with a default description when absent. The caller must hold app.mutex (it
 // runs inside applyToLatestRouteLocked callbacks).
@@ -1271,7 +1258,7 @@ func docAddResponse(status int, description string, schema map[string]any, schem
 		route.Responses[key] = copyResp
 		// Only adopt the response media type as the route's Produces value when
 		// the user has not set one explicitly via Produces().
-		if status == StatusOK && len(copyResp.MediaTypes) > 0 && route.Produces == MIMETextPlain {
+		if status == StatusOK && len(copyResp.MediaTypes) > 0 && route.Produces == "" {
 			route.Produces = copyResp.MediaTypes[0]
 		}
 	}
@@ -1368,7 +1355,6 @@ func docResponseHeader(status int, name, description string, schema map[string]a
 	if utils.TrimSpace(name) == "" {
 		panic("response header name is required")
 	}
-	validateResponseStatus(status)
 
 	key := responseKey(status)
 
@@ -1451,7 +1437,6 @@ func docResponseLink(status int, name string, link map[string]any) func(route *R
 	if utils.TrimSpace(name) == "" {
 		panic("response link name is required")
 	}
-	validateResponseStatus(status)
 	key := responseKey(status)
 	return func(route *Route) {
 		resp := getOrCreateResponse(route, key, status)
@@ -1978,7 +1963,9 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 	app.mutex.Unlock()
 
 	var err error
-	defer app.hooks.executeOnPostShutdownHooks(err)
+	// Use a closure so the hooks receive the final error; a plain
+	// `defer ...(err)` would capture the nil value at registration time.
+	defer func() { app.hooks.executeOnPostShutdownHooks(err) }()
 
 	err = server.ShutdownWithContext(ctx)
 	return err

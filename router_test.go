@@ -3195,3 +3195,1004 @@ func Test_App_MetadataReachesAllMethodsOfAdd(t *testing.T) {
 		require.Contains(t, route.Responses, "201", method)
 	}
 }
+
+// newSkipApp builds an app with SkipUnmatchedRoutes enabled plus a benign
+// middleware, so requests actually exercise the lookahead fast path (which is
+// gated on the presence of middleware).
+func newSkipApp(cfg ...Config) *App {
+	c := Config{SkipUnmatchedRoutes: true}
+	if len(cfg) > 0 {
+		c = cfg[0]
+		c.SkipUnmatchedRoutes = true
+	}
+	app := New(c)
+	app.Use(func(c Ctx) error { return c.Next() })
+	return app
+}
+
+func Test_App_SkipUnmatchedRoutes_Static(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Get("/users", func(c Ctx) error { return c.SendString("users") })
+	app.Post("/users", func(c Ctx) error { return c.SendString("created") })
+
+	t.Run("match", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, "users", string(body))
+	})
+
+	t.Run("not_found", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/does/not/exist", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("method_not_allowed", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodDelete, "/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodPost)
+		require.NoError(t, resp.Body.Close())
+	})
+}
+
+func Test_App_SkipUnmatchedRoutes_CORSPreflight(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+	// Minimal CORS-style middleware: answer preflight, pass everything else through.
+	app.Use(func(c Ctx) error {
+		if c.IsPreflight() {
+			c.Set(HeaderAccessControlAllowOrigin, "*")
+			return c.SendStatus(StatusNoContent)
+		}
+		return c.Next()
+	})
+	app.Get("/users", func(c Ctx) error { return c.SendString("users") })
+
+	t.Run("preflight_runs_middleware", func(t *testing.T) {
+		t.Parallel()
+		req := httptest.NewRequest(MethodOptions, "/users", http.NoBody)
+		req.Header.Set(HeaderOrigin, "https://example.com")
+		req.Header.Set(HeaderAccessControlRequestMethod, MethodGet)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusNoContent, resp.StatusCode)
+		require.Equal(t, "*", resp.Header.Get(HeaderAccessControlAllowOrigin))
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("non_preflight_options_still_405", func(t *testing.T) {
+		t.Parallel()
+		// Bare OPTIONS (no CORS headers) is not a preflight, so the fast path still answers 405.
+		resp, err := app.Test(httptest.NewRequest(MethodOptions, "/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+}
+
+func Test_App_SkipUnmatchedRoutes_Parametric(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Get("/user/keys/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
+	app.Post("/user/keys/:id", func(c Ctx) error { return c.SendString("post") })
+
+	t.Run("match", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/user/keys/1337", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, "1337", string(body))
+	})
+
+	t.Run("not_found", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/user/secrets/1337", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("method_not_allowed", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodDelete, "/user/keys/1337", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		allow := resp.Header.Get(HeaderAllow)
+		require.Contains(t, allow, MethodGet)
+		require.Contains(t, allow, MethodPost)
+		require.NoError(t, resp.Body.Close())
+	})
+}
+
+// Test_App_SkipUnmatchedRoutes_MiddlewareSkipped verifies that middleware does
+// NOT run for unmatched requests but DOES run for matched ones.
+func Test_App_SkipUnmatchedRoutes_MiddlewareSkipped(t *testing.T) {
+	t.Parallel()
+
+	t.Run("skipped_on_404", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		called := false
+		app.Use(func(c Ctx) error { called = true; return c.Next() })
+		app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+		require.False(t, called, "middleware must NOT run for an unmatched route")
+	})
+
+	t.Run("runs_on_match", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{SkipUnmatchedRoutes: true})
+		called := false
+		app.Use(func(c Ctx) error { called = true; return c.Next() })
+		app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/ok", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+		require.True(t, called, "middleware must run for a matched route")
+	})
+
+	t.Run("disabled_runs_middleware", func(t *testing.T) {
+		t.Parallel()
+		app := New() // SkipUnmatchedRoutes is false by default
+		called := false
+		app.Use(func(c Ctx) error { called = true; return c.Next() })
+		app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+		require.True(t, called, "middleware should still run when the feature is disabled")
+	})
+}
+
+// Test_App_SkipUnmatchedRoutes_NoMiddlewareGate verifies correct results when the
+// feature is enabled but no middleware is registered (the lookahead is gated off).
+func Test_App_SkipUnmatchedRoutes_NoMiddlewareGate(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true}) // no Use
+	app.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ping", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/missing", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	resp, err = app.Test(httptest.NewRequest(MethodPost, "/ping", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// Test_App_SkipUnmatchedRoutes_CustomErrorHandler covers the emitSkip path where
+// the configured error handler itself returns an error (-> 500).
+func Test_App_SkipUnmatchedRoutes_CustomErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		SkipUnmatchedRoutes: true,
+		ErrorHandler:        func(_ Ctx, _ error) error { return errors.New("boom") },
+	})
+	app.Use(func(c Ctx) error { return c.Next() })
+	app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusInternalServerError, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// Test_App_SkipUnmatchedRoutes_CrossMethodMixed exercises the 405 path where the
+// path matches a static endpoint of one method and a parametric endpoint of
+// another, so both Allow entries must be reported.
+func Test_App_SkipUnmatchedRoutes_CrossMethodMixed(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Get("/thing/:id", func(c Ctx) error { return c.SendString("get") })  // parametric
+	app.Post("/thing/fixed", func(c Ctx) error { return c.SendString("p") }) // static
+
+	resp, err := app.Test(httptest.NewRequest(MethodDelete, "/thing/fixed", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	allow := resp.Header.Get(HeaderAllow)
+	require.Contains(t, allow, MethodGet)
+	require.Contains(t, allow, MethodPost)
+	require.NoError(t, resp.Body.Close())
+}
+
+// Test_App_SkipUnmatchedRoutes_Bucket0Fallback exercises the tier-2 fallback to
+// the global (bucket 0) candidate list when the request's prefix bucket is absent.
+func Test_App_SkipUnmatchedRoutes_Bucket0Fallback(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Get("/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "abc", string(body))
+}
+
+// Test_App_SkipUnmatchedRoutes_SkipBefore exercises next()'s skip-before guard:
+// a static endpoint sits before the parametric endpoint in the same bucket, so
+// firstMatchIndex > 0 and the endpoints before it are skipped.
+func Test_App_SkipUnmatchedRoutes_SkipBefore(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Get("/key/aaa", func(c Ctx) error { return c.SendString("static") })
+	app.Get("/key/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/key/123", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "123", string(body))
+}
+
+func Test_App_SkipUnmatchedRoutes_OptionalParam(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Get("/opt/:v?", func(c Ctx) error { return c.SendString("opt:" + c.Params("v")) })
+
+	for _, path := range []string{"/opt", "/opt/x"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, path)
+		require.NoError(t, resp.Body.Close())
+	}
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/other", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+func Test_App_SkipUnmatchedRoutes_Constraint(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Get("/num/:id<int>", func(c Ctx) error { return c.SendString(c.Params("id")) })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/num/5", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/num/abc", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+func Test_App_SkipUnmatchedRoutes_RootAndStar(t *testing.T) {
+	t.Parallel()
+
+	t.Run("root", func(t *testing.T) {
+		t.Parallel()
+		app := newSkipApp()
+		app.Get("/", func(c Ctx) error { return c.SendString("root") })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("star", func(t *testing.T) {
+		t.Parallel()
+		app := newSkipApp()
+		app.Get("/*", func(c Ctx) error { return c.SendString("star") })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/anything/here", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, "star", string(body))
+	})
+}
+
+func Test_App_SkipUnmatchedRoutes_AutoHead(t *testing.T) {
+	t.Parallel()
+
+	t.Run("static", func(t *testing.T) {
+		t.Parallel()
+		app := newSkipApp()
+		app.Get("/page", func(c Ctx) error { return c.SendString("page") })
+
+		resp, err := app.Test(httptest.NewRequest(MethodHead, "/page", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("param", func(t *testing.T) {
+		t.Parallel()
+		app := newSkipApp()
+		app.Get("/h/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
+
+		resp, err := app.Test(httptest.NewRequest(MethodHead, "/h/1", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+}
+
+// Test_App_SkipUnmatchedRoutes_GroupMiddleware checks that group middleware is
+// skipped for unmatched routes and runs for matched ones. The two checks share
+// the called flag and must run in order, so they are not split into subtests.
+func Test_App_SkipUnmatchedRoutes_GroupMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+	called := false
+	g := app.Group("/g")
+	g.Use(func(c Ctx) error { called = true; return c.Next() })
+	g.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/g/nope", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.False(t, called, "group middleware must not run for an unmatched route")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/g/ok", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.True(t, called, "group middleware must run for a matched route")
+}
+
+func Test_App_SkipUnmatchedRoutes_Mount(t *testing.T) {
+	t.Parallel()
+
+	sub := New()
+	sub.Get("/profile", func(c Ctx) error { return c.SendString("profile") })
+
+	app := newSkipApp()
+	app.Use("/account", sub)
+
+	t.Run("mounted_match", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/account/profile", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, "profile", string(body))
+	})
+
+	t.Run("mounted_miss", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/account/missing", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+}
+
+func Test_App_SkipUnmatchedRoutes_CaseSensitiveAndStrict(t *testing.T) {
+	t.Parallel()
+
+	t.Run("case_sensitive", func(t *testing.T) {
+		t.Parallel()
+		app := newSkipApp(Config{CaseSensitive: true})
+		app.Get("/Foo", func(c Ctx) error { return c.SendString("foo") })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/Foo", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+
+		resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("strict_routing", func(t *testing.T) {
+		t.Parallel()
+		app := newSkipApp(Config{StrictRouting: true})
+		app.Get("/bar", func(c Ctx) error { return c.SendString("bar") })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/bar", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+
+		resp, err = app.Test(httptest.NewRequest(MethodGet, "/bar/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("non_strict_trailing_slash", func(t *testing.T) {
+		t.Parallel()
+		app := newSkipApp()
+		app.Get("/baz", func(c Ctx) error { return c.SendString("baz") })
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/baz/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+}
+
+func Test_App_SkipUnmatchedRoutes_RebuildTree(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Get("/first", func(c Ctx) error { return c.SendString("first") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/second", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	app.Get("/second", func(c Ctx) error { return c.SendString("second") })
+	app.RebuildTree()
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/second", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// Test_App_SkipUnmatchedRoutes_RestartRouting ensures a handler that rewrites
+// the path and restarts routing re-resolves correctly (no stale lookahead index).
+func Test_App_SkipUnmatchedRoutes_RestartRouting(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Get("/old", func(c Ctx) error {
+		c.Path("/new")
+		return c.RestartRouting()
+	})
+	app.Get("/new", func(c Ctx) error { return c.SendString("new") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/old", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "new", string(body))
+}
+
+// Test_App_SkipUnmatchedRoutes_Parity asserts that enabling SkipUnmatchedRoutes
+// produces the same status codes and Allow headers as the default behavior.
+func Test_App_SkipUnmatchedRoutes_Parity(t *testing.T) {
+	t.Parallel()
+
+	build := func(skip bool) *App {
+		app := New(Config{SkipUnmatchedRoutes: skip})
+		app.Use(func(c Ctx) error { return c.Next() })
+		registerDummyRoutes(app)
+		return app
+	}
+	off := build(false)
+	on := build(true)
+
+	cases := []struct {
+		method string
+		path   string
+	}{
+		{MethodGet, "/user/keys/1337"},
+		{MethodGet, "/does/not/exist"},
+		{MethodGet, "/repos/gofiber/fiber/stargazers"},
+		{MethodPost, "/user/keys/1337"},
+		{MethodDelete, "/user/keys/1337"},
+		{MethodGet, "/"},
+		{MethodGet, "/applications/client/tokens"},
+		{MethodGet, "/user/repos"},
+		{MethodHead, "/user/keys/1337"},
+		{MethodOptions, "/user/keys/1337"},
+		{MethodPost, "/"},
+	}
+
+	for _, tc := range cases {
+		respOff, err := off.Test(httptest.NewRequest(tc.method, tc.path, http.NoBody))
+		require.NoError(t, err)
+		respOn, err := on.Test(httptest.NewRequest(tc.method, tc.path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, respOff.StatusCode, respOn.StatusCode, "%s %s", tc.method, tc.path)
+		require.Equal(t, respOff.Header.Get(HeaderAllow), respOn.Header.Get(HeaderAllow), "%s %s allow", tc.method, tc.path)
+		require.Equal(t, respOff.Header.Get(HeaderContentType), respOn.Header.Get(HeaderContentType), "%s %s content-type", tc.method, tc.path)
+		bodyOff, err := io.ReadAll(respOff.Body)
+		require.NoError(t, err)
+		bodyOn, err := io.ReadAll(respOn.Body)
+		require.NoError(t, err)
+		require.Equal(t, string(bodyOff), string(bodyOn), "%s %s body", tc.method, tc.path)
+		require.NoError(t, respOff.Body.Close())
+		require.NoError(t, respOn.Body.Close())
+	}
+}
+
+// Test_App_SkipUnmatchedRoutes_CustomCtx exercises the customRequestHandler path.
+func Test_App_SkipUnmatchedRoutes_CustomCtx(t *testing.T) {
+	t.Parallel()
+
+	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
+	app := NewWithCustomCtx(newCtx, Config{SkipUnmatchedRoutes: true})
+	app.Use(func(c Ctx) error {
+		if c.IsPreflight() {
+			return c.SendStatus(StatusNoContent)
+		}
+		return c.Next()
+	})
+	app.Get("/users", func(c Ctx) error { return c.SendString("users") })
+	app.Get("/user/keys/:id", func(c Ctx) error { return c.SendString("key") })
+
+	t.Run("static_match", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("param_match", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/user/keys/1", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("not_found", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("method_not_allowed", func(t *testing.T) {
+		t.Parallel()
+		resp, err := app.Test(httptest.NewRequest(MethodDelete, "/users", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("cors_preflight", func(t *testing.T) {
+		t.Parallel()
+		// Preflight is exempt from the skip, so the middleware answers it instead of a 405.
+		req := httptest.NewRequest(MethodOptions, "/users", http.NoBody)
+		req.Header.Set(HeaderOrigin, "https://example.com")
+		req.Header.Set(HeaderAccessControlRequestMethod, MethodGet)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusNoContent, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	})
+}
+
+// Test_App_SkipUnmatchedRoutes_FlashCookieCleared pins the flash check running
+// before the short-circuit: a skipped 404 must still clear the flash cookie.
+func Test_App_SkipUnmatchedRoutes_FlashCookieCleared(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Get("/set", func(c Ctx) error { return c.Redirect().With("k", "v").To("/target") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/set", http.NoBody))
+	require.NoError(t, err)
+	flash := resp.Header.Get(HeaderSetCookie)
+	require.Contains(t, flash, FlashCookieName+"=")
+	require.NoError(t, resp.Body.Close())
+
+	req := httptest.NewRequest(MethodGet, "/missing", http.NoBody)
+	req.Header.Set(HeaderCookie, strings.Split(flash, ";")[0])
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	cleared := resp.Header.Get(HeaderSetCookie)
+	require.Contains(t, cleared, FlashCookieName+"=")
+	require.Contains(t, strings.ToLower(cleared), "max-age=0")
+	require.NoError(t, resp.Body.Close())
+}
+
+// Test_App_SkipUnmatchedRoutes_PathOverrideMidChain ensures Path(override)
+// invalidates the lookahead index even without RestartRouting.
+func Test_App_SkipUnmatchedRoutes_PathOverrideMidChain(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Use(func(c Ctx) error {
+		if c.Path() == "/aaa/zzz" {
+			c.Path("/bbb")
+		}
+		return c.Next()
+	})
+	app.Get("/bbb", func(c Ctx) error { return c.SendString("bbb") })
+	app.Get("/aaa/static", func(c Ctx) error { return c.SendString("static") })
+	app.Get("/aaa/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/aaa/zzz", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "bbb", string(body))
+}
+
+// Test_App_SkipUnmatchedRoutes_MountedErrorHandler ensures a skipped 404 under a
+// mount prefix still resolves the sub-app's custom error handler.
+func Test_App_SkipUnmatchedRoutes_MountedErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	sub := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(StatusNotFound).SendString("sub-404")
+	}})
+	sub.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+
+	app := newSkipApp()
+	app.Use("/sub", sub)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/sub/missing", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "sub-404", string(body))
+}
+
+// Test_App_SkipUnmatchedRoutes_ErrorSentinels pins the errors handed to the
+// error handler on the fast path (users match on them with errors.Is).
+func Test_App_SkipUnmatchedRoutes_ErrorSentinels(t *testing.T) {
+	t.Parallel()
+
+	var got error
+	app := New(Config{
+		SkipUnmatchedRoutes: true,
+		ErrorHandler: func(c Ctx, err error) error {
+			got = err
+			return DefaultErrorHandler(c, err)
+		},
+	})
+	app.Use(func(c Ctx) error { return c.Next() })
+	app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.ErrorIs(t, got, ErrNotFound)
+
+	resp, err = app.Test(httptest.NewRequest(MethodPost, "/ok", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.ErrorIs(t, got, ErrMethodNotAllowed)
+}
+
+// Test_App_SkipUnmatchedRoutes_StarMiddlewareNoClobber covers the route.star half
+// of hasParamUse: wildcard middleware writes c.values, so the endpoint re-matches.
+func Test_App_SkipUnmatchedRoutes_StarMiddlewareNoClobber(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp()
+	app.Use("/*", func(c Ctx) error { return c.Next() })
+	app.Get("/user/:id", func(c Ctx) error { return c.SendString(c.Params("id")) })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/user/42", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "42", string(body))
+}
+
+// Test_App_SkipUnmatchedRoutes_UnescapePath pins the static index lookup by the
+// decoded detection path.
+func Test_App_SkipUnmatchedRoutes_UnescapePath(t *testing.T) {
+	t.Parallel()
+
+	app := newSkipApp(Config{UnescapePath: true})
+	app.Get("/some/path", func(c Ctx) error { return c.SendString("ok") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/some/p%61th", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// Test_App_SkipUnmatchedRoutes_CustomCtxFailingErrorHandler covers the 500
+// fallback in emitSkipCustom.
+func Test_App_SkipUnmatchedRoutes_CustomCtxFailingErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
+	app := NewWithCustomCtx(newCtx, Config{
+		SkipUnmatchedRoutes: true,
+		ErrorHandler:        func(Ctx, error) error { return errors.New("fail") },
+	})
+	app.Use(func(c Ctx) error { return c.Next() })
+	app.Get("/users", func(c Ctx) error { return c.SendString("users") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusInternalServerError, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// go test -v -run=^$ -bench=Benchmark_SkipUnmatchedRoutes -benchmem -count=4
+func Benchmark_SkipUnmatchedRoutes(b *testing.B) {
+	scenarios := []struct {
+		name        string
+		method      string
+		path        string
+		middlewares int
+	}{
+		{"Unmatched", MethodGet, "/this/route/does/not/exist", 3},
+		{"Matched", MethodGet, "/user/keys/1337", 1},
+		{"405_Middleware", MethodPost, "/user/keys/1337", 3},
+		{"405_NoMiddleware", MethodPost, "/user/keys/1337", 0},
+	}
+	for _, s := range scenarios {
+		for _, skip := range []bool{false, true} {
+			variant := "without_skip"
+			if skip {
+				variant = "with_skip"
+			}
+			b.Run(s.name+"/"+variant, func(b *testing.B) {
+				app := New(Config{SkipUnmatchedRoutes: skip})
+				for range s.middlewares {
+					app.Use(func(c Ctx) error { return c.Next() })
+				}
+				registerDummyRoutes(app)
+				appHandler := app.Handler()
+
+				c := &fasthttp.RequestCtx{}
+				c.Request.Header.SetMethod(s.method)
+				c.URI().SetPath(s.path)
+
+				b.ReportAllocs()
+				b.ResetTimer()
+				for b.Loop() {
+					appHandler(c)
+				}
+			})
+		}
+	}
+}
+
+func Benchmark_SkipUnmatchedRoutes_Deep(b *testing.B) {
+	deepScenarios := []struct {
+		name   string
+		method string
+		path   string
+		status int
+	}{
+		{"Matched_health_0param", MethodGet, "/health", StatusOK},
+		{"Unmatched_Top_level", MethodGet, "/.env", StatusNotFound},
+		{"Unmatched_Top_level_SBucket", MethodGet, "/heap", StatusNotFound},
+		{"Unmatched_Top_level_SBucket_Diff_Method", MethodDelete, "/heap", StatusNotFound},
+		{"Unmatched_Top_level_SBucket_Diff_Method2", MethodPost, "/heap", StatusNotFound},
+		{"Unmatched_Top_level_SBucket_WrongMethod", MethodPost, "/health", StatusMethodNotAllowed},
+		{"Matched_1param", MethodGet, "/api/v1/matters/m1", StatusOK},
+		{"Matched_3param", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1", StatusOK},
+		{"Matched_4param", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1/versions/v1", StatusOK},
+		{"Matched_5param", MethodGet, "/api/v1/matters/m1/staff/s1/docs/d1/versions/v1/notes/n1", StatusOK},
+		{"MethodNotAllowed_deep", MethodPost, "/api/v1/matters/m1/staff/s1/primary", StatusMethodNotAllowed},
+	}
+	for _, s := range deepScenarios {
+		for _, skip := range []bool{false, true} {
+			variant := "without_skip"
+			if skip {
+				variant = "with_skip"
+			}
+			b.Run(s.name+"/"+variant, func(b *testing.B) {
+				app := New(Config{SkipUnmatchedRoutes: skip})
+				h := func(_ Ctx) error { return nil }
+				mw := func(c Ctx) error { return c.Next() }
+
+				app.Get("/health", h)
+
+				api := app.Group("/api/v1", mw)
+				matters := api.Group("/matters", mw)
+
+				matters.Get("/:id", h)
+				matters.Put("/:matterId/staff/:staffId/primary", h)
+				api.Put("/emails/threads/:threadID/pin/:matterID", h)
+				api.Post("/conflicts/:entityType/:entityID/refresh", h)
+
+				matters.Get("/:matterId/staff/:staffId/docs/:docId", h)
+				matters.Get("/:matterId/staff/:staffId/docs/:docId/versions/:versionId", h)
+				matters.Get("/:matterId/staff/:staffId/docs/:docId/versions/:versionId/notes/:noteId", h)
+
+				appHandler := app.Handler()
+
+				c := &fasthttp.RequestCtx{}
+				c.Request.Header.SetMethod(s.method)
+				c.URI().SetPath(s.path)
+
+				b.ReportAllocs()
+				b.ResetTimer()
+				for b.Loop() {
+					appHandler(c)
+				}
+			})
+		}
+	}
+}
+
+// Test_App_SkipUnmatchedRoutes_MethodOverride ensures Method(...) clears the
+// lookahead index: a middleware switches GET->POST mid-chain, and the POST
+// endpoint sits at a lower bucket index than the GET match, so a stale
+// firstMatchIndex would wrongly skip it.
+func Test_App_SkipUnmatchedRoutes_MethodOverride(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+	app.Use(func(c Ctx) error {
+		if c.Method() == MethodGet {
+			c.Method(MethodPost)
+		}
+		return c.Next()
+	})
+	app.Get("/zzz/aaa", func(c Ctx) error { return c.SendString("get-static") })
+	app.Get("/zzz/:id", func(c Ctx) error { return c.SendString("get-param") })
+	app.Post("/zzz/:id", func(c Ctx) error { return c.SendString("post-param") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/zzz/123", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "post-param", string(body))
+}
+
+// Test_App_SkipUnmatchedRoutes_ParamReuse checks that a matched parametric
+// endpoint returns correct multi-param values when next() reuses the lookahead's
+// params (no parametric middleware, so the fast path is taken).
+func Test_App_SkipUnmatchedRoutes_ParamReuse(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+	app.Use(func(c Ctx) error { return c.Next() })         // non-param middleware
+	app.Use("/api", func(c Ctx) error { return c.Next() }) // static-prefix middleware
+	app.Get("/api/users/:uid/books/:bid", func(c Ctx) error {
+		return c.SendString(c.Params("uid") + "," + c.Params("bid"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/users/u7/books/b9", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "u7,b9", string(body))
+}
+
+// Test_App_SkipUnmatchedRoutes_ParamMiddlewareNoClobber guards the param-reuse
+// fast path: a parametric middleware runs before the endpoint and writes into the
+// shared param slot, so the fast path must be disabled and the endpoint re-matched.
+// If reuse fired incorrectly the endpoint would observe the middleware's value.
+func Test_App_SkipUnmatchedRoutes_ParamMiddlewareNoClobber(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+	// Parametric middleware whose match writes param slot 0 as the first segment.
+	app.Use("/:seg", func(c Ctx) error { return c.Next() })
+	app.Get("/foo/:name", func(c Ctx) error { return c.SendString(c.Params("name")) })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "bar", string(body), "endpoint param must not be clobbered by parametric middleware")
+}
+
+// Test_App_SkipUnmatchedRoutes_ManyMethods verifies that with more than 64
+// RequestMethods the fast path is disabled and routing still returns correct
+// results via the normal router.
+func Test_App_SkipUnmatchedRoutes_ManyMethods(t *testing.T) {
+	t.Parallel()
+
+	methods := append([]string{}, DefaultMethods...)
+	for i := 0; len(methods) <= 64; i++ {
+		methods = append(methods, "X"+string(rune('A'+i%26))+string(rune('A'+i/26)))
+	}
+
+	app := New(Config{SkipUnmatchedRoutes: true, RequestMethods: methods})
+	app.Use(func(c Ctx) error { return c.Next() })
+	app.Get("/ok", func(c Ctx) error { return c.SendString("ok") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ok", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/nope", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// Benchmark_Router_HandlerCustom exercises the custom-context request path
+// (nextCustom) over a deep bucket, where the per-iteration accessor hoisting
+// matters most.
+func Benchmark_Router_HandlerCustom(b *testing.B) {
+	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
+	app := NewWithCustomCtx(newCtx)
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod(MethodGet)
+	c.URI().SetPath("/user/keys/1337")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		appHandler(c)
+	}
+}
+
+// Benchmark_Router_HandlerCustom_NotFound exercises the custom-context 404/405
+// cross-method fallback scan (nextCustom), where accessor hoisting matters.
+func Benchmark_Router_HandlerCustom_NotFound(b *testing.B) {
+	newCtx := func(app *App) CustomCtx { return &customCtx{DefaultCtx: *NewDefaultCtx(app)} }
+	app := NewWithCustomCtx(newCtx)
+	registerDummyRoutes(app)
+	appHandler := app.Handler()
+
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod(MethodGet)
+	c.URI().SetPath("/this/route/does/not/exist")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		appHandler(c)
+	}
+}

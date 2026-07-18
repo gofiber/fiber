@@ -342,7 +342,7 @@ type RouteRequestBody struct {
 	Required    bool                      `json:"required"`
 }
 
-func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
+func (r *Route) match(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
 	// root detectionPath check
 	if r.root && len(detectionPath) == 1 && detectionPath[0] == '/' {
 		return true
@@ -979,7 +979,11 @@ func copyCompositeValue(src any) any {
 		}
 		copied := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
 		for i := range value.Len() {
-			copied.Index(i).Set(reflectValueOrZero(copyAnyValue(value.Index(i).Interface()), value.Type().Elem()))
+			// A nil element yields an invalid reflect.Value; leave the zero
+			// value in place instead of panicking in Set.
+			if elem := copyAnyValue(value.Index(i).Interface()); elem != nil {
+				copied.Index(i).Set(reflect.ValueOf(elem))
+			}
 		}
 		return copied.Interface()
 	case reflect.Map:
@@ -989,22 +993,18 @@ func copyCompositeValue(src any) any {
 		copied := reflect.MakeMapWithSize(value.Type(), value.Len())
 		iter := value.MapRange()
 		for iter.Next() {
-			copied.SetMapIndex(iter.Key(), reflectValueOrZero(copyAnyValue(iter.Value().Interface()), value.Type().Elem()))
+			// SetMapIndex with an invalid value deletes the key, so map a nil
+			// element to the element type's zero value to preserve it.
+			val := reflect.Zero(value.Type().Elem())
+			if elem := copyAnyValue(iter.Value().Interface()); elem != nil {
+				val = reflect.ValueOf(elem)
+			}
+			copied.SetMapIndex(iter.Key(), val)
 		}
 		return copied.Interface()
 	default:
 		return src
 	}
-}
-
-// reflectValueOrZero converts v to a reflect.Value assignable to typ. A nil v
-// (e.g. a nil interface element inside a typed slice or map) yields the zero
-// value of typ instead of the zero reflect.Value, which would panic on Set.
-func reflectValueOrZero(v any, typ reflect.Type) reflect.Value {
-	if v == nil {
-		return reflect.Zero(typ)
-	}
-	return reflect.ValueOf(v)
 }
 
 func (app *App) normalizePath(path string) string {
@@ -1171,12 +1171,6 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 
 	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)
-
-	// Start a fresh registration batch so chainable documentation helpers apply
-	// to every route this call creates (one per method), not just the last one.
-	app.mutex.Lock()
-	app.latestRoutes = nil
-	app.mutex.Unlock()
 
 	isMount := group != nil && group.app != app
 

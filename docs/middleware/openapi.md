@@ -41,7 +41,8 @@ The middleware inspects the app's routes and generates the spec on the first
 matching request. The spec is cached, but the cache is automatically invalidated
 whenever the route table changes — routes added or removed, or route
 documentation metadata mutated — so changes after the first request are still
-reflected without a restart.
+reflected without a restart. Requests to other paths pass through without
+generation work.
 
 ### Document metadata
 

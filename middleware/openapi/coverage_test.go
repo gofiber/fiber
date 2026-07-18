@@ -10,17 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// convertToOpenAPIPath converts a Fiber route path pattern to one OpenAPI path
-// template. When the path yields multiple variants (optional parameters), it
-// returns the first generated variant.
-func convertToOpenAPIPath(fiberPath string, params []string) string {
-	variants := buildOpenAPIPathVariants(fiberPath, params)
-	if len(variants) == 0 {
-		return fiberPath
-	}
-	return variants[0].Path
-}
-
 func Test_uniqueOperationID(t *testing.T) {
 	t.Parallel()
 
