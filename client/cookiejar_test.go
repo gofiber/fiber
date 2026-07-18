@@ -803,3 +803,32 @@ func Test_CookieJar_PathMatch(t *testing.T) {
 	require.NoError(t, uriNoMatch.Parse(nil, []byte("http://example.com/apiv1")))
 	require.Empty(t, jar.Get(uriNoMatch))
 }
+
+// Test_CookieJar_DomainMatchBoundary pins the RFC 6265 §5.1.3 label-boundary
+// semantics of domainMatch: a bare string suffix without a '.' separator must
+// never match, and the comparison is ASCII case-insensitive.
+func Test_CookieJar_DomainMatchBoundary(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		host, domain string
+		want         bool
+	}{
+		{"example.com", "example.com", true},
+		{"sub.example.com", "example.com", true},
+		{"deep.sub.example.com", "example.com", true},
+		// Suffix overlap without a label boundary must not match.
+		{"evilexample.com", "example.com", false},
+		{"xample.com", "example.com", false},
+		// Domain longer than host never matches.
+		{"example.com", "sub.example.com", false},
+		{"com", "example.com", false},
+		// ASCII case-insensitive on both sides.
+		{"EXAMPLE.com", "example.com", true},
+		{"sub.EXAMPLE.com", "example.COM", true},
+		{"evilEXAMPLE.com", "example.com", false},
+	}
+	for _, tc := range testCases {
+		require.Equal(t, tc.want, domainMatch(tc.host, tc.domain), "domainMatch(%q, %q)", tc.host, tc.domain)
+	}
+}

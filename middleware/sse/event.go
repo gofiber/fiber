@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -58,7 +57,7 @@ func writeEvent(w *bufio.Writer, event Event, jsonMarshal ...utils.JSONMarshal) 
 		}
 	}
 	if event.Retry > 0 {
-		appendField(&frame, "retry", strconv.FormatInt(event.Retry.Milliseconds(), 10))
+		appendField(&frame, "retry", utils.FormatInt(event.Retry.Milliseconds()))
 	}
 	if data.hasData {
 		appendData(&frame, data.data)

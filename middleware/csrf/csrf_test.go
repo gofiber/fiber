@@ -998,11 +998,29 @@ func Test_CSRF_SecFetchSite(t *testing.T) {
 			expectedStatus: http.StatusForbidden,
 		},
 		{
+			// Origin comparison is case-insensitive end-to-end: the raw
+			// mixed-case header must be accepted on the same-origin fast path.
+			name:           "no header with mixed-case matching origin",
+			method:         fiber.MethodPost,
+			origin:         "HTTP://EXAMPLE.COM",
+			expectedStatus: http.StatusOK,
+		},
+		{
 			name:           "no header with null origin",
 			method:         fiber.MethodPost,
 			origin:         "null",
 			expectedStatus: http.StatusForbidden,
 			https:          true,
+		},
+		{
+			// "null" detection is case-insensitive too. Over plain HTTP an
+			// absent/null origin clears the error (200); a case-sensitive
+			// regression would instead parse "NULL" as a URL and reject with
+			// ErrOriginNoMatch (403), so the outcomes are distinguishable.
+			name:           "no header with uppercase null origin over http",
+			method:         fiber.MethodPost,
+			origin:         "NULL",
+			expectedStatus: http.StatusOK,
 		},
 		{
 			name:           "GET allowed",
@@ -1301,6 +1319,36 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	h(ctx)
 	require.Equal(t, 200, ctx.Response.StatusCode())
 
+	// Test Trusted Origin with mixed-case header: origin comparisons are
+	// case-insensitive, and the fallback lowering must keep matching the
+	// pre-lowered TrustedOrigins config (exact entry).
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.URI().SetScheme("http")
+	ctx.Request.URI().SetHost("example.com")
+	ctx.Request.Header.SetProtocol("http")
+	ctx.Request.Header.SetHost("example.com")
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://SAFE.Example.com")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 200, ctx.Response.StatusCode())
+
+	// Test Trusted Origin with mixed-case header (wildcard subdomain entry).
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.URI().SetScheme("http")
+	ctx.Request.URI().SetHost("domain-1.com")
+	ctx.Request.Header.SetProtocol("http")
+	ctx.Request.Header.SetHost("domain-1.com")
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://SAFE.Domain-1.com")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 200, ctx.Response.StatusCode())
+
 	// Test Trusted Origin Invalid
 	ctx.Request.Reset()
 	ctx.Response.Reset()
@@ -1344,6 +1392,22 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	h(ctx)
 	require.Equal(t, 200, ctx.Response.StatusCode())
 
+	// Test same-origin Referer with mixed-case header: accepted on the
+	// fold-based Match fast path, no trusted-origin fallback involved.
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+	ctx.Request.URI().SetScheme("https")
+	ctx.Request.URI().SetHost("example.com")
+	ctx.Request.Header.SetProtocol("https")
+	ctx.Request.Header.SetHost("example.com")
+	ctx.Request.Header.Set(fiber.HeaderReferer, "HTTPS://EXAMPLE.COM/Some/Path")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 200, ctx.Response.StatusCode())
+
 	// Test Trusted Referer Wildcard
 	ctx.Request.Reset()
 	ctx.Response.Reset()
@@ -1369,6 +1433,22 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	ctx.Request.Header.SetProtocol("https")
 	ctx.Request.Header.SetHost("a.b.c.domain-1.com")
 	ctx.Request.Header.Set(fiber.HeaderReferer, "https://a.b.c.domain-1.com")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 200, ctx.Response.StatusCode())
+
+	// Test Trusted Referer with mixed-case header: the fallback lowering must
+	// keep matching the pre-lowered TrustedOrigins config (wildcard entry).
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+	ctx.Request.URI().SetScheme("https")
+	ctx.Request.URI().SetHost("domain-1.com")
+	ctx.Request.Header.SetProtocol("https")
+	ctx.Request.Header.SetHost("domain-1.com")
+	ctx.Request.Header.Set(fiber.HeaderReferer, "https://SAFE.Domain-1.com/Account/Login?Id=3")
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)

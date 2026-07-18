@@ -37,6 +37,33 @@ func New(config ...Config) fiber.Handler {
 	// Determine the auth schemes from the extractor chain.
 	authSchemes := getAuthSchemes(cfg.Extractor)
 
+	// The challenge value only depends on config, so build it once instead of
+	// re-formatting it on every 401/407 response.
+	challengeValue := cfg.Challenge
+	if len(authSchemes) > 0 {
+		challenges := make([]string, 0, len(authSchemes))
+		for _, scheme := range authSchemes {
+			var b strings.Builder
+			fmt.Fprintf(&b, "%s realm=%q", scheme, cfg.Realm)
+			if utils.EqualFold(scheme, "Bearer") {
+				if cfg.Error != "" {
+					fmt.Fprintf(&b, ", error=%q", cfg.Error)
+					if cfg.ErrorDescription != "" {
+						fmt.Fprintf(&b, ", error_description=%q", cfg.ErrorDescription)
+					}
+					if cfg.ErrorURI != "" {
+						fmt.Fprintf(&b, ", error_uri=%q", cfg.ErrorURI)
+					}
+					if cfg.Error == ErrorInsufficientScope {
+						fmt.Fprintf(&b, ", scope=%q", cfg.Scope)
+					}
+				}
+			}
+			challenges = append(challenges, b.String())
+		}
+		challengeValue = strings.Join(challenges, ", ")
+	}
+
 	// Return middleware handler
 	return func(c fiber.Ctx) error {
 		// Filter request to skip middleware
@@ -69,30 +96,8 @@ func New(config ...Config) fiber.Handler {
 			if status == fiber.StatusProxyAuthRequired {
 				header = fiber.HeaderProxyAuthenticate
 			}
-			if len(authSchemes) > 0 {
-				challenges := make([]string, 0, len(authSchemes))
-				for _, scheme := range authSchemes {
-					var b strings.Builder
-					fmt.Fprintf(&b, "%s realm=%q", scheme, cfg.Realm)
-					if utils.EqualFold(scheme, "Bearer") {
-						if cfg.Error != "" {
-							fmt.Fprintf(&b, ", error=%q", cfg.Error)
-							if cfg.ErrorDescription != "" {
-								fmt.Fprintf(&b, ", error_description=%q", cfg.ErrorDescription)
-							}
-							if cfg.ErrorURI != "" {
-								fmt.Fprintf(&b, ", error_uri=%q", cfg.ErrorURI)
-							}
-							if cfg.Error == ErrorInsufficientScope {
-								fmt.Fprintf(&b, ", scope=%q", cfg.Scope)
-							}
-						}
-					}
-					challenges = append(challenges, b.String())
-				}
-				c.Set(header, strings.Join(challenges, ", "))
-			} else if cfg.Challenge != "" {
-				c.Set(header, cfg.Challenge)
+			if challengeValue != "" {
+				c.Set(header, challengeValue)
 			}
 		}
 

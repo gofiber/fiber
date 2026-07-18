@@ -3,7 +3,6 @@ package limiter
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"sync"
 	"time"
 
@@ -106,7 +105,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 			// Return response with Retry-After header
 			// https://tools.ietf.org/html/rfc6584
 			if !cfg.DisableHeaders {
-				c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(resetInSec, 10))
+				c.Set(fiber.HeaderRetryAfter, utils.FormatUint(resetInSec))
 			}
 
 			// Call LimitReached handler
@@ -160,9 +159,9 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 
 			// We can continue, update RateLimit headers
 			if !cfg.DisableHeaders {
-				c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))
-				c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
-				c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
+				c.Set(xRateLimitLimit, utils.FormatInt(int64(maxRequests)))
+				c.Set(xRateLimitRemaining, utils.FormatInt(int64(remaining)))
+				c.Set(xRateLimitReset, utils.FormatUint(resetInSec))
 			}
 		}
 
