@@ -24,6 +24,7 @@ import (
 
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
+	"github.com/gofiber/utils/v2/swar"
 
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/gofiber/fiber/v3/log"
@@ -165,20 +166,54 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return n, nil
 }
 
-// quoteRawString escapes only characters that need quoting according to
-// https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
-// contain non-ASCII bytes.
+// quoteEscapeMask marks the lanes of w holding bytes quoteRawString must
+// escape: '\\', '"', any C0 control (including HTAB), or DEL. Lanes >= 0x80
+// are never marked; non-ASCII bytes pass through verbatim. This is
+// utils.IndexNonQuotable's RFC 9110 set widened by HTAB, which the RFC
+// permits as qdtext but this function has always percent-encoded.
+func quoteEscapeMask(w uint64) uint64 {
+	return swar.MatchByteMask(w, '\\') | swar.MatchByteMask(w, '"') |
+		swar.MatchRangeMask(w, 0x00, 0x1f) | swar.MatchByteMask(w, 0x7f)
+}
+
+// indexQuoteEscape returns the index of the first byte quoteEscapeMask
+// matches, or -1 if raw needs no escaping. It scans eight bytes at a time,
+// finishing inputs of 8+ bytes with one overlapping word; shorter inputs
+// are checked byte-wise.
+func indexQuoteEscape(raw string) int {
+	n := len(raw)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		if m := quoteEscapeMask(swar.Load8(raw, i)); m != 0 {
+			return i + swar.FirstLane(m)
+		}
+	}
+	if i == n {
+		return -1
+	}
+	if n >= swar.WordLen {
+		if m := quoteEscapeMask(swar.Load8(raw, n-swar.WordLen)); m != 0 {
+			return n - swar.WordLen + swar.FirstLane(m)
+		}
+		return -1
+	}
+	for ; i < n; i++ {
+		if c := raw[i]; c == '\\' || c == '"' || c < 0x20 || c == 0x7f {
+			return i
+		}
+	}
+	return -1
+}
+
+// quoteRawString escapes the characters that need quoting inside an RFC 9110
+// quoted-string (https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4), plus
+// HTAB, which the RFC permits as qdtext but this function has always
+// percent-encoded. The result may contain non-ASCII bytes.
 func (*App) quoteRawString(raw string) string {
 	// Fast path: most values need no escaping at all; avoid the pooled
 	// buffer and the string allocation entirely.
-	needsEscaping := false
-	for i := 0; i < len(raw); i++ {
-		if c := raw[i]; c == '\\' || c == '"' || c < 0x20 || c == 0x7f {
-			needsEscaping = true
-			break
-		}
-	}
-	if !needsEscaping {
+	end := indexQuoteEscape(raw)
+	if end == -1 {
 		return raw
 	}
 
@@ -186,7 +221,10 @@ func (*App) quoteRawString(raw string) string {
 	bb := bytebufferpool.Get()
 	defer bytebufferpool.Put(bb)
 
-	for i := 0; i < len(raw); i++ {
+	// Every byte before end is quotable and tab-free, so it hits the
+	// verbatim case of the switch below; copy it in one append.
+	bb.B = append(bb.B, raw[:end]...)
+	for i := end; i < len(raw); i++ {
 		c := raw[i]
 		switch {
 		case c == '\\' || c == '"':
@@ -212,15 +250,36 @@ func (*App) quoteRawString(raw string) string {
 	return string(bb.B)
 }
 
-// isASCII reports whether the provided string contains only ASCII characters.
-// See: https://www.rfc-editor.org/rfc/rfc0020
-func (*App) isASCII(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] > 127 {
-			return false
-		}
+// appendLowerASCII writes the ASCII-lowercased bytes of src into dst[:0],
+// growing dst as needed, in a single pass over src (instead of a copy
+// followed by an in-place case fold). Bytes outside 'A'..'Z', including
+// non-ASCII, are copied unchanged. src and dst must not overlap.
+func appendLowerASCII(dst, src []byte) []byte {
+	n := len(src)
+	// Amortized growth like append: every byte of dst[:n] is overwritten
+	// below, so the grown slice's contents don't matter.
+	dst = slices.Grow(dst[:0], n)[:n]
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		swar.Store8(dst, i, swar.ToLowerWord(swar.Load8(src, i)))
 	}
-	return true
+	if i == n {
+		return dst
+	}
+	if n >= swar.WordLen {
+		// Finish with one overlapping word; the overlapped bytes are
+		// rewritten with the same values.
+		swar.Store8(dst, n-swar.WordLen, swar.ToLowerWord(swar.Load8(src, n-swar.WordLen)))
+		return dst
+	}
+	for ; i < n; i++ {
+		c := src[i]
+		if c-'A' <= 'Z'-'A' {
+			c |= 0x20
+		}
+		dst[i] = c
+	}
+	return dst
 }
 
 // defaultString returns the value or a default value if it is set
@@ -270,11 +329,7 @@ const (
 // of the same coarse class (RFC 9110 §12.5.1).
 func acceptsOffer(spec, offer string, _ headerParams) int {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
-		prefix := spec[:len(spec)-1]
-		if len(offer) < len(prefix) {
-			return 0
-		}
-		if utils.EqualFold(prefix, offer[:len(prefix)]) {
+		if utils.HasPrefixFold(offer, spec[:len(spec)-1]) {
 			return matchWildcard
 		}
 		return 0
@@ -306,7 +361,7 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) int {
 		return matchExact
 	}
 	if len(offer) > len(spec) &&
-		utils.EqualFold(offer[:len(spec)], spec) &&
+		utils.HasPrefixFold(offer, spec) &&
 		offer[len(spec)] == '-' {
 		return matchPrefix
 	}
@@ -611,27 +666,33 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 		n := 0
 		header = utils.TrimLeft(header, ' ')
 		quotes := 0
-		escaping := false
 
 		if hasDQuote {
 			// Complex case. We need to keep track of quotes and quoted-pairs (i.e.,  characters escaped with \ )
+			// Only ',', '"' and '\\' can change state, so jump between them
+			// instead of visiting every byte.
 		loop:
 			for n < len(header) {
+				i := utils.IndexAny3(header[n:], ',', '"', '\\')
+				if i == -1 {
+					n = len(header)
+					break
+				}
+				n += i
 				switch header[n] {
 				case ',':
 					if quotes%2 == 0 {
 						break loop
 					}
 				case '"':
-					if !escaping {
-						quotes++
+					quotes++
+				default: // '\\'
+					if quotes%2 == 1 && n+1 < len(header) {
+						// A quoted-pair escapes exactly the next byte
+						// (RFC 9110 §5.6.4); consume it so an escaped
+						// quote is not mistaken for a closing quote.
+						n++
 					}
-				case '\\':
-					if quotes%2 == 1 {
-						escaping = !escaping
-					}
-				default:
-					// all other characters are ignored
 				}
 				n++
 			}
@@ -904,22 +965,25 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 
 	// Split the header on commas that sit outside DQUOTE-delimited opaque-tags:
 	// etagc permits "," inside the quoted tag (RFC 9110 §8.8.3), so `"v1,v2"`
-	// is a single entity tag, not two list elements.
+	// is a single entity tag, not two list elements. Only '"' and ','
+	// affect the split, so jump between them instead of visiting every byte.
 	start := 0
+	pos := 0
 	inQuotes := false
-	for i := range len(header) {
-		switch header[i] {
-		case '"':
+	for {
+		i := utils.IndexAny2(header[pos:], '"', ',')
+		if i == -1 {
+			break
+		}
+		i += pos
+		pos = i + 1
+		if header[i] == '"' {
 			inQuotes = !inQuotes
-		case ',':
-			if !inQuotes {
-				if matchEtag(utils.TrimSpace(header[start:i]), etag) {
-					return false
-				}
-				start = i + 1
+		} else if !inQuotes {
+			if matchEtag(utils.TrimSpace(header[start:i]), etag) {
+				return false
 			}
-		default:
-			// any other byte belongs to the current list element
+			start = i + 1
 		}
 	}
 

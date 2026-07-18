@@ -4,13 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
+	"github.com/gofiber/utils/v2/swar"
 )
 
 // TagContextValue reads a value from the bound context-like value using the tag parameter as the key.
@@ -208,48 +207,73 @@ func defaultContextValueTag(output Buffer, ctx any, _ *ContextData, extraParam s
 }
 
 // writeSanitized writes p to output with ASCII control bytes replaced by
-// spaces. Tabs are preserved. The replacement is done in-place on a single
-// pass so the hot path stays alloc-free for inputs that are already clean
-// (the common case): clean inputs forward directly to output.Write.
+// spaces. Tabs are preserved. Clean inputs (the common case) forward
+// directly to output.Write with no allocation; dirty inputs are scrubbed
+// into a copy starting at the first control byte.
 func writeSanitized(output Buffer, p []byte) (int, error) {
-	if !needsControlSanitize(p) {
+	idx := indexControlByte(p)
+	if idx == -1 {
 		return output.Write(p)
 	}
-	scrubbed := make([]byte, len(p))
-	for i, b := range p {
-		if isControlByte(b) {
-			scrubbed[i] = ' '
-		} else {
-			scrubbed[i] = b
-		}
-	}
-	return output.Write(scrubbed)
+	return output.Write(scrubControls(p, idx))
 }
 
+// writeSanitizedString is writeSanitized for strings, keeping the clean
+// fast path on output.WriteString.
 func writeSanitizedString(output Buffer, s string) (int, error) {
-	if !needsControlSanitizeString(s) {
+	idx := indexControlByte(s)
+	if idx == -1 {
 		return output.WriteString(s)
 	}
+	return output.Write(scrubControls(s, idx))
+}
+
+// scrubControls returns a copy of s with every byte isControlByte matches
+// replaced by a space. idx is the index of the first such byte, so the
+// scan starts there and the clean prefix is copied untouched.
+func scrubControls[S ~string | ~[]byte](s S, idx int) []byte {
 	scrubbed := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		b := s[i]
-		if isControlByte(b) {
+	copy(scrubbed, s)
+	for i := idx; i < len(scrubbed); i++ {
+		if isControlByte(scrubbed[i]) {
 			scrubbed[i] = ' '
-		} else {
-			scrubbed[i] = b
 		}
 	}
-	return output.Write(scrubbed)
+	return scrubbed
 }
 
-func needsControlSanitize(p []byte) bool {
-	return slices.ContainsFunc(p, isControlByte)
+// indexControlByte returns the index of the first byte isControlByte matches,
+// or -1 if none is present. It scans eight bytes at a time; inputs of 8+
+// bytes finish with one overlapping word, shorter ones byte-wise.
+func indexControlByte[S ~string | ~[]byte](s S) int {
+	n := len(s)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		if m := controlScrubMask(swar.Load8(s, i)); m != 0 {
+			return i + swar.FirstLane(m)
+		}
+	}
+	if i == n {
+		return -1
+	}
+	if n >= swar.WordLen {
+		if m := controlScrubMask(swar.Load8(s, n-swar.WordLen)); m != 0 {
+			return n - swar.WordLen + swar.FirstLane(m)
+		}
+		return -1
+	}
+	for ; i < n; i++ {
+		if isControlByte(s[i]) {
+			return i
+		}
+	}
+	return -1
 }
 
-func needsControlSanitizeString(s string) bool {
-	return strings.IndexFunc(s, func(r rune) bool {
-		return r < 0x80 && isControlByte(byte(r)) //nolint:gosec // G115: integer overflow conversion rune -> byte
-	}) >= 0
+// controlScrubMask marks the lanes of w holding bytes isControlByte matches:
+// C0 controls except HTAB, plus DEL. Bytes >= 0x80 are never marked.
+func controlScrubMask(w uint64) uint64 {
+	return (swar.MatchRangeMask(w, 0x00, 0x1f) &^ swar.MatchByteMask(w, '\t')) | swar.MatchByteMask(w, 0x7f)
 }
 
 // isControlByte reports whether b is an ASCII control byte that must not pass

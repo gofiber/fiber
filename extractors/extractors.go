@@ -551,6 +551,9 @@ func Chain(extractors ...Extractor) Extractor {
 }
 
 // isValidToken68 checks if a string is a valid token68 per RFC 7235/9110.
+// NOTE: a swar.MatchRangeMask-based rewrite of this scan benchmarked 16%
+// slower than this scalar loop (the six-mask character class costs more per
+// word than the compiler's optimized switch costs per byte), so it stays.
 func isValidToken68(token string) bool {
 	if token == "" {
 		return false

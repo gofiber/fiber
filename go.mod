@@ -3,12 +3,12 @@ module github.com/gofiber/fiber/v3
 go 1.25.0
 
 require (
-	github.com/gofiber/schema v1.8.1
-	github.com/gofiber/utils/v2 v2.1.2
+	github.com/gofiber/schema v1.8.2
+	github.com/gofiber/utils/v2 v2.2.0
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-colorable v0.1.15
-	github.com/mattn/go-isatty v0.0.22
-	github.com/shamaton/msgpack/v3 v3.1.2
+	github.com/mattn/go-isatty v0.0.23
+	github.com/shamaton/msgpack/v3 v3.2.0
 	github.com/stretchr/testify v1.11.1
 	github.com/tinylib/msgp v1.6.4
 	github.com/valyala/bytebufferpool v1.0.0

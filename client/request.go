@@ -1084,9 +1084,9 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 	setVal = func(name string, val reflect.Value) {
 		switch val.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			p.Add(name, strconv.Itoa(int(val.Int())))
+			p.Add(name, utils.FormatInt(val.Int()))
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-			p.Add(name, strconv.FormatUint(val.Uint(), 10))
+			p.Add(name, utils.FormatUint(val.Uint()))
 		case reflect.Float32, reflect.Float64:
 			p.Add(name, strconv.FormatFloat(val.Float(), 'f', -1, 64))
 		case reflect.Complex64, reflect.Complex128:

@@ -2,9 +2,9 @@ package idempotency
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/gofiber/utils/v2"
-	utilsstrings "github.com/gofiber/utils/v2/strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
@@ -55,11 +55,16 @@ func New(config ...Config) fiber.Handler {
 		return key
 	}
 
-	keepResponseHeadersMap := make(map[string]struct{}, len(cfg.KeepResponseHeaders))
-	for _, h := range cfg.KeepResponseHeaders {
-		// CopyString is needed because utils.ToLower uses UnsafeString
-		// and map keys must be immutable
-		keepResponseHeadersMap[utilsstrings.ToLower(h)] = struct{}{}
+	// Snapshot the configured names so later mutation of the caller's slice
+	// cannot change an already-constructed handler. Matching uses
+	// utils.EqualFold, so no lowercased copies are needed and comparing
+	// against the canonical-case names fasthttp reports stays allocation-free.
+	keepResponseHeaders := slices.Clone(cfg.KeepResponseHeaders)
+
+	shouldKeepHeader := func(header string) bool {
+		return slices.ContainsFunc(keepResponseHeaders, func(keep string) bool {
+			return utils.EqualFold(header, keep)
+		})
 	}
 
 	maybeWriteCachedResponse := func(c fiber.Ctx, key string) (bool, error) {
@@ -150,15 +155,15 @@ func New(config ...Config) fiber.Handler {
 				return fmt.Errorf("failed to bind to response headers: %w", err)
 			}
 
-			if cfg.KeepResponseHeaders == nil {
+			if keepResponseHeaders == nil {
 				// Keep all
 				res.Headers = headers
 			} else {
 				// Filter
 				res.Headers = make(map[string][]string)
-				for h := range headers {
-					if _, ok := keepResponseHeadersMap[utilsstrings.ToLower(h)]; ok {
-						res.Headers[h] = headers[h]
+				for h, vals := range headers {
+					if shouldKeepHeader(h) {
+						res.Headers[h] = vals
 					}
 				}
 			}

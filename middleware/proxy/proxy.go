@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2/swar"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -469,6 +470,39 @@ func stripCrossHostHeaders(req *fasthttp.Request) {
 	}
 }
 
+// ctlOrDELMask marks the lanes of w holding control bytes that must not
+// appear in a redirect Location value: anything < 0x20 (including HTAB) or
+// DEL. Bytes >= 0x80 are never marked; they are handled by URI parsing, not
+// header-injection checks.
+func ctlOrDELMask(w uint64) uint64 {
+	return swar.MatchRangeMask(w, 0x00, 0x1f) | swar.MatchByteMask(w, 0x7f)
+}
+
+// containsCTLOrDEL reports whether b holds any byte ctlOrDELMask matches.
+// It scans eight bytes at a time, finishing inputs of 8+ bytes with one
+// overlapping word; shorter inputs are checked byte-wise.
+func containsCTLOrDEL(b []byte) bool {
+	n := len(b)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		if ctlOrDELMask(swar.Load8(b, i)) != 0 {
+			return true
+		}
+	}
+	if i == n {
+		return false
+	}
+	if n >= swar.WordLen {
+		return ctlOrDELMask(swar.Load8(b, n-swar.WordLen)) != 0
+	}
+	for ; i < n; i++ {
+		if b[i] < 0x20 || b[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveRedirect parses a redirect target relative to the current URL
 // and applies the SecurityPolicy. CRLF and other control bytes are
 // rejected to prevent header injection via Location. The returned value
@@ -476,10 +510,8 @@ func stripCrossHostHeaders(req *fasthttp.Request) {
 // pass it straight into network sinks without re-parsing user-controlled
 // strings.
 func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) (*url.URL, error) {
-	for _, b := range location {
-		if b < 0x20 || b == 0x7f {
-			return nil, fasthttp.ErrorInvalidURI
-		}
+	if containsCTLOrDEL(location) {
+		return nil, fasthttp.ErrorInvalidURI
 	}
 	uri := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(uri)

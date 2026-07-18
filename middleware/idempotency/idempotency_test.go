@@ -352,6 +352,46 @@ func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
 	require.Equal(t, 1, s.setCount)
 }
 
+// Test_New_StoreRetrieve_FilterHeadersCaseInsensitiveSnapshot pins two
+// properties of the keep-header filter: configured names match response
+// header names ASCII case-insensitively (fasthttp reports canonical case like
+// "Foo"), and the name list is snapshotted at New() time, so mutating the
+// caller's slice afterwards cannot change an already-built handler.
+func Test_New_StoreRetrieve_FilterHeadersCaseInsensitiveSnapshot(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	s := &stubStorage{}
+	keep := []string{"fOO"}
+	app.Use(New(Config{
+		Storage:             s,
+		Lock:                &stubLock{},
+		KeepResponseHeaders: keep,
+	}))
+	// Post-construction mutation must not affect the handler.
+	keep[0] = "Bar"
+
+	var count int
+	app.Post("/", func(c fiber.Ctx) error {
+		count++
+		c.Set("Foo", "foo")
+		c.Set("Bar", "bar")
+		return c.SendString(fmt.Sprintf("resp%d", count))
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req.Header.Set(ConfigDefault.KeyHeader, validKey)
+	_, body := do(app, req)
+	require.Equal(t, "resp1", body)
+
+	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
+	resp2, body2 := do(app, req2)
+	require.Equal(t, "resp1", body2)
+	require.Equal(t, "foo", resp2.Header.Get("Foo"), "differently-cased configured name must still match")
+	require.Empty(t, resp2.Header.Get("Bar"), "mutating the config slice after New must not change filtering")
+	require.Equal(t, 1, count)
+}
+
 func Test_New_Cache_WhenBodyTooLarge(t *testing.T) {
 	t.Parallel()
 	bodyLimit := 8

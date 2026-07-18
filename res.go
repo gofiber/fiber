@@ -11,7 +11,6 @@ import (
 	pathpkg "path"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -265,7 +264,7 @@ func encodeExtValue(s string) string {
 // RFC 8187 filename* ext-value for interoperability.
 func contentDispositionAttachment(app *App, fname string) string {
 	disp := `attachment; filename="` + app.quoteRawString(fname) + `"`
-	if !app.isASCII(fname) {
+	if !utils.IsASCII(fname) {
 		disp += `; filename*=UTF-8''` + encodeExtValue(fname)
 	}
 	return disp
@@ -899,7 +898,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 		maxAge := cfg.MaxAge
 		if maxAge > 0 {
-			sf.cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
+			sf.cacheControlValue = "public, max-age=" + utils.FormatInt(int64(maxAge))
 		}
 
 		// set vars
@@ -993,7 +992,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
 		if cfg.ByteRange && hasSendFileSize && response.StatusCode() == StatusRequestedRangeNotSatisfiable && len(response.Header.Peek(HeaderContentRange)) == 0 {
-			response.Header.Set(HeaderContentRange, "bytes */"+strconv.FormatInt(sendFileSize, 10))
+			response.Header.Set(HeaderContentRange, "bytes */"+utils.FormatInt(sendFileSize))
 		}
 
 		if cacheControlValue != "" {

@@ -267,6 +267,16 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 
+	// Close the listener on any path that doesn't reach Serve (which otherwise
+	// takes ownership of it) — an early error return or a panicking hook — so
+	// the bound socket isn't leaked.
+	served := false
+	defer func() {
+		if !served {
+			_ = ln.Close() //nolint:errcheck // best-effort cleanup on the error path
+		}
+	}()
+
 	// prepare the server for the start
 	app.startupProcess()
 
@@ -285,6 +295,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		}
 	}
 
+	served = true
 	return app.server.Serve(ln)
 }
 
@@ -377,6 +388,7 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg *ListenConfig
 
 	if cfg.ListenerNetwork == NetworkUnix {
 		if err = os.Chmod(addr, cfg.UnixSocketFileMode); err != nil {
+			_ = listener.Close() //nolint:errcheck // best-effort cleanup on the error path
 			return nil, fmt.Errorf("cannot chmod %#o for %q: %w", cfg.UnixSocketFileMode, addr, err)
 		}
 	}
@@ -606,18 +618,13 @@ func (app *App) printRoutesMessage() {
 func (app *App) gracefulShutdown(ctx context.Context, cfg *ListenConfig) {
 	<-ctx.Done()
 
-	var err error
-
+	// The OnPostShutdown hooks are fired by ShutdownWithContext (via
+	// Shutdown/ShutdownWithTimeout) with the real error, so we must not fire
+	// them again here or they would run twice. That error is already delivered
+	// to those hooks, so it is intentionally ignored here.
 	if cfg != nil && cfg.ShutdownTimeout != 0 {
-		err = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:contextcheck // TODO: Implement it
+		_ = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:errcheck,contextcheck // error is delivered to OnPostShutdown hooks
 	} else {
-		err = app.Shutdown() //nolint:contextcheck // TODO: Implement it
+		_ = app.Shutdown() //nolint:errcheck,contextcheck // error is delivered to OnPostShutdown hooks
 	}
-
-	if err != nil {
-		app.hooks.executeOnPostShutdownHooks(err)
-		return
-	}
-
-	app.hooks.executeOnPostShutdownHooks(nil)
 }

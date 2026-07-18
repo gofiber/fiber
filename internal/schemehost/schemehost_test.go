@@ -9,6 +9,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// normalizeSchemeHost is the legacy single-value normalize entry point, kept
+// test-side as the bridge between the production normalizeHostPort fallback
+// and the url.Parse reference below. The scheme is expected pre-lowered here
+// (exact match, so "HTTP" is unknown), matching the original implementation.
+func normalizeSchemeHost(scheme, host string) string {
+	for _, e := range schemePorts {
+		if scheme == e.scheme {
+			return normalizeHostPort(scheme, host, e.port)
+		}
+	}
+	return utilsstrings.ToLower(host)
+}
+
 // refNormalizeSchemeHost is the original url.Parse-based implementation, kept as
 // a behavioral reference. The fast-path normalizeSchemeHost must produce
 // identical output for every input.
@@ -96,6 +109,35 @@ func Test_normalizeSchemeHost(t *testing.T) {
 	}
 }
 
+// refMatch is the original implementation of Match, kept as a behavioral
+// reference: lowercase both schemes, then compare the normalized scheme-host
+// strings. Match must return the same result for every input.
+func refMatch(schemeA, hostA, schemeB, hostB string) bool {
+	normalizedSchemeA := utilsstrings.ToLower(schemeA)
+	normalizedSchemeB := utilsstrings.ToLower(schemeB)
+	return normalizedSchemeA == normalizedSchemeB &&
+		refNormalizeSchemeHost(normalizedSchemeA, hostA) == refNormalizeSchemeHost(normalizedSchemeB, hostB)
+}
+
+// Test_Match_matchesReference verifies the allocation-free fast path in Match
+// produces the same verdict as the reference implementation across the full
+// adversarial corpus.
+func Test_Match_matchesReference(t *testing.T) {
+	t.Parallel()
+	schemes := []string{"http", "https", "HTTP", "HTTPS", "ftp", ""}
+	for _, schemeA := range schemes {
+		for _, schemeB := range schemes {
+			for _, hostA := range corpus {
+				for _, hostB := range corpus {
+					got := Match(schemeA, hostA, schemeB, hostB)
+					want := refMatch(schemeA, hostA, schemeB, hostB)
+					assert.Equal(t, want, got, "Match(%q,%q,%q,%q)", schemeA, hostA, schemeB, hostB)
+				}
+			}
+		}
+	}
+}
+
 func Test_Match(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -138,12 +180,25 @@ func Benchmark_normalizeSchemeHost(b *testing.B) {
 }
 
 func Benchmark_Match(b *testing.B) {
-	b.ReportAllocs()
-	var ok bool
-	for b.Loop() {
-		ok = Match("https", "example.com", "https", "example.com")
+	cases := []struct{ name, schemeA, hostA, schemeB, hostB string }{
+		// Byte-identical hosts exit at the equality fast path.
+		{"identical", "https", "example.com", "https", "example.com"},
+		// Default-port normalization exercises splitCleanHostPort + foldSchemePort.
+		{"defaultport", "https", "example.com", "https", "example.com:443"},
+		{"mismatch", "https", "example.com", "https", "evil.example"},
+		// Unclean host takes the legacy normalize fallback.
+		{"fallback", "https", "[::1]", "https", "[::1]:443"},
 	}
-	_ = ok
+	for _, tc := range cases {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			var ok bool
+			for b.Loop() {
+				ok = Match(tc.schemeA, tc.hostA, tc.schemeB, tc.hostB)
+			}
+			_ = ok
+		})
+	}
 }
 
 // FuzzNormalizeSchemeHost asserts the fast path stays byte-for-byte equivalent

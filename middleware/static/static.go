@@ -85,12 +85,8 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 		return nil, err
 	}
 
-	if strings.IndexByte(s, '\\') >= 0 {
-		return nil, ErrInvalidPath
-	}
-
-	// reject any null bytes
-	if strings.IndexByte(s, '\x00') >= 0 {
+	// reject backslashes and null bytes in a single scan
+	if utils.IndexAny2(s, '\\', '\x00') >= 0 {
 		return nil, ErrInvalidPath
 	}
 

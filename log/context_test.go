@@ -432,3 +432,20 @@ func Benchmark_DefaultContextValueTag(b *testing.B) {
 		}
 	}
 }
+
+// go test -v -run=^$ -bench=Benchmark_writeSanitizedString -benchmem -count=4
+func Benchmark_writeSanitizedString(b *testing.B) {
+	buf := &bytebufferpool.ByteBuffer{}
+	inputs := []string{
+		"GET /api/v1/users completed in 3ms",
+		"user login ok request-id=6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+		"short",
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			buf.Reset()
+			_, _ = writeSanitizedString(buf, in) //nolint:errcheck // benchmark
+		}
+	}
+}

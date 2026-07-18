@@ -448,14 +448,18 @@ func pathMatch(reqPath, cookiePath []byte) bool {
 	return len(reqPath) > len(cookiePath) && reqPath[len(cookiePath)] == '/'
 }
 
-// domainMatch reports whether host domain-matches the given cookie domain.
+// domainMatch reports whether host domain-matches the given cookie domain
+// (RFC 6265 Section 5.1.3). The comparison itself is ASCII case-insensitive
+// and allocation-free, but callers still normalize hosts and domains to
+// lowercase: the jar's map keys and its exact-match checks (e.g. the
+// host-only comparison in cookiesForRequest) rely on it.
 func domainMatch(host, domain string) bool {
-	host = utilsstrings.UnsafeToLower(host)
-
-	if host == domain {
+	if utils.EqualFold(host, domain) {
 		return true
 	}
-	return strings.HasSuffix(host, "."+domain)
+	return len(host) > len(domain) &&
+		host[len(host)-len(domain)-1] == '.' &&
+		utils.HasSuffixFold(host, domain)
 }
 
 // acceptCookieDomain enforces RFC 6265 response-domain acceptance. Trailing-dot,
