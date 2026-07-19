@@ -94,7 +94,7 @@ app.Post("/users", func(c fiber.Ctx) error {
 })
 ```
 
-> **Note:** For maximum performance, Fiber caches the precedence configuration per `reflect.Type`. This ensures the framework maintains zero-allocation efficiency on subsequent requests.
+> **Note:** For maximum performance, Fiber caches the precedence resolution per `reflect.Type` to reduce repeated parsing overhead.
 
 ### Body
 
