@@ -2918,37 +2918,74 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	app := New()
 
 	type CustomPrecedenceReq struct {
-		BindingSource struct{} `binding_source:"query,header,cookie,body,uri"`
-		Name          string   `query:"name" header:"x-name" json:"name"`
+		Name string `binding_source:"query,header,cookie,body,uri" query:"name" header:"x-name" cookie:"c-name" json:"name" uri:"name"`
 	}
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 	defer app.ReleaseCtx(ctx)
 
-	// Set data in query, header, and body.
+	// Set data in query, header, cookie, body, and uri.
 	// Since query is the first in our custom precedence, it should win.
 	ctx.Request().URI().SetQueryString("name=from_query")
 	ctx.Request().Header.Set("x-name", "from_header")
+	ctx.Request().Header.SetCookie("c-name", "from_cookie")
 	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
 	ctx.Request().SetBody([]byte(`{"name":"from_body"}`))
+	ctx.route = &Route{Params: []string{"name"}}
+	ctx.values = [maxParams]string{"from_uri"}
 
 	req := new(CustomPrecedenceReq)
 	require.NoError(t, ctx.Bind().All(req))
-
-	// The query parameter should be used because it has the highest precedence.
 	require.Equal(t, "from_query", req.Name)
 
-	// Now try without query but with header and body. Header should win.
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	// Now try without query. Header should win.
+	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 	defer app.ReleaseCtx(ctx2)
-
 	ctx2.Request().Header.Set("x-name", "from_header")
+	ctx2.Request().Header.SetCookie("c-name", "from_cookie")
 	ctx2.Request().Header.SetContentType(MIMEApplicationJSON)
 	ctx2.Request().SetBody([]byte(`{"name":"from_body"}`))
+	ctx2.route = &Route{Params: []string{"name"}}
+	ctx2.values = [maxParams]string{"from_uri"}
 
 	req2 := new(CustomPrecedenceReq)
 	require.NoError(t, ctx2.Bind().All(req2))
 	require.Equal(t, "from_header", req2.Name)
+
+	// Now try without header. Cookie should win.
+	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	defer app.ReleaseCtx(ctx3)
+	ctx3.Request().Header.SetCookie("c-name", "from_cookie")
+	ctx3.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx3.Request().SetBody([]byte(`{"name":"from_body"}`))
+	ctx3.route = &Route{Params: []string{"name"}}
+	ctx3.values = [maxParams]string{"from_uri"}
+
+	req3 := new(CustomPrecedenceReq)
+	require.NoError(t, ctx3.Bind().All(req3))
+	require.Equal(t, "from_cookie", req3.Name)
+
+	// Now try without cookie. Body should win.
+	ctx4 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	defer app.ReleaseCtx(ctx4)
+	ctx4.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx4.Request().SetBody([]byte(`{"name":"from_body"}`))
+	ctx4.route = &Route{Params: []string{"name"}}
+	ctx4.values = [maxParams]string{"from_uri"}
+
+	req4 := new(CustomPrecedenceReq)
+	require.NoError(t, ctx4.Bind().All(req4))
+	require.Equal(t, "from_body", req4.Name)
+
+	// Now try without body. URI should win.
+	ctx5 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	defer app.ReleaseCtx(ctx5)
+	ctx5.route = &Route{Params: []string{"name"}}
+	ctx5.values = [maxParams]string{"from_uri"}
+
+	req5 := new(CustomPrecedenceReq)
+	require.NoError(t, ctx5.Bind().All(req5))
+	require.Equal(t, "from_uri", req5.Name)
 }
 
 // go test -run Test_Bind_All_CustomPrecedence_InvalidToken
